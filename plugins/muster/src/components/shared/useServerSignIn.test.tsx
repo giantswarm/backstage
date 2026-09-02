@@ -12,6 +12,8 @@ import { useServerSignIn } from './useServerSignIn';
 
 const AUTH_URL =
   'https://muster.gazelle.example.io/oauth/proxy/start?state=abc';
+const FRESH_AUTH_URL =
+  'https://muster.gazelle.example.io/oauth/proxy/start?state=def';
 
 const CHALLENGE: ServerSignInResult = {
   status: 'auth_required',
@@ -210,6 +212,111 @@ describe('useServerSignIn', () => {
     expect(
       queryClient.getQueryData(['muster', 'pending-sign-in', 'gazelle', 'pro']),
     ).toBeNull();
+  });
+
+  /**
+   * The URL muster issues is good for as long as the `state` behind it lives in
+   * muster's store (10 minutes) -- shorter than the wait. Past that the URL is
+   * withdrawn but the wait is not: the flow may still complete in the tab that
+   * was opened in time, so polling continues until the deadline.
+   */
+  it('withdraws the sign-in URL once muster’s state has expired but keeps waiting', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const { result } = renderHook(
+      () =>
+        useServerSignIn('pro', 'gazelle', {
+          pollIntervalMs: 20,
+          authUrlLifetimeMs: 100,
+          timeoutMs: 10_000,
+        }),
+      { wrapper: wrapper(api, queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+
+    await waitFor(() => expect(result.current.authUrl).toBeUndefined(), {
+      timeout: 3_000,
+    });
+    expect(result.current.isWaiting).toBe(true);
+
+    // Polling goes on without the URL...
+    const polls = api.getAuthStatus.mock.calls.length;
+    await waitFor(() =>
+      expect(api.getAuthStatus.mock.calls.length).toBeGreaterThan(polls),
+    );
+
+    // ...and the flow landing in the tab opened earlier still ends the wait.
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    await waitFor(() => expect(result.current.isWaiting).toBe(false));
+  });
+
+  /**
+   * Reopening the sign-in page asks muster for a fresh challenge rather than
+   * reusing the stored URL, which may be expired by then. The new challenge
+   * replaces the outstanding entry.
+   */
+  it('replaces the outstanding challenge when signing in again mid-flow', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+
+    api.signInServer.mockResolvedValue({
+      ...CHALLENGE,
+      authUrl: FRESH_AUTH_URL,
+    });
+    await act(async () => result.current.signIn());
+
+    await waitFor(() => expect(result.current.authUrl).toBe(FRESH_AUTH_URL));
+    expect(api.signInServer).toHaveBeenCalledTimes(2);
+    expect(result.current.isWaiting).toBe(true);
+  });
+
+  /**
+   * A refused re-challenge (muster's login rate limit, say) changes nothing
+   * about the flow already outstanding: the refusal is reported, while the
+   * wait -- and with it the tab opened earlier -- stays.
+   */
+  it('keeps the outstanding wait when a repeated sign-in is refused', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+
+    api.signInServer.mockResolvedValue({
+      status: 'error',
+      message: 'Rate limit exceeded. Too many authentication attempts.',
+    });
+    await act(async () => result.current.signIn());
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        'Rate limit exceeded. Too many authentication attempts.',
+      ),
+    );
+    expect(result.current.isWaiting).toBe(true);
+    expect(result.current.authUrl).toBe(AUTH_URL);
   });
 
   /**

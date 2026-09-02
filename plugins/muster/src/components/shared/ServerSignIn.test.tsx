@@ -12,6 +12,11 @@ import {
 } from '../../apis';
 import { ServerAuthActions, ServerSignIn } from './ServerSignIn';
 
+const AUTH_URL =
+  'https://muster.gazelle.example.io/oauth/proxy/start?state=abc';
+const FRESH_AUTH_URL =
+  'https://muster.gazelle.example.io/oauth/proxy/start?state=def';
+
 const CHALLENGE = [
   'Authentication Required',
   '',
@@ -19,8 +24,24 @@ const CHALLENGE = [
   '',
   'Please sign in to connect to this server:',
   '',
-  'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+  AUTH_URL,
 ].join('\n');
+
+/**
+ * The hook's record of an outstanding sign-in whose URL it has already
+ * withdrawn (muster's state behind it expired), seeded straight into the
+ * cache: the URL's lifetime is not a component-level knob, and jest's fake
+ * timers fight react-query's own scheduling. Its shape is the hook's
+ * `PendingSignIn`; the key is the one the hook tests already assert on.
+ */
+function seedExpiredUrlWait(queryClient: QueryClient) {
+  queryClient.setQueryData(['muster', 'pending-sign-in', 'gazelle', 'pro'], {
+    authUrl: undefined,
+    authUrlExpiresAt: Date.now() - 1,
+    deadline: Date.now() + 60_000,
+    opened: false,
+  });
+}
 
 type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
 
@@ -94,10 +115,13 @@ function makeApi(options: {
   };
 }
 
-async function renderSignIn(api: Api) {
-  const queryClient = new QueryClient({
+function newQueryClient() {
+  return new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+}
+
+async function renderSignIn(api: Api, queryClient = newQueryClient()) {
   const rendered = await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
@@ -111,10 +135,8 @@ async function renderSignIn(api: Api) {
 async function renderAuthActions(
   api: Api,
   props: { oauthConfigured?: boolean } = {},
+  queryClient = newQueryClient(),
 ) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
   const rendered = await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
@@ -155,16 +177,98 @@ describe('ServerSignIn', () => {
     expect(
       await screen.findByText(/Waiting for you to finish signing in/),
     ).toBeInTheDocument();
-    // The wait offers a quiet re-open link, not a second button to click.
-    const link = screen.getByRole('link', { name: /Reopen sign-in page/ });
-    expect(link).toHaveAttribute(
-      'href',
-      'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
-    );
-    expect(link).toHaveAttribute('target', '_blank');
+    // The wait offers a quiet re-open affordance -- a button, not a link to
+    // the URL muster issued: the state behind that expires after 10 minutes,
+    // well inside the wait, so reopening asks for a fresh challenge instead.
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    const reopen = screen.getByRole('button', { name: 'Reopen sign-in page' });
+
+    const freshTab = makeTab();
+    windowOpen.mockReturnValue(freshTab as unknown as Window);
+    api.signInServer.mockResolvedValue({
+      status: 'auth_required',
+      authUrl: FRESH_AUTH_URL,
+      message: CHALLENGE,
+    });
+    await userEvent.click(reopen);
+
+    await waitFor(() => expect(api.signInServer).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(freshTab.location.href).toBe(FRESH_AUTH_URL));
     expect(
-      screen.queryByRole('link', { name: /Open sign-in page/ }),
-    ).not.toBeInTheDocument();
+      screen.getByText(/Waiting for you to finish signing in/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Reopen sign-in page' }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * With popups blocked the URL is the only way in, so it stays a link -- but
+   * only while muster honours it. Once the hook has withdrawn it, the row must
+   * offer a fresh URL rather than nothing (or a dead link): a button, which
+   * with popups still blocked yields a fresh link.
+   */
+  it('offers a fresh sign-in URL once the popup-blocked link has expired', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+    });
+    const queryClient = newQueryClient();
+    seedExpiredUrlWait(queryClient);
+    await renderSignIn(api, queryClient);
+
+    expect(
+      await screen.findByText(/Waiting for you to finish signing in/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open sign-in page' }),
+    );
+
+    await waitFor(() => {
+      expect(api.signInServer).toHaveBeenCalledWith('pro', 'gazelle');
+    });
+    const link = await screen.findByRole('link', {
+      name: /Open sign-in page/,
+    });
+    expect(link).toHaveAttribute('href', AUTH_URL);
+  });
+
+  /**
+   * A refused reopen (muster's login rate limit) must not cancel the wait on
+   * the tab opened earlier: the refusal is shown, the affordance stays.
+   */
+  it('keeps waiting when muster refuses to reissue the sign-in page', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+    });
+    const tab = makeTab();
+    windowOpen.mockReturnValue(tab as unknown as Window);
+    await renderSignIn(api);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    const reopen = await screen.findByRole('button', {
+      name: 'Reopen sign-in page',
+    });
+
+    const secondTab = makeTab();
+    windowOpen.mockReturnValue(secondTab as unknown as Window);
+    api.signInServer.mockResolvedValue({
+      status: 'error',
+      message: 'Rate limit exceeded. Too many authentication attempts.',
+    });
+    await userEvent.click(reopen);
+
+    expect(await screen.findByText(/Rate limit exceeded/)).toBeInTheDocument();
+    // The blank second tab is closed; the first one is left to finish.
+    expect(secondTab.close).toHaveBeenCalled();
+    expect(tab.close).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Waiting for you to finish signing in/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Reopen sign-in page' }),
+    ).toBeInTheDocument();
   });
 
   it('closes the pre-opened tab when muster answers without a sign-in page', async () => {
@@ -503,6 +607,25 @@ describe('ServerAuthActions', () => {
     });
     expect(
       await screen.findByRole('link', { name: /Open sign-in page/ }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * The row is kept alive by the outstanding wait, not by the URL: once the
+   * hook has withdrawn an expired URL, a status that asks nothing of the user
+   * must not hide the wait (and its way back into the flow) mid-flight.
+   */
+  it('keeps the row alive after the sign-in URL expired while the wait is on', async () => {
+    const api = makeApi({ status: { name: 'pro', status: 'disconnected' } });
+    const queryClient = newQueryClient();
+    seedExpiredUrlWait(queryClient);
+    await renderAuthActions(api, {}, queryClient);
+
+    expect(
+      await screen.findByText(/Waiting for you to finish signing in/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Open sign-in page' }),
     ).toBeInTheDocument();
   });
 

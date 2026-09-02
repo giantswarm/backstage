@@ -1,5 +1,5 @@
 import { makeStyles, Theme } from '@material-ui/core';
-import { Button, ButtonLink, Link, Text } from '@backstage/ui';
+import { Button, ButtonLink, Text } from '@backstage/ui';
 import { ServerSignInState, useServerSignIn } from './useServerSignIn';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -97,9 +97,17 @@ function SsoExplanation({
  * (`core_auth_login`) and opens it directly in a new tab -- completing the
  * flow there connects the server for this muster session and the surrounding
  * content unblocks on its own (see {@link useServerSignIn}). While the flow is
- * outstanding this renders the wait, with the URL as a link -- quiet when the
- * tab is already open (closed it, lost it behind others), prominent when the
- * popup was blocked and the link is the only way in.
+ * outstanding this renders the wait, with a way back into the sign-in page:
+ *
+ * - Tab already open (closed it, lost it behind others): a quiet "Reopen"
+ *   button that asks muster for a FRESH challenge. Not a link to the URL
+ *   muster issued earlier -- the state behind that expires after 10 minutes,
+ *   well inside the wait, and a reopened stale URL lands on "Authentication
+ *   session expired" (observed live, four clicks in a row).
+ * - Popup blocked: the URL itself is the only way in, so it is a prominent
+ *   link -- for as long as muster honours it. Once the hook withdraws it, the
+ *   link gives way to a button requesting a fresh URL (which, with popups
+ *   still blocked, renders as a fresh link).
  */
 function SignInFlow({
   state,
@@ -114,9 +122,16 @@ function SignInFlow({
   prominent?: boolean;
 }) {
   const classes = useStyles();
-  const { authUrl, clientIdMethod, isPending, signIn, signInTabOpened } = state;
+  const {
+    authUrl,
+    clientIdMethod,
+    isPending,
+    isWaiting,
+    signIn,
+    signInTabOpened,
+  } = state;
 
-  if (!authUrl) {
+  if (!isWaiting) {
     return (
       <Button
         variant={prominent ? 'primary' : 'secondary'}
@@ -129,38 +144,61 @@ function SignInFlow({
     );
   }
 
+  const waiting = (
+    <Text variant="body-small" color="secondary">
+      Waiting for you to finish signing in…
+    </Text>
+  );
+
+  let wayIn;
+  if (signInTabOpened) {
+    wayIn = (
+      <>
+        {waiting}
+        <Button
+          variant="tertiary"
+          size="small"
+          isPending={isPending}
+          onClick={signIn}
+        >
+          {isPending ? 'Reopening…' : 'Reopen sign-in page'}
+        </Button>
+      </>
+    );
+  } else if (authUrl) {
+    wayIn = (
+      <>
+        <ButtonLink
+          href={authUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          variant={prominent ? 'primary' : 'secondary'}
+          size="small"
+        >
+          Open sign-in page ↗
+        </ButtonLink>
+        {waiting}
+      </>
+    );
+  } else {
+    wayIn = (
+      <>
+        <Button
+          variant={prominent ? 'primary' : 'secondary'}
+          size="small"
+          isPending={isPending}
+          onClick={signIn}
+        >
+          {isPending ? 'Opening…' : 'Open sign-in page'}
+        </Button>
+        {waiting}
+      </>
+    );
+  }
+
   return (
     <>
-      {signInTabOpened ? (
-        <>
-          <Text variant="body-small" color="secondary">
-            Waiting for you to finish signing in…
-          </Text>
-          <Link
-            href={authUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="body-small"
-          >
-            Reopen sign-in page ↗
-          </Link>
-        </>
-      ) : (
-        <>
-          <ButtonLink
-            href={authUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant={prominent ? 'primary' : 'secondary'}
-            size="small"
-          >
-            Open sign-in page ↗
-          </ButtonLink>
-          <Text variant="body-small" color="secondary">
-            Waiting for you to finish signing in…
-          </Text>
-        </>
-      )}
+      {wayIn}
       {/* muster#1083: the challenge says how muster identifies itself to
           the authorization server. Only the fallbacks deserve a warning —
           they are the cases where the AS may reject the sign-in as an
@@ -280,7 +318,7 @@ export function ServerAuthActions({
   const state = useServerSignIn(serverName, installation);
   const {
     status,
-    authUrl,
+    isWaiting,
     isSsoManaged,
     needsLogin,
     isConnected,
@@ -303,9 +341,10 @@ export function ServerAuthActions({
     );
   }
 
-  // `authUrl` keeps the row alive while a sign-in this tab started is
-  // outstanding, whatever the polled status currently claims.
-  if (needsLogin || authUrl) {
+  // `isWaiting` keeps the row alive while a sign-in this tab started is
+  // outstanding, whatever the polled status currently claims -- and whether or
+  // not the URL muster issued for it is still on offer.
+  if (needsLogin || isWaiting) {
     return (
       <div className={classes.inActionRow}>
         {showName ? <code className={classes.name}>{serverName}</code> : null}
