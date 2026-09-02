@@ -15,10 +15,22 @@ import {
   toGpuNode,
   toServedModel,
 } from '../../lib/kserveServing';
-import type {
-  GpuCapacityUnavailableReason,
-  ServingSourceSnapshot,
+import {
+  NO_SERVING_CAPABILITIES,
+  type GpuCapacityUnavailableReason,
+  type ServingCapabilities,
+  type ServingSourceSnapshot,
 } from '../../lib/serving';
+
+/**
+ * What reading the CRs can offer: the node inventory (the GPU capacity panel)
+ * and nothing operational — pull, load, delete and wiring need a service that
+ * talks to the serving backend (the model-manager source).
+ */
+export const KSERVE_CR_CAPABILITIES: ServingCapabilities = {
+  ...NO_SERVING_CAPABILITIES,
+  nodeInventory: true,
+};
 
 /**
  * The KServe serving source: InferenceServices, nodes and pods read as
@@ -164,6 +176,12 @@ export function useKServeServingSource(
         activeInstallations.map(installation => [
           installation,
           'kserve' as const,
+        ]),
+      ),
+      capabilities: Object.fromEntries(
+        activeInstallations.map(installation => [
+          installation,
+          KSERVE_CR_CAPABILITIES,
         ]),
       ),
       unreachableInstallations: Array.from(unreachable).sort(),

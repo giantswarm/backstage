@@ -1,0 +1,50 @@
+{
+  "jobs": [
+    {
+      "id": "910aff50c27e666b",
+      "type": "pull",
+      "model": "qwen2.5:0.5b",
+      "phase": "succeeded",
+      "status": "success",
+      "bytesCompleted": 397821319,
+      "bytesTotal": 397821319,
+      "percent": 100,
+      "createdAt": "2026-09-02T11:58:12.050241092Z",
+      "startedAt": "2026-09-02T11:58:12.050629637Z",
+      "finishedAt": "2026-09-02T11:58:33.167741833Z",
+      "wire": true,
+      "result": {
+        "name": "qwen2-5-0-5b",
+        "namespace": "kagent",
+        "apiVersion": "kagent.dev/v1alpha2",
+        "provider": "Ollama",
+        "model": "qwen2.5:0.5b",
+        "ready": false,
+        "message": "not yet reconciled"
+      }
+    },
+    {
+      "id": "4104e3dc0b52e0f3",
+      "type": "pull",
+      "model": "smollm2:135m",
+      "phase": "succeeded",
+      "status": "success",
+      "bytesCompleted": 270898672,
+      "bytesTotal": 270898672,
+      "percent": 100,
+      "createdAt": "2026-09-02T11:55:02.667935275Z",
+      "startedAt": "2026-09-02T11:55:02.668012321Z",
+      "finishedAt": "2026-09-02T11:55:20.481398765Z",
+      "wire": true,
+      "result": {
+        "name": "smollm2-135m",
+        "namespace": "kagent",
+        "apiVersion": "kagent.dev/v1alpha2",
+        "provider": "Ollama",
+        "model": "smollm2:135m",
+        "ready": false,
+        "message": "not yet reconciled"
+      }
+    }
+  ]
+}

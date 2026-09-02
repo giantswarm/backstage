@@ -18,12 +18,16 @@ import {
   readKagentInstallationsFromConfig,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
+import { ModelManagerClient } from './ModelManagerClient';
+import { createModelManagerRouter } from './modelManagerRouter';
 
 export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   /** Overridable for tests; used as the client for every installation. */
   client?: KagentClient;
+  /** Same, for the model-manager routes (see modelManagerRouter). */
+  modelManagerClient?: ModelManagerClient;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -706,6 +710,17 @@ export async function createRouter(
       res.status(202).json({ status: 'pending' });
     }
   });
+
+  // The model-manager pass-through (`/model-manager/...`) lives beside the
+  // kagent routes: same plugin, same per-installation token forwarding, its
+  // own upstream and its own header. See modelManagerRouter.ts.
+  router.use(
+    createModelManagerRouter({
+      logger,
+      config,
+      client: options.modelManagerClient,
+    }),
+  );
 
   return router;
 }

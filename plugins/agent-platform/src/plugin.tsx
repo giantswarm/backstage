@@ -12,7 +12,12 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import AndroidIcon from '@material-ui/icons/Android';
 
-import { KagentApiClient, kagentApiRef } from './apis';
+import {
+  KagentApiClient,
+  kagentApiRef,
+  ModelManagerApiClient,
+  modelManagerApiRef,
+} from './apis';
 import {
   agentDetailRouteRef,
   agentsRouteRef,
@@ -118,6 +123,25 @@ const kagentApi = ApiBlueprint.make({
     }),
 });
 
+// Client for the model-manager REST API (the Models tab's Serving section on
+// installations that deploy it), via the same backend proxy. Same
+// dependencies as the kagent client, for the same reason: the per-installation
+// Dex ID token is minted through the kubernetes APIs.
+const modelManagerApi = ApiBlueprint.make({
+  name: 'model-manager',
+  params: defineParams =>
+    defineParams({
+      api: modelManagerApiRef,
+      deps: {
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+        kubernetesApi: kubernetesApiRef,
+        kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
+      },
+      factory: deps => new ModelManagerApiClient(deps),
+    }),
+});
+
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
   extensions: [
@@ -126,6 +150,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     sessionsSubPage,
     modelsSubPage,
     kagentApi,
+    modelManagerApi,
   ],
   routes: {
     root: rootRouteRef,

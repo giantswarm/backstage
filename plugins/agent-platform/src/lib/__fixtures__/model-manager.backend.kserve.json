@@ -1,0 +1,24 @@
+{
+  "backend": "kserve",
+  "version": "v0.20.0",
+  "endpoint": "https://kubernetes.default.svc",
+  "healthy": true,
+  "capabilities": {
+    "pull": true,
+    "pullProgress": true,
+    "delete": true,
+    "load": true,
+    "unload": true,
+    "loadedModels": true,
+    "wire": true,
+    "presets": true,
+    "fitCheck": true,
+    "nodeInventory": true,
+    "search": true
+  },
+  "wiring": {
+    "namespace": "kagent",
+    "apiVersion": "v1alpha2",
+    "autoWire": true
+  }
+}

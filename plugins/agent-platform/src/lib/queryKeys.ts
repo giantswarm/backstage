@@ -18,3 +18,25 @@
 export function sessionsQueryKey(installation: string) {
   return ['agent-platform', 'kagent', 'sessions', installation] as const;
 }
+
+/**
+ * The model-manager reads, per installation. Prefixed `model-manager` (not
+ * `kagent`) so `components/QueryClientProvider`'s user-scoped filter leaves
+ * them alone: an installation's inventory, backend descriptor and pull jobs
+ * are the same for every user, and safe to persist.
+ */
+export function modelManagerInstallationsQueryKey() {
+  return ['agent-platform', 'model-manager', 'installations'] as const;
+}
+
+export function modelManagerBackendQueryKey(installation: string) {
+  return ['agent-platform', 'model-manager', 'backend', installation] as const;
+}
+
+export function modelManagerModelsQueryKey(installation: string) {
+  return ['agent-platform', 'model-manager', 'models', installation] as const;
+}
+
+export function modelManagerJobsQueryKey(installation: string) {
+  return ['agent-platform', 'model-manager', 'jobs', installation] as const;
+}

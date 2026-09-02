@@ -48,6 +48,7 @@ const SERVED_BY_BACKEND_LABEL: Record<ServedModel['backend'], string> = {
 
 const SERVED_BY_READINESS_LABEL: Record<ServedModelReadiness, string> = {
   ready: 'ready',
+  available: 'available (not loaded)',
   notReady: 'not ready',
   pending: 'pending',
 };

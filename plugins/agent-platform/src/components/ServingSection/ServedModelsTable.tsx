@@ -1,9 +1,10 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, type ReactNode } from 'react';
 import {
   ButtonIcon,
   Cell,
   CellText,
   ColumnConfig,
+  Flex,
   Menu,
   MenuItem,
   MenuTrigger,
@@ -12,12 +13,21 @@ import {
   useTable,
 } from '@backstage/ui';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
+import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import StopIcon from '@material-ui/icons/Stop';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
 
 import { modelDetailRouteRef } from '../../routes';
 import { stopRowPress } from '../../lib/rowPress';
+import {
+  describeServedModel,
+  formatBytes,
+  formatTime,
+  lacksToolCalling,
+  notableCapabilities,
+} from '../../lib/modelManagerServing';
 import type { ServedModel } from '../../lib/serving';
 import type { WiringState } from '../../hooks/useAutoWireServedModels';
 import { ServedReadinessCell } from './servedReadinessStatus';
@@ -72,6 +82,13 @@ export function sortServedModelsBy(
         return row.node ?? '';
       case 'gpuCount':
         return String(row.gpuCount ?? -1).padStart(6, '0');
+      case 'sizeBytes':
+        return String(row.sizeBytes ?? -1).padStart(16, '0');
+      case 'loaded':
+        if (row.loaded === undefined) {
+          return '-';
+        }
+        return row.loaded ? '1' : '0';
       case 'endpoint':
         return row.internalUrl ?? row.externalUrl ?? '';
       case 'installation':
@@ -85,6 +102,110 @@ export function sortServedModelsBy(
     const primary = value(a).localeCompare(value(b)) * factor;
     return primary !== 0 ? primary : a.id.localeCompare(b.id);
   });
+}
+
+/**
+ * Which optional columns the rows call for. Every one of them is data the
+ * backend either reports or does not: a column nobody has a value for is left
+ * out rather than shown as a row of dashes.
+ */
+export type ServedModelColumns = {
+  /** Node and GPUs — the placement columns of a cluster-scheduled backend. */
+  placement: boolean;
+  /** On-disk size. */
+  size: boolean;
+  /** In-memory state (loaded, footprint, expiry). */
+  memory: boolean;
+  /** Model features (tools, vision, …). */
+  capabilities: boolean;
+};
+
+/**
+ * Derive the optional columns from what the rows carry. Placement defaults to
+ * shown — a fresh InferenceService has no node *yet* — and is turned off by a
+ * caller that knows no installation schedules onto nodes (the section, from
+ * the `nodeInventory` capability).
+ */
+export function columnsForRows(
+  rows: ServedModelRow[],
+  overrides: Partial<ServedModelColumns> = {},
+): ServedModelColumns {
+  return {
+    placement: overrides.placement ?? true,
+    size: overrides.size ?? rows.some(row => row.sizeBytes !== undefined),
+    memory: overrides.memory ?? rows.some(row => row.loaded !== undefined),
+    capabilities:
+      overrides.capabilities ??
+      rows.some(row => row.capabilities !== undefined),
+  };
+}
+
+const NO_TOOLS_TITLE =
+  'Agents cannot use this model: it does not support tool calling.';
+
+/** The features a model reports, with a warning where agents cannot use it. */
+export function ModelCapabilitiesCell({ row }: { row: ServedModelRow }) {
+  if (row.capabilities === undefined) {
+    return <CellText title="—" />;
+  }
+  const notable = notableCapabilities(row.capabilities);
+  return (
+    <Cell>
+      <Flex direction="column" gap="1">
+        <Text
+          as="p"
+          variant="body-medium"
+          truncate
+          title={row.capabilities.join(', ')}
+        >
+          {notable.length > 0 ? notable.join(', ') : 'completion only'}
+        </Text>
+        {lacksToolCalling(row) && (
+          <StatusLabel
+            label="No tool calling"
+            intent="warning"
+            icon={ReportProblemIcon}
+            title={NO_TOOLS_TITLE}
+          />
+        )}
+      </Flex>
+    </Cell>
+  );
+}
+
+/** Loaded or not, with the footprint and the eviction time while loaded. */
+function MemoryCell({ row }: { row: ServedModelRow }) {
+  if (row.loaded === undefined) {
+    return <CellText title="—" />;
+  }
+  if (!row.loaded) {
+    return (
+      <Cell>
+        <Text as="p" variant="body-medium" color="secondary">
+          Not loaded
+        </Text>
+      </Cell>
+    );
+  }
+  return (
+    <Cell>
+      <Text as="p" variant="body-medium">
+        Loaded
+        {row.memoryBytes !== undefined
+          ? ` · ${formatBytes(row.memoryBytes)}`
+          : ''}
+      </Text>
+      {row.loadedUntil && (
+        <Text
+          variant="body-small"
+          color="secondary"
+          title={`Evicted from memory at ${row.loadedUntil} unless used`}
+        >
+          until {formatTime(row.loadedUntil)}
+        </Text>
+      )}
+    </Cell>
+  );
 }
 
 /** What the "Used by" cell says while the auto-wiring is at work, or stuck. */
@@ -129,11 +250,46 @@ function UsedByNobody({ wiring }: { wiring?: WiringState }) {
   );
 }
 
+/** A ModelConfig to list under "Used by": read from the cluster, or the backend's own. */
+type UsedByEntry = ServedModelConsumer & {
+  ready?: boolean;
+  message?: string;
+};
+
+/**
+ * The ModelConfigs whose endpoint resolves to this model, plus the one the
+ * backend says it created (exact, and visible even to a user who cannot list
+ * ModelConfigs) when the first set does not already have it.
+ */
+function usedByEntries(row: ServedModelRow): UsedByEntry[] {
+  const entries: UsedByEntry[] = [...row.usedBy];
+  if (
+    row.modelConfig &&
+    !entries.some(
+      entry =>
+        entry.namespace === row.modelConfig?.namespace &&
+        entry.name === row.modelConfig?.name,
+    )
+  ) {
+    entries.push({
+      installation: row.installation,
+      namespace: row.modelConfig.namespace,
+      name: row.modelConfig.name,
+      displayName: row.modelConfig.name,
+      ready: row.modelConfig.ready,
+      message: row.modelConfig.message,
+    });
+  }
+  return entries;
+}
+
 function getColumnConfig(
   hrefFor: (consumer: ServedModelConsumer) => string | undefined,
+  columns: ServedModelColumns,
   onStop?: (row: ServedModelRow) => void,
+  renderActions?: (row: ServedModelRow) => ReactNode,
 ): ColumnConfig<ServedModelRow>[] {
-  const columns: ColumnConfig<ServedModelRow>[] = [
+  const config: ColumnConfig<ServedModelRow>[] = [
     {
       id: 'name',
       label: 'Served model',
@@ -146,6 +302,7 @@ function getColumnConfig(
             row.namespace,
             BACKEND_LABEL[row.backend],
             row.preset ? `preset ${row.preset}` : undefined,
+            describeServedModel(row.details) || undefined,
           ]
             .filter(Boolean)
             .join(' · ')}
@@ -175,43 +332,77 @@ function getColumnConfig(
       isSortable: true,
       cell: row => <CellText title={row.runtime || '—'} />,
     },
-    {
-      id: 'node',
-      label: 'Node',
+  ];
+
+  if (columns.size) {
+    config.push({
+      id: 'sizeBytes',
+      label: 'Size',
       isSortable: true,
-      cell: row => (
-        <Cell>
-          <Text
-            as="p"
-            variant="body-medium"
-            truncate
-            // The pin is intent, the pod is fact; say which the cell shows.
-            title={
-              row.nodeSource === 'spec'
-                ? `Pinned by the spec; no running pod yet`
-                : row.node
-            }
-          >
-            {row.node || '—'}
-          </Text>
-          {row.nodeSource === 'spec' && (
-            <Text variant="body-small" color="secondary">
-              pinned
+      cell: row => <CellText title={formatBytes(row.sizeBytes)} />,
+    });
+  }
+
+  if (columns.memory) {
+    config.push({
+      id: 'loaded',
+      label: 'Memory',
+      isSortable: true,
+      cell: row => <MemoryCell row={row} />,
+    });
+  }
+
+  if (columns.capabilities) {
+    config.push({
+      id: 'capabilities',
+      label: 'Features',
+      cell: row => <ModelCapabilitiesCell row={row} />,
+    });
+  }
+
+  if (columns.placement) {
+    config.push(
+      {
+        id: 'node',
+        label: 'Node',
+        isSortable: true,
+        cell: row => (
+          <Cell>
+            <Text
+              as="p"
+              variant="body-medium"
+              truncate
+              // The pin is intent, the pod is fact; say which the cell shows.
+              title={
+                row.nodeSource === 'spec'
+                  ? `Pinned by the spec; no running pod yet`
+                  : row.node
+              }
+            >
+              {row.node || '—'}
             </Text>
-          )}
-        </Cell>
-      ),
-    },
-    {
-      id: 'gpuCount',
-      label: 'GPUs',
-      isSortable: true,
-      cell: row => (
-        <CellText
-          title={row.gpuCount === undefined ? '—' : String(row.gpuCount)}
-        />
-      ),
-    },
+            {row.nodeSource === 'spec' && (
+              <Text variant="body-small" color="secondary">
+                pinned
+              </Text>
+            )}
+          </Cell>
+        ),
+      },
+      {
+        id: 'gpuCount',
+        label: 'GPUs',
+        isSortable: true,
+        cell: row => (
+          <CellText
+            title={row.gpuCount === undefined ? '—' : String(row.gpuCount)}
+          />
+        ),
+      },
+    );
+  }
+
+  config.push(
     {
       id: 'endpoint',
       label: 'Endpoint',
@@ -237,46 +428,57 @@ function getColumnConfig(
     {
       id: 'usedBy',
       label: 'Used by',
-      cell: row => (
-        <Cell>
-          {row.usedBy.length === 0 ? (
-            <UsedByNobody wiring={row.wiring} />
-          ) : (
-            row.usedBy.map(consumer => {
-              const href = hrefFor(consumer);
-              const label = consumer.displayName;
-              return href ? (
-                <Link
-                  key={`${consumer.namespace}/${consumer.name}`}
-                  to={href}
-                  title={`ModelConfig ${consumer.namespace}/${consumer.name}`}
-                  onPointerDown={stopRowPress}
-                  onPointerUp={stopRowPress}
-                  onClick={stopRowPress}
-                >
+      cell: row => {
+        const entries = usedByEntries(row);
+        return (
+          <Cell>
+            {entries.length === 0 ? (
+              <UsedByNobody wiring={row.wiring} />
+            ) : (
+              entries.map(consumer => {
+                const href = hrefFor(consumer);
+                const label = consumer.displayName;
+                // The backend's verdict on a ModelConfig it created, when it
+                // reports one and the controller has not accepted it yet.
+                const verdict =
+                  consumer.ready === false
+                    ? ` — ${consumer.message ?? 'not accepted yet'}`
+                    : '';
+                const title = `ModelConfig ${consumer.namespace}/${consumer.name}${verdict}`;
+                return href ? (
+                  <Link
+                    key={`${consumer.namespace}/${consumer.name}`}
+                    to={href}
+                    title={title}
+                    onPointerDown={stopRowPress}
+                    onPointerUp={stopRowPress}
+                    onClick={stopRowPress}
+                  >
+                    <Text
+                      as="p"
+                      variant="body-medium"
+                      truncate
+                      style={{ color: 'inherit' }}
+                    >
+                      {label}
+                    </Text>
+                  </Link>
+                ) : (
                   <Text
+                    key={`${consumer.namespace}/${consumer.name}`}
                     as="p"
                     variant="body-medium"
                     truncate
-                    style={{ color: 'inherit' }}
+                    title={title}
                   >
                     {label}
                   </Text>
-                </Link>
-              ) : (
-                <Text
-                  key={`${consumer.namespace}/${consumer.name}`}
-                  as="p"
-                  variant="body-medium"
-                  truncate
-                >
-                  {label}
-                </Text>
-              );
-            })
-          )}
-        </Cell>
-      ),
+                );
+              })
+            )}
+          </Cell>
+        );
+      },
     },
     {
       id: 'installation',
@@ -284,59 +486,85 @@ function getColumnConfig(
       isSortable: true,
       cell: row => <CellText title={row.installation} />,
     },
-  ];
+  );
 
-  if (onStop) {
-    columns.push({
+  // One actions column, whatever a row's source offers: the stop menu for a
+  // stoppable CR-backed model, the capability-driven menu (`renderActions`)
+  // for a model its source operates on. A row with neither gets an empty cell.
+  if (onStop || renderActions) {
+    config.push({
       id: 'actions',
       label: 'Actions',
-      cell: row =>
-        isStoppable(row) ? (
-          <Cell>
-            <MenuTrigger>
-              <ButtonIcon
-                icon={<MoreVertIcon />}
-                aria-label={`Actions for ${row.name}`}
-                variant="tertiary"
-                size="small"
-              />
-              <Menu>
-                <MenuItem
-                  color="danger"
-                  iconStart={<StopIcon />}
-                  onAction={() => onStop(row)}
-                >
-                  Stop serving…
-                </MenuItem>
-              </Menu>
-            </MenuTrigger>
-          </Cell>
-        ) : (
-          <Cell />
-        ),
+      cell: row => (
+        <Cell>
+          <Flex align="center" gap="1">
+            {renderActions?.(row)}
+            {onStop && isStoppable(row) && (
+              <MenuTrigger>
+                <ButtonIcon
+                  icon={<MoreVertIcon />}
+                  aria-label={`Actions for ${row.name}`}
+                  variant="tertiary"
+                  size="small"
+                />
+                <Menu>
+                  <MenuItem
+                    color="danger"
+                    iconStart={<StopIcon />}
+                    onAction={() => onStop(row)}
+                  >
+                    Stop serving…
+                  </MenuItem>
+                </Menu>
+              </MenuTrigger>
+            )}
+          </Flex>
+        </Cell>
+      ),
     });
   }
 
-  return columns;
+  return config;
 }
 
 export type ServedModelsTableProps = {
   rows: ServedModelRow[];
   /**
-   * Offer "Stop serving…" on the rows whose backend supports it. Absent = a
-   * read-only table (portals without write access to the serving layer).
+   * Force optional columns on or off; anything not given is derived from the
+   * rows (`columnsForRows`). The section forces `placement` from the
+   * installations' `nodeInventory` capability, so a cluster backend keeps its
+   * Node/GPU columns while its models are still pending.
+   */
+  columns?: Partial<ServedModelColumns>;
+  /**
+   * Offer "Stop serving…" on the rows whose backend supports it. Absent = no
+   * stop control (portals without write access to the serving layer).
    */
   onStop?: (row: ServedModelRow) => void;
+  /**
+   * Per-row controls of the operating source (the model-manager actions
+   * menu). Rendered in the actions column; the section decides per
+   * installation capabilities whether there is anything to render.
+   */
+  renderActions?: (row: ServedModelRow) => ReactNode;
 };
 
 /**
  * Presentational table of served models. The section owns loading, the
- * unreachable-installations notice and the stop confirmation; this renders
- * rows, the per-row actions and the empty state. Rows are not clickable: a
- * served model has no page of its own here, the ModelConfigs fronting it are
- * what link onward.
+ * unreachable-installations notice and the confirmations; this renders rows,
+ * the per-row actions and the empty state. Rows are not clickable: a served
+ * model has no page of its own here, the ModelConfigs fronting it are what
+ * link onward. Its optional columns follow the data — a backend that reports
+ * sizes gets a Size column, one that schedules onto nodes gets Node and GPUs
+ * — so a table of Ollama models and a table of InferenceServices each show
+ * what they know and no dashes for what they do not.
  */
-export function ServedModelsTable({ rows, onStop }: ServedModelsTableProps) {
+export function ServedModelsTable({
+  rows,
+  columns: columnOverrides,
+  onStop,
+  renderActions,
+}: ServedModelsTableProps) {
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
 
   const hrefFor = useCallback(
@@ -349,9 +577,15 @@ export function ServedModelsTable({ rows, onStop }: ServedModelsTableProps) {
     [modelDetailRoute],
   );
 
+  const columns = useMemo(
+    () => columnsForRows(rows, columnOverrides),
+    // Key on the override values, not the object identity a caller re-creates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, JSON.stringify(columnOverrides ?? {})],
+  );
   const columnConfig = useMemo(
-    () => getColumnConfig(hrefFor, onStop),
-    [hrefFor, onStop],
+    () => getColumnConfig(hrefFor, columns, onStop, renderActions),
+    [hrefFor, columns, onStop, renderActions],
   );
 
   const { tableProps } = useTable<ServedModelRow>({

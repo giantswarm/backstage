@@ -38,7 +38,7 @@ function ModelsIndexPageContent() {
     modelConfigsFor,
     unreachableInstallations,
   } = useModelConfigs();
-  const { servedModelForEndpoint } = useServing();
+  const { servedModelFor } = useServing();
 
   // Unlike the agent create flow, the list iterates the *reachable*
   // installations, not just the ones that already have models — an
@@ -49,17 +49,21 @@ function ModelsIndexPageContent() {
     () =>
       reachableInstallations.flatMap(installation =>
         modelConfigsFor(installation).map(modelConfig => {
-          const served = servedModelForEndpoint(
-            installation,
-            modelConfig.getEndpoint(),
-          );
+          const served = servedModelFor(installation, {
+            endpoint: modelConfig.getEndpoint(),
+            model: modelConfig.getModel(),
+            modelConfig: {
+              name: modelConfig.getName(),
+              namespace: modelConfig.getNamespace(),
+            },
+          });
           return toModelRow(
             modelConfig,
             served ? toModelServedBy(served) : undefined,
           );
         }),
       ),
-    [reachableInstallations, modelConfigsFor, servedModelForEndpoint],
+    [reachableInstallations, modelConfigsFor, servedModelFor],
   );
 
   // Memoized so the header actions slot only updates when the handler changes.

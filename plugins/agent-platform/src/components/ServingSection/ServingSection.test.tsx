@@ -12,6 +12,7 @@ import type {
 import type { ServingPresets } from '../../hooks/useServingPresets';
 import type { WiringState } from '../../hooks/useAutoWireServedModels';
 import { modelsRouteRef } from '../../routes';
+import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
 import { ServingSection } from './ServingSection';
 
 // Drive the section's state branches through the two contexts it reads.
@@ -128,6 +129,16 @@ const withPresets: ServingPresets = {
   presetsFor: () => [preset],
 };
 
+// The model-manager controls are react-query/API-backed and tested on their
+// own; here only *whether* the section mounts them matters.
+jest.mock('../ModelManagerControls', () => ({
+  PullModelDialog: () => null,
+  PullJobsPanel: () => <div data-testid="pull-jobs-panel" />,
+  ServedModelActions: ({ model }: { model: { name: string } }) => (
+    <button type="button" aria-label={`Actions for ${model.name}`} />
+  ),
+}));
+
 const qwen: ServedModel = {
   id: 'inst-1/kserve/kserve/qwen3-14b',
   installation: 'inst-1',
@@ -152,6 +163,7 @@ const baseServing: ServingContextValue = {
   isLoading: false,
   installations: ['inst-1'],
   backends: { 'inst-1': 'kserve' },
+  capabilities: { 'inst-1': KSERVE_CR_CAPABILITIES },
   unreachableInstallations: [],
   servedModels: [qwen],
   gpuNodes: [
@@ -166,6 +178,8 @@ const baseServing: ServingContextValue = {
     },
   ],
   gpuCapacityUnavailable: {},
+  servedModelFor: (_installation, lookup) =>
+    lookup.endpoint?.includes('qwen3-14b-predictor') ? qwen : undefined,
   servedModelForEndpoint: () => undefined,
 };
 
@@ -485,9 +499,89 @@ describe('ServingSection', () => {
       screen.getByText("Couldn't read 1 installation"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/InferenceServices couldn't be read/),
+      screen.getByText(/served models couldn't be read/),
     ).toBeInTheDocument();
     expect(screen.getByText(/inst-3/)).toBeInTheDocument();
+  });
+
+  describe('on an Ollama-backed model-manager installation (no node inventory)', () => {
+    const smollm: ServedModel = {
+      id: 'inst-2/ollama//smollm2:135m',
+      installation: 'inst-2',
+      backend: 'ollama',
+      name: 'smollm2:135m',
+      modelSource: 'smollm2:135m',
+      runtime: 'ollama 0.33.2',
+      readiness: 'available',
+      endpointHosts: ['172.21.0.1'],
+      sizeBytes: 270_898_672,
+      loaded: false,
+      capabilities: ['completion'],
+      operable: true,
+    };
+    const ollamaServing: ServingContextValue = {
+      ...baseServing,
+      installations: ['inst-2'],
+      backends: { 'inst-2': 'ollama' },
+      capabilities: {
+        'inst-2': {
+          pull: true,
+          pullProgress: true,
+          delete: true,
+          load: true,
+          unload: true,
+          loadedModels: true,
+          wire: true,
+          presets: false,
+          fitCheck: false,
+          nodeInventory: false,
+          search: false,
+        },
+      },
+      servedModels: [smollm],
+      gpuNodes: [],
+    };
+
+    it('renders the controls the capabilities allow and no GPU panel or placement columns', async () => {
+      mockUseServing.mockReturnValue(ollamaServing);
+
+      await renderSection();
+
+      expect(screen.getByText('Serving')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /Pull model/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Actions for smollm2:135m' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('pull-jobs-panel')).toBeInTheDocument();
+      // Capability skew is state, not an error: nothing GPU-shaped renders.
+      expect(screen.queryByText('GPU capacity')).not.toBeInTheDocument();
+      expect(screen.queryByText('Node')).not.toBeInTheDocument();
+      expect(screen.queryByText('GPUs')).not.toBeInTheDocument();
+      // The inventory columns do.
+      expect(screen.getByText('Size')).toBeInTheDocument();
+      expect(screen.getByText('258 MiB')).toBeInTheDocument();
+      expect(screen.getByText('No tool calling')).toBeInTheDocument();
+    });
+
+    it('offers no controls on a read-only source', async () => {
+      mockUseServing.mockReturnValue({
+        ...ollamaServing,
+        capabilities: undefined,
+      });
+
+      await renderSection();
+
+      expect(
+        screen.queryByRole('button', { name: /Pull model/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Actions for/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId('pull-jobs-panel')).not.toBeInTheDocument();
+      expect(screen.queryByText('GPU capacity')).not.toBeInTheDocument();
+    });
   });
 
   it('still surfaces an unreadable installation when no backend was found elsewhere', async () => {
