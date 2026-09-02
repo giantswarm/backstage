@@ -105,6 +105,40 @@ describe('ModelsTable', () => {
 
     expect(screen.getByText('No models found.')).toBeInTheDocument();
   });
+
+  it('names the served model behind an endpoint when one is known', async () => {
+    await renderTable(
+      <ModelsTable
+        rows={[
+          {
+            ...rows[0],
+            endpoint: 'http://qwen3-predictor.kserve.svc.cluster.local/v1',
+            servedBy: {
+              name: 'qwen3',
+              namespace: 'kserve',
+              backend: 'kserve',
+              readiness: 'ready',
+            },
+          },
+        ]}
+      />,
+    );
+
+    const servedBy = screen.getByText(/Served by InferenceService/);
+    expect(servedBy).toHaveTextContent(
+      'Served by InferenceService kserve/qwen3',
+    );
+    expect(servedBy).toHaveAttribute(
+      'title',
+      'InferenceService kserve/qwen3 is ready — see the Serving section below',
+    );
+  });
+
+  it('shows no serving line for endpoints that are not served in-cluster', async () => {
+    await renderTable(<ModelsTable rows={rows} />);
+
+    expect(screen.queryByText(/Served by/)).not.toBeInTheDocument();
+  });
 });
 
 describe('toModelRow', () => {
@@ -153,6 +187,33 @@ describe('toModelRow', () => {
       endpoint: 'https://vllm.example.test/v1',
       readiness: 'notAccepted',
       readinessMessage: 'referenced Secret not found',
+    });
+  });
+
+  it('attaches the served model link when given one', () => {
+    const row = toModelRow(
+      new ModelConfig(
+        {
+          apiVersion: 'kagent.dev/v1alpha2',
+          kind: 'ModelConfig',
+          metadata: { name: 'qwen3', namespace: 'kagent' },
+          spec: { provider: 'OpenAI', model: 'qwen3-8-27b' },
+        } as crds.kagent.v1alpha2.ModelConfig,
+        'inst-1',
+      ),
+      {
+        name: 'qwen3',
+        namespace: 'kserve',
+        backend: 'kserve',
+        readiness: 'ready',
+      },
+    );
+
+    expect(row.servedBy).toEqual({
+      name: 'qwen3',
+      namespace: 'kserve',
+      backend: 'kserve',
+      readiness: 'ready',
     });
   });
 });

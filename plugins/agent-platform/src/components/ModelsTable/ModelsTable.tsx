@@ -17,7 +17,40 @@ import type {
 
 import { modelDetailRouteRef } from '../../routes';
 import { stopRowPress } from '../../lib/rowPress';
+import type { ServedModel, ServedModelReadiness } from '../../lib/serving';
 import { ModelReadinessCell } from './readinessStatus';
+
+/**
+ * The served model (e.g. a KServe InferenceService) a ModelConfig's endpoint
+ * points at, when it is one this portal can see — the link from the agents'
+ * side of the Models tab to the serving side.
+ */
+export type ModelServedBy = {
+  name: string;
+  namespace?: string;
+  backend: ServedModel['backend'];
+  readiness: ServedModelReadiness;
+};
+
+export function toModelServedBy(served: ServedModel): ModelServedBy {
+  return {
+    name: served.name,
+    namespace: served.namespace,
+    backend: served.backend,
+    readiness: served.readiness,
+  };
+}
+
+const SERVED_BY_BACKEND_LABEL: Record<ServedModel['backend'], string> = {
+  kserve: 'InferenceService',
+  ollama: 'Ollama model',
+};
+
+const SERVED_BY_READINESS_LABEL: Record<ServedModelReadiness, string> = {
+  ready: 'ready',
+  notReady: 'not ready',
+  pending: 'pending',
+};
 
 /** One list row — plain data derived once, so sorting works on strings. */
 export type ModelRow = {
@@ -34,9 +67,14 @@ export type ModelRow = {
   readiness: ModelConfigReadiness;
   /** The controller's own explanation, for the status tooltip. */
   readinessMessage?: string;
+  /** The in-cluster served model behind `endpoint`, when known. */
+  servedBy?: ModelServedBy;
 };
 
-export function toModelRow(modelConfig: ModelConfig): ModelRow {
+export function toModelRow(
+  modelConfig: ModelConfig,
+  servedBy?: ModelServedBy,
+): ModelRow {
   return {
     id: `${modelConfig.cluster}/${modelConfig.getNamespace() ?? ''}/${modelConfig.getName()}`,
     installation: modelConfig.cluster,
@@ -48,6 +86,7 @@ export function toModelRow(modelConfig: ModelConfig): ModelRow {
     endpoint: modelConfig.getEndpoint() ?? '',
     readiness: modelConfig.getReadiness(),
     readinessMessage: modelConfig.getAcceptedCondition()?.message,
+    ...(servedBy ? { servedBy } : {}),
   };
 }
 
@@ -170,8 +209,37 @@ function getColumnConfig(
       label: 'Endpoint',
       isSortable: true,
       // Empty means the provider's own default endpoint, which is worth saying
-      // rather than leaving a blank that reads as "unknown".
-      cell: row => <CellText title={row.endpoint || 'Provider default'} />,
+      // rather than leaving a blank that reads as "unknown". When the endpoint
+      // is a served model this portal can see, say which — that is the link
+      // between a ModelConfig and the InferenceService behind it.
+      cell: row => (
+        <Cell>
+          <Text
+            as="p"
+            variant="body-medium"
+            truncate
+            title={row.endpoint || undefined}
+          >
+            {row.endpoint || 'Provider default'}
+          </Text>
+          {row.servedBy && (
+            <Text
+              variant="body-small"
+              color="secondary"
+              truncate
+              title={`${SERVED_BY_BACKEND_LABEL[row.servedBy.backend]} ${
+                row.servedBy.namespace ? `${row.servedBy.namespace}/` : ''
+              }${row.servedBy.name} is ${
+                SERVED_BY_READINESS_LABEL[row.servedBy.readiness]
+              } — see the Serving section below`}
+            >
+              Served by {SERVED_BY_BACKEND_LABEL[row.servedBy.backend]}{' '}
+              {row.servedBy.namespace ? `${row.servedBy.namespace}/` : ''}
+              {row.servedBy.name}
+            </Text>
+          )}
+        </Cell>
+      ),
     },
     {
       id: 'installation',
