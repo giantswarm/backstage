@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServingContextValue } from '../ServingProvider';
@@ -10,7 +11,9 @@ import type {
   ServingPreset,
 } from '../../lib/servingPresets';
 import type { ServingPresets } from '../../hooks/useServingPresets';
+import type { PullJob, PullJobs } from '../../hooks/usePullJobs';
 import type { WiringState } from '../../hooks/useAutoWireServedModels';
+import type { ServedModelDownloadRow } from './ServedModelsTable';
 import {
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
@@ -41,6 +44,10 @@ const mockStop = jest.fn();
 const mockWiringFor = jest.fn<WiringState | undefined, [string]>();
 const mockUseSelfSubjectAccessReview = jest.fn();
 const mockToastPost = jest.fn();
+// The jobs list behind the download rows; the rows themselves are the real
+// hook's work (useDownloadRows), including a dismissal.
+const mockUsePullJobs = jest.fn<PullJobs, [string[]]>();
+const mockCancelDownload = jest.fn();
 
 jest.mock('../../hooks/useServingPresets', () => ({
   useServingPresets: (installations: string[]) =>
@@ -69,6 +76,10 @@ jest.mock('../../hooks/useAutoWireServedModels', () => ({
   useAutoWireServedModels: () => ({
     wiringFor: (id: string) => mockWiringFor(id),
   }),
+}));
+
+jest.mock('../../hooks/usePullJobs', () => ({
+  usePullJobs: (installations: string[]) => mockUsePullJobs(installations),
 }));
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -143,7 +154,29 @@ jest.mock('../ModelManagerControls', () => ({
   PullModelDialog: () => null,
   ImportModelDialog: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div data-testid="import-dialog" /> : null,
-  PullJobsPanel: () => <div data-testid="pull-jobs-panel" />,
+  DownloadRowActions: ({
+    row,
+    onDismiss,
+  }: {
+    row: ServedModelDownloadRow;
+    onDismiss: (row: ServedModelDownloadRow) => void;
+  }) => (
+    <>
+      <button type="button" aria-label={`Actions for ${row.name}`} />
+      {row.download.phase === 'failed' ? (
+        <>
+          <button type="button">Retry download {row.name}</button>
+          <button type="button" onClick={() => onDismiss(row)}>
+            Dismiss {row.name}
+          </button>
+        </>
+      ) : (
+        <button type="button" onClick={() => mockCancelDownload(row)}>
+          Cancel download {row.name}
+        </button>
+      )}
+    </>
+  ),
   ServedModelActions: ({
     model,
     onServe,
@@ -239,24 +272,62 @@ const baseModelConfigs: ModelConfigsContextValue = {
   modelConfigsFor: () => [],
 };
 
+const noJobs: PullJobs = { jobs: [], isLoading: false, errors: [] };
+
+/** A pull in flight on inst-2 (the Ollama installation below). */
+const runningJob: PullJob = {
+  installation: 'inst-2',
+  id: 'running-1',
+  type: 'pull',
+  model: 'qwen2.5:0.5b',
+  phase: 'running',
+  status: 'pulling 6f7f…',
+  bytesCompleted: 120_000_000,
+  bytesTotal: 400_000_000,
+  percent: 30,
+  createdAt: '2026-09-02T13:00:00Z',
+  wire: true,
+};
+
+const failedJob: PullJob = {
+  ...runningJob,
+  id: 'failed-1',
+  model: 'nope:latest',
+  phase: 'failed',
+  status: undefined,
+  error: 'pull model manifest: file does not exist',
+  bytesCompleted: 0,
+  bytesTotal: 0,
+  percent: 0,
+};
+
 // The view's primary actions render into the shared page header, so the tree
 // carries the header slot the app's GSPageLayout would provide — and the real
 // rows provider (its inputs are the mocked contexts above), since what the view
 // shows per row is the point of most cases here.
 const HeaderActions = () => <>{usePageHeaderActionsSlot()}</>;
 
-const renderSection = () =>
-  renderInTestApp(
+// Re-render the tree from inside it (renderInTestApp's own rerender would
+// drop the test app around it), so a test can change what the mocked contexts
+// answer and watch the view follow — the way a poll would.
+let rerenderSection: () => void = () => {};
+const Section = () => {
+  const [, setTick] = useState(0);
+  rerenderSection = () => setTick(tick => tick + 1);
+  return (
     <PageHeaderActionsProvider>
       <HeaderActions />
       <ServedModelRowsProvider>
         <ServingPage />
       </ServedModelRowsProvider>
-    </PageHeaderActionsProvider>,
-    {
-      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
-    },
+    </PageHeaderActionsProvider>
   );
+};
+
+const renderSection = () =>
+  renderInTestApp(<Section />, {
+    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+  });
 
 describe('ServingPage', () => {
   beforeEach(() => {
@@ -268,6 +339,10 @@ describe('ServingPage', () => {
     mockWiringFor.mockReset();
     mockToastPost.mockReset();
     mockUseSelfSubjectAccessReview.mockReset();
+    mockUsePullJobs.mockReset();
+    mockCancelDownload.mockReset();
+    window.sessionStorage.clear();
+    mockUsePullJobs.mockReturnValue(noJobs);
     mockUseServing.mockReturnValue(baseServing);
     mockUseModelConfigs.mockReturnValue(baseModelConfigs);
     mockUseServingPresets.mockReturnValue(noPresets);
@@ -467,6 +542,18 @@ describe('ServingPage', () => {
     });
 
     it('offers the Hugging Face import instead of the plain pull, and one menu per row', async () => {
+      mockUsePullJobs.mockReturnValue({
+        ...noJobs,
+        jobs: [
+          {
+            ...runningJob,
+            installation: 'inst-1',
+            model: 'Qwen/Qwen3-8B',
+            wire: false,
+          },
+        ],
+      });
+
       await renderSection();
 
       expect(
@@ -475,7 +562,15 @@ describe('ServingPage', () => {
       expect(
         screen.queryByRole('button', { name: /Pull model/ }),
       ).not.toBeInTheDocument();
-      expect(screen.getByTestId('pull-jobs-panel')).toBeInTheDocument();
+      // The pull in flight is a row of the KServe group, with the job's menu.
+      expect(mockUsePullJobs).toHaveBeenCalledWith(['inst-1']);
+      const grid = screen.getByRole('grid');
+      expect(within(grid).getByText('Qwen/Qwen3-8B')).toBeInTheDocument();
+      expect(within(grid).getByText('Downloading')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Cancel download Qwen/Qwen3-8B' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Model downloads')).not.toBeInTheDocument();
       // The served InferenceService: one menu, one stop.
       expect(
         screen.getAllByRole('button', { name: 'Actions for qwen3-14b' }),
@@ -798,7 +893,7 @@ describe('ServingPage', () => {
       expect(
         screen.getByRole('button', { name: 'Actions for smollm2:135m' }),
       ).toBeInTheDocument();
-      expect(screen.getByTestId('pull-jobs-panel')).toBeInTheDocument();
+      expect(mockUsePullJobs).toHaveBeenCalledWith(['inst-2']);
       // Capability skew is state, not an error: nothing GPU-shaped renders.
       expect(screen.queryByText('GPU capacity')).not.toBeInTheDocument();
       expect(screen.queryByText('Node')).not.toBeInTheDocument();
@@ -857,8 +952,208 @@ describe('ServingPage', () => {
       expect(
         screen.queryByRole('button', { name: /Actions for/ }),
       ).not.toBeInTheDocument();
-      expect(screen.queryByTestId('pull-jobs-panel')).not.toBeInTheDocument();
+      // No installation can pull, so no job list is asked for.
+      expect(mockUsePullJobs).toHaveBeenCalledWith([]);
       expect(screen.queryByText('GPU capacity')).not.toBeInTheDocument();
+    });
+
+    describe('downloads as rows', () => {
+      beforeEach(() => {
+        mockUseServing.mockReturnValue(ollamaServing);
+      });
+
+      it('shows a pull in flight as a Downloading row among the models, with its progress and Cancel, and no card below the table', async () => {
+        mockUsePullJobs.mockReturnValue({ ...noJobs, jobs: [runningJob] });
+
+        await renderSection();
+
+        const grid = screen.getByRole('grid');
+        const names = within(grid)
+          .getAllByRole('rowheader')
+          .map(cell => cell.textContent);
+        expect(names).toHaveLength(2);
+        expect(names[0]).toMatch(/^qwen2\.5:0\.5b/);
+        expect(names[1]).toMatch(/^smollm2:135m/);
+        expect(within(grid).getByText('Downloading')).toBeInTheDocument();
+        expect(
+          within(grid).getByText('pulling 6f7f… · 30 % · 114 MiB / 381 MiB'),
+        ).toBeInTheDocument();
+        expect(
+          within(grid).getByRole('progressbar', {
+            name: 'Downloading qwen2.5:0.5b',
+          }),
+        ).toHaveAttribute('aria-valuenow', '30');
+        // The job's menu, not the model's.
+        expect(
+          screen.getByRole('button', { name: 'Cancel download qwen2.5:0.5b' }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getAllByRole('button', { name: 'Actions for qwen2.5:0.5b' }),
+        ).toHaveLength(1);
+        expect(screen.queryByText('Model downloads')).not.toBeInTheDocument();
+        expect(screen.queryByText('Done')).not.toBeInTheDocument();
+      });
+
+      it('turns the Downloading row into the model row once the pull is done', async () => {
+        mockUsePullJobs.mockReturnValue({ ...noJobs, jobs: [runningJob] });
+        await renderSection();
+        expect(screen.getByText('Downloading')).toBeInTheDocument();
+
+        // The job finishes; usePullJobs has invalidated the inventory, which
+        // now lists the model.
+        const pulled: ServedModel = {
+          ...smollm,
+          id: 'inst-2/ollama//qwen2.5:0.5b',
+          name: 'qwen2.5:0.5b',
+          modelSource: 'qwen2.5:0.5b',
+          sizeBytes: 397_821_319,
+          capabilities: ['completion', 'tools'],
+        };
+        mockUsePullJobs.mockReturnValue({
+          ...noJobs,
+          jobs: [{ ...runningJob, phase: 'succeeded', percent: 100 }],
+        });
+        mockUseServing.mockReturnValue({
+          ...ollamaServing,
+          servedModels: [smollm, pulled],
+        });
+        await act(async () => rerenderSection());
+
+        await waitFor(() =>
+          expect(screen.queryByText('Downloading')).not.toBeInTheDocument(),
+        );
+        const grid = screen.getByRole('grid');
+        expect(within(grid).getAllByRole('rowheader')).toHaveLength(2);
+        expect(within(grid).getByText('qwen2.5:0.5b')).toBeInTheDocument();
+        expect(within(grid).getAllByText('Available')).toHaveLength(2);
+        expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: /Cancel download/ }),
+        ).not.toBeInTheDocument();
+        // A cancelled pull leaves the same way, at once.
+        mockUsePullJobs.mockReturnValue({
+          ...noJobs,
+          jobs: [
+            { ...runningJob, id: 'c', model: 'other:1b', phase: 'cancelled' },
+          ],
+        });
+        await act(async () => rerenderSection());
+        await waitFor(() =>
+          expect(screen.queryByText('other:1b')).not.toBeInTheDocument(),
+        );
+      });
+
+      it('keeps a failed pull as a Not ready row with the failure until it is dismissed', async () => {
+        mockUsePullJobs.mockReturnValue({ ...noJobs, jobs: [failedJob] });
+
+        await renderSection();
+
+        const grid = screen.getByRole('grid');
+        expect(within(grid).getByText('nope:latest')).toBeInTheDocument();
+        expect(within(grid).getByText('Not ready')).toBeInTheDocument();
+        expect(
+          within(grid).getByText(
+            'Download failed: pull model manifest: file does not exist',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Retry download nope:latest' }),
+        ).toBeInTheDocument();
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Dismiss nope:latest' }),
+        );
+
+        await waitFor(() =>
+          expect(screen.queryByText('nope:latest')).not.toBeInTheDocument(),
+        );
+        expect(within(grid).getAllByRole('rowheader')).toHaveLength(1);
+        // Remembered for the tab: the same list renders without it.
+        expect(
+          JSON.parse(
+            window.sessionStorage.getItem(
+              'agent-platform.dismissed-downloads',
+            ) ?? '[]',
+          ),
+        ).toEqual(['inst-2/failed-1']);
+      });
+
+      it('says when a job list could not be read', async () => {
+        mockUsePullJobs.mockReturnValue({
+          ...noJobs,
+          errors: [
+            {
+              installation: 'inst-2',
+              error: new Error('502 from the gateway'),
+            },
+          ],
+        });
+
+        await renderSection();
+
+        expect(
+          screen.getByText('Downloads could not be read'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(/inst-2: 502 from the gateway/),
+        ).toBeInTheDocument();
+      });
+
+      it('puts a KServe download in the KServe group, on its node, next to an Ollama one', async () => {
+        mockUseServing.mockReturnValue({
+          ...ollamaServing,
+          installations: ['inst-1', 'inst-2'],
+          backends: { 'inst-1': 'kserve', 'inst-2': 'ollama' },
+          capabilities: {
+            ...ollamaServing.capabilities,
+            'inst-1': {
+              ...KSERVE_CR_CAPABILITIES,
+              pull: true,
+              pullProgress: true,
+              search: true,
+              nodeInventory: true,
+            },
+          },
+          servedModels: [qwen, smollm],
+        });
+        mockUsePullJobs.mockReturnValue({
+          ...noJobs,
+          jobs: [
+            runningJob,
+            {
+              ...runningJob,
+              id: 'dl-1',
+              installation: 'inst-1',
+              model: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
+              node: 'gpu-node-1',
+              wire: false,
+            },
+          ],
+        });
+
+        await renderSection();
+
+        expect(mockUsePullJobs).toHaveBeenCalledWith(['inst-2', 'inst-1']);
+        const [kserveTable, ollamaTable] = screen.getAllByRole('grid');
+        expect(
+          within(kserveTable).getByText(
+            'mistralai/Devstral-Small-2-24B-Instruct-2512',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          within(kserveTable).getByText('Downloading'),
+        ).toBeInTheDocument();
+        expect(within(kserveTable).getAllByText('gpu-node-1')).toHaveLength(2);
+        expect(
+          within(ollamaTable).getByText('qwen2.5:0.5b'),
+        ).toBeInTheDocument();
+        expect(
+          within(ollamaTable).getByText('Downloading'),
+        ).toBeInTheDocument();
+        expect(
+          within(ollamaTable).queryByRole('columnheader', { name: 'Node' }),
+        ).toBeNull();
+      });
     });
   });
 

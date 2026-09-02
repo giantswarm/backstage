@@ -5,9 +5,12 @@ import { modelsRouteRef } from '../../routes';
 import { describeGroup } from './ServedModelsGroupHeader';
 import {
   columnsForRows,
+  downloadLine,
+  downloadPercent,
   groupServedModelRows,
   memoryLine,
   memoryLineTitle,
+  ServedModelDownloadRow,
   ServedModelRow,
   ServedModelsTable,
   servedModelStatusLines,
@@ -150,6 +153,45 @@ const kserveManagerRows: ServedModelRow[] = [
     usedBy: [],
   },
 ];
+
+/** A pull in flight on the Ollama installation, as the Serving view rows it. */
+const downloading: ServedModelDownloadRow = {
+  kind: 'download',
+  id: 'lab/ollama/download/running-1',
+  installation: 'lab',
+  backend: 'ollama',
+  name: 'qwen2.5:0.5b',
+  readiness: 'downloading',
+  readinessMessage:
+    'Being pulled onto the backend; its model config is created once the pull completes.',
+  endpointHosts: [],
+  operable: false,
+  usedBy: [],
+  download: {
+    jobId: 'running-1',
+    phase: 'running',
+    status: 'pulling 6f7f…',
+    bytesCompleted: 120_000_000,
+    bytesTotal: 400_000_000,
+    percent: 30,
+    wire: true,
+  },
+};
+
+/** The same pull, failed. */
+const failedDownload: ServedModelDownloadRow = {
+  ...downloading,
+  id: 'lab/ollama/download/failed-1',
+  name: 'nope:latest',
+  readiness: 'notReady',
+  readinessMessage: 'The pull failed: pull model manifest: file does not exist',
+  download: {
+    jobId: 'failed-1',
+    phase: 'failed',
+    error: 'pull model manifest: file does not exist',
+    wire: true,
+  },
+};
 
 describe('columnsForRows', () => {
   it('derives every optional column from the rows, placement from a node on a row', () => {
@@ -341,6 +383,70 @@ describe('ServedModelStatusCell · GPU share', () => {
     expect(
       screen.getByText(/^6\.6 GiB in memory · CPU · evicts \d/),
     ).toBeInTheDocument();
+  });
+});
+
+describe('downloadLine, downloadPercent and servedModelStatusLines on a download row', () => {
+  it('tells the progress from the job alone: message, percentage, bytes', () => {
+    expect(downloadLine(downloading.download)).toBe(
+      'pulling 6f7f… · 30 % · 114 MiB / 381 MiB',
+    );
+    // No percentage from the backend: derived from the bytes.
+    expect(
+      downloadLine({
+        ...downloading.download,
+        percent: undefined,
+        status: undefined,
+      }),
+    ).toBe('30 % · 114 MiB / 381 MiB');
+    // Bytes but no total (a backend without pullProgress totals).
+    expect(
+      downloadLine({
+        ...downloading.download,
+        bytesTotal: undefined,
+        percent: undefined,
+        status: undefined,
+      }),
+    ).toBe('114 MiB');
+    expect(downloadLine({ jobId: 'x', phase: 'running', wire: false })).toBe(
+      'Starting…',
+    );
+    expect(downloadLine({ jobId: 'x', phase: 'pending', wire: false })).toBe(
+      'Queued',
+    );
+    expect(
+      downloadLine({
+        jobId: 'x',
+        phase: 'pending',
+        status: 'waiting for a node',
+        wire: false,
+      }),
+    ).toBe('waiting for a node');
+    expect(downloadLine(failedDownload.download)).toBe(
+      'Download failed: pull model manifest: file does not exist',
+    );
+    expect(downloadLine({ jobId: 'x', phase: 'failed', wire: false })).toBe(
+      'Download failed',
+    );
+  });
+
+  it('caps the percentage to what a bar can show', () => {
+    expect(downloadPercent({ bytesTotal: 0 })).toBeUndefined();
+    expect(downloadPercent({ bytesTotal: 100, bytesCompleted: 25 })).toBe(25);
+    expect(downloadPercent({ bytesTotal: 100, percent: 130 })).toBe(100);
+    expect(downloadPercent({ bytesTotal: 100, percent: -3 })).toBe(0);
+  });
+
+  it('is the one line under a download row, memory never', () => {
+    expect(servedModelStatusLines(downloading)).toEqual([
+      'pulling 6f7f… · 30 % · 114 MiB / 381 MiB',
+    ]);
+    expect(servedModelStatusLines(failedDownload)).toEqual([
+      'Download failed: pull model manifest: file does not exist',
+    ]);
+    expect(servedModelStatusLines({ ...downloading, loaded: false })).toEqual([
+      'pulling 6f7f… · 30 % · 114 MiB / 381 MiB',
+    ]);
   });
 });
 
@@ -596,6 +702,128 @@ describe('ServedModelsTable', () => {
       expect(
         screen.getByRole('button', { name: 'act on gemma3:270m' }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('with a download among the rows', () => {
+    it('renders a pull in flight as a Downloading row sorted among its future neighbours, with the progress and a bar', async () => {
+      await renderTable(
+        <ServedModelsTable rows={[...ollamaRows, downloading]} />,
+      );
+
+      const grid = screen.getByRole('grid');
+      // One group: the download joined the Ollama installation's table.
+      expect(screen.getAllByRole('grid')).toHaveLength(1);
+      const names = within(grid)
+        .getAllByRole('rowheader')
+        .map(cell => cell.textContent);
+      expect(names[0]).toMatch(/^gemma3:270m/);
+      expect(names[1]).toMatch(/^qwen2\.5:0\.5b/);
+      expect(names[2]).toMatch(/^qwen3\.5:9b/);
+
+      expect(screen.getByText('Downloading')).toBeInTheDocument();
+      expect(
+        screen.getByText('pulling 6f7f… · 30 % · 114 MiB / 381 MiB'),
+      ).toBeInTheDocument();
+      const bar = screen.getByRole('progressbar', {
+        name: 'Downloading qwen2.5:0.5b',
+      });
+      expect(bar).toHaveAttribute('aria-valuenow', '30');
+      expect(
+        screen.getByTitle(
+          /its model config is created once the pull completes/,
+        ),
+      ).toBeInTheDocument();
+      // Nothing points at a pull: no "No model config", no dash, no size line.
+      expect(screen.getAllByText('No model config')).toHaveLength(1);
+      expect(screen.queryByText('—')).toBeNull();
+      expect(screen.queryByText('Model downloads')).toBeNull();
+    });
+
+    it('shows a queued pull with an indeterminate bar', async () => {
+      await renderTable(
+        <ServedModelsTable
+          rows={[
+            {
+              ...downloading,
+              download: { jobId: 'p', phase: 'pending', wire: false },
+            },
+          ]}
+        />,
+      );
+
+      expect(screen.getByText('Downloading')).toBeInTheDocument();
+      expect(screen.getByText('Queued')).toBeInTheDocument();
+      expect(
+        screen.getByRole('progressbar', { name: 'Downloading qwen2.5:0.5b' }),
+      ).not.toHaveAttribute('aria-valuenow');
+    });
+
+    it('keeps a failed pull as a Not ready row with the failure in the status cell and no bar', async () => {
+      await renderTable(
+        <ServedModelsTable rows={[...ollamaRows, failedDownload]} />,
+      );
+
+      expect(screen.getByText('Not ready')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Download failed: pull model manifest: file does not exist',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTitle(
+          'The pull failed: pull model manifest: file does not exist',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('progressbar')).toBeNull();
+    });
+
+    it('hands a download row to the actions slot like any other row', async () => {
+      await renderTable(
+        <ServedModelsTable
+          rows={[...ollamaRows, downloading]}
+          renderActions={row =>
+            row.kind === 'download' ? (
+              <button type="button" aria-label={`Cancel ${row.name}`} />
+            ) : (
+              <button type="button" aria-label={`Actions for ${row.name}`} />
+            )
+          }
+        />,
+      );
+
+      expect(
+        screen.getByRole('button', { name: 'Cancel qwen2.5:0.5b' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole('button', { name: /^Actions for/ }),
+      ).toHaveLength(2);
+    });
+
+    it('places a KServe download on its node, in the KServe group', async () => {
+      const kserveDownload: ServedModelDownloadRow = {
+        ...downloading,
+        id: 'inst-1/kserve/download/dl-1',
+        installation: 'inst-1',
+        backend: 'kserve',
+        name: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
+        node: 'gpu-node-1',
+        download: { ...downloading.download, wire: false },
+      };
+
+      await renderTable(
+        <ServedModelsTable rows={[rows[0], kserveDownload, ...ollamaRows]} />,
+      );
+
+      const [kserveTable, ollamaTable] = screen.getAllByRole('grid');
+      expect(
+        within(kserveTable).getByRole('columnheader', { name: 'Node' }),
+      ).toBeInTheDocument();
+      expect(within(kserveTable).getAllByText('gpu-node-1')).toHaveLength(2);
+      expect(within(kserveTable).getByText('Downloading')).toBeInTheDocument();
+      expect(within(ollamaTable).queryByText('Downloading')).toBeNull();
+      expect(columnsForRows([kserveDownload]).placement).toBe(true);
+      expect(columnsForRows([downloading]).placement).toBe(false);
     });
   });
 
