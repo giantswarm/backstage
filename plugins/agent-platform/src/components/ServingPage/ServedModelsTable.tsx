@@ -9,6 +9,7 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
+import { LinearProgress } from '@material-ui/core';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -26,6 +27,7 @@ import {
   lacksToolCalling,
 } from '../../lib/modelManagerServing';
 import type { ServedModel, ServingBackend } from '../../lib/serving';
+import type { ModelManagerJobPhase } from '../../lib/modelManager';
 import type { WiringState } from '../../hooks/useAutoWireServedModels';
 import { SERVED_READINESS_PRESENTATION } from './servedReadinessStatus';
 import {
@@ -41,12 +43,63 @@ export type ServedModelConsumer = {
   displayName: string;
 };
 
-/** One row: the served model plus the ModelConfigs pointing at it. */
+/**
+ * A pull the backend is running (or that failed), as far as the row needs it:
+ * the job to cancel or retry, and its progress. From model-manager's job
+ * (`GET /api/v1/jobs`), tagged with nothing the row does not already carry.
+ */
+export type ServedModelDownload = {
+  jobId: string;
+  /** `pending` or `running` while in flight; `failed` stays until dismissed. */
+  phase: ModelManagerJobPhase;
+  /** The backend's progress message, e.g. `pulling manifest`. */
+  status?: string;
+  bytesCompleted?: number;
+  bytesTotal?: number;
+  percent?: number;
+  /** Why it failed, when it did. */
+  error?: string;
+  /** Whether the backend creates the model's ModelConfig once the pull is done. */
+  wire: boolean;
+};
+
+/**
+ * One row: the served model plus the ModelConfigs pointing at it — or, with
+ * `kind: 'download'`, a pull in flight shown where its model will land: the
+ * pulled reference as the name, `downloading` as the readiness, the progress
+ * under it ({@link servedModelStatusLines}), and the job's controls in the
+ * actions menu instead of the model's. Never operable, never used by anyone.
+ */
 export type ServedModelRow = ServedModel & {
   usedBy: ServedModelConsumer[];
   /** The auto-wiring's progress for this model, while it has no consumer yet. */
   wiring?: WiringState;
+  /** Absent for a served model; `download` for a pull rendered as a row. */
+  kind?: 'download';
+  /** The pull, on a `download` row. */
+  download?: ServedModelDownload;
 };
+
+/** A {@link ServedModelRow} that is a pull, not a model. */
+export type ServedModelDownloadRow = ServedModelRow & {
+  kind: 'download';
+  download: ServedModelDownload;
+};
+
+/** Whether the row is a pull in flight (or failed) rather than a served model. */
+export function isDownloadRow(
+  row: ServedModelRow,
+): row is ServedModelDownloadRow {
+  return row.kind === 'download' && row.download !== undefined;
+}
+
+/** A download row's pull is still going: the progress bar shows, Cancel is offered. */
+export function isActiveDownload(row: ServedModelRow): boolean {
+  return (
+    isDownloadRow(row) &&
+    (row.download.phase === 'pending' || row.download.phase === 'running')
+  );
+}
 
 /**
  * Rows this portal can stop serving: a KServe InferenceService, whichever
@@ -297,13 +350,68 @@ export function memoryLineTitle(
 }
 
 /**
+ * The percentage of a download, from the backend's figure or — when it
+ * reports bytes but no percentage — from the bytes. `undefined` until the
+ * total is known.
+ */
+export function downloadPercent(
+  download: Pick<
+    ServedModelDownload,
+    'bytesCompleted' | 'bytesTotal' | 'percent'
+  >,
+): number | undefined {
+  if (!download.bytesTotal) {
+    return undefined;
+  }
+  const percent =
+    download.percent ??
+    ((download.bytesCompleted ?? 0) / download.bytesTotal) * 100;
+  return Math.min(100, Math.max(0, percent));
+}
+
+/**
+ * The line under a download row's `Downloading` label, from the job alone:
+ * the backend's progress message with the figures — `pulling 6f7f… · 31 % ·
+ * 114 MiB / 381 MiB` — as far as it reports them, `Queued` before it starts,
+ * `Starting…` while it has said nothing yet; `Download failed: <reason>`
+ * under a failed one's `Not ready`.
+ */
+export function downloadLine(download: ServedModelDownload): string {
+  if (download.phase === 'failed') {
+    return download.error
+      ? `Download failed: ${download.error}`
+      : 'Download failed';
+  }
+  const parts: string[] = [];
+  if (download.status) {
+    parts.push(download.status);
+  }
+  const percent = downloadPercent(download);
+  if (percent !== undefined && download.bytesTotal) {
+    parts.push(`${Math.round(percent)} %`);
+    parts.push(
+      `${formatBytes(download.bytesCompleted ?? 0)} / ${formatBytes(download.bytesTotal)}`,
+    );
+  } else if (download.bytesCompleted) {
+    parts.push(formatBytes(download.bytesCompleted));
+  }
+  if (parts.length === 0) {
+    return download.phase === 'pending' ? 'Queued' : 'Starting…';
+  }
+  return parts.join(' · ');
+}
+
+/**
  * The lines under the readiness label of {@link ServedModelStatusCell}, each
  * from the row's fields only — no capabilities, no installation lookups — so
- * a row says the same thing wherever it renders. Today one line at most, the
- * {@link memoryLine}. Extension point for the follow-up building on this
- * table: a download row's progress is another line here (backstage#2214).
+ * a row says the same thing wherever it renders. One line at most: a download
+ * row's progress ({@link downloadLine}), a served model's memory state
+ * ({@link memoryLine}, the GPU share included).
  */
 export function servedModelStatusLines(row: ServedModelRow): string[] {
+  if (isDownloadRow(row)) {
+    return [downloadLine(row.download)];
+  }
   const memory = memoryLine(row);
   return memory ? [memory] : [];
 }
@@ -319,13 +427,18 @@ export type ServedModelStatusCellProps = {
  * · 100 % GPU · evicts 13:05`, `Available` / `Not loaded` — from
  * {@link servedModelStatusLines}, the memory line explained on hover
  * ({@link memoryLineTitle}). What used to be the Memory column, told where
- * the status is.
+ * the status is. On a download row the line is the pull's progress
+ * (`Downloading` / `pulling 6f7f… · 31 % · 114 MiB / 381 MiB`) with a
+ * progress bar under it while the pull runs, and the failure in red once it
+ * has failed (`Not ready` / `Download failed: …`).
  */
 export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
   const { label, intent, icon } = SERVED_READINESS_PRESENTATION[row.readiness];
   const lines = servedModelStatusLines(row);
   const memory = memoryLine(row);
   const memoryTitle = memoryLineTitle(row);
+  const download = isDownloadRow(row) ? row.download : undefined;
+  const percent = download ? downloadPercent(download) : undefined;
   return (
     <Cell>
       <Flex direction="column" gap="1">
@@ -340,12 +453,19 @@ export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
             key={line}
             as="p"
             variant="body-small"
-            color="secondary"
+            color={download?.phase === 'failed' ? 'danger' : 'secondary'}
             title={line === memory ? memoryTitle : undefined}
           >
             {line}
           </Text>
         ))}
+        {isActiveDownload(row) && (
+          <LinearProgress
+            aria-label={`Downloading ${row.name}`}
+            variant={percent === undefined ? 'indeterminate' : 'determinate'}
+            value={percent}
+          />
+        )}
       </Flex>
     </Cell>
   );
@@ -435,8 +555,16 @@ function WiringStatus({ wiring }: { wiring: WiringState }) {
   }
 }
 
-/** The "Used by" cell of a model no ModelConfig points at (yet). */
-function UsedByNobody({ wiring }: { wiring?: WiringState }) {
+/**
+ * The "Used by" cell of a model no ModelConfig points at (yet). Empty on a
+ * download row: nothing points at a pull in flight, the model it produces is
+ * the row that gets a "Used by".
+ */
+function UsedByNobody({ row }: { row: ServedModelRow }) {
+  if (isDownloadRow(row)) {
+    return null;
+  }
+  const { wiring } = row;
   return wiring ? (
     <WiringStatus wiring={wiring} />
   ) : (
@@ -682,7 +810,7 @@ function getColumnConfig(
       return (
         <Cell>
           {entries.length === 0 ? (
-            <UsedByNobody wiring={row.wiring} />
+            <UsedByNobody row={row} />
           ) : (
             entries.map(consumer => {
               const href = hrefFor(consumer);

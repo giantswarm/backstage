@@ -11,6 +11,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
 import { useServeModel } from '../../hooks/useServeModel';
 import { useServingPresets } from '../../hooks/useServingPresets';
 import {
@@ -22,15 +23,13 @@ import {
   type ServedModel,
   type ServingCapabilities,
 } from '../../lib/serving';
-import { useModelConfigs } from '../ModelConfigsProvider';
 import {
+  DownloadRowActions,
   hasRowActions,
   ImportModelDialog,
-  PullJobsPanel,
   PullModelDialog,
   ServedModelActions,
   type ImportTarget,
-  type ModelConfigExists,
   type PullTarget,
 } from '../ModelManagerControls';
 import { useServedModelRows } from '../ServedModelRowsProvider';
@@ -43,6 +42,7 @@ import {
   type ServeModelSeed,
 } from './ServeModelDialog';
 import {
+  isDownloadRow,
   isServableDownload,
   isStoppable,
   ServedModelsTable,
@@ -73,10 +73,13 @@ const TOAST_TIMEOUT_MS = 6000;
  *
  * - **Capability-driven** (the model-manager source): every control and panel
  *   keys off the installation's `ServingCapabilities`, never off a backend's
- *   name. `pull` puts the Pull button and the downloads list here — with
- *   `search` it becomes the Hugging Face import (search, size and fit check
- *   against a node, pre-warm download); load/unload/delete/wire fill the
- *   per-row menu of the rows the source operates on. An Ollama-backed
+ *   name. `pull` puts the Pull button here and the pulls themselves into the
+ *   table — a download is a row where its model will land, with its progress
+ *   as the status and Cancel (or, once failed, Retry / Dismiss) as its menu
+ *   (useDownloadRows) — with `search` it becomes the Hugging Face import
+ *   (search, size and fit check against a node, pre-warm download);
+ *   load/unload/delete/wire fill the per-row menu of the rows the source
+ *   operates on. An Ollama-backed
  *   installation shows its controls; a read-only KServe CR view shows its rows
  *   and nothing operational — both ordinary state. The table's columns follow
  *   its rows, per installation (ServedModelsTable): Node and GPUs appear on
@@ -96,9 +99,7 @@ const TOAST_TIMEOUT_MS = 6000;
 export function ServingPage() {
   const serving = useServing();
   const { servedModels, installations } = serving;
-  const { rows } = useServedModelRows();
-  const { modelConfigsFor, isLoading: isLoadingModelConfigs } =
-    useModelConfigs();
+  const { rows: servedRows } = useServedModelRows();
   const toastApi = useApi(toastApiRef);
   const [isPullOpen, setPullOpen] = useState(false);
   const [isImportOpen, setImportOpen] = useState(false);
@@ -119,20 +120,6 @@ export function ServingPage() {
   const presets = useServingPresets(kserveInstallations);
   const servableInstallations = presets.installations.filter(
     installation => presets.presetsFor(installation).length > 0,
-  );
-
-  // Whether a wired ModelConfig still exists, for the downloads list; unknown
-  // while the lists load.
-  const modelConfigExists = useCallback<ModelConfigExists>(
-    (installation, namespace, name) =>
-      isLoadingModelConfigs
-        ? undefined
-        : modelConfigsFor(installation).some(
-            modelConfig =>
-              modelConfig.getNamespace() === namespace &&
-              modelConfig.getName() === name,
-          ),
-    [isLoadingModelConfigs, modelConfigsFor],
   );
 
   // --- Capability-driven controls (model-manager) ---------------------------
@@ -169,6 +156,13 @@ export function ServingPage() {
   const downloadInstallations = useMemo(
     () => [...pullTargets, ...importTargets].map(target => target.name),
     [pullTargets, importTargets],
+  );
+  // The pulls of those installations, as rows among the models they will
+  // become; a failed one stays until dismissed.
+  const downloadRows = useDownloadRows(downloadInstallations, serving.backends);
+  const rows = useMemo(
+    () => withDownloadRows(servedRows, downloadRows.rows),
+    [servedRows, downloadRows.rows],
   );
 
   // --- Serve ---------------------------------------------------------------
@@ -262,13 +256,24 @@ export function ServingPage() {
     [servableInstallations, openServeFor, openStop],
   );
 
-  const hasActions = rows.some(row =>
-    hasRowActions(row, capabilitiesFor(row.installation), offersFor(row)),
+  const hasActions = rows.some(
+    row =>
+      isDownloadRow(row) ||
+      hasRowActions(row, capabilitiesFor(row.installation), offersFor(row)),
   );
 
   const renderActions = useCallback(
     (row: ServedModelRow) => {
       const capabilities = capabilitiesFor(row.installation);
+      if (isDownloadRow(row)) {
+        return (
+          <DownloadRowActions
+            row={row}
+            capabilities={capabilities}
+            onDismiss={downloadRows.dismiss}
+          />
+        );
+      }
       const offers = offersFor(row);
       return hasRowActions(row, capabilities, offers) ? (
         <ServedModelActions
@@ -279,7 +284,7 @@ export function ServingPage() {
         />
       ) : null;
     },
-    [capabilitiesFor, offersFor],
+    [capabilitiesFor, offersFor, downloadRows.dismiss],
   );
 
   const servePermission = useSelfSubjectAccessReview(
@@ -494,10 +499,15 @@ export function ServingPage() {
           />
         )}
 
-        {downloadInstallations.length > 0 && (
-          <PullJobsPanel
-            installations={downloadInstallations}
-            modelConfigExists={modelConfigExists}
+        {downloadRows.errors.length > 0 && (
+          <Alert
+            status="warning"
+            title="Downloads could not be read"
+            description={downloadRows.errors
+              .map(
+                problem => `${problem.installation}: ${problem.error.message}`,
+              )
+              .join(' ')}
           />
         )}
 

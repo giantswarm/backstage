@@ -287,6 +287,12 @@ export const modelManagerJobSchema = z.looseObject({
   finishedAt: wireString,
   /** Whether the job wires the model into kagent on success. */
   wire: wireBoolean(false),
+  /**
+   * KServe: the node whose cache receives the download, when the backend
+   * reports it (model-manager does not yet — the request names the node, the
+   * job does not echo it back).
+   */
+  node: wireString,
   /** For a pull with wire: the ModelConfig created. */
   result: z
     .unknown()
