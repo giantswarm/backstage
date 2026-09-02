@@ -13,6 +13,7 @@ import type {
   ModelManagerNode,
 } from './modelManager';
 import {
+  endpointAuthority,
   notLoadedReadiness,
   type GpuNode,
   type ServedModel,
@@ -82,11 +83,13 @@ export function toServingLoading(
 }
 
 /**
- * The hostnames on which the backend answers for every model it has, for
- * `ServingSourceSnapshot.sharedHosts`: Ollama's own host. KServe's `endpoint`
- * is the InferenceService API, not somewhere a model answers, and each
- * predictor has a host of its own — none. The same rule `endpointHosts` in
- * {@link toServedModelFromManager} follows.
+ * The `hostname:port` authorities on which the backend answers for every model
+ * it has, for `ServingSourceSnapshot.sharedHosts`: Ollama's own endpoint.
+ * KServe's `endpoint` is the InferenceService API, not somewhere a model
+ * answers, and each predictor has a host of its own — none. The same rule
+ * `endpointHosts` in {@link toServedModelFromManager} follows, with the port
+ * kept: a host that also runs another OpenAI-compatible server on another
+ * port must not have that server's clients read as Ollama's.
  */
 export function sharedHostsOf(
   backend: ModelManagerBackend & { backend: ServingBackend },
@@ -94,8 +97,8 @@ export function sharedHostsOf(
   if (backend.backend === 'kserve') {
     return [];
   }
-  const host = urlHostname(backend.endpoint);
-  return host ? [host] : [];
+  const authority = endpointAuthority(backend.endpoint);
+  return authority ? [authority] : [];
 }
 
 /**

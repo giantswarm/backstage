@@ -2,6 +2,7 @@ import { crds } from '@giantswarm/k8s-types';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   clientLookupOf,
+  endpointAuthority,
   findServedModel,
   findServedModelForEndpoint,
   gpuFree,
@@ -511,6 +512,32 @@ describe('notLoadedReadiness', () => {
   });
 });
 
+describe('endpointAuthority', () => {
+  it('names the server, not just the machine, with the scheme default filled in', () => {
+    expect(endpointAuthority('http://172.21.0.1:11434')).toBe(
+      '172.21.0.1:11434',
+    );
+    expect(endpointAuthority('http://172.21.0.1:11434/v1')).toBe(
+      '172.21.0.1:11434',
+    );
+    expect(endpointAuthority('http://172.21.0.1:13305/v1')).toBe(
+      '172.21.0.1:13305',
+    );
+    expect(endpointAuthority('HTTPS://Models.Example/v1')).toBe(
+      'models.example:443',
+    );
+    expect(
+      endpointAuthority('http://x-predictor.ns.svc.cluster.local/v1'),
+    ).toBe('x-predictor.ns.svc.cluster.local:80');
+  });
+
+  it('answers nothing for provider defaults and non-URLs', () => {
+    expect(endpointAuthority(undefined)).toBeUndefined();
+    expect(endpointAuthority('')).toBeUndefined();
+    expect(endpointAuthority('not-a-url')).toBeUndefined();
+  });
+});
+
 describe('predictorOfHostname', () => {
   it('reads the InferenceService and namespace out of a predictor host in every form KServe gives it', () => {
     const expected = { name: 'lab-echo', namespace: 'model-serving' };
@@ -561,7 +588,7 @@ describe('resolveClientServing', () => {
     installation: 'lab',
     candidates: [qwenSmall, qwenBig],
     backends: ['ollama' as const],
-    sharedHosts: ollamaHost,
+    sharedHosts: ['172.21.0.1:11434'],
   };
 
   it('takes the readiness, name and words of the served model a client fronts', () => {
@@ -605,11 +632,29 @@ describe('resolveClientServing', () => {
     expect(state?.message).toMatch(/deleted, or never pulled/);
   });
 
-  it('knows a shared host from its rows even when the snapshot lists none', () => {
+  it('does not guess a shared host from the rows: only what the source declared counts', () => {
     expect(
       resolveClientServing(
         { endpoint: 'http://172.21.0.1:11434', model: 'gone:1b' },
         { ...lab, sharedHosts: [] },
+      ),
+    ).toBeUndefined();
+  });
+
+  it('tells another server on the same machine apart from the backend by its port', () => {
+    // The lab host runs a Lemonade server on :13305 next to Ollama on :11434
+    // — its clients are not Ollama's, and its models are not "gone".
+    expect(
+      resolveClientServing(
+        { endpoint: 'http://172.21.0.1:13305/v1', model: 'qwen3-it-4b-FLM' },
+        lab,
+      ),
+    ).toBeUndefined();
+    // The OpenAI-compatible path on Ollama's own port is Ollama's.
+    expect(
+      resolveClientServing(
+        { endpoint: 'http://172.21.0.1:11434/v1', model: 'gone:1b' },
+        lab,
       )?.readiness,
     ).toBe('notServing');
   });
@@ -779,20 +824,22 @@ describe('mergeServingSnapshots: loading and shared hosts', () => {
         installations: ['lab'],
         backends: { lab: 'kserve' },
         loading: { lab: { onDemand: false, idleEviction: false } },
-        sharedHosts: { lab: ['a.example'] },
+        sharedHosts: { lab: ['a.example:443'] },
       },
       {
         ...empty,
         installations: ['lab'],
         backends: { lab: 'ollama' },
         loading: { lab: { onDemand: true, idleEviction: true } },
-        sharedHosts: { lab: ['172.21.0.1', 'a.example'] },
+        sharedHosts: { lab: ['172.21.0.1:11434', 'a.example:443'] },
       },
     ]);
     expect(merged.loading).toEqual({
       lab: { onDemand: true, idleEviction: true },
     });
-    expect(merged.sharedHosts).toEqual({ lab: ['a.example', '172.21.0.1'] });
+    expect(merged.sharedHosts).toEqual({
+      lab: ['a.example:443', '172.21.0.1:11434'],
+    });
   });
 
   it('answers empty maps when no source reports either', () => {

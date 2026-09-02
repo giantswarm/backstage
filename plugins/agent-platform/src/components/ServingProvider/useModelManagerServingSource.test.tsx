@@ -146,7 +146,7 @@ describe('useModelManagerServingSource', () => {
       },
     });
     // Ollama is a multi-model host; KServe predictors each have their own.
-    expect(result.current.sharedHosts).toEqual({ lab: ['172.21.0.1'] });
+    expect(result.current.sharedHosts).toEqual({ lab: ['172.21.0.1:11434'] });
     // And its not-loaded models read as Idle, not Available.
     const notLoaded = result.current.servedModels.filter(
       model => model.installation === 'lab' && !model.loaded,

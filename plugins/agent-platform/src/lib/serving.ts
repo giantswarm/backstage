@@ -475,14 +475,17 @@ export type ServingSourceSnapshot = {
    */
   loading?: Record<string, ServingLoading>;
   /**
-   * Per installation, the hostnames on which the backend answers for *every*
-   * model it has — a multi-model host such as Ollama's. Lets a client whose
-   * endpoint is that host but whose model is not listed be told apart from a
-   * client of an external endpoint: the model is gone (or was never pulled),
-   * not elsewhere — see {@link resolveClientServing}. Backends with one
-   * endpoint per model (KServe predictors) contribute none. A source lists an
-   * installation here only once it has read the installation's models, so a
-   * model still loading is never reported gone.
+   * Per installation, the `hostname:port` authorities
+   * ({@link endpointAuthority}) on which the backend answers for *every* model
+   * it has — a multi-model host such as Ollama's. Lets a client whose endpoint
+   * is that host but whose model is not listed be told apart from a client of
+   * an external endpoint: the model is gone (or was never pulled), not
+   * elsewhere — see {@link resolveClientServing}. The port is part of it
+   * because a lab host runs other OpenAI-compatible servers on other ports
+   * (a Lemonade server beside Ollama), which are not this backend's. Backends
+   * with one endpoint per model (KServe predictors) contribute none. A source
+   * lists an installation here only once it has read the installation's
+   * models, so a model still loading is never reported gone.
    */
   sharedHosts?: Record<string, string[]>;
   /**
@@ -767,6 +770,33 @@ export function mergeServingSnapshots(
   };
 }
 
+const DEFAULT_PORT: Record<string, string> = { 'http:': '80', 'https:': '443' };
+
+/**
+ * The `hostname:port` a URL addresses, lower-cased, the scheme's default port
+ * filled in — `http://172.21.0.1:11434/v1` → `172.21.0.1:11434`,
+ * `https://x.example/v1` → `x.example:443`. `undefined` for anything that is
+ * not a URL with a host. Where {@link urlHostname} says *which machine*, this
+ * says *which server on it*.
+ */
+export function endpointAuthority(url: string | undefined): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname) {
+      return undefined;
+    }
+    const port = parsed.port || DEFAULT_PORT[parsed.protocol];
+    return port
+      ? `${parsed.hostname.toLowerCase()}:${port}`
+      : parsed.hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The InferenceService a KServe predictor hostname belongs to
  * (`<name>-predictor.<namespace>`, optionally `.svc` or `.svc.cluster.local`),
@@ -826,7 +856,10 @@ export type ClientServingContext = {
   candidates: ServedModel[];
   /** The backend(s) the installation's sources report. */
   backends: ServingBackend[];
-  /** The installation's multi-model hosts — `ServingSourceSnapshot.sharedHosts`. */
+  /**
+   * The installation's multi-model hosts as `hostname:port` authorities —
+   * `ServingSourceSnapshot.sharedHosts`.
+   */
   sharedHosts: string[];
 };
 
@@ -836,9 +869,11 @@ export type ClientServingContext = {
  * 1. A served model the client fronts ({@link findServedModel}) — its
  *    readiness is the client's.
  * 2. Otherwise, an endpoint on one of the installation's multi-model hosts
- *    (Ollama's) is a client of that backend whose model is not there — deleted
- *    while the ModelConfig remained, or never pulled: `notServing`, named after
- *    the client's `model` (the tag a Pull would fetch).
+ *    (Ollama's, host *and* port) is a client of that backend whose model is
+ *    not there — deleted while the ModelConfig remained, or never pulled:
+ *    `notServing`, named after the client's `model` (the tag a Pull would
+ *    fetch). Only what the source declared counts: another server on the same
+ *    machine (a different port) is not this backend, whatever the rows' hosts.
  * 3. Otherwise, an endpoint shaped like a KServe predictor
  *    ({@link predictorOfHostname}) on an installation with a KServe backend is
  *    an InferenceService that is stopped or was never created: `notServing`,
@@ -867,31 +902,23 @@ export function resolveClientServing(
   }
 
   const hostname = urlHostname(lookup.endpoint);
-  if (!hostname) {
+  const authority = endpointAuthority(lookup.endpoint);
+  if (!hostname || !authority) {
     return undefined;
   }
 
-  const onSharedHost =
-    context.sharedHosts.includes(hostname) ||
-    candidates.some(
-      model =>
-        model.backend !== 'kserve' && model.endpointHosts.includes(hostname),
-    );
-  if (onSharedHost) {
-    // The one backend that answers on the host: the installation's, unless
-    // the rows on the host say otherwise.
+  if (context.sharedHosts.includes(authority)) {
+    // The one backend that answers on a shared host: the installation's
+    // multi-model one (KServe predictors are never shared).
     const backend =
-      candidates.find(model => model.endpointHosts.includes(hostname))
-        ?.backend ??
-      context.backends.find(name => name !== 'kserve') ??
-      'ollama';
+      context.backends.find(name => name !== 'kserve') ?? 'ollama';
     const name = lookup.model ?? '';
     return {
       installation,
       backend,
       readiness: 'notServing',
       name,
-      message: `${SERVING_BACKEND_LABEL[backend]} ${name || '(unnamed)'} is not on the backend at ${hostname} — deleted, or never pulled. Agents on this model config fail until it is pulled again.`,
+      message: `${SERVING_BACKEND_LABEL[backend]} ${name || '(unnamed)'} is not on the backend at ${authority} — deleted, or never pulled. Agents on this model config fail until it is pulled again.`,
     };
   }
 

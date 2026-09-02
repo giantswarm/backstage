@@ -484,7 +484,7 @@ describe('toServingLoading / sharedHostsOf', () => {
   });
 
   it('names Ollama’s host as shared by every model, and none for KServe', () => {
-    expect(sharedHostsOf(ollama)).toEqual(['172.21.0.1']);
+    expect(sharedHostsOf(ollama)).toEqual(['172.21.0.1:11434']);
     expect(sharedHostsOf(kserve)).toEqual([]);
     expect(sharedHostsOf({ ...ollama, endpoint: undefined })).toEqual([]);
   });
