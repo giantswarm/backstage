@@ -8,6 +8,7 @@ export {
   isServableDownload,
   isStoppable,
   memoryLine,
+  memoryLineTitle,
   ModelFeaturesCell,
   ServedModelsTable,
   ServedModelStatusCell,

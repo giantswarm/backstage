@@ -92,4 +92,46 @@ describe('GpuCapacityPage', () => {
 
     expect(screen.queryByText('No GPU inventory')).not.toBeInTheDocument();
   });
+
+  it('renders the host an Ollama-backed model-manager reports as a node (model-manager 0.7+)', async () => {
+    mockUseServing.mockReturnValue({
+      ...kserveServing,
+      installations: ['lab'],
+      backends: { lab: 'ollama' },
+      capabilities: {
+        lab: { ...KSERVE_CR_CAPABILITIES, presets: false, nodeInventory: true },
+      },
+      gpuNodes: [
+        {
+          id: 'lab/172.21.0.1',
+          installation: 'lab',
+          name: '172.21.0.1',
+          ready: true,
+          memoryBudgetBytes: 92417933312,
+          memoryBudgetSource: 'host-meminfo',
+          memoryReservedBytes: 5403658158,
+          memoryFreeBytes: 87014275154,
+          accelerated: true,
+        },
+      ],
+    });
+
+    await renderInTestApp(<GpuCapacityPage />);
+
+    expect(screen.queryByText('No GPU inventory')).not.toBeInTheDocument();
+    expect(screen.getByText('GPU capacity')).toBeInTheDocument();
+    expect(screen.getByText('172.21.0.1')).toBeInTheDocument();
+    expect(screen.getByText('Backend host')).toBeInTheDocument();
+    expect(screen.getByText('81.0 GiB free')).toBeInTheDocument();
+    expect(
+      screen.getByText('of 86.1 GiB · 5.0 GiB reserved'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('accelerated')).toBeInTheDocument();
+    expect(
+      screen.getByText(/for the host a backend runs on/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: 'GPUs' }),
+    ).not.toBeInTheDocument();
+  });
 });

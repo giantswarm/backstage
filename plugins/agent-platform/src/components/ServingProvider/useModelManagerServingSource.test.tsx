@@ -9,6 +9,7 @@ import backendKserve from '../../lib/__fixtures__/model-manager.backend.kserve.j
 import modelsOllama from '../../lib/__fixtures__/model-manager.models.ollama.json';
 import modelsKserve from '../../lib/__fixtures__/model-manager.models.kserve.json';
 import nodesKserve from '../../lib/__fixtures__/model-manager.nodes.kserve.json';
+import nodesOllama from '../../lib/__fixtures__/model-manager.nodes.ollama.json';
 import {
   modelManagerBackendSchema,
   modelManagerModelSchema,
@@ -298,5 +299,76 @@ describe('useModelManagerServingSource', () => {
     expect(result.current.isLoading).toBe(true);
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.servedModels.length).toBeGreaterThan(0);
+  });
+
+  it('lists the host of an Ollama-backed model-manager that reports a node inventory, off the rows', async () => {
+    // model-manager 0.7+: the Ollama driver reports its host as a node and
+    // nodeInventory becomes true.
+    const ollamaWithHost = modelManagerBackendSchema.parse({
+      ...backendOllama,
+      capabilities: { ...backendOllama.capabilities, nodeInventory: true },
+    });
+    const ollamaNodes = parseModelManagerList(
+      nodesOllama,
+      'nodes',
+      modelManagerNodeSchema,
+    );
+    getBackend.mockImplementation(async (installation: string) =>
+      installation === 'gpu' ? kserve : ollamaWithHost,
+    );
+    listNodes.mockImplementation(async (installation: string) =>
+      installation === 'gpu' ? kserveNodes : ollamaNodes,
+    );
+    listModels.mockImplementation(async (installation: string) =>
+      installation === 'gpu'
+        ? kserveModels
+        : [
+            ollamaModels[0],
+            {
+              ...ollamaModels[1],
+              loaded: true,
+              running: {
+                name: ollamaModels[1].name,
+                sizeBytes: 5403658158,
+                vramBytes: 5403658158,
+                contextLength: 40960,
+                expiresAt: '2026-09-02T13:05:00Z',
+              },
+            },
+            ollamaModels[2],
+          ],
+    );
+
+    const { result } = renderSource();
+
+    await waitFor(() => expect(result.current.gpuNodes).toHaveLength(2));
+    expect(listNodes).toHaveBeenCalledWith('lab');
+    expect(result.current.capabilities?.lab.nodeInventory).toBe(true);
+    expect(
+      result.current.gpuNodes.find(node => node.installation === 'lab'),
+    ).toMatchObject({
+      id: 'lab/172.21.0.1',
+      name: '172.21.0.1',
+      memoryBudgetSource: 'host-meminfo',
+      memoryBudgetBytes: 92417933312,
+      memoryReservedBytes: 5403658158,
+      memoryFreeBytes: 87014275154,
+      accelerated: true,
+      product: undefined,
+      labeledCount: undefined,
+    });
+
+    // The host is the capacity view's row, never the served rows' placement:
+    // no Ollama row carries a node, so the Serving table keeps its Node and
+    // GPUs columns off for them.
+    const labRows = result.current.servedModels.filter(
+      model => model.installation === 'lab',
+    );
+    expect(labRows).toHaveLength(3);
+    expect(labRows.every(model => model.node === undefined)).toBe(true);
+    expect(labRows.find(model => model.loaded)).toMatchObject({
+      memoryBytes: 5403658158,
+      memoryVramBytes: 5403658158,
+    });
   });
 });

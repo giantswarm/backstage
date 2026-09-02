@@ -19,6 +19,8 @@ import { stopRowPress } from '../../lib/rowPress';
 import {
   describeServedModel,
   formatBytes,
+  formatContextLength,
+  formatGpuShare,
   formatTime,
   isServedInferenceService,
   lacksToolCalling,
@@ -219,14 +221,19 @@ export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
 
 /**
  * The memory line of the status cell, from the row alone: `5.4 GiB in memory
- * · evicts 22:58` while loaded (the footprint and the eviction time as far as
- * the backend reports them), `Not loaded` when the backend knows the model
- * but has not got it in memory, nothing when it has no notion of memory (an
+ * · 100 % GPU · evicts 22:58` while loaded — the footprint, where it sits
+ * (the share on the accelerator, `CPU` when none of it is there; only when
+ * the backend reports the split) and the eviction time, as far as the
+ * backend reports them — `Not loaded` when the backend knows the model but
+ * has not got it in memory, nothing when it has no notion of memory (an
  * InferenceService read as a CR) or is loaded without figures (its status
  * already says so).
  */
 export function memoryLine(
-  row: Pick<ServedModelRow, 'loaded' | 'memoryBytes' | 'loadedUntil'>,
+  row: Pick<
+    ServedModelRow,
+    'loaded' | 'memoryBytes' | 'memoryVramBytes' | 'loadedUntil'
+  >,
 ): string | undefined {
   if (row.loaded === undefined) {
     return undefined;
@@ -242,6 +249,10 @@ export function memoryLine(
       ? `${formatBytes(row.memoryBytes)} in memory`
       : 'In memory',
   ];
+  const share = formatGpuShare(row.memoryBytes, row.memoryVramBytes);
+  if (share) {
+    parts.push(share);
+  }
   if (row.loadedUntil) {
     parts.push(`evicts ${formatTime(row.loadedUntil)}`);
   }
@@ -249,12 +260,48 @@ export function memoryLine(
 }
 
 /**
+ * What the figures of the {@link memoryLine} mean, for its tooltip: the
+ * footprint is the weights plus the KV cache for the context length the model
+ * is loaded with — which is why a 500 MiB download occupies gigabytes — and
+ * the share says how much of it sits on the accelerator. Only while loaded
+ * with a footprint; the other lines speak for themselves.
+ */
+export function memoryLineTitle(
+  row: Pick<
+    ServedModelRow,
+    'loaded' | 'memoryBytes' | 'memoryVramBytes' | 'details'
+  >,
+): string | undefined {
+  if (!row.loaded || row.memoryBytes === undefined) {
+    return undefined;
+  }
+  const context = row.details?.contextLength;
+  const footprint = `In memory: the weights plus the KV cache for the ${
+    context !== undefined
+      ? `${formatContextLength(context)} context`
+      : 'context length'
+  } the model is loaded with.`;
+  const share = formatGpuShare(row.memoryBytes, row.memoryVramBytes);
+  if (!share) {
+    return footprint;
+  }
+  let where: string;
+  if (share === 'CPU') {
+    where = 'None of it is on the accelerator — the model runs on the CPU.';
+  } else if (share === '100 % GPU') {
+    where = 'All of it is on the accelerator (GPU).';
+  } else {
+    where = `${share.replace(' GPU', '')} of it is on the accelerator (GPU), the rest in system memory.`;
+  }
+  return `${footprint} ${where}`;
+}
+
+/**
  * The lines under the readiness label of {@link ServedModelStatusCell}, each
  * from the row's fields only — no capabilities, no installation lookups — so
  * a row says the same thing wherever it renders. Today one line at most, the
- * {@link memoryLine}. Extension points for the follow-ups building on this
- * table: a download row's progress is another line here (backstage#2214),
- * the GPU share of a loaded model joins the memory line (backstage#2216).
+ * {@link memoryLine}. Extension point for the follow-up building on this
+ * table: a download row's progress is another line here (backstage#2214).
  */
 export function servedModelStatusLines(row: ServedModelRow): string[] {
   const memory = memoryLine(row);
@@ -269,13 +316,16 @@ export type ServedModelStatusCellProps = {
  * The one status cell of a served model: the readiness label (vocabulary,
  * intent and icon from `servedReadinessStatus`, the backend's explanation as
  * the tooltip) with the memory state under it — `Ready` / `6.6 GiB in memory
- * · evicts 13:05`, `Available` / `Not loaded` — from
- * {@link servedModelStatusLines}. What used to be the Memory column, told
- * where the status is.
+ * · 100 % GPU · evicts 13:05`, `Available` / `Not loaded` — from
+ * {@link servedModelStatusLines}, the memory line explained on hover
+ * ({@link memoryLineTitle}). What used to be the Memory column, told where
+ * the status is.
  */
 export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
   const { label, intent, icon } = SERVED_READINESS_PRESENTATION[row.readiness];
   const lines = servedModelStatusLines(row);
+  const memory = memoryLine(row);
+  const memoryTitle = memoryLineTitle(row);
   return (
     <Cell>
       <Flex direction="column" gap="1">
@@ -286,7 +336,13 @@ export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
           title={row.readinessMessage}
         />
         {lines.map(line => (
-          <Text key={line} as="p" variant="body-small" color="secondary">
+          <Text
+            key={line}
+            as="p"
+            variant="body-small"
+            color="secondary"
+            title={line === memory ? memoryTitle : undefined}
+          >
             {line}
           </Text>
         ))}

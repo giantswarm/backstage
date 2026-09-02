@@ -257,6 +257,13 @@ export type ServedModel = {
   loaded?: boolean;
   /** Memory footprint while loaded. */
   memoryBytes?: number;
+  /**
+   * The part of `memoryBytes` that sits on an accelerator (Ollama's
+   * `size_vram`): all of it when the model runs on the GPU, `0` when it runs
+   * on the CPU, in between when it is split. `undefined` when the backend
+   * does not say.
+   */
+  memoryVramBytes?: number;
   /** When the backend will evict a loaded model (ISO time); absent = no expiry known. */
   loadedUntil?: string;
   /**
@@ -420,10 +427,23 @@ export type GpuNode = {
    * what is left. Absent from a source that only reads the cluster.
    */
   memoryBudgetBytes?: number;
-  /** Where `memoryBudgetBytes` comes from: `gpu-labels` or `allocatable`. */
+  /**
+   * Where `memoryBudgetBytes` comes from: `gpu-labels` or `allocatable` (a
+   * cluster node), `annotation` (overridden on the node), or `host-meminfo` —
+   * the memory of the host a backend runs on, as the serving layer's pod sees
+   * it ({@link isHostMemoryNode}).
+   */
   memoryBudgetSource?: string;
+  /** The backend's own note on the budget: how it was derived, what the figures mean. */
+  memoryBudgetNote?: string;
   memoryReservedBytes?: number;
   memoryFreeBytes?: number;
+  /**
+   * Whether any model loaded on this node has memory on an accelerator.
+   * Reported by a backend that cannot count GPUs but sees where each loaded
+   * model sits (Ollama's `size_vram`); `undefined` on one that counts them.
+   */
+  accelerated?: boolean;
   /** The download cache on this node, when a backend keeps one there. */
   cache?: {
     claim?: string;
@@ -514,6 +534,19 @@ export function gpuFree(node: GpuNode): number | undefined {
     return undefined;
   }
   return Math.max(0, node.allocatable - node.requested);
+}
+
+/**
+ * Whether a node is a backend's host rather than a cluster node: its memory
+ * budget is the host's memory as the serving layer's pod sees it
+ * (`host-meminfo`), and it carries no GPU product, count or device-plugin
+ * figure — the backend's API does not expose the accelerator. What
+ * model-manager's Ollama driver reports for the machine it proxies.
+ */
+export function isHostMemoryNode(
+  node: Pick<GpuNode, 'memoryBudgetSource'>,
+): boolean {
+  return node.memoryBudgetSource === 'host-meminfo';
 }
 
 /**

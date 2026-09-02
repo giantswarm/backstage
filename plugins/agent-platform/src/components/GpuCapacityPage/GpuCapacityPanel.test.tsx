@@ -1,7 +1,11 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import type { GpuNode } from '../../lib/serving';
-import { formatGpuMemory, GpuCapacityPanel } from './GpuCapacityPanel';
+import {
+  columnsForNodes,
+  formatGpuMemory,
+  GpuCapacityPanel,
+} from './GpuCapacityPanel';
 
 const withPlugin: GpuNode = {
   id: 'inst-1/gpu-node-1',
@@ -174,7 +178,11 @@ describe('formatGpuMemory', () => {
       screen.getByRole('columnheader', { name: 'Model cache' }),
     ).toBeInTheDocument();
     expect(screen.getByText('28.1 GiB free')).toBeInTheDocument();
-    expect(screen.getByText('of 86.1 GiB')).toBeInTheDocument();
+    expect(
+      screen.getByText('of 86.1 GiB · 58.0 GiB reserved'),
+    ).toBeInTheDocument();
+    // A cluster node has no accelerated flag: no marker either way.
+    expect(screen.queryByText('accelerated')).not.toBeInTheDocument();
     expect(screen.getByText('3 models · 72.2 GiB')).toBeInTheDocument();
     expect(screen.getByText('scan failed')).toBeInTheDocument();
     expect(
@@ -198,5 +206,199 @@ describe('formatGpuMemory', () => {
     expect(
       screen.queryByRole('columnheader', { name: 'Model cache' }),
     ).not.toBeInTheDocument();
+  });
+});
+
+/** The host an Ollama-backed model-manager proxies, as the lab reports it (model-manager 0.7+). */
+const ollamaHost: GpuNode = {
+  id: 'lab/172.21.0.1',
+  installation: 'lab',
+  name: '172.21.0.1',
+  ready: true,
+  memoryAllocatableBytes: 92417933312,
+  memoryBudgetBytes: 92417933312,
+  memoryBudgetSource: 'host-meminfo',
+  memoryBudgetNote:
+    'host memory as seen from the model-manager pod; per-model accelerator share in running.vramBytes',
+  memoryReservedBytes: 5403658158,
+  memoryFreeBytes: 87014275154,
+  accelerated: true,
+};
+
+const GPU_COLUMNS = [
+  'GPU',
+  'Memory',
+  'GPUs',
+  'Allocatable',
+  'Requested',
+  'Free',
+];
+
+describe('GpuCapacityPanel · backend host', () => {
+  it('renders the host with budget, reservation, free and the accelerated marker, and no GPU columns', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[ollamaHost]}
+        installations={['lab']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText('172.21.0.1')).toBeInTheDocument();
+    expect(screen.getByText('Backend host')).toBeInTheDocument();
+    expect(screen.getByText('81.0 GiB free')).toBeInTheDocument();
+    expect(
+      screen.getByText('of 86.1 GiB · 5.0 GiB reserved'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('81.0 GiB free')).toHaveAttribute(
+      'title',
+      expect.stringContaining(
+        "Budget: the host's memory (MemTotal of /proc/meminfo as the serving layer's pod sees it)",
+      ),
+    );
+    expect(screen.getByText('81.0 GiB free')).toHaveAttribute(
+      'title',
+      expect.stringContaining('5.0 GiB reserved by the models loaded here'),
+    );
+    expect(screen.getByText('81.0 GiB free')).toHaveAttribute(
+      'title',
+      expect.stringContaining('host memory as seen from the model-manager pod'),
+    );
+    const marker = screen.getByText('accelerated');
+    expect(marker).toHaveAttribute(
+      'title',
+      expect.stringContaining('memory on the accelerator (GPU)'),
+    );
+
+    // A fleet of hosts has no GPU product, count or device-plugin figure to
+    // show: the columns are gone, and nothing reads "unknown" or "—".
+    for (const header of GPU_COLUMNS) {
+      expect(
+        screen.queryByRole('columnheader', { name: header }),
+      ).not.toBeInTheDocument();
+    }
+    expect(
+      screen.getByRole('columnheader', { name: 'Memory budget' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('unknown')).not.toBeInTheDocument();
+    expect(screen.queryByText('—')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/A backend host has no GPU figures/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/gpu-feature-discovery node labels/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows no marker on a host whose loaded models sit in system memory', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[
+          {
+            ...ollamaHost,
+            accelerated: false,
+            memoryReservedBytes: 0,
+            memoryFreeBytes: 92417933312,
+          },
+        ]}
+        installations={['lab']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.queryByText('accelerated')).not.toBeInTheDocument();
+    expect(screen.getByText('86.1 GiB free')).toHaveAttribute(
+      'title',
+      expect.stringContaining(
+        'no loaded model is on the accelerator right now',
+      ),
+    );
+    expect(screen.getByText('of 86.1 GiB · 0 B reserved')).toBeInTheDocument();
+  });
+
+  it('puts a fault before the kind of node', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[{ ...ollamaHost, ready: false }]}
+        installations={['lab']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText('Not ready')).toBeInTheDocument();
+    expect(screen.queryByText('Backend host')).not.toBeInTheDocument();
+  });
+
+  it('keeps the GPU columns next to a cluster node and says what the host row is instead of "unknown"', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[withPlugin, ollamaHost]}
+        installations={['inst-1', 'lab']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    for (const header of GPU_COLUMNS) {
+      expect(
+        screen.getByRole('columnheader', { name: header }),
+      ).toBeInTheDocument();
+    }
+    // The cluster node renders as before.
+    expect(screen.getByText('NVIDIA-GB10')).toBeInTheDocument();
+    expect(screen.getByText('120 GiB')).toBeInTheDocument();
+
+    const hostRow = screen.getByText('172.21.0.1').closest('[role="row"]');
+    expect(hostRow).not.toBeNull();
+    const dashes = within(hostRow as HTMLElement).getAllByText('—');
+    expect(dashes).toHaveLength(GPU_COLUMNS.length);
+    for (const dash of dashes) {
+      expect(dash).toHaveAttribute(
+        'title',
+        expect.stringContaining(
+          "The host a serving backend runs on, not a cluster node: the backend's API does not expose the accelerator",
+        ),
+      );
+    }
+    expect(within(hostRow as HTMLElement).queryByText('unknown')).toBeNull();
+    expect(within(hostRow as HTMLElement).queryByText('0')).toBeNull();
+    expect(
+      within(hostRow as HTMLElement).getByText('accelerated'),
+    ).toBeInTheDocument();
+    // Both sentences of the intro, since both kinds of node are listed.
+    expect(
+      screen.getByText(/gpu-feature-discovery node labels/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/A backend host has no GPU figures/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('columnsForNodes', () => {
+  it('drops the GPU columns only for a fleet of hosts, and keeps them while nothing is listed yet', () => {
+    expect(columnsForNodes([])).toEqual({
+      gpu: true,
+      budget: false,
+      cache: false,
+    });
+    expect(columnsForNodes([ollamaHost])).toEqual({
+      gpu: false,
+      budget: true,
+      cache: false,
+    });
+    expect(columnsForNodes([withPlugin, ollamaHost])).toEqual({
+      gpu: true,
+      budget: true,
+      cache: false,
+    });
+    expect(columnsForNodes([labelsOnly])).toEqual({
+      gpu: true,
+      budget: false,
+      cache: false,
+    });
   });
 });

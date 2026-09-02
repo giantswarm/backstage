@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "name": "172.21.0.1",
+      "ready": true,
+      "architecture": "amd64",
+      "allocatableMemoryBytes": 92417933312,
+      "gpuCount": 0,
+      "accelerated": true,
+      "budgetBytes": 92417933312,
+      "budgetSource": "host-meminfo",
+      "message": "host memory as seen from the model-manager pod; per-model accelerator share in running.vramBytes",
+      "reservedBytes": 5403658158,
+      "freeBytes": 87014275154
+    }
+  ]
+}
