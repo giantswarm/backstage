@@ -1,5 +1,5 @@
 import { PropsWithChildren } from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -265,6 +265,8 @@ describe('useSaveModelConfig', () => {
       ).rejects.toThrow(/already exists/);
     });
 
-    expect(result.current.error).toBe(conflict);
+    // The mutation's error state reaches React on a later tick than the
+    // rejection does, so poll for it instead of asserting right away.
+    await waitFor(() => expect(result.current.error).toBe(conflict));
   });
 });
