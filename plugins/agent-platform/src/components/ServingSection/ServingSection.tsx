@@ -410,16 +410,19 @@ export function ServingSection() {
       return;
     }
     const via = stopVia(stopping);
+    let outcome: Awaited<ReturnType<typeof stop>>;
     try {
-      await stop({ model: stopping, via });
+      outcome = await stop({ model: stopping, via });
     } catch {
       return;
     }
     setStopping(undefined);
     toastApi.post({
       title: `Stopped serving "${stopping.displayName ?? stopping.name}"`,
+      // What happened, not what was asked: model-manager may have handed the
+      // stop back to the CR delete.
       description:
-        via === 'model-manager'
+        outcome.via === 'model-manager'
           ? 'model-manager is removing the predictor and the model config it created; the weights stay cached on the node.'
           : 'The predictor is being removed; the weights stay cached on the node.',
       status: 'success',

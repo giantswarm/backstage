@@ -78,6 +78,12 @@ export function StopServedModelDialog({
           well, so no agent keeps pointing at a model that is gone.
         </Text>
       )}
+      {via === 'model-manager' && (
+        <Text variant="body-small" color="secondary">
+          Should model-manager not recognise the model it serves, the
+          InferenceService is deleted with your own permissions instead.
+        </Text>
+      )}
       {consumersKept.length > 0 && (
         <Text variant="body-medium">
           The model config{consumersKept.length === 1 ? '' : 's'}{' '}

@@ -23,6 +23,9 @@ export type StopServedModelInput = {
   via: StopServedModelVia;
 };
 
+/** How the model was in fact stopped — the route asked for, or the fallback. */
+export type StopServedModelOutcome = { via: StopServedModelVia };
+
 /**
  * Stops a served model — deletes its InferenceService. KServe tears the
  * predictor down; the model's weight cache on the node stays (the cache claim
@@ -34,7 +37,11 @@ export type StopServedModelInput = {
  * - `model-manager` — the operating source deletes it and unwires the kagent
  *   ModelConfig it created for it; one it merely recognises as the portal's is
  *   left alone. No RBAC of the user's involved: the gateway's JWT policy is the
- *   boundary. Only for rows model-manager listed (`managerRef`).
+ *   boundary. Only for rows model-manager listed (`managerRef`). When
+ *   model-manager answers that it serves no such model — an InferenceService
+ *   composed from another model's preset resolves to a repository nothing
+ *   serves — the CR is deleted with the user's RBAC instead, and the outcome
+ *   says so.
  * - `inferenceservice` — the CR is deleted with the user's own RBAC. The
  *   kagent ModelConfig the portal auto-wired is deliberately left in place: it
  *   is what agents are configured with, and serving the model again under the
@@ -50,8 +57,35 @@ export function useStopServedModel() {
   const queryClient = useQueryClient();
   const invalidateManagerReads = useInvalidateModelManagerReadsFor();
 
+  const deleteInferenceService = async (model: ServedModel) => {
+    if (!model.namespace) {
+      throw new Error(
+        'Only KServe InferenceServices can be stopped from here.',
+      );
+    }
+    try {
+      await deleteResource({
+        kubernetesApi,
+        cluster: model.installation,
+        gvk: InferenceService.getGVK(),
+        name: model.name,
+        namespace: model.namespace,
+      });
+    } catch (error) {
+      // Already gone — someone else stopped it. The goal is met.
+      if ((error as Error).name !== 'NotFoundError') {
+        throw error;
+      }
+    }
+    await invalidateResourceReads(queryClient, model.installation, [
+      InferenceService.getGVK(),
+    ]);
+  };
+
   const mutation = useMutation({
-    mutationFn: async (input: ServedModel | StopServedModelInput) => {
+    mutationFn: async (
+      input: ServedModel | StopServedModelInput,
+    ): Promise<StopServedModelOutcome> => {
       const { model, via } =
         'via' in input && 'model' in input
           ? (input as StopServedModelInput)
@@ -68,41 +102,32 @@ export function useStopServedModel() {
             `model-manager does not list ${model.name}, so it cannot stop it; delete the InferenceService instead.`,
           );
         }
-        await modelManagerApi.unloadModel(
-          model.installation,
-          managerRefOf(model),
-        );
+        try {
+          await modelManagerApi.unloadModel(
+            model.installation,
+            managerRefOf(model),
+          );
+        } catch (error) {
+          // model-manager knows the InferenceService but serves no model it
+          // can attribute to it: the CR is still ours to delete.
+          if ((error as Error).name === 'NotFoundError' && model.namespace) {
+            await deleteInferenceService(model);
+            await invalidateManagerReads(model.installation);
+            return { via: 'inferenceservice' };
+          }
+          throw error;
+        }
         await Promise.all([
           invalidateManagerReads(model.installation),
           invalidateResourceReads(queryClient, model.installation, [
             InferenceService.getGVK(),
           ]),
         ]);
-        return;
+        return { via: 'model-manager' };
       }
 
-      if (!model.namespace) {
-        throw new Error(
-          'Only KServe InferenceServices can be stopped from here.',
-        );
-      }
-      try {
-        await deleteResource({
-          kubernetesApi,
-          cluster: model.installation,
-          gvk: InferenceService.getGVK(),
-          name: model.name,
-          namespace: model.namespace,
-        });
-      } catch (error) {
-        // Already gone — someone else stopped it. The goal is met.
-        if ((error as Error).name !== 'NotFoundError') {
-          throw error;
-        }
-      }
-      await invalidateResourceReads(queryClient, model.installation, [
-        InferenceService.getGVK(),
-      ]);
+      await deleteInferenceService(model);
+      return { via: 'inferenceservice' };
     },
   });
 

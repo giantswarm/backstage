@@ -255,7 +255,7 @@ describe('ServingSection', () => {
       isLoading: false,
     });
     mockServe.mockResolvedValue(undefined);
-    mockStop.mockResolvedValue(undefined);
+    mockStop.mockImplementation(async ({ via }: { via: string }) => ({ via }));
   });
 
   it('asks for presets only on the installations with a KServe backend', async () => {
@@ -514,6 +514,30 @@ describe('ServingSection', () => {
         expect(mockToastPost).toHaveBeenCalledWith(
           expect.objectContaining({
             description: expect.stringContaining('model-manager is removing'),
+          }),
+        ),
+      );
+    });
+
+    it('says what happened when model-manager handed the stop back to the CR delete', async () => {
+      mockStop.mockResolvedValue({ via: 'inferenceservice' });
+      await renderSection();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop serving… qwen3-14b' }),
+      );
+      expect(
+        screen.getByText(/deleted with your own permissions instead/),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop serving' }),
+      );
+
+      await waitFor(() =>
+        expect(mockToastPost).toHaveBeenCalledWith(
+          expect.objectContaining({
+            description:
+              'The predictor is being removed; the weights stay cached on the node.',
           }),
         ),
       );

@@ -137,6 +137,7 @@ describe('useStopServedModel', () => {
     // model's preset is still found by its name.
     expect(unloadModel).toHaveBeenCalledWith('gazelle', 'qwen3-14b');
     expect(mockDeleteResource).not.toHaveBeenCalled();
+    expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 
   it('refuses the model-manager route for a model it does not list', async () => {
@@ -148,6 +149,55 @@ describe('useStopServedModel', () => {
       }),
     ).rejects.toThrow(/does not list qwen3-14b/);
     expect(unloadModel).not.toHaveBeenCalled();
+    expect(mockDeleteResource).not.toHaveBeenCalled();
+  });
+
+  it('falls back to deleting the CR when model-manager serves no model it can attribute to it', async () => {
+    const notFound = new Error(
+      'model not found: no InferenceService serves hf-internal-testing/tiny-random-gpt2',
+    );
+    notFound.name = 'NotFoundError';
+    unloadModel.mockRejectedValue(notFound);
+    const { result } = setup();
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.stop({
+        model: {
+          ...served,
+          managerRef: 'hf-internal-testing/tiny-random-gpt2',
+          operable: true,
+        },
+        via: 'model-manager',
+      });
+    });
+
+    expect(unloadModel).toHaveBeenCalledTimes(1);
+    expect(mockDeleteResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'qwen3-14b',
+        namespace: 'model-serving',
+      }),
+    );
+    expect(outcome).toEqual({ via: 'inferenceservice' });
+  });
+
+  it('does not fall back on other model-manager failures', async () => {
+    const refused = new Error(
+      'InferenceService is not managed by model-manager',
+    );
+    refused.name = 'ConflictError';
+    unloadModel.mockRejectedValue(refused);
+    const { result } = setup();
+
+    await expect(
+      act(async () => {
+        await result.current.stop({
+          model: { ...served, managerRef: 'Qwen/Qwen3-14B', operable: true },
+          via: 'model-manager',
+        });
+      }),
+    ).rejects.toThrow(/not managed/);
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 });
