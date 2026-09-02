@@ -1,4 +1,4 @@
-export { ServingSection } from './ServingSection';
+export { ServingPage } from './ServingPage';
 export {
   describeUsedBy,
   isServableDownload,
@@ -27,12 +27,6 @@ export {
   StopServedModelDialog,
   type StopServedModelDialogProps,
 } from './StopServedModelDialog';
-export {
-  columnsForNodes,
-  formatGpuMemory,
-  GpuCapacityPanel,
-  sortGpuNodesBy,
-} from './GpuCapacityPanel';
 export {
   SERVED_READINESS_PRESENTATION,
   ServedReadinessCell,

@@ -232,7 +232,7 @@ function getColumnConfig(
                 row.servedBy.namespace ? `${row.servedBy.namespace}/` : ''
               }${row.servedBy.name} is ${
                 SERVED_BY_READINESS_LABEL[row.servedBy.readiness]
-              } — see the Serving section below`}
+              } — see the Serving view`}
             >
               Served by {SERVED_BY_BACKEND_LABEL[row.servedBy.backend]}{' '}
               {row.servedBy.namespace ? `${row.servedBy.namespace}/` : ''}

@@ -133,7 +133,7 @@ export function useKServeServingSource(
 
     // A 404 on the InferenceService list after a positive probe means the CRD
     // has gone since the (cached) probe answered — KServe was uninstalled. Drop
-    // the installation right away rather than showing an empty Serving section
+    // the installation right away rather than showing an empty Serving view
     // until the probe's cache expires.
     const crdGone = new Set(
       inferenceServices.errors.filter(isNotFoundError).map(e => e.cluster),

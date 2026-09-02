@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Progress } from '@backstage/core-components';
+import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Flex } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import CloudDownloadIcon from '@material-ui/icons/CloudDownload';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
 import SearchIcon from '@material-ui/icons/Search';
@@ -9,9 +9,8 @@ import {
   InferenceService,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
+import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useAutoWireServedModels } from '../../hooks/useAutoWireServedModels';
 import { useServeModel } from '../../hooks/useServeModel';
 import { useServingPresets } from '../../hooks/useServingPresets';
 import {
@@ -34,9 +33,9 @@ import {
   type ModelConfigExists,
   type PullTarget,
 } from '../ModelManagerControls';
+import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
-import { GpuCapacityPanel } from './GpuCapacityPanel';
 import {
   ServeModelDialog,
   toDownloadedModelOption,
@@ -47,7 +46,6 @@ import {
   isServableDownload,
   isStoppable,
   ServedModelsTable,
-  type ServedModelConsumer,
   type ServedModelRow,
 } from './ServedModelsTable';
 import { StopServedModelDialog } from './StopServedModelDialog';
@@ -56,16 +54,19 @@ import { StopServedModelDialog } from './StopServedModelDialog';
 const TOAST_TIMEOUT_MS = 6000;
 
 /**
- * The serving layer beneath the ModelConfigs: which models are served (or
- * downloaded) per installation, on what, with what, the GPU capacity they
- * draw on — and the controls the installation's serving layer offers over
- * them.
+ * The "Serving" view of the Models tab: which models are served (or
+ * downloaded) per installation, on what, with what — and the controls the
+ * installation's serving layer offers over them. The GPU capacity they draw on
+ * has its own view (GpuCapacityPage).
  *
- * Renders nothing at all — no heading, no empty table — unless at least one
- * reachable installation has a serving backend (or could not be asked), so
- * portals without one never see a Serving section. Must be mounted inside
- * both a ServingProvider and a ModelConfigsProvider, and inside the plugin's
- * QueryClientProvider (the writes are react-query mutations).
+ * Shows an empty state — and ModelsRouter hides the view's tab — unless at
+ * least one reachable installation has a serving backend (or could not be
+ * asked), so portals without one never see a Serving view. Must be mounted
+ * inside a ServingProvider, a ModelConfigsProvider, a ServedModelRowsProvider
+ * (the rows, with the auto-wiring that completes a serve) and the plugin's
+ * QueryClientProvider (the writes are react-query mutations). The primary
+ * actions — Serve, Import, Pull — are surfaced in the shared page header,
+ * like "Add model" on the Model configs view.
  *
  * Two families of controls, each gated by what the installation reports,
  * meeting in one actions menu per row:
@@ -75,24 +76,25 @@ const TOAST_TIMEOUT_MS = 6000;
  *   name. `pull` puts the Pull button and the downloads list here — with
  *   `search` it becomes the Hugging Face import (search, size and fit check
  *   against a node, pre-warm download); load/unload/delete/wire fill the
- *   per-row menu of the rows the source operates on; `nodeInventory` renders
- *   the GPU capacity panel. An Ollama-backed installation shows its controls
- *   and no GPU panel; a read-only KServe CR view shows its GPU panel and
- *   nothing operational — both ordinary state.
+ *   per-row menu of the rows the source operates on; `nodeInventory` adds the
+ *   placement columns. An Ollama-backed installation shows its controls and no
+ *   placement; a read-only KServe CR view shows its rows and nothing
+ *   operational — both ordinary state.
  * - **Preset-driven** (the KServe CR source): on installations that publish
  *   serving presets, serve a model from a preset — or from a download already
  *   in a node's cache ("Serve…" on that row) — and stop one; once a model the
- *   portal served reports ready, its kagent ModelConfig is created here too
- *   (see useAutoWireServedModels).
+ *   portal served reports ready, its kagent ModelConfig is created too (see
+ *   ServedModelRowsProvider).
  *
  * On a KServe installation with a model-manager, the provider has already
  * folded the two views of an InferenceService into one row: its menu offers
  * "Stop serving…" once, done through model-manager where it operates the row
  * and by deleting the CR with the user's RBAC otherwise.
  */
-export function ServingSection() {
+export function ServingPage() {
   const serving = useServing();
-  const { servedModels, installations, servedModelFor } = serving;
+  const { servedModels, installations } = serving;
+  const { rows } = useServedModelRows();
   const { modelConfigsFor, isLoading: isLoadingModelConfigs } =
     useModelConfigs();
   const toastApi = useApi(toastApiRef);
@@ -117,60 +119,6 @@ export function ServingSection() {
     installation => presets.presetsFor(installation).length > 0,
   );
 
-  const candidates = useMemo<ServedModelRow[]>(() => {
-    // Resolve every ModelConfig of an installation once against all of its
-    // served models (the seam's rules disambiguate a shared Ollama host by
-    // model name), then group by the model each one landed on — the inverse
-    // of the "Served by" line on the ModelConfig rows, from the same matcher.
-    const usedBy = new Map<string, ServedModelConsumer[]>();
-    for (const installation of installations) {
-      for (const modelConfig of modelConfigsFor(installation)) {
-        const served = servedModelFor(installation, {
-          endpoint: modelConfig.getEndpoint(),
-          model: modelConfig.getModel(),
-          modelConfig: {
-            name: modelConfig.getName(),
-            namespace: modelConfig.getNamespace(),
-          },
-        });
-        if (!served) {
-          continue;
-        }
-        const consumers = usedBy.get(served.id) ?? [];
-        consumers.push({
-          installation,
-          namespace: modelConfig.getNamespace() ?? '',
-          name: modelConfig.getName(),
-          displayName: modelConfig.getDisplayName(),
-        });
-        usedBy.set(served.id, consumers);
-      }
-    }
-    return servedModels.map(model => {
-      const consumers = usedBy.get(model.id) ?? [];
-      // The ModelConfig the serving backend knows for the model counts as a
-      // consumer too — exact, and visible to a user who cannot list
-      // ModelConfigs — so the auto-wiring does not try to create what exists.
-      const known = model.modelConfig;
-      if (
-        known &&
-        !consumers.some(
-          consumer =>
-            consumer.namespace === known.namespace &&
-            consumer.name === known.name,
-        )
-      ) {
-        consumers.push({
-          installation: model.installation,
-          namespace: known.namespace,
-          name: known.name,
-          displayName: known.name,
-        });
-      }
-      return { ...model, usedBy: consumers };
-    });
-  }, [servedModels, installations, servedModelFor, modelConfigsFor]);
-
   // Whether a wired ModelConfig still exists, for the downloads list; unknown
   // while the lists load.
   const modelConfigExists = useCallback<ModelConfigExists>(
@@ -183,14 +131,6 @@ export function ServingSection() {
               modelConfig.getName() === name,
           ),
     [isLoadingModelConfigs, modelConfigsFor],
-  );
-
-  const { wiringFor } = useAutoWireServedModels(candidates, modelConfigsFor, {
-    modelConfigsLoading: isLoadingModelConfigs,
-  });
-  const rows = useMemo<ServedModelRow[]>(
-    () => candidates.map(row => ({ ...row, wiring: wiringFor(row.id) })),
-    [candidates, wiringFor],
   );
 
   // --- Capability-driven controls (model-manager) ---------------------------
@@ -430,44 +370,16 @@ export function ServingSection() {
     });
   }, [stop, stopVia, stopping, toastApi]);
 
-  if (
-    installations.length === 0 &&
-    serving.unreachableInstallations.length === 0
-  ) {
-    return null;
-  }
-
-  const stopDialogError =
-    stopError?.message ??
-    (stopping &&
-    stoppingVia === 'inferenceservice' &&
-    !stopPermission.isLoading &&
-    !stopPermission.allowed
-      ? `Your account may not delete InferenceService ${stopping.name} in ${stopping.namespace} on ${stopping.installation}, so the cluster would refuse this.`
-      : undefined);
-
   const canServe = servableInstallations.length > 0;
   const canPull = pullTargets.length > 0;
   const canImport = importTargets.length > 0;
-  let description =
-    'Models served on the installations that have a serving layer — KServe InferenceServices read from the cluster, or the inventory of a model-manager (Ollama, KServe) — and the GPU capacity they run on. The ModelConfigs above are how agents reach them.';
-  if (canServe || canPull || canImport) {
-    description = `${description} ${[
-      canServe && 'Serve a model from a curated preset or stop one',
-      canImport &&
-        "import a model from Hugging Face into a node's cache after a size and fit check",
-      canPull && 'pull a model onto a backend, load, unload or delete it',
-    ]
-      .filter(Boolean)
-      .join(
-        '; ',
-      )}; the model config agents use is created for a model the platform serves.`;
-  }
 
-  return (
-    <Flex direction="column" gap="3">
-      <Flex justify="between" align="start" gap="4">
-        <SectionHeader title="Serving" description={description} />
+  // The view's primary actions go to the shared page header (agent-flow
+  // convention). Memoized so the header slot only updates when what is
+  // offered changes; `null` clears the slot when nothing is.
+  const headerActions = useMemo(
+    () =>
+      canServe || canPull || canImport ? (
         <Flex gap="2">
           {canPull && (
             <Button
@@ -489,7 +401,7 @@ export function ServingSection() {
           )}
           {canServe && (
             <Button
-              variant="secondary"
+              variant="primary"
               iconStart={<PlayArrowIcon />}
               onPress={openServe}
             >
@@ -497,134 +409,177 @@ export function ServingSection() {
             </Button>
           )}
         </Flex>
+      ) : null,
+    [canServe, canPull, canImport, openServe],
+  );
+  useProvidePageHeaderActions(headerActions);
+
+  if (
+    installations.length === 0 &&
+    serving.unreachableInstallations.length === 0
+  ) {
+    return (
+      <Content>
+        {serving.isLoading ? (
+          <Progress aria-label="Looking for a serving layer" />
+        ) : (
+          <EmptyState
+            missing="data"
+            title="No serving layer"
+            description="None of the reachable installations has a serving layer this portal can see — KServe InferenceServices, or a model-manager (Ollama, KServe). Model configs pointing at external endpoints work without one."
+          />
+        )}
+      </Content>
+    );
+  }
+
+  const stopDialogError =
+    stopError?.message ??
+    (stopping &&
+    stoppingVia === 'inferenceservice' &&
+    !stopPermission.isLoading &&
+    !stopPermission.allowed
+      ? `Your account may not delete InferenceService ${stopping.name} in ${stopping.namespace} on ${stopping.installation}, so the cluster would refuse this.`
+      : undefined);
+
+  let description =
+    'Models served on the installations that have a serving layer — KServe InferenceServices read from the cluster, or the inventory of a model-manager (Ollama, KServe). The model configs are how agents reach them.';
+  if (canServe || canPull || canImport) {
+    description = `${description} ${[
+      canServe && 'Serve a model from a curated preset or stop one',
+      canImport &&
+        "import a model from Hugging Face into a node's cache after a size and fit check",
+      canPull && 'pull a model onto a backend, load, unload or delete it',
+    ]
+      .filter(Boolean)
+      .join(
+        '; ',
+      )}; the model config agents use is created for a model the platform serves.`;
+  }
+
+  return (
+    <Content>
+      <Flex direction="column" gap="3">
+        <Text color="secondary">{description}</Text>
+
+        {serving.isLoading && rows.length === 0 ? (
+          <Progress aria-label="Loading served models" />
+        ) : (
+          <ServedModelsTable
+            rows={rows}
+            // A cluster backend keeps its placement columns while its models
+            // are still pending (no node yet); a backend without a node
+            // inventory never shows them.
+            columns={{
+              placement:
+                nodeInventoryInstallations.length > 0 ||
+                rows.some(
+                  row => row.node !== undefined || row.gpuCount !== undefined,
+                ),
+            }}
+            renderActions={hasActions ? renderActions : undefined}
+          />
+        )}
+
+        <UnreachableInstallationsAlert
+          installations={serving.unreachableInstallations}
+          resourceName="served models"
+        />
+
+        {presets.problems.length > 0 && (
+          <Alert
+            status="warning"
+            title="Serving presets could not be read"
+            description={presets.problems
+              .map(problem => `${problem.installation}: ${problem.message}`)
+              .join(' ')}
+          />
+        )}
+        {presets.invalidPresets.length > 0 && (
+          <Alert
+            status="warning"
+            title={`${presets.invalidPresets.length} serving preset${
+              presets.invalidPresets.length === 1 ? ' is' : 's are'
+            } unusable`}
+            description={presets.invalidPresets
+              .map(
+                invalid =>
+                  `${invalid.name} (${invalid.installation}): ${invalid.error}`,
+              )
+              .join(' ')}
+          />
+        )}
+
+        {downloadInstallations.length > 0 && (
+          <PullJobsPanel
+            installations={downloadInstallations}
+            modelConfigExists={modelConfigExists}
+          />
+        )}
+
+        {canPull && (
+          <PullModelDialog
+            isOpen={isPullOpen}
+            onOpenChange={setPullOpen}
+            targets={pullTargets}
+          />
+        )}
+
+        {canImport && (
+          <ImportModelDialog
+            isOpen={isImportOpen}
+            onOpenChange={setImportOpen}
+            targets={importTargets}
+          />
+        )}
+
+        {canServe && (
+          <ServeModelDialog
+            isOpen={isServeOpen}
+            onOpenChange={setServeOpen}
+            installations={servableInstallations}
+            installation={installation}
+            onInstallationChange={setServeInstallation}
+            presets={installation ? presets.presetsFor(installation) : []}
+            config={config}
+            gpuNodes={serving.gpuNodes.filter(
+              node => node.installation === installation,
+            )}
+            existingNames={servedModels
+              .filter(
+                model =>
+                  model.installation === installation &&
+                  model.namespace === config?.namespace,
+              )
+              .map(model => model.name)}
+            downloads={downloads}
+            seed={serveSeed}
+            permission={{
+              allowed: servePermission.allowed,
+              isLoading: servePermission.isLoading,
+            }}
+            isServing={isServing}
+            error={serveError?.message}
+            onConfirm={confirmServe}
+          />
+        )}
+
+        {stopping && (
+          <StopServedModelDialog
+            model={stopping}
+            isOpen
+            onOpenChange={open => {
+              if (!open) {
+                setStopping(undefined);
+              }
+            }}
+            isStopping={isStopping}
+            error={stopDialogError}
+            via={stoppingVia}
+            onConfirm={confirmStop}
+          />
+        )}
       </Flex>
-
-      {serving.isLoading && rows.length === 0 ? (
-        <Progress aria-label="Loading served models" />
-      ) : (
-        <ServedModelsTable
-          rows={rows}
-          // A cluster backend keeps its placement columns while its models are
-          // still pending (no node yet); a backend without a node inventory
-          // never shows them.
-          columns={{
-            placement:
-              nodeInventoryInstallations.length > 0 ||
-              rows.some(
-                row => row.node !== undefined || row.gpuCount !== undefined,
-              ),
-          }}
-          renderActions={hasActions ? renderActions : undefined}
-        />
-      )}
-
-      <UnreachableInstallationsAlert
-        installations={serving.unreachableInstallations}
-        resourceName="served models"
-      />
-
-      {presets.problems.length > 0 && (
-        <Alert
-          status="warning"
-          title="Serving presets could not be read"
-          description={presets.problems
-            .map(problem => `${problem.installation}: ${problem.message}`)
-            .join(' ')}
-        />
-      )}
-      {presets.invalidPresets.length > 0 && (
-        <Alert
-          status="warning"
-          title={`${presets.invalidPresets.length} serving preset${
-            presets.invalidPresets.length === 1 ? ' is' : 's are'
-          } unusable`}
-          description={presets.invalidPresets
-            .map(
-              invalid =>
-                `${invalid.name} (${invalid.installation}): ${invalid.error}`,
-            )
-            .join(' ')}
-        />
-      )}
-
-      {downloadInstallations.length > 0 && (
-        <PullJobsPanel
-          installations={downloadInstallations}
-          modelConfigExists={modelConfigExists}
-        />
-      )}
-
-      {nodeInventoryInstallations.length > 0 && (
-        <GpuCapacityPanel
-          nodes={serving.gpuNodes}
-          installations={nodeInventoryInstallations}
-          unavailable={serving.gpuCapacityUnavailable}
-          isLoading={serving.isLoading}
-        />
-      )}
-
-      {canPull && (
-        <PullModelDialog
-          isOpen={isPullOpen}
-          onOpenChange={setPullOpen}
-          targets={pullTargets}
-        />
-      )}
-
-      {canImport && (
-        <ImportModelDialog
-          isOpen={isImportOpen}
-          onOpenChange={setImportOpen}
-          targets={importTargets}
-        />
-      )}
-
-      {canServe && (
-        <ServeModelDialog
-          isOpen={isServeOpen}
-          onOpenChange={setServeOpen}
-          installations={servableInstallations}
-          installation={installation}
-          onInstallationChange={setServeInstallation}
-          presets={installation ? presets.presetsFor(installation) : []}
-          config={config}
-          gpuNodes={serving.gpuNodes.filter(
-            node => node.installation === installation,
-          )}
-          existingNames={servedModels
-            .filter(
-              model =>
-                model.installation === installation &&
-                model.namespace === config?.namespace,
-            )
-            .map(model => model.name)}
-          downloads={downloads}
-          seed={serveSeed}
-          permission={{
-            allowed: servePermission.allowed,
-            isLoading: servePermission.isLoading,
-          }}
-          isServing={isServing}
-          error={serveError?.message}
-          onConfirm={confirmServe}
-        />
-      )}
-
-      {stopping && (
-        <StopServedModelDialog
-          model={stopping}
-          isOpen
-          onOpenChange={open => {
-            if (!open) {
-              setStopping(undefined);
-            }
-          }}
-          isStopping={isStopping}
-          error={stopDialogError}
-          via={stoppingVia}
-          onConfirm={confirmStop}
-        />
-      )}
-    </Flex>
+    </Content>
   );
 }

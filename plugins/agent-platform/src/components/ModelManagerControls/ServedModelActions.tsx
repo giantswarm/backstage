@@ -96,7 +96,7 @@ export function hasRowActions(
 }
 
 /**
- * The per-row kebab menu of the Serving section — one menu per row, whatever
+ * The per-row kebab menu of the Serving view — one menu per row, whatever
  * mix of sources listed it.
  *
  * Its items follow the installation's capability flags (never a backend's
