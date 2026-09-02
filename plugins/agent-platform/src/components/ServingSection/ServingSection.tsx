@@ -160,7 +160,8 @@ export function ServingSection() {
   );
 
   const hasActions = rows.some(
-    row => row.operable && hasServedModelActions(capabilitiesFor(row.installation)),
+    row =>
+      row.operable && hasServedModelActions(capabilitiesFor(row.installation)),
   );
 
   const renderActions = useCallback(
@@ -307,7 +308,9 @@ export function ServingSection() {
       canPull && 'pull a model onto a backend, load, unload or delete it',
     ]
       .filter(Boolean)
-      .join('; ')}; the model config agents use is created for a model the platform serves.`;
+      .join(
+        '; ',
+      )}; the model config agents use is created for a model the platform serves.`;
   }
 
   return (
@@ -386,9 +389,7 @@ export function ServingSection() {
       )}
 
       {canPull && (
-        <PullJobsPanel
-          installations={pullTargets.map(target => target.name)}
-        />
+        <PullJobsPanel installations={pullTargets.map(target => target.name)} />
       )}
 
       {nodeInventoryInstallations.length > 0 && (
