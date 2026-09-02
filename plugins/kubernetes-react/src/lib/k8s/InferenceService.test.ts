@@ -1,4 +1,5 @@
 import {
+  clusterLocalPredictorUrl,
   deriveInferenceServiceReadiness,
   InferenceService,
   InferenceServiceInterface,
@@ -207,6 +208,33 @@ describe('InferenceService', () => {
       expect(isvc.getPredictorServiceName()).toBe('qwen3-14b-predictor');
     });
 
+    it('gives a cluster-local predictor address the http scheme the Service speaks', () => {
+      // KServe raw deployment writes status.address.url with the ingress
+      // urlScheme; on a TLS-terminated install that is https although the
+      // predictor Service is plain HTTP on port 80.
+      const isvc = makeInferenceService({
+        status: {
+          ...readyStatus,
+          address: {
+            url: 'https://qwen3-14b-predictor.kserve.svc.cluster.local/',
+          },
+          components: {
+            predictor: {
+              url: 'https://qwen3-14b-predictor.models.example.test',
+              address: {
+                url: 'https://qwen3-14b-predictor.kserve.svc.cluster.local',
+              },
+            },
+          },
+        },
+      });
+
+      expect(isvc.getInternalUrl()).toBe(
+        'http://qwen3-14b-predictor.kserve.svc.cluster.local/',
+      );
+      expect(isvc.getUrl()).toBe('https://qwen3-14b.models.example.test');
+    });
+
     it('lists every hostname the model answers on, without duplicates', () => {
       const isvc = makeInferenceService({ status: readyStatus });
 
@@ -239,5 +267,31 @@ describe('urlHostname', () => {
   it('is undefined for empty or non-URL values', () => {
     expect(urlHostname(undefined)).toBeUndefined();
     expect(urlHostname('not a url')).toBeUndefined();
+  });
+});
+
+describe('clusterLocalPredictorUrl', () => {
+  it('turns https into http for Service DNS names without an explicit port', () => {
+    expect(
+      clusterLocalPredictorUrl('https://m-predictor.serving.svc.cluster.local'),
+    ).toBe('http://m-predictor.serving.svc.cluster.local');
+    expect(clusterLocalPredictorUrl('https://m-predictor.serving.svc/v1')).toBe(
+      'http://m-predictor.serving.svc/v1',
+    );
+  });
+
+  it('keeps external hosts, explicit ports and http URLs as published', () => {
+    expect(clusterLocalPredictorUrl('https://m.models.example.test')).toBe(
+      'https://m.models.example.test',
+    );
+    expect(
+      clusterLocalPredictorUrl(
+        'https://m-predictor.serving.svc.cluster.local:8443',
+      ),
+    ).toBe('https://m-predictor.serving.svc.cluster.local:8443');
+    expect(
+      clusterLocalPredictorUrl('http://m-predictor.serving.svc.cluster.local'),
+    ).toBe('http://m-predictor.serving.svc.cluster.local');
+    expect(clusterLocalPredictorUrl('not a url')).toBe('not a url');
   });
 });

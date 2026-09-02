@@ -177,6 +177,26 @@ export function deriveInferenceServiceReadiness(
  * Hostname of a URL, or `undefined` when the value is not a URL. Used to compare
  * endpoints regardless of scheme, port and path.
  */
+/**
+ * The URL in-cluster clients reach a predictor at. In raw-deployment mode the
+ * KServe controller writes `status.address.url` with the ingress `urlScheme`,
+ * so a TLS-terminated install publishes
+ * `https://<name>-predictor.<ns>.svc.cluster.local` although the predictor
+ * Service itself speaks plain HTTP on port 80. A cluster-local host (`*.svc`,
+ * `*.svc.*`) without an explicit port therefore always gets `http`; external
+ * hosts and explicit ports are kept as published.
+ */
+export function clusterLocalPredictorUrl(url: string): string {
+  const match = /^https:\/\/([^/:?#]+)(\/.*)?$/i.exec(url);
+  if (!match) {
+    return url;
+  }
+  const host = match[1];
+  const isClusterLocal =
+    host.toLowerCase().endsWith('.svc') || host.toLowerCase().includes('.svc.');
+  return isClusterLocal ? `http://${host}${match[2] ?? ''}` : url;
+}
+
 export function urlHostname(url: string | undefined): string | undefined {
   if (!url) {
     return undefined;
@@ -287,15 +307,16 @@ export class InferenceService extends KubeObject<InferenceServiceInterface> {
 
   /**
    * The in-cluster URL of the predictor: `status.address.url`, falling back
-   * to the predictor component's address.
+   * to the predictor component's address, with the scheme the predictor
+   * Service actually speaks (see {@link clusterLocalPredictorUrl}).
    */
   getInternalUrl(): string | undefined {
     const status = this.jsonData.status;
-    return (
+    const url =
       status?.address?.url ??
       status?.components?.predictor?.address?.url ??
-      status?.components?.predictor?.url
-    );
+      status?.components?.predictor?.url;
+    return url === undefined ? undefined : clusterLocalPredictorUrl(url);
   }
 
   /**
