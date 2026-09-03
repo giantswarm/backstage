@@ -291,13 +291,44 @@ describe('ServeModelDialog', () => {
     expect(serveButton()).toBeDisabled();
   });
 
-  it('tells what the network policies and the cache mean for this installation', () => {
+  it('asks for hand-written network policies when the chart publishes none', () => {
+    // No `networkPolicy` in the discovery document: a chart before 0.13.0,
+    // or global.networkPolicy off.
     renderDialog();
 
     expect(screen.getByText('Before agents can use it')).toBeInTheDocument();
-    const notice = screen.getByText(/does not yet ship network policies/);
+    const notice = screen.getByText(/renders no network policies/);
     expect(notice).toHaveTextContent(/reach the predictor in model-serving/);
     expect(notice).toHaveTextContent(/admission policies are off/);
+    expect(
+      screen.queryByText(/does not yet ship network policies/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says the platform renders the network policies when the discovery document says so', () => {
+    renderDialog({
+      config: {
+        ...config,
+        networkPolicy: { enabled: true, flavor: 'cilium' },
+      },
+    });
+
+    expect(screen.getByText('Network and cache')).toBeInTheDocument();
+    const notice = screen.getByText(/renders the network policies/);
+    expect(notice).toHaveTextContent(/model-serving \(cilium flavor\)/);
+    expect(notice).toHaveTextContent(/additionalIngressNamespaces/);
+    expect(notice).toHaveTextContent(/admission policies are off/);
+    expect(
+      screen.queryByText('Before agents can use it'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('treats a disabled networkPolicy field like an absent one', () => {
+    renderDialog({
+      config: { ...config, networkPolicy: { enabled: false } },
+    });
+
+    expect(screen.getByText('Before agents can use it')).toBeInTheDocument();
   });
 
   it('shows a failed attempt and locks while serving', () => {

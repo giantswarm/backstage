@@ -61,6 +61,13 @@ export type ModelServingConfig = {
     /** Whether Kyverno policies redirect the storage-initializer into the cache at admission. */
     redirectPolicy: boolean;
   };
+  /**
+   * Whether the chart renders the serving namespace's network policies
+   * (predictor ingress from agents and the release namespace, Hugging Face
+   * egress for the download) and in which flavor (`kubernetes` | `cilium`).
+   * Absent on charts before 0.13.0, which published no such field.
+   */
+  networkPolicy?: { enabled: boolean; flavor?: string };
   presets: {
     /** Namespace the preset ConfigMaps live in (the release namespace). */
     namespace: string;
@@ -145,6 +152,9 @@ const modelServingConfigSchema = z.object({
         mountPath: z.string().nullish(),
         redirectPolicy: z.boolean().nullish(),
       })
+      .nullish(),
+    networkPolicy: z
+      .object({ enabled: z.boolean(), flavor: z.string().nullish() })
       .nullish(),
     presets: z.object({
       namespace: z.string().min(1),
@@ -302,6 +312,12 @@ export function parseModelServingConfigMap(
         mountPath: spec.cache?.mountPath ?? undefined,
         redirectPolicy: spec.cache?.redirectPolicy ?? false,
       },
+      networkPolicy: spec.networkPolicy
+        ? {
+            enabled: spec.networkPolicy.enabled,
+            flavor: spec.networkPolicy.flavor || undefined,
+          }
+        : undefined,
       presets: {
         namespace: spec.presets.namespace,
         matchingLabels:
