@@ -276,8 +276,10 @@ const appReadinessEntityCard = EntityCardBlueprint.make({
   name: 'app-readiness',
   params: {
     type: 'info',
-    // Written by AppReadinessProcessor, so the card is absent on instances that
-    // do not run it rather than rendering an empty shell.
+    // Present wherever there is readiness data from either source — the
+    // catalog importer's chart-metadata verdict as much as
+    // AppReadinessProcessor's release verdict — rather than rendering an empty
+    // shell where there is neither.
     filter: entity => isEntityReadinessAvailable(entity),
     loader: async () => {
       const { EntityAppReadinessCard } =

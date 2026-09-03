@@ -59,11 +59,34 @@ export const getLatestReleaseTagFromEntity = (entity: Entity) => {
 };
 
 /**
- * Whether the release-readiness verdict is available. Written by
- * `AppReadinessProcessor`, so it is absent on instances that do not run it.
+ * Whether the release verdict is available. Written by
+ * `AppReadinessProcessor`, so it is absent on instances that do not run it —
+ * and the processor ships disabled, so today this is false everywhere.
+ *
+ * This gates the "Release readiness" column, which has nothing to put in a cell
+ * without it.
+ */
+export const isEntityReleaseVerdictAvailable = (entity: Entity) =>
+  Boolean(entity.metadata.labels?.[GS_READINESS]);
+
+/**
+ * Whether there is any readiness data to show at all.
+ *
+ * Deliberately broader than the release verdict: most of what the readiness
+ * card renders comes from the catalog importer, not from
+ * `AppReadinessProcessor`. The importer publishes `readiness-standards`,
+ * `readiness-flags`, `readiness-advisory` and `chart-metadata-style` for every
+ * component today, so gating the card on the processor's label alone hid a
+ * chart's enforced build failures behind a processor nobody has enabled yet.
+ *
+ * This gates the card, which renders whichever verdicts are present — every
+ * block inside it is guarded independently.
  */
 export const isEntityReadinessAvailable = (entity: Entity) =>
-  Boolean(entity.metadata.labels?.[GS_READINESS]);
+  Boolean(
+    entity.metadata.labels?.[GS_READINESS] ??
+    entity.metadata.labels?.[GS_READINESS_STANDARDS],
+  );
 
 export const getReadinessFromEntity = (entity: Entity) =>
   entity.metadata.labels?.[GS_READINESS];

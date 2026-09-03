@@ -7,6 +7,7 @@ import {
   getReadinessFromEntity,
   getReadinessStandardsFromEntity,
   isEntityReadinessAvailable,
+  isEntityReleaseVerdictAvailable,
 } from './entity';
 
 function entity(
@@ -21,10 +22,32 @@ function entity(
 }
 
 describe('readiness entity helpers', () => {
-  it('reports availability from the label the processor writes', () => {
+  it('gates the column on the release verdict alone', () => {
+    expect(
+      isEntityReleaseVerdictAvailable(
+        entity({ 'giantswarm.io/readiness': 'blocked' }),
+      ),
+    ).toBe(true);
+    // Importer data alone puts nothing in a release-readiness cell.
+    expect(
+      isEntityReleaseVerdictAvailable(
+        entity({ 'giantswarm.io/readiness-standards': 'incomplete' }),
+      ),
+    ).toBe(false);
+    expect(isEntityReleaseVerdictAvailable(entity())).toBe(false);
+  });
+
+  it('gates the card on either source of readiness data', () => {
     expect(
       isEntityReadinessAvailable(
         entity({ 'giantswarm.io/readiness': 'blocked' }),
+      ),
+    ).toBe(true);
+    // What every component looks like today: the importer publishes, the
+    // processor ships disabled. The card still has plenty to say.
+    expect(
+      isEntityReadinessAvailable(
+        entity({ 'giantswarm.io/readiness-standards': 'incomplete' }),
       ),
     ).toBe(true);
     expect(isEntityReadinessAvailable(entity())).toBe(false);
