@@ -7,9 +7,13 @@ import {
   getReadinessCheckedFromEntity,
   getReadinessFlagsFromEntity,
   getReadinessFromEntity,
+  getReadinessStandardsFromEntity,
 } from '../../utils/entity';
 import {
   READINESS_MEANINGS,
+  STANDARDS_INTENTS,
+  STANDARDS_LABELS,
+  partitionReadinessFlags,
   readinessIntent,
   readinessLabel,
 } from '../../utils/readiness';
@@ -63,18 +67,28 @@ function FlagList(props: { flags: string[]; enforced: boolean }) {
 /**
  * Shows whether this component can be released, and what stands in the way.
  *
- * The card's job is to keep two different claims apart. Enforced gaps fail a
- * build today and are shown as problems. Advisory gaps are documented in the
- * chart metadata standard and gated nowhere — four charts in five carry at
- * least one — so they are labelled as not enforced and shown neutrally. Showing
- * them as failures would turn a rollout nobody has run into hundreds of broken
- * apps.
+ * The card's job is to keep three different claims apart.
+ *
+ * The release verdict answers "did the newest release reach the registry".
+ * The chart-metadata verdict answers "does this chart build", and is a separate
+ * label written by the catalog importer — a component can perfectly well be
+ * releasable *and* carry a metadata gap, so the two get their own status and
+ * their own list rather than one merged "Blocking" claim. Both write to
+ * `giantswarm.io/readiness-flags`, which is why the list is split back apart by
+ * the verdict that owns each flag.
+ *
+ * Advisory gaps are the third: documented in the chart metadata standard and
+ * gated nowhere — four charts in five carry at least one — so they are labelled
+ * as not enforced and shown neutrally. Showing them as failures would turn a
+ * rollout nobody has run into hundreds of broken apps.
  */
 export function EntityAppReadinessCard() {
   const { entity } = useEntity();
 
   const readiness = getReadinessFromEntity(entity);
-  const flags = getReadinessFlagsFromEntity(entity);
+  const standards = getReadinessStandardsFromEntity(entity);
+  const { release: releaseFlags, chartMetadata: metadataFlags } =
+    partitionReadinessFlags(getReadinessFlagsFromEntity(entity));
   const advisory = getReadinessAdvisoryFromEntity(entity);
   const checked = getReadinessCheckedFromEntity(entity);
   const metadataStyle = getChartMetadataStyleFromEntity(entity);
@@ -92,6 +106,19 @@ export function EntityAppReadinessCard() {
               />
             </AboutField>
           )}
+          {standards && (
+            <AboutField label="Chart metadata" value="">
+              <StatusLabel
+                label={STANDARDS_LABELS[standards] ?? standards}
+                intent={STANDARDS_INTENTS[standards] ?? 'neutral'}
+                title={
+                  standards === 'incomplete'
+                    ? 'A chart here carries a gap that fails a build today. Advisory gaps do not count towards this.'
+                    : 'The charts pass everything that is actually enforced.'
+                }
+              />
+            </AboutField>
+          )}
           {metadataStyle && (
             <AboutField label="Chart metadata style" value={metadataStyle} />
           )}
@@ -106,10 +133,22 @@ export function EntityAppReadinessCard() {
           <Text variant="body-medium">{READINESS_MEANINGS[readiness]}</Text>
         )}
 
-        {flags.length > 0 && (
+        {releaseFlags.length > 0 && (
           <Flex direction="column" gap="2">
-            <Text variant="title-x-small">Blocking</Text>
-            <FlagList flags={flags} enforced />
+            <Text variant="title-x-small">Blocking the release</Text>
+            <FlagList flags={releaseFlags} enforced />
+          </Flex>
+        )}
+
+        {metadataFlags.length > 0 && (
+          <Flex direction="column" gap="2">
+            <Text variant="title-x-small">Fails a build today</Text>
+            <Text variant="body-medium">
+              Chart metadata gaps that app-build-suite rejects. They stop the
+              next build of this chart, which is a different question from
+              whether the release that already exists reached the registry.
+            </Text>
+            <FlagList flags={metadataFlags} enforced />
           </Flex>
         )}
 
