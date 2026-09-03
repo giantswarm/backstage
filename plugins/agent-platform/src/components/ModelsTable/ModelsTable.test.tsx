@@ -435,7 +435,7 @@ describe('toModelServedBy / isModelRowMuted', () => {
     name: 'qwen3:0.6b',
     readiness: 'idle',
     readinessMessage: 'Downloaded; not loaded.',
-    endpointHosts: ['172.21.0.1'],
+    endpointHosts: ['172.21.0.1:11434'],
     loaded: false,
     managerRef: 'qwen3:0.6b',
     operable: true,

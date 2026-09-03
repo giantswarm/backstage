@@ -113,6 +113,13 @@ export const modelManagerBackendSchema = z.looseObject({
   version: wireString,
   /** The backend endpoint as model-manager reaches it. */
   endpoint: wireString,
+  /**
+   * The backend endpoint as agent pods reach it — the host model-manager
+   * writes into the ModelConfigs it wires (Ollama: `--ollama-agent-host`,
+   * defaulting to `endpoint`). Absent before model-manager 0.8, and on KServe,
+   * where every served model has a predictor URL of its own.
+   */
+  agentEndpoint: wireString,
   healthy: wireBoolean(false),
   message: wireString,
   capabilities: modelManagerCapabilitiesSchema

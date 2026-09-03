@@ -45,7 +45,7 @@ const smollm: ServedModel = {
   name: 'smollm2:135m',
   modelSource: 'smollm2:135m',
   readiness: 'available',
-  endpointHosts: ['172.21.0.1'],
+  endpointHosts: ['172.21.0.1:11434'],
   modelConfig: { namespace: 'kagent', name: 'smollm2' },
 };
 

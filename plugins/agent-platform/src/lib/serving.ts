@@ -228,8 +228,15 @@ export type ServedModel = {
   /** Published URL, when the backend exposes one. */
   externalUrl?: string;
   /**
-   * Every hostname this model answers on, lower-cased. What a client base URL
-   * is matched against to tell which served model it fronts.
+   * Every URL host this model answers on, lower-cased — a `hostname`, or a
+   * `hostname:port` authority ({@link endpointAuthority}). What a client base
+   * URL is matched against to tell which served model it fronts
+   * ({@link findServedModel}): a bare hostname takes clients on any port of
+   * the host — right for a server that has the name to itself (a KServe
+   * predictor's Service DNS names and ingress hostname name one model); an
+   * authority takes only clients of that port — required on a host shared
+   * with other servers (Ollama on `172.21.0.1:11434` beside a Lemonade server
+   * on `:13305`, whose clients are not Ollama's).
    */
   endpointHosts: string[];
   /** Friendly name, when the backend records one (a preset's display name). */
@@ -549,6 +556,49 @@ export function isHostMemoryNode(
   return node.memoryBudgetSource === 'host-meminfo';
 }
 
+const DEFAULT_PORT: Record<string, string> = { 'http:': '80', 'https:': '443' };
+
+/**
+ * The `hostname:port` a URL addresses, lower-cased, the scheme's default port
+ * filled in — `http://172.21.0.1:11434/v1` → `172.21.0.1:11434`,
+ * `https://x.example/v1` → `x.example:443`. `undefined` for anything that is
+ * not a URL with a host. Where {@link urlHostname} says *which machine*, this
+ * says *which server on it*.
+ */
+export function endpointAuthority(url: string | undefined): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname) {
+      return undefined;
+    }
+    const port = parsed.port || DEFAULT_PORT[parsed.protocol];
+    return port
+      ? `${parsed.hostname.toLowerCase()}:${port}`
+      : parsed.hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether a client URL lands on one of the hosts a served model answers on
+ * (`endpointHosts`): listed as its `hostname:port` authority, or as its bare
+ * hostname (any port).
+ */
+function isOnEndpoint(
+  model: ServedModel,
+  hostname: string,
+  authority: string,
+): boolean {
+  return (
+    model.endpointHosts.includes(authority) ||
+    model.endpointHosts.includes(hostname)
+  );
+}
+
 /**
  * What is known about a client (a kagent ModelConfig) when asking which served
  * model it fronts. Every field is optional; more fields give a more exact
@@ -583,22 +633,33 @@ export function clientLookupOf(modelConfig: ModelConfig): ServedModelLookup {
  *
  * 1. A candidate whose backend-created `modelConfig` **is** this client wins
  *    outright — the backend said so.
- * 2. Otherwise match the endpoint's hostname (scheme, port and the `/v1` path
- *    do not matter). A host that serves several models (an Ollama host, one
- *    endpoint for every tag) needs the client's `model` to tell them apart:
- *    among the candidates on the host, the one whose name equals `model`.
- * 3. With exactly one candidate on the host and no name match, it is the one
- *    — a single-model server (a vLLM InferenceService) names its model
+ * 2. Otherwise match the endpoint's host against each candidate's
+ *    `endpointHosts`: the URL's `hostname:port` authority
+ *    ({@link endpointAuthority}, the scheme's default port filled in — so
+ *    `http://x/v1` is `x:80`) or its bare hostname, whichever the candidate
+ *    lists (scheme and the `/v1` path never matter; the port matters exactly
+ *    when the candidate says so). A server that serves several models (an
+ *    Ollama host, one endpoint for every tag) needs the client's `model` to
+ *    tell them apart: among the candidates on the server, the one whose name
+ *    equals `model`.
+ * 3. With exactly one candidate on the server and no name match, it is the
+ *    one — a single-model server (a vLLM InferenceService) names its model
  *    however it likes, and the ModelConfig's `model` need not equal the
- *    InferenceService name.
+ *    InferenceService name. Not on a server the installation's source
+ *    declared multi-model (`options.sharedHosts`, Ollama's — the same
+ *    authorities `ServingSourceSnapshot.sharedHosts` carries): there a client
+ *    that names no listed model fronts none, however few are listed — its
+ *    model is gone, which {@link resolveClientServing} reports.
  *
  * `undefined` when the endpoint is empty (provider default), not a URL, or
  * fronts nothing known — an external provider, a served model on another
- * installation, or a shared host where nothing carries the asked-for name.
+ * installation, another server on a port of the same machine, or a shared
+ * server where nothing carries the asked-for name.
  */
 export function findServedModel(
   lookup: ServedModelLookup,
   candidates: ServedModel[],
+  options: { sharedHosts?: string[] } = {},
 ): ServedModel | undefined {
   if (lookup.modelConfig) {
     const { name, namespace } = lookup.modelConfig;
@@ -614,22 +675,26 @@ export function findServedModel(
   }
 
   const hostname = urlHostname(lookup.endpoint);
-  if (!hostname) {
+  const authority = endpointAuthority(lookup.endpoint);
+  if (!hostname || !authority) {
     return undefined;
   }
-  const onHost = candidates.filter(model =>
-    model.endpointHosts.includes(hostname),
+  const onServer = candidates.filter(model =>
+    isOnEndpoint(model, hostname, authority),
   );
-  if (onHost.length === 0) {
+  if (onServer.length === 0) {
     return undefined;
   }
   if (lookup.model) {
-    const named = onHost.find(model => model.name === lookup.model);
+    const named = onServer.find(model => model.name === lookup.model);
     if (named) {
       return named;
     }
   }
-  return onHost.length === 1 ? onHost[0] : undefined;
+  if (options.sharedHosts?.includes(authority)) {
+    return undefined;
+  }
+  return onServer.length === 1 ? onServer[0] : undefined;
 }
 
 /**
@@ -646,12 +711,13 @@ export function findServedModelForEndpoint(
 
 /**
  * Whether two rows *of different sources* describe the same served model: the
- * same installation and backend, answering on a common hostname — a KServe
+ * same installation and backend, answering on a common host — a KServe
  * InferenceService read as a CR and the same predictor in a model-manager's
- * inventory both list `<name>-predictor.<namespace>.svc.cluster.local`. Rows
- * without an endpoint (a cached model nobody serves) never coincide. Only
+ * inventory both list `<name>-predictor.<namespace>.svc.cluster.local`
+ * (compared as listed: both KServe sources list bare predictor hostnames).
+ * Rows without an endpoint (a cached model nobody serves) never coincide. Only
  * meaningful across sources: within one source, an Ollama host lists every
- * tag on the same hostname, and those are different models.
+ * tag on the same authority, and those are different models.
  */
 export function isSameServedModel(a: ServedModel, b: ServedModel): boolean {
   return (
@@ -803,33 +869,6 @@ export function mergeServingSnapshots(
   };
 }
 
-const DEFAULT_PORT: Record<string, string> = { 'http:': '80', 'https:': '443' };
-
-/**
- * The `hostname:port` a URL addresses, lower-cased, the scheme's default port
- * filled in — `http://172.21.0.1:11434/v1` → `172.21.0.1:11434`,
- * `https://x.example/v1` → `x.example:443`. `undefined` for anything that is
- * not a URL with a host. Where {@link urlHostname} says *which machine*, this
- * says *which server on it*.
- */
-export function endpointAuthority(url: string | undefined): string | undefined {
-  if (!url) {
-    return undefined;
-  }
-  try {
-    const parsed = new URL(url);
-    if (!parsed.hostname) {
-      return undefined;
-    }
-    const port = parsed.port || DEFAULT_PORT[parsed.protocol];
-    return port
-      ? `${parsed.hostname.toLowerCase()}:${port}`
-      : parsed.hostname.toLowerCase();
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * The InferenceService a KServe predictor hostname belongs to
  * (`<name>-predictor.<namespace>`, optionally `.svc` or `.svc.cluster.local`),
@@ -919,7 +958,9 @@ export function resolveClientServing(
   context: ClientServingContext,
 ): ClientServingState | undefined {
   const { installation, candidates } = context;
-  const served = findServedModel(lookup, candidates);
+  const served = findServedModel(lookup, candidates, {
+    sharedHosts: context.sharedHosts,
+  });
   if (served) {
     return {
       installation,

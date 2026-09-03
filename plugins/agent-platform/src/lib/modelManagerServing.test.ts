@@ -17,6 +17,7 @@ import {
   formatGpuShare,
   isServedInferenceService,
   lacksToolCalling,
+  clientEndpointOf,
   managerRefOf,
   namespaceOfPredictorUrl,
   notableCapabilities,
@@ -92,7 +93,7 @@ describe('toServedModelFromManager', () => {
       readiness: 'available',
       readinessMessage: 'Downloaded; not loaded in memory.',
       internalUrl: 'http://172.21.0.1:11434',
-      endpointHosts: ['172.21.0.1'],
+      endpointHosts: ['172.21.0.1:11434'],
       sizeBytes: 6594474711,
       loaded: false,
       capabilities: ['vision', 'completion', 'tools', 'thinking'],
@@ -293,6 +294,33 @@ describe('toServedModelFromManager', () => {
     );
   });
 
+  it('lists every Ollama row under the backend’s hostname:port, so another server on the host is not it', () => {
+    const candidates = ollamaModels.map(model =>
+      toServedModelFromManager('lab', ollama, model),
+    );
+    for (const candidate of candidates) {
+      expect(candidate.endpointHosts).toEqual(['172.21.0.1:11434']);
+    }
+    // agentlab's static `lemonade-npu` ModelConfig: a Lemonade server on the
+    // Ollama host's IP, another port — never served by an Ollama model, even
+    // when a single one is present.
+    const lemonade = {
+      endpoint: 'http://172.21.0.1:13305/v1',
+      model: 'qwen3-it-4b-FLM',
+    };
+    expect(findServedModel(lemonade, candidates)).toBeUndefined();
+    expect(findServedModel(lemonade, [candidates[0]])).toBeUndefined();
+    // And with the host declared shared, an Ollama client of a tag that is
+    // not there is not the one model left either.
+    expect(
+      findServedModel(
+        { endpoint: 'http://172.21.0.1:11434', model: 'gone:1b' },
+        [candidates[0]],
+        { sharedHosts: sharedHostsOf(ollama) },
+      ),
+    ).toBeUndefined();
+  });
+
   it('lets a ModelConfig on the shared host resolve to the right model by name', () => {
     // agentlab's static `qwen35-local` ModelConfig: an OpenAI-compatible
     // client on the Ollama host, asking for one specific tag.
@@ -489,6 +517,37 @@ describe('toServingLoading / sharedHostsOf', () => {
     expect(sharedHostsOf(ollama)).toEqual(['172.21.0.1:11434']);
     expect(sharedHostsOf(kserve)).toEqual([]);
     expect(sharedHostsOf({ ...ollama, endpoint: undefined })).toEqual([]);
+  });
+
+  it('prefers the address agents dial over the one model-manager dials', () => {
+    // model-manager 0.8+: the pod reaches Ollama through the Docker host
+    // alias, the ModelConfigs it writes carry the host's IP.
+    const split = {
+      ...ollama,
+      endpoint: 'http://host.docker.internal:11434',
+      agentEndpoint: 'http://172.21.0.1:11434',
+    };
+    expect(clientEndpointOf(split)).toBe('http://172.21.0.1:11434');
+    expect(clientEndpointOf(ollama)).toBe('http://172.21.0.1:11434');
+    expect(sharedHostsOf(split)).toEqual(['172.21.0.1:11434']);
+    const served = toServedModelFromManager('lab', split, ollamaModels[0]);
+    expect(served.endpointHosts).toEqual(['172.21.0.1:11434']);
+    expect(served.internalUrl).toBe('http://172.21.0.1:11434');
+    expect(
+      findServedModel(
+        { endpoint: 'http://172.21.0.1:11434/v1', model: served.name },
+        [served],
+      ),
+    ).toBe(served);
+    expect(
+      findServedModel(
+        {
+          endpoint: 'http://host.docker.internal:11434/v1',
+          model: served.name,
+        },
+        [served],
+      ),
+    ).toBeUndefined();
   });
 });
 

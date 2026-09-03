@@ -67,7 +67,7 @@ const smollm: ServedModel = {
   backend: 'ollama',
   name: 'smollm2:135m',
   readiness: 'available',
-  endpointHosts: ['172.21.0.1'],
+  endpointHosts: ['172.21.0.1:11434'],
   modelConfig: { name: 'smollm2-135m', namespace: 'kagent' },
 };
 
@@ -155,6 +155,51 @@ describe('ServingProvider', () => {
         modelConfig: { name: 'smollm2-135m', namespace: 'kagent' },
       }),
     ).toBe(smollm);
+  });
+
+  it('applies the installation’s declared multi-model hosts to the served-model link', () => {
+    // One Ollama model listed on a host the source declared shared: a client
+    // of that host asking for another tag fronts nothing; a client of another
+    // port on the machine is not Ollama's at all.
+    mockUseModelManagerServingSource.mockReturnValue({
+      ...empty,
+      installations: ['alpha'],
+      backends: { alpha: 'ollama' },
+      sharedHosts: { alpha: ['172.21.0.1:11434'] },
+      servedModels: [smollm],
+    });
+    const { result } = renderHook(() => useServing(), { wrapper });
+
+    expect(
+      result.current.servedModelFor('alpha', {
+        endpoint: 'http://172.21.0.1:11434',
+        model: 'smollm2:135m',
+      }),
+    ).toBe(smollm);
+    expect(
+      result.current.servedModelFor('alpha', {
+        endpoint: 'http://172.21.0.1:11434',
+        model: 'gemma3:270m',
+      }),
+    ).toBeUndefined();
+    expect(
+      result.current.servedModelFor('alpha', {
+        endpoint: 'http://172.21.0.1:13305/v1',
+        model: 'qwen3-it-4b-FLM',
+      }),
+    ).toBeUndefined();
+    expect(
+      result.current.servingStateFor('alpha', {
+        endpoint: 'http://172.21.0.1:11434',
+        model: 'gemma3:270m',
+      }),
+    ).toMatchObject({ readiness: 'notServing', name: 'gemma3:270m' });
+    expect(
+      result.current.servingStateFor('alpha', {
+        endpoint: 'http://172.21.0.1:13305/v1',
+        model: 'qwen3-it-4b-FLM',
+      }),
+    ).toBeUndefined();
   });
 
   it('exposes the merged snapshot', () => {

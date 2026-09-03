@@ -58,6 +58,26 @@ describe('findServedModelForEndpoint', () => {
     ).toBe(qwen);
   });
 
+  it('matches a model listed under an authority only from that port', () => {
+    const ollamaOnly: ServedModel = {
+      id: 'lab/ollama//qwen3:0.6b',
+      installation: 'lab',
+      backend: 'ollama',
+      name: 'qwen3:0.6b',
+      readiness: 'idle',
+      endpointHosts: ['172.21.0.1:11434'],
+    };
+    expect(
+      findServedModelForEndpoint('http://172.21.0.1:11434/v1', [ollamaOnly]),
+    ).toBe(ollamaOnly);
+    expect(
+      findServedModelForEndpoint('http://172.21.0.1:13305/v1', [ollamaOnly]),
+    ).toBeUndefined();
+    expect(
+      findServedModelForEndpoint('http://172.21.0.1/v1', [ollamaOnly]),
+    ).toBeUndefined();
+  });
+
   it('matches nothing for provider defaults, non-URLs and unknown hosts', () => {
     expect(findServedModelForEndpoint(undefined, [qwen])).toBeUndefined();
     expect(findServedModelForEndpoint('', [qwen])).toBeUndefined();
@@ -70,7 +90,7 @@ describe('findServedModelForEndpoint', () => {
 
 describe('findServedModel', () => {
   // Two Ollama models on one host: the endpoint alone cannot tell them apart.
-  const ollamaHost = ['172.21.0.1'];
+  const ollamaHost = ['172.21.0.1:11434'];
   const qwenSmall: ServedModel = {
     id: 'lab/ollama//qwen3:0.6b',
     installation: 'lab',
@@ -146,6 +166,114 @@ describe('findServedModel', () => {
         [qwen],
       ),
     ).toBe(qwen);
+  });
+
+  it('leaves a client of another server on the same machine alone, even with a single model on the host', () => {
+    // The lab host runs a Lemonade server on :13305 next to Ollama on :11434.
+    // With only one Ollama model present, the single-candidate rule must not
+    // hand the Lemonade client to it: the port says it is another server.
+    const lemonade = {
+      endpoint: 'http://172.21.0.1:13305/v1',
+      model: 'qwen3-it-4b-FLM',
+    };
+    expect(findServedModel(lemonade, [qwenSmall])).toBeUndefined();
+    expect(findServedModel(lemonade, [qwenSmall, qwenBig])).toBeUndefined();
+    // Ollama's own port, with one model there: the single-candidate rule
+    // applies as before — on that server.
+    expect(
+      findServedModel(
+        { endpoint: 'http://172.21.0.1:11434/v1', model: 'qwen3:0.6b' },
+        [qwenSmall],
+      ),
+    ).toBe(qwenSmall);
+    expect(
+      findServedModel({ endpoint: 'http://172.21.0.1:11434' }, [qwenSmall]),
+    ).toBe(qwenSmall);
+  });
+
+  it('needs a name match on a server declared multi-model, however few models are listed', () => {
+    // One Ollama model left on the host: a ModelConfig asking for another
+    // tag fronts nothing (Ollama would 404 it), not the one that is there.
+    const shared = { sharedHosts: ['172.21.0.1:11434'] };
+    expect(
+      findServedModel(
+        { endpoint: 'http://172.21.0.1:11434', model: 'gemma3:270m' },
+        [qwenSmall],
+        shared,
+      ),
+    ).toBeUndefined();
+    expect(
+      findServedModel(
+        { endpoint: 'http://172.21.0.1:11434' },
+        [qwenSmall],
+        shared,
+      ),
+    ).toBeUndefined();
+    expect(
+      findServedModel(
+        { endpoint: 'http://172.21.0.1:11434/v1', model: 'qwen3:0.6b' },
+        [qwenSmall],
+        shared,
+      ),
+    ).toBe(qwenSmall);
+    // A single-model server nobody declared shared keeps the rule.
+    expect(
+      findServedModel(
+        { endpoint: 'http://172.21.0.1:11434', model: 'gemma3:270m' },
+        [qwenSmall],
+        { sharedHosts: ['other.example:11434'] },
+      ),
+    ).toBe(qwenSmall);
+  });
+
+  it('fills in the scheme default port for a client without one', () => {
+    const onDefaultPort: ServedModel = {
+      ...qwenSmall,
+      endpointHosts: ['ollama.example:80'],
+    };
+    expect(
+      findServedModel({ endpoint: 'http://ollama.example/v1' }, [
+        onDefaultPort,
+      ]),
+    ).toBe(onDefaultPort);
+    expect(
+      findServedModel({ endpoint: 'http://ollama.example:80/v1' }, [
+        onDefaultPort,
+      ]),
+    ).toBe(onDefaultPort);
+    // https is :443 — a TLS terminator in front, not the backend's own server
+    // as the source declared it.
+    expect(
+      findServedModel({ endpoint: 'https://ollama.example/v1' }, [
+        onDefaultPort,
+      ]),
+    ).toBeUndefined();
+    expect(
+      findServedModel({ endpoint: 'http://ollama.example:11434/v1' }, [
+        onDefaultPort,
+      ]),
+    ).toBeUndefined();
+  });
+
+  it('matches a KServe predictor by hostname in every form, on any port and scheme', () => {
+    for (const endpoint of [
+      'http://qwen3-14b-predictor.kserve.svc.cluster.local/v1',
+      'https://qwen3-14b-predictor.kserve.svc.cluster.local/v1',
+      'http://qwen3-14b-predictor.kserve.svc.cluster.local:80',
+      'http://qwen3-14b-predictor.kserve.svc:8080/v1',
+      'http://qwen3-14b-predictor.kserve/v1',
+      'https://qwen3-14b.models.example.test/v1',
+    ]) {
+      expect(findServedModel({ endpoint, model: 'anything' }, [qwen])).toBe(
+        qwen,
+      );
+    }
+    expect(
+      findServedModel(
+        { endpoint: 'http://other-predictor.kserve.svc.cluster.local/v1' },
+        [qwen],
+      ),
+    ).toBeUndefined();
   });
 
   it('matches nothing for provider defaults and non-URLs', () => {
@@ -561,7 +689,7 @@ describe('predictorOfHostname', () => {
 });
 
 describe('resolveClientServing', () => {
-  const ollamaHost = ['172.21.0.1'];
+  const ollamaHost = ['172.21.0.1:11434'];
   const qwenSmall: ServedModel = {
     id: 'lab/ollama//qwen3:0.6b',
     installation: 'lab',
@@ -657,6 +785,37 @@ describe('resolveClientServing', () => {
         lab,
       )?.readiness,
     ).toBe('notServing');
+  });
+
+  it('does not hand a client of the other server to the single Ollama model', () => {
+    // One Ollama model on the host: the positive match's single-candidate
+    // rule must not claim the Lemonade client, and the negative match must
+    // not call its model gone — no verdict at all.
+    const oneModel = { ...lab, candidates: [qwenSmall] };
+    expect(
+      resolveClientServing(
+        { endpoint: 'http://172.21.0.1:13305/v1', model: 'qwen3-it-4b-FLM' },
+        oneModel,
+      ),
+    ).toBeUndefined();
+    expect(
+      resolveClientServing(
+        { endpoint: 'http://172.21.0.1:11434', model: 'qwen3:0.6b' },
+        oneModel,
+      )?.model,
+    ).toBe(qwenSmall);
+    // Nor an Ollama client asking for a tag that is not there: gone, not
+    // "served by" the one model left.
+    const gone = resolveClientServing(
+      { endpoint: 'http://172.21.0.1:11434', model: 'gemma3:270m' },
+      oneModel,
+    );
+    expect(gone).toMatchObject({
+      backend: 'ollama',
+      readiness: 'notServing',
+      name: 'gemma3:270m',
+    });
+    expect(gone?.model).toBeUndefined();
   });
 
   it('reports a KServe predictor nobody serves as Not serving, named after the InferenceService', () => {

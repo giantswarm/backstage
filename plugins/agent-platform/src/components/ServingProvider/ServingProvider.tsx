@@ -20,8 +20,10 @@ export type ServingContextValue = ServingSourceSnapshot & {
   /**
    * The served model a client on `installation` points at — how a kagent
    * ModelConfig is linked to the InferenceService, Ollama model or other
-   * backend fronting it (see `findServedModel` for the rules). `undefined`
-   * for provider defaults and external endpoints.
+   * backend fronting it (see `findServedModel` for the rules, applied with
+   * the installation's declared multi-model hosts). `undefined` for provider
+   * defaults, external endpoints, and a client of a multi-model host that
+   * names no model listed there.
    */
   servedModelFor: (
     installation: string,
@@ -90,7 +92,10 @@ export function ServingProvider({ children }: { children: ReactNode }) {
     const servedModelFor: ServingContextValue['servedModelFor'] = (
       installation,
       lookup,
-    ) => findServedModel(lookup, candidatesOn(installation));
+    ) =>
+      findServedModel(lookup, candidatesOn(installation), {
+        sharedHosts: snapshot.sharedHosts?.[installation] ?? [],
+      });
     const servingStateFor: ServingContextValue['servingStateFor'] = (
       installation,
       lookup,
