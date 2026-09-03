@@ -1,4 +1,4 @@
-import { FormEvent, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -18,6 +18,7 @@ import type {
 } from '../../hooks/useAnswerConfirmation';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
+import { isSendKey } from '../../lib/sendKey';
 
 const useStyles = makeStyles(theme => ({
   // The same left rule `TimelineEntry` draws, in the colour it uses for a *user*
@@ -89,6 +90,15 @@ export type PendingConfirmationPanelProps = {
  * words would appear in the transcript and never reach the model. Offering the box
  * would be offering to be ignored. Picking that choice lets the agent ask again,
  * which is the mechanism kagent actually has.
+ *
+ * **Enter sends from any answer control** — a radio, a checkbox or the text box —
+ * with Shift+Enter for a newline in the box, the same rule as the composers (see
+ * {@link isSendKey}). Handled explicitly rather than left to the browser: a textarea
+ * never submits its form on Enter, and whether a focused radio does is
+ * browser-specific, so without this the answer could only be sent by reaching the
+ * button. In the **reason** box Enter confirms the decline instead: that box only
+ * exists because Decline was pressed, and sending an approval from it would do the
+ * opposite of what the user is in the middle of.
  */
 export function PendingConfirmationPanel({
   pending,
@@ -226,11 +236,11 @@ export function PendingConfirmationPanel({
   } else if (isReasonTooLong) {
     caption = `That reason is ${reason.trim().length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
   } else {
-    caption = 'Answering resumes the agent where it stopped.';
+    caption =
+      'Answering resumes the agent where it stopped. Enter sends, Shift+Enter for a new line.';
   }
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
+  const send = () => {
     if (!canSubmit) {
       return;
     }
@@ -240,6 +250,23 @@ export function PendingConfirmationPanel({
       ...(isQuestion && { answers }),
       ...(answerText && { text: answerText }),
     });
+  };
+
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    send();
+  };
+
+  // On each control rather than the form: jsx-a11y forbids key handlers on a
+  // <form>, and a handler there would also catch Enter on the buttons, where
+  // react-aria already turns it into a press — Enter on "Decline" must not send an
+  // approval as well. Prevented even when nothing can be sent, so Enter never
+  // breaks the line in the box.
+  const handleAnswerKeyDown = (event: KeyboardEvent) => {
+    if (isSendKey(event)) {
+      event.preventDefault();
+      send();
+    }
   };
 
   const decline = () => {
@@ -254,8 +281,15 @@ export function PendingConfirmationPanel({
     });
   };
 
+  const handleReasonKeyDown = (event: KeyboardEvent) => {
+    if (isSendKey(event)) {
+      event.preventDefault();
+      decline();
+    }
+  };
+
   return (
-    <form onSubmit={submit}>
+    <form onSubmit={handleSubmit}>
       <Flex direction="column" gap="3" className={classes.panel}>
         {error && (
           <Alert status="danger" title="Answer not sent" description={error} />
@@ -299,7 +333,11 @@ export function PendingConfirmationPanel({
                     isDisabled={isAnswering}
                   >
                     {question.choices.map(choice => (
-                      <Checkbox key={choice} value={choice}>
+                      <Checkbox
+                        key={choice}
+                        value={choice}
+                        onKeyDown={handleAnswerKeyDown}
+                      >
                         {choice}
                       </Checkbox>
                     ))}
@@ -312,7 +350,11 @@ export function PendingConfirmationPanel({
                     isDisabled={isAnswering}
                   >
                     {question.choices.map(choice => (
-                      <Radio key={choice} value={choice}>
+                      <Radio
+                        key={choice}
+                        value={choice}
+                        onKeyDown={handleAnswerKeyDown}
+                      >
                         {choice}
                       </Radio>
                     ))}
@@ -332,6 +374,7 @@ export function PendingConfirmationPanel({
                 }
                 value={typed[index] ?? ''}
                 onChange={value => setTypedAt(index, value)}
+                onKeyDown={handleAnswerKeyDown}
                 isDisabled={isAnswering}
                 rows={2}
               />
@@ -353,6 +396,7 @@ export function PendingConfirmationPanel({
             placeholder="Why not?"
             value={reason}
             onChange={setReason}
+            onKeyDown={handleReasonKeyDown}
             isDisabled={isAnswering}
             rows={2}
           />

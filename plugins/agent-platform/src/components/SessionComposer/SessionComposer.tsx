@@ -2,6 +2,7 @@ import { FormEvent, KeyboardEvent, useRef, useState } from 'react';
 import { Alert, Flex } from '@backstage/ui';
 import { IconButton, InputBase, makeStyles } from '@material-ui/core';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
+import { isSendKey } from '../../lib/sendKey';
 
 /**
  * Longest message this composer will submit.
@@ -122,8 +123,10 @@ export type SessionComposerProps = {
  * nowhere at all. Hence `restore`: on failure the caller hands it back and it
  * returns to the box, next to the error saying why.
  *
- * Enter inserts a newline; **Cmd/Ctrl+Enter submits**. A prompt is often
- * multi-line, so Enter-to-send would truncate more messages than it saved.
+ * **Enter sends; Shift+Enter inserts a newline** — see {@link isSendKey} for why,
+ * and for the IME case. Enter never inserts a newline, even when nothing can be sent:
+ * a key that sometimes sends and sometimes breaks the line is worse than one that
+ * sometimes does nothing.
  */
 export function SessionComposer({
   isAgentWorking,
@@ -164,7 +167,7 @@ export function SessionComposer({
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    if (isSendKey(event)) {
       event.preventDefault();
       submit();
     }
@@ -178,7 +181,8 @@ export function SessionComposer({
   } else if (isFinished) {
     caption = 'Sending a message resumes this finished session.';
   } else {
-    caption = 'Your reply is added to the conversation. ⌘/Ctrl+Enter sends.';
+    caption =
+      'Your reply is added to the conversation. Enter sends, Shift+Enter for a new line.';
   }
 
   return (

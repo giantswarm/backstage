@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MESSAGE_TEXT_MAX_LENGTH, SessionComposer } from './SessionComposer';
@@ -50,7 +50,7 @@ describe('SessionComposer', () => {
   it('keeps interior formatting while trimming the ends', async () => {
     renderComposer();
 
-    await userEvent.type(field(), 'line one{Enter}line two');
+    await userEvent.type(field(), 'line one{Shift>}{Enter}{/Shift}line two');
     await userEvent.click(sendButton());
 
     expect(onSubmit).toHaveBeenCalledWith('line one\nline two');
@@ -66,17 +66,51 @@ describe('SessionComposer', () => {
     expect(sendButton()).toBeDisabled();
   });
 
-  it('submits on Cmd/Ctrl+Enter but not on Enter alone', async () => {
-    // A prompt is often multi-line, so Enter has to insert a newline.
+  it('sends on Enter and breaks the line on Shift+Enter', async () => {
+    // Slack's rule, and Claude's: a multi-line reply is Shift+Enter, not Enter.
     renderComposer();
 
-    await userEvent.type(field(), 'first line{Enter}');
+    await userEvent.type(
+      field(),
+      'first line{Shift>}{Enter}{/Shift}second line',
+    );
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('first line\nsecond line');
 
-    await userEvent.type(field(), 'second line');
-    await userEvent.keyboard('{Control>}{Enter}{/Control}');
+    await userEvent.keyboard('{Enter}');
 
     expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line');
+    expect(field()).toHaveValue('');
+  });
+
+  it('still sends on Cmd/Ctrl+Enter, the key it used to be', async () => {
+    renderComposer();
+
+    await userEvent.type(field(), 'hello');
+    await userEvent.keyboard('{Control>}{Enter}{/Control}');
+
+    expect(onSubmit).toHaveBeenCalledWith('hello');
+  });
+
+  it('does nothing on Enter with nothing to send — no newline either', async () => {
+    renderComposer();
+
+    await userEvent.type(field(), '   {Enter}');
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('   ');
+  });
+
+  it('leaves an Enter that commits an IME composition alone', () => {
+    // Typing Japanese, Enter confirms the candidate the user is choosing; sending
+    // then would fire the message with the last word missing.
+    renderComposer();
+
+    fireEvent.change(field(), { target: { value: '日本' } });
+    fireEvent.keyDown(field(), { key: 'Enter', isComposing: true });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('日本');
   });
 
   it('is withheld while the agent is working', async () => {
