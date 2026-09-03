@@ -22,6 +22,8 @@ const META_TOOLS = [
   'describe_tool',
   'list_core_tools',
   'filter_tools',
+  'filter_resources',
+  'filter_prompts',
   'call_tool',
 ] as const;
 
@@ -48,6 +50,13 @@ export interface MusterServerConfig {
 export interface MusterInstallationConfig extends MusterServerConfig {
   /** Stable installation id used for routing and as the client cache scope. */
   name: string;
+  /**
+   * Name of the MCP server (as registered in muster) that fronts this
+   * installation's own Prometheus/Mimir, used by the `/usage` route. When
+   * unset, the route falls back to the `<name>-mcp-prometheus` convention,
+   * then to the only prometheus-ish server.
+   */
+  prometheusServer?: string;
 }
 
 /**
@@ -142,6 +151,7 @@ export function readMusterInstallationsFromConfig(
         url,
         authProvider: entry.getOptionalString('authProvider'),
         headers: readHeaders(entry.getOptionalConfig('headers')),
+        prometheusServer: entry.getOptionalString('prometheusServer'),
       });
     }
     return installations;
@@ -158,6 +168,32 @@ export function readMusterInstallationsFromConfig(
 interface ContentItem {
   type: string;
   text?: string;
+}
+
+/**
+ * The human-readable message of an errored tool result's text block. When the
+ * text is itself a serialized MCP result (`{"isError":true,"content":[...]}` —
+ * what `call_tool` puts in its envelope for a failed wrapped tool), return the
+ * inner text block's text; otherwise the text already is the message.
+ */
+function errorTextOf(text: string): string {
+  let inner: unknown;
+  try {
+    inner = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  if (inner === null || typeof inner !== 'object') {
+    return text;
+  }
+  const content = (inner as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return text;
+  }
+  const innerText = (content as ContentItem[]).find(
+    item => item?.type === 'text',
+  )?.text;
+  return innerText ?? text;
 }
 
 /**
@@ -198,6 +234,16 @@ export class MusterMcpClient {
     args: Record<string, unknown>,
     options?: { authToken?: string },
   ): Promise<unknown> {
+    const result = await this.executeMetaTool(metaTool, args, options);
+    return this.parseResult(result, metaTool);
+  }
+
+  /** Run a meta-tool and return its raw MCP result (no envelope parsing). */
+  private async executeMetaTool(
+    metaTool: MetaToolName,
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
     if (!META_TOOLS.includes(metaTool)) {
       throw new NotFoundError(`Unknown muster meta-tool: ${metaTool}`);
     }
@@ -229,7 +275,7 @@ export class MusterMcpClient {
       throw error;
     }
 
-    return this.parseResult(result, metaTool);
+    return result;
   }
 
   /**
@@ -283,6 +329,53 @@ export class MusterMcpClient {
     );
   }
 
+  /**
+   * Like {@link callTool}, but preserves the wrapped tool's MCP
+   * `structuredContent` alongside its text payload. `call_tool` serialises the
+   * target tool's full result (`{isError, content, structuredContent}`) as a
+   * JSON envelope, which {@link callTool}'s parsing reduces to the text alone —
+   * fine for tools whose payload IS that JSON text, lossy for tools like
+   * `core_auth_login` that put the machine-readable part (the sign-in URL) in
+   * `structuredContent` (muster#1025). Tool-level errors throw, same as
+   * callTool.
+   */
+  async callToolWithStructured(
+    toolName: string,
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<{ text?: string; structuredContent?: unknown }> {
+    const result = await this.executeMetaTool(
+      CALL_TOOL,
+      { name: toolName, arguments: args },
+      options,
+    );
+
+    const envelope = this.unwrapTextContent(result, toolName);
+    if (envelope === undefined) {
+      return {};
+    }
+
+    let inner: unknown;
+    try {
+      inner = JSON.parse(envelope);
+    } catch {
+      return { text: envelope };
+    }
+    if (
+      inner === null ||
+      typeof inner !== 'object' ||
+      !Array.isArray((inner as { content?: unknown }).content)
+    ) {
+      return { text: envelope };
+    }
+
+    return {
+      text: this.unwrapTextContent(inner, toolName),
+      structuredContent: (inner as { structuredContent?: unknown })
+        .structuredContent,
+    };
+  }
+
   async listTools(options?: { authToken?: string }): Promise<unknown> {
     return this.invokeMetaTool('list_tools', {}, options);
   }
@@ -292,6 +385,20 @@ export class MusterMcpClient {
     options?: { authToken?: string },
   ): Promise<unknown> {
     return this.invokeMetaTool('filter_tools', args, options);
+  }
+
+  async filterResources(
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    return this.invokeMetaTool('filter_resources', args, options);
+  }
+
+  async filterPrompts(
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<unknown> {
+    return this.invokeMetaTool('filter_prompts', args, options);
   }
 
   async describeTool(
@@ -361,6 +468,11 @@ export class MusterMcpClient {
   /**
    * Unwrap an MCP tool result's first text content block. Tool-level errors
    * (isError) surface as exceptions with the error text.
+   *
+   * muster's `call_tool` mirrors the wrapped tool's isError onto its own
+   * envelope, so an errored envelope carries the serialized inner MCP result
+   * as its text — the thrown message must be the inner human-readable text,
+   * not that JSON structure (which the UI would otherwise show verbatim).
    */
   private unwrapTextContent(
     result: unknown,
@@ -375,7 +487,8 @@ export class MusterMcpClient {
 
     if (isError) {
       throw new Error(
-        text ?? `Muster tool ${toolName} failed without an error message`,
+        (text === undefined ? undefined : errorTextOf(text)) ??
+          `Muster tool ${toolName} failed without an error message`,
       );
     }
 

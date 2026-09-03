@@ -1,5 +1,9 @@
-import { MusterWorkflow } from './k8s';
-import { toManifestYaml, toWorkflowDefinition } from './gitops';
+import { MCPServer, MusterWorkflow } from './k8s';
+import {
+  toManifestYaml,
+  toMcpServerDefinition,
+  toWorkflowDefinition,
+} from './gitops';
 
 function makeWorkflow(
   overrides: Record<string, unknown> = {},
@@ -11,7 +15,7 @@ function makeWorkflow(
       kind: 'Workflow',
       metadata: {
         name: 'deploy',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         ...(overrides.metadata as object),
       },
       spec: (overrides.spec as object) ?? {
@@ -23,6 +27,44 @@ function makeWorkflow(
     cluster,
   );
 }
+
+function makeMcpServer(spec: Record<string, unknown>): MCPServer {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: { name: 'aws-root', namespace: 'agent-platform' },
+      spec,
+    } as never,
+    'gazelle',
+  );
+}
+
+describe('MCP server definitions (gitops.ts)', () => {
+  // The ad-hoc edit dialog seeds itself from this and saves the result, so a
+  // field missing here is a field silently dropped from an existing server.
+  it('carries the sigv4 block and request metadata through a round trip', () => {
+    const spec = {
+      type: 'streamable-http',
+      url: 'https://aws-mcp.eu-central-1.api.aws/mcp',
+      autoStart: true,
+      timeout: 120,
+      auth: {
+        type: 'sigv4',
+        sigv4: {
+          region: 'eu-central-1',
+          roleArn: 'arn:aws:iam::123456789012:role/muster-mcp',
+        },
+      },
+      meta: { AWS_REGION: 'eu-central-1' },
+    };
+
+    expect(toMcpServerDefinition(makeMcpServer(spec))).toEqual({
+      name: 'aws-root',
+      ...spec,
+    });
+  });
+});
 
 // Provenance detection itself is tested where it lives, in
 // kubernetes-react's `provenance.test.ts`.

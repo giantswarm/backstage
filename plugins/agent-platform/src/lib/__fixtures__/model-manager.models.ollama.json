@@ -1,0 +1,43 @@
+{
+  "models": [
+    {
+      "name": "qwen3.5:9b",
+      "digest": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+      "sizeBytes": 6594474711,
+      "modifiedAt": "2026-03-21T23:06:12.258834057+01:00",
+      "format": "gguf",
+      "family": "qwen35",
+      "parameterSize": "9.7B",
+      "quantization": "Q4_K_M",
+      "contextLength": 262144,
+      "capabilities": ["vision", "completion", "tools", "thinking"],
+      "loaded": false
+    },
+    {
+      "name": "qwen3:0.6b",
+      "digest": "7df6b6e09427a769808717c0a93cadc4ae99ed4eb8bf5ca557c90846becea435",
+      "sizeBytes": 522653767,
+      "modifiedAt": "2026-01-08T17:44:32.344870478+01:00",
+      "format": "gguf",
+      "family": "qwen3",
+      "parameterSize": "751.63M",
+      "quantization": "Q4_K_M",
+      "contextLength": 40960,
+      "capabilities": ["completion", "tools", "thinking"],
+      "loaded": false
+    },
+    {
+      "name": "gemma3:270m",
+      "digest": "e7d36fb2c3b3293cfe56d55889867a064b3a2b22e98335f2e6e8a387e081d6be",
+      "sizeBytes": 291554930,
+      "modifiedAt": "2025-10-29T11:08:08.286151955+01:00",
+      "format": "gguf",
+      "family": "gemma3",
+      "parameterSize": "268.10M",
+      "quantization": "Q8_0",
+      "contextLength": 32768,
+      "capabilities": ["completion"],
+      "loaded": false
+    }
+  ]
+}

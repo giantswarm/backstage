@@ -1,0 +1,32 @@
+{
+  "jobs": [
+    {
+      "id": "3f1c9b2e7a5d4c60",
+      "type": "pull",
+      "model": "hf-internal-testing/tiny-random-gpt2",
+      "phase": "running",
+      "status": "downloading",
+      "bytesCompleted": 4096,
+      "bytesTotal": 12582912,
+      "percent": 0.03,
+      "createdAt": "2026-09-03T06:40:12.114Z",
+      "startedAt": "2026-09-03T06:40:12.115Z",
+      "wire": false,
+      "node": "agentlab-control-plane",
+      "preset": "tiny-random-gpt2"
+    },
+    {
+      "id": "b8e2d4f6a1c3e5d7",
+      "type": "load",
+      "model": "org/served",
+      "phase": "running",
+      "status": "waiting for the served model to become ready",
+      "bytesCompleted": 0,
+      "bytesTotal": 0,
+      "percent": 0,
+      "createdAt": "2026-09-03T06:41:00.000Z",
+      "startedAt": "2026-09-03T06:41:00.001Z",
+      "wire": true
+    }
+  ]
+}

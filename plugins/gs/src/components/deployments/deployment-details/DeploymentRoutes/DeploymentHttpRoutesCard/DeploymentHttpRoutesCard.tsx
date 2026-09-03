@@ -7,6 +7,7 @@ import { findTargetClusterName } from '../../../utils/findTargetCluster';
 import { getWorkloadNamespace } from '../../../utils/getWorkloadIdentifiers';
 import { useMimirHttpRouteHostnames } from '../../../../hooks/useMimirHttpRouteHostnames';
 import { HttpRouteHostname } from '../../../../hooks/useMimirHttpRouteHostnames';
+import { useMimirAvailable } from '../../../../hooks/useMimirAvailable';
 import { CertificateCell } from './CertificateCell';
 
 type HostnameRow = HttpRouteHostname & { id: string };
@@ -78,7 +79,11 @@ export function DeploymentHttpRoutesCard() {
     refetchInterval: 30_000,
   });
 
-  if (!clusterName) {
+  // This card is metrics-only: on an installation without Mimir
+  // (`mimirEnabled: false`) there is nothing it could ever show, so it
+  // disappears entirely rather than rendering a permanent placeholder.
+  const mimirAvailable = useMimirAvailable(installationName);
+  if (!clusterName || mimirAvailable === false) {
     return null;
   }
 

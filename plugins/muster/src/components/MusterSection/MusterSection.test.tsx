@@ -13,14 +13,17 @@ import { MusterSection } from './MusterSection';
 jest.mock('../DashboardPage', () => ({
   DashboardPage: () => <div>dashboard-view</div>,
 }));
-jest.mock('../McpServersPage', () => ({
-  McpServersPage: () => <div>servers-view</div>,
+jest.mock('../McpServersRouter', () => ({
+  McpServersRouter: () => <div>servers-view</div>,
 }));
 jest.mock('../WorkflowsRouter', () => ({
   WorkflowsRouter: () => <div>workflows-view</div>,
 }));
 jest.mock('../ToolExplorerPage', () => ({
   ToolExplorerPage: () => <div>tools-view</div>,
+}));
+jest.mock('../UsagePage', () => ({
+  UsagePage: () => <div>usage-view</div>,
 }));
 
 // MusterInstanceProvider is deliberately NOT stubbed: its `?installation=` write
@@ -117,6 +120,17 @@ describe('MusterSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
         '/agent-platform/muster/dashboard?installation=alpha',
+      );
+    });
+  });
+
+  it('routes the MCP usage view', async () => {
+    renderSection('/agent-platform/muster/usage?installation=alpha');
+
+    expect(await screen.findByText('usage-view')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/muster/usage?installation=alpha',
       );
     });
   });

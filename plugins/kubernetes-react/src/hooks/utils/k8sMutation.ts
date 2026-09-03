@@ -45,10 +45,11 @@ async function readErrorMessage(response: Response): Promise<string> {
 }
 
 /**
- * An `Error` for a failed mutation, named so callers can branch on the two
+ * An `Error` for a failed mutation, named so callers can branch on the
  * outcomes that mean something other than "it broke": `ForbiddenError` (the
- * user's RBAC says no) and `NotFoundError` (nothing there to act on, which an
- * idempotent caller may treat as success).
+ * user's RBAC says no), `NotFoundError` (nothing there to act on, which an
+ * idempotent caller may treat as success) and `ConflictError` (for a create,
+ * the name is already taken).
  */
 export async function k8sMutationError(
   response: Response,
@@ -61,6 +62,8 @@ export async function k8sMutationError(
     error.name = 'ForbiddenError';
   } else if (response.status === 404) {
     error.name = 'NotFoundError';
+  } else if (response.status === 409) {
+    error.name = 'ConflictError';
   }
 
   return error;

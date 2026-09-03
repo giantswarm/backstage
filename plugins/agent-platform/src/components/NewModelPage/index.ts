@@ -1,0 +1,1 @@
+export { NewModelPage } from './NewModelPage';

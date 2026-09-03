@@ -6,6 +6,9 @@ import {
 } from '@backstage/core-plugin-api';
 import {
   AuthStatusResponse,
+  FilterCapabilitiesOptions,
+  FilterPromptsResponse,
+  FilterResourcesResponse,
   FilterToolsOptions,
   FilterToolsResponse,
   ListExecutionsOptions,
@@ -15,13 +18,38 @@ import {
   MusterAuthProvidersApi,
   MusterInstallationsResponse,
   ServerSignInResult,
+  ServerSignOutResult,
   ToolDetail,
   WorkflowExecution,
   WorkflowExecutionListResponse,
   WorkflowGetResponse,
   WorkflowListResponse,
+  McpUsage,
   WorkflowStats,
 } from './types';
+
+/**
+ * Serialises the shared `filter_resources` / `filter_prompts` query. `server`
+ * is the meaningful scope for resources, whose scheme'd URIs carry no server
+ * prefix to match a pattern against.
+ */
+function capabilityQuery(options: FilterCapabilitiesOptions): string {
+  const searchParams = new URLSearchParams();
+  if (options.server) {
+    searchParams.set('server', options.server);
+  }
+  if (options.pattern) {
+    searchParams.set('pattern', options.pattern);
+  }
+  if (options.limit !== undefined) {
+    searchParams.set('limit', String(options.limit));
+  }
+  if (options.offset !== undefined) {
+    searchParams.set('offset', String(options.offset));
+  }
+  const qs = searchParams.toString();
+  return qs ? `?${qs}` : '';
+}
 
 export const musterApiRef = createApiRef<MusterApi>({
   id: 'plugin.muster.api',
@@ -109,6 +137,20 @@ export class MusterApiClient implements MusterApi {
     );
   }
 
+  async getMcpUsage(
+    options: { installation?: string; hours?: number } = {},
+  ): Promise<McpUsage> {
+    const searchParams = new URLSearchParams();
+    if (options.hours !== undefined) {
+      searchParams.set('hours', String(options.hours));
+    }
+    const query = searchParams.toString();
+    return this.get<McpUsage>(
+      `/usage${query ? `?${query}` : ''}`,
+      options.installation,
+    );
+  }
+
   async listServers(installation?: string): Promise<McpServerListResponse> {
     return this.get<McpServerListResponse>('/servers', installation);
   }
@@ -138,6 +180,24 @@ export class MusterApiClient implements MusterApi {
     return this.get<FilterToolsResponse>(
       `/tools/filter${qs ? `?${qs}` : ''}`,
       installation,
+    );
+  }
+
+  async filterResources(
+    options: FilterCapabilitiesOptions = {},
+  ): Promise<FilterResourcesResponse> {
+    return this.get<FilterResourcesResponse>(
+      `/resources/filter${capabilityQuery(options)}`,
+      options.installation,
+    );
+  }
+
+  async filterPrompts(
+    options: FilterCapabilitiesOptions = {},
+  ): Promise<FilterPromptsResponse> {
+    return this.get<FilterPromptsResponse>(
+      `/prompts/filter${capabilityQuery(options)}`,
+      options.installation,
     );
   }
 
@@ -177,6 +237,17 @@ export class MusterApiClient implements MusterApi {
   ): Promise<ServerSignInResult> {
     return this.post<ServerSignInResult>(
       '/auth/login',
+      { server },
+      installation,
+    );
+  }
+
+  async signOutServer(
+    server: string,
+    installation?: string,
+  ): Promise<ServerSignOutResult> {
+    return this.post<ServerSignOutResult>(
+      '/auth/logout',
       { server },
       installation,
     );

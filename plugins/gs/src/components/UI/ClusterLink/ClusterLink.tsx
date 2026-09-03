@@ -37,7 +37,8 @@ export const ClusterLink = ({
   name,
   type,
 }: ClusterLinkProps) => {
-  const clusterDetailsRouteLink = useRouteRef(clusterDetailsRouteRef)!;
+  // The clusters page can be disabled, in which case there is no route to link to.
+  const clusterDetailsRouteLink = useRouteRef(clusterDetailsRouteRef);
   const classes = useStyles();
 
   const Icon =
@@ -50,6 +51,21 @@ export const ClusterLink = ({
       ? 'Management cluster'
       : 'Workload cluster';
 
+  const content = (
+    <Box component="span" className={classes.root}>
+      <Tooltip title={typeTooltipTitle}>
+        <Box component="span" className={classes.icon}>
+          <Icon fontSize="inherit" />
+        </Box>
+      </Tooltip>
+      {name}
+    </Box>
+  );
+
+  if (!clusterDetailsRouteLink) {
+    return content;
+  }
+
   return (
     <Link
       component={RouterLink}
@@ -59,14 +75,7 @@ export const ClusterLink = ({
         name,
       })}
     >
-      <Box component="span" className={classes.root}>
-        <Tooltip title={typeTooltipTitle}>
-          <Box component="span" className={classes.icon}>
-            <Icon fontSize="inherit" />
-          </Box>
-        </Tooltip>
-        {name}
-      </Box>
+      {content}
     </Link>
   );
 };

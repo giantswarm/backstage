@@ -6,6 +6,8 @@ import type { ReactNode } from 'react';
 import { sessionsRouteRef } from '../../routes';
 import type { AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionDetailView } from '../../hooks/useSessionDetail';
+import type { UseAnswerConfirmationResult } from '../../hooks/useAnswerConfirmation';
+import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { buildTimeline } from '../../lib/kagentTimeline';
 import { normalizeTaskList } from '../../lib/kagentSessionDetail';
 import { normalizeSessionDetail } from '../../lib/kagentSessionDetail';
@@ -66,6 +68,61 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
 
+// Stubbed for the same reason as the mutations above: no query client is mounted.
+const mockSendMessage = jest.fn();
+const mockUseSendMessage = jest.fn<UseSendMessageResult, []>();
+jest.mock('../../hooks/useSendMessage', () => ({
+  useSendMessage: () => mockUseSendMessage(),
+}));
+
+// Stubbed like the other write hooks: it reads `kagentApiRef`, and this test mounts
+// no APIs and no query client.
+const mockAnswer = jest.fn();
+const mockUseAnswerConfirmation = jest.fn<UseAnswerConfirmationResult, []>();
+jest.mock('../../hooks/useAnswerConfirmation', () => ({
+  useAnswerConfirmation: () => mockUseAnswerConfirmation(),
+}));
+
+/** The hook's idle state, which most tests want. */
+function idleConfirmation(
+  overrides: Partial<UseAnswerConfirmationResult> = {},
+): UseAnswerConfirmationResult {
+  return {
+    answer: mockAnswer,
+    isAnswering: false,
+    pending: null,
+    failed: null,
+    error: null,
+    reset: jest.fn(),
+    ...overrides,
+  };
+}
+
+// The prompt a just-created session was started with. Mocked rather than driven
+// through router state, because the hook's own contract — read once, then clear the
+// state — has its own tests; what matters here is that the page dispatches it.
+const mockUseNewSessionHandoff = jest.fn();
+jest.mock('../../hooks/useNewSessionHandoff', () => ({
+  ...jest.requireActual('../../hooks/useNewSessionHandoff'),
+  useNewSessionHandoff: () => mockUseNewSessionHandoff(),
+}));
+
+/** The hook's idle state, which most tests want. */
+function idleSend(
+  overrides: Partial<UseSendMessageResult> = {},
+): UseSendMessageResult {
+  return {
+    sendMessage: mockSendMessage,
+    isSending: false,
+    pending: null,
+    stream: null,
+    failed: null,
+    error: null,
+    reset: jest.fn(),
+    ...overrides,
+  };
+}
+
 /** What the page handed to the shared header slot on the last render. */
 const providedActions = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
@@ -81,11 +138,24 @@ const loadedView: SessionDetailView = {
   detail,
   timeline,
   state: deriveSessionState(tasks),
+  // The fixture's newest task is `working`. Its timestamp is long past the
+  // staleness bound, so the real hook would call it stale — set explicitly here so
+  // these tests describe a live turn rather than depending on a fixture's age.
+  isAgentWorking: true,
   taskCount: tasks.length,
   hasConversation: true,
   isLoading: false,
   isNotFound: false,
   error: undefined,
+};
+
+/** The state a session sits in while a confirmation is open. */
+const awaitingInput = {
+  raw: 'input-required',
+  key: 'input-required',
+  label: 'Waiting for input',
+  tone: 'warning' as const,
+  isActive: true,
 };
 
 const emptyTimeline = {
@@ -110,6 +180,13 @@ describe('SessionDetailPage', () => {
   beforeEach(() => {
     providedActions.mockClear();
     mockRenameSession.mockReset();
+    mockSendMessage.mockReset();
+    mockSendMessage.mockResolvedValue(undefined);
+    mockUseSendMessage.mockReturnValue(idleSend());
+    mockUseNewSessionHandoff.mockReturnValue(undefined);
+    mockAnswer.mockReset();
+    mockAnswer.mockResolvedValue(undefined);
+    mockUseAnswerConfirmation.mockReturnValue(idleConfirmation());
     mockUseSessionDetail.mockReturnValue(loadedView);
     mockUseAgents.mockReturnValue({
       rows: [
@@ -399,6 +476,351 @@ describe('SessionDetailPage', () => {
       expect(
         screen.getByRole('textbox', { name: /Session name/ }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the composer', () => {
+    const composer = () => screen.queryByRole('textbox', { name: 'Message' });
+
+    /** The fixture's newest task is `working`; most of these want a settled one. */
+    const settledView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: {
+        raw: 'completed',
+        key: 'completed',
+        label: 'Completed',
+        tone: 'success' as const,
+        isActive: false,
+      },
+    };
+
+    it('is offered on a session whose agent can be addressed', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      await render();
+
+      expect(composer()).toBeInTheDocument();
+      expect(composer()).toBeEnabled();
+    });
+
+    it('sends what was typed', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      await render();
+
+      await userEvent.type(composer()!, 'why is the ingress failing?');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'why is the ingress failing?',
+      );
+    });
+
+    it('is present but closed while the agent is mid-turn', async () => {
+      // The fixture's newest task is `working`, which is exactly this case.
+      await render();
+
+      expect(composer()).toBeDisabled();
+    });
+
+    it('is withheld on a read-only session, and says so', async () => {
+      // A read-only share rejects every non-GET under /api/sessions with a 403,
+      // so the box would only fail on use.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: { ...loadedView.detail!, readOnly: true },
+      });
+      await render();
+
+      expect(composer()).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/shared read-only, so you cannot add to it/),
+      ).toBeInTheDocument();
+    });
+
+    it('is withheld when no Agent matched the session, naming the agent', async () => {
+      // Without the CR there is no trustworthy namespace/name, and the session's
+      // encoded `agent_id` cannot be decoded back into one.
+      mockUseAgents.mockReturnValue({
+        rows: [],
+        isLoading: false,
+        isLoadingMore: false,
+        hasInstallations: true,
+        unreachableInstallations: [],
+      } as unknown as AgentsContextValue);
+      await render();
+
+      expect(composer()).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/could not be found on gazelle/),
+      ).toBeInTheDocument();
+    });
+
+    it('is replaced by the answer panel while the agent is waiting', async () => {
+      // Replaced, not shown alongside: a plain message cannot answer a pending
+      // confirmation. kagent would open a new task and leave the question waiting
+      // forever, so offering the box would quietly strand the conversation.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input',
+          toolName: 'ask_user',
+          questions: [{ question: 'Which cluster?', multiple: false }],
+        },
+      });
+      await render();
+
+      // The question itself is rendered by the timeline above, not repeated here —
+      // what the panel adds is the way to answer it.
+      expect(
+        screen.getByRole('textbox', { name: 'Answer' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Send answer' }),
+      ).toBeInTheDocument();
+
+      // The composer stays on screen but cannot submit: a plain message would
+      // open a new task and strand this one, yet removing the box entirely reads
+      // as the reply feature being missing rather than blocked.
+      expect(composer()).toBeDisabled();
+      expect(
+        screen.getByText(/would start a new turn instead of answering it/),
+      ).toBeInTheDocument();
+    });
+
+    it('offers nothing when the request itself could not be read', async () => {
+      // A confirmation whose payload has a shape we do not recognise, or a task
+      // with no id to resume. Answering then would be guessing at the question.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: undefined,
+      });
+      await render();
+
+      expect(composer()).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send answer' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/request could not be read/)).toBeInTheDocument();
+    });
+
+    it('submits an answer naming the task it resumes', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input',
+          toolName: 'ask_user',
+          questions: [
+            {
+              question: 'Which cluster?',
+              choices: ['gazelle', 'golem'],
+              multiple: false,
+            },
+          ],
+        },
+      });
+      await render();
+
+      await userEvent.click(screen.getByRole('radio', { name: 'golem' }));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Send answer' }),
+      );
+
+      expect(mockAnswer).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        decision: 'approve',
+        // Positional and always a list, even for a single choice.
+        answers: [['golem']],
+        text: 'golem',
+      });
+    });
+
+    it('says the agent is working while a turn is in flight', async () => {
+      // The fixture's newest task is `working`.
+      await render();
+
+      expect(screen.getByText('Working…')).toBeInTheDocument();
+    });
+
+    it('says so from the moment of sending, before any poll has seen it', async () => {
+      // The A2A state takes up to 10 s to report the new task, and the send's own
+      // request is cut off by the gateway before a long turn ends — so neither
+      // signal spans the turn alone.
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+      await render();
+
+      expect(screen.getByText('Working…')).toBeInTheDocument();
+    });
+
+    it('does not claim the agent is working when it is waiting for an answer', async () => {
+      // `input-required` is `isActive`, so keying the spinner off that alone would
+      // promise progress that never comes without a human.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: {
+          raw: 'input-required',
+          key: 'input-required',
+          label: 'Waiting for input',
+          tone: 'warning',
+          isActive: true,
+        },
+      });
+      await render();
+
+      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    });
+
+    it('stops claiming a stalled turn is working, and frees the composer', async () => {
+      // An agent that died mid-turn never writes a terminal state, so the session
+      // stays `working` forever. Once `isAgentWorking` expires, the page must stop
+      // promising progress — and must not hold the composer shut on a turn that is
+      // never going to end.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      await render();
+
+      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled();
+    });
+
+    it('stops saying so once the turn is finished', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      await render();
+
+      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    });
+
+    it('shows a message that has been sent but not yet read back', async () => {
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          isSending: true,
+          pending: { messageId: 'pending-1', text: 'a message in flight' },
+        }),
+      );
+      await render();
+
+      expect(screen.getByText('a message in flight')).toBeInTheDocument();
+    });
+
+    it('stops showing the pending copy once kagent returns the real one', async () => {
+      // Recognised by `messageId`, not by timing — a poll can deliver the stored
+      // message long before the turn ends, and showing both would double it for
+      // the rest of the turn.
+      const realMessageId = timeline.items.find(
+        item => item.messageId,
+      )?.messageId;
+      expect(realMessageId).toBeTruthy();
+
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          isSending: true,
+          pending: { messageId: realMessageId!, text: 'a duplicate stand-in' },
+        }),
+      );
+      await render();
+
+      expect(
+        screen.queryByText('a duplicate stand-in'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the first message of a session just created', () => {
+    const handoff = {
+      text: 'why is the ingress failing?',
+      agentNamespace: 'kagent',
+      agentName: 'issue-tracker',
+    };
+
+    it('sends it on arrival, so the user watches the reply appear', async () => {
+      // Created on the previous screen, sent here: `message/send` blocks for the
+      // whole turn, so awaiting it before navigating would have meant staring at
+      // the sessions list for up to half a minute.
+      mockUseNewSessionHandoff.mockReturnValue(handoff);
+      await render();
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledWith(
+          'why is the ingress failing?',
+        );
+      });
+    });
+
+    it('sends it exactly once, however often the page re-renders', async () => {
+      // This page polls, so it re-renders constantly. A second dispatch would be
+      // a second paid turn with the same prompt.
+      mockUseNewSessionHandoff.mockReturnValue(handoff);
+      await render();
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+      });
+
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        taskCount: loadedView.taskCount + 1,
+      });
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('sends nothing when the session was merely opened', async () => {
+      await render();
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('dispatches even before the session read has resolved its agent', async () => {
+      // The agent travels with the prompt precisely so the send does not have to
+      // wait for the session read and its join against the fleet-wide Agent list.
+      mockUseNewSessionHandoff.mockReturnValue(handoff);
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: undefined,
+        timeline: emptyTimeline,
+        state: undefined,
+        taskCount: 0,
+        hasConversation: false,
+        isLoading: true,
+      });
+      await render();
+
+      await waitFor(() => {
+        expect(mockSendMessage).toHaveBeenCalledWith(
+          'why is the ingress failing?',
+        );
+      });
+    });
+
+    it('keeps the prompt recoverable when the send fails', async () => {
+      // The composer's `restore` is the only place the text still exists — the
+      // same path a failed reply takes.
+      mockUseNewSessionHandoff.mockReturnValue(handoff);
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          error: new Error('the agent could not be reached'),
+          failed: { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        }),
+      );
+      await render();
+
+      expect(screen.getByText('Message not sent')).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue(
+        'why is the ingress failing?',
+      );
     });
   });
 });

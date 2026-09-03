@@ -1,7 +1,6 @@
 import type { Query } from '@tanstack/react-query';
 import type { A2aTaskWire } from './kagentTaskSchema';
-import { normalizeTimestamp } from './kagentSessions';
-import { describeSessionState } from './kagentSessionState';
+import { ACTIVE_MAX_AGE_MS, readNewestTaskState } from './kagentSessionState';
 
 /**
  * Baseline poll for a session's conversation, and the flat interval for the
@@ -40,50 +39,11 @@ export const BASELINE_REFETCH_INTERVAL_MS = 60_000;
 export const ACTIVE_REFETCH_INTERVAL_MS = 10_000;
 
 /**
- * How long a session's newest task may sit in an active state before we stop
- * treating it as live and fall back to the baseline.
- *
- * Same purpose as `TRANSITIONAL_MAX_AGE_MS` for agents — without a bound, an agent
- * that died mid-turn without writing a terminal state would pin the fast tier for
- * as long as anyone leaves the tab open. Calibrated differently, though: the
- * agents' 3 minutes tracks a controller reconcile loop, while this tracks an agent
- * *turn*, which routinely runs minutes when there are many tool calls. A 3-minute
- * bound would back off in the middle of exactly the run the page was opened to
- * watch.
- *
- * This bound is also what handles `input-required` / `auth-required`. Those are
- * active — the session may still produce output — but they wait on a human, and
- * this page offers no way to answer. They start on the fast tier, relax once
- * nobody has replied inside the window, and re-engage on their own when someone
- * does reply elsewhere and the newest task's timestamp advances.
+ * Re-exported because the bound belongs with the state semantics it measures — see
+ * `kagentSessionState` — while every reader of the polling tiers expects to find it
+ * here beside them.
  */
-export const ACTIVE_MAX_AGE_MS = 5 * 60_000;
-
-/**
- * The most recent usable `status.timestamp` anywhere in the conversation.
- *
- * The age basis of last resort. `timestamp` is optional at the parse boundary, and
- * `normalizeTimestamp` also rejects Go zero time and anything unparseable — so the
- * newest task can perfectly well carry no usable time of its own, which would
- * otherwise leave {@link ACTIVE_MAX_AGE_MS} with nothing to measure against.
- */
-function newestUsableTimestamp(tasks: A2aTaskWire[]): number | undefined {
-  // Compared as parsed instants, not as strings: kagent's timestamps are UTC ISO
-  // today, but string order stops matching time order the moment a value arrives
-  // with an offset or a different fractional precision.
-  let newest: number | undefined;
-  for (const task of tasks) {
-    const at = normalizeTimestamp(task?.status?.timestamp);
-    if (at === undefined) {
-      continue;
-    }
-    const parsed = Date.parse(at);
-    if (newest === undefined || parsed > newest) {
-      newest = parsed;
-    }
-  }
-  return newest;
-}
+export { ACTIVE_MAX_AGE_MS };
 
 /**
  * Refetch interval for one session's tasks — the conversation.
@@ -92,6 +52,13 @@ function newestUsableTimestamp(tasks: A2aTaskWire[]): number | undefined {
  * while the newest task is in an active A2A state and recent, baseline once it
  * reaches a terminal state or stops moving. react-query re-evaluates this after
  * every fetch resolves, so it needs no external state and is self-correcting.
+ *
+ * **`input-required` / `auth-required` are bounded rather than excluded.** They are
+ * active — the session may still produce output — but they wait on a human. They
+ * start on the fast tier, relax once nobody has replied inside the window, and
+ * re-engage on their own when someone replies elsewhere and the newest task's
+ * timestamp advances. The "Working…" indicator excludes them outright instead, which
+ * is a different question: how often to look, versus what to claim.
  *
  * Never returns `false`. A terminal session is not immutable the way a finished
  * workflow execution is — kagent lets it be continued, renamed or deleted from
@@ -108,42 +75,29 @@ export function getSessionTasksRefetchInterval(
 
   const now = Date.now();
 
-  // The same backwards walk as `deriveSessionState` — kagent returns tasks oldest
-  // first, so the session's state is the newest task's. Repeated here rather than
-  // reusing that function because the decision needs the state *and* the timestamp
-  // from the same task: a trailing task carrying no state must not lend its
-  // timestamp to an earlier task's state.
-  for (let index = tasks.length - 1; index >= 0; index -= 1) {
-    const status = tasks[index]?.status;
-    const state = describeSessionState(status?.state);
-    if (!state) {
-      continue;
-    }
-
-    if (!state.isActive) {
+  // `readNewestTaskState` does the backwards walk and resolves the age basis — the
+  // same determination the "Working…" indicator makes, so the two cannot disagree
+  // about whether a session is still moving.
+  const newest = readNewestTaskState(tasks);
+  if (newest) {
+    if (!newest.state.isActive) {
       return BASELINE_REFETCH_INTERVAL_MS;
     }
-
-    const own = normalizeTimestamp(status?.timestamp);
-    // Falling back to the conversation's newest usable timestamp costs the "state
-    // and timestamp from the same task" property, deliberately. `isAgentConverging`
-    // can treat a missing timestamp as just-changed because a Kubernetes object
-    // always carries `lastTransitionTime`; here `timestamp` is genuinely optional,
-    // so an unconditional fast tier would be *unbounded* — the exact failure
-    // ACTIVE_MAX_AGE_MS exists to prevent, on the one path where it is most likely
-    // (an agent that died mid-turn, or a kagent that stops emitting the field).
-    const changedAt =
-      own === undefined ? newestUsableTimestamp(tasks) : Date.parse(own);
 
     // Nothing in the whole conversation carries a usable time, so there is no way
     // to bound the fast tier at all. Poll on the baseline: a task genuinely new
     // this second is seen within a minute, where the alternative is re-reading the
     // conversation every 10 s for as long as the tab stays open.
-    if (changedAt === undefined) {
+    //
+    // Note this is the opposite call from the indicator, which treats an
+    // unmeasurable state as working: an unbounded fast poll costs every reader
+    // bandwidth forever, while an indicator that cannot expire only misleads the
+    // one person looking at it.
+    if (newest.changedAt === undefined) {
       return BASELINE_REFETCH_INTERVAL_MS;
     }
 
-    return now - changedAt < ACTIVE_MAX_AGE_MS
+    return now - newest.changedAt < ACTIVE_MAX_AGE_MS
       ? ACTIVE_REFETCH_INTERVAL_MS
       : BASELINE_REFETCH_INTERVAL_MS;
   }

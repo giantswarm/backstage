@@ -35,13 +35,41 @@ export interface MCPServerTokenExchange {
   scopes?: string;
 }
 
+/**
+ * AWS Signature Version 4 request signing (`spec.auth.sigv4`, muster#1082).
+ *
+ * A machine identity, not SSO: every request is signed as muster itself rather
+ * than as the calling user, so the CRD rejects it alongside `forwardToken` and
+ * `tokenExchange`, and only allows it with `spec.type: streamable-http`.
+ */
+export interface MCPServerSigV4 {
+  /**
+   * The signing region. Required, and it must match the region in `spec.url` —
+   * the endpoint checks the signature's credential scope. This is NOT the
+   * region the backend operates in; that one travels in `spec.meta`.
+   */
+  region: string;
+  /**
+   * The signing service name. Defaults to the first hostname label of
+   * `spec.url` (`aws-mcp.eu-central-1.api.aws` signs as `aws-mcp`).
+   */
+  service?: string;
+  /**
+   * An IAM role assumed from muster's base credentials before signing. Empty
+   * means muster signs as its own identity.
+   */
+  roleArn?: string;
+}
+
 export interface MCPServerAuth {
-  type?: 'oauth' | 'none';
+  type?: 'oauth' | 'none' | 'sigv4';
   forwardToken?: boolean;
   requiredAudiences?: string[];
   tokenExchange?: MCPServerTokenExchange;
   authorizationServer?: { issuer: string; scopes?: string };
   localMint?: { enabled?: boolean; audience?: string };
+  /** Required when `type` is `sigv4`, and rejected otherwise. */
+  sigv4?: MCPServerSigV4;
 }
 
 interface MCPServerInterface extends KubeObjectInterface {
@@ -51,10 +79,20 @@ interface MCPServerInterface extends KubeObjectInterface {
     family?: MCPServerFamily;
     description?: string;
     autoStart?: boolean;
+    suspended?: boolean;
     command?: string;
     url?: string;
     timeout?: number;
     auth?: MCPServerAuth;
+    /**
+     * Entries merged into `params._meta` of every outbound JSON-RPC request
+     * that carries `params`. Provider-agnostic (it applies to plain
+     * streamable-http and sse alike), but the motivating case is the
+     * AWS-hosted server, which reads the region it OPERATES in from
+     * `params._meta.AWS_REGION` — a different value from the sigv4 signing
+     * region. Only allowed when `type` is not `stdio`.
+     */
+    meta?: Record<string, string>;
   };
   status?: {
     state?: MCPServerState;
@@ -95,6 +133,16 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
     return this.jsonData.spec?.autoStart ?? false;
   }
 
+  /**
+   * Whether the server is deactivated (`spec.suspended`): muster's reconciler
+   * keeps it disconnected until it is activated again (`core_service_start`
+   * clears the flag; `core_service_stop` sets it). Level-based and durable,
+   * unlike the transient `.status.state`.
+   */
+  getSuspended() {
+    return this.jsonData.spec?.suspended ?? false;
+  }
+
   getTimeout() {
     return this.jsonData.spec?.timeout;
   }
@@ -105,6 +153,24 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
 
   getAuth() {
     return this.jsonData.spec?.auth;
+  }
+
+  getMeta() {
+    return this.jsonData.spec?.meta;
+  }
+
+  /**
+   * Whether a 401 from this server is something a *user* can fix by signing in.
+   *
+   * Mirrors muster's `MCPServerAuth.CanAuthenticateInteractively`
+   * (internal/api/mcpserver.go): a sigv4 server signs with muster's own machine
+   * identity, so there is no login flow to send anyone to. muster classifies
+   * its 401 as an ordinary connection failure (the state stays `Failed` and it
+   * retries with backoff), and the UI must not offer a sign-in affordance that
+   * could never help.
+   */
+  canAuthenticateInteractively() {
+    return this.getAuth()?.type !== 'sigv4';
   }
 
   getToolPrefix() {
@@ -125,6 +191,19 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
       this.jsonData.spec?.toolPrefix ??
       this.getName();
     return `x_${segment}`;
+  }
+
+  /**
+   * Prefix muster gives this server's *prompts*.
+   *
+   * Family grouping deduplicates tools across the family's members and so
+   * feeds the tool prefix, but it does not apply to prompts: muster exposes
+   * every prompt as `x_<toolPrefix-or-name>_<prompt>` regardless of family.
+   * Reusing getToolNamePrefix here would fail to match for family servers that
+   * also set a toolPrefix.
+   */
+  getPromptNamePrefix() {
+    return `x_${this.jsonData.spec?.toolPrefix ?? this.getName()}`;
   }
 
   getLastConnected() {

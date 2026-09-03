@@ -1,0 +1,1 @@
+export { ClusterRBAC } from './ClusterRBAC';

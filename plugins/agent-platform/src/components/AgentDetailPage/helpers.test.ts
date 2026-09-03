@@ -15,7 +15,7 @@ function makeAgent(overrides: Partial<AgentInterface> = {}): Agent {
     {
       apiVersion: 'kagent.dev/v1alpha2',
       kind: 'Agent',
-      metadata: { name: 'pr-reviewer', namespace: 'agentic-platform' },
+      metadata: { name: 'pr-reviewer', namespace: 'agent-platform' },
       ...overrides,
     } as AgentInterface,
     'gazelle',
@@ -24,7 +24,7 @@ function makeAgent(overrides: Partial<AgentInterface> = {}): Agent {
 
 describe('isMusterServerRef', () => {
   // Matched on the name alone: the namespace is a chart value, so an installation
-  // may place the gateway somewhere other than agentic-platform.
+  // may place the gateway somewhere other than agent-platform.
   it('recognises the muster gateway in any namespace', () => {
     expect(isMusterServerRef({ name: 'muster' })).toBe(true);
     expect(isMusterServerRef({ name: 'muster', namespace: 'mcp' })).toBe(true);
@@ -39,8 +39,8 @@ describe('isMusterServerRef', () => {
 describe('mcpServerRefId', () => {
   it('qualifies the name with the namespace when there is one', () => {
     expect(
-      mcpServerRefId({ name: 'muster', namespace: 'agentic-platform' }),
-    ).toBe('agentic-platform/muster');
+      mcpServerRefId({ name: 'muster', namespace: 'agent-platform' }),
+    ).toBe('agent-platform/muster');
   });
 
   it('falls back to the bare name', () => {
@@ -167,7 +167,7 @@ describe('toAgentManifestYaml', () => {
       makeAgent({
         metadata: {
           name: 'pr-reviewer',
-          namespace: 'agentic-platform',
+          namespace: 'agent-platform',
           managedFields: [
             {
               manager: 'helm-controller',
@@ -189,7 +189,7 @@ describe('toAgentManifestYaml', () => {
       makeAgent({
         metadata: {
           name: 'pr-reviewer',
-          namespace: 'agentic-platform',
+          namespace: 'agent-platform',
           annotations: {
             'kubectl.kubernetes.io/last-applied-configuration': '{"a":1}',
             'ui.giantswarm.io/display-name': 'PR reviewer',
@@ -207,7 +207,7 @@ describe('toAgentManifestYaml', () => {
       makeAgent({
         metadata: {
           name: 'pr-reviewer',
-          namespace: 'agentic-platform',
+          namespace: 'agent-platform',
           annotations: {
             'kubectl.kubernetes.io/last-applied-configuration': '{"a":1}',
           },

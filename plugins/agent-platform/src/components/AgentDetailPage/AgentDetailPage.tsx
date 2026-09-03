@@ -1,5 +1,5 @@
-import { ReactNode, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Content,
   EmptyState,
@@ -7,7 +7,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Avatar, Flex, Grid, Text } from '@backstage/ui';
+import { Alert, Avatar, Button, Flex, Grid, Text } from '@backstage/ui';
 import {
   Agent,
   ErrorsProvider,
@@ -26,11 +26,22 @@ import {
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
+import { useCreateSession } from '../../hooks/useCreateSession';
 import { useDeleteAgent } from '../../hooks/useDeleteAgent';
+import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
+import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { AvatarSize } from '../../lib/agentAvatar';
-import { agentsRouteRef } from '../../routes';
-import { getAgentRefetchInterval, toAgentRow } from '../AgentsDataProvider';
+import { clientLookupOf } from '../../lib/serving';
+import { agentsRouteRef, sessionDetailRouteRef } from '../../routes';
+import {
+  AgentRow,
+  getAgentRefetchInterval,
+  ResolveModelServing,
+  toAgentRow,
+} from '../AgentsDataProvider';
 import { READINESS_PRESENTATION } from '../AgentsTable/readinessStatus';
+import { NewSessionDialog } from '../NewSessionDialog';
+import { ServingProvider, useServing } from '../ServingProvider';
 import { AgentActionsMenu } from './AgentActionsMenu';
 import { AgentConfigurationCard } from './AgentConfigurationCard';
 import { AgentSessionsCard } from './AgentSessionsCard';
@@ -87,12 +98,23 @@ function AgentDetailPageContent() {
     { enabled: Boolean(modelConfigName) },
   );
 
+  // What the serving layer says about the model behind that ModelConfig — the
+  // same verdict the Model configs and Agents views show, so "Idle" here is
+  // "Idle" there.
+  const { servingStateFor } = useServing();
+  const resolveServing = useCallback<ResolveModelServing>(
+    target => servingStateFor(installation, clientLookupOf(target)),
+    [servingStateFor, installation],
+  );
+
   // The row shape the sessions list uses, so this agent's name and avatar resolve
-  // identically in both places.
+  // identically in both places — and, for the composer, the model's state.
   const agentRow = useMemo(
     () =>
-      agent ? toAgentRow(agent, modelConfig ? [modelConfig] : []) : undefined,
-    [agent, modelConfig],
+      agent
+        ? toAgentRow(agent, modelConfig ? [modelConfig] : [], resolveServing)
+        : undefined,
+    [agent, modelConfig, resolveServing],
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
@@ -101,14 +123,93 @@ function AgentDetailPageContent() {
   // react-query reads and mutation would have no client there.
   const deletion = useDeleteAgent(agent);
 
-  // `agent` is memoized on the fetched JSON and `deletion` is memoized on its own
-  // contents, so this element's identity only changes when one of them actually
-  // does — which is what keeps the header slot from re-registering (and
-  // re-rendering) on every poll.
+  // Starting a session from this page. The dialog itself is rendered in the page
+  // body, not in the header: the header slot lives outside this plugin's
+  // `QueryClientProvider`, so the create mutation has no client there. The button
+  // up there can only flip this flag — the same split the session detail page's
+  // rename dialog makes.
+  const [isNewSessionOpen, setNewSessionOpen] = useState(false);
+  const creation = useCreateSession();
+  const { reset: resetCreation } = creation;
+  const openNewSession = useCallback(() => {
+    // Clear a previous attempt's error, so the dialog does not open still showing
+    // it.
+    resetCreation();
+    setNewSessionOpen(true);
+  }, [resetCreation]);
+
+  // Only ever this agent, so the picker confirms the target rather than offering a
+  // choice — and this page pays for no fleet-wide Agent query to populate one.
+  const composerAgents = useMemo(
+    () => (agentRow ? [agentRow] : []),
+    [agentRow],
+  );
+  // Remembered for the sessions list's composer, which defaults to whatever was
+  // started last — from either entry point.
+  const { rememberAgent } = useLastUsedAgent(composerAgents);
+
+  const navigate = useNavigate();
+  const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
+  const { createSession } = creation;
+  const onStartSession = useCallback(
+    async (target: AgentRow, prompt: string) => {
+      let sessionId: string;
+      try {
+        sessionId = await createSession({ agent: target, prompt });
+      } catch {
+        // Left to the dialog, which stays open and renders the hook's `error`
+        // beside the prompt the user still has.
+        return;
+      }
+
+      rememberAgent(target);
+
+      const href = sessionDetailRoute?.({
+        installation: target.installation,
+        sessionId,
+      });
+      if (!href) {
+        setNewSessionOpen(false);
+        return;
+      }
+
+      // The prompt travels with the navigation and is sent by the session detail
+      // page — see "Starting a session" in docs/agent-platform.md. Navigating
+      // unmounts this dialog, which is how it closes.
+      navigate(href, {
+        state: {
+          [NEW_SESSION_STATE_KEY]: {
+            text: prompt,
+            agentNamespace: target.namespace,
+            agentName: target.technicalName,
+          },
+        },
+      });
+    },
+    [createSession, navigate, rememberAgent, sessionDetailRoute],
+  );
+
+  // `agent` is memoized on the fetched JSON, `deletion` is memoized on its own
+  // contents, and `openNewSession` is stable, so this element's identity only
+  // changes when one of them actually does — which is what keeps the header slot
+  // from re-registering (and re-rendering) on every poll.
+  //
+  // The button is withheld for an agent that is not ready: kagent would accept the
+  // session and the turn would then fail at the first message, with the readiness
+  // this very page already explains as the reason.
   const actions = useMemo(
     () =>
-      agent ? <AgentActionsMenu agent={agent} deletion={deletion} /> : null,
-    [agent, deletion],
+      agent ? (
+        <Flex align="center" gap="2">
+          {agentRow?.readiness === 'ready' && (
+            <Button variant="primary" onPress={openNewSession}>
+              Start a session
+            </Button>
+          )}
+          <AgentActionsMenu agent={agent} deletion={deletion} />
+        </Flex>
+      ) : null,
+    [agent, agentRow?.readiness, deletion, openNewSession],
   );
   useProvidePageHeaderActions(actions);
 
@@ -257,7 +358,11 @@ function AgentDetailPageContent() {
             page header, so the state is visible before either card. */}
         <Grid.Root columns={{ initial: '1', lg: '3' }} gap="4">
           <Grid.Item colSpan={{ initial: '1', lg: '2' }}>
-            <AgentConfigurationCard agent={agent} modelConfig={modelConfig} />
+            <AgentConfigurationCard
+              agent={agent}
+              modelConfig={modelConfig}
+              modelServing={agentRow?.modelServing}
+            />
           </Grid.Item>
           <Grid.Item colSpan="1">
             <AgentStatusCard agent={agent} />
@@ -268,6 +373,19 @@ function AgentDetailPageContent() {
         <AgentSkillsCard agent={agent} />
         <AgentSessionsCard sessions={sessions} />
       </Flex>
+
+      {/* In the body rather than beside the header button that opens it: the
+          header slot renders outside this plugin's `QueryClientProvider`, so the
+          create mutation would have no client there. */}
+      <NewSessionDialog
+        isOpen={isNewSessionOpen}
+        onOpenChange={setNewSessionOpen}
+        agents={composerAgents}
+        defaultAgent={agentRow}
+        isStarting={creation.isCreating}
+        error={creation.error?.message}
+        onStart={onStartSession}
+      />
     </Content>
   );
 }
@@ -289,11 +407,17 @@ function AgentDetailPageContent() {
  * the failures of its Flux lookups through `useShowErrors`, which throws without
  * this context. Every gs details page wraps its content the same way, and it also
  * gives this page the standard retry/dismiss notice for a failed read.
+ *
+ * `ServingProvider` supplies the serving layer's word on the model behind the
+ * agent (the Model row, the composer's warning) from the same query cache the
+ * Models tab fills; the Agents tab mounts it at its list, this page at itself.
  */
 export function AgentDetailPage() {
   return (
     <ErrorsProvider>
-      <AgentDetailPageContent />
+      <ServingProvider>
+        <AgentDetailPageContent />
+      </ServingProvider>
     </ErrorsProvider>
   );
 }

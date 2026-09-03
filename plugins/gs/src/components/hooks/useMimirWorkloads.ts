@@ -6,6 +6,7 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import { useQueries } from '@tanstack/react-query';
 import { mimirApiRef, MimirMetricSample } from '../../apis/mimir';
+import { useInstallations } from '../../apis/installations';
 import {
   KubeDeploymentSpecReplicas,
   KubeDeploymentStatusReplicasReady,
@@ -242,9 +243,27 @@ export function useMimirWorkloads(options: { installations: string[] }): {
   const kubernetesApi = useApi(kubernetesApiRef);
   const kubernetesAuthProvidersApi = useApi(kubernetesAuthProvidersApiRef);
 
+  // Installations without Mimir (`mimirEnabled: false`) are skipped entirely —
+  // their queries could only fail, and the deployments list is complete
+  // without metrics there. Until the installations config loads, no queries
+  // are built and `isLoading` stays true.
+  const { installations: installationsConfig, isLoading: isLoadingConfig } =
+    useInstallations();
+  const mimirInstallations = useMemo(() => {
+    if (isLoadingConfig) {
+      return [];
+    }
+    const withoutMimir = new Set(
+      installationsConfig
+        .filter(({ mimirEnabled }) => mimirEnabled === false)
+        .map(({ name }) => name),
+    );
+    return installations.filter(name => !withoutMimir.has(name));
+  }, [installations, installationsConfig, isLoadingConfig]);
+
   const queryDefs = useMemo(
-    () => buildQueryDefs(installations),
-    [installations],
+    () => buildQueryDefs(mimirInstallations),
+    [mimirInstallations],
   );
 
   const queryResults = useQueries({
@@ -278,12 +297,14 @@ export function useMimirWorkloads(options: { installations: string[] }): {
 
         return response.data?.result ?? [];
       },
-      enabled: installations.length > 0,
+      enabled: mimirInstallations.length > 0,
       staleTime: 30_000,
     })),
   });
 
-  const isLoading = queryResults.some(q => q.isLoading);
+  const isLoading =
+    (installations.length > 0 && isLoadingConfig) ||
+    queryResults.some(q => q.isLoading);
 
   const errors = useMemo(
     () =>

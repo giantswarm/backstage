@@ -1,0 +1,20 @@
+{
+  "presets": [
+    {
+      "name": "qwen3-14b",
+      "displayName": "Qwen3 14B",
+      "source": "shipped",
+      "model": "Qwen/Qwen3-14B",
+      "storageUri": "hf://Qwen/Qwen3-14B",
+      "format": "vLLM",
+      "runtime": "kserve-vllm",
+      "contextLength": 40960,
+      "capabilities": ["chat", "tools", "thinking"],
+      "gpus": 1,
+      "weightsBytes": 30064771072,
+      "overheadBytes": 32212254720,
+      "requiredBytes": 62277025792,
+      "args": ["--max-model-len=40960"]
+    }
+  ]
+}

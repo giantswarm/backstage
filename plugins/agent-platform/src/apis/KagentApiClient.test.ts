@@ -469,6 +469,110 @@ describe('KagentApiClient', () => {
     });
   });
 
+  describe('createSession', () => {
+    const created = { error: false, data: { id: 'new-session-id' } };
+
+    it('POSTs the agent and title as JSON, with the installation and the token', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(created, 201));
+
+      const result = await buildClient().createSession(
+        'gazelle',
+        { namespace: 'kagent', name: 'sre-agent' },
+        'Why is the ingress failing?',
+      );
+
+      expect(result).toEqual({ sessionId: 'new-session-id' });
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions?installation=gazelle',
+      );
+      expect(init.method).toBe('POST');
+      // Without this the backend's `express.json()` never parses the body, and
+      // the route rejects a perfectly good request as malformed.
+      expect(init.headers['Content-Type']).toBe('application/json');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      expect(JSON.parse(init.body)).toEqual({
+        agentNamespace: 'kagent',
+        agentName: 'sre-agent',
+        name: 'Why is the ingress failing?',
+      });
+    });
+
+    it('does not label a rejected request as a missing kagent', async () => {
+      // Same guard as the rename: `throwIfNotOk` renames a 400 to `NotFoundError`
+      // for the reads, where it means "this installation has no kagent" and is
+      // meant to be silent. Here a 400 is a refused title, which the composer has
+      // to show.
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'name must not be empty' } }, 400),
+      );
+
+      await expect(
+        buildClient().createSession(
+          'gazelle',
+          { namespace: 'kagent', name: 'sre-agent' },
+          ' ',
+        ),
+      ).rejects.toMatchObject({
+        name: 'Error',
+        message: 'name must not be empty',
+      });
+    });
+
+    it('fails rather than resolve when kagent does not say which session it created', async () => {
+      // The one write whose body is required: without an id there is nowhere to
+      // navigate, so resolving would hand the caller a broken link.
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }, 201));
+
+      await expect(
+        buildClient().createSession(
+          'gazelle',
+          { namespace: 'kagent', name: 'sre-agent' },
+          'Title',
+        ),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: expect.stringContaining('did not say which one it created'),
+      });
+    });
+
+    it('fails on an in-band error reported with a 2xx, preferring kagent’s message', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: true, message: 'agent not found' }, 200),
+      );
+
+      await expect(
+        buildClient().createSession(
+          'gazelle',
+          { namespace: 'kagent', name: 'gone' },
+          'Title',
+        ),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: 'agent not found',
+      });
+    });
+
+    it('fails on an unreadable body rather than treating it as a sign-in page', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => {
+          throw new Error('not JSON');
+        },
+      } as unknown as Response);
+
+      await expect(
+        buildClient().createSession(
+          'gazelle',
+          { namespace: 'kagent', name: 'sre-agent' },
+          'Title',
+        ),
+      ).rejects.toMatchObject({ name: 'UpstreamError' });
+    });
+  });
+
   describe('renameSession', () => {
     it('PUTs the new name as JSON, with the installation and the token', async () => {
       fetchMock.mockResolvedValue(jsonResponse({ error: false }));
@@ -578,6 +682,218 @@ describe('KagentApiClient', () => {
       await expect(
         buildClient().renameSession('gazelle', 'abc123', 'New name'),
       ).rejects.toMatchObject({ name: expectedName, message: 'nope' });
+    });
+  });
+
+  describe('sendMessage', () => {
+    const AGENT = { namespace: 'kagent', name: 'issue-tracker' };
+    const MESSAGE = { messageId: 'msg-1', text: 'why is the ingress failing?' };
+
+    it('POSTs the message as JSON, with the installation and the token', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+
+      await buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE);
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc123/messages?installation=gazelle',
+      );
+      expect(init.method).toBe('POST');
+      expect(init.headers['Content-Type']).toBe('application/json');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      expect(JSON.parse(init.body)).toEqual({
+        agentNamespace: 'kagent',
+        agentName: 'issue-tracker',
+        messageId: 'msg-1',
+        text: 'why is the ingress failing?',
+      });
+    });
+
+    it('sends the agent’s real names rather than anything decoded', async () => {
+      // kagent's stored `agent_id` rewrites every `-` to `_`, so a name containing
+      // an underscore cannot be recovered from it. These come from the Agent
+      // resource and must travel untouched.
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+
+      await buildClient().sendMessage(
+        'gazelle',
+        'abc123',
+        { namespace: 'my_ns', name: 'my_agent-1' },
+        MESSAGE,
+      );
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+        agentNamespace: 'my_ns',
+        agentName: 'my_agent-1',
+      });
+    });
+
+    it('does not label a rejected message as a missing kagent', async () => {
+      // Same guard as the rename: this route answers 400 for a message it
+      // refuses, which must not be renamed to `NotFoundError` and silenced.
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'text must not be empty' } }, 400),
+      );
+
+      await expect(
+        buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE),
+      ).rejects.toMatchObject({
+        name: 'Error',
+        message: 'text must not be empty',
+      });
+    });
+
+    it('treats a 202 as a success', async () => {
+      // The turn outlived the backend's turn timeout and is still running. There
+      // is nothing for the caller to do differently: the conversation poll is
+      // what reports how it ends.
+      fetchMock.mockResolvedValue(jsonResponse({ status: 'pending' }, 202));
+
+      await expect(
+        buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE),
+      ).resolves.toBeUndefined();
+    });
+
+    it('encodes an awkward session id into the path', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ error: false }));
+
+      await buildClient().sendMessage('gazelle', 'a/b?c=d', AGENT, MESSAGE);
+
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/a%2Fb%3Fc%3Dd/messages?installation=gazelle',
+      );
+    });
+
+    it('throws on an error reported in-band on a 200', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: true, message: 'agent unreachable' }),
+      );
+
+      await expect(
+        buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: 'agent unreachable',
+      });
+    });
+
+    it.each([
+      [401, 'UnauthorizedError'],
+      [403, 'ForbiddenError'],
+      [404, 'NotFoundError'],
+      [503, 'ServiceUnavailableError'],
+    ])('maps %i to %s', async (status, expectedName) => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'nope' } }, status),
+      );
+
+      await expect(
+        buildClient().sendMessage('gazelle', 'abc123', AGENT, MESSAGE),
+      ).rejects.toMatchObject({ name: expectedName, message: 'nope' });
+    });
+  });
+
+  describe('answerConfirmation', () => {
+    it('POSTs the decision, task and positional answers to the answer route', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ jsonrpc: '2.0', result: {} }));
+
+      await buildClient().answerConfirmation(
+        'gazelle',
+        'abc123',
+        { namespace: 'kagent', name: 'grill-master' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          answers: [['A rideable bike']],
+          text: 'A rideable bike',
+        },
+      );
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc123/answer?installation=gazelle',
+      );
+      expect(init.method).toBe('POST');
+      expect(init.headers['Content-Type']).toBe('application/json');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      expect(JSON.parse(init.body)).toEqual({
+        agentNamespace: 'kagent',
+        agentName: 'grill-master',
+        messageId: 'msg-1',
+        taskId: 'task-1',
+        decision: 'approve',
+        answers: [['A rideable bike']],
+        text: 'A rideable bike',
+      });
+    });
+
+    it('omits the optional fields it was not given', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}));
+
+      await buildClient().answerConfirmation(
+        'gazelle',
+        'abc123',
+        { namespace: 'kagent', name: 'a' },
+        { messageId: 'msg-1', taskId: 'task-1', decision: 'reject' },
+      );
+
+      expect(Object.keys(JSON.parse(fetchMock.mock.calls[0][1].body))).toEqual([
+        'agentNamespace',
+        'agentName',
+        'messageId',
+        'taskId',
+        'decision',
+      ]);
+    });
+
+    it('does not label a rejected answer as a missing kagent', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: { message: 'taskId must not be empty' } }, 400),
+      );
+
+      await expect(
+        buildClient().answerConfirmation(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          { messageId: 'msg-1', taskId: '', decision: 'approve' },
+        ),
+      ).rejects.toMatchObject({
+        name: 'Error',
+        message: 'taskId must not be empty',
+      });
+    });
+
+    it('treats a 202 as a success — the answer landed, the turn is running', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ status: 'pending' }, 202));
+
+      await expect(
+        buildClient().answerConfirmation(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          { messageId: 'msg-1', taskId: 'task-1', decision: 'approve' },
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('fails on an in-band error reported with a 2xx', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: true, message: 'task already finished' }),
+      );
+
+      await expect(
+        buildClient().answerConfirmation(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          { messageId: 'msg-1', taskId: 'task-1', decision: 'approve' },
+        ),
+      ).rejects.toMatchObject({
+        name: 'UpstreamError',
+        message: 'task already finished',
+      });
     });
   });
 

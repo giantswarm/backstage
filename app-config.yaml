@@ -101,6 +101,9 @@ backend:
       - 'https://goreportcard.com'
       - 'https://img.shields.io'
       - 'https://pkg.go.dev'
+      # Giant Swarm app-icon CDN: the muster plugin's dashboard renders the
+      # muster icon from https://s.giantswarm.io/app-icons/.
+      - 'https://s.giantswarm.io'
       - 'https://user-images.githubusercontent.com'
     script-src:
       - "'self'"

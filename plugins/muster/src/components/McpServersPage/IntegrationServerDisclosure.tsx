@@ -1,12 +1,6 @@
 import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
 import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
-import {
-  DisclosureAccordion,
-  Gate,
-  ServerSignIn,
-  StateBadge,
-  severityTone,
-} from '../shared';
+import { DisclosureAccordion, Gate, StateBadge, severityTone } from '../shared';
 import {
   AuthChain,
   DetailBlock,
@@ -14,7 +8,10 @@ import {
   Provenance,
   RuntimeState,
   ServerConfig,
+  ServerPrompts,
+  ServerResources,
   ServerTools,
+  useServerCapabilityCounts,
 } from './serverDetail';
 import { ServerMutationActions } from './ServerMutationActions';
 
@@ -63,6 +60,7 @@ export function IntegrationServerDisclosure({
   defaultExpanded,
 }: IntegrationServerDisclosureProps) {
   const classes = useStyles();
+  const { resourcesCount, promptsCount } = useServerCapabilityCounts(server);
   const state = server.getState() ?? 'unknown';
   const severity = mcpServerStateSeverity(server.getState());
   const healthy = severity === 'ok';
@@ -92,15 +90,6 @@ export function IntegrationServerDisclosure({
 
       <DetailBlock title="Authentication / token chain">
         <AuthChain server={server} />
-        {/* Only meaningful with a muster session: the downstream flow is scoped
-            to it, and without one the status read would just 401. */}
-        {authenticated && (
-          <ServerSignIn
-            serverName={server.getName()}
-            installation={server.cluster}
-            onlyWhenRequired
-          />
-        )}
       </DetailBlock>
 
       <DetailBlock title="Runtime (live)">
@@ -125,11 +114,26 @@ export function IntegrationServerDisclosure({
         )}
       </DetailBlock>
 
+      {authenticated && (resourcesCount ?? 0) > 0 && (
+        <DetailBlock title="Resources">
+          <ServerResources server={server} />
+        </DetailBlock>
+      )}
+
+      {authenticated && (promptsCount ?? 0) > 0 && (
+        <DetailBlock title="Prompts">
+          <ServerPrompts server={server} />
+        </DetailBlock>
+      )}
+
       <DetailBlock title="GitOps provenance">
         <Provenance server={server} />
       </DetailBlock>
 
-      <ServerMutationActions server={server} />
+      {/* Also carries the per-session Sign in / Sign out (the sign-in used to
+          live under "Authentication / token chain", where an action was easy
+          to miss among the read-only detail). */}
+      <ServerMutationActions server={server} authenticated={authenticated} />
     </DisclosureAccordion>
   );
 }

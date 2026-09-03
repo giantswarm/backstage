@@ -20,6 +20,7 @@ const configApi = {
   // built per-installation providers, and avoids the broker filter.
   getOptionalString: jest.fn().mockReturnValue(undefined),
   getOptionalConfig: jest.fn().mockReturnValue(undefined),
+  getOptionalStringArray: jest.fn().mockReturnValue(undefined),
   getString: jest.fn().mockReturnValue('http://backend'),
   getOptionalBoolean: jest.fn().mockReturnValue(false),
 } as unknown as ConfigApi;

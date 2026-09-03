@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import { crds } from '@giantswarm/k8s-types';
-import { agentsRouteRef } from '../../routes';
+import { agentsRouteRef, modelsRouteRef } from '../../routes';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
+import type { ClientServingState } from '../../lib/serving';
 import { AgentDetailPage } from './AgentDetailPage';
 
 type AgentInterface = crds.kagent.v1alpha2.Agent;
@@ -55,13 +57,40 @@ jest.mock('../../hooks/useDeleteAgent', () => ({
   }),
 }));
 
+// Stubbed for the same reason: it reads `kagentApiRef`, and this page's APIs and
+// react-query client are not part of the test. What it drives — the "Start a
+// session" button and its dialog — is covered by `NewSessionComposer`'s own tests
+// and end to end.
+const mockCreateSession = jest.fn();
+jest.mock('../../hooks/useCreateSession', () => ({
+  useCreateSession: () => ({
+    createSession: mockCreateSession,
+    isCreating: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+
+// The serving layer's word on the model behind the agent is driven per case;
+// the provider (which would read the fleet) becomes a pass-through.
+const mockServingStateFor = jest.fn<
+  ClientServingState | undefined,
+  unknown[]
+>();
+jest.mock('../ServingProvider', () => ({
+  ServingProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useServing: () => ({
+    servingStateFor: (...args: unknown[]) => mockServingStateFor(...args),
+  }),
+}));
+
 const mockParams: {
   installation: string;
   namespace: string;
   name: string;
 } = {
   installation: 'gazelle',
-  namespace: 'agentic-platform',
+  namespace: 'agent-platform',
   name: 'pr-reviewer',
 };
 
@@ -97,13 +126,13 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
       kind: 'Agent',
       metadata: {
         name: 'pr-reviewer',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         generation: 1,
         creationTimestamp: '2026-07-21T09:00:00Z',
         annotations: { 'ui.giantswarm.io/display-name': 'PR reviewer' },
         labels: {
           'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
-          'helm.toolkit.fluxcd.io/namespace': 'agentic-platform',
+          'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
         },
         ...(overrides.metadata as object),
       },
@@ -116,7 +145,7 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
           tools: [
             {
               type: 'McpServer',
-              mcpServer: { name: 'muster', namespace: 'agentic-platform' },
+              mcpServer: { name: 'muster', namespace: 'agent-platform' },
             },
           ],
         },
@@ -149,7 +178,7 @@ function makeModelConfig() {
       kind: 'ModelConfig',
       metadata: {
         name: 'opus-4-7',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         annotations: { 'ui.giantswarm.io/display-name': 'Claude Opus 4.7' },
       },
       spec: { model: 'claude-opus-4-7', provider: 'Anthropic' },
@@ -230,7 +259,7 @@ function makeHelmRelease(kustomization?: { name: string; namespace: string }) {
       kind: 'HelmRelease',
       metadata: {
         name: 'pr-reviewer',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         ...(kustomization
           ? {
               labels: {
@@ -301,6 +330,7 @@ describe('AgentDetailPage', () => {
     mockUseResource.mockReset();
     mockUseAgentSessions.mockReset();
     mockUseAgentSessions.mockReturnValue(NO_SESSIONS);
+    mockServingStateFor.mockReset();
   });
 
   it('renders every section for a ready agent', async () => {
@@ -428,7 +458,7 @@ describe('AgentDetailPage', () => {
         resource: makeAgent({
           metadata: {
             name: 'pr-reviewer',
-            namespace: 'agentic-platform',
+            namespace: 'agent-platform',
             generation: 5,
           },
           status: { observedGeneration: 4, conditions: READY_CONDITIONS },
@@ -495,7 +525,7 @@ describe('AgentDetailPage', () => {
       // and that a non-muster server gets no link (below) — the binding itself is
       // muster's to provide.
       expect(
-        screen.getByText('RemoteMCPServer agentic-platform/muster'),
+        screen.getByText('RemoteMCPServer agent-platform/muster'),
       ).toBeInTheDocument();
       expect(
         screen.getByText('All tools from this server'),
@@ -591,7 +621,7 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     expect(
-      screen.getByText('HelmRelease agentic-platform/pr-reviewer'),
+      screen.getByText('HelmRelease agent-platform/pr-reviewer'),
     ).toBeInTheDocument();
   });
 
@@ -634,7 +664,7 @@ describe('AgentDetailPage', () => {
       ).not.toBeInTheDocument();
       // The honest statement about where it came from stays.
       expect(
-        screen.getByText('HelmRelease agentic-platform/pr-reviewer'),
+        screen.getByText('HelmRelease agent-platform/pr-reviewer'),
       ).toBeInTheDocument();
     });
 
@@ -644,7 +674,7 @@ describe('AgentDetailPage', () => {
           // Explicitly empty: applied directly, with no Flux or Helm markers.
           metadata: {
             name: 'pr-reviewer',
-            namespace: 'agentic-platform',
+            namespace: 'agent-platform',
             labels: {},
           },
         } as Partial<AgentInterface>),
@@ -819,5 +849,91 @@ describe('AgentDetailPage', () => {
       expect(screen.getByText('PR reviewer')).toBeInTheDocument();
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('AgentDetailPage: the model behind the agent', () => {
+  // The Serving view lives under the Models tab; mount it too so the Not
+  // serving label has somewhere to link.
+  const renderPageWithModels = () =>
+    renderInTestApp(<AgentDetailPage />, {
+      mountedRoutes: {
+        '/agent-platform/agents': agentsRouteRef,
+        '/agent-platform/models': modelsRouteRef,
+      },
+    });
+
+  beforeEach(() => {
+    mockUseResource.mockReset();
+    mockUseAgentSessions.mockReset();
+    mockUseAgentSessions.mockReturnValue(NO_SESSIONS);
+    mockServingStateFor.mockReset();
+  });
+
+  it('asks the serving layer about the agent’s ModelConfig and shows its verdict', async () => {
+    mockServingStateFor.mockReturnValue({
+      installation: 'gazelle',
+      backend: 'ollama',
+      readiness: 'idle',
+      name: 'qwen3:0.6b',
+      message: 'Downloaded; not loaded.',
+    });
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPageWithModels();
+
+    expect(mockServingStateFor).toHaveBeenCalledWith(
+      'gazelle',
+      expect.objectContaining({
+        model: 'claude-opus-4-7',
+        modelConfig: { name: 'opus-4-7', namespace: 'agent-platform' },
+      }),
+    );
+    expect(screen.getByTestId('model-serving-readiness')).toHaveTextContent(
+      'Idle',
+    );
+    expect(
+      screen.getByText('Served by Ollama model qwen3:0.6b'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Serving view' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('links a model nothing serves to the Serving view', async () => {
+    mockServingStateFor.mockReturnValue({
+      installation: 'gazelle',
+      backend: 'kserve',
+      readiness: 'notServing',
+      name: 'opus',
+      namespace: 'model-serving',
+      message: 'InferenceService model-serving/opus is not serving.',
+    });
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPageWithModels();
+
+    expect(screen.getByTestId('model-serving-readiness')).toHaveTextContent(
+      'Not serving',
+    );
+    expect(
+      screen.getByText('Points at InferenceService model-serving/opus'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models/serving',
+    );
+  });
+
+  it('shows nothing about serving for a model the layer has no word on', async () => {
+    mockServingStateFor.mockReturnValue(undefined);
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPageWithModels();
+
+    expect(screen.getByText('Claude Opus 4.7')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('model-serving-readiness'),
+    ).not.toBeInTheDocument();
   });
 });

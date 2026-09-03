@@ -12,16 +12,27 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import AndroidIcon from '@material-ui/icons/Android';
 
-import { KagentApiClient, kagentApiRef } from './apis';
+import {
+  KagentApiClient,
+  kagentApiRef,
+  ModelManagerApiClient,
+  modelManagerApiRef,
+} from './apis';
 import {
   agentDetailRouteRef,
   agentsRouteRef,
   deploymentDetailsExternalRouteRef,
+  gpuCapacityRouteRef,
+  modelConfigsRouteRef,
+  modelDetailRouteRef,
+  modelsRouteRef,
   musterToolExplorerExternalRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
+  newModelRouteRef,
   rootRouteRef,
+  servingRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
 } from './routes';
@@ -78,6 +89,24 @@ const sessionsSubPage = SubPageBlueprint.make({
   },
 });
 
+// The "Models" tab: the kagent ModelConfigs agents run on — list, create,
+// edit, delete — and the serving layer beneath them, as a second-level tab row
+// (Model configs, Serving, GPU capacity) driven by ModelsRouter. A
+// platform-admin capability, placed after the tabs everyone uses; the muster
+// plugin's "MCP Servers" tab follows it (registration order, see App.tsx).
+const modelsSubPage = SubPageBlueprint.make({
+  name: 'models',
+  params: {
+    path: 'models',
+    title: 'Models',
+    routeRef: modelsRouteRef,
+    loader: async () => {
+      const { ModelsRouter } = await import('./components/ModelsRouter');
+      return <ModelsRouter />;
+    },
+  },
+});
+
 // Client for the kagent REST API, via the agent-platform-backend proxy. The
 // kubernetes APIs are dependencies because each installation's Dex ID token is
 // minted through them (kubernetesApi.getCluster →
@@ -98,9 +127,35 @@ const kagentApi = ApiBlueprint.make({
     }),
 });
 
+// Client for the model-manager REST API (the Models tab's Serving view on
+// installations that deploy it), via the same backend proxy. Same
+// dependencies as the kagent client, for the same reason: the per-installation
+// Dex ID token is minted through the kubernetes APIs.
+const modelManagerApi = ApiBlueprint.make({
+  name: 'model-manager',
+  params: defineParams =>
+    defineParams({
+      api: modelManagerApiRef,
+      deps: {
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+        kubernetesApi: kubernetesApiRef,
+        kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
+      },
+      factory: deps => new ModelManagerApiClient(deps),
+    }),
+});
+
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
-  extensions: [agentPlatformPage, agentsSubPage, sessionsSubPage, kagentApi],
+  extensions: [
+    agentPlatformPage,
+    agentsSubPage,
+    sessionsSubPage,
+    modelsSubPage,
+    kagentApi,
+    modelManagerApi,
+  ],
   routes: {
     root: rootRouteRef,
     agents: agentsRouteRef,
@@ -110,6 +165,12 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,
+    models: modelsRouteRef,
+    modelConfigs: modelConfigsRouteRef,
+    modelDetail: modelDetailRouteRef,
+    newModel: newModelRouteRef,
+    serving: servingRouteRef,
+    gpuCapacity: gpuCapacityRouteRef,
   },
   // Both carry a `defaultTarget`, so they resolve without an app-config binding
   // and are simply unbound when the target plugin is disabled. Every call site

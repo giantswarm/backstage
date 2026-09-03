@@ -44,6 +44,7 @@ export function toMcpServerDefinition(
     'url',
     'env',
     'headers',
+    'meta',
     'timeout',
     'auth',
   ]) {
@@ -161,7 +162,7 @@ function quoteScalar(value: string): string {
  */
 export function toManifestYaml(
   obj: KubeObject,
-  defaultNamespace = 'agentic-platform',
+  defaultNamespace = 'agent-platform',
 ): string {
   const spec = (
     obj as unknown as { jsonData: { spec?: Record<string, unknown> } }

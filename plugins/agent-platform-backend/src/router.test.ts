@@ -1,5 +1,6 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
+import { NotFoundError } from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
 import { KAGENT_AUTH_HEADER, KagentClient } from './KagentClient';
@@ -23,6 +24,10 @@ describe('createRouter', () => {
 
   const deleteSession = jest.fn();
   const updateSessionName = jest.fn();
+  const sendMessage = jest.fn();
+  const streamMessage = jest.fn();
+  const createSession = jest.fn();
+  const answerConfirmation = jest.fn();
 
   const mockClient = {
     listSessions,
@@ -31,6 +36,10 @@ describe('createRouter', () => {
     listSessionTasks,
     deleteSession,
     updateSessionName,
+    sendMessage,
+    streamMessage,
+    createSession,
+    answerConfirmation,
   } as unknown as KagentClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -63,6 +72,10 @@ describe('createRouter', () => {
     listSessionTasks.mockReset();
     deleteSession.mockReset();
     updateSessionName.mockReset();
+    sendMessage.mockReset();
+    streamMessage.mockReset();
+    createSession.mockReset();
+    answerConfirmation.mockReset();
     app = await buildApp();
   });
 
@@ -266,6 +279,117 @@ describe('createRouter', () => {
 
       expect(response.body).toEqual(body);
       expect(response.body.data).toBeUndefined();
+    });
+  });
+
+  describe('POST /kagent/sessions', () => {
+    const createdBody = {
+      error: false,
+      data: { id: 'new-session-id', name: 'Why is the ingress failing?' },
+    };
+
+    const validBody = {
+      agentNamespace: 'kagent',
+      agentName: 'issue-tracker',
+      name: 'Why is the ingress failing?',
+    };
+
+    function post(body: unknown = validBody, installation = 'gazelle') {
+      return request(app)
+        .post('/kagent/sessions')
+        .query({ installation })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    it('forwards the agent, title and token, answering 201 with kagent’s body', async () => {
+      createSession.mockResolvedValue(createdBody);
+
+      const response = await post();
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual(createdBody);
+      expect(createSession).toHaveBeenCalledWith(
+        { namespace: 'kagent', name: 'issue-tracker' },
+        'Why is the ingress failing?',
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('does not shadow the sessions list route', async () => {
+      // `GET /kagent/sessions` and `POST /kagent/sessions` share a path; only the
+      // method separates them, and a mix-up would make the list unreachable.
+      listSessions.mockResolvedValue({ error: false, data: [] });
+
+      const response = await request(app)
+        .get('/kagent/sessions')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(createSession).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['missing agentNamespace', { ...validBody, agentNamespace: undefined }],
+      ['agentNamespace not a string', { ...validBody, agentNamespace: 42 }],
+      ['empty agentName', { ...validBody, agentName: '  ' }],
+      ['missing name', { ...validBody, name: undefined }],
+      ['whitespace-only name', { ...validBody, name: '   ' }],
+      ['name over the limit', { ...validBody, name: 'x'.repeat(256) }],
+    ])('rejects a body with %s as a 400', async (_, body) => {
+      const response = await post(body);
+
+      expect(response.status).toBe(400);
+      expect(createSession).not.toHaveBeenCalled();
+    });
+
+    it('trims the title', async () => {
+      createSession.mockResolvedValue(createdBody);
+
+      await post({ ...validBody, name: '  Padded title  ' });
+
+      expect(createSession).toHaveBeenCalledWith(
+        expect.anything(),
+        'Padded title',
+        expect.anything(),
+      );
+    });
+
+    it('requires a forwarded user token', async () => {
+      // kagent reads the session's owner from this token alone. Without it, a
+      // controller in `unsecure` mode would create a session for the shared
+      // default user on behalf of nobody in particular.
+      const response = await request(app)
+        .post('/kagent/sessions')
+        .query({ installation: 'gazelle' })
+        .send(validBody);
+
+      expect(response.status).toBe(401);
+      expect(createSession).not.toHaveBeenCalled();
+    });
+
+    it('requires the installation query parameter', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions')
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(validBody);
+
+      expect(response.status).toBe(400);
+      expect(createSession).not.toHaveBeenCalled();
+    });
+
+    it('reports an agent kagent cannot resolve as a 409, not a 5xx', async () => {
+      // A stale picker, not a fault. MiddlewareFactory.error() forwards anything
+      // >= 500 to Sentry, and nobody can act on this one.
+      const conflict = new Error('kagent did not accept the agent');
+      conflict.name = 'ConflictError';
+      createSession.mockRejectedValue(conflict);
+
+      const response = await post();
+
+      expect(response.status).toBe(409);
+      expect(response.status).toBeLessThan(500);
     });
   });
 
@@ -825,6 +949,401 @@ describe('createRouter', () => {
       .query({ installation: 'gazelle' });
 
     expect(response.status).toBe(404);
+  });
+
+  describe('POST /kagent/sessions/:sessionId/messages', () => {
+    const sentBody = {
+      jsonrpc: '2.0',
+      result: { kind: 'task', status: { state: 'completed' } },
+    };
+
+    const validBody = {
+      agentNamespace: 'kagent',
+      agentName: 'issue-tracker',
+      messageId: 'msg-1',
+      text: 'why is the ingress failing?',
+    };
+
+    function post(body: unknown = validBody, installation = 'gazelle') {
+      return request(app)
+        .post('/kagent/sessions/abc/messages')
+        .query({ installation })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    it('forwards the session, agent, message and token, echoing the body', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(sentBody);
+      expect(sendMessage).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('trims the ends of the message but keeps its formatting', async () => {
+      sendMessage.mockResolvedValue(sentBody);
+
+      await post({ ...validBody, text: '  line one\n\n  line two  ' });
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        'abc',
+        expect.anything(),
+        { messageId: 'msg-1', text: 'line one\n\n  line two' },
+        expect.anything(),
+      );
+    });
+
+    it.each([
+      ['missing text', { ...validBody, text: undefined }],
+      ['text not a string', { ...validBody, text: 42 }],
+      ['empty text', { ...validBody, text: '' }],
+      ['whitespace-only text', { ...validBody, text: '   ' }],
+      ['text over the limit', { ...validBody, text: 'x'.repeat(32_001) }],
+      ['missing agentNamespace', { ...validBody, agentNamespace: undefined }],
+      ['empty agentName', { ...validBody, agentName: '  ' }],
+      ['missing messageId', { ...validBody, messageId: undefined }],
+    ])('rejects a body with %s as a 400', async (_, body) => {
+      const response = await post(body);
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('accepts a full-length message of multibyte text', async () => {
+      // The worst case for the body parser: 32,000 UTF-16 code units of CJK are
+      // three UTF-8 bytes each, ~96 kB, which only just clears the 100 kB default
+      // the router deliberately raises. A 413 here would refuse a message the
+      // proxy itself considers valid.
+      sendMessage.mockResolvedValue(sentBody);
+
+      const response = await post({ ...validBody, text: '漢'.repeat(32_000) });
+
+      expect(response.status).toBe(200);
+      expect(sendMessage).toHaveBeenCalled();
+    });
+
+    it('counts the limit in UTF-16 code units, as both ends do', async () => {
+      // An astral character costs two, so this is 32,002 by the rule and refused
+      // — the same arithmetic the composer disables its button on, so the two
+      // never disagree about what fits.
+      const response = await post({
+        ...validBody,
+        text: `${'a'.repeat(31_998)}😀😀`,
+      });
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('requires a user token', async () => {
+      // kagent decides whose session this is from the token alone.
+      const response = await request(app)
+        .post('/kagent/sessions/abc/messages')
+        .query({ installation: 'gazelle' })
+        .send(validBody);
+
+      expect(response.status).toBe(401);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('requires an installation', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/messages')
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(validBody);
+
+      expect(response.status).toBe(400);
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('answers 202 when the turn outlived its timeout', async () => {
+      // Never a 5xx: the turn is still running, and `MiddlewareFactory.error()`
+      // forwards anything >= 500 to Sentry — one issue per long turn.
+      const pending = new Error('still running');
+      pending.name = 'KagentTurnPendingError';
+      sendMessage.mockRejectedValue(pending);
+
+      const response = await post();
+
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ status: 'pending' });
+    });
+
+    it('passes a failed turn through as a 200', async () => {
+      // The HTTP status says only whether the turn was accepted. What became of
+      // it lives on the task.
+      sendMessage.mockResolvedValue({
+        jsonrpc: '2.0',
+        result: {
+          kind: 'task',
+          status: { state: 'failed', message: 'MCP server unreachable' },
+        },
+      });
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.body.result.status.state).toBe('failed');
+    });
+  });
+
+  describe('POST /kagent/sessions/:sessionId/messages/stream', () => {
+    const validBody = {
+      agentNamespace: 'kagent',
+      agentName: 'issue-tracker',
+      messageId: 'msg-1',
+      text: 'why is the ingress failing?',
+    };
+
+    /** An upstream SSE response carrying the given frames. */
+    function sseUpstream(frames: string[]) {
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) {
+            controller.enqueue(encoder.encode(frame));
+          }
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+
+    function post(body: unknown = validBody, installation = 'gazelle') {
+      return request(app)
+        .post('/kagent/sessions/abc/messages/stream')
+        .query({ installation })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    it('relays the upstream SSE stream byte for byte', async () => {
+      const frames = [
+        'data: {"jsonrpc":"2.0","id":"msg-1","result":{"kind":"task","id":"task-1"}}\n\n',
+        'data: {"jsonrpc":"2.0","id":"msg-1","result":{"kind":"status-update","final":true}}\n\n',
+      ];
+      streamMessage.mockResolvedValue(sseUpstream(frames));
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/event-stream');
+      expect(response.text).toBe(frames.join(''));
+      expect(streamMessage).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'issue-tracker' },
+        { messageId: 'msg-1', text: 'why is the ingress failing?' },
+        { userToken: 'user-token' },
+        expect.any(AbortSignal),
+      );
+    });
+
+    it('validates the body exactly as the non-streaming route does', async () => {
+      // One act over two transports: a message the messages route would refuse
+      // must not slip through its streaming sibling.
+      for (const body of [
+        { ...validBody, text: '   ' },
+        { ...validBody, text: 'x'.repeat(32_001) },
+        { ...validBody, agentName: undefined },
+        { ...validBody, messageId: undefined },
+      ]) {
+        const response = await post(body);
+        expect(response.status).toBe(400);
+      }
+      expect(streamMessage).not.toHaveBeenCalled();
+    });
+
+    it('requires the forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/messages/stream')
+        .query({ installation: 'gazelle' })
+        .send(validBody);
+
+      expect(response.status).toBe(401);
+      expect(streamMessage).not.toHaveBeenCalled();
+    });
+
+    it('maps a pre-stream failure through the ordinary error middleware', async () => {
+      // Before the upstream stream opens nothing has been dispatched, so the
+      // caller hears exactly what the non-streaming route would say.
+      streamMessage.mockRejectedValue(
+        new NotFoundError('no such agent on gazelle'),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.message).toContain('no such agent');
+    });
+
+    it('ends the relay cleanly when the upstream body dies mid-stream', async () => {
+      // A gateway cutting the upstream connection must not crash the route or
+      // surface as anything: an unterminated stream is the frontend's cue to
+      // fall back to the poll.
+      // Erroring in start() would discard the queued chunk with the stream,
+      // so the failure arrives on the second pull — after the frame was read.
+      const encoder = new TextEncoder();
+      let pulls = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls += 1;
+          if (pulls === 1) {
+            controller.enqueue(
+              encoder.encode('data: {"jsonrpc":"2.0","result":{}}\n\n'),
+            );
+            return;
+          }
+          controller.error(new Error('upstream reset'));
+        },
+      });
+      streamMessage.mockResolvedValue(
+        new Response(body, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.text).toBe('data: {"jsonrpc":"2.0","result":{}}\n\n');
+    });
+  });
+
+  describe('POST /kagent/sessions/:sessionId/answer', () => {
+    const validBody = {
+      agentNamespace: 'kagent',
+      agentName: 'grill-master',
+      messageId: 'msg-1',
+      taskId: 'task-1',
+      decision: 'approve',
+      answers: [['Rideable proof-of-concept']],
+      text: 'Rideable proof-of-concept',
+    };
+
+    function post(body: unknown = validBody, installation = 'gazelle') {
+      return request(app)
+        .post('/kagent/sessions/abc/answer')
+        .query({ installation })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    it('forwards the task, decision and positional answers', async () => {
+      answerConfirmation.mockResolvedValue({ jsonrpc: '2.0', result: {} });
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(answerConfirmation).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'grill-master' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          answers: [['Rideable proof-of-concept']],
+          rejectionReason: undefined,
+          text: 'Rideable proof-of-concept',
+        },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('accepts a refusal with a reason', async () => {
+      answerConfirmation.mockResolvedValue({});
+
+      await post({
+        agentNamespace: 'kagent',
+        agentName: 'grill-master',
+        messageId: 'msg-1',
+        taskId: 'task-1',
+        decision: 'reject',
+        rejectionReason: 'not on production',
+      });
+
+      expect(answerConfirmation).toHaveBeenCalledWith(
+        'abc',
+        expect.anything(),
+        expect.objectContaining({
+          decision: 'reject',
+          rejectionReason: 'not on production',
+        }),
+        expect.anything(),
+      );
+    });
+
+    it.each([
+      ['a missing taskId', { ...validBody, taskId: undefined }],
+      ['an empty taskId', { ...validBody, taskId: '  ' }],
+      ['a missing decision', { ...validBody, decision: undefined }],
+      ['an unknown decision', { ...validBody, decision: 'maybe' }],
+      ['a missing messageId', { ...validBody, messageId: undefined }],
+      ['a missing agentName', { ...validBody, agentName: undefined }],
+      ['answers that are not an array', { ...validBody, answers: 'yes' }],
+      ['an answer that is not an array', { ...validBody, answers: ['yes'] }],
+      ['an answer holding a non-string', { ...validBody, answers: [[42]] }],
+      ['an over-long text', { ...validBody, text: 'x'.repeat(32_001) }],
+    ])('rejects %s as a 400', async (_, body) => {
+      const response = await post(body);
+
+      expect(response.status).toBe(400);
+      expect(answerConfirmation).not.toHaveBeenCalled();
+    });
+
+    it('requires a taskId, because a taskless answer strands the agent', async () => {
+      // Not merely a validation nicety: without it kagent opens a *new* task and
+      // leaves the suspended one waiting forever.
+      const response = await post({ ...validBody, taskId: undefined });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain('taskId');
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/answer')
+        .query({ installation: 'gazelle' })
+        .send(validBody);
+
+      expect(response.status).toBe(401);
+      expect(answerConfirmation).not.toHaveBeenCalled();
+    });
+
+    it('answers 202 for a turn that is still running', async () => {
+      const pending = new Error('still working');
+      pending.name = 'KagentTurnPendingError';
+      answerConfirmation.mockRejectedValue(pending);
+
+      const response = await post();
+
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ status: 'pending' });
+    });
+
+    it('omits answers entirely when none are given, as for an approval', async () => {
+      answerConfirmation.mockResolvedValue({});
+
+      await post({
+        agentNamespace: 'kagent',
+        agentName: 'grill-master',
+        messageId: 'msg-1',
+        taskId: 'task-1',
+        decision: 'approve',
+      });
+
+      expect(answerConfirmation.mock.calls[0][2].answers).toBeUndefined();
+    });
   });
 
   describe('GET /kagent/me', () => {

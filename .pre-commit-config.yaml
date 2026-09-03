@@ -2,23 +2,30 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/68cb36b1a342d440a7cdc1e5b65336a1895cd013/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
+#    https://github.com/giantswarm/devctl/blob/2114c414f1a6f2610afaead99a6870edc847ed98/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
 #
 minimum_pre_commit_version: '2.17'
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 repos:
   # base hooks
+  #
+  # helm/<chart>/charts/ holds vendored upstream subcharts (vendir-synced).
+  # Those files are not repo-authored: the auto-fixing hooks would rewrite
+  # them on every vendir bump and the next vendir sync would revert the fix,
+  # so the whitespace/shebang hooks skip the vendored subtree.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: check-merge-conflict
       - id: check-shebang-scripts-are-executable
+        exclude: "^helm/[^/]+/charts/.*"
       - id: detect-private-key
       - id: end-of-file-fixer
-        exclude: "(.*testdata/.*|^\\.yarn/.*)"
+        exclude: "(.*testdata/.*|^\\.yarn/.*|^helm/[^/]+/charts/.*)"
       - id: mixed-line-ending
+        exclude: "^helm/[^/]+/charts/.*"
       - id: trailing-whitespace
-        exclude: "(.*testdata/.*|^\\.yarn/.*)"
+        exclude: "(.*testdata/.*|^\\.yarn/.*|^helm/[^/]+/charts/.*)"
 
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
@@ -91,15 +98,15 @@ repos:
       - id: helm-schema-backstage
         name: "generate + fix + normalize helm/backstage/values.schema.json"
         language: golang
-        additional_dependencies: ['github.com/giantswarm/schemalint/v2@v2.6.2']
-        files: ^helm/backstage/(values\.yaml|\.schema\.yaml|values\.schema\.json)$
+        additional_dependencies: ['github.com/giantswarm/schemalint/v2@v2.6.3']
+        files: ^helm/backstage/(values\.yaml|\.schema\.yaml|values\.schema\.json|zz_generated\.app-platform\.values\.yaml)$
         pass_filenames: false
         require_serial: true
         entry: sh -c
         args:
           - 'helm plugin list | grep -q "^schema[[:space:]]" || { echo "helm schema plugin missing, install it with: helm plugin install https://github.com/losisin/helm-values-schema-json"; exit 1; }; helm schema --config helm/backstage/.schema.yaml && python3 -c ''import json,sys; h=lambda o: {**{k:v for k,v in o.items() if k!="additionalProperties"},"unevaluatedProperties":False} if ("$ref" in o and o.get("additionalProperties") is False) else o; p=sys.argv[1]; f=open(p,encoding="utf-8"); d=json.load(f,object_hook=h); f.close(); f=open(p,"w",encoding="utf-8"); json.dump(d,f); f.close()'' helm/backstage/values.schema.json && schemalint normalize helm/backstage/values.schema.json -o helm/backstage/values.schema.json --force'
   - repo: https://github.com/giantswarm/schemalint
-    rev: v2.6.2
+    rev: v2.6.3
     hooks:
       - id: schemalint-verify
         pass_filenames: false

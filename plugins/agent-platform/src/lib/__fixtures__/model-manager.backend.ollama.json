@@ -1,0 +1,24 @@
+{
+  "backend": "ollama",
+  "version": "0.33.2",
+  "endpoint": "http://172.21.0.1:11434",
+  "healthy": true,
+  "capabilities": {
+    "pull": true,
+    "pullProgress": true,
+    "delete": true,
+    "load": true,
+    "unload": true,
+    "loadedModels": true,
+    "wire": true,
+    "presets": false,
+    "fitCheck": false,
+    "nodeInventory": false,
+    "search": false
+  },
+  "wiring": {
+    "namespace": "kagent",
+    "apiVersion": "v1alpha2",
+    "autoWire": true
+  }
+}

@@ -12,6 +12,8 @@ import { useServerSignIn } from './useServerSignIn';
 
 const AUTH_URL =
   'https://muster.gazelle.example.io/oauth/proxy/start?state=abc';
+const FRESH_AUTH_URL =
+  'https://muster.gazelle.example.io/oauth/proxy/start?state=def';
 
 const CHALLENGE: ServerSignInResult = {
   status: 'auth_required',
@@ -19,13 +21,21 @@ const CHALLENGE: ServerSignInResult = {
   message: `Please sign in to connect to this server:\n\n${AUTH_URL}`,
 };
 
-type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer'>;
+type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
 
 function makeApi(initial: AuthStatusResponse): jest.Mocked<Api> {
   return {
     getAuthStatus: jest.fn(() => Promise.resolve(initial)),
     signInServer: jest.fn((_server: string, _installation?: string) =>
       Promise.resolve(CHALLENGE),
+    ),
+    signOutServer: jest.fn((_server: string, _installation?: string) =>
+      Promise.resolve({
+        status: 'signed_out' as const,
+        message:
+          "Successfully logged out from 'pro'.\n\nThe server's tools are now " +
+          "hidden. Use core_auth_login with server='pro' to re-authenticate.",
+      }),
     ),
   };
 }
@@ -45,6 +55,18 @@ function newQueryClient() {
 }
 
 describe('useServerSignIn', () => {
+  let windowOpen: jest.SpyInstance;
+
+  beforeEach(() => {
+    // jsdom does not implement window.open; null is the popup-blocked answer,
+    // which signIn() must tolerate (the URL then renders as a link).
+    windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    windowOpen.mockRestore();
+  });
+
   /**
    * The completion signal. Driven with an injected poll interval so it runs in
    * milliseconds -- the real 5 s tick made this a flake risk on loaded CI
@@ -156,11 +178,10 @@ describe('useServerSignIn', () => {
   });
 
   /**
-   * The deadline CLEARS the entry rather than marking it timed out. Keeping it
-   * would leave the row visible with polling stopped and nothing able to re-read
-   * status (the muster QueryClient has refetchOnWindowFocus off), so a user who
-   * finished the IdP round-trip just after the deadline would be stuck looking at
-   * stale state.
+   * The deadline CLEARS the entry rather than marking it timed out: the old
+   * challenge's `state` is expired or consumed by then, so the link is not
+   * worth keeping. A flow that still completes afterwards is recovered by the
+   * transition test below.
    */
   it('clears a pending sign-in at the deadline so the row can act again', async () => {
     const api = makeApi({
@@ -191,5 +212,280 @@ describe('useServerSignIn', () => {
     expect(
       queryClient.getQueryData(['muster', 'pending-sign-in', 'gazelle', 'pro']),
     ).toBeNull();
+  });
+
+  /**
+   * The URL muster issues is good for as long as the `state` behind it lives in
+   * muster's store (10 minutes) -- shorter than the wait. Past that the URL is
+   * withdrawn but the wait is not: the flow may still complete in the tab that
+   * was opened in time, so polling continues until the deadline.
+   */
+  it('withdraws the sign-in URL once muster’s state has expired but keeps waiting', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const { result } = renderHook(
+      () =>
+        useServerSignIn('pro', 'gazelle', {
+          pollIntervalMs: 20,
+          authUrlLifetimeMs: 100,
+          timeoutMs: 10_000,
+        }),
+      { wrapper: wrapper(api, queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+
+    await waitFor(() => expect(result.current.authUrl).toBeUndefined(), {
+      timeout: 3_000,
+    });
+    expect(result.current.isWaiting).toBe(true);
+
+    // Polling goes on without the URL...
+    const polls = api.getAuthStatus.mock.calls.length;
+    await waitFor(() =>
+      expect(api.getAuthStatus.mock.calls.length).toBeGreaterThan(polls),
+    );
+
+    // ...and the flow landing in the tab opened earlier still ends the wait.
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    await waitFor(() => expect(result.current.isWaiting).toBe(false));
+  });
+
+  /**
+   * Reopening the sign-in page asks muster for a fresh challenge rather than
+   * reusing the stored URL, which may be expired by then. The new challenge
+   * replaces the outstanding entry.
+   */
+  it('replaces the outstanding challenge when signing in again mid-flow', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+
+    api.signInServer.mockResolvedValue({
+      ...CHALLENGE,
+      authUrl: FRESH_AUTH_URL,
+    });
+    await act(async () => result.current.signIn());
+
+    await waitFor(() => expect(result.current.authUrl).toBe(FRESH_AUTH_URL));
+    expect(api.signInServer).toHaveBeenCalledTimes(2);
+    expect(result.current.isWaiting).toBe(true);
+  });
+
+  /**
+   * A refused re-challenge (muster's login rate limit, say) changes nothing
+   * about the flow already outstanding: the refusal is reported, while the
+   * wait -- and with it the tab opened earlier -- stays.
+   */
+  it('keeps the outstanding wait when a repeated sign-in is refused', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+
+    api.signInServer.mockResolvedValue({
+      status: 'error',
+      message: 'Rate limit exceeded. Too many authentication attempts.',
+    });
+    await act(async () => result.current.signIn());
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        'Rate limit exceeded. Too many authentication attempts.',
+      ),
+    );
+    expect(result.current.isWaiting).toBe(true);
+    expect(result.current.authUrl).toBe(AUTH_URL);
+  });
+
+  /**
+   * A real IdP round-trip can outlive the deadline (Miro's flow walks through
+   * an organization picker, a team picker, and a consent page). When the user
+   * then finishes signing in, the next status read -- in production the
+   * window-focus refetch as they return to this tab -- must still unblock the
+   * page instead of leaving a stale "Sign in" affordance over a connected
+   * server.
+   */
+  it('unblocks when the sign-in completes after the deadline cleared the wait', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(
+      () =>
+        useServerSignIn('pro', 'gazelle', {
+          pollIntervalMs: 20,
+          timeoutMs: 150,
+        }),
+      { wrapper: wrapper(api, queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(AUTH_URL));
+
+    // The deadline passes mid-flow and drops the wait...
+    await waitFor(() => expect(result.current.authUrl).toBeUndefined(), {
+      timeout: 3_000,
+    });
+    invalidate.mockClear();
+
+    // ...then the user finishes the IdP round-trip, and returning to the tab
+    // re-reads the status (simulated by refetching the query directly).
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: ['muster', 'auth-status', 'gazelle'],
+      });
+    });
+
+    await waitFor(() => expect(result.current.needsLogin).toBe(false));
+    // The muster queries are invalidated so gated tools/runtime views unblock.
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] }),
+    );
+  });
+
+  /**
+   * The transition detection must not misfire on first sight of a server that
+   * was connected all along -- that would invalidate every muster query on
+   * every page load, once per rendered row.
+   */
+  it('leaves already-connected servers alone on first read', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() =>
+      expect(result.current.status?.status).toBe('connected'),
+    );
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The inverse flow: a completed logout must invalidate every muster query so
+   * the server's tools re-gate and the sign-in affordance comes back -- there
+   * is nothing to poll for, muster revokes the session's auth synchronously.
+   */
+  it('re-gates everything after a completed sign-out', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isConnected).toBe(true));
+
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    await act(async () => result.current.signOut());
+
+    expect(api.signOutServer).toHaveBeenCalledWith('pro', 'gazelle');
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] }),
+    );
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
+    // The flip is attributed by a UI-authored note, not muster's verbatim
+    // confirmation -- that one tells portal users to run core_auth_login.
+    expect(result.current.note).toBe(
+      "Signed out — the server's tools are hidden until you sign in again.",
+    );
+    expect(result.current.note).not.toContain('core_auth_login');
+  });
+
+  /** A refusal changed nothing, so nothing is refetched -- only reported. */
+  it('surfaces a refused sign-out without invalidating anything', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    api.signOutServer.mockResolvedValue({
+      status: 'error',
+      message: "Server 'pro' not found.",
+    });
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isConnected).toBe(true));
+    await act(async () => result.current.signOut());
+
+    await waitFor(() =>
+      expect(result.current.error).toBe("Server 'pro' not found."),
+    );
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A thrown error is not a refusal: the request or its answer was lost
+   * (network fault, a backend pod terminated by a rollout mid-request), and
+   * muster may well have completed the logout by then -- observed live as a
+   * row still offering "Sign out" for a session that was already signed out.
+   * The outcome is unknown, so the status must be re-read, and the error must
+   * name the action it belongs to instead of a bare "Failed to fetch".
+   */
+  it('re-reads auth status when the sign-out transport fails', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'connected' }],
+    });
+    api.signOutServer.mockRejectedValue(new TypeError('Failed to fetch'));
+    const queryClient = newQueryClient();
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isConnected).toBe(true));
+
+    // What the re-read finds is muster's business (here: the logout had in
+    // fact landed); the hook's job is only to ask again.
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    await act(async () => result.current.signOut());
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        'Sign-out request failed: Failed to fetch',
+      ),
+    );
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['muster'] }),
+    );
+    await waitFor(() => expect(result.current.needsLogin).toBe(true));
   });
 });

@@ -16,9 +16,17 @@ function timelineFor(fixture: unknown) {
   return buildTimeline(normalizeTaskList(fixture).tasks);
 }
 
-async function render(fixture: unknown, agentName = 'Issue tracker') {
+async function render(
+  fixture: unknown,
+  agentName = 'Issue tracker',
+  isAgentWorking = false,
+) {
   await renderInTestApp(
-    <SessionTimeline timeline={timelineFor(fixture)} agentName={agentName} />,
+    <SessionTimeline
+      timeline={timelineFor(fixture)}
+      agentName={agentName}
+      isAgentWorking={isAgentWorking}
+    />,
   );
 }
 
@@ -28,19 +36,12 @@ function toolTrigger(): HTMLElement {
 }
 
 /**
- * The disclosure panel a trigger controls.
- *
- * bui renders the panel as `role="group"` inside the same accordion, so it is
- * reached through the DOM rather than by an accessible name — the panel has none.
+ * The disclosure panel a trigger controls, found through `aria-controls` — the
+ * same association assistive tech follows.
  */
 function panelFor(trigger: HTMLElement): HTMLElement {
-  // Scoped to the *group* container, not `[class*="bui-Accordion"]` — that also
-  // matches the trigger's own `bui-AccordionTrigger`, so `closest` would return the
-  // trigger and find no panel inside it. Each timeline entry renders its own
-  // group, so the container holds exactly one panel.
-  const panel = trigger
-    .closest('[class*="AccordionGroup"]')
-    ?.querySelector('[role="group"]');
+  const id = trigger.getAttribute('aria-controls');
+  const panel = id ? document.getElementById(id) : null;
   if (!(panel instanceof HTMLElement)) {
     throw new Error('no disclosure panel found for the trigger');
   }
@@ -465,5 +466,32 @@ describe('SessionTimeline', () => {
     );
     expect(duplicateKeyWarnings).toHaveLength(0);
     consoleError.mockRestore();
+  });
+
+  describe('the working indicator', () => {
+    it('is absent unless the agent is working', async () => {
+      await render(tasksV099);
+
+      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    });
+
+    it('ends the conversation with it while the agent works', async () => {
+      // Where the reply will appear, which is the point: without it a sent
+      // message sits there with nothing to say anything is happening.
+      await render(tasksV099, 'Issue tracker', true);
+
+      expect(screen.getByText('Working…')).toBeInTheDocument();
+    });
+
+    it('shows it on a session with no messages yet', async () => {
+      // The reply to a session's first message has an empty conversation to
+      // appear into, which is exactly when there is least other evidence.
+      await render(tasksEmpty, 'Issue tracker', true);
+
+      expect(
+        screen.getByText('This session has no messages yet.'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Working…')).toBeInTheDocument();
+    });
   });
 });

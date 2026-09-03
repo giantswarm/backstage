@@ -4,7 +4,7 @@ import {
   DisclosureAccordion,
   Gate,
   InstallationHealthPill,
-  ServerSignIn,
+  ServerAuthActions,
 } from '../shared';
 import { presenceByMc, selectRepresentative } from '../../lib/serverGrouping';
 import {
@@ -13,7 +13,10 @@ import {
   HealthDetails,
   Provenance,
   ServerConfig,
+  ServerPrompts,
+  ServerResources,
   ServerTools,
+  useServerCapabilityCounts,
 } from './serverDetail';
 import {
   isGitOpsManaged,
@@ -63,6 +66,22 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontSize: 13,
     marginBottom: theme.spacing(0.5),
   },
+  // The counterpart of ServerMutationActions' bottom action row (standard
+  // servers are GitOps-managed, so session auth is their only action). One
+  // entry per instance; when every instance renders nothing (the connected
+  // majority), `:empty` removes the row so no stray divider is left behind.
+  sessionActions: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(2),
+    paddingTop: theme.spacing(1.5),
+    borderTop: `1px solid ${theme.palette.divider}`,
+    '&:empty': {
+      display: 'none',
+    },
+  },
 }));
 
 export interface StandardServerDisclosureProps {
@@ -106,6 +125,8 @@ export function StandardServerDisclosure({
     representative.getManagementCluster() ?? representative.getName();
   const qualified = rep?.qualified ?? false;
   const toolPrefix = `x_${family}`;
+  const { resourcesCount, promptsCount } =
+    useServerCapabilityCounts(representative);
   const managed = isGitOpsManaged(representative);
   const releaseId = provenanceReleaseId(readProvenance(representative));
 
@@ -154,21 +175,19 @@ export function StandardServerDisclosure({
           Shown for {repMc}; the auth/token chain differs per cluster (e.g.
           forward-token vs token-exchange/OBO).
         </Typography>
-        {/* One affordance per instance, not per family: `auth://status` and
-            `core_auth_login` are per server, so the representative CR's sign-in
-            would leave the family's other instances gated with no way to act.
-            `onlyWhenRequired` keeps this quiet for the connected majority. */}
-        {authenticated &&
-          servers.map(instance => (
-            <ServerSignIn
-              key={instance.getName()}
-              serverName={instance.getName()}
-              installation={instance.cluster}
-              showName
-              onlyWhenRequired
-            />
-          ))}
       </DetailBlock>
+
+      {authenticated && (resourcesCount ?? 0) > 0 && (
+        <DetailBlock title="Resources">
+          <ServerResources server={representative} />
+        </DetailBlock>
+      )}
+
+      {authenticated && (promptsCount ?? 0) > 0 && (
+        <DetailBlock title="Prompts">
+          <ServerPrompts server={representative} />
+        </DetailBlock>
+      )}
 
       <DetailBlock title="GitOps provenance">
         <Provenance server={representative} />
@@ -192,6 +211,31 @@ export function StandardServerDisclosure({
             </Box>
           ))}
         </DetailBlock>
+      )}
+
+      {/* One affordance per instance, not per family: `auth://status` and
+          `core_auth_login`/`core_auth_logout` are per server, so the
+          representative CR's sign-in would leave the family's other instances
+          gated with no way to act. ServerAuthActions keeps this quiet for the
+          connected majority. Only meaningful with a muster session: the
+          downstream flow is scoped to it, and without one the status read
+          behind it would just 401. */}
+      {authenticated && (
+        <Box className={classes.sessionActions}>
+          {servers
+            // A sigv4 instance has no user sign-in at all; AuthChain above
+            // explains the machine identity instead.
+            .filter(instance => instance.canAuthenticateInteractively())
+            .map(instance => (
+              <ServerAuthActions
+                key={instance.getName()}
+                serverName={instance.getName()}
+                installation={instance.cluster}
+                showName
+                oauthConfigured={instance.getAuth()?.type === 'oauth'}
+              />
+            ))}
+        </Box>
       )}
     </DisclosureAccordion>
   );

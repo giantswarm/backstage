@@ -1,0 +1,24 @@
+{
+  "backend": "kserve",
+  "version": "serving.kserve.io/v1beta1",
+  "endpoint": "inferenceservices.serving.kserve.io/model-serving",
+  "healthy": true,
+  "capabilities": {
+    "pull": true,
+    "pullProgress": true,
+    "delete": true,
+    "load": true,
+    "unload": true,
+    "loadedModels": true,
+    "wire": true,
+    "presets": true,
+    "fitCheck": true,
+    "nodeInventory": true,
+    "search": true
+  },
+  "wiring": {
+    "namespace": "kagent",
+    "apiVersion": "v1alpha2",
+    "autoWire": true
+  }
+}

@@ -130,6 +130,7 @@ export function useMimirWorkloadStatus(options: {
     data: desiredData,
     isLoading: desiredLoading,
     error: desiredError,
+    isAvailable,
   } = useMimirQuery({ ...queryOpts, query: desiredQuery });
 
   const {
@@ -146,5 +147,8 @@ export function useMimirWorkloadStatus(options: {
     [desiredData, readyData],
   );
 
-  return { workloads, isLoading, isEnabled, error };
+  // `isAvailable` is false when the installation opted out of Mimir
+  // (`mimirEnabled: false`) — metrics are legitimately absent there, which is
+  // a neutral state, not an error.
+  return { workloads, isLoading, isEnabled, error, isAvailable };
 }

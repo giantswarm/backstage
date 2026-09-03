@@ -142,6 +142,54 @@ export interface WorkflowStats {
   per_day: WorkflowStatsPerDay[];
 }
 
+/** One time bucket of MCP usage, labeled by its start timestamp. */
+export interface McpUsageBucket {
+  start: string;
+  ok: number;
+  error: number;
+  error_result: number;
+}
+
+/** Per-tool usage rollup over the selected range. */
+export interface McpUsageToolRow {
+  tool: string;
+  calls: number;
+  errors: number;
+  p95_seconds: number | null;
+}
+
+/** Per-MCP-server usage rollup over the selected range. */
+export interface McpUsageServerRow {
+  server: string;
+  calls: number;
+  errors: number;
+}
+
+/**
+ * MCP usage statistics (`/usage`), derived by the muster-backend from
+ * muster's downstream dispatch metrics via the prometheus MCP server
+ * federated behind the same installation. `available: false` (with a
+ * `reason`) means the installation has no queryable prometheus server —
+ * an expected state, not an error.
+ */
+export interface McpUsage {
+  available: boolean;
+  reason?: string;
+  source?: { server: string; tool: string };
+  range_hours: number;
+  step_hours: number;
+  buckets: McpUsageBucket[];
+  totals: {
+    calls: number;
+    errors: number;
+    error_ratio: number | null;
+    p95_seconds: number | null;
+    distinct_tools: number;
+  };
+  top_tools: McpUsageToolRow[];
+  servers: McpUsageServerRow[];
+}
+
 /** One configured muster installation, as reported by `/installations`. */
 export interface MusterInstallationInfo {
   name: string;
@@ -174,6 +222,25 @@ export interface McpServerRuntime {
   sessionStatus?: string;
   sessionAuth?: string;
   toolsCount?: number;
+  /**
+   * Resources and prompts this server contributes to the session, reported
+   * alongside `toolsCount` since muster#1099. Absent on older aggregators,
+   * and absent (rather than `0`) when the server exposes none.
+   */
+  resourcesCount?: number;
+  promptsCount?: number;
+  /**
+   * The authenticated subject that registered this server through muster
+   * (`ui.giantswarm.io/registered-by`, stamped server-side on create --
+   * muster#1021). Empty for GitOps-managed servers.
+   */
+  registeredBy?: string;
+  /**
+   * The email claim of the identity that registered this server
+   * (`ui.giantswarm.io/registered-by-email`, stamped since muster v1.8.0 --
+   * muster#1050). Servers registered earlier only carry `registeredBy`.
+   */
+  registeredByEmail?: string;
 }
 
 export interface McpServerListResponse {
@@ -207,6 +274,63 @@ export interface FilterToolsOptions {
   pattern?: string;
   query?: string;
   includeSchema?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * One entry from the `filter_resources` tier.
+ *
+ * `server` is always populated and is the only reliable attribution: a
+ * resource URI carrying a scheme is exposed by the aggregator unprefixed, so
+ * unlike a tool or prompt name the URI does not say which server produced it,
+ * and two servers can expose the same one (muster#1096).
+ */
+export interface ResourceSummary {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+  server: string;
+}
+
+export interface FilterResourcesResponse {
+  total: number;
+  filtered_count: number;
+  truncated: boolean;
+  resources: ResourceSummary[] | null;
+}
+
+/**
+ * One entry from the `filter_prompts` tier.
+ *
+ * `server` is reported explicitly rather than derived from the name: an
+ * exposed prompt name carries the server's configured `toolPrefix`, not its
+ * name, so the two differ for most servers (muster#1100).
+ */
+export interface PromptSummary {
+  name: string;
+  description?: string;
+  server: string;
+}
+
+export interface FilterPromptsResponse {
+  total: number;
+  filtered_count: number;
+  truncated: boolean;
+  prompts: PromptSummary[] | null;
+}
+
+/**
+ * Filters for `filter_resources` / `filter_prompts`.
+ *
+ * `server` is the meaningful scope for resources; `pattern` globs the URI (for
+ * resources) or the prefixed name (for prompts).
+ */
+export interface FilterCapabilitiesOptions {
+  installation?: string;
+  server?: string;
+  pattern?: string;
   limit?: number;
   offset?: number;
 }
@@ -304,6 +428,29 @@ export interface ServerSignInResult {
   status: 'connected' | 'auth_required' | 'error' | 'unknown';
   authUrl?: string;
   message: string;
+  /**
+   * How muster identifies itself to the server's authorization server, on
+   * `auth_required` challenges from musters that report it (muster#1083):
+   * `cimd` — the AS accepts muster's CIMD URL as client_id; `dcr` — muster
+   * registered itself via RFC 7591 Dynamic Client Registration;
+   * `cimd-fallback` — the AS advertises neither mechanism and may reject the
+   * sign-in with a client-not-registered error; `dcr-failed` — the AS
+   * rejected muster's registration request (muster#1086) and muster falls
+   * back to the CIMD URL the same way.
+   */
+  clientIdMethod?: 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
+}
+
+/**
+ * Outcome of a `core_auth_logout` attempt, normalised by the muster-backend.
+ * `signed_out` means muster revoked the session's auth for the server and its
+ * tools re-gate; `error` carries muster's refusal (unknown server, SSO-managed
+ * server); `unknown` means muster answered something unrecognised and
+ * `auth://status` should be re-read.
+ */
+export interface ServerSignOutResult {
+  status: 'signed_out' | 'error' | 'unknown';
+  message: string;
 }
 
 export interface MusterApi {
@@ -320,10 +467,21 @@ export interface MusterApi {
   ): Promise<WorkflowExecution>;
   /** Derived run statistics for a workflow (one installation). */
   getWorkflowStats(name: string, installation?: string): Promise<WorkflowStats>;
+  /** MCP usage statistics derived from muster's metrics (one installation). */
+  getMcpUsage(options?: {
+    installation?: string;
+    hours?: number;
+  }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
   /** Browse/search the aggregated tool catalogue of one installation. */
   filterTools(options?: FilterToolsOptions): Promise<FilterToolsResponse>;
+  filterResources(
+    options?: FilterCapabilitiesOptions,
+  ): Promise<FilterResourcesResponse>;
+  filterPrompts(
+    options?: FilterCapabilitiesOptions,
+  ): Promise<FilterPromptsResponse>;
   /**
    * The aggregated tool list plus the servers that still require auth, from the
    * `list_tools` meta-tool (one installation).
@@ -368,6 +526,15 @@ export interface MusterApi {
     server: string,
     installation?: string,
   ): Promise<ServerSignInResult>;
+  /**
+   * Disconnect one aggregated server from the user's muster session via
+   * muster's `core_auth_logout` -- the inverse of `signInServer`. The server's
+   * tools re-gate until the next sign-in.
+   */
+  signOutServer(
+    server: string,
+    installation?: string,
+  ): Promise<ServerSignOutResult>;
 }
 
 export interface MusterAuthCredentials {

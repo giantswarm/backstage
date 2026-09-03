@@ -9,15 +9,18 @@ import express from 'express';
 import Router from 'express-promise-router';
 import {
   AUTH_LOGIN_TOOL,
+  AUTH_LOGOUT_TOOL,
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
   parseAuthLoginResult,
+  parseAuthLogoutResult,
 } from './authLogin';
 import {
   MusterInstallationConfig,
   MusterMcpClient,
   readMusterInstallationsFromConfig,
 } from './MusterMcpClient';
+import { getMcpUsage } from './mcpUsage';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -228,6 +231,52 @@ export async function createRouter(
     res.json(result);
   });
 
+  // Resources and prompts mirror /tools/filter. `server` matters most for
+  // resources: their scheme'd URIs are exposed unprefixed, so a pattern alone
+  // cannot scope them to one server the way `x_<server>_*` does for tools.
+  const capabilityFilterArgs = (
+    req: express.Request,
+  ): Record<string, unknown> => {
+    const args: Record<string, unknown> = {};
+
+    const server = singleQueryValue(req.query.server, 'server');
+    if (server !== undefined) {
+      args.server = server;
+    }
+    const pattern = singleQueryValue(req.query.pattern, 'pattern');
+    if (pattern !== undefined) {
+      args.pattern = pattern;
+    }
+    const limit = parseOptionalInt(req.query.limit, 'limit');
+    if (limit !== undefined) {
+      args.limit = limit;
+    }
+    const offset = parseOptionalInt(req.query.offset, 'offset');
+    if (offset !== undefined) {
+      args.offset = offset;
+    }
+
+    return args;
+  };
+
+  router.get('/resources/filter', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const result = await client.filterResources(
+      capabilityFilterArgs(req),
+      readCallOptions(req, installation),
+    );
+    res.json(result);
+  });
+
+  router.get('/prompts/filter', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const result = await client.filterPrompts(
+      capabilityFilterArgs(req),
+      readCallOptions(req, installation),
+    );
+    res.json(result);
+  });
+
   router.get('/tools/:name', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
     const result = await client.describeTool(
@@ -337,9 +386,9 @@ export async function createRouter(
 
   /**
    * Start (or complete) the OAuth flow for one aggregated MCP server via
-   * muster's `core_auth_login`. Muster answers with free text -- either "already
-   * connected" or a challenge carrying a sign-in URL the user must visit -- so
-   * the response is normalised here.
+   * muster's `core_auth_login`. A challenge carries the sign-in URL as
+   * `structuredContent.authUrl`; "already connected" outcomes are prose-only.
+   * The response is normalised here.
    *
    * Muster reports refusals (SSO-managed server, rate limit, undiscoverable
    * issuer) as MCP tool errors, which the client turns into a thrown Error.
@@ -366,9 +415,13 @@ export async function createRouter(
 
     const callOptions = readCallOptions(req, installation);
 
-    let payload: unknown;
+    let payload: { text?: string; structuredContent?: unknown };
     try {
-      payload = await client.callTool(AUTH_LOGIN_TOOL, { server }, callOptions);
+      payload = await client.callToolWithStructured(
+        AUTH_LOGIN_TOOL,
+        { server },
+        callOptions,
+      );
     } catch (error) {
       if (isInfrastructureError(error)) {
         throw error;
@@ -386,16 +439,103 @@ export async function createRouter(
     res.json(parseAuthLoginResult(payload));
   });
 
+  /**
+   * Disconnect one aggregated MCP server from the calling user's muster
+   * session via `core_auth_logout` -- the inverse of /auth/login. Muster
+   * revokes the session's auth state for the server (and clears its issuer's
+   * tokens when no other server shares them), so the server's tools re-gate
+   * until the next sign-in.
+   *
+   * Same error contract as /auth/login: muster's refusals (unknown server,
+   * SSO-managed server) are MCP tool errors returned as structured 200s so
+   * MiddlewareFactory doesn't ship expected outcomes to Sentry, while
+   * infrastructure faults keep their 5xx.
+   */
+  router.post('/auth/logout', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { server } = req.body ?? {};
+
+    if (typeof server !== 'string' || server === '') {
+      throw new InputError('server is required in the request body');
+    }
+    if (!hasPerUserSession(installation)) {
+      res.json({
+        status: 'error',
+        message: `The muster installation '${installation.name}' is configured without an authProvider, so it has no per-user session to sign a downstream server out of.`,
+      });
+      return;
+    }
+
+    const callOptions = readCallOptions(req, installation);
+
+    let payload: { text?: string };
+    try {
+      payload = await client.callToolWithStructured(
+        AUTH_LOGOUT_TOOL,
+        { server },
+        callOptions,
+      );
+    } catch (error) {
+      if (isInfrastructureError(error)) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      logger.info(`${AUTH_LOGOUT_TOOL} declined to sign out the server`, {
+        installation: installation.name,
+        server,
+        message,
+      });
+      res.json({ status: 'error', message });
+      return;
+    }
+
+    res.json(parseAuthLogoutResult(payload));
+  });
+
   // --- MCP servers (runtime view via core_mcpserver_list) ------------------
 
+  /**
+   * `showAll` because muster hides `Failed` servers from the list by default
+   * (a CLI ergonomic, muster issue #292) -- for the management UI a failing
+   * server disappearing from the runtime view is exactly wrong: the server
+   * detail and the registration wizard's verify panel are where its failure
+   * must show up. `verbose` keeps the raw `error` alongside the friendly
+   * `statusMessage`; both UIs render it.
+   */
   router.get('/servers', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
     const result = await client.callTool(
       'core_mcpserver_list',
-      {},
+      { showAll: true, verbose: true },
       readCallOptions(req, installation),
     );
     res.json(result);
+  });
+
+  // --- MCP usage (derived from muster's own Prometheus metrics) ------------
+
+  /**
+   * Usage statistics for the installation's muster: tool calls per bucket by
+   * outcome, top tools, and per-server rollups. Sourced from muster's
+   * downstream dispatch metrics via the prometheus MCP server federated
+   * behind the same muster (no separate Prometheus access path). Answers
+   * `available: false` with a reason instead of erroring when the
+   * installation has no queryable prometheus server.
+   */
+  router.get('/usage', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const hours = parseOptionalInt(req.query.hours, 'hours') ?? 24;
+    if (hours < 1 || hours > 24 * 90) {
+      throw new InputError('hours must be between 1 and 2160');
+    }
+    res.json(
+      await getMcpUsage(
+        client,
+        installation,
+        readCallOptions(req, installation),
+        hours,
+      ),
+    );
   });
 
   // --- Workflows -----------------------------------------------------------

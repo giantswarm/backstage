@@ -1,0 +1,44 @@
+{
+  "query": "qwen3 14b",
+  "results": [
+    {
+      "id": "Qwen/Qwen3-14B",
+      "author": "Qwen",
+      "downloads": 2831456,
+      "likes": 512,
+      "gated": false,
+      "private": false,
+      "pipelineTag": "text-generation",
+      "library": "transformers",
+      "tags": ["safetensors", "qwen3", "conversational"],
+      "lastModified": "2026-06-10T09:00:00Z",
+      "presets": ["qwen3-14b"]
+    },
+    {
+      "id": "Qwen/Qwen3-14B-FP8",
+      "author": "Qwen",
+      "downloads": 145000,
+      "likes": 80,
+      "gated": false,
+      "private": false,
+      "pipelineTag": "text-generation",
+      "library": "transformers",
+      "tags": ["safetensors", "fp8"],
+      "lastModified": "2026-06-11T09:00:00Z",
+      "presets": []
+    },
+    {
+      "id": "meta-llama/Llama-3.3-70B-Instruct",
+      "author": "meta-llama",
+      "downloads": 990000,
+      "likes": 2100,
+      "gated": true,
+      "private": false,
+      "pipelineTag": "text-generation",
+      "library": "transformers",
+      "tags": ["safetensors"],
+      "lastModified": "2026-01-05T09:00:00Z",
+      "presets": []
+    }
+  ]
+}

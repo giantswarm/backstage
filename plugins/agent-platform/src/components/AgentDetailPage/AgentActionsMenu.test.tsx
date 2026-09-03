@@ -42,7 +42,7 @@ function makeAgent(): Agent {
       kind: 'Agent',
       metadata: {
         name: 'pr-reviewer',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
         managedFields: [{ manager: 'helm-controller', operation: 'Apply' }],
       },
       spec: {
@@ -121,7 +121,7 @@ describe('AgentActionsMenu', () => {
     expect(screen.getByText('pr-reviewer.yaml')).toBeInTheDocument();
     // Names the installation and namespace, so a manifest copied out of here can
     // be traced back to where it came from.
-    expect(screen.getByText('gazelle · agentic-platform')).toBeInTheDocument();
+    expect(screen.getByText('gazelle · agent-platform')).toBeInTheDocument();
   });
 
   it('hides the deletion from someone who may not perform it', async () => {

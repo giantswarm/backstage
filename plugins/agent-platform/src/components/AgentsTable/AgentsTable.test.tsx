@@ -2,7 +2,7 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AgentRow } from '../AgentsDataProvider';
-import { agentsRouteRef } from '../../routes';
+import { agentsRouteRef, modelsRouteRef } from '../../routes';
 import { AgentsTable } from './AgentsTable';
 
 const mockBuildAvatarUrl = jest.fn(
@@ -198,5 +198,99 @@ describe('AgentsTable', () => {
     expect(mockBuildAvatarUrl).toHaveBeenCalledWith('inst-1', 'byo-agent', {
       size: 96,
     });
+  });
+});
+
+// --- The model's serving state --------------------------------------------------
+
+// The Serving view lives under the Models tab, so its route has to be mounted
+// too for the Not serving label to link anywhere.
+const renderTableWithModels = (element: React.ReactElement) =>
+  renderInTestApp(element, {
+    mountedRoutes: {
+      '/agent-platform/agents': agentsRouteRef,
+      '/agent-platform/models': modelsRouteRef,
+    },
+  });
+
+const idleModelAgent: AgentRow = {
+  ...rows[0],
+  model: 'qwen3-0-6b',
+  modelServing: {
+    installation: 'inst-1',
+    backend: 'ollama',
+    readiness: 'idle',
+    name: 'qwen3:0.6b',
+    message: 'Downloaded; not loaded.',
+  },
+};
+
+const goneModelAgent: AgentRow = {
+  ...rows[0],
+  id: 'inst-1/sre-team/orphan',
+  name: 'Orphaned agent',
+  technicalName: 'orphan',
+  model: 'qwen2-5-0-5b',
+  modelServing: {
+    installation: 'inst-1',
+    backend: 'ollama',
+    readiness: 'notServing',
+    name: 'qwen2.5:0.5b',
+    message: 'Ollama model qwen2.5:0.5b is not on the backend at 172.21.0.1.',
+  },
+};
+
+describe('AgentsTable model serving', () => {
+  beforeEach(() => {
+    mockNavigate.mockClear();
+  });
+
+  it('labels the model with the shared vocabulary, explaining it on hover', async () => {
+    await renderTableWithModels(<AgentsTable rows={[idleModelAgent]} />);
+
+    expect(screen.getByText('qwen3-0-6b')).toBeInTheDocument();
+    expect(screen.getByTestId('agent-model-serving')).toHaveTextContent('Idle');
+    expect(
+      screen.getByTitle(
+        'Ollama model qwen3:0.6b is idle — loads on first request — Downloaded; not loaded.',
+      ),
+    ).toBeInTheDocument();
+    // Idle is ordinary state: nothing to fix, so nothing to link.
+    expect(
+      screen.queryByRole('link', { name: 'Idle' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Incident triager' }).closest('td'),
+    ).not.toHaveStyle('opacity: 0.55');
+  });
+
+  it('greys an agent whose model is gone and links its label to the Serving view', async () => {
+    await renderTableWithModels(<AgentsTable rows={[goneModelAgent]} />);
+
+    expect(screen.getByTestId('agent-model-serving')).toHaveTextContent(
+      'Not serving',
+    );
+    expect(screen.getByRole('link', { name: 'Not serving' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models/serving',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Orphaned agent' }).closest('td'),
+    ).toHaveStyle('opacity: 0.55');
+  });
+
+  it('does not also navigate the row when the label link is pressed', async () => {
+    await renderTableWithModels(<AgentsTable rows={[goneModelAgent]} />);
+
+    await userEvent.click(screen.getByRole('link', { name: 'Not serving' }));
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows the plain model name when the serving layer has no word on it', async () => {
+    await renderTableWithModels(<AgentsTable rows={rows} />);
+
+    expect(screen.getByText('Claude Sonnet 4.6')).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-model-serving')).not.toBeInTheDocument();
   });
 });

@@ -90,6 +90,53 @@ export const a2aTaskWireSchema = z.looseObject({
 export type A2aTaskWire = z.infer<typeof a2aTaskWireSchema>;
 
 /**
+ * One event of an A2A `message/stream` turn, as relayed by the backend's
+ * streaming route.
+ *
+ * The legacy v0 wire multiplexes four shapes over one field set, discriminated
+ * by `kind`: a `task` snapshot, a `status-update` (whose `status.message`
+ * carries the agent's output), an `artifact-update` (whose `artifact.parts`
+ * carry streamed response chunks), and a bare `message`. One permissive schema
+ * rather than a union, for the same reason as `kagentSessionDetailSchema`: with
+ * every field optional the members are indistinguishable, and a union would
+ * silently resolve everything to its first branch. `kind` is read after
+ * parsing.
+ *
+ * As permissive as its siblings, and for a stronger reason than usual: these
+ * events are consumed *live*, so a shape we cannot read must cost us that
+ * event — the poll delivers the canonical history regardless — never the
+ * stream.
+ */
+export const a2aStreamEventWireSchema = z.looseObject({
+  kind: wireString,
+  // `task` events name themselves `id`; the update events say `taskId`.
+  id: wireString,
+  taskId: wireString,
+  contextId: wireString,
+  status: a2aTaskStatusWireSchema.nullish().catch(undefined),
+  // On a `status-update`, whether this is the turn's terminal event.
+  final: z.boolean().nullish().catch(undefined),
+  // `artifact-update` only.
+  artifact: z
+    .looseObject({
+      artifactId: wireString,
+      parts: z.array(z.unknown()).nullish().catch(undefined),
+      metadata: z.unknown().optional(),
+    })
+    .nullish()
+    .catch(undefined),
+  lastChunk: z.boolean().nullish().catch(undefined),
+  // A bare `message` event is the message schema's own shape; these fields
+  // cover the parts of it this stream consumer reads.
+  messageId: wireString,
+  role: wireString,
+  parts: z.array(z.unknown()).nullish().catch(undefined),
+  metadata: z.unknown().optional(),
+});
+
+export type A2aStreamEventWire = z.infer<typeof a2aStreamEventWireSchema>;
+
+/**
  * kagent's `{ error, data, message }` envelope around a list.
  *
  * Tolerates the three shapes the sessions list already taught us to expect:

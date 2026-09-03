@@ -15,10 +15,19 @@ import fetch from 'node-fetch';
 
 const mockFetch = fetch as unknown as jest.Mock;
 
-function makeConfig(baseDomain: string): RootConfigService {
+function makeConfig(
+  baseDomain: string,
+  options: { mimirEnabled?: boolean } = {},
+): RootConfigService {
   return {
     getOptionalString: (key: string) => {
       if (key === 'gs.installations.alba.baseDomain') return baseDomain;
+      return undefined;
+    },
+    getOptionalBoolean: (key: string) => {
+      if (key === 'gs.installations.alba.mimirEnabled') {
+        return options.mimirEnabled;
+      }
       return undefined;
     },
   } as unknown as RootConfigService;
@@ -85,11 +94,26 @@ describe('MimirService.query', () => {
     // Override: return undefined for unknown installation
     (s as any).config = {
       getOptionalString: () => undefined,
+      getOptionalBoolean: () => undefined,
     } as unknown as RootConfigService;
 
     await expect(
       s.query({ installationName: 'unknown', query: 'up', oidcToken: 'tok' }),
     ).rejects.toThrow(NotFoundError);
+  });
+
+  it('throws NotFoundError without fetching when mimirEnabled is false', async () => {
+    const s = MimirService.create({
+      config: makeConfig('alba.capi.aws.k8s.3stripes.net', {
+        mimirEnabled: false,
+      }),
+      logger: makeLogger(),
+    });
+
+    await expect(
+      s.query({ installationName: 'alba', query: 'up', oidcToken: 'tok' }),
+    ).rejects.toThrow(NotFoundError);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('throws AuthenticationError on 401', async () => {

@@ -65,6 +65,203 @@ one `ModelConfig`, resolving them incrementally as the fleet-wide query returns.
   distinguishable from a failed one. The "No installations with models" message
   only appears when reads actually succeeded and found nothing.
 
+### Model management (the Models tab)
+
+The **Models** tab (`/agent-platform/models`) is where the ModelConfigs the
+picker offers come from: it lists them across the fleet (reusing
+`ModelConfigsProvider`) and lets a platform admin create, edit and delete them
+— parity with kagent's own UI, without leaving the portal. The row's status
+column is the controller's `Accepted` condition (a ModelConfig has no
+workload, so there is no separate `Ready`), with the condition's message as
+the tooltip — typically "which Secret is missing".
+
+The create/edit form (`NewModelPage` / `ModelDetailPage`, sharing
+`ModelConfigFormFields`) speaks four providers — **OpenAI** (which covers
+every OpenAI-compatible endpoint: vLLM, llama.cpp, OpenRouter, …),
+**Anthropic**, **Gemini** and **Ollama** — plus a per-provider endpoint
+(`spec.openAI.baseUrl` / `spec.anthropic.baseUrl` / `spec.ollama.host`) and
+`spec.tls.disableVerify` for self-signed lab endpoints. CRs using the CRD's
+other providers (AzureOpenAI, Bedrock, the VertexAI variants, SAPAICore)
+render read-only. The detail page doubles as the read view: a CR the portal
+must not write renders the same form disabled, with an alert saying why.
+
+**Key Secrets follow the agentlab contract** (`platform.extraModels`,
+giantswarm/agentlab#44), so models provisioned by either tool look the same on
+the cluster: the Secret is `kagent-<model name>` in the ModelConfig's
+namespace, and its one key is the provider's **canonical env-var name**
+(`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`). That key name is
+not configurable — the kagent controller injects it as an env var of the same
+name into agent pods, and the ADK runtime looks up exactly those names.
+Corollary: a keyless endpoint (a local vLLM, say) still gets a
+placeholder-valued Secret, because an agent pod without the env var
+crashloops even against an endpoint that never checks the value. Ollama is
+the one truly keyless provider (no Secret at all).
+
+**The API key is write-only.** The portal never reads Secret values back: the
+edit form's key field is empty and means "leave the Secret alone"; entering a
+value replaces the Secret's contents (`data: null` + `stringData` in one merge
+patch, so a provider switch does not leave the old canonical key behind). This
+is also why changing a model's provider requires re-entering the key: the old
+Secret holds the old provider's env-var name, and the portal cannot carry a
+value it refuses to read. The portal only ever writes Secrets named by its own
+convention — a CR referencing a hand-provisioned (possibly shared) Secret
+keeps that reference untouched, and such a Secret never rides along on delete.
+
+**Writes go through the Kubernetes proxy, not the scaffolder.** Unlike agent
+creation, model writes use direct `createResource`/`patchResource`/
+`deleteResource` calls with the caller's own OIDC token. Deliberate: a
+scaffolder task persists its `values` and echoes the applied manifest into the
+task output, so routing a Secret through `kube:apply` would store the API key
+in plain text in the scaffolder task store. Direct writes also give the form
+inline apiserver errors (`ConflictError` on a taken name) instead of a
+scaffolder-task detour. Authorization stays the apiserver's — the
+`SelfSubjectAccessReview` gates only decide what is _shown_.
+
+**Ownership guards.** Editing and deleting are withheld for tool-owned CRs:
+rendered by Helm (the chart's default ModelConfig), applied by a Flux
+Kustomization, or labeled `app.kubernetes.io/managed-by` by anything but the
+portal (agentlab prunes and re-asserts its models on every run). A CR with no
+markers — hand-applied with kubectl — is editable: adopting those into portal
+management is the point, and the portal stamps its own
+`app.kubernetes.io/managed-by: giantswarm-backstage` on what it creates.
+
+**Delete refuses while referenced.** The mutation lists the namespace's
+`Agent`s **fresh** at mutation time (not from the query cache) and refuses to
+delete a model any of them still references — and unlike `useDeleteAgent`'s
+shared chart source (where a failed read safely resolves to "keep"), a failed
+read here refuses the delete: proceeding is the unsafe direction, since
+deleting a referenced model breaks every agent on it.
+
+### The serving layer (the Serving section of the Models tab)
+
+Beneath the ModelConfigs, the **Serving section** shows what is actually
+served — or downloaded and ready to serve — on the installations that have a
+serving layer, and offers the controls that layer supports. It is fed by
+_serving sources_ merged in `ServingProvider` (`lib/serving.ts` is the
+backend-agnostic seam: `ServedModel`, `ServingCapabilities`,
+`ServingSourceSnapshot`, `findServedModel`, `mergeServingSnapshots`):
+
+- **KServe CRs** (`useKServeServingSource`): InferenceServices, nodes and
+  predictor pods read with the user's own RBAC on installations that serve the
+  InferenceService CRD. Read-only, plus the GPU capacity panel.
+- **model-manager** (`useModelManagerServingSource`): the inventory of the
+  installations the backend proxies a
+  [model-manager](https://github.com/giantswarm/model-manager) for, read
+  through `agent-platform-backend`'s `/model-manager/...` pass-through.
+  model-manager fronts a _serving backend_ — Ollama on a laptop agentlab
+  install, KServe on a GPU install — and reports it together with **capability
+  flags** (`GET /api/v1/backend`).
+
+**Everything beyond the table renders per capability flag, never per backend
+name.** `pull` puts a _Pull model_ button and the downloads list on the
+section — with `search` it becomes _Import from Hugging Face_ instead (below);
+`load`/`unload`/`delete`/`wire` fill the per-row actions menu;
+`nodeInventory` (which the CR source claims for itself, and a KServe-backed
+model-manager reports too) renders the GPU capacity panel. So an Ollama-backed
+installation shows pull-with-progress, load/unload, delete and wiring and no
+GPU panel, presets or fit-check — that is ordinary state, not an error — while
+a bare KServe CR view shows its GPU panel and nothing operational. The table's
+optional columns follow the data the same way (Size, Memory and Features
+appear when a row carries them; Node and GPUs are dropped when no installation
+schedules onto nodes).
+
+**One actions menu per row** (`ServedModelActions`), whatever mix of sources
+listed the row. Its items follow the capabilities and the row's state; on
+KServe the words are the serving layer's: a cached download that nobody
+serves offers _Serve…_ (the portal's serve flow, pre-filled — see below) and
+_Delete…_ (the cache directory), a served InferenceService offers _Stop
+serving…_ — done through model-manager where it operates the row (it also
+removes the ModelConfig it created), by deleting the CR with the user's own
+RBAC otherwise (the ModelConfigs stay) — and wiring only while it serves.
+_Remove model config_ is withheld for a ModelConfig model-manager merely
+recognises (`modelConfig.managed: false`, the portal's own wiring): it never
+deletes what it did not create, and the "Used by" column says who wired each
+one.
+
+**KServe through model-manager** (`backend: kserve`, model-manager ≥ 0.3):
+the inventory is the per-node download cache plus the InferenceServices. A
+cached model nobody serves is an `available` row — "downloaded on `<node>`",
+with its size, cache directory and preset — named after its Hugging Face
+repository; a served one is named after its InferenceService (the name agents
+address it by), takes the CR's readiness and, on an installation whose
+InferenceServices the user can also read as CRs, is **folded onto that CR
+row** (`mergeServingSnapshots`, by predictor hostname) so one row carries the
+CR's status and placement and model-manager's size, cache and controls. The
+GPU panel gains each node's memory budget (what the fit check compares
+against, less what the models served there reserve) and its model cache
+(`GET /api/v1/nodes`), laid over the CR source's device-plugin figures.
+
+**Import from Hugging Face** (`search` + `pull`; `ImportModelDialog`): search
+the hub (`GET /api/v1/search`), pick a hit, choose the serving preset the
+download is for and the node whose cache receives it, and read model-manager's
+own size and fit verdict for exactly that combination
+(`POST /api/v1/models/fit-check`: weights from the hub's file tree plus the
+preset's overhead against the node's memory budget). A model that does not fit
+cannot be submitted, a gated one needs the installation's hub token; the
+download is a pre-warm `pull` with `preset` and `node`, followed in the
+downloads panel like any other job. Serving it afterwards goes through the
+serve flow, whose **Weights** picker offers the cached downloads of the
+installation: picking one names the InferenceService after the cache
+directory (which is where the storage-initializer is redirected to, or —
+without the admission policies — becomes a `pvc://<claim>/<dir>` source) and
+pins it to the node that holds the weights. _Serve…_ on a downloaded row opens
+the dialog seeded that way.
+
+**Readiness** is backend-neutral: `ready` (loaded, serving), `available`
+(downloaded, not in memory — a backend with `load` brings it to ready, and
+Ollama loads it on the first request anyway), `notReady`, `pending`. A model's
+**features** (`tools`, `vision`, `thinking`, …) are shown, with a warning where
+`tools` is missing: agents cannot use such a model.
+
+**Pulling** starts a job (`POST /api/v1/models/pull` answers 202 with it) that
+the downloads panel polls every 2 s while running (`GET /api/v1/jobs`), showing
+bytes and percent, then the outcome — including the kagent ModelConfig the job
+wired, linked to its detail page. Jobs are model-manager's in-memory list. A
+pull of a reference already downloading is joined, not duplicated.
+
+**ModelConfig linkage** runs in both directions and on one matcher
+(`findServedModel`): a ModelConfig row says which served model its endpoint
+points at ("Served by …"), a served-model row lists the ModelConfigs that use
+it. Three rules, most exact first: the ModelConfig the backend itself created
+for the model (model-manager's `modelConfig` field) wins outright; otherwise
+the endpoint hostname, disambiguated by the ModelConfig's `model` id — an
+Ollama host serves every tag on one hostname, so the id is what tells them
+apart (agentlab's static `qwen35-local` resolves to `qwen3.5:9b` this way);
+with a single served model on a host and no name match, that one (a vLLM
+InferenceService names its model however it likes).
+
+**Mixed installations.** Sources are merged: the served models of both render
+side by side — except a model both list, which is folded into one row (above)
+— capabilities are OR-ed per flag, GPU nodes are one row per node, and the
+later (model-manager) source decides the installation's backend label. In
+agentlab, where the KServe CRDs are installed next to a model-manager, that is
+exactly the state.
+
+**Trust model of the model-manager routes.** The backend
+(`plugins/agent-platform-backend/src/modelManagerRouter.ts`,
+`ModelManagerClient.ts`) exposes `GET /model-manager/installations` (names
+only) and a thin, authenticated pass-through of the model-manager REST under
+`/model-manager/{backend,models,models/*name,loaded,models/{pull,load,unload,wire,unwire,fit-check},jobs,jobs/:id,presets,search,nodes}`
+per `?installation=` (`pull` and `load` forward the kserve fields `preset` and
+`node`; `load` and `fit-check` accept a preset without a model). Every data route **requires** the user's
+per-installation Dex ID token in the `backstage-model-manager-authorization`
+header (a sibling of `backstage-kagent-authorization`: one header per
+upstream), which becomes `Authorization: Bearer` toward model-manager.
+model-manager itself checks no identity: the agentgateway `/model-manager`
+route in front of it — an `AgentgatewayPolicy` with JWT validation, the same
+shape as the kagent controller route — is the boundary that rejects a missing
+or invalid token, and the proxy decides nothing from it. An `apiBaseUrl` that
+bypasses the gateway (an in-cluster Service URL, the lab shortcut) therefore
+has no boundary: every signed-in portal user can then manage models. Errors
+map `{ error: { code } }` onto `@backstage/errors` (`invalid_request` → 400,
+`not_found` → 404, `conflict` → 409, `does_not_fit` → 412
+`PreconditionFailedError` with model-manager's numbers in the message — a
+refused fit is a verdict on the request, not a fault — `unsupported` → 403
+"capability not supported", `backend_error` and an unreachable model-manager →
+503).
+`POST /api/v1/models/load` has its own, longer timeout: on Ollama it blocks
+until several GiB of weights are in memory.
+
 ### Skill discovery
 
 Skills are discovered from the GitHub repositories configured in
@@ -233,9 +430,10 @@ the open TODOs.
 ## The Sessions tab
 
 `/agent-platform/sessions` lists the signed-in user's kagent chat sessions across
-the fleet. The list itself carries no actions: a session opens into its detail page,
-where it can be **deleted** (see "Deleting a session"), but nothing here creates or
-renames one.
+the fleet, with a composer above it that **starts a new one** (see "Starting a
+session"). A session opens into its detail page, where it can be **renamed** and
+**deleted** (see "Renaming a session" and "Deleting a session"); the list rows
+themselves carry no actions.
 
 ### Why it needs a backend proxy
 
@@ -313,6 +511,36 @@ Two consequences worth knowing:
 - **Titles are short and lossy.** kagent derives them from the first message and
   truncates to 20 characters (`"What issues are assi..."`), and the full text is
   unrecoverable — so the Agent column carries much of a row's meaning.
+
+#### Session ids come in two shapes, and neither is ours
+
+Nothing here generates a session id, but the fleet holds two formats and it is worth
+knowing why before anyone writes a validator or a route guard against one of them.
+
+A session id **is** its A2A `contextId`, and whoever first names that context decides
+the format:
+
+- **Dashed UUIDv7** — `01a0587c-3955-790d-bf5f-e3e8427cdaa4`. What kagent generates
+  when a client calls `POST /api/sessions` without an `id`: `HandleCreateSession` falls
+  back to `a2a.NewContextID()`, which is `uuid.NewV7().String()` (a2a-go v2.4.0). This
+  plugin and the kagent UI both take that path. The `01a0…` prefix is a 48-bit
+  millisecond timestamp, so these sort by creation time.
+- **64 hex characters, no dashes** —
+  `986c786b60148810eff0757e49d56fc72f315609c715d392f97ad0df6fcb8cc5`. klaus-gateway's,
+  and **deterministic rather than random**: `SynthesizeContextID` in its
+  `pkg/channels/contextid.go` is a SHA-256 over the five routing dimensions (channel,
+  channel id, user id, thread id, agent ref). That is how a Slack thread resumes the
+  same kagent session without klaus-gateway storing any mapping. It only ever sets
+  `contextId` on the A2A message and never calls `POST /api/sessions`, so kagent's
+  generator never runs for it.
+
+So an id is **opaque**: never parse one, never assume hex or a UUID, and never derive
+anything from its shape. This code only ever `encodeURIComponent`s it.
+
+One asymmetry follows from the split, and it is why the empty-session TODO exists: a
+deterministic id can be recomputed after a lost response, a generated one cannot. If
+our create succeeds but its response never arrives, the session is orphaned — so
+`createSession` fails loudly and says to check the list, rather than inventing an id.
 
 ### Fleet behaviour
 
@@ -571,6 +799,17 @@ full; the agent's internal work is collapsible, with a Hidden/Collapsed/Expanded
 control — collapsed by default, because the working is the point of the screen but a
 wall of tool payloads is unreadable.
 
+Presentation follows the conventions of chat surfaces, shared with the AI chat
+plugin's visual language. The user's messages are right-aligned bubbles and
+deliberately **not** markdown — prompts quote logs and `#`-prefixed lines that must
+stay the characters typed. The agent's side of a turn opens with its avatar and
+name once, and its prose renders as GFM markdown (tables, code blocks, entity-aware
+links). Internal work renders as one-line disclosure rows whose payloads are
+JSON-highlighted, with JSON hiding inside result strings inlined rather than shown
+as a wall of `\"` escapes. The composer docks to the bottom of the viewport, and
+the page follows a streaming reply only while already scrolled to the end — never
+yanking someone who scrolled up out of what they were reading.
+
 | Entry                | Where it comes from                                                        |
 | -------------------- | -------------------------------------------------------------------------- |
 | User / agent message | `role` plus text parts, rendered as markdown                               |
@@ -682,7 +921,7 @@ and is registered (`.Methods(http.MethodPut)`), but `HandleUpdateSession` there:
 - assigns only `session.AgentID`. `session.Name` is never written.
 
 It was fixed in v0.10.0-rc1, which reads the path param and applies a partial update.
-GS pins **0.9.9** (`agentic-platform`'s `values.yaml`), so on every installation we
+GS pins **0.9.9** (`agent-platform`'s `values.yaml`), so on every installation we
 run today, the correct endpoint is inert.
 
 **So the write goes through the session upsert instead, but only after the PUT has
@@ -801,6 +1040,528 @@ component the agent delete uses.
 Verified against the kagent source at both `v0.9.9` (what the fleet runs) and
 `v0.10.0-rc1`: the handler, the SQL and the 200-with-envelope response are identical
 in both.
+
+### Continuing a session
+
+`SessionComposer` + `useSendMessage`, at the foot of the page.
+
+**A session cannot send anything.** kagent's session endpoints hold history only;
+talking to an agent is A2A JSON-RPC `message/send` to
+`POST <apiBaseUrl>/a2a/<namespace>/<name>` with `contextId` set to the session id,
+which is the only link between the two. So this is a different endpoint family from
+the rest of the proxy, and the route is `POST /kagent/sessions/:sessionId/messages` —
+session-shaped, because the session is what the user is looking at. The JSON-RPC
+envelope is built in `KagentClient`, so the frontend never learns A2A.
+
+**The agent's namespace and name come from the `Agent` resource, never from decoding
+`agent_id`.** kagent's encoding rewrites every `-` to `_`, so decoding cannot tell an
+original underscore from a rewritten hyphen — an agent whose name contains one would
+resolve to an agent that does not exist. `SessionRow` therefore carries
+`agentNamespace` next to `agentTechnicalName`, and a session whose agent matched no CR
+has no addressable agent at all.
+
+**`message/send` answers only when the agent has finished.** Verified against 0.9.9 on
+gazelle: the reply is the finished task (`result.kind === 'task'`, with `status.state`
+and the full `history`).
+
+**Waiting that out is neither possible nor necessary.** Gazelle's
+`agent-platform-connectivity-ui` HTTPRoute carries an Envoy `BackendTrafficPolicy` with
+`requestTimeout: 60s`, so any turn of substance is cut off with a **502** long before it
+finishes. And **the turn survives the cut**: observed live, an agent answered a message
+whose own request had already died with a 502.
+
+Since the turn survives, waiting buys nothing but a held-open socket, and
+`agentPlatform.kagent.turnTimeoutMs` is deliberately **short — 30 seconds**. That
+number is not about how long a turn may take; it is chosen to lose a race. The
+browser's request traverses a door of its own in front of _Backstage_, and if that door
+fires first the frontend gets a 502/504 that nothing here can turn into "still
+running", because this process never got to answer. At 30 s we always answer before a
+60 s door. (Gazelle's Backstage route happens to set `requestTimeout: 0s`, disabling
+it — but the send path must not depend on that being true everywhere.) It is also short
+enough that a genuine rejection still surfaces inline.
+
+So a lost connection is not a failed message, and the client does not guess — **it goes
+and looks**. On a 502/504, its own timeout, **or a socket that simply died**,
+`sendMessage` re-reads `GET /sessions/<id>/tasks` and checks whether the `messageId` it
+generated is in the history. Present means the turn was dispatched and is running,
+which answers **202**; absent, or unreadable, keeps the original failure. "Cannot tell"
+is deliberately not read as "it worked" — that would swallow a real outage.
+
+That third case needs care. `request` maps _any_ non-timeout fetch rejection to a 404,
+because on a fleet where most installations run no kagent that is the normal outcome and
+must stay off the 5xx path — but the same branch catches an Envoy drain or a TLS reset
+mid-turn. Those are marked as transport-borne so a send verifies them, while kagent's
+_own_ JSON 404 for an agent that does not exist stays a decision. Decisions are never
+verified: not a 401, a 403, a rejected request, nor the JSON-RPC case below.
+
+**A JSON-RPC failure arrives inside a 200.** A2A is JSON-RPC, so an invalid parameter,
+an unsupported operation, a task-store failure or an agent whose server is not ready
+comes back as `{"jsonrpc":"2.0","error":{…}}` with a 200 — and that `error` is an
+_object_, where kagent's REST envelope uses the boolean `true`. Checking only for the
+boolean let every one of these through as a successful send, with a specific
+consequence: the caller drops its optimistic copy, the invalidated read returns no new
+task, and **the message simply vanishes from the page** with the only record of why in a
+body nobody read. Both shapes are now read, and the check sits outside the verification
+above, since a rejection is a decision and must not come back as a turn in flight.
+
+202 rather than a 5xx also keeps this off the path `MiddlewareFactory.error()` forwards
+to Sentry, which would otherwise mean one issue per long turn.
+
+**A failed turn is still a 200**, with the reason on `status.message` (an agent that
+cannot reach its MCP server reports it there). The HTTP status says only whether the
+turn was accepted; the task says what became of it. Nothing in the client inspects the
+result.
+
+**The turn streams — as a preview, never as a second source of truth.** The send
+goes over A2A `message/stream` on the same endpoint, relayed by
+`POST /kagent/sessions/:sessionId/messages/stream`, so the reply appears as the
+agent produces it: text token by token, tool calls as they happen. See "Streaming
+the turn" below for the design and its failure semantics. Everything above about
+`message/send` still holds — it remains the transport for answering a
+confirmation, and its verify-not-report contract is exactly what the stream
+degrades to when something cuts it.
+
+### Streaming the turn
+
+kagent serves A2A `message/stream` beside `message/send` — its own UI streams
+with it — answering with an SSE stream whose `data:` frames are JSON-RPC
+responses carrying the legacy-wire events: a `task` snapshot, `status-update`s
+(whose `status.message` carries the agent's output), `artifact-update`s (the Go
+executor streams response text this way, stamped `{adk,kagent}_partial`), and
+the odd bare `message`. kagent's nginx sidecar sets `proxy_buffering off` and
+a2a-go sends `X-Accel-Buffering: no`, so the frames genuinely arrive live.
+
+**The backend relays bytes; the frontend owns the schema.** The streaming route
+validates exactly what the messages route validates (one shared reader — the two
+are one act over two transports), opens the upstream stream through
+`KagentClient.streamMessage`, and pipes it through verbatim. It parses nothing.
+Two transport details are load-bearing:
+
+- Backstage's global `compression()` buffers `res.write()` until `res.end()`, so
+  the relay flush-wraps `res.write` — the same trap and the same fix
+  `ai-chat-backend`'s router documents.
+- The connect phase is guarded by the ordinary request timeout, not the turn
+  timeout: a2a-go writes the SSE headers before the agent does anything, so a
+  slow connect means kagent is unwell. After the headers the relay is unbounded
+  except for a generous duration cap and the client hanging up, both of which
+  abort the upstream read — and neither of which stops the turn.
+
+**The frontend folds events into a live overlay** (`lib/kagentStreamTurn.ts`,
+rendered by the session detail page after the polled timeline): completed items
+— text, reasoning, tool calls with their results folded in, the same
+`TimelineItem` shapes `buildTimeline` produces — plus a live buffer for the text
+still being produced. The reducer mirrors kagent's own UI, and both executors'
+dialects are handled: the Python flow streams text chunks on non-final
+status-updates with the terminal event carrying the complete message, the Go
+flow streams `partial: true` artifact chunks with a `partial: false` complete
+message and a `lastChunk` sentinel. The same reply arriving twice (complete
+artifact, then repeated on the terminal status-update) is deduped by adjacent
+identical text, because only one of the two carries a `messageId`.
+
+**The poll stays the source of truth, and the overlay is disposable.** A
+streamed item whose `messageId` a poll has already delivered is dropped by
+recognition — the same rule as the optimistic user message — and the whole
+overlay is discarded once the send's awaited invalidation has put the canonical
+history on screen. This is also the backgrounded-tab story: `refetchInterval`
+pauses in hidden tabs while the fetch stream keeps delivering, and whichever is
+behind on refocus, reconciliation squares it.
+
+**A lost stream is not a lost message**, and the classification mirrors the
+backend's dispatch rule precisely:
+
+- Any event at all means the turn was dispatched: a later failure — the 60 s
+  gateway door, a network drop, even an in-band A2A error frame — only cut the
+  preview short. The send resolves like a 202 and the poll follows the turn.
+- A **transport** failure before any event (named `StreamTransportError` by the
+  API client: a dead connection, a 5xx, a response that is not a stream)
+  triggers one read of the session history to check whether the sent
+  `messageId` landed. Present resolves as dispatched; absent — or unreadable —
+  keeps the original failure, because "cannot tell" must not be read as "it
+  worked".
+- A **decision** (a 4xx, an in-band JSON-RPC error before anything ran) is
+  reported as made, never verified away.
+
+**Confirmations deliberately do not stream.** A confirmation request seen on the
+stream is not previewed: the answer panel works off the polled task's
+`status.message`, which is the one that can actually resume the task, and a
+preview would invite answering a question that is not yet answerable. Answers
+themselves still go over `message/send`.
+
+**What a gateway timeout does to this.** agent-platform-standalone's backstage
+and kagent controller routes set `timeouts.request: "0s"`, so there the stream
+lives as long as the turn. gazelle's `agent-platform-connectivity-ui` route
+carries its 60 s Envoy `BackendTrafficPolicy`, so a long turn's stream dies at
+60 s — which lands in the first bullet above: preview ends, poll takes over,
+nothing is reported. Streaming is strictly additive; where a door cuts it, the
+page behaves exactly as it did before streaming existed.
+
+**The sent message appears at once and vanishes by recognition.** The composer
+generates the `messageId` before sending, so the optimistic copy is dropped exactly
+when a poll returns a message carrying it — which happens well before the turn ends,
+and would otherwise double the message for the rest of it. `TimelineItem.messageId`
+exists for this; its `id` is positional and stable only for React. The stats strip
+still reports the server's turn count, so "Turns" lags by one until kagent confirms —
+which is honest, since no task exists yet.
+
+**The conversation ends with a "Working…" row while the agent is mid-turn**, where its
+reply will appear — otherwise a sent message sits there with nothing to say anything is
+happening, which is most acute on a session's first message, where the conversation is
+empty.
+
+That indicator takes **two** signals, because neither spans a turn:
+
+- `isAgentWorking` from `useSessionDetail` is the conversation's own verdict, but only
+  once a poll has seen the new task — up to 10 s after sending;
+- the in-flight send covers exactly that gap, and cannot carry the rest, since the
+  gateway cuts the request off well before a long turn ends.
+
+**`isActive` is not the same question, and three things narrow it** (`isAgentWorking`
+in `lib/kagentSessionState.ts`, which the composer also closes on):
+
+1. the newest task is in an active state;
+2. that state is not one of `AWAITING_INPUT_STATES` — `input-required` is _active_ but
+   the agent is blocked on a human, and a spinner there promises progress that cannot
+   arrive on its own. Compared against `state.key`, the **normalised** state, never
+   `state.raw`: the lookup is case-insensitive while `raw` keeps kagent's spelling, so
+   comparing against `raw` would miss an `Input-Required` and then both promise progress
+   and offer the composer on the one session a plain message strands;
+3. the state has moved within `ACTIVE_MAX_AGE_MS`. An agent that dies mid-turn never
+   writes a terminal state, so without this a stalled turn would look like a slow one
+   for as long as the tab stayed open.
+
+The state badge deliberately still reads "Working" in case 3: `state` is what kagent
+says, while this is what we are willing to claim about it. Freeing the composer is the
+other half of the same decision — a turn that is never going to end must not hold the
+box shut forever.
+
+**It is judged as of the last successful read, not `Date.now()`** — tied to
+`dataUpdatedAt`. That is what makes it expire at all: with a render-time clock the
+answer would only change when something re-rendered the page, and a stalled turn is
+exactly the case where the data stops changing. It also never asserts progress at a
+moment we have no data for.
+
+`ACTIVE_MAX_AGE_MS` and the backwards walk that resolves the age basis
+(`readNewestTaskState`) live in `kagentSessionState` so that this and the poll tier
+cannot drift apart. They do disagree on one point, on purpose: a state with **no
+usable timestamp anywhere** counts as working but polls on the baseline. An unbounded
+fast poll costs every reader bandwidth for as long as the tab is open, while an
+indicator that cannot expire only misleads the one person looking at it.
+
+The composer is **withheld with a reason** rather than offered and left to fail: on a
+read-only shared session (which 403s every non-GET under `/api/sessions`), when the
+agent cannot be found, and while a task is `input-required`/`auth-required`. That last
+one is the opposite of "busy" and the reason matters: a plain message does not answer
+the agent's question — kagent opens a _new_ task and leaves the old one pending
+forever — so the box would quietly strand the conversation. It is also closed while
+the agent is mid-turn, since kagent has no queued follow-up: a second message competes
+with the first.
+
+**Enter sends and Shift+Enter inserts a newline** — Slack's rule, Claude's and kagent's
+own, and what the first colleague to try the chat reached for; the earlier arrangement
+(Enter for a newline, Cmd/Ctrl+Enter to send) came back as a bug report. Cmd/Ctrl+Enter
+still sends, and an Enter that commits an IME composition is left alone. The rule lives
+in one place, `lib/sendKey.ts`, shared by both composers and the answer panel. The field
+clears on submit rather than on success — the message is in the
+transcript from that moment, and a turn is far too long to hold someone's text in a
+disabled box. **On failure the text is handed back into the box**, since the optimistic
+copy is dropped at the same time (nothing was recorded, so the transcript must not keep
+showing it) and would otherwise leave a pasted manifest nowhere at all. It is handed
+back by attempt id rather than as a bare string, so resubmitting identical text and
+failing again restores it again, and a re-render never overwrites an edit in progress. Messages are capped at 32,000 UTF-16 code units, ours rather than
+kagent's (which validates nothing), enforced in the route as well as the box. The
+route's JSON body limit is raised to 256 kB so that cap is what a caller meets: 32,000
+code units of CJK is ~96 kB, clearing the 100 kB default by too little to rely on, and
+a body-parser 413 explains nothing.
+
+### Answering the agent's question
+
+An agent can stop and ask. kagent surfaces that as a task in `input-required`, and
+the session cannot move on until it is answered — a plain message will not do it. So
+whenever a confirmation is open the detail page shows an **answer panel**, and leaves
+the reply composer on screen **disabled**, saying why.
+
+Disabled rather than removed, deliberately: a message box that vanishes reads as the
+reply feature being missing, when in fact it is blocked, and the difference matters
+because the block is temporary. kagent's own UI makes the same call — it greys its box
+out with `Awaiting approval…` in it.
+
+#### A reply that does not name the task strands the agent
+
+This is the whole difficulty, and it fails silently, so it is worth stating exactly.
+
+ADK suspends the task on a **long-running `adk_request_confirmation` call**. The A2A
+server decides what a message continues from `params.message.taskId`
+(`internal/taskexec/local_manager.go`):
+
+```go
+if req.Message == nil || len(req.Message.TaskID) == 0 {
+    tid = a2a.NewTaskID()      // a brand-new task
+} else {
+    tid = req.Message.TaskID   // resume this one
+}
+```
+
+With no task id, kagent opens a new task. The agent still _reads_ the words — the
+session history gives it the context of its own question — so the conversation looks
+fine. But the suspended call never receives its function response: the old task stays
+`input-required` for ever, and the model history holds a `tool_use` with no matching
+`tool_result`.
+
+**klaus-gateway has this bug today.** It sends the id as `params.taskId`
+(`pkg/a2a/kagent_client.go`), which is not a field of `MessageSendParams` in any A2A
+version and is dropped by the v0→v1 conversion. Every question answered from Slack
+therefore leaves its task suspended. Verified on gazelle: a session with three
+questions answered from Slack holds **seven tasks, three of them stranded**. The same
+session answered from here holds **one task**, resumed in place, with its history
+grown from 6 entries to 11. The fix on their side is one line — move it onto the
+message.
+
+Two constraints come with naming the task: the message's `contextId` must match the
+task's, and the task must not be in a terminal state. So an ordinary reply keeps
+sending **no** `taskId` — a plain message _should_ open a new task, and naming a
+finished one is rejected outright.
+
+#### The wire format
+
+Verified twice over: read out of kagent's own source, and observed on live traffic on
+gazelle. `POST <apiBaseUrl>/a2a/{ns}/{name}`, `method: "message/send"`, no
+`A2A-Version` header (matching every other call here):
+
+```json
+{
+  "params": {
+    "message": {
+      "kind": "message",
+      "messageId": "<uuid>",
+      "role": "user",
+      "contextId": "<session id>",
+      "taskId": "<the input-required task's id>",
+      "parts": [
+        {
+          "kind": "data",
+          "data": {
+            "decision_type": "approve",
+            "ask_user_answers": [{ "answer": ["Rideable proof-of-concept"] }]
+          }
+        },
+        { "kind": "text", "text": "Rideable proof-of-concept" }
+      ]
+    }
+  }
+}
+```
+
+Four things about it are easy to get wrong:
+
+- **`decision_type` is mandatory, including for a question.** Both the Go and Python
+  executors read it _before_ they look at anything else and abandon the resume path
+  entirely when it is missing. An answer sent without it is silently ignored.
+- **`ask_user_answers` is positional** — one entry per question, in the order asked —
+  and each `answer` is an **array even for a single choice**. kagent indexes into it
+  and treats a short array as "that question was not answered" rather than an error,
+  so a partial set resumes the agent on a premise nobody supplied. The panel refuses
+  to submit until every question has something for exactly this reason.
+- **An answer carries the choice's own text, not its index.** Confirmed on the wire:
+  a question whose choices were `["2","3","4","5","6"]` was answered `["5"]`.
+- **The text part is transcript-only.** Both executors discard the inbound message and
+  substitute a synthesised function response, so nothing in it reaches the model. It
+  is sent so the conversation reads correctly, and for no other reason.
+
+Nothing echoes the confirmation's own id: kagent re-derives it from the stored task
+and fans one decision out over every pending call itself.
+
+A refusal is `decision_type: "reject"` with a **flat** `rejection_reason` string. The
+per-call `rejection_reasons` map belongs to `decision_type: "batch"`, which this code
+deliberately never sends — a batch key that matches no `originalFunctionCall.id`
+**defaults to approve**, so one wrong key would silently permit a side-effecting tool.
+Only one confirmation is open at a time, so the uniform form is sufficient.
+
+#### What the question looks like, and what the panel does with it
+
+`readPendingConfirmation` (`lib/kagentHitl.ts`) reads it from the suspended task's
+`status.message`, never from `history`: a confirmation request stays in history for
+the rest of the session even after it is answered, so only `status.message` means
+"still waiting".
+
+**It reads the task whose state _is_ the session's state** — the same one the badge
+and the working indicator use, via the shared `findNewestStatefulTaskIndex`. Not "the
+newest task that awaits input", which is a real and tempting mistake: because
+klaus-gateway strands every question it answers, a perfectly healthy session routinely
+holds several old `input-required` tasks behind a completed newest one, and searching
+for those offered to answer a question the agent had moved past long ago.
+
+ADK wraps two different things in the same request, discriminated by
+`originalFunctionCall.name`:
+
+- **`ask_user`** — one or more questions, each either a **choice list** (radio, or
+  checkboxes when `multiple`) or **free text**. Both shapes occur on the same
+  installation.
+- **anything else** — a tool the agent wants permission to run, which takes Approve or
+  Decline rather than an answer.
+
+**Enter sends from any answer control** — a radio, a checkbox or the text box — with
+Shift+Enter for a newline in the box, the same rule as the composers. Handled
+explicitly on each control: a textarea never submits its form on Enter, and whether a
+focused radio does is browser-specific, so before this the answer could only be sent by
+reaching the button with the mouse or Tab. Not on the `<form>`, which would also catch
+Enter on the buttons — where react-aria already turns it into a press, so Enter on
+Decline would have sent an approval as well. In the reason box Enter confirms the
+decline instead: that box only exists because Decline was pressed.
+
+**Every question gets a free-text box, choices or not.** A choice list is not
+exhaustive — the live examples end in "Something else (I'll explain)" — and typed words
+do reach the agent, because they are sent inside the `answer` array rather than as the
+message's text part. (Only the _text part_ is discarded; that distinction is easy to
+get backwards, and getting it backwards is what first led this panel to offer choices
+alone.) kagent's own UI puts a "Type your own answer" input beside every choice list
+for the same reason.
+
+Choices and typed words are not alternatives: `answer` is a list of strings, so a
+question can be answered with a choice, with prose, or with both — "I picked this, and
+here is the caveat". They are sent choices-first, the order they appear on screen. A
+question counts as answered when it has either.
+
+A single question is **not** repeated in the panel — the timeline renders it directly
+above, as prose in the conversation where it belongs. With several, each is labelled,
+because the pairing of choices to question is not otherwise recoverable.
+
+When the session is waiting but the request cannot be read — an unrecognised payload,
+or a task with no id — the panel is withheld and the page says so. Answering then
+would be submitting a guess about what was asked.
+
+### Starting a session
+
+A session is started from a **composer**: a prompt, an agent, and "Start". There is
+deliberately no new-session _screen_ — that is the prototype's shape, and the prompt
+is the only thing the spec treats as required.
+
+It appears in two places. **Inline above the sessions list**, collapsed to a single
+line and expanding on focus, because that list is the prototype's "Mine" scope, where
+creating is the job of the view rather than a secondary action — and kagent scoping
+sessions to the signed-in user is exactly what makes our one list that scope. And in a
+**dialog on the agent detail page**, opened by "Start a session" in the header, with
+that agent preselected and the picker offering only it. Neither placement puts a
+button in the shared page header for anything but opening the dialog: that slot renders
+outside the plugin's `QueryClientProvider`, so the create mutation would have no client
+there.
+
+Expansion is **one-way**. Nothing collapses the inline composer again, because
+collapsing on blur would hide the agent just chosen, and re-collapsing under the cursor
+reads as a glitch. **Enter starts** and Shift+Enter inserts a newline, matching the
+reply composer.
+
+#### Create, navigate, then send — in that order
+
+Three steps, and the order is the whole design:
+
+1. `POST /api/sessions` with `{agent_ref, name, source: 'user'}` — one fast call.
+2. Navigate to the session's detail page, carrying the prompt in the router state.
+3. The **detail page** sends the prompt as the session's first message.
+
+The reason the send is not done by the composer is that `message/send` blocks for the
+whole turn (see "Continuing a session"): awaiting it before navigating would leave the
+user on the list for up to `turnTimeoutMs`, half a minute. Firing it un-awaited and
+navigating anyway loses the optimistic echo instead, because `useSendMessage`'s pending
+state lives in the component that just unmounted — the user would land on an empty
+conversation with no sign their prompt existed until a poll caught up 10 s later.
+
+Handing the prompt over means the machinery that already exists for a reply does all of
+it: the optimistic user message, the "Working…" row, and a failure landing back in the
+composer with the text intact. The agent's namespace and name travel **with** the
+prompt rather than being resolved from the session, so the send can be dispatched on the
+first render: resolving it the normal way needs both the session read and its join
+against the fleet-wide `Agent` list, which is a beat later.
+
+The router state is consumed exactly once and then cleared with a replacing navigation
+(`useNewSessionHandoff`). This is not tidiness — router state survives a reload and a
+Back navigation, so a page that read it on every render would silently start a second
+paid turn with the same prompt every time the user came back.
+
+**A session can be left empty.** If the tab is closed between the create and the send,
+the session exists with no messages. It is a real session — it opens, and the composer
+works on it — so nothing is broken, but it will sit in the list untitled-looking until
+someone uses or deletes it.
+
+#### Titles are ours to derive
+
+kagent does **not** auto-title. A create with no `name` comes back with no `name` field
+at all (verified against 0.9.9), so the short titles in kagent's own list are its _UI_
+truncating the first message to 20 characters — which is why sessions started there look
+the way they do in our list, and why that is unrecoverable. Since the spec has users
+never naming sessions, `deriveSessionTitle` produces one from the prompt: whitespace
+collapsed to single spaces (a prompt may be paragraphs; a title is one line), cut to 60
+characters at a word boundary where that doesn't throw most of it away, with trailing
+punctuation stripped before the ellipsis. Deliberately mechanical rather than a summary —
+anything cleverer would mean a model call on the way to creating a session, and the
+title is renameable afterwards.
+
+#### The agent implies the installation
+
+An agent's identity _is_ installation/namespace/name, so picking one picks the
+installation too; the composer has no separate installation control. `agent_ref` is
+built from the agent's **technical** name (its `Agent` resource name), never its display
+annotation and never by decoding a session's `agent_id` — that encoding replaces every
+`-` with `_` and cannot be reversed.
+
+The picker lists the agents that can actually be started — **ready ones only** —
+grouped by installation when there is more than one, each with the same deterministic
+avatar the sessions table and the agent's own page show. Past eight agents it gains a
+search box, and descriptions are truncated to one short line so a wordy one cannot push
+the rest off the screen.
+
+Non-ready agents are **omitted rather than shown disabled**. A picker is for choosing,
+and an entry that cannot be chosen is noise in it; readiness and its reason belong on
+the Agents tab and each agent's own page, which is where someone goes to find out why
+an agent is unavailable. `isStartableAgent` is exported and shared, so the picker's
+filter and the callers deciding whether to _offer_ a picker at all cannot disagree —
+otherwise a page would either show an empty dropdown or withhold a usable one.
+
+When there is exactly one agent to offer it is preselected and **the control is
+disabled**: a dropdown with a single item is not a choice. It still names the agent,
+which is the point inside the agent-page dialog — it confirms the target before a paid
+turn is committed to it. `InstallationSelect` makes the same call for a
+one-installation fleet. A lone _non-ready_ agent is never selected this way, or Start
+would be offered for something that fails at the first message.
+
+The sessions list distinguishes three reasons for having no composer at all, because
+they send the reader to different places: nothing could be read (see the warning),
+nothing is deployed (deploy one), or something is deployed but none of it is ready (the
+Agents tab says why). Offering them would create a session whose
+first turn then fails at tool-listing, with nothing on screen explaining why — and
+withholding them silently would make a broken agent indistinguishable from one that
+never existed. When the fleet offers no agent at all, the composer is replaced by a
+sentence saying so, and that sentence distinguishes "none deployed" from "none could be
+read".
+
+**Sandbox agents need no exclusion here**, which is worth stating because it looks like
+an omission. They are a separate `SandboxAgent` kind, and there is no `workloadType` on
+the `Agent` v1alpha2 CRD at all — so the fleet-wide list this picker reads
+(`AgentsDataProvider`, `Agent` CRs only) cannot contain one. No filter, and no extra
+field on `AgentRow`.
+
+#### The default agent is the last one used
+
+Remembered per browser in `localStorage` (`useLastUsedAgent`, via
+`use-local-storage-state` — the same mechanism as `useTableColumns`), stored as the
+agent's id so it is re-resolved against the live fleet on every visit. An agent that has
+since been deleted, or has stopped being ready, resolves to nothing and the composer
+asks for a choice.
+
+There is no preselection on the very first use, and that is a deliberate departure from
+the prototype, which pins one canonical "general purpose agent" as the default. We have
+no equivalent — just however many agents the fleet happens to run — and the two obvious
+substitutes are both worse: preselecting the first agent alphabetically always offers
+_something_, but the something is arbitrary, and a hasty Cmd+Enter then spends money on
+an agent that can act on a cluster; preselecting nothing every time is safe but makes
+the common case, the same agent as last time, cost two extra clicks.
+
+#### What is not carried over
+
+The prototype's composer also has a combined **visibility/team selector**, defaulting to
+Private, with a lock-icon hint below the box. It has no kagent equivalent — a session is
+owned by one user and there is no sharing model on 0.9.x — so it and the hint are
+dropped. So is the favourites-first ordering and the star badge in its picker: we have
+no favourites concept.
 
 ## The agent detail page
 
@@ -1013,20 +1774,25 @@ don't add them speculatively.
 All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
 `plugins/agent-platform-backend/config.d.ts`):
 
-| Key                      | Purpose                                                                                                                           |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `chart.ociUrl`           | OCI URL of the agent chart (no tag).                                                                                              |
-| `chart.version`          | Version floor / fallback. The deployed OCIRepository auto-upgrades via a semver range; this is only used for the manual snapshot. |
-| `fluxServiceAccountName` | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional.                              |
-| `deployTemplateRef`      | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                               |
-| `skills.repositories`    | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                            |
-| `kagent.timeoutMs`       | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                            |
-| `kagent.installations`   | Which installations to proxy kagent for, keyed by name; also the allowlist. `apiBaseUrl` overrides the derived URL. Backend-only. |
+| Key                          | Purpose                                                                                                                                                                                             |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chart.ociUrl`               | OCI URL of the agent chart (no tag).                                                                                                                                                                |
+| `chart.version`              | Version floor / fallback. The deployed OCIRepository auto-upgrades via a semver range; this is only used for the manual snapshot.                                                                   |
+| `fluxServiceAccountName`     | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional.                                                                                                |
+| `deployTemplateRef`          | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                                                                                                 |
+| `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                                                                                              |
+| `kagent.timeoutMs`           | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                                                                                              |
+| `kagent.installations`       | Which installations to proxy kagent for, keyed by name; also the allowlist. `apiBaseUrl` overrides the derived URL. Backend-only.                                                                   |
+| `modelManager.installations` | Installations that run model-manager, keyed by name, each with the required `apiBaseUrl` (`https://agentgateway.<baseDomain>/model-manager` through the gateway). Nothing is derived. Backend-only. |
+| `modelManager.timeoutMs`     | Per-request timeout toward a model-manager API (default 10000). Backend-only.                                                                                                                       |
+| `modelManager.loadTimeoutMs` | Timeout for `POST /api/v1/models/load`, which blocks until the model is in memory (default 120000). Backend-only.                                                                                   |
 
-The `kagent` keys keep the default **backend** visibility and are never served to
-the frontend: `apiBaseUrl` embeds `baseDomain`, which deanonymises customers (the
-same reason `gs.installations` is backend-only). The frontend learns installation
-_names_ from the authenticated `GET /kagent/installations` instead.
+The `kagent` and `modelManager` keys keep the default **backend** visibility and
+are never served to the frontend: `apiBaseUrl` embeds `baseDomain` (or the
+installation's gateway hostname), which deanonymises customers (the same reason
+`gs.installations` is backend-only). The frontend learns installation _names_
+from the authenticated `GET /kagent/installations` and
+`GET /model-manager/installations` instead.
 
 The plugin's page and nav item are enabled via `app.extensions` in
 `app-config.yaml`.
@@ -1043,7 +1809,7 @@ the published chart at runtime (see "Chart resolution"). What is still
 provisional:
 
 - The chart enables the **muster gateway by default** (`muster.enabled: true`),
-  which references a `RemoteMCPServer` named `muster` in `agentic-platform` and
+  which references a `RemoteMCPServer` named `muster` in `agent-platform` and
   expects a per-installation `muster.stsWellKnownUri`. The create flow does not
   set these, so it relies on the chart defaults — a reconcile-time dependency to
   revisit.
@@ -1103,27 +1869,77 @@ above). What remains is a separate, deeper concern:
   changing the values its HelmRelease renders from — so it needs the create flow's
   form driven from an existing agent, plus a decision about whether that produces
   a live apply or a PR (GitOps-managed agents are read-only, see "GitOps
-  provenance"). "Launch session" also has no write path today.
-- **Continuing a session.** The detail view, rename and delete exist (see "Renaming a
-  session" and "Deleting a session"); kagent's chat endpoint still has no UI, so a
-  session can be read and named but not carried on. Deleting from a list row is also
-  unimplemented — deliberately, since a destructive action on a row someone is
-  scanning past is easy to hit by accident. Renaming from a list row is merely
-  unbuilt, and would be reasonable.
+  provenance").
+- **An empty session is possible.** Starting one is a create followed by a separate
+  send (see "Starting a session"), so closing the tab in between leaves a session with
+  no messages. Harmless — it opens and can be continued or deleted — but a session that
+  is _reliably_ either used or gone would need the send to happen server-side, which
+  means a route that dispatches a turn it does not wait for.
+- **The agent version is not pinned to the session.** The prototype's
+  `model-session.md` requires it: a session references one agent _at a specific
+  version_, pinned at launch and immutable for the session's life. kagent's session
+  record has no such field — only `agent_ref` — so upgrading an agent silently changes
+  what every existing session is talking to. Nothing here can fix that; it is a kagent
+  data-model gap worth raising upstream rather than working around.
+- **No favourites in the agent picker.** The prototype sorts favourited agents to the
+  top of the composer's picker and marks them with a star. We have no per-user
+  favourites concept at all, so the picker is plain installation-then-name order.
+  Worth revisiting if the fleet grows past what one dropdown can present — the search
+  box that appears past eight agents is the current stopgap.
+- **The composer cannot offer to create an agent.** When the fleet has none, it is
+  replaced by a sentence saying so, with no route onward — even though the Agents tab's
+  create flow is one tab away. A link would be an easy improvement.
+- **Session list row actions.** Deleting from a list row is unimplemented —
+  deliberately, since a destructive action on a row someone is scanning past is easy to
+  hit by accident. Renaming from a list row is merely unbuilt, and would be
+  reasonable.
+- **Batch decisions are not supported.** Answering sends the uniform
+  `decision_type: 'approve'|'reject'` (see "Answering the agent's question"), never
+  `'batch'` with a per-call `decisions` map. kagent suspends the task on one
+  confirmation at a time, so the uniform form has always been sufficient here — and
+  the batch form is actively dangerous to get wrong: a key that matches no
+  `originalFunctionCall.id` **defaults to approve**, so one mistyped id silently
+  permits a side-effecting tool. If parallel tool calls ever do arrive in one
+  confirmation, the per-call ids come from `originalFunctionCall.id` (the _inner_ ones
+  for sub-agent HITL), and this needs implementing deliberately rather than by
+  extension.
+- **Sub-agent HITL is untested.** A confirmation raised inside a delegated agent
+  carries `toolConfirmation.payload.hitl_parts`, and the uniform decision we send is
+  documented to fan out over those too — but no agent on the fleet has produced one, so
+  it has never been exercised.
+- **No stop or cancel of a running turn**, which the prototype offers as a header
+  action. A2A has a cancel method; nothing is wired to it, so a turn that has gone
+  wrong can only be waited out.
+- **Sandbox agents cannot be messaged or started.** They need `/api/a2a-sandboxes/…`
+  rather than `/api/a2a/…`, require `contextId`, and 409 on a second session. Nothing
+  filters them out, and nothing needs to: they are a separate `SandboxAgent` kind, so
+  the `Agent` CRs both the send path and the composer's picker read cannot contain one
+  (see "The agent implies the installation"). Supporting them means reading that kind
+  as well, plus the sandbox A2A path and handling the one-session 409. gazelle runs none
+  today — every agent there is the default workload type — so nothing is hidden by it
+  yet.
+- **Sending depends on a token muster also accepts.** An agent forwards the caller's
+  `Authorization` header to its MCP servers (`allowedHeaders: ["authorization"]`), so a
+  token good enough for kagent but not for muster fails the turn at tool-listing rather
+  than doing anything — `failed to list MCP tools … Unauthorized`, observed while
+  probing with a hand-made token. Every agent on gazelle depends on muster, so this is
+  a real dependency of the send path and not a corner case, even though the Dex token
+  the proxy forwards is expected to satisfy both.
 - **The rename fallback is waiting on a kagent bump.** Rename works on v0.9.x only
   through the session upsert, because `HandleUpdateSession` there cannot rename at all
   (see "Renaming a session"). Everything propping that up is marked
   `TODO(kagent-0.9)` and should be deleted once no installation runs v0.9.x, leaving
   the plain `PUT /api/sessions/:id`.
-- **An unanswered question is not shown.** When a task is `input-required`, the
-  question the agent is waiting on lives in `status.message` — the wire schema
-  already parses it and says so — but `buildTimeline` only ever reads
-  `status.timestamp`, so nothing renders it. The page shows a "Waiting for input"
-  badge above a conversation that just stops, with no indication of what was asked.
-  Observed live on gazelle. The fix is a timeline entry (or a panel above it) for the
-  pending prompt; note it is not part of task `history`, so it needs handling of its
-  own rather than falling out of the existing walk. Answering it is a separate gap —
-  see "Continuing a session" for the missing write path.
+- **Streaming covers only the turn this tab sent.** A turn started elsewhere — a
+  Slack thread, kagent's own UI, another browser tab — still arrives through the
+  10 s poll, because following it live needs a cheap way to notice and subscribe
+  to a running task (`tasks/resubscribe` exists, but knowing _when_ to call it is
+  the poll again). Upstream work on incremental session reads
+  (giantswarm/giantswarm#37361) is the real unlock; revisit then.
+- **`A2A-Version` is still unsent**, on the send as well as the reads, so both speak
+  the legacy v0 wire kagent defaults to. They have to agree, or the states will not
+  line up. `TODO(kagent-0.11)`: legacy is marked for removal there, at which point both
+  need pinning together.
 - **No manual refresh on the session detail page.** The page polls now (see
   "Refreshing"), so staleness is capped at 60 s and there is nothing frozen to
   rescue — but there is still no way to say "check again, now", which is the one

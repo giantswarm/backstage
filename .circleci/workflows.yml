@@ -5,7 +5,7 @@
 # workflow in .circleci/config.yml merges into this file at pipeline runtime.
 version: 2.1
 orbs:
-  architect: giantswarm/architect@9.6.0
+  architect: giantswarm/architect@10.1.0
 
 jobs:
   # Self-contained Node build/test on a cimg/node executor (architect ships no
@@ -15,7 +15,7 @@ jobs:
   # repo redirects its bespoke toolchain by editing those scripts, not this job.
   node-build:
     docker:
-    - image: cimg/node:24.18.0
+    - image: cimg/node:24.19.0
     resource_class: large
     steps:
     - checkout
@@ -30,8 +30,8 @@ jobs:
     # stale-ABI binaries. The Node analogue of go-build's $GOCACHE persist.
     - restore_cache:
         keys:
-        - node-build-yarn-v1-24.18.0-{{ checksum "yarn.lock" }}
-        - node-build-yarn-v1-24.18.0-
+        - node-build-yarn-v1-24.19.0-{{ checksum "yarn.lock" }}
+        - node-build-yarn-v1-24.19.0-
     - run:
         name: Install dependencies
         command: yarn install --immutable
@@ -70,7 +70,7 @@ jobs:
     # restore prefix keeps every run warm-started from the last good cache, so a
     # red build never leaves a repo cold).
     - save_cache:
-        key: node-build-yarn-v1-24.18.0-{{ checksum "yarn.lock" }}
+        key: node-build-yarn-v1-24.19.0-{{ checksum "yarn.lock" }}
         paths:
         - node_modules
         - .yarn/install-state.gz
@@ -96,7 +96,7 @@ workflows:
         context: architect
         name: push-to-registries
         dockerfile: packages/backend/Dockerfile
-        platforms: linux/amd64
+        platforms: linux/amd64,linux/arm64
         requires:
         - node-build
         filters:
@@ -112,7 +112,7 @@ workflows:
         name: push-to-registries-release
         dockerfile: packages/backend/Dockerfile
         split-china-push: true
-        platforms: linux/amd64
+        platforms: linux/amd64,linux/arm64
         requires:
         - node-build
         filters:

@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
 import { readProvenance, provenanceReleaseId } from '../../lib/gitops';
+import { decodeDexSubject } from '../../lib/dexSubject';
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -51,6 +52,17 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     gap: theme.spacing(0.75),
     marginTop: theme.spacing(1),
+  },
+  capabilityList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(1),
+    fontSize: 13,
+  },
+  capabilityNote: {
+    display: 'block',
+    color: theme.palette.text.secondary,
   },
   errorPre: {
     whiteSpace: 'pre-wrap',
@@ -103,6 +115,7 @@ export function DetailBlock({
 /** CRD-sourced configuration (always available, no muster session needed). */
 export function ServerConfig({ server }: { server: MCPServer }) {
   const classes = useStyles();
+  const metaEntries = Object.entries(server.getMeta() ?? {});
   return (
     <Box className={classes.grid}>
       <DefRow label="Type">{server.getType() ?? '-'}</DefRow>
@@ -119,6 +132,15 @@ export function ServerConfig({ server }: { server: MCPServer }) {
         <DefRow label="Timeout">{server.getTimeout()}s</DefRow>
       )}
       <DefRow label="Auto start">{server.getAutoStart() ? 'yes' : 'no'}</DefRow>
+      {/* `spec.meta`: merged into `params._meta` of every request. Worth its
+          own row rather than a footnote — an AWS-hosted server reads the region
+          it operates in from here, and a wrong value produces confident answers
+          about the wrong account region rather than an error. */}
+      {metaEntries.map(([key, value]) => (
+        <DefRow key={key} label={`Meta ${key}`}>
+          <span className={classes.mono}>{value}</span>
+        </DefRow>
+      ))}
     </Box>
   );
 }
@@ -126,11 +148,12 @@ export function ServerConfig({ server }: { server: MCPServer }) {
 /**
  * The per-server auth/token chain recovered from `spec.auth`.
  *
- * The sign-in affordance deliberately lives in the disclosures rather than here:
- * this component returns early for a CR without `spec.auth`, while muster can
- * still report that server as `auth_required`, and a federated family renders
- * one AuthChain for an arbitrary representative CR whereas `core_auth_login` is
- * per server instance.
+ * The sign-in/sign-out affordance deliberately lives in the disclosures'
+ * bottom action rows rather than here: this component returns early for a CR
+ * without `spec.auth`, while muster can still report that server as
+ * `auth_required`, and a federated family renders one AuthChain for an
+ * arbitrary representative CR whereas `core_auth_login` is per server
+ * instance.
  */
 export function AuthChain({ server }: { server: MCPServer }) {
   const classes = useStyles();
@@ -144,15 +167,53 @@ export function AuthChain({ server }: { server: MCPServer }) {
     );
   }
 
-  const { tokenExchange, localMint, authorizationServer } = auth;
+  const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
 
   return (
     <>
+      {/* sigv4 is the one auth type with no user in it at all. Said before the
+          fields, because everything below reads like per-user auth otherwise —
+          and "who does this act as" is the question an operator is here to
+          answer. */}
+      {sigv4 && (
+        <Typography variant="body2" className={classes.note}>
+          Requests are signed with muster's own AWS machine identity, not the
+          calling user's. All users share this identity, and CloudTrail
+          attributes their actions to muster. There is no user sign-in.
+        </Typography>
+      )}
       <Box className={classes.grid}>
         <DefRow label="Type">{auth.type}</DefRow>
-        <DefRow label="Forward token">
-          {auth.forwardToken ? 'yes' : 'no'}
-        </DefRow>
+        {sigv4 && (
+          <>
+            <DefRow label="Signing region">
+              <span className={classes.mono}>{sigv4.region}</span>
+            </DefRow>
+            <DefRow label="Signing service">
+              {sigv4.service ? (
+                <span className={classes.mono}>{sigv4.service}</span>
+              ) : (
+                <span className={classes.note}>derived from the URL host</span>
+              )}
+            </DefRow>
+            <DefRow label="Assumed role">
+              {sigv4.roleArn ? (
+                <span className={classes.mono}>{sigv4.roleArn}</span>
+              ) : (
+                <span className={classes.note}>
+                  none — signs as muster's own identity
+                </span>
+              )}
+            </DefRow>
+          </>
+        )}
+        {/* Meaningless for sigv4 — the CRD rejects the two together, so the
+            row could only ever read "no". */}
+        {!sigv4 && (
+          <DefRow label="Forward token">
+            {auth.forwardToken ? 'yes' : 'no'}
+          </DefRow>
+        )}
         {auth.requiredAudiences && auth.requiredAudiences.length > 0 && (
           <DefRow label="Required audiences">
             <span className={classes.mono}>
@@ -308,6 +369,21 @@ export function RuntimeState({ server }: { server: MCPServer }) {
       {runtime.toolsCount !== undefined && (
         <DefRow label="Tools (session)">{runtime.toolsCount}</DefRow>
       )}
+      {runtime.resourcesCount !== undefined && (
+        <DefRow label="Resources (session)">{runtime.resourcesCount}</DefRow>
+      )}
+      {runtime.promptsCount !== undefined && (
+        <DefRow label="Prompts (session)">{runtime.promptsCount}</DefRow>
+      )}
+      {runtime.registeredBy && (
+        <DefRow label="Registered by">
+          <span title={runtime.registeredBy}>
+            {runtime.registeredByEmail ??
+              decodeDexSubject(runtime.registeredBy) ??
+              runtime.registeredBy}
+          </span>
+        </DefRow>
+      )}
       {runtime.consecutiveFailures ? (
         <DefRow label="Consecutive failures">
           {runtime.consecutiveFailures}
@@ -387,11 +463,15 @@ export function ServerTools({
     // `Auth Required` is a session state, not a degraded one (ADR D3): the
     // server exposes no tools because this user's session lacks the audience,
     // not because it "may be down".
-    const authGated = server.getState() === 'Auth Required';
+    // ...and only where a sign-in exists to point at: a sigv4 server signs as
+    // muster itself, so "sign in" would be advice nobody can act on.
+    const authGated =
+      server.getState() === 'Auth Required' &&
+      server.canAuthenticateInteractively();
     return (
       <Typography variant="body2" className={classes.note}>
         {authGated
-          ? 'No tools exposed — your muster session is not authenticated to this server. Sign in under “Authentication / token chain”.'
+          ? 'No tools exposed — your muster session is not authenticated to this server. Use “Sign in” in the actions below.'
           : 'No tools exposed (the server may be down or unreachable).'}
       </Typography>
     );
@@ -419,6 +499,168 @@ export function ServerTools({
               title={tool.summary ?? tool.description ?? tool.name}
             />
           </Link>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Per-session capability counts for one server, read from the same
+ * `core_mcpserver_list` query RuntimeState uses (react-query dedupes it, so
+ * this costs no extra request).
+ *
+ * Callers use it to decide whether a Resources or Prompts section is worth
+ * rendering at all: most servers expose neither, and an always-present empty
+ * block reads as broken rather than as informative. A count is absent rather
+ * than `0` when the server exposes none, and absent on aggregators older than
+ * muster#1099 -- in both cases the section is simply not shown.
+ */
+export function useServerCapabilityCounts(server: MCPServer): {
+  resourcesCount?: number;
+  promptsCount?: number;
+} {
+  const musterApi = useApi(musterApiRef);
+  const installation = server.cluster;
+  const name = server.getName();
+
+  const { data } = useQuery({
+    queryKey: ['muster', 'servers', installation],
+    queryFn: () => musterApi.listServers(installation),
+  });
+
+  const runtime = (data?.mcpServers ?? []).find(s => s.name === name);
+  return {
+    resourcesCount: runtime?.resourcesCount,
+    promptsCount: runtime?.promptsCount,
+  };
+}
+
+/**
+ * Resources this server contributes to the aggregated catalogue.
+ *
+ * Unlike tools, resources cannot be discovered by name prefix: a resource URI
+ * carrying a scheme is exposed by the aggregator unchanged, so `x_<server>_*`
+ * has nothing to match and two servers may advertise the same URI. muster
+ * scopes them by source server instead (muster#1096), which is what
+ * `filter_resources` takes here.
+ */
+export function ServerResources({ server }: { server: MCPServer }) {
+  const classes = useStyles();
+  const musterApi = useApi(musterApiRef);
+  const installation = server.cluster;
+  const name = server.getName();
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['muster', 'server-resources', installation, name],
+    queryFn: () =>
+      musterApi.filterResources({ installation, server: name, limit: 200 }),
+  });
+
+  if (isLoading) {
+    return <Progress />;
+  }
+  if (error) {
+    return (
+      <Typography variant="body2" className={classes.note}>
+        Resources unavailable: {(error as Error).message}
+      </Typography>
+    );
+  }
+
+  const resources = data?.resources ?? [];
+  if (resources.length === 0) {
+    return (
+      <Typography variant="body2" className={classes.note}>
+        No resources exposed (server may be down or require authentication).
+      </Typography>
+    );
+  }
+
+  return (
+    <Box>
+      <Typography variant="body2" className={classes.note}>
+        {data?.total ?? resources.length} resource(s)
+        {data?.truncated ? ' (first page)' : ''}
+      </Typography>
+      <Box className={classes.capabilityList}>
+        {resources.map(resource => (
+          <Box key={`${resource.server}:${resource.uri}`}>
+            <span className={classes.mono}>{resource.uri}</span>
+            {resource.name ? ` — ${resource.name}` : ''}
+            {resource.description && (
+              <Typography variant="caption" className={classes.capabilityNote}>
+                {resource.description}
+              </Typography>
+            )}
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Prompts this server contributes. Prompt names *are* prefixed
+ * `x_<server>_<name>`, so these could be filtered by pattern like tools --
+ * the server filter is used for symmetry with resources and to stay correct
+ * if the prefix scheme ever changes.
+ */
+export function ServerPrompts({ server }: { server: MCPServer }) {
+  const classes = useStyles();
+  const musterApi = useApi(musterApiRef);
+  const installation = server.cluster;
+  const name = server.getName();
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['muster', 'server-prompts', installation, name],
+    queryFn: () =>
+      musterApi.filterPrompts({ installation, server: name, limit: 200 }),
+  });
+
+  if (isLoading) {
+    return <Progress />;
+  }
+  if (error) {
+    return (
+      <Typography variant="body2" className={classes.note}>
+        Prompts unavailable: {(error as Error).message}
+      </Typography>
+    );
+  }
+
+  const prompts = data?.prompts ?? [];
+  if (prompts.length === 0) {
+    return (
+      <Typography variant="body2" className={classes.note}>
+        No prompts exposed (server may be down or require authentication).
+      </Typography>
+    );
+  }
+
+  // Prompts are never family-grouped, so this is not getToolNamePrefix().
+  const prefix = server.getPromptNamePrefix();
+
+  return (
+    <Box>
+      <Typography variant="body2" className={classes.note}>
+        {data?.total ?? prompts.length} prompt(s)
+        {data?.truncated ? ' (first page)' : ''}
+      </Typography>
+      <Box className={classes.capabilityList}>
+        {prompts.map(prompt => (
+          <Box key={prompt.name}>
+            <span className={classes.mono}>
+              {prompt.name.startsWith(`${prefix}_`)
+                ? prompt.name.slice(prefix.length + 1)
+                : prompt.name}
+            </span>
+            {prompt.description && (
+              <Typography variant="caption" className={classes.capabilityNote}>
+                {prompt.description}
+              </Typography>
+            )}
+          </Box>
         ))}
       </Box>
     </Box>

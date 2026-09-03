@@ -3,6 +3,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import { kagentApiRef } from '../../apis';
+import { sessionsQueryKey } from '../../lib/queryKeys';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import { useAgents } from '../AgentsDataProvider';
@@ -119,7 +120,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
 
   const sessionQueries = useQueries({
     queries: targets.map(installation => ({
-      queryKey: ['agent-platform', 'kagent', 'sessions', installation],
+      queryKey: sessionsQueryKey(installation),
       queryFn: () => kagentApi.listSessions(installation),
       // No `retry` override: the QueryClientProvider predicate already declines
       // to retry NotFoundError/ServiceUnavailableError, which is the normal

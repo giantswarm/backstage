@@ -2,9 +2,12 @@ import {
   coreServices,
   createBackendModule,
 } from '@backstage/backend-plugin-api';
+import { scaffolderActionsExtensionPoint } from '@backstage/plugin-scaffolder-node';
 import { scaffolderTemplatingExtensionPoint } from '@backstage/plugin-scaffolder-node/alpha';
 import type { JsonValue } from '@backstage/types';
+import { createKubeApplyAction } from './actions/kubeApply';
 import { parseClusterRef } from './filters/parseClusterRef';
+import { KubernetesClientFactory } from './lib/KubernetesClientFactory';
 
 export const scaffolderModuleGS = createBackendModule({
   pluginId: 'scaffolder',
@@ -12,10 +15,25 @@ export const scaffolderModuleGS = createBackendModule({
   register(reg) {
     reg.registerInit({
       deps: {
+        actionsExtensionPoint: scaffolderActionsExtensionPoint,
         templatingExtensionPoint: scaffolderTemplatingExtensionPoint,
+        config: coreServices.rootConfig,
         logger: coreServices.logger,
       },
-      async init({ templatingExtensionPoint, logger }) {
+      async init({
+        actionsExtensionPoint,
+        templatingExtensionPoint,
+        config,
+        logger,
+      }) {
+        const kubernetesClientFactory = new KubernetesClientFactory({
+          config,
+          logger,
+        });
+        actionsExtensionPoint.addActions(
+          createKubeApplyAction(kubernetesClientFactory),
+        );
+
         templatingExtensionPoint.addTemplateFilters({
           parseClusterRef: (ref: JsonValue) => parseClusterRef(ref as string),
           fromJson: (value: JsonValue) => {

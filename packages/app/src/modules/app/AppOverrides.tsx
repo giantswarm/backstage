@@ -269,8 +269,14 @@ export const appOverrides = createFrontendModule({
                   providers={[
                     {
                       id: 'dex-auth-provider',
-                      title: 'Dex',
-                      message: 'Sign in using Dex',
+                      title:
+                        configApi.getOptionalString(
+                          'gs.signInProvider.title',
+                        ) ?? 'Dex',
+                      message:
+                        configApi.getOptionalString(
+                          'gs.signInProvider.message',
+                        ) ?? 'Sign in using Dex',
                       apiRef: gsAuthApiRef,
                     },
                   ]}

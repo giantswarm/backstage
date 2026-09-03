@@ -8,16 +8,22 @@ import { createRouter, MUSTER_AUTH_HEADER, RouterOptions } from './router';
 
 describe('createRouter', () => {
   const callTool = jest.fn();
+  const callToolWithStructured = jest.fn();
   const listTools = jest.fn();
   const filterTools = jest.fn();
+  const filterResources = jest.fn();
+  const filterPrompts = jest.fn();
   const describeTool = jest.fn();
   const listCoreTools = jest.fn();
   const getResource = jest.fn();
 
   const mockClient = {
     callTool,
+    callToolWithStructured,
     listTools,
     filterTools,
+    filterResources,
+    filterPrompts,
     describeTool,
     listCoreTools,
     getResource,
@@ -59,6 +65,7 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     callTool.mockReset();
+    callToolWithStructured.mockReset();
     listTools.mockReset();
     filterTools.mockReset();
     describeTool.mockReset();
@@ -238,6 +245,38 @@ describe('createRouter', () => {
     );
   });
 
+  it('filters resources by server and pattern', async () => {
+    filterResources.mockResolvedValue({ resources: [] });
+
+    const response = await request(app).get(
+      '/resources/filter?server=pro&pattern=board://*&limit=10&offset=5',
+    );
+
+    expect(response.status).toBe(200);
+    expect(filterResources).toHaveBeenCalledWith(
+      { server: 'pro', pattern: 'board://*', limit: 10, offset: 5 },
+      {},
+    );
+  });
+
+  it('filters resources without any scope', async () => {
+    filterResources.mockResolvedValue({ resources: [] });
+
+    const response = await request(app).get('/resources/filter');
+
+    expect(response.status).toBe(200);
+    expect(filterResources).toHaveBeenCalledWith({}, {});
+  });
+
+  it('filters prompts by server', async () => {
+    filterPrompts.mockResolvedValue({ prompts: [] });
+
+    const response = await request(app).get('/prompts/filter?server=pro');
+
+    expect(response.status).toBe(200);
+    expect(filterPrompts).toHaveBeenCalledWith({ server: 'pro' }, {});
+  });
+
   it('describes a tool by name', async () => {
     describeTool.mockResolvedValue({ name: 'x_kubernetes_get' });
 
@@ -256,13 +295,20 @@ describe('createRouter', () => {
     expect(listCoreTools).toHaveBeenCalledWith({ include_schema: false }, {});
   });
 
-  it('lists mcp servers via core_mcpserver_list', async () => {
+  it('lists mcp servers via core_mcpserver_list, keeping failed servers and their errors', async () => {
     callTool.mockResolvedValue({ mcpServers: [] });
 
     const response = await request(app).get('/servers');
 
     expect(response.status).toBe(200);
-    expect(callTool).toHaveBeenCalledWith('core_mcpserver_list', {}, {});
+    // showAll: muster hides Failed servers by default, but the UIs (server
+    // detail, wizard verify panel) exist to show exactly those. verbose keeps
+    // the raw error alongside statusMessage.
+    expect(callTool).toHaveBeenCalledWith(
+      'core_mcpserver_list',
+      { showAll: true, verbose: true },
+      {},
+    );
   });
 
   /**
@@ -327,21 +373,14 @@ describe('createRouter', () => {
       });
     });
 
-    it('returns the sign-in URL from an auth challenge', async () => {
-      callTool.mockResolvedValue(
-        [
-          'Authentication Required',
-          '',
-          'Server: pro',
-          'Status: Authentication required for pro. Please visit the link below to authenticate.',
-          '',
-          'Please sign in to connect to this server:',
-          '',
-          'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
-          '',
-          'After signing in, run this tool again to complete the connection.',
-        ].join('\n'),
-      );
+    it('returns the sign-in URL from the challenge structuredContent', async () => {
+      callToolWithStructured.mockResolvedValue({
+        text: 'Authentication Required\n\nServer: pro',
+        structuredContent: {
+          authUrl:
+            'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
+        },
+      });
 
       const response = await login({ server: 'pro' });
 
@@ -351,7 +390,7 @@ describe('createRouter', () => {
         authUrl:
           'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
       });
-      expect(callTool).toHaveBeenCalledWith(
+      expect(callToolWithStructured).toHaveBeenCalledWith(
         'core_auth_login',
         { server: 'pro' },
         { authToken: TOKEN },
@@ -359,9 +398,9 @@ describe('createRouter', () => {
     });
 
     it('reports an already-connected server as connected', async () => {
-      callTool.mockResolvedValue(
-        "Server 'pro' is already authenticated and connected.",
-      );
+      callToolWithStructured.mockResolvedValue({
+        text: "Server 'pro' is already authenticated and connected.",
+      });
 
       const response = await login({ server: 'pro' });
 
@@ -376,7 +415,7 @@ describe('createRouter', () => {
      * to Sentry regardless of our own log level).
      */
     it('returns a tool-level refusal as a structured 200', async () => {
-      callTool.mockRejectedValue(
+      callToolWithStructured.mockRejectedValue(
         new Error("Server 'pro' uses SSO and is connected automatically."),
       );
 
@@ -416,7 +455,7 @@ describe('createRouter', () => {
         }),
       ],
     ])('lets %s keep its 5xx', async (_label, thrown) => {
-      callTool.mockRejectedValue(thrown);
+      callToolWithStructured.mockRejectedValue(thrown);
 
       const response = await login({ server: 'pro' });
 
@@ -427,7 +466,7 @@ describe('createRouter', () => {
       const response = await login({});
 
       expect(response.status).toBe(400);
-      expect(callTool).not.toHaveBeenCalled();
+      expect(callToolWithStructured).not.toHaveBeenCalled();
     });
 
     it('fails with 401 when the user token is missing', async () => {
@@ -436,7 +475,88 @@ describe('createRouter', () => {
         .send({ server: 'pro' });
 
       expect(response.status).toBe(401);
-      expect(callTool).not.toHaveBeenCalled();
+      expect(callToolWithStructured).not.toHaveBeenCalled();
+    });
+
+    // The inverse flow, same error contract as /auth/login.
+    describe('/auth/logout', () => {
+      const logout = (body: JsonObject) =>
+        request(authApp)
+          .post('/auth/logout?installation=gazelle')
+          .set(MUSTER_AUTH_HEADER, TOKEN)
+          .send(body);
+
+      it('reports a completed logout as signed_out', async () => {
+        // Verbatim from muster's handleAuthLogout.
+        const message = [
+          "Successfully logged out from 'pro'.",
+          '',
+          "The server's tools are now hidden. Use core_auth_login with server='pro' to re-authenticate.",
+        ].join('\n');
+        callToolWithStructured.mockResolvedValue({ text: message });
+
+        const response = await logout({ server: 'pro' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ status: 'signed_out', message });
+        expect(callToolWithStructured).toHaveBeenCalledWith(
+          'core_auth_logout',
+          { server: 'pro' },
+          { authToken: TOKEN },
+        );
+      });
+
+      /**
+       * Muster refuses a logout for unknown servers and SSO-managed servers as
+       * MCP tool errors. Expected outcomes of this route, so structured 200s
+       * rather than Sentry-bound 5xxs -- same contract as /auth/login.
+       */
+      it.each([
+        "Server 'pro' not found.",
+        "Server 'pro' uses SSO and is managed automatically.",
+      ])('returns the tool-level refusal %j as a structured 200', async msg => {
+        callToolWithStructured.mockRejectedValue(new Error(msg));
+
+        const response = await logout({ server: 'pro' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ status: 'error', message: msg });
+      });
+
+      it('lets an infrastructure fault keep its 5xx', async () => {
+        callToolWithStructured.mockRejectedValue(new TypeError('fetch failed'));
+
+        const response = await logout({ server: 'pro' });
+
+        expect(response.status).toBeGreaterThanOrEqual(500);
+      });
+
+      it('requires a server name', async () => {
+        const response = await logout({});
+
+        expect(response.status).toBe(400);
+        expect(callToolWithStructured).not.toHaveBeenCalled();
+      });
+
+      it('fails with 401 when the user token is missing', async () => {
+        const response = await request(authApp)
+          .post('/auth/logout?installation=gazelle')
+          .send({ server: 'pro' });
+
+        expect(response.status).toBe(401);
+        expect(callToolWithStructured).not.toHaveBeenCalled();
+      });
+
+      it('refuses on an installation without per-user auth', async () => {
+        const response = await request(app)
+          .post('/auth/logout')
+          .send({ server: 'pro' });
+
+        expect(response.status).toBe(200);
+        expect(response.body.status).toBe('error');
+        expect(response.body.message).toContain('without an authProvider');
+        expect(callToolWithStructured).not.toHaveBeenCalled();
+      });
     });
 
     /**
@@ -461,7 +581,7 @@ describe('createRouter', () => {
         expect(response.status).toBe(200);
         expect(response.body.status).toBe('error');
         expect(response.body.message).toContain('without an authProvider');
-        expect(callTool).not.toHaveBeenCalled();
+        expect(callToolWithStructured).not.toHaveBeenCalled();
       });
     });
   });

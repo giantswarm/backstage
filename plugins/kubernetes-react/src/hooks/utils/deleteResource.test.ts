@@ -30,7 +30,7 @@ describe('deleteResource', () => {
       cluster: 'test-installation',
       gvk,
       name: 'pr-reviewer',
-      namespace: 'agentic-platform',
+      namespace: 'agent-platform',
     });
 
     expect(proxy).toHaveBeenCalledTimes(1);
@@ -38,7 +38,7 @@ describe('deleteResource', () => {
       clusterName: 'test-installation',
       // No trailing slash: `getK8sGetPath` appends one, which we do not want to
       // rely on the apiserver tolerating for a mutating verb.
-      path: '/apis/helm.toolkit.fluxcd.io/v2/namespaces/agentic-platform/helmreleases/pr-reviewer',
+      path: '/apis/helm.toolkit.fluxcd.io/v2/namespaces/agent-platform/helmreleases/pr-reviewer',
       init: { method: 'DELETE' },
     });
   });
@@ -53,7 +53,7 @@ describe('deleteResource', () => {
       cluster: 'test-installation',
       gvk,
       name: 'pr-reviewer',
-      namespace: 'agentic-platform',
+      namespace: 'agent-platform',
     });
 
     expect(proxy.mock.calls[0][0].init).toEqual({ method: 'DELETE' });
@@ -67,12 +67,12 @@ describe('deleteResource', () => {
       cluster: 'test-installation',
       gvk,
       name: 'pr-reviewer',
-      namespace: 'agentic-platform',
+      namespace: 'agent-platform',
       propagationPolicy: 'Foreground',
     });
 
     expect(proxy.mock.calls[0][0].path).toBe(
-      '/apis/helm.toolkit.fluxcd.io/v2/namespaces/agentic-platform/helmreleases/pr-reviewer?propagationPolicy=Foreground',
+      '/apis/helm.toolkit.fluxcd.io/v2/namespaces/agent-platform/helmreleases/pr-reviewer?propagationPolicy=Foreground',
     );
   });
 
@@ -107,7 +107,7 @@ describe('deleteResource', () => {
         cluster: 'test-installation',
         gvk,
         name: 'pr-reviewer',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
       }),
     ).rejects.toMatchObject({
       name: 'ForbiddenError',
@@ -131,7 +131,7 @@ describe('deleteResource', () => {
         cluster: 'test-installation',
         gvk,
         name: 'pr-reviewer',
-        namespace: 'agentic-platform',
+        namespace: 'agent-platform',
       }),
     ).rejects.toMatchObject({ name: 'NotFoundError' });
   });

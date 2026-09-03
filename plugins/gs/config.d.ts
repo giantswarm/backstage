@@ -8,6 +8,51 @@ export interface Config {
     authProvider: string;
 
     /**
+     * Settings shared by the Giant Swarm OIDC login providers (the main sign-in
+     * provider, the per-installation cluster-access providers and the `mcp-*`
+     * providers).
+     * @deepVisibility frontend
+     */
+    auth?: {
+      /**
+       * Full replacement for the default base scope set (`openid profile
+       * email groups offline_access`), for issuers that reject scopes they
+       * don't know. Google fails the whole authorization request on
+       * `groups`/`offline_access` and needs `[openid, profile, email]` here.
+       * Unset keeps the default base set.
+       */
+      scopes?: string[];
+
+      /**
+       * OIDC scopes requested on top of the base scope set (`openid profile
+       * email groups offline_access`, or `scopes` when set). Applies to every
+       * login provider, and has no
+       * default: an issuer-specific scope belongs to the deployment.
+       *
+       * A Dex deployment needs `federated:id`, which carries the
+       * `federated_claims` the sign-in resolver maps onto a catalog entity, and
+       * a cross-client `audience:server:client_id:<client>` scope for every
+       * client whose audience a forwarded token must satisfy. Keycloak and
+       * Entra ID reject both, and need no extra scope at all.
+       */
+      extraScopes?: string[];
+    };
+
+    /**
+     * Sign-in page card of the main login provider. The defaults name Dex,
+     * the Giant Swarm fleet's IdP; a deployment backed by another OIDC
+     * issuer (Google, Keycloak, Entra ID) overrides these so the card
+     * matches what actually handles the login.
+     * @deepVisibility frontend
+     */
+    signInProvider?: {
+      /** Card title. Default: `Dex`. */
+      title?: string;
+      /** Card message. Default: `Sign in using Dex`. */
+      message?: string;
+    };
+
+    /**
      * Cluster token broker (muster) used to silently mint per-management-cluster
      * tokens from the user's main Dex session, replacing the per-cluster OAuth
      * popups for covered installations.
@@ -87,6 +132,15 @@ export interface Config {
         backendUrl?: string;
         baseDomain?: string;
         region?: string;
+        /**
+         * Whether the installation runs the Giant Swarm observability stack
+         * (Mimir at `observability.<baseDomain>`). Defaults to true. Standalone
+         * installations set this to false so metrics-backed UI renders neutral
+         * "unavailable" states instead of errors — `baseDomain` alone can't
+         * carry this meaning because other features (e.g. agent avatars)
+         * require it on every installation.
+         */
+        mimirEnabled?: boolean;
         apiVersionOverrides?: {
           [pluralKind: string]: string;
         };

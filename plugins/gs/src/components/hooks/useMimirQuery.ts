@@ -7,6 +7,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { mimirApiRef } from '../../apis/mimir';
 import { MimirQueryResponse } from '../../apis/mimir/types';
+import { useMimirAvailable } from './useMimirAvailable';
 
 export function useMimirQuery(options: {
   installationName: string;
@@ -19,6 +20,14 @@ export function useMimirQuery(options: {
   const mimirApi = useApi(mimirApiRef);
   const kubernetesApi = useApi(kubernetesApiRef);
   const kubernetesAuthProvidersApi = useApi(kubernetesAuthProvidersApiRef);
+
+  // Installations without Mimir (`mimirEnabled: false`) never get queried:
+  // the query would only ever fail, and "metrics unavailable" is the truth
+  // callers should render. `undefined` means the installations config is
+  // still loading — the query stays disabled and `isLoading` stays true.
+  const isAvailable = useMimirAvailable(installationName);
+
+  const wanted = Boolean(enabled && installationName && query);
 
   const { data, isLoading, error } = useQuery<MimirQueryResponse, Error>({
     queryKey: ['mimir-query', installationName, query],
@@ -48,13 +57,21 @@ export function useMimirQuery(options: {
         oidcToken: credentials.token,
       });
     },
-    enabled: Boolean(enabled && installationName && query),
+    enabled: wanted && isAvailable === true,
     staleTime: 30_000,
     refetchInterval,
   });
 
   return useMemo(
-    () => ({ data, isLoading, error: error as Error | null }),
-    [data, isLoading, error],
+    () => ({
+      data,
+      // While the installations config is loading, availability is unknown and
+      // the query is disabled — report loading so callers don't flash an empty
+      // state that then resolves either way.
+      isLoading: isLoading || (wanted && isAvailable === undefined),
+      error: error as Error | null,
+      isAvailable,
+    }),
+    [data, isLoading, error, wanted, isAvailable],
   );
 }

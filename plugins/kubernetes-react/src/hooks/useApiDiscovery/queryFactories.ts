@@ -47,8 +47,11 @@ export function apiGroupQueryOptions(
       });
 
       if (!response.ok) {
+        // HTTP/2 responses carry no reason phrase, so statusText can be empty —
+        // fall back to the status code to keep the message meaningful.
+        const reason = response.statusText || `HTTP ${response.status}`;
         const error = new Error(
-          `Failed to discover API group ${group} from ${cluster}. Reason: ${response.statusText}.`,
+          `Failed to discover API group ${group} from ${cluster}. Reason: ${reason}.`,
         );
         error.name = response.status === 404 ? 'NotFoundError' : error.name;
         error.name = response.status === 403 ? 'ForbiddenError' : error.name;

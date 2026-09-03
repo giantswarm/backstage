@@ -31,7 +31,8 @@ import {
   toMcpServerDefinition,
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
-import { StateBadge } from '../shared';
+import { useMusterMutationRefresh } from '../MusterInstanceProvider';
+import { ServerAuthActions, StateBadge } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
   actions: {
@@ -142,6 +143,8 @@ type LiveAction = {
   label: string;
   tool: string;
   args: Record<string, unknown>;
+  /** One sentence saying what muster will actually do (shown in the confirm dialog). */
+  description?: string;
   destructive?: boolean;
 };
 
@@ -162,6 +165,7 @@ function ConfirmActionDialog({
 }) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
+  const refresh = useMusterMutationRefresh(server.cluster);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [done, setDone] = useState(false);
@@ -185,6 +189,10 @@ function ConfirmActionDialog({
     setError(undefined);
     try {
       await musterApi.callTool(action.tool, action.args, server.cluster);
+      // muster writes the CR synchronously, so refetching now shows the spec
+      // change (e.g. the Activate/Deactivate swap) instead of waiting for the
+      // next 30s poll.
+      refresh();
       setDone(true);
     } catch (e) {
       setError(mutationErrorMessage(e));
@@ -206,9 +214,10 @@ function ConfirmActionDialog({
             </>
           ) : (
             <>
-              Run <code>{action?.tool}</code> against{' '}
+              {action?.description ? `${action.description} ` : ''}
+              Runs <code>{action?.tool}</code> against{' '}
               <code>{server.getName()}</code> on installation{' '}
-              <code>{server.cluster}</code>. This is a live mutation.
+              <code>{server.cluster}</code>.
             </>
           )}
         </DialogContentText>
@@ -222,7 +231,8 @@ function ConfirmActionDialog({
         {done && (
           <Box mt={2}>
             <Typography variant="body2" className={classes.ok}>
-              Done. The change may take a moment to reflect in the CRD list.
+              Done. The server list has been refreshed; the connection status
+              may take a few seconds to settle.
             </Typography>
           </Box>
         )}
@@ -275,6 +285,7 @@ export function AdHocServerDialog({
   const musterApi = useApi(musterApiRef);
   const isEdit = Boolean(server);
   const target = server?.cluster ?? installation;
+  const refresh = useMusterMutationRefresh(target);
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -334,7 +345,8 @@ export function AdHocServerDialog({
         def,
         target,
       );
-      setMessage('Saved. The CRD list will refresh shortly.');
+      refresh();
+      setMessage('Saved. The server list has been refreshed.');
     } catch (e) {
       setError(mutationErrorMessage(e));
     } finally {
@@ -402,18 +414,105 @@ export function AdHocServerDialog({
 
 export interface ServerMutationActionsProps {
   server: MCPServer;
+  /**
+   * Whether there is an authenticated muster session for this installation.
+   * The per-server sign-in/sign-out affordance is scoped to that session, and
+   * without one the status read behind it would just 401.
+   */
+  authenticated?: boolean;
+}
+
+/**
+ * Explanation shown on Reconnect when muster would refuse it for an OAuth
+ * server waiting on a per-user sign-in (see oauthSignInGated below).
+ */
+export const OAUTH_SIGN_IN_GATE =
+  'This server authenticates per user session (OAuth), and reconnecting ' +
+  'cannot sign a session in — muster refuses it. Use “Sign in” in this ' +
+  'row instead.';
+
+/** A lifecycle button, disabled with an explanatory tooltip when gated. */
+function LifecycleButton({
+  label,
+  icon,
+  gateReason,
+  onClick,
+}: {
+  label: string;
+  icon: JSX.Element;
+  gateReason?: string;
+  onClick: () => void;
+}) {
+  const button = (
+    <Button
+      size="small"
+      startIcon={icon}
+      onClick={onClick}
+      disabled={Boolean(gateReason)}
+    >
+      {label}
+    </Button>
+  );
+  if (!gateReason) {
+    return button;
+  }
+  return (
+    <Tooltip title={gateReason}>
+      {/* span wrapper so the tooltip still fires over the disabled button */}
+      <span>{button}</span>
+    </Tooltip>
+  );
 }
 
 /**
  * Lifecycle/CRUD affordances for one server, gitops-aware. Provenance is the
  * only restriction: GitOps-managed servers are read-only and route
  * Add/Edit/Delete through a GitOps PR/manifest; manually-added (ad-hoc) servers
- * allow live core_mcpserver_* CRUD + service start/stop/restart behind a
- * confirm dialog.
+ * allow live core_mcpserver_* CRUD + lifecycle behind a confirm dialog.
+ *
+ * The row also carries the per-session auth actions (Sign in / Sign out --
+ * {@link ServerAuthActions}), in BOTH branches: signing in to an OAuth server
+ * is a session action, not a CRD mutation, so GitOps provenance does not
+ * restrict it. Sign in renders prominent (primary) because it is the single
+ * action an Auth Required server needs, while everything else in the row is
+ * secondary.
+ *
+ * The lifecycle verbs are named for what muster actually does with a remote
+ * server, not for its start/stop/restart tool names (process vocabulary from
+ * the stdio days): Deactivate suspends the connection durably
+ * (`spec.suspended`), Activate resumes it, Reconnect drops and re-establishes
+ * the session (fresh tool discovery). Activate/Deactivate are two directions
+ * of one switch, so exactly one of them is shown, keyed on `spec.suspended`.
+ * Reconnect only renders for an active server — muster refuses it while
+ * suspended.
  */
-export function ServerMutationActions({ server }: ServerMutationActionsProps) {
+export function ServerMutationActions({
+  server,
+  authenticated,
+}: ServerMutationActionsProps) {
   const classes = useStyles();
   const managed = isGitOpsManaged(server);
+  const suspended = server.getSuspended();
+
+  // Only for a server a user CAN sign in to -- a sigv4 server signs as
+  // muster's own machine identity, and the auth-chain detail says so.
+  const authActions =
+    authenticated && server.canAuthenticateInteractively() ? (
+      <ServerAuthActions
+        serverName={server.getName()}
+        installation={server.cluster}
+        oauthConfigured={server.getAuth()?.type === 'oauth'}
+      />
+    ) : null;
+
+  // muster refuses a reconnect (core_service_restart) for an OAuth server in
+  // `Auth Required`: authentication is session-scoped, so only the sign-in
+  // flow (core_auth_login) can connect it. The gate is deliberately
+  // state-scoped, not `auth.type === 'oauth'` alone — reconnecting a failed
+  // OAuth server is a valid retry.
+  const oauthSignInGated =
+    server.getAuth()?.type === 'oauth' && server.getState() === 'Auth Required';
+  const reconnectGate = oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined;
 
   const [gitopsIntent, setGitopsIntent] = useState<'edit' | 'delete' | null>(
     null,
@@ -425,6 +524,7 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
     return (
       <Box className={classes.actions}>
         <StateBadge tone="info" label="GitOps-managed (read-only)" />
+        {authActions}
         <Typography variant="body2" className={classes.managedNote}>
           Changes are made by committing a manifest to the GitOps repo.
         </Typography>
@@ -456,6 +556,7 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
   return (
     <Box className={classes.actions}>
       <StateBadge tone="neutral" label="Manually added" />
+      {authActions}
       <Button
         size="small"
         startIcon={<Edit />}
@@ -463,45 +564,55 @@ export function ServerMutationActions({ server }: ServerMutationActionsProps) {
       >
         Edit
       </Button>
-      <Button
-        size="small"
-        startIcon={<PlayArrow />}
-        onClick={() =>
-          setAction({
-            label: `Start ${server.getName()}`,
-            tool: 'core_service_start',
-            args: { name: server.getName() },
-          })
-        }
-      >
-        Start
-      </Button>
-      <Button
-        size="small"
-        startIcon={<Stop />}
-        onClick={() =>
-          setAction({
-            label: `Stop ${server.getName()}`,
-            tool: 'core_service_stop',
-            args: { name: server.getName() },
-          })
-        }
-      >
-        Stop
-      </Button>
-      <Button
-        size="small"
-        startIcon={<Replay />}
-        onClick={() =>
-          setAction({
-            label: `Restart ${server.getName()}`,
-            tool: 'core_service_restart',
-            args: { name: server.getName() },
-          })
-        }
-      >
-        Restart
-      </Button>
+      {suspended ? (
+        <Button
+          size="small"
+          startIcon={<PlayArrow />}
+          onClick={() =>
+            setAction({
+              label: `Activate ${server.getName()}`,
+              tool: 'core_service_start',
+              args: { name: server.getName() },
+              description:
+                'muster will resume maintaining a connection to this server.',
+            })
+          }
+        >
+          Activate
+        </Button>
+      ) : (
+        <>
+          <Button
+            size="small"
+            startIcon={<Stop />}
+            onClick={() =>
+              setAction({
+                label: `Deactivate ${server.getName()}`,
+                tool: 'core_service_stop',
+                args: { name: server.getName() },
+                description:
+                  'muster will disconnect this server and keep it deactivated until it is activated again.',
+              })
+            }
+          >
+            Deactivate
+          </Button>
+          <LifecycleButton
+            label="Reconnect"
+            icon={<Replay />}
+            gateReason={reconnectGate}
+            onClick={() =>
+              setAction({
+                label: `Reconnect ${server.getName()}`,
+                tool: 'core_service_restart',
+                args: { name: server.getName() },
+                description:
+                  'muster will drop the current session to this server and establish a fresh one, re-running tool discovery.',
+              })
+            }
+          />
+        </>
+      )}
       <Button
         size="small"
         startIcon={<DeleteOutline />}

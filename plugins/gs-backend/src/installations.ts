@@ -13,6 +13,12 @@ export type InstallationConfig = {
   backendUrl?: string;
   baseDomain?: string;
   region?: string;
+  /**
+   * Whether the installation runs the Giant Swarm observability stack (Mimir
+   * at `observability.<baseDomain>`). Defaults to true; standalone
+   * installations set false to opt out of metrics-backed features.
+   */
+  mimirEnabled?: boolean;
   apiVersionOverrides?: { [pluralKind: string]: string };
 };
 
@@ -60,6 +66,7 @@ export function readInstallationsConfig(
       backendUrl: installationConfig.getOptionalString('backendUrl'),
       baseDomain: installationConfig.getOptionalString('baseDomain'),
       region: installationConfig.getOptionalString('region'),
+      mimirEnabled: installationConfig.getOptionalBoolean('mimirEnabled'),
       apiVersionOverrides,
     };
   }

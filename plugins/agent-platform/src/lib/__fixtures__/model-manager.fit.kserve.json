@@ -1,0 +1,21 @@
+{
+  "model": "Qwen/Qwen3-14B",
+  "fits": true,
+  "reason": "27.5 GiB weights + 30.0 GiB overhead = 57.5 GiB fit within 86.1 GiB on gpu-node-1 (allocatable)",
+  "preset": "qwen3-14b",
+  "presets": ["qwen3-14b"],
+  "weightsBytes": 29540000000,
+  "weightsSource": "safetensors-index",
+  "overheadBytes": 32212254720,
+  "requiredBytes": 61752254720,
+  "downloadBytes": 29600000000,
+  "node": "gpu-node-1",
+  "budgetBytes": 92417933312,
+  "budgetSource": "allocatable",
+  "reservedBytes": 0,
+  "freeBytes": 92417933312,
+  "gated": false,
+  "private": false,
+  "tokenConfigured": false,
+  "cached": false
+}

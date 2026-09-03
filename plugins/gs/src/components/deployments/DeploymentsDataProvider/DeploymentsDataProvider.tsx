@@ -26,6 +26,7 @@ import { mergeWorkloads, workloadToDeploymentData } from './mimirUtils';
 import {
   App,
   HelmRelease,
+  isNotFoundError,
   OCIRepository,
   useResources,
   useShowErrors,
@@ -121,8 +122,14 @@ export const DeploymentsDataProvider = ({
     isLoadingOCIRepositories ||
     isLoadingMimirWorkloads;
 
+  // A 404 (`NotFoundError`) means the resource's API group isn't served by
+  // that installation — e.g. no app-platform or no kustomize-controller on a
+  // standalone installation. That's an expected shape, rendered as an empty
+  // resource set, not an error banner. Genuine failures are still reported.
   const errors = useMemo(() => {
-    return [...appErrors, ...helmReleaseErrors, ...ociRepositoryErrors];
+    return [...appErrors, ...helmReleaseErrors, ...ociRepositoryErrors].filter(
+      errorInfo => !isNotFoundError(errorInfo),
+    );
   }, [appErrors, helmReleaseErrors, ociRepositoryErrors]);
   useShowErrors(errors);
 

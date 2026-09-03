@@ -1,4 +1,11 @@
-import { ReactNode, useCallback, useMemo, useState } from 'react';
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Content,
@@ -16,12 +23,18 @@ import {
 
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
+import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
+import { useNewSessionHandoff } from '../../hooks/useNewSessionHandoff';
 import { useRenameSession } from '../../hooks/useRenameSession';
+import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
+import { AWAITING_INPUT_STATES } from '../../lib/kagentSessionState';
 import { sessionsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
+import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
+import { SessionComposer } from '../SessionComposer';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
@@ -39,6 +52,25 @@ import {
 const AVATAR_SIZE: AvatarSize = 48;
 
 const useStyles = makeStyles(theme => ({
+  // One readable column, like any chat surface: full-bleed prose is hard to
+  // scan, and the conversation is what this page is for.
+  column: {
+    width: '100%',
+    maxWidth: 920,
+    margin: '0 auto',
+  },
+  // The composer stays reachable however long the conversation gets. Only the
+  // composer docks: a pending confirmation panel can be tall, and pinning it
+  // would cover the very conversation it asks about.
+  bottomDock: {
+    position: 'sticky',
+    bottom: 0,
+    zIndex: 1,
+    backgroundColor: `var(--bui-bg-app, ${theme.palette.background.default})`,
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(2),
+    marginBottom: theme.spacing(-2),
+  },
   stats: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -104,10 +136,14 @@ function Stat({ label, value }: { label: string; value: string }) {
 /**
  * One kagent session: what it was, how it ended, and what the agent did.
  *
- * The session can be **renamed** — from the header's actions menu or by clicking the
- * title — and **deleted** from that menu (see "Renaming a session" and "Deleting a
- * session" in docs/agent-platform.md). Continuing a session, which the prototype also
- * offers, is not wired up here.
+ * The session can be **continued** through the composer at the bottom (see
+ * "Continuing a session" in docs/agent-platform.md), **renamed** — from the header's
+ * actions menu or by clicking the title — and **deleted** from that menu.
+ *
+ * It is also where a session's **first** message is sent. Starting a session creates it
+ * on the previous screen and hands the prompt over through the router state, because
+ * `message/send` blocks for the whole turn; see "Starting a session" in the same
+ * document for why the send lands here rather than there.
  *
  * What the prototype shows and this cannot, because kagent stores none of it:
  * cost, tokens-per-second, context-window usage, the owning team, the trigger that
@@ -130,6 +166,8 @@ export function SessionDetailPage() {
     detail,
     timeline,
     state,
+    isAgentWorking: agentIsWorking,
+    pendingConfirmation,
     taskCount,
     hasConversation,
     isLoading,
@@ -163,6 +201,141 @@ export function SessionDetailPage() {
   // hour's staleTime, so asking for it on this page is free.
   const rename = useRenameSession(installation, sessionId);
 
+  // The prompt this session was started with, if the user arrived here by
+  // starting it. Read once and cleared, so returning to the session later cannot
+  // re-send it. See `useNewSessionHandoff`.
+  const handoff = useNewSessionHandoff();
+
+  // Undefined when no `Agent` CR matched the session's encoded `agent_id`, which
+  // is what withholds the composer: without the agent's real namespace and name
+  // there is no A2A endpoint to address, and the encoding cannot be safely
+  // decoded back into one.
+  //
+  // A handoff supplies it directly, and takes precedence for one render's worth of
+  // reason: the join above needs both the session read and the fleet-wide Agent
+  // list, so on a session created a moment ago it resolves a beat late — and the
+  // first message has to be dispatchable immediately. The two agree by
+  // construction, since the composer created the session against this agent.
+  const agent = useMemo(() => {
+    if (row?.agentNamespace && row.agentTechnicalName) {
+      return { namespace: row.agentNamespace, name: row.agentTechnicalName };
+    }
+    return handoff
+      ? { namespace: handoff.agentNamespace, name: handoff.agentName }
+      : undefined;
+  }, [row?.agentNamespace, row?.agentTechnicalName, handoff]);
+  const send = useSendMessage(installation, sessionId, agent);
+  const confirmation = useAnswerConfirmation(installation, sessionId, agent);
+
+  // Dispatch the session's first message, once.
+  //
+  // The create and the send are two kagent calls, and only the create happened
+  // before we got here: a session is a shell, and `message/send` blocks for the
+  // whole turn — so making the composer wait for it would have meant staring at
+  // the list for up to half a minute. Sending from here instead means the
+  // optimistic echo, the "Working…" row and the failure path are all the ones that
+  // already exist for a reply.
+  const { sendMessage } = send;
+  const dispatched = useRef(false);
+  useEffect(() => {
+    if (!handoff || dispatched.current) {
+      return;
+    }
+    dispatched.current = true;
+    // Errors surface through `send.error` and `send.failed`, exactly as they do
+    // for a reply typed into the composer — which is also what hands the text
+    // back so it is not lost.
+    sendMessage(handoff.text).catch(() => {});
+  }, [handoff, sendMessage]);
+
+  // The message the user just sent, shown as the newest turn before kagent's copy
+  // of it has been read back — a turn can run for minutes, and a conversation that
+  // did not visibly change would look like the send was lost.
+  //
+  // Appended to the items rather than rendered separately so it groups, styles and
+  // reads exactly like any other user message. It disappears by *recognition*, not
+  // by timing: once a poll returns a message carrying the same `messageId`, the
+  // real one is already on screen and this stand-in must go, or the message shows
+  // twice for the rest of the turn.
+  //
+  // The agent's side of that same turn follows the identical pattern, live: while
+  // a send streams, its completed items (text, reasoning, tool calls) and the text
+  // still being produced are appended after the stand-in, so the reply appears as
+  // it is written rather than when the turn ends. The preview coexists with the
+  // 10 s poll rather than replacing it: a streamed item whose `messageId` the poll
+  // has already delivered is dropped by recognition — exactly like the stand-in —
+  // and the whole preview is discarded once the send's awaited invalidation has
+  // put the canonical history on screen (`useSendMessage` clears `stream` then).
+  const timelineWithLive = useMemo(() => {
+    const pending = send.pending;
+    const stream = send.stream;
+
+    const pendingVisible =
+      pending &&
+      !timeline.items.some(item => item.messageId === pending.messageId);
+    const streamVisible =
+      stream && (stream.items.length > 0 || Boolean(stream.live));
+
+    if (!pendingVisible && !streamVisible) {
+      return timeline;
+    }
+
+    // The turn these additions belong to. Once a poll has seen the sent message,
+    // its task exists and carries the real index; before that the turn is new,
+    // and the stats strip still reports the server's count — "Turns" lags by one
+    // until kagent confirms, which is the honest reading, since no task exists
+    // yet.
+    const sentMessageId = stream?.sentMessageId ?? pending?.messageId;
+    const sentItem = sentMessageId
+      ? timeline.items.find(item => item.messageId === sentMessageId)
+      : undefined;
+    const taskIndex =
+      sentItem?.taskIndex ?? (timeline.items.at(-1)?.taskIndex ?? -1) + 1;
+
+    const items = [...timeline.items];
+
+    if (pendingVisible) {
+      items.push({
+        kind: 'user-message' as const,
+        id: `pending:${pending.messageId}`,
+        messageId: pending.messageId,
+        taskIndex,
+        text: pending.text,
+      });
+    }
+
+    if (streamVisible) {
+      const polled = new Set(
+        timeline.items.map(item => item.messageId).filter(Boolean),
+      );
+      for (const item of stream.items) {
+        if (item.messageId && polled.has(item.messageId)) {
+          continue;
+        }
+        items.push({ ...item, taskIndex });
+      }
+      // Appended, never sorted: the reducer keeps the open run newer than every
+      // completed item, so the end of the list is where it belongs.
+      const live = stream.live;
+      if (
+        live &&
+        live.text.trim() &&
+        !(live.messageId && polled.has(live.messageId))
+      ) {
+        items.push({
+          kind: live.kind,
+          id: 'stream:live',
+          taskIndex,
+          messageId: live.messageId,
+          author: live.author,
+          text: live.text.trim(),
+        });
+      }
+    }
+
+    return { ...timeline, items };
+  }, [timeline, send.pending, send.stream]);
+
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
   const [isRenameOpen, setRenameOpen] = useState(false);
@@ -194,6 +367,32 @@ export function SessionDetailPage() {
     [row, sessionTitle, deletion, openRename, isUserScoped],
   );
   useProvidePageHeaderActions(actions);
+
+  // The page scrolls the document, so that is what "to the bottom" means here.
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      const el = document.scrollingElement ?? document.documentElement;
+      el.scrollTop = el.scrollHeight;
+    });
+  }, []);
+
+  // Follow the reply as it streams in — but only when already reading the end.
+  // Someone scrolled up through the history must not have the page yanked away
+  // under them by every arriving token.
+  // The turn's own event counter, not a size derived from its content: closing
+  // a text run moves length out of `live` into `items`, which can leave any such
+  // size unchanged across a real update and skip the follow for it.
+  const streamTick = send.stream?.revision ?? 0;
+  useEffect(() => {
+    if (streamTick === 0) {
+      return;
+    }
+    const el = document.scrollingElement ?? document.documentElement;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
+    if (nearBottom) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [streamTick]);
 
   if (isLoading) {
     return (
@@ -248,6 +447,113 @@ export function SessionDetailPage() {
     );
   }
 
+  /**
+   * Whether to say the agent is working.
+   *
+   * Two signals, because neither covers a whole turn on its own:
+   *
+   * - the conversation's own verdict (`isAgentWorking` — active, not waiting on a
+   *   human, and moved recently), which only arrives once a poll has seen the new
+   *   task, up to 10 s after sending;
+   * - the in-flight send, which covers exactly that gap and cannot carry the rest:
+   *   the gateway cuts the request off well before a long turn ends (60 s on a
+   *   stock route), so it goes false mid-turn while the agent works on.
+   */
+  const showWorking = send.isSending || agentIsWorking;
+
+  /**
+   * Why the composer is not offered, when it is not.
+   *
+   * Each case withholds the control and says so, rather than showing one that
+   * fails on use — and each is a different thing the user can act on.
+   */
+  let composerWithheldReason: string | undefined;
+  if (detail.readOnly) {
+    composerWithheldReason =
+      'This session was shared read-only, so you cannot add to it.';
+  } else if (!agent) {
+    composerWithheldReason = row.agentName
+      ? `The agent “${row.agentName}” could not be found on ${installation}, so there is nowhere to send a message. It may have been deleted.`
+      : 'This session records no agent, so there is nowhere to send a message.';
+  } else if (state && AWAITING_INPUT_STATES.has(state.key)) {
+    // Withheld deliberately, and it is the opposite of "busy": the agent asked
+    // something and nothing moves until it is answered. A plain message here does
+    // not answer it — kagent opens a *new* task and leaves the question pending
+    // forever — so the composer is replaced by the answer panel below, which
+    // resumes the suspended task instead.
+    //
+    // This reason is only reached when the confirmation itself could not be read:
+    // a shape we do not recognise, or a task with no id to resume. Answering then
+    // would be guessing at what the agent asked.
+    composerWithheldReason = pendingConfirmation
+      ? undefined
+      : 'This session is waiting for input, but the request could not be read — use the kagent UI to reply.';
+  }
+
+  /**
+   * What sits below the conversation: nothing, an answer panel, or the composer.
+   *
+   * Assembled here rather than as a ternary chain in the JSX — there are three
+   * outcomes and two of them are multi-element.
+   */
+  let bottomControl: ReactNode;
+  if (composerWithheldReason) {
+    bottomControl = (
+      <Text variant="body-small" color="secondary">
+        {composerWithheldReason}
+      </Text>
+    );
+  } else if (pendingConfirmation && agent) {
+    // The panel *and* the composer, the latter disabled. A plain message cannot
+    // answer a confirmation — it opens a new task and strands this one — so the
+    // composer must not submit. But removing it outright reads as the reply feature
+    // being missing rather than blocked, so it stays in place saying why. kagent's
+    // own UI makes the same call, leaving its box on screen with
+    // `Awaiting approval…` in it.
+    bottomControl = (
+      <Flex direction="column" gap="4">
+        <PendingConfirmationPanel
+          pending={pendingConfirmation}
+          isAnswering={confirmation.isAnswering}
+          error={confirmation.error?.message}
+          restore={confirmation.failed}
+          isUserScoped={isUserScoped}
+          onAnswer={answer => {
+            // Errors surface through the hook's `error`, which the panel renders
+            // above the choices it hands back.
+            confirmation.answer(answer).catch(() => {});
+          }}
+        />
+        <SessionComposer
+          isAgentWorking={false}
+          isFinished={false}
+          disabledReason="Answer the agent's question above to carry on. A plain message would start a new turn instead of answering it."
+          onSubmit={() => {}}
+        />
+      </Flex>
+    );
+  } else {
+    bottomControl = (
+      <div className={classes.bottomDock}>
+        <SessionComposer
+          isAgentWorking={showWorking}
+          isFinished={Boolean(state && !state.isActive)}
+          error={send.error?.message}
+          // On failure the optimistic copy is dropped, so this is the only place the
+          // user's text still exists.
+          restore={send.failed}
+          onSubmit={text => {
+            // Errors are surfaced through the hook's `error`, which the composer
+            // renders beside the text it hands back.
+            send.sendMessage(text).catch(() => {});
+            // The optimistic echo appears at the very bottom; go where it is.
+            scrollToBottom();
+          }}
+        />
+      </div>
+    );
+  }
+
   const avatarUrl = row.agentTechnicalName
     ? buildAvatarUrl(row.installation, row.agentTechnicalName, {
         size: AVATAR_SIZE,
@@ -256,7 +562,7 @@ export function SessionDetailPage() {
 
   return (
     <Content>
-      <Flex direction="column" gap="4">
+      <Flex direction="column" gap="4" className={classes.column}>
         {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped
             keeping up, and the user needs to know which of the two it is. */}
@@ -360,7 +666,14 @@ export function SessionDetailPage() {
           />
         </Box>
 
-        <SessionTimeline timeline={timeline} agentName={row.agentName} />
+        <SessionTimeline
+          timeline={timelineWithLive}
+          agentName={row.agentName}
+          agentAvatarUrl={avatarUrl}
+          isAgentWorking={showWorking}
+        />
+
+        {bottomControl}
       </Flex>
 
       {/* One dialog for both entry points, rendered here rather than inside the

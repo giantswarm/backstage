@@ -8,9 +8,9 @@ export const HomePageOverride = PageBlueprint.makeWithOverrides({
       routeRef: homePlugin.routes.root,
       path: '/',
       loader: async () => {
-        const { HomePage } = await import('./HomePage');
+        const { RootPage } = await import('./RootPage');
 
-        return <HomePage />;
+        return <RootPage />;
       },
     });
   },

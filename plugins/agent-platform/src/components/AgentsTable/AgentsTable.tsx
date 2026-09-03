@@ -17,6 +17,11 @@ import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { agentDetailRouteRef } from '../../routes';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { stopRowPress } from '../../lib/rowPress';
+import {
+  AgentModelCell,
+  isAgentRowMuted,
+  MUTED_ROW_STYLE,
+} from './modelStatus';
 import { AgentReadinessCell } from './readinessStatus';
 
 /**
@@ -56,7 +61,7 @@ function getColumnConfig(
         // The two affordances must not both fire for one click — see
         // {@link stopRowPress}.
         return (
-          <Cell>
+          <Cell style={isAgentRowMuted(row) ? MUTED_ROW_STYLE : undefined}>
             <Flex align="start" gap="3">
               <Avatar
                 size="large"
@@ -123,19 +128,29 @@ function getColumnConfig(
       id: 'installation',
       label: 'Installation',
       isSortable: true,
-      cell: row => <CellText title={row.installation} />,
+      cell: row => (
+        <CellText
+          title={row.installation}
+          color={isAgentRowMuted(row) ? 'secondary' : undefined}
+        />
+      ),
     },
     {
       id: 'namespace',
       label: 'Namespace',
       isSortable: true,
-      cell: row => <CellText title={row.namespace || '—'} />,
+      cell: row => (
+        <CellText
+          title={row.namespace || '—'}
+          color={isAgentRowMuted(row) ? 'secondary' : undefined}
+        />
+      ),
     },
     {
       id: 'model',
       label: 'Model',
       isSortable: true,
-      cell: row => <CellText title={row.model ?? '—'} />,
+      cell: row => <AgentModelCell row={row} />,
     },
     {
       id: 'skills',

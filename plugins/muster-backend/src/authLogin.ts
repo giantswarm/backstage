@@ -3,6 +3,9 @@ import { isClosedClientError } from '@giantswarm/backstage-plugin-gs-node';
 /** Muster's core tool that starts a downstream MCP server's OAuth flow. */
 export const AUTH_LOGIN_TOOL = 'core_auth_login';
 
+/** Muster's core tool that disconnects a server from the user's session. */
+export const AUTH_LOGOUT_TOOL = 'core_auth_logout';
+
 /** Muster's MCP resource carrying per-session, per-server auth status. */
 export const AUTH_STATUS_RESOURCE = 'auth://status';
 
@@ -16,12 +19,26 @@ export type AuthLoginStatus =
   /** Muster answered something we don't recognise; re-read auth://status. */
   | 'unknown';
 
+/**
+ * How muster identifies itself to the downstream server's authorization
+ * server (muster#1083): `cimd` — the AS advertises CIMD support and muster's
+ * self-hosted CIMD URL is the client_id; `dcr` — muster registered itself via
+ * RFC 7591 Dynamic Client Registration; `cimd-fallback` — the AS advertises
+ * neither mechanism, muster sends the CIMD URL anyway and the AS may reject
+ * the sign-in with a client-not-registered error; `dcr-failed` — the AS
+ * rejected muster's registration request and muster falls back to the CIMD
+ * URL the same way (muster#1086).
+ */
+export type ClientIdMethod = 'cimd' | 'dcr' | 'cimd-fallback' | 'dcr-failed';
+
 export interface AuthLoginResult {
   status: AuthLoginStatus;
   /** Muster's sign-in URL (its OAuth proxy start endpoint), when challenged. */
   authUrl?: string;
   /** Muster's own message, passed through for display. */
   message: string;
+  /** How muster identifies itself to the authorization server, when reported. */
+  clientIdMethod?: ClientIdMethod;
 }
 
 /**
@@ -37,34 +54,76 @@ const CONNECTED_MARKERS = [
   'does not require authentication',
 ];
 
-/**
- * Classify `core_auth_login`'s free-text answer. Muster has no structured
- * result for this tool, so we mirror its CLI's detection: an authorization
- * challenge puts the sign-in URL on its own line, and connection outcomes carry
- * one of the `api.AuthMsg*` markers.
- */
-export function parseAuthLoginResult(payload: unknown): AuthLoginResult {
-  const message =
-    typeof payload === 'string' ? payload : JSON.stringify(payload ?? null);
+/** The clientIdMethod values muster can report (anything else is dropped). */
+const CLIENT_ID_METHODS: ClientIdMethod[] = [
+  'cimd',
+  'dcr',
+  'cimd-fallback',
+  'dcr-failed',
+];
 
-  // Markers first: they are the specific signal, a bare URL line is only the
-  // fallback. A connection answer that happens to carry a URL (muster's success
-  // text lists the server's capabilities, and could grow an endpoint or docs
-  // link) must not be mistaken for a fresh challenge -- that would offer a
-  // non-challenge link and poll for a transition that already happened.
+/**
+ * Classify `core_auth_login`'s answer. An authorization challenge carries the
+ * sign-in URL as `structuredContent.authUrl` (muster#1025) — the prose-parsing
+ * fallback that used to scan the text for a URL line is retired. Since
+ * muster#1083 the challenge also carries `structuredContent.clientIdMethod`,
+ * saying how muster identifies itself to the authorization server; older
+ * musters omit it. Connection outcomes have no structured content and are
+ * still recognised by their `api.AuthMsg*` markers, the same way muster's own
+ * CLI does.
+ */
+export function parseAuthLoginResult(result: {
+  text?: string;
+  structuredContent?: unknown;
+}): AuthLoginResult {
+  const message = result.text ?? '';
+
+  const structured = result.structuredContent as {
+    authUrl?: unknown;
+    clientIdMethod?: unknown;
+  } | null;
+  const authUrl = structured?.authUrl;
+  if (typeof authUrl === 'string' && authUrl !== '') {
+    const clientIdMethod = CLIENT_ID_METHODS.find(
+      method => method === structured?.clientIdMethod,
+    );
+    return { status: 'auth_required', authUrl, message, clientIdMethod };
+  }
+
   if (CONNECTED_MARKERS.some(marker => message.includes(marker))) {
     return { status: 'connected', message };
   }
 
-  const authUrl = message
-    .split('\n')
-    .map(line => line.trim())
-    .find(line => line.startsWith('https://') || line.startsWith('http://'));
+  return { status: 'unknown', message };
+}
 
-  if (authUrl) {
-    return { status: 'auth_required', authUrl, message };
+export interface AuthLogoutResult {
+  /**
+   * `signed_out` -- muster revoked the session's auth for the server;
+   * `error` -- muster refused (unknown server, SSO-managed server);
+   * `unknown` -- muster answered something unrecognised, re-read auth://status.
+   */
+  status: 'signed_out' | 'error' | 'unknown';
+  /** Muster's own message, passed through for display. */
+  message: string;
+}
+
+/**
+ * Marker muster uses for a completed logout ("Successfully logged out from
+ * '<server>'." -- `handleAuthLogout` in the muster repo). Refusals (unknown
+ * server, SSO-managed server) arrive as MCP tool errors and never reach this
+ * parser.
+ */
+const SIGNED_OUT_MARKER = 'Successfully logged out';
+
+/** Classify `core_auth_logout`'s answer. The result is prose-only. */
+export function parseAuthLogoutResult(result: {
+  text?: string;
+}): AuthLogoutResult {
+  const message = result.text ?? '';
+  if (message.includes(SIGNED_OUT_MARKER)) {
+    return { status: 'signed_out', message };
   }
-
   return { status: 'unknown', message };
 }
 

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
+import { sessionsQueryKey } from '../lib/queryKeys';
 import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
 
 /**
@@ -35,7 +36,7 @@ export function useDeleteSession(installation: string, sessionId: string) {
       // the card refetches when the tab mounts. Do not read cross-tab correctness
       // into this call.
       await queryClient.invalidateQueries({
-        queryKey: ['agent-platform', 'kagent', 'sessions', installation],
+        queryKey: sessionsQueryKey(installation),
       });
 
       // This session's own reads are marked stale but deliberately *not*

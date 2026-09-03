@@ -16,11 +16,13 @@ import {
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import type { ClientServingSummary } from '../../lib/serving';
 import {
   agentDetailRouteRef,
   deploymentDetailsExternalRouteRef,
   musterToolExplorerExternalRouteRef,
 } from '../../routes';
+import { ModelServingStatus } from '../ModelServingStatus';
 import {
   describeToolScope,
   isMusterServerRef,
@@ -32,7 +34,9 @@ const MONO: React.CSSProperties = { fontFamily: 'monospace' };
 
 /**
  * How the model is described: the ModelConfig's friendly name, with the model id
- * and provider underneath.
+ * and provider underneath — and, where the serving layer has a word on the
+ * model behind it, whether that model is serving (the same label the Model
+ * configs and Agents views show; `Not serving` links to the Serving view).
  *
  * Falls back to the bare reference when the ModelConfig cannot be read — which is
  * normal for a non-admin, since ModelConfigs live in namespaces they may not have
@@ -41,10 +45,12 @@ const MONO: React.CSSProperties = { fontFamily: 'monospace' };
 function ModelValue({
   modelConfigName,
   modelConfig,
+  modelServing,
   namespace,
 }: {
   modelConfigName?: string;
   modelConfig?: ModelConfig;
+  modelServing?: ClientServingSummary;
   namespace?: string;
 }) {
   if (!modelConfigName) {
@@ -70,6 +76,7 @@ function ModelValue({
           {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
         </span>
       </Text>
+      {modelServing && <ModelServingStatus serving={modelServing} />}
     </Flex>
   );
 }
@@ -221,6 +228,8 @@ function DeployedByValue({ agent }: { agent: Agent }) {
 export type AgentConfigurationCardProps = {
   agent: Agent;
   modelConfig?: ModelConfig;
+  /** The serving layer's word on the model behind `modelConfig`, when it has one. */
+  modelServing?: ClientServingSummary;
 };
 
 /**
@@ -232,6 +241,7 @@ export type AgentConfigurationCardProps = {
 export function AgentConfigurationCard({
   agent,
   modelConfig,
+  modelServing,
 }: AgentConfigurationCardProps) {
   const namespace = agent.getNamespace();
   const created = agent.getCreatedTimestamp();
@@ -242,6 +252,7 @@ export function AgentConfigurationCard({
       <ModelValue
         modelConfigName={agent.getModelConfigName()}
         modelConfig={modelConfig}
+        modelServing={modelServing}
         namespace={namespace}
       />
     ),

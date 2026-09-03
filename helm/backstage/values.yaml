@@ -4,6 +4,10 @@
 # -- Name used for all Kubernetes resources (Deployment, Service, Ingress, etc.)
 name: backstage
 
+# @schema type:integer;minimum:1
+# -- Number of Backstage backend replicas
+replicas: 1
+
 # -- Backstage service discovery settings
 backstageDiscovery:
   # @schema type:string
@@ -176,7 +180,7 @@ sentry:
 # -- TelemetryDeck analytics settings
 telemetrydeck:
   # @schema type:string
-  # -- TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var)
+  # -- TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml.
   salt: ''
 
 # -- AWS credentials for S3 and other AWS service integrations

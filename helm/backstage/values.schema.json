@@ -6,7 +6,6 @@
                 "io.k8s.api.apps.v1.DeploymentStrategy": {
                     "type": "object",
                     "description": "DeploymentStrategy describes how to replace existing pods with new ones.",
-                    "additionalProperties": false,
                     "properties": {
                         "type": {
                             "type": "string",
@@ -21,7 +20,6 @@
                 "io.k8s.api.apps.v1.RollingUpdateDeployment": {
                     "type": "object",
                     "description": "Spec to control the desired behavior of rolling update.",
-                    "additionalProperties": false,
                     "properties": {
                         "maxSurge": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.apimachinery.pkg.util.intstr.IntOrString",
@@ -39,7 +37,6 @@
                     "required": [
                         "volumeID"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -66,7 +63,6 @@
                     "required": [
                         "type"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "type": {
                             "type": "string",
@@ -85,7 +81,6 @@
                         "diskName",
                         "diskURI"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "cachingMode": {
                             "type": "string",
@@ -120,7 +115,6 @@
                         "secretName",
                         "shareName"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "readOnly": {
                             "type": "boolean",
@@ -142,7 +136,6 @@
                     "required": [
                         "driver"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "driver": {
                             "type": "string",
@@ -172,7 +165,6 @@
                 "io.k8s.api.core.v1.Capabilities": {
                     "type": "object",
                     "description": "Adds and removes POSIX capabilities from running containers.",
-                    "additionalProperties": false,
                     "properties": {
                         "add": {
                             "type": "array",
@@ -196,7 +188,6 @@
                     "required": [
                         "monitors"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "monitors": {
                             "type": "array",
@@ -233,7 +224,6 @@
                     "required": [
                         "volumeID"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -259,7 +249,6 @@
                     "required": [
                         "path"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "labelSelector": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector",
@@ -291,7 +280,6 @@
                 "io.k8s.api.core.v1.ConfigMapEnvSource": {
                     "type": "object",
                     "description": "ConfigMapEnvSource selects a ConfigMap to populate the environment variables with.\n\nThe contents of the target ConfigMap's Data field will represent the key-value pairs as environment variables. Keys in the BinaryData field are not currently propagated to container env vars.",
-                    "additionalProperties": false,
                     "properties": {
                         "name": {
                             "type": "string",
@@ -309,7 +297,6 @@
                     "required": [
                         "key"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "key": {
                             "type": "string",
@@ -328,7 +315,6 @@
                 "io.k8s.api.core.v1.ConfigMapProjection": {
                     "type": "object",
                     "description": "Adapts a ConfigMap into a projected volume.\n\nThe contents of the target ConfigMap's Data field will be presented in a projected volume as files using the keys in the Data field as the file names, unless the items element is populated with specific mappings of keys to paths. Note that this is identical to a configmap volume source without the default mode.",
-                    "additionalProperties": false,
                     "properties": {
                         "items": {
                             "type": "array",
@@ -350,7 +336,6 @@
                 "io.k8s.api.core.v1.ConfigMapVolumeSource": {
                     "type": "object",
                     "description": "Adapts a ConfigMap into a volume.\n\nThe contents of the target ConfigMap's Data field will be presented in a volume as files using the keys in the Data field as the file names, unless the items element is populated with specific mappings of keys to paths. ConfigMap volumes support ownership management and SELinux relabeling.",
-                    "additionalProperties": false,
                     "properties": {
                         "items": {
                             "type": "array",
@@ -385,7 +370,6 @@
                     "required": [
                         "name"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "args": {
                             "type": "array",
@@ -522,7 +506,6 @@
                     "required": [
                         "containerPort"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "containerPort": {
                             "type": "integer",
@@ -555,7 +538,6 @@
                         "resourceName",
                         "restartPolicy"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "resourceName": {
                             "type": "string",
@@ -573,7 +555,6 @@
                     "required": [
                         "action"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "action": {
                             "type": "string",
@@ -591,7 +572,6 @@
                     "required": [
                         "operator"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "operator": {
                             "type": "string",
@@ -610,7 +590,6 @@
                 "io.k8s.api.core.v1.DownwardAPIProjection": {
                     "type": "object",
                     "description": "Represents downward API info for projecting into a projected volume. Note that this is identical to a downwardAPI volume source without the default mode.",
-                    "additionalProperties": false,
                     "properties": {
                         "items": {
                             "type": "array",
@@ -627,7 +606,6 @@
                     "required": [
                         "path"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "fieldRef": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.ObjectFieldSelector",
@@ -656,7 +634,6 @@
                 "io.k8s.api.core.v1.DownwardAPIVolumeSource": {
                     "type": "object",
                     "description": "DownwardAPIVolumeSource represents a volume containing downward API info. Downward API volumes support ownership management and SELinux relabeling.",
-                    "additionalProperties": false,
                     "properties": {
                         "items": {
                             "type": "array",
@@ -680,7 +657,6 @@
                 "io.k8s.api.core.v1.EmptyDirVolumeSource": {
                     "type": "object",
                     "description": "Represents an empty directory for a pod. Empty directory volumes support ownership management and SELinux relabeling.",
-                    "additionalProperties": false,
                     "properties": {
                         "medium": {
                             "type": "string",
@@ -700,7 +676,6 @@
                 "io.k8s.api.core.v1.EnvFromSource": {
                     "type": "object",
                     "description": "EnvFromSource represents the source of a set of ConfigMaps or Secrets",
-                    "additionalProperties": false,
                     "properties": {
                         "configMapRef": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.ConfigMapEnvSource",
@@ -722,7 +697,6 @@
                     "required": [
                         "name"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "name": {
                             "type": "string",
@@ -741,7 +715,6 @@
                 "io.k8s.api.core.v1.EnvVarSource": {
                     "type": "object",
                     "description": "EnvVarSource represents a source for the value of an EnvVar.",
-                    "additionalProperties": false,
                     "properties": {
                         "configMapKeyRef": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.ConfigMapKeySelector",
@@ -768,7 +741,6 @@
                 "io.k8s.api.core.v1.EphemeralVolumeSource": {
                     "type": "object",
                     "description": "Represents an ephemeral volume that is handled by a normal storage driver.",
-                    "additionalProperties": false,
                     "properties": {
                         "volumeClaimTemplate": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.PersistentVolumeClaimTemplate",
@@ -779,7 +751,6 @@
                 "io.k8s.api.core.v1.ExecAction": {
                     "type": "object",
                     "description": "ExecAction describes a \"run in container\" action.",
-                    "additionalProperties": false,
                     "properties": {
                         "command": {
                             "type": "array",
@@ -793,7 +764,6 @@
                 "io.k8s.api.core.v1.FCVolumeSource": {
                     "type": "object",
                     "description": "Represents a Fibre Channel volume. Fibre Channel volumes can only be mounted as read/write once. Fibre Channel volumes support ownership management and SELinux relabeling.",
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -832,7 +802,6 @@
                         "path",
                         "key"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "key": {
                             "type": "string",
@@ -858,7 +827,6 @@
                     "required": [
                         "driver"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "driver": {
                             "type": "string",
@@ -888,7 +856,6 @@
                 "io.k8s.api.core.v1.FlockerVolumeSource": {
                     "type": "object",
                     "description": "Represents a Flocker volume mounted by the Flocker agent. One and only one of datasetName and datasetUUID should be set. Flocker volumes do not support ownership management or SELinux relabeling.",
-                    "additionalProperties": false,
                     "properties": {
                         "datasetName": {
                             "type": "string",
@@ -906,7 +873,6 @@
                     "required": [
                         "pdName"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -933,7 +899,6 @@
                     "required": [
                         "port"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "mode": {
                             "type": "string",
@@ -956,7 +921,6 @@
                     "required": [
                         "repository"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "directory": {
                             "type": "string",
@@ -979,7 +943,6 @@
                         "endpoints",
                         "path"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "endpoints": {
                             "type": "string",
@@ -1001,7 +964,6 @@
                     "required": [
                         "port"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "host": {
                             "type": "string",
@@ -1039,7 +1001,6 @@
                         "name",
                         "value"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "name": {
                             "type": "string",
@@ -1057,7 +1018,6 @@
                     "required": [
                         "path"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "type": {
                             "type": "string",
@@ -1077,7 +1037,6 @@
                         "iqn",
                         "lun"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "chapAuthDiscovery": {
                             "type": "boolean",
@@ -1132,7 +1091,6 @@
                 "io.k8s.api.core.v1.ImageVolumeSource": {
                     "type": "object",
                     "description": "ImageVolumeSource represents a image volume resource.",
-                    "additionalProperties": false,
                     "properties": {
                         "pullPolicy": {
                             "type": "string",
@@ -1151,7 +1109,6 @@
                         "key",
                         "path"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "key": {
                             "type": "string",
@@ -1176,7 +1133,6 @@
                 "io.k8s.api.core.v1.Lifecycle": {
                     "type": "object",
                     "description": "Lifecycle describes actions that the management system should take in response to container lifecycle events. For the PostStart and PreStop lifecycle handlers, management of the container blocks until the action is complete, unless the container process fails, in which case the handler is aborted.",
-                    "additionalProperties": false,
                     "properties": {
                         "postStart": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.LifecycleHandler",
@@ -1195,7 +1151,6 @@
                 "io.k8s.api.core.v1.LifecycleHandler": {
                     "type": "object",
                     "description": "LifecycleHandler defines a specific action that should be taken in a lifecycle hook. One and only one of the fields, except TCPSocket must be specified.",
-                    "additionalProperties": false,
                     "properties": {
                         "exec": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.ExecAction",
@@ -1218,7 +1173,6 @@
                 "io.k8s.api.core.v1.LocalObjectReference": {
                     "type": "object",
                     "description": "LocalObjectReference contains enough information to let you locate the referenced object inside the same namespace.",
-                    "additionalProperties": false,
                     "properties": {
                         "name": {
                             "type": "string",
@@ -1233,7 +1187,6 @@
                         "server",
                         "path"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "path": {
                             "type": "string",
@@ -1255,7 +1208,6 @@
                     "required": [
                         "fieldPath"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "apiVersion": {
                             "type": "string",
@@ -1270,7 +1222,6 @@
                 "io.k8s.api.core.v1.PersistentVolumeClaimSpec": {
                     "type": "object",
                     "description": "PersistentVolumeClaimSpec describes the common attributes of storage devices and allows a Source for provider-specific attributes",
-                    "additionalProperties": false,
                     "properties": {
                         "accessModes": {
                             "type": "array",
@@ -1319,7 +1270,6 @@
                     "required": [
                         "spec"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "metadata": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta",
@@ -1337,7 +1287,6 @@
                     "required": [
                         "claimName"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "claimName": {
                             "type": "string",
@@ -1355,7 +1304,6 @@
                     "required": [
                         "pdID"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -1374,7 +1322,6 @@
                         "signerName",
                         "keyType"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "certificateChainPath": {
                             "type": "string",
@@ -1421,7 +1368,6 @@
                     "required": [
                         "volumeID"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -1440,7 +1386,6 @@
                 "io.k8s.api.core.v1.Probe": {
                     "type": "object",
                     "description": "Probe describes a health check to be performed against a container to determine whether it is alive or ready to receive traffic.",
-                    "additionalProperties": false,
                     "properties": {
                         "exec": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.ExecAction",
@@ -1493,7 +1438,6 @@
                 "io.k8s.api.core.v1.ProjectedVolumeSource": {
                     "type": "object",
                     "description": "Represents a projected volume source",
-                    "additionalProperties": false,
                     "properties": {
                         "defaultMode": {
                             "type": "integer",
@@ -1521,7 +1465,6 @@
                         "registry",
                         "volume"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "group": {
                             "type": "string",
@@ -1556,7 +1499,6 @@
                         "monitors",
                         "image"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -1601,7 +1543,6 @@
                     "required": [
                         "name"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "name": {
                             "type": "string",
@@ -1619,7 +1560,6 @@
                     "required": [
                         "resource"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "containerName": {
                             "type": "string",
@@ -1638,7 +1578,6 @@
                 "io.k8s.api.core.v1.ResourceRequirements": {
                     "type": "object",
                     "description": "ResourceRequirements describes the compute resource requirements.",
-                    "additionalProperties": false,
                     "properties": {
                         "claims": {
                             "type": "array",
@@ -1666,7 +1605,6 @@
                 "io.k8s.api.core.v1.SELinuxOptions": {
                     "type": "object",
                     "description": "SELinuxOptions are the labels to be applied to the container",
-                    "additionalProperties": false,
                     "properties": {
                         "type": {
                             "type": "string",
@@ -1694,7 +1632,6 @@
                         "system",
                         "secretRef"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -1744,7 +1681,6 @@
                     "required": [
                         "type"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "type": {
                             "type": "string",
@@ -1759,7 +1695,6 @@
                 "io.k8s.api.core.v1.SecretEnvSource": {
                     "type": "object",
                     "description": "SecretEnvSource selects a Secret to populate the environment variables with.\n\nThe contents of the target Secret's Data field will represent the key-value pairs as environment variables.",
-                    "additionalProperties": false,
                     "properties": {
                         "name": {
                             "type": "string",
@@ -1777,7 +1712,6 @@
                     "required": [
                         "key"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "key": {
                             "type": "string",
@@ -1796,7 +1730,6 @@
                 "io.k8s.api.core.v1.SecretProjection": {
                     "type": "object",
                     "description": "Adapts a secret into a projected volume.\n\nThe contents of the target Secret's Data field will be presented in a projected volume as files using the keys in the Data field as the file names. Note that this is identical to a secret volume source without the default mode.",
-                    "additionalProperties": false,
                     "properties": {
                         "items": {
                             "type": "array",
@@ -1818,7 +1751,6 @@
                 "io.k8s.api.core.v1.SecretVolumeSource": {
                     "type": "object",
                     "description": "Adapts a Secret into a volume.\n\nThe contents of the target Secret's Data field will be presented in a volume as files using the keys in the Data field as the file names. Secret volumes support ownership management and SELinux relabeling.",
-                    "additionalProperties": false,
                     "properties": {
                         "items": {
                             "type": "array",
@@ -1850,7 +1782,6 @@
                 "io.k8s.api.core.v1.SecurityContext": {
                     "type": "object",
                     "description": "SecurityContext holds security configuration that will be applied to a container. Some fields are present in both SecurityContext and PodSecurityContext.  When both are set, the values in SecurityContext take precedence.",
-                    "additionalProperties": false,
                     "properties": {
                         "allowPrivilegeEscalation": {
                             "type": "boolean",
@@ -1910,7 +1841,6 @@
                     "required": [
                         "path"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "audience": {
                             "type": "string",
@@ -1938,7 +1868,6 @@
                     "required": [
                         "seconds"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "seconds": {
                             "type": "integer",
@@ -1950,7 +1879,6 @@
                 "io.k8s.api.core.v1.StorageOSVolumeSource": {
                     "type": "object",
                     "description": "Represents a StorageOS persistent volume resource.",
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -1980,7 +1908,6 @@
                     "required": [
                         "port"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "host": {
                             "type": "string",
@@ -1999,7 +1926,6 @@
                         "kind",
                         "name"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "apiGroup": {
                             "type": "string",
@@ -2022,7 +1948,6 @@
                         "kind",
                         "name"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "apiGroup": {
                             "type": "string",
@@ -2048,7 +1973,6 @@
                     "required": [
                         "name"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "awsElasticBlockStore": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.AWSElasticBlockStoreVolumeSource",
@@ -2183,7 +2107,6 @@
                         "name",
                         "devicePath"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "devicePath": {
                             "type": "string",
@@ -2202,7 +2125,6 @@
                         "name",
                         "mountPath"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "bindMountOptions": {
                             "type": "array",
@@ -2244,7 +2166,6 @@
                 "io.k8s.api.core.v1.VolumeProjection": {
                     "type": "object",
                     "description": "Projection that may be projected along with other supported volume types. Exactly one of these fields must be set.",
-                    "additionalProperties": false,
                     "properties": {
                         "clusterTrustBundle": {
                             "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.ClusterTrustBundleProjection",
@@ -2275,7 +2196,6 @@
                 "io.k8s.api.core.v1.VolumeResourceRequirements": {
                     "type": "object",
                     "description": "VolumeResourceRequirements describes the storage resource requirements for a volume.",
-                    "additionalProperties": false,
                     "properties": {
                         "limits": {
                             "type": "object",
@@ -2299,7 +2219,6 @@
                     "required": [
                         "volumePath"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "fsType": {
                             "type": "string",
@@ -2322,7 +2241,6 @@
                 "io.k8s.api.core.v1.WindowsSecurityContextOptions": {
                     "type": "object",
                     "description": "WindowsSecurityContextOptions contain Windows-specific options and credentials.",
-                    "additionalProperties": false,
                     "properties": {
                         "gmsaCredentialSpec": {
                             "type": "string",
@@ -2354,13 +2272,11 @@
                 },
                 "io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1": {
                     "type": "object",
-                    "description": "FieldsV1 stores a set of fields in a data structure like a Trie, in JSON format.\n\nEach key is either a '.' representing the field itself, and will always map to an empty set, or a string representing a sub-field or item. The string will follow one of these four formats: 'f:<name>', where <name> is the name of a field in a struct, or key in a map 'v:<value>', where <value> is the exact json formatted value of a list item 'i:<index>', where <index> is position of a item in a list 'k:<keys>', where <keys> is a map of  a list item's key fields to their unique values If a key maps to an empty Fields value, the field that key represents is part of the set.\n\nThe exact format is defined in sigs.k8s.io/structured-merge-diff",
-                    "additionalProperties": false
+                    "description": "FieldsV1 stores a set of fields in a data structure like a Trie, in JSON format.\n\nEach key is either a '.' representing the field itself, and will always map to an empty set, or a string representing a sub-field or item. The string will follow one of these four formats: 'f:<name>', where <name> is the name of a field in a struct, or key in a map 'v:<value>', where <value> is the exact json formatted value of a list item 'i:<index>', where <index> is position of a item in a list 'k:<keys>', where <keys> is a map of  a list item's key fields to their unique values If a key maps to an empty Fields value, the field that key represents is part of the set.\n\nThe exact format is defined in sigs.k8s.io/structured-merge-diff"
                 },
                 "io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector": {
                     "type": "object",
                     "description": "A label selector is a label query over a set of resources. The result of matchLabels and matchExpressions are ANDed. An empty label selector matches all objects. A null label selector matches no objects.",
-                    "additionalProperties": false,
                     "properties": {
                         "matchExpressions": {
                             "type": "array",
@@ -2385,7 +2301,6 @@
                         "key",
                         "operator"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "key": {
                             "type": "string",
@@ -2407,7 +2322,6 @@
                 "io.k8s.apimachinery.pkg.apis.meta.v1.ManagedFieldsEntry": {
                     "type": "object",
                     "description": "ManagedFieldsEntry is a workflow-id, a FieldSet and the group version of the resource that the fieldset applies to.",
-                    "additionalProperties": false,
                     "properties": {
                         "apiVersion": {
                             "type": "string",
@@ -2442,7 +2356,6 @@
                 "io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta": {
                     "type": "object",
                     "description": "ObjectMeta is metadata that all persisted resources must have, which includes all objects users must create.",
-                    "additionalProperties": false,
                     "properties": {
                         "annotations": {
                             "type": "object",
@@ -2532,7 +2445,6 @@
                         "name",
                         "uid"
                     ],
-                    "additionalProperties": false,
                     "properties": {
                         "apiVersion": {
                             "type": "string",
@@ -2709,6 +2621,13 @@
                 }
             }
         },
+        "baseDomain": {
+            "type": "string"
+        },
+        "bootstrapMode": {
+            "type": "object",
+            "additionalProperties": true
+        },
         "branding": {
             "type": "object",
             "description": "Custom branding/UI asset settings (logos and favicons served by the branding backend plugin)",
@@ -2737,6 +2656,14 @@
                 }
             }
         },
+        "chartOperator": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "ciliumNetworkPolicy": {
+            "type": "object",
+            "additionalProperties": true
+        },
         "circleci": {
             "type": "object",
             "description": "CircleCI integration settings",
@@ -2747,6 +2674,22 @@
                     "description": "CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var)"
                 }
             }
+        },
+        "cluster": {
+            "type": "object",
+            "additionalProperties": true
+        },
+        "clusterCA": {
+            "type": "string"
+        },
+        "clusterCIDR": {
+            "type": "string"
+        },
+        "clusterDNSIP": {
+            "type": "string"
+        },
+        "clusterID": {
+            "type": "string"
         },
         "common": {
             "type": "object",
@@ -2826,6 +2769,9 @@
             "description": "Group ID for the pod security context (fsGroup). When set, Kubernetes chowns mounted volume roots to this GID on mount, so the non-root Backstage process can write to freshly provisioned PVCs (e.g. file-backed SQLite). Leave unset if no volumes need writing.",
             "minimum": 0
         },
+        "gcpProject": {
+            "type": "string"
+        },
         "github": {
             "type": "object",
             "description": "GitHub integration settings (PAT used as fallback by catalog processors when the GitHub App lacks access to a repository)",
@@ -2889,7 +2835,7 @@
                 "null"
             ],
             "description": "Global values shared between all subcharts",
-            "$comment": "Added automatically by 'helm schema' to allow this chart to be used as a Helm dependency, as the `additionalProperties` setting would otherwise collide with Helm's special 'global' values key."
+            "$comment": "Added automatically by 'helm schema' to allow this chart to be used as a Helm dependency, as this schema would otherwise not allow Helm's special 'global' values key."
         },
         "google": {
             "type": "object",
@@ -3118,6 +3064,9 @@
                 }
             }
         },
+        "provider": {
+            "type": "string"
+        },
         "registry": {
             "type": "object",
             "description": "Container image registry settings",
@@ -3128,6 +3077,11 @@
                     "description": "Container image registry domain prepended to image.repository"
                 }
             }
+        },
+        "replicas": {
+            "type": "integer",
+            "description": "Number of Backstage backend replicas",
+            "minimum": 1
         },
         "resources": {
             "type": "object",
@@ -3411,6 +3365,9 @@
             "description": "Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume.",
             "additionalProperties": true
         },
+        "subscriptionID": {
+            "type": "string"
+        },
         "telemetrydeck": {
             "type": "object",
             "description": "TelemetryDeck analytics settings",
@@ -3418,7 +3375,7 @@
             "properties": {
                 "salt": {
                     "type": "string",
-                    "description": "TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var)"
+                    "description": "TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml."
                 }
             }
         },

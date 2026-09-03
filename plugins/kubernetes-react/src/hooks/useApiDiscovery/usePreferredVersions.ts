@@ -154,8 +154,16 @@ export function usePreferredVersions(
         complete[cluster] = true;
         return;
       }
-      const groupSettled = !groupQueries[index].isLoading;
-      const resourcesSettled = clusterResourceQueries.every(q => !q.isLoading);
+      // Settled means the query has produced a result. `!isLoading` is not
+      // enough: on the very first render an enabled query that hasn't started
+      // fetching yet reports fetchStatus 'idle', so `isLoading` is false and
+      // discovery would count as complete before it even began — resolving a
+      // fallback GVK for one render and racing a resource request against
+      // discovery (a guaranteed 404 on clusters that don't serve the group).
+      const settled = (query: { isSuccess: boolean; isError: boolean }) =>
+        query.isSuccess || query.isError;
+      const groupSettled = settled(groupQueries[index]);
+      const resourcesSettled = clusterResourceQueries.every(settled);
       complete[cluster] = groupSettled && resourcesSettled;
     });
     return complete;
@@ -180,6 +188,17 @@ export function usePreferredVersions(
         // this cluster's own discovery has settled. Avoids listing with a
         // fallback version that discovery is about to refine.
         if (!clusterDiscoveryComplete[cluster]) {
+          return;
+        }
+
+        // A 404 on `/apis/{group}` means the cluster does not serve this API
+        // group at all — a legitimate installation shape (e.g. no app-platform
+        // or no kustomize-controller on standalone installations). Resolving a
+        // fallback GVK would only send a list query destined to 404 again, so
+        // resolve nothing: the cluster simply has no resources of this type.
+        // The NotFoundError stays in `discoveryErrors`, so callers can still
+        // tell "not installed" (via `isNotFoundError`) from "couldn't read".
+        if (query.error?.name === 'NotFoundError') {
           return;
         }
 
@@ -245,10 +264,12 @@ export function usePreferredVersions(
     shouldDiscover,
   ]);
 
+  // Derived from `clusterDiscoveryComplete` (not from `isLoading`) so the
+  // first-render window where queries haven't started fetching yet still
+  // counts as discovering — see the note on `settled` above.
   const isDiscovering =
     shouldDiscover &&
-    (groupQueries.some(query => query.isLoading) ||
-      resourceQueries.some(query => query.isLoading));
+    clusters.some(cluster => !clusterDiscoveryComplete[cluster]);
 
   // Don't report incompatibilities while discovery is still in progress —
   // partial Stage 2 results can cause false positives (e.g. a transient error
