@@ -22,7 +22,10 @@ import {
   containerRegistryServiceRef,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
-import { getLatestStableRelease } from '../util/githubReleases';
+import {
+  getLatestStableRelease,
+  type LatestRelease,
+} from '../util/githubReleases';
 import { resolveGithubToken } from '../util/githubToken';
 
 const HELMCHARTS_ANNOTATION = 'giantswarm.io/helmcharts';
@@ -60,13 +63,57 @@ type ChartRef = {
   repository: string;
 };
 
-type CacheEntry = {
+type ChartState = {
   /** Highest stable chart version in the registry, or undefined if none. */
   latestStable: string | undefined;
   /** True when the registry could not be read at all. */
   unreadable: boolean;
+};
+
+type Cached<T> = {
+  value: T;
+  /** When the underlying lookup actually ran. */
   fetchedAt: number;
 };
+
+/**
+ * TTL cache with in-flight dedup, as the sibling release processors have: a
+ * lookup runs at most once per TTL, and concurrent callers for the same key
+ * share the one promise instead of each issuing a request. A rejected fill is
+ * not cached, so a transient failure is retried on the next pass rather than
+ * held for the whole TTL.
+ */
+class TtlCache<T> {
+  private readonly entries = new Map<string, Cached<T>>();
+  private readonly inflight = new Map<string, Promise<Cached<T>>>();
+  private readonly ttlMs: number;
+
+  constructor(ttlMs: number) {
+    this.ttlMs = ttlMs;
+  }
+
+  get(key: string, fill: () => Promise<T>): Promise<Cached<T>> {
+    const cached = this.entries.get(key);
+    if (cached && Date.now() - cached.fetchedAt < this.ttlMs) {
+      return Promise.resolve(cached);
+    }
+    const existing = this.inflight.get(key);
+    if (existing) {
+      return existing;
+    }
+    const pending = fill()
+      .then(value => {
+        const fresh: Cached<T> = { value, fetchedAt: Date.now() };
+        this.entries.set(key, fresh);
+        return fresh;
+      })
+      .finally(() => {
+        this.inflight.delete(key);
+      });
+    this.inflight.set(key, pending);
+    return pending;
+  }
+}
 
 type Verdict = {
   readiness: string;
@@ -99,10 +146,16 @@ export class AppReadinessProcessor implements CatalogProcessor {
   >;
   private readonly credentialsProvider: GithubCredentialsProvider;
   private readonly integrations: ScmIntegrationRegistry;
-  private readonly cacheTtlMs: number;
   private readonly fetchImpl: FetchFn;
-  private readonly cache = new Map<string, CacheEntry>();
-  private readonly inflight = new Map<string, Promise<CacheEntry>>();
+  /** Highest published chart version, keyed `registry/repository`. */
+  private readonly chartCache: TtlCache<ChartState>;
+  /**
+   * `/releases/latest`, keyed `owner/repo`. Without this the lookup would run
+   * once per component per processing cycle. The sibling LatestReleaseProcessor
+   * caches the same call behind the same TTL; the two caches are not shared, so
+   * a repo is asked at most once per TTL per processor.
+   */
+  private readonly releaseCache: TtlCache<LatestRelease | undefined>;
 
   static fromConfig(options: {
     config: RootConfigService;
@@ -145,8 +198,10 @@ export class AppReadinessProcessor implements CatalogProcessor {
     this.containerRegistry = options.containerRegistry;
     this.credentialsProvider = options.credentialsProvider;
     this.integrations = options.integrations;
-    this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
     this.fetchImpl = options.fetchImpl ?? fetch;
+    const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
+    this.chartCache = new TtlCache(cacheTtlMs);
+    this.releaseCache = new TtlCache(cacheTtlMs);
   }
 
   getProcessorName(): string {
@@ -178,15 +233,28 @@ export class AppReadinessProcessor implements CatalogProcessor {
       return withReadiness(entity, { readiness: READINESS_UNKNOWN, flags: [] });
     }
 
-    const release = await this.getLatestRelease(slug);
-    if (!release) {
-      // No release found, or GitHub could not be asked. Either way we cannot
-      // say anything about publication, so we say nothing rather than guessing.
+    let release: Cached<LatestRelease | undefined>;
+    try {
+      release = await this.getLatestRelease(slug);
+    } catch (error) {
+      // GitHub could not be asked, so we cannot say anything about publication.
+      this.logger.warn(
+        `AppReadinessProcessor: failed to fetch release for ${slug.owner}/${slug.repo}: ${error}`,
+      );
       return withReadiness(entity, { readiness: READINESS_UNKNOWN, flags: [] });
     }
+    if (!release.value) {
+      // The repo has no stable release, so there is nothing to expect in the
+      // registry. We say nothing rather than guessing.
+      return withReadiness(entity, { readiness: READINESS_UNKNOWN, flags: [] });
+    }
+    const releaseTag = release.value.tag;
 
-    const entries = await Promise.all(refs.map(ref => this.getCacheEntry(ref)));
-    const result = verdict(release.tag, entries);
+    const charts = await Promise.all(refs.map(ref => this.getChartState(ref)));
+    const result = verdict(
+      releaseTag,
+      charts.map(chart => chart.value),
+    );
 
     // The tag listing is a window (500 newest), so a chart that publishes many
     // CI tags between releases could in principle have its newest stable
@@ -196,7 +264,7 @@ export class AppReadinessProcessor implements CatalogProcessor {
     // for this — around one in twelve.
     if (
       result.flags.includes(FLAG_RELEASE_NOT_PUBLISHED) &&
-      (await this.tagExists(refs, release.tag))
+      (await this.tagExists(refs, releaseTag))
     ) {
       return withReadiness(entity, {
         readiness: READINESS_RELEASABLE,
@@ -240,58 +308,43 @@ export class AppReadinessProcessor implements CatalogProcessor {
     return false;
   }
 
-  private async getLatestRelease(slug: { owner: string; repo: string }) {
+  private getLatestRelease(slug: {
+    owner: string;
+    repo: string;
+  }): Promise<Cached<LatestRelease | undefined>> {
+    return this.releaseCache.get(`${slug.owner}/${slug.repo}`, () =>
+      this.fetchLatestRelease(slug),
+    );
+  }
+
+  private async fetchLatestRelease(slug: {
+    owner: string;
+    repo: string;
+  }): Promise<LatestRelease | undefined> {
     const url = `https://github.com/${slug.owner}/${slug.repo}`;
-    try {
-      const token = await resolveGithubToken({
-        url,
-        credentialsProvider: this.credentialsProvider,
-        integrations: this.integrations,
-        logger: this.logger,
-      });
-      return await getLatestStableRelease({
-        owner: slug.owner,
-        repo: slug.repo,
-        token,
-        fetchImpl: this.fetchImpl,
-        logger: this.logger,
-        label: `AppReadinessProcessor ${slug.owner}/${slug.repo}`,
-      });
-    } catch (error) {
-      this.logger.warn(
-        `AppReadinessProcessor: failed to fetch release for ${slug.owner}/${slug.repo}: ${error}`,
-      );
-      return undefined;
-    }
+    const token = await resolveGithubToken({
+      url,
+      credentialsProvider: this.credentialsProvider,
+      integrations: this.integrations,
+      logger: this.logger,
+    });
+    return getLatestStableRelease({
+      owner: slug.owner,
+      repo: slug.repo,
+      token,
+      fetchImpl: this.fetchImpl,
+      logger: this.logger,
+      label: `AppReadinessProcessor ${slug.owner}/${slug.repo}`,
+    });
   }
 
-  private async getCacheEntry(ref: ChartRef): Promise<CacheEntry> {
-    const key = `${ref.registry}/${ref.repository}`;
-    const now = Date.now();
-    const cached = this.cache.get(key);
-    if (cached && now - cached.fetchedAt < this.cacheTtlMs) {
-      return cached;
-    }
-    const existing = this.inflight.get(key);
-    if (existing) {
-      return existing;
-    }
-    const fill = this.fillCache(ref)
-      .then(partial => {
-        const fresh: CacheEntry = { ...partial, fetchedAt: Date.now() };
-        this.cache.set(key, fresh);
-        return fresh;
-      })
-      .finally(() => {
-        this.inflight.delete(key);
-      });
-    this.inflight.set(key, fill);
-    return fill;
+  private getChartState(ref: ChartRef): Promise<Cached<ChartState>> {
+    return this.chartCache.get(`${ref.registry}/${ref.repository}`, () =>
+      this.fetchChartState(ref),
+    );
   }
 
-  private async fillCache(
-    ref: ChartRef,
-  ): Promise<Omit<CacheEntry, 'fetchedAt'>> {
+  private async fetchChartState(ref: ChartRef): Promise<ChartState> {
     try {
       const result = await this.containerRegistry.getTags(
         ref.registry,
@@ -331,7 +384,7 @@ export class AppReadinessProcessor implements CatalogProcessor {
  */
 export function verdict(
   releaseTag: string,
-  entries: ReadonlyArray<Pick<CacheEntry, 'latestStable' | 'unreadable'>>,
+  entries: ReadonlyArray<ChartState>,
 ): Verdict {
   if (entries.length === 0 || entries.every(e => e.unreadable)) {
     return { readiness: READINESS_UNKNOWN, flags: [] };

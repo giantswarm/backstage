@@ -23,26 +23,33 @@ const credentialsProvider = {
 } as any;
 const integrations = { github: { byUrl: () => undefined } } as any;
 
+/** A `fetch` stand-in answering `/releases/latest` with the given tag. */
+function releaseFetch(releaseTag?: string, releaseStatus = 200) {
+  return jest.fn().mockResolvedValue({
+    ok: releaseStatus === 200,
+    status: releaseStatus,
+    statusText: 'stubbed',
+    json: async () => ({
+      tag_name: releaseTag,
+      published_at: '2026-01-01T00:00:00Z',
+    }),
+  });
+}
+
 function makeProcessor(options: {
   getTags: jest.Mock;
   getTagManifest?: jest.Mock;
   releaseTag?: string;
   releaseStatus?: number;
+  fetchImpl?: jest.Mock;
 }) {
   const {
     getTags,
     getTagManifest = jest.fn().mockRejectedValue(new NotFoundError('nope')),
     releaseTag,
     releaseStatus = 200,
+    fetchImpl = releaseFetch(releaseTag, releaseStatus),
   } = options;
-  const fetchImpl = jest.fn().mockResolvedValue({
-    ok: releaseStatus === 200,
-    status: releaseStatus,
-    json: async () => ({
-      tag_name: releaseTag,
-      published_at: '2026-01-01T00:00:00Z',
-    }),
-  }) as unknown as typeof fetch;
 
   return new AppReadinessProcessor({
     logger: mockServices.logger.mock(),
@@ -53,7 +60,7 @@ function makeProcessor(options: {
     credentialsProvider,
     integrations,
     cacheTtlMs: 60_000,
-    fetchImpl,
+    fetchImpl: fetchImpl as unknown as typeof fetch,
   });
 }
 
@@ -355,16 +362,74 @@ describe('AppReadinessProcessor', () => {
     expect(result).toBe(entity);
   });
 
-  it('caches registry lookups across entities', async () => {
+  it('caches registry and release lookups across entities', async () => {
     const getTags = jest.fn().mockResolvedValue({
       tags: [{ tag: '1.6.0', createdAt: null }],
       latestStableVersion: '1.6.0',
     });
-    const processor = makeProcessor({ getTags, releaseTag: 'v1.6.0' });
+    const fetchImpl = releaseFetch('v1.6.0');
+    const processor = makeProcessor({ getTags, fetchImpl });
 
     await run(processor, component(chartAnnotations));
     await run(processor, component(chartAnnotations));
 
     expect(getTags).toHaveBeenCalledTimes(1);
+    // The release side is cached too, or it would be one GitHub request per
+    // component per processing cycle, doubling what the sibling already asks.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares one release lookup between a component\'s charts', async () => {
+    const getTags = jest.fn().mockResolvedValue({
+      tags: [{ tag: '1.6.0', createdAt: null }],
+      latestStableVersion: '1.6.0',
+    });
+    const fetchImpl = releaseFetch('v1.6.0');
+    const processor = makeProcessor({ getTags, fetchImpl });
+
+    await Promise.all([
+      run(processor, component(chartAnnotations)),
+      run(processor, component(chartAnnotations)),
+    ]);
+
+    // In-flight dedup: the concurrent pass shares the pending promise.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache a failed release lookup', async () => {
+    const getTags = jest.fn().mockResolvedValue({
+      tags: [{ tag: '1.6.0', createdAt: null }],
+      latestStableVersion: '1.6.0',
+    });
+    // 403 is not retried by githubFetch, so it surfaces immediately.
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'forbidden',
+        json: async () => ({}),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'ok',
+        json: async () => ({
+          tag_name: 'v1.6.0',
+          published_at: '2026-01-01T00:00:00Z',
+        }),
+      });
+    const processor = makeProcessor({ getTags, fetchImpl });
+
+    const failed = await run(processor, component(chartAnnotations));
+    const retried = await run(processor, component(chartAnnotations));
+
+    expect(failed.metadata.labels?.['giantswarm.io/readiness']).toBe(
+      READINESS_UNKNOWN,
+    );
+    expect(retried.metadata.labels?.['giantswarm.io/readiness']).toBe(
+      READINESS_RELEASABLE,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
