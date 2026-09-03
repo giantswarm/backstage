@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import { modelManagerApiRef } from '../apis';
+import type { ModelManagerApi } from '../apis/ModelManagerApi';
 import { isJobActive, type ModelManagerJob } from '../lib/modelManager';
 import {
   modelManagerJobsQueryKey,
@@ -109,6 +110,9 @@ export function usePullJobs(installations: string[]): PullJobs {
   );
 }
 
+/** What a pull asks for: the reference, and on KServe the preset and node. */
+export type PullModelRequest = Parameters<ModelManagerApi['pullModel']>[1];
+
 /**
  * Start a pull on an installation. Resolves with the job; the jobs list is
  * invalidated so the download shows up (and starts polling) at once.
@@ -118,7 +122,7 @@ export function usePullModel(installation: string) {
   const invalidate = useInvalidateModelManagerReads(installation);
 
   return useMutation({
-    mutationFn: (request: { model: string; wire?: boolean }) =>
+    mutationFn: (request: PullModelRequest) =>
       modelManagerApi.pullModel(installation, request),
     onSuccess: () => invalidate(),
   });

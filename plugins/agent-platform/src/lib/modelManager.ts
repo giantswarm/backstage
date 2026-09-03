@@ -288,11 +288,16 @@ export const modelManagerJobSchema = z.looseObject({
   /** Whether the job wires the model into kagent on success. */
   wire: wireBoolean(false),
   /**
-   * KServe: the node whose cache receives the download, when the backend
-   * reports it (model-manager does not yet — the request names the node, the
-   * job does not echo it back).
+   * KServe: the node whose cache receives the download — the one the request
+   * named, else the one model-manager picked after its fit check (reported
+   * since model-manager 0.9). Absent on Ollama, and on a shared cache.
    */
   node: wireString,
+  /**
+   * KServe: the serving preset the download is for — the one the request
+   * named, else the single preset serving the model. Absent on Ollama.
+   */
+  preset: wireString,
   /** For a pull with wire: the ModelConfig created. */
   result: z
     .unknown()
