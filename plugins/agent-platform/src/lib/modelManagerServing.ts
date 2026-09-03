@@ -83,13 +83,28 @@ export function toServingLoading(
 }
 
 /**
+ * The backend's address as *clients* dial it — what a ModelConfig's host is
+ * compared against: `agentEndpoint` (model-manager 0.8+, the host it writes
+ * into the ModelConfigs it wires; may differ from the address model-manager
+ * itself dials, `host.docker.internal` from a pod vs. the host's IP from an
+ * agent) else `endpoint`.
+ */
+export function clientEndpointOf(
+  backend: Pick<ModelManagerBackend, 'endpoint' | 'agentEndpoint'>,
+): string | undefined {
+  return backend.agentEndpoint ?? backend.endpoint;
+}
+
+/**
  * The `hostname:port` authorities on which the backend answers for every model
- * it has, for `ServingSourceSnapshot.sharedHosts`: Ollama's own endpoint.
- * KServe's `endpoint` is the InferenceService API, not somewhere a model
- * answers, and each predictor has a host of its own — none. The same rule
- * `endpointHosts` in {@link toServedModelFromManager} follows, with the port
- * kept: a host that also runs another OpenAI-compatible server on another
- * port must not have that server's clients read as Ollama's.
+ * it has, for `ServingSourceSnapshot.sharedHosts`: Ollama's own client-facing
+ * endpoint ({@link clientEndpointOf}). KServe's `endpoint` is the
+ * InferenceService API, not somewhere a model answers, and each predictor has
+ * a host of its own — none. The same authority is what `endpointHosts` in
+ * {@link toServedModelFromManager} lists for every Ollama row, port kept: a
+ * host that also runs another OpenAI-compatible server on another port must
+ * not have that server's clients read as Ollama's — neither as "gone" nor as
+ * "served by" the one Ollama model that happens to be there.
  */
 export function sharedHostsOf(
   backend: ModelManagerBackend & { backend: ServingBackend },
@@ -97,7 +112,7 @@ export function sharedHostsOf(
   if (backend.backend === 'kserve') {
     return [];
   }
-  const authority = endpointAuthority(backend.endpoint);
+  const authority = endpointAuthority(clientEndpointOf(backend));
   return authority ? [authority] : [];
 }
 
@@ -204,13 +219,18 @@ export function toServedModelFromManager(
     }
   }
 
-  // Ollama: every model answers on the backend's own host. KServe: only a
-  // served model has an endpoint, its predictor's (the backend "endpoint" is
-  // the InferenceService API, not somewhere a model answers).
+  // Ollama: every model answers on the backend's own server, listed as its
+  // `hostname:port` authority since the host may run other servers on other
+  // ports (see `sharedHostsOf`). KServe: only a served model has an endpoint,
+  // its predictor's, a hostname of its own — listed bare, as the CR read lists
+  // it, so the two views fold (`isSameServedModel`) and a client reaches it
+  // on any port and scheme (the backend "endpoint" is the InferenceService
+  // API, not somewhere a model answers).
+  const clientEndpoint = kserve ? undefined : clientEndpointOf(backend);
   const endpointHosts = Array.from(
     new Set(
       [
-        kserve ? undefined : urlHostname(backend.endpoint),
+        endpointAuthority(clientEndpoint),
         urlHostname(running?.endpoint),
       ].filter((host): host is string => Boolean(host)),
     ),
@@ -251,7 +271,7 @@ export function toServedModelFromManager(
     node: running?.node ?? model.node,
     nodeSource: kserve && running?.node ? 'pod' : undefined,
     gpuCount: running?.gpus,
-    internalUrl: running?.endpoint ?? (kserve ? undefined : backend.endpoint),
+    internalUrl: running?.endpoint ?? clientEndpoint,
     endpointHosts,
     preset: model.preset ?? running?.preset,
     managedByPortal: running?.managedBy

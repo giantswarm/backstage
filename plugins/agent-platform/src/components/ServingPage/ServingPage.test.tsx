@@ -850,7 +850,7 @@ describe('ServingPage', () => {
       modelSource: 'smollm2:135m',
       runtime: 'ollama 0.33.2',
       readiness: 'available',
-      endpointHosts: ['172.21.0.1'],
+      endpointHosts: ['172.21.0.1:11434'],
       sizeBytes: 270_898_672,
       loaded: false,
       capabilities: ['completion'],

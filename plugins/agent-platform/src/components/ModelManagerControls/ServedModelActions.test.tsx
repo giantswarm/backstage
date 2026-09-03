@@ -48,7 +48,7 @@ const unloadedUnwired: ServedModel = {
   backend: 'ollama',
   name: 'qwen3:0.6b',
   readiness: 'available',
-  endpointHosts: ['172.21.0.1'],
+  endpointHosts: ['172.21.0.1:11434'],
   loaded: false,
   managerRef: 'qwen3:0.6b',
   operable: true,

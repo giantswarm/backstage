@@ -72,6 +72,22 @@ describe('modelManagerBackendSchema', () => {
       false,
     );
   });
+
+  it('reads the agent-facing endpoint when model-manager reports one', () => {
+    expect(
+      modelManagerBackendSchema.parse({
+        ...backendOllama,
+        endpoint: 'http://host.docker.internal:11434',
+        agentEndpoint: 'http://172.21.0.1:11434',
+      }),
+    ).toMatchObject({
+      endpoint: 'http://host.docker.internal:11434',
+      agentEndpoint: 'http://172.21.0.1:11434',
+    });
+    expect(
+      modelManagerBackendSchema.parse(backendOllama).agentEndpoint,
+    ).toBeUndefined();
+  });
 });
 
 describe('modelManagerModelSchema', () => {

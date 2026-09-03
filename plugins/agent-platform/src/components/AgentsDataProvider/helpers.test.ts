@@ -480,7 +480,7 @@ describe('toAgentRow with a serving resolver', () => {
     backend: 'ollama',
     name: 'qwen3:0.6b',
     readiness: 'idle',
-    endpointHosts: ['172.21.0.1'],
+    endpointHosts: ['172.21.0.1:11434'],
   };
 
   it('carries the serving state of the model behind the agent, without the row object', () => {
