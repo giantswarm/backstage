@@ -15,7 +15,11 @@ import {
   type ScmIntegrationRegistry,
   ScmIntegrations,
 } from '@backstage/integration';
-import { NotFoundError } from '@backstage/errors';
+import {
+  AuthenticationError,
+  NotAllowedError,
+  NotFoundError,
+} from '@backstage/errors';
 import semver from 'semver';
 import {
   type ContainerRegistryService,
@@ -252,9 +256,13 @@ export class AppReadinessProcessor implements CatalogProcessor {
       release = await this.getLatestRelease(slug);
     } catch (error) {
       // GitHub could not be asked, so we cannot say anything about publication.
-      this.logger.warn(
-        `AppReadinessProcessor: failed to fetch release for ${slug.owner}/${slug.repo}: ${error}`,
-      );
+      // Static message, identifiers in metadata: a GitHub rate-limit episode
+      // hits every repo at once, and Sentry fingerprints on the message.
+      this.logger.warn('AppReadinessProcessor: release lookup failed', {
+        owner: slug.owner,
+        repo: slug.repo,
+        error: String(error),
+      });
       return withReadiness(entity, { readiness: READINESS_UNKNOWN, flags: [] });
     }
     if (!release.value) {
@@ -362,7 +370,13 @@ export class AppReadinessProcessor implements CatalogProcessor {
         return 'absent';
       }
       this.logger.debug(
-        `AppReadinessProcessor: manifest lookup for ${ref.registry}/${ref.repository}:${tag} failed: ${error}`,
+        'AppReadinessProcessor: manifest lookup could not be answered',
+        {
+          registry: ref.registry,
+          repository: ref.repository,
+          tag,
+          error: String(error),
+        },
       );
       throw error;
     }
@@ -419,16 +433,34 @@ export class AppReadinessProcessor implements CatalogProcessor {
       if (error instanceof NotFoundError) {
         // The chart repository does not exist in the registry. That is a real
         // answer: nothing was ever published there.
-        this.logger.debug(
-          `AppReadinessProcessor: chart ${ref.registry}/${ref.repository} not found`,
-        );
+        this.logger.debug('AppReadinessProcessor: chart not found', {
+          registry: ref.registry,
+          repository: ref.repository,
+        });
         return { latestStable: undefined, unreadable: false };
       }
       // A private registry we hold no credentials for, or a transient failure.
       // Either way we do not know.
-      this.logger.warn(
-        `AppReadinessProcessor: failed to fetch tags for ${ref.registry}/${ref.repository}: ${error}`,
-      );
+      //
+      // The root logger forwards every warn to Sentry and fingerprints on the
+      // message, so an expected, fully-handled outcome stays at debug and the
+      // chart identifiers ride in metadata rather than fanning one root cause
+      // out into one issue per chart.
+      if (
+        error instanceof AuthenticationError ||
+        error instanceof NotAllowedError
+      ) {
+        this.logger.debug(
+          'AppReadinessProcessor: no access to chart registry, reporting unknown',
+          { registry: ref.registry, repository: ref.repository },
+        );
+      } else {
+        this.logger.warn('AppReadinessProcessor: chart tag listing failed', {
+          registry: ref.registry,
+          repository: ref.repository,
+          error: String(error),
+        });
+      }
       return { latestStable: undefined, unreadable: true };
     }
   }

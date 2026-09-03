@@ -42,6 +42,7 @@ function makeProcessor(options: {
   releaseTag?: string;
   releaseStatus?: number;
   fetchImpl?: jest.Mock;
+  logger?: ReturnType<typeof mockServices.logger.mock>;
 }) {
   const {
     getTags,
@@ -49,10 +50,11 @@ function makeProcessor(options: {
     releaseTag,
     releaseStatus = 200,
     fetchImpl = releaseFetch(releaseTag, releaseStatus),
+    logger = mockServices.logger.mock(),
   } = options;
 
   return new AppReadinessProcessor({
-    logger: mockServices.logger.mock(),
+    logger,
     containerRegistry: {
       getTags: getTags as unknown as GetTags,
       getTagManifest: getTagManifest as unknown as GetTagManifest,
@@ -359,6 +361,23 @@ describe('AppReadinessProcessor', () => {
     );
     // The definite answer is cached; the unanswered lookups were not.
     expect(getTagManifest).toHaveBeenCalledTimes(callsAfterAnswer);
+  });
+
+  it('keeps an inaccessible registry out of Sentry', async () => {
+    // The root logger forwards every warn to Sentry, so an expected,
+    // fully-handled outcome must not be one.
+    const logger = mockServices.logger.mock();
+    const getTags = jest
+      .fn()
+      .mockRejectedValue(new AuthenticationError('no credentials'));
+    const processor = makeProcessor({ getTags, releaseTag: 'v1.6.0', logger });
+
+    const result = await run(processor, component(chartAnnotations));
+
+    expect(result.metadata.labels?.['giantswarm.io/readiness']).toBe(
+      READINESS_UNKNOWN,
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('skips chart refs that are unsubstituted template placeholders', async () => {
