@@ -500,11 +500,12 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-markdown@npm:^0.14.0":
-  version: 0.14.11
-  resolution: "@assistant-ui/react-markdown@npm:0.14.11"
+  version: 0.14.13
+  resolution: "@assistant-ui/react-markdown@npm:0.14.13"
   dependencies:
     "@radix-ui/react-primitive": "npm:^2.1.10"
     "@radix-ui/react-use-callback-ref": "npm:^1.1.4"
+    "@types/hast": "npm:^3.0.5"
     classnames: "npm:^2.5.1"
     react-markdown: "npm:^10.1.0"
   peerDependencies:
@@ -514,7 +515,7 @@ __metadata:
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/4cd71df0c3687e172631172e825117ab43652e0180c313654724e892fa5bdca4018b0e75ae58e966bd028a14172cc1a74e0fee943c6dbf814935b627ba5c648b
+  checksum: 10c0/28b94f63866677136c0b4cc1db5940a2c1c9734fe89328eaba52328ef11421670f6b050692d93f72b0f366da81a38cc178dba26cb49ca8617fd39e9d9f0f6e46
   languageName: node
   linkType: hard
 
@@ -17456,6 +17457,15 @@ __metadata:
   dependencies:
     "@types/unist": "npm:*"
   checksum: 10c0/3249781a511b38f1d330fd1e3344eed3c4e7ea8eff82e835d35da78e637480d36fad37a78be5a7aed8465d237ad0446abc1150859d0fde395354ea634decf9f7
+  languageName: node
+  linkType: hard
+
+"@types/hast@npm:^3.0.5":
+  version: 3.0.5
+  resolution: "@types/hast@npm:3.0.5"
+  dependencies:
+    "@types/unist": "npm:*"
+  checksum: 10c0/f3af8594a6903a507ed191eda944af18099198d6708c29102ae17118c3e20779f6929e91ed37e033541fd28d58055d8a5910a4366dbdf976cf81b13a464741fb
   languageName: node
   linkType: hard
 
