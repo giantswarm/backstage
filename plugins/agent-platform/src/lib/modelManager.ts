@@ -449,7 +449,7 @@ export const modelManagerNodeSchema = z.looseObject({
    */
   accelerated: wireOptionalBoolean,
   budgetBytes: wireNumber,
-  /** `gpu-labels`, `allocatable` or `annotation` (kserve); `host-meminfo` (ollama). */
+  /** `gpu-labels`, `allocatable` or `annotation` (kserve); `host-meminfo` or `override` (ollama). */
   budgetSource: wireString,
   /** The backend's note on the budget: an ignored annotation, or what the host figures mean. */
   message: wireString,

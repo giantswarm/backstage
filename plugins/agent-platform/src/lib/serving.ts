@@ -429,9 +429,10 @@ export type GpuNode = {
   memoryBudgetBytes?: number;
   /**
    * Where `memoryBudgetBytes` comes from: `gpu-labels` or `allocatable` (a
-   * cluster node), `annotation` (overridden on the node), or `host-meminfo` —
+   * cluster node), `annotation` (overridden on the node), `host-meminfo` —
    * the memory of the host a backend runs on, as the serving layer's pod sees
-   * it ({@link isHostMemoryNode}).
+   * it — or `override`, the operator's figure for that host when the pod's
+   * view is not the host's ({@link isHostMemoryNode} for both).
    */
   memoryBudgetSource?: string;
   /** The backend's own note on the budget: how it was derived, what the figures mean. */
@@ -539,14 +540,18 @@ export function gpuFree(node: GpuNode): number | undefined {
 /**
  * Whether a node is a backend's host rather than a cluster node: its memory
  * budget is the host's memory as the serving layer's pod sees it
- * (`host-meminfo`), and it carries no GPU product, count or device-plugin
- * figure — the backend's API does not expose the accelerator. What
- * model-manager's Ollama driver reports for the machine it proxies.
+ * (`host-meminfo`) or the operator's figure for it (`override`, set where the
+ * pod's view is not the host's), and it carries no GPU product, count or
+ * device-plugin figure — the backend's API does not expose the accelerator.
+ * What model-manager's Ollama driver reports for the machine it proxies.
  */
 export function isHostMemoryNode(
   node: Pick<GpuNode, 'memoryBudgetSource'>,
 ): boolean {
-  return node.memoryBudgetSource === 'host-meminfo';
+  return (
+    node.memoryBudgetSource === 'host-meminfo' ||
+    node.memoryBudgetSource === 'override'
+  );
 }
 
 /**

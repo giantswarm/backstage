@@ -402,3 +402,47 @@ describe('columnsForNodes', () => {
     });
   });
 });
+
+describe('GpuCapacityPanel · operator-set host budget', () => {
+  it('explains a budget the operator set and keeps the host rendering', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[
+          {
+            ...ollamaHost,
+            memoryBudgetBytes: 34359738368,
+            memoryBudgetSource: 'override',
+            memoryBudgetNote:
+              "memory budget set by the operator (ollama.memoryBudgetGiB / --ollama-memory-budget-gib), not the host's MemTotal; per-model accelerator share in running.vramBytes",
+            memoryFreeBytes: 28956080210,
+          },
+        ]}
+        installations={['lab']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText('27.0 GiB free')).toHaveAttribute(
+      'title',
+      expect.stringContaining(
+        'Budget: set by the operator (ollama.memoryBudgetGiB',
+      ),
+    );
+    expect(screen.getByText('27.0 GiB free')).toHaveAttribute(
+      'title',
+      expect.stringContaining('memory budget set by the operator'),
+    );
+    expect(
+      screen.getByText('of 32.0 GiB · 5.0 GiB reserved'),
+    ).toBeInTheDocument();
+    // Still the backend's host: the operator corrected its figure, the row
+    // does not turn into a cluster node with empty GPU columns.
+    expect(screen.getByText('Backend host')).toBeInTheDocument();
+    for (const header of GPU_COLUMNS) {
+      expect(
+        screen.queryByRole('columnheader', { name: header }),
+      ).not.toBeInTheDocument();
+    }
+  });
+});
