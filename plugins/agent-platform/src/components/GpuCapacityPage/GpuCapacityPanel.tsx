@@ -82,6 +82,8 @@ const BUDGET_SOURCE: Record<string, string> = {
   annotation: 'Budget: set by the memory-budget annotation on the node',
   'host-meminfo':
     "Budget: the host's memory (MemTotal of /proc/meminfo as the serving layer's pod sees it) — the backend's API does not expose the accelerator, so on a unified-memory machine this is what the loaded models share",
+  override:
+    "Budget: set by the operator (ollama.memoryBudgetGiB on the serving layer's chart), not read from the host — for a pod whose /proc/meminfo is not the host's memory (a VM-backed container runtime, a backend on another machine)",
 };
 
 /** The optional columns, shown when any node reports the data. */
