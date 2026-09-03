@@ -362,6 +362,22 @@ describe('AppReadinessProcessor', () => {
     expect(result).toBe(entity);
   });
 
+  it('produces an identical entity on a repeat pass', async () => {
+    // The catalog engine skips the write when the processed entity hashes to
+    // the same value, so nothing in here may move on its own.
+    const getTags = jest.fn().mockResolvedValue({
+      tags: [{ tag: '1.6.0', createdAt: null }],
+      latestStableVersion: '1.6.0',
+    });
+    const processor = makeProcessor({ getTags, releaseTag: 'v1.6.0' });
+
+    const first = await run(processor, component(chartAnnotations));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const second = await run(processor, component(chartAnnotations));
+
+    expect(second).toEqual(first);
+  });
+
   it('caches registry and release lookups across entities', async () => {
     const getTags = jest.fn().mockResolvedValue({
       tags: [{ tag: '1.6.0', createdAt: null }],

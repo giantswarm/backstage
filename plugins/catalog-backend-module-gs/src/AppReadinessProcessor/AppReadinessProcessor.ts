@@ -246,7 +246,11 @@ export class AppReadinessProcessor implements CatalogProcessor {
     if (!release.value) {
       // The repo has no stable release, so there is nothing to expect in the
       // registry. We say nothing rather than guessing.
-      return withReadiness(entity, { readiness: READINESS_UNKNOWN, flags: [] });
+      return withReadiness(
+        entity,
+        { readiness: READINESS_UNKNOWN, flags: [] },
+        release.fetchedAt,
+      );
     }
     const releaseTag = release.value.tag;
 
@@ -254,6 +258,10 @@ export class AppReadinessProcessor implements CatalogProcessor {
     const result = verdict(
       releaseTag,
       charts.map(chart => chart.value),
+    );
+    const checkedAt = Math.max(
+      release.fetchedAt,
+      ...charts.map(chart => chart.fetchedAt),
     );
 
     // The tag listing is a window (500 newest), so a chart that publishes many
@@ -266,13 +274,14 @@ export class AppReadinessProcessor implements CatalogProcessor {
       result.flags.includes(FLAG_RELEASE_NOT_PUBLISHED) &&
       (await this.tagExists(refs, releaseTag))
     ) {
-      return withReadiness(entity, {
-        readiness: READINESS_RELEASABLE,
-        flags: [],
-      });
+      return withReadiness(
+        entity,
+        { readiness: READINESS_RELEASABLE, flags: [] },
+        checkedAt,
+      );
     }
 
-    return withReadiness(entity, result);
+    return withReadiness(entity, result, checkedAt);
   }
 
   /**
@@ -479,12 +488,28 @@ function parseSlug(slug?: string): { owner: string; repo: string } | undefined {
  * server-side on labels. Flags merge with whatever the catalog importer already
  * published there, so the release verdict and the chart-metadata verdict share
  * one list rather than competing for the same key.
+ *
+ * `checkedAt` is when the underlying lookups ran, not now. The catalog engine
+ * skips the database write when a processed entity hashes to the same value as
+ * last time (DefaultCatalogProcessingEngine.markSuccessfulWithNoChanges), so a
+ * timestamp that moved on every pass would force a write, a stitch, an
+ * entity-changed event and a search reindex for every chart-bearing component
+ * on every cycle, forever. Taken from the cache entries, it only moves when a
+ * lookup actually re-ran. Omitted when no lookup ran at all.
  */
-function withReadiness(entity: Entity, result: Verdict): Entity {
+function withReadiness(
+  entity: Entity,
+  result: Verdict,
+  checkedAt?: number,
+): Entity {
   const annotations: Record<string, string> = {
     ...(entity.metadata.annotations ?? {}),
-    [READINESS_CHECKED_ANNOTATION]: new Date().toISOString(),
   };
+  if (checkedAt !== undefined) {
+    annotations[READINESS_CHECKED_ANNOTATION] = new Date(
+      checkedAt,
+    ).toISOString();
+  }
 
   const existing = (annotations[READINESS_FLAGS_ANNOTATION] ?? '')
     .split(',')
