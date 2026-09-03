@@ -8,6 +8,7 @@ import {
   gpuFree,
   gpuTotal,
   hasServedModelActions,
+  isAcceleratorCapacityRow,
   isSameServedModel,
   isServingFailure,
   mergeServingSnapshots,
@@ -302,6 +303,52 @@ describe('hasServedModelActions', () => {
   });
 });
 
+describe('isAcceleratorCapacityRow', () => {
+  const bare: GpuNode = {
+    id: 'alpha/n',
+    installation: 'alpha',
+    name: 'n',
+    ready: true,
+  };
+
+  it('accepts any evidence of an accelerator, or a backend host', () => {
+    expect(isAcceleratorCapacityRow({ ...bare, capacity: 1 })).toBe(true);
+    // A device plugin advertising the resource is evidence even at zero.
+    expect(isAcceleratorCapacityRow({ ...bare, capacity: 0 })).toBe(true);
+    expect(isAcceleratorCapacityRow({ ...bare, resource: 'amd.com/gpu' })).toBe(
+      true,
+    );
+    expect(isAcceleratorCapacityRow({ ...bare, product: 'NVIDIA-GB10' })).toBe(
+      true,
+    );
+    expect(isAcceleratorCapacityRow({ ...bare, memoryMiB: 122880 })).toBe(true);
+    expect(isAcceleratorCapacityRow({ ...bare, labeledCount: 1 })).toBe(true);
+    expect(isAcceleratorCapacityRow({ ...bare, eligible: true })).toBe(true);
+    expect(isAcceleratorCapacityRow({ ...bare, eligible: false })).toBe(true);
+    expect(
+      isAcceleratorCapacityRow({ ...bare, memoryBudgetSource: 'host-meminfo' }),
+    ).toBe(true);
+    expect(isAcceleratorCapacityRow({ ...bare, accelerated: false })).toBe(
+      true,
+    );
+  });
+
+  it('rejects a node with none — a CPU box with a memory budget', () => {
+    expect(isAcceleratorCapacityRow(bare)).toBe(false);
+    expect(
+      isAcceleratorCapacityRow({
+        ...bare,
+        labeledCount: 0,
+        memoryAllocatableBytes: 67_000_000_000,
+        memoryBudgetBytes: 67_000_000_000,
+        memoryBudgetSource: 'allocatable',
+        memoryFreeBytes: 67_000_000_000,
+        schedulable: true,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe('gpuTotal / gpuFree', () => {
   const base: GpuNode = {
     id: 'alpha/gpu-node-1',
@@ -340,6 +387,7 @@ describe('mergeServingSnapshots', () => {
         installation: 'alpha',
         name: 'gpu-node-1',
         ready: true,
+        capacity: 1,
       },
     ],
     gpuCapacityUnavailable: { beta: 'forbidden' },
@@ -539,11 +587,109 @@ describe('mergeServingSnapshots', () => {
           installation: 'alpha',
           name: 'gpu-node-1',
           ready: true,
+          capacity: 1,
           memoryBudgetBytes: 100,
           memoryFreeBytes: 40,
           cache: { models: 2, bytesUsed: 60 },
         },
       ]);
+    });
+
+    it('drops the CPU-only nodes a model-manager budgets, and keeps every accelerator row', () => {
+      // model-manager's kserve driver (before 0.11) lists every cluster node
+      // with a budget: the three amd64 CPU boxes of a lab arrive as
+      // "62.4 GiB free" rows with gpuCount 0 and no product.
+      const cpuBox = (name: string): GpuNode => ({
+        id: `alpha/${name}`,
+        installation: 'alpha',
+        name,
+        ready: true,
+        labeledCount: 0,
+        memoryAllocatableBytes: 67_000_000_000,
+        memoryBudgetBytes: 67_000_000_000,
+        memoryBudgetSource: 'allocatable',
+        memoryReservedBytes: 0,
+        memoryFreeBytes: 67_000_000_000,
+      });
+      const sparkFromManager: GpuNode = {
+        id: 'alpha/spark-e119',
+        installation: 'alpha',
+        name: 'spark-e119',
+        ready: true,
+        product: 'NVIDIA-GB10-SHARED',
+        labeledCount: 3,
+        memoryBudgetBytes: 130_000_000_000,
+        memoryBudgetSource: 'gpu-labels',
+      };
+      const judged: GpuNode = {
+        id: 'alpha/judged',
+        installation: 'alpha',
+        name: 'judged',
+        ready: true,
+        labeledCount: 0,
+        eligible: false,
+        eligibilityReason: 'outside the serving node selector',
+      };
+      const host: GpuNode = {
+        id: 'lab/172.21.0.1',
+        installation: 'lab',
+        name: '172.21.0.1',
+        ready: true,
+        memoryBudgetBytes: 92_417_933_312,
+        memoryBudgetSource: 'host-meminfo',
+        accelerated: true,
+      };
+
+      const merged = mergeServingSnapshots([
+        kserve,
+        {
+          ...manager,
+          servedModels: [],
+          gpuNodes: [
+            cpuBox('spaceage'),
+            sparkFromManager,
+            cpuBox('spawner'),
+            judged,
+            cpuBox('sputnik'),
+          ],
+        },
+        { ...ollama, isLoading: false, gpuNodes: [host] },
+      ]);
+
+      expect(merged.gpuNodes.map(node => node.name)).toEqual([
+        'gpu-node-1',
+        'spark-e119',
+        'judged',
+        '172.21.0.1',
+      ]);
+    });
+
+    it('judges the merged row, so a manager budget on a CR-listed node keeps the node', () => {
+      const merged = mergeServingSnapshots([
+        kserve,
+        {
+          ...manager,
+          servedModels: [],
+          gpuNodes: [
+            {
+              id: 'alpha/gpu-node-1',
+              installation: 'alpha',
+              name: 'gpu-node-1',
+              ready: true,
+              labeledCount: 0,
+              memoryBudgetBytes: 100,
+              memoryBudgetSource: 'allocatable',
+            },
+          ],
+        },
+      ]);
+
+      expect(merged.gpuNodes).toHaveLength(1);
+      expect(merged.gpuNodes[0]).toMatchObject({
+        name: 'gpu-node-1',
+        capacity: 1,
+        memoryBudgetBytes: 100,
+      });
     });
   });
 

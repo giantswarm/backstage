@@ -413,9 +413,15 @@ export function ServeModelDialog({
   /** Cached weights served with a recipe written for another model. */
   const presetMismatch = choice?.kind === 'download' && preset !== undefined;
 
-  // A single GPU node is the obvious target; with several, or none known, the
-  // scheduler decides unless the user picks one.
-  const defaultNode = gpuNodes.length === 1 ? gpuNodes[0].name : undefined;
+  // The nodes the serving layer would place a model on: everything it lists,
+  // less those it marks not a serving target (outside its node selector,
+  // unable to mount the cache). A single one is the obvious target; with
+  // several, or none known, the scheduler decides unless the user picks one.
+  const targetNodes = gpuNodes.filter(
+    candidate => candidate.eligible !== false,
+  );
+  const defaultNode =
+    targetNodes.length === 1 ? targetNodes[0].name : undefined;
 
   /**
    * The request for an entry: from the preset alone for a Hub download; for
@@ -718,12 +724,22 @@ export function ServeModelDialog({
                       label="Target node"
                       options={[
                         { id: ANY_NODE, label: 'Any node (scheduler decides)' },
-                        ...gpuNodes.map(candidate => ({
-                          id: candidate.name,
-                          label: candidate.product
+                        // A node the serving layer will not place a model
+                        // on stays listed, disabled, with its reason: a pin
+                        // there would leave the predictor Pending.
+                        ...gpuNodes.map(candidate => {
+                          const label = candidate.product
                             ? `${candidate.name} · ${candidate.product}`
-                            : candidate.name,
-                        })),
+                            : candidate.name;
+                          return candidate.eligible === false
+                            ? {
+                                id: candidate.name,
+                                label: `${label} · not a serving target`,
+                                description: candidate.eligibilityReason,
+                                disabled: true,
+                              }
+                            : { id: candidate.name, label };
+                        }),
                       ]}
                       selectedKey={request.node ?? ANY_NODE}
                       onSelectionChange={key =>
@@ -735,7 +751,11 @@ export function ServeModelDialog({
                           acknowledgeFit: false,
                         })
                       }
-                      description="The GPU nodes this installation reports. Pinning lets the fit check use that node's memory; cached weights are pinned to the node that holds them."
+                      description={
+                        targetNodes.length < gpuNodes.length
+                          ? "The GPU nodes this installation reports. Pinning lets the fit check use that node's memory; cached weights are pinned to the node that holds them. A node marked not a serving target cannot be picked: the serving layer would not place a model there."
+                          : "The GPU nodes this installation reports. Pinning lets the fit check use that node's memory; cached weights are pinned to the node that holds them."
+                      }
                     />
                   </Grid.Item>
                 </Grid.Root>

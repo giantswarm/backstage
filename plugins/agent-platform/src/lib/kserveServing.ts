@@ -81,13 +81,50 @@ export const GPU_FEATURE_DISCOVERY_LABELS = {
 } as const;
 
 /**
- * Whether a node carries GPUs by any evidence available: device-plugin
- * capacity, or any gpu-feature-discovery label.
+ * Extended resources device plugins advertise accelerators as, besides the
+ * installation's own `gpuResourceName`: NVIDIA, AMD and Intel GPUs, Google
+ * TPUs, Intel Gaudi. NPUs go by vendor (`<vendor>/npu`) and match by suffix.
  */
-export function isGpuNode(node: Node): boolean {
+export const ACCELERATOR_RESOURCES: readonly string[] = [
+  NVIDIA_GPU_RESOURCE,
+  'amd.com/gpu',
+  'intel.com/gpu',
+  'google.com/tpu',
+  'habana.ai/gaudi',
+];
+
+/**
+ * The extended resource this node advertises its accelerators as, if any:
+ * the installation's `gpuResourceName` (discovery ConfigMap) first, then the
+ * known accelerator resources, then any `<vendor>/npu`. What
+ * {@link toGpuNode} counts capacity, allocatable and requests in.
+ */
+export function acceleratorResourceOf(
+  node: Node,
+  gpuResourceName?: string,
+): string | undefined {
+  const capacity = node.getCapacity() ?? {};
+  if (gpuResourceName && capacity[gpuResourceName] !== undefined) {
+    return gpuResourceName;
+  }
+  return (
+    ACCELERATOR_RESOURCES.find(resource => capacity[resource] !== undefined) ??
+    Object.keys(capacity).find(key => key.endsWith('/npu'))
+  );
+}
+
+/**
+ * Whether a node carries accelerators by any evidence available: a device
+ * plugin advertising an accelerator resource ({@link acceleratorResourceOf}),
+ * or any gpu-feature-discovery label.
+ */
+export function isAcceleratorNode(
+  node: Node,
+  gpuResourceName?: string,
+): boolean {
   const labels = node.getLabels() ?? {};
   return (
-    node.getCapacityOf(NVIDIA_GPU_RESOURCE) !== undefined ||
+    acceleratorResourceOf(node, gpuResourceName) !== undefined ||
     labels[GPU_FEATURE_DISCOVERY_LABELS.present] === 'true' ||
     GPU_FEATURE_DISCOVERY_LABELS.product in labels ||
     GPU_FEATURE_DISCOVERY_LABELS.count in labels
@@ -167,19 +204,22 @@ export function toServedModel(
 
 /**
  * One node as a GPU-capacity row. `pods` — when given — are the pods bound to
- * this node (any namespace); their `nvidia.com/gpu` requests make up
- * `requested`. Leave it out when pods could not (or need not) be read and the
- * row reports `requested: undefined`.
+ * this node (any namespace); their requests for the node's accelerator
+ * resource ({@link acceleratorResourceOf}, `gpuResourceName` first) make up
+ * `requested`. Leave the pods out when they could not (or need not) be read
+ * and the row reports `requested: undefined`.
  */
-export function toGpuNode(node: Node, pods?: Pod[]): GpuNode {
+export function toGpuNode(
+  node: Node,
+  pods?: Pod[],
+  gpuResourceName?: string,
+): GpuNode {
   const labels = node.getLabels() ?? {};
+  const resource = acceleratorResourceOf(node, gpuResourceName);
+  const counted = resource ?? NVIDIA_GPU_RESOURCE;
   const requested = pods
     ?.filter(pod => pod.getNodeName() === node.getName() && !pod.isTerminal())
-    .reduce(
-      (total, pod) =>
-        total + (pod.getResourceRequest(NVIDIA_GPU_RESOURCE) ?? 0),
-      0,
-    );
+    .reduce((total, pod) => total + (pod.getResourceRequest(counted) ?? 0), 0);
 
   return {
     id: `${node.cluster}/${node.getName()}`,
@@ -189,8 +229,9 @@ export function toGpuNode(node: Node, pods?: Pod[]): GpuNode {
     product: labels[GPU_FEATURE_DISCOVERY_LABELS.product],
     memoryMiB: parseLabelInteger(labels[GPU_FEATURE_DISCOVERY_LABELS.memory]),
     labeledCount: parseLabelInteger(labels[GPU_FEATURE_DISCOVERY_LABELS.count]),
-    capacity: node.getCapacityOf(NVIDIA_GPU_RESOURCE),
-    allocatable: node.getAllocatableOf(NVIDIA_GPU_RESOURCE),
+    resource,
+    capacity: node.getCapacityOf(counted),
+    allocatable: node.getAllocatableOf(counted),
     requested,
     memoryAllocatableBytes: node.getAllocatableMemoryBytes(),
     schedulable: node.isSchedulable(),

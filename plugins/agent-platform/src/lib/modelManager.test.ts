@@ -301,4 +301,38 @@ describe('modelManagerNodeSchema', () => {
     );
     expect(odd.accelerated).toBeUndefined();
   });
+
+  it('reads the eligibility verdict of model-manager 0.11 on, and leaves it unset before', () => {
+    const [before] = parseModelManagerList(
+      nodesKserve,
+      'nodes',
+      modelManagerNodeSchema,
+    );
+    expect(before.eligible).toBeUndefined();
+    expect(before.eligibilityReason).toBeUndefined();
+
+    const [target, pinnedElsewhere, odd] = parseModelManagerList(
+      {
+        nodes: [
+          { name: 'spark-8723', eligible: true },
+          {
+            name: 'spark-e119',
+            eligible: false,
+            eligibilityReason: 'cache claim hf-cache is pinned to spark-8723',
+          },
+          { name: 'n', eligible: 'no', eligibilityReason: 42 },
+        ],
+      },
+      'nodes',
+      modelManagerNodeSchema,
+    );
+    expect(target.eligible).toBe(true);
+    expect(target.eligibilityReason).toBeUndefined();
+    expect(pinnedElsewhere.eligible).toBe(false);
+    expect(pinnedElsewhere.eligibilityReason).toBe(
+      'cache claim hf-cache is pinned to spark-8723',
+    );
+    expect(odd.eligible).toBeUndefined();
+    expect(odd.eligibilityReason).toBeUndefined();
+  });
 });
