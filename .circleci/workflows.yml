@@ -5,7 +5,7 @@
 # workflow in .circleci/config.yml merges into this file at pipeline runtime.
 version: 2.1
 orbs:
-  architect: giantswarm/architect@10.1.0
+  architect: giantswarm/architect@dev:native-arch-image-builds
 
 jobs:
   # Self-contained Node build/test on a cimg/node executor (architect ships no
@@ -89,16 +89,42 @@ workflows:
           tags:
             only: /^v.*/
 
-    # Branch builds (opt-in): amd64 dev image to gsoci for PR validation,
-    # coupled with the branch chart push below. v9's push-to-registries always
-    # uses buildx; platforms is pinned to amd64 to keep branch builds fast.
+    # TRIAL (do not merge): native per-architecture image build on the dev orb
+    # giantswarm/architect@dev:native-arch-image-builds. One build-image job per
+    # architecture on a native resource class, then push-to-registries merges
+    # the digests into the tagged index (merge-digests: true).
+    - architect/build-image:
+        context: architect
+        name: build-image-amd64
+        platform: linux/amd64
+        resource_class: small
+        dockerfile: packages/backend/Dockerfile
+        requires:
+        - node-build
+        filters:
+          branches:
+            ignore:
+            - main
+    - architect/build-image:
+        context: architect
+        name: build-image-arm64
+        platform: linux/arm64
+        resource_class: arm.medium
+        dockerfile: packages/backend/Dockerfile
+        requires:
+        - node-build
+        filters:
+          branches:
+            ignore:
+            - main
     - architect/push-to-registries:
         context: architect
         name: push-to-registries
-        dockerfile: packages/backend/Dockerfile
+        merge-digests: true
         platforms: linux/amd64,linux/arm64
         requires:
-        - node-build
+        - build-image-amd64
+        - build-image-arm64
         filters:
           branches:
             ignore:
