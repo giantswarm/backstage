@@ -90,7 +90,7 @@
     "@assistant-ui/tap": "0.9.12",
     "@assistant-ui/core": "^0.2.0",
     "assistant-stream": "^0.3.0",
-    "@giantswarm/backstage-plugin-ai-chat-backend/ai": "7.0.69",
+    "@giantswarm/backstage-plugin-ai-chat-backend/ai": "7.0.70",
     "vm2": "3.11.6",
     "sha.js": "2.4.12",
     "basic-ftp": "6.2.0",
