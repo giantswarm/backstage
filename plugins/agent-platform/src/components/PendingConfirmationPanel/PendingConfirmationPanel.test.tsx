@@ -644,6 +644,65 @@ describe('PendingConfirmationPanel', () => {
     });
   });
 
+  describe('focus', () => {
+    // The composer below is disabled while a question stands, so without this the
+    // focus fell to <body> and answering started with a click or a Tab hunt.
+    it('goes to the first choice when a question appears', () => {
+      renderPanel(singleChoice);
+
+      expect(screen.getByRole('radio', { name: 'A sculpture' })).toHaveFocus();
+    });
+
+    it('goes to the first checkbox of a multi-select question', () => {
+      renderPanel(multiChoice);
+
+      expect(
+        screen.getByRole('checkbox', { name: 'Has an emperor' }),
+      ).toHaveFocus();
+    });
+
+    it('goes to the answer box when there are no choices', () => {
+      renderPanel(freeText);
+
+      expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveFocus();
+    });
+
+    it('is not taken by an approval, whose only controls decide a tool call', () => {
+      // A stray Enter on a focused Approve would grant a side-effecting call.
+      renderPanel(approval);
+
+      expect(document.body).toHaveFocus();
+    });
+
+    it('moves to the new question when a follow-up replaces the answered one', async () => {
+      const { rerender } = renderPanel(singleChoice);
+      await userEvent.click(screen.getByLabelText('A rideable bike'));
+      await userEvent.tab();
+      expect(
+        screen.getByRole('radio', { name: 'A rideable bike' }),
+      ).not.toHaveFocus();
+
+      rerender(
+        <PendingConfirmationPanel
+          pending={{
+            ...singleChoice,
+            questions: [
+              {
+                question: 'Delete the namespace?',
+                choices: ['yes', 'no'],
+                multiple: false,
+              },
+            ],
+          }}
+          isAnswering={false}
+          onAnswer={onAnswer}
+        />,
+      );
+
+      expect(screen.getByRole('radio', { name: 'yes' })).toHaveFocus();
+    });
+  });
+
   it('warns when the question may not have been put to this user', () => {
     renderPanel(singleChoice, { isUserScoped: false });
 

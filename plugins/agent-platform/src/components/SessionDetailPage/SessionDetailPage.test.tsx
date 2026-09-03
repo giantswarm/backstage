@@ -515,11 +515,25 @@ describe('SessionDetailPage', () => {
       );
     });
 
-    it('is present but closed while the agent is mid-turn', async () => {
-      // The fixture's newest task is `working`, which is exactly this case.
+    it('withholds sending while the agent is mid-turn, but stays editable', async () => {
+      // The fixture's newest task is `working`, which is exactly this case. The
+      // box is not disabled — that blurred it after every send — only Send is.
       await render();
 
-      expect(composer()).toBeDisabled();
+      expect(composer()).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+      expect(
+        screen.getByText(
+          /agent is working. You can reply once this turn finishes/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('does not take the focus on a session merely opened', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      await render();
+
+      expect(composer()).not.toHaveFocus();
     });
 
     it('is withheld on a read-only session, and says so', async () => {
@@ -781,6 +795,20 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('lands with the cursor in the message box', async () => {
+      // The user was typing in the composer that created the session a moment
+      // ago; the navigation took the focus with it. Reported by the first colleague
+      // to try the chat: every new session started with a click into the box.
+      mockUseNewSessionHandoff.mockReturnValue(handoff);
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      await render();
+
+      expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus();
     });
 
     it('dispatches even before the session read has resolved its agent', async () => {
