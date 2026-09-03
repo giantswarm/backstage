@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { Alert, Flex } from '@backstage/ui';
 import { IconButton, InputBase, makeStyles } from '@material-ui/core';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
@@ -78,8 +78,20 @@ export type SessionComposerProps = {
    *
    * Sending is withheld while it is: kagent has no notion of a queued follow-up,
    * so a second message during a turn is not a queued reply but a competing one.
+   * The box itself stays editable, so the next message can be drafted meanwhile —
+   * and so the box keeps focus: a disabled field is blurred by the browser, which
+   * is what used to make every send end with a click back into the box.
    */
   isAgentWorking: boolean;
+  /**
+   * Focus the box on mount.
+   *
+   * For the page a just-started session lands on: the user was typing into the
+   * composer that created it a moment ago, and the navigation took the focus with
+   * it. Putting it into this box is continuity, not stealing — which is why it is
+   * opt-in and off for a session merely opened from the list.
+   */
+  autoFocus?: boolean;
   /**
    * Whether the last turn reached a terminal state, which changes what sending
    * means — a finished session is resumed by it rather than continued.
@@ -127,6 +139,13 @@ export type SessionComposerProps = {
  * and for the IME case. Enter never inserts a newline, even when nothing can be sent:
  * a key that sometimes sends and sometimes breaks the line is worse than one that
  * sometimes does nothing.
+ *
+ * **Focus stays in the box.** Only `disabledReason` disables the field; the agent's
+ * turn withholds Send and Enter but leaves the box editable, because disabling it
+ * blurred it and every send ended with a click back in. When the field *is* disabled
+ * and comes back — a confirmation was answered — it takes the focus back, provided
+ * nothing else has it: the control that had it was in the panel that just went
+ * away, so the focus is on `<body>`, which is nowhere.
  */
 export function SessionComposer({
   isAgentWorking,
@@ -134,24 +153,60 @@ export function SessionComposer({
   disabledReason,
   error,
   restore,
+  autoFocus = false,
   onSubmit,
 }: SessionComposerProps) {
   const classes = useStyles();
   const [value, setValue] = useState('');
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Put a failed message's text back, once per attempt. Tracked by id rather than
   // by comparing text so that a second failure of the same text restores it again,
   // and so that a restore never fires twice and overwrites an edit in progress.
+  //
+  // Put back *ahead of* whatever has been typed since: the box stays editable
+  // while a send is in flight, so a draft of the next message may already be in
+  // it when this one fails, and replacing the draft would lose words to save words.
   const restoredId = useRef<string | undefined>(undefined);
   if (restore && restoredId.current !== restore.messageId) {
     restoredId.current = restore.messageId;
-    setValue(restore.text);
+    setValue(draft =>
+      draft.trim() ? `${restore.text}\n\n${draft}` : restore.text,
+    );
   }
 
   const text = value.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
-  const isDisabled = isAgentWorking || Boolean(disabledReason);
-  const canSubmit = Boolean(text) && !isTooLong && !isDisabled;
+  const isDisabled = Boolean(disabledReason);
+  const canSubmit =
+    Boolean(text) && !isTooLong && !isDisabled && !isAgentWorking;
+
+  useEffect(() => {
+    if (autoFocus) {
+      inputRef.current?.focus();
+    }
+    // On mount only: this is where a navigation dropped the focus, not a
+    // subscription to the prop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Take the focus back when the field is re-enabled and nothing else holds it.
+  // The typical path: the user answered the agent's question from the panel above
+  // with Enter, the panel unmounted with the control that had the focus, and the
+  // focus fell back to <body>. Skipped when it is anywhere real, so a user who
+  // moved on to another control is not yanked back.
+  const wasDisabled = useRef(isDisabled);
+  useEffect(() => {
+    const cameBack = wasDisabled.current && !isDisabled;
+    wasDisabled.current = isDisabled;
+    if (!cameBack) {
+      return;
+    }
+    const active = document.activeElement;
+    if (!active || active === document.body) {
+      inputRef.current?.focus();
+    }
+  }, [isDisabled]);
 
   const submit = () => {
     if (!canSubmit) {
@@ -210,6 +265,7 @@ export function SessionComposer({
             onChange={event => setValue(event.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isDisabled}
+            inputRef={inputRef}
             inputProps={{ 'aria-label': 'Message' }}
           />
           <div className={classes.controls}>

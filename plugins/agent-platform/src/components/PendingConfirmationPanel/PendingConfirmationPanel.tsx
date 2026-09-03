@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -99,6 +99,14 @@ export type PendingConfirmationPanelProps = {
  * button. In the **reason** box Enter confirms the decline instead: that box only
  * exists because Decline was pressed, and sending an approval from it would do the
  * opposite of what the user is in the middle of.
+ *
+ * **A question takes the focus when it appears** — the first choice, or the answer
+ * box when there are no choices — and again when a follow-up question replaces it.
+ * The user was typing in the composer below, which is disabled while the question
+ * stands, so the focus would otherwise fall to `<body>` and the answer would start
+ * with a click or a Tab hunt. An **approval** takes nothing: its only controls are
+ * Approve and Decline, and focusing either would let a stray Enter grant or refuse
+ * a side-effecting tool call.
  */
 export function PendingConfirmationPanel({
   pending,
@@ -148,6 +156,21 @@ export function PendingConfirmationPanel({
   // this the previous answer survives into the new question: its values match none
   // of the new choices so nothing looks selected, yet the answer counts as complete
   // and `Send answer` submits the *old* answer against the *new* question.
+  // Focus the first answer control for each question — on mount and whenever the
+  // question changes (the panel stays mounted across consecutive confirmations).
+  // Not for an approval; see the component doc.
+  const formRef = useRef<HTMLFormElement | null>(null);
+  useEffect(() => {
+    if (!isQuestion) {
+      return;
+    }
+    formRef.current
+      ?.querySelector<HTMLElement>(
+        'input[type="radio"], input[type="checkbox"], textarea',
+      )
+      ?.focus();
+  }, [isQuestion, questionSignature]);
+
   const seededFor = useRef(questionSignature);
   const restoredId = useRef<string | undefined>(undefined);
   if (seededFor.current !== questionSignature) {
@@ -289,7 +312,7 @@ export function PendingConfirmationPanel({
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} ref={formRef}>
       <Flex direction="column" gap="3" className={classes.panel}>
         {error && (
           <Alert status="danger" title="Answer not sent" description={error} />

@@ -113,18 +113,121 @@ describe('SessionComposer', () => {
     expect(field()).toHaveValue('日本');
   });
 
-  it('is withheld while the agent is working', async () => {
+  it('withholds sending while the agent is working, but not typing', async () => {
     // kagent has no notion of a queued follow-up, so a second message mid-turn
-    // competes with the first rather than queueing behind it.
+    // competes with the first rather than queueing behind it. The box itself stays
+    // editable: a disabled field is blurred by the browser, and every send used to
+    // end with a click back into the box — and a draft of the next message is a
+    // reasonable thing to type while waiting.
     renderComposer({ isAgentWorking: true });
 
-    expect(field()).toBeDisabled();
+    expect(field()).toBeEnabled();
+    await userEvent.type(field(), 'next question{Enter}');
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('next question');
     expect(sendButton()).toBeDisabled();
     expect(
       screen.getByText(
         /agent is working. You can reply once this turn finishes/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('keeps the focus in the box across a send', async () => {
+    // Reported by the first colleague to try the chat: after every send the box
+    // had to be clicked again, because it was disabled for the agent's turn.
+    const { rerender } = renderComposer();
+
+    await userEvent.type(field(), 'first{Enter}');
+    expect(onSubmit).toHaveBeenCalledWith('first');
+    rerender(
+      <SessionComposer isAgentWorking isFinished={false} onSubmit={onSubmit} />,
+    );
+
+    expect(field()).toHaveFocus();
+  });
+
+  it('puts a failed message back ahead of a draft typed since', async () => {
+    // The box is editable during the turn, so the next message may already be in
+    // it when this one fails; overwriting the draft would lose words to save words.
+    const { rerender } = renderComposer();
+
+    await userEvent.type(field(), 'the failed one{Enter}');
+    rerender(
+      <SessionComposer isAgentWorking isFinished={false} onSubmit={onSubmit} />,
+    );
+    await userEvent.type(field(), 'a draft');
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        error="kagent said no"
+        restore={{ messageId: 'msg-1', text: 'the failed one' }}
+      />,
+    );
+
+    expect(field()).toHaveValue('the failed one\n\na draft');
+  });
+
+  describe('focus', () => {
+    it('is not taken on mount by default', () => {
+      renderComposer();
+
+      expect(field()).not.toHaveFocus();
+    });
+
+    it('is taken on mount when asked, for the page a started session lands on', () => {
+      renderComposer({ autoFocus: true });
+
+      expect(field()).toHaveFocus();
+    });
+
+    it('comes back when the field is re-enabled and nothing else has it', async () => {
+      // The user answered the agent's question from the panel above with Enter;
+      // the panel unmounted with the control that had the focus, which fell to
+      // <body>. Pulling it into the box is where the conversation continues.
+      const { rerender } = renderComposer({
+        disabledReason: 'Answer the question above.',
+      });
+      expect(field()).toBeDisabled();
+      expect(document.body).toHaveFocus();
+
+      rerender(
+        <SessionComposer
+          isAgentWorking={false}
+          isFinished={false}
+          onSubmit={onSubmit}
+        />,
+      );
+
+      expect(field()).toBeEnabled();
+      expect(field()).toHaveFocus();
+    });
+
+    it('does not take the focus from a control the user moved to', async () => {
+      const { rerender } = renderComposer({
+        disabledReason: 'Answer the question above.',
+      });
+      const elsewhere = document.createElement('button');
+      elsewhere.textContent = 'Elsewhere';
+      document.body.appendChild(elsewhere);
+      elsewhere.focus();
+      expect(elsewhere).toHaveFocus();
+
+      rerender(
+        <SessionComposer
+          isAgentWorking={false}
+          isFinished={false}
+          onSubmit={onSubmit}
+        />,
+      );
+
+      expect(elsewhere).toHaveFocus();
+      elsewhere.remove();
+    });
   });
 
   it('says that sending resumes a finished session', () => {

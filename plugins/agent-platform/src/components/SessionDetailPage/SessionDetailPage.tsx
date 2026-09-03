@@ -71,6 +71,15 @@ const useStyles = makeStyles(theme => ({
     paddingBottom: theme.spacing(2),
     marginBottom: theme.spacing(-2),
   },
+  // The same slot while a confirmation is open: the panel stacked above the
+  // composer, and nothing pinned. Kept as one element with `bottomDock` (the
+  // class changes, the element does not) so the composer inside survives the
+  // panel coming and going — see the `bottomControl` assembly.
+  bottomStack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2),
+  },
   stats: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -503,45 +512,60 @@ export function SessionDetailPage() {
         {composerWithheldReason}
       </Text>
     );
-  } else if (pendingConfirmation && agent) {
-    // The panel *and* the composer, the latter disabled. A plain message cannot
-    // answer a confirmation — it opens a new task and strands this one — so the
-    // composer must not submit. But removing it outright reads as the reply feature
+  } else {
+    // The composer — and, while the agent is waiting on an answer, the panel
+    // above it with the composer disabled. A plain message cannot answer a
+    // confirmation — it opens a new task and strands this one — so the composer
+    // must not submit then. But removing it outright reads as the reply feature
     // being missing rather than blocked, so it stays in place saying why. kagent's
     // own UI makes the same call, leaving its box on screen with
     // `Awaiting approval…` in it.
+    //
+    // One element, one composer, whether or not the panel is there: the panel is
+    // the first child or nothing, so the composer keeps its position and React
+    // keeps its instance. That is what lets the composer notice the panel going
+    // away and take the focus back (see `SessionComposer`); as two branches with
+    // different wrappers it remounted, and the focus fell to <body> after every
+    // answered question. The wrapper's class still differs — the panel can be
+    // tall, and pinning it would cover the very conversation it asks about — but
+    // a class is not an identity.
+    const isConfirming = Boolean(pendingConfirmation && agent);
     bottomControl = (
-      <Flex direction="column" gap="4">
-        <PendingConfirmationPanel
-          pending={pendingConfirmation}
-          isAnswering={confirmation.isAnswering}
-          error={confirmation.error?.message}
-          restore={confirmation.failed}
-          isUserScoped={isUserScoped}
-          onAnswer={answer => {
-            // Errors surface through the hook's `error`, which the panel renders
-            // above the choices it hands back.
-            confirmation.answer(answer).catch(() => {});
-          }}
-        />
+      <div className={isConfirming ? classes.bottomStack : classes.bottomDock}>
+        {isConfirming && (
+          <PendingConfirmationPanel
+            pending={pendingConfirmation!}
+            isAnswering={confirmation.isAnswering}
+            error={confirmation.error?.message}
+            restore={confirmation.failed}
+            isUserScoped={isUserScoped}
+            onAnswer={answer => {
+              // Errors surface through the hook's `error`, which the panel renders
+              // above the choices it hands back.
+              confirmation.answer(answer).catch(() => {});
+            }}
+          />
+        )}
         <SessionComposer
-          isAgentWorking={false}
-          isFinished={false}
-          disabledReason="Answer the agent's question above to carry on. A plain message would start a new turn instead of answering it."
-          onSubmit={() => {}}
-        />
-      </Flex>
-    );
-  } else {
-    bottomControl = (
-      <div className={classes.bottomDock}>
-        <SessionComposer
-          isAgentWorking={showWorking}
+          // Waiting on an answer is the opposite of busy; the caption is the
+          // reason below either way.
+          isAgentWorking={isConfirming ? false : showWorking}
           isFinished={Boolean(state && !state.isActive)}
+          disabledReason={
+            isConfirming
+              ? "Answer the agent's question above to carry on. A plain message would start a new turn instead of answering it."
+              : undefined
+          }
           error={send.error?.message}
           // On failure the optimistic copy is dropped, so this is the only place the
           // user's text still exists.
           restore={send.failed}
+          // The user arrived here by starting the session — typing in a composer
+          // one screen ago — and the navigation dropped the focus. Restoring it to
+          // the box is continuity, the one case the a11y rule does not have in mind;
+          // a session merely opened from the list gets no autofocus.
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus={Boolean(handoff)}
           onSubmit={text => {
             // Errors are surfaced through the hook's `error`, which the composer
             // renders beside the text it hands back.

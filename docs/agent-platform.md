@@ -1252,9 +1252,23 @@ read-only shared session (which 403s every non-GET under `/api/sessions`), when 
 agent cannot be found, and while a task is `input-required`/`auth-required`. That last
 one is the opposite of "busy" and the reason matters: a plain message does not answer
 the agent's question — kagent opens a _new_ task and leaves the old one pending
-forever — so the box would quietly strand the conversation. It is also closed while
-the agent is mid-turn, since kagent has no queued follow-up: a second message competes
-with the first.
+forever — so the box would quietly strand the conversation. While the agent is
+mid-turn only **sending** is withheld — kagent has no queued follow-up, so a second
+message competes with the first — but the box stays editable: a disabled field is
+blurred by the browser, and every send used to end with a click back into the box.
+The next message can be drafted during the turn; a failed send puts its text back
+_ahead of_ that draft rather than over it.
+
+**Focus follows the conversation.** The composer focuses itself when the page is
+reached by starting the session (the user was typing in the composer that created it
+a moment ago; the navigation dropped the focus) — opt-in via `autoFocus`, off for a
+session merely opened from the list. When a question panel replaces the composer's
+use, the panel takes the focus (first choice, or the answer box; never an approval's
+buttons, where a stray Enter would grant a tool call), and when the panel goes away
+the composer takes it back, provided nothing else holds it. For that hand-back the
+detail page renders one composer element whether or not the panel is there — the
+panel is its first sibling or nothing — because two branches with different wrappers
+remounted the composer and lost the transition.
 
 **Enter sends and Shift+Enter inserts a newline** — Slack's rule, Claude's and kagent's
 own, and what the first colleague to try the chat reached for; the earlier arrangement
@@ -1406,7 +1420,11 @@ focused radio does is browser-specific, so before this the answer could only be 
 reaching the button with the mouse or Tab. Not on the `<form>`, which would also catch
 Enter on the buttons — where react-aria already turns it into a press, so Enter on
 Decline would have sent an approval as well. In the reason box Enter confirms the
-decline instead: that box only exists because Decline was pressed.
+decline instead: that box only exists because Decline was pressed. A question also
+takes the focus when it appears and when a follow-up replaces it — the first choice,
+or the answer box without choices — so answering starts at the keyboard; an approval
+takes none, since focusing Approve or Decline would let a stray Enter decide a
+side-effecting tool call.
 
 **Every question gets a free-text box, choices or not.** A choice list is not
 exhaustive — the live examples end in "Something else (I'll explain)" — and typed words
