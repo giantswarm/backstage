@@ -456,24 +456,37 @@ export function verdict(
     return { readiness: READINESS_UNKNOWN, flags: [] };
   }
 
+  // GitHub's `/releases/latest` returns the newest release not *flagged* as a
+  // prerelease, which says nothing about the tag: `v1.0.0-beta.3` published
+  // without `--prerelease` comes back as the latest. highestStable excludes
+  // prerelease chart tags, so comparing the two would report a component whose
+  // only published charts are prerelease-versioned as never published.
+  if (release.prerelease.length > 0) {
+    return { readiness: READINESS_UNKNOWN, flags: [] };
+  }
+
   const published = highestStable(
     entries.map(e => e.latestStable).filter((v): v is string => Boolean(v)),
   );
 
+  // A registry we could not read might hold the release, so a blocker is not
+  // ours to claim: a public chart at 1.5.0 next to a private gsociprivate chart
+  // we get a 401 for says nothing about whether 1.6.0 was published. Only a
+  // positive answer — a published version at least as new as the release — can
+  // be trusted when part of the picture is missing.
+  const blocked = (flag: string): Verdict =>
+    entries.some(e => e.unreadable)
+      ? { readiness: READINESS_UNKNOWN, flags: [] }
+      : { readiness: READINESS_BLOCKED, flags: [flag] };
+
   if (!published) {
-    return {
-      readiness: READINESS_BLOCKED,
-      flags: [FLAG_NEVER_PUBLISHED],
-    };
+    return blocked(FLAG_NEVER_PUBLISHED);
   }
 
   // The git tag `v1.6.0` publishes as chart tag `1.6.0`; semver.parse drops the
   // prefix, so the comparison needs no special case.
   if (semver.gt(release, semver.parse(published)!)) {
-    return {
-      readiness: READINESS_BLOCKED,
-      flags: [FLAG_RELEASE_NOT_PUBLISHED],
-    };
+    return blocked(FLAG_RELEASE_NOT_PUBLISHED);
   }
 
   return { readiness: READINESS_RELEASABLE, flags: [] };

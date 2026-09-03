@@ -159,6 +159,33 @@ describe('verdict', () => {
     ).toEqual({ readiness: READINESS_RELEASABLE, flags: [] });
   });
 
+  it('reports unknown when a blocker rests on a chart we could not read', () => {
+    // The private chart might hold 1.6.0, so this is not a blocker we can claim.
+    expect(
+      verdict('1.6.0', [
+        { latestStable: '1.5.0', unreadable: false },
+        { latestStable: undefined, unreadable: true },
+      ]),
+    ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
+  });
+
+  it('reports unknown for never-published when a chart could not be read', () => {
+    expect(
+      verdict('1.6.0', [
+        { latestStable: undefined, unreadable: false },
+        { latestStable: undefined, unreadable: true },
+      ]),
+    ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
+  });
+
+  it('reports unknown for a release whose tag is a prerelease', () => {
+    // `/releases/latest` returns whatever is not flagged prerelease, so a
+    // v1.0.0-beta.3 tag can arrive here; chart tags exclude prereleases.
+    expect(
+      verdict('v1.0.0-beta.3', [{ latestStable: undefined, unreadable: false }]),
+    ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
+  });
+
   it('ignores an unreadable chart when another one answered', () => {
     expect(
       verdict('1.6.0', [
