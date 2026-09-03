@@ -473,6 +473,22 @@ describe('AppReadinessProcessor', () => {
     expect(result).toBe(entity);
   });
 
+  it('leaves a component with a malformed project slug untouched', async () => {
+    // Taking the first two segments would query a different repo and publish a
+    // confident verdict about it.
+    const getTags = jest.fn();
+    const processor = makeProcessor({ getTags, releaseTag: 'v1.0.0' });
+    const entity = component({
+      ...chartAnnotations,
+      'github.com/project-slug': 'giantswarm/my-app/tree/main',
+    });
+
+    const result = await run(processor, entity);
+
+    expect(result).toBe(entity);
+    expect(getTags).not.toHaveBeenCalled();
+  });
+
   it('leaves non-Component entities untouched', async () => {
     const getTags = jest.fn();
     const processor = makeProcessor({ getTags, releaseTag: 'v1.0.0' });

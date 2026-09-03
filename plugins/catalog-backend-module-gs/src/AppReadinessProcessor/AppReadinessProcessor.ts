@@ -566,24 +566,33 @@ function parseHelmChartsAnnotation(entity: Entity): ChartRef[] {
   return refs;
 }
 
+/**
+ * Strict, as in the sibling processors: a slug with extra segments — a pasted
+ * URL path like `giantswarm/my-repo/tree/main`, or `giantswarm/sub/repo` —
+ * would otherwise silently resolve to a different repo, and we would publish a
+ * confident verdict derived from a repo that is not this component. No verdict
+ * beats a wrong one.
+ */
 function parseSlug(slug?: string): { owner: string; repo: string } | undefined {
   if (!slug) {
     return undefined;
   }
-  const [owner, repo] = slug.split('/');
-  if (!owner || !repo) {
+  const segments = slug.split('/');
+  if (segments.length !== 2 || !segments[0] || !segments[1]) {
     return undefined;
   }
-  return { owner, repo };
+  return { owner: segments[0], repo: segments[1] };
 }
 
 /**
  * Writes the verdict as a label and the detail as annotations.
  *
  * The verdict is a label because the Backstage catalog only filters
- * server-side on labels. Flags merge with whatever the catalog importer already
- * published there, so the release verdict and the chart-metadata verdict share
- * one list rather than competing for the same key.
+ * server-side on labels. This label covers release readiness only, and is ours
+ * alone: the catalog importer publishes its chart-metadata verdict under its
+ * own `giantswarm.io/readiness-standards` label. What the two do share is the
+ * flag list, so flags merge here rather than overwriting what the importer
+ * already published under the same key.
  *
  * `checkedAt` is when the underlying lookups ran, not now. The catalog engine
  * skips the database write when a processed entity hashes to the same value as
