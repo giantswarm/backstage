@@ -184,7 +184,9 @@ describe('verdict', () => {
     // `/releases/latest` returns whatever is not flagged prerelease, so a
     // v1.0.0-beta.3 tag can arrive here; chart tags exclude prereleases.
     expect(
-      verdict('v1.0.0-beta.3', [{ latestStable: undefined, unreadable: false }]),
+      verdict('v1.0.0-beta.3', [
+        { latestStable: undefined, unreadable: false },
+      ]),
     ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
   });
 
@@ -536,7 +538,7 @@ describe('AppReadinessProcessor', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('shares one release lookup between a component\'s charts', async () => {
+  it("shares one release lookup between a component's charts", async () => {
     const getTags = jest.fn().mockResolvedValue({
       tags: [{ tag: '1.6.0', createdAt: null }],
       latestStableVersion: '1.6.0',
