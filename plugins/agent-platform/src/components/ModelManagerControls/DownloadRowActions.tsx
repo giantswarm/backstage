@@ -23,10 +23,12 @@ export type DownloadRowActionsProps = {
  * The actions menu of a download row — the pull's controls where the model's
  * would be. A pull in flight offers **Cancel** (model-manager stops the
  * download; the row leaves with the job). A failed one offers **Retry** — the
- * same pull again, with the wiring choice the first one carried where the
- * backend wires — and **Dismiss**, which takes the failure off the table
- * without asking the backend anything (the job stays in its list). Outcomes
- * and failures report through toasts; the row has no dialog to hold them.
+ * same pull again: the wiring choice the first one carried where the backend
+ * wires, and the preset and node the job names (KServe), so the retry lands
+ * in the same cache directory on the same node — and **Dismiss**, which takes
+ * the failure off the table without asking the backend anything (the job
+ * stays in its list). Outcomes and failures report through toasts; the row
+ * has no dialog to hold them.
  */
 export function DownloadRowActions({
   row,
@@ -62,10 +64,14 @@ export function DownloadRowActions({
   const onRetry = async () => {
     try {
       // A backend without `wire` refuses the flag (KServe wires when it
-      // serves); one with it gets the first pull's choice back.
+      // serves); one with it gets the first pull's choice back. The preset
+      // and node come from the job — what the first pull named, or what
+      // model-manager picked for it — so the retry lands where it did.
       await pull.mutateAsync({
         model: row.name,
         ...(capabilities.wire ? { wire: download.wire } : {}),
+        ...(row.preset ? { preset: row.preset } : {}),
+        ...(row.node ? { node: row.node } : {}),
       });
     } catch (failure) {
       toastApi.post({

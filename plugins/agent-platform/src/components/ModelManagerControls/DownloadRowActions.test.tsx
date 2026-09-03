@@ -202,6 +202,54 @@ describe('DownloadRowActions', () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
+  it('retries a KServe download with the preset and node the job names, and without the wire flag', async () => {
+    pullModel.mockResolvedValue({
+      job: {
+        id: 'retry-2',
+        model: 'org/tiny',
+        phase: 'pending',
+        node: 'gpu-node-1',
+        preset: 'tiny',
+      },
+      created: true,
+    });
+    const onDismiss = jest.fn();
+    const kserveFailed: ServedModelDownloadRow = {
+      ...failed,
+      id: 'gpu/kserve/download/failed-2',
+      installation: 'gpu',
+      backend: 'kserve',
+      name: 'org/tiny',
+      node: 'gpu-node-1',
+      preset: 'tiny',
+      download: { ...failed.download, jobId: 'failed-2', wire: false },
+    };
+    await render(
+      kserveFailed,
+      {
+        ...ollamaCapabilities,
+        wire: false,
+        presets: true,
+        nodeInventory: true,
+      },
+      onDismiss,
+    );
+    await userEvent.click(
+      within(await openMenu('org/tiny')).getByRole('menuitem', {
+        name: 'Retry download',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(pullModel).toHaveBeenCalledWith('gpu', {
+        model: 'org/tiny',
+        preset: 'tiny',
+        node: 'gpu-node-1',
+      }),
+    );
+    await waitFor(() => expect(onDismiss).toHaveBeenCalledWith(kserveFailed));
+  });
+
   it('dismisses a failure without asking the backend', async () => {
     const onDismiss = jest.fn();
     await render(failed, ollamaCapabilities, onDismiss);

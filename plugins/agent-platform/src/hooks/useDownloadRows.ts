@@ -74,9 +74,11 @@ export function useDismissedDownloads(): [
  * installation's backend, named after the pulled reference so it sorts among
  * the models it will land next to. `downloading` while in flight, `notReady`
  * once failed — the shared readiness vocabulary, nothing new. Carries the node
- * when the job names one (a per-node download on KServe), so the group's
- * placement column places it; nothing points at it, nothing operates on it
- * but the job's own controls.
+ * and the preset when the job names them (a per-node download on KServe, for
+ * a serving preset), so the group's placement column places it and the
+ * description says which preset it is for — and so a retry can ask for the
+ * same again; nothing points at it, nothing operates on it but the job's own
+ * controls.
  */
 export function toDownloadRow(
   job: PullJob,
@@ -102,6 +104,7 @@ export function toDownloadRow(
     readiness: failed ? 'notReady' : 'downloading',
     readinessMessage,
     node: job.node,
+    preset: job.preset,
     endpointHosts: [],
     operable: false,
     usedBy: [],

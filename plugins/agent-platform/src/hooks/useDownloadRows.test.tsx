@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import jobsFixture from '../lib/__fixtures__/model-manager.jobs.json';
+import kserveJobsFixture from '../lib/__fixtures__/model-manager.jobs.kserve.json';
 import {
   modelManagerJobSchema,
   parseModelManagerList,
@@ -90,9 +91,15 @@ describe('toDownloadRow', () => {
     expect(row.loaded).toBeUndefined();
   });
 
-  it('says the model config follows when the pull wires, and carries the node when the job names one', () => {
+  it('says the model config follows when the pull wires, and carries the node and preset when the job names them', () => {
     const row = toDownloadRow(
-      { ...running, wire: true, node: 'gpu-node-1', installation: 'gpu' },
+      {
+        ...running,
+        wire: true,
+        node: 'gpu-node-1',
+        preset: 'qwen3-14b',
+        installation: 'gpu',
+      },
       'kserve',
     );
 
@@ -100,8 +107,32 @@ describe('toDownloadRow', () => {
       'Being pulled onto the backend; its model config is created once the pull completes.',
     );
     expect(row.node).toBe('gpu-node-1');
+    expect(row.preset).toBe('qwen3-14b');
     expect(row.backend).toBe('kserve');
     expect(row.id).toBe('gpu/kserve/download/running-1');
+  });
+
+  it('carries neither node nor preset for a job that names none (Ollama)', () => {
+    const row = toDownloadRow(running, 'ollama');
+
+    expect(row.node).toBeUndefined();
+    expect(row.preset).toBeUndefined();
+  });
+
+  it('reads node and preset off a kserve job as model-manager reports them', () => {
+    const [kserveJob] = parseModelManagerList(
+      kserveJobsFixture,
+      'jobs',
+      modelManagerJobSchema,
+    );
+    const row = toDownloadRow({ ...kserveJob, installation: 'gpu' }, 'kserve');
+
+    expect(row).toMatchObject({
+      name: 'hf-internal-testing/tiny-random-gpt2',
+      node: 'agentlab-control-plane',
+      preset: 'tiny-random-gpt2',
+      readiness: 'downloading',
+    });
   });
 
   it('turns a failed pull into a Not ready row carrying the failure', () => {
