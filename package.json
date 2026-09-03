@@ -44,7 +44,7 @@
     "@backstage/cli": "backstage:^",
     "@backstage/cli-defaults": "backstage:^",
     "@backstage/e2e-test-utils": "backstage:^",
-    "@changesets/cli": "^2.27.8",
+    "@changesets/cli": "^3.0.0",
     "@jest/environment-jsdom-abstract": "^30.0.0",
     "@playwright/test": "^1.32.3",
     "@storybook/addon-docs": "^10.5.3",
