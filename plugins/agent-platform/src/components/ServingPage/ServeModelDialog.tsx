@@ -25,6 +25,7 @@ import {
   type ServeModelRequest,
 } from '../../lib/serveModel';
 import { formatBytes } from '../../lib/modelManagerServing';
+import { DIALOG_FORM_STYLE } from '../dialogForm';
 import type { GpuNode, ServedModel } from '../../lib/serving';
 import type {
   ModelServingConfig,
@@ -384,7 +385,7 @@ export function ServeModelDialog({
       isKeyboardDismissDisabled={isServing}
       width="min(90vw, 760px)"
     >
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} style={DIALOG_FORM_STYLE}>
         <DialogHeader>Serve a model</DialogHeader>
         <DialogBody>
           <Flex direction="column" gap="4">
