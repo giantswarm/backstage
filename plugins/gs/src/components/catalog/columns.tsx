@@ -6,11 +6,11 @@ import {
   getHelmChartsFromEntity,
   getLatestReleaseDateFromEntity,
   getLatestReleaseTagFromEntity,
-  getReadinessAdvisoryFromEntity,
   getReadinessFlagsFromEntity,
   getReadinessFromEntity,
 } from '../utils/entity';
 import {
+  partitionReadinessFlags,
   readinessIntent,
   readinessLabel,
   readinessRank,
@@ -61,21 +61,19 @@ export function autoWidthColumn<T extends TableColumn<any>>(column: T) {
 }
 
 /**
- * Hover detail. Advisory gaps are labelled as not enforced, because most of
- * them are a rollout that never happened rather than anything wrong here.
+ * Hover detail for the release-readiness cell: the release blockers, and
+ * nothing else.
+ *
+ * `giantswarm.io/readiness-flags` also carries the importer's chart-metadata
+ * gaps, and `giantswarm.io/readiness-advisory` carries gaps that four charts in
+ * five have. Putting either in this tooltip would hang a long list of things
+ * that are not about releasing off a column titled "Release readiness", and
+ * would lead a green "Releasable" row with an unprefixed NO-VALUES-SCHEMA that
+ * reads as a blocker. That detail belongs to the card, which has a section per
+ * verdict and an explanation per flag.
  */
-function readinessTitle(
-  flags: string[],
-  advisory: string[],
-): string | undefined {
-  const parts: string[] = [];
-  if (flags.length > 0) {
-    parts.push(flags.join(', '));
-  }
-  if (advisory.length > 0) {
-    parts.push(`Not enforced: ${advisory.join(', ')}`);
-  }
-  return parts.length > 0 ? parts.join(' — ') : undefined;
+function readinessTitle(releaseFlags: string[]): string | undefined {
+  return releaseFlags.length > 0 ? releaseFlags.join(', ') : undefined;
 }
 
 export const columnFactories = Object.freeze({
@@ -178,14 +176,15 @@ export const columnFactories = Object.freeze({
           return undefined;
         }
 
-        const flags = getReadinessFlagsFromEntity(entity);
-        const advisory = getReadinessAdvisoryFromEntity(entity);
+        const { release: releaseFlags } = partitionReadinessFlags(
+          getReadinessFlagsFromEntity(entity),
+        );
 
         return (
           <StatusLabel
             label={readinessLabel(readiness)}
             intent={readinessIntent(readiness)}
-            title={readinessTitle(flags, advisory)}
+            title={readinessTitle(releaseFlags)}
           />
         );
       },
