@@ -58,7 +58,25 @@ export type ServeModelRequest = {
   extraArgs: string;
   /** The user has read a "does not fit" verdict and wants to serve anyway. */
   acknowledgeFit: boolean;
+  /**
+   * The user serves cached weights with a preset written for another model
+   * (no preset claims the cache directory) and has read the warning.
+   */
+  acknowledgePresetMismatch: boolean;
 };
+
+/**
+ * Whether `ref` is a Hugging Face repository id (`owner/name`, nothing else)
+ * — as opposed to a bare cache-directory name model-manager lists when it
+ * cannot tell which repository filled the directory.
+ */
+export function isHuggingFaceRepository(ref: string): boolean {
+  const parts = ref.trim().split('/');
+  return (
+    parts.length === 2 &&
+    parts.every(part => part !== '' && !/[\s:]/.test(part))
+  );
+}
 
 export function initialServeModelRequest(
   preset: ServingPreset,
@@ -73,6 +91,7 @@ export function initialServeModelRequest(
     node,
     extraArgs: '',
     acknowledgeFit: false,
+    acknowledgePresetMismatch: false,
   };
 }
 
@@ -120,7 +139,12 @@ const STORAGE_URI_PATTERN = /^(hf|pvc|s3|gs|oci|https?):\/\/.+/;
  */
 export function validateServeModelRequest(
   request: ServeModelRequest,
-  context: { existingNames: string[]; fit: FitCheck },
+  context: {
+    existingNames: string[];
+    fit: FitCheck;
+    /** The preset was not written for the weights being served (cache directory without a preset). */
+    presetMismatch?: boolean;
+  },
 ): string[] {
   const errors: string[] = [];
   const name = request.name.trim();
@@ -162,6 +186,12 @@ export function validateServeModelRequest(
   if (context.fit.verdict === 'doesNotFit' && !request.acknowledgeFit) {
     errors.push(
       'The model does not fit the target node — tick the acknowledgement to serve it anyway',
+    );
+  }
+
+  if (context.presetMismatch && !request.acknowledgePresetMismatch) {
+    errors.push(
+      'The preset was written for another model — tick the acknowledgement to serve these weights with it anyway',
     );
   }
 

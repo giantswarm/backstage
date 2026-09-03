@@ -6,6 +6,7 @@ import {
   composeInferenceService,
   fitCheck,
   initialServeModelRequest,
+  isHuggingFaceRepository,
   parseExtraArgs,
   predictorBaseUrl,
   validateServeModelRequest,
@@ -342,6 +343,34 @@ describe('validateServeModelRequest', () => {
         { existingNames: [], fit: doesNotFit },
       ),
     ).toEqual([]);
+  });
+
+  it('blocks a preset written for other weights until acknowledged', () => {
+    expect(
+      validateServeModelRequest(valid, {
+        existingNames: [],
+        fit: fits,
+        presetMismatch: true,
+      }),
+    ).toEqual([
+      'The preset was written for another model — tick the acknowledgement to serve these weights with it anyway',
+    ]);
+    expect(
+      validateServeModelRequest(
+        { ...valid, acknowledgePresetMismatch: true },
+        { existingNames: [], fit: fits, presetMismatch: true },
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('isHuggingFaceRepository', () => {
+  it('accepts owner/name and rejects bare directory names', () => {
+    expect(isHuggingFaceRepository('Qwen/Qwen3-14B')).toBe(true);
+    expect(isHuggingFaceRepository('glm-47-flash-awq4')).toBe(false);
+    expect(isHuggingFaceRepository('a/b/c')).toBe(false);
+    expect(isHuggingFaceRepository('owner/name:rev')).toBe(false);
+    expect(isHuggingFaceRepository('/name')).toBe(false);
   });
 });
 

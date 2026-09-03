@@ -669,18 +669,25 @@ describe('ServingPage', () => {
       );
 
       expect(screen.getByText('Serve a model')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Preset/ })).toHaveTextContent(
-        'Devstral Small 2',
+      // The model picker lands on the preset's cached entry; the preset is
+      // derived from it, so there is no separate preset choice.
+      expect(screen.getByRole('button', { name: /Model/ })).toHaveTextContent(
+        'Devstral Small 2 · cached on gpu-node-1',
       );
+      expect(
+        screen.getByText(
+          /served from the cache directory devstral-small-2 on gpu-node-1/,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Preset/ }),
+      ).not.toBeInTheDocument();
       expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue(
         'devstral-small-2',
       );
       expect(
         screen.getByRole('button', { name: /Target node/ }),
       ).toHaveTextContent('gpu-node-1');
-      expect(screen.getByRole('button', { name: /Weights/ })).toHaveTextContent(
-        'mistralai/Devstral-Small-2-24B-Instruct-2512 · on gpu-node-1 · 44.7 GiB',
-      );
     });
   });
 
