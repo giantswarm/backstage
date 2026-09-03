@@ -1,10 +1,6 @@
 import { Flex, Text } from '@backstage/ui';
 import { useEntity } from '@backstage/plugin-catalog-react';
-import {
-  InfoCard,
-  StatusLabel,
-  type StatusLabelIntent,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { InfoCard, StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
 import {
   getChartMetadataStyleFromEntity,
   getReadinessAdvisoryFromEntity,
@@ -12,6 +8,11 @@ import {
   getReadinessFlagsFromEntity,
   getReadinessFromEntity,
 } from '../../utils/entity';
+import {
+  READINESS_MEANINGS,
+  readinessIntent,
+  readinessLabel,
+} from '../../utils/readiness';
 import { AboutField, DateComponent } from '../../UI';
 
 /**
@@ -37,25 +38,6 @@ const FLAG_EXPLANATIONS: Record<string, string> = {
   'CHART-NO-HOME': 'Chart.yaml has no home field.',
   'HOME-NOT-GS':
     'Chart.yaml home does not point at a Giant Swarm repository. Charts vendored from upstream often keep the upstream URL.',
-};
-
-const READINESS_LABELS: Record<string, string> = {
-  releasable: 'Releasable',
-  blocked: 'Blocked',
-  unknown: 'Unknown',
-};
-
-const READINESS_INTENTS: Record<string, StatusLabelIntent> = {
-  releasable: 'positive',
-  blocked: 'negative',
-  unknown: 'neutral',
-};
-
-const READINESS_MEANINGS: Record<string, string> = {
-  releasable: 'The newest release is present in the chart registry.',
-  blocked: 'The newest release did not reach the chart registry.',
-  unknown:
-    'Could not be determined — an unresolvable chart, a private registry, a monorepo release prefix, or a release tag that is not comparable.',
 };
 
 function FlagList(props: { flags: string[]; enforced: boolean }) {
@@ -104,8 +86,8 @@ export function EntityAppReadinessCard() {
           {readiness && (
             <AboutField label="Status" value="">
               <StatusLabel
-                label={READINESS_LABELS[readiness] ?? readiness}
-                intent={READINESS_INTENTS[readiness] ?? 'neutral'}
+                label={readinessLabel(readiness)}
+                intent={readinessIntent(readiness)}
                 title={READINESS_MEANINGS[readiness]}
               />
             </AboutField>

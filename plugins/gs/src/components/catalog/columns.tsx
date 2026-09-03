@@ -10,13 +10,17 @@ import {
   getReadinessFlagsFromEntity,
   getReadinessFromEntity,
 } from '../utils/entity';
+import {
+  readinessIntent,
+  readinessLabel,
+  readinessRank,
+} from '../utils/readiness';
 import { DateComponent } from '../UI';
 import { compareDates } from '../utils/helpers';
 import { Entity } from '@backstage/catalog-model';
 import {
   semverCompareSort,
   StatusLabel,
-  type StatusLabelIntent,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 const noWrapStyle = {
@@ -54,41 +58,6 @@ export function autoWidthColumn<T extends TableColumn<any>>(column: T) {
     ...column,
     width: 'auto',
   };
-}
-
-/**
- * Verdicts as a reader should see them. `unknown` is spelled out rather than
- * shown as a blank, because "we could not tell" and "nothing wrong" are
- * different answers.
- */
-const READINESS_LABELS: Record<string, string> = {
-  releasable: 'Releasable',
-  blocked: 'Blocked',
-  unknown: 'Unknown',
-};
-
-const READINESS_INTENTS: Record<string, StatusLabelIntent> = {
-  releasable: 'positive',
-  blocked: 'negative',
-  unknown: 'neutral',
-};
-
-function readinessIntent(readiness: string): StatusLabelIntent {
-  return READINESS_INTENTS[readiness] ?? 'neutral';
-}
-
-/** Blocked first: sorting a health column should surface what needs attention. */
-function readinessRank(readiness?: string): number {
-  switch (readiness) {
-    case 'blocked':
-      return 0;
-    case 'unknown':
-      return 1;
-    case 'releasable':
-      return 2;
-    default:
-      return 3;
-  }
 }
 
 /**
@@ -214,7 +183,7 @@ export const columnFactories = Object.freeze({
 
         return (
           <StatusLabel
-            label={READINESS_LABELS[readiness] ?? readiness}
+            label={readinessLabel(readiness)}
             intent={readinessIntent(readiness)}
             title={readinessTitle(flags, advisory)}
           />
