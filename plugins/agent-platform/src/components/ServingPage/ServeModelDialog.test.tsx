@@ -7,7 +7,10 @@ import type {
 } from '../../lib/servingPresets';
 import {
   cacheNotice,
+  choiceForSeed,
+  describeChoice,
   ServeModelDialog,
+  serveModelChoices,
   storageUriForDownload,
   type DownloadedModelOption,
 } from './ServeModelDialog';
@@ -112,7 +115,14 @@ const nameField = () => screen.getByRole('textbox', { name: 'Name' });
 const sourceField = () => screen.getByRole('textbox', { name: 'Model source' });
 const serveButton = () => screen.getByRole('button', { name: 'Serve model' });
 
-async function choosePreset(label: string) {
+const modelPicker = () => screen.getByRole('button', { name: /Model/ });
+
+async function chooseModel(label: string | RegExp) {
+  await userEvent.click(modelPicker());
+  await userEvent.click(screen.getByRole('option', { name: label }));
+}
+
+async function choosePresetForDownload(label: string) {
   await userEvent.click(screen.getByRole('button', { name: /Preset/ }));
   await userEvent.click(screen.getByRole('option', { name: label }));
 }
@@ -128,13 +138,19 @@ describe('ServeModelDialog', () => {
     renderDialog();
 
     expect(screen.getByText('Serve a model')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Preset/ })).toHaveTextContent(
-      'Qwen3 14B',
+    expect(modelPicker()).toHaveTextContent(
+      'Qwen3 14B · downloads from Hugging Face',
     );
     expect(
-      screen.getByText(/Qwen\/Qwen3-14B · 28 GiB of weights · 1 GPU/),
+      screen.getByText(
+        /Preset qwen3-14b · Qwen\/Qwen3-14B · 28 GiB of weights · 1 GPU/,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText('Dense 14B general model.')).toBeInTheDocument();
+    // The preset is derived from the model; no separate preset choice.
+    expect(
+      screen.queryByRole('button', { name: /Preset/ }),
+    ).not.toBeInTheDocument();
     expect(nameField()).toHaveValue('qwen3-14b');
     expect(sourceField()).toHaveValue('hf://Qwen/Qwen3-14B');
     expect(
@@ -205,10 +221,10 @@ describe('ServeModelDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
-  it('re-seeds name and source when the preset changes', async () => {
+  it('re-seeds name and source when the model changes', async () => {
     renderDialog();
 
-    await choosePreset('Nemotron 3 Super');
+    await chooseModel('Nemotron 3 Super · downloads from Hugging Face');
 
     expect(nameField()).toHaveValue('nemotron');
     expect(sourceField()).toHaveValue('hf://nvidia/Nemotron');
@@ -217,7 +233,7 @@ describe('ServeModelDialog', () => {
   it('blocks a preset that does not fit the node until acknowledged', async () => {
     renderDialog();
 
-    await choosePreset('Nemotron 3 Super');
+    await chooseModel('Nemotron 3 Super · downloads from Hugging Face');
 
     expect(screen.getByText('Does not fit on spark')).toBeInTheDocument();
     expect(
@@ -374,7 +390,8 @@ describe('ServeModelDialog', () => {
 });
 
 describe('ServeModelDialog with cached downloads', () => {
-  const devstralDownload: DownloadedModelOption = {
+  /** Attributed by model-manager: the preset of the same name. */
+  const nemotronDownload: DownloadedModelOption = {
     id: 'inst-1/kserve/cache/spark/nemotron',
     model: 'nvidia/Nemotron',
     node: 'spark',
@@ -382,23 +399,59 @@ describe('ServeModelDialog with cached downloads', () => {
     preset: 'nemotron',
     sizeBytes: 80 * GIB,
   };
+  /** A directory model-manager could not attribute: bare name, no preset. */
+  const glmDownload: DownloadedModelOption = {
+    id: 'inst-1/kserve/cache/spark/glm-47-flash-awq4',
+    model: 'glm-47-flash-awq4',
+    node: 'spark',
+    cachePath: 'glm-47-flash-awq4',
+    sizeBytes: 40 * GIB,
+  };
 
-  it('offers the downloads as weights and, picked, names the InferenceService after the cache directory on that node', async () => {
-    renderDialog({ downloads: [devstralDownload] });
-
-    const weights = screen.getByRole('button', { name: /Weights/ });
-    expect(weights).toHaveTextContent("The preset's source");
-
-    await userEvent.click(weights);
-    await userEvent.click(
-      screen.getByRole('option', {
-        name: 'nvidia/Nemotron · on spark · 80.0 GiB',
-      }),
+  it('lists presets with their cached weights, then the directories no preset claims', () => {
+    const choices = serveModelChoices(
+      [qwen, nemotron],
+      [nemotronDownload, glmDownload],
     );
 
-    expect(screen.getByRole('button', { name: /Preset/ })).toHaveTextContent(
-      'Nemotron 3 Super',
-    );
+    expect(choices.map(describeChoice)).toEqual([
+      'Qwen3 14B · downloads from Hugging Face',
+      'Nemotron 3 Super · cached on spark',
+      'glm-47-flash-awq4 · cached on spark · 40.0 GiB · no preset',
+    ]);
+  });
+
+  it('matches a cache directory to its preset by repository when model-manager did not attribute it', () => {
+    const unattributed = { ...nemotronDownload, preset: undefined };
+    const choices = serveModelChoices([qwen, nemotron], [unattributed]);
+
+    expect(choices.map(describeChoice)).toEqual([
+      'Qwen3 14B · downloads from Hugging Face',
+      'Nemotron 3 Super · cached on spark',
+    ]);
+    // model-manager's own attribution wins over the repository.
+    expect(
+      serveModelChoices(
+        [qwen, nemotron],
+        [{ ...nemotronDownload, preset: 'qwen3-14b' }],
+      ).map(describeChoice),
+    ).toEqual([
+      'Qwen3 14B · cached on spark',
+      'Nemotron 3 Super · downloads from Hugging Face',
+    ]);
+  });
+
+  it('serves a preset from the cache when its weights are there: named after the directory, pinned to the node', async () => {
+    renderDialog({ downloads: [nemotronDownload] });
+
+    await chooseModel('Nemotron 3 Super · cached on spark');
+
+    expect(
+      screen.getByText(/served from the cache directory nemotron on spark/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Preset/ }),
+    ).not.toBeInTheDocument();
     expect(nameField()).toHaveValue('nemotron');
     // No admission policy on this installation: serve the claim directly.
     expect(sourceField()).toHaveValue('pvc://hf-cache/nemotron');
@@ -407,55 +460,139 @@ describe('ServeModelDialog with cached downloads', () => {
     ).toHaveTextContent('spark');
   });
 
-  it('starts from the download a row was served from, and reverts to the hub source on request', async () => {
-    renderDialog({
-      downloads: [devstralDownload],
-      seed: { download: devstralDownload },
+  it('starts from the download a row was served from, and a preset seed lands on its cached entry', () => {
+    const { unmount } = renderDialog({
+      downloads: [nemotronDownload],
+      seed: { download: nemotronDownload },
     });
 
+    expect(modelPicker()).toHaveTextContent(
+      'Nemotron 3 Super · cached on spark',
+    );
     expect(nameField()).toHaveValue('nemotron');
     expect(sourceField()).toHaveValue('pvc://hf-cache/nemotron');
-    expect(screen.getByRole('button', { name: /Weights/ })).toHaveTextContent(
-      'nvidia/Nemotron · on spark',
+    unmount();
+
+    renderDialog({
+      downloads: [nemotronDownload],
+      seed: { presetName: 'nemotron' },
+    });
+    expect(modelPicker()).toHaveTextContent(
+      'Nemotron 3 Super · cached on spark',
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /Weights/ }));
-    await userEvent.click(
-      screen.getByRole('option', { name: /The preset's source/ }),
+    const choices = serveModelChoices([qwen, nemotron], [nemotronDownload]);
+    expect(choiceForSeed(choices, { presetName: 'qwen3-14b' })?.id).toBe(
+      'preset/qwen3-14b',
     );
-    expect(sourceField()).toHaveValue('hf://nvidia/Nemotron');
+    expect(choiceForSeed(choices, { download: glmDownload })).toBeUndefined();
+    expect(choiceForSeed(choices, undefined)).toBeUndefined();
   });
 
-  it('keeps the preset source when the cache is wired at admission, and falls back without a claim', () => {
+  it('never lets a directory without a preset inherit the selected preset: it asks for one, warns, and wants that acknowledged', async () => {
+    renderDialog({ downloads: [glmDownload] });
+
+    // Qwen is selected; picking the unclaimed directory does not keep it.
+    await chooseModel(/glm-47-flash-awq4 · cached on spark/);
+
+    expect(
+      screen.getByText(/repository that filled this directory is not recorded/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Preset/ }),
+    ).not.toHaveTextContent('Qwen3 14B');
+    expect(
+      screen.queryByRole('textbox', { name: 'Name' }),
+    ).not.toBeInTheDocument();
+    expect(serveButton()).toBeDisabled();
+
+    await choosePresetForDownload('Qwen3 14B');
+
+    expect(
+      screen.getByText('Preset written for another model'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Qwen3 14B was written for Qwen\/Qwen3-14B; these weights are glm-47-flash-awq4/,
+      ),
+    ).toBeInTheDocument();
+    expect(nameField()).toHaveValue('glm-47-flash-awq4');
+    // The directory's own weights, never the preset's hf:// source.
+    expect(sourceField()).toHaveValue('pvc://hf-cache/glm-47-flash-awq4');
+    expect(
+      screen.getByRole('button', { name: /Target node/ }),
+    ).toHaveTextContent('spark');
+
+    await userEvent.click(serveButton());
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/written for another model — tick the acknowledgement/),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: /preset was not written/ }),
+    );
+    await userEvent.click(serveButton());
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    const { request, preset, manifest } = onConfirm.mock.calls[0][0];
+    expect(preset.name).toBe('qwen3-14b');
+    expect(request).toMatchObject({
+      presetName: 'qwen3-14b',
+      name: 'glm-47-flash-awq4',
+      storageUri: 'pvc://hf-cache/glm-47-flash-awq4',
+      node: 'spark',
+      acknowledgePresetMismatch: true,
+    });
+    expect(manifest).toMatchObject({
+      spec: {
+        predictor: {
+          model: { storageUri: 'pvc://hf-cache/glm-47-flash-awq4' },
+        },
+      },
+    });
+  });
+
+  it("takes the directory's own source, never another model's", () => {
     const withPolicy = {
       ...config,
       cache: { ...config.cache, redirectPolicy: true },
     };
-    expect(storageUriForDownload(devstralDownload, withPolicy, nemotron)).toBe(
+    // Repository known: the redirect policy finds the files under the
+    // InferenceService's name, so the repository itself is the source.
+    expect(storageUriForDownload(nemotronDownload, withPolicy)).toBe(
       'hf://nvidia/Nemotron',
     );
-    expect(storageUriForDownload(devstralDownload, config, nemotron)).toBe(
+    expect(storageUriForDownload(nemotronDownload, config)).toBe(
       'pvc://hf-cache/nemotron',
     );
     expect(
-      storageUriForDownload(
-        devstralDownload,
-        { ...config, cache: { enabled: false, redirectPolicy: false } },
-        nemotron,
-      ),
+      storageUriForDownload(nemotronDownload, {
+        ...config,
+        cache: { enabled: false, redirectPolicy: false },
+      }),
     ).toBe('hf://nvidia/Nemotron');
-    // Cached weights serve from the claim even without a preset; without a
-    // known directory there is nothing to point at but the hub.
-    expect(storageUriForDownload(devstralDownload, config, undefined)).toBe(
-      'pvc://hf-cache/nemotron',
-    );
     expect(
       storageUriForDownload(
-        { ...devstralDownload, cachePath: undefined },
+        { ...nemotronDownload, cachePath: undefined },
         config,
-        undefined,
       ),
     ).toBe('hf://nvidia/Nemotron');
+    // Repository unknown: only the claim can serve it — under the redirect
+    // policy too, where an hf:// source would download another model into
+    // the directory.
+    expect(storageUriForDownload(glmDownload, withPolicy)).toBe(
+      'pvc://hf-cache/glm-47-flash-awq4',
+    );
+    expect(storageUriForDownload(glmDownload, config)).toBe(
+      'pvc://hf-cache/glm-47-flash-awq4',
+    );
+    expect(
+      storageUriForDownload(glmDownload, {
+        ...config,
+        cache: { enabled: false, redirectPolicy: false },
+      }),
+    ).toBe('');
   });
 });
 
