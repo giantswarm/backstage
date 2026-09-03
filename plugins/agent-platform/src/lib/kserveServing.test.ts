@@ -7,11 +7,12 @@ import {
   type PodInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  acceleratorResourceOf,
   findPredictorPod,
   INFERENCESERVICE_POLL_ACTIVE_MS,
   INFERENCESERVICE_POLL_IDLE_MS,
   inferenceServiceRefetchInterval,
-  isGpuNode,
+  isAcceleratorNode,
   KSERVE_INFERENCESERVICE_LABEL,
   parseModelConfigRef,
   toGpuNode,
@@ -218,20 +219,22 @@ describe('findPredictorPod', () => {
   });
 });
 
-describe('isGpuNode', () => {
+describe('isAcceleratorNode', () => {
   it('recognises device-plugin capacity or any discovery label', () => {
     expect(
-      isGpuNode(node({ status: { capacity: { 'nvidia.com/gpu': '1' } } })),
+      isAcceleratorNode(
+        node({ status: { capacity: { 'nvidia.com/gpu': '1' } } }),
+      ),
     ).toBe(true);
     expect(
-      isGpuNode(
+      isAcceleratorNode(
         node({
           metadata: { name: 'n', labels: { 'nvidia.com/gpu.present': 'true' } },
         }),
       ),
     ).toBe(true);
     expect(
-      isGpuNode(
+      isAcceleratorNode(
         node({
           metadata: {
             name: 'n',
@@ -241,7 +244,7 @@ describe('isGpuNode', () => {
       ),
     ).toBe(true);
     expect(
-      isGpuNode(
+      isAcceleratorNode(
         node({
           metadata: { name: 'n', labels: { 'nvidia.com/gpu.count': '2' } },
         }),
@@ -249,8 +252,59 @@ describe('isGpuNode', () => {
     ).toBe(true);
   });
 
-  it('rejects a plain node', () => {
-    expect(isGpuNode(node())).toBe(false);
+  it('recognises the other accelerator resources a device plugin can advertise', () => {
+    for (const resource of [
+      'amd.com/gpu',
+      'intel.com/gpu',
+      'google.com/tpu',
+      'habana.ai/gaudi',
+      'rockchip.com/npu',
+    ]) {
+      expect(
+        isAcceleratorNode(node({ status: { capacity: { [resource]: '1' } } })),
+      ).toBe(true);
+    }
+  });
+
+  it("recognises the installation's own resource name only when told it", () => {
+    const fpga = node({ status: { capacity: { 'xilinx.com/fpga': '2' } } });
+
+    expect(isAcceleratorNode(fpga)).toBe(false);
+    expect(isAcceleratorNode(fpga, 'xilinx.com/fpga')).toBe(true);
+  });
+
+  it('rejects a plain node — CPU, memory and pods are not accelerators', () => {
+    expect(isAcceleratorNode(node())).toBe(false);
+    expect(
+      isAcceleratorNode(
+        node({
+          status: {
+            capacity: { cpu: '20', memory: '64Gi', pods: '110' },
+          },
+        }),
+        'nvidia.com/gpu',
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('acceleratorResourceOf', () => {
+  it("prefers the installation's resource name, then the known resources, then a vendor NPU", () => {
+    const both = node({
+      status: {
+        capacity: { 'nvidia.com/gpu': '1', 'xilinx.com/fpga': '2' },
+      },
+    });
+    expect(acceleratorResourceOf(both, 'xilinx.com/fpga')).toBe(
+      'xilinx.com/fpga',
+    );
+    expect(acceleratorResourceOf(both)).toBe('nvidia.com/gpu');
+    expect(
+      acceleratorResourceOf(
+        node({ status: { capacity: { cpu: '8', 'rockchip.com/npu': '1' } } }),
+      ),
+    ).toBe('rockchip.com/npu');
+    expect(acceleratorResourceOf(node())).toBeUndefined();
   });
 });
 
@@ -312,10 +366,63 @@ describe('toGpuNode', () => {
       product: 'NVIDIA-GB10',
       memoryMiB: 122880,
       labeledCount: 1,
+      resource: 'nvidia.com/gpu',
       capacity: 1,
       allocatable: 1,
       requested: 1,
       schedulable: true,
+    });
+  });
+
+  it('counts a non-NVIDIA accelerator in its own resource, requests included', () => {
+    const amd = node({
+      metadata: { name: 'amd-node' },
+      status: {
+        conditions: [{ type: 'Ready', status: 'True' }],
+        capacity: { 'amd.com/gpu': '2', cpu: '32' },
+        allocatable: { 'amd.com/gpu': '2', cpu: '31' },
+      },
+    });
+    const onNode = pod({
+      spec: {
+        nodeName: 'amd-node',
+        containers: [
+          { name: 'a', resources: { requests: { 'amd.com/gpu': '1' } } },
+        ],
+      },
+    });
+
+    expect(toGpuNode(amd, [onNode])).toMatchObject({
+      name: 'amd-node',
+      product: undefined,
+      resource: 'amd.com/gpu',
+      capacity: 2,
+      allocatable: 2,
+      requested: 1,
+    });
+  });
+
+  it("counts the installation's own resource when the discovery config names one", () => {
+    const fpga = node({
+      metadata: { name: 'fpga-node' },
+      status: {
+        conditions: [{ type: 'Ready', status: 'True' }],
+        capacity: { 'xilinx.com/fpga': '4' },
+        allocatable: { 'xilinx.com/fpga': '3' },
+      },
+    });
+
+    expect(toGpuNode(fpga, [], 'xilinx.com/fpga')).toMatchObject({
+      resource: 'xilinx.com/fpga',
+      capacity: 4,
+      allocatable: 3,
+      requested: 0,
+    });
+    // Without the name the resource is unknown to the portal: no figures.
+    expect(toGpuNode(fpga, [])).toMatchObject({
+      resource: undefined,
+      capacity: undefined,
+      allocatable: undefined,
     });
   });
 

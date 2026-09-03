@@ -613,3 +613,54 @@ describe('cacheNotice', () => {
     ).toMatch(/No model cache/);
   });
 });
+
+describe('ServeModelDialog · nodes that are not serving targets', () => {
+  /** A second GPU node the serving layer will not place a model on (model-manager 0.11 on). */
+  const sparkE119: GpuNode = {
+    ...spark,
+    id: 'inst-1/spark-e119',
+    name: 'spark-e119',
+    eligible: false,
+    eligibilityReason: 'cache claim hf-cache is pinned to spark',
+  };
+
+  it('seeds the one serving target and lists the other node disabled, with its reason', async () => {
+    renderDialog({ gpuNodes: [spark, sparkE119] });
+
+    // Two nodes listed, but one target: it is the default, not "Any node".
+    expect(screen.getByText('Fits on spark')).toBeInTheDocument();
+    expect(
+      screen.getByText(/A node marked not a serving target cannot be picked/),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Target node/ }));
+    const ineligible = screen.getByRole('option', { name: /spark-e119/ });
+    expect(ineligible).toHaveAttribute('aria-disabled', 'true');
+    expect(ineligible).toHaveTextContent('not a serving target');
+    expect(ineligible).toHaveTextContent(
+      'cache claim hf-cache is pinned to spark',
+    );
+    expect(
+      screen.getByRole('option', { name: 'spark · NVIDIA-GB10' }),
+    ).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('leaves the target to the scheduler when the only listed node is not a serving target', () => {
+    renderDialog({ gpuNodes: [sparkE119] });
+
+    expect(
+      screen.getByRole('button', { name: /Target node/ }),
+    ).toHaveTextContent('Any node');
+    expect(screen.getByText('Fit not checked')).toBeInTheDocument();
+  });
+
+  it('says nothing about serving targets when every node is one', () => {
+    renderDialog({
+      gpuNodes: [spark, { ...spark, id: 'inst-1/b', name: 'b' }],
+    });
+
+    expect(
+      screen.queryByText(/A node marked not a serving target/),
+    ).not.toBeInTheDocument();
+  });
+});

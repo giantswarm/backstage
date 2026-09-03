@@ -408,15 +408,22 @@ export type GpuNode = {
   /** `nvidia.com/gpu.count` from gpu-feature-discovery. */
   labeledCount?: number;
   /**
+   * The extended resource the node advertises its accelerators as
+   * (`nvidia.com/gpu`, `amd.com/gpu`, `google.com/tpu`, …) — what `capacity`,
+   * `allocatable` and `requested` count. `undefined` when no device plugin
+   * advertises one.
+   */
+  resource?: string;
+  /**
    * What the device plugin advertises. `undefined` = the node advertises no
-   * `nvidia.com/gpu` at all — no device plugin, or a node whose GPUs are only
-   * known from labels. A valid state, not an error.
+   * accelerator resource at all — no device plugin, or a node whose GPUs are
+   * only known from labels. A valid state, not an error.
    */
   capacity?: number;
   allocatable?: number;
   /**
-   * `nvidia.com/gpu` requested by non-terminal pods bound to this node.
-   * `undefined` until pods were read (or when they could not be).
+   * Accelerators (`resource`) requested by non-terminal pods bound to this
+   * node. `undefined` until pods were read (or when they could not be).
    */
   requested?: number;
   /**
@@ -465,6 +472,16 @@ export type GpuNode = {
     /** Last scan failure; the figures may be stale. */
     error?: string;
   };
+  /**
+   * Whether the serving backend can place a model on this node — ready,
+   * inside the installation's serving node selector, able to mount the model
+   * cache. model-manager (0.11 on) judges every node it lists; `undefined`
+   * from a source that does not (a cluster read, an older model-manager),
+   * and the node is then a target as far as anyone knows.
+   */
+  eligible?: boolean;
+  /** Why `eligible` is false, in the backend's words. */
+  eligibilityReason?: string;
 };
 
 /** Reasons the GPU capacity of an installation could not be read. */
@@ -601,6 +618,29 @@ function isOnEndpoint(
   return (
     model.endpointHosts.includes(authority) ||
     model.endpointHosts.includes(hostname)
+  );
+}
+
+/**
+ * Whether a node row is capacity for serving models — what the GPU capacity
+ * view lists: a backend host ({@link isHostMemoryNode}, whose accelerator the
+ * backend's API cannot see), or a cluster node with any evidence of an
+ * accelerator — a device plugin advertising one, a discovery label (product,
+ * memory, count), or the serving backend's own verdict on it (`eligible`,
+ * which model-manager gives only for accelerator nodes). A CPU-only node a
+ * backend lists with an allocatable-memory budget has none of these: nothing
+ * can be served there, and {@link mergeServingSnapshots} drops it.
+ */
+export function isAcceleratorCapacityRow(node: GpuNode): boolean {
+  return (
+    isHostMemoryNode(node) ||
+    node.accelerated !== undefined ||
+    node.eligible !== undefined ||
+    node.resource !== undefined ||
+    node.capacity !== undefined ||
+    node.product !== undefined ||
+    node.memoryMiB !== undefined ||
+    (node.labeledCount ?? 0) > 0
   );
 }
 
@@ -780,7 +820,10 @@ export function overlayServedModel(
  * hostname ({@link isSameServedModel}) — is folded into that row
  * ({@link overlayServedModel}) rather than shown twice. GPU nodes are
  * likewise one row per node, the later source's figures filling in or
- * refreshing the earlier's.
+ * refreshing the earlier's — and only rows that are accelerator capacity
+ * ({@link isAcceleratorCapacityRow}) come out: a model-manager lists every
+ * cluster node it budgets, CPU-only ones included, and those are not
+ * capacity for serving models.
  */
 export function mergeServingSnapshots(
   snapshots: ServingSourceSnapshot[],
@@ -869,7 +912,7 @@ export function mergeServingSnapshots(
     sharedHosts,
     unreachableInstallations: Array.from(unreachable).sort(),
     servedModels,
-    gpuNodes: Array.from(gpuNodes.values()),
+    gpuNodes: Array.from(gpuNodes.values()).filter(isAcceleratorCapacityRow),
     gpuCapacityUnavailable,
   };
 }

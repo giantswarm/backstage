@@ -60,7 +60,7 @@ function NotReportedCell({ reason }: { reason: string }) {
 }
 
 const NO_DEVICE_PLUGIN =
-  'The node advertises no nvidia.com/gpu resource — no device plugin is running, so only the discovery labels are known.';
+  'The node advertises no accelerator resource (nvidia.com/gpu or the like) — no device plugin is running, so only the discovery labels are known.';
 const NO_POD_DATA =
   'The pods on this node could not be read, so scheduled GPU requests are unknown.';
 const HOST_NO_GPU_FIGURES =
@@ -68,6 +68,53 @@ const HOST_NO_GPU_FIGURES =
 
 /** What the node name's description says for a backend host. */
 export const HOST_NODE_DESCRIPTION = 'Backend host';
+
+/** What the node name's description says for a node the serving layer will not place a model on. */
+export const NOT_SERVING_TARGET_DESCRIPTION = 'Not a serving target';
+const NOT_SERVING_TARGET_NO_REASON = 'the serving layer gave no reason';
+
+/** The hint in an empty cache cell when another node of the installation holds the cache. */
+export const NO_CACHE_ON_NODE_HINT = 'no model cache on this node';
+const NO_CACHE_ON_NODE_TITLE =
+  'Another node of this installation holds the model cache. Whether a model can be served here depends on that cache claim being mountable from this node — a node-local claim is not. The serving layer says which nodes are serving targets from model-manager 0.11 on; this one did not.';
+
+/**
+ * "Not a serving target: <reason>" for a node the serving layer will not
+ * place a model on — the node cell's and the budget cell's tooltip.
+ */
+function eligibilityDetail(node: GpuNode): string | undefined {
+  return node.eligible === false
+    ? `${NOT_SERVING_TARGET_DESCRIPTION}: ${
+        node.eligibilityReason ?? NOT_SERVING_TARGET_NO_REASON
+      }`
+    : undefined;
+}
+
+/**
+ * Whether a cluster node the serving layer has not judged (`eligible`
+ * unknown) has no model cache while another node of its installation holds a
+ * node-local one — the softer hint that it may not be a serving target: on a
+ * single-claim cache layout presets pinned to the cache's node cannot land
+ * here, and only the serving layer's own verdict (model-manager 0.11 on)
+ * settles it.
+ */
+export function lacksInstallationCache(
+  node: GpuNode,
+  nodes: GpuNode[],
+): boolean {
+  return (
+    node.eligible === undefined &&
+    node.cache === undefined &&
+    !isHostMemoryNode(node) &&
+    nodes.some(
+      other =>
+        other.installation === node.installation &&
+        other.id !== node.id &&
+        other.cache !== undefined &&
+        !other.cache.shared,
+    )
+  );
+}
 
 /** The marker on a host where a loaded model sits on the accelerator. */
 export const ACCELERATED_LABEL = 'accelerated';
@@ -110,12 +157,51 @@ export function columnsForNodes(nodes: GpuNode[]): GpuCapacityColumns {
   };
 }
 
-/** Under the node name: a fault first, else what kind of node this is when it is not a cluster node. */
+/**
+ * Under the node name: a fault first, then that the serving layer will not
+ * place a model here, else what kind of node this is when it is not a
+ * cluster node.
+ */
 export function describeNode(node: GpuNode): string | undefined {
   if (!node.ready) {
     return 'Not ready';
   }
+  if (node.eligible === false) {
+    return NOT_SERVING_TARGET_DESCRIPTION;
+  }
   return isHostMemoryNode(node) ? HOST_NODE_DESCRIPTION : undefined;
+}
+
+/**
+ * The node name with {@link describeNode} under it. A node that is not a
+ * serving target is dimmed, and the serving layer's reason is on hover.
+ */
+function NodeCell({ node }: { node: GpuNode }) {
+  const description = describeNode(node);
+  const ineligible = node.eligible === false;
+  return (
+    <Cell>
+      <Text
+        as="p"
+        variant="body-medium"
+        color={ineligible ? 'secondary' : undefined}
+        truncate
+        title={node.name}
+      >
+        {node.name}
+      </Text>
+      {description && (
+        <Text
+          variant="body-medium"
+          color="secondary"
+          truncate
+          title={ineligible ? eligibilityDetail(node) : description}
+        >
+          {description}
+        </Text>
+      )}
+    </Cell>
+  );
 }
 
 /**
@@ -132,6 +218,7 @@ function BudgetCell({ node }: { node: GpuNode }) {
     node.memoryBudgetSource
       ? BUDGET_SOURCE[node.memoryBudgetSource]
       : undefined,
+    eligibilityDetail(node),
     node.memoryReservedBytes !== undefined
       ? `${formatBytes(node.memoryReservedBytes)} reserved by the models ${
           isHostMemoryNode(node) ? 'loaded' : 'served'
@@ -166,11 +253,35 @@ function BudgetCell({ node }: { node: GpuNode }) {
   );
 }
 
-/** "3 models · 61 GiB", with the claim and the last scan on hover; a failed scan is flagged. */
-function CacheCell({ node }: { node: GpuNode }) {
+/**
+ * "3 models · 61 GiB", with the claim and the last scan on hover; a failed
+ * scan is flagged. A node without a cache reads "—", or the softer hint that
+ * the installation's cache sits on another node
+ * ({@link lacksInstallationCache}).
+ */
+function CacheCell({
+  node,
+  noCacheHint,
+}: {
+  node: GpuNode;
+  noCacheHint: boolean;
+}) {
   const cache = node.cache;
   if (!cache) {
-    return <CellText title="—" />;
+    return noCacheHint ? (
+      <Cell>
+        <Text
+          as="p"
+          variant="body-medium"
+          color="secondary"
+          title={NO_CACHE_ON_NODE_TITLE}
+        >
+          {NO_CACHE_ON_NODE_HINT}
+        </Text>
+      </Cell>
+    ) : (
+      <CellText title="—" />
+    );
   }
   const detail = [
     cache.claim ? `Claim ${cache.claim}` : undefined,
@@ -219,6 +330,8 @@ function gpuFigure(
 
 function getColumnConfig(
   columns: GpuCapacityColumns = { gpu: true, budget: false, cache: false },
+  /** Ids of the nodes whose empty cache cell carries the softer hint. */
+  noCacheHints: ReadonlySet<string> = new Set(),
 ): ColumnConfig<GpuNode>[] {
   const config: ColumnConfig<GpuNode>[] = [
     {
@@ -226,9 +339,7 @@ function getColumnConfig(
       label: 'Node',
       isRowHeader: true,
       isSortable: true,
-      cell: node => (
-        <CellText title={node.name} description={describeNode(node)} />
-      ),
+      cell: node => <NodeCell node={node} />,
     },
     {
       id: 'installation',
@@ -243,7 +354,11 @@ function getColumnConfig(
         id: 'product',
         label: 'GPU',
         isSortable: true,
-        cell: gpuFigure(node => <CellText title={node.product ?? '—'} />),
+        // The product from the discovery labels; without them, the resource
+        // the device plugin advertises (`amd.com/gpu`) still names the kind.
+        cell: gpuFigure(node => (
+          <CellText title={node.product ?? node.resource ?? '—'} />
+        )),
       },
       {
         id: 'memory',
@@ -319,7 +434,9 @@ function getColumnConfig(
     config.push({
       id: 'cache',
       label: 'Model cache',
-      cell: node => <CacheCell node={node} />,
+      cell: node => (
+        <CacheCell node={node} noCacheHint={noCacheHints.has(node.id)} />
+      ),
     });
   }
   return config;
@@ -375,6 +492,10 @@ export type GpuCapacityPanelProps = {
  * figures at all — its API does not expose the accelerator — but the host's
  * memory as the budget, what the loaded models take of it, and a marker when
  * one of them sits on the GPU; a fleet of such hosts shows no GPU columns.
+ * A node the serving layer will not place a model on (`eligible: false`) is
+ * dimmed and says so under its name, the reason on hover; where the layer
+ * gives no verdict, a node without a cache beside one that holds it gets the
+ * softer hint in its cache cell.
  */
 export function GpuCapacityPanel({
   nodes,
@@ -383,8 +504,24 @@ export function GpuCapacityPanel({
   isLoading,
 }: GpuCapacityPanelProps) {
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
-  const columnConfig = useMemo(() => getColumnConfig(columns), [columns]);
+  const noCacheHints = useMemo(
+    () =>
+      new Set(
+        nodes
+          .filter(node => lacksInstallationCache(node, nodes))
+          .map(node => node.id),
+      ),
+    [nodes],
+  );
+  const columnConfig = useMemo(
+    () => getColumnConfig(columns, noCacheHints),
+    [columns, noCacheHints],
+  );
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
+  const hasIneligible = useMemo(
+    () => nodes.some(node => node.eligible === false),
+    [nodes],
+  );
   const { tableProps } = useTable<GpuNode>({
     mode: 'complete',
     data: nodes,
@@ -412,6 +549,8 @@ export function GpuCapacityPanel({
             " A backend host has no GPU figures — its API does not expose the accelerator: its budget is the host's memory as the serving layer sees it, and accelerated marks a host where a loaded model sits on the GPU."}
           {columns.cache &&
             ' The model cache holds pre-warmed downloads; serving one of them skips the download.'}
+          {hasIneligible &&
+            ' A node marked not a serving target is one the serving layer will not place a model on — outside its node selector, or unable to mount the model cache; the reason is on hover.'}
         </Text>
 
         {nodes.length > 0 || isLoading || readableInstallations.length === 0 ? (

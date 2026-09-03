@@ -636,6 +636,33 @@ describe('toGpuNodeFromManager · the host an Ollama-backed model-manager proxie
         .labeledCount,
     ).toBe(0);
   });
+
+  it("carries the backend's verdict on the node as reported, and none where it gives none", () => {
+    // model-manager 0.11 on: a GPU node the backend will not place a model on.
+    const pinnedElsewhere = toGpuNodeFromManager('gpu', {
+      ...kserveNodes[0],
+      name: 'spark-e119',
+      eligible: false,
+      eligibilityReason: 'cache claim hf-cache is pinned to spark-8723',
+      cache: undefined,
+    });
+    expect(pinnedElsewhere.eligible).toBe(false);
+    expect(pinnedElsewhere.eligibilityReason).toBe(
+      'cache claim hf-cache is pinned to spark-8723',
+    );
+
+    const target = toGpuNodeFromManager('gpu', {
+      ...kserveNodes[0],
+      eligible: true,
+    });
+    expect(target.eligible).toBe(true);
+    expect(target.eligibilityReason).toBeUndefined();
+
+    // Older model-managers send neither: no verdict, not "false".
+    const unjudged = toGpuNodeFromManager('gpu', kserveNodes[0]);
+    expect(unjudged.eligible).toBeUndefined();
+    expect(unjudged.eligibilityReason).toBeUndefined();
+  });
 });
 
 describe('formatGpuShare', () => {

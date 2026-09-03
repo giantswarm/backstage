@@ -3,14 +3,15 @@ import {
   InferenceService,
   isNotFoundError,
   Node,
-  NVIDIA_GPU_RESOURCE,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useKServeInstallations } from '../../hooks/useKServeInstallations';
 import { usePodLists, type PodListRequest } from '../../hooks/usePodLists';
+import { useModelServingConfigs } from '../../hooks/useServingPresets';
 import {
+  acceleratorResourceOf,
   inferenceServiceRefetchInterval,
-  isGpuNode,
+  isAcceleratorNode,
   KSERVE_INFERENCESERVICE_LABEL,
   toGpuNode,
   toServedModel,
@@ -39,7 +40,10 @@ export const KSERVE_CR_CAPABILITIES: ServingCapabilities = {
  *
  * Reads, per installation with KServe (nothing at all is read elsewhere):
  * 1. the InferenceServices (all namespaces);
- * 2. the nodes, for GPU labels and device-plugin capacity;
+ * 2. the nodes, for GPU labels and device-plugin capacity — kept when they
+ *    carry an accelerator ({@link isAcceleratorNode}), by the resource name
+ *    the installation's discovery ConfigMap declares (`gpuResourceName`,
+ *    read as well) or a known accelerator resource;
  * 3. the predictor pods (one list by KServe's label), for where each model
  *    actually runs;
  * 4. per GPU node with schedulable GPUs, the pods bound to it (a field-selector
@@ -80,9 +84,27 @@ export function useKServeServingSource(
     { enableDiscovery: false },
   );
 
+  // The installation's serving contract, for the resource name its
+  // accelerators go by (`gpuResourceName`); the known accelerator resources
+  // and the discovery labels still count on an installation without one.
+  const servingConfigs = useModelServingConfigs(installations);
+  const gpuResourceNames = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(servingConfigs.configs).map(([installation, config]) => [
+          installation,
+          config.gpuResourceName,
+        ]),
+      ) as Record<string, string | undefined>,
+    [servingConfigs.configs],
+  );
+
   const gpuNodes = useMemo(
-    () => nodes.resources.filter(isGpuNode),
-    [nodes.resources],
+    () =>
+      nodes.resources.filter(node =>
+        isAcceleratorNode(node, gpuResourceNames[node.cluster]),
+      ),
+    [nodes.resources, gpuResourceNames],
   );
 
   const podRequests = useMemo<PodListRequest[]>(
@@ -91,10 +113,18 @@ export function useKServeServingSource(
         installation,
         labelSelector: KSERVE_INFERENCESERVICE_LABEL,
       })),
-      // Only nodes with schedulable GPUs: without an allocatable figure there
-      // is nothing to subtract pod requests from.
+      // Only nodes with schedulable accelerators: without an allocatable
+      // figure there is nothing to subtract pod requests from.
       ...gpuNodes
-        .filter(node => (node.getAllocatableOf(NVIDIA_GPU_RESOURCE) ?? 0) > 0)
+        .filter(node => {
+          const resource = acceleratorResourceOf(
+            node,
+            gpuResourceNames[node.cluster],
+          );
+          return resource !== undefined
+            ? (node.getAllocatableOf(resource) ?? 0) > 0
+            : false;
+        })
         .map(node => ({
           installation: node.cluster,
           fieldSelector: `spec.nodeName=${node.getName()}`,
@@ -102,7 +132,7 @@ export function useKServeServingSource(
     ],
     // `installations` is a fresh array each render; key on its contents.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [installationsKey, gpuNodes],
+    [installationsKey, gpuNodes, gpuResourceNames],
   );
   const podLists = usePodLists(podRequests);
 
@@ -128,6 +158,7 @@ export function useKServeServingSource(
       toGpuNode(
         node,
         nodePods.get(`${node.cluster}/spec.nodeName=${node.getName()}`),
+        gpuResourceNames[node.cluster],
       ),
     );
 
@@ -200,6 +231,7 @@ export function useKServeServingSource(
     nodes.errors,
     nodes.isLoading,
     gpuNodes,
+    gpuResourceNames,
     podLists.results,
     podLists.isLoading,
   ]);

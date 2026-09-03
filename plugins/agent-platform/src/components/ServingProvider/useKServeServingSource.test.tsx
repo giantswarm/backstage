@@ -1,5 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import {
+  ConfigMap,
   InferenceService,
   Node,
   type InferenceServiceInterface,
@@ -121,6 +122,32 @@ const gpuNodeLabelsOnly = (installation: string) =>
     },
   });
 
+/** The installation's discovery ConfigMap, naming the resource its accelerators go by. */
+const discoveryConfigMap = (installation: string, gpuResourceName: string) =>
+  new ConfigMap(
+    {
+      apiVersion: 'v1',
+      kind: 'ConfigMap',
+      metadata: {
+        name: 'agent-platform-model-serving',
+        namespace: 'agent-platform',
+        labels: { 'agent-platform.giantswarm.io/model-serving-config': 'true' },
+      },
+      data: {
+        'config.yaml': `apiVersion: agent-platform.giantswarm.io/v1alpha1
+kind: ModelServingConfig
+spec:
+  namespace: model-serving
+  runtime: kserve-vllm
+  gpuResourceName: ${gpuResourceName}
+  presets:
+    namespace: agent-platform
+`,
+      },
+    },
+    installation,
+  );
+
 type ResourcesResult = {
   resources?: unknown[];
   errors?: ReturnType<typeof buildResourceErrors>;
@@ -131,12 +158,18 @@ type ResourcesResult = {
 function mockResources(byClass: {
   inferenceServices?: ResourcesResult;
   nodes?: ResourcesResult;
+  /** The discovery ConfigMaps ({@link discoveryConfigMap}); none by default. */
+  configMaps?: ResourcesResult;
 }) {
   mockUseResources.mockImplementation((_clusters, ResourceClass) => {
-    const result =
-      ResourceClass === InferenceService
-        ? byClass.inferenceServices
-        : byClass.nodes;
+    let result: ResourcesResult | undefined;
+    if (ResourceClass === InferenceService) {
+      result = byClass.inferenceServices;
+    } else if (ResourceClass === ConfigMap) {
+      result = byClass.configMaps;
+    } else {
+      result = byClass.nodes;
+    }
     return {
       resources: result?.resources ?? [],
       errors: result?.errors ?? [],
@@ -371,6 +404,80 @@ describe('useKServeServingSource', () => {
     const { result } = render();
 
     expect(result.current.gpuNodes).toEqual([]);
+  });
+
+  it('lists a node whose only accelerator is a non-NVIDIA resource, counted in that resource', () => {
+    mockResources({
+      nodes: {
+        resources: [
+          node('alpha', 'amd-node', {
+            metadata: { name: 'amd-node' },
+            status: {
+              conditions: [{ type: 'Ready', status: 'True' }],
+              capacity: { 'amd.com/gpu': '2' },
+              allocatable: { 'amd.com/gpu': '2' },
+            },
+          }),
+          node('alpha', 'worker-1'),
+        ],
+      },
+    });
+
+    const { result } = render();
+
+    expect(result.current.gpuNodes).toEqual([
+      expect.objectContaining({
+        name: 'amd-node',
+        resource: 'amd.com/gpu',
+        capacity: 2,
+        allocatable: 2,
+      }),
+    ]);
+    // Its pods are listed for the requested figure, like an NVIDIA node's.
+    expect(mockUsePodLists.mock.calls.at(-1)?.[0]).toContainEqual({
+      installation: 'alpha',
+      fieldSelector: 'spec.nodeName=amd-node',
+    });
+  });
+
+  it("counts the resource the installation's discovery ConfigMap names, and lists nodes by it", () => {
+    mockResources({
+      configMaps: {
+        resources: [discoveryConfigMap('alpha', 'xilinx.com/fpga')],
+      },
+      nodes: {
+        resources: [
+          node('alpha', 'fpga-node', {
+            metadata: { name: 'fpga-node' },
+            status: {
+              conditions: [{ type: 'Ready', status: 'True' }],
+              capacity: { 'xilinx.com/fpga': '4', cpu: '64' },
+              allocatable: { 'xilinx.com/fpga': '3', cpu: '63' },
+            },
+          }),
+          node('alpha', 'worker-1'),
+        ],
+      },
+    });
+
+    const { result } = render();
+
+    // The discovery ConfigMap is read on the KServe installations only.
+    expect(
+      mockUseResources.mock.calls.find(call => call[1] === ConfigMap)?.[0],
+    ).toEqual(['alpha']);
+    expect(result.current.gpuNodes).toEqual([
+      expect.objectContaining({
+        name: 'fpga-node',
+        resource: 'xilinx.com/fpga',
+        capacity: 4,
+        allocatable: 3,
+      }),
+    ]);
+    expect(mockUsePodLists.mock.calls.at(-1)?.[0]).toContainEqual({
+      installation: 'alpha',
+      fieldSelector: 'spec.nodeName=fpga-node',
+    });
   });
 
   it('surfaces an installation whose probe failed as unreachable', () => {

@@ -3,8 +3,12 @@ import { screen, within } from '@testing-library/react';
 import type { GpuNode } from '../../lib/serving';
 import {
   columnsForNodes,
+  describeNode,
   formatGpuMemory,
   GpuCapacityPanel,
+  lacksInstallationCache,
+  NO_CACHE_ON_NODE_HINT,
+  NOT_SERVING_TARGET_DESCRIPTION,
 } from './GpuCapacityPanel';
 
 const withPlugin: GpuNode = {
@@ -444,5 +448,230 @@ describe('GpuCapacityPanel · operator-set host budget', () => {
         screen.queryByRole('columnheader', { name: header }),
       ).not.toBeInTheDocument();
     }
+  });
+});
+
+/** spidertron's two GPU nodes as a kserve model-manager (0.11 on) reports them. */
+const sparkTarget: GpuNode = {
+  id: 'gpu/spark-8723',
+  installation: 'gpu',
+  name: 'spark-8723',
+  ready: true,
+  product: 'NVIDIA-GB10-SHARED',
+  memoryMiB: 122880,
+  labeledCount: 3,
+  memoryBudgetBytes: 130_531_688_448,
+  memoryBudgetSource: 'gpu-labels',
+  memoryReservedBytes: 0,
+  memoryFreeBytes: 130_531_688_448,
+  cache: { claim: 'hf-cache', mountPath: '/mnt/models', models: 20 },
+  eligible: true,
+};
+
+/** The second Spark: GPUs, but the cache claim is a local volume on the first. */
+const sparkPinnedOut: GpuNode = {
+  ...sparkTarget,
+  id: 'gpu/spark-e119',
+  name: 'spark-e119',
+  cache: undefined,
+  eligible: false,
+  eligibilityReason: 'cache claim hf-cache is pinned to spark-8723',
+};
+
+const rowOf = (name: string) =>
+  screen.getByText(name).closest('[role="row"]') as HTMLElement;
+
+describe('GpuCapacityPanel · serving targets', () => {
+  it('marks a node the serving layer will not place a model on, with its reason on hover', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[sparkTarget, sparkPinnedOut]}
+        installations={['gpu']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    const marker = screen.getByText(NOT_SERVING_TARGET_DESCRIPTION);
+    expect(rowOf('spark-e119')).toContainElement(marker);
+    expect(marker).toHaveAttribute(
+      'title',
+      'Not a serving target: cache claim hf-cache is pinned to spark-8723',
+    );
+    // The reason sits in the budget tooltip too, next to the budget's source.
+    const budget = within(rowOf('spark-e119')).getByText('122 GiB free');
+    expect(budget).toHaveAttribute(
+      'title',
+      expect.stringContaining('Budget: the GPU memory from the node labels'),
+    );
+    expect(budget).toHaveAttribute(
+      'title',
+      expect.stringContaining(
+        'Not a serving target: cache claim hf-cache is pinned to spark-8723',
+      ),
+    );
+    // The target reads as before: no marker, no hint in its cache cell.
+    expect(
+      within(rowOf('spark-8723')).queryByText(NOT_SERVING_TARGET_DESCRIPTION),
+    ).toBeNull();
+    expect(screen.getByText('20 models')).toBeInTheDocument();
+    expect(screen.queryByText(NO_CACHE_ON_NODE_HINT)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /A node marked not a serving target is one the serving layer will not place a model on/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says why in words when the serving layer gives no reason', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[{ ...sparkPinnedOut, eligibilityReason: undefined }]}
+        installations={['gpu']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText(NOT_SERVING_TARGET_DESCRIPTION)).toHaveAttribute(
+      'title',
+      'Not a serving target: the serving layer gave no reason',
+    );
+  });
+
+  it('hints at the missing cache on an unjudged node beside the node that holds it', async () => {
+    // An older model-manager (before 0.11) gives no verdict: the softer hint.
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[
+          { ...sparkTarget, eligible: undefined },
+          {
+            ...sparkPinnedOut,
+            eligible: undefined,
+            eligibilityReason: undefined,
+          },
+        ]}
+        installations={['gpu']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(
+      screen.queryByText(NOT_SERVING_TARGET_DESCRIPTION),
+    ).not.toBeInTheDocument();
+    const hint = screen.getByText(NO_CACHE_ON_NODE_HINT);
+    expect(rowOf('spark-e119')).toContainElement(hint);
+    expect(hint).toHaveAttribute(
+      'title',
+      expect.stringContaining(
+        'Another node of this installation holds the model cache',
+      ),
+    );
+    expect(
+      screen.queryByText(/A node marked not a serving target/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('gives no hint where the cache is shared, the node is judged, or the cache is on another installation', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[
+          {
+            ...sparkTarget,
+            eligible: undefined,
+            cache: { ...sparkTarget.cache, shared: true },
+          },
+          {
+            ...sparkPinnedOut,
+            eligible: undefined,
+            eligibilityReason: undefined,
+          },
+          {
+            ...sparkPinnedOut,
+            id: 'other/spark-e119',
+            installation: 'other',
+            eligible: undefined,
+            eligibilityReason: undefined,
+          },
+          {
+            ...sparkPinnedOut,
+            id: 'gpu/judged',
+            name: 'judged',
+            eligible: true,
+          },
+        ]}
+        installations={['gpu', 'other']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.queryByText(NO_CACHE_ON_NODE_HINT)).not.toBeInTheDocument();
+  });
+
+  it('names the resource in the GPU column where the labels give no product', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[
+          {
+            id: 'inst-1/amd-node',
+            installation: 'inst-1',
+            name: 'amd-node',
+            ready: true,
+            resource: 'amd.com/gpu',
+            capacity: 2,
+            allocatable: 2,
+            requested: 0,
+          },
+        ]}
+        installations={['inst-1']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText('amd.com/gpu')).toBeInTheDocument();
+  });
+});
+
+describe('describeNode / lacksInstallationCache', () => {
+  it('puts a fault first, then the verdict, then the kind of node', () => {
+    expect(describeNode({ ...sparkPinnedOut, ready: false })).toBe('Not ready');
+    expect(describeNode(sparkPinnedOut)).toBe(NOT_SERVING_TARGET_DESCRIPTION);
+    expect(describeNode(sparkTarget)).toBeUndefined();
+    expect(describeNode(ollamaHost)).toBe('Backend host');
+    expect(describeNode({ ...ollamaHost, eligible: false })).toBe(
+      NOT_SERVING_TARGET_DESCRIPTION,
+    );
+  });
+
+  it('hints only for an unjudged, cache-less cluster node beside a node-local cache of its installation', () => {
+    const unjudged = {
+      ...sparkPinnedOut,
+      eligible: undefined,
+      eligibilityReason: undefined,
+    };
+    const holder = { ...sparkTarget, eligible: undefined };
+
+    expect(lacksInstallationCache(unjudged, [holder, unjudged])).toBe(true);
+    expect(lacksInstallationCache(unjudged, [unjudged])).toBe(false);
+    expect(
+      lacksInstallationCache(unjudged, [
+        { ...holder, cache: { ...holder.cache, shared: true } },
+        unjudged,
+      ]),
+    ).toBe(false);
+    expect(
+      lacksInstallationCache(unjudged, [
+        { ...holder, installation: 'other' },
+        unjudged,
+      ]),
+    ).toBe(false);
+    expect(lacksInstallationCache(sparkPinnedOut, [holder])).toBe(false);
+    expect(
+      lacksInstallationCache({ ...unjudged, eligible: true }, [holder]),
+    ).toBe(false);
+    expect(lacksInstallationCache(ollamaHost, [holder])).toBe(false);
   });
 });

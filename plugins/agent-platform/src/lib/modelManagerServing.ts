@@ -321,6 +321,9 @@ export function toServedModelFromManager(
  * the GPU — and no GPU count: Ollama's API cannot count accelerators, so its
  * `gpuCount: 0` is "not counted", not "none", and is not carried over as a
  * figure.
+ *
+ * `eligible` / `eligibilityReason` (model-manager 0.11 on) carry over as
+ * reported: whether the backend would place a model on the node, and why not.
  */
 export function toGpuNodeFromManager(
   installation: string,
@@ -345,6 +348,8 @@ export function toGpuNodeFromManager(
     memoryReservedBytes: node.reservedBytes,
     memoryFreeBytes: node.freeBytes,
     accelerated: node.accelerated,
+    eligible: node.eligible,
+    eligibilityReason: node.eligibilityReason,
     cache: node.cache
       ? {
           claim: node.cache.claim,

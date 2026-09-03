@@ -467,6 +467,14 @@ export const modelManagerNodeSchema = z.looseObject({
   message: wireString,
   reservedBytes: wireNumber,
   freeBytes: wireNumber,
+  /**
+   * Whether the backend can place a model here — ready, inside the serving
+   * node selector, able to mount the cache (model-manager 0.11 on; absent
+   * before, when every listed node passed for a target).
+   */
+  eligible: wireOptionalBoolean,
+  /** Why not, when `eligible` is false. */
+  eligibilityReason: wireString,
   /** The download cache on this node; absent when the node holds none. */
   cache: z
     .unknown()
