@@ -149,6 +149,17 @@ describe('ServeModelDialog', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('lays the form out as a flex column so a tall body scrolls and the footer stays reachable', () => {
+    renderDialog();
+
+    // bui's Dialog makes DialogBody the scrolling flex child; the form between
+    // them has to pass that layout on, or the footer is clipped (#2228).
+    const form = serveButton().closest('form');
+    expect(form).toHaveStyle({ display: 'flex', flexDirection: 'column' });
+    expect(form?.style.flexGrow).toBe('1');
+    expect(['0', '0px']).toContain(form?.style.minHeight);
+  });
+
   it('composes the InferenceService from the preset, the config and the choices', async () => {
     renderDialog();
 

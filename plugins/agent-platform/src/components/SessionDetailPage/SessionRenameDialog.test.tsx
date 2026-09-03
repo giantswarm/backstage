@@ -53,6 +53,18 @@ describe('SessionRenameDialog', () => {
     expect(nameField()).toHaveValue('What issues are assigned to me?');
   });
 
+  it('lays the form out as a flex column so the footer stays inside the dialog', async () => {
+    // The form wraps bui's header, body and footer; unless it passes the
+    // dialog's flex layout on, a body taller than the viewport pushes the
+    // footer off screen (#2228).
+    await renderDialog();
+
+    const form = nameField().closest('form');
+    expect(form).toHaveStyle({ display: 'flex', flexDirection: 'column' });
+    expect(form?.style.flexGrow).toBe('1');
+    expect(['0', '0px']).toContain(form?.style.minHeight);
+  });
+
   it('puts the cursor straight in the field', async () => {
     // react-aria focuses the dialog container, not the first tabbable element, so
     // the field needs `autoFocus` to be typeable on open — and that prop carries an

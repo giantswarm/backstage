@@ -10,6 +10,7 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import { DIALOG_FORM_STYLE } from '../dialogForm';
 
 /**
  * Longest name this dialog will submit.
@@ -110,7 +111,7 @@ export function SessionRenameDialog({
       isKeyboardDismissDisabled={isRenaming}
       width="min(90vw, 520px)"
     >
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} style={DIALOG_FORM_STYLE}>
         <DialogHeader>Rename session</DialogHeader>
         <DialogBody>
           <Flex direction="column" gap="3">
