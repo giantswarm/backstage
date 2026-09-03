@@ -163,7 +163,15 @@ describe('NewSessionComposer', () => {
       expect(onStart).toHaveBeenCalledWith(sre, 'why is the ingress failing?');
     });
 
-    it('submits on Cmd/Ctrl+Enter', async () => {
+    it('starts on Enter', async () => {
+      renderComposer({ defaultAgent: sre });
+
+      await userEvent.type(field(), 'check the cluster{Enter}');
+
+      expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster');
+    });
+
+    it('still starts on Cmd/Ctrl+Enter, the key it used to be', async () => {
       renderComposer({ defaultAgent: sre });
 
       await userEvent.type(field(), 'check the cluster');
@@ -172,13 +180,23 @@ describe('NewSessionComposer', () => {
       expect(onStart).toHaveBeenCalledWith(sre, 'check the cluster');
     });
 
-    it('leaves plain Enter to insert a newline', async () => {
+    it('breaks the line on Shift+Enter', async () => {
       renderComposer({ defaultAgent: sre });
 
-      await userEvent.type(field(), 'line one{Enter}line two');
+      await userEvent.type(field(), 'line one{Shift>}{Enter}{/Shift}line two');
 
       expect(onStart).not.toHaveBeenCalled();
       expect(field()).toHaveValue('line one\nline two');
+    });
+
+    it('does nothing on Enter without an agent to start — no newline either', async () => {
+      // Two agents and no default, so nothing is preselected.
+      renderComposer({ agents: [sre, issues] });
+
+      await userEvent.type(field(), 'check the cluster{Enter}');
+
+      expect(onStart).not.toHaveBeenCalled();
+      expect(field()).toHaveValue('check the cluster');
     });
 
     it('keeps the prompt after submitting, so a failed create does not lose it', async () => {

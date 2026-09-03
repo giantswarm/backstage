@@ -26,6 +26,7 @@ import {
 } from '../../lib/serving';
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
+import { isSendKey } from '../../lib/sendKey';
 
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
@@ -152,9 +153,9 @@ function describeAgent(agent: AgentRow): string | undefined {
  * Not built on {@link SessionComposer}, which sends into an existing session.
  * Both axes that component takes (`isAgentWorking`, `isFinished`) and all three
  * of its captions are meaningless before a session exists, and what the two
- * genuinely share — trim, the length bound, Cmd/Ctrl+Enter — is a handful of
+ * genuinely share — trim, the length bound, Enter-to-send — is a handful of
  * lines. An abstraction over two callers would cost more than it saves; the
- * length bound itself is imported rather than restated.
+ * length bound and the send key are imported rather than restated.
  */
 export function NewSessionComposer({
   agents,
@@ -293,9 +294,10 @@ export function NewSessionComposer({
   };
 
   // On the field rather than the form: jsx-a11y forbids key handlers on a
-  // <form>, and `TextAreaField` forwards this one to its textarea.
+  // <form>, and `TextAreaField` forwards this one to its textarea. Enter sends and
+  // Shift+Enter breaks the line — see `isSendKey`.
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    if (isSendKey(event)) {
       event.preventDefault();
       submit();
     }
@@ -307,7 +309,8 @@ export function NewSessionComposer({
   } else if (isLoadingAgents) {
     caption = 'Still checking the remaining installations for agents…';
   } else {
-    caption = 'Starts a session and sends this as the first message.';
+    caption =
+      'Enter starts a session and sends this as the first message. Shift+Enter for a new line.';
   }
 
   // Shown whether or not the composer is expanded: a preselected agent whose

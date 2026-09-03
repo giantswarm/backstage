@@ -1256,8 +1256,12 @@ forever — so the box would quietly strand the conversation. It is also closed 
 the agent is mid-turn, since kagent has no queued follow-up: a second message competes
 with the first.
 
-Enter inserts a newline and **Cmd/Ctrl+Enter sends**, because prompts are routinely
-multi-line. The field clears on submit rather than on success — the message is in the
+**Enter sends and Shift+Enter inserts a newline** — Slack's rule, Claude's and kagent's
+own, and what the first colleague to try the chat reached for; the earlier arrangement
+(Enter for a newline, Cmd/Ctrl+Enter to send) came back as a bug report. Cmd/Ctrl+Enter
+still sends, and an Enter that commits an IME composition is left alone. The rule lives
+in one place, `lib/sendKey.ts`, shared by both composers and the answer panel. The field
+clears on submit rather than on success — the message is in the
 transcript from that moment, and a turn is far too long to hold someone's text in a
 disabled box. **On failure the text is handed back into the box**, since the optimistic
 copy is dropped at the same time (nothing was recorded, so the transcript must not keep
@@ -1395,6 +1399,15 @@ ADK wraps two different things in the same request, discriminated by
 - **anything else** — a tool the agent wants permission to run, which takes Approve or
   Decline rather than an answer.
 
+**Enter sends from any answer control** — a radio, a checkbox or the text box — with
+Shift+Enter for a newline in the box, the same rule as the composers. Handled
+explicitly on each control: a textarea never submits its form on Enter, and whether a
+focused radio does is browser-specific, so before this the answer could only be sent by
+reaching the button with the mouse or Tab. Not on the `<form>`, which would also catch
+Enter on the buttons — where react-aria already turns it into a press, so Enter on
+Decline would have sent an approval as well. In the reason box Enter confirms the
+decline instead: that box only exists because Decline was pressed.
+
 **Every question gets a free-text box, choices or not.** A choice list is not
 exhaustive — the live examples end in "Something else (I'll explain)" — and typed words
 do reach the agent, because they are sent inside the `answer` array rather than as the
@@ -1434,7 +1447,7 @@ there.
 
 Expansion is **one-way**. Nothing collapses the inline composer again, because
 collapsing on blur would hide the agent just chosen, and re-collapsing under the cursor
-reads as a glitch. Enter inserts a newline and **Cmd/Ctrl+Enter starts**, matching the
+reads as a glitch. **Enter starts** and Shift+Enter inserts a newline, matching the
 reply composer.
 
 #### Create, navigate, then send — in that order

@@ -550,6 +550,100 @@ describe('PendingConfirmationPanel', () => {
     ).toBeInTheDocument();
   });
 
+  describe('from the keyboard', () => {
+    // Reported by the first colleague to try the chat: the answer could only be
+    // sent by reaching the button with the mouse or Tab. A textarea never submits
+    // its form on Enter, and whether a focused radio does is browser-specific.
+    it('sends the typed answer on Enter', async () => {
+      renderPanel(freeText);
+
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Answer' }),
+        'gazelle{Enter}',
+      );
+
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: 'task-1', answers: [['gazelle']] }),
+      );
+    });
+
+    it('breaks the line on Shift+Enter', async () => {
+      renderPanel(freeText);
+
+      const box = screen.getByRole('textbox', { name: 'Answer' });
+      await userEvent.type(box, 'line one{Shift>}{Enter}{/Shift}line two');
+
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(box).toHaveValue('line one\nline two');
+    });
+
+    it('sends the chosen option on Enter from a radio', async () => {
+      renderPanel(singleChoice);
+
+      await userEvent.click(screen.getByRole('radio', { name: 'A sculpture' }));
+      await userEvent.keyboard('{Enter}');
+
+      // Exactly once: the browser's own Enter-submits-the-form must not fire on
+      // top of ours.
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({ answers: [['A sculpture']] }),
+      );
+    });
+
+    it('sends the chosen options on Enter from a checkbox', async () => {
+      renderPanel(multiChoice);
+
+      await userEvent.click(
+        screen.getByRole('checkbox', { name: 'Has an emperor' }),
+      );
+      await userEvent.click(
+        screen.getByRole('checkbox', { name: 'Named after a flower' }),
+      );
+      await userEvent.keyboard('{Enter}');
+
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          answers: [['Has an emperor', 'Named after a flower']],
+        }),
+      );
+    });
+
+    it('does nothing on Enter with the question unanswered — no newline either', async () => {
+      renderPanel(singleChoice);
+
+      const box = screen.getByRole('textbox', { name: 'Answer' });
+      await userEvent.type(box, '{Enter}');
+
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(box).toHaveValue('');
+    });
+
+    it('confirms the decline on Enter in the reason box, never an approval', async () => {
+      // The box only exists because Decline was pressed; with an option already
+      // picked, a form submit from here would send the opposite of what the user
+      // is in the middle of.
+      renderPanel(singleChoice);
+
+      await userEvent.click(screen.getByRole('radio', { name: 'A sculpture' }));
+      await userEvent.click(declineButton());
+      await userEvent.type(
+        screen.getByRole('textbox', { name: /Reason/ }),
+        'none of these{Enter}',
+      );
+
+      expect(onAnswer).toHaveBeenCalledTimes(1);
+      expect(onAnswer).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        decision: 'reject',
+        rejectionReason: 'none of these',
+        text: 'none of these',
+      });
+    });
+  });
+
   it('warns when the question may not have been put to this user', () => {
     renderPanel(singleChoice, { isUserScoped: false });
 
