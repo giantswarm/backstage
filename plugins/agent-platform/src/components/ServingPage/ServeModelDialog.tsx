@@ -171,6 +171,35 @@ function presetSummary(preset: ServingPreset): string {
   return parts.join(' · ');
 }
 
+/**
+ * The network-policy notice, from what the discovery config says: charts from
+ * 0.13.0 render the serving namespace's policies under `global.networkPolicy`
+ * and publish `networkPolicy.{enabled, flavor}`; without the field (older
+ * chart) or with `enabled: false` the operator writes them by hand where
+ * policies are enforced.
+ */
+export function networkPolicyNotice(config: ModelServingConfig): {
+  status: 'info' | 'warning';
+  title: string;
+  text: string;
+} {
+  if (config.networkPolicy?.enabled) {
+    const flavor = config.networkPolicy.flavor
+      ? ` (${config.networkPolicy.flavor} flavor)`
+      : '';
+    return {
+      status: 'info',
+      title: 'Network and cache',
+      text: `The platform renders the network policies for the serving namespace ${config.namespace}${flavor}: agents and the portal reach the predictor, and the model download reaches Hugging Face. Other callers need components.modelServing.networkPolicy.predictor.additionalIngressNamespaces.`,
+    };
+  }
+  return {
+    status: 'warning',
+    title: 'Before agents can use it',
+    text: `This installation renders no network policies for the serving namespace (global.networkPolicy is off, or the chart predates 0.13.0). Where network policies are enforced, allow agents (namespace kagent) to reach the predictor in ${config.namespace} and the storage-initializer to reach Hugging Face — otherwise the download or the requests fail silently.`,
+  };
+}
+
 /** The cache line of the notice, from what the discovery config says. */
 export function cacheNotice(config: ModelServingConfig): string {
   if (config.cache.enabled && config.cache.redirectPolicy) {
@@ -571,9 +600,9 @@ export function ServeModelDialog({
 
                 {config && (
                   <Alert
-                    status="info"
-                    title="Before agents can use it"
-                    description={`The platform does not yet ship network policies for the serving namespace. Where network policies are enforced, allow agents (namespace kagent) to reach the predictor in ${config.namespace}, and the storage-initializer to reach Hugging Face — otherwise the download or the requests fail silently. ${cacheNotice(config)}`}
+                    status={networkPolicyNotice(config).status}
+                    title={networkPolicyNotice(config).title}
+                    description={`${networkPolicyNotice(config).text} ${cacheNotice(config)}`}
                   />
                 )}
               </>

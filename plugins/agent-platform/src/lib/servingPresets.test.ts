@@ -45,6 +45,9 @@ spec:
     claimName: hf-cache
     mountPath: /mnt/models
     redirectPolicy: false
+  networkPolicy:
+    enabled: true
+    flavor: cilium
   presets:
     namespace: agent-platform
     labelSelector: agent-platform.giantswarm.io/serving-preset=true
@@ -125,6 +128,7 @@ describe('parseModelServingConfigMap', () => {
           mountPath: '/mnt/models',
           redirectPolicy: false,
         },
+        networkPolicy: { enabled: true, flavor: 'cilium' },
         presets: {
           namespace: 'agent-platform',
           matchingLabels: { [SERVING_PRESET_LABEL]: 'true' },
@@ -158,6 +162,8 @@ spec:
           mountPath: undefined,
           redirectPolicy: false,
         },
+        // Charts before 0.13.0 publish no networkPolicy field.
+        networkPolicy: undefined,
         presets: {
           matchingLabels: { [SERVING_PRESET_LABEL]: 'true' },
           names: [],
