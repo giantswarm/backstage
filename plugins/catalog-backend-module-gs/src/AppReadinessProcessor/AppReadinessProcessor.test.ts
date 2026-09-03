@@ -1,6 +1,6 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import type { Entity } from '@backstage/catalog-model';
-import { NotFoundError } from '@backstage/errors';
+import { AuthenticationError, NotFoundError } from '@backstage/errors';
 import type { ContainerRegistryService } from '@giantswarm/backstage-plugin-gs-node';
 import {
   AppReadinessProcessor,
@@ -253,6 +253,85 @@ describe('AppReadinessProcessor', () => {
       'charts/giantswarm/my-app',
       '1.6.0',
     );
+  });
+
+  it('does not flag never-published when the release tag is in the registry', async () => {
+    // Every tag in the 500-tag window is a dev build, so the listing reports no
+    // stable version — but the release chart is there. The point lookup is the
+    // authority for this blocker too.
+    const getTags = jest.fn().mockResolvedValue({
+      tags: [{ tag: '1.6.0-dev.branch.1', createdAt: null }],
+      latestStableVersion: undefined,
+    });
+    const getTagManifest = jest.fn().mockResolvedValue({ manifest: {} });
+    const processor = makeProcessor({
+      getTags,
+      getTagManifest,
+      releaseTag: 'v1.6.0',
+    });
+
+    const result = await run(processor, component(chartAnnotations));
+
+    expect(result.metadata.labels?.['giantswarm.io/readiness']).toBe(
+      READINESS_RELEASABLE,
+    );
+  });
+
+  it('reports unknown when the point lookup could not be answered', async () => {
+    // A 401, a 429 or a 5xx is not a 404: it says we could not find out. Only a
+    // definite absence may become a blocker.
+    const getTags = jest.fn().mockResolvedValue({
+      tags: [{ tag: '1.5.0', createdAt: null }],
+      latestStableVersion: '1.5.0',
+    });
+    const getTagManifest = jest
+      .fn()
+      .mockRejectedValue(new AuthenticationError('token expired'));
+    const processor = makeProcessor({
+      getTags,
+      getTagManifest,
+      releaseTag: 'v1.6.0',
+    });
+
+    const result = await run(processor, component(chartAnnotations));
+
+    expect(result.metadata.labels?.['giantswarm.io/readiness']).toBe(
+      READINESS_UNKNOWN,
+    );
+    expect(
+      result.metadata.annotations?.['giantswarm.io/readiness-flags'],
+    ).toBeUndefined();
+  });
+
+  it('caches a definite point lookup but retries an unanswered one', async () => {
+    const getTags = jest.fn().mockResolvedValue({
+      tags: [{ tag: '1.5.0', createdAt: null }],
+      latestStableVersion: '1.5.0',
+    });
+    const getTagManifest = jest
+      .fn()
+      .mockRejectedValueOnce(new AuthenticationError('token expired'))
+      .mockRejectedValueOnce(new AuthenticationError('token expired'))
+      .mockResolvedValue({ manifest: {} });
+    const processor = makeProcessor({
+      getTags,
+      getTagManifest,
+      releaseTag: 'v1.6.0',
+    });
+
+    const inconclusive = await run(processor, component(chartAnnotations));
+    const retried = await run(processor, component(chartAnnotations));
+    const callsAfterAnswer = getTagManifest.mock.calls.length;
+    await run(processor, component(chartAnnotations));
+
+    expect(inconclusive.metadata.labels?.['giantswarm.io/readiness']).toBe(
+      READINESS_UNKNOWN,
+    );
+    expect(retried.metadata.labels?.['giantswarm.io/readiness']).toBe(
+      READINESS_RELEASABLE,
+    );
+    // The definite answer is cached; the unanswered lookups were not.
+    expect(getTagManifest).toHaveBeenCalledTimes(callsAfterAnswer);
   });
 
   it('skips chart refs that are unsubstituted template placeholders', async () => {

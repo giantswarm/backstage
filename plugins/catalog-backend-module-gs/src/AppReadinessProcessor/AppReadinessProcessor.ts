@@ -115,6 +115,13 @@ class TtlCache<T> {
   }
 }
 
+/**
+ * Outcome of asking the registry for one exact tag. Three-state on purpose:
+ * only a 404 means the tag is absent. A 401 from a private registry, a 429 or a
+ * 5xx says we could not find out, which must never read as a blocker.
+ */
+type TagLookup = 'present' | 'absent' | 'inconclusive';
+
 type Verdict = {
   readiness: string;
   flags: string[];
@@ -156,6 +163,12 @@ export class AppReadinessProcessor implements CatalogProcessor {
    * a repo is asked at most once per TTL per processor.
    */
   private readonly releaseCache: TtlCache<LatestRelease | undefined>;
+  /**
+   * Presence of one exact chart tag, keyed `registry/repository:tag`. Only the
+   * components that would be flagged reach this, but without a cache they would
+   * re-ask on every processing cycle — the traffic pattern that earns a 429.
+   */
+  private readonly tagCache: TtlCache<TagLookup>;
 
   static fromConfig(options: {
     config: RootConfigService;
@@ -202,6 +215,7 @@ export class AppReadinessProcessor implements CatalogProcessor {
     const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
     this.chartCache = new TtlCache(cacheTtlMs);
     this.releaseCache = new TtlCache(cacheTtlMs);
+    this.tagCache = new TtlCache(cacheTtlMs);
   }
 
   getProcessorName(): string {
@@ -264,21 +278,31 @@ export class AppReadinessProcessor implements CatalogProcessor {
       ...charts.map(chart => chart.fetchedAt),
     );
 
-    // The tag listing is a window (500 newest), so a chart that publishes many
-    // CI tags between releases could in principle have its newest stable
-    // version fall outside it, which would read as an unpublished release.
-    // Before flagging, ask the registry for that exact tag: a point lookup
-    // cannot be windowed out. Only the components that would be flagged pay
-    // for this — around one in twelve.
-    if (
-      result.flags.includes(FLAG_RELEASE_NOT_PUBLISHED) &&
-      (await this.tagExists(refs, releaseTag))
-    ) {
-      return withReadiness(
-        entity,
-        { readiness: READINESS_RELEASABLE, flags: [] },
-        checkedAt,
-      );
+    // The tag listing is a window (500 newest, timedesc), so a chart that
+    // publishes many CI tags between releases can have its newest stable
+    // version fall outside it — reading either as an unpublished release or, if
+    // every tag in the window is a dev build, as never published at all. Both
+    // blockers are therefore confirmed by asking the registry for that exact
+    // tag, which cannot be windowed out. Only the components that would be
+    // flagged pay for it, and the answer is cached like every other lookup.
+    if (result.readiness === READINESS_BLOCKED) {
+      const confirmation = await this.confirmTag(refs, releaseTag);
+      if (confirmation === 'present') {
+        return withReadiness(
+          entity,
+          { readiness: READINESS_RELEASABLE, flags: [] },
+          checkedAt,
+        );
+      }
+      if (confirmation === 'inconclusive') {
+        // The registry would not tell us. A wrong blocker on someone else's app
+        // is worse than no verdict.
+        return withReadiness(
+          entity,
+          { readiness: READINESS_UNKNOWN, flags: [] },
+          checkedAt,
+        );
+      }
     }
 
     return withReadiness(entity, result, checkedAt);
@@ -288,33 +312,60 @@ export class AppReadinessProcessor implements CatalogProcessor {
    * Reports whether any of the charts carries this exact version. Tries the tag
    * as published (`1.6.0`) as well as verbatim, since a git tag `v1.6.0`
    * publishes without the prefix.
+   *
+   * `absent` is claimed only when every lookup came back a definite 404. If any
+   * of them could not be answered the result is `inconclusive`, so an expired
+   * credential or a rate-limited registry cannot turn into a blocker.
    */
-  private async tagExists(
+  private async confirmTag(
     refs: readonly ChartRef[],
     releaseTag: string,
-  ): Promise<boolean> {
+  ): Promise<TagLookup> {
     const candidates = Array.from(
       new Set([releaseTag.replace(/^v/, ''), releaseTag]),
     );
+    let inconclusive = false;
     for (const ref of refs) {
       for (const candidate of candidates) {
-        try {
-          await this.containerRegistry.getTagManifest(
-            ref.registry,
-            ref.repository,
-            candidate,
-          );
-          return true;
-        } catch (error) {
-          if (!(error instanceof NotFoundError)) {
-            this.logger.debug(
-              `AppReadinessProcessor: manifest lookup for ${ref.registry}/${ref.repository}:${candidate} failed: ${error}`,
-            );
-          }
+        const lookup = await this.lookupTag(ref, candidate);
+        if (lookup === 'present') {
+          return 'present';
+        }
+        if (lookup === 'inconclusive') {
+          inconclusive = true;
         }
       }
     }
-    return false;
+    return inconclusive ? 'inconclusive' : 'absent';
+  }
+
+  private async lookupTag(ref: ChartRef, tag: string): Promise<TagLookup> {
+    const key = `${ref.registry}/${ref.repository}:${tag}`;
+    // fetchTag rethrows anything that is not an answer, and TtlCache does not
+    // cache a rejected fill, so an inconclusive lookup is retried next pass.
+    const cached = await this.tagCache
+      .get(key, () => this.fetchTag(ref, tag))
+      .catch(() => undefined);
+    return cached?.value ?? 'inconclusive';
+  }
+
+  private async fetchTag(ref: ChartRef, tag: string): Promise<TagLookup> {
+    try {
+      await this.containerRegistry.getTagManifest(
+        ref.registry,
+        ref.repository,
+        tag,
+      );
+      return 'present';
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return 'absent';
+      }
+      this.logger.debug(
+        `AppReadinessProcessor: manifest lookup for ${ref.registry}/${ref.repository}:${tag} failed: ${error}`,
+      );
+      throw error;
+    }
   }
 
   private getLatestRelease(slug: {
