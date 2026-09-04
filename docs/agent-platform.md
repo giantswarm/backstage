@@ -817,6 +817,7 @@ yanking someone who scrolled up out of what they were reading.
 | Tool call            | a `function_call` data part, with its `function_response` folded in        |
 | Delegation           | a `function_call` whose name contains `__NS__`, plus the child's own usage |
 | Approval             | ADK's `adk_request_confirmation`, with the user's verdict                  |
+| Failed turn          | a task in state `failed`/`rejected`, with the reason from `status.message` |
 
 **Calls through Muster are unwrapped.** Agents reach most MCP tools via muster's
 `call_tool`, so untreated every row reads `call_tool` with the real tool buried in
@@ -1108,9 +1109,17 @@ above, since a rejection is a decision and must not come back as a turn in fligh
 to Sentry, which would otherwise mean one issue per long turn.
 
 **A failed turn is still a 200**, with the reason on `status.message` (an agent that
-cannot reach its MCP server reports it there). The HTTP status says only whether the
-turn was accepted; the task says what became of it. Nothing in the client inspects the
-result.
+cannot reach its MCP server reports it there; the Go runtime puts the model
+provider's error there — `404 … model_not_found` for a model the account cannot
+use). The HTTP status says only whether the turn was accepted; the task says what
+became of it. Nothing in the client inspects the send's result: the **timeline**
+reads the failed task's `status.message` and closes the turn with a failed-turn
+entry carrying that reason, and the stream reducer renders the terminal
+`status-update` of a failing turn the same way. Before it did, a failed turn was
+the one outcome that rendered as _nothing_ — history holds no reply, the pending
+prompt is only read in the awaiting-input states, and the "Failed" badge was the
+sole hint — so on a session whose model the provider refused, every message sent
+appeared to do nothing at all.
 
 **The turn streams — as a preview, never as a second source of truth.** The send
 goes over A2A `message/stream` on the same endpoint, relayed by
