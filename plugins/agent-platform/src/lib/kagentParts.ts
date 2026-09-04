@@ -320,3 +320,28 @@ function asNonEmptyString(value: unknown): string | undefined {
 function asNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
+
+/**
+ * A message's plain text: its non-reasoning text parts, in order, as one string.
+ *
+ * For messages that are not conversation — a `status.message` saying why a turn
+ * failed — where the timeline's run-splitting is beside the point and a single
+ * string is what gets shown. Undefined when nothing renderable is there, so a
+ * caller can tell "no reason given" from an empty one.
+ */
+export function readMessageText(message: A2aMessageWire): string | undefined {
+  const parts = Array.isArray(message.parts) ? message.parts : [];
+  const chunks: string[] = [];
+  for (const rawPart of parts) {
+    const part = parsePart(rawPart);
+    if (!part || isThoughtPart(part)) {
+      continue;
+    }
+    const text = readPartText(part);
+    if (text !== undefined) {
+      chunks.push(text);
+    }
+  }
+  const text = chunks.join('\n').trim();
+  return text ? text : undefined;
+}

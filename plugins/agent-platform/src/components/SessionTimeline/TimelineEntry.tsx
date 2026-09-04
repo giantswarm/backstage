@@ -1,4 +1,4 @@
-import { Badge } from '@backstage/ui';
+import { Alert, Badge } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import LoopIcon from '@material-ui/icons/Loop';
 
@@ -110,6 +110,15 @@ const useStyles = makeStyles(theme => ({
   questions: {
     // Indented to hang under the row's text, past the chevron gutter.
     paddingLeft: theme.spacing(3),
+  },
+  // The reason is the provider's or runtime's error verbatim — often a JSON body
+  // with its own line breaks — so it keeps its shape rather than collapsing into
+  // one long line, and wraps rather than widening the column.
+  failureReason: {
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    fontFamily: 'monospace',
+    fontSize: '0.8125rem',
   },
 }));
 
@@ -321,6 +330,33 @@ export function TimelineEntry({
     return (
       <div data-testid="timeline-agent-message">
         <MessageBody text={item.text} />
+      </div>
+    );
+  }
+
+  // The turn ended in error. Rendered as an alert, not as prose: before this
+  // entry existed a failed turn showed the user's message with nothing under it,
+  // the "Failed" badge in the header being the only sign — and on a session whose
+  // model the provider refuses, every message sent appeared to do nothing.
+  if (item.kind === 'turn-failed') {
+    return (
+      <div data-testid="timeline-turn-failed">
+        <Alert
+          status="danger"
+          icon
+          title={
+            item.state === 'rejected'
+              ? 'This turn was rejected'
+              : 'This turn failed'
+          }
+          description={
+            item.reason ? (
+              <span className={classes.failureReason}>{item.reason}</span>
+            ) : (
+              'kagent recorded no reason.'
+            )
+          }
+        />
       </div>
     );
   }

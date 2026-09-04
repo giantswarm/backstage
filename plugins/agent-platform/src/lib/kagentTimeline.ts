@@ -1,7 +1,11 @@
-import { A2aTaskWire } from './kagentTaskSchema';
+import { a2aMessageWireSchema, A2aTaskWire } from './kagentTaskSchema';
 import { readKagentMetadataString } from './kagentMetadata';
 import { normalizeTimestamp } from './kagentSessions';
-import { AWAITING_INPUT_STATES } from './kagentSessionState';
+import {
+  AWAITING_INPUT_STATES,
+  describeSessionState,
+  FAILED_STATES,
+} from './kagentSessionState';
 import {
   addTokenUsage,
   ASK_USER_TOOL_NAME,
@@ -15,6 +19,7 @@ import {
   parsePart,
   readFunctionCall,
   readFunctionResponse,
+  readMessageText,
   readNestedTokenUsage,
   readPartText,
   readTokenUsage,
@@ -104,6 +109,22 @@ export type TimelineItem =
       args?: unknown;
       /** Undefined while the request is still unanswered. */
       verdict?: 'approved' | 'rejected';
+    })
+  | (TimelineItemBase & {
+      kind: 'turn-failed';
+      /**
+       * The terminal state that ended the turn — `failed` or `rejected`, as the
+       * normalised key `describeSessionState` resolves (see `FAILED_STATES`).
+       */
+      state: string;
+      /**
+       * Why, in kagent's words, when it said. The Go runtime writes the provider's
+       * error to the failed task's `status.message` ("OpenAI chat completion
+       * request failed: … 404 … model_not_found") and nowhere else. Absent when
+       * the task carried no readable message: the turn still failed, and the
+       * entry says so without inventing a reason.
+       */
+      reason?: string;
     });
 
 export type SessionTimeline = {
@@ -180,6 +201,56 @@ function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
     return history;
   }
   return [...history, pending];
+}
+
+/**
+ * Whether a task ended in error, and what kagent said about it.
+ *
+ * A failed turn was the one outcome that rendered as *nothing*: the badge said
+ * "Failed", but the timeline showed the user's message with no reply under it,
+ * because the reason lives only on `status.message` — never in `history` — and
+ * `historyWithPendingPrompt` reads that field for the awaiting-input states alone.
+ * On a session whose model the provider refuses ("The model `gpt-6-astra` does not
+ * exist or you do not have access to it") that made a page on which sending a
+ * message visibly did nothing at all.
+ *
+ * Gated on the state like the pending prompt, and for the mirror-image reason: on
+ * a terminal failure `status.message` is the reason; on a completed task it is the
+ * reply, already in history, and reading it here would show it twice.
+ *
+ * The reason is dropped — not the entry — when history already carries the same
+ * message: a runtime that also records the failing reply as an agent message has
+ * already rendered it as prose above, and the entry then says only that the turn
+ * failed, which the prose alone does not.
+ */
+function readTurnFailure(
+  task: A2aTaskWire,
+  alreadyRendered: Set<string>,
+):
+  | { state: string; reason?: string; messageId?: string; author?: string }
+  | undefined {
+  const state = describeSessionState(task.status?.state)?.key;
+  if (!state || !FAILED_STATES.has(state)) {
+    return undefined;
+  }
+  const raw = task.status?.message;
+  const message =
+    raw && typeof raw === 'object'
+      ? a2aMessageWireSchema.safeParse(raw)
+      : undefined;
+  if (!message?.success) {
+    return { state };
+  }
+  const { messageId, metadata } = message.data;
+  return {
+    state,
+    messageId,
+    author: readKagentMetadataString(metadata, 'author'),
+    reason:
+      messageId && alreadyRendered.has(messageId)
+        ? undefined
+        : readMessageText(message.data),
+  };
 }
 
 /**
@@ -541,6 +612,23 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
 
       flushText();
     });
+
+    // Last in its turn: whatever the agent managed to say or do before failing
+    // keeps its place, and the failure closes the turn the way the badge says
+    // it ended.
+    const failure = readTurnFailure(task, seenMessageIds);
+    if (failure) {
+      items.push({
+        kind: 'turn-failed',
+        id: `${taskIndex}:failed:${items.length}`,
+        at: taskTimestamp,
+        author: failure.author,
+        taskIndex,
+        messageId: failure.messageId,
+        state: failure.state,
+        reason: failure.reason,
+      });
+    }
   });
 
   return { items, tokens, skippedMessages };
