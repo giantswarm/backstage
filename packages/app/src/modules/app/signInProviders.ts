@@ -31,6 +31,11 @@ export interface SignInProviderConfig {
  *
  * Both cards yield the same portal session. Without a fallback the page
  * offers the main card alone.
+ *
+ * A sign-in through the fallback card is remembered for this browser: the
+ * main provider's later silent re-login popups (AI chat, cluster access,
+ * muster) return to that connector. Picking the main card, or signing out,
+ * forgets it, so the main card always leads where its title says.
  */
 export function signInProviders(configApi: ConfigApi): SignInProviderConfig[] {
   const main: SignInProviderConfig = {

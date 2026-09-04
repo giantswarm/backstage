@@ -35,6 +35,10 @@ import {
   DiscoveryApiClient,
   NO_INSTALLATION,
 } from '../discovery/DiscoveryApiClient';
+import {
+  CONNECTOR_ID_PARAM,
+  SignInConnectorMemory,
+} from './signInConnectorMemory';
 
 let warned = false;
 
@@ -139,6 +143,16 @@ type Options<AuthSession> = {
    * upstream identity provider for that sign-in.
    */
   startParams?: Record<string, string>;
+  /**
+   * Where this browser remembers the Dex connector it signed in with. A
+   * connector pinned through `startParams` records its connector after a
+   * successful login popup; an unpinned connector sends the remembered one on
+   * its popups and redirects (never on `/refresh`), so silent re-logins of the
+   * main provider return to the connector the person can actually use.
+   * Signing out, or an instant popup of an unpinned connector (the login
+   * page's own card being picked), forgets it.
+   */
+  signInConnectorMemory?: SignInConnectorMemory;
 };
 
 function defaultJoinScopes(scopes: Set<string>) {
@@ -166,6 +180,7 @@ export class DefaultAuthConnector<
   >;
   private readonly isMainProvider: boolean;
   private readonly startParams: Record<string, string>;
+  private readonly signInConnectorMemory?: SignInConnectorMemory;
   constructor(options: Options<AuthSession>) {
     const {
       configApi,
@@ -179,6 +194,7 @@ export class DefaultAuthConnector<
       clusterTokenProvider,
       isMainProvider = false,
       startParams = {},
+      signInConnectorMemory,
     } = options;
 
     if (!warned && !configApi) {
@@ -213,6 +229,7 @@ export class DefaultAuthConnector<
     this.clusterTokenProvider = clusterTokenProvider;
     this.isMainProvider = isMainProvider;
     this.startParams = startParams;
+    this.signInConnectorMemory = signInConnectorMemory;
   }
 
   async createSession(
@@ -225,6 +242,13 @@ export class DefaultAuthConnector<
       return this.mintBrokerSession(options.scopes);
     }
     if (options.instantPopup) {
+      // An instant popup is the login page's own card being picked. The
+      // unpinned card stands for the deployment's default connector, so
+      // choosing it explicitly drops whatever connector this browser
+      // remembered from an earlier sign-in through a pinned card.
+      if (!this.pinnedConnectorId()) {
+        this.signInConnectorMemory?.forget();
+      }
       if (this.enableExperimentalRedirectFlow) {
         return this.executeRedirect(options.scopes);
       }
@@ -319,12 +343,43 @@ export class DefaultAuthConnector<
       error.status = res.status;
       throw error;
     }
+
+    // Signing out ends the sign-in this memory belongs to; the next login
+    // page visit starts from the deployment's default connector again.
+    this.signInConnectorMemory?.forget();
+  }
+
+  /** The connector this connector instance is pinned to, if any. */
+  private pinnedConnectorId(): string | undefined {
+    return this.startParams[CONNECTOR_ID_PARAM];
+  }
+
+  /**
+   * Query parameters for the next `/start`: the explicit pin wins; an
+   * unpinned connector falls back to the connector this browser remembers.
+   */
+  private loginStartParams(): Record<string, string> {
+    const remembered = this.pinnedConnectorId()
+      ? undefined
+      : this.signInConnectorMemory?.get();
+    return remembered
+      ? { ...this.startParams, [CONNECTOR_ID_PARAM]: remembered }
+      : { ...this.startParams };
+  }
+
+  /** Records the connector a successful login went through, if it named one. */
+  private rememberConnector(startParams: Record<string, string>): void {
+    const connectorId = startParams[CONNECTOR_ID_PARAM];
+    if (connectorId) {
+      this.signInConnectorMemory?.remember(connectorId);
+    }
   }
 
   private async showPopup(scopes: Set<string>): Promise<AuthSession> {
     const scope = this.joinScopesFunc(scopes);
+    const startParams = this.loginStartParams();
     const popupUrl = await this.buildUrl('/start', {
-      ...this.startParams,
+      ...startParams,
       scope,
       origin: window.location.origin,
       flow: 'popup',
@@ -345,14 +400,21 @@ export class DefaultAuthConnector<
       height,
     });
 
+    // Only a completed login counts: a closed or failed popup leaves the
+    // memory as it was.
+    this.rememberConnector(startParams);
     return await this.sessionTransform(payload);
   }
 
   private async executeRedirect(scopes: Set<string>): Promise<AuthSession> {
     const scope = this.joinScopesFunc(scopes);
+    const startParams = this.loginStartParams();
+    // The redirect leaves the page, so its outcome cannot be observed here;
+    // the connector is remembered as the login starts.
+    this.rememberConnector(startParams);
     // redirect to auth api
     window.location.href = await this.buildUrl('/start', {
-      ...this.startParams,
+      ...startParams,
       scope,
       origin: window.location.origin,
       redirectUrl: window.location.href,
