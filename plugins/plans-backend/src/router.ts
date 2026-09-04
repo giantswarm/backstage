@@ -1,20 +1,24 @@
-import {
-  HttpAuthService,
-  LoggerService,
-  UserInfoService,
-} from '@backstage/backend-plugin-api';
+import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import {
+  AuthenticationError,
   InputError,
   NotAllowedError,
   NotFoundError,
   ServiceUnavailableError,
 } from '@backstage/errors';
-import { GithubCredentialsProvider } from '@backstage/integration';
 import express from 'express';
 import Router from 'express-promise-router';
 
 const GITHUB_API_BASE_URL = 'https://api.github.com';
+
+/**
+ * Request header carrying the caller's own GitHub OAuth token. Every GitHub
+ * call the proxy makes runs as that person -- reads are limited to what they
+ * can see, comments are authored by them -- so no shared App identity is
+ * involved anywhere in this plugin.
+ */
+export const GITHUB_TOKEN_HEADER = 'x-github-token';
 
 /** `owner/repo` slug, e.g. `giantswarm/bumblebee-plans`. */
 const REPO_SLUG_PATTERN = /^[\w.-]+\/[\w.-]+$/;
@@ -89,8 +93,6 @@ export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   httpAuth: HttpAuthService;
-  userInfo: UserInfoService;
-  credentialsProvider: GithubCredentialsProvider;
   /** Overridable for tests; defaults to the global fetch. */
   fetchFn?: typeof fetch;
 }
@@ -143,7 +145,7 @@ function mapReviewComment(comment: GithubComment) {
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { logger, config, httpAuth, userInfo, credentialsProvider } = options;
+  const { logger, config, httpAuth } = options;
   const fetchFn = options.fetchFn ?? fetch;
 
   const repositories = (
@@ -166,8 +168,8 @@ export async function createRouter(
   /**
    * Resolve the target repository for a request from `?repo=`. Defaults to
    * the only repository when exactly one is configured. Only configured
-   * repositories are accepted -- this is what scopes the GitHub App token
-   * proxy to plan repos instead of arbitrary ones.
+   * repositories are accepted -- this keeps the proxy scoped to plan repos
+   * instead of being a general GitHub relay.
    */
   const resolveRepo = (req: express.Request): string => {
     if (repositories.length === 0) {
@@ -192,27 +194,32 @@ export async function createRouter(
     return requested;
   };
 
-  /** Call a GitHub REST API path with the integration's App credentials. */
+  /**
+   * The caller's GitHub token. The frontend obtains it from the portal's
+   * GitHub auth provider (connecting the account on first use) and sends it
+   * on every request; without it there is no identity to call GitHub as.
+   */
+  const userToken = (req: express.Request): string => {
+    const token = req.header(GITHUB_TOKEN_HEADER);
+    if (!token) {
+      throw new AuthenticationError(
+        'Plans requests need your GitHub token in the X-GitHub-Token header. Connect your GitHub account in the portal and retry.',
+      );
+    }
+    return token;
+  };
+
+  /** Call a GitHub REST API path as the caller. */
   const githubRequest = async (
-    repo: string,
+    token: string,
     path: string,
     init?: { method: 'POST'; body: unknown },
   ): Promise<unknown> => {
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
+      Authorization: `Bearer ${token}`,
     };
-    try {
-      const { token } = await credentialsProvider.getCredentials({
-        url: `https://github.com/${repo}`,
-      });
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-    } catch (error) {
-      // Proceed without auth -- may still work for public repos.
-      logger.warn(`Failed to get GitHub credentials for ${repo}: ${error}`);
-    }
 
     const response = await fetchFn(`${GITHUB_API_BASE_URL}${path}`, {
       headers: init
@@ -227,17 +234,16 @@ export async function createRouter(
       throw new NotFoundError(`GitHub responded with 404 for ${path}`);
     }
     if (!response.ok) {
-      // Surface GitHub's own explanation (e.g. "Resource not accessible by
-      // integration", which is what a missing GitHub App write permission
-      // looks like) instead of an opaque status code.
+      // Surface GitHub's own explanation instead of an opaque status code.
       const detail = await response.text().catch(() => '');
       const message = `GitHub responded with ${response.status} for ${path}${
         detail ? `: ${detail}` : ''
       }`;
-      // A 403 is an authorization failure -- almost always the GitHub App
-      // lacking a permission (Pull requests / Issues: write) -- not a fault on
-      // our side. Map it to a real 403 so the client sees an actionable error
-      // rather than a 500, and so it does not page us through Sentry.
+      // A 403 is an authorization failure on GitHub's side -- the caller
+      // lacks access to the repository, or the GitHub App their token comes
+      // from lacks a permission (Pull requests / Issues: write) -- not a
+      // fault of ours. Map it to a real 403 so the client sees an actionable
+      // error rather than a 500, and so it does not page us through Sentry.
       if (response.status === 403) {
         throw new NotAllowedError(message);
       }
@@ -245,17 +251,18 @@ export async function createRouter(
     }
     return response.json();
   };
-  const githubGet = (repo: string, path: string) => githubRequest(repo, path);
+  const githubGet = (token: string, path: string) => githubRequest(token, path);
 
   /** Fetch a file's decoded UTF-8 content via the GitHub contents API. */
   const getFileContent = async (
+    token: string,
     repo: string,
     path: string,
     ref: string,
   ): Promise<string> => {
     const encodedPath = path.split('/').map(encodeURIComponent).join('/');
     const result = (await githubGet(
-      repo,
+      token,
       `/repos/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
     )) as {
       type?: string;
@@ -282,22 +289,6 @@ export async function createRouter(
     return pullNumber;
   };
 
-  /**
-   * Comments are written with the GitHub App token, so GitHub attributes
-   * them to the app's bot account. Prefix the body with the Backstage user
-   * so authorship survives on GitHub itself.
-   */
-  const attributedBody = async (
-    req: express.Request,
-    body: string,
-  ): Promise<string> => {
-    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
-    const info = await userInfo.getUserInfo(credentials);
-    // 'user:default/jdoe' -> 'jdoe'
-    const name = info.userEntityRef.split('/').pop() ?? info.userEntityRef;
-    return `**${name}** (via Dev Portal):\n\n${body}`;
-  };
-
   const requireBody = (req: express.Request): string => {
     const body = req.body?.body;
     if (typeof body !== 'string' || body.trim() === '') {
@@ -322,7 +313,7 @@ export async function createRouter(
   router.get('/pulls', async (req, res) => {
     const repo = resolveRepo(req);
     const pulls = (await githubGet(
-      repo,
+      userToken(req),
       `/repos/${repo}/pulls?state=open&per_page=100`,
     )) as Array<{
       number: number;
@@ -351,7 +342,7 @@ export async function createRouter(
     const repo = resolveRepo(req);
     const pullNumber = parsePullNumber(req.params.number);
     const files = (await githubGet(
-      repo,
+      userToken(req),
       `/repos/${repo}/pulls/${pullNumber}/files?per_page=100`,
     )) as Array<{
       filename: string;
@@ -379,19 +370,20 @@ export async function createRouter(
     const repo = resolveRepo(req);
     const pullNumber = parsePullNumber(req.params.number);
     const comments = (await githubGet(
-      repo,
+      userToken(req),
       `/repos/${repo}/issues/${pullNumber}/comments?per_page=100`,
     )) as GithubComment[];
 
     res.json({ comments: comments.map(mapComment) });
   });
 
+  // Written as the caller, so GitHub shows them as the comment's author.
   router.post('/pulls/:number/comments', async (req, res) => {
     const repo = resolveRepo(req);
     const pullNumber = parsePullNumber(req.params.number);
-    const body = await attributedBody(req, requireBody(req));
+    const body = requireBody(req);
     const created = (await githubRequest(
-      repo,
+      userToken(req),
       `/repos/${repo}/issues/${pullNumber}/comments`,
       { method: 'POST', body: { body } },
     )) as GithubComment;
@@ -404,7 +396,7 @@ export async function createRouter(
     const repo = resolveRepo(req);
     const pullNumber = parsePullNumber(req.params.number);
     const comments = (await githubGet(
-      repo,
+      userToken(req),
       `/repos/${repo}/pulls/${pullNumber}/comments?per_page=100`,
     )) as GithubComment[];
 
@@ -414,7 +406,8 @@ export async function createRouter(
   router.post('/pulls/:number/review-comments', async (req, res) => {
     const repo = resolveRepo(req);
     const pullNumber = parsePullNumber(req.params.number);
-    const body = await attributedBody(req, requireBody(req));
+    const token = userToken(req);
+    const body = requireBody(req);
 
     const { path, line, inReplyTo } = req.body ?? {};
 
@@ -433,7 +426,7 @@ export async function createRouter(
       }
       // New threads need the PR head commit id.
       const pull = (await githubGet(
-        repo,
+        token,
         `/repos/${repo}/pulls/${pullNumber}`,
       )) as { head?: { sha?: string } | null };
       if (!pull.head?.sha) {
@@ -449,7 +442,7 @@ export async function createRouter(
     }
 
     const created = (await githubRequest(
-      repo,
+      token,
       `/repos/${repo}/pulls/${pullNumber}/comments`,
       { method: 'POST', body: payload },
     )) as GithubComment;
@@ -462,7 +455,7 @@ export async function createRouter(
     // HEAD resolves to the repository's default branch on the GitHub side.
     const ref = singleQueryValue(req.query.ref, 'ref') ?? 'HEAD';
     const result = (await githubGet(
-      repo,
+      userToken(req),
       `/repos/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
     )) as {
       truncated?: boolean;
@@ -486,7 +479,11 @@ export async function createRouter(
     if (!path) {
       throw new InputError('path query parameter is required');
     }
-    res.json({ path, ref, content: await getFileContent(repo, path, ref) });
+    res.json({
+      path,
+      ref,
+      content: await getFileContent(userToken(req), repo, path, ref),
+    });
   });
 
   const epicsCache = new Map<string, { expires: number; data: unknown }>();
@@ -494,7 +491,9 @@ export async function createRouter(
   /**
    * The epic each plan references, for cross-linking plans with the roadmap
    * board: merged plans scanned on the default branch, proposed plans parsed
-   * from their PR diffs.
+   * from their PR diffs. The crawl runs as the requesting caller; the result
+   * is cached per repository since it describes the repository, not the
+   * caller.
    */
   router.get('/epics', async (req, res) => {
     const repo = resolveRepo(req);
@@ -503,11 +502,12 @@ export async function createRouter(
       res.json(hit.data);
       return;
     }
+    const token = userToken(req);
 
     // Merged plans: scan each plan folder's direct-child markdown files
     // (PRD.md first) until one carries an Epic header.
     const treeResult = (await githubGet(
-      repo,
+      token,
       `/repos/${repo}/git/trees/HEAD?recursive=1`,
     )) as {
       tree?: Array<{ path?: string; type?: string }> | null;
@@ -530,7 +530,7 @@ export async function createRouter(
           );
           for (const path of candidates) {
             const epic = parseEpicRef(
-              await getFileContent(repo, path, 'HEAD').catch(() => ''),
+              await getFileContent(token, repo, path, 'HEAD').catch(() => ''),
             );
             if (epic) {
               return { folder, path, epic };
@@ -546,14 +546,14 @@ export async function createRouter(
     // ponytail: patch-only parse -- misses a PRD whose patch GitHub omits
     // (oversized file); fetch content at the head branch if that ever happens.
     const openPulls = (await githubGet(
-      repo,
+      token,
       `/repos/${repo}/pulls?state=open&per_page=100`,
     )) as Array<{ number: number; title: string }>;
     const pulls = (
       await Promise.all(
         openPulls.map(async pull => {
           const files = (await githubGet(
-            repo,
+            token,
             `/repos/${repo}/pulls/${pull.number}/files?per_page=100`,
           )) as Array<{ filename?: string; patch?: string }>;
           for (const file of files) {

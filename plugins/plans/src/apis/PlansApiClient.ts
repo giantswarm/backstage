@@ -2,6 +2,7 @@ import {
   createApiRef,
   DiscoveryApi,
   FetchApi,
+  OAuthApi,
 } from '@backstage/core-plugin-api';
 import {
   NewReviewComment,
@@ -22,13 +23,36 @@ export const plansApiRef = createApiRef<PlansApi>({
   id: 'plugin.plans.api',
 });
 
+/**
+ * GitHub OAuth scopes the plans proxy needs on the caller's token: reading
+ * plan repositories and writing PR comments. Requested incrementally on the
+ * first plans request, so the GitHub consent prompt only ever appears to
+ * people who open the plans page.
+ */
+const GITHUB_SCOPES = ['repo'];
+
+/** Header carrying the caller's GitHub token to the plans backend. */
+const GITHUB_TOKEN_HEADER = 'X-GitHub-Token';
+
+/**
+ * Client for the plans backend. Every request carries the signed-in user's
+ * own GitHub token, so the backend reads the plan repositories as that
+ * person and comments are authored by them on GitHub -- there is no shared
+ * bot identity anywhere in the plans flow.
+ */
 export class PlansApiClient implements PlansApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
+  private readonly githubAuthApi: OAuthApi;
 
-  constructor(options: { discoveryApi: DiscoveryApi; fetchApi: FetchApi }) {
+  constructor(options: {
+    discoveryApi: DiscoveryApi;
+    fetchApi: FetchApi;
+    githubAuthApi: OAuthApi;
+  }) {
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
+    this.githubAuthApi = options.githubAuthApi;
   }
 
   async listRepos(): Promise<PlansReposResponse> {
@@ -113,7 +137,7 @@ export class PlansApiClient implements PlansApi {
     path: string,
     query: Record<string, string | undefined> = {},
   ): Promise<T> {
-    return this.request<T>(path, query);
+    return this.request<T>(path, query, {});
   }
 
   private async post<T>(
@@ -131,7 +155,7 @@ export class PlansApiClient implements PlansApi {
   private async request<T>(
     path: string,
     query: Record<string, string | undefined>,
-    init?: RequestInit,
+    init: RequestInit & { headers?: Record<string, string> },
   ): Promise<T> {
     const baseUrl = await this.discoveryApi.getBaseUrl('plans');
     const url = new URL(`${baseUrl}${path}`);
@@ -140,9 +164,13 @@ export class PlansApiClient implements PlansApi {
         url.searchParams.set(key, value);
       }
     }
-    const response = init
-      ? await this.fetchApi.fetch(url.toString(), init)
-      : await this.fetchApi.fetch(url.toString());
+    // Connects the GitHub account on first use (Backstage's consent popup);
+    // afterwards the token comes from the existing session.
+    const token = await this.githubAuthApi.getAccessToken(GITHUB_SCOPES);
+    const response = await this.fetchApi.fetch(url.toString(), {
+      ...init,
+      headers: { ...init.headers, [GITHUB_TOKEN_HEADER]: token },
+    });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const message =

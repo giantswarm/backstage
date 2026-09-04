@@ -1,7 +1,6 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
 import { AuthenticationError } from '@backstage/errors';
-import { GithubCredentialsProvider } from '@backstage/integration';
 import express from 'express';
 import request from 'supertest';
 import { createRouter, RouterOptions } from './router';
@@ -20,17 +19,15 @@ function jsonResponse(body: unknown, status = 200) {
 
 describe('createRouter', () => {
   const fetchFn = jest.fn<Promise<Response>, Parameters<typeof fetch>>();
-  const getCredentials = jest.fn();
-  const credentialsProvider = {
-    getCredentials,
-  } as unknown as GithubCredentialsProvider;
 
   // Mirror the production setup: the backend's root HTTP router applies
   // MiddlewareFactory.error() after plugin routes, mapping @backstage/errors
-  // classes to status codes.
+  // classes to status codes. Requests carry the caller's GitHub token the
+  // way the frontend sends it, unless a test opts out.
   async function buildApp(
     repositories: string[] = [REPO],
     options: Partial<RouterOptions> = {},
+    { withToken = true }: { withToken?: boolean } = {},
   ) {
     const logger = mockServices.logger.mock();
     const config = mockServices.rootConfig({
@@ -40,12 +37,16 @@ describe('createRouter', () => {
       logger,
       config,
       httpAuth: mockServices.httpAuth(),
-      userInfo: mockServices.userInfo(),
-      credentialsProvider,
       fetchFn,
       ...options,
     });
     const app = express();
+    if (withToken) {
+      app.use((req, _res, next) => {
+        req.headers['x-github-token'] = 'gh-token';
+        next();
+      });
+    }
     app.use(router);
     app.use(MiddlewareFactory.create({ logger, config }).error());
     return app;
@@ -55,8 +56,6 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     fetchFn.mockReset();
-    getCredentials.mockReset();
-    getCredentials.mockResolvedValue({ token: 'gh-token' });
     app = await buildApp();
   });
 
@@ -147,18 +146,24 @@ describe('createRouter', () => {
       );
     });
 
-    it('proceeds without Authorization when credentials fail', async () => {
-      getCredentials.mockRejectedValue(new Error('no app installation'));
-      fetchFn.mockResolvedValue(jsonResponse([]));
+    it('rejects GitHub-backed routes without the caller token', async () => {
+      const tokenlessApp = await buildApp([REPO], {}, { withToken: false });
 
-      const response = await request(app).get('/pulls');
+      const response = await request(tokenlessApp).get('/pulls');
+
+      expect(response.status).toBe(401);
+      expect(response.body.error.name).toBe('AuthenticationError');
+      expect(response.body.error.message).toContain('X-GitHub-Token');
+      expect(fetchFn).not.toHaveBeenCalled();
+    });
+
+    it('lists configured repositories without a GitHub token', async () => {
+      const tokenlessApp = await buildApp([REPO], {}, { withToken: false });
+
+      const response = await request(tokenlessApp).get('/repos');
 
       expect(response.status).toBe(200);
-      const headers = fetchFn.mock.calls[0][1]?.headers as Record<
-        string,
-        string
-      >;
-      expect(headers.Authorization).toBeUndefined();
+      expect(response.body).toEqual({ repositories: [REPO] });
     });
 
     it('maps a GitHub 404 to NotFoundError', async () => {
@@ -330,7 +335,7 @@ describe('createRouter', () => {
       );
     });
 
-    it('creates a comment attributed to the Backstage user', async () => {
+    it('creates a comment as the caller', async () => {
       fetchFn.mockResolvedValue(
         jsonResponse({ id: 2, user: { login: 'plans-app[bot]' } }, 201),
       );
@@ -346,7 +351,7 @@ describe('createRouter', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            body: '**mock** (via Dev Portal):\n\nA remark',
+            body: 'A remark',
           }),
         }),
       );
@@ -429,7 +434,7 @@ describe('createRouter', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            body: '**mock** (via Dev Portal):\n\nOn this line',
+            body: 'On this line',
             commit_id: 'abc123',
             path: 'plans/mvp/index.md',
             line: 3,
@@ -453,7 +458,7 @@ describe('createRouter', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            body: '**mock** (via Dev Portal):\n\nA reply',
+            body: 'A reply',
             in_reply_to: 10,
           }),
         }),

@@ -18,13 +18,18 @@ portal.
 
 Data comes from the `plans` backend plugin
 (`@giantswarm/backstage-plugin-plans-backend`), a thin authenticated proxy
-over the GitHub API using the deployed GitHub App credentials. Configure the
-repositories via `plans.repositories` (see that plugin's `config.d.ts`).
+over the GitHub API. Every request carries the signed-in user's own GitHub
+token (from the portal's `github` auth provider, connected on first use), so
+documents are read as that person and PR comments are authored by them on
+GitHub -- no shared bot identity is involved. Configure the repositories via
+`plans.repositories` (see that plugin's `config.d.ts`).
 
 ## Gating
 
 All extensions are disabled by default so customer portals never expose the
-page. Enable it per deployment via app-config:
+page. Enable it per deployment via app-config (the deployment also needs the
+`github` auth provider configured, whose GitHub App must be installed on the
+plan repositories with Pull requests and Issues write access):
 
 ```yaml
 app:
