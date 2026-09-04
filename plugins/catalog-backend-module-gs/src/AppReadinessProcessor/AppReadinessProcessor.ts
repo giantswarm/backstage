@@ -25,7 +25,10 @@ import {
   type ContainerRegistryService,
   containerRegistryServiceRef,
 } from '@giantswarm/backstage-plugin-gs-node';
-import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  parseChartRef,
+  ReleaseReadinessFlags,
+} from '@giantswarm/backstage-plugin-gs-common';
 import {
   getLatestStableRelease,
   type LatestRelease,
@@ -42,8 +45,13 @@ const READINESS_CHECKED_ANNOTATION = 'giantswarm.io/readiness-checked';
 /**
  * The newest release exists in git but no chart of that version reached the
  * registry, so there is nothing for a HelmRelease to point at.
+ *
+ * The names of both blockers live in gs-common, because the devportal has to
+ * recognise them to tell them apart from the chart-metadata gaps the catalog
+ * importer merges into the same annotation. A blocker added here alone would be
+ * rendered there as a chart-metadata gap.
  */
-const FLAG_RELEASE_NOT_PUBLISHED = 'RELEASE-NOT-PUBLISHED';
+const FLAG_RELEASE_NOT_PUBLISHED = ReleaseReadinessFlags.releaseNotPublished;
 /**
  * The repo has releases but the chart registry holds no stable version at all.
  *
@@ -53,7 +61,7 @@ const FLAG_RELEASE_NOT_PUBLISHED = 'RELEASE-NOT-PUBLISHED';
  * window, so it reports FLAG_RELEASE_NOT_PUBLISHED instead, which is true of
  * both states.
  */
-const FLAG_NEVER_PUBLISHED = 'NEVER-PUBLISHED';
+const FLAG_NEVER_PUBLISHED = ReleaseReadinessFlags.neverPublished;
 
 /**
  * Readiness verdicts. `unknown` is a first-class outcome, not an absence: a
