@@ -1,6 +1,18 @@
 import type { LoggerService } from '@backstage/backend-plugin-api';
 
 const MAX_RETRIES = 3;
+/**
+ * Ceiling on a single retry sleep.
+ *
+ * A primary-rate-limit 429 carries `x-ratelimit-reset` up to an hour out, and
+ * these retries are awaited inside `preProcessEntity`, so an uncapped delay
+ * parks a catalog processing worker for that long — three times over. Failing
+ * after three short attempts is better: the callers treat a failed lookup as
+ * "not known" and try again on the next processing pass, which is minutes away
+ * rather than an hour. 60s is also what this function already falls back to
+ * when the response carries no timing header at all.
+ */
+const MAX_RETRY_DELAY_MS = 60_000;
 const DEFAULT_MAX_PAGES = 5;
 const PER_PAGE = 100;
 
@@ -204,20 +216,20 @@ async function githubFetch(options: {
   throw new Error(`GitHub API ${url} failed after ${MAX_RETRIES} retries`);
 }
 
-function getRetryDelayMs(response: Response): number {
+export function getRetryDelayMs(response: Response): number {
   const rateLimitReset = response.headers.get('x-ratelimit-reset');
   if (rateLimitReset) {
     const resetMs = parseInt(rateLimitReset, 10) * 1000;
     const delayMs = resetMs - Date.now();
     if (delayMs > 0) {
-      return delayMs;
+      return Math.min(delayMs, MAX_RETRY_DELAY_MS);
     }
   }
 
   const retryAfter = response.headers.get('retry-after');
   if (retryAfter) {
-    return parseInt(retryAfter, 10) * 1000;
+    return Math.min(parseInt(retryAfter, 10) * 1000, MAX_RETRY_DELAY_MS);
   }
 
-  return 60_000;
+  return MAX_RETRY_DELAY_MS;
 }
