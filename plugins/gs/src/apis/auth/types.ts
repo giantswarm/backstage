@@ -16,6 +16,15 @@ export const gsAuthApiRef = createApiRef<AuthApi>({
   id: 'plugin.gs.auth',
 });
 
+/**
+ * Second sign-in entry point of the main login provider, pinned to the Dex
+ * connector `gs.signInFallbackProvider.connectorId`. Same backend provider
+ * and session as {@link gsAuthApiRef}; only the login popup differs.
+ */
+export const gsFallbackSignInAuthApiRef = createApiRef<AuthApi>({
+  id: 'plugin.gs.auth.fallback-sign-in',
+});
+
 export const gsAuthProvidersApiRef = createApiRef<GSAuthProvidersApi>({
   id: 'plugin.gs.auth-providers',
 });
@@ -40,6 +49,12 @@ export type AuthProvider = {
 export type GSAuthProvidersApi = {
   getAuthApi: (providerName: string) => AuthApi | undefined;
   getMainAuthApi: () => AuthApi;
+  /**
+   * The main login provider pinned to the fallback Dex connector
+   * (`gs.signInFallbackProvider.connectorId`), for the login page's second
+   * card. Throws when no fallback connector is configured.
+   */
+  getFallbackSignInAuthApi: () => AuthApi;
   getKubernetesAuthApis: () => { [providerName: string]: AuthApi };
   getMCPAuthApis: () => { [providerName: string]: AuthApi };
   getProviders: () => AuthProvider[];

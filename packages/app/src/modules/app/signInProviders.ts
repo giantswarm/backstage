@@ -1,12 +1,14 @@
 import {
   ApiRef,
   ConfigApi,
-  githubAuthApiRef,
   ProfileInfoApi,
   BackstageIdentityApi,
   SessionApi,
 } from '@backstage/core-plugin-api';
-import { gsAuthApiRef } from '@giantswarm/backstage-plugin-gs';
+import {
+  gsAuthApiRef,
+  gsFallbackSignInAuthApiRef,
+} from '@giantswarm/backstage-plugin-gs';
 
 /** Shape of one `SignInPage` provider entry (`@backstage/core-components`). */
 export interface SignInProviderConfig {
@@ -17,48 +19,43 @@ export interface SignInProviderConfig {
 }
 
 /**
- * Sign-in options for the login page, in the configured order.
+ * Sign-in cards of the login page. The portal signs in through one OIDC
+ * login provider only (`gs.authProvider`, Dex on the Giant Swarm fleet); the
+ * cards differ in the Dex connector they lead to:
  *
- * `gs.signInProviders` lists them: `dex` is the main OIDC login provider
- * (`gs.authProvider`, Dex on the Giant Swarm fleet), `github` the portal's
- * `auth.providers.github` provider. Both resolve to the same catalog user,
- * so which one a person picks only changes which upstream session the
- * portal holds. Without the list the page offers the main provider alone,
- * titled via `gs.signInProvider` as before.
+ * - the main card (titled via `gs.signInProvider`) uses the deployment's
+ *   default connector, and
+ * - when `gs.signInFallbackProvider.connectorId` is set, a second card signs
+ *   in through the same provider pinned to that connector, for people the
+ *   default one cannot authenticate.
+ *
+ * Both cards yield the same portal session. Without a fallback the page
+ * offers the main card alone.
  */
 export function signInProviders(configApi: ConfigApi): SignInProviderConfig[] {
-  const dex = (title?: string, message?: string): SignInProviderConfig => ({
+  const main: SignInProviderConfig = {
     id: 'dex-auth-provider',
-    title:
-      title ?? configApi.getOptionalString('gs.signInProvider.title') ?? 'Dex',
+    title: configApi.getOptionalString('gs.signInProvider.title') ?? 'Dex',
     message:
-      message ??
       configApi.getOptionalString('gs.signInProvider.message') ??
       'Sign in using Dex',
     apiRef: gsAuthApiRef,
-  });
-  const github = (title?: string, message?: string): SignInProviderConfig => ({
-    id: 'github-auth-provider',
-    title: title ?? 'GitHub',
-    message: message ?? 'Sign in using GitHub',
-    apiRef: githubAuthApiRef,
-  });
+  };
 
-  const configured = configApi.getOptionalConfigArray('gs.signInProviders');
-  const providers = (configured ?? []).flatMap(entry => {
-    const id = entry.getString('id');
-    const title = entry.getOptionalString('title');
-    const message = entry.getOptionalString('message');
-    if (id === 'dex') {
-      return [dex(title, message)];
-    }
-    if (id === 'github') {
-      return [github(title, message)];
-    }
-    // eslint-disable-next-line no-console
-    console.warn(`Ignoring unknown gs.signInProviders entry '${id}'`);
-    return [];
-  });
+  const fallback = configApi.getOptionalConfig('gs.signInFallbackProvider');
+  if (!fallback?.getOptionalString('connectorId')) {
+    return [main];
+  }
 
-  return providers.length > 0 ? providers : [dex()];
+  return [
+    main,
+    {
+      id: 'dex-fallback-auth-provider',
+      title: fallback.getOptionalString('title') ?? 'Other identity provider',
+      message:
+        fallback.getOptionalString('message') ??
+        'Sign in through another identity provider',
+      apiRef: gsFallbackSignInAuthApiRef,
+    },
+  ];
 }
