@@ -8,7 +8,10 @@ const useStyles = makeStyles({
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'stretch',
-    gap: 'var(--bui-space-6)',
+    // The card is far wider than these few figures need, so they get generous
+    // separation rather than sitting bunched against the left edge.
+    columnGap: 'var(--bui-space-12)',
+    rowGap: 'var(--bui-space-5)',
   },
   figure: {
     display: 'flex',
@@ -24,7 +27,7 @@ const useStyles = makeStyles({
     whiteSpace: 'nowrap',
   },
   meter: {
-    minWidth: 260,
+    minWidth: 300,
     display: 'flex',
     flexDirection: 'column',
     gap: 4,
