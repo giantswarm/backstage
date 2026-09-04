@@ -113,13 +113,17 @@ describe('highestStable', () => {
 describe('verdict', () => {
   it('drops the v prefix, so v1.6.0 matches chart tag 1.6.0', () => {
     expect(
-      verdict('v1.6.0', [{ latestStable: '1.6.0', unreadable: false }]),
+      verdict('v1.6.0', [
+        { latestStable: '1.6.0', unreadable: false, truncated: false },
+      ]),
     ).toEqual({ readiness: READINESS_RELEASABLE, flags: [] });
   });
 
   it('blocks when the newest release never reached the registry', () => {
     expect(
-      verdict('v1.6.0', [{ latestStable: '1.5.0', unreadable: false }]),
+      verdict('v1.6.0', [
+        { latestStable: '1.5.0', unreadable: false, truncated: false },
+      ]),
     ).toEqual({
       readiness: READINESS_BLOCKED,
       flags: ['RELEASE-NOT-PUBLISHED'],
@@ -128,25 +132,47 @@ describe('verdict', () => {
 
   it('blocks when the registry holds no stable version at all', () => {
     expect(
-      verdict('v1.6.0', [{ latestStable: undefined, unreadable: false }]),
+      verdict('v1.6.0', [
+        { latestStable: undefined, unreadable: false, truncated: false },
+      ]),
     ).toEqual({ readiness: READINESS_BLOCKED, flags: ['NEVER-PUBLISHED'] });
+  });
+
+  it('does not claim never-published from a truncated tag listing', () => {
+    // The window held only dev builds, but it came back full, so an older
+    // stable version may sit outside it. The release is still absent — blocked
+    // is right — but "no stable version at all" would be false.
+    expect(
+      verdict('v1.0.0', [
+        { latestStable: undefined, unreadable: false, truncated: true },
+      ]),
+    ).toEqual({
+      readiness: READINESS_BLOCKED,
+      flags: ['RELEASE-NOT-PUBLISHED'],
+    });
   });
 
   it('is releasable when the registry is ahead of the newest release', () => {
     expect(
-      verdict('1.5.0', [{ latestStable: '1.6.0', unreadable: false }]),
+      verdict('1.5.0', [
+        { latestStable: '1.6.0', unreadable: false, truncated: false },
+      ]),
     ).toEqual({ readiness: READINESS_RELEASABLE, flags: [] });
   });
 
   it('reports unknown, never blocked, when no registry could be read', () => {
     expect(
-      verdict('1.6.0', [{ latestStable: undefined, unreadable: true }]),
+      verdict('1.6.0', [
+        { latestStable: undefined, unreadable: true, truncated: false },
+      ]),
     ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
   });
 
   it('reports unknown for a release tag that is not comparable', () => {
     expect(
-      verdict('nightly', [{ latestStable: '1.0.0', unreadable: false }]),
+      verdict('nightly', [
+        { latestStable: '1.0.0', unreadable: false, truncated: false },
+      ]),
     ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
   });
 
@@ -155,8 +181,8 @@ describe('verdict', () => {
     // to match the repo's release tag would flag normal repos.
     expect(
       verdict('1.6.0', [
-        { latestStable: '0.4.0', unreadable: false },
-        { latestStable: '1.6.0', unreadable: false },
+        { latestStable: '0.4.0', unreadable: false, truncated: false },
+        { latestStable: '1.6.0', unreadable: false, truncated: false },
       ]),
     ).toEqual({ readiness: READINESS_RELEASABLE, flags: [] });
   });
@@ -165,8 +191,8 @@ describe('verdict', () => {
     // The private chart might hold 1.6.0, so this is not a blocker we can claim.
     expect(
       verdict('1.6.0', [
-        { latestStable: '1.5.0', unreadable: false },
-        { latestStable: undefined, unreadable: true },
+        { latestStable: '1.5.0', unreadable: false, truncated: false },
+        { latestStable: undefined, unreadable: true, truncated: false },
       ]),
     ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
   });
@@ -174,8 +200,8 @@ describe('verdict', () => {
   it('reports unknown for never-published when a chart could not be read', () => {
     expect(
       verdict('1.6.0', [
-        { latestStable: undefined, unreadable: false },
-        { latestStable: undefined, unreadable: true },
+        { latestStable: undefined, unreadable: false, truncated: false },
+        { latestStable: undefined, unreadable: true, truncated: false },
       ]),
     ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
   });
@@ -185,7 +211,7 @@ describe('verdict', () => {
     // v1.0.0-beta.3 tag can arrive here; chart tags exclude prereleases.
     expect(
       verdict('v1.0.0-beta.3', [
-        { latestStable: undefined, unreadable: false },
+        { latestStable: undefined, unreadable: false, truncated: false },
       ]),
     ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
   });
@@ -193,8 +219,8 @@ describe('verdict', () => {
   it('ignores an unreadable chart when another one answered', () => {
     expect(
       verdict('1.6.0', [
-        { latestStable: undefined, unreadable: true },
-        { latestStable: '1.6.0', unreadable: false },
+        { latestStable: undefined, unreadable: true, truncated: false },
+        { latestStable: '1.6.0', unreadable: false, truncated: false },
       ]),
     ).toEqual({ readiness: READINESS_RELEASABLE, flags: [] });
   });
@@ -405,6 +431,40 @@ describe('AppReadinessProcessor', () => {
 
     expect(result.metadata.labels?.['giantswarm.io/readiness']).toBe(
       READINESS_UNKNOWN,
+    );
+  });
+
+  it('reports never-published only when the whole tag listing was seen', async () => {
+    const getTags = jest.fn().mockResolvedValue({
+      tags: [{ tag: '1.6.0-dev.branch.1', createdAt: null }],
+      latestStableVersion: undefined,
+    });
+    const processor = makeProcessor({ getTags, releaseTag: 'v1.6.0' });
+
+    const result = await run(processor, component(chartAnnotations));
+
+    expect(result.metadata.annotations?.['giantswarm.io/readiness-flags']).toBe(
+      'NEVER-PUBLISHED',
+    );
+  });
+
+  it('downgrades the blocker when the tag listing came back full', async () => {
+    const getTags = jest.fn().mockResolvedValue({
+      tags: Array.from({ length: 500 }, (_, i) => ({
+        tag: `1.6.0-dev.branch.${i}`,
+        createdAt: null,
+      })),
+      latestStableVersion: undefined,
+    });
+    const processor = makeProcessor({ getTags, releaseTag: 'v1.6.0' });
+
+    const result = await run(processor, component(chartAnnotations));
+
+    expect(result.metadata.labels?.['giantswarm.io/readiness']).toBe(
+      READINESS_BLOCKED,
+    );
+    expect(result.metadata.annotations?.['giantswarm.io/readiness-flags']).toBe(
+      'RELEASE-NOT-PUBLISHED',
     );
   });
 

@@ -44,7 +44,15 @@ const READINESS_CHECKED_ANNOTATION = 'giantswarm.io/readiness-checked';
  * registry, so there is nothing for a HelmRelease to point at.
  */
 const FLAG_RELEASE_NOT_PUBLISHED = 'RELEASE-NOT-PUBLISHED';
-/** The repo has releases but the chart registry holds no stable version at all. */
+/**
+ * The repo has releases but the chart registry holds no stable version at all.
+ *
+ * This is the stronger of the two claims — consumers render it as "only dev
+ * builds from branches" — so it is only used when the tag listing was complete.
+ * A truncated listing cannot rule out an older stable version outside the
+ * window, so it reports FLAG_RELEASE_NOT_PUBLISHED instead, which is true of
+ * both states.
+ */
 const FLAG_NEVER_PUBLISHED = 'NEVER-PUBLISHED';
 
 /**
@@ -72,6 +80,12 @@ type ChartState = {
   latestStable: string | undefined;
   /** True when the registry could not be read at all. */
   unreadable: boolean;
+  /**
+   * True when the tag listing came back at the fetch limit, so there may be
+   * more tags than we saw. "No stable version at all" is not claimable from a
+   * truncated listing.
+   */
+  truncated: boolean;
 };
 
 type Cached<T> = {
@@ -428,6 +442,10 @@ export class AppReadinessProcessor implements CatalogProcessor {
       return {
         latestStable: highestStable(result.tags.map(t => t.tag)),
         unreadable: false,
+        // ACR pages at the limit we ask for (the OCI path ignores it and
+        // returns everything), so a full page means we may not have seen
+        // every tag.
+        truncated: result.tags.length >= TAGS_FETCH_LIMIT,
       };
     } catch (error) {
       if (error instanceof NotFoundError) {
@@ -437,7 +455,7 @@ export class AppReadinessProcessor implements CatalogProcessor {
           registry: ref.registry,
           repository: ref.repository,
         });
-        return { latestStable: undefined, unreadable: false };
+        return { latestStable: undefined, unreadable: false, truncated: false };
       }
       // A private registry we hold no credentials for, or a transient failure.
       // Either way we do not know.
@@ -461,7 +479,7 @@ export class AppReadinessProcessor implements CatalogProcessor {
           error: String(error),
         });
       }
-      return { latestStable: undefined, unreadable: true };
+      return { latestStable: undefined, unreadable: true, truncated: false };
     }
   }
 }
@@ -512,7 +530,15 @@ export function verdict(
       : { readiness: READINESS_BLOCKED, flags: [flag] };
 
   if (!published) {
-    return blocked(FLAG_NEVER_PUBLISHED);
+    // Which blocker applies depends on whether we saw the whole listing. With a
+    // truncated one, an older stable version may sit outside the window: the
+    // release is still absent, so `blocked` is right, but "no stable version at
+    // all" would be a false statement about the chart.
+    return blocked(
+      entries.some(e => e.truncated)
+        ? FLAG_RELEASE_NOT_PUBLISHED
+        : FLAG_NEVER_PUBLISHED,
+    );
   }
 
   // The git tag `v1.6.0` publishes as chart tag `1.6.0`; semver.parse drops the
