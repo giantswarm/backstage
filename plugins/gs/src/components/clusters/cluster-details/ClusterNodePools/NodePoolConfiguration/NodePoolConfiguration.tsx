@@ -246,11 +246,7 @@ export const NodePoolConfiguration = ({
         )}
       </InfoCard>
 
-      <Grid.Root
-        columns={{ xs: '1', md: '2' }}
-        gap="4"
-        style={{ alignItems: 'start' }}
-      >
+      <Grid.Root columns={{ xs: '1', md: '2' }} gap="4">
         <Grid.Item>
           <InfoCard title="Lifecycle and disruption">
             <FactList facts={lifecycle} />
