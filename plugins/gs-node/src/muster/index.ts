@@ -5,6 +5,7 @@
  */
 export * from './MusterMcpClient';
 export * from './authLogin';
+export * from './serverGateway';
 
 /**
  * Header the Giant Swarm frontends use to forward the user's own token for a

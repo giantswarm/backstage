@@ -7,52 +7,21 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from '@backstage/errors';
-import { GithubCredentialsProvider } from '@backstage/integration';
+import {
+  asConnected,
+  MUSTER_AUTH_HEADER,
+  MusterServerGateway,
+  MusterServerNotConnectedError,
+} from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import Router from 'express-promise-router';
-import type * as ProModule from '@giantswarm-io/pro';
-import type { ProField, ProListItem, ProRestIssue } from '@giantswarm-io/pro';
-
-const GITHUB_ORG_URL = 'https://github.com/giantswarm';
 
 /**
- * Targeted lookup for one issue's board item -- the single-select and
- * iteration field values are all the cross-link chip needs.
- */
-const ISSUE_PROJECT_ITEM_QUERY = `
-  query IssueProjectItem($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      issue(number: $number) {
-        title
-        url
-        state
-        projectItems(first: 20, includeArchived: false) {
-          nodes {
-            id
-            project { id }
-            fieldValues(first: 30) {
-              nodes {
-                ... on ProjectV2ItemFieldSingleSelectValue {
-                  name
-                  field { ... on ProjectV2FieldCommon { name } }
-                }
-                ... on ProjectV2ItemFieldIterationValue {
-                  title
-                  field { ... on ProjectV2FieldCommon { name } }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
-/**
- * Board items and sub-issue trees: five minutes is fresh enough for other
- * people's changes (the caller's own writes patch the cache immediately),
- * and the cache is served stale-while-revalidate anyway.
+ * Board reads paginate the full project (~430 items for one team is five
+ * sequential GraphQL pages, >10s), so results are cached per person --
+ * every read runs with the caller's own GitHub grant -- and served
+ * stale-while-revalidate: an expired entry is answered immediately while one
+ * background refresh per key brings it up to date.
  */
 const ITEMS_TTL_MS = 5 * 60_000;
 /** The board schema (fields/options) rarely changes. */
@@ -62,15 +31,8 @@ export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   httpAuth: HttpAuthService;
-  credentialsProvider: GithubCredentialsProvider;
-  /**
-   * The `@giantswarm-io/pro` module. Injected (instead of imported here)
-   * because the package is ESM-only while this plugin compiles to CJS --
-   * the plugin init loads it with a dynamic import. Also the seam for tests.
-   */
-  pro: typeof ProModule;
-  /** Disable the startup/interval cache warming (tests only). */
-  warmCache?: boolean;
+  /** pro's board tools, through muster, as the caller; undefined when unconfigured. */
+  pro?: MusterServerGateway;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -91,122 +53,150 @@ function parsePositiveInt(raw: string, name: string): number {
   return value;
 }
 
-/** Compact field description for the frontend's filter UI. */
-function mapField(field: ProField) {
-  let type: 'singleSelect' | 'iteration' | 'date' | 'text' | 'other' = 'other';
-  if (field.__typename === 'ProjectV2SingleSelectField') {
-    type = 'singleSelect';
-  } else if (field.__typename === 'ProjectV2IterationField') {
-    type = 'iteration';
-  } else if (field.__typename === 'ProjectV2Field') {
-    type = field.dataType === 'DATE' ? 'date' : 'text';
-  }
-  return {
-    name: field.name,
-    type,
-    options: field.options?.map(option => option.name),
-    iterations: field.configuration?.iterations?.map(
-      iteration => iteration.title,
-    ),
-  };
+/** A board item as pro's `list_issues` returns it. */
+export interface BoardItem {
+  id: string;
+  title: string;
+  number?: number;
+  url?: string;
+  repo: string | null;
+  private?: boolean | null;
+  state?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  closedAt?: string;
+  assignees?: string[];
+  labels?: string[];
+  fields: Record<string, string>;
 }
 
-function mapRestIssue(issue: ProRestIssue) {
+/** An issue as pro's sub-issue tools return it (`compactIssue`). */
+interface ProCompactIssue {
+  id?: number;
+  number: number;
+  title: string;
+  url?: string;
+  state?: string;
+  repository?: string;
+  assignees?: string[];
+}
+
+function mapIssue(issue: ProCompactIssue) {
   return {
     id: issue.id,
     number: issue.number,
     title: issue.title,
     state: issue.state,
-    htmlUrl: issue.html_url,
-    assignees: (issue.assignees ?? []).map(assignee => assignee.login),
-    // 'https://api.github.com/repos/giantswarm/giantswarm' -> 'giantswarm/giantswarm'
-    repo: issue.repository_url?.split('/repos/').pop(),
+    htmlUrl: issue.url,
+    assignees: issue.assignees ?? [],
+    repo: issue.repository,
   };
 }
 
+/** The board filter names pro knows, from the frontend's lowercase keys. */
+const FILTER_FIELDS: Record<string, string> = {
+  team: 'Team',
+  status: 'Status',
+  kind: 'Kind',
+  availability: 'Availability',
+};
+
 /**
- * Map GitHub client failures (Octokit RequestError `status`, GraphQL
- * FORBIDDEN/NOT_FOUND) to @backstage/errors classes so the root error
- * middleware turns them into meaningful status codes instead of 500s.
- * A 401/403 on a write is the caller's GitHub token lacking scope or
- * project permission -- an actionable client error, not a server fault.
+ * pro answers a GitHub refusal with its message; map the ones a person can
+ * act on to a 403/404 so the client shows them instead of a server fault.
  */
-async function mapGithubError<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    const status = (error as { status?: number }).status;
-    const message = (error as Error).message ?? String(error);
-    // User tokens are GitHub App user-to-server tokens, so they are capped
-    // by the auth App's own permissions -- this error means the App itself
-    // lacks org Projects write, not that the user does.
-    if (/Resource not accessible by integration/i.test(message)) {
-      throw new NotAllowedError(
-        `GitHub rejected the request: ${message}. The portal's GitHub auth ` +
-          'App is missing the "Projects: Read and write" organization ' +
-          'permission; it must be granted on the App and approved for the org.',
-      );
-    }
-    if (status === 401 || status === 403 || /FORBIDDEN/.test(message)) {
-      throw new NotAllowedError(`GitHub rejected the request: ${message}`);
-    }
-    if (status === 404 || /NOT_FOUND|Could not resolve/.test(message)) {
-      throw new NotFoundError(`GitHub resource not found: ${message}`);
-    }
-    throw error;
+function mapProError(error: unknown): unknown {
+  if (!(error instanceof Error)) {
+    return error;
   }
+  const message = error.message;
+  if (
+    /Resource not accessible by (integration|personal access token)/i.test(
+      message,
+    )
+  ) {
+    return new NotAllowedError(
+      `GitHub rejected the request: ${message}. Your GitHub account, or the GitHub App muster connects with, lacks a permission on this repository or board.`,
+    );
+  }
+  if (/\b(401|403)\b|FORBIDDEN|forbidden/i.test(message)) {
+    return new NotAllowedError(`GitHub rejected the request: ${message}`);
+  }
+  if (/\b404\b|NOT_FOUND|Could not resolve|not found/i.test(message)) {
+    return new NotFoundError(`GitHub resource not found: ${message}`);
+  }
+  return error;
 }
 
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { logger, config, httpAuth, credentialsProvider, pro } = options;
+  const { logger, config, httpAuth, pro } = options;
 
   // The plugin ships in every portal image, but the roadmap board is
   // internal: only portals that set `roadmap.board` serve it. Same opt-in
   // mechanism as plans-backend (no config -> 503).
   const boardKey = config.getOptionalString('roadmap.board');
-  const enabled = boardKey !== undefined;
-  if (!enabled) {
+  const enabled = boardKey !== undefined && pro !== undefined;
+  if (boardKey === undefined) {
     logger.info(
       'No roadmap board configured (set roadmap.board); roadmap endpoints will return 503.',
     );
   }
-  const boardId = boardKey !== undefined ? pro.resolveBoardId(boardKey) : '';
+  if (!pro) {
+    logger.info(
+      'No muster pro server configured (set roadmap.muster); roadmap endpoints will return 503.',
+    );
+  }
+  const board = boardKey ?? '';
   const defaultTeams = config.getOptionalStringArray('roadmap.teams') ?? [];
 
-  /** Shared GitHub App installation token -- used for all reads. */
-  const appToken = async (): Promise<string> => {
-    const { token } = await credentialsProvider.getCredentials({
-      url: GITHUB_ORG_URL,
-    });
-    if (!token) {
-      throw new Error(
-        'No GitHub credentials available for the giantswarm org; check the integrations config.',
+  const gateway = (): MusterServerGateway => {
+    if (!pro) {
+      throw new ServiceUnavailableError(
+        'The roadmap plugin is not configured on this portal. Set roadmap.muster.',
       );
     }
-    return token;
+    return pro;
   };
 
   /**
-   * Per-user GitHub OAuth token -- required for all writes so board
-   * mutations are attributed to the person who made them. Never falls
-   * back to the App token.
+   * The caller's muster token: the frontend forwards the user's Dex ID
+   * token, the same one the muster plugin sends. muster maps it to the
+   * person's GitHub grant; there is no GitHub credential anywhere here.
    */
-  const userToken = (req: express.Request): string => {
-    const token = req.header('x-github-token');
+  const musterToken = (req: express.Request): string => {
+    const header = req.headers[MUSTER_AUTH_HEADER];
+    const token = Array.isArray(header) ? header[0] : header;
     if (!token) {
       throw new AuthenticationError(
-        'Board mutations require a per-user GitHub token in the X-GitHub-Token header.',
+        `Roadmap requests need the caller's muster token in the ${MUSTER_AUTH_HEADER} header.`,
       );
     }
     return token;
   };
 
-  // Board reads paginate the full project (~430 items for one team is five
-  // sequential GraphQL pages, >10s), so the cache is stale-while-revalidate:
-  // an expired entry is served immediately while one background refresh per
-  // key brings it up to date. Only a cold key ever blocks on GitHub.
+  /** A pro session for one request: every tool runs as the caller. */
+  const proFor = (req: express.Request) => {
+    const gh = gateway();
+    const token = musterToken(req);
+    const server =
+      'server' in gh ? String((gh as { server?: string }).server) : 'pro';
+    const call = <T>(tool: string, args: Record<string, unknown>) =>
+      asConnected(gh, server, token, async () => {
+        try {
+          return (await gh.call(tool, args, token)) as T;
+        } catch (error) {
+          throw mapProError(error);
+        }
+      });
+    return { call, user: String(req.res?.locals.userRef ?? 'anonymous') };
+  };
+
+  type ProSession = ReturnType<typeof proFor>;
+
+  // Per-person caches: entries are keyed by the caller's identity, since
+  // every read carries their own grant and sees their own view of GitHub.
   const cache = new Map<string, { expires: number; data: unknown }>();
   const inflight = new Map<string, Promise<unknown>>();
   const cached = async <T>(
@@ -234,120 +224,140 @@ export async function createRouter(
       inflight.set(key, refresh);
     }
     if (hit) {
-      // Serve stale, let the refresh land in the background.
       refresh.catch(() => {});
       return hit.data as T;
     }
     return refresh;
   };
 
-  const itemsListOptions = (
+  const itemsListArgs = (
     filters: Record<string, string>,
     query: Partial<
-      Record<'assignee' | 'state' | 'updated' | 'keyword', string>
-    > & {
-      repository?: string;
-    } = {},
-  ) => ({
-    filters,
-    assignee: query.assignee ?? null,
-    state: query.state ?? null,
-    updated: query.updated ?? null,
-    repository: query.repository ?? null,
-    keyword: query.keyword ?? null,
-  });
+      Record<
+        'assignee' | 'state' | 'updated' | 'keyword' | 'repository',
+        string
+      >
+    > = {},
+  ): Record<string, unknown> => {
+    const args: Record<string, unknown> = { board, filters };
+    for (const key of [
+      'assignee',
+      'state',
+      'updated',
+      'keyword',
+      'repository',
+    ] as const) {
+      if (query[key]) {
+        args[key] = query[key];
+      }
+    }
+    return args;
+  };
 
   const listItemsCached = async (
-    listOptions: ReturnType<typeof itemsListOptions>,
-  ): Promise<ProListItem[]> => {
-    const cacheKey = `items:${JSON.stringify(listOptions)}`;
-    const result = await cached(cacheKey, ITEMS_TTL_MS, async () =>
-      pro.listItems({ boardId, ...listOptions, token: await appToken() }),
+    session: ProSession,
+    args: Record<string, unknown>,
+  ): Promise<BoardItem[]> => {
+    const result = await cached(
+      `${session.user}:items:${JSON.stringify(args)}`,
+      ITEMS_TTL_MS,
+      () => session.call<{ issues?: BoardItem[] }>('list_issues', args),
     );
-    if (result.status !== 'success') {
-      // pro returns status:'error' for invalid filter fields/values.
-      throw new InputError(result.error ?? 'Failed to list board items');
-    }
-    return result.data ?? [];
+    return result.issues ?? [];
   };
 
   /**
-   * After a successful field write, update the item inside every cached
-   * list and drop its cached detail -- instead of clearing the cache, which
-   * would force the next board load into a full multi-page rescan.
+   * Apply a field write to the person's cached lists in place, so the next
+   * read reflects it without a rescan; drop their cached item detail.
    */
-  const patchCachedItem = (itemId: string, name: string, value: string) => {
+  const patchCachedItem = (
+    user: string,
+    itemId: string,
+    name: string,
+    value: string,
+  ) => {
     for (const [key, entry] of cache) {
-      if (key.startsWith('items:')) {
-        const result = entry.data as { data?: ProListItem[] };
-        for (const item of result.data ?? []) {
+      if (key.startsWith(`${user}:items:`)) {
+        const result = entry.data as { issues?: BoardItem[] };
+        for (const item of result.issues ?? []) {
           if (item.id === itemId) {
             item.fields = { ...item.fields, [name]: value };
           }
         }
       }
     }
-    cache.delete(`item:${itemId}`);
+    cache.delete(`${user}:item:${itemId}`);
   };
 
-  const dropSubIssueCaches = () => {
+  const dropSubIssueCaches = (user: string) => {
     for (const key of cache.keys()) {
-      if (key.startsWith('sub-issues:')) {
+      if (key.startsWith(`${user}:sub-issues:`)) {
         cache.delete(key);
       }
     }
   };
 
-  // Warm the default board view (and keep it warm) so the first visitor
-  // after a pod restart -- deploys are frequent -- doesn't pay the cold
-  // multi-page scan. With stale-while-revalidate above, this makes board
-  // loads effectively instant for everyone.
-  if (enabled && (options.warmCache ?? true)) {
-    const warm = () => {
-      const filters: Record<string, string> = defaultTeams[0]
-        ? { team: defaultTeams[0] }
-        : {};
-      listItemsCached(itemsListOptions(filters)).catch(error =>
-        logger.warn(`Roadmap cache warming failed: ${error}`),
-      );
-    };
-    warm();
-    setInterval(warm, ITEMS_TTL_MS).unref();
-  }
-
   const router = Router();
   router.use(express.json());
 
-  // All routes serve private-repo content; require a Backstage user.
-  router.use(async (req, _res, next) => {
-    await httpAuth.credentials(req, { allow: ['user'] });
+  router.use(async (req, res, next) => {
+    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    res.locals.userRef = credentials.principal.userEntityRef;
     if (!enabled) {
       throw new ServiceUnavailableError(
-        'The roadmap plugin is not configured on this portal. Set roadmap.board.',
+        'The roadmap plugin is not configured on this portal. Set roadmap.board and roadmap.muster.',
       );
     }
     next();
   });
 
-  router.get('/schema', async (_req, res) => {
-    const fields = await cached('schema', SCHEMA_TTL_MS, async () =>
-      (await pro.listFields(boardId, await appToken())).map(mapField),
+  /**
+   * Whether the caller's muster session can reach the board, and the sign-in
+   * URL when it cannot yet. Lets the frontend offer "Connect GitHub" before
+   * the first failing request, and poll after the popup.
+   */
+  router.get('/connection', async (req, res) => {
+    const login = await gateway().login(musterToken(req));
+    if (login.status === 'connected') {
+      res.json({ connected: true });
+      return;
+    }
+    res.json({
+      connected: false,
+      authUrl: login.authUrl,
+      message: login.message,
+    });
+  });
+
+  router.get('/schema', async (req, res) => {
+    const session = proFor(req);
+    const fields = await cached(
+      `${session.user}:schema`,
+      SCHEMA_TTL_MS,
+      async () =>
+        (
+          await session.call<{
+            fields?: Array<{
+              name: string;
+              type: string;
+              options?: string[];
+              iterations?: string[];
+            }>;
+          }>('get_board_schema', { board })
+        ).fields ?? [],
     );
     res.json({ board: boardKey, defaultTeams, fields });
   });
 
   router.get('/items', async (req, res) => {
     const filters: Record<string, string> = {};
-    for (const fieldName of ['team', 'status', 'kind', 'availability']) {
-      const value = singleQueryValue(req.query[fieldName], fieldName);
+    for (const [param, fieldName] of Object.entries(FILTER_FIELDS)) {
+      const value = singleQueryValue(req.query[param], param);
       if (value) {
         filters[fieldName] = value;
       }
     }
 
-    // Quarter is an iteration field, which pro's generic `filters` map
-    // (single-select only) cannot express. GitHub Projects' server-side
-    // query syntax can, so it travels as a keyword term.
     const keywordTerms: string[] = [];
     const quarter = singleQueryValue(req.query.quarter, 'quarter');
     if (quarter) {
@@ -359,7 +369,8 @@ export async function createRouter(
     }
 
     const items = await listItemsCached(
-      itemsListOptions(filters, {
+      proFor(req),
+      itemsListArgs(filters, {
         assignee: singleQueryValue(req.query.assignee, 'assignee'),
         state: singleQueryValue(req.query.state, 'state'),
         updated: singleQueryValue(req.query.updated, 'updated'),
@@ -374,9 +385,9 @@ export async function createRouter(
     const filters: Record<string, string> = {};
     const team = singleQueryValue(req.query.team, 'team');
     if (team) {
-      filters.team = team;
+      filters.Team = team;
     }
-    const items = await listItemsCached(itemsListOptions(filters));
+    const items = await listItemsCached(proFor(req), itemsListArgs(filters));
 
     const byStatus: Record<string, number> = {};
     const byRepo: Record<string, number> = {};
@@ -390,70 +401,25 @@ export async function createRouter(
   });
 
   /**
-   * Resolve a GitHub issue reference to its board item. Plan documents
-   * reference epics as `owner/repo#N`, but the detail route needs the
-   * Projects v2 item node id -- this is the bridge for cross-links from
-   * the plans plugin. A targeted issue->projectItems query: one GraphQL
-   * call instead of paginating the whole board (~2000 items, ~1min).
+   * The board item of an issue, for cross-links (a plan's epic): one targeted
+   * lookup in pro, not a board scan.
    */
   router.get('/items/by-issue/:owner/:repo/:number', async (req, res) => {
     const number = parsePositiveInt(req.params.number, 'number');
     const { owner, repo } = req.params;
+    const session = proFor(req);
     const item = await cached(
-      `by-issue:${owner}/${repo}#${number}`,
+      `${session.user}:by-issue:${owner}/${repo}#${number}`,
       ITEMS_TTL_MS,
-      () =>
-        mapGithubError(async () => {
-          const result = await pro.graphQLWithAuth<{
-            repository?: {
-              issue?: {
-                title: string;
-                url: string;
-                state: string;
-                projectItems?: {
-                  nodes?: Array<{
-                    id: string;
-                    project?: { id: string };
-                    fieldValues?: {
-                      nodes?: Array<{
-                        name?: string;
-                        title?: string;
-                        field?: { name?: string };
-                      }>;
-                    };
-                  } | null>;
-                };
-              } | null;
-            } | null;
-          }>(
-            ISSUE_PROJECT_ITEM_QUERY,
-            { owner, repo, number },
-            await appToken(),
-          );
-          const issue = result.repository?.issue;
-          const node = issue?.projectItems?.nodes?.find(
-            projectItem => projectItem?.project?.id === boardId,
-          );
-          if (!issue || !node) {
-            return null;
-          }
-          const fields: Record<string, string> = {};
-          for (const fieldValue of node.fieldValues?.nodes ?? []) {
-            const value = fieldValue?.name ?? fieldValue?.title;
-            if (fieldValue?.field?.name && value) {
-              fields[fieldValue.field.name] = value;
-            }
-          }
-          return {
-            id: node.id,
-            title: issue.title,
-            number,
-            url: issue.url,
-            repo: `${owner}/${repo}`,
-            state: issue.state,
-            fields,
-          };
-        }),
+      async () =>
+        (
+          await session.call<{ item?: BoardItem | null }>('get_item_by_issue', {
+            board,
+            owner,
+            repo,
+            issue_number: number,
+          })
+        ).item ?? null,
     );
     if (!item) {
       throw new NotFoundError(
@@ -464,10 +430,12 @@ export async function createRouter(
   });
 
   router.get('/items/:id', async (req, res) => {
-    const item = await cached(`item:${req.params.id}`, ITEMS_TTL_MS, () =>
-      mapGithubError(async () =>
-        pro.getItemByID(req.params.id, await appToken()),
-      ),
+    const session = proFor(req);
+    const item = await cached(
+      `${session.user}:item:${req.params.id}`,
+      ITEMS_TTL_MS,
+      () =>
+        session.call<unknown>('get_issue_details', { itemId: req.params.id }),
     );
     res.json({ item });
   });
@@ -478,26 +446,34 @@ export async function createRouter(
       repo: req.params.repo,
       issue_number: parsePositiveInt(req.params.number, 'number'),
     };
+    const session = proFor(req);
     const [subIssues, parent] = await cached(
-      `sub-issues:${target.owner}/${target.repo}#${target.issue_number}`,
+      `${session.user}:sub-issues:${target.owner}/${target.repo}#${target.issue_number}`,
       ITEMS_TTL_MS,
       () =>
-        mapGithubError(async () => {
-          const token = await appToken();
-          return Promise.all([
-            pro.listSubIssues({ ...target, per_page: 100 }, token),
-            pro.getParentIssue(target, token),
-          ]);
-        }),
+        Promise.all([
+          session
+            .call<{ sub_issues?: ProCompactIssue[] }>('list_sub_issues', {
+              ...target,
+              per_page: 100,
+            })
+            .then(result => result.sub_issues ?? []),
+          session
+            .call<{ parent?: ProCompactIssue | null }>(
+              'get_parent_issue',
+              target,
+            )
+            .then(result => result.parent ?? null),
+        ]),
     );
     res.json({
-      subIssues: subIssues.map(mapRestIssue),
-      parent: parent ? mapRestIssue(parent) : null,
+      subIssues: subIssues.map(mapIssue),
+      parent: parent ? mapIssue(parent) : null,
     });
   });
 
   router.patch('/items/:id/field', async (req, res) => {
-    const token = userToken(req);
+    const session = proFor(req);
     const { name, value } = req.body ?? {};
     if (typeof name !== 'string' || name.trim() === '') {
       throw new InputError('name must be a non-empty string');
@@ -506,73 +482,42 @@ export async function createRouter(
       throw new InputError('value must be a non-empty string');
     }
 
-    // Resolve the human-readable field name and option value to the node
-    // IDs the mutation needs. Field lookup runs with the caller's token
-    // too, so a caller who cannot read the board cannot mutate it either.
-    const field = await mapGithubError(() =>
-      pro.findFieldByName(name, boardId, token),
-    );
-    if (!field) {
-      throw new InputError(
-        `Field '${name}' not found on the ${boardKey} board or not updatable`,
-      );
+    // pro resolves the option / iteration / date itself and refuses unknown
+    // values with the available ones -- surfaced to the client as a 400.
+    let result: { success?: boolean; field?: string; value?: string };
+    try {
+      result = await session.call('update_issue_field', {
+        board,
+        itemId: req.params.id,
+        fieldName: name,
+        value,
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        /not found|Available|Invalid date|unsupported type/i.test(
+          error.message,
+        ) &&
+        !(error instanceof MusterServerNotConnectedError)
+      ) {
+        throw new InputError(error.message);
+      }
+      throw error;
     }
-
-    let mutationValue: Record<string, string>;
-    let canonicalValue = value;
-    if (field.__typename === 'ProjectV2SingleSelectField') {
-      const option = pro.findMatchingOption(field.options ?? [], value);
-      if (!option) {
-        const available = (field.options ?? [])
-          .map(fieldOption => fieldOption.name)
-          .join(', ');
-        throw new InputError(
-          `Value '${value}' not found for field '${field.name}'. Available options: ${available}`,
-        );
-      }
-      mutationValue = { singleSelectOptionId: option.id };
-      canonicalValue = option.name;
-    } else if (field.__typename === 'ProjectV2IterationField') {
-      const iteration = pro.findMatchingIteration(field, value);
-      if (!iteration) {
-        const available = (field.configuration?.iterations ?? [])
-          .map(fieldIteration => fieldIteration.title)
-          .join(', ');
-        throw new InputError(
-          `Iteration '${value}' not found for field '${field.name}'. Available iterations: ${available}`,
-        );
-      }
-      mutationValue = { iterationId: iteration.id };
-      canonicalValue = iteration.title;
-    } else if (field.dataType === 'DATE') {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        throw new InputError(
-          `Invalid date '${value}' for field '${field.name}'; expected YYYY-MM-DD`,
-        );
-      }
-      mutationValue = { date: value };
-    } else {
-      throw new InputError(
-        `Field '${field.name}' has unsupported type '${field.__typename}' for updates`,
-      );
-    }
-
-    await mapGithubError(() =>
-      pro.updateItemField(
-        req.params.id,
-        field.id,
-        mutationValue,
-        boardId,
-        token,
-      ),
+    patchCachedItem(
+      session.user,
+      req.params.id,
+      result.field ?? name,
+      result.value ?? value,
     );
-    patchCachedItem(req.params.id, field.name, canonicalValue);
-    logger.info(`Updated field '${field.name}' on item ${req.params.id}`);
+    logger.info(
+      `Updated field '${result.field ?? name}' on item ${req.params.id}`,
+    );
     res.json({ status: 'ok' });
   });
 
   router.post('/issues/:owner/:repo/:number/sub-issues', async (req, res) => {
-    const token = userToken(req);
+    const session = proFor(req);
     const target = {
       owner: req.params.owner,
       repo: req.params.repo,
@@ -585,36 +530,59 @@ export async function createRouter(
       );
     }
 
-    // The sub-issues API wants the child's integer issue ID, not its number.
-    const resolved = await mapGithubError(() =>
-      pro.resolveIssueId(child, { token }),
+    const result = await session.call<{ parent?: ProCompactIssue }>(
+      'add_sub_issue',
+      { ...target, subIssueUrl: child },
     );
-    const parent = await mapGithubError(() =>
-      pro.addSubIssue({ ...target, subIssueId: resolved.id }, token),
-    );
-    dropSubIssueCaches();
+    dropSubIssueCaches(session.user);
     logger.info(
       `Linked ${child} as sub-issue of ${target.owner}/${target.repo}#${target.issue_number}`,
     );
-    res.status(201).json({ parent: mapRestIssue(parent) });
+    res
+      .status(201)
+      .json({ parent: result.parent ? mapIssue(result.parent) : null });
   });
 
   router.delete(
     '/issues/:owner/:repo/:number/sub-issues/:subIssueId',
     async (req, res) => {
-      const token = userToken(req);
+      const session = proFor(req);
       const target = {
         owner: req.params.owner,
         repo: req.params.repo,
         issue_number: parsePositiveInt(req.params.number, 'number'),
         subIssueId: parsePositiveInt(req.params.subIssueId, 'subIssueId'),
       };
-      await mapGithubError(() => pro.removeSubIssue(target, token));
-      dropSubIssueCaches();
+      await session.call('remove_sub_issue', target);
+      dropSubIssueCaches(session.user);
       logger.info(
         `Unlinked sub-issue ${target.subIssueId} from ${target.owner}/${target.repo}#${target.issue_number}`,
       );
       res.status(204).end();
+    },
+  );
+
+  // A missing grant is a 401 that carries the sign-in URL, so the client can
+  // offer the connect step instead of showing a failure.
+  router.use(
+    (
+      error: unknown,
+      _req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      if (error instanceof MusterServerNotConnectedError) {
+        res.status(401).json({
+          error: {
+            name: error.name,
+            message: error.message,
+            server: error.server,
+            authUrl: error.authUrl,
+          },
+        });
+        return;
+      }
+      next(error);
     },
   );
 

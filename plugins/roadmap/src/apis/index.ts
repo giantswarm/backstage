@@ -1,6 +1,17 @@
-export { roadmapApiRef, RoadmapApiClient } from './RoadmapApiClient';
+export {
+  roadmapApiRef,
+  RoadmapApiClient,
+  MusterServerNotConnectedError,
+} from './RoadmapApiClient';
+export {
+  roadmapAuthApiRef,
+  RoadmapMainAuth,
+  type RoadmapAuthApi,
+  type RoadmapAuthCredentials,
+} from './auth';
 export type {
   RoadmapApi,
+  RoadmapConnectionResponse,
   RoadmapField,
   RoadmapSchemaResponse,
   RoadmapItem,

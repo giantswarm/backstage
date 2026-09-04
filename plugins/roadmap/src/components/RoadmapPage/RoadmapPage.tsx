@@ -10,11 +10,11 @@ import {
   Theme,
 } from '@material-ui/core';
 import { Content, Progress } from '@backstage/core-components';
-import { Alert } from '@material-ui/lab';
 import { RoadmapField, RoadmapItemFilters } from '../../apis';
 import { useSchema } from '../../hooks';
 import { BoardView } from '../BoardView';
 import { TeamActivityView } from '../TeamActivityView';
+import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
 
 const useStyles = makeStyles((theme: Theme) => ({
   toolbar: {
@@ -123,7 +123,7 @@ export function RoadmapPage() {
   if (error) {
     return (
       <Content>
-        <Alert severity="error">{(error as Error).message}</Alert>
+        <RoadmapErrorAlert error={error as Error} />
       </Content>
     );
   }

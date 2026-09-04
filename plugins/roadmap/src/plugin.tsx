@@ -3,12 +3,11 @@ import {
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
-  githubAuthApiRef,
   PageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import TimelineIcon from '@material-ui/icons/Timeline';
 
-import { roadmapApiRef, RoadmapApiClient } from './apis';
+import { roadmapApiRef, RoadmapApiClient, roadmapAuthApiRef } from './apis';
 import {
   itemRouteRef,
   plansPullExternalRouteRef,
@@ -47,10 +46,10 @@ const roadmapApi = ApiBlueprint.make({
       deps: {
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
-        githubAuthApi: githubAuthApiRef,
+        authApi: roadmapAuthApiRef,
       },
-      factory: ({ discoveryApi, fetchApi, githubAuthApi }) =>
-        new RoadmapApiClient({ discoveryApi, fetchApi, githubAuthApi }),
+      factory: ({ discoveryApi, fetchApi, authApi }) =>
+        new RoadmapApiClient({ discoveryApi, fetchApi, authApi }),
     }),
 });
 

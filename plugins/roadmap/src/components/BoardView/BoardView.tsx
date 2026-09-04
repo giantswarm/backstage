@@ -13,6 +13,7 @@ import { RoadmapField, RoadmapItemFilters } from '../../apis';
 import { useItems, useUpdateStatus } from '../../hooks';
 import { groupByStatus, NO_STATUS, statusColumns } from '../../lib/board';
 import { ItemCard } from './ItemCard';
+import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
 
 const COLUMN_WIDTH = 300;
 
@@ -75,7 +76,7 @@ export function BoardView(props: {
     return <Progress />;
   }
   if (error) {
-    return <Alert severity="error">{(error as Error).message}</Alert>;
+    return <RoadmapErrorAlert error={error as Error} />;
   }
 
   const items = data?.items ?? [];
