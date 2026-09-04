@@ -19,6 +19,7 @@ import {
   type GpuCapacityUnavailableReason,
   type GpuNode,
 } from '../../lib/serving';
+import { backendServerName } from '../../lib/modelManagerServing';
 
 /** MiB → a short GiB figure, e.g. 122880 → "120 GiB". */
 export function formatGpuMemory(memoryMiB: number | undefined): string {
@@ -66,8 +67,21 @@ const NO_POD_DATA =
 const HOST_NO_GPU_FIGURES =
   "The host a serving backend runs on, not a cluster node: the backend's API does not expose the accelerator, so there is no GPU product, count or device-plugin figure for it. Its budget is the host's memory as the serving layer sees it.";
 
-/** What the node name's description says for a backend host. */
+/**
+ * What the node name's description says for a backend host whose backend is
+ * not known; one that names its backend reads `<server> host` (`Ollama
+ * host`, `Lemonade host`) — an installation whose model-manager fronts
+ * several servers on one machine lists one row per backend for the same
+ * address, and the description is what tells them apart.
+ */
 export const HOST_NODE_DESCRIPTION = 'Backend host';
+
+/** The description of a backend host row: the server's name when known. */
+export function hostNodeDescription(node: GpuNode): string {
+  return node.backend
+    ? `${backendServerName(node.backend)} host`
+    : HOST_NODE_DESCRIPTION;
+}
 
 /** What the node name's description says for a node the serving layer will not place a model on. */
 export const NOT_SERVING_TARGET_DESCRIPTION = 'Not a serving target';
@@ -171,7 +185,7 @@ export function describeNode(node: GpuNode): string | undefined {
   if (node.eligible === false) {
     return NOT_SERVING_TARGET_DESCRIPTION;
   }
-  return isHostMemoryNode(node) ? HOST_NODE_DESCRIPTION : undefined;
+  return isHostMemoryNode(node) ? hostNodeDescription(node) : undefined;
 }
 
 /**
