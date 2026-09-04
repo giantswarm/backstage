@@ -180,10 +180,8 @@ export async function createRouter(
   const proFor = (req: express.Request) => {
     const gh = gateway();
     const token = musterToken(req);
-    const server =
-      'server' in gh ? String((gh as { server?: string }).server) : 'pro';
     const call = <T>(tool: string, args: Record<string, unknown>) =>
-      asConnected(gh, server, token, async () => {
+      asConnected(gh, gh.server, token, async () => {
         try {
           return (await gh.call(tool, args, token)) as T;
         } catch (error) {
