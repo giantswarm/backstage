@@ -100,14 +100,27 @@ type Cached<T> = {
  * share the one promise instead of each issuing a request. A rejected fill is
  * not cached, so a transient failure is retried on the next pass rather than
  * held for the whole TTL.
+ *
+ * Expired entries are dropped rather than left in place. Two of the three
+ * caches here are keyed by something fixed by the size of the fleet, where an
+ * expired entry is overwritten on the next lookup anyway — but the tag cache is
+ * keyed `registry/repository:tag`, so every new release of a flagged component
+ * adds a key that is never looked up again. Sweeping on fill keeps the key set
+ * bounded by what is actually still in use, which also makes this safe to reuse
+ * for higher-cardinality keys later.
  */
-class TtlCache<T> {
+export class TtlCache<T> {
   private readonly entries = new Map<string, Cached<T>>();
   private readonly inflight = new Map<string, Promise<Cached<T>>>();
   private readonly ttlMs: number;
 
   constructor(ttlMs: number) {
     this.ttlMs = ttlMs;
+  }
+
+  /** Number of cached entries. For tests asserting the key set stays bounded. */
+  get size(): number {
+    return this.entries.size;
   }
 
   get(key: string, fill: () => Promise<T>): Promise<Cached<T>> {
@@ -123,6 +136,7 @@ class TtlCache<T> {
       .then(value => {
         const fresh: Cached<T> = { value, fetchedAt: Date.now() };
         this.entries.set(key, fresh);
+        this.dropExpired();
         return fresh;
       })
       .finally(() => {
@@ -130,6 +144,15 @@ class TtlCache<T> {
       });
     this.inflight.set(key, pending);
     return pending;
+  }
+
+  private dropExpired(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.entries) {
+      if (now - entry.fetchedAt >= this.ttlMs && !this.inflight.has(key)) {
+        this.entries.delete(key);
+      }
+    }
   }
 }
 

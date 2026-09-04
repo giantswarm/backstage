@@ -51,8 +51,18 @@ export interface Config {
          */
         enabled?: boolean;
         /**
-         * Optional TTL for the in-memory tags cache, in seconds.
-         * Defaults to 3600 (1 hour).
+         * Optional TTL for the in-memory lookup caches (chart tags, GitHub
+         * releases and tag confirmations), in seconds. Defaults to 3600
+         * (1 hour).
+         *
+         * This governs catalog write volume as well as API traffic. The
+         * `giantswarm.io/readiness-checked` annotation carries the time the
+         * underlying lookup ran, so it moves once per TTL per cache key, and
+         * each move costs the entity a database write, a stitch, an
+         * entity-changed event and a search reindex. Lowering this to get
+         * fresher badges multiplies that write amplification by the same
+         * factor: at 300 seconds, every chart-bearing component is rewritten
+         * twelve times as often.
          * @visibility backend
          */
         cacheTtlSeconds?: number;
