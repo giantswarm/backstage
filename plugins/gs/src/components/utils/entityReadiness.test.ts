@@ -53,6 +53,21 @@ describe('readiness entity helpers', () => {
     expect(isEntityReadinessAvailable(entity())).toBe(false);
   });
 
+  it('treats an empty label as absent, not as an answer', () => {
+    // `??` would have stopped at the empty readiness label and hidden the card.
+    expect(
+      isEntityReadinessAvailable(
+        entity({
+          'giantswarm.io/readiness': '',
+          'giantswarm.io/readiness-standards': 'incomplete',
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isEntityReadinessAvailable(entity({ 'giantswarm.io/readiness': '' })),
+    ).toBe(false);
+  });
+
   it('reads the verdict and the standards verdict as separate labels', () => {
     const e = entity({
       'giantswarm.io/readiness': 'releasable',

@@ -10,6 +10,7 @@ import {
   getReadinessFromEntity,
 } from '../utils/entity';
 import {
+  READINESS_MEANINGS,
   partitionReadinessFlags,
   readinessIntent,
   readinessLabel,
@@ -71,9 +72,20 @@ export function autoWidthColumn<T extends TableColumn<any>>(column: T) {
  * would lead a green "Releasable" row with an unprefixed NO-VALUES-SCHEMA that
  * reads as a blocker. That detail belongs to the card, which has a section per
  * verdict and an explanation per flag.
+ *
+ * With no release blockers to name — every `releasable` cell, and every
+ * `unknown` one, since `verdict()` returns no flags on any unknown path — the
+ * hover falls back to what the verdict means. `unknown` is the verdict a reader
+ * can least interpret unaided, so leaving it as a bare chip would be the worst
+ * place to say nothing.
  */
-function readinessTitle(releaseFlags: string[]): string | undefined {
-  return releaseFlags.length > 0 ? releaseFlags.join(', ') : undefined;
+function readinessTitle(
+  readiness: string,
+  releaseFlags: string[],
+): string | undefined {
+  return releaseFlags.length > 0
+    ? releaseFlags.join(', ')
+    : READINESS_MEANINGS[readiness];
 }
 
 export const columnFactories = Object.freeze({
@@ -184,7 +196,7 @@ export const columnFactories = Object.freeze({
           <StatusLabel
             label={readinessLabel(readiness)}
             intent={readinessIntent(readiness)}
-            title={readinessTitle(releaseFlags)}
+            title={readinessTitle(readiness, releaseFlags)}
           />
         );
       },

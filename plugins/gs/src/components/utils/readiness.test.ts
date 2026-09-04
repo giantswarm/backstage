@@ -1,3 +1,4 @@
+import { ReleaseReadinessFlags } from '@giantswarm/backstage-plugin-gs-common';
 import {
   READINESS_INTENTS,
   READINESS_LABELS,
@@ -44,6 +45,16 @@ describe('readiness presentation', () => {
   it('falls back to the raw value rather than rendering nothing', () => {
     expect(readinessLabel('something-new')).toBe('something-new');
     expect(readinessIntent('something-new')).toBe('neutral');
+  });
+
+  it('recognises exactly the blockers the processor declares', () => {
+    // Shared with the backend through gs-common: a blocker added there and not
+    // here would be presented as a chart-metadata gap.
+    const { release } = partitionReadinessFlags(
+      Object.values(ReleaseReadinessFlags),
+    );
+
+    expect(release).toEqual(Object.values(ReleaseReadinessFlags));
   });
 
   it('splits the merged flag list by the verdict that wrote it', () => {

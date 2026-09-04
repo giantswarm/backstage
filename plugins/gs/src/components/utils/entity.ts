@@ -84,7 +84,10 @@ export const isEntityReleaseVerdictAvailable = (entity: Entity) =>
  */
 export const isEntityReadinessAvailable = (entity: Entity) =>
   Boolean(
-    entity.metadata.labels?.[GS_READINESS] ??
+    // `||`, not `??`: this is a presence test, and a label set to an empty
+    // string would otherwise satisfy `??` and hide the card even when the
+    // other label is set.
+    entity.metadata.labels?.[GS_READINESS] ||
     entity.metadata.labels?.[GS_READINESS_STANDARDS],
   );
 

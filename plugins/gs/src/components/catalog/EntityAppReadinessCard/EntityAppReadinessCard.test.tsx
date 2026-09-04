@@ -95,4 +95,29 @@ describe('<EntityAppReadinessCard />', () => {
     expect(screen.queryByText('Status')).not.toBeInTheDocument();
     expect(screen.queryByText('Blocking the release')).not.toBeInTheDocument();
   });
+
+  it('does not title itself after releases when it holds none', async () => {
+    // Importer-only is every component today, since the processor ships
+    // disabled. The card there is entirely about chart metadata.
+    await renderCard({ 'giantswarm.io/readiness-standards': 'incomplete' });
+
+    expect(screen.getByText('Readiness')).toBeInTheDocument();
+    expect(screen.queryByText('Release readiness')).not.toBeInTheDocument();
+  });
+
+  it('keeps the specific title once there is a release verdict', async () => {
+    await renderCard({ 'giantswarm.io/readiness': 'releasable' });
+
+    expect(screen.getByText('Release readiness')).toBeInTheDocument();
+  });
+
+  it('shows the card when only the standards label is an empty string', async () => {
+    // A presence test: `??` would have stopped at an empty readiness label.
+    await renderCard({
+      'giantswarm.io/readiness': '',
+      'giantswarm.io/readiness-standards': 'incomplete',
+    });
+
+    expect(screen.getByText('Incomplete')).toBeInTheDocument();
+  });
 });

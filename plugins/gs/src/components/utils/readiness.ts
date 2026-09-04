@@ -1,4 +1,5 @@
 import type { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
+import { releaseReadinessFlagNames } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
  * The single source of truth for how release-readiness verdicts are presented.
@@ -62,11 +63,12 @@ export function readinessRank(readiness?: string): number {
  * The blockers `AppReadinessProcessor` writes. Everything else appearing in
  * `giantswarm.io/readiness-flags` is an enforced chart-metadata gap from the
  * catalog importer, which merges into the same annotation.
+ *
+ * Taken from gs-common rather than restated here: the processor writes these
+ * names and this module recognises them, so a blocker added on one side only
+ * would be presented as the wrong kind of problem on the other.
  */
-export const RELEASE_READINESS_FLAGS = [
-  'RELEASE-NOT-PUBLISHED',
-  'NEVER-PUBLISHED',
-];
+export const RELEASE_READINESS_FLAGS = releaseReadinessFlagNames;
 
 /**
  * Splits the merged flag list back into the two verdicts that write it.
