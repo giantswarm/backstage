@@ -448,34 +448,21 @@ reach Sentry.
 - **Docker**: Backend Dockerfile in `packages/backend/Dockerfile`
 - **Helm**: Charts in `helm/backstage/` directory
 - **CI/CD**: CircleCI (see `.circleci/config.yml`)
-- **Release Process**: Two axes, and only one of them currently runs.
+- **Release Process**: Two axes.
 
-  - **The app** (image + Helm chart) releases on every push to `main`.
-    `.github/workflows/zz_generated.auto_release.yaml` runs git-cliff over
-    conventional-commit PR titles, tags `vX.Y.Z` and creates the GitHub Release;
-    the tag then triggers the CircleCI architect pipeline. No release PR, no
-    approval step — merge a PR with a conventional title and it ships. This
-    tagger does not bump `package.json`, which is why the root `version` (0.138.0)
-    lags the tags (v0.218.x).
-  - **The plugin packages** are changeset-managed, but that axis is dormant.
-    Every `plugins/*` package is `"private": true`, `.changeset/config.json` sets
-    `access: "restricted"` with no `privatePackages` override, and nothing in
-    `.github/workflows` or `.circleci` runs `changeset version` or
-    `changeset publish`. So **nothing here is published to npm**, and pending
-    changesets are not consumed by anything. The newest plugin CHANGELOG entry on
-    `main` is `v0.137.1` (2026-06-18) — the last PR-based release that ran
-    `changeset version` before the push-based tagger replaced it. The npm
-    publishing wiring (dropping `private`, `access: public`, a changesets/action
-    "Version Packages" PR) exists only on the unmerged
-    `enable-plugin-changesets-publishing` branch, issue #1772 step 4.
-  - **Still add a `.changeset/*.md` for any user-facing change to a `plugins/*`
-    package.** It is the queued release note. It produces no CHANGELOG entry
-    today, but it is what the entry gets generated from once the axis is switched
-    on, and nobody can reconstruct it from the diff months later. Level is
-    `minor` for a new feature or export, `patch` for a fix.
-  - Checking your own work: `yarn changeset status` prints an empty "Packages to
-    be bumped" list in this repo even with every pending changeset present, so it
-    cannot tell you whether you remembered one. Look for the file.
+  - **App** (image + Helm chart): released on every push to `main`. git-cliff
+    turns conventional-commit PR titles into a tag + GitHub Release
+    (`zz_generated.auto_release.yaml`), which triggers the CircleCI architect
+    pipeline. The tagger does not bump `package.json`, so the root `version`
+    (0.138.0) lags the tags (v0.220.x) by design — don't "fix" it.
+  - **Plugin packages**: changeset-managed, but that axis is dormant — nothing is
+    published to npm and nothing consumes `.changeset/*.md` today (see #1772).
+    Still add one for any user-facing `plugins/*` change (`minor` for a new
+    feature or export, `patch` for a fix): it's the queued release note for when
+    the axis is switched back on, and nobody reconstructs it from a diff months
+    later. `yarn changeset status` can't check your work here — it reports an
+    empty list either way, so just look for the file. The `changeset` skill has
+    the mechanics and the full state of both axes.
 
 ### Dependencies
 
