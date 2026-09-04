@@ -1,5 +1,12 @@
 export { plansPlugin as default, plansPlugin } from './plugin';
-export { plansApiRef, PlansApiClient } from './apis';
+export {
+  plansApiRef,
+  PlansApiClient,
+  GithubNotConnectedError,
+  plansAuthApiRef,
+  PlansMainAuth,
+} from './apis';
+export type { PlansAuthApi, PlansAuthCredentials } from './apis';
 export type {
   PlansApi,
   PlanPull,
@@ -12,6 +19,7 @@ export type {
   PlanEpic,
   PullEpic,
   PlansReposResponse,
+  PlansConnectionResponse,
   PlansPullsResponse,
   PlansPullFilesResponse,
   PlansTreeResponse,

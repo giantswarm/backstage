@@ -25,6 +25,7 @@ import {
 } from '../../lib/files';
 import { EpicChip } from '../EpicChip';
 import { PlanFileContent } from '../PlanFileContent';
+import { PlansErrorAlert } from '../PlansErrorAlert';
 
 const useStyles = makeStyles((theme: Theme) => ({
   layout: {
@@ -126,10 +127,9 @@ export function MergedTab({ repo }: { repo: string }) {
   }
   if (error) {
     return (
-      <Alert
-        status="danger"
+      <PlansErrorAlert
         title="Failed to load merged plans"
-        description={(error as Error).message}
+        error={error as Error}
       />
     );
   }

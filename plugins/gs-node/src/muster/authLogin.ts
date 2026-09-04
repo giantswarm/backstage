@@ -1,4 +1,4 @@
-import { isClosedClientError } from '@giantswarm/backstage-plugin-gs-node';
+import { isClosedClientError } from '../mcp';
 
 /** Muster's core tool that starts a downstream MCP server's OAuth flow. */
 export const AUTH_LOGIN_TOOL = 'core_auth_login';

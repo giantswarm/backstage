@@ -18,18 +18,19 @@ portal.
 
 Data comes from the `plans` backend plugin
 (`@giantswarm/backstage-plugin-plans-backend`), a thin authenticated proxy
-over the GitHub API. Every request carries the signed-in user's own GitHub
-token (from the portal's `github` auth provider, connected on first use), so
-documents are read as that person and PR comments are authored by them on
-GitHub -- no shared bot identity is involved. Configure the repositories via
-`plans.repositories` (see that plugin's `config.d.ts`).
+that reaches GitHub through muster as the signed-in person. Every request
+carries the user's main login (Dex) ID token; muster holds the person's GitHub
+grant and runs the GitHub MCP server's tools with it, so documents are read as
+that person and PR comments are authored by them on GitHub -- the portal holds
+no GitHub credential and no bot identity is involved. Configure the repositories via
 
 ## Gating
 
 All extensions are disabled by default so customer portals never expose the
-page. Enable it per deployment via app-config (the deployment also needs the
-`github` auth provider configured, whose GitHub App must be installed on the
-plan repositories with Pull requests and Issues write access):
+page. Enable it per deployment via app-config (the deployment also needs a
+GitHub MCP server in one of its muster installations, see the backend's
+`plans.muster` configuration; the signed-in person's own GitHub access decides
+what they can read and comment on):
 
 ```yaml
 app:

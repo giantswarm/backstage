@@ -16,6 +16,7 @@ const queryClient = new QueryClient({
         const name = (error as Error).name;
         if (
           name === 'NotFoundError' ||
+          name === 'GithubNotConnectedError' ||
           name === 'UnauthorizedError' ||
           name === 'ForbiddenError' ||
           name === 'ServiceUnavailableError'

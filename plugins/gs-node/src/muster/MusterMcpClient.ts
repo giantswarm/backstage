@@ -5,10 +5,7 @@ import {
   experimental_createMCPClient as createMCPClient,
   MCPClient,
 } from '@ai-sdk/mcp';
-import {
-  isClosedClientError,
-  McpClientCache,
-} from '@giantswarm/backstage-plugin-gs-node';
+import { isClosedClientError, McpClientCache } from '../mcp';
 
 /**
  * The muster aggregator only exposes its meta-tools over MCP. Discovery
@@ -165,10 +162,15 @@ export function readMusterInstallationsFromConfig(
   return installations;
 }
 
-interface ContentItem {
+/** One MCP content block, as far as the muster clients look at it. */
+export interface McpContentItem {
   type: string;
   text?: string;
+  /** Embedded resource block (`type: resource`), e.g. a downloaded file. */
+  resource?: { uri?: string; mimeType?: string; text?: string };
 }
+
+type ContentItem = McpContentItem;
 
 /**
  * The human-readable message of an errored tool result's text block. When the
@@ -374,6 +376,42 @@ export class MusterMcpClient {
       structuredContent: (inner as { structuredContent?: unknown })
         .structuredContent,
     };
+  }
+
+  /**
+   * Like {@link callTool}, but returns every content block of the wrapped
+   * tool's result instead of the parsed first text block. For tools whose
+   * payload is not (only) in the first text block -- GitHub's
+   * `get_file_contents` answers with a status line plus an embedded resource
+   * carrying the file. Tool-level errors throw, same as callTool.
+   */
+  async callToolContent(
+    toolName: string,
+    args: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<McpContentItem[]> {
+    const result = await this.executeMetaTool(
+      CALL_TOOL,
+      { name: toolName, arguments: args },
+      options,
+    );
+    const envelope = this.unwrapTextContent(result, toolName);
+    if (envelope === undefined) {
+      return [];
+    }
+    let inner: unknown;
+    try {
+      inner = JSON.parse(envelope);
+    } catch {
+      return [{ type: 'text', text: envelope }];
+    }
+    const content = (inner as { content?: unknown } | null)?.content;
+    if (!Array.isArray(content)) {
+      return [{ type: 'text', text: envelope }];
+    }
+    // Surfaces an errored inner result the same way callTool does.
+    this.unwrapTextContent(inner, toolName);
+    return content as McpContentItem[];
   }
 
   async listTools(options?: { authToken?: string }): Promise<unknown> {
