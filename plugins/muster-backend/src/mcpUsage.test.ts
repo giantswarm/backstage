@@ -3,7 +3,10 @@ import {
   pickPrometheusServer,
   quantileFromBuckets,
 } from './mcpUsage';
-import { MusterInstallationConfig, MusterMcpClient } from './MusterMcpClient';
+import {
+  MusterInstallationConfig,
+  MusterMcpClient,
+} from '@giantswarm/backstage-plugin-gs-node';
 
 const INSTALLATION: MusterInstallationConfig = {
   name: 'gazelle',

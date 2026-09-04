@@ -3,7 +3,7 @@ import { mockServices } from '@backstage/backend-test-utils';
 import { JsonObject } from '@backstage/types';
 import express from 'express';
 import request from 'supertest';
-import { MusterMcpClient } from './MusterMcpClient';
+import { MusterMcpClient } from '@giantswarm/backstage-plugin-gs-node';
 import { createRouter, MUSTER_AUTH_HEADER, RouterOptions } from './router';
 
 describe('createRouter', () => {

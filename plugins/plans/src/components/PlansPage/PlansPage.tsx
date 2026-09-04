@@ -1,21 +1,14 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
-import {
-  Alert,
-  Box,
-  Select,
-  Tab,
-  TabList,
-  TabPanel,
-  Tabs,
-} from '@backstage/ui';
+import { Box, Select, Tab, TabList, TabPanel, Tabs } from '@backstage/ui';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
 import { ProposedTab } from '../ProposedTab';
 import { MergedTab } from '../MergedTab';
+import { PlansErrorAlert } from '../PlansErrorAlert';
 
 /**
  * Plans viewer: proposed plans (open PRs, rendered from their head branch)
@@ -91,10 +84,9 @@ export function PlansPage() {
   if (error) {
     return (
       <Content>
-        <Alert
-          status="danger"
+        <PlansErrorAlert
           title="Failed to load plan repositories"
-          description={(error as Error).message}
+          error={error as Error}
         />
       </Content>
     );

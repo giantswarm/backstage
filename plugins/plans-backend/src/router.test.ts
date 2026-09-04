@@ -1,29 +1,94 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
 import { AuthenticationError } from '@backstage/errors';
+import {
+  AuthLoginResult,
+  McpContentItem,
+} from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
+import { GithubGateway } from './github';
 import { createRouter, RouterOptions } from './router';
 
 const REPO = 'giantswarm/bumblebee-plans';
+const TOKEN_HEADER = 'backstage-muster-authorization';
 
-/** Minimal Response stand-in for the mocked fetch. */
-function jsonResponse(body: unknown, status = 200) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-  } as Response;
+type Call = { tool: string; args: Record<string, unknown>; authToken: string };
+
+/**
+ * GitHub-through-muster stand-in: answers are keyed by tool name (a function
+ * gets the args), every call is recorded, and `notConnected` makes the first
+ * call fail the way muster does for a session without a grant.
+ */
+class FakeGateway implements GithubGateway {
+  calls: Call[] = [];
+  answers = new Map<
+    string,
+    unknown | ((args: Record<string, unknown>) => unknown)
+  >();
+  contentAnswers = new Map<string, McpContentItem[]>();
+  loginResult: AuthLoginResult = {
+    status: 'connected',
+    message: 'Already Connected',
+  };
+  failNextCallsWith?: Error;
+  logins = 0;
+
+  private answer(tool: string, args: Record<string, unknown>) {
+    if (this.failNextCallsWith) {
+      const error = this.failNextCallsWith;
+      this.failNextCallsWith = undefined;
+      throw error;
+    }
+    const answer = this.answers.get(tool);
+    if (answer === undefined) {
+      throw new Error(`FakeGateway: no answer for ${tool}`);
+    }
+    return typeof answer === 'function' ? answer(args) : answer;
+  }
+
+  async call(tool: string, args: Record<string, unknown>, authToken: string) {
+    this.calls.push({ tool, args, authToken });
+    return this.answer(tool, args);
+  }
+
+  async callContent(
+    tool: string,
+    args: Record<string, unknown>,
+    authToken: string,
+  ) {
+    this.calls.push({ tool, args, authToken });
+    if (this.failNextCallsWith) {
+      const error = this.failNextCallsWith;
+      this.failNextCallsWith = undefined;
+      throw error;
+    }
+    const content =
+      this.contentAnswers.get(`${tool}:${args.path}`) ??
+      this.contentAnswers.get(tool);
+    if (!content) {
+      throw new Error(`FakeGateway: no content for ${tool} ${args.path}`);
+    }
+    return content;
+  }
+
+  async login() {
+    this.logins++;
+    return this.loginResult;
+  }
 }
 
-describe('createRouter', () => {
-  const fetchFn = jest.fn<Promise<Response>, Parameters<typeof fetch>>();
+const fileContent = (text: string): McpContentItem[] => [
+  { type: 'text', text: 'successfully downloaded text file (SHA: abc)' },
+  {
+    type: 'resource',
+    resource: { uri: 'repo://x', mimeType: 'text/plain', text },
+  },
+];
 
-  // Mirror the production setup: the backend's root HTTP router applies
-  // MiddlewareFactory.error() after plugin routes, mapping @backstage/errors
-  // classes to status codes. Requests carry the caller's GitHub token the
-  // way the frontend sends it, unless a test opts out.
+describe('createRouter', () => {
+  let github: FakeGateway;
+
   async function buildApp(
     repositories: string[] = [REPO],
     options: Partial<RouterOptions> = {},
@@ -37,13 +102,13 @@ describe('createRouter', () => {
       logger,
       config,
       httpAuth: mockServices.httpAuth(),
-      fetchFn,
+      github,
       ...options,
     });
     const app = express();
     if (withToken) {
       app.use((req, _res, next) => {
-        req.headers['x-github-token'] = 'gh-token';
+        req.headers[TOKEN_HEADER] = 'dex-id-token';
         next();
       });
     }
@@ -55,627 +120,682 @@ describe('createRouter', () => {
   let app: express.Express;
 
   beforeEach(async () => {
-    fetchFn.mockReset();
+    github = new FakeGateway();
     app = await buildApp();
   });
 
   it('rejects an invalid repository slug in config', async () => {
-    await expect(buildApp(['not a slug'])).rejects.toThrow(
-      "Invalid plans.repositories entry 'not a slug'",
+    await expect(buildApp(['not-a-slug'])).rejects.toThrow(
+      /Invalid plans.repositories entry/,
     );
   });
 
-  it('lists configured repositories', async () => {
-    const response = await request(app).get('/repos');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ repositories: [REPO] });
-    expect(fetchFn).not.toHaveBeenCalled();
+  it('lists configured repositories without touching GitHub', async () => {
+    const res = await request(app).get('/repos');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ repositories: [REPO] });
+    expect(github.calls).toHaveLength(0);
   });
 
   it('returns 503 when no repository is configured', async () => {
-    const unconfiguredApp = await buildApp([]);
+    const res = await request(await buildApp([])).get('/pulls');
+    expect(res.status).toBe(503);
+  });
 
-    const repos = await request(unconfiguredApp).get('/repos');
-    expect(repos.status).toBe(200);
-    expect(repos.body).toEqual({ repositories: [] });
-
-    const response = await request(unconfiguredApp).get('/pulls');
-    expect(response.status).toBe(503);
-    expect(response.body.error.name).toBe('ServiceUnavailableError');
-    expect(fetchFn).not.toHaveBeenCalled();
+  it('returns 503 when muster is not configured', async () => {
+    const res = await request(
+      await buildApp([REPO], { github: undefined }),
+    ).get('/pulls');
+    expect(res.status).toBe(503);
+    expect(res.body.error.message).toMatch(/plans\.muster/);
   });
 
   it('rejects requests without a Backstage user', async () => {
-    const credentials = jest
-      .fn()
-      .mockRejectedValue(new AuthenticationError('missing credentials'));
-    const unauthedApp = await buildApp([REPO], {
-      httpAuth: { credentials } as unknown as RouterOptions['httpAuth'],
+    const httpAuth = mockServices.httpAuth.mock({
+      credentials: async () => {
+        throw new AuthenticationError('nope');
+      },
+    });
+    const res = await request(await buildApp([REPO], { httpAuth })).get(
+      '/repos',
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('answers 401 without the muster token header', async () => {
+    const res = await request(
+      await buildApp([REPO], {}, { withToken: false }),
+    ).get('/pulls');
+    expect(res.status).toBe(401);
+    expect(res.body.error.message).toContain(TOKEN_HEADER);
+    expect(github.calls).toHaveLength(0);
+  });
+
+  describe('connection', () => {
+    it('reports a connected session', async () => {
+      const res = await request(app).get('/connection');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ connected: true });
     });
 
-    const response = await request(unauthedApp).get('/repos');
+    it('reports the sign-in URL when the person has no grant yet', async () => {
+      github.loginResult = {
+        status: 'auth_required',
+        authUrl: 'https://muster.example/oauth/proxy/start?state=x',
+        message: 'Authentication required for github.',
+      };
+      const res = await request(app).get('/connection');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        connected: false,
+        authUrl: 'https://muster.example/oauth/proxy/start?state=x',
+        message: 'Authentication required for github.',
+      });
+    });
+  });
 
-    expect(response.status).toBe(401);
-    expect(credentials).toHaveBeenCalledWith(expect.anything(), {
-      allow: ['user'],
+  describe('a session without a grant', () => {
+    it('reconnects silently and retries when the person consented before', async () => {
+      github.failNextCallsWith = new Error(
+        'tool not found: x_github_list_pull_requests',
+      );
+      github.answers.set('list_pull_requests', []);
+
+      const res = await request(app).get('/pulls');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ pulls: [] });
+      expect(github.logins).toBe(1);
+      expect(
+        github.calls.filter(c => c.tool === 'list_pull_requests'),
+      ).toHaveLength(2);
+    });
+
+    it('answers 401 with the sign-in URL when a consent is needed', async () => {
+      github.failNextCallsWith = new Error(
+        'tool not found: x_github_list_pull_requests',
+      );
+      github.loginResult = {
+        status: 'auth_required',
+        authUrl: 'https://muster.example/oauth/proxy/start?state=x',
+        message: 'Authentication required for github.',
+      };
+
+      const res = await request(app).get('/pulls');
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toEqual({
+        name: 'GithubNotConnectedError',
+        message: expect.stringContaining('Connect your GitHub account'),
+        authUrl: 'https://muster.example/oauth/proxy/start?state=x',
+      });
+    });
+
+    it('does not mistake other failures for a missing grant', async () => {
+      github.failNextCallsWith = new Error('GitHub responded with 500');
+      const res = await request(app).get('/pulls');
+      expect(res.status).toBe(500);
+      expect(github.logins).toBe(0);
     });
   });
 
   describe('/pulls', () => {
-    it('maps open pull requests', async () => {
-      fetchFn.mockResolvedValue(
-        jsonResponse([
-          {
-            number: 7,
-            title: 'Agent platform MVP',
-            user: { login: 'teemow' },
-            draft: true,
-            head: { ref: 'agent-platform-mvp' },
-            updated_at: '2026-07-03T10:00:00Z',
-            body: 'Plan body',
-          },
-          { number: 8, title: 'No optional fields' },
-        ]),
-      );
+    it('lists open pull requests as the caller and maps the fields', async () => {
+      github.answers.set('list_pull_requests', [
+        {
+          number: 44,
+          title: 'Plan: klaus agent type',
+          user: { login: 'teemow' },
+          draft: true,
+          head: { ref: 'plan/klaus-agent-type' },
+          updated_at: '2026-09-04T12:00:00Z',
+          body: 'Body',
+        },
+        { number: 45, title: 'No body', user: null, head: null },
+      ]);
 
-      const response = await request(app).get('/pulls');
+      const res = await request(app).get('/pulls');
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
         pulls: [
           {
-            number: 7,
-            title: 'Agent platform MVP',
+            number: 44,
+            title: 'Plan: klaus agent type',
             author: 'teemow',
             draft: true,
-            branch: 'agent-platform-mvp',
-            updatedAt: '2026-07-03T10:00:00Z',
-            body: 'Plan body',
+            branch: 'plan/klaus-agent-type',
+            updatedAt: '2026-09-04T12:00:00Z',
+            body: 'Body',
           },
-          { number: 8, title: 'No optional fields', draft: false, body: '' },
+          { number: 45, title: 'No body', draft: false, body: '' },
         ],
       });
-      expect(fetchFn).toHaveBeenCalledWith(
-        `https://api.github.com/repos/${REPO}/pulls?state=open&per_page=100`,
-        {
-          headers: expect.objectContaining({
-            Authorization: 'Bearer gh-token',
-          }),
+      expect(github.calls[0]).toEqual({
+        tool: 'list_pull_requests',
+        args: {
+          owner: 'giantswarm',
+          repo: 'bumblebee-plans',
+          state: 'open',
+          perPage: 100,
         },
-      );
+        authToken: 'dex-id-token',
+      });
     });
 
-    it('rejects GitHub-backed routes without the caller token', async () => {
-      const tokenlessApp = await buildApp([REPO], {}, { withToken: false });
-
-      const response = await request(tokenlessApp).get('/pulls');
-
-      expect(response.status).toBe(401);
-      expect(response.body.error.name).toBe('AuthenticationError');
-      expect(response.body.error.message).toContain('X-GitHub-Token');
-      expect(fetchFn).not.toHaveBeenCalled();
+    it('rejects an unknown repository', async () => {
+      const res = await request(app)
+        .get('/pulls')
+        .query({ repo: 'other/repo' });
+      expect(res.status).toBe(400);
     });
 
-    it('lists configured repositories without a GitHub token', async () => {
-      const tokenlessApp = await buildApp([REPO], {}, { withToken: false });
-
-      const response = await request(tokenlessApp).get('/repos');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ repositories: [REPO] });
-    });
-
-    it('maps a GitHub 404 to NotFoundError', async () => {
-      fetchFn.mockResolvedValue(jsonResponse({}, 404));
-
-      const response = await request(app).get('/pulls');
-
-      expect(response.status).toBe(404);
-      expect(response.body.error.name).toBe('NotFoundError');
-    });
-
-    it('fails on other GitHub errors', async () => {
-      fetchFn.mockResolvedValue(jsonResponse({}, 500));
-
-      const response = await request(app).get('/pulls');
-
-      expect(response.status).toBe(500);
-    });
-
-    it('maps a GitHub 403 to NotAllowedError and surfaces its message', async () => {
-      fetchFn.mockResolvedValue(
-        jsonResponse(
-          { message: 'Resource not accessible by integration' },
-          403,
-        ),
-      );
-
-      const response = await request(app).get('/pulls');
-
-      expect(response.status).toBe(403);
-      expect(response.body.error.name).toBe('NotAllowedError');
-      expect(response.body.error.message).toContain(
-        'Resource not accessible by integration',
-      );
-    });
-  });
-
-  describe('repo resolution', () => {
-    const OTHER_REPO = 'giantswarm/other-plans';
-
-    it('requires repo when several repositories are configured', async () => {
-      const multiApp = await buildApp([REPO, OTHER_REPO]);
-
-      const response = await request(multiApp).get('/pulls');
-
-      expect(response.status).toBe(400);
-      expect(response.body.error.message).toContain('repo query parameter');
-      expect(fetchFn).not.toHaveBeenCalled();
-    });
-
-    it('routes to the requested configured repository', async () => {
-      const multiApp = await buildApp([REPO, OTHER_REPO]);
-      fetchFn.mockResolvedValue(jsonResponse([]));
-
-      const response = await request(multiApp).get(
-        `/pulls?repo=${encodeURIComponent(OTHER_REPO)}`,
-      );
-
-      expect(response.status).toBe(200);
-      expect(fetchFn).toHaveBeenCalledWith(
-        expect.stringContaining(`/repos/${OTHER_REPO}/pulls`),
-        expect.anything(),
-      );
-    });
-
-    it('rejects an unconfigured repository', async () => {
-      const response = await request(app).get(
-        '/pulls?repo=giantswarm/arbitrary',
-      );
-
-      expect(response.status).toBe(400);
-      expect(response.body.error.message).toContain('giantswarm/arbitrary');
-      expect(fetchFn).not.toHaveBeenCalled();
-    });
-
-    it('rejects a repeated repo parameter', async () => {
-      const response = await request(app).get(
-        `/pulls?repo=${REPO}&repo=${REPO}`,
-      );
-
-      expect(response.status).toBe(400);
-      expect(response.body.error.message).toContain('at most once');
-      expect(fetchFn).not.toHaveBeenCalled();
+    it('requires the repo parameter when several repositories are configured', async () => {
+      const multi = await buildApp([REPO, 'giantswarm/other-plans']);
+      expect((await request(multi).get('/pulls')).status).toBe(400);
+      github.answers.set('list_pull_requests', []);
+      const res = await request(multi)
+        .get('/pulls')
+        .query({ repo: 'giantswarm/other-plans' });
+      expect(res.status).toBe(200);
+      expect(github.calls[0].args).toMatchObject({
+        owner: 'giantswarm',
+        repo: 'other-plans',
+      });
     });
   });
 
   describe('/pulls/:number/files', () => {
-    it('maps changed files', async () => {
-      fetchFn.mockResolvedValue(
-        jsonResponse([
-          {
-            filename: 'plans/mvp/index.md',
-            status: 'modified',
-            additions: 3,
-            deletions: 1,
-            patch: '@@ -1 +1,3 @@',
-            previous_filename: 'plans/mvp/README.md',
-          },
-          { filename: 'assets/big.png', status: 'added' },
-        ]),
+    it('maps the changed files of a pull request', async () => {
+      github.answers.set(
+        'pull_request_read',
+        (args: Record<string, unknown>) => {
+          expect(args).toMatchObject({ method: 'get_files', pullNumber: 44 });
+          return [
+            {
+              filename: 'plan/PRD.md',
+              status: 'added',
+              additions: 10,
+              deletions: 0,
+              patch: '@@ +1 @@\n+# PRD',
+            },
+            {
+              filename: 'plan/old.md',
+              status: 'renamed',
+              previous_filename: 'plan/older.md',
+            },
+          ];
+        },
       );
 
-      const response = await request(app).get('/pulls/7/files');
+      const res = await request(app).get('/pulls/44/files');
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
         files: [
           {
-            filename: 'plans/mvp/index.md',
-            status: 'modified',
-            additions: 3,
-            deletions: 1,
-            patch: '@@ -1 +1,3 @@',
-            previousFilename: 'plans/mvp/README.md',
+            filename: 'plan/PRD.md',
+            status: 'added',
+            additions: 10,
+            deletions: 0,
+            patch: '@@ +1 @@\n+# PRD',
           },
           {
-            filename: 'assets/big.png',
-            status: 'added',
+            filename: 'plan/old.md',
+            status: 'renamed',
             additions: 0,
             deletions: 0,
+            previousFilename: 'plan/older.md',
           },
         ],
       });
-      expect(fetchFn).toHaveBeenCalledWith(
-        `https://api.github.com/repos/${REPO}/pulls/7/files?per_page=100`,
-        expect.anything(),
-      );
     });
 
     it('rejects a non-numeric pull number', async () => {
-      const response = await request(app).get('/pulls/abc/files');
-
-      expect(response.status).toBe(400);
-      expect(fetchFn).not.toHaveBeenCalled();
+      expect((await request(app).get('/pulls/abc/files')).status).toBe(400);
     });
   });
 
   describe('/pulls/:number/comments', () => {
-    it('maps discussion comments', async () => {
-      fetchFn.mockResolvedValue(
-        jsonResponse([
-          {
-            id: 1,
-            user: { login: 'teemow' },
-            body: 'Looks good',
-            created_at: '2026-07-07T10:00:00Z',
-            html_url: `https://github.com/${REPO}/pull/7#issuecomment-1`,
-          },
-        ]),
-      );
-
-      const response = await request(app).get('/pulls/7/comments');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+    it('lists discussion comments', async () => {
+      github.answers.set('pull_request_read', [
+        {
+          id: 1,
+          user: { login: 'alice' },
+          body: 'Hi',
+          created_at: 't1',
+          html_url: 'u1',
+        },
+      ]);
+      const res = await request(app).get('/pulls/44/comments');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
         comments: [
           {
             id: 1,
-            author: 'teemow',
-            body: 'Looks good',
-            createdAt: '2026-07-07T10:00:00Z',
-            htmlUrl: `https://github.com/${REPO}/pull/7#issuecomment-1`,
+            author: 'alice',
+            body: 'Hi',
+            createdAt: 't1',
+            htmlUrl: 'u1',
           },
         ],
       });
-      expect(fetchFn).toHaveBeenCalledWith(
-        `https://api.github.com/repos/${REPO}/issues/7/comments?per_page=100`,
-        expect.anything(),
-      );
+      expect(github.calls[0].args).toMatchObject({
+        method: 'get_comments',
+        pullNumber: 44,
+      });
     });
 
-    it('creates a comment as the caller', async () => {
-      fetchFn.mockResolvedValue(
-        jsonResponse({ id: 2, user: { login: 'plans-app[bot]' } }, 201),
-      );
+    it('creates a discussion comment as the caller', async () => {
+      github.answers.set('add_issue_comment', {
+        id: 9,
+        user: { login: 'alice' },
+        body: 'Looks good',
+        created_at: 't9',
+        html_url: 'u9',
+      });
 
-      const response = await request(app)
-        .post('/pulls/7/comments')
-        .send({ body: 'A remark' });
+      const res = await request(app)
+        .post('/pulls/44/comments')
+        .send({ body: 'Looks good' });
 
-      expect(response.status).toBe(201);
-      expect(response.body.comment.id).toBe(2);
-      expect(fetchFn).toHaveBeenCalledWith(
-        `https://api.github.com/repos/${REPO}/issues/7/comments`,
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({
-            body: 'A remark',
-          }),
-        }),
-      );
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual({
+        comment: {
+          id: 9,
+          author: 'alice',
+          body: 'Looks good',
+          createdAt: 't9',
+          htmlUrl: 'u9',
+        },
+      });
+      expect(github.calls[0]).toMatchObject({
+        tool: 'add_issue_comment',
+        args: {
+          owner: 'giantswarm',
+          repo: 'bumblebee-plans',
+          issue_number: 44,
+          body: 'Looks good',
+        },
+      });
     });
 
-    it('rejects an empty body', async () => {
-      const response = await request(app)
-        .post('/pulls/7/comments')
-        .send({ body: '  ' });
-
-      expect(response.status).toBe(400);
-      expect(fetchFn).not.toHaveBeenCalled();
+    it('rejects an empty comment body', async () => {
+      expect(
+        (await request(app).post('/pulls/44/comments').send({ body: '  ' }))
+          .status,
+      ).toBe(400);
+      expect(github.calls).toHaveLength(0);
     });
   });
 
   describe('/pulls/:number/review-comments', () => {
-    it('maps inline comments including line position', async () => {
-      fetchFn.mockResolvedValue(
-        jsonResponse([
+    const threads = {
+      review_threads: [
+        {
+          id: 'PRRT_1',
+          comments: [
+            {
+              body: 'root',
+              path: 'plan/PRD.md',
+              line: 51,
+              original_line: 51,
+              author: 'alice',
+              created_at: 't1',
+              html_url:
+                'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r100',
+            },
+            {
+              body: 'reply',
+              path: 'plan/PRD.md',
+              line: null,
+              original_line: 51,
+              author: 'bob',
+              created_at: 't2',
+              html_url:
+                'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r101',
+            },
+          ],
+        },
+      ],
+      pageInfo: { hasNextPage: false },
+    };
+
+    it('flattens review threads into comments with ids from their anchors', async () => {
+      github.answers.set('pull_request_read', threads);
+
+      const res = await request(app).get('/pulls/44/review-comments');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        comments: [
           {
-            id: 10,
-            user: { login: 'teemow' },
-            body: 'Inline remark',
-            created_at: '2026-07-07T10:00:00Z',
-            path: 'plans/mvp/index.md',
-            line: 12,
+            id: 100,
+            author: 'alice',
+            body: 'root',
+            createdAt: 't1',
+            htmlUrl:
+              'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r100',
+            path: 'plan/PRD.md',
+            line: 51,
             side: 'RIGHT',
           },
           {
-            id: 11,
-            body: 'Reply',
-            path: 'plans/mvp/index.md',
-            line: null,
-            original_line: 12,
-            in_reply_to_id: 10,
+            id: 101,
+            author: 'bob',
+            body: 'reply',
+            createdAt: 't2',
+            htmlUrl:
+              'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r101',
+            path: 'plan/PRD.md',
+            line: 51,
+            side: 'RIGHT',
+            inReplyTo: 100,
           },
-        ]),
+        ],
+      });
+    });
+
+    it('follows the review-thread cursor', async () => {
+      github.answers.set(
+        'pull_request_read',
+        (args: Record<string, unknown>) =>
+          args.after === undefined
+            ? { ...threads, pageInfo: { hasNextPage: true, endCursor: 'c1' } }
+            : { review_threads: [], pageInfo: { hasNextPage: false } },
       );
+      const res = await request(app).get('/pulls/44/review-comments');
+      expect(res.status).toBe(200);
+      expect(res.body.comments).toHaveLength(2);
+      expect(github.calls.map(c => c.args.after)).toEqual([undefined, 'c1']);
+    });
 
-      const response = await request(app).get('/pulls/7/review-comments');
+    it('creates an inline comment through a pending review and returns it', async () => {
+      const posted: string[] = [];
+      github.answers.set(
+        'pull_request_review_write',
+        (args: Record<string, unknown>) => {
+          posted.push(`review:${args.method}:${args.event ?? ''}`);
+          return 'ok';
+        },
+      );
+      github.answers.set(
+        'add_comment_to_pending_review',
+        (args: Record<string, unknown>) => {
+          posted.push(
+            `comment:${args.path}:${args.line}:${args.side}:${args.subjectType}`,
+          );
+          return 'ok';
+        },
+      );
+      github.answers.set('pull_request_read', {
+        review_threads: [
+          {
+            id: 'PRRT_2',
+            comments: [
+              {
+                body: 'Consider X',
+                path: 'plan/PRD.md',
+                line: 12,
+                author: 'alice',
+                created_at: 't3',
+                html_url:
+                  'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r200',
+              },
+            ],
+          },
+        ],
+      });
 
-      expect(response.status).toBe(200);
-      expect(response.body.comments).toEqual([
-        expect.objectContaining({
-          id: 10,
-          author: 'teemow',
-          path: 'plans/mvp/index.md',
-          line: 12,
-          side: 'RIGHT',
-        }),
-        expect.objectContaining({ id: 11, line: 12, inReplyTo: 10 }),
+      const res = await request(app)
+        .post('/pulls/44/review-comments')
+        .send({ body: 'Consider X', path: 'plan/PRD.md', line: 12 });
+
+      expect(res.status).toBe(201);
+      expect(posted).toEqual([
+        'review:create:',
+        'comment:plan/PRD.md:12:RIGHT:LINE',
+        'review:submit_pending:COMMENT',
       ]);
-      expect(fetchFn).toHaveBeenCalledWith(
-        `https://api.github.com/repos/${REPO}/pulls/7/comments?per_page=100`,
-        expect.anything(),
-      );
+      expect(res.body.comment).toMatchObject({
+        id: 200,
+        body: 'Consider X',
+        path: 'plan/PRD.md',
+        line: 12,
+      });
     });
 
-    it('creates an inline comment on the PR head commit', async () => {
-      fetchFn
-        .mockResolvedValueOnce(jsonResponse({ head: { sha: 'abc123' } }))
-        .mockResolvedValueOnce(
-          jsonResponse({ id: 12, path: 'plans/mvp/index.md', line: 3 }, 201),
-        );
-
-      const response = await request(app)
-        .post('/pulls/7/review-comments')
-        .send({ body: 'On this line', path: 'plans/mvp/index.md', line: 3 });
-
-      expect(response.status).toBe(201);
-      expect(response.body.comment.id).toBe(12);
-      expect(fetchFn).toHaveBeenNthCalledWith(
-        1,
-        `https://api.github.com/repos/${REPO}/pulls/7`,
-        expect.anything(),
+    it('reuses a pending review that is already open', async () => {
+      github.answers.set(
+        'pull_request_review_write',
+        (args: Record<string, unknown>) => {
+          if (args.method === 'create') {
+            throw new Error('user already has a pending review');
+          }
+          return 'ok';
+        },
       );
-      expect(fetchFn).toHaveBeenNthCalledWith(
-        2,
-        `https://api.github.com/repos/${REPO}/pulls/7/comments`,
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({
-            body: 'On this line',
-            commit_id: 'abc123',
-            path: 'plans/mvp/index.md',
-            line: 3,
-            side: 'RIGHT',
-          }),
-        }),
-      );
+      github.answers.set('add_comment_to_pending_review', 'ok');
+      github.answers.set('pull_request_read', { review_threads: [] });
+
+      const res = await request(app)
+        .post('/pulls/44/review-comments')
+        .send({ body: 'Consider Y', path: 'plan/PRD.md', line: 3 });
+
+      expect(res.status).toBe(201);
+      expect(res.body.comment).toMatchObject({
+        body: 'Consider Y',
+        path: 'plan/PRD.md',
+        line: 3,
+        side: 'RIGHT',
+      });
     });
 
-    it('creates a reply without needing path or line', async () => {
-      fetchFn.mockResolvedValue(jsonResponse({ id: 13 }, 201));
+    it('replies to a thread by comment id', async () => {
+      github.answers.set('add_reply_to_pull_request_comment', 'ok');
+      github.answers.set('pull_request_read', { review_threads: [] });
 
-      const response = await request(app)
-        .post('/pulls/7/review-comments')
-        .send({ body: 'A reply', inReplyTo: 10 });
+      const res = await request(app)
+        .post('/pulls/44/review-comments')
+        .send({ body: 'Agreed', inReplyTo: 100 });
 
-      expect(response.status).toBe(201);
-      expect(fetchFn).toHaveBeenCalledTimes(1);
-      expect(fetchFn).toHaveBeenCalledWith(
-        `https://api.github.com/repos/${REPO}/pulls/7/comments`,
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({
-            body: 'A reply',
-            in_reply_to: 10,
-          }),
-        }),
-      );
+      expect(res.status).toBe(201);
+      expect(github.calls[0]).toMatchObject({
+        tool: 'add_reply_to_pull_request_comment',
+        args: {
+          owner: 'giantswarm',
+          repo: 'bumblebee-plans',
+          pullNumber: 44,
+          commentId: 100,
+          body: 'Agreed',
+        },
+      });
+      expect(res.body.comment).toMatchObject({
+        body: 'Agreed',
+        inReplyTo: 100,
+      });
     });
 
-    it('rejects a new thread without path and line', async () => {
-      const response = await request(app)
-        .post('/pulls/7/review-comments')
-        .send({ body: 'Missing position' });
-
-      expect(response.status).toBe(400);
-      expect(fetchFn).not.toHaveBeenCalled();
+    it('validates path and line for a new thread', async () => {
+      expect(
+        (
+          await request(app)
+            .post('/pulls/44/review-comments')
+            .send({ body: 'x', path: '', line: 1 })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await request(app)
+            .post('/pulls/44/review-comments')
+            .send({ body: 'x', path: 'a.md', line: 0 })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await request(app)
+            .post('/pulls/44/review-comments')
+            .send({ body: 'x', inReplyTo: -1 })
+        ).status,
+      ).toBe(400);
+      expect(github.calls).toHaveLength(0);
     });
   });
 
   describe('/tree', () => {
-    it('defaults to HEAD and maps entries', async () => {
-      fetchFn.mockResolvedValue(
-        jsonResponse({
-          truncated: false,
-          tree: [
-            { path: 'plans', type: 'tree' },
-            { path: 'plans/mvp/index.md', type: 'blob', size: 1234 },
-          ],
-        }),
+    const listing: Record<string, unknown[]> = {
+      '/': [
+        { name: 'README.md', path: 'README.md', type: 'file', size: 10 },
+        { name: 'plan-a', path: 'plan-a', type: 'dir' },
+      ],
+      'plan-a/': [
+        { name: 'PRD.md', path: 'plan-a/PRD.md', type: 'file', size: 20 },
+        { name: 'sub', path: 'plan-a/sub', type: 'dir' },
+      ],
+      'plan-a/sub/': [
+        { name: 'note.md', path: 'plan-a/sub/note.md', type: 'file', size: 5 },
+      ],
+    };
+
+    it('walks the directories of the default branch', async () => {
+      github.answers.set(
+        'get_file_contents',
+        (args: Record<string, unknown>) => listing[args.path as string],
       );
 
-      const response = await request(app).get('/tree');
+      const res = await request(app).get('/tree');
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
         truncated: false,
         tree: [
-          { path: 'plans', type: 'tree' },
-          { path: 'plans/mvp/index.md', type: 'blob', size: 1234 },
+          { path: 'README.md', type: 'blob', size: 10 },
+          { path: 'plan-a', type: 'tree' },
+          { path: 'plan-a/PRD.md', type: 'blob', size: 20 },
+          { path: 'plan-a/sub', type: 'tree' },
+          { path: 'plan-a/sub/note.md', type: 'blob', size: 5 },
         ],
       });
-      expect(fetchFn).toHaveBeenCalledWith(
-        `https://api.github.com/repos/${REPO}/git/trees/HEAD?recursive=1`,
-        expect.anything(),
-      );
+      expect(github.calls.every(c => c.args.ref === undefined)).toBe(true);
     });
 
-    it('encodes the requested ref', async () => {
-      fetchFn.mockResolvedValue(jsonResponse({ tree: [] }));
-
-      await request(app).get('/tree?ref=feature/branch');
-
-      expect(fetchFn).toHaveBeenCalledWith(
-        `https://api.github.com/repos/${REPO}/git/trees/feature%2Fbranch?recursive=1`,
-        expect.anything(),
+    it('resolves a branch name to its git ref', async () => {
+      github.answers.set(
+        'get_file_contents',
+        (args: Record<string, unknown>) => {
+          expect(args.ref).toBe('refs/heads/plan/klaus-agent-type');
+          return [];
+        },
       );
+      const res = await request(app)
+        .get('/tree')
+        .query({ ref: 'plan/klaus-agent-type' });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ truncated: false, tree: [] });
     });
   });
 
   describe('/content', () => {
-    it('requires the path parameter', async () => {
-      const response = await request(app).get('/content');
-
-      expect(response.status).toBe(400);
-      expect(fetchFn).not.toHaveBeenCalled();
-    });
-
-    it('decodes base64 file content', async () => {
-      fetchFn.mockResolvedValue(
-        jsonResponse({
-          type: 'file',
-          encoding: 'base64',
-          content: Buffer.from('# Plan\n', 'utf8').toString('base64'),
-        }),
+    it('returns the file content from the resource block', async () => {
+      github.contentAnswers.set(
+        'get_file_contents',
+        fileContent('# PRD\n\nBody'),
       );
 
-      const response = await request(app).get(
-        '/content?path=plans/mvp/index.md&ref=agent-platform-mvp',
-      );
+      const res = await request(app)
+        .get('/content')
+        .query({ path: 'plan-a/PRD.md', ref: 'main' });
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
-        path: 'plans/mvp/index.md',
-        ref: 'agent-platform-mvp',
-        content: '# Plan\n',
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        path: 'plan-a/PRD.md',
+        ref: 'main',
+        content: '# PRD\n\nBody',
       });
-      expect(fetchFn).toHaveBeenCalledWith(
-        `https://api.github.com/repos/${REPO}/contents/plans/mvp/index.md?ref=agent-platform-mvp`,
-        expect.anything(),
-      );
+      expect(github.calls[0].args).toEqual({
+        owner: 'giantswarm',
+        repo: 'bumblebee-plans',
+        path: 'plan-a/PRD.md',
+        ref: 'refs/heads/main',
+      });
     });
 
-    it('rejects a directory path', async () => {
-      fetchFn.mockResolvedValue(jsonResponse({ type: 'dir' }));
-
-      const response = await request(app).get('/content?path=plans');
-
-      expect(response.status).toBe(400);
-      expect(response.body.error.message).toContain('not a file');
+    it('requires the path parameter', async () => {
+      expect((await request(app).get('/content')).status).toBe(400);
     });
 
-    it('fails on unexpected content encoding', async () => {
-      fetchFn.mockResolvedValue(
-        jsonResponse({ type: 'file', encoding: 'none', content: 'raw' }),
-      );
-
-      const response = await request(app).get('/content?path=plans/index.md');
-
-      expect(response.status).toBe(500);
+    it('rejects a directory', async () => {
+      github.contentAnswers.set('get_file_contents', [
+        { type: 'text', text: '[{"name":"x"}]' },
+      ]);
+      expect(
+        (await request(app).get('/content').query({ path: 'plan-a/' })).status,
+      ).toBe(400);
     });
   });
 
   describe('/epics', () => {
-    const contentResponse = (markdown: string) =>
-      jsonResponse({
-        type: 'file',
-        encoding: 'base64',
-        content: Buffer.from(markdown, 'utf8').toString('base64'),
-      });
-
-    /** Route the mocked fetch by URL suffix, like the real GitHub API. */
-    function mockGithub(routes: Record<string, Response>) {
-      fetchFn.mockImplementation(async url => {
-        for (const [suffix, response] of Object.entries(routes)) {
-          if (String(url).endsWith(suffix)) {
-            return response;
-          }
-        }
-        return jsonResponse({ message: 'Not Found' }, 404);
-      });
-    }
-
-    it('parses Epic headers from merged plans and open PRs', async () => {
-      mockGithub({
-        '/git/trees/HEAD?recursive=1': jsonResponse({
-          tree: [
-            { path: 'agent-platform-mvp/PRD.md', type: 'blob' },
-            { path: 'agent-platform-mvp/index.html', type: 'blob' },
-            { path: 'no-epic-plan/index.md', type: 'blob' },
-            { path: 'README.md', type: 'blob' },
-            { path: 'deep/nested/doc.md', type: 'blob' },
-          ],
-        }),
-        '/contents/agent-platform-mvp/PRD.md?ref=HEAD': contentResponse(
-          '# PRD: Agent Platform MVP\n\n' +
-            '**Epic:** [giantswarm/giantswarm#36625](https://github.com/giantswarm/giantswarm/issues/36625)\n',
+    it('collects epics of merged plans and open pull requests', async () => {
+      github.answers.set(
+        'get_file_contents',
+        (args: Record<string, unknown>) =>
+          args.path === '/'
+            ? [{ name: 'plan-a', path: 'plan-a', type: 'dir' }]
+            : [
+                { name: 'PRD.md', path: 'plan-a/PRD.md', type: 'file' },
+                { name: 'ADR.md', path: 'plan-a/ADR.md', type: 'file' },
+              ],
+      );
+      github.contentAnswers.set(
+        'get_file_contents:plan-a/PRD.md',
+        fileContent(
+          '**Epic:** [giantswarm/giantswarm#1](https://github.com/giantswarm/giantswarm/issues/1)',
         ),
-        '/contents/no-epic-plan/index.md?ref=HEAD':
-          contentResponse('# No epic here\n'),
-        '/pulls?state=open&per_page=100': jsonResponse([
-          { number: 9, title: 'Add obo plan' },
-          { number: 3, title: 'No plan doc' },
-        ]),
-        '/pulls/9/files?per_page=100': jsonResponse([
-          {
-            filename: 'slack-to-github-obo/PRD.md',
-            patch:
-              '@@ -0,0 +1,3 @@\n+# PRD\n+\n+**Epic**: https://github.com/giantswarm/giantswarm/issues/36700\n',
-          },
-        ]),
-        '/pulls/3/files?per_page=100': jsonResponse([
-          { filename: 'README.md', patch: '' },
-        ]),
-      });
+      );
+      github.answers.set('list_pull_requests', [
+        { number: 7, title: 'Plan: seven' },
+      ]);
+      github.answers.set('pull_request_read', [
+        {
+          filename: 'plan-b/PRD.md',
+          patch: '@@\n+**Epic:** giantswarm/giantswarm#2\n',
+        },
+      ]);
 
-      const response = await request(app).get('/epics');
+      const res = await request(app).get('/epics');
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
         merged: [
           {
-            folder: 'agent-platform-mvp',
-            path: 'agent-platform-mvp/PRD.md',
+            folder: 'plan-a',
+            path: 'plan-a/PRD.md',
             epic: {
               owner: 'giantswarm',
               repo: 'giantswarm',
-              number: 36625,
-              url: 'https://github.com/giantswarm/giantswarm/issues/36625',
+              number: 1,
+              url: 'https://github.com/giantswarm/giantswarm/issues/1',
             },
           },
         ],
         pulls: [
           {
-            number: 9,
-            title: 'Add obo plan',
+            number: 7,
+            title: 'Plan: seven',
             epic: {
               owner: 'giantswarm',
               repo: 'giantswarm',
-              number: 36700,
-              url: 'https://github.com/giantswarm/giantswarm/issues/36700',
+              number: 2,
+              url: 'https://github.com/giantswarm/giantswarm/issues/2',
             },
           },
         ],
       });
-    });
 
-    it('caches the scan between requests', async () => {
-      mockGithub({
-        '/git/trees/HEAD?recursive=1': jsonResponse({ tree: [] }),
-        '/pulls?state=open&per_page=100': jsonResponse([]),
-      });
-
+      // Cached per repository.
+      const calls = github.calls.length;
       await request(app).get('/epics');
-      await request(app).get('/epics');
-
-      expect(fetchFn).toHaveBeenCalledTimes(2);
-    });
-
-    it('skips plans whose documents cannot be read', async () => {
-      mockGithub({
-        '/git/trees/HEAD?recursive=1': jsonResponse({
-          tree: [{ path: 'broken-plan/PRD.md', type: 'blob' }],
-        }),
-        '/pulls?state=open&per_page=100': jsonResponse([]),
-      });
-
-      const response = await request(app).get('/epics');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ merged: [], pulls: [] });
+      expect(github.calls).toHaveLength(calls);
     });
   });
 });

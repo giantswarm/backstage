@@ -2,18 +2,19 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
+import { MusterGithubGateway } from './github';
 import { createRouter } from './router';
 
 /**
  * plansPlugin backend plugin
  *
- * Thin REST proxy over the GitHub API for plan repositories (e.g.
- * giantswarm/bumblebee-plans), consumed by the plans frontend plugin to
- * render proposed (open PR) and merged plan documents and to read/write PR
- * discussion and inline review comments. Every GitHub call runs with the
- * caller's own GitHub token (`X-GitHub-Token`, obtained by the frontend from
- * the portal's GitHub auth provider), so nothing here acts as a shared App
- * identity.
+ * Thin REST API over plan repositories (e.g. giantswarm/bumblebee-plans),
+ * consumed by the plans frontend plugin to render proposed (open PR) and
+ * merged plan documents and to read/write PR discussion and inline review
+ * comments. Every GitHub call runs as the signed-in person: the frontend
+ * forwards the caller's Dex ID token, muster holds the person's GitHub grant
+ * and executes the GitHub MCP server's tools with it (`plans.muster`). No
+ * GitHub credential exists in the portal.
  *
  * @public
  */
@@ -33,6 +34,7 @@ export const plansPlugin = createBackendPlugin({
             logger,
             config,
             httpAuth,
+            github: MusterGithubGateway.fromConfig(config, logger),
           }),
         );
       },

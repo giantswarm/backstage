@@ -2,14 +2,15 @@ import {
   createApiRef,
   DiscoveryApi,
   FetchApi,
-  OAuthApi,
 } from '@backstage/core-plugin-api';
+import { PlansAuthApi } from './auth';
 import {
   NewReviewComment,
   PlanComment,
   PlanReviewComment,
   PlansApi,
   PlansCommentsResponse,
+  PlansConnectionResponse,
   PlansContentResponse,
   PlansEpicsResponse,
   PlansPullFilesResponse,
@@ -24,39 +25,53 @@ export const plansApiRef = createApiRef<PlansApi>({
 });
 
 /**
- * GitHub OAuth scopes the plans proxy needs on the caller's token: reading
- * plan repositories and writing PR comments. Requested incrementally on the
- * first plans request, so the GitHub consent prompt only ever appears to
- * people who open the plans page.
+ * Header carrying the caller's muster token to the plans backend. Must match
+ * MUSTER_AUTH_HEADER in @giantswarm/backstage-plugin-gs-node.
  */
-const GITHUB_SCOPES = ['repo'];
+const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
 
-/** Header carrying the caller's GitHub token to the plans backend. */
-const GITHUB_TOKEN_HEADER = 'X-GitHub-Token';
+/**
+ * The caller has no GitHub grant in muster yet. `authUrl` is muster's
+ * sign-in URL: one visit connects the person's GitHub account, for this and
+ * every later session.
+ */
+export class GithubNotConnectedError extends Error {
+  readonly name = 'GithubNotConnectedError';
+  constructor(
+    message: string,
+    readonly authUrl?: string,
+  ) {
+    super(message);
+  }
+}
 
 /**
  * Client for the plans backend. Every request carries the signed-in user's
- * own GitHub token, so the backend reads the plan repositories as that
- * person and comments are authored by them on GitHub -- there is no shared
- * bot identity anywhere in the plans flow.
+ * muster token; the backend calls GitHub through muster as that person, so
+ * plan repositories are read as them and comments are authored by them on
+ * GitHub -- there is no GitHub credential anywhere in the portal.
  */
 export class PlansApiClient implements PlansApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
-  private readonly githubAuthApi: OAuthApi;
+  private readonly authApi: PlansAuthApi;
 
   constructor(options: {
     discoveryApi: DiscoveryApi;
     fetchApi: FetchApi;
-    githubAuthApi: OAuthApi;
+    authApi: PlansAuthApi;
   }) {
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
-    this.githubAuthApi = options.githubAuthApi;
+    this.authApi = options.authApi;
   }
 
   async listRepos(): Promise<PlansReposResponse> {
     return this.get<PlansReposResponse>('/repos');
+  }
+
+  async getConnection(): Promise<PlansConnectionResponse> {
+    return this.get<PlansConnectionResponse>('/connection');
   }
 
   async listPulls(repo?: string): Promise<PlansPullsResponse> {
@@ -164,18 +179,24 @@ export class PlansApiClient implements PlansApi {
         url.searchParams.set(key, value);
       }
     }
-    // Connects the GitHub account on first use (Backstage's consent popup);
-    // afterwards the token comes from the existing session.
-    const token = await this.githubAuthApi.getAccessToken(GITHUB_SCOPES);
+    const { token } = await this.authApi.getCredentials();
     const response = await this.fetchApi.fetch(url.toString(), {
       ...init,
-      headers: { ...init.headers, [GITHUB_TOKEN_HEADER]: token },
+      headers: {
+        ...init.headers,
+        ...(token && { [MUSTER_AUTH_HEADER]: token }),
+      },
     });
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorData = (await response.json().catch(() => ({}))) as {
+        error?: { name?: string; message?: string; authUrl?: string };
+      };
       const message =
-        (errorData as { error?: { message?: string } })?.error?.message ??
+        errorData?.error?.message ??
         `Plans request failed with status ${response.status}`;
+      if (errorData?.error?.name === 'GithubNotConnectedError') {
+        throw new GithubNotConnectedError(message, errorData.error.authUrl);
+      }
       const error = new Error(message);
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';

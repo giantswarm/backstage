@@ -7,6 +7,16 @@ export interface PlansReposResponse {
   repositories: string[];
 }
 
+/**
+ * Whether the caller's muster session can reach GitHub. `authUrl` is the
+ * sign-in to complete once when it cannot yet.
+ */
+export interface PlansConnectionResponse {
+  connected: boolean;
+  authUrl?: string;
+  message?: string;
+}
+
 export interface PlanPull {
   number: number;
   title: string;
@@ -115,6 +125,7 @@ export interface PlansEpicsResponse {
 }
 
 export interface PlansApi {
+  getConnection(): Promise<PlansConnectionResponse>;
   listRepos(): Promise<PlansReposResponse>;
   listPulls(repo?: string): Promise<PlansPullsResponse>;
   listPullFiles(

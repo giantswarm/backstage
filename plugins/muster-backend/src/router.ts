@@ -14,12 +14,12 @@ import {
   isInfrastructureError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
-} from './authLogin';
+} from '@giantswarm/backstage-plugin-gs-node';
 import {
   MusterInstallationConfig,
   MusterMcpClient,
   readMusterInstallationsFromConfig,
-} from './MusterMcpClient';
+} from '@giantswarm/backstage-plugin-gs-node';
 import { getMcpUsage } from './mcpUsage';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
