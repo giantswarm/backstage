@@ -17,14 +17,13 @@ const useStyles = makeStyles({
     color: 'var(--bui-fg-primary)',
     border: '1px solid transparent',
   },
-  // Exclusions are marked by outline, strike-through *and* the word "except"
-  // beside them — never by colour alone, and never sharing the include styling,
-  // since confusing the two inverts the meaning of the constraint.
+  // The "any except" prefix carries the meaning, so the chip only needs to look
+  // distinct from an inclusion — no strike-through, which hurt legibility of the
+  // very values a reader needs to identify.
   exclude: {
     background: 'transparent',
     color: 'var(--bui-fg-secondary)',
     border: '1px dashed var(--bui-border-2)',
-    textDecoration: 'line-through',
   },
 });
 
