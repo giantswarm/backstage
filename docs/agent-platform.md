@@ -858,6 +858,117 @@ answer:
   The page passes `enabled: !isDeleting && !isDeleted` into the hook, which stops
   both reads outright for the duration.
 
+### Session states, and why the backend derives them
+
+`GET /api/agent-platform/kagent/session-states?installation=<name>` answers, for
+each of the caller's sessions, what state it is in. The session switcher rail
+groups by it.
+
+**This is the only route in the proxy that interprets kagent rather than
+forwarding it**, and the exception is arithmetic rather than taste. A kagent
+`Session` carries no state at all (see "What the list can and cannot show"); the
+only way to learn one is to read that session's whole conversation and look at
+its newest task. Measured on gazelle against a real 21-session account, the full
+fan-out is **2.8 MB** — individual sessions ranged 1.6 KB to 481 KB — to produce
+about 700 bytes of answer. That does not belong in a browser, on a poll.
+
+It stays honest by deriving through the _same_ parser and the _same_ state map
+the UI renders its badge from, shared from `agent-platform-common`. Two copies
+would drift, and the first symptom would be the rail grouping a session one way
+while its own page badges it another.
+
+**There is no bulk endpoint, and this was checked rather than assumed.** On
+kagent 0.9.9 the A2A JSON-RPC `tasks/list` returns `-32601 METHOD_NOT_FOUND`
+(`tasks/get` on the same endpoint reaches a decode error, so it is method
+dispatch and not transport). And `GET /sessions/:id/tasks` ignores pagination
+entirely: `?limit=1`, `?limit=1&order=desc`, `?sort=desc` and `?after=0` all
+return byte-identical full payloads. Even a working `limit` would not help —
+tasks come back `ORDER BY created_at ASC`, so the cheap end of the list is the
+wrong end.
+
+**The response distinguishes three things a rail renders differently**, and
+flattening any pair loses information:
+
+- an entry with a `state` — kagent said so;
+- an entry with `state: null` — the session has tasks but none reported a state,
+  i.e. created and never run;
+- an id in `unreadable` — the task read failed, so the state is genuinely
+  unknown, which is not the same as terminal;
+- and a `skipped` count for sessions never evaluated at all.
+
+Terminal states come back unfiltered. Filtering server-side would save about a
+kilobyte and make "terminal" indistinguishable from "not evaluated"; which
+states are non-terminal is a question the frontend already answers, with the
+same map.
+
+#### Bounding the fan-out
+
+Candidates are chosen before a single byte of conversation is fetched: subagent
+sessions dropped (`isListableSession`), then anything whose `updated_at` is over
+**7 days** old, then sorted by last activity and capped at **20**. Everything
+dropped is counted into `skipped`.
+
+The window is deliberately generous. A session in `input-required` is blocked on
+a human and can sit for days — that is exactly what the rail's WAITING group
+exists to surface, so a tight window would delete the feature's main use case
+rather than trim its cost. The **cap** is the real bound; the window only trims a
+tail a busy account would have hit the cap on anyway. A session with no usable
+`updated_at` is kept and sorted last: `normalizeTimestamp` has already rejected
+Go zero time and anything unparseable, so absent means "cannot tell", not "old".
+
+Reads run through a **sliding** pool of 4, not batches of 4 — with payloads
+spanning 1.6 KB to 481 KB a batch would run at the pace of its largest member
+while three connections idled. Each read gets 5 s (below the client's own 10 s,
+so one hung connection cannot spend the pass) and the whole pass gets 8 s, under
+the frontend's 10 s poll so a slow answer cannot let requests pile up behind the
+interval that asked for it. A complete pass measured ~500 ms, so the budget only
+engages when something is wrong. Task arrays are parsed, reduced to one state,
+and dropped; nothing large is retained.
+
+Every read is caught individually — a session deleted between the list and the
+read costs that row, never the rail. The failure count is logged at `debug`,
+because a partial read is the expected outcome this route is built around and
+`warn` would forward it to Sentry; the installation travels as structured
+metadata so it cannot fingerprint one issue per installation. The route answers
+**200 even when every task read fails**, for the same reason: a 5xx here would
+reach Sentry through `MiddlewareFactory` regardless of our own log level.
+
+All six bounds are overridable under `agentPlatform.kagent.sessionStates`. They
+are config rather than constants because the one thing that cannot be predicted
+is behaviour against an account far larger than any measured — that wants a knob,
+not a release. They are deliberately **not** query parameters: the fan-out bound
+is a cost lever and the browser must not be able to widen it.
+
+#### Caching
+
+A plain in-process cache, 15 s, keyed by a **hash of the caller's token**.
+
+The TTL has to exceed the frontend's fast poll (10 s) or it would miss on nearly
+every request and buy nothing. At 15 s the fan-out runs at most four times a
+minute per user per installation, while the rail is never more than 15 s behind —
+an order of magnitude inside the 5 minutes the state semantics already tolerate
+before they stop calling a session live. The entry holds the in-flight promise,
+so two tabs polling together share one fan-out, and a failed pass is evicted
+rather than served for the rest of its TTL.
+
+The key is the token and not the Backstage identity because kagent scopes its
+list by _that_ token's subject — so the token is exactly the scoping key, and a
+rotation or a sign-out makes the entry unaddressable rather than stale-but-live.
+
+**Not `cacheService`.** It is a pluggable store: the day someone points it at
+Redis, this becomes per-user chat-derived data in a shared external store that
+outlives both the process and sign-out. A 15 s in-process cache is the exact
+lifetime wanted and cannot leak past a restart. The entries hold only a session
+id, a state string and a timestamp — no titles, no task payloads, no token —
+which is the server-side mirror of the frontend's "user-scoped data is never
+persisted" rule.
+
+**One open optimisation.** If kagent bumps `session.updated_at` on every task
+write, a terminal session whose `updated_at` has not moved needs no re-read at
+all, and steady-state cost drops by roughly an order of magnitude. That is the
+same open question the polling section raises above, and it is unverified — so
+the memo is deliberately not in the baseline.
+
 ### What the timeline shows
 
 Built by `lib/kagentTimeline.ts` from task history. Conversation messages render in

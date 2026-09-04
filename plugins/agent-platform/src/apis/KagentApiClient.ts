@@ -20,6 +20,8 @@ import {
   kagentMeWireSchema,
   normalizeSessionDetail,
   normalizeSessionList,
+  normalizeSessionStates,
+  SessionStatesResponse,
   normalizeTaskList,
   parseCreatedSessionId,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -211,6 +213,27 @@ export class KagentApiClient implements KagentApi {
     // session: that is the same condition as a 404, and the page renders one
     // "not found" state for both.
     return detail;
+  }
+
+  /**
+   * Derived state for this installation's sessions, for the switcher rail.
+   *
+   * The backend does the work: a session's state lives in its tasks, and reading
+   * every session's conversation in the browser to learn one string each is not
+   * affordable. What comes back is a few hundred bytes.
+   *
+   * Parsed permissively, like every other read here, but with one difference —
+   * a malformed summary is **not** fatal. The rail is an aid beside a page that
+   * works without it, so an unreadable entry is dropped and the rest render.
+   */
+  async listSessionStates(
+    installation: string,
+  ): Promise<SessionStatesResponse> {
+    const body = await this.get<unknown>(
+      '/kagent/session-states',
+      installation,
+    );
+    return normalizeSessionStates(body);
   }
 
   async listSessionTasks(

@@ -1,0 +1,375 @@
+import { mockServices } from '@backstage/backend-test-utils';
+import { NotFoundError } from '@backstage/errors';
+import { KagentClient } from './KagentClient';
+import {
+  DEFAULT_MAX_AGE_MS,
+  selectCandidates,
+  SessionStateReader,
+} from './sessionStates';
+
+const NOW = Date.parse('2026-09-04T12:00:00.000Z');
+const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
+
+/** A wire session as `GET /api/sessions` returns it. */
+function wireSession(
+  id: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id,
+    name: `session ${id}`,
+    user_id: 'marian@giantswarm.io',
+    created_at: '2026-09-01T10:00:00Z',
+    updated_at: '2026-09-04T11:59:00Z',
+    ...overrides,
+  };
+}
+
+/** A task list envelope whose single task reports `state`. */
+function wireTasks(state: string | undefined, timestamp?: string) {
+  return {
+    error: false,
+    data: [
+      {
+        id: 't1',
+        contextId: 'c1',
+        status: {
+          ...(state === undefined ? {} : { state }),
+          ...(timestamp === undefined ? {} : { timestamp }),
+        },
+        history: [],
+      },
+    ],
+  };
+}
+
+describe('selectCandidates', () => {
+  const opts = { now: NOW, maxAgeMs: DEFAULT_MAX_AGE_MS, maxSessions: 20 };
+
+  it('orders by last activity, newest first', () => {
+    const picked = selectCandidates(
+      [
+        { sessionId: 'old', updatedAt: '2026-09-02T10:00:00Z' },
+        { sessionId: 'new', updatedAt: '2026-09-04T10:00:00Z' },
+        { sessionId: 'mid', updatedAt: '2026-09-03T10:00:00Z' },
+      ],
+      opts,
+    );
+
+    expect(picked.map(s => s.sessionId)).toEqual(['new', 'mid', 'old']);
+  });
+
+  it('caps the number of candidates, keeping the most recent', () => {
+    const sessions = Array.from({ length: 30 }, (_, i) => ({
+      sessionId: `s${i}`,
+      updatedAt: new Date(NOW - i * MINUTE).toISOString(),
+    }));
+
+    const picked = selectCandidates(sessions, { ...opts, maxSessions: 20 });
+
+    expect(picked).toHaveLength(20);
+    expect(picked[0].sessionId).toBe('s0');
+    expect(picked[19].sessionId).toBe('s19');
+  });
+
+  it('drops sessions outside the activity window', () => {
+    const picked = selectCandidates(
+      [
+        { sessionId: 'recent', updatedAt: new Date(NOW - DAY).toISOString() },
+        {
+          sessionId: 'stale',
+          updatedAt: new Date(NOW - 30 * DAY).toISOString(),
+        },
+      ],
+      opts,
+    );
+
+    expect(picked.map(s => s.sessionId)).toEqual(['recent']);
+  });
+
+  it('keeps a session that waited for days, well inside the window', () => {
+    // The whole point of a seven-day window rather than a tight one: a session
+    // blocked on a human is what the WAITING group exists to show.
+    const picked = selectCandidates(
+      [
+        {
+          sessionId: 'waiting',
+          updatedAt: new Date(NOW - 5 * DAY).toISOString(),
+        },
+      ],
+      opts,
+    );
+
+    expect(picked.map(s => s.sessionId)).toEqual(['waiting']);
+  });
+
+  it('keeps a session with no usable timestamp, sorted last', () => {
+    // `normalizeTimestamp` has already rejected Go zero time and anything
+    // unparseable, so an absent value means "cannot tell" — not "old". Dropping
+    // it would hide a session on the strength of a field kagent need not send.
+    const picked = selectCandidates(
+      [
+        { sessionId: 'unknown' },
+        { sessionId: 'dated', updatedAt: '2026-09-04T10:00:00Z' },
+      ],
+      opts,
+    );
+
+    expect(picked.map(s => s.sessionId)).toEqual(['dated', 'unknown']);
+  });
+});
+
+describe('SessionStateReader', () => {
+  const listSessions = jest.fn();
+  const listSessionTasks = jest.fn();
+  const client = { listSessions, listSessionTasks } as unknown as KagentClient;
+  const logger = mockServices.logger.mock();
+
+  function reader(options = {}, now: () => number = () => NOW) {
+    return new SessionStateReader(client, logger, 'gazelle', options, now);
+  }
+
+  beforeEach(() => {
+    listSessions.mockReset();
+    listSessionTasks.mockReset();
+  });
+
+  it('reports the newest task state per session', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [wireSession('a'), wireSession('b')],
+    });
+    listSessionTasks.mockImplementation(async (id: string) =>
+      id === 'a'
+        ? wireTasks('input-required', '2026-09-04T11:00:00Z')
+        : wireTasks('completed', '2026-09-04T10:00:00Z'),
+    );
+
+    const result = await reader().read('tok');
+
+    expect(result.states).toEqual([
+      expect.objectContaining({
+        sessionId: 'a',
+        state: 'input-required',
+        changedAt: Date.parse('2026-09-04T11:00:00Z'),
+      }),
+      expect.objectContaining({ sessionId: 'b', state: 'completed' }),
+    ]);
+    expect(result.unreadable).toEqual([]);
+    expect(result.skipped).toBe(0);
+    expect(result.evaluatedAt).toBe(NOW);
+  });
+
+  it('reports a session that has never run as null, not as terminal', async () => {
+    // Three different facts the rail renders differently: no state, not
+    // evaluated, and unreadable. Flattening any pair loses information.
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(wireTasks(undefined));
+
+    const result = await reader().read('tok');
+
+    expect(result.states).toEqual([{ sessionId: 'a', state: null }]);
+  });
+
+  it('never reads tasks for an A2A subagent session', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [wireSession('parent'), wireSession('child', { source: 'agent' })],
+    });
+    listSessionTasks.mockResolvedValue(wireTasks('completed'));
+
+    const result = await reader().read('tok');
+
+    expect(listSessionTasks).toHaveBeenCalledTimes(1);
+    expect(listSessionTasks).toHaveBeenCalledWith(
+      'parent',
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(result.states.map(s => s.sessionId)).toEqual(['parent']);
+    // Excluded before selection, so it is not "skipped" either — it is not a
+    // session the rail has any business counting.
+    expect(result.skipped).toBe(0);
+  });
+
+  it('counts sessions past the cap as skipped', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: Array.from({ length: 5 }, (_, i) => wireSession(`s${i}`)),
+    });
+    listSessionTasks.mockResolvedValue(wireTasks('completed'));
+
+    const result = await reader({ maxSessions: 2 }).read('tok');
+
+    expect(result.states).toHaveLength(2);
+    expect(result.skipped).toBe(3);
+    expect(listSessionTasks).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps one failed task read from costing the whole summary', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [wireSession('ok'), wireSession('gone'), wireSession('ok2')],
+    });
+    listSessionTasks.mockImplementation(async (id: string) => {
+      if (id === 'gone') {
+        throw new NotFoundError('deleted between the list and the read');
+      }
+      return wireTasks('completed');
+    });
+
+    const result = await reader().read('tok');
+
+    expect(result.states.map(s => s.sessionId).sort()).toEqual(['ok', 'ok2']);
+    expect(result.unreadable).toEqual(['gone']);
+  });
+
+  it('resolves even when every task read fails', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [wireSession('a'), wireSession('b')],
+    });
+    listSessionTasks.mockRejectedValue(new Error('kagent is having a moment'));
+
+    const result = await reader().read('tok');
+
+    expect(result.states).toEqual([]);
+    expect(result.unreadable.sort()).toEqual(['a', 'b']);
+  });
+
+  it('logs partial failure at debug, as a count, without session ids', async () => {
+    // The root logger forwards warn and error to Sentry, and a partial read is
+    // the expected outcome this route is built around.
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockRejectedValue(new Error('nope'));
+
+    await reader().read('tok');
+
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.stringContaining('task reads failed'),
+      { failed: 1, evaluated: 1 },
+    );
+  });
+
+  it('never exceeds the configured concurrency', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: Array.from({ length: 10 }, (_, i) => wireSession(`s${i}`)),
+    });
+    let inFlight = 0;
+    let peak = 0;
+    listSessionTasks.mockImplementation(async () => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise(resolve => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return wireTasks('completed');
+    });
+
+    await reader({ concurrency: 3 }).read('tok');
+
+    expect(peak).toBe(3);
+    expect(listSessionTasks).toHaveBeenCalledTimes(10);
+  });
+
+  it('gives each task read the short per-read timeout', async () => {
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(wireTasks('completed'));
+
+    await reader({ taskTimeoutMs: 1234 }).read('tok');
+
+    expect(listSessionTasks).toHaveBeenCalledWith(
+      'a',
+      { userToken: 'tok' },
+      { timeoutMs: 1234 },
+    );
+  });
+
+  it('stops at the budget and reports the remainder as skipped', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: Array.from({ length: 6 }, (_, i) => wireSession(`s${i}`)),
+    });
+    // Clock advances a second per call, so the 2s budget admits two reads.
+    let clock = NOW;
+    listSessionTasks.mockImplementation(async () => {
+      clock += 1_000;
+      return wireTasks('completed');
+    });
+
+    const result = await reader(
+      { budgetMs: 2_000, concurrency: 1 },
+      () => clock,
+    ).read('tok');
+
+    expect(result.states.length).toBeLessThan(6);
+    expect(result.states.length + result.skipped).toBe(6);
+    expect(result.skipped).toBeGreaterThan(0);
+  });
+
+  describe('caching', () => {
+    it('reuses a summary inside the TTL and recomputes after it', async () => {
+      listSessions.mockResolvedValue({
+        error: false,
+        data: [wireSession('a')],
+      });
+      listSessionTasks.mockResolvedValue(wireTasks('completed'));
+      let clock = NOW;
+      const subject = reader({ cacheTtlMs: 15_000 }, () => clock);
+
+      await subject.read('tok');
+      clock += 10_000;
+      await subject.read('tok');
+      expect(listSessions).toHaveBeenCalledTimes(1);
+
+      clock += 10_000;
+      await subject.read('tok');
+      expect(listSessions).toHaveBeenCalledTimes(2);
+    });
+
+    it('never serves one token’s summary to another', async () => {
+      // The cache key is the token, because kagent scopes its list by that
+      // token's subject. Sharing an entry would hand one person another's
+      // sessions.
+      listSessions.mockResolvedValue({
+        error: false,
+        data: [wireSession('a')],
+      });
+      listSessionTasks.mockResolvedValue(wireTasks('completed'));
+      const subject = reader();
+
+      await subject.read('token-one');
+      await subject.read('token-two');
+
+      expect(listSessions).toHaveBeenCalledTimes(2);
+    });
+
+    it('collapses concurrent passes into one fan-out', async () => {
+      listSessions.mockResolvedValue({
+        error: false,
+        data: [wireSession('a')],
+      });
+      listSessionTasks.mockResolvedValue(wireTasks('completed'));
+      const subject = reader();
+
+      await Promise.all([subject.read('tok'), subject.read('tok')]);
+
+      expect(listSessions).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not cache a failed pass', async () => {
+      listSessions
+        .mockRejectedValueOnce(new Error('kagent unreachable'))
+        .mockResolvedValue({ error: false, data: [] });
+      const subject = reader();
+
+      await expect(subject.read('tok')).rejects.toThrow('kagent unreachable');
+      await expect(subject.read('tok')).resolves.toEqual(
+        expect.objectContaining({ states: [] }),
+      );
+    });
+  });
+});
