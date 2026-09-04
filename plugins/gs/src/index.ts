@@ -15,6 +15,11 @@ export {
   type GSAuthProvidersApi,
 } from './apis/auth/types';
 export {
+  LocalStorageSignInConnectorMemory,
+  SIGN_IN_CONNECTOR_STORAGE_KEY,
+  type SignInConnectorMemory,
+} from './apis/auth/signInConnectorMemory';
+export {
   useInstallations,
   type InstallationConfig,
   type UseInstallationsResult,

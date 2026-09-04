@@ -11,6 +11,7 @@ import {
 } from '@backstage/core-plugin-api';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
+import { SignInConnectorMemory } from './signInConnectorMemory';
 
 export const gsAuthApiRef = createApiRef<AuthApi>({
   id: 'plugin.gs.auth',
@@ -92,4 +93,10 @@ export type GSAuthProvidersApiCreateOptions = {
    * non-broker setups can omit it.
    */
   clusterAccessStatusApi?: ClusterAccessStatusApi;
+  /**
+   * Where this browser remembers the Dex connector of a sign-in through the
+   * fallback card, so the main provider's silent re-logins reuse it. Defaults
+   * to localStorage; tests pass their own.
+   */
+  signInConnectorMemory?: SignInConnectorMemory;
 };
