@@ -96,9 +96,6 @@ backend.add(import('@giantswarm/backstage-plugin-plans-backend'));
 // roadmap plugin (GitHub Projects roadmap board)
 backend.add(import('@giantswarm/backstage-plugin-roadmap-backend'));
 
-// GitHub Actions tab as the signed-in person, through muster
-backend.add(import('@giantswarm/backstage-plugin-github-actions-backend'));
-
 // mcp actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 

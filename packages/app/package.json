@@ -66,7 +66,6 @@
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
-    "@material-ui/lab": "^4.0.0-alpha.61",
     "@pagerduty/backstage-plugin": "^0.21.0",
     "@remixicon/react": "^4.9.0",
     "@roadiehq/backstage-plugin-github-pull-requests": "^3.0.0",
