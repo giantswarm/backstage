@@ -3,6 +3,7 @@ import {
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
+  githubAuthApiRef,
   PageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import AssignmentIcon from '@material-ui/icons/Assignment';
@@ -46,9 +47,10 @@ const plansApi = ApiBlueprint.make({
       deps: {
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
+        githubAuthApi: githubAuthApiRef,
       },
-      factory: ({ discoveryApi, fetchApi }) =>
-        new PlansApiClient({ discoveryApi, fetchApi }),
+      factory: ({ discoveryApi, fetchApi, githubAuthApi }) =>
+        new PlansApiClient({ discoveryApi, fetchApi, githubAuthApi }),
     }),
 });
 

@@ -7870,7 +7870,6 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
     "@backstage/errors": "backstage:^"
-    "@backstage/integration": "backstage:^"
     "@backstage/types": "backstage:^"
     "@types/express": "npm:^5.0.0"
     "@types/supertest": "npm:^7.0.0"

@@ -28,7 +28,6 @@
     "@backstage/backend-plugin-api": "backstage:^",
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
-    "@backstage/integration": "backstage:^",
     "express": "^5.0.0",
     "express-promise-router": "^4.1.0"
   },

@@ -10,15 +10,32 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response;
 }
 
+/** Every request carries the caller's GitHub token for the backend. */
+const AUTHED = { headers: { 'X-GitHub-Token': 'user-token' } };
+
 describe('PlansApiClient', () => {
-  const fetchMock = jest.fn<Promise<Response>, [string]>();
+  const fetchMock = jest.fn<Promise<Response>, [string, RequestInit?]>();
+  const getAccessToken = jest.fn().mockResolvedValue('user-token');
   const client = new PlansApiClient({
     discoveryApi: { getBaseUrl: jest.fn().mockResolvedValue(BASE_URL) },
     fetchApi: { fetch: fetchMock as unknown as typeof fetch },
+    githubAuthApi: { getAccessToken } as unknown as ConstructorParameters<
+      typeof PlansApiClient
+    >[0]['githubAuthApi'],
   });
 
   beforeEach(() => {
     fetchMock.mockReset();
+    getAccessToken.mockClear();
+  });
+
+  it("sends the caller's GitHub token, asking for the repo scope", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ repositories: [] }));
+
+    await client.listRepos();
+
+    expect(getAccessToken).toHaveBeenCalledWith(['repo']);
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/repos`, AUTHED);
   });
 
   it('lists repositories', async () => {
@@ -26,7 +43,7 @@ describe('PlansApiClient', () => {
     fetchMock.mockResolvedValue(jsonResponse(payload));
 
     await expect(client.listRepos()).resolves.toEqual(payload);
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/repos`);
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/repos`, AUTHED);
   });
 
   it('lists pulls without a repo parameter', async () => {
@@ -34,7 +51,7 @@ describe('PlansApiClient', () => {
 
     await client.listPulls();
 
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/pulls`);
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/pulls`, AUTHED);
   });
 
   it('passes the repo parameter URL-encoded', async () => {
@@ -44,6 +61,7 @@ describe('PlansApiClient', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       `${BASE_URL}/pulls?repo=giantswarm%2Fbumblebee-plans`,
+      AUTHED,
     );
   });
 
@@ -54,6 +72,7 @@ describe('PlansApiClient', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       `${BASE_URL}/pulls/7/files?repo=giantswarm%2Fbumblebee-plans`,
+      AUTHED,
     );
   });
 
@@ -62,7 +81,7 @@ describe('PlansApiClient', () => {
 
     await client.getTree('main');
 
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/tree?ref=main`);
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/tree?ref=main`, AUTHED);
   });
 
   it('fetches file content with path and ref', async () => {
@@ -74,6 +93,7 @@ describe('PlansApiClient', () => {
     );
     expect(fetchMock).toHaveBeenCalledWith(
       `${BASE_URL}/content?path=plans%2Findex.md&ref=main`,
+      AUTHED,
     );
   });
 
@@ -84,6 +104,7 @@ describe('PlansApiClient', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       `${BASE_URL}/pulls/7/comments?repo=giantswarm%2Fbumblebee-plans`,
+      AUTHED,
     );
   });
 
@@ -96,7 +117,10 @@ describe('PlansApiClient', () => {
     );
     expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/pulls/7/comments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-GitHub-Token': 'user-token',
+      },
       body: JSON.stringify({ body: 'A remark' }),
     });
   });
@@ -108,6 +132,7 @@ describe('PlansApiClient', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       `${BASE_URL}/pulls/7/review-comments`,
+      AUTHED,
     );
   });
 
@@ -126,7 +151,10 @@ describe('PlansApiClient', () => {
       `${BASE_URL}/pulls/7/review-comments`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-GitHub-Token': 'user-token',
+        },
         body: JSON.stringify({
           body: 'On this line',
           path: 'plans/index.md',
