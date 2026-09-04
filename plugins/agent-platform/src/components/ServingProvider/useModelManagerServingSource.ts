@@ -17,7 +17,7 @@ import {
   toServingLoading,
 } from '../../lib/modelManagerServing';
 import {
-  modelManagerBackendQueryKey,
+  modelManagerBackendsQueryKey,
   modelManagerModelsQueryKey,
   modelManagerNodesQueryKey,
 } from '../../lib/queryKeys';
@@ -125,7 +125,7 @@ export function useModelManagerServingSource(
 
   const backendQueries = useQueries({
     queries: installations.map(installation => ({
-      queryKey: modelManagerBackendQueryKey(installation),
+      queryKey: modelManagerBackendsQueryKey(installation),
       queryFn: () => modelManagerApi.listBackends(installation),
       staleTime: BACKEND_REFETCH_MS,
       refetchInterval: BACKEND_REFETCH_MS,
@@ -144,7 +144,10 @@ export function useModelManagerServingSource(
     const result: BackendsByInstallation = {};
     installations.forEach((installation, index) => {
       const descriptors = backendQueries[index]?.data;
-      if (!descriptors) {
+      // A persisted cache entry of another shape (an older portal's single
+      // descriptor, a corrupt store) must not take the page down: it reads
+      // as "not answered yet" until the query refetches.
+      if (!Array.isArray(descriptors)) {
         return;
       }
       const known: KnownBackend[] = [];

@@ -17,6 +17,10 @@ import {
   parseModelManagerList,
 } from '../../lib/modelManager';
 import { useModelManagerServingSource } from './useModelManagerServingSource';
+import {
+  modelManagerBackendQueryKey,
+  modelManagerBackendsQueryKey,
+} from '../../lib/queryKeys';
 
 const listInstallations = jest.fn();
 const listBackends = jest.fn();
@@ -54,11 +58,15 @@ function namedError(name: string, message = name) {
   return error;
 }
 
-function renderSource(reachable = ['lab', 'gpu', 'plain']) {
+function renderSource(
+  reachable = ['lab', 'gpu', 'plain'],
+  seed?: (queryClient: QueryClient) => void,
+) {
   // Retries off so a rejected read settles immediately.
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  seed?.(queryClient);
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider apis={[[modelManagerApiRef, modelManagerApi]]}>
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -499,5 +507,42 @@ describe('useModelManagerServingSource · several backends on one installation',
       'lab/lemonade/172.21.0.1',
       'lab/ollama/172.21.0.1',
     ]);
+  });
+});
+
+describe('useModelManagerServingSource · the persisted cache of an older portal', () => {
+  beforeEach(() => {
+    listInstallations.mockResolvedValue(['lab']);
+    listBackends.mockResolvedValue([ollama]);
+    listModels.mockResolvedValue(ollamaModels);
+    listNodes.mockResolvedValue([]);
+  });
+
+  it('reads the backends list under its own key, next to the single descriptor an older portal persisted', async () => {
+    // The plugin persists its query cache across releases. A portal before
+    // this change stored ONE descriptor object under the `backend` key; the
+    // list must live under a key of its own, or the object is rehydrated
+    // where an array is iterated.
+    const { result } = renderSource(['lab'], queryClient => {
+      queryClient.setQueryData(modelManagerBackendQueryKey('lab'), ollama);
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(listBackends).toHaveBeenCalledWith('lab');
+    expect(result.current.sourceBackends).toEqual({ lab: ['ollama'] });
+    expect(result.current.servedModels.length).toBeGreaterThan(0);
+  });
+
+  it('treats a persisted entry of another shape under the list key as not answered yet', async () => {
+    const { result } = renderSource(['lab'], queryClient => {
+      // A corrupt or foreign store: an object where the list belongs.
+      queryClient.setQueryData(modelManagerBackendsQueryKey('lab'), ollama, {
+        updatedAt: Date.now(),
+      });
+    });
+    // Fresh data is not refetched; the hook must still not throw and must
+    // render the installation as pending rather than crash the page.
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.installations).toEqual([]);
+    expect(result.current.unreachableInstallations).toEqual([]);
   });
 });
