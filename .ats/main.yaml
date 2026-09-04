@@ -15,6 +15,4 @@
 # hand-written pipeline skipped them too via `--skip-steps upgrade functional`).
 app-tests-deploy-namespace: default
 
-smoke-tests-cluster-type: kind
-
 skip-steps: [functional,upgrade]
