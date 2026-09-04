@@ -132,6 +132,13 @@ type Options<AuthSession> = {
    * installation-scoped, installations-dependent branch pre-sign-in).
    */
   isMainProvider?: boolean;
+  /**
+   * Extra query parameters for the backend's `/start` endpoint, i.e. for the
+   * login popup (or redirect) only -- never for `/refresh`. The Giant Swarm
+   * OIDC authenticator forwards `connector_id` to Dex, which pins the
+   * upstream identity provider for that sign-in.
+   */
+  startParams?: Record<string, string>;
 };
 
 function defaultJoinScopes(scopes: Set<string>) {
@@ -158,6 +165,7 @@ export class DefaultAuthConnector<
     ClusterToken | undefined
   >;
   private readonly isMainProvider: boolean;
+  private readonly startParams: Record<string, string>;
   constructor(options: Options<AuthSession>) {
     const {
       configApi,
@@ -170,6 +178,7 @@ export class DefaultAuthConnector<
       popupOptions,
       clusterTokenProvider,
       isMainProvider = false,
+      startParams = {},
     } = options;
 
     if (!warned && !configApi) {
@@ -203,6 +212,7 @@ export class DefaultAuthConnector<
     this.popupOptions = popupOptions;
     this.clusterTokenProvider = clusterTokenProvider;
     this.isMainProvider = isMainProvider;
+    this.startParams = startParams;
   }
 
   async createSession(
@@ -314,6 +324,7 @@ export class DefaultAuthConnector<
   private async showPopup(scopes: Set<string>): Promise<AuthSession> {
     const scope = this.joinScopesFunc(scopes);
     const popupUrl = await this.buildUrl('/start', {
+      ...this.startParams,
       scope,
       origin: window.location.origin,
       flow: 'popup',
@@ -341,6 +352,7 @@ export class DefaultAuthConnector<
     const scope = this.joinScopesFunc(scopes);
     // redirect to auth api
     window.location.href = await this.buildUrl('/start', {
+      ...this.startParams,
       scope,
       origin: window.location.origin,
       redirectUrl: window.location.href,

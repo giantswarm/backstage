@@ -10,6 +10,7 @@ export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/Dis
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
 export {
   gsAuthApiRef,
+  gsFallbackSignInAuthApiRef,
   gsAuthProvidersApiRef,
   type GSAuthProvidersApi,
 } from './apis/auth/types';

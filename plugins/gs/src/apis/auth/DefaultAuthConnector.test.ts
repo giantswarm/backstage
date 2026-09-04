@@ -1,8 +1,14 @@
 import { ConfigApi, OAuthRequestApi } from '@backstage/core-plugin-api';
+import { openLoginPopup } from '@backstage/core-app-api';
 import {
   ClusterTokenError,
   DefaultAuthConnector,
 } from './DefaultAuthConnector';
+
+jest.mock('@backstage/core-app-api', () => ({
+  ...jest.requireActual('@backstage/core-app-api'),
+  openLoginPopup: jest.fn(),
+}));
 import {
   DiscoveryApiClient,
   NO_INSTALLATION,
@@ -176,6 +182,53 @@ describe('DefaultAuthConnector', () => {
       await connector.refreshSession({ scopes: new Set(['openid']) });
 
       expect(getBaseUrl).toHaveBeenCalledWith('auth', 'gazelle');
+    });
+  });
+  describe('startParams', () => {
+    const popupResponse = { providerInfo: { idToken: 'id', scope: 'openid' } };
+
+    function createPinnedConnector() {
+      return new DefaultAuthConnector({
+        configApi,
+        discoveryApi,
+        environment: 'production',
+        provider: { id: 'oidc-gazelle', title: 'gazelle', icon: () => null },
+        oauthRequestApi,
+        isMainProvider: true,
+        startParams: { connector_id: 'giantswarm-ad' },
+      });
+    }
+
+    it('adds the pinned parameters to the login popup URL', async () => {
+      (openLoginPopup as jest.Mock).mockResolvedValue(popupResponse);
+
+      const session = await createPinnedConnector().createSession({
+        scopes: new Set(['openid']),
+        instantPopup: true,
+      });
+
+      expect(session).toEqual(popupResponse);
+      const { url } = (openLoginPopup as jest.Mock).mock.calls[0][0];
+      const query = new URL(url).searchParams;
+      expect(
+        url.startsWith('http://backend/api/auth/oidc-gazelle/start?'),
+      ).toBe(true);
+      expect(query.get('connector_id')).toBe('giantswarm-ad');
+      expect(query.get('scope')).toBe('openid');
+      expect(query.get('flow')).toBe('popup');
+      expect(query.get('env')).toBe('production');
+    });
+
+    it('never sends the pinned parameters on a session refresh', async () => {
+      const fetchSpy = mockLegacyRefresh();
+
+      await createPinnedConnector().refreshSession({
+        scopes: new Set(['openid']),
+      });
+
+      const [url] = fetchSpy.mock.calls[0];
+      expect(String(url)).toContain('/oidc-gazelle/refresh?');
+      expect(String(url)).not.toContain('connector_id');
     });
   });
 });

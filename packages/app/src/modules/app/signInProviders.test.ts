@@ -1,10 +1,12 @@
 import { ConfigReader } from '@backstage/config';
-import { githubAuthApiRef } from '@backstage/core-plugin-api';
-import { gsAuthApiRef } from '@giantswarm/backstage-plugin-gs';
+import {
+  gsAuthApiRef,
+  gsFallbackSignInAuthApiRef,
+} from '@giantswarm/backstage-plugin-gs';
 import { signInProviders } from './signInProviders';
 
 describe('signInProviders', () => {
-  it('offers the main provider alone when nothing is configured', () => {
+  it('offers the main provider alone when nothing else is configured', () => {
     const providers = signInProviders(
       new ConfigReader({ gs: { authProvider: 'oidc-gazelle' } }),
     );
@@ -19,77 +21,81 @@ describe('signInProviders', () => {
     ]);
   });
 
-  it('titles the lone main provider from gs.signInProvider', () => {
+  it('titles the main card from gs.signInProvider', () => {
     const [provider] = signInProviders(
       new ConfigReader({
         gs: {
           authProvider: 'oidc-gazelle',
-          signInProvider: { title: 'Entra ID', message: 'Company login' },
+          signInProvider: { title: 'GitHub', message: 'Giant Swarm SSO' },
         },
       }),
     );
 
     expect(provider).toMatchObject({
-      title: 'Entra ID',
-      message: 'Company login',
+      title: 'GitHub',
+      message: 'Giant Swarm SSO',
     });
   });
 
-  it('lists the configured providers in order with their own texts', () => {
+  it('adds the fallback-connector card after the main one, with its own texts', () => {
     const providers = signInProviders(
       new ConfigReader({
         gs: {
           authProvider: 'oidc-gazelle',
-          signInProviders: [
-            {
-              id: 'github',
-              title: 'GitHub',
-              message: 'With your GitHub account',
-            },
-            { id: 'dex', title: 'Microsoft', message: 'Giant Swarm SSO' },
-          ],
+          signInProvider: { title: 'GitHub', message: 'Giant Swarm SSO' },
+          signInFallbackProvider: {
+            connectorId: 'giantswarm-ad',
+            title: 'Microsoft',
+            message: 'Entra ID account',
+          },
         },
       }),
     );
 
     expect(providers).toEqual([
       {
-        id: 'github-auth-provider',
-        title: 'GitHub',
-        message: 'With your GitHub account',
-        apiRef: githubAuthApiRef,
-      },
-      {
         id: 'dex-auth-provider',
-        title: 'Microsoft',
+        title: 'GitHub',
         message: 'Giant Swarm SSO',
         apiRef: gsAuthApiRef,
+      },
+      {
+        id: 'dex-fallback-auth-provider',
+        title: 'Microsoft',
+        message: 'Entra ID account',
+        apiRef: gsFallbackSignInAuthApiRef,
       },
     ]);
   });
 
-  it('falls back to default texts and skips unknown ids', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const providers = signInProviders(
+  it('gives the fallback card default texts', () => {
+    const [, fallback] = signInProviders(
       new ConfigReader({
         gs: {
           authProvider: 'oidc-gazelle',
-          signInProviders: [{ id: 'okta' }, { id: 'github' }],
+          signInFallbackProvider: { connectorId: 'giantswarm-ad' },
         },
       }),
     );
 
-    expect(providers).toEqual([
-      {
-        id: 'github-auth-provider',
-        title: 'GitHub',
-        message: 'Sign in using GitHub',
-        apiRef: githubAuthApiRef,
-      },
-    ]);
-    expect(warn).toHaveBeenCalledWith(
-      "Ignoring unknown gs.signInProviders entry 'okta'",
+    expect(fallback).toMatchObject({
+      title: 'Other identity provider',
+      message: 'Sign in through another identity provider',
+      apiRef: gsFallbackSignInAuthApiRef,
+    });
+  });
+
+  it('ignores a fallback block without a connector id', () => {
+    const providers = signInProviders(
+      new ConfigReader({
+        gs: {
+          authProvider: 'oidc-gazelle',
+          signInFallbackProvider: { title: 'Microsoft' },
+        },
+      }),
     );
-    warn.mockRestore();
+
+    expect(providers).toHaveLength(1);
+    expect(providers[0].apiRef).toBe(gsAuthApiRef);
   });
 });

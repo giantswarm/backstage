@@ -45,6 +45,7 @@ import {
   gsAuthProvidersApiRef,
   GSAuthProviders,
   gsAuthApiRef,
+  gsFallbackSignInAuthApiRef,
 } from './apis/auth';
 import {
   clusterAccessStatusApiRef,
@@ -172,6 +173,25 @@ const gsAuthApi = ApiBlueprint.make({
       },
       factory: ({ gsAuthProvidersApi: authProviders }) => {
         return authProviders.getMainAuthApi();
+      },
+    }),
+});
+
+/**
+ * The login page's fallback card: the main login provider pinned to another
+ * Dex connector. Only instantiated when the card is rendered, i.e. when
+ * `gs.signInFallbackProvider.connectorId` is configured.
+ */
+const gsFallbackSignInAuthApi = ApiBlueprint.make({
+  name: 'auth-fallback-sign-in',
+  params: defineParams =>
+    defineParams({
+      api: gsFallbackSignInAuthApiRef,
+      deps: {
+        gsAuthProvidersApi: gsAuthProvidersApiRef,
+      },
+      factory: ({ gsAuthProvidersApi: authProviders }) => {
+        return authProviders.getFallbackSignInAuthApi();
       },
     }),
 });
@@ -627,6 +647,7 @@ export const gsPlugin = createFrontendPlugin({
     mutedInstallationsApi,
     gsAuthProvidersApi,
     gsAuthApi,
+    gsFallbackSignInAuthApi,
     containerRegistryApi,
     gitHubApi,
     mimirApi,

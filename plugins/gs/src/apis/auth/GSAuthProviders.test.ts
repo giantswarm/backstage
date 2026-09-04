@@ -98,3 +98,39 @@ describe('GSAuthProviders.ensureInitialized', () => {
     expect(api.getProviders().map(p => p.providerName)).toEqual(['oidc-valid']);
   });
 });
+
+describe('GSAuthProviders.getFallbackSignInAuthApi', () => {
+  function createApiWithConfig(values: Record<string, string | undefined>) {
+    const scopedConfigApi = {
+      ...configApi,
+      getOptionalString: jest.fn((key: string) => values[key]),
+    } as unknown as ConfigApi;
+    return GSAuthProviders.create({
+      configApi: scopedConfigApi,
+      discoveryApi,
+      oauthRequestApi,
+    });
+  }
+
+  it('throws while no fallback connector is configured', () => {
+    const api = createApiWithConfig({ 'gs.authProvider': 'oidc-gazelle' });
+
+    expect(() => api.getFallbackSignInAuthApi()).toThrow(
+      /gs.signInFallbackProvider.connectorId/,
+    );
+  });
+
+  it('builds one pinned sign-in API next to the main one', () => {
+    const api = createApiWithConfig({
+      'gs.authProvider': 'oidc-gazelle',
+      'gs.signInFallbackProvider.connectorId': 'giantswarm-ad',
+    });
+
+    const fallback = api.getFallbackSignInAuthApi();
+
+    expect(fallback).toBeDefined();
+    expect(fallback).not.toBe(api.getMainAuthApi());
+    // memoized: the login page and its session pickup share one instance
+    expect(api.getFallbackSignInAuthApi()).toBe(fallback);
+  });
+});

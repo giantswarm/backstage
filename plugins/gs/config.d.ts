@@ -53,22 +53,24 @@ export interface Config {
     };
 
     /**
-     * Sign-in options offered on the login page, in order. `dex` is the main
-     * OIDC login provider (`gs.authProvider`), `github` the portal's
-     * `auth.providers.github` provider (which then needs a sign-in resolver,
-     * e.g. `usernameMatchingUserEntityName`). A single entry signs in
-     * automatically; several show a chooser. Default: the main provider
-     * alone, titled via `signInProvider`.
+     * Second sign-in card next to the main provider's, signing in through the
+     * same OIDC login provider but pinned to another Dex connector
+     * (`connector_id` on the authorization request). The main card uses the
+     * deployment's default connector -- set it with the login provider's
+     * `startUrlSearchParams.connector_id` -- and this card is the fallback for
+     * people that connector cannot sign in. Both cards yield the same portal
+     * session. Without `connectorId` the login page shows the main card alone
+     * and signs in automatically.
      * @deepVisibility frontend
      */
-    signInProviders?: Array<{
-      /** `dex` or `github`. */
-      id: string;
-      /** Card title. Defaults per provider (`Dex`, `GitHub`). */
+    signInFallbackProvider?: {
+      /** Dex connector id, e.g. `giantswarm-ad`. */
+      connectorId: string;
+      /** Card title. Default: `Other identity provider`. */
       title?: string;
-      /** Card message. Defaults per provider. */
+      /** Card message. Default: `Sign in through another identity provider`. */
       message?: string;
-    }>;
+    };
 
     /**
      * Cluster token broker (muster) used to silently mint per-management-cluster

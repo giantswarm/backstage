@@ -24,6 +24,13 @@ const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
 
 const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
 
+/** `oidc-gazelle` -> `gazelle`; other provider names are shown as they are. */
+function mainProviderDisplayName(providerName: string): string {
+  return providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX)
+    ? providerName.split(OIDC_PROVIDER_NAME_PREFIX)[1]
+    : providerName;
+}
+
 /** Human-readable text shown in the cluster-access status popover. */
 const CLUSTER_TOKEN_ERROR_MESSAGES: Record<ClusterTokenErrorReason, string> = {
   'session-expired': 'Your session expired -- sign in again',
@@ -80,6 +87,9 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // alone (which stays frontend-visible). It does NOT need `gs.installations`,
   // so sign-in works before installations are loaded.
   private readonly mainAuthApi?: AuthApi;
+  // The login page's fallback card: the main provider pinned to another Dex
+  // connector. Built on first use, since most deployments configure none.
+  private fallbackSignInAuthApi?: AuthApi;
 
   private readonly mcpAuthProviders: AuthProvider[];
   private readonly mcpAuthApis: { [providerName: string]: AuthApi };
@@ -116,15 +126,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     if (!mainProviderName) {
       return undefined;
     }
-    const providerDisplayName = mainProviderName.startsWith(
-      OIDC_PROVIDER_NAME_PREFIX,
-    )
-      ? mainProviderName.split(OIDC_PROVIDER_NAME_PREFIX)[1]
-      : mainProviderName;
 
     return this.createKubernetesAuthApi(
       mainProviderName,
-      providerDisplayName,
+      mainProviderDisplayName(mainProviderName),
       undefined,
       true,
     );
@@ -368,6 +373,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     providerDisplayName: string,
     clusterTokenProvider?: () => Promise<ClusterToken | undefined>,
     isMainProvider = false,
+    startParams?: Record<string, string>,
   ): AuthApi {
     const authConnector = new DefaultAuthConnector({
       configApi: this.configApi,
@@ -382,6 +388,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       },
       clusterTokenProvider,
       isMainProvider,
+      startParams,
       sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
         const session: OAuth2Session = {
           ...res,
@@ -541,6 +548,36 @@ export class GSAuthProviders implements GSAuthProvidersApi {
           providerName !== mainProviderName && Boolean(clusterTokenAudience),
       )
       .map(({ installationName }) => installationName);
+  }
+
+  /**
+   * The main login provider pinned to the fallback Dex connector
+   * (`gs.signInFallbackProvider.connectorId`): same backend provider,
+   * cookies and session as {@link getMainAuthApi}, with `connector_id` on the
+   * authorization request so Dex skips its connector picker and sends the
+   * user to that upstream IdP instead of the deployment's default one.
+   */
+  getFallbackSignInAuthApi(): AuthApi {
+    const mainProviderName =
+      this.configApi?.getOptionalString('gs.authProvider');
+    const connectorId = this.configApi?.getOptionalString(
+      'gs.signInFallbackProvider.connectorId',
+    );
+    if (!mainProviderName || !connectorId) {
+      throw new Error(
+        'No fallback sign-in configured. "gs.signInFallbackProvider.connectorId" (with "gs.authProvider") is missing.',
+      );
+    }
+    if (!this.fallbackSignInAuthApi) {
+      this.fallbackSignInAuthApi = this.createKubernetesAuthApi(
+        mainProviderName,
+        mainProviderDisplayName(mainProviderName),
+        undefined,
+        true,
+        { connector_id: connectorId },
+      );
+    }
+    return this.fallbackSignInAuthApi;
   }
 
   getAuthApi(providerName: string) {
