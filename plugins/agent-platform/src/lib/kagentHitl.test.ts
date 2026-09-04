@@ -1,4 +1,4 @@
-import { A2aTaskWire } from './kagentTaskSchema';
+import { A2aTaskWire } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { readPendingConfirmation } from './kagentHitl';
 
 /** A confirmation request as kagent puts it on `status.message`. */

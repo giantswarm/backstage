@@ -30,7 +30,7 @@ import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
-import { AWAITING_INPUT_STATES } from '../../lib/kagentSessionState';
+import { AWAITING_INPUT_STATES } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { sessionsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { InstallationChip } from '../InstallationChip';

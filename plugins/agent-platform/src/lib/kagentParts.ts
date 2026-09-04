@@ -3,7 +3,7 @@ import {
   A2aPartWire,
   a2aMessageWireSchema,
   A2aMessageWire,
-} from './kagentTaskSchema';
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   isKagentMetadataFlagSet,
   readKagentMetadata,

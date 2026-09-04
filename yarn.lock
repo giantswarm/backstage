@@ -7474,6 +7474,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-agent-platform-common@workspace:^, @giantswarm/backstage-plugin-agent-platform-common@workspace:plugins/agent-platform-common":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-agent-platform-common@workspace:plugins/agent-platform-common"
+  dependencies:
+    "@backstage/cli": "backstage:^"
+    zod: "npm:^4.4.3"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-agent-platform@workspace:^, @giantswarm/backstage-plugin-agent-platform@workspace:plugins/agent-platform":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-agent-platform@workspace:plugins/agent-platform"
@@ -7491,6 +7500,7 @@ __metadata:
     "@backstage/plugin-scaffolder-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-agent-platform-common": "workspace:^"
     "@giantswarm/backstage-plugin-flux-react": "workspace:^"
     "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"

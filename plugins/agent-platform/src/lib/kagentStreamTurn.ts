@@ -2,7 +2,8 @@ import {
   a2aMessageWireSchema,
   A2aMessageWire,
   a2aStreamEventWireSchema,
-} from './kagentTaskSchema';
+  FAILED_STATES,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { readKagentMetadata, readKagentMetadataString } from './kagentMetadata';
 import {
   CONFIRMATION_TOOL_NAME,
@@ -18,7 +19,6 @@ import {
   readPartText,
   unwrapProxiedCall,
 } from './kagentParts';
-import { FAILED_STATES } from './kagentSessionState';
 import { TimelineItem } from './kagentTimeline';
 
 /**

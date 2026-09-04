@@ -12,20 +12,18 @@ import {
   KagentInstallation,
   parseKagentInstallations,
 } from '../lib/kagentInstallations';
-import { kagentMeWireSchema } from '../lib/kagentSchema';
 import {
+  A2aTaskWire,
   KagentSession,
-  normalizeSessionList,
-  parseCreatedSessionId,
-  SessionListDrift,
-} from '../lib/kagentSessions';
-import {
   KagentSessionDetail,
+  SessionListDrift,
+  kagentMeWireSchema,
   normalizeSessionDetail,
+  normalizeSessionList,
   normalizeTaskList,
-} from '../lib/kagentSessionDetail';
+  parseCreatedSessionId,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { createSseDataDecoder, readStreamFrame } from '../lib/kagentStreamTurn';
-import { A2aTaskWire } from '../lib/kagentTaskSchema';
 import { KAGENT_AUTH_HEADER, KagentApi, KagentIdentity } from './types';
 
 export const kagentApiRef = createApiRef<KagentApi>({

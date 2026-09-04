@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isListableSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey } from '../lib/queryKeys';
 import {
   buildAgentIndex,
-  isListableSession,
   SessionRow,
   sortSessionRows,
   toAgentIdentifier,

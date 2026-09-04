@@ -9,13 +9,17 @@ import type { SessionDetailView } from '../../hooks/useSessionDetail';
 import type { UseAnswerConfirmationResult } from '../../hooks/useAnswerConfirmation';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { buildTimeline } from '../../lib/kagentTimeline';
-import { normalizeTaskList } from '../../lib/kagentSessionDetail';
-import { normalizeSessionDetail } from '../../lib/kagentSessionDetail';
-import { deriveSessionState } from '../../lib/kagentSessionState';
+import {
+  deriveSessionState,
+  normalizeSessionDetail,
+  normalizeTaskList,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { SessionDetailPage } from './SessionDetailPage';
 
-import tasksV099 from '../../lib/__fixtures__/tasks.v0-9-9.json';
-import detailV099 from '../../lib/__fixtures__/session-detail.v0-9-9.json';
+import {
+  sessionDetailV099 as detailV099,
+  tasksV099,
+} from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 
 // The route params the page reads. Driven directly rather than through a router so
 // each state can be rendered in isolation.

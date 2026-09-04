@@ -3,12 +3,12 @@ import {
   CONFIRMATION_TOOL_NAME,
   parsePart,
 } from './kagentParts';
-import { A2aTaskWire } from './kagentTaskSchema';
 import {
+  A2aTaskWire,
   AWAITING_INPUT_STATES,
   describeSessionState,
   findNewestStatefulTaskIndex,
-} from './kagentSessionState';
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 /**
  * One question an `ask_user` call is putting to the user.

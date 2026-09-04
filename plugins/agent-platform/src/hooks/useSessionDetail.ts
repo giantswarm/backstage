@@ -2,17 +2,17 @@ import { useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
-import { KagentSessionDetail } from '../lib/kagentSessionDetail';
+import {
+  KagentSessionDetail,
+  SessionState,
+  deriveSessionState,
+  isAgentWorking,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   PendingConfirmation,
   readPendingConfirmation,
 } from '../lib/kagentHitl';
 import { buildTimeline, SessionTimeline } from '../lib/kagentTimeline';
-import {
-  deriveSessionState,
-  isAgentWorking,
-  SessionState,
-} from '../lib/kagentSessionState';
 import {
   BASELINE_REFETCH_INTERVAL_MS,
   getSessionTasksRefetchInterval,

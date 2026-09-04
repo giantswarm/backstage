@@ -14,6 +14,7 @@ import {
   useInstallationScope,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { isListableSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../../apis';
 import { sessionsQueryKey } from '../../lib/queryKeys';
 import {
@@ -25,7 +26,6 @@ import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { useAgents } from '../AgentsDataProvider';
 import {
   buildAgentIndex,
-  isListableSession,
   SessionRow,
   sortSessionRows,
   toSessionRow,

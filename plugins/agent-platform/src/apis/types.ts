@@ -1,7 +1,9 @@
 import { KagentInstallation } from '../lib/kagentInstallations';
-import { KagentSession } from '../lib/kagentSessions';
-import { KagentSessionDetail } from '../lib/kagentSessionDetail';
-import { A2aTaskWire } from '../lib/kagentTaskSchema';
+import {
+  A2aTaskWire,
+  KagentSession,
+  KagentSessionDetail,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 export type { KagentInstallation } from '../lib/kagentInstallations';
 

@@ -1,6 +1,9 @@
 import type { Query } from '@tanstack/react-query';
-import type { A2aTaskWire } from './kagentTaskSchema';
-import { ACTIVE_MAX_AGE_MS, readNewestTaskState } from './kagentSessionState';
+import {
+  A2aTaskWire,
+  ACTIVE_MAX_AGE_MS,
+  readNewestTaskState,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 /**
  * Baseline poll for a session's conversation, and the flat interval for the
