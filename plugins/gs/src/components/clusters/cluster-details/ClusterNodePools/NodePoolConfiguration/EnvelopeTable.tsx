@@ -16,7 +16,17 @@ const useStyles = makeStyles({
       'minmax(140px, 190px) minmax(220px, 400px) minmax(220px, 400px)',
     justifyContent: 'start',
     columnGap: 'var(--bui-space-6)',
-    alignItems: 'baseline',
+    // Cells stretch to the row height (grid default) so every cell's bottom
+    // rule lands on the row's bottom edge. `align-items: baseline` sizes a
+    // cell to its own content, which steps the rule wherever one column runs
+    // to more lines than its neighbours — e.g. a key carrying both an
+    // inclusion and an exclusion.
+
+    // The final row closes against the card rather than leaving a dangling
+    // hairline; the rules read as separators between rows.
+    '& > *:nth-last-child(-n+3)': {
+      borderBottom: 'none',
+    },
     '@media (max-width: 700px)': {
       gridTemplateColumns: '1fr',
       rowGap: 'var(--bui-space-1)',
