@@ -1,7 +1,9 @@
-import { RoadmapApiClient } from './RoadmapApiClient';
+import {
+  MusterServerNotConnectedError,
+  RoadmapApiClient,
+} from './RoadmapApiClient';
 
 const BASE_URL = 'http://backstage/api/roadmap';
-const USER_TOKEN = 'gho_user-token';
 
 function jsonResponse(body: unknown, status = 200) {
   return {
@@ -11,165 +13,162 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response;
 }
 
+/** Every request, reads included, carries the caller's muster token. */
+const AUTHED = {
+  headers: { 'backstage-muster-authorization': 'dex-id-token' },
+};
+
 describe('RoadmapApiClient', () => {
-  const fetchMock = jest.fn<Promise<Response>, [string]>();
-  const getAccessToken = jest.fn().mockResolvedValue(USER_TOKEN);
+  const fetchMock = jest.fn<Promise<Response>, [string, RequestInit?]>();
+  const getCredentials = jest.fn().mockResolvedValue({ token: 'dex-id-token' });
   const client = new RoadmapApiClient({
     discoveryApi: { getBaseUrl: jest.fn().mockResolvedValue(BASE_URL) },
     fetchApi: { fetch: fetchMock as unknown as typeof fetch },
-    githubAuthApi: { getAccessToken } as any,
+    authApi: { getCredentials },
   });
 
   beforeEach(() => {
     fetchMock.mockReset();
-    getAccessToken.mockClear();
+    getCredentials.mockClear();
+    getCredentials.mockResolvedValue({ token: 'dex-id-token' });
   });
 
-  it('fetches the schema', async () => {
+  it('fetches the schema as the caller', async () => {
     const payload = { board: 'roadmap', defaultTeams: [], fields: [] };
     fetchMock.mockResolvedValue(jsonResponse(payload));
 
     await expect(client.getSchema()).resolves.toEqual(payload);
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/schema`);
-    expect(getAccessToken).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/schema`, AUTHED);
+    expect(getCredentials).toHaveBeenCalledTimes(1);
   });
 
-  it('lists items without filters', async () => {
+  it('sends no token header when the session has none', async () => {
+    getCredentials.mockResolvedValue({});
     fetchMock.mockResolvedValue(jsonResponse({ items: [] }));
 
     await client.listItems();
 
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/items`);
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/items`, {
+      headers: {},
+    });
+  });
+
+  it('reads the connection state', async () => {
+    const payload = {
+      connected: false,
+      authUrl: 'https://muster/oauth/proxy/start?state=x',
+    };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    await expect(client.getConnection()).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/connection`, AUTHED);
   });
 
   it('passes filters URL-encoded and drops empty values', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ items: [] }));
 
-    await client.listItems({
-      team: 'Bumblebee🐝',
-      kind: 'Epic 🎯',
-      keyword: '',
-    });
+    await client.listItems({ team: 'Bumblebee🐝', status: '', keyword: 'a b' });
 
-    const url = new URL(fetchMock.mock.calls[0][0]);
-    expect(url.pathname).toBe('/api/roadmap/items');
-    expect(url.searchParams.get('team')).toBe('Bumblebee🐝');
-    expect(url.searchParams.get('kind')).toBe('Epic 🎯');
-    expect(url.searchParams.has('keyword')).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/items?team=Bumblebee%F0%9F%90%9D&keyword=a+b`,
+      AUTHED,
+    );
   });
 
   it('fetches item detail by encoded id', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ item: {} }));
 
-    await client.getItem('PVTI_abc/123');
+    await client.getItem('PVTI/1');
 
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/items/PVTI_abc%2F123`);
-  });
-
-  it('fetches the overview with a team filter', async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({ total: 0, byStatus: {}, byRepo: {} }),
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/items/PVTI%2F1`,
+      AUTHED,
     );
-
-    await client.getOverview('Bumblebee🐝');
-
-    const url = new URL(fetchMock.mock.calls[0][0]);
-    expect(url.pathname).toBe('/api/roadmap/overview');
-    expect(url.searchParams.get('team')).toBe('Bumblebee🐝');
   });
 
   it('fetches sub-issues', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ subIssues: [], parent: null }));
 
-    await client.listSubIssues('giantswarm', 'giantswarm', 35000);
+    await client.listSubIssues('giantswarm', 'giantswarm', 45);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE_URL}/issues/giantswarm/giantswarm/35000/sub-issues`,
+      `${BASE_URL}/issues/giantswarm/giantswarm/45/sub-issues`,
+      AUTHED,
     );
   });
 
-  it('sends field updates with the user GitHub token', async () => {
+  it('sends field updates as the caller', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ status: 'ok' }));
 
-    await client.updateItemField('PVTI_abc', 'Status', 'In Progress ⛏️');
+    await client.updateItemField('PVTI_1', 'Status', 'Done ✅');
 
-    expect(getAccessToken).toHaveBeenCalledWith(['repo', 'project']);
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/items/PVTI_abc/field`, {
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/items/PVTI_1/field`, {
       method: 'PATCH',
-      headers: {
-        'X-GitHub-Token': USER_TOKEN,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name: 'Status', value: 'In Progress ⛏️' }),
+      headers: { 'Content-Type': 'application/json', ...AUTHED.headers },
+      body: JSON.stringify({ name: 'Status', value: 'Done ✅' }),
     });
   });
 
-  it('links a sub-issue with the user GitHub token', async () => {
+  it('links and unlinks sub-issues, tolerating the 204 response', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ parent: {} }, 201));
-
     await client.addSubIssue(
       'giantswarm',
       'giantswarm',
-      35000,
-      'giantswarm/roadmap#42',
+      45,
+      'giantswarm/giantswarm#46',
     );
-
-    expect(getAccessToken).toHaveBeenCalledWith(['repo', 'project']);
     expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE_URL}/issues/giantswarm/giantswarm/35000/sub-issues`,
+      `${BASE_URL}/issues/giantswarm/giantswarm/45/sub-issues`,
       {
         method: 'POST',
-        headers: {
-          'X-GitHub-Token': USER_TOKEN,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ child: 'giantswarm/roadmap#42' }),
+        headers: { 'Content-Type': 'application/json', ...AUTHED.headers },
+        body: JSON.stringify({ child: 'giantswarm/giantswarm#46' }),
       },
     );
-  });
 
-  it('unlinks a sub-issue and tolerates the 204 response', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 204,
-      json: async () => {
-        throw new Error('no body');
-      },
-    } as unknown as Response);
-
+      json: async () => undefined,
+    } as Response);
     await expect(
-      client.removeSubIssue('giantswarm', 'giantswarm', 35000, 1001),
+      client.removeSubIssue('giantswarm', 'giantswarm', 45, 7),
     ).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE_URL}/issues/giantswarm/giantswarm/35000/sub-issues/1001`,
-      expect.objectContaining({ method: 'DELETE' }),
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${BASE_URL}/issues/giantswarm/giantswarm/45/sub-issues/7`,
+      { method: 'DELETE', headers: AUTHED.headers },
     );
   });
 
-  it('surfaces the backend error message', async () => {
+  it('surfaces a missing grant as MusterServerNotConnectedError with the sign-in URL', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(
-        { error: { name: 'InputError', message: 'unknown field' } },
-        400,
+        {
+          error: {
+            name: 'MusterServerNotConnectedError',
+            message: "Connect 'gazelle-mcp-pro' in muster to use this page.",
+            server: 'gazelle-mcp-pro',
+            authUrl: 'https://muster/oauth/proxy/start?state=x',
+          },
+        },
+        401,
       ),
     );
 
-    await expect(
-      client.updateItemField('PVTI_abc', 'Nope', 'x'),
-    ).rejects.toThrow('unknown field');
+    const error = await client.getSchema().catch(e => e);
+
+    expect(error).toBeInstanceOf(MusterServerNotConnectedError);
+    expect(error.authUrl).toBe('https://muster/oauth/proxy/start?state=x');
   });
 
-  it.each([
-    [401, 'UnauthorizedError'],
-    [403, 'ForbiddenError'],
-    [404, 'NotFoundError'],
-    [503, 'ServiceUnavailableError'],
-  ])('names errors for status %i', async (status, name) => {
-    fetchMock.mockResolvedValue(jsonResponse({}, status));
+  it('surfaces the backend error message with a status-based name', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ error: { message: 'no access' } }, 403),
+    );
 
     await expect(client.getSchema()).rejects.toMatchObject({
-      name,
-      message: `Roadmap request failed with status ${status}`,
+      name: 'ForbiddenError',
+      message: 'no access',
     });
   });
 });

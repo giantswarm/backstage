@@ -27,6 +27,7 @@ import { rootRouteRef } from '../../routes';
 import { FieldEditor } from './FieldEditor';
 import { PlanPanel } from './PlanPanel';
 import { SubIssuesPanel } from './SubIssuesPanel';
+import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
 
 const SIDEBAR_WIDTH = 300;
 const READING_WIDTH = 860;
@@ -126,7 +127,7 @@ export function ItemDetailPage() {
   if (loadError) {
     return (
       <Content>
-        <Alert severity="error">{(loadError as Error).message}</Alert>
+        <RoadmapErrorAlert error={loadError as Error} />
       </Content>
     );
   }

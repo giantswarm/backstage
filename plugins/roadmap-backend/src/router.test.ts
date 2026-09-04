@@ -1,133 +1,82 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
-import { JsonObject } from '@backstage/types';
 import { AuthenticationError } from '@backstage/errors';
-import { GithubCredentialsProvider } from '@backstage/integration';
+import { JsonObject } from '@backstage/types';
+import {
+  AuthLoginResult,
+  McpContentItem,
+  MusterServerGateway,
+} from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
 import { createRouter, RouterOptions } from './router';
 
-const BOARD_ID = 'PVT_board';
-const APP_TOKEN = 'app-token';
-const USER_TOKEN = 'user-token';
+const TOKEN_HEADER = 'backstage-muster-authorization';
 
-const STATUS_FIELD = {
-  __typename: 'ProjectV2SingleSelectField',
-  id: 'F_status',
-  name: 'Status',
-  dataType: 'SINGLE_SELECT',
-  options: [
-    { id: 'O_inprogress', name: 'In Progress ⛏️' },
-    { id: 'O_done', name: 'Done ✅' },
-  ],
-};
+type Call = { tool: string; args: Record<string, unknown>; authToken: string };
 
-const QUARTER_FIELD = {
-  __typename: 'ProjectV2IterationField',
-  id: 'F_quarter',
-  name: 'Quarter',
-  dataType: 'ITERATION',
-  configuration: {
-    iterations: [{ id: 'I_q3', title: 'Q3 2026', startDate: '2026-07-01' }],
-  },
-};
+/** pro-through-muster stand-in: answers keyed by tool, every call recorded. */
+class FakePro implements MusterServerGateway {
+  readonly server = 'gazelle-mcp-pro';
+  calls: Call[] = [];
+  answers = new Map<
+    string,
+    unknown | ((args: Record<string, unknown>) => unknown)
+  >();
+  loginResult: AuthLoginResult = {
+    status: 'connected',
+    message: 'Already Connected',
+  };
+  failNextCallWith?: Error;
+  logins = 0;
 
-const DATE_FIELD = {
-  __typename: 'ProjectV2Field',
-  id: 'F_target',
-  name: 'Target Date',
-  dataType: 'DATE',
-};
+  async call(tool: string, args: Record<string, unknown>, authToken: string) {
+    this.calls.push({ tool, args, authToken });
+    if (this.failNextCallWith) {
+      const error = this.failNextCallWith;
+      this.failNextCallWith = undefined;
+      throw error;
+    }
+    const answer = this.answers.get(tool);
+    if (answer === undefined) {
+      throw new Error(`FakePro: no answer for ${tool}`);
+    }
+    return typeof answer === 'function' ? answer(args) : answer;
+  }
+
+  async callContent(): Promise<McpContentItem[]> {
+    throw new Error('not used');
+  }
+
+  async login() {
+    this.logins++;
+    return this.loginResult;
+  }
+}
 
 const ITEM = {
   id: 'PVTI_1',
-  title: 'Ship the roadmap plugin',
-  number: 42,
-  url: 'https://github.com/giantswarm/giantswarm/issues/42',
+  title: 'Agent workspaces',
+  number: 45,
+  url: 'https://github.com/giantswarm/giantswarm/issues/45',
   repo: 'giantswarm/giantswarm',
   private: true,
+  state: 'OPEN',
   fields: { Status: 'In Progress ⛏️', Team: 'Bumblebee🐝' },
 };
 
-const REST_ISSUE = {
-  id: 1001,
-  number: 43,
-  title: 'A sub-issue',
-  state: 'open',
-  html_url: 'https://github.com/giantswarm/giantswarm/issues/43',
-  assignees: [{ login: 'teemow' }],
-  repository_url: 'https://api.github.com/repos/giantswarm/giantswarm',
-};
-
-function buildProMock() {
-  return {
-    resolveBoardId: jest.fn().mockReturnValue(BOARD_ID),
-    listItems: jest.fn().mockResolvedValue({ status: 'success', data: [ITEM] }),
-    getItemByID: jest.fn().mockResolvedValue({ title: ITEM.title }),
-    listFields: jest
-      .fn()
-      .mockResolvedValue([STATUS_FIELD, QUARTER_FIELD, DATE_FIELD]),
-    findFieldByName: jest.fn().mockResolvedValue(STATUS_FIELD),
-    findMatchingOption: jest.fn(
-      (options: Array<{ id: string; name: string }>, name: string) =>
-        options.find(option => option.name === name) ?? null,
-    ),
-    findMatchingIteration: jest.fn(
-      (field: typeof QUARTER_FIELD, value: string) =>
-        field.configuration.iterations.find(
-          iteration => iteration.title === value,
-        ) ?? null,
-    ),
-    updateItemField: jest.fn().mockResolvedValue({}),
-    graphQLWithAuth: jest.fn().mockResolvedValue({
-      repository: {
-        issue: {
-          title: ITEM.title,
-          url: ITEM.url,
-          state: 'OPEN',
-          projectItems: {
-            nodes: [
-              {
-                id: ITEM.id,
-                project: { id: BOARD_ID },
-                fieldValues: {
-                  nodes: [
-                    { name: 'In Progress ⛏️', field: { name: 'Status' } },
-                    { title: 'Q3 2026', field: { name: 'Quarter' } },
-                  ],
-                },
-              },
-              { id: 'PVTI_other', project: { id: 'PVT_other' } },
-            ],
-          },
-        },
-      },
-    }),
-    listSubIssues: jest.fn().mockResolvedValue([REST_ISSUE]),
-    getParentIssue: jest.fn().mockResolvedValue(null),
-    addSubIssue: jest.fn().mockResolvedValue(REST_ISSUE),
-    removeSubIssue: jest.fn().mockResolvedValue(undefined),
-    resolveIssueId: jest.fn().mockResolvedValue({ id: 2002, number: 44 }),
-  };
-}
-
-type ProMock = ReturnType<typeof buildProMock>;
-
 describe('createRouter', () => {
-  const getCredentials = jest.fn();
-  const credentialsProvider = {
-    getCredentials,
-  } as unknown as GithubCredentialsProvider;
+  let pro: FakePro;
 
-  let pro: ProMock;
-  let app: express.Express;
-
-  // Mirror the production setup: the backend's root HTTP router applies
-  // MiddlewareFactory.error() after plugin routes, mapping @backstage/errors
-  // classes to status codes.
   async function buildApp(
-    configData: JsonObject = { roadmap: { board: 'roadmap' } },
+    configData: JsonObject = {
+      roadmap: { board: 'roadmap', teams: ['Bumblebee🐝'] },
+    },
     options: Partial<RouterOptions> = {},
+    {
+      withToken = true,
+      user = 'user:default/alice',
+    }: { withToken?: boolean; user?: string } = {},
   ) {
     const logger = mockServices.logger.mock();
     const config = mockServices.rootConfig({ data: configData });
@@ -135,489 +84,466 @@ describe('createRouter', () => {
       logger,
       config,
       httpAuth: mockServices.httpAuth(),
-      credentialsProvider,
-      pro: pro as unknown as RouterOptions['pro'],
-      // Warming fires an untracked background listItems call that would
-      // race the per-test call-count assertions; covered by its own test.
-      warmCache: false,
+      pro,
       ...options,
     });
-    const builtApp = express();
-    builtApp.use(router);
-    builtApp.use(MiddlewareFactory.create({ logger, config }).error());
-    return builtApp;
+    const app = express();
+    if (withToken) {
+      app.use((req, _res, next) => {
+        req.headers[TOKEN_HEADER] = `dex-id-token-${user}`;
+        next();
+      });
+    }
+    app.use(router);
+    app.use(MiddlewareFactory.create({ logger, config }).error());
+    return app;
   }
 
+  let app: express.Express;
+
   beforeEach(async () => {
-    getCredentials.mockReset();
-    getCredentials.mockResolvedValue({ token: APP_TOKEN });
-    pro = buildProMock();
+    pro = new FakePro();
     app = await buildApp();
   });
 
   it('rejects requests without a Backstage user', async () => {
-    const credentials = jest
-      .fn()
-      .mockRejectedValue(new AuthenticationError('missing credentials'));
-    const unauthedApp = await buildApp(undefined, {
-      httpAuth: { credentials } as unknown as RouterOptions['httpAuth'],
+    const httpAuth = mockServices.httpAuth.mock({
+      credentials: async () => {
+        throw new AuthenticationError('nope');
+      },
     });
-
-    const response = await request(unauthedApp).get('/items');
-
-    expect(response.status).toBe(401);
-    expect(credentials).toHaveBeenCalledWith(expect.anything(), {
-      allow: ['user'],
-    });
+    const res = await request(await buildApp(undefined, { httpAuth })).get(
+      '/schema',
+    );
+    expect(res.status).toBe(401);
   });
 
   it('returns 503 when no board is configured', async () => {
-    const unconfiguredApp = await buildApp({});
+    const res = await request(await buildApp({})).get('/schema');
+    expect(res.status).toBe(503);
+  });
 
-    const response = await request(unconfiguredApp).get('/items');
+  it('returns 503 when muster is not configured', async () => {
+    const res = await request(
+      await buildApp(undefined, { pro: undefined }),
+    ).get('/schema');
+    expect(res.status).toBe(503);
+    expect(res.body.error.message).toMatch(/roadmap\.muster/);
+  });
 
-    expect(response.status).toBe(503);
-    expect(response.body.error.name).toBe('ServiceUnavailableError');
-    expect(pro.listItems).not.toHaveBeenCalled();
+  it('answers 401 without the muster token header', async () => {
+    const res = await request(
+      await buildApp(undefined, {}, { withToken: false }),
+    ).get('/schema');
+    expect(res.status).toBe(401);
+    expect(res.body.error.message).toContain(TOKEN_HEADER);
+    expect(pro.calls).toHaveLength(0);
+  });
+
+  describe('connection', () => {
+    it('reports the sign-in URL when the person has no grant yet', async () => {
+      pro.loginResult = {
+        status: 'auth_required',
+        authUrl: 'https://muster.example/oauth/proxy/start?state=x',
+        message: 'Authentication required for gazelle-mcp-pro.',
+      };
+      const res = await request(app).get('/connection');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        connected: false,
+        authUrl: 'https://muster.example/oauth/proxy/start?state=x',
+        message: 'Authentication required for gazelle-mcp-pro.',
+      });
+    });
+  });
+
+  describe('a session without a grant', () => {
+    it('reconnects silently and retries', async () => {
+      pro.failNextCallWith = new Error(
+        'tool not found: x_pro_get_board_schema',
+      );
+      pro.answers.set('get_board_schema', { board: 'roadmap', fields: [] });
+
+      const res = await request(app).get('/schema');
+
+      expect(res.status).toBe(200);
+      expect(pro.logins).toBe(1);
+      expect(pro.calls.filter(c => c.tool === 'get_board_schema')).toHaveLength(
+        2,
+      );
+    });
+
+    it('answers 401 with the sign-in URL when a consent is needed', async () => {
+      pro.failNextCallWith = new Error('tool not found: x_pro_list_issues');
+      pro.loginResult = {
+        status: 'auth_required',
+        authUrl: 'https://muster.example/oauth/proxy/start?state=x',
+        message: 'Authentication required.',
+      };
+
+      const res = await request(app).get('/items');
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toEqual({
+        name: 'MusterServerNotConnectedError',
+        message: expect.stringContaining("Connect 'gazelle-mcp-pro'"),
+        server: 'gazelle-mcp-pro',
+        authUrl: 'https://muster.example/oauth/proxy/start?state=x',
+      });
+    });
   });
 
   describe('/schema', () => {
-    it('maps board fields and exposes configured default teams', async () => {
-      const configuredApp = await buildApp({
-        roadmap: { board: 'roadmap', teams: ['Bumblebee🐝'] },
+    it('describes the board through pro and exposes the default teams', async () => {
+      pro.answers.set('get_board_schema', {
+        board: 'roadmap',
+        fields: [
+          {
+            name: 'Status',
+            type: 'singleSelect',
+            options: ['Inbox 📥', 'Done ✅'],
+          },
+          { name: 'Quarter', type: 'iteration', iterations: ['Q3 2026'] },
+        ],
       });
 
-      const response = await request(configuredApp).get('/schema');
+      const res = await request(app).get('/schema');
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
         board: 'roadmap',
         defaultTeams: ['Bumblebee🐝'],
         fields: [
           {
             name: 'Status',
             type: 'singleSelect',
-            options: ['In Progress ⛏️', 'Done ✅'],
+            options: ['Inbox 📥', 'Done ✅'],
           },
           { name: 'Quarter', type: 'iteration', iterations: ['Q3 2026'] },
-          { name: 'Target Date', type: 'date' },
         ],
       });
-      expect(pro.listFields).toHaveBeenCalledWith(BOARD_ID, APP_TOKEN);
+      expect(pro.calls[0]).toEqual({
+        tool: 'get_board_schema',
+        args: { board: 'roadmap' },
+        authToken: 'dex-id-token-user:default/alice',
+      });
     });
 
-    it('caches the schema between requests', async () => {
+    it('caches the schema per person', async () => {
+      pro.answers.set('get_board_schema', { fields: [] });
       await request(app).get('/schema');
       await request(app).get('/schema');
-
-      expect(pro.listFields).toHaveBeenCalledTimes(1);
+      expect(pro.calls).toHaveLength(1);
     });
   });
 
   describe('/items', () => {
-    it('passes filters through to pro with the App token', async () => {
-      const response = await request(app).get(
-        '/items?team=Bumblebee🐝&status=In Progress&kind=Epic&assignee=teemow&state=open&updated=>@today-7d&repository=giantswarm/giantswarm',
-      );
+    it('passes board filters to pro by field name, as the caller', async () => {
+      pro.answers.set('list_issues', { count: 1, issues: [ITEM] });
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ items: [ITEM] });
-      expect(pro.listItems).toHaveBeenCalledWith({
-        boardId: BOARD_ID,
-        filters: {
-          team: 'Bumblebee🐝',
-          status: 'In Progress',
-          kind: 'Epic',
-        },
+      const res = await request(app).get('/items').query({
+        team: 'Bumblebee🐝',
+        status: 'In Progress ⛏️',
         assignee: 'teemow',
         state: 'open',
-        updated: '>@today-7d',
-        repository: 'giantswarm/giantswarm',
-        keyword: null,
-        token: APP_TOKEN,
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ items: [ITEM] });
+      expect(pro.calls[0]).toEqual({
+        tool: 'list_issues',
+        args: {
+          board: 'roadmap',
+          filters: { Team: 'Bumblebee🐝', Status: 'In Progress ⛏️' },
+          assignee: 'teemow',
+          state: 'open',
+        },
+        authToken: 'dex-id-token-user:default/alice',
       });
     });
 
     it('turns quarter and keyword into a combined keyword query', async () => {
-      await request(app).get('/items?quarter=Q3 2026&keyword=gateway');
-
-      expect(pro.listItems).toHaveBeenCalledWith(
-        expect.objectContaining({ keyword: 'quarter:"Q3 2026" gateway' }),
-      );
+      pro.answers.set('list_issues', { issues: [] });
+      await request(app)
+        .get('/items')
+        .query({ quarter: 'Q3 2026', keyword: 'muster' });
+      expect(pro.calls[0].args.keyword).toBe('quarter:"Q3 2026" muster');
     });
 
     it('caches identical queries within the TTL', async () => {
-      await request(app).get('/items?team=Bumblebee🐝');
-      await request(app).get('/items?team=Bumblebee🐝');
-      await request(app).get('/items?team=Rocket 🚀');
-
-      expect(pro.listItems).toHaveBeenCalledTimes(2);
-    });
-
-    it('maps pro filter errors to 400', async () => {
-      pro.listItems.mockResolvedValue({
-        status: 'error',
-        error: "Field 'bogus' not found",
-      });
-
-      const response = await request(app).get('/items?team=bogus');
-
-      expect(response.status).toBe(400);
-      expect(response.body.error.message).toMatch("Field 'bogus' not found");
+      pro.answers.set('list_issues', { issues: [] });
+      await request(app).get('/items').query({ team: 'Bumblebee🐝' });
+      await request(app).get('/items').query({ team: 'Bumblebee🐝' });
+      expect(pro.calls).toHaveLength(1);
     });
 
     it('rejects repeated query parameters', async () => {
-      const response = await request(app).get('/items?team=a&team=b');
-
-      expect(response.status).toBe(400);
+      const res = await request(app).get('/items?team=a&team=b');
+      expect(res.status).toBe(400);
     });
   });
 
   describe('/overview', () => {
     it('aggregates status and repo distributions', async () => {
-      pro.listItems.mockResolvedValue({
-        status: 'success',
-        data: [
+      pro.answers.set('list_issues', {
+        issues: [
           ITEM,
-          { ...ITEM, id: 'PVTI_2', fields: { Status: 'Done ✅' } },
+          {
+            ...ITEM,
+            id: 'PVTI_2',
+            repo: 'giantswarm/roadmap',
+            fields: { Status: 'Done ✅' },
+          },
           { ...ITEM, id: 'PVTI_3', repo: null, fields: {} },
         ],
       });
 
-      const response = await request(app).get('/overview');
+      const res = await request(app)
+        .get('/overview')
+        .query({ team: 'Bumblebee🐝' });
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
         total: 3,
         byStatus: { 'In Progress ⛏️': 1, 'Done ✅': 1, 'No status': 1 },
-        byRepo: { 'giantswarm/giantswarm': 2, unknown: 1 },
+        byRepo: {
+          'giantswarm/giantswarm': 1,
+          'giantswarm/roadmap': 1,
+          unknown: 1,
+        },
       });
+      expect(pro.calls[0].args).toEqual({
+        board: 'roadmap',
+        filters: { Team: 'Bumblebee🐝' },
+      });
+    });
+  });
+
+  describe('/items/by-issue/:owner/:repo/:number', () => {
+    it('resolves the issue through a targeted lookup', async () => {
+      pro.answers.set('get_item_by_issue', { item: ITEM });
+
+      const res = await request(app).get(
+        '/items/by-issue/giantswarm/giantswarm/45',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ item: ITEM });
+      expect(pro.calls[0].args).toEqual({
+        board: 'roadmap',
+        owner: 'giantswarm',
+        repo: 'giantswarm',
+        issue_number: 45,
+      });
+    });
+
+    it('returns 404 for an issue that is not on the board', async () => {
+      pro.answers.set('get_item_by_issue', { item: null });
+      const res = await request(app).get(
+        '/items/by-issue/giantswarm/giantswarm/1',
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it('rejects a non-numeric issue number', async () => {
+      expect((await request(app).get('/items/by-issue/a/b/x')).status).toBe(
+        400,
+      );
     });
   });
 
   describe('/items/:id', () => {
-    it('returns the item detail', async () => {
-      const response = await request(app).get('/items/PVTI_1');
+    it('returns the item detail from pro', async () => {
+      const detail = { number: 45, title: 'Agent workspaces', fields: [] };
+      pro.answers.set('get_issue_details', detail);
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ item: { title: ITEM.title } });
-      expect(pro.getItemByID).toHaveBeenCalledWith('PVTI_1', APP_TOKEN);
-    });
-  });
+      const res = await request(app).get('/items/PVTI_1');
 
-  it('warms the default team view on startup', async () => {
-    await buildApp(
-      { roadmap: { board: 'roadmap', teams: ['Bumblebee🐝'] } },
-      { warmCache: true },
-    );
-    // Let the fire-and-forget warm call settle.
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    expect(pro.listItems).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filters: { team: 'Bumblebee🐝' },
-        token: APP_TOKEN,
-      }),
-    );
-  });
-
-  describe('/items/by-issue/:owner/:repo/:number', () => {
-    it('resolves an issue reference via a targeted query, not a board scan', async () => {
-      const response = await request(app).get(
-        '/items/by-issue/giantswarm/giantswarm/42',
-      );
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
-        item: {
-          id: ITEM.id,
-          title: ITEM.title,
-          number: 42,
-          url: ITEM.url,
-          repo: 'giantswarm/giantswarm',
-          state: 'OPEN',
-          fields: { Status: 'In Progress ⛏️', Quarter: 'Q3 2026' },
-        },
-      });
-      expect(pro.graphQLWithAuth).toHaveBeenCalledWith(
-        expect.stringContaining('projectItems'),
-        { owner: 'giantswarm', repo: 'giantswarm', number: 42 },
-        APP_TOKEN,
-      );
-      expect(pro.listItems).not.toHaveBeenCalled();
-    });
-
-    it('returns 404 for an issue that is not on the board', async () => {
-      pro.graphQLWithAuth.mockResolvedValue({
-        repository: {
-          issue: {
-            title: 'Off-board issue',
-            url: 'https://github.com/giantswarm/giantswarm/issues/999',
-            state: 'OPEN',
-            projectItems: {
-              nodes: [{ id: 'PVTI_other', project: { id: 'PVT_other' } }],
-            },
-          },
-        },
-      });
-
-      const response = await request(app).get(
-        '/items/by-issue/giantswarm/giantswarm/999',
-      );
-
-      expect(response.status).toBe(404);
-      expect(response.body.error.name).toBe('NotFoundError');
-    });
-
-    it('rejects a non-numeric issue number', async () => {
-      const response = await request(app).get(
-        '/items/by-issue/giantswarm/giantswarm/abc',
-      );
-
-      expect(response.status).toBe(400);
-      expect(pro.graphQLWithAuth).not.toHaveBeenCalled();
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ item: detail });
+      expect(pro.calls[0].args).toEqual({ itemId: 'PVTI_1' });
     });
   });
 
   describe('GET /issues/:owner/:repo/:number/sub-issues', () => {
     it('returns the mapped sub-issue tree and parent', async () => {
-      pro.getParentIssue.mockResolvedValue({
-        ...REST_ISSUE,
-        id: 999,
-        number: 40,
-        title: 'The epic',
+      pro.answers.set('list_sub_issues', {
+        count: 1,
+        sub_issues: [
+          {
+            id: 7,
+            number: 46,
+            title: 'Child',
+            url: 'https://github.com/giantswarm/giantswarm/issues/46',
+            state: 'open',
+            repository: 'giantswarm/giantswarm',
+            assignees: ['alice'],
+          },
+        ],
+      });
+      pro.answers.set('get_parent_issue', {
+        parent: {
+          id: 5,
+          number: 44,
+          title: 'Parent',
+          url: 'https://github.com/giantswarm/giantswarm/issues/44',
+          state: 'open',
+        },
       });
 
-      const response = await request(app).get(
-        '/issues/giantswarm/giantswarm/42/sub-issues',
+      const res = await request(app).get(
+        '/issues/giantswarm/giantswarm/45/sub-issues',
       );
 
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
         subIssues: [
           {
-            id: 1001,
-            number: 43,
-            title: 'A sub-issue',
+            id: 7,
+            number: 46,
+            title: 'Child',
             state: 'open',
-            htmlUrl: 'https://github.com/giantswarm/giantswarm/issues/43',
-            assignees: ['teemow'],
+            htmlUrl: 'https://github.com/giantswarm/giantswarm/issues/46',
+            assignees: ['alice'],
             repo: 'giantswarm/giantswarm',
           },
         ],
-        parent: expect.objectContaining({ id: 999, title: 'The epic' }),
-      });
-      expect(pro.listSubIssues).toHaveBeenCalledWith(
-        {
-          owner: 'giantswarm',
-          repo: 'giantswarm',
-          issue_number: 42,
-          per_page: 100,
+        parent: {
+          id: 5,
+          number: 44,
+          title: 'Parent',
+          state: 'open',
+          htmlUrl: 'https://github.com/giantswarm/giantswarm/issues/44',
+          assignees: [],
         },
-        APP_TOKEN,
-      );
-    });
-
-    it('rejects a non-numeric issue number', async () => {
-      const response = await request(app).get(
-        '/issues/giantswarm/giantswarm/abc/sub-issues',
-      );
-
-      expect(response.status).toBe(400);
+      });
+      expect(pro.calls.map(c => c.tool).sort()).toEqual([
+        'get_parent_issue',
+        'list_sub_issues',
+      ]);
     });
   });
 
   describe('PATCH /items/:id/field', () => {
-    it('requires the per-user GitHub token', async () => {
-      const response = await request(app)
+    it('updates the field through pro and patches the cached list', async () => {
+      pro.answers.set('list_issues', { issues: [ITEM] });
+      pro.answers.set('update_issue_field', {
+        success: true,
+        itemId: 'PVTI_1',
+        field: 'Status',
+        value: 'Done ✅',
+      });
+
+      await request(app).get('/items').query({ team: 'Bumblebee🐝' });
+      const res = await request(app)
+        .patch('/items/PVTI_1/field')
+        .send({ name: 'status', value: 'done' });
+
+      expect(res.status).toBe(200);
+      expect(
+        pro.calls.find(c => c.tool === 'update_issue_field')?.args,
+      ).toEqual({
+        board: 'roadmap',
+        itemId: 'PVTI_1',
+        fieldName: 'status',
+        value: 'done',
+      });
+      const list = await request(app)
+        .get('/items')
+        .query({ team: 'Bumblebee🐝' });
+      expect(list.body.items[0].fields.Status).toBe('Done ✅');
+      expect(pro.calls.filter(c => c.tool === 'list_issues')).toHaveLength(1);
+    });
+
+    it("maps pro's refusal of an unknown value to 400", async () => {
+      pro.answers.set('update_issue_field', () => {
+        throw new Error(
+          "Option 'nope' not found for field 'Status'. Available options: Inbox 📥, Done ✅",
+        );
+      });
+      const res = await request(app)
+        .patch('/items/PVTI_1/field')
+        .send({ name: 'Status', value: 'nope' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toMatch(/Available options/);
+    });
+
+    it('maps a GitHub permission failure to 403', async () => {
+      pro.answers.set('update_issue_field', () => {
+        throw new Error('GitHub error: Resource not accessible by integration');
+      });
+      const res = await request(app)
         .patch('/items/PVTI_1/field')
         .send({ name: 'Status', value: 'Done ✅' });
-
-      expect(response.status).toBe(401);
-      expect(pro.updateItemField).not.toHaveBeenCalled();
+      expect(res.status).toBe(403);
     });
 
-    it('resolves a single-select option and mutates with the user token', async () => {
-      const response = await request(app)
-        .patch('/items/PVTI_1/field')
-        .set('X-GitHub-Token', USER_TOKEN)
-        .send({ name: 'Status', value: 'Done ✅' });
-
-      expect(response.status).toBe(200);
-      expect(pro.findFieldByName).toHaveBeenCalledWith(
-        'Status',
-        BOARD_ID,
-        USER_TOKEN,
-      );
-      expect(pro.updateItemField).toHaveBeenCalledWith(
-        'PVTI_1',
-        'F_status',
-        { singleSelectOptionId: 'O_done' },
-        BOARD_ID,
-        USER_TOKEN,
-      );
-    });
-
-    it('resolves an iteration field value', async () => {
-      pro.findFieldByName.mockResolvedValue(QUARTER_FIELD);
-
-      const response = await request(app)
-        .patch('/items/PVTI_1/field')
-        .set('X-GitHub-Token', USER_TOKEN)
-        .send({ name: 'Quarter', value: 'Q3 2026' });
-
-      expect(response.status).toBe(200);
-      expect(pro.updateItemField).toHaveBeenCalledWith(
-        'PVTI_1',
-        'F_quarter',
-        { iterationId: 'I_q3' },
-        BOARD_ID,
-        USER_TOKEN,
-      );
-    });
-
-    it('validates date fields', async () => {
-      pro.findFieldByName.mockResolvedValue(DATE_FIELD);
-
-      const invalid = await request(app)
-        .patch('/items/PVTI_1/field')
-        .set('X-GitHub-Token', USER_TOKEN)
-        .send({ name: 'Target Date', value: 'next week' });
-      expect(invalid.status).toBe(400);
-
-      const valid = await request(app)
-        .patch('/items/PVTI_1/field')
-        .set('X-GitHub-Token', USER_TOKEN)
-        .send({ name: 'Target Date', value: '2026-09-30' });
-      expect(valid.status).toBe(200);
-      expect(pro.updateItemField).toHaveBeenCalledWith(
-        'PVTI_1',
-        'F_target',
-        { date: '2026-09-30' },
-        BOARD_ID,
-        USER_TOKEN,
-      );
-    });
-
-    it('rejects unknown option values with the available options', async () => {
-      const response = await request(app)
-        .patch('/items/PVTI_1/field')
-        .set('X-GitHub-Token', USER_TOKEN)
-        .send({ name: 'Status', value: 'Nope' });
-
-      expect(response.status).toBe(400);
-      expect(response.body.error.message).toMatch('In Progress ⛏️');
-      expect(pro.updateItemField).not.toHaveBeenCalled();
-    });
-
-    it('maps GitHub permission failures to 403', async () => {
-      pro.updateItemField.mockRejectedValue(
-        Object.assign(new Error('Resource not accessible'), { status: 403 }),
-      );
-
-      const response = await request(app)
-        .patch('/items/PVTI_1/field')
-        .set('X-GitHub-Token', USER_TOKEN)
-        .send({ name: 'Status', value: 'Done ✅' });
-
-      expect(response.status).toBe(403);
-    });
-
-    it('patches cached lists in place after a write instead of rescanning', async () => {
-      await request(app).get('/items');
-      await request(app)
-        .patch('/items/PVTI_1/field')
-        .set('X-GitHub-Token', USER_TOKEN)
-        .send({ name: 'Status', value: 'Done ✅' });
-      const response = await request(app).get('/items');
-
-      // No second board scan -- the cached list already carries the update.
-      expect(pro.listItems).toHaveBeenCalledTimes(1);
-      expect(response.body.items[0].fields.Status).toBe('Done ✅');
-    });
-
-    it('drops the cached item detail after a write', async () => {
-      await request(app).get('/items/PVTI_1');
-      await request(app)
-        .patch('/items/PVTI_1/field')
-        .set('X-GitHub-Token', USER_TOKEN)
-        .send({ name: 'Status', value: 'Done ✅' });
-      await request(app).get('/items/PVTI_1');
-
-      expect(pro.getItemByID).toHaveBeenCalledTimes(2);
+    it('validates the body', async () => {
+      expect(
+        (
+          await request(app)
+            .patch('/items/PVTI_1/field')
+            .send({ name: '', value: 'x' })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await request(app)
+            .patch('/items/PVTI_1/field')
+            .send({ name: 'Status' })
+        ).status,
+      ).toBe(400);
     });
   });
 
-  describe('POST /issues/:owner/:repo/:number/sub-issues', () => {
-    it('requires the per-user GitHub token', async () => {
-      const response = await request(app)
-        .post('/issues/giantswarm/giantswarm/42/sub-issues')
-        .send({ child: 'giantswarm/giantswarm#44' });
+  describe('sub-issue writes', () => {
+    it('links a child by reference as the caller', async () => {
+      pro.answers.set('add_sub_issue', {
+        success: true,
+        parent: { id: 5, number: 45, title: 'Parent', url: 'u', state: 'open' },
+      });
 
-      expect(response.status).toBe(401);
-      expect(pro.addSubIssue).not.toHaveBeenCalled();
-    });
+      const res = await request(app)
+        .post('/issues/giantswarm/giantswarm/45/sub-issues')
+        .send({ child: 'giantswarm/giantswarm#46' });
 
-    it('resolves the child reference and links it', async () => {
-      const response = await request(app)
-        .post('/issues/giantswarm/giantswarm/42/sub-issues')
-        .set('X-GitHub-Token', USER_TOKEN)
-        .send({ child: 'giantswarm/giantswarm#44' });
-
-      expect(response.status).toBe(201);
-      expect(pro.resolveIssueId).toHaveBeenCalledWith(
-        'giantswarm/giantswarm#44',
-        { token: USER_TOKEN },
-      );
-      expect(pro.addSubIssue).toHaveBeenCalledWith(
-        {
+      expect(res.status).toBe(201);
+      expect(res.body.parent).toMatchObject({
+        id: 5,
+        number: 45,
+        htmlUrl: 'u',
+      });
+      expect(pro.calls[0]).toMatchObject({
+        tool: 'add_sub_issue',
+        args: {
           owner: 'giantswarm',
           repo: 'giantswarm',
-          issue_number: 42,
-          subIssueId: 2002,
+          issue_number: 45,
+          subIssueUrl: 'giantswarm/giantswarm#46',
         },
-        USER_TOKEN,
-      );
-      expect(response.body.parent).toEqual(
-        expect.objectContaining({ number: 43 }),
-      );
+      });
     });
 
     it('rejects a missing child reference', async () => {
-      const response = await request(app)
-        .post('/issues/giantswarm/giantswarm/42/sub-issues')
-        .set('X-GitHub-Token', USER_TOKEN)
+      const res = await request(app)
+        .post('/issues/giantswarm/giantswarm/45/sub-issues')
         .send({});
-
-      expect(response.status).toBe(400);
-    });
-  });
-
-  describe('DELETE /issues/:owner/:repo/:number/sub-issues/:subIssueId', () => {
-    it('unlinks the sub-issue with the user token', async () => {
-      const response = await request(app)
-        .delete('/issues/giantswarm/giantswarm/42/sub-issues/1001')
-        .set('X-GitHub-Token', USER_TOKEN);
-
-      expect(response.status).toBe(204);
-      expect(pro.removeSubIssue).toHaveBeenCalledWith(
-        {
-          owner: 'giantswarm',
-          repo: 'giantswarm',
-          issue_number: 42,
-          subIssueId: 1001,
-        },
-        USER_TOKEN,
-      );
+      expect(res.status).toBe(400);
+      expect(pro.calls).toHaveLength(0);
     });
 
-    it('requires the per-user GitHub token', async () => {
-      const response = await request(app).delete(
-        '/issues/giantswarm/giantswarm/42/sub-issues/1001',
+    it('unlinks a sub-issue by id', async () => {
+      pro.answers.set('remove_sub_issue', { success: true, removed: 7 });
+      const res = await request(app).delete(
+        '/issues/giantswarm/giantswarm/45/sub-issues/7',
       );
-
-      expect(response.status).toBe(401);
-      expect(pro.removeSubIssue).not.toHaveBeenCalled();
+      expect(res.status).toBe(204);
+      expect(pro.calls[0].args).toEqual({
+        owner: 'giantswarm',
+        repo: 'giantswarm',
+        issue_number: 45,
+        subIssueId: 7,
+      });
     });
   });
 });
