@@ -18,26 +18,45 @@ const useStyles = makeStyles({
     gridTemplateColumns: ({ labelWidth }: StyleProps) =>
       `minmax(120px, ${labelWidth}px) minmax(0, 1fr)`,
     maxWidth: ({ maxWidth }: StyleProps) => maxWidth ?? 'none',
-    columnGap: 'var(--bui-space-6)',
-    rowGap: 'var(--bui-space-2)',
-    // Keeps a label on the same line as a value whose first line is taller
-    // than text (a chip row, a bar).
-    alignItems: 'baseline',
+    // No column gap: the gutter is padding on the label cell instead, so each
+    // row's rule runs unbroken across both columns. No row gap either — rows
+    // are separated by the cells' own bottom rules.
+    //
+    // Cells must STRETCH to the row height (the grid default) so both bottom
+    // rules land on the row's bottom edge. `align-items: baseline` sizes each
+    // cell to its own content, which steps the rule wherever a value runs to
+    // more lines than its label. Content top-aligns instead, which puts a
+    // label level with the first line of its value anyway.
     // <dl> carries a default block margin.
     margin: 0,
+    // Rules separate items, so the final row closes against whatever contains
+    // the list rather than leaving a dangling hairline.
+    '& > dt:last-of-type, & > dd:last-of-type': {
+      borderBottom: 'none',
+    },
     [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
       gridTemplateColumns: '1fr',
-      rowGap: 'var(--bui-space-1)',
     },
   },
-  label: {
-    margin: 0,
-  },
-  value: {
-    // <dd> carries a default inline-start margin.
+  cell: {
     margin: 0,
     minWidth: 0,
+    paddingTop: 'var(--bui-space-2)',
+    paddingBottom: 'var(--bui-space-2)',
+    borderBottom: '1px solid var(--bui-border-1)',
+  },
+  label: {
+    paddingRight: 'var(--bui-space-6)',
+  },
+  value: {
     overflowWrap: 'anywhere',
+  },
+  // Stacked, a label and its value are one row, so only the value closes it.
+  narrowStacked: {
+    [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
+      borderBottom: 'none',
+      paddingBottom: 0,
+    },
   },
 });
 
@@ -59,7 +78,8 @@ export interface FactListProps {
 }
 
 /**
- * A compact list of label/value pairs laid out as horizontal rows.
+ * A compact list of label/value pairs laid out as horizontal rows, separated
+ * by hairline rules.
  *
  * Rendered as a definition list, so the pairing is conveyed to assistive
  * technology rather than only visually. Use `ContentRow` instead where a label
@@ -79,12 +99,14 @@ export const FactList = ({
     <dl className={classes.list}>
       {facts.map(fact => (
         <Fragment key={fact.label}>
-          <dt className={classes.label}>
-            <Text variant="body-small" color="secondary">
+          <dt
+            className={`${classes.cell} ${classes.label} ${classes.narrowStacked}`}
+          >
+            <Text variant="body-small" weight="bold">
               {fact.label}
             </Text>
           </dt>
-          <dd className={classes.value}>
+          <dd className={`${classes.cell} ${classes.value}`}>
             {typeof fact.value === 'string' ? (
               <Text variant="body-small">{fact.value}</Text>
             ) : (

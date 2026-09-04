@@ -21,8 +21,9 @@ const meta = {
       description: {
         component: componentDocs({
           summary:
-            'A compact list of label/value pairs laid out as horizontal rows, ' +
-            'rendered as a definition list (`dl`/`dt`/`dd`).',
+            'A compact list of label/value pairs laid out as horizontal rows ' +
+            'separated by hairline rules, rendered as a definition list ' +
+            '(`dl`/`dt`/`dd`).',
           whenToUse:
             'For a detail block of many short facts, where a horizontal ' +
             '`label | value` row is denser and easier to scan than a stack. ' +
@@ -35,7 +36,10 @@ const meta = {
             'proportionally — a percentage track pushes values far from their ' +
             'labels in a wide container, which is what stops a list reading as ' +
             'pairs. `maxWidth` holds a readable measure for the same reason; ' +
-            'pass `null` to fill the container instead.',
+            'pass `null` to fill the container instead.\n\n' +
+            'The rules run unbroken across both columns (the gutter is padding ' +
+            'on the label cell, not a grid gap) and are omitted on the last ' +
+            'row, so a list closes cleanly against its container.',
         }),
       },
     },
