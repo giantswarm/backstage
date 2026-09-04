@@ -7629,6 +7629,26 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-github-actions-backend@workspace:^, @giantswarm/backstage-plugin-github-actions-backend@workspace:plugins/github-actions-backend":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-github-actions-backend@workspace:plugins/github-actions-backend"
+  dependencies:
+    "@backstage/backend-defaults": "backstage:^"
+    "@backstage/backend-plugin-api": "backstage:^"
+    "@backstage/backend-test-utils": "backstage:^"
+    "@backstage/cli": "backstage:^"
+    "@backstage/config": "backstage:^"
+    "@backstage/errors": "backstage:^"
+    "@backstage/types": "backstage:^"
+    "@giantswarm/backstage-plugin-gs-node": "workspace:^"
+    "@types/express": "npm:^5.0.0"
+    "@types/supertest": "npm:^7.0.0"
+    express: "npm:^5.0.0"
+    express-promise-router: "npm:^4.1.0"
+    supertest: "npm:^7.0.0"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-gs-backend@npm:^0.10.2, @giantswarm/backstage-plugin-gs-backend@workspace:plugins/gs-backend":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs-backend@workspace:plugins/gs-backend"
@@ -19213,6 +19233,7 @@ __metadata:
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
+    "@material-ui/lab": "npm:^4.0.0-alpha.61"
     "@pagerduty/backstage-plugin": "npm:^0.21.0"
     "@playwright/test": "npm:^1.32.3"
     "@remixicon/react": "npm:^4.9.0"
@@ -19925,6 +19946,7 @@ __metadata:
     "@giantswarm/backstage-plugin-ai-chat-backend": "npm:^0.17.2"
     "@giantswarm/backstage-plugin-auth-backend-module-gs": "npm:^0.15.0"
     "@giantswarm/backstage-plugin-catalog-backend-module-gs": "npm:^0.6.1"
+    "@giantswarm/backstage-plugin-github-actions-backend": "workspace:^"
     "@giantswarm/backstage-plugin-gs-backend": "npm:^0.10.2"
     "@giantswarm/backstage-plugin-muster-backend": "workspace:^"
     "@giantswarm/backstage-plugin-plans-backend": "workspace:^"
