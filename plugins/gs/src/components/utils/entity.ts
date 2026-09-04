@@ -17,6 +17,17 @@ export const GS_READINESS_FLAGS = 'giantswarm.io/readiness-flags';
 export const GS_READINESS_ADVISORY = 'giantswarm.io/readiness-advisory';
 export const GS_READINESS_CHECKED = 'giantswarm.io/readiness-checked';
 export const GS_CHART_METADATA_STYLE = 'giantswarm.io/chart-metadata-style';
+export const GS_BUILD_STATUS = 'giantswarm.io/build-status';
+export const GS_BUILD_FAILING_CHECKS = 'giantswarm.io/build-failing-checks';
+export const GS_BUILD_STATUS_CHECKED = 'giantswarm.io/build-status-checked';
+export const GS_DEFAULT_BRANCH = 'giantswarm.io/default-branch';
+export const GS_ARCHITECT_ORB_VERSION = 'giantswarm.io/architect-orb-version';
+export const GS_ARCHITECT_ORB_REF = 'giantswarm.io/architect-orb-ref';
+export const GS_APP_BUILD_SUITE_VERSION =
+  'giantswarm.io/app-build-suite-version';
+export const GS_APP_TEST_SUITE_VERSION = 'giantswarm.io/app-test-suite-version';
+export const GS_APP_TEST_SUITE_VERSION_SOURCE =
+  'giantswarm.io/app-test-suite-version-source';
 
 export const GS_APP_DEPLOYMENT_ACTION = 'giantswarm.io/app-deployment-action';
 export const GS_KLAUS_SOUL_URL = 'giantswarm.io/klaus-soul-url';
@@ -88,7 +99,8 @@ export const isEntityReadinessAvailable = (entity: Entity) =>
     // string would otherwise satisfy `??` and hide the card even when the
     // other label is set.
     entity.metadata.labels?.[GS_READINESS] ||
-    entity.metadata.labels?.[GS_READINESS_STANDARDS],
+    entity.metadata.labels?.[GS_READINESS_STANDARDS] ||
+    entity.metadata.labels?.[GS_BUILD_STATUS],
   );
 
 export const getReadinessFromEntity = (entity: Entity) =>
@@ -122,6 +134,83 @@ export const getReadinessCheckedFromEntity = (entity: Entity) =>
 
 export const getChartMetadataStyleFromEntity = (entity: Entity) =>
   entity.metadata.annotations?.[GS_CHART_METADATA_STYLE];
+
+/**
+ * Whether `BuildStatusProcessor` has said anything about this component. It
+ * ships disabled, like the release processor, and writes nothing at all for a
+ * repo that has no CI reporting to its default branch — so this gates the
+ * "Build" column on there being a cell to fill.
+ */
+export const isEntityBuildStatusAvailable = (entity: Entity) =>
+  Boolean(entity.metadata.labels?.[GS_BUILD_STATUS]);
+
+export const getBuildStatusFromEntity = (entity: Entity) =>
+  entity.metadata.labels?.[GS_BUILD_STATUS];
+
+/** The checks confirmed failing on the default branch. Empty unless failing. */
+export const getBuildFailingChecksFromEntity = (entity: Entity) =>
+  splitFlags(entity.metadata.annotations?.[GS_BUILD_FAILING_CHECKS]);
+
+export const getBuildStatusCheckedFromEntity = (entity: Entity) =>
+  entity.metadata.annotations?.[GS_BUILD_STATUS_CHECKED];
+
+export const getDefaultBranchFromEntity = (entity: Entity) =>
+  entity.metadata.annotations?.[GS_DEFAULT_BRANCH];
+
+/**
+ * The build toolchain a repo's default branch declares: which architect orb it
+ * pins, and the app-build-suite and app-test-suite versions that orb (or the
+ * repo, for ATS) pins in turn. Published by the catalog importer from the
+ * repo's CircleCI config.
+ *
+ * "Declares" is the operative word. This is what the default branch *would*
+ * build with, not proof of what the last build ran — an orb bump that landed
+ * after the last successful build is already reflected here.
+ */
+export type BuildToolchain = {
+  /** Orb version, `v` stripped. Absent when the pin is not a release. */
+  orbVersion?: string;
+  /** The raw orb ref when it is not a release: `dev:abc123`, `volatile`. */
+  orbRef?: string;
+  /** app-build-suite version, present only for repos that push a chart. */
+  absVersion?: string;
+  /** app-test-suite version, present only for repos that run ATS. */
+  atsVersion?: string;
+  /** `repo` when the repo overrides the orb's ATS default. */
+  atsSource?: string;
+};
+
+/**
+ * Whether the importer found an architect orb in the repo's CI config, as a
+ * release pin or otherwise. Gates the "Build toolchain" column.
+ */
+export const isEntityBuildToolchainAvailable = (entity: Entity) =>
+  Boolean(
+    entity.metadata.labels?.[GS_ARCHITECT_ORB_VERSION] ||
+    entity.metadata.annotations?.[GS_ARCHITECT_ORB_REF],
+  );
+
+export const getBuildToolchainFromEntity = (entity: Entity): BuildToolchain => {
+  const labels = entity.metadata.labels ?? {};
+  const annotations = entity.metadata.annotations ?? {};
+  const toolchain: BuildToolchain = {};
+  if (labels[GS_ARCHITECT_ORB_VERSION]) {
+    toolchain.orbVersion = labels[GS_ARCHITECT_ORB_VERSION];
+  }
+  if (annotations[GS_ARCHITECT_ORB_REF]) {
+    toolchain.orbRef = annotations[GS_ARCHITECT_ORB_REF];
+  }
+  if (labels[GS_APP_BUILD_SUITE_VERSION]) {
+    toolchain.absVersion = labels[GS_APP_BUILD_SUITE_VERSION];
+  }
+  if (labels[GS_APP_TEST_SUITE_VERSION]) {
+    toolchain.atsVersion = labels[GS_APP_TEST_SUITE_VERSION];
+  }
+  if (annotations[GS_APP_TEST_SUITE_VERSION_SOURCE]) {
+    toolchain.atsSource = annotations[GS_APP_TEST_SUITE_VERSION_SOURCE];
+  }
+  return toolchain;
+};
 
 export const isEntityHelmChartsAvailable = (entity: Entity) =>
   Boolean(entity.metadata.annotations?.[GS_HELMCHARTS]);

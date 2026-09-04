@@ -58,3 +58,22 @@ export const ReleaseReadinessFlags = {
 export const releaseReadinessFlagNames: string[] = Object.values(
   ReleaseReadinessFlags,
 );
+
+/**
+ * The build blocker `BuildStatusProcessor` writes into the same
+ * `giantswarm.io/readiness-flags` annotation.
+ *
+ * A third author for the list, and a third question: "does the default branch
+ * build right now". It is neither a release blocker (the release that already
+ * exists may well be in the registry) nor a chart-metadata gap (the chart may
+ * be perfectly compliant and the build red for an unrelated reason — a revoked
+ * checkout key kept resource-police unbuilt for six months). The frontend
+ * recognises the name so it can say which question the flag answers.
+ */
+export const BuildReadinessFlags = {
+  buildRed: 'BUILD-RED',
+} as const;
+
+/** The flag names above, for membership tests. */
+export const buildReadinessFlagNames: string[] =
+  Object.values(BuildReadinessFlags);
