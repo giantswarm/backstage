@@ -158,12 +158,18 @@ export class MusterServerNotConnectedError extends Error {
 
 /**
  * Muster's answers when the caller's session is not connected to the server:
- * the tool is not in the session's tool set, or the connection needs auth.
+ * the tool is not in the session's tool set (no session has connected the
+ * server yet), the connection needs auth, or -- once any session connected
+ * the server, so muster knows its tools -- the call fails with
+ * `user not authenticated to server <name>`. The last one is what a person's
+ * second session, or the next person, hits; `core_auth_login` connects it
+ * from the subject grant or hands out the sign-in URL.
  */
 const NOT_CONNECTED_PATTERNS = [
   /tool not found/i,
   /unknown tool/i,
   /not connected/i,
+  /not authenticated to server/i,
   /auth(entication|orization)? required/i,
   /requires authentication/i,
 ];
