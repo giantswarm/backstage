@@ -6,8 +6,10 @@
 # Generated job names available to reference in `requires`: node-build (the
 # install/verify/build job that persists packages/*/dist/*), push-to-registries
 # (branch), push-to-registries-release, sync-china-registry, build-chart,
-# execute-chart-tests, execute-chart-tests-release, push-chart-release (the
-# operations-platform catalog push).
+# execute-chart-tests, push-chart-release (the operations-platform catalog
+# push). The chart tests run on branches only; there is no tag-time
+# execute-chart-tests-release since devctl v8.45.0 (gen.ci.atsOnRelease would
+# bring it back).
 #
 # What this file carries beyond the golden pipeline:
 #   - push-to-control-plane-app-catalog: backstage ships the single `backstage`
@@ -34,8 +36,9 @@ workflows:
     jobs:
     # Second catalog: the single `backstage` chart also ships to the
     # control-plane catalog. Gated on the same jobs as the generated
-    # push-chart-release (operations-platform) so the same tested archive and
-    # released image are published to both.
+    # push-chart-release (operations-platform): the build-chart archive and the
+    # released image, so both catalogs publish the same tested archive (the
+    # chart tests ran on the PR that the tag was cut from).
     - architect/push-to-app-catalog:
         executor: app-build-suite
         context: architect
@@ -44,7 +47,7 @@ workflows:
         app_catalog_test: control-plane-test-catalog
         chart: backstage
         requires:
-        - execute-chart-tests-release
+        - build-chart
         - push-to-registries-release
         filters:
           tags:
