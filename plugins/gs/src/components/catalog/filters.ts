@@ -68,6 +68,53 @@ export class EntityReadinessFilter implements EntityFilter {
   }
 }
 
+/**
+ * Filters on the build verdict `BuildStatusProcessor` writes. A label for the
+ * same reason as the readiness verdict.
+ */
+export class EntityBuildStatusFilter implements EntityFilter {
+  constructor(readonly values: string[]) {}
+
+  getCatalogFilters(): Record<string, string | string[]> {
+    return { 'metadata.labels.giantswarm.io/build-status': this.values };
+  }
+
+  filterEntity(entity: Entity): boolean {
+    return this.values.some(
+      v => entity.metadata.labels?.['giantswarm.io/build-status'] === v,
+    );
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
+
+/**
+ * Filters on the architect orb version the default branch declares, as the
+ * catalog importer publishes it. "Every repo still below 9.6.0" is one click.
+ */
+export class EntityOrbVersionFilter implements EntityFilter {
+  constructor(readonly values: string[]) {}
+
+  getCatalogFilters(): Record<string, string | string[]> {
+    return {
+      'metadata.labels.giantswarm.io/architect-orb-version': this.values,
+    };
+  }
+
+  filterEntity(entity: Entity): boolean {
+    return this.values.some(
+      v =>
+        entity.metadata.labels?.['giantswarm.io/architect-orb-version'] === v,
+    );
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
+
 export class EntityProviderFilter implements EntityFilter {
   constructor(readonly values: string[]) {}
 
@@ -91,6 +138,8 @@ export type CustomFilters = DefaultEntityFilters & {
   pipelines?: EntityPipelineFilter;
   providers?: EntityProviderFilter;
   readiness?: EntityReadinessFilter;
+  buildStatus?: EntityBuildStatusFilter;
+  orbVersions?: EntityOrbVersionFilter;
 };
 
 /**
