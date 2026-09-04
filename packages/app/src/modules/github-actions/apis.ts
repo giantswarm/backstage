@@ -82,7 +82,7 @@ export const GithubActionsApiOverride = ApiBlueprint.make({
 });
 
 /** The connection check behind the tab's "Connect GitHub" step. */
-export const GithubActionsConnectionApi = ApiBlueprint.make({
+export const GithubActionsConnectionApiExtension = ApiBlueprint.make({
   name: 'connection',
   params: defineParams =>
     defineParams({

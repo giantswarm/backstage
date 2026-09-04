@@ -1,5 +1,8 @@
 import { createFrontendModule } from '@backstage/frontend-plugin-api';
-import { GithubActionsApiOverride, GithubActionsConnectionApi } from './apis';
+import {
+  GithubActionsApiOverride,
+  GithubActionsConnectionApiExtension,
+} from './apis';
 import { GithubActionsEntityContentOverride } from './EntityContentOverride';
 
 /**
@@ -11,7 +14,7 @@ export const githubActionsPluginOverrides = createFrontendModule({
   pluginId: 'github-actions',
   extensions: [
     GithubActionsApiOverride,
-    GithubActionsConnectionApi,
+    GithubActionsConnectionApiExtension,
     GithubActionsEntityContentOverride,
   ],
 });

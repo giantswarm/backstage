@@ -86,6 +86,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** The `items` of a search result, or the bare array some tools answer with. */
+function searchItems(payload: unknown): unknown[] {
+  return listOf(payload, 'items');
+}
+
+/** A tool's list payload: the bare array, or the array under `key`. */
+function listOf(payload: unknown, key: string): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (isRecord(payload) && Array.isArray(payload[key])) {
+    return payload[key] as unknown[];
+  }
+  return [];
+}
+
 /**
  * GitHub's MCP server answers a refusal with GitHub's message; map the ones a
  * person can act on to a 403/404 so the tab shows them instead of a server
@@ -218,12 +234,7 @@ export async function createRouter(
       query: `repo:${owner}/${repo}`,
       perPage: 1,
     });
-    const items =
-      isRecord(payload) && Array.isArray(payload.items)
-        ? payload.items
-        : Array.isArray(payload)
-          ? payload
-          : [];
+    const items = searchItems(payload);
     const found = items.find(
       (item): item is Record<string, unknown> =>
         isRecord(item) &&
@@ -248,12 +259,7 @@ export async function createRouter(
       page: pageOf(singleQueryValue(req.query.page, 'page')),
       perPage: MAX_PAGE_SIZE,
     });
-    const branches = Array.isArray(payload)
-      ? payload
-      : isRecord(payload) && Array.isArray(payload.branches)
-        ? payload.branches
-        : [];
-    res.json(branches);
+    res.json(listOf(payload, 'branches'));
   });
 
   router.get('/repos/:owner/:repo/workflows/:workflowId', async (req, res) => {
