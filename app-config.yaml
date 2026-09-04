@@ -238,6 +238,15 @@ catalog:
   #     # prefix when giantswarm.io/release-tag-prefix is set (monorepos).
   #     enabled: true
   #     cacheTtlSeconds: 3600
+  #   appReadiness:
+  #     # Annotates Component entities that have giantswarm.io/helmcharts with
+  #     # whether their newest GitHub release reached the chart registry. Sets
+  #     # the giantswarm.io/readiness label to releasable, blocked or unknown,
+  #     # and merges blockers into giantswarm.io/readiness-flags. A chart that
+  #     # cannot be resolved or a registry that cannot be read yields unknown,
+  #     # never blocked.
+  #     enabled: true
+  #     cacheTtlSeconds: 3600
   #   latestOciRelease:
   #     # Annotates Component entities that have giantswarm.io/helmcharts with
   #     # giantswarm.io/latest-release-tag and giantswarm.io/latest-release-date,
