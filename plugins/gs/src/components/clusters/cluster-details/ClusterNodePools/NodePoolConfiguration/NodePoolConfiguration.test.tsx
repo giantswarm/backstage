@@ -121,7 +121,7 @@ describe('NodePoolConfiguration', () => {
     );
 
     expect(
-      await screen.findByText('14 spot · 2 on-demand'),
+      await screen.findByText('14 × spot · 2 × on-demand'),
     ).toBeInTheDocument();
     expect(screen.getByText('4 nodes')).toBeInTheDocument();
   });
@@ -136,7 +136,7 @@ describe('NodePoolConfiguration', () => {
     );
 
     expect(await screen.findByText('Capacity type')).toBeInTheDocument();
-    expect(screen.queryByText(/14 spot/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/14 × spot/)).not.toBeInTheDocument();
   });
 
   it('explains itself when the Karpenter CR could not be read', async () => {

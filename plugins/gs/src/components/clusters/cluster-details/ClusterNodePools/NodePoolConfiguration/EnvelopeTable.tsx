@@ -68,12 +68,9 @@ interface EnvelopeTableProps {
   rows: EnvelopeRow[];
 }
 
+/** Always `count × value`, so every row of the column reads the same way. */
 function formatMix(entries: MixEntry[]): string {
-  if (entries.length === 1) {
-    const only = entries[0];
-    return only.count > 1 ? `${only.count} × ${only.value}` : only.value;
-  }
-  return entries.map(e => `${e.count} ${e.value}`).join(' · ');
+  return entries.map(e => `${e.count} × ${e.value}`).join(' · ');
 }
 
 /**
