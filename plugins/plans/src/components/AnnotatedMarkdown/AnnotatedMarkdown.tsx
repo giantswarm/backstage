@@ -1,4 +1,11 @@
-import { ElementType, ReactNode, useMemo, useState } from 'react';
+import {
+  ElementType,
+  ReactNode,
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+} from 'react';
 import { Box, IconButton, makeStyles, Theme } from '@material-ui/core';
 import AddCommentIcon from '@material-ui/icons/AddComment';
 import ReactMarkdown, { Components, ExtraProps } from 'react-markdown';
@@ -178,6 +185,13 @@ interface BlockContext {
   onCreate: (comment: NewReviewComment) => Promise<unknown>;
 }
 
+/**
+ * Per-render state the block components read. It travels through context
+ * rather than through closures so the components themselves can be created
+ * once (see BLOCK_COMPONENTS).
+ */
+const AnnotationContext = createContext<BlockContext | undefined>(undefined);
+
 type BlockProps = ExtraProps & { children?: ReactNode; className?: string };
 
 /**
@@ -185,17 +199,17 @@ type BlockProps = ExtraProps & { children?: ReactNode; className?: string };
  * inline review threads. `li` keeps its own tag (an extra wrapper would be
  * invalid inside `ul`/`ol`); everything else gets a positioning `<div>`.
  */
-function renderBlock(Tag: ElementType, ctx: BlockContext) {
+function renderBlock(Tag: ElementType) {
   return function AnnotatedBlock({
     node,
     children,
     className,
     ...rest
   }: BlockProps) {
-    const { classes, path, offset, commentable, threads, onCreate } = ctx;
+    const ctx = useContext(AnnotationContext);
 
     const range = blockRange(node);
-    if (!range || !node) {
+    if (!ctx || !range || !node) {
       return (
         <Tag {...rest} className={className}>
           {children}
@@ -203,6 +217,7 @@ function renderBlock(Tag: ElementType, ctx: BlockContext) {
       );
     }
 
+    const { classes, path, offset, commentable, threads, onCreate } = ctx;
     const start = range.start + offset;
     const end = range.end + offset;
     const anchor = firstCommentableLine(commentable, start, end);
@@ -273,6 +288,20 @@ function renderBlock(Tag: ElementType, ctx: BlockContext) {
 }
 
 /**
+ * One component per block tag, created once for the module. react-markdown
+ * treats a new component function as a new element type, and React then
+ * remounts the whole rendered document: a composer mid-submit would lose its
+ * draft, and the error of a failed comment would land on an unmounted form
+ * (the "empty form that stays open" symptom). The per-render state goes
+ * through AnnotationContext instead, so re-renders reconcile in place.
+ */
+const BLOCK_COMPONENTS = Object.fromEntries(
+  [...BLOCK_TAGS].map(tag => [tag, renderBlock(tag as ElementType)]),
+) as Components;
+
+const REMARK_PLUGINS = [remarkGfm];
+
+/**
  * Rendered markdown document with paragraph-level review commenting. Each
  * block whose source lines are part of the diff shows a `+` in the left
  * margin; existing review threads render in place under their anchor block.
@@ -302,8 +331,8 @@ export function AnnotatedMarkdown(props: {
     [comments, file.filename],
   );
 
-  const components = useMemo(() => {
-    const ctx: BlockContext = {
+  const ctx = useMemo<BlockContext>(
+    () => ({
       classes,
       path: file.filename,
       offset,
@@ -312,28 +341,29 @@ export function AnnotatedMarkdown(props: {
       commentingLine,
       setCommentingLine,
       onCreate,
-    };
-    const map: Record<string, unknown> = {};
-    for (const tag of BLOCK_TAGS) {
-      map[tag] = renderBlock(tag as ElementType, ctx);
-    }
-    return map as Components;
-  }, [
-    classes,
-    file.filename,
-    offset,
-    commentable,
-    threads,
-    commentingLine,
-    onCreate,
-  ]);
+    }),
+    [
+      classes,
+      file.filename,
+      offset,
+      commentable,
+      threads,
+      commentingLine,
+      onCreate,
+    ],
+  );
 
   return (
     <Box className={classes.root}>
       {frontmatter && <Box className={classes.frontmatter}>{frontmatter}</Box>}
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {body}
-      </ReactMarkdown>
+      <AnnotationContext.Provider value={ctx}>
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          components={BLOCK_COMPONENTS}
+        >
+          {body}
+        </ReactMarkdown>
+      </AnnotationContext.Provider>
     </Box>
   );
 }

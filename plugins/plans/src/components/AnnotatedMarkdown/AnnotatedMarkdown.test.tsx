@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PlanPullFile, PlanReviewComment } from '../../apis';
 import { AnnotatedMarkdown } from './AnnotatedMarkdown';
@@ -55,6 +55,106 @@ describe('AnnotatedMarkdown', () => {
       path: 'doc.md',
       line: 3,
     });
+  });
+
+  it('keeps the draft and shows the error when the comment fails while the page re-renders', async () => {
+    const user = userEvent.setup();
+    let reject!: (error: Error) => void;
+    const request = new Promise((_, r) => {
+      reject = r;
+    });
+    const onCreate = jest.fn().mockReturnValue(request);
+    const { rerender } = render(
+      <AnnotatedMarkdown
+        content={content}
+        file={addedFile}
+        comments={[]}
+        onCreate={onCreate}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('Comment on line 3'));
+    await user.type(
+      screen.getByPlaceholderText('Comment on line 3'),
+      'Looks good',
+    );
+    await user.click(screen.getByRole('button', { name: 'Comment' }));
+    expect(onCreate).toHaveBeenCalledTimes(1);
+
+    // The review page re-renders while the request is in flight (its
+    // mutation turns pending), handing down fresh prop identities. The
+    // composer that owns the request must survive that.
+    rerender(
+      <AnnotatedMarkdown
+        content={content}
+        file={addedFile}
+        comments={[]}
+        onCreate={comment => onCreate(comment)}
+      />,
+    );
+
+    await act(async () => {
+      reject(new Error('GitHub responded with 403'));
+    });
+
+    expect(
+      await screen.findByText('GitHub responded with 403'),
+    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Comment on line 3')).toHaveValue(
+      'Looks good',
+    );
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the composer and shows the thread once the comment is created', async () => {
+    const user = userEvent.setup();
+    let resolve!: (value: unknown) => void;
+    const request = new Promise(r => {
+      resolve = r;
+    });
+    const onCreate = jest.fn().mockReturnValue(request);
+    const { rerender } = render(
+      <AnnotatedMarkdown
+        content={content}
+        file={addedFile}
+        comments={[]}
+        onCreate={onCreate}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('Comment on line 3'));
+    await user.type(
+      screen.getByPlaceholderText('Comment on line 3'),
+      'Looks good',
+    );
+    await user.click(screen.getByRole('button', { name: 'Comment' }));
+
+    // The comments refetch lands before the mutation settles.
+    rerender(
+      <AnnotatedMarkdown
+        content={content}
+        file={addedFile}
+        comments={[
+          { id: 9, body: 'Looks good', path: 'doc.md', line: 3, author: 'a' },
+        ]}
+        onCreate={comment => onCreate(comment)}
+      />,
+    );
+    expect(screen.getByPlaceholderText('Comment on line 3')).toHaveValue(
+      'Looks good',
+    );
+
+    await act(async () => {
+      resolve({});
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByPlaceholderText('Comment on line 3'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText('Looks good')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Reply')).toBeInTheDocument();
   });
 
   it('offsets anchors by the frontmatter the renderer strips', () => {
