@@ -22,6 +22,7 @@ import { columnFactories, hiddenColumn, noWrapColumn } from '../columns';
 import {
   isEntityHelmChartsAvailable,
   isEntityLatestReleaseAvailable,
+  isEntityReleaseVerdictAvailable,
 } from '../../utils/entity';
 
 const YellowStar = withStyles({
@@ -63,6 +64,13 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
       if (entities.some(entity => isEntityLatestReleaseAvailable(entity))) {
         baseColumns.push(columnFactories.createLatestReleaseColumn());
         baseColumns.push(columnFactories.createLastReleasedColumn());
+      }
+      // The column shows the release verdict alone, so it is gated on that
+      // label rather than on the card's broader "any readiness data" test —
+      // otherwise every row would render an empty cell wherever the processor
+      // is off but the importer has published chart metadata.
+      if (entities.some(entity => isEntityReleaseVerdictAvailable(entity))) {
+        baseColumns.push(noWrapColumn(columnFactories.createReadinessColumn()));
       }
       if (entities.some(entity => isEntityHelmChartsAvailable(entity))) {
         baseColumns.push(columnFactories.createHelmChartsColunm());

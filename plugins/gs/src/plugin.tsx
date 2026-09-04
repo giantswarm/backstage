@@ -37,6 +37,7 @@ import {
 import {
   isEntityHelmChartTagged,
   isEntityInstallationResource,
+  isEntityReadinessAvailable,
   isEntityKlausPersonality,
   isEntityWithOciRepository,
 } from './components/utils/entity';
@@ -267,6 +268,23 @@ const helmChartVersionHistoryEntityCard = EntityCardBlueprint.make({
       const { EntityHelmChartVersionHistoryCard } =
         await import('./components/catalog/EntityHelmChartVersionHistoryCard');
       return <EntityHelmChartVersionHistoryCard />;
+    },
+  },
+});
+
+const appReadinessEntityCard = EntityCardBlueprint.make({
+  name: 'app-readiness',
+  params: {
+    type: 'info',
+    // Present wherever there is readiness data from either source — the
+    // catalog importer's chart-metadata verdict as much as
+    // AppReadinessProcessor's release verdict — rather than rendering an empty
+    // shell where there is neither.
+    filter: entity => isEntityReadinessAvailable(entity),
+    loader: async () => {
+      const { EntityAppReadinessCard } =
+        await import('./components/catalog/EntityAppReadinessCard');
+      return <EntityAppReadinessCard />;
     },
   },
 });
@@ -614,6 +632,7 @@ export const gsPlugin = createFrontendPlugin({
     mimirApi,
     // Entity cards
     appDeploymentEntityCard,
+    appReadinessEntityCard,
     installationDetailsEntityCard,
     readmeEntityCard,
     soulEntityCard,
