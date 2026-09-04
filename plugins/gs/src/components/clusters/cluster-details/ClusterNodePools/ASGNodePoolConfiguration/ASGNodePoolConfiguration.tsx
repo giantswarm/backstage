@@ -1,16 +1,15 @@
-import { Flex, Grid, Text } from '@backstage/ui';
+import { Flex, Grid } from '@backstage/ui';
 import {
   AWSMachinePool,
   MachinePool,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { NotAvailable } from '../../../../UI';
 import {
   getInstanceTypeArchitectures,
   useAwsInstanceTypes,
 } from '../awsInstanceTypeInfo';
-import { ConfigRow } from '../NodePoolConfiguration/ConfigRow';
-import { ValueBadges } from '../NodePoolConfiguration/ValueBadges';
+import { type Fact, FactList } from '../NodePoolConfiguration/FactList';
+import { ChipRow } from '../NodePoolConfiguration/ChipRow';
 
 interface ASGNodePoolConfigurationProps {
   machinePool: MachinePool;
@@ -20,7 +19,7 @@ interface ASGNodePoolConfigurationProps {
 /**
  * Configuration for a classic autoscaling-group node pool. Thinner than the
  * Karpenter tab by nature: an ASG pool has a fixed shape rather than a set of
- * constraints.
+ * constraints, so there is no allowed-vs-running comparison to draw.
  */
 export const ASGNodePoolConfiguration = ({
   machinePool,
@@ -36,77 +35,50 @@ export const ASGNodePoolConfiguration = ({
     ? getInstanceTypeArchitectures(instanceType, instanceTypeData)
     : undefined;
 
+  const shape: Fact[] = [
+    { label: 'Instance type', value: instanceType ?? '—' },
+    { label: 'Architecture', value: architectures?.join(', ') ?? '—' },
+    {
+      label: 'Availability zones',
+      value: zones?.length ? <ChipRow values={zones} /> : '—',
+    },
+  ];
+
+  const scaling: Fact[] = [
+    {
+      label: 'Size range',
+      value:
+        minSize !== undefined && maxSize !== undefined
+          ? `${minSize} – ${maxSize}`
+          : '—',
+    },
+    {
+      label: 'Nodes desired',
+      value: machinePool.getDesiredReplicas()?.toString() ?? '—',
+    },
+    {
+      label: 'Nodes ready',
+      value: machinePool.getReadyReplicas()?.toString() ?? '—',
+    },
+    { label: 'Phase', value: machinePool.getPhase() ?? '—' },
+  ];
+
   return (
-    <Grid.Root columns={{ xs: '1', md: '2' }} gap="4">
+    <Grid.Root
+      columns={{ xs: '1', md: '2' }}
+      gap="4"
+      style={{ alignItems: 'start' }}
+    >
       <Grid.Item>
-        <InfoCard title="Capacity and instance shape">
+        <InfoCard title="Instance shape">
           <Flex direction="column" gap="4">
-            <ConfigRow label="Instance type">
-              {instanceType ? (
-                <Text variant="body-medium">{instanceType}</Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-
-            <ConfigRow label="Architecture">
-              {architectures ? (
-                <Text variant="body-medium">{architectures.join(', ')}</Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-
-            <ConfigRow label="Availability zones">
-              {zones?.length ? (
-                <ValueBadges values={zones} />
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
+            <FactList facts={shape} />
           </Flex>
         </InfoCard>
       </Grid.Item>
-
       <Grid.Item>
         <InfoCard title="Scaling">
-          <Flex direction="column" gap="4">
-            <ConfigRow label="Size range">
-              {minSize !== undefined && maxSize !== undefined ? (
-                <Text variant="body-medium">{`${minSize} – ${maxSize}`}</Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-
-            <ConfigRow label="Nodes desired">
-              {machinePool.getDesiredReplicas() !== undefined ? (
-                <Text variant="body-medium">
-                  {machinePool.getDesiredReplicas()}
-                </Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-
-            <ConfigRow label="Nodes ready">
-              {machinePool.getReadyReplicas() !== undefined ? (
-                <Text variant="body-medium">
-                  {machinePool.getReadyReplicas()}
-                </Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-
-            <ConfigRow label="Phase">
-              {machinePool.getPhase() ? (
-                <Text variant="body-medium">{machinePool.getPhase()}</Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-          </Flex>
+          <FactList facts={scaling} />
         </InfoCard>
       </Grid.Item>
     </Grid.Root>

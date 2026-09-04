@@ -82,7 +82,22 @@ describe('NodePoolConfiguration', () => {
     expect(screen.getByText('arm64 (Graviton)')).toBeInTheDocument();
   });
 
-  it('renders all four configuration groups', async () => {
+  it('renders the four reader-oriented sections', async () => {
+    await renderInTestApp(
+      <NodePoolConfiguration
+        pool={createPool(fullSpec)}
+        nodePoolName="my-pool"
+        status={undefined}
+      />,
+    );
+
+    expect(await screen.findByText('Running now')).toBeInTheDocument();
+    expect(screen.getByText('Provisioning envelope')).toBeInTheDocument();
+    expect(screen.getByText('Lifecycle and disruption')).toBeInTheDocument();
+    expect(screen.getByText('Node template')).toBeInTheDocument();
+  });
+
+  it('keeps unrecognised requirement keys as their own row', async () => {
     await renderInTestApp(
       <NodePoolConfiguration
         pool={createPool(fullSpec)}
@@ -92,24 +107,8 @@ describe('NodePoolConfiguration', () => {
     );
 
     expect(
-      await screen.findByText('Capacity and instance shape'),
+      await screen.findByText('example.com/custom-thing'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Limits and priority')).toBeInTheDocument();
-    expect(screen.getByText('Disruption and lifecycle')).toBeInTheDocument();
-    expect(screen.getByText('Node image and storage')).toBeInTheDocument();
-  });
-
-  it('keeps unrecognised requirement keys under "Other requirements"', async () => {
-    await renderInTestApp(
-      <NodePoolConfiguration
-        pool={createPool(fullSpec)}
-        nodePoolName="my-pool"
-        status={undefined}
-      />,
-    );
-
-    expect(await screen.findByText('Other requirements')).toBeInTheDocument();
-    expect(screen.getByText('example.com/custom-thing')).toBeInTheDocument();
   });
 
   it('shows the running mix when metrics are available', async () => {
@@ -137,7 +136,7 @@ describe('NodePoolConfiguration', () => {
     );
 
     expect(await screen.findByText('Capacity type')).toBeInTheDocument();
-    expect(screen.queryByText('Running')).not.toBeInTheDocument();
+    expect(screen.queryByText(/14 spot/)).not.toBeInTheDocument();
   });
 
   it('explains itself when the Karpenter CR could not be read', async () => {

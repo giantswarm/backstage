@@ -1,11 +1,10 @@
-import { Flex, Grid, Text } from '@backstage/ui';
+import { Grid } from '@backstage/ui';
 import {
   AzureMachineTemplate,
   MachineDeployment,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { NotAvailable } from '../../../../UI';
-import { ConfigRow } from '../NodePoolConfiguration/ConfigRow';
+import { type Fact, FactList } from '../NodePoolConfiguration/FactList';
 
 interface AzureNodePoolConfigurationProps {
   machineDeployment: MachineDeployment;
@@ -20,57 +19,36 @@ export const AzureNodePoolConfiguration = ({
   machineDeployment,
   azureMachineTemplate,
 }: AzureNodePoolConfigurationProps) => {
-  const vmSize = azureMachineTemplate?.getVmSize();
+  const shape: Fact[] = [
+    { label: 'VM size', value: azureMachineTemplate?.getVmSize() ?? '—' },
+  ];
+
+  const scaling: Fact[] = [
+    {
+      label: 'Nodes desired',
+      value: machineDeployment.getDesiredReplicas()?.toString() ?? '—',
+    },
+    {
+      label: 'Nodes ready',
+      value: machineDeployment.getReadyReplicas()?.toString() ?? '—',
+    },
+    { label: 'Phase', value: machineDeployment.getPhase() ?? '—' },
+  ];
 
   return (
-    <Grid.Root columns={{ xs: '1', md: '2' }} gap="4">
+    <Grid.Root
+      columns={{ xs: '1', md: '2' }}
+      gap="4"
+      style={{ alignItems: 'start' }}
+    >
       <Grid.Item>
-        <InfoCard title="Capacity and instance shape">
-          <Flex direction="column" gap="4">
-            <ConfigRow label="VM size">
-              {vmSize ? (
-                <Text variant="body-medium">{vmSize}</Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-          </Flex>
+        <InfoCard title="Instance shape">
+          <FactList facts={shape} />
         </InfoCard>
       </Grid.Item>
-
       <Grid.Item>
         <InfoCard title="Scaling">
-          <Flex direction="column" gap="4">
-            <ConfigRow label="Nodes desired">
-              {machineDeployment.getDesiredReplicas() !== undefined ? (
-                <Text variant="body-medium">
-                  {machineDeployment.getDesiredReplicas()}
-                </Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-
-            <ConfigRow label="Nodes ready">
-              {machineDeployment.getReadyReplicas() !== undefined ? (
-                <Text variant="body-medium">
-                  {machineDeployment.getReadyReplicas()}
-                </Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-
-            <ConfigRow label="Phase">
-              {machineDeployment.getPhase() ? (
-                <Text variant="body-medium">
-                  {machineDeployment.getPhase()}
-                </Text>
-              ) : (
-                <NotAvailable />
-              )}
-            </ConfigRow>
-          </Flex>
+          <FactList facts={scaling} />
         </InfoCard>
       </Grid.Item>
     </Grid.Root>
