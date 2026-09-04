@@ -41,7 +41,6 @@ import {
 } from '@backstage/core-app-api';
 import {
   GSDiscoveryApiClient,
-  gsAuthApiRef,
   InstallationsConfigLoader,
 } from '@giantswarm/backstage-plugin-gs';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
@@ -57,6 +56,7 @@ import {
 import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 import { GSPageLayout } from './GSPageLayout';
+import { signInProviders } from './signInProviders';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -262,24 +262,15 @@ export const appOverrides = createFrontendModule({
           }) => {
             const configApi = useApi(configApiRef);
             if (configApi.has('gs.authProvider')) {
+              const providers = signInProviders(configApi);
+              // One option signs in automatically (existing session, else
+              // an instant popup). Several show the chooser; an existing
+              // session with any of them is still picked up silently.
               return (
                 <SignInPage
                   {...props}
-                  auto
-                  providers={[
-                    {
-                      id: 'dex-auth-provider',
-                      title:
-                        configApi.getOptionalString(
-                          'gs.signInProvider.title',
-                        ) ?? 'Dex',
-                      message:
-                        configApi.getOptionalString(
-                          'gs.signInProvider.message',
-                        ) ?? 'Sign in using Dex',
-                      apiRef: gsAuthApiRef,
-                    },
-                  ]}
+                  auto={providers.length === 1}
+                  providers={providers}
                 />
               );
             }

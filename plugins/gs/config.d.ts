@@ -53,6 +53,24 @@ export interface Config {
     };
 
     /**
+     * Sign-in options offered on the login page, in order. `dex` is the main
+     * OIDC login provider (`gs.authProvider`), `github` the portal's
+     * `auth.providers.github` provider (which then needs a sign-in resolver,
+     * e.g. `usernameMatchingUserEntityName`). A single entry signs in
+     * automatically; several show a chooser. Default: the main provider
+     * alone, titled via `signInProvider`.
+     * @deepVisibility frontend
+     */
+    signInProviders?: Array<{
+      /** `dex` or `github`. */
+      id: string;
+      /** Card title. Defaults per provider (`Dex`, `GitHub`). */
+      title?: string;
+      /** Card message. Defaults per provider. */
+      message?: string;
+    }>;
+
+    /**
      * Cluster token broker (muster) used to silently mint per-management-cluster
      * tokens from the user's main Dex session, replacing the per-cluster OAuth
      * popups for covered installations.
