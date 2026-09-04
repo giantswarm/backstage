@@ -35,8 +35,8 @@ const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
  * sign-in URL: one visit connects the person's GitHub account, for this and
  * every later session.
  */
-export class GithubNotConnectedError extends Error {
-  readonly name = 'GithubNotConnectedError';
+export class MusterServerNotConnectedError extends Error {
+  readonly name = 'MusterServerNotConnectedError';
   constructor(
     message: string,
     readonly authUrl?: string,
@@ -194,8 +194,11 @@ export class PlansApiClient implements PlansApi {
       const message =
         errorData?.error?.message ??
         `Plans request failed with status ${response.status}`;
-      if (errorData?.error?.name === 'GithubNotConnectedError') {
-        throw new GithubNotConnectedError(message, errorData.error.authUrl);
+      if (errorData?.error?.name === 'MusterServerNotConnectedError') {
+        throw new MusterServerNotConnectedError(
+          message,
+          errorData.error.authUrl,
+        );
       }
       const error = new Error(message);
       if (response.status === 401) error.name = 'UnauthorizedError';

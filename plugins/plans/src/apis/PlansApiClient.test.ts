@@ -1,4 +1,7 @@
-import { GithubNotConnectedError, PlansApiClient } from './PlansApiClient';
+import {
+  MusterServerNotConnectedError,
+  PlansApiClient,
+} from './PlansApiClient';
 
 const BASE_URL = 'http://backstage/api/plans';
 
@@ -157,14 +160,13 @@ describe('PlansApiClient', () => {
     );
   });
 
-  it('surfaces a missing GitHub grant as GithubNotConnectedError with the sign-in URL', async () => {
+  it('surfaces a missing GitHub grant as MusterServerNotConnectedError with the sign-in URL', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(
         {
           error: {
-            name: 'GithubNotConnectedError',
-            message:
-              'Connect your GitHub account to muster to use the plans page.',
+            name: 'MusterServerNotConnectedError',
+            message: "Connect 'github' in muster to use this page.",
             authUrl: 'https://muster/oauth/proxy/start?state=x',
           },
         },
@@ -174,10 +176,10 @@ describe('PlansApiClient', () => {
 
     const error = await client.listPulls().catch(e => e);
 
-    expect(error).toBeInstanceOf(GithubNotConnectedError);
-    expect(error.name).toBe('GithubNotConnectedError');
+    expect(error).toBeInstanceOf(MusterServerNotConnectedError);
+    expect(error.name).toBe('MusterServerNotConnectedError');
     expect(error.authUrl).toBe('https://muster/oauth/proxy/start?state=x');
-    expect(error.message).toMatch(/Connect your GitHub account/);
+    expect(error.message).toMatch(/Connect 'github'/);
   });
 
   it('surfaces the backend error message with a status-based name', async () => {

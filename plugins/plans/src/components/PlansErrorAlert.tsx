@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQueryClient } from '@tanstack/react-query';
-import { GithubNotConnectedError, plansApiRef } from '../apis';
+import { MusterServerNotConnectedError, plansApiRef } from '../apis';
 
 /** How long the connect popup is watched before giving up (2s steps). */
 const CONNECT_POLL_INTERVAL_MS = 2_000;
@@ -17,15 +17,21 @@ const CONNECT_POLL_MAX_ATTEMPTS = 60;
 export function PlansErrorAlert(props: { title: string; error: Error }) {
   const { title, error } = props;
   if (
-    error instanceof GithubNotConnectedError ||
-    error.name === 'GithubNotConnectedError'
+    error instanceof MusterServerNotConnectedError ||
+    error.name === 'MusterServerNotConnectedError'
   ) {
-    return <ConnectGithubAlert error={error as GithubNotConnectedError} />;
+    return (
+      <ConnectGithubAlert error={error as MusterServerNotConnectedError} />
+    );
   }
   return <Alert status="danger" title={title} description={error.message} />;
 }
 
-function ConnectGithubAlert({ error }: { error: GithubNotConnectedError }) {
+function ConnectGithubAlert({
+  error,
+}: {
+  error: MusterServerNotConnectedError;
+}) {
   const plansApi = useApi(plansApiRef);
   const queryClient = useQueryClient();
   const [state, setState] = useState<'idle' | 'waiting' | 'timeout' | 'failed'>(

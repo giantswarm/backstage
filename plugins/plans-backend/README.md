@@ -13,8 +13,9 @@ server registered in muster (`plans.muster`) with it, and muster executes every
 GitHub call -- reads and comment writes -- with the person's own GitHub grant.
 Comments therefore show up on GitHub authored by the person, and neither the
 plugin nor the portal holds a GitHub credential. A caller whose muster session
-has no GitHub grant yet gets `401` with `error.name: GithubNotConnectedError`
-and `error.authUrl`, muster's sign-in URL; `GET /api/plans/connection` reports
+has no GitHub grant yet gets `401` with `error.name: MusterServerNotConnectedError`,
+`error.server` and `error.authUrl`, muster's sign-in URL (the same answer the
+roadmap backend gives, both through `@giantswarm/backstage-plugin-gs-node`); `GET /api/plans/connection` reports
 the same without failing a request, so the frontend can offer "Connect GitHub"
 and poll until the person completed it.
 

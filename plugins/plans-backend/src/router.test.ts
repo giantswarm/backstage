@@ -4,10 +4,10 @@ import { AuthenticationError } from '@backstage/errors';
 import {
   AuthLoginResult,
   McpContentItem,
+  MusterServerGateway,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
-import { GithubGateway } from './github';
 import { createRouter, RouterOptions } from './router';
 
 const REPO = 'giantswarm/bumblebee-plans';
@@ -20,7 +20,8 @@ type Call = { tool: string; args: Record<string, unknown>; authToken: string };
  * gets the args), every call is recorded, and `notConnected` makes the first
  * call fail the way muster does for a session without a grant.
  */
-class FakeGateway implements GithubGateway {
+class FakeGateway implements MusterServerGateway {
+  readonly server = 'github';
   calls: Call[] = [];
   answers = new Map<
     string,
@@ -225,8 +226,9 @@ describe('createRouter', () => {
 
       expect(res.status).toBe(401);
       expect(res.body.error).toEqual({
-        name: 'GithubNotConnectedError',
-        message: expect.stringContaining('Connect your GitHub account'),
+        name: 'MusterServerNotConnectedError',
+        message: expect.stringContaining("Connect 'github'"),
+        server: 'github',
         authUrl: 'https://muster.example/oauth/proxy/start?state=x',
       });
     });
