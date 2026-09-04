@@ -109,7 +109,21 @@ export interface ModelManagerInstallationConfig {
 export interface ModelManagerRequestOptions {
   /** The user's Dex ID token, forwarded as `Authorization: Bearer`. */
   userToken?: string;
+  /**
+   * The backend the call addresses, when the installation's model-manager
+   * runs several (0.17 on): `?backend=` on reads and deletes, `backend` in
+   * the body of the mutations. Absent, model-manager aggregates reads and
+   * resolves a reference to the one backend holding it; a model-manager
+   * before 0.17 ignores it.
+   */
+  backend?: string;
 }
+
+/**
+ * Shape of a backend name (`ollama`, `kserve`, `lemonade`, whatever
+ * model-manager grows): a short lower-case identifier.
+ */
+export const BACKEND_NAME_PATTERN = /^[a-z][a-z0-9-]{0,31}$/;
 
 /** Error envelope model-manager answers with: `{ error: { code, message } }`. */
 type ModelManagerErrorEnvelope = {
@@ -206,9 +220,21 @@ export class ModelManagerClient {
     private readonly loadTimeoutMs: number = DEFAULT_MODEL_MANAGER_LOAD_TIMEOUT_MS,
   ) {}
 
-  /** `GET /api/v1/backend` — identity, health and capability flags. */
+  /**
+   * `GET /api/v1/backend` — identity, health and capability flags of the
+   * default backend (0.17 on: plus `backends`, the names of every backend;
+   * `?backend=` describes another one).
+   */
   async getBackend(options: ModelManagerRequestOptions): Promise<unknown> {
     return this.request('/api/v1/backend', options);
+  }
+
+  /**
+   * `GET /api/v1/backends` — every backend this model-manager runs, in order,
+   * each with its own flags (model-manager 0.17 on; 404 before).
+   */
+  async listBackends(options: ModelManagerRequestOptions): Promise<unknown> {
+    return this.request('/api/v1/backends', options);
   }
 
   /** `GET /api/v1/models` — downloaded models, enriched with loaded state. */
@@ -388,9 +414,22 @@ export class ModelManagerClient {
       timeoutMs?: number;
     } = {},
   ): Promise<unknown> {
-    const { method = 'GET', body } = extra;
+    const { method = 'GET' } = extra;
+    let { body } = extra;
     const timeoutMs = extra.timeoutMs ?? this.timeoutMs;
-    const url = `${this.installation.apiBaseUrl}${path}`;
+    let url = `${this.installation.apiBaseUrl}${path}`;
+    // The backend scope rides in the body of a mutation and in the query of
+    // a read or a delete — the two forms model-manager's API takes it in.
+    if (options.backend) {
+      if (method === 'POST') {
+        body = {
+          ...((body as Record<string, unknown> | undefined) ?? {}),
+          backend: options.backend,
+        };
+      } else {
+        url += `${url.includes('?') ? '&' : '?'}backend=${encodeURIComponent(options.backend)}`;
+      }
+    }
     const where = `model-manager on installation '${this.installation.name}'`;
 
     let response: Response;

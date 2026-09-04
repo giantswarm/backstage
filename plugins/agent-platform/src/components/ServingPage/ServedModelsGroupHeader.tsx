@@ -10,6 +10,7 @@ import type { ServedModelGroup } from './ServedModelsTable';
 export const BACKEND_LABEL: Record<ServingBackend, string> = {
   kserve: 'KServe',
   ollama: 'Ollama',
+  lemonade: 'Lemonade',
 };
 
 /** How long the copy control shows its tick before reverting. */

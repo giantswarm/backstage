@@ -36,18 +36,45 @@ export const MODEL_MANAGER_AUTH_HEADER =
  * model-manager's `412 does_not_fit`, with the numbers in the message),
  * `ServiceUnavailableError` (model-manager or its backend is unreachable).
  */
+/**
+ * The backend a read is narrowed to, or a mutation addressed to, when the
+ * installation's model-manager runs several (0.17 on): a name from
+ * {@link ModelManagerApi.listBackends}. Left out, reads aggregate every
+ * backend and a mutation is resolved to the one backend holding the
+ * reference (a reference on several answers `ConflictError`). An older
+ * model-manager ignores it.
+ */
+export type BackendScope = { backend?: string };
+
 export interface ModelManagerApi {
   /** Installations the backend can proxy model-manager for. Names only. */
   listInstallations(): Promise<string[]>;
 
-  /** `GET /api/v1/backend` — identity, health and capability flags. */
+  /**
+   * `GET /api/v1/backend` — identity, health and capability flags of the
+   * installation's default backend (`backends` names the others, 0.17 on).
+   */
   getBackend(installation: string): Promise<ModelManagerBackend>;
 
-  /** `GET /api/v1/models` — the inventory, with loaded state and ModelConfig. */
-  listModels(installation: string): Promise<ModelManagerModel[]>;
+  /**
+   * `GET /api/v1/backends` — every backend the installation's model-manager
+   * runs, in order (the first is the default backend), each with its own
+   * flags. On a model-manager before 0.17 (no such route) the one descriptor
+   * of `GET /api/v1/backend`.
+   */
+  listBackends(installation: string): Promise<ModelManagerBackend[]>;
+
+  /** `GET /api/v1/models` — the inventory, with loaded state and ModelConfig; every model names its backend. */
+  listModels(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerModel[]>;
 
   /** `GET /api/v1/loaded` — what is in memory / serving right now. */
-  listLoaded(installation: string): Promise<ModelManagerLoadedModel[]>;
+  listLoaded(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerLoadedModel[]>;
 
   /**
    * Start importing a model. Answers at once with the job to poll; `created`
@@ -60,7 +87,12 @@ export interface ModelManagerApi {
    */
   pullModel(
     installation: string,
-    request: { model: string; wire?: boolean; preset?: string; node?: string },
+    request: {
+      model: string;
+      wire?: boolean;
+      preset?: string;
+      node?: string;
+    } & BackendScope,
   ): Promise<{ job: ModelManagerJob; created: boolean }>;
 
   /**
@@ -77,7 +109,7 @@ export interface ModelManagerApi {
       keepAlive?: string;
       preset?: string;
       node?: string;
-    },
+    } & BackendScope,
   ): Promise<ModelManagerModel>;
 
   /**
@@ -87,24 +119,35 @@ export interface ModelManagerApi {
    */
   fitCheck(
     installation: string,
-    request: { model?: string; preset?: string; node?: string },
+    request: { model?: string; preset?: string; node?: string } & BackendScope,
   ): Promise<ModelManagerFitResult>;
 
   /** The curated serving presets, as model-manager resolves them (KServe). */
-  listPresets(installation: string): Promise<ModelManagerPreset[]>;
+  listPresets(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerPreset[]>;
 
   /** Search the model hub (KServe — the Hugging Face Hub), most downloaded first. */
   searchModels(
     installation: string,
     query: string,
     limit?: number,
+    scope?: BackendScope,
   ): Promise<ModelManagerSearchResult[]>;
 
-  /** Every node with its memory budget and download cache (KServe). */
-  listNodes(installation: string): Promise<ModelManagerNode[]>;
+  /** Every node with its memory budget and download cache; every node names its backend. */
+  listNodes(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerNode[]>;
 
   /** Evict from memory / stop serving. */
-  unloadModel(installation: string, model: string): Promise<void>;
+  unloadModel(
+    installation: string,
+    model: string,
+    scope?: BackendScope,
+  ): Promise<void>;
 
   /**
    * Remove a downloaded model. `unwire` (default true, like the server's)
@@ -114,20 +157,28 @@ export interface ModelManagerApi {
   deleteModel(
     installation: string,
     model: string,
-    options?: { unwire?: boolean },
+    options?: { unwire?: boolean } & BackendScope,
   ): Promise<void>;
 
   /** Create or refresh the kagent ModelConfig for a downloaded model. */
   wireModel(
     installation: string,
     model: string,
+    scope?: BackendScope,
   ): Promise<ModelConfigRef | undefined>;
 
   /** Delete the ModelConfig model-manager created for a model. */
-  unwireModel(installation: string, model: string): Promise<void>;
+  unwireModel(
+    installation: string,
+    model: string,
+    scope?: BackendScope,
+  ): Promise<void>;
 
-  /** Every job model-manager remembers, newest first. In-memory upstream. */
-  listJobs(installation: string): Promise<ModelManagerJob[]>;
+  /** Every job model-manager remembers, newest first; every job names its backend. In-memory upstream. */
+  listJobs(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerJob[]>;
 
   /** One job with its progress. */
   getJob(installation: string, id: string): Promise<ModelManagerJob>;

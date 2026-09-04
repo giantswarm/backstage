@@ -27,14 +27,40 @@ import {
   isServedInferenceService,
   managerRefOf,
 } from '../../lib/modelManagerServing';
-import type { ServedModel, ServingCapabilities } from '../../lib/serving';
+import type {
+  ServedModel,
+  ServingCapabilities,
+  ServingLoading,
+} from '../../lib/serving';
 
 const TOAST_TIMEOUT_MS = 6000;
 
+/** The keep-alive that pins a model against slot eviction on a backend without an idle timer (Lemonade). */
+export const PIN_KEEP_ALIVE = '-1';
+
+/**
+ * Whether a backend pins rather than times out: it loads on demand but never
+ * evicts idle models and has no keep-alive of its own — a load holds the
+ * model until it is unloaded or displaced by another of its kind, and a load
+ * with `keepAlive: -1` exempts it from that displacement (Lemonade's
+ * `pinned`). Decided from the backend's `loading` block, never its name.
+ */
+export function offersPin(loading: ServingLoading | undefined): boolean {
+  return Boolean(
+    loading &&
+    loading.onDemand &&
+    !loading.idleEviction &&
+    loading.keepAliveDefault === undefined &&
+    loading.keepAliveScope === undefined,
+  );
+}
+
 export type ServedModelActionsProps = {
   model: ServedModel;
-  /** The installation's flags; decide which items exist at all. */
+  /** The flags of the row's backend on its installation; decide which items exist at all. */
   capabilities: ServingCapabilities;
+  /** How the row's backend loads models, where it says: decides whether a load may pin. */
+  loading?: ServingLoading;
   /**
    * Offer "Serve…" on a KServe model that is not serving — a cached download,
    * a preset — opening the portal's serve flow pre-filled with it (the fit
@@ -118,6 +144,7 @@ export function hasRowActions(
 export function ServedModelActions({
   model,
   capabilities,
+  loading,
   onServe,
   onStop,
 }: ServedModelActionsProps) {
@@ -131,6 +158,9 @@ export function ServedModelActions({
   const kserve = model.backend === 'kserve';
   const serving = kserve ? isServedInferenceService(model) : false;
   const ref = managerRefOf(model);
+  // Every operation names the row's backend: one model-manager may run
+  // several, and a same-named reference on another backend is not this row.
+  const backend = model.backend;
   const operable = Boolean(model.operable);
   // A ModelConfig model-manager merely recognises (the portal's own wiring)
   // is not its to remove.
@@ -175,8 +205,25 @@ export function ServedModelActions({
       key: 'load',
       label: kserve ? 'Serve' : SERVED_MODEL_ACTION_LABEL.load,
       icon: kserve ? PlayArrowIcon : CloudDownloadIcon,
-      run: () => onMenuAction({ type: 'load', model: ref }),
+      run: () => onMenuAction({ type: 'load', model: ref, backend }),
     });
+    // A backend that pins instead of timing out (Lemonade) offers the pin as
+    // a second load: the model then survives another model of its kind
+    // needing the slot.
+    if (!kserve && offersPin(loading)) {
+      entries.push({
+        key: 'load-pin',
+        label: 'Load and pin',
+        icon: CloudDownloadIcon,
+        run: () =>
+          onMenuAction({
+            type: 'load',
+            model: ref,
+            backend,
+            keepAlive: PIN_KEEP_ALIVE,
+          }),
+      });
+    }
   }
   if (kserve && serving && onStop) {
     entries.push({
@@ -191,7 +238,7 @@ export function ServedModelActions({
       key: 'unload',
       label: kserve ? 'Stop serving' : SERVED_MODEL_ACTION_LABEL.unload,
       icon: kserve ? StopIcon : EjectIcon,
-      run: () => onMenuAction({ type: 'unload', model: ref }),
+      run: () => onMenuAction({ type: 'unload', model: ref, backend }),
     });
   }
   // Wiring needs an endpoint: on KServe only a served model has one.
@@ -201,14 +248,14 @@ export function ServedModelActions({
         key: 'wire',
         label: SERVED_MODEL_ACTION_LABEL.wire,
         icon: LinkIcon,
-        run: () => onMenuAction({ type: 'wire', model: ref }),
+        run: () => onMenuAction({ type: 'wire', model: ref, backend }),
       });
     } else if (managedModelConfig) {
       entries.push({
         key: 'unwire',
         label: SERVED_MODEL_ACTION_LABEL.unwire,
         icon: LinkOffIcon,
-        run: () => onMenuAction({ type: 'unwire', model: ref }),
+        run: () => onMenuAction({ type: 'unwire', model: ref, backend }),
       });
     }
   }
@@ -239,7 +286,7 @@ export function ServedModelActions({
       unwire = managedModelConfig ? unwireOnDelete : true;
     }
     try {
-      await run({ type: 'delete', model: ref, unwire });
+      await run({ type: 'delete', model: ref, backend, unwire });
     } catch {
       // Left to the dialog, which stays open and renders `error`.
       return;
@@ -331,8 +378,11 @@ export function ServedModelActions({
 function describeOutcome(action: ServedModelAction, kserve: boolean): string {
   switch (action.type) {
     case 'load':
-      return kserve
-        ? 'InferenceService created; the status column follows it'
+      if (kserve) {
+        return 'InferenceService created; the status column follows it';
+      }
+      return action.keepAlive === PIN_KEEP_ALIVE
+        ? 'loaded into memory and pinned'
         : 'loaded into memory';
     case 'unload':
       return kserve ? 'stopped serving' : 'unloaded';

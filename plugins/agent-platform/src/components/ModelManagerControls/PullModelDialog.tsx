@@ -16,16 +16,44 @@ import {
 
 import { usePullModel } from '../../hooks/usePullJobs';
 import { validateModelRef } from '../../lib/modelManagerServing';
+import type { ServingBackend } from '../../lib/serving';
+import { BACKEND_LABEL } from '../ServingPage/ServedModelsGroupHeader';
 
 /** Long enough to read two lines, short enough not to follow you around. */
 const TOAST_TIMEOUT_MS = 6000;
 
-/** An installation the dialog can pull on, and whether it can wire. */
+/**
+ * A backend the dialog can pull on — an installation's, named where the
+ * installation runs several behind one model-manager — and whether it wires.
+ */
 export type PullTarget = {
+  /** The installation. */
   name: string;
+  /**
+   * The backend on it, when the installation names its backends
+   * (model-manager 0.17 on); the request then carries it. Absent on an
+   * installation with one backend (an older model-manager).
+   */
+  backend?: ServingBackend;
   /** The backend creates kagent ModelConfigs (`wire` capability). */
   canWire: boolean;
 };
+
+/** The select key of a target: installation, plus the backend where named. */
+export function pullTargetKey(
+  target: Pick<PullTarget, 'name' | 'backend'>,
+): string {
+  return target.backend ? `${target.name}/${target.backend}` : target.name;
+}
+
+/** How a target reads in the select and the toasts: `lab · Lemonade`, or just the installation. */
+export function describePullTarget(
+  target: Pick<PullTarget, 'name' | 'backend'>,
+): string {
+  return target.backend
+    ? `${target.name} · ${BACKEND_LABEL[target.backend]}`
+    : target.name;
+}
 
 export type PullModelDialogProps = {
   isOpen: boolean;
@@ -53,7 +81,9 @@ export function PullModelDialog({
   targets,
 }: PullModelDialogProps) {
   const toastApi = useApi(toastApiRef);
-  const [installation, setInstallation] = useState(targets[0]?.name ?? '');
+  const [targetKey, setTargetKey] = useState(
+    targets[0] ? pullTargetKey(targets[0]) : '',
+  );
   const [model, setModel] = useState('');
   const [wire, setWire] = useState(true);
   const [validationError, setValidationError] = useState<string>();
@@ -61,10 +91,10 @@ export function PullModelDialog({
   // A target list that changes under an open dialog (an installation became
   // unreachable) must not leave the select pointing at nothing.
   useEffect(() => {
-    if (!targets.some(target => target.name === installation)) {
-      setInstallation(targets[0]?.name ?? '');
+    if (!targets.some(target => pullTargetKey(target) === targetKey)) {
+      setTargetKey(targets[0] ? pullTargetKey(targets[0]) : '');
     }
-  }, [targets, installation]);
+  }, [targets, targetKey]);
 
   // Start clean every time it opens, including a previous attempt's error.
   useEffect(() => {
@@ -76,9 +106,10 @@ export function PullModelDialog({
   }, [isOpen]);
 
   const target = useMemo(
-    () => targets.find(candidate => candidate.name === installation),
-    [targets, installation],
+    () => targets.find(candidate => pullTargetKey(candidate) === targetKey),
+    [targets, targetKey],
   );
+  const installation = target?.name ?? '';
   const pull = usePullModel(installation);
   const { reset } = pull;
   useEffect(() => {
@@ -100,6 +131,7 @@ export function PullModelDialog({
     try {
       result = await pull.mutateAsync({
         model: reference,
+        ...(target?.backend ? { backend: target.backend } : {}),
         ...(target?.canWire ? { wire } : {}),
       });
     } catch {
@@ -107,11 +139,12 @@ export function PullModelDialog({
       return;
     }
 
+    const where = target ? describePullTarget(target) : installation;
     onOpenChange(false);
     toastApi.post({
       title: result.created
-        ? `Pulling ${reference} on ${installation}`
-        : `${reference} is already being pulled on ${installation}`,
+        ? `Pulling ${reference} on ${where}`
+        : `${reference} is already being pulled on ${where}`,
       description:
         'Progress shows in the downloads list below the served models.',
       status: 'info',
@@ -141,17 +174,21 @@ export function PullModelDialog({
 
           {targets.length > 1 && (
             <Select
-              label="Installation"
+              label={
+                targets.some(candidate => candidate.backend)
+                  ? 'Installation and backend'
+                  : 'Installation'
+              }
               isRequired
               isDisabled={isBusy}
               options={targets.map(candidate => ({
-                id: candidate.name,
-                label: candidate.name,
+                id: pullTargetKey(candidate),
+                label: describePullTarget(candidate),
               }))}
-              selectedKey={installation}
+              selectedKey={targetKey}
               onSelectionChange={key => {
                 if (key) {
-                  setInstallation(String(key));
+                  setTargetKey(String(key));
                 }
               }}
             />

@@ -11,6 +11,7 @@ import {
   type ServedModelLookup,
   type ServingBackend,
   type ServingCapabilities,
+  type ServingLoading,
   type ServingSourceSnapshot,
 } from '../../lib/serving';
 import { useKServeServingSource } from './useKServeServingSource';
@@ -47,8 +48,25 @@ export type ServingContextValue = ServingSourceSnapshot & {
     installation: string,
     lookup: ServedModelLookup,
   ) => ClientServingState | undefined;
-  /** The installation's capability flags; every flag false where no source reports any. */
-  capabilitiesFor: (installation: string) => ServingCapabilities;
+  /**
+   * The capability flags a row's controls follow: the named backend's on the
+   * installation (an installation may run several behind one model-manager),
+   * else the installation's — the OR over its sources; every flag false where
+   * no source reports any.
+   */
+  capabilitiesFor: (
+    installation: string,
+    backend?: ServingBackend,
+  ) => ServingCapabilities;
+  /**
+   * How the named backend on the installation loads models (else the
+   * installation's default backend's), where it says; `undefined` where it
+   * does not.
+   */
+  loadingFor: (
+    installation: string,
+    backend?: ServingBackend,
+  ) => ServingLoading | undefined;
 };
 
 const ServingContext = createContext<ServingContextValue | undefined>(
@@ -129,8 +147,16 @@ export function ServingProvider({ children }: { children: ReactNode }) {
       servedModelForEndpoint: (installation, endpoint) =>
         servedModelFor(installation, { endpoint }),
       servingStateFor,
-      capabilitiesFor: installation =>
-        snapshot.capabilities?.[installation] ?? NO_SERVING_CAPABILITIES,
+      capabilitiesFor: (installation, backend) =>
+        (backend
+          ? snapshot.backendCapabilities?.[installation]?.[backend]
+          : undefined) ??
+        snapshot.capabilities?.[installation] ??
+        NO_SERVING_CAPABILITIES,
+      loadingFor: (installation, backend) =>
+        (backend
+          ? snapshot.backendLoading?.[installation]?.[backend]
+          : undefined) ?? snapshot.loading?.[installation],
     };
   }, [kserve, modelManager]);
 

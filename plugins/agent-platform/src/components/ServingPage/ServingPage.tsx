@@ -22,6 +22,7 @@ import {
   NO_SERVING_CAPABILITIES,
   type ServedModel,
   type ServingCapabilities,
+  type ServingBackend,
 } from '../../lib/serving';
 import {
   DownloadRowActions,
@@ -104,18 +105,57 @@ export function ServingPage() {
   const [isPullOpen, setPullOpen] = useState(false);
   const [isImportOpen, setImportOpen] = useState(false);
 
+  // The flags a row's controls follow: its backend's on its installation (an
+  // installation may run several behind one model-manager), else the
+  // installation's.
   const capabilitiesFor = useCallback(
-    (installation: string): ServingCapabilities =>
-      serving.capabilities?.[installation] ?? NO_SERVING_CAPABILITIES,
-    [serving.capabilities],
+    (installation: string, backend?: ServingBackend): ServingCapabilities =>
+      (backend
+        ? serving.backendCapabilities?.[installation]?.[backend]
+        : undefined) ??
+      serving.capabilities?.[installation] ??
+      NO_SERVING_CAPABILITIES,
+    [serving.capabilities, serving.backendCapabilities],
+  );
+  const { loadingFor } = serving;
+
+  /**
+   * The backends an installation's controls address: each named backend of
+   * a model-manager that runs several (with its own flags), else the
+   * installation as one unnamed target with its merged flags.
+   */
+  const backendTargetsOf = useCallback(
+    (
+      installation: string,
+    ): { backend?: ServingBackend; capabilities: ServingCapabilities }[] => {
+      const perBackend = serving.backendCapabilities?.[installation];
+      const named = perBackend
+        ? (Object.entries(perBackend) as [
+            ServingBackend,
+            ServingCapabilities,
+          ][])
+        : [];
+      if (named.length > 1) {
+        return named.map(([backend, capabilities]) => ({
+          backend,
+          capabilities,
+        }));
+      }
+      return [{ capabilities: capabilitiesFor(installation) }];
+    },
+    [serving.backendCapabilities, capabilitiesFor],
   );
 
   const kserveInstallations = useMemo(
     () =>
-      installations.filter(
-        installation => serving.backends[installation] === 'kserve',
+      installations.filter(installation =>
+        (
+          serving.sourceBackends?.[installation] ?? [
+            serving.backends[installation],
+          ]
+        ).includes('kserve'),
       ),
-    [installations, serving.backends],
+    [installations, serving.backends, serving.sourceBackends],
   );
   const presets = useServingPresets(kserveInstallations);
   const servableInstallations = presets.installations.filter(
@@ -127,34 +167,43 @@ export function ServingPage() {
   // check, pre-warm); one that can only pull by reference gets the plain one.
   const pullTargets = useMemo<PullTarget[]>(
     () =>
-      installations
-        .filter(installation => {
-          const capabilities = capabilitiesFor(installation);
-          return capabilities.pull && !capabilities.search;
-        })
-        .map(installation => ({
-          name: installation,
-          canWire: capabilitiesFor(installation).wire,
-        })),
-    [installations, capabilitiesFor],
+      installations.flatMap(installation =>
+        backendTargetsOf(installation)
+          .filter(
+            ({ capabilities }) => capabilities.pull && !capabilities.search,
+          )
+          .map(({ backend, capabilities }) => ({
+            name: installation,
+            ...(backend ? { backend } : {}),
+            canWire: capabilities.wire,
+          })),
+      ),
+    [installations, backendTargetsOf],
   );
   const importTargets = useMemo<ImportTarget[]>(
     () =>
-      installations
-        .filter(installation => {
-          const capabilities = capabilitiesFor(installation);
-          return capabilities.pull && capabilities.search;
-        })
-        .map(installation => ({
-          name: installation,
-          nodes: serving.gpuNodes.filter(
-            node => node.installation === installation,
-          ),
-        })),
-    [installations, capabilitiesFor, serving.gpuNodes],
+      installations.flatMap(installation =>
+        backendTargetsOf(installation)
+          .filter(
+            ({ capabilities }) => capabilities.pull && capabilities.search,
+          )
+          .map(({ backend }) => ({
+            name: installation,
+            ...(backend ? { backend } : {}),
+            nodes: serving.gpuNodes.filter(
+              node =>
+                node.installation === installation &&
+                (!backend || !node.backend || node.backend === backend),
+            ),
+          })),
+      ),
+    [installations, backendTargetsOf, serving.gpuNodes],
   );
   const downloadInstallations = useMemo(
-    () => [...pullTargets, ...importTargets].map(target => target.name),
+    () =>
+      Array.from(
+        new Set([...pullTargets, ...importTargets].map(target => target.name)),
+      ),
     [pullTargets, importTargets],
   );
   // The pulls of those installations, as rows among the models they will
@@ -237,7 +286,7 @@ export function ServingPage() {
     (row: ServedModel): StopServedModelVia =>
       row.operable &&
       row.managerRef !== undefined &&
-      capabilitiesFor(row.installation).unload
+      capabilitiesFor(row.installation, row.backend).unload
         ? 'model-manager'
         : 'inferenceservice',
     [capabilitiesFor],
@@ -259,12 +308,16 @@ export function ServingPage() {
   const hasActions = rows.some(
     row =>
       isDownloadRow(row) ||
-      hasRowActions(row, capabilitiesFor(row.installation), offersFor(row)),
+      hasRowActions(
+        row,
+        capabilitiesFor(row.installation, row.backend),
+        offersFor(row),
+      ),
   );
 
   const renderActions = useCallback(
     (row: ServedModelRow) => {
-      const capabilities = capabilitiesFor(row.installation);
+      const capabilities = capabilitiesFor(row.installation, row.backend);
       if (isDownloadRow(row)) {
         return (
           <DownloadRowActions
@@ -279,12 +332,13 @@ export function ServingPage() {
         <ServedModelActions
           model={row}
           capabilities={capabilities}
+          loading={loadingFor(row.installation, row.backend)}
           onServe={offers.onServe}
           onStop={offers.onStop}
         />
       ) : null;
     },
-    [capabilitiesFor, offersFor, downloadRows.dismiss],
+    [capabilitiesFor, loadingFor, offersFor, downloadRows.dismiss],
   );
 
   const servePermission = useSelfSubjectAccessReview(
