@@ -53,6 +53,48 @@ Guidelines when building pages:
 - Do **not** reintroduce a classic `<Page>`/`<Header>` scaffold on an NFS page;
   it causes a double scrollbar and duplicate header under the app shell.
 
+## Full-height sidebars and scroll containment
+
+There is no bui `ScrollArea`, and the app shell gives a page nothing to inherit a
+height from: its sidebar is `position: fixed` and sized against the viewport,
+while the content column is static and content-sized, so a `height: 100%` or
+`flexGrow` chain collapses to the content height. Every scroll container in this
+repo is therefore hand-rolled, using one of three strategies.
+
+1. **Sticky, page scrolls.** The panel sticks; the document keeps scrolling.
+   Simplest, and impossible to get a double scrollbar out of, but the panel cannot
+   scroll independently — fine for a short list, wrong for one that can outgrow
+   the viewport. `plugins/plans/.../PullReviewPage`, `plugins/roadmap/.../ItemDetailPage`.
+
+2. **Sticky with a viewport-offset `maxHeight`.** The panel scrolls internally
+   while the page scrolls the rest. Use `PLUGIN_CONTENT_VIEWPORT_OFFSET` from
+   `@giantswarm/backstage-plugin-ui-react` — `PluginHeader` (89) plus `Content`'s
+   padding (24) — rather than writing the numbers again:
+
+   ```ts
+   maxHeight: `calc(100dvh - ${PLUGIN_CONTENT_VIEWPORT_OFFSET}px)`,
+   ```
+
+   `plugins/ai-chat/.../RecentConversations`,
+   `plugins/agent-platform/.../SessionSwitcherRail`.
+
+3. **Measured offset.** `window.innerHeight - node.getBoundingClientRect().top`,
+   re-measured on resize and via a `ResizeObserver`. The only one that survives a
+   banner or filter row appearing above the panel — and the only one that costs a
+   measurement every time the page reflows, so it is the wrong choice on a page
+   whose body grows continuously (a streaming conversation, say).
+   `plugins/flux-react/.../FluxOverview/ContentContainer`.
+
+Two things that bite:
+
+- **Keep the flex container's default `align-items: stretch`.** A `flex-start`
+  content-sizes the sticky child, which then stops travelling past its own
+  height. Nothing errors; the panel just silently fails to stick.
+- **Choose which element owns the scroll deliberately.** Anything already relying
+  on the document scroller — a `position: sticky; bottom` dock, a
+  `scrollToBottom()` writing to `document.scrollingElement`, an auto-follow —
+  breaks the moment its content moves into a scroll container of its own.
+
 ## Storybook
 
 The [Backstage Storybook](https://backstage.io/storybook/) allows to explore the

@@ -5,7 +5,7 @@ import { kagentApiRef } from '../apis';
 import {
   KagentSessionDetail,
   SessionState,
-  deriveSessionState,
+  readNewestTaskState,
   isAgentWorking,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
@@ -34,6 +34,14 @@ export type SessionDetailView = {
   timeline: SessionTimeline;
   /** From the most recent task; undefined for a session that never ran. */
   state?: SessionState;
+  /**
+   * Epoch ms {@link state} last moved, when anything in the conversation says.
+   *
+   * Exposed so the switcher rail can prefer this page's reading of its *own*
+   * session over the backend's cached summary — this poll is always the fresher
+   * of the two.
+   */
+  stateChangedAt?: number;
   /**
    * Whether the agent is working on a reply, as of the last successful read.
    *
@@ -148,10 +156,13 @@ export function useSessionDetail(
     () => (tasks ? buildTimeline(tasks) : EMPTY_TIMELINE),
     [tasks],
   );
-  const state = useMemo(
-    () => (tasks ? deriveSessionState(tasks) : undefined),
+  // One walk for both: the state and when it last moved come from the *same*
+  // task, which is the property `readNewestTaskState` exists to preserve.
+  const newest = useMemo(
+    () => (tasks ? readNewestTaskState(tasks) : undefined),
     [tasks],
   );
+  const state = newest?.state;
 
   // Judged as of the last successful read rather than `Date.now()`, which is both
   // more honest and what makes it expire at all: with `Date.now()` the answer would
@@ -214,6 +225,7 @@ export function useSessionDetail(
     detail,
     timeline,
     state,
+    stateChangedAt: newest?.changedAt,
     isAgentWorking: agentWorking,
     pendingConfirmation,
     taskCount: tasks?.length ?? 0,

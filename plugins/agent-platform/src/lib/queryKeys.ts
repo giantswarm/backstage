@@ -36,6 +36,19 @@ export function kagentInstallationsQueryKey() {
 }
 
 /**
+ * Derived state for one installation's sessions — what the switcher rail groups
+ * by, computed by the backend.
+ *
+ * `'session-states'` is on `components/QueryClientProvider`'s never-persist list
+ * for the same reason `'sessions'` is: it is one user's sessions, keyed by ids
+ * only that user can resolve. Cheap to refetch, and wrong to leave on the disk
+ * of a shared workstation.
+ */
+export function sessionStatesQueryKey(installation: string) {
+  return ['agent-platform', 'kagent', 'session-states', installation] as const;
+}
+
+/**
  * The model-manager reads, per installation. Prefixed `model-manager` (not
  * `kagent`) so `components/QueryClientProvider`'s user-scoped filter leaves
  * them alone: an installation's inventory, backend descriptor and pull jobs

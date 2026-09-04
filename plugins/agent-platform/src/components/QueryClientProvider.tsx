@@ -71,6 +71,7 @@ const USER_SCOPED_RESOURCES = new Set([
   'me',
   'session',
   'session-tasks',
+  'session-states',
 ]);
 
 function isUserScopedQueryKey(queryKey: QueryKey): boolean {

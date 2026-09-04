@@ -969,6 +969,171 @@ all, and steady-state cost drops by roughly an order of magnitude. That is the
 same open question the polling section raises above, and it is unverified — so
 the memo is deliberately not in the baseline.
 
+### The session switcher rail
+
+A left-hand rail on the session detail page lists the operator's **non-terminal**
+sessions, grouped, so switching between live sessions does not mean going back to
+the list. Ported from the prototype's `session-switcher`; the reasoning it
+inherits is in that repo's `.grill/session-detail-sidebar.md`, and what follows is
+where reality moved it.
+
+**Three groups.** WAITING (`input-required`, `auth-required`), RUNNING
+(`submitted`, `working`), then RECENTLY FINISHED. The prototype's own third
+group, Queued, has no kagent state behind it and does not exist here; this third
+one is ours, and earns its place below.
+
+**A finished session lingers for an hour** (`RECENTLY_FINISHED_GRACE_MS`),
+in its own neutral-toned group. Non-terminal-only was the original rule and it
+was wrong in practice: a session vanished from the rail the instant its turn
+completed, which is precisely the moment it is most worth reaching — the reply
+you were waiting for has just landed and the next thing you do is read it. The
+group is separate rather than folded into RUNNING so the rail never claims a
+finished session is still working, and the header's "N non-terminal" count
+excludes it, because it would otherwise contradict the word. A terminal session
+whose `changedAt` is unknown is dropped rather than graced: it cannot be placed
+in time, so it would linger for ever.
+
+Note this is a different bound from `ACTIVE_MAX_AGE_MS`, and they pull in
+opposite directions: that one limits how long an _active_ state is believed,
+this one how long a _terminal_ one is still shown.
+
+**Scoped to the URL's installation**, not the fleet. `SessionsDataProvider` is
+deliberately local to the list page — its own docstring says why — and the detail
+page reads one installation, named in its own route. The rail therefore runs a
+single `useQuery` on the shared `sessionsQueryKey`, so arriving from the list
+costs nothing and a deep link warms the cache for it. A session active on
+_another_ installation is not visible from here; the list tab remains the
+fleet-wide surface.
+
+**The rail does not apply `ACTIVE_MAX_AGE_MS`, and that is deliberate.** The
+five-minute bound exists so the composer's "Working…" indicator stops promising
+progress after an agent dies mid-turn — a claim about _now_. The rail answers a
+different question. A session stuck in `working` for three days is exactly what an
+operator needs to see, in RUNNING, with `3d` on its first line; hiding it would
+make the rail silent in the case someone opened it for. Running's newest-first
+sort sinks the dead ones on its own. A session with **no** state is excluded,
+though: "created, never run" is not "non-terminal".
+
+**Sorting differs per group** because each answers a different "what is most
+urgent": Waiting is longest-blocked first, Running is most-recently-active first.
+A uniform last-activity sort would bury a two-day-old blocked session every time
+something newer twitched. A session whose `changedAt` is unknown sorts last in
+_both_ directions, matching `sortSessionRows` — first among the longest-blocked is
+the one position that actively misleads.
+
+**Polling.** The states read polls on the fast tier unconditionally, which inverts
+the rule everywhere else in this plugin. Elsewhere the interval is decided from
+the data in hand; here the read is what _tells_ the page whether anything is
+moving, so gating it on its own last answer would mean a session that starts
+working while the rail believes the fleet idle takes a minute to appear. The
+backend's 15 s cache is what keeps that flat — most of those requests never reach
+kagent. The session list beside it only has to notice a create or a rename, so it
+stays on the baseline tier; `refetchInterval` is per-observer, so this changes
+nothing for the same query on the Sessions tab.
+
+**The page overrides the summary for its own session.** That cache makes the
+summary structurally behind the detail page, which polls the session's tasks
+directly. Left to the summary, appending a message to a finished session leaves
+it filed under RECENTLY FINISHED while the agent is visibly working beside it. So
+the page passes its own reading down (`withCurrentSessionState`) and it wins for
+that one session; every other entry is the summary's.
+
+The signal is `showWorking` — the same `send.isSending || isAgentWorking` the
+"Working…" indicator uses, so the rail and the page cannot disagree about whether
+the agent is busy. The in-flight send matters on its own: the conversation's own
+verdict only arrives once a poll has seen the new task, up to 10 s later, and
+that is exactly the gap a user notices. With nothing in flight the page still
+overrides, reporting the state and the timestamp from the same task — a fresher
+copy of what the summary would eventually say.
+
+#### Layout
+
+Sticky rail, and the conversation keeps the **document** scroller. That is the
+load-bearing decision, not an aesthetic one: the composer's dock is
+`position: sticky; bottom: 0`, and both `scrollToBottom()` and the streaming
+auto-follow measure `document.scrollingElement`. Giving the conversation its own
+scroll container would break all three at once.
+
+The rail is its own `overflow-y: auto` box, capped at
+`calc(100dvh - PLUGIN_CONTENT_VIEWPORT_OFFSET)` — 89 px of `PluginHeader` plus
+24 px of `Content` padding, now a shared constant in `ui-react` rather than a
+number three plugins had each hardcoded. **If `PluginHeader` changes height, every
+panel using it overflows the viewport instead of scrolling internally.** The
+alternatives were considered and rejected: an unbounded sticky rail (as
+`PullReviewPage` uses for a short file list) would run past the viewport and force
+document scrolling to reach its last card, scrolling the conversation away
+underneath; and flux's measured-offset approach re-measures on a `ResizeObserver`
+over `document.body`, which on this page fires per streamed token.
+
+The flex container must keep its default `align-items: stretch`. A `flex-start`
+there content-sizes the rail and stops it sticking past its own height — the
+silent way a sticky flex child looks broken.
+
+Below `sm` the rail is **not rendered at all**, rather than hidden with CSS, so a
+narrow viewport does not pay for its queries or their polling.
+
+#### The cards are anchors, deliberately
+
+Not bui `List`/`ListRow`, and not `Card` with `onPress`:
+
+- This is navigation between URLs, whose accessible expression is
+  `aria-current="page"`. `List` is a react-aria `GridList` — rows are `role="row"`
+  with `aria-selected`, which tells a screen-reader user the row is _selected_, a
+  different and untrue claim.
+- An anchor is cmd- and middle-clickable and previews its target. A bui `href`
+  cannot be used at all here: `BUIProvider` is not mounted in this app, so
+  react-aria's `RouterProvider` is inactive and it would trigger a full page
+  reload — the same reason `SessionsTable` links the way it does.
+- Two groups would need two independent `GridList`s, since bui exposes no
+  sections: two focus scopes and a split `selectedKeys` for one visual list.
+
+Hand-rolling also means no additions to `packages/app/src/bui-overrides.css` —
+`RecentConversations` needed five `.bui-*` overrides for a _single-line_ row.
+
+Each card is three lines: a compact single-unit age (`2h`, never `2h 5m` — the
+stats strip's `formatDuration` and the rail's `formatCompactAge` are separate
+functions in `lib/duration` for exactly this reason), the title clamped to two
+lines, and the agent's avatar and name. The prototype's `team` line has no kagent
+equivalent, and its trigger icon has no backing data at all. The group heading
+carries the status, so cards show no badge — in a 280 px column that would cost
+the title a line. The current card is marked by an accent bar, a background and a
+heavier title as well as `aria-current`, never by colour alone.
+
+#### States, and what the rail refuses to do
+
+| session list  | states              | rail                                                           |
+| ------------- | ------------------- | -------------------------------------------------------------- |
+| loading       | loading             | placeholders, `aria-busy`                                      |
+| loaded        | loading             | **ungrouped** placeholders — no headings, no counts, no titles |
+| either failed |                     | "Couldn't load active sessions." and a Retry, **no cards**     |
+| loaded        | loaded, none active | "All caught up."                                               |
+
+Rendering real titles before the states land would be worse than a placeholder:
+without states we cannot tell which sessions are non-terminal, so most would
+appear and then vanish — and the rail's entire claim is that these are active. For
+the same reason there is **no "recent sessions" fallback** when the states read
+fails; presenting finished sessions as active inverts the one thing the rail says.
+There is no page-level `Alert` either: the conversation beside it is unaffected,
+and a 280 px column cannot carry one legibly.
+
+A failed _refetch_ keeps the previous states rather than collapsing to the notice,
+so one bad poll does not blank the rail.
+
+#### Collapsing
+
+A `ButtonIcon` in the rail header toggles it, remembered under
+`gs-agent-platform-session-rail-collapsed`. Not scoped per installation: how much
+width to spend is a property of the window, not of the cluster.
+
+Collapsed is a **48 px strip, not nothing**. Two reasons. A fully hidden rail needs
+a floating re-open affordance and this page has no toolbar for one — the kebab
+lives in the shared `PluginHeader`, and a second control injected there would
+fight `useProvidePageHeaderActions`. And the rail exists to answer "is anything
+waiting on me?", which a strip of tone dots and counts can keep answering. Those
+counts use MUI's `Tooltip`, not bui's: bui wraps react-aria's `TooltipTrigger`,
+which only wires up its own focusable components, and a `<span>` is not one — the
+same reason the page's title button already documents.
+
 ### What the timeline shows
 
 Built by `lib/kagentTimeline.ts` from task history. Conversation messages render in
@@ -2093,6 +2258,11 @@ above). What remains is a separate, deeper concern:
 - **The composer cannot offer to create an agent.** When the fleet has none, it is
   replaced by a sentence saying so, with no route onward — even though the Agents tab's
   create flow is one tab away. A link would be an easy improvement.
+- **The rail shows one installation.** It reads the installation in the URL, so a
+  session waiting for you on a different one is invisible from a session detail
+  page. Going fleet-wide multiplies the backend fan-out by the number of
+  installations running kagent and would need the installation back on each card;
+  the Sessions tab remains the fleet-wide surface until there is a reason.
 - **Session list row actions.** Deleting from a list row is unimplemented —
   deliberately, since a destructive action on a row someone is scanning past is easy to
   hit by accident. Renaming from a list row is merely unbuilt, and would be
