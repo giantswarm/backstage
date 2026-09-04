@@ -22,7 +22,9 @@ const ACTIVITY_KINDS = new Set<TimelineItem['kind']>([
  *
  * Approvals are deliberately **not** included: an approval is a decision the user
  * was asked to make, so hiding it would remove the record of their own action, not
- * the agent's working.
+ * the agent's working. Nor is a failed turn: it is the outcome of the turn, and
+ * hiding it would put the page back to showing a message that went unanswered for
+ * no visible reason.
  *
  * Note this governs *hiding* only. Approvals still expand and collapse with the
  * control — see {@link hasExpandableDetail}.

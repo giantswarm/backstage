@@ -327,6 +327,63 @@ describe('applyStreamEvent', () => {
     });
   });
 
+  describe('a turn that fails', () => {
+    const failure =
+      'OpenAI chat completion request failed: POST "https://api.openai.com/v1/chat/completions": 404 Not Found';
+
+    it('renders the terminal failure as a failed turn, not as the reply', () => {
+      // kagent's terminal status-update on a failed turn carries the provider's
+      // error as an agent message. Ingesting it as prose showed the error as the
+      // agent's words for a moment — then the poll, whose history holds no reply,
+      // replaced the preview with nothing.
+      const turn = fold([
+        statusUpdate(agentMessage([textPart(failure)], 'err-1'), {
+          final: true,
+          state: 'failed',
+        }),
+      ]);
+
+      expect(turn.isFinal).toBe(true);
+      expect(turn.stateKey).toBe('failed');
+      expect(turn.live).toBeUndefined();
+      expect(turn.items).toEqual([
+        expect.objectContaining({
+          kind: 'turn-failed',
+          state: 'failed',
+          reason: failure,
+          messageId: 'err-1',
+          author: 'issue-tracker',
+        }),
+      ]);
+    });
+
+    it('keeps what the agent said before it failed', () => {
+      const turn = fold([
+        statusUpdate(agentMessage([textPart('Let me check')], 'reply-1')),
+        statusUpdate(agentMessage([textPart(failure)], 'err-1'), {
+          final: true,
+          state: 'failed',
+        }),
+      ]);
+
+      expect(turn.items.map(describeItem)).toEqual([
+        'text:Let me check',
+        'text:turn-failed',
+      ]);
+    });
+
+    it('marks a failure that carries no reason', () => {
+      const turn = fold([
+        statusUpdate(undefined, { final: true, state: 'failed' }),
+      ]);
+
+      expect(turn.items).toEqual([
+        expect.objectContaining({ kind: 'turn-failed', state: 'failed' }),
+      ]);
+      expect((turn.items[0] as { reason?: string }).reason).toBeUndefined();
+    });
+  });
+
   describe('the Go executor flow: artifact updates', () => {
     const artifactUpdate = (
       parts: unknown[],
