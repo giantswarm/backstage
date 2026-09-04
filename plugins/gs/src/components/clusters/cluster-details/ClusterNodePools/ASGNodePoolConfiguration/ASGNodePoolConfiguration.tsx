@@ -3,12 +3,15 @@ import {
   AWSMachinePool,
   MachinePool,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  type Fact,
+  FactList,
+  InfoCard,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   getInstanceTypeArchitectures,
   useAwsInstanceTypes,
 } from '../awsInstanceTypeInfo';
-import { type Fact, FactList } from '../NodePoolConfiguration/FactList';
 import { ChipRow } from '../NodePoolConfiguration/ChipRow';
 
 interface ASGNodePoolConfigurationProps {

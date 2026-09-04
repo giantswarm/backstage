@@ -6,6 +6,7 @@ export * from './CodeBlock';
 export * from './ConditionsList';
 export * from './ConfirmDialog';
 export * from './ContentRow';
+export * from './FactList';
 export * from './DateComponent';
 export * from './DetailsPane';
 export * from './ErrorStatus';

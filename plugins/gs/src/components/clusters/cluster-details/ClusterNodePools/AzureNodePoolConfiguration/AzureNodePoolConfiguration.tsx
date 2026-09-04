@@ -3,8 +3,11 @@ import {
   AzureMachineTemplate,
   MachineDeployment,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { type Fact, FactList } from '../NodePoolConfiguration/FactList';
+import {
+  type Fact,
+  FactList,
+  InfoCard,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 interface AzureNodePoolConfigurationProps {
   machineDeployment: MachineDeployment;

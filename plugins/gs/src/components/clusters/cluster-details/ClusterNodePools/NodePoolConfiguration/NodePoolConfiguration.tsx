@@ -1,7 +1,11 @@
 import { Flex, Grid, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { KarpenterMachinePool } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  type Fact,
+  FactList,
+  InfoCard,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { type KarpenterNodePoolStatus, type MixEntry } from '../../../../hooks';
 import {
   ARCH_KEY,
@@ -16,7 +20,6 @@ import {
   ZONE_KEY,
 } from '../karpenter';
 import { EnvelopeTable, type EnvelopeRow } from './EnvelopeTable';
-import { type Fact, FactList } from './FactList';
 import { RunningSummary } from './RunningSummary';
 import { formatResourceName } from './resourceFormat';
 
