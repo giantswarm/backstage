@@ -1,4 +1,5 @@
 import { Flex, Grid, Text } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import { KarpenterMachinePool } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { type KarpenterNodePoolStatus, type MixEntry } from '../../../../hooks';
@@ -28,6 +29,18 @@ const COMPARED_KEYS = [
   { key: ZONE_KEY, label: 'Availability zones' },
 ];
 
+const useStyles = makeStyles({
+  // Taints are literal Kubernetes strings — key=value:Effect — so they read as
+  // code rather than prose, and the monospace makes the delimiters legible.
+  code: {
+    fontFamily: '"Roboto Mono", monospace',
+    fontSize: 'var(--bui-font-size-2)',
+    lineHeight: 1.5,
+    color: 'var(--bui-fg-primary)',
+    overflowWrap: 'anywhere',
+  },
+});
+
 /**
  * `consolidateAfter: Never` disables consolidation whatever the policy says, so
  * report that instead of emitting the nonsense "after Never".
@@ -56,6 +69,8 @@ export const NodePoolConfiguration = ({
   nodePoolName,
   status,
 }: NodePoolConfigurationProps) => {
+  const classes = useStyles();
+
   if (!pool) {
     return (
       <Text variant="body-medium" color="secondary">
@@ -181,9 +196,9 @@ export const NodePoolConfiguration = ({
       value: (
         <Flex direction="column" gap="0.5">
           {taints.map((t, i) => (
-            <Text key={i} variant="body-small">
+            <code key={i} className={classes.code}>
               {`${t.key}${t.value ? `=${t.value}` : ''}:${t.effect}`}
-            </Text>
+            </code>
           ))}
         </Flex>
       ),
