@@ -1,21 +1,23 @@
 import { useMemo } from 'react';
-import {
-  AWSMachinePool,
-  KarpenterMachinePool,
-  useShowErrors,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useNodePoolsForAWSCluster } from '../../../../hooks';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { NodePoolDetailsLayout } from '../NodePoolDetailsLayout';
 import { useSelectedNodePool } from '../useSelectedNodePool';
-import { NodePoolNodes } from '../NodePoolNodes';
+import { AWSNodePoolDetails } from '../AWSNodePoolDetails';
 import { AWSNodePoolsTable } from '../AWSNodePoolsTable';
 import { AWSNodePoolRow } from '../AWSNodePoolsTable/columns';
+import { resolveAWSNodePoolInfra } from './helpers';
 
 export const AWSNodePools = () => {
   const { installationName, cluster } = useCurrentCluster();
-  const { machinePools, awsMachinePools, isLoading, errors } =
-    useNodePoolsForAWSCluster(cluster);
+  const {
+    machinePools,
+    awsMachinePools,
+    karpenterMachinePools,
+    isLoading,
+    errors,
+  } = useNodePoolsForAWSCluster(cluster);
 
   useShowErrors(errors);
 
@@ -24,27 +26,8 @@ export const AWSNodePools = () => {
 
   const data: AWSNodePoolRow[] = useMemo(() => {
     return machinePools.map(pool => {
-      const infraRef = pool.getInfrastructureRef();
-      const infraKind = infraRef?.kind;
-      const infraName = infraRef?.name;
-
-      let type: 'ASG' | 'Karpenter' = 'ASG';
-      let instanceType: string | undefined;
-      let availabilityZones: string[] | undefined;
-      let minSize: number | undefined;
-      let maxSize: number | undefined;
-
-      if (infraKind === KarpenterMachinePool.kind && infraName) {
-        type = 'Karpenter';
-      } else if (infraKind === AWSMachinePool.kind && infraName) {
-        const awsPool = awsMachinePools.find(p => p.getName() === infraName);
-        if (awsPool) {
-          instanceType = awsPool.getInstanceType();
-          availabilityZones = awsPool.getAvailabilityZones();
-          minSize = awsPool.getMinSize();
-          maxSize = awsPool.getMaxSize();
-        }
-      }
+      const { type, awsMachinePool, karpenterMachinePool } =
+        resolveAWSNodePoolInfra(pool, awsMachinePools, karpenterMachinePools);
 
       return {
         id: pool.getName(),
@@ -52,25 +35,52 @@ export const AWSNodePools = () => {
         type,
         desiredReplicas: pool.getDesiredReplicas(),
         readyReplicas: pool.getReadyReplicas(),
-        instanceType,
-        availabilityZones,
-        minSize,
-        maxSize,
+        instanceType: awsMachinePool?.getInstanceType(),
+        availabilityZones: awsMachinePool?.getAvailabilityZones(),
+        minSize: awsMachinePool?.getMinSize(),
+        maxSize: awsMachinePool?.getMaxSize(),
+        limits: karpenterMachinePool?.getLimits(),
         phase: pool.getPhase(),
         created: pool.getCreatedTimestamp(),
       };
     });
-  }, [machinePools, awsMachinePools]);
+  }, [machinePools, awsMachinePools, karpenterMachinePools]);
 
-  const details = selectedNodePool ? (
-    <NodePoolNodes
-      installationName={installationName}
-      clusterName={cluster.getName()}
-      nodePoolName={selectedNodePool}
-      provider="aws"
-      onClose={clearSelectedNodePool}
-    />
-  ) : null;
+  const selected = useMemo(() => {
+    if (!selectedNodePool) {
+      return undefined;
+    }
+
+    const machinePool = machinePools.find(
+      pool => pool.getName() === selectedNodePool,
+    );
+    if (!machinePool) {
+      return undefined;
+    }
+
+    return {
+      machinePool,
+      ...resolveAWSNodePoolInfra(
+        machinePool,
+        awsMachinePools,
+        karpenterMachinePools,
+      ),
+    };
+  }, [selectedNodePool, machinePools, awsMachinePools, karpenterMachinePools]);
+
+  const details =
+    selectedNodePool && selected ? (
+      <AWSNodePoolDetails
+        installationName={installationName}
+        clusterName={cluster.getName()}
+        nodePoolName={selectedNodePool}
+        machinePool={selected.machinePool}
+        awsMachinePool={selected.awsMachinePool}
+        karpenterMachinePool={selected.karpenterMachinePool}
+        poolType={selected.type}
+        onClose={clearSelectedNodePool}
+      />
+    ) : null;
 
   return (
     <NodePoolDetailsLayout

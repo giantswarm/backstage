@@ -9,6 +9,7 @@ import {
   KubePodContainerResourceRequests,
 } from '../../apis/mimir/metrics';
 import { MimirQueryResponse } from '../../apis/mimir/types';
+import { sanitizePromQLValue } from './promql';
 
 export interface NodePoolNode {
   id: string;
@@ -27,14 +28,6 @@ export interface NodePoolNode {
 }
 
 const REFETCH_INTERVAL = 30_000;
-
-/**
- * Sanitize a value for use inside a PromQL label matcher string.
- * Strips characters that could break or escape the matcher: `"`, `}`, `\`, newlines.
- */
-function sanitizePromQLValue(value: string): string {
-  return value.replace(/["}\\\n\r]/g, '');
-}
 
 function buildQuery(clusterName: string, nodePoolName: string): string {
   const safeCluster = sanitizePromQLValue(clusterName);

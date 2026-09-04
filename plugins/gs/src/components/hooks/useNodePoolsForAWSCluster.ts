@@ -5,6 +5,7 @@ import {
   Cluster,
   KarpenterMachinePool,
   MachinePool,
+  isNotFoundError,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Labels } from '@giantswarm/backstage-plugin-gs-common';
@@ -76,7 +77,10 @@ export function useNodePoolsForAWSCluster(cluster: Cluster) {
     () => [
       ...machinePoolErrors,
       ...awsMachinePoolErrors,
-      ...karpenterMachinePoolErrors,
+      // Not every AWS installation serves the Karpenter CRD. That is a
+      // legitimate installation shape, not a fault worth showing the user, so
+      // a 404 here is dropped rather than raised as an error banner.
+      ...karpenterMachinePoolErrors.filter(error => !isNotFoundError(error)),
     ],
     [machinePoolErrors, awsMachinePoolErrors, karpenterMachinePoolErrors],
   );
