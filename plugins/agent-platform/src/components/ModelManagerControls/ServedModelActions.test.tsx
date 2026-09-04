@@ -13,6 +13,7 @@ import {
   NO_SERVING_CAPABILITIES,
   type ServedModel,
   type ServingCapabilities,
+  type ServingLoading,
 } from '../../lib/serving';
 import { hasRowActions, ServedModelActions } from './ServedModelActions';
 
@@ -118,6 +119,7 @@ function render(
     onServe?: (model: ServedModel) => void;
     onStop?: (model: ServedModel) => void;
   } = {},
+  loading?: ServingLoading,
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -137,6 +139,7 @@ function render(
       <ServedModelActions
         model={model}
         capabilities={capabilities}
+        loading={loading}
         onServe={offers.onServe}
         onStop={offers.onStop}
       />
@@ -213,7 +216,10 @@ describe('ServedModelActions', () => {
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Load' }));
 
     await waitFor(() =>
-      expect(loadModel).toHaveBeenCalledWith('lab', { model: 'qwen3:0.6b' }),
+      expect(loadModel).toHaveBeenCalledWith('lab', {
+        model: 'qwen3:0.6b',
+        backend: 'ollama',
+      }),
     );
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
@@ -272,6 +278,7 @@ describe('ServedModelActions', () => {
     await waitFor(() =>
       expect(deleteModel).toHaveBeenCalledWith('lab', 'qwen3.5:9b', {
         unwire: true,
+        backend: 'ollama',
       }),
     );
     await waitFor(() =>
@@ -302,6 +309,7 @@ describe('ServedModelActions', () => {
     await waitFor(() =>
       expect(deleteModel).toHaveBeenCalledWith('lab', 'qwen3.5:9b', {
         unwire: false,
+        backend: 'ollama',
       }),
     );
   });
@@ -322,6 +330,7 @@ describe('ServedModelActions', () => {
     await waitFor(() =>
       expect(deleteModel).toHaveBeenCalledWith('lab', 'qwen3:0.6b', {
         unwire: true,
+        backend: 'ollama',
       }),
     );
   });
@@ -342,6 +351,7 @@ describe('ServedModelActions', () => {
     await waitFor(() =>
       expect(deleteModel).toHaveBeenCalledWith('lab', 'qwen3.5:9b', {
         unwire: false,
+        backend: 'ollama',
       }),
     );
   });
@@ -394,6 +404,7 @@ describe('ServedModelActions', () => {
       await waitFor(() =>
         expect(loadModel).toHaveBeenCalledWith('gpu', {
           model: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
+          backend: 'kserve',
         }),
       );
     });
@@ -433,7 +444,9 @@ describe('ServedModelActions', () => {
       await userEvent.click(within(menu).getByText('Remove model config'));
 
       await waitFor(() =>
-        expect(unwireModel).toHaveBeenCalledWith('gpu', 'qwen3-14b'),
+        expect(unwireModel).toHaveBeenCalledWith('gpu', 'qwen3-14b', {
+          backend: 'kserve',
+        }),
       );
     });
 
@@ -468,5 +481,57 @@ describe('ServedModelActions', () => {
       expect(within(menu).getAllByRole('menuitem')).toHaveLength(1);
       expect(within(menu).getByText('Stop serving…')).toBeInTheDocument();
     });
+  });
+});
+
+describe('ServedModelActions · a backend that pins instead of timing out', () => {
+  const lemonadeRow: ServedModel = {
+    ...unloadedUnwired,
+    id: 'lab/lemonade//qwen3-4b-FLM',
+    backend: 'lemonade',
+    name: 'qwen3-4b-FLM',
+    managerRef: 'qwen3-4b-FLM',
+    endpointHosts: ['172.21.0.1:13305'],
+  };
+  const pinning: ServingLoading = { onDemand: true, idleEviction: false };
+  const ollamaLoading: ServingLoading = {
+    onDemand: true,
+    idleEviction: true,
+    keepAliveDefault: '5m',
+    keepAliveScope: 'request',
+  };
+
+  it('offers Load and pin next to Load, sending the pinning keep-alive on its backend', async () => {
+    loadModel.mockResolvedValue({});
+    await render(lemonadeRow, ollamaCapabilities, {}, pinning);
+    const menu = await openMenu('qwen3-4b-FLM');
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Load' }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      within(menu).getByRole('menuitem', { name: 'Load and pin' }),
+    );
+    await waitFor(() =>
+      expect(loadModel).toHaveBeenCalledWith('lab', {
+        model: 'qwen3-4b-FLM',
+        backend: 'lemonade',
+        keepAlive: '-1',
+      }),
+    );
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'qwen3-4b-FLM: loaded into memory and pinned',
+        }),
+      ),
+    );
+  });
+
+  it('offers no pin where the backend times models out (Ollama) or says nothing', async () => {
+    await render(unloadedUnwired, ollamaCapabilities, {}, ollamaLoading);
+    const menu = await openMenu('qwen3:0.6b');
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Load and pin' }),
+    ).not.toBeInTheDocument();
   });
 });

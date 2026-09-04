@@ -21,18 +21,19 @@ import {
   modelManagerModelsQueryKey,
   modelManagerNodesQueryKey,
 } from '../../lib/queryKeys';
-import type {
-  GpuCapacityUnavailableReason,
-  ServingBackend,
-  ServingCapabilities,
-  ServingLoading,
-  ServingSourceSnapshot,
+import {
+  NO_SERVING_CAPABILITIES,
+  type GpuCapacityUnavailableReason,
+  type ServingBackend,
+  type ServingCapabilities,
+  type ServingLoading,
+  type ServingSourceSnapshot,
 } from '../../lib/serving';
 
 /**
- * The backend descriptor changes when model-manager is reconfigured, and its
- * `healthy` flag when the host backend goes away — so re-read it now and
- * then, but not on every render.
+ * The backend descriptors change when model-manager is reconfigured, and
+ * their `healthy` flags when a host backend goes away — so re-read them now
+ * and then, but not on every render.
  */
 export const BACKEND_REFETCH_MS = 60_000;
 
@@ -50,11 +51,35 @@ export const MODELS_REFETCH_MS = 30_000;
  */
 export const NODES_REFETCH_MS = 60_000;
 
-/** Which backend descriptors were readable, by installation. */
-type BackendByInstallation = Record<
-  string,
-  ModelManagerBackend & { backend: ServingBackend }
->;
+/** A backend descriptor whose backend name the portal has a vocabulary for. */
+export type KnownBackend = ModelManagerBackend & { backend: ServingBackend };
+
+/**
+ * The backends model-manager runs per installation, in model-manager's order
+ * — the first is its default backend. One entry on a model-manager before
+ * 0.17, several where one process fronts an Ollama and a Lemonade Server.
+ */
+type BackendsByInstallation = Record<string, KnownBackend[]>;
+
+/**
+ * The descriptor a model, node or job of an installation belongs to: the one
+ * named by its `backend` (model-manager 0.17 on), else the installation's
+ * default — the only one a model-manager before 0.17 has.
+ */
+export function descriptorFor(
+  descriptors: KnownBackend[],
+  backend: string | undefined,
+): KnownBackend | undefined {
+  if (backend) {
+    const named = descriptors.find(
+      descriptor => descriptor.backend === backend,
+    );
+    if (named) {
+      return named;
+    }
+  }
+  return descriptors[0];
+}
 
 /**
  * The model-manager serving source: the inventory of the installations the
@@ -62,26 +87,32 @@ type BackendByInstallation = Record<
  * API with the user's own installation token.
  *
  * Per installation with a model-manager (nothing at all is read elsewhere):
- * 1. `GET /api/v1/backend` — which backend (Ollama, KServe), whether it is
- *    healthy, and the capability flags that decide which controls render;
- * 2. `GET /api/v1/models` — the downloaded models, each already carrying its
- *    loaded state, memory footprint and the ModelConfig model-manager created
- *    for it. (`/api/v1/loaded` says nothing more, so it is not read here.)
+ * 1. `GET /api/v1/backends` — every backend the installation's model-manager
+ *    runs (Ollama, KServe, Lemonade — one, or several at once since
+ *    model-manager 0.17), whether each is healthy, and the capability flags
+ *    that decide which controls render for its rows; on an older
+ *    model-manager the one descriptor of `GET /api/v1/backend`;
+ * 2. `GET /api/v1/models` — the downloaded models of every backend, each
+ *    naming its backend and already carrying its loaded state, memory
+ *    footprint and the ModelConfig model-manager created for it.
+ *    (`/api/v1/loaded` says nothing more, so it is not read here.)
  *
- * Degradation: an installation whose descriptor or inventory cannot be read
- * (the gateway rejected the token, model-manager or its host backend is down,
- * the user is not signed in there) is surfaced as unreachable — never dropped
- * silently, since the operator configured a model-manager there. An
- * installation whose backend is one this portal has no vocabulary for is
- * skipped with a console warning.
+ * Degradation: an installation whose descriptors or inventory cannot be read
+ * (the gateway rejected the token, model-manager is down, the user is not
+ * signed in there) is surfaced as unreachable — never dropped silently, since
+ * the operator configured a model-manager there. A backend of a name this
+ * portal has no vocabulary for is skipped with a console warning; a backend
+ * whose host server is down is listed unhealthy (its rows say so), and the
+ * inventory of the others still renders — model-manager reports such a
+ * backend under `errors` rather than failing the read.
  *
- * Contributes GPU nodes only where the backend reports `nodeInventory`
- * (KServe): `GET /api/v1/nodes` — each node's memory budget for fit checks,
- * what the models served there reserve of it, and the download cache on it.
- * On an installation whose InferenceServices are also read as CRs the
- * provider lays these rows over the CR source's (device-plugin capacity, pod
- * requests), so the GPU panel has one row per node. On Ollama the panel is
- * simply absent.
+ * Contributes GPU nodes where a backend reports `nodeInventory`: `GET
+ * /api/v1/nodes` — each node's memory budget for fit checks, what the models
+ * served there reserve of it, and the download cache on it; a backend host
+ * (Ollama, Lemonade) is one row per backend. On an installation whose
+ * InferenceServices are also read as CRs the provider lays these rows over
+ * the CR source's (device-plugin capacity, pod requests), so the GPU panel
+ * has one row per node.
  */
 export function useModelManagerServingSource(
   reachableInstallations: string[],
@@ -95,7 +126,7 @@ export function useModelManagerServingSource(
   const backendQueries = useQueries({
     queries: installations.map(installation => ({
       queryKey: modelManagerBackendQueryKey(installation),
-      queryFn: () => modelManagerApi.getBackend(installation),
+      queryFn: () => modelManagerApi.listBackends(installation),
       staleTime: BACKEND_REFETCH_MS,
       refetchInterval: BACKEND_REFETCH_MS,
     })),
@@ -109,22 +140,28 @@ export function useModelManagerServingSource(
     .map(query => `${query.status}:${query.dataUpdatedAt}`)
     .join('|');
 
-  const backends = useMemo<BackendByInstallation>(() => {
-    const result: BackendByInstallation = {};
+  const backends = useMemo<BackendsByInstallation>(() => {
+    const result: BackendsByInstallation = {};
     installations.forEach((installation, index) => {
-      const descriptor = backendQueries[index]?.data;
-      if (!descriptor) {
+      const descriptors = backendQueries[index]?.data;
+      if (!descriptors) {
         return;
       }
-      const backend = toServingBackend(descriptor.backend);
-      if (!backend) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[agent-platform] model-manager on ${installation} reports backend '${descriptor.backend}', which this portal does not know; skipping it.`,
-        );
-        return;
+      const known: KnownBackend[] = [];
+      for (const descriptor of descriptors) {
+        const backend = toServingBackend(descriptor.backend);
+        if (!backend) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[agent-platform] model-manager on ${installation} reports backend '${descriptor.backend}', which this portal does not know; skipping it.`,
+          );
+          continue;
+        }
+        known.push({ ...descriptor, backend });
       }
-      result[installation] = { ...descriptor, backend };
+      if (known.length > 0) {
+        result[installation] = known;
+      }
     });
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,9 +171,9 @@ export function useModelManagerServingSource(
     queries: installations.map(installation => ({
       queryKey: modelManagerModelsQueryKey(installation),
       queryFn: () => modelManagerApi.listModels(installation),
-      // Only once the backend answered: without a descriptor there is no
-      // vocabulary to render the models in, and a failing descriptor already
-      // marks the installation unreachable.
+      // Only once the backends answered: without a descriptor there is no
+      // vocabulary to render the models in, and a failing descriptor read
+      // already marks the installation unreachable.
       enabled: Boolean(backends[installation]),
       staleTime: 10_000,
       refetchInterval: MODELS_REFETCH_MS,
@@ -151,8 +188,13 @@ export function useModelManagerServingSource(
     queries: installations.map(installation => ({
       queryKey: modelManagerNodesQueryKey(installation),
       queryFn: () => modelManagerApi.listNodes(installation),
-      // Only a backend with a node inventory; asking another answers 403.
-      enabled: Boolean(backends[installation]?.capabilities.nodeInventory),
+      // Only where a backend has a node inventory; asking one without it
+      // answers 403.
+      enabled: Boolean(
+        backends[installation]?.some(
+          descriptor => descriptor.capabilities.nodeInventory,
+        ),
+      ),
       staleTime: 30_000,
       refetchInterval: NODES_REFETCH_MS,
     })),
@@ -165,8 +207,14 @@ export function useModelManagerServingSource(
   return useMemo<ServingSourceSnapshot>(() => {
     const active: string[] = [];
     const backendByInstallation: Record<string, ServingBackend> = {};
+    const sourceBackends: Record<string, ServingBackend[]> = {};
     const capabilities: Record<string, ServingCapabilities> = {};
+    const backendCapabilities: NonNullable<
+      ServingSourceSnapshot['backendCapabilities']
+    > = {};
     const loading: Record<string, ServingLoading> = {};
+    const backendLoading: NonNullable<ServingSourceSnapshot['backendLoading']> =
+      {};
     const sharedHosts: Record<string, string[]> = {};
     const unreachable = new Set<string>();
     const servedModels: ServingSourceSnapshot['servedModels'] = [];
@@ -178,35 +226,63 @@ export function useModelManagerServingSource(
       const backendQuery = backendQueries[index];
       const modelQuery = modelQueries[index];
       const nodeQuery = nodeQueries[index];
-      const descriptor = backends[installation];
+      const descriptors = backends[installation];
 
       if (backendQuery?.isError) {
         unreachable.add(installation);
         return;
       }
-      if (!descriptor) {
-        // Still loading, or an unknown backend (already warned about).
+      if (!descriptors) {
+        // Still loading, or only unknown backends (already warned about).
         return;
       }
 
       active.push(installation);
-      backendByInstallation[installation] = descriptor.backend;
-      capabilities[installation] = toServingCapabilities(
-        descriptor.capabilities,
+      // The installation's label is its default backend; every backend has
+      // a say, its own flags and its own loading semantics.
+      backendByInstallation[installation] = descriptors[0].backend;
+      sourceBackends[installation] = descriptors.map(
+        descriptor => descriptor.backend,
       );
-      const loadingSemantics = toServingLoading(descriptor.loading);
-      if (loadingSemantics) {
-        loading[installation] = loadingSemantics;
+      const merged = { ...NO_SERVING_CAPABILITIES };
+      const perBackendCapabilities: Partial<
+        Record<ServingBackend, ServingCapabilities>
+      > = {};
+      const perBackendLoading: Partial<Record<ServingBackend, ServingLoading>> =
+        {};
+      for (const descriptor of descriptors) {
+        const flags = toServingCapabilities(descriptor.capabilities);
+        perBackendCapabilities[descriptor.backend] = flags;
+        for (const key of Object.keys(flags) as (keyof ServingCapabilities)[]) {
+          merged[key] = merged[key] || flags[key];
+        }
+        const loadingSemantics = toServingLoading(descriptor.loading);
+        if (loadingSemantics) {
+          perBackendLoading[descriptor.backend] = loadingSemantics;
+        }
+      }
+      capabilities[installation] = merged;
+      backendCapabilities[installation] = perBackendCapabilities;
+      const defaultLoading = perBackendLoading[descriptors[0].backend];
+      if (defaultLoading) {
+        loading[installation] = defaultLoading;
+      }
+      if (Object.keys(perBackendLoading).length > 0) {
+        backendLoading[installation] = perBackendLoading;
       }
 
       if (modelQuery?.isError) {
-        // The backend is known but its inventory is not readable (its host
-        // Ollama down, the gateway rejecting this call): the section still
-        // shows the installation, and says it could not be read.
+        // The backends are known but the inventory is not readable (the
+        // gateway rejecting this call): the section still shows the
+        // installation, and says it could not be read.
         unreachable.add(installation);
         return;
       }
       for (const model of (modelQuery?.data ?? []) as ModelManagerModel[]) {
+        const descriptor = descriptorFor(descriptors, model.backend);
+        if (!descriptor) {
+          continue;
+        }
         servedModels.push(
           toServedModelFromManager(installation, descriptor, model),
         );
@@ -214,13 +290,17 @@ export function useModelManagerServingSource(
       // Only once the inventory has been read: a client of the host whose
       // model is merely not listed *yet* must not read as "gone".
       if (modelQuery?.data) {
-        const hosts = sharedHostsOf(descriptor);
+        const hosts = Array.from(
+          new Set(descriptors.flatMap(descriptor => sharedHostsOf(descriptor))),
+        );
         if (hosts.length > 0) {
           sharedHosts[installation] = hosts;
         }
       }
 
-      if (descriptor.capabilities.nodeInventory) {
+      if (
+        descriptors.some(descriptor => descriptor.capabilities.nodeInventory)
+      ) {
         if (nodeQuery?.isError) {
           // The inventory is readable but the node view is not: the panel
           // says so for this installation, the models still render.
@@ -230,7 +310,10 @@ export function useModelManagerServingSource(
               : 'error';
         }
         for (const node of (nodeQuery?.data ?? []) as ModelManagerNode[]) {
-          gpuNodes.push(toGpuNodeFromManager(installation, node));
+          const descriptor = descriptorFor(descriptors, node.backend);
+          gpuNodes.push(
+            toGpuNodeFromManager(installation, node, descriptor?.backend),
+          );
         }
       }
     });
@@ -243,8 +326,11 @@ export function useModelManagerServingSource(
         nodeQueries.some(query => query.isLoading),
       installations: active,
       backends: backendByInstallation,
+      sourceBackends,
       capabilities,
+      backendCapabilities,
       loading,
+      backendLoading,
       sharedHosts,
       unreachableInstallations: Array.from(unreachable).sort(),
       servedModels,

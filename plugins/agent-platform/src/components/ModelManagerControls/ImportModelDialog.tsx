@@ -28,7 +28,7 @@ import type {
   ModelManagerSearchResult,
 } from '../../lib/modelManager';
 import { formatBytes } from '../../lib/modelManagerServing';
-import type { GpuNode } from '../../lib/serving';
+import type { GpuNode, ServingBackend } from '../../lib/serving';
 import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
 
 /** Long enough to read two lines, short enough not to follow you around. */
@@ -42,12 +42,25 @@ export const BEST_NODE = '__best__';
 /** Select key for "no preset — a cache directory named after the model". */
 export const NO_PRESET = '__none__';
 
-/** An installation the dialog can import on: `search` + `pull`, and its nodes for the target picker. */
+/**
+ * An installation the dialog can import on: `search` + `pull`, and its nodes
+ * for the target picker. `backend` names the backend on it where the
+ * installation runs several behind one model-manager (the request then
+ * carries it).
+ */
 export type ImportTarget = {
   name: string;
+  backend?: ServingBackend;
   /** The nodes the installation's serving layer reports (with their memory budgets, where known). */
   nodes: GpuNode[];
 };
+
+/** The select key of a target: installation, plus the backend where named. */
+export function importTargetKey(
+  target: Pick<ImportTarget, 'name' | 'backend'>,
+): string {
+  return target.backend ? `${target.name}/${target.backend}` : target.name;
+}
 
 export type ImportModelDialogProps = {
   isOpen: boolean;
@@ -132,7 +145,9 @@ export function ImportModelDialog({
 }: ImportModelDialogProps) {
   const toastApi = useFrontendApi(toastApiRef);
   const modelManagerApi = useApi(modelManagerApiRef);
-  const [installation, setInstallation] = useState(targets[0]?.name ?? '');
+  const [targetKey, setTargetKey] = useState(
+    targets[0] ? importTargetKey(targets[0]) : '',
+  );
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string>();
@@ -142,15 +157,19 @@ export function ImportModelDialog({
   // A target list that changes under an open dialog (an installation became
   // unreachable) must not leave the select pointing at nothing.
   useEffect(() => {
-    if (!targets.some(target => target.name === installation)) {
-      setInstallation(targets[0]?.name ?? '');
+    if (!targets.some(target => importTargetKey(target) === targetKey)) {
+      setTargetKey(targets[0] ? importTargetKey(targets[0]) : '');
     }
-  }, [targets, installation]);
+  }, [targets, targetKey]);
 
   const target = useMemo(
-    () => targets.find(candidate => candidate.name === installation),
-    [targets, installation],
+    () => targets.find(candidate => importTargetKey(candidate) === targetKey),
+    [targets, targetKey],
   );
+  const installation = target?.name ?? '';
+  // The backend the import is scoped to, where the installation names them
+  // (one model-manager running several); nothing on an installation with one.
+  const scope = target?.backend ? { backend: target.backend } : undefined;
 
   const pull = usePullModel(installation);
   const { reset: resetPull } = pull;
@@ -173,10 +192,22 @@ export function ImportModelDialog({
       'model-manager',
       'search',
       installation,
+      target?.backend ?? '',
       submittedQuery,
     ],
     queryFn: () =>
-      modelManagerApi.searchModels(installation, submittedQuery, SEARCH_LIMIT),
+      scope
+        ? modelManagerApi.searchModels(
+            installation,
+            submittedQuery,
+            SEARCH_LIMIT,
+            scope,
+          )
+        : modelManagerApi.searchModels(
+            installation,
+            submittedQuery,
+            SEARCH_LIMIT,
+          ),
     enabled: isOpen && Boolean(installation) && submittedQuery.length > 0,
     staleTime: 60_000,
   });
@@ -205,6 +236,7 @@ export function ImportModelDialog({
       'model-manager',
       'fit-check',
       installation,
+      target?.backend ?? '',
       selected?.id ?? '',
       preset ?? '',
       node ?? '',
@@ -214,6 +246,7 @@ export function ImportModelDialog({
         model: selected!.id,
         ...(preset && { preset }),
         ...(node && { node }),
+        ...scope,
       }),
     enabled: isOpen && Boolean(installation) && Boolean(selected),
     staleTime: 30_000,
@@ -259,6 +292,7 @@ export function ImportModelDialog({
         model: selected.id,
         ...(preset && { preset }),
         ...(node && { node }),
+        ...scope,
       });
     } catch {
       // Left to the dialog, which stays open and renders `pull.error`.
@@ -303,13 +337,15 @@ export function ImportModelDialog({
               isRequired
               isDisabled={isBusy}
               options={targets.map(candidate => ({
-                id: candidate.name,
-                label: candidate.name,
+                id: importTargetKey(candidate),
+                label: candidate.backend
+                  ? `${candidate.name} · ${candidate.backend}`
+                  : candidate.name,
               }))}
-              selectedKey={installation}
+              selectedKey={targetKey}
               onSelectionChange={key => {
                 if (key) {
-                  setInstallation(String(key));
+                  setTargetKey(String(key));
                   setSelectedId(undefined);
                   setSubmittedQuery('');
                 }

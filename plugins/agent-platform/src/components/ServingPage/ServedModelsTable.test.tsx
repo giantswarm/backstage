@@ -978,3 +978,27 @@ describe('ServedModelsTable actions and wiring', () => {
     expect(screen.queryByText('No model config')).not.toBeInTheDocument();
   });
 });
+
+describe('several backends: the Lemonade group and its rows', () => {
+  it('names the Lemonade group with its version', () => {
+    expect(
+      describeGroup({ backend: 'lemonade', runtime: 'lemonade 11.9.0' }),
+    ).toBe('Lemonade 11.9.0');
+    expect(describeGroup({ backend: 'lemonade' })).toBe('Lemonade');
+  });
+
+  it('says where a loaded model runs and whether it is pinned', () => {
+    expect(
+      memoryLine({
+        loaded: true,
+        memoryBytes: 3_100_000_000,
+        device: 'npu',
+        pinned: true,
+      }),
+    ).toBe('2.9 GiB in memory · on the NPU · pinned');
+    expect(memoryLine({ loaded: true, device: 'gpu npu' })).toBe(
+      'In memory · on the GPU NPU',
+    );
+    expect(memoryLine({ loaded: true, pinned: false })).toBeUndefined();
+  });
+});

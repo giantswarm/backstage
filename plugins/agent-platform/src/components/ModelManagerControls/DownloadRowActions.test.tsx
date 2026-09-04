@@ -169,6 +169,7 @@ describe('DownloadRowActions', () => {
     await waitFor(() =>
       expect(pullModel).toHaveBeenCalledWith('lab', {
         model: 'nope:latest',
+        backend: 'ollama',
         wire: true,
       }),
     );
@@ -189,7 +190,10 @@ describe('DownloadRowActions', () => {
     );
 
     await waitFor(() =>
-      expect(pullModel).toHaveBeenCalledWith('lab', { model: 'nope:latest' }),
+      expect(pullModel).toHaveBeenCalledWith('lab', {
+        model: 'nope:latest',
+        backend: 'ollama',
+      }),
     );
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
@@ -243,6 +247,7 @@ describe('DownloadRowActions', () => {
     await waitFor(() =>
       expect(pullModel).toHaveBeenCalledWith('gpu', {
         model: 'org/tiny',
+        backend: 'kserve',
         preset: 'tiny',
         node: 'gpu-node-1',
       }),

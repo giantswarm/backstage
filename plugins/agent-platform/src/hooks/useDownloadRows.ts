@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toServingBackend } from '../lib/modelManagerServing';
 
 import type {
   ServedModelDownloadRow,
@@ -146,7 +147,11 @@ export function downloadRowsFor(
     if (job.phase === 'failed' && dismissed.has(downloadKey(job))) {
       continue;
     }
-    const backend = backends[job.installation];
+    // The job names its backend (model-manager 0.17 on: one process may run
+    // several); an older model-manager's jobs belong to the installation's
+    // one backend.
+    const backend =
+      toServingBackend(job.backend ?? '') ?? backends[job.installation];
     if (!backend) {
       continue;
     }

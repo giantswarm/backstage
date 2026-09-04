@@ -246,6 +246,7 @@ const baseServing: ServingContextValue = {
   servedModelForEndpoint: () => undefined,
   servingStateFor: () => undefined,
   capabilitiesFor: () => KSERVE_CR_CAPABILITIES,
+  loadingFor: () => undefined,
 };
 
 function modelConfig(name: string, baseUrl?: string) {

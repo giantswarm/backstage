@@ -42,7 +42,21 @@ const IMPLIED_MODEL_CAPABILITIES = new Set(['completion']);
  * warning) rather than mislabelled.
  */
 export function toServingBackend(name: string): ServingBackend | undefined {
-  return name === 'kserve' || name === 'ollama' ? name : undefined;
+  return name === 'kserve' || name === 'ollama' || name === 'lemonade'
+    ? name
+    : undefined;
+}
+
+/** The server behind a backend, as prose names it ("Ollama loads it…"). */
+export function backendServerName(backend: ServingBackend): string {
+  switch (backend) {
+    case 'ollama':
+      return 'Ollama';
+    case 'lemonade':
+      return 'Lemonade';
+    default:
+      return 'The backend';
+  }
 }
 
 /** model-manager's flags are already the seam's vocabulary. */
@@ -190,9 +204,17 @@ export function toServedModelFromManager(
     }
   } else if (model.loaded) {
     readiness = 'ready';
-    readinessMessage = running?.expiresAt
-      ? `Loaded in memory until ${formatTime(running.expiresAt)}.`
-      : 'Loaded in memory.';
+    if (running?.expiresAt) {
+      readinessMessage = `Loaded in memory until ${formatTime(running.expiresAt)}.`;
+    } else if (running?.device) {
+      readinessMessage = `Loaded on the ${running.device.toUpperCase()}${
+        running.pinned ? ', pinned against eviction' : ''
+      }.`;
+    } else {
+      readinessMessage = running?.pinned
+        ? 'Loaded in memory, pinned against eviction.'
+        : 'Loaded in memory.';
+    }
   } else if (kserve && model.downloaded === false) {
     readiness = 'pending';
     readinessMessage = 'Known from a preset; not downloaded and not serving.';
@@ -203,9 +225,9 @@ export function toServedModelFromManager(
     });
     const where = model.node ? `Downloaded on ${model.node}` : 'Downloaded';
     if (readiness === 'idle') {
-      readinessMessage = `${where}; not loaded. ${
-        backend.backend === 'ollama' ? 'Ollama' : 'The backend'
-      } loads it on the first request, so an agent's first turn pays the cold start${
+      readinessMessage = `${where}; not loaded. ${backendServerName(
+        backend.backend,
+      )} loads it on the first request, so an agent's first turn pays the cold start${
         loading?.idleEviction ? ', and it is evicted again after idling' : ''
       }.`;
     } else if (readiness === 'notServing') {
@@ -266,6 +288,9 @@ export function toServedModelFromManager(
     namespace,
     modelSource: model.name,
     runtime,
+    engine: model.runtime,
+    device: running?.device,
+    pinned: running?.pinned,
     readiness,
     readinessMessage,
     node: running?.node ?? model.node,
@@ -328,11 +353,24 @@ export function toServedModelFromManager(
 export function toGpuNodeFromManager(
   installation: string,
   node: ModelManagerNode,
+  backend?: ServingBackend,
 ): GpuNode {
-  const host = node.budgetSource === 'host-meminfo';
+  // The Ollama host: Ollama's API cannot count accelerators, so its
+  // `gpuCount: 0` is "not counted", not "none". The Lemonade host names the
+  // accelerators Lemonade enumerates (`system-info`), so its count stands.
+  const ollamaHost =
+    node.budgetSource === 'host-meminfo' || node.budgetSource === 'override';
+  // A backend host is one row per backend: on a lab host running Ollama and
+  // Lemonade both drivers report the same address, each with its own budget
+  // reading and reservation.
+  const hostRow =
+    ollamaHost || node.budgetSource === 'system-info' ? backend : undefined;
   return {
-    id: `${installation}/${node.name}`,
+    id: hostRow
+      ? `${installation}/${hostRow}/${node.name}`
+      : `${installation}/${node.name}`,
     installation,
+    backend,
     name: node.name,
     ready: node.ready,
     product: node.gpuProduct,
@@ -340,7 +378,7 @@ export function toGpuNodeFromManager(
       node.gpuMemoryBytes !== undefined
         ? Math.round(node.gpuMemoryBytes / MIB)
         : undefined,
-    labeledCount: host ? undefined : node.gpuCount,
+    labeledCount: ollamaHost ? undefined : node.gpuCount,
     memoryAllocatableBytes: node.allocatableMemoryBytes,
     memoryBudgetBytes: node.budgetBytes,
     memoryBudgetSource: node.budgetSource,

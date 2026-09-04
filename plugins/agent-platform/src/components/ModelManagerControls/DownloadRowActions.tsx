@@ -69,6 +69,9 @@ export function DownloadRowActions({
       // model-manager picked for it — so the retry lands where it did.
       await pull.mutateAsync({
         model: row.name,
+        // The same backend as the first pull: on a model-manager running
+        // several, an unqualified pull would land on its default backend.
+        backend: row.backend,
         ...(capabilities.wire ? { wire: download.wire } : {}),
         ...(row.preset ? { preset: row.preset } : {}),
         ...(row.node ? { node: row.node } : {}),

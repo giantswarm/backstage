@@ -89,11 +89,13 @@ export function ModelDetailPage() {
   const servingState = modelConfig
     ? servingStateFor(installation, clientLookupOf(modelConfig))
     : undefined;
+  // The served model's own backend where one is found: an installation may
+  // run several behind one model-manager.
   const servedBy = servingState
     ? toModelServedBy(
         servingState,
-        capabilitiesFor(installation),
-        backends[installation],
+        capabilitiesFor(installation, servingState.model?.backend),
+        servingState.model?.backend ?? backends[installation],
       )
     : undefined;
 

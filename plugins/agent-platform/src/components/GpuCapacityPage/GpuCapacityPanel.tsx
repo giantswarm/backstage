@@ -131,6 +131,8 @@ const BUDGET_SOURCE: Record<string, string> = {
     "Budget: the host's memory (MemTotal of /proc/meminfo as the serving layer's pod sees it) — the backend's API does not expose the accelerator, so on a unified-memory machine this is what the loaded models share",
   override:
     "Budget: set by the operator (ollama.memoryBudgetGiB on the serving layer's chart), not read from the host — for a pod whose /proc/meminfo is not the host's memory (a VM-backed container runtime, a backend on another machine)",
+  'system-info':
+    "Budget: the host's memory as the serving layer's server reports it (Lemonade's system-info); the accelerators are the NPU and GPUs it enumerates, the reservation the catalog sizes of the loaded models",
 };
 
 /** The optional columns, shown when any node reports the data. */

@@ -283,3 +283,104 @@ describe('ModelManagerApiClient', () => {
     });
   });
 });
+
+describe('ModelManagerApiClient · several backends', () => {
+  const fetchMock = jest.fn();
+  const getCluster = jest.fn();
+  const getCredentials = jest.fn();
+  const client = new ModelManagerApiClient({
+    discoveryApi: {
+      getBaseUrl: async () => 'http://backend/api/agent-platform',
+    },
+    fetchApi: { fetch: fetchMock } as unknown as FetchApi,
+    kubernetesApi: { getCluster } as unknown as KubernetesApi,
+    kubernetesAuthProvidersApi: {
+      getCredentials,
+    } as unknown as KubernetesAuthProvidersApi,
+  });
+  const jsonResponse = (body: unknown, status = 200) =>
+    ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    }) as Response;
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    getCluster.mockReset();
+    getCredentials.mockReset();
+    getCluster.mockResolvedValue({
+      authProvider: 'oidc',
+      oidcTokenProvider: 'oidc-lab',
+    });
+    getCredentials.mockResolvedValue({ token: 'dex-token' });
+  });
+
+  it('lists the backends, in model-manager’s order', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        backends: [backendOllama, { ...backendOllama, backend: 'lemonade' }],
+      }),
+    );
+    const backends = await client.listBackends('lab');
+    expect(backends.map(backend => backend.backend)).toEqual([
+      'ollama',
+      'lemonade',
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://backend/api/agent-platform/model-manager/backends?installation=lab',
+    );
+  });
+
+  it('falls back to the one descriptor of /backend on a model-manager without /backends', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { message: 'not found' } }, 404),
+      )
+      .mockResolvedValueOnce(jsonResponse(backendOllama));
+    const backends = await client.listBackends('lab');
+    expect(backends).toHaveLength(1);
+    expect(backends[0].backend).toBe('ollama');
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      'http://backend/api/agent-platform/model-manager/backend?installation=lab',
+    );
+  });
+
+  it('scopes reads with ?backend= and mutations with backend in the body, only when asked', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ models: [] }));
+    await client.listModels('lab', { backend: 'lemonade' });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://backend/api/agent-platform/model-manager/models?backend=lemonade&installation=lab',
+    );
+    await client.listModels('lab');
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      'http://backend/api/agent-platform/model-manager/models?installation=lab',
+    );
+
+    fetchMock.mockResolvedValue(jsonResponse({}));
+    await client.unloadModel('lab', 'qwen3-4b-FLM', { backend: 'lemonade' });
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({
+      model: 'qwen3-4b-FLM',
+      backend: 'lemonade',
+    });
+    await client.unloadModel('lab', 'qwen3:0.6b');
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toEqual({
+      model: 'qwen3:0.6b',
+    });
+
+    await client.deleteModel('lab', 'qwen3-4b-FLM', {
+      backend: 'lemonade',
+      unwire: false,
+    });
+    expect(fetchMock.mock.calls[4][0]).toBe(
+      'http://backend/api/agent-platform/model-manager/models/qwen3-4b-FLM?unwire=false&backend=lemonade&installation=lab',
+    );
+    await client
+      .pullModel('lab', { model: 'qwen3-4b-FLM', backend: 'lemonade' })
+      .catch(() => undefined);
+    expect(JSON.parse(fetchMock.mock.calls[5][1].body)).toEqual({
+      model: 'qwen3-4b-FLM',
+      backend: 'lemonade',
+    });
+  });
+});

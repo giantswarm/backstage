@@ -19,13 +19,13 @@ import {
 import { useModelManagerServingSource } from './useModelManagerServingSource';
 
 const listInstallations = jest.fn();
-const getBackend = jest.fn();
+const listBackends = jest.fn();
 const listModels = jest.fn();
 const listNodes = jest.fn();
 
 const modelManagerApi = {
   listInstallations,
-  getBackend,
+  listBackends,
   listModels,
   listNodes,
 } as unknown as ModelManagerApi;
@@ -71,14 +71,16 @@ function renderSource(reachable = ['lab', 'gpu', 'plain']) {
 
 beforeEach(() => {
   listInstallations.mockReset();
-  getBackend.mockReset();
+  listBackends.mockReset();
   listModels.mockReset();
   listNodes.mockReset();
   listNodes.mockResolvedValue(kserveNodes);
   listInstallations.mockResolvedValue(['lab', 'gpu']);
-  getBackend.mockImplementation(async (installation: string) =>
+  // One backend per installation, as a model-manager before 0.17 (or one
+  // running a single backend) reports it.
+  listBackends.mockImplementation(async (installation: string) => [
     installation === 'gpu' ? kserve : ollama,
-  );
+  ]);
   listModels.mockImplementation(async (installation: string) =>
     installation === 'gpu' ? kserveModels : ollamaModels,
   );
@@ -90,8 +92,8 @@ describe('useModelManagerServingSource', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(getBackend).toHaveBeenCalledTimes(1);
-    expect(getBackend).toHaveBeenCalledWith('lab');
+    expect(listBackends).toHaveBeenCalledTimes(1);
+    expect(listBackends).toHaveBeenCalledWith('lab');
     expect(listModels).toHaveBeenCalledWith('lab');
     expect(result.current.installations).toEqual(['lab']);
   });
@@ -106,19 +108,22 @@ describe('useModelManagerServingSource', () => {
       isLoading: false,
       installations: [],
       backends: {},
+      sourceBackends: {},
       capabilities: {},
+      backendCapabilities: {},
       loading: {},
+      backendLoading: {},
       sharedHosts: {},
       unreachableInstallations: [],
       servedModels: [],
       gpuNodes: [],
       gpuCapacityUnavailable: {},
     });
-    expect(getBackend).not.toHaveBeenCalled();
+    expect(listBackends).not.toHaveBeenCalled();
   });
 
   it('reports how the backend loads and the host every model answers on, once the inventory is read', async () => {
-    getBackend.mockImplementation(async (installation: string) =>
+    listBackends.mockImplementation(async (installation: string) => [
       installation === 'gpu'
         ? kserve
         : modelManagerBackendSchema.parse({
@@ -130,7 +135,7 @@ describe('useModelManagerServingSource', () => {
               keepAliveScope: 'request',
             },
           }),
-    );
+    ]);
 
     const { result } = renderSource(['lab', 'gpu']);
 
@@ -243,11 +248,11 @@ describe('useModelManagerServingSource', () => {
   });
 
   it('surfaces an installation whose backend descriptor cannot be read', async () => {
-    getBackend.mockImplementation(async (installation: string) => {
+    listBackends.mockImplementation(async (installation: string) => {
       if (installation === 'gpu') {
         throw namedError('UnauthorizedError', 'token rejected at the gateway');
       }
-      return ollama;
+      return [ollama];
     });
 
     const { result } = renderSource();
@@ -280,9 +285,9 @@ describe('useModelManagerServingSource', () => {
 
   it('skips an installation whose backend this portal does not know', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    getBackend.mockImplementation(async (installation: string) =>
+    listBackends.mockImplementation(async (installation: string) => [
       installation === 'gpu' ? { ...kserve, backend: 'triton' } : ollama,
-    );
+    ]);
 
     const { result } = renderSource();
 
@@ -313,9 +318,9 @@ describe('useModelManagerServingSource', () => {
       'nodes',
       modelManagerNodeSchema,
     );
-    getBackend.mockImplementation(async (installation: string) =>
+    listBackends.mockImplementation(async (installation: string) => [
       installation === 'gpu' ? kserve : ollamaWithHost,
-    );
+    ]);
     listNodes.mockImplementation(async (installation: string) =>
       installation === 'gpu' ? kserveNodes : ollamaNodes,
     );
@@ -347,7 +352,10 @@ describe('useModelManagerServingSource', () => {
     expect(
       result.current.gpuNodes.find(node => node.installation === 'lab'),
     ).toMatchObject({
-      id: 'lab/172.21.0.1',
+      // A backend host is one row per backend (a lab host may run Ollama and
+      // Lemonade side by side): the backend is part of its id.
+      id: 'lab/ollama/172.21.0.1',
+      backend: 'ollama',
       name: '172.21.0.1',
       memoryBudgetSource: 'host-meminfo',
       memoryBudgetBytes: 92417933312,
@@ -370,5 +378,126 @@ describe('useModelManagerServingSource', () => {
       memoryBytes: 5403658158,
       memoryVramBytes: 5403658158,
     });
+  });
+});
+
+describe('useModelManagerServingSource · several backends on one installation', () => {
+  const lemonade = modelManagerBackendSchema.parse({
+    backend: 'lemonade',
+    version: '11.9.0',
+    endpoint: 'http://172.21.0.1:13305',
+    agentEndpoint: 'http://172.21.0.1:13305/api/v1',
+    healthy: true,
+    capabilities: {
+      pull: true,
+      pullProgress: true,
+      delete: true,
+      load: true,
+      unload: true,
+      loadedModels: true,
+      wire: true,
+      presets: false,
+      fitCheck: false,
+      nodeInventory: true,
+      search: false,
+    },
+    loading: { onDemand: true, idleEviction: false },
+  });
+  const ollamaWithHost = modelManagerBackendSchema.parse({
+    ...backendOllama,
+    backends: ['ollama', 'lemonade'],
+    capabilities: { ...backendOllama.capabilities, nodeInventory: true },
+  });
+  const lemonadeModel = modelManagerModelSchema.parse({
+    name: 'qwen3-4b-FLM',
+    backend: 'lemonade',
+    runtime: 'flm',
+    sizeBytes: 3_100_000_000,
+    loaded: true,
+    running: {
+      name: 'qwen3-4b-FLM',
+      backend: 'lemonade',
+      sizeBytes: 3_100_000_000,
+      device: 'npu',
+      pinned: true,
+    },
+  });
+
+  it('files every backend, its flags and its rows under the one installation', async () => {
+    listInstallations.mockResolvedValue(['lab']);
+    listBackends.mockResolvedValue([ollamaWithHost, lemonade]);
+    listModels.mockResolvedValue([
+      ...ollamaModels.map(model => ({ ...model, backend: 'ollama' })),
+      lemonadeModel,
+    ]);
+    listNodes.mockResolvedValue(
+      parseModelManagerList(
+        {
+          nodes: [
+            { ...nodesOllama.nodes[0], backend: 'ollama' },
+            {
+              ...nodesOllama.nodes[0],
+              backend: 'lemonade',
+              budgetSource: 'system-info',
+              gpuCount: 2,
+              gpuProduct: 'AMD NPU (NPU Strix)',
+            },
+          ],
+        },
+        'nodes',
+        modelManagerNodeSchema,
+      ),
+    );
+
+    const { result } = renderSource(['lab']);
+    await waitFor(() => expect(result.current.servedModels).toHaveLength(4));
+    await waitFor(() => expect(result.current.gpuNodes).toHaveLength(2));
+
+    // One read of each: the inventory and the nodes are aggregated by
+    // model-manager, every entry naming its backend.
+    expect(listBackends).toHaveBeenCalledWith('lab');
+    expect(listModels).toHaveBeenCalledTimes(1);
+    expect(listModels).toHaveBeenCalledWith('lab');
+    expect(listNodes).toHaveBeenCalledTimes(1);
+
+    // The installation's label is its default (first) backend; both have a say.
+    expect(result.current.backends).toEqual({ lab: 'ollama' });
+    expect(result.current.sourceBackends).toEqual({
+      lab: ['ollama', 'lemonade'],
+    });
+    expect(result.current.backendCapabilities?.lab?.ollama?.nodeInventory).toBe(
+      true,
+    );
+    expect(result.current.backendCapabilities?.lab?.lemonade?.search).toBe(
+      false,
+    );
+    expect(result.current.backendLoading?.lab?.lemonade).toEqual({
+      onDemand: true,
+      idleEviction: false,
+    });
+    // Both host servers are shared by their models, each on its own port.
+    expect(result.current.sharedHosts?.lab).toEqual(
+      expect.arrayContaining(['172.21.0.1:11434', '172.21.0.1:13305']),
+    );
+    // Rows carry their own backend, and are rendered with its descriptor.
+    const flm = result.current.servedModels.find(
+      model => model.name === 'qwen3-4b-FLM',
+    );
+    expect(flm).toMatchObject({
+      backend: 'lemonade',
+      runtime: 'lemonade 11.9.0',
+      engine: 'flm',
+      device: 'npu',
+      pinned: true,
+      endpointHosts: ['172.21.0.1:13305'],
+    });
+    expect(
+      result.current.servedModels.filter(model => model.backend === 'ollama'),
+    ).toHaveLength(3);
+    // One capacity row per backend host.
+    expect(result.current.gpuNodes.map(node => node.id).sort()).toEqual([
+      'lab/lemonade/172.21.0.1',
+      'lab/ollama/172.21.0.1',
+    ]);
   });
 });
