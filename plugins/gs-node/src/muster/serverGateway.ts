@@ -52,6 +52,8 @@ export function readMusterServerRef(
  * can replace it.
  */
 export interface MusterServerGateway {
+  /** The MCPServer in muster this gateway fronts (the `core_auth_login` target). */
+  readonly server: string;
   /** Run a tool of the server as the caller; returns the tool's parsed payload. */
   call(
     tool: string,

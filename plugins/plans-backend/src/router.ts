@@ -7,10 +7,14 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from '@backstage/errors';
-import { MUSTER_AUTH_HEADER } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  asConnected,
+  MUSTER_AUTH_HEADER,
+  MusterServerGateway,
+  MusterServerNotConnectedError,
+} from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import Router from 'express-promise-router';
-import { asConnected, GithubGateway, GithubNotConnectedError } from './github';
 
 /** `owner/repo` slug, e.g. `giantswarm/bumblebee-plans`. */
 const REPO_SLUG_PATTERN = /^[\w.-]+\/[\w.-]+$/;
@@ -90,7 +94,7 @@ export interface RouterOptions {
   config: Config;
   httpAuth: HttpAuthService;
   /** GitHub as the caller, through muster; undefined when unconfigured. */
-  github?: GithubGateway;
+  github?: MusterServerGateway;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -264,7 +268,7 @@ export async function createRouter(
     return requested;
   };
 
-  const gateway = (): GithubGateway => {
+  const gateway = (): MusterServerGateway => {
     if (!github) {
       throw new ServiceUnavailableError(
         'GitHub access through muster is not configured. Set plans.muster.',
@@ -294,9 +298,13 @@ export async function createRouter(
     const gh = gateway();
     const token = musterToken(req);
     const call = <T>(tool: string, args: Record<string, unknown>) =>
-      asConnected(gh, token, () => gh.call(tool, args, token)) as Promise<T>;
+      asConnected(gh, gh.server, token, () =>
+        gh.call(tool, args, token),
+      ) as Promise<T>;
     const callContent = (tool: string, args: Record<string, unknown>) =>
-      asConnected(gh, token, () => gh.callContent(tool, args, token));
+      asConnected(gh, gh.server, token, () =>
+        gh.callContent(tool, args, token),
+      );
     return { call, callContent, token };
   };
 
@@ -765,11 +773,12 @@ export async function createRouter(
       res: express.Response,
       next: express.NextFunction,
     ) => {
-      if (error instanceof GithubNotConnectedError) {
+      if (error instanceof MusterServerNotConnectedError) {
         res.status(401).json({
           error: {
             name: error.name,
             message: error.message,
+            server: error.server,
             authUrl: error.authUrl,
           },
         });

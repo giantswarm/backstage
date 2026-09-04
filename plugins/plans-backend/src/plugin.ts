@@ -2,7 +2,7 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
-import { MusterGithubGateway } from './github';
+import { MusterServerClient } from '@giantswarm/backstage-plugin-gs-node';
 import { createRouter } from './router';
 
 /**
@@ -34,7 +34,7 @@ export const plansPlugin = createBackendPlugin({
             logger,
             config,
             httpAuth,
-            github: MusterGithubGateway.fromConfig(config, logger),
+            github: MusterServerClient.fromConfig(config, logger, 'plans'),
           }),
         );
       },

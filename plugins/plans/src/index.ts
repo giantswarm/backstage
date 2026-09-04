@@ -2,7 +2,7 @@ export { plansPlugin as default, plansPlugin } from './plugin';
 export {
   plansApiRef,
   PlansApiClient,
-  GithubNotConnectedError,
+  MusterServerNotConnectedError,
   plansAuthApiRef,
   PlansMainAuth,
 } from './apis';
