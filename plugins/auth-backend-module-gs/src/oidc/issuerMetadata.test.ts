@@ -73,7 +73,71 @@ describe('waitForIssuerMetadata', () => {
     expect(mockDiscover).toHaveBeenCalledTimes(2);
   });
 
-  it('throws after exhausting all attempts', async () => {
+  it('keeps retrying past the former five-attempt budget by default and caps the backoff at 30s', async () => {
+    for (let i = 0; i < 7; i++) {
+      mockDiscover.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    }
+    mockDiscover.mockResolvedValueOnce({});
+
+    await expect(
+      waitForIssuerMetadata('oidc-example', METADATA_URL, logger, { sleep }),
+    ).resolves.toBeUndefined();
+
+    expect(mockDiscover).toHaveBeenCalledTimes(8);
+    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([
+      1000, 2000, 4000, 8000, 16000, 30000, 30000,
+    ]);
+    expect(logger.info).toHaveBeenCalledWith(
+      'Failed to fetch issuer metadata for oidc-example auth provider (attempt 1), retrying in 1000ms',
+      { error: 'Error: ECONNREFUSED' },
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      'Fetched issuer metadata for oidc-example auth provider after 8 attempts',
+    );
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('escalates to warn exactly once when the outage outlives the boot window', async () => {
+    for (let i = 0; i < 7; i++) {
+      mockDiscover.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    }
+    mockDiscover.mockResolvedValueOnce({});
+
+    await waitForIssuerMetadata('oidc-example', METADATA_URL, logger, {
+      sleep,
+    });
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Failed to fetch issuer metadata for oidc-example auth provider (attempt 5), retrying in 16000ms; startup is blocked until the issuer is reachable',
+      { error: 'Error: ECONNREFUSED' },
+    );
+    // the other six retries stay at info, so Sentry sees one event per boot
+    expect(logger.info).toHaveBeenCalledTimes(7);
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('honours a custom backoff cap and warn threshold', async () => {
+    for (let i = 0; i < 3; i++) {
+      mockDiscover.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    }
+    mockDiscover.mockResolvedValueOnce({});
+
+    await waitForIssuerMetadata('oidc-example', METADATA_URL, logger, {
+      sleep,
+      initialDelayMs: 100,
+      maxDelayMs: 250,
+      warnAfterAttempts: 2,
+    });
+
+    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([100, 200, 250]);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect((logger.warn as jest.Mock).mock.calls[0][0]).toContain(
+      '(attempt 2)',
+    );
+  });
+
+  it('throws after exhausting a bounded number of attempts', async () => {
     mockDiscover.mockRejectedValue(new Error('ECONNREFUSED'));
 
     await expect(

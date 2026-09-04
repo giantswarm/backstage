@@ -61,9 +61,13 @@ export const authModuleGsProviders = createBackendModule({
 
           // The main login provider is required: a portal without login is
           // unusable, and skipping registration here would serve 404s on
-          // every login until the pod is manually restarted. Retry to absorb
-          // transient Dex unavailability, then let the error fail startup so
-          // the orchestrator restarts the backend until Dex is reachable.
+          // every login until the pod is manually restarted. Wait, with
+          // backoff and without giving up, until Dex answers discovery:
+          // startup stays blocked, so the pod reports NotReady until the
+          // issuer is reachable and then finishes booting on its own.
+          // Failing startup instead would restart nothing -- the backend
+          // swallows the startup rejection and keeps serving readiness 503
+          // (giantswarm/backstage#2144).
           await waitForIssuerMetadata(mainAuthProvider, metadataUrl, logger);
 
           providersExtensionPoint.registerProvider({
