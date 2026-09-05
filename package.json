@@ -129,6 +129,11 @@
     "minimatch@npm:3.1.2": "3.1.5",
     "buffer-equal-constant-time@npm:1.0.1": "patch:buffer-equal-constant-time@npm%3A1.0.1#~/.yarn/patches/buffer-equal-constant-time-npm-1.0.1-41826f3419.patch"
   },
+  "jest": {
+    "setupFiles": [
+      "<rootDir>/../../../jest.setup.js"
+    ]
+  },
   "prettier": "@backstage/cli/config/prettier",
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs}": [
