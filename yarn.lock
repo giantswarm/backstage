@@ -354,15 +354,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@apidevtools/json-schema-ref-parser@npm:^15.3.1":
-  version: 15.5.2
-  resolution: "@apidevtools/json-schema-ref-parser@npm:15.5.2"
+"@apidevtools/json-schema-ref-parser@npm:^16.0.0":
+  version: 16.0.1
+  resolution: "@apidevtools/json-schema-ref-parser@npm:16.0.1"
   dependencies:
-    js-yaml: "npm:^5.2.2"
-    undici: "npm:^6.28.0"
+    js-yaml: "npm:^5.2.3"
+    undici: "npm:^8.10.0"
   peerDependencies:
     "@types/json-schema": ^7.0.15
-  checksum: 10c0/bf37d0c4f922a099232475c2b45cb18e1450751e1cea17744d6f36007796e527e79dc69a2ff4d2de377a7503a22457b7afd0fdcea6ae7d0b0bc771753c00a1c1
+  checksum: 10c0/6698985256fc42fbec54783237f0ae5162a06752aa7180b07ab8f50b18555a4605545d009842913813d6308418b2e78753c5022a2375297b2603e1a217712caa
   languageName: node
   linkType: hard
 
@@ -7790,7 +7790,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs@workspace:plugins/gs"
   dependencies:
-    "@apidevtools/json-schema-ref-parser": "npm:^15.3.1"
+    "@apidevtools/json-schema-ref-parser": "npm:^16.0.0"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/core-app-api": "backstage:^"
@@ -28975,7 +28975,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"js-yaml@npm:^5.0.0, js-yaml@npm:^5.2.2":
+"js-yaml@npm:^5.0.0":
   version: 5.3.0
   resolution: "js-yaml@npm:5.3.0"
   dependencies:
@@ -28983,6 +28983,17 @@ __metadata:
   bin:
     js-yaml: bin/js-yaml.mjs
   checksum: 10c0/c67383a74026f3b550fe1131c6f0f56df11e227fc9b8b8c1c85154f106831a95a944f2dd4f505498d537790483aec7cd5e3d5e9913fe28fa2d131eeb894a0fd9
+  languageName: node
+  linkType: hard
+
+"js-yaml@npm:^5.2.3":
+  version: 5.4.1
+  resolution: "js-yaml@npm:5.4.1"
+  dependencies:
+    argparse: "npm:^2.0.1"
+  bin:
+    js-yaml: bin/js-yaml.mjs
+  checksum: 10c0/efe9dfaf222809694d375ad5ecca825561d2432eb55bc0f628911c0dfa4dbce98a71dcbc3252f630208bbdf5f4e9ac363847e4a7f49845b577ae2548b8fcf147
   languageName: node
   linkType: hard
 
@@ -40204,6 +40215,13 @@ __metadata:
   version: 7.29.0
   resolution: "undici@npm:7.29.0"
   checksum: 10c0/85ea96e91e7f3de24de678cbbc54230fdd641a3b0643005f2aef044af1f1a2db8fbecb88b28e6fa78bb41ffeafda4479b57075b6b6ab92beac4b7b5ab53f9b10
+  languageName: node
+  linkType: hard
+
+"undici@npm:^8.10.0":
+  version: 8.10.2
+  resolution: "undici@npm:8.10.2"
+  checksum: 10c0/66d7fc69149207cab570d6abbc9e965b6afe1ae889a7d46945b431165c973d6a56f3dd8b70a856e7ae1e550b6366a1cde6f06e68640587f0dadca38de72995ee
   languageName: node
   linkType: hard
 
