@@ -8055,7 +8055,7 @@ __metadata:
     "@backstage/config": "backstage:^"
     "@backstage/errors": "backstage:^"
     "@backstage/plugin-scaffolder-node": "backstage:^"
-    "@kubernetes/client-node": "npm:^1.4.0"
+    "@kubernetes/client-node": "npm:^2.0.0"
     js-yaml: "npm:^5.0.0"
   languageName: unknown
   linkType: soft
@@ -9300,7 +9300,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@kubernetes/client-node@npm:1.4.0, @kubernetes/client-node@npm:^1.4.0":
+"@kubernetes/client-node@npm:1.4.0":
   version: 1.4.0
   resolution: "@kubernetes/client-node@npm:1.4.0"
   dependencies:
@@ -9321,6 +9321,30 @@ __metadata:
     tar-fs: "npm:^3.0.9"
     ws: "npm:^8.18.2"
   checksum: 10c0/060bd78ee976c3af65319c2d0881adc25981d295d5ff585dad31b68dcf91c9b85f8f2c6ce6a43771cf6276a2fd3146421304f75467060183f5cf5e87bae7ff17
+  languageName: node
+  linkType: hard
+
+"@kubernetes/client-node@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "@kubernetes/client-node@npm:2.0.0"
+  dependencies:
+    "@types/js-yaml": "npm:^4.0.1"
+    "@types/node": "npm:^26.0.0"
+    "@types/stream-buffers": "npm:^3.0.3"
+    form-data: "npm:^4.0.0"
+    hpagent: "npm:^1.2.0"
+    isomorphic-ws: "npm:^5.0.0"
+    js-yaml: "npm:^5.1.0"
+    jsonpath-plus: "npm:^10.3.0"
+    openid-client: "npm:^6.1.3"
+    rfc4648: "npm:^1.3.0"
+    socks: "npm:^2.8.4"
+    socks-proxy-agent: "npm:^10.0.0"
+    stream-buffers: "npm:^3.0.2"
+    tar-fs: "npm:^3.0.9"
+    undici: "npm:^8.7.0"
+    ws: "npm:^8.18.2"
+  checksum: 10c0/d3c0f492c177c5e349df3a52115d700d59f63f435b65d0354ab659c50f79dffed0018d367cd0b93052949d3d3626bd1c3d0ce875df394012eab3be03ce105111
   languageName: node
   linkType: hard
 
@@ -17866,6 +17890,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/node@npm:^26.0.0":
+  version: 26.4.1
+  resolution: "@types/node@npm:26.4.1"
+  dependencies:
+    undici-types: "npm:~8.3.0"
+  checksum: 10c0/29568336db8bc67740744782492af0e81ab1f88d86eaa07e38cf0a4c8bae7250a7b4b85c80ac1014fc98b2bc6d4bcac872b2c494ee0671b3880eada7c1fdbc94
+  languageName: node
+  linkType: hard
+
 "@types/oauth@npm:*":
   version: 0.9.6
   resolution: "@types/oauth@npm:0.9.6"
@@ -19064,6 +19097,13 @@ __metadata:
   dependencies:
     debug: "npm:4"
   checksum: 10c0/dc4f757e40b5f3e3d674bc9beb4f1048f4ee83af189bae39be99f57bf1f48dde166a8b0a5342a84b5944ee8e6ed1e5a9d801858f4ad44764e84957122fe46261
+  languageName: node
+  linkType: hard
+
+"agent-base@npm:9.0.0":
+  version: 9.0.0
+  resolution: "agent-base@npm:9.0.0"
+  checksum: 10c0/0274cd9a2a0ee78e3fbe0e80e7e0c41df27102466f7f7b3a67c045bb4c00fc517ce0496de3045b55f5eeec1a0e77d9d0a9b9320b0362bfe61e0c9e6d7ebaee76
   languageName: node
   linkType: hard
 
@@ -27668,6 +27708,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ip-address@npm:^10.1.1":
+  version: 10.7.0
+  resolution: "ip-address@npm:10.7.0"
+  checksum: 10c0/bb6f514708b84ec75ad4d8156f3d571a5b8e592a15359386100f4f8d7366a4b7723d54b88a30d80b3f51ca5f4dee239e94ef4b53765b9c41a8ea46b421307d14
+  languageName: node
+  linkType: hard
+
 "ip-address@npm:^9.0.5":
   version: 9.0.5
   resolution: "ip-address@npm:9.0.5"
@@ -29113,7 +29160,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"js-yaml@npm:^5.2.3":
+"js-yaml@npm:^5.1.0, js-yaml@npm:^5.2.3":
   version: 5.4.1
   resolution: "js-yaml@npm:5.4.1"
   dependencies:
@@ -38391,6 +38438,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"socks-proxy-agent@npm:^10.0.0":
+  version: 10.1.0
+  resolution: "socks-proxy-agent@npm:10.1.0"
+  dependencies:
+    agent-base: "npm:9.0.0"
+    debug: "npm:^4.3.4"
+    socks: "npm:^2.8.3"
+  checksum: 10c0/48125e2bb3c14796110bf8ab7d84c4db1ad950ad3360e32199cb7524365a84c1ea9c513976701724b7ed182ed6fc32f1740d37756ef618d377cb8533b76f250a
+  languageName: node
+  linkType: hard
+
 "socks-proxy-agent@npm:^7.0.0":
   version: 7.0.0
   resolution: "socks-proxy-agent@npm:7.0.0"
@@ -38420,6 +38478,16 @@ __metadata:
     ip-address: "npm:^9.0.5"
     smart-buffer: "npm:^4.2.0"
   checksum: 10c0/d54a52bf9325165770b674a67241143a3d8b4e4c8884560c4e0e078aace2a728dffc7f70150660f51b85797c4e1a3b82f9b7aa25e0a0ceae1a243365da5c51a7
+  languageName: node
+  linkType: hard
+
+"socks@npm:^2.8.4":
+  version: 2.8.10
+  resolution: "socks@npm:2.8.10"
+  dependencies:
+    ip-address: "npm:^10.1.1"
+    smart-buffer: "npm:^4.2.0"
+  checksum: 10c0/9ac7f4329ed064585975206d9582119a1f168b249dd6119a939f839e0ea7a590d4fdccff9a4112f13b478177207959096f70224f021eaeb3ce69bc8129f80ef4
   languageName: node
   linkType: hard
 
@@ -40543,7 +40611,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici@npm:^8.10.0":
+"undici@npm:^8.10.0, undici@npm:^8.7.0":
   version: 8.10.2
   resolution: "undici@npm:8.10.2"
   checksum: 10c0/66d7fc69149207cab570d6abbc9e965b6afe1ae889a7d46945b431165c973d6a56f3dd8b70a856e7ae1e550b6366a1cde6f06e68640587f0dadca38de72995ee
