@@ -31,7 +31,10 @@ export interface KarpenterNodePoolStatus {
   limits: Record<string, number>;
   /** Currently provisioned amounts by resource. */
   usage: Record<string, number>;
-  /** Nodes disruptable right now, after the disruption budgets. */
+  /**
+   * Nodes disruptable right now, after the disruption budgets — the most
+   * restrictive reason, so it never overstates available headroom.
+   */
   allowedDisruptions: number | undefined;
 }
 
@@ -66,7 +69,11 @@ export function buildQuery(clusterName: string, nodePoolName: string): string {
     `  label_replace(count by (${mixBy}) (${KarpenterNodesAllocatable.name}{${l}, resource_type="cpu"}), "${SERIES_LABEL}", "${NODE_MIX}", "", "")`,
     `  or label_replace(max by (resource_type) (${KarpenterNodePoolsLimit.name}{${l}}), "${SERIES_LABEL}", "${LIMIT}", "", "")`,
     `  or label_replace(max by (resource_type) (${KarpenterNodePoolsUsage.name}{${l}}), "${SERIES_LABEL}", "${USAGE}", "", "")`,
-    `  or label_replace(max (${KarpenterNodePoolsAllowedDisruptions.name}{${l}}), "${SERIES_LABEL}", "${ALLOWED_DISRUPTIONS}", "", "")`,
+    // `min`, not `max`: this metric is emitted per disruption reason, and the
+    // most permissive reason would claim headroom that a stricter budget (say,
+    // one blocking Drifted) forbids. Identical to `max` where no reason
+    // dimension exists.
+    `  or label_replace(min (${KarpenterNodePoolsAllowedDisruptions.name}{${l}}), "${SERIES_LABEL}", "${ALLOWED_DISRUPTIONS}", "", "")`,
     ')',
   ].join(' ');
 }

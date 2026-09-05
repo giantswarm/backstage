@@ -45,6 +45,13 @@ describe('buildQuery', () => {
     );
   });
 
+  it('takes the most restrictive disruption reason, not the most permissive', () => {
+    // The metric is emitted per reason; max() would claim headroom a stricter
+    // budget forbids.
+    expect(query).toContain('min (karpenter_nodepools_allowed_disruptions');
+    expect(query).not.toContain('max (karpenter_nodepools_allowed_disruptions');
+  });
+
   it('tags each branch with a distinct series label', () => {
     for (const series of [
       'node_mix',

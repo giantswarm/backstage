@@ -254,10 +254,6 @@ export const CertmanagerCertificateReadyStatus = {
   source: 'cert-manager',
 } as const satisfies PrometheusMetric;
 
-/**
- * All registered metrics. Use this to enumerate or inspect the full set
- * of metrics the application relies on.
- */
 export const KarpenterNodesAllocatable = {
   name: 'karpenter_nodes_allocatable',
   description:
@@ -290,6 +286,10 @@ export const KarpenterNodePoolsAllowedDisruptions = {
   source: 'karpenter',
 } as const satisfies PrometheusMetric;
 
+/**
+ * All registered metrics. Use this to enumerate or inspect the full set
+ * of metrics the application relies on.
+ */
 export const MetricsRegistry: readonly PrometheusMetric[] = [
   ContainerCpuUsageSecondsTotal,
   ContainerMemoryWorkingSetBytes,

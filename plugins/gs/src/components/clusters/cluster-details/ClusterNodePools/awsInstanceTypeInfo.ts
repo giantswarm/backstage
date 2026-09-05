@@ -22,16 +22,27 @@ let dataPromise: Promise<AwsInstanceTypeData> | undefined;
  */
 export function loadAwsInstanceTypes(): Promise<AwsInstanceTypeData> {
   if (!dataPromise) {
-    dataPromise = import('./data/awsInstanceTypes.json').then(m => {
-      instanceTypeData = m.default as AwsInstanceTypeData;
-      return instanceTypeData;
-    });
+    dataPromise = import('./data/awsInstanceTypes.json')
+      .then(m => {
+        instanceTypeData = m.default as AwsInstanceTypeData;
+        return instanceTypeData;
+      })
+      .catch(error => {
+        // Drop the rejected promise so a later mount retries. Memoising it
+        // would keep the dataset unavailable for the lifetime of the tab, and
+        // re-throw on every consumer that awaited it.
+        dataPromise = undefined;
+        throw error;
+      });
   }
   return dataPromise;
 }
 
 // Start loading eagerly, so the common case is resolved before first paint.
-loadAwsInstanceTypes();
+// The failure is handled by consumers; tooltips and derived architecture are
+// enhancements, so a missing chunk should stay quiet rather than surface as an
+// unhandled rejection.
+loadAwsInstanceTypes().catch(() => {});
 
 /**
  * Subscribe to the instance-type dataset, re-rendering once it resolves.
@@ -50,11 +61,14 @@ export function useAwsInstanceTypes(): AwsInstanceTypeData | undefined {
     }
 
     let active = true;
-    loadAwsInstanceTypes().then(loaded => {
-      if (active) {
-        setData(loaded);
-      }
-    });
+    loadAwsInstanceTypes()
+      .then(loaded => {
+        if (active) {
+          setData(loaded);
+        }
+      })
+      // Callers render without the dataset, so a failure needs no reporting.
+      .catch(() => {});
 
     return () => {
       active = false;
