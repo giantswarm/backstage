@@ -60,7 +60,8 @@ export const AzureNodePools = () => {
 
   return (
     <NodePoolDetailsLayout
-      selectedNodePool={selectedNodePool}
+      // See AWSNodePools: keyed off the resolved deployment, not the URL.
+      selectedNodePool={selectedDeployment ? selectedNodePool : null}
       details={details}
     >
       <AzureNodePoolsTable

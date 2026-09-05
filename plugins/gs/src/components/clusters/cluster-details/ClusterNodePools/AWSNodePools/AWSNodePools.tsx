@@ -84,7 +84,10 @@ export const AWSNodePools = () => {
 
   return (
     <NodePoolDetailsLayout
-      selectedNodePool={selectedNodePool}
+      // Keyed off the resolved pool, not the URL: a `?name=` pointing at a
+      // since-deleted pool (or the render before the list resolves) would
+      // otherwise open an empty section and scroll to it.
+      selectedNodePool={selected ? selectedNodePool : null}
       details={details}
     >
       <AWSNodePoolsTable
