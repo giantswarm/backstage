@@ -1,20 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Button from '@material-ui/core/Button';
 import Typography from '@material-ui/core/Typography';
 import { Alert, AlertTitle } from '@material-ui/lab';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQueryClient } from '@tanstack/react-query';
 import { MusterServerNotConnectedError, roadmapApiRef } from '../apis';
-
-/** How long the connect popup is watched before giving up (2s steps). */
-const CONNECT_POLL_INTERVAL_MS = 2_000;
-const CONNECT_POLL_MAX_ATTEMPTS = 60;
+import { bounceAllowed, bounceToConnect } from './connectBounce';
 
 /**
  * Shows a failed roadmap request. A missing GitHub grant is not an error to
- * read but a step to take: the person connects their GitHub account to muster
- * once (GitHub redirects straight back when the App is already authorized,
- * i.e. after the Dex GitHub login), and every roadmap query reloads.
+ * read but a step the page takes on its own: the browser is sent through
+ * muster's GitHub connect once and comes back to this page with the grant
+ * in place (GitHub redirects straight back when the App is already
+ * authorized, i.e. after the Dex GitHub login) -- no dialog, no popup, no
+ * click. Only when that bounce did not produce a grant does the alert stay
+ * and offer the connect as a button.
  */
 export function RoadmapErrorAlert({ error }: { error: Error }) {
   if (
@@ -35,18 +35,9 @@ function ConnectGithubAlert({
 }) {
   const roadmapApi = useApi(roadmapApiRef);
   const queryClient = useQueryClient();
-  const [state, setState] = useState<'idle' | 'waiting' | 'timeout' | 'failed'>(
-    'idle',
-  );
-  const popupRef = useRef<Window | null>(null);
-  const cancelledRef = useRef(false);
-
-  useEffect(
-    () => () => {
-      cancelledRef.current = true;
-    },
-    [],
-  );
+  const [state, setState] = useState<
+    'idle' | 'bouncing' | 'returned' | 'failed'
+  >(() => (bounceAllowed() ? 'idle' : 'returned'));
 
   const connect = useCallback(async () => {
     let authUrl = error.authUrl;
@@ -64,52 +55,39 @@ function ConnectGithubAlert({
       setState('failed');
       return;
     }
-    popupRef.current = window.open(
-      authUrl,
-      'muster-github-connect',
-      'width=600,height=720',
-    );
-    setState('waiting');
-    for (let attempt = 0; attempt < CONNECT_POLL_MAX_ATTEMPTS; attempt++) {
-      await new Promise(resolve =>
-        setTimeout(resolve, CONNECT_POLL_INTERVAL_MS),
-      );
-      if (cancelledRef.current) {
-        return;
-      }
-      const connection = await roadmapApi
-        .getConnection()
-        .catch(() => undefined);
-      if (connection?.connected) {
-        popupRef.current?.close();
-        await queryClient.invalidateQueries({ queryKey: ['roadmap'] });
-        return;
-      }
-    }
-    setState('timeout');
+    setState('bouncing');
+    bounceToConnect(authUrl);
   }, [error.authUrl, roadmapApi, queryClient]);
+
+  // First sight of a missing grant: go straight through muster's connect.
+  useEffect(() => {
+    if (state === 'idle') {
+      void connect();
+    }
+  }, [state, connect]);
 
   return (
     <Alert
       severity="warning"
       action={
-        <Button
-          color="inherit"
-          size="small"
-          onClick={connect}
-          disabled={state === 'waiting'}
-        >
-          {state === 'waiting' ? 'Waiting for GitHub…' : 'Connect GitHub'}
-        </Button>
+        state === 'returned' ? (
+          <Button color="inherit" size="small" onClick={connect}>
+            Connect GitHub
+          </Button>
+        ) : undefined
       }
     >
-      <AlertTitle>Connect your GitHub account</AlertTitle>
-      The roadmap board is read and changed as you. Connect your GitHub account
-      once; muster keeps the connection for all your sessions.
-      {state === 'timeout' && (
+      <AlertTitle>
+        {state === 'returned'
+          ? 'Connect your GitHub account'
+          : 'Connecting your GitHub account…'}
+      </AlertTitle>
+      The roadmap board is read and changed as you. muster keeps the connection
+      for all your sessions once GitHub redirects back.
+      {state === 'returned' && (
         <Typography variant="body2" color="textSecondary">
-          The connection was not completed. Finish the sign-in in the popup and
-          try again.
+          The connect did not complete. Try again; if GitHub asks for consent,
+          grant it.
         </Typography>
       )}
       {state === 'failed' && (

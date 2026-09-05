@@ -300,3 +300,48 @@ describe('GSAuthProviders sign-in connector memory', () => {
     );
   });
 });
+
+describe('GSAuthProviders.getGithubAuthApi', () => {
+  function createApiWithConfig(values: Record<string, string | undefined>) {
+    const scopedConfigApi = {
+      ...configApi,
+      getOptionalString: jest.fn((key: string) => values[key]),
+      getString: jest.fn((key: string) => {
+        if (key === 'backend.baseUrl') {
+          return 'http://backend';
+        }
+        throw new Error(`unexpected getString(${key})`);
+      }),
+    } as unknown as ConfigApi;
+    return GSAuthProviders.create({
+      configApi: scopedConfigApi,
+      discoveryApi,
+      oauthRequestApi,
+    });
+  }
+
+  it('is off without gs.github, so the app keeps the upstream GitHub provider', () => {
+    const api = createApiWithConfig({ 'gs.authProvider': 'oidc-gazelle' });
+    expect(api.hasGithubAuthApi()).toBe(false);
+    expect(api.getGithubAuthApi()).toBeUndefined();
+  });
+
+  it('is off without a main login provider (nothing to exchange)', () => {
+    const api = createApiWithConfig({ 'gs.github.brokerAudience': 'github' });
+    expect(api.hasGithubAuthApi()).toBe(false);
+    expect(api.getGithubAuthApi()).toBeUndefined();
+  });
+
+  it('builds one GitHub auth API on the grant when gs.github is configured', () => {
+    const api = createApiWithConfig({
+      'gs.authProvider': 'oidc-gazelle',
+      'gs.github.brokerAudience': 'github',
+    });
+    expect(api.hasGithubAuthApi()).toBe(true);
+    const github = api.getGithubAuthApi();
+    expect(github).toBeDefined();
+    expect(github).not.toBe(api.getMainAuthApi());
+    // memoized: ScmAuth, the settings card and the plugins share one session
+    expect(api.getGithubAuthApi()).toBe(github);
+  });
+});

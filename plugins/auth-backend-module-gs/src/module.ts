@@ -9,6 +9,8 @@ import {
 import { oauth2Authenticator } from './oauth2/authenticator';
 import { createCimdRouter } from './oauth2/cimdRouter';
 import { createClusterTokenRouter } from './clusterToken/router';
+import { createGithubTokenRouter } from './githubToken/router';
+import { MusterServerClient } from '@giantswarm/backstage-plugin-gs-node';
 import { gsOidcAuthenticator } from './oidc/authenticator';
 import { customSignInResolver } from './signInResolver';
 import { waitForIssuerMetadata } from './oidc/issuerMetadata';
@@ -124,6 +126,28 @@ export const authModuleGsProviders = createBackendModule({
             'Cluster token broker is configured, registering cluster token route',
           );
           httpRouter.use(clusterTokenRouter);
+        }
+
+        // GitHub as the person through muster (gs.github): the standard
+        // githubAuthApiRef mints from this route; the grant lives in muster.
+        const github = MusterServerClient.fromConfig(
+          config,
+          logger,
+          'gs.github',
+        );
+        if (github) {
+          const githubTokenRouter = createGithubTokenRouter({
+            config,
+            logger,
+            httpAuth,
+            github,
+          });
+          if (githubTokenRouter) {
+            logger.info(
+              `GitHub via muster is configured (server '${github.server}'), registering github-token routes`,
+            );
+            httpRouter.use(githubTokenRouter);
+          }
         }
       },
     });

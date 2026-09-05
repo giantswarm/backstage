@@ -32,6 +32,13 @@ class FakeGateway implements MusterServerGateway {
     this.logins++;
     return this.loginResult;
   }
+
+  logouts = 0;
+
+  async logout() {
+    this.logouts++;
+    return 'Successfully logged out';
+  }
 }
 
 describe('looksNotConnected', () => {
