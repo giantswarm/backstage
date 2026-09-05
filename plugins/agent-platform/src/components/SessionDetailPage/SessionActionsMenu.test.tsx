@@ -107,7 +107,11 @@ describe('SessionActionsMenu', () => {
     await renderMenu();
     await openMenu();
 
-    expect(screen.getByRole('menu')).toHaveStyle({ width: '12rem' });
+    // Read the specified value rather than using `toHaveStyle`: that goes
+    // through getComputedStyle, which resolves `rem` against the root font size
+    // since jsdom 29, so it reports `192px` and says nothing about what the
+    // component asked for.
+    expect(screen.getByRole('menu').style.width).toBe('12rem');
   });
 
   it('says what deleting actually means before doing it', async () => {

@@ -57,7 +57,7 @@
     "env-cmd": "^11.0.0",
     "husky": "^9.1.7",
     "jest": "^30.2.0",
-    "jsdom": "^27.1.0",
+    "jsdom": "^30.0.0",
     "lint-staged": "^17.0.0",
     "node-gyp": "^13.0.0",
     "prettier": "^3.0.0",
@@ -128,6 +128,11 @@
     "undici@npm:^8.4.1": "8.10.0",
     "minimatch@npm:3.1.2": "3.1.5",
     "buffer-equal-constant-time@npm:1.0.1": "patch:buffer-equal-constant-time@npm%3A1.0.1#~/.yarn/patches/buffer-equal-constant-time-npm-1.0.1-41826f3419.patch"
+  },
+  "jest": {
+    "setupFiles": [
+      "<rootDir>/../../../jest.setup.js"
+    ]
   },
   "prettier": "@backstage/cli/config/prettier",
   "lint-staged": {
