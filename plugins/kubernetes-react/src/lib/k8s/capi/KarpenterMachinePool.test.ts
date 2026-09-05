@@ -212,13 +212,16 @@ describe('KarpenterMachinePool', () => {
         expect(pool.getRootVolume()?.deviceName).toBe('/dev/xvda');
       });
 
-      it('falls back to the first mapping when none is flagged', () => {
+      it('returns undefined when no mapping is flagged as root', () => {
+        // Karpenter resolves the root device against the AMI's root device
+        // name, so list position says nothing — picking the first mapping can
+        // report a data volume as the root one.
         const pool = poolWithMappings([
-          { deviceName: '/dev/xvda', ebs: { volumeSize: '100Gi' } },
-          { deviceName: '/dev/xvdb', ebs: { volumeSize: '50Gi' } },
+          { deviceName: '/dev/xvdb', ebs: { volumeSize: '500Gi' } },
+          { deviceName: '/dev/xvda', ebs: { volumeSize: '20Gi' } },
         ]);
 
-        expect(pool.getRootVolume()?.deviceName).toBe('/dev/xvda');
+        expect(pool.getRootVolume()).toBeUndefined();
       });
 
       it('returns undefined when there are no mappings', () => {

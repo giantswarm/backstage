@@ -49,16 +49,19 @@ const useStyles = makeStyles({
  * report that instead of emitting the nonsense "after Never".
  */
 function describeConsolidation(
-  policy: string,
+  policy: string | undefined,
   consolidateAfter: string | undefined,
 ): string {
+  // The CRD documents WhenEmptyOrUnderutilized as the default when unset.
+  const effective = policy ?? 'When empty or underutilized (default)';
+
   if (consolidateAfter === 'Never') {
-    return `${policy} \u2014 disabled (consolidateAfter: Never)`;
+    return `${effective} \u2014 disabled (consolidateAfter: Never)`;
   }
   if (consolidateAfter) {
-    return `${policy}, after ${formatGoDuration(consolidateAfter)}`;
+    return `${effective}, after ${formatGoDuration(consolidateAfter)}`;
   }
-  return policy;
+  return effective;
 }
 
 interface NodePoolConfigurationProps {
@@ -111,17 +114,30 @@ export const NodePoolConfiguration = ({
       running: undefined,
     }));
 
+  // `||` would treat a pool scaled to zero as unknown and render no figure at
+  // all, rather than the accurate "0 nodes".
+  const providerIds = pool.getProviderIDs();
+  const fallbackNodes = providerIds.length
+    ? providerIds.length
+    : (pool.getReplicas() ?? 0);
+
   const lifecycle: Fact[] = [];
-  const policy = formatConsolidationPolicy(pool.getConsolidationPolicy());
-  if (policy) {
-    lifecycle.push({
-      label: 'Consolidation',
-      value: describeConsolidation(policy, pool.getConsolidateAfter()),
-    });
-  }
+  // consolidationPolicy is optional and consolidateAfter is required, so a pool
+  // may configure only the latter. Gating the row on the policy dropped it
+  // entirely for those pools, saying nothing about consolidation while it was
+  // active.
+  lifecycle.push({
+    label: 'Consolidation',
+    value: describeConsolidation(
+      formatConsolidationPolicy(pool.getConsolidationPolicy()),
+      pool.getConsolidateAfter(),
+    ),
+  });
+  // An absent expireAfter is not "Never" — the upstream CRD defaults it — so
+  // report that it is unset rather than asserting nodes are never recycled.
   lifecycle.push({
     label: 'Expire after',
-    value: formatGoDuration(pool.getExpireAfter()) ?? 'Never',
+    value: formatGoDuration(pool.getExpireAfter()) ?? 'Not set (CRD default)',
   });
   const grace = formatGoDuration(pool.getTerminationGracePeriod());
   if (grace) {
@@ -136,7 +152,7 @@ export const NodePoolConfiguration = ({
         : budgets
             .map(b => {
               const parts = [`${b.nodes} nodes`];
-              if (b.schedule) parts.push(`on \`${b.schedule}\``);
+              if (b.schedule) parts.push(`on ${b.schedule}`);
               const d = formatGoDuration(b.duration);
               if (d) parts.push(`for ${d}`);
               if (b.reasons?.length) parts.push(`(${b.reasons.join(', ')})`);
@@ -210,28 +226,29 @@ export const NodePoolConfiguration = ({
 
   // Limits are shown as meters in the summary when metrics supply them; fall
   // back to the CR's own values when they don't.
-  const configuredLimits = formatLimits(pool.getLimits());
-  const hasMeteredLimits = Object.keys(status?.limits ?? {}).length > 0;
+  // The meters only cover resources Mimir reported. Falling back for *all*
+  // resources whenever any one was metered would hide the rest — a pool with a
+  // GPU limit and a metered CPU limit would drop the GPU limit entirely.
+  const meteredResources = new Set(Object.keys(status?.limits ?? {}));
+  const unmeteredLimits = formatLimits(pool.getLimits()).filter(
+    limit => !meteredResources.has(limit.resource),
+  );
+  const hasAnyLimit = meteredResources.size > 0 || unmeteredLimits.length > 0;
 
   return (
     <Flex direction="column" gap="4">
       <InfoCard title="Running now">
         <Flex direction="column" gap="4">
-          <RunningSummary
-            status={status}
-            fallbackNodeCount={
-              pool.getProviderIDs().length || pool.getReplicas()
-            }
-          />
-          {!hasMeteredLimits && configuredLimits.length > 0 && (
+          <RunningSummary status={status} fallbackNodeCount={fallbackNodes} />
+          {unmeteredLimits.length > 0 && (
             <FactList
-              facts={configuredLimits.map(limit => ({
+              facts={unmeteredLimits.map(limit => ({
                 label: `${formatResourceName(limit.resource)} limit`,
                 value: limit.value,
               }))}
             />
           )}
-          {!hasMeteredLimits && configuredLimits.length === 0 && (
+          {!hasAnyLimit && (
             <Text variant="body-small" color="secondary">
               No provisioning limits set — this pool is unlimited.
             </Text>
@@ -240,7 +257,7 @@ export const NodePoolConfiguration = ({
       </InfoCard>
 
       <InfoCard title="Provisioning envelope">
-        {comparedRows.length === 0 && otherRows.length === 0 ? (
+        {entries.length === 0 ? (
           <Text variant="body-small" color="secondary">
             No requirements set — any instance type is allowed.
           </Text>

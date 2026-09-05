@@ -118,6 +118,11 @@ export function getInitialColumns({
       field: AWSNodePoolColumns.scaling,
       render: row => {
         if (row.type === 'Karpenter') {
+          // No limits and an unread CR both yield an empty list, but they are
+          // different claims: only the former means the pool is unlimited.
+          if (row.limits === undefined) {
+            return <NotAvailable />;
+          }
           const limits = formatLimits(row.limits);
           if (limits.length === 0) {
             return 'Unlimited';

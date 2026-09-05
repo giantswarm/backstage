@@ -168,13 +168,17 @@ export class KarpenterMachinePool extends KubeObject<KarpenterMachinePoolInterfa
   }
 
   /**
-   * The mapping explicitly flagged as the root volume, falling back to the
-   * first mapping, which is what Karpenter itself treats as root when the flag
-   * is omitted.
+   * The mapping explicitly flagged as the root volume.
+   *
+   * Returns `undefined` when no mapping carries the flag. Karpenter resolves
+   * the root device by matching `deviceName` against the AMI's root device
+   * name, which is not knowable from this CR — so guessing (the first mapping,
+   * say) can report a data volume's size as the root volume's.
    */
   getRootVolume(): KarpenterBlockDeviceMapping | undefined {
-    const mappings = this.getBlockDeviceMappings();
-    return mappings.find(mapping => mapping.rootVolume === true) ?? mappings[0];
+    return this.getBlockDeviceMappings().find(
+      mapping => mapping.rootVolume === true,
+    );
   }
 
   getInstanceStorePolicy(): KarpenterInstanceStorePolicy | undefined {

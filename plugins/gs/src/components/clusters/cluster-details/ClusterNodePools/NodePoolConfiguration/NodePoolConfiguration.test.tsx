@@ -154,6 +154,35 @@ describe('NodePoolConfiguration', () => {
   });
 
   it('reports an unconstrained key as "Any" rather than blank', async () => {
+    // A pool that constrains architecture but nothing else: the remaining
+    // rows are unconstrained, which is not the same as having no rows.
+    await renderInTestApp(
+      <NodePoolConfiguration
+        pool={createPool({
+          nodePool: {
+            template: {
+              spec: {
+                requirements: [
+                  {
+                    key: 'kubernetes.io/arch',
+                    operator: 'In',
+                    values: ['arm64'],
+                  },
+                ],
+              },
+            },
+          },
+        })}
+        nodePoolName="my-pool"
+        status={undefined}
+      />,
+    );
+
+    expect(await screen.findByText('Capacity type')).toBeInTheDocument();
+    expect(screen.getAllByText('Any').length).toBeGreaterThan(0);
+  });
+
+  it('says so when a pool sets no requirements at all', async () => {
     await renderInTestApp(
       <NodePoolConfiguration
         pool={createPool({
@@ -164,7 +193,57 @@ describe('NodePoolConfiguration', () => {
       />,
     );
 
-    expect(await screen.findByText('Capacity type')).toBeInTheDocument();
-    expect(screen.getAllByText('Any').length).toBeGreaterThan(0);
+    expect(await screen.findByText(/No requirements set/)).toBeInTheDocument();
+  });
+
+  it('does not claim a pool is unlimited when its limits are unknown', async () => {
+    // No `limits` key at all — distinct from `limits: {}`, which does mean
+    // unlimited.
+    await renderInTestApp(
+      <NodePoolConfiguration
+        pool={createPool({
+          nodePool: { template: { spec: { requirements: [] } } },
+        })}
+        nodePoolName="my-pool"
+        status={undefined}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/No provisioning limits set/),
+    ).toBeInTheDocument();
+  });
+
+  it('reports an absent expireAfter as unset rather than Never', async () => {
+    await renderInTestApp(
+      <NodePoolConfiguration
+        pool={createPool({
+          nodePool: { template: { spec: { requirements: [] } } },
+        })}
+        nodePoolName="my-pool"
+        status={undefined}
+      />,
+    );
+
+    expect(await screen.findByText(/Not set/)).toBeInTheDocument();
+    expect(screen.queryByText('Never')).not.toBeInTheDocument();
+  });
+
+  it('keeps the consolidation row when only consolidateAfter is set', async () => {
+    await renderInTestApp(
+      <NodePoolConfiguration
+        pool={createPool({
+          nodePool: {
+            disruption: { consolidateAfter: '5m' },
+            template: { spec: { requirements: [] } },
+          },
+        })}
+        nodePoolName="my-pool"
+        status={undefined}
+      />,
+    );
+
+    expect(await screen.findByText('Consolidation')).toBeInTheDocument();
+    expect(screen.getByText(/after 5m/)).toBeInTheDocument();
   });
 });
