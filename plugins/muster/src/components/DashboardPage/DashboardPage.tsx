@@ -13,6 +13,10 @@ import {
 import Dns from '@material-ui/icons/Dns';
 import AccountTree from '@material-ui/icons/AccountTree';
 import ArrowForward from '@material-ui/icons/ArrowForward';
+import BarChart from '@material-ui/icons/BarChart';
+import Build from '@material-ui/icons/Build';
+import DeviceHub from '@material-ui/icons/DeviceHub';
+import Extension from '@material-ui/icons/Extension';
 import VerifiedUser from '@material-ui/icons/VerifiedUser';
 import Lock from '@material-ui/icons/Lock';
 import { Content, Link, Progress } from '@backstage/core-components';
@@ -21,11 +25,24 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
-import { FleetHealthMatrix } from './FleetHealthMatrix';
-import { FreshnessIndicator, SectionHeader, Stat, StateBadge } from '../shared';
+import { CapabilitySurface } from './CapabilitySurface';
+import { FleetCoverage } from './FleetCoverage';
+import { InventoryBreakdown } from './InventoryBreakdown';
+import {
+  FreshnessIndicator,
+  Gate,
+  SectionHeader,
+  Stat,
+  StateBadge,
+} from '../shared';
 import { serversHealthSummary } from '../../lib/k8s';
 import { musterApiRef } from '../../apis';
-import { mcpServersRouteRef, workflowsRouteRef } from '../../routes';
+import {
+  mcpServersRouteRef,
+  toolExplorerRouteRef,
+  usageRouteRef,
+  workflowsRouteRef,
+} from '../../routes';
 
 // muster identity, ported verbatim from the mockup's `lib/mock/mcp-servers.ts`
 // so the overview reads identically; the per-instance endpoint comes from the
@@ -271,6 +288,8 @@ export function DashboardPage() {
   const identityApi = useApi(identityApiRef);
   const mcpServersLink = useRouteRef(mcpServersRouteRef);
   const workflowsLink = useRouteRef(workflowsRouteRef);
+  const usageLink = useRouteRef(usageRouteRef);
+  const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
 
   // The logged-in Backstage identity, shown in the "Authenticated as" badge.
   const { data: profile } = useQuery({
@@ -435,7 +454,7 @@ export function DashboardPage() {
               />
               {/* Computed from the CRD reads, not the muster session, so it
                   renders whenever the server list has loaded -- the same data
-                  the fleet-health pills below show unauthenticated. */}
+                  the fleet coverage below reads unauthenticated. */}
               <Stat
                 label="Servers healthy"
                 value={
@@ -480,15 +499,76 @@ export function DashboardPage() {
                     : `${workflows.length} workflows`
                 }
               />
+              <BrowseCard
+                to={withInstallation(
+                  toolExplorerLink?.() ?? '#',
+                  activeInstallation,
+                )}
+                icon={<Build />}
+                title="Tool explorer"
+                description="Browse and search the live aggregated tool catalogue, inspect input schemas, and run a tool."
+                count={
+                  authenticated
+                    ? `${toolStat} tools`
+                    : 'Requires a muster session'
+                }
+              />
+              <BrowseCard
+                to={withInstallation(usageLink?.() ?? '#', activeInstallation)}
+                icon={<BarChart />}
+                title="MCP usage"
+                description="Tool calls dispatched to the servers behind this muster — volume, outcomes, latency, top tools."
+                count="From muster's own metrics"
+              />
             </Box>
           </Box>
 
-          {/* Fleet health matrix — within this instance */}
+          {/* Capability surface — what agents can reach, per server group.
+              Session-scoped like the Tools stat, hence gated. */}
           <Box className={classes.section}>
             <SectionHeader
-              icon={<Dns />}
-              title="Fleet health"
-              description="MCPServer state grouped by server, mirroring the MCP-servers manager: each standard family and integration server carries a health pill per management cluster it is federated across (the worst state in that family × cluster cell)."
+              icon={<Extension />}
+              title="Capability surface"
+              description="What agents can reach through this muster: the tools, resources and prompts each server contributes to the aggregated catalogue, and muster's own core tools."
+            />
+            {authenticated ? (
+              <CapabilitySurface
+                servers={mcpServers}
+                installation={activeInstallation}
+              />
+            ) : (
+              <Gate
+                label="Authenticate to muster to count the tools, resources and prompts each server contributes."
+                action={
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="primary"
+                    disabled={connecting}
+                    startIcon={
+                      connecting ? (
+                        <CircularProgress size={14} color="inherit" />
+                      ) : (
+                        <Lock style={{ fontSize: 14 }} />
+                      )
+                    }
+                    onClick={handleConnect}
+                  >
+                    Connect to muster
+                  </Button>
+                }
+              />
+            )}
+          </Box>
+
+          {/* Fleet coverage — CRD reads, no session. Coverage (where a family
+              is deployed) is the fact the servers page's per-cluster pills
+              cannot show; the full per-cluster picture lives there. */}
+          <Box className={classes.section}>
+            <SectionHeader
+              icon={<DeviceHub />}
+              title="Fleet coverage"
+              description="How far each standard server family reaches across the management clusters this installation federates. A family missing from a cluster is not deployed there; a degraded cluster has it deployed but not connected. Expand a family on the MCP servers page for every cluster."
               action={
                 <FreshnessIndicator
                   updatedAt={dataUpdatedAt}
@@ -499,10 +579,26 @@ export function DashboardPage() {
             />
             {serversPending ? (
               <Typography variant="body2" color="textSecondary">
-                Loading fleet health…
+                Loading fleet coverage…
               </Typography>
             ) : (
-              <FleetHealthMatrix servers={mcpServers} />
+              <FleetCoverage servers={mcpServers} />
+            )}
+          </Box>
+
+          {/* Provenance & authentication — the governance view, CRD reads. */}
+          <Box className={classes.section}>
+            <SectionHeader
+              icon={<VerifiedUser />}
+              title="Provenance & authentication"
+              description="How the servers and workflows in this installation are managed, and how the servers' users authenticate. GitOps-managed resources are read-only here and change through a PR; live-registered ones can be edited in place."
+            />
+            {serversPending ? (
+              <Typography variant="body2" color="textSecondary">
+                Loading inventory…
+              </Typography>
+            ) : (
+              <InventoryBreakdown servers={mcpServers} workflows={workflows} />
             )}
           </Box>
         </Box>

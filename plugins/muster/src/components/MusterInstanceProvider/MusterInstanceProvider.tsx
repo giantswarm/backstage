@@ -21,7 +21,7 @@ import { MusterInstallationInfo } from '../../apis/types';
 const STORAGE_KEY = 'muster-installation';
 
 // A light background refetch so the live health reads (per-MC pills, the
-// "Servers healthy" stat, fleet health) don't drift silently from the CRD
+// "Servers healthy" stat, fleet coverage) don't drift silently from the CRD
 // between page loads. Configured once here so both the dashboard and the
 // MCP-servers manager inherit it (ADR D4). The reads are trivially cheap once
 // the cluster auth is warm; the manual refresh control covers the gap between
