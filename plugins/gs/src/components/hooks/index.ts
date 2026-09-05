@@ -34,4 +34,5 @@ export * from './useMimirWorkloadDiagnostics';
 export * from './useMimirWorkloadStatus';
 export * from './useMimirWorkloads';
 export * from './useMimirNodePoolNodes';
+export * from './useKarpenterNodePoolStatus';
 export * from './useHelmValuesValidation';

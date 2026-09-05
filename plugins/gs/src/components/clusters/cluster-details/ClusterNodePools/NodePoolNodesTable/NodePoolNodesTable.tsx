@@ -1,35 +1,19 @@
 import { Table } from '@backstage/core-components';
-import { Box, IconButton, makeStyles, Typography } from '@material-ui/core';
-import CloseIcon from '@material-ui/icons/Close';
 import { NodePoolNode } from '../../../../hooks';
 import { getColumns } from './columns';
 
-const useStyles = makeStyles(theme => ({
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: theme.spacing(2),
-  },
-}));
-
 interface NodePoolNodesTableProps {
-  nodePoolName: string;
   nodes: NodePoolNode[];
   isLoading: boolean;
   provider: 'aws' | 'azure';
-  onClose: () => void;
 }
 
 export const NodePoolNodesTable = ({
-  nodePoolName,
   nodes,
   isLoading,
   provider,
-  onClose,
 }: NodePoolNodesTableProps) => {
   const columns = getColumns(provider);
-  const classes = useStyles();
 
   return (
     <Table
@@ -41,16 +25,9 @@ export const NodePoolNodesTable = ({
         padding: 'dense',
       }}
       components={{
-        Toolbar: () => (
-          <Box className={classes.toolbar}>
-            <Typography variant="h6">
-              {nodePoolName} nodes ({nodes.length})
-            </Typography>
-            <IconButton onClick={onClose}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        ),
+        // The node pool name, node count and close control live on the
+        // surrounding tabs, so the table needs no chrome of its own.
+        Toolbar: () => null,
       }}
       style={{ width: '100%' }}
     />

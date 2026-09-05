@@ -1,6 +1,7 @@
 import { TableColumn } from '@backstage/core-components';
 import { Link, Tooltip } from '@material-ui/core';
 import { getInstanceTypeTooltip } from '../awsInstanceTypeInfo';
+import { formatLimits } from '../karpenter';
 import {
   isTableColumnHidden,
   sortAndFilterOptions,
@@ -17,6 +18,7 @@ export type AWSNodePoolRow = {
   availabilityZones: string[] | undefined;
   minSize: number | undefined;
   maxSize: number | undefined;
+  limits: Record<string, number | string> | undefined;
   phase: string | undefined;
   created: string | undefined;
 };
@@ -116,7 +118,24 @@ export function getInitialColumns({
       field: AWSNodePoolColumns.scaling,
       render: row => {
         if (row.type === 'Karpenter') {
-          return 'Karpenter-managed';
+          // No limits and an unread CR both yield an empty list, but they are
+          // different claims: only the former means the pool is unlimited.
+          if (row.limits === undefined) {
+            return <NotAvailable />;
+          }
+          const limits = formatLimits(row.limits);
+          if (limits.length === 0) {
+            return 'Unlimited';
+          }
+          const summary = limits
+            .map(limit => `${limit.resource} ${limit.value}`)
+            .join(' \u00b7 ');
+
+          return (
+            <Tooltip title={`Karpenter provisioning limits: ${summary}`} arrow>
+              <span>{summary}</span>
+            </Tooltip>
+          );
         }
         if (row.minSize !== undefined && row.maxSize !== undefined) {
           return `${row.minSize} \u2013 ${row.maxSize}`;
