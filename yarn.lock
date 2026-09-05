@@ -7622,6 +7622,7 @@ __metadata:
     "@backstage/plugin-auth-backend": "backstage:^"
     "@backstage/plugin-auth-backend-module-oidc-provider": "backstage:^"
     "@backstage/plugin-auth-node": "backstage:^"
+    "@giantswarm/backstage-plugin-gs-node": "workspace:^"
     "@types/express": "npm:^5.0.0"
     "@types/passport-oauth2": "npm:^1"
     "@types/supertest": "npm:^7.0.0"

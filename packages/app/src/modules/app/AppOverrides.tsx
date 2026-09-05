@@ -41,6 +41,7 @@ import {
 } from '@backstage/core-app-api';
 import {
   GSDiscoveryApiClient,
+  gsAuthProvidersApiRef,
   InstallationsConfigLoader,
 } from '@giantswarm/backstage-plugin-gs';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
@@ -154,6 +155,14 @@ export const appOverrides = createFrontendModule({
      * ['read:user'] is used by default.
      * ['read:user', 'repo'] is required by @roadiehq/backstage-plugin-github-pull-requests.
      * ['read:user', 'repo', 'read:org'] is required by @backstage-community/plugin-github-actions.
+     *
+     * With `gs.github` configured the API runs on the person's own GitHub
+     * grant in muster (no GitHub App or GitHub login in the portal): tokens
+     * come from the auth backend's github-token route through muster's token
+     * broker, a missing grant bounces once through muster's connect, and
+     * signing out revokes the grant in muster. Without it the upstream
+     * provider (`auth.providers.github`) is used as before -- customer
+     * portals are unchanged. `scm-auth` above consumes whichever it is.
      */
     ApiBlueprint.make({
       name: 'github-auth',
@@ -164,8 +173,15 @@ export const appOverrides = createFrontendModule({
             configApi: configApiRef,
             discoveryApi: discoveryApiRef,
             oauthRequestApi: oauthRequestApiRef,
+            gsAuthProvidersApi: gsAuthProvidersApiRef,
           },
-          factory: ({ configApi, discoveryApi, oauthRequestApi }) =>
+          factory: ({
+            configApi,
+            discoveryApi,
+            oauthRequestApi,
+            gsAuthProvidersApi,
+          }) =>
+            gsAuthProvidersApi.getGithubAuthApi() ??
             GithubAuth.create({
               configApi,
               discoveryApi,

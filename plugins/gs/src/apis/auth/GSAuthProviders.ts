@@ -16,6 +16,7 @@ import {
 } from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { getOIDCScopes } from './scopes';
+import { GithubGrantAuthConnector } from './GithubGrantAuthConnector';
 import {
   LocalStorageSignInConnectorMemory,
   SignInConnectorMemory,
@@ -97,6 +98,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
   private readonly mcpAuthProviders: AuthProvider[];
   private readonly mcpAuthApis: { [providerName: string]: AuthApi };
+
+  // Backstage's standard GitHub auth API on the person's GitHub grant in
+  // muster (`gs.github`). Built on first use; undefined when not configured.
+  private githubAuthApi?: OAuth2;
 
   private readonly clusterAccessStatusApi?: ClusterAccessStatusApi;
 
@@ -596,6 +601,47 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       );
     }
     return this.fallbackSignInAuthApi;
+  }
+
+  /**
+   * Backstage's standard GitHub auth API (`githubAuthApiRef`) implemented on
+   * the person's own GitHub grant in muster: tokens are minted from
+   * `POST /api/auth/github-token`, a missing grant sends the browser through
+   * muster's connect once (full-page, back to the current page), signing out
+   * revokes the grant in muster. Configured by `gs.github`; returns undefined
+   * otherwise, so the app can keep the upstream GitHub provider.
+   *
+   * The consumers -- the GitHub Actions and Pull Requests tabs, `ScmAuth`,
+   * the scaffolder pickers -- keep their own GitHub clients; this only
+   * supplies the token.
+   */
+  getGithubAuthApi(): AuthApi | undefined {
+    if (!this.hasGithubAuthApi()) {
+      return undefined;
+    }
+    if (!this.githubAuthApi) {
+      const mainAuthApi = this.getMainAuthApi();
+      const backendBaseUrl = this.configApi!.getString('backend.baseUrl');
+      this.githubAuthApi = OAuth2.create({
+        authConnector: new GithubGrantAuthConnector({
+          backendBaseUrl,
+          mainAuthApi,
+        }),
+        // What the portal's plugins ask for (see the app's github-auth
+        // factory); echoed by the connector, since a GitHub App user token
+        // carries no scopes of its own.
+        defaultScopes: ['read:user', 'repo', 'read:org'],
+      });
+    }
+    return this.githubAuthApi;
+  }
+
+  /** Whether `gs.github` puts the GitHub auth API on muster. */
+  hasGithubAuthApi(): boolean {
+    return Boolean(
+      this.configApi?.getOptionalString('gs.github.brokerAudience') &&
+      this.configApi?.getOptionalString('gs.authProvider'),
+    );
   }
 
   getAuthApi(providerName: string) {

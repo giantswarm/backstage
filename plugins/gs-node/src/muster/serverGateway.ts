@@ -2,6 +2,7 @@ import { LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import {
   AUTH_LOGIN_TOOL,
+  AUTH_LOGOUT_TOOL,
   AuthLoginResult,
   parseAuthLoginResult,
 } from './authLogin';
@@ -72,6 +73,14 @@ export interface MusterServerGateway {
    * with the sign-in URL otherwise.
    */
   login(authToken: string): Promise<AuthLoginResult>;
+  /**
+   * Sign the caller out of the server in muster (`core_auth_logout`). For a
+   * server whose authorization server files grants under the person
+   * (GitHub through muster), this revokes the person's grant for every
+   * session and every server of that issuer; muster's own answer is
+   * returned for display.
+   */
+  logout(authToken: string): Promise<string>;
 }
 
 /** The muster-backed gateway: tools addressed as `x_<prefix>_<tool>`. */
@@ -139,6 +148,18 @@ export class MusterServerClient implements MusterServerGateway {
       { authToken },
     );
     return parseAuthLoginResult(result);
+  }
+
+  async logout(authToken: string): Promise<string> {
+    const content = await this.client.callToolContent(
+      AUTH_LOGOUT_TOOL,
+      { server: this.server },
+      { authToken },
+    );
+    return content
+      .filter(item => item.type === 'text')
+      .map(item => item.text ?? '')
+      .join('\n');
   }
 }
 

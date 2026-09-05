@@ -58,6 +58,14 @@ export type GSAuthProvidersApi = {
   getFallbackSignInAuthApi: () => AuthApi;
   getKubernetesAuthApis: () => { [providerName: string]: AuthApi };
   getMCPAuthApis: () => { [providerName: string]: AuthApi };
+  /**
+   * Backstage's standard GitHub auth API on the person's GitHub grant in
+   * muster, when `gs.github` is configured; undefined otherwise (the app then
+   * keeps the upstream GitHub auth provider).
+   */
+  getGithubAuthApi: () => AuthApi | undefined;
+  /** Whether `gs.github` puts the GitHub auth API on muster. */
+  hasGithubAuthApi: () => boolean;
   getProviders: () => AuthProvider[];
   /**
    * Ensures the lazily-loaded per-installation auth providers/APIs have been
