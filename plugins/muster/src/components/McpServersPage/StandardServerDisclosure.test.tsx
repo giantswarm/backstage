@@ -113,12 +113,12 @@ describe('StandardServerDisclosure', () => {
     });
 
     const pills = screen.getAllByTitle(PILL_TITLE);
-    expect(pills).toHaveLength(10);
+    expect(pills).toHaveLength(8);
     expect(pills[0]).toHaveTextContent('gaggle');
     expect(pills[0]).toHaveTextContent('Failed');
     expect(pills[1]).toHaveTextContent('garm');
     expect(pills[1]).toHaveTextContent('Disconnected');
-    expect(screen.getByText('+14 more')).toBeInTheDocument();
+    expect(screen.getByText('+16 more')).toBeInTheDocument();
     expect(screen.getByText('24 clusters')).toBeInTheDocument();
   });
 
@@ -131,10 +131,12 @@ describe('StandardServerDisclosure', () => {
     });
 
     expect(screen.getByText('10/24 clusters')).toBeInTheDocument();
-    expect(screen.queryByText(/more$/)).not.toBeInTheDocument();
+    expect(screen.getAllByTitle(PILL_TITLE)).toHaveLength(8);
+    expect(screen.getByText('+2 more')).toBeInTheDocument();
 
     await userEvent.click(screen.getByText('capi'));
 
+    // The block lists all ten, not the collapsed row's eight.
     const block = (await screen.findByText('Management clusters'))
       .parentElement as HTMLElement;
     expect(within(block).getAllByTitle(PILL_TITLE)).toHaveLength(10);
