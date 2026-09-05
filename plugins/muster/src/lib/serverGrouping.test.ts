@@ -1,8 +1,12 @@
 import { MCPServer, MANAGEMENT_CLUSTER_LABEL } from './k8s';
 import {
+  familyCoverage,
+  fleetManagementClusters,
+  orderPresenceDegradedFirst,
   partitionServers,
   presenceByMc,
   selectRepresentative,
+  summarizePresence,
 } from './serverGrouping';
 
 function makeServer(opts: {
@@ -109,5 +113,136 @@ describe('selectRepresentative', () => {
 
   it('returns undefined for an empty fleet', () => {
     expect(selectRepresentative([], 'gazelle')).toBeUndefined();
+  });
+});
+
+describe('orderPresenceDegradedFirst', () => {
+  it('puts failed before disconnected before healthy, alphabetical within a band', () => {
+    const presence = presenceByMc([
+      makeServer({ name: 'a', mc: 'agama', state: 'Connected' }),
+      makeServer({ name: 'b', mc: 'zebra', state: 'Failed' }),
+      makeServer({ name: 'c', mc: 'garm', state: 'Disconnected' }),
+      makeServer({ name: 'd', mc: 'alba', state: 'Auth Required' }),
+      makeServer({ name: 'e', mc: 'beta', state: 'Failed' }),
+    ]);
+
+    expect(orderPresenceDegradedFirst(presence).map(p => p.mc)).toEqual([
+      'beta',
+      'zebra',
+      'garm',
+      'agama',
+      'alba',
+    ]);
+  });
+});
+
+describe('summarizePresence', () => {
+  const mcName = (i: number) => `mc-${String(i).padStart(2, '0')}`;
+  const fleet = (size: number, degraded: string[]) =>
+    presenceByMc(
+      Array.from({ length: size }, (_, i) =>
+        makeServer({
+          name: `k8s-${i}`,
+          mc: mcName(i),
+          state: degraded.includes(mcName(i)) ? 'Failed' : 'Connected',
+        }),
+      ),
+    );
+
+  it('shows every degraded cluster first and folds the healthy remainder', () => {
+    const { shown, folded } = summarizePresence(
+      fleet(24, ['mc-17', 'mc-05']),
+      10,
+    );
+
+    expect(shown).toHaveLength(10);
+    expect(shown.slice(0, 2).map(p => p.mc)).toEqual(['mc-05', 'mc-17']);
+    expect(shown.slice(2).every(p => p.severity === 'ok')).toBe(true);
+    expect(folded).toBe(14);
+  });
+
+  it('never folds a degraded cluster, even past the limit', () => {
+    const all = Array.from({ length: 12 }, (_, i) => mcName(i));
+    const { shown, folded } = summarizePresence(fleet(12, all), 10);
+
+    expect(shown).toHaveLength(12);
+    expect(folded).toBe(0);
+  });
+
+  it('shows a single leftover rather than folding it into "+1 more"', () => {
+    const { shown, folded } = summarizePresence(fleet(11, []), 10);
+
+    expect(shown).toHaveLength(11);
+    expect(folded).toBe(0);
+  });
+
+  it('leaves a short row alone', () => {
+    const { shown, folded } = summarizePresence(fleet(3, []), 10);
+
+    expect(shown).toHaveLength(3);
+    expect(folded).toBe(0);
+  });
+});
+
+describe('fleetManagementClusters / familyCoverage', () => {
+  const kubernetes = {
+    family: 'kubernetes',
+    servers: ['agama', 'alba', 'gaggle', 'garm'].map(mc =>
+      makeServer({
+        name: `k8s-${mc}`,
+        family: 'kubernetes',
+        mc,
+        state: mc === 'garm' ? 'Failed' : 'Connected',
+      }),
+    ),
+  };
+  // A family mid-rollout: deployed on two of the four clusters.
+  const capi = {
+    family: 'capi',
+    servers: ['gaggle', 'garm'].map(mc =>
+      makeServer({
+        name: `capi-${mc}`,
+        family: 'capi',
+        mc,
+        state: 'Connected',
+      }),
+    ),
+  };
+
+  it('unions the clusters of every family, sorted', () => {
+    expect(fleetManagementClusters([capi, kubernetes])).toEqual([
+      'agama',
+      'alba',
+      'gaggle',
+      'garm',
+    ]);
+  });
+
+  it('reports a partially rolled-out family as missing from the rest of the fleet', () => {
+    const coverage = familyCoverage(
+      capi,
+      fleetManagementClusters([capi, kubernetes]),
+    );
+
+    expect(coverage.present.map(p => p.mc)).toEqual(['gaggle', 'garm']);
+    expect(coverage.missing).toEqual(['agama', 'alba']);
+    expect(coverage.degraded).toEqual([]);
+    expect(coverage.fleetSize).toBe(4);
+  });
+
+  it('reports a fully deployed family with its degraded clusters first', () => {
+    const coverage = familyCoverage(
+      kubernetes,
+      fleetManagementClusters([capi, kubernetes]),
+    );
+
+    expect(coverage.missing).toEqual([]);
+    expect(coverage.present.map(p => p.mc)).toEqual([
+      'garm',
+      'agama',
+      'alba',
+      'gaggle',
+    ]);
+    expect(coverage.degraded.map(p => p.mc)).toEqual(['garm']);
   });
 });

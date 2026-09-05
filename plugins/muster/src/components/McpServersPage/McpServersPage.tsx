@@ -26,7 +26,10 @@ import {
   DisclosureAccordion,
   FreshnessIndicator,
 } from '../shared';
-import { partitionServers } from '../../lib/serverGrouping';
+import {
+  fleetManagementClusters,
+  partitionServers,
+} from '../../lib/serverGrouping';
 import { StandardServerDisclosure } from './StandardServerDisclosure';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
 import { CoreFamiliesPanel } from './CoreFamiliesPanel';
@@ -120,15 +123,11 @@ export function McpServersPage() {
   );
   useProvidePageHeaderActions(headerActions);
 
-  const targetMcs = useMemo(
-    () =>
-      new Set(
-        standard.flatMap(g =>
-          g.servers
-            .map(s => s.getManagementCluster())
-            .filter((mc): mc is string => Boolean(mc)),
-        ),
-      ),
+  // The fleet every family's coverage is measured against: a family present
+  // on fewer clusters than this is still being rolled out (or was withdrawn),
+  // which its row says as "10/24 clusters" plus the missing names when expanded.
+  const fleetClusters = useMemo(
+    () => fleetManagementClusters(standard),
     [standard],
   );
 
@@ -185,7 +184,7 @@ export function McpServersPage() {
           <SectionHeader
             icon={<Dns />}
             title="Standard servers"
-            description="muster federates the same backend MCP servers across the management clusters in this installation. Each family's tool surface is identical, so it is shown once; connection health is tracked per management cluster."
+            description="muster federates the same backend MCP servers across the management clusters in this installation. Each family's tool surface is identical, so it is shown once; connection health is tracked per management cluster, degraded clusters first. Expand a family for every cluster it is deployed on."
             action={
               <FreshnessIndicator
                 updatedAt={dataUpdatedAt}
@@ -204,8 +203,8 @@ export function McpServersPage() {
               <Typography variant="body2" className={classes.presentNote}>
                 {standard.length}{' '}
                 {standard.length === 1 ? 'family' : 'families'} across{' '}
-                {targetMcs.size} {targetMcs.size === 1 ? 'cluster' : 'clusters'}
-                .
+                {fleetClusters.length}{' '}
+                {fleetClusters.length === 1 ? 'cluster' : 'clusters'}.
               </Typography>
               <Box className={classes.stack}>
                 {standard.map(group => (
@@ -213,6 +212,7 @@ export function McpServersPage() {
                     key={group.family}
                     family={group.family}
                     servers={group.servers}
+                    fleetClusters={fleetClusters}
                     activeInstallation={activeInstallation}
                     authenticated={authenticated}
                     defaultExpanded={false}

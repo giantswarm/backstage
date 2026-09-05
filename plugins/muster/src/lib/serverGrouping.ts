@@ -17,8 +17,8 @@ export type StandardGroup = { family: string; servers: MCPServer[] };
  * (singular servers with no family -- customer integrations and shared
  * services). Family presence is the discriminator.
  *
- * Shared by the MCP-servers manager and the dashboard fleet-health summary so
- * both group the fleet identically.
+ * Shared by the MCP-servers manager and the dashboard's coverage and
+ * capability views so all of them group the fleet identically.
  */
 export function partitionServers(servers: MCPServer[]): {
   standard: StandardGroup[];
@@ -108,8 +108,9 @@ export type McPresence = {
 /**
  * Collapse a family's federated instances into one health entry per management
  * cluster: the worst severity in that cluster and the worst-state server as the
- * representative for its diagnostics. Drives the per-MC pills shown in the
- * MCP-servers manager and the dashboard fleet-health summary.
+ * representative for its diagnostics. Alphabetical by cluster; callers that
+ * want the clusters needing a look first apply
+ * {@link orderPresenceDegradedFirst}.
  */
 export function presenceByMc(servers: MCPServer[]): McPresence[] {
   const byMc = new Map<string, MCPServer[]>();
@@ -134,4 +135,119 @@ export function presenceByMc(servers: MCPServer[]): McPresence[] {
       };
     })
     .sort((a, b) => a.mc.localeCompare(b.mc));
+}
+
+// Severity bands for display order. Failed before merely disconnected before
+// unknown, and the healthy majority last -- the clusters that need a look are
+// the reason to read the row at all.
+const DEGRADED_FIRST: Record<MCPServerSeverity, number> = {
+  error: 0,
+  warning: 1,
+  unknown: 2,
+  ok: 3,
+};
+
+/**
+ * The per-cluster entries with the degraded clusters first (most severe
+ * first), alphabetical within a band. Drives both the collapsed family row and
+ * the full cluster list shown when it is expanded, so a failing cluster is
+ * never buried behind twenty healthy pills.
+ */
+export function orderPresenceDegradedFirst(
+  presence: McPresence[],
+): McPresence[] {
+  return [...presence].sort(
+    (a, b) =>
+      DEGRADED_FIRST[a.severity] - DEGRADED_FIRST[b.severity] ||
+      a.mc.localeCompare(b.mc),
+  );
+}
+
+/**
+ * How many cluster pills a collapsed family row shows before the healthy
+ * remainder folds into a "+N more" count. Ten is what fits on one line at the
+ * pages' 1024px reading width; a family across two dozen clusters used to
+ * wrap onto a second and third line.
+ */
+export const SUMMARY_PILL_LIMIT = 10;
+
+export type PresenceSummary = {
+  /** Pills to render: every degraded cluster, then healthy ones while room remains. */
+  shown: McPresence[];
+  /** Healthy clusters folded into the "+N more" count. */
+  folded: number;
+};
+
+/**
+ * The pills a collapsed family row shows. Degraded clusters are never folded
+ * (they are what the row is for, even when there are more than `limit` of
+ * them); healthy clusters fill the remaining room. A single healthy leftover
+ * is shown rather than folded -- "+1 more" costs the same width as the pill.
+ */
+export function summarizePresence(
+  presence: McPresence[],
+  limit = SUMMARY_PILL_LIMIT,
+): PresenceSummary {
+  const ordered = orderPresenceDegradedFirst(presence);
+  const degraded = ordered.filter(p => p.severity !== 'ok');
+  const healthy = ordered.filter(p => p.severity === 'ok');
+  const room = Math.max(0, limit - degraded.length);
+  const shownHealthy =
+    healthy.length <= room + 1 ? healthy : healthy.slice(0, room);
+  return {
+    shown: [...degraded, ...shownHealthy],
+    folded: healthy.length - shownHealthy.length,
+  };
+}
+
+/**
+ * Every management cluster any standard family is federated across, sorted:
+ * the fleet a family's coverage is measured against. Servers without the
+ * management-cluster label contribute nothing here.
+ */
+export function fleetManagementClusters(standard: StandardGroup[]): string[] {
+  const clusters = new Set<string>();
+  for (const group of standard) {
+    for (const server of group.servers) {
+      const mc = server.getManagementCluster();
+      if (mc) {
+        clusters.add(mc);
+      }
+    }
+  }
+  return [...clusters].sort((a, b) => a.localeCompare(b));
+}
+
+export type FamilyCoverage = {
+  family: string;
+  /** Clusters the family is deployed on, one entry each, degraded first. */
+  present: McPresence[];
+  /** Fleet clusters the family is not deployed on, sorted. */
+  missing: string[];
+  /** The present clusters whose instance is not healthy. */
+  degraded: McPresence[];
+  /** Size of the fleet the coverage is measured against. */
+  fleetSize: number;
+};
+
+/**
+ * How far one family reaches across the fleet: where it is deployed, where it
+ * is deployed but not connected, and where it is not deployed at all. The
+ * last is what distinguishes a family still being rolled out (present on 10
+ * of 24 clusters) from one that is failing -- both used to read as a shorter
+ * row of pills.
+ */
+export function familyCoverage(
+  group: StandardGroup,
+  fleet: string[],
+): FamilyCoverage {
+  const present = orderPresenceDegradedFirst(presenceByMc(group.servers));
+  const covered = new Set(present.map(p => p.mc));
+  return {
+    family: group.family,
+    present,
+    missing: fleet.filter(mc => !covered.has(mc)),
+    degraded: present.filter(p => p.severity !== 'ok'),
+    fleetSize: fleet.length,
+  };
 }
