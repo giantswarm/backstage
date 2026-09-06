@@ -1,4 +1,19 @@
-import { shouldDehydrateAgentPlatformQuery } from './QueryClientProvider';
+import { LEGACY_SHARED_PERSISTER_KEY } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  AGENT_PLATFORM_PERSISTER_KEY,
+  shouldDehydrateAgentPlatformQuery,
+} from './QueryClientProvider';
+
+describe('AGENT_PLATFORM_PERSISTER_KEY', () => {
+  it("is this plugin's own localStorage key, not the shared library default", () => {
+    // Sharing the default key with the gs and flux providers merged the three
+    // caches into one blob that grew towards the origin's quota.
+    expect(AGENT_PLATFORM_PERSISTER_KEY).toBe(
+      'agent-platform-react-query-cache',
+    );
+    expect(AGENT_PLATFORM_PERSISTER_KEY).not.toBe(LEGACY_SHARED_PERSISTER_KEY);
+  });
+});
 
 describe('shouldDehydrateAgentPlatformQuery', () => {
   it.each([
