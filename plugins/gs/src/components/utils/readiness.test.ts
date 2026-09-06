@@ -1,4 +1,7 @@
-import { ReleaseReadinessFlags } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  BuildReadinessFlags,
+  ReleaseReadinessFlags,
+} from '@giantswarm/backstage-plugin-gs-common';
 import {
   READINESS_INTENTS,
   READINESS_LABELS,
@@ -58,14 +61,25 @@ describe('readiness presentation', () => {
   });
 
   it('splits the merged flag list by the verdict that wrote it', () => {
-    const { release, chartMetadata } = partitionReadinessFlags([
+    const { release, build, chartMetadata } = partitionReadinessFlags([
       'NO-VALUES-SCHEMA',
       'NEVER-PUBLISHED',
+      'BUILD-RED',
       'META-NO-TEAM',
     ]);
 
     expect(release).toEqual(['NEVER-PUBLISHED']);
+    expect(build).toEqual(['BUILD-RED']);
     expect(chartMetadata).toEqual(['NO-VALUES-SCHEMA', 'META-NO-TEAM']);
+  });
+
+  it('recognises exactly the build blockers the processor declares', () => {
+    const { build, chartMetadata } = partitionReadinessFlags(
+      Object.values(BuildReadinessFlags),
+    );
+
+    expect(build).toEqual(Object.values(BuildReadinessFlags));
+    expect(chartMetadata).toEqual([]);
   });
 
   it('treats an unrecognised flag as chart metadata, not as a release blocker', () => {
@@ -73,6 +87,7 @@ describe('readiness presentation', () => {
     // must not be attributed to the release verdict.
     expect(partitionReadinessFlags(['SOME-NEW-META-FLAG'])).toEqual({
       release: [],
+      build: [],
       chartMetadata: ['SOME-NEW-META-FLAG'],
     });
   });

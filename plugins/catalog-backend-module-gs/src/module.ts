@@ -11,6 +11,7 @@ import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
 import { KlausProvider } from './KlausProvider';
 import { LatestOciReleaseProcessor } from './LatestOciReleaseProcessor';
 import { AppReadinessProcessor } from './AppReadinessProcessor';
+import { BuildStatusProcessor } from './BuildStatusProcessor';
 import { LatestReleaseProcessor } from './LatestReleaseProcessor';
 import { PagerDutyAnnotationProcessor } from './PagerDutyAnnotationProcessor';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
@@ -105,6 +106,15 @@ export const catalogModuleGS = createBackendModule({
               logger,
               containerRegistry,
             }),
+          );
+        }
+
+        const buildStatusEnabled = config.getOptionalBoolean(
+          'catalog.processors.buildStatus.enabled',
+        );
+        if (buildStatusEnabled) {
+          catalog.addProcessor(
+            BuildStatusProcessor.fromConfig({ config, logger }),
           );
         }
 

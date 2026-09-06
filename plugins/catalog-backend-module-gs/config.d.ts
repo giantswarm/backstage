@@ -67,6 +67,39 @@ export interface Config {
          */
         cacheTtlSeconds?: number;
       };
+      buildStatus?: {
+        /**
+         * Enables the build status processor, which annotates Component
+         * entities carrying `github.com/project-slug` with whether their
+         * default branch builds. Sets the `giantswarm.io/build-status` label
+         * to `passing`, `failing` or `unknown`, names the failing checks in
+         * `giantswarm.io/build-failing-checks`, and merges `BUILD-RED` into
+         * `giantswarm.io/readiness-flags` when failing. Never changes the
+         * release verdict in `giantswarm.io/readiness`.
+         *
+         * Needs a GitHub token (app or PAT) — the status rollup is read over
+         * GraphQL, which has no anonymous mode.
+         * @visibility backend
+         */
+        enabled?: boolean;
+        /**
+         * CircleCI API token, used to read the branch and outcome of the
+         * builds behind failing commit statuses so a red from a branch cut
+         * off main, a merge queue or a tag is not counted against main.
+         * Public projects are readable without one; private projects need it,
+         * and without it their reds stay `unknown`.
+         * @visibility secret
+         */
+        circleciToken?: string;
+        /**
+         * Optional TTL for the in-memory lookup caches, in seconds. Defaults
+         * to 3600 (1 hour). Governs catalog write volume as much as API
+         * traffic: `giantswarm.io/build-status-checked` moves once per TTL,
+         * and each move rewrites the entity.
+         * @visibility backend
+         */
+        cacheTtlSeconds?: number;
+      };
       latestOciRelease?: {
         /**
          * Enables the latest-release processor that annotates Component

@@ -247,6 +247,19 @@ catalog:
   #     # never blocked.
   #     enabled: true
   #     cacheTtlSeconds: 3600
+  #   buildStatus:
+  #     # Annotates Component entities that have github.com/project-slug with
+  #     # whether their default branch builds. Sets the giantswarm.io/build-status
+  #     # label to passing, failing or unknown, names the failing checks in
+  #     # giantswarm.io/build-failing-checks, and merges BUILD-RED into
+  #     # giantswarm.io/readiness-flags when failing. A red that cannot be
+  #     # attributed to the default branch (GitHub hangs statuses off a SHA, so
+  #     # a build from a branch cut off main lands on main) yields unknown,
+  #     # never failing. Needs a GitHub token; the CircleCI token is only
+  #     # needed to attribute reds on private projects.
+  #     enabled: true
+  #     circleciToken: ${CIRCLECI_TOKEN}
+  #     cacheTtlSeconds: 3600
   #   latestOciRelease:
   #     # Annotates Component entities that have giantswarm.io/helmcharts with
   #     # giantswarm.io/latest-release-tag and giantswarm.io/latest-release-date,

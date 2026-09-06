@@ -20,6 +20,8 @@ import Star from '@material-ui/icons/Star';
 import StarBorder from '@material-ui/icons/StarBorder';
 import { columnFactories, hiddenColumn, noWrapColumn } from '../columns';
 import {
+  isEntityBuildStatusAvailable,
+  isEntityBuildToolchainAvailable,
   isEntityHelmChartsAvailable,
   isEntityLatestReleaseAvailable,
   isEntityReleaseVerdictAvailable,
@@ -71,6 +73,18 @@ export function CustomCatalogTable(props: CustomCatalogTableProps) {
       // is off but the importer has published chart metadata.
       if (entities.some(entity => isEntityReleaseVerdictAvailable(entity))) {
         baseColumns.push(noWrapColumn(columnFactories.createReadinessColumn()));
+      }
+      // Same reasoning for the build verdict: the processor writes nothing at
+      // all for a repo with no CI, and ships disabled.
+      if (entities.some(entity => isEntityBuildStatusAvailable(entity))) {
+        baseColumns.push(
+          noWrapColumn(columnFactories.createBuildStatusColumn()),
+        );
+      }
+      if (entities.some(entity => isEntityBuildToolchainAvailable(entity))) {
+        baseColumns.push(
+          noWrapColumn(columnFactories.createBuildToolchainColumn()),
+        );
       }
       if (entities.some(entity => isEntityHelmChartsAvailable(entity))) {
         baseColumns.push(columnFactories.createHelmChartsColunm());
