@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
 import type {
@@ -128,9 +128,9 @@ describe('MusterInstanceProvider installations', () => {
       'golem',
       'snail',
     ]);
-    expect(result.current.instance.installationInfos.map(i => i.source)).toEqual(
-      ['configured', 'configured', 'derived'],
-    );
+    expect(
+      result.current.instance.installationInfos.map(i => i.source),
+    ).toEqual(['configured', 'configured', 'derived']);
     // The default is the home installation and is written back to the URL.
     expect(result.current.instance.activeInstallation).toBe('gazelle');
     expect(result.current.instance.activeInstallationInfo).toEqual({
@@ -164,7 +164,7 @@ describe('MusterInstanceProvider installations', () => {
     const { result } = renderInstance('?installation=golem');
 
     // Give the backend query and any write-back effect time to run.
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await act(() => new Promise(resolve => setTimeout(resolve, 30)));
     expect(result.current.instance.isLoadingInstallations).toBe(true);
     expect(result.current.instance.installations).toEqual([]);
     expect(result.current.instance.activeInstallation).toBeUndefined();

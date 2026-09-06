@@ -340,12 +340,11 @@ describe('MusterApiClient token selection for derived installations', () => {
       t.fetchMock.mock.calls.filter(([url]) => String(url).includes(path));
     const headersOf = (path: string): Record<string, string> | undefined =>
       (callsTo(path)[0]?.[1] as RequestInit | undefined)?.headers as
-        | Record<string, string>
-        | undefined;
+        Record<string, string> | undefined;
     return { ...t, callsTo, headersOf };
   }
 
-  it("mints the brokered token for a derived installation once the backend says it requires one", async () => {
+  it('mints the brokered token for a derived installation once the backend says it requires one', async () => {
     const t = derivedSetup();
 
     await t.client.filterTools({ installation: 'snail', limit: 1 });

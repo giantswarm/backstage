@@ -10,6 +10,7 @@ export {
   useMusterSession,
   classifySessionFailure,
   musterRejectionDetail,
+  isUnreachableSession,
 } from './useMusterSession';
 export type {
   MusterSession,

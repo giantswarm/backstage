@@ -39,7 +39,9 @@ export function deriveMusterUrl(
 export function musterInstallationRequiresAuth(
   installation: Pick<MusterInstallationConfig, 'authProvider' | 'source'>,
 ): boolean {
-  return Boolean(installation.authProvider) || installation.source === 'derived';
+  return (
+    Boolean(installation.authProvider) || installation.source === 'derived'
+  );
 }
 
 export type MusterInstallationCounts = {
@@ -133,7 +135,8 @@ export function resolveMusterInstallations(
     installations.set(name, {
       name,
       url,
-      authProvider: entry.getOptionalString('authProvider') ?? base?.authProvider,
+      authProvider:
+        entry.getOptionalString('authProvider') ?? base?.authProvider,
       headers: readHeaders(entry.getOptionalConfig('headers')) ?? base?.headers,
       prometheusServer:
         entry.getOptionalString('prometheusServer') ?? base?.prometheusServer,

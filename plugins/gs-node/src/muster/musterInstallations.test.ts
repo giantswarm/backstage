@@ -85,9 +85,7 @@ describe('resolveMusterInstallations', () => {
     const { installations } = resolve({
       ...FLEET,
       muster: {
-        installations: [
-          { name: 'wombat', prometheusServer: 'wombat-mimir' },
-        ],
+        installations: [{ name: 'wombat', prometheusServer: 'wombat-mimir' }],
       },
     });
 

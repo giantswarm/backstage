@@ -404,6 +404,13 @@ export function DashboardPage() {
                   {activeInstallationInfo?.endpoint ??
                     `${activeInstallation} (endpoint not configured)`}
                 </code>
+                {activeInstallationInfo?.source && (
+                  <Typography variant="caption" color="textSecondary">
+                    {activeInstallationInfo.source === 'derived'
+                      ? 'Endpoint derived from the installation base domain'
+                      : 'Endpoint from the portal configuration'}
+                  </Typography>
+                )}
               </Box>
 
               <Box className={classes.authBlock}>

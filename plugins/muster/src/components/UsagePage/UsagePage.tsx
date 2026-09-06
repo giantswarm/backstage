@@ -22,9 +22,13 @@ import { StackedBarChart } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
 import type { McpUsage } from '../../apis';
-import { useMusterInstance } from '../MusterInstanceProvider';
+import {
+  isUnreachableSession,
+  useMusterInstance,
+  useMusterSession,
+} from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
-import { SectionHeader, Stat } from '../shared';
+import { SectionHeader, SessionGate, Stat } from '../shared';
 
 /** Selectable time windows; hours drives both the query and the bucket size. */
 const RANGES = [
@@ -296,16 +300,29 @@ export function UsagePage() {
   const musterApi = useApi(musterApiRef);
   const { activeInstallation } = useMusterInstance();
   const [hours, setHours] = useState<number>(RANGES[0].hours);
+  // The usage route reads muster's own metrics through the live session; an
+  // installation whose muster the backend cannot reach gets the note instead
+  // of a request that can only fail.
+  const session = useMusterSession();
+  const unreachable = isUnreachableSession(session);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['muster', 'mcp-usage', activeInstallation, hours],
     queryFn: () =>
       musterApi.getMcpUsage({ installation: activeInstallation, hours }),
-    enabled: Boolean(activeInstallation),
+    enabled: Boolean(activeInstallation) && !unreachable,
   });
 
   let body;
-  if (!activeInstallation || isLoading) {
+  if (unreachable) {
+    body = (
+      <SessionGate
+        session={session}
+        installation={activeInstallation}
+        context="Usage metrics are read through a live muster session."
+      />
+    );
+  } else if (!activeInstallation || isLoading) {
     body = <Progress />;
   } else if (error) {
     body = (

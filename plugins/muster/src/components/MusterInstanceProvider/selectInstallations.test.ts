@@ -17,7 +17,9 @@ const BACKEND: MusterInstallationInfo[] = [
   { name: 'lab', requiresAuth: true, source: 'configured' },
 ];
 
-type EntryInput = Partial<InstallationInventoryEntry> & { installation: string };
+type EntryInput = Partial<InstallationInventoryEntry> & {
+  installation: string;
+};
 
 function entry(input: EntryInput): InstallationInventoryEntry {
   return {
@@ -85,13 +87,15 @@ describe('selectMusterInstallations', () => {
       withMuster({ installation: 'ferret' }),
     ]);
 
-    expect(
-      names(selectMusterInstallations(BACKEND, inv, null)),
-    ).toEqual(['gazelle']);
+    expect(names(selectMusterInstallations(BACKEND, inv, null))).toEqual([
+      'gazelle',
+    ]);
   });
 
   it('drops a backend installation the fleet configuration does not know', () => {
-    const inv = inventory([withMuster({ installation: 'gazelle', home: true })]);
+    const inv = inventory([
+      withMuster({ installation: 'gazelle', home: true }),
+    ]);
 
     expect(names(selectMusterInstallations(BACKEND, inv, 'lab'))).toEqual([
       'gazelle',
@@ -104,9 +108,9 @@ describe('selectMusterInstallations', () => {
       withMuster({ installation: 'golem', accessState: 'session-expired' }),
     ]);
 
-    expect(
-      names(selectMusterInstallations(BACKEND, inv, null)),
-    ).toEqual(['gazelle']);
+    expect(names(selectMusterInstallations(BACKEND, inv, null))).toEqual([
+      'gazelle',
+    ]);
   });
 
   it('falls back to the whole backend list when the portal has no inventory at all', () => {
@@ -129,12 +133,14 @@ describe('selectMusterInstallations', () => {
         }),
       ]);
 
-      expect(names(selectMusterInstallations(BACKEND, inv, 'golem'))).toEqual(
-        ['gazelle', 'golem'],
-      );
-      expect(names(selectMusterInstallations(BACKEND, inv, 'snail'))).toEqual(
-        ['gazelle', 'snail'],
-      );
+      expect(names(selectMusterInstallations(BACKEND, inv, 'golem'))).toEqual([
+        'gazelle',
+        'golem',
+      ]);
+      expect(names(selectMusterInstallations(BACKEND, inv, 'snail'))).toEqual([
+        'gazelle',
+        'snail',
+      ]);
     });
 
     it('is not listed once the probe answered without muster, or failed', () => {
@@ -144,12 +150,12 @@ describe('selectMusterInstallations', () => {
         entry({ installation: 'snail', probe: 'failed' }),
       ]);
 
-      expect(names(selectMusterInstallations(BACKEND, inv, 'golem'))).toEqual(
-        ['gazelle'],
-      );
-      expect(names(selectMusterInstallations(BACKEND, inv, 'snail'))).toEqual(
-        ['gazelle'],
-      );
+      expect(names(selectMusterInstallations(BACKEND, inv, 'golem'))).toEqual([
+        'gazelle',
+      ]);
+      expect(names(selectMusterInstallations(BACKEND, inv, 'snail'))).toEqual([
+        'gazelle',
+      ]);
     });
 
     it('is not listed while its cluster access cannot answer', () => {
@@ -162,9 +168,9 @@ describe('selectMusterInstallations', () => {
         }),
       ]);
 
-      expect(names(selectMusterInstallations(BACKEND, inv, 'golem'))).toEqual(
-        ['gazelle'],
-      );
+      expect(names(selectMusterInstallations(BACKEND, inv, 'golem'))).toEqual([
+        'gazelle',
+      ]);
     });
 
     it('does not keep any other pending installation', () => {
@@ -174,9 +180,10 @@ describe('selectMusterInstallations', () => {
         entry({ installation: 'snail', probe: 'pending' }),
       ]);
 
-      expect(names(selectMusterInstallations(BACKEND, inv, 'golem'))).toEqual(
-        ['gazelle', 'golem'],
-      );
+      expect(names(selectMusterInstallations(BACKEND, inv, 'golem'))).toEqual([
+        'gazelle',
+        'golem',
+      ]);
     });
   });
 
@@ -190,9 +197,11 @@ describe('selectMusterInstallations', () => {
       'gazelle',
     );
 
-    expect(
-      names(selectMusterInstallations(BACKEND, inv, null)),
-    ).toEqual(['gazelle', 'wombat', 'golem']);
+    expect(names(selectMusterInstallations(BACKEND, inv, null))).toEqual([
+      'gazelle',
+      'wombat',
+      'golem',
+    ]);
   });
 });
 

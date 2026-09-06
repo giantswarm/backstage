@@ -60,6 +60,17 @@ export function musterProbeUrl(endpoint: string): string {
   return `${base}/.well-known/oauth-protected-resource`;
 }
 
+/** How the installation authenticates, for the start-up log line. */
+function authNote(installation: MusterInstallationConfig): string {
+  if (installation.authProvider) {
+    return ` (per-user auth via provider '${installation.authProvider}')`;
+  }
+  if (musterInstallationRequiresAuth(installation)) {
+    return " (per-user auth with the installation's token)";
+  }
+  return '';
+}
+
 function parseOptionalInt(value: unknown, name: string): number | undefined {
   if (value === undefined) {
     return undefined;
@@ -92,9 +103,10 @@ export async function createRouter(
   // single `aiChat.mcp` entry when neither is set. Whether an installation
   // actually runs muster is the frontend's question (the installation
   // inventory); whether its endpoint is reachable from here is the probe's.
-  const { installations, counts } = resolveMusterInstallations(config, logger);
+  const { installations, counts: installationCounts } =
+    resolveMusterInstallations(config, logger);
   logger.info(
-    `Muster proxy installations: ${counts.derived} derived from gs.installations base domains, ${counts.configured} configured in muster.installations, ${counts.total} total.`,
+    `Muster proxy installations: ${installationCounts.derived} derived from gs.installations base domains, ${installationCounts.configured} configured in muster.installations, ${installationCounts.total} total.`,
   );
 
   // Map each installation to a client. When a client is injected (tests),
@@ -117,13 +129,7 @@ export async function createRouter(
       logger.info(
         `Muster proxy installation '${name}' (${
           installation.source ?? 'configured'
-        }) connected to ${installation.url}${
-          installation.authProvider
-            ? ` (per-user auth via provider '${installation.authProvider}')`
-            : musterInstallationRequiresAuth(installation)
-              ? " (per-user auth with the installation's token)"
-              : ''
-        }`,
+        }) connected to ${installation.url}${authNote(installation)}`,
       );
     }
   }
