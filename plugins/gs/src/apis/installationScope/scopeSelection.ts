@@ -2,7 +2,10 @@ import type {
   InstallationInventoryEntry,
   PlatformComponent,
 } from '../installationInventory/types';
-import { ALL_INSTALLATIONS, type InstallationScope } from './installationScopeStore';
+import {
+  ALL_INSTALLATIONS,
+  type InstallationScope,
+} from './installationScopeStore';
 
 /**
  * The components whose presence makes an installation an Agent Platform

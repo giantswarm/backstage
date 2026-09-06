@@ -3,7 +3,10 @@ import { InstallationChip } from './InstallationChip';
 
 let mockInstallations: { name: string; pipeline?: string }[] = [];
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
-  useInstallations: () => ({ installations: mockInstallations, isLoading: false }),
+  useInstallations: () => ({
+    installations: mockInstallations,
+    isLoading: false,
+  }),
 }));
 
 describe('InstallationChip', () => {

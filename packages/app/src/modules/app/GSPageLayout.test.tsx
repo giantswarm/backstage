@@ -80,7 +80,10 @@ describe('GSPageLayout', () => {
       >
         <TabContent />
       </GSPageLayout>,
-      { mountPath: '/agent-platform', initialRouteEntries: ['/agent-platform/list'] },
+      {
+        mountPath: '/agent-platform',
+        initialRouteEntries: ['/agent-platform/list'],
+      },
     );
 
     // The section-wide control is not displaced by the tab's button.

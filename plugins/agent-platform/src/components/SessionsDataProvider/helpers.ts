@@ -164,7 +164,10 @@ function timestampValue(value: string | undefined): number | undefined {
  * else's; within that, most recent activity first, then title. Without a
  * `home` it is recency alone.
  */
-export function sortSessionRows(rows: SessionRow[], home?: string): SessionRow[] {
+export function sortSessionRows(
+  rows: SessionRow[],
+  home?: string,
+): SessionRow[] {
   const rank = (installation: string) =>
     home !== undefined && installation === home ? 0 : 1;
   return [...rows].sort((a, b) => {

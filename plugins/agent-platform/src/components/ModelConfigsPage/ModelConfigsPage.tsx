@@ -152,16 +152,18 @@ export function ModelConfigsPage() {
 
         <InstallationScopeNote component="kagent" />
 
-        {isLoading && rows.length === 0 ? (
+        {isLoading && rows.length === 0 && (
           <Progress aria-label="Loading models" />
-        ) : grouped ? (
+        )}
+        {!(isLoading && rows.length === 0) && grouped && (
           <InstallationGroups
             groups={groups}
             noun={MODELS_NOUN}
             renderRows={groupRows => <ModelsTable rows={groupRows} />}
             fallback={<ModelsTable rows={[]} />}
           />
-        ) : (
+        )}
+        {!(isLoading && rows.length === 0) && !grouped && (
           <ModelsTable rows={rows} />
         )}
 

@@ -11,9 +11,11 @@ import {
 /**
  * Keeps the installation scope and the URL's `?installation=` in step.
  *
- * Mount it once per page (the section's selector does), inside the router:
- * it is the only writer of the search parameter, so several consumers of the
- * scope never race each other's navigations.
+ * Mount it once per page (the section's selector does), inside the router.
+ * `useInstallationScope` already reads the URL first and `setScope` writes it;
+ * what is left for this hook is the drift between the two sources, and it is
+ * the only place that reconciles it, so several consumers of the scope never
+ * race each other's navigations.
  *
  * Rules, in order:
  * - A parameter that *changed* (a deep link, the back button, a picker on

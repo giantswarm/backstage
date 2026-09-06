@@ -119,9 +119,8 @@ const installationScopeHeaderAction = PluginHeaderActionBlueprint.make({
   name: 'installation-scope',
   params: {
     loader: async () => {
-      const { InstallationScopeHeaderControl } = await import(
-        './components/InstallationScopeHeaderControl'
-      );
+      const { InstallationScopeHeaderControl } =
+        await import('./components/InstallationScopeHeaderControl');
       return <InstallationScopeHeaderControl />;
     },
   },

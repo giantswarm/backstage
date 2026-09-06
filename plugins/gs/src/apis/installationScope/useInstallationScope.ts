@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { InstallationInventoryEntry } from '../installationInventory/types';
 import { useInstallationInventory } from '../installationInventory/useInstallationInventory';
 import { useInstallations } from '../installations/useInstallations';
 import {
   ALL_INSTALLATIONS,
   getInstallationScopeSnapshot,
+  INSTALLATION_SCOPE_SEARCH_PARAM,
   setInstallationScope,
   subscribeInstallationScope,
   type InstallationScope,
@@ -14,7 +16,7 @@ import { selectPlatformInstallations } from './scopeSelection';
 export type UseInstallationScopeResult = {
   /** `'all'`, or the name of the pinned installation. */
   scope: InstallationScope;
-  /** Pins one installation, or `'all'`; persisted, and mirrored to the URL. */
+  /** Pins one installation, or `'all'`: store, localStorage and URL at once. */
   setScope: (next: InstallationScope) => void;
   /**
    * The platform installations the selector offers, home first: every
@@ -37,15 +39,20 @@ export type UseInstallationScopeResult = {
 /**
  * The Agent Platform section's one installation scope, for every tab.
  *
- * Backed by the module store (`installationScopeStore`), so the agent-platform
- * providers and the muster section -- different plugins, different React
- * providers, one page -- read the same value without a shared context. The
- * URL side (`?installation=`) is kept in step by `useInstallationScopeUrlSync`,
- * which the section's selector mounts once; everything else only reads.
+ * Two sources, one answer: `?installation=` in the URL wins while it is
+ * present (a deep link narrows the very first render, before anything else
+ * has run), otherwise the module store (`installationScopeStore`) -- what the
+ * person pinned, kept across tab links that carry no query string and, via
+ * localStorage, across visits. The store is what the agent-platform providers
+ * and the muster section -- different plugins, different React providers, one
+ * page -- share without a common context. `useInstallationScopeUrlSync`,
+ * mounted once by the section's selector, keeps the two sources in step.
  *
  * Runs under whichever react-query client is in context, for the inventory.
  */
 export function useInstallationScope(): UseInstallationScopeResult {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlScope = searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM);
   const state = useSyncExternalStore(
     subscribeInstallationScope,
     getInstallationScopeSnapshot,
@@ -72,15 +79,34 @@ export function useInstallationScope(): UseInstallationScopeResult {
     if (!live.restored) {
       return;
     }
-    setInstallationScope(
-      live.scope === home ? ALL_INSTALLATIONS : live.scope,
-    );
+    setInstallationScope(live.scope === home ? ALL_INSTALLATIONS : live.scope);
   }, [pendingRestore, home]);
-  const scope = restoredHome ? ALL_INSTALLATIONS : state.scope;
+  const storedScope = restoredHome ? ALL_INSTALLATIONS : state.scope;
+  const scope = urlScope ?? storedScope;
 
-  const setScope = useCallback((next: InstallationScope) => {
-    setInstallationScope(next);
-  }, []);
+  // One call, three places: the store (every consumer, at once), localStorage
+  // (the next visit) and the URL (this page's deep link). Written here rather
+  // than left to the sync hook so the URL never lags a pin -- and so choosing
+  // "all" clears a `?installation=` the URL still carries, which the sync hook
+  // would otherwise read as a deep link and adopt right back.
+  const setScope = useCallback(
+    (next: InstallationScope) => {
+      setInstallationScope(next);
+      setSearchParams(
+        previous => {
+          const params = new URLSearchParams(previous);
+          if (next === ALL_INSTALLATIONS) {
+            params.delete(INSTALLATION_SCOPE_SEARCH_PARAM);
+          } else {
+            params.set(INSTALLATION_SCOPE_SEARCH_PARAM, next);
+          }
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   const installations = useMemo(
     () => selectPlatformInstallations(entries, scope),

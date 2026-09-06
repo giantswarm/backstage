@@ -16,19 +16,19 @@ import {
 } from '../../apis/installationScope/installationScopeStore';
 import { InstallationScopeSelect } from './InstallationScopeSelect';
 
-let mockInventory: Pick<InstallationInventory, 'entries' | 'home' | 'isLoading'>;
+let mockInventory: Pick<
+  InstallationInventory,
+  'entries' | 'home' | 'isLoading'
+>;
 
-jest.mock(
-  '../../apis/installationInventory/useInstallationInventory',
-  () => ({
-    useInstallationInventory: () => ({
-      ...mockInventory,
-      isProbing: false,
-      installationsWith: () => [],
-      refresh: () => {},
-    }),
+jest.mock('../../apis/installationInventory/useInstallationInventory', () => ({
+  useInstallationInventory: () => ({
+    ...mockInventory,
+    isProbing: false,
+    installationsWith: () => [],
+    refresh: () => {},
   }),
-);
+}));
 
 function entry(
   installation: string,
@@ -65,14 +65,19 @@ function renderSelect(
   );
 }
 
-const trigger = () => screen.getByRole('button', { name: /installation scope/i });
+const trigger = () =>
+  screen.getByRole('button', { name: /installation scope/i });
 
 describe('InstallationScopeSelect', () => {
   beforeEach(() => {
     window.localStorage.clear();
     __resetInstallationScopeForTests();
     __resetInstallationsConfigForTests();
-    mockInventory = { entries: [golem, wombat, snail], home: 'golem', isLoading: false };
+    mockInventory = {
+      entries: [golem, wombat, snail],
+      home: 'golem',
+      isLoading: false,
+    };
     configure(['golem', 'wombat', 'snail']);
   });
 
@@ -113,14 +118,16 @@ describe('InstallationScopeSelect', () => {
     renderSelect({
       component: 'kagent',
       describe: e =>
-        e.installation === 'golem' ? 'not reachable from this portal' : undefined,
+        e.installation === 'golem'
+          ? 'not reachable from this portal'
+          : undefined,
     });
 
     await userEvent.click(trigger());
 
-    expect(
-      screen.getByRole('option', { name: /golem/ }),
-    ).toHaveTextContent('golemnot reachable from this portal');
+    expect(screen.getByRole('option', { name: /golem/ })).toHaveTextContent(
+      'golemnot reachable from this portal',
+    );
   });
 
   it('pins the chosen installation for the section and the URL', async () => {

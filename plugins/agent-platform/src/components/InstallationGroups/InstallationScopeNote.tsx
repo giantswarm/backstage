@@ -19,7 +19,9 @@ export type InstallationScopeNoteProps = {
  * under "All installations", while the installation's probe is pending, and
  * whenever the installation runs the component -- the table speaks then.
  */
-export function InstallationScopeNote({ component }: InstallationScopeNoteProps) {
+export function InstallationScopeNote({
+  component,
+}: InstallationScopeNoteProps) {
   const { scope, isLoading } = useInstallationScope();
   const { entries } = useInstallationInventory();
 

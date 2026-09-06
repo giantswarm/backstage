@@ -41,7 +41,12 @@ describe('isPlatformInstallation', () => {
     expect(
       isPlatformInstallation(
         entry('kserve-only', {
-          components: { kagent: false, muster: false, kserve: true, capi: true },
+          components: {
+            kagent: false,
+            muster: false,
+            kserve: true,
+            capi: true,
+          },
         }),
       ),
     ).toBe(true);
@@ -90,9 +95,9 @@ describe('selectPlatformInstallations', () => {
 
 describe('applyInstallationScope', () => {
   it('passes everything through under all', () => {
-    expect(applyInstallationScope(['golem', 'wombat'], ALL_INSTALLATIONS)).toEqual(
-      ['golem', 'wombat'],
-    );
+    expect(
+      applyInstallationScope(['golem', 'wombat'], ALL_INSTALLATIONS),
+    ).toEqual(['golem', 'wombat']);
   });
 
   it('narrows to the pinned installation, or to nothing when it is absent', () => {
@@ -116,7 +121,12 @@ describe('describeInstallationScopeOption', () => {
     expect(
       describeInstallationScopeOption(
         entry('k', {
-          components: { kagent: true, muster: false, kserve: false, capi: true },
+          components: {
+            kagent: true,
+            muster: false,
+            kserve: false,
+            capi: true,
+          },
         }),
         'kserve',
       ),
@@ -131,7 +141,9 @@ describe('describeInstallationScopeOption', () => {
       ),
     ).toBe('signed out');
     expect(
-      describeInstallationScopeOption(entry('down', { accessState: 'degraded' })),
+      describeInstallationScopeOption(
+        entry('down', { accessState: 'degraded' }),
+      ),
     ).toBe('not reachable');
   });
 

@@ -17,19 +17,27 @@ let mockKagent: {
   installations: string[];
   isProbing: boolean;
   isLoading?: boolean;
+  home?: string;
 } = {
   installations: ['alpha', 'beta', 'gaggle'],
   isProbing: false,
 };
+// The section's installation scope: everything, or one pinned installation.
+let mockScope = 'all';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ALL_INSTALLATIONS: 'all',
+  applyInstallationScope: (installations: string[], scope: string) =>
+    scope === 'all'
+      ? installations
+      : installations.filter(installation => installation === scope),
   useInstallations: () => ({
     installations: mockConfigInstallations.map(name => ({ name })),
     isLoading: false,
   }),
   useInstallationInventory: () => ({
     entries: [],
-    home: mockKagent.installations[0],
+    home: mockKagent.home,
     isLoading: mockKagent.isLoading ?? false,
     isProbing: mockKagent.isProbing,
     // Only kagent matters to this provider; the inventory's other components
@@ -37,6 +45,14 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     installationsWith: (component: string) =>
       component === 'kagent' ? mockKagent.installations : [],
     refresh: () => {},
+  }),
+  useInstallationScope: () => ({
+    scope: mockScope,
+    setScope: () => {},
+    installations: [],
+    home: mockKagent.home,
+    isSingleInstallation: false,
+    isLoading: false,
   }),
 }));
 
@@ -400,5 +416,109 @@ describe('AgentsDataProvider', () => {
       expect(hook.current.unreachableInstallations).toEqual([]),
     );
     expect(hook.current.rows).toHaveLength(1);
+  });
+});
+
+describe('AgentsDataProvider installation scope', () => {
+  beforeEach(() => {
+    mockUseResources.mockReset();
+    mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
+    mockKagent = {
+      installations: ['alpha', 'beta', 'gaggle'],
+      isProbing: false,
+      home: 'alpha',
+    };
+    mockScope = 'all';
+  });
+
+  it('queries the home installation alone until it has answered, then the rest', async () => {
+    // Whatever is asked, only alpha answers at first.
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    // The very first read asks for the home installation only.
+    expect(mockUseResources.mock.calls[0][0]).toEqual(['alpha']);
+    await waitFor(() =>
+      expect(hook.current.rows.map(row => row.name)).toEqual(['a1']),
+    );
+    // Once it answered, everyone in scope is asked.
+    await waitFor(() =>
+      expect(mockUseResources.mock.calls.at(-1)?.[0]).toEqual([
+        'alpha',
+        'beta',
+        'gaggle',
+      ]),
+    );
+    // Rows are on screen while the others load: not "loading", but "more".
+    expect(hook.current.isLoading).toBe(false);
+    expect(hook.current.isLoadingMore).toBe(true);
+    expect(hook.current.groups.map(group => group.status)).toEqual([
+      'ready',
+      'loading',
+      'loading',
+    ]);
+  });
+
+  it('asks everyone at once when the home answers with a failure too', async () => {
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+
+    renderHook(() => useAgents(), { wrapper });
+
+    await waitFor(() =>
+      expect(mockUseResources.mock.calls.at(-1)?.[0]).toEqual([
+        'alpha',
+        'beta',
+        'gaggle',
+      ]),
+    );
+  });
+
+  it('narrows every read to a pinned installation', async () => {
+    mockScope = 'beta';
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'], beta: ['b1'] } }),
+    );
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    expect(mockUseResources.mock.calls[0][0]).toEqual(['beta']);
+    await waitFor(() =>
+      expect(hook.current.rows.map(row => row.name)).toEqual(['b1']),
+    );
+    expect(hook.current.scope).toBe('beta');
+    expect(hook.current.installations).toEqual(['beta']);
+    expect(hook.current.groups).toHaveLength(1);
+    expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('groups the rows by installation, home first, with the pipeline and status', async () => {
+    mockUseResources.mockReturnValue(
+      result({
+        succeeded: { alpha: ['a2', 'a1'], beta: [] },
+        failed: ['gaggle'],
+      }),
+    );
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    await waitFor(() => expect(hook.current.groups).toHaveLength(3));
+    expect(
+      hook.current.groups.map(group => [
+        group.installation,
+        group.home,
+        group.status,
+        group.rows.map(row => row.name),
+      ]),
+    ).toEqual([
+      ['alpha', true, 'ready', ['a1', 'a2']],
+      ['beta', false, 'empty', []],
+      ['gaggle', false, 'unreachable', []],
+    ]);
+    // The flat rows put the home installation first as well.
+    expect(hook.current.rows.map(row => row.installation)).toEqual([
+      'alpha',
+      'alpha',
+    ]);
   });
 });

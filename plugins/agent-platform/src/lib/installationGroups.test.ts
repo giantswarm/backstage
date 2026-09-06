@@ -98,7 +98,10 @@ describe('describeInstallationGroup', () => {
       describeInstallationGroup({ status: 'empty', rows: [] }, AGENTS_NOUN),
     ).toBe('no agents here');
     expect(
-      describeInstallationGroup({ status: 'unreachable', rows: [] }, AGENTS_NOUN),
+      describeInstallationGroup(
+        { status: 'unreachable', rows: [] },
+        AGENTS_NOUN,
+      ),
     ).toBe('agents could not be read');
     expect(
       describeInstallationGroup(

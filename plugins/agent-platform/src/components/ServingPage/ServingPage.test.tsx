@@ -268,6 +268,10 @@ function modelConfig(name: string, baseUrl?: string) {
 const baseModelConfigs: ModelConfigsContextValue = {
   isLoading: false,
   hasInstallations: true,
+  scope: 'all',
+  home: 'inst-1',
+  installations: ['inst-1'],
+  pendingInstallations: [],
   availableInstallations: ['inst-1'],
   unreachableInstallations: [],
   modelConfigsFor: () => [],

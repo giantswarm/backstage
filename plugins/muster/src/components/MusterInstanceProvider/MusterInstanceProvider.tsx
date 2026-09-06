@@ -3,14 +3,15 @@ import {
   ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
 } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { useInstallationInventory } from '@giantswarm/backstage-plugin-gs';
+import {
+  ALL_INSTALLATIONS,
+  useInstallationInventory,
+  useInstallationScope,
+} from '@giantswarm/backstage-plugin-gs';
 import {
   useResources,
   useShowErrors,
@@ -19,8 +20,6 @@ import { MCPServer, MusterWorkflow } from '../../lib/k8s';
 import { musterApiRef } from '../../apis';
 import { MusterInstallationInfo } from '../../apis/types';
 import { selectMusterInstallations } from './selectInstallations';
-
-const STORAGE_KEY = 'muster-installation';
 
 // A light background refetch so the live health reads (per-MC pills, the
 // "Servers healthy" stat, fleet coverage) don't drift silently from the CRD
@@ -103,15 +102,18 @@ export function useMusterInstance(): MusterInstance {
 }
 
 /**
- * Resolves the default active installation. Preference order: an explicit
- * choice (URL/localStorage) if it is a real muster installation, then the
- * muster on the *current* cluster (matched by a host segment, e.g.
- * `devportal.gazelle.…` -> gazelle), then the first installation.
+ * Resolves the active installation. Preference order: the section's pinned
+ * installation scope if it is a real muster installation, then the muster on
+ * the *current* cluster (matched by a host segment, e.g. `devportal.gazelle.…`
+ * -> gazelle), then the first installation -- which is the home installation,
+ * since the list is home first. Under "All installations" the tab therefore
+ * shows the home installation: one muster is one aggregator.
  *
  * ponytail: "current cluster" is approximated by a host-segment match rather
- * than a dedicated config key -- good enough for the deployed devportal and
- * harmless locally (falls through to the first installation). Upgrade path:
- * a `muster.currentInstallation` config if the heuristic ever misfires.
+ * than a dedicated config key -- good enough for the deployed devportal and a
+ * fallback for portals without a home (falls through to the first
+ * installation). Upgrade path: a `muster.currentInstallation` config if the
+ * heuristic ever misfires.
  */
 function resolveActive(
   installations: string[],
@@ -136,16 +138,19 @@ type MusterInstanceProviderProps = {
 /**
  * Holds the single active muster instance and the muster-only installation
  * list, replacing the old multi-select MusterDataProvider. The active
- * instance is persisted via the `?installation=` URL param + localStorage so
- * deep links and refreshes keep it. CRD reads (MCPServer, Workflow) are scoped
- * to that one installation via the Backstage kubernetes proxy -- no muster MCP
- * session is needed for the reads.
+ * instance follows the Agent Platform section's installation scope (gs
+ * `useInstallationScope`: `?installation=` plus localStorage under the key
+ * this provider used to own), so pinning an installation anywhere in the
+ * section -- the header selector, the picker here -- scopes every tab, and
+ * "All installations" shows the home muster. CRD reads (MCPServer, Workflow)
+ * are scoped to that one installation via the Backstage kubernetes proxy -- no
+ * muster MCP session is needed for the reads.
  */
 export const MusterInstanceProvider = ({
   children,
 }: MusterInstanceProviderProps) => {
   const musterApi = useApi(musterApiRef);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { scope, setScope } = useInstallationScope();
 
   const { data: installationsData, isLoading: isLoadingBackend } = useQuery({
     queryKey: ['muster', 'installations'],
@@ -161,21 +166,15 @@ export const MusterInstanceProvider = ({
     [installationsData],
   );
 
-  const urlInstallation = searchParams.get('installation');
-  const [stored, setStored] = useState<string | null>(() => {
-    try {
-      return window.localStorage.getItem(STORAGE_KEY);
-    } catch {
-      return null;
-    }
-  });
-  const preferred = urlInstallation ?? stored;
+  // The pinned installation, or nothing under "All installations": then the
+  // home muster is the one shown (see `resolveActive`).
+  const preferred = scope === ALL_INSTALLATIONS ? null : scope;
 
   // Which installations run muster at all comes from the installation
   // inventory (one `GET /apis` per installation, home first); the backend only
   // knows where a muster *would* be. While the inventory is still loading
-  // (home not answered), the list is not known yet and nothing is written back
-  // to the URL, so a deep link is never replaced by a premature default.
+  // (home not answered), the list is not known yet and there is no active
+  // installation, so a deep link is never replaced by a premature default.
   const inventory = useInstallationInventory();
 
   const installationInfos = useMemo(
@@ -198,58 +197,17 @@ export const MusterInstanceProvider = ({
     [isLoadingInstallations, installations, preferred],
   );
 
+  // Choosing an installation here pins the whole section's scope (store,
+  // localStorage, URL), exactly what the header selector does. Nothing is
+  // written back on mount any more: the default (the home muster) is a
+  // resolution, not a choice, and writing it would have pinned every tab of
+  // the section to one installation.
   const setActiveInstallation = useCallback(
     (installation: string) => {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, installation);
-      } catch {
-        // localStorage may be unavailable (private mode); URL state still works.
-      }
-      setStored(installation);
-      setSearchParams(
-        prev => {
-          const next = new URLSearchParams(prev);
-          next.set('installation', installation);
-          return next;
-        },
-        { replace: true },
-      );
+      setScope(installation);
     },
-    [setSearchParams],
+    [setScope],
   );
-
-  // Once installations resolve, write the chosen default back to the URL +
-  // localStorage so the picker reflects it and deep links stay stable.
-  //
-  // NOTE: keep route-level redirects OUT of this provider's subtree. This is a
-  // search-only navigation, so react-router resolves it against the pathname of
-  // the render that created it; if a redirect below fires in the same commit,
-  // this write lands on the pre-redirect path and silently undoes it. See the
-  // note in MusterSection, which mounts its redirects as siblings for that
-  // reason.
-  useEffect(() => {
-    if (!activeInstallation) {
-      return;
-    }
-    if (stored !== activeInstallation) {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, activeInstallation);
-      } catch {
-        // ignore
-      }
-      setStored(activeInstallation);
-    }
-    if (urlInstallation !== activeInstallation) {
-      setSearchParams(
-        prev => {
-          const next = new URLSearchParams(prev);
-          next.set('installation', activeInstallation);
-          return next;
-        },
-        { replace: true },
-      );
-    }
-  }, [activeInstallation, urlInstallation, stored, setSearchParams]);
 
   const activeInstallationInfo = useMemo(
     () => installationInfos.find(i => i.name === activeInstallation),
