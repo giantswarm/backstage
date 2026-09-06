@@ -28,6 +28,18 @@ jest.mock('../UsagePage', () => ({
 
 // MusterInstanceProvider is deliberately NOT stubbed: its `?installation=` write
 // is what used to clobber the index redirect. Only its data sources are.
+// An empty inventory (no gs.installations) makes the provider list the
+// backend's installations as they are.
+jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  useInstallationInventory: () => ({
+    entries: [],
+    home: undefined,
+    isLoading: false,
+    isProbing: false,
+    installationsWith: () => [],
+    refresh: jest.fn(),
+  }),
+}));
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: () => ({

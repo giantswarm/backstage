@@ -7932,6 +7932,7 @@ __metadata:
     "@backstage/plugin-kubernetes-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-table/core": "npm:^3.1.0"

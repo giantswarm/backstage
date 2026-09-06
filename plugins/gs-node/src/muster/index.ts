@@ -4,6 +4,7 @@
  * (muster, plans, roadmap).
  */
 export * from './MusterMcpClient';
+export * from './musterInstallations';
 export * from './authLogin';
 export * from './serverGateway';
 

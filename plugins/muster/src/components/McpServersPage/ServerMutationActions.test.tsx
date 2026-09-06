@@ -49,6 +49,7 @@ function makeInstance(retry: () => void): MusterInstance {
   return {
     installations: ['gazelle'],
     isLoadingInstallations: false,
+    installationInfos: [],
     activeInstallation: 'gazelle',
     activeInstallationInfo: undefined,
     setActiveInstallation: jest.fn(),

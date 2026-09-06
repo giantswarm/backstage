@@ -10,6 +10,7 @@ jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
     installations: ['gazelle'],
     isLoadingInstallations: false,
+    installationInfos: [],
     activeInstallation: 'gazelle',
     activeInstallationInfo: {
       name: 'gazelle',

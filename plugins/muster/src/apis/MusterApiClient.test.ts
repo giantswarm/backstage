@@ -303,3 +303,119 @@ describe('MusterApiClient.signIn', () => {
     expect(t.getBrokeredCredentials).not.toHaveBeenCalled();
   });
 });
+
+describe('MusterApiClient token selection for derived installations', () => {
+  // snail and home2 are known to the backend only: derived from their base
+  // domain, no `muster.installations` entry. snail has its own Dex; home2's
+  // cluster entry mints through the main provider, so it is a home installation.
+  const BACKEND = {
+    installations: [
+      { name: 'snail', requiresAuth: true, source: 'derived' },
+      { name: 'home2', requiresAuth: true, source: 'derived' },
+      { name: 'ungated', requiresAuth: false, source: 'derived' },
+    ],
+  };
+
+  function derivedSetup(options: SetupOptions = {}) {
+    const t = setup(options);
+    t.fetchMock.mockImplementation(async (url: string) =>
+      url.includes('/installations')
+        ? okResponse(BACKEND)
+        : okResponse({ total: 1, tools: [] }),
+    );
+    t.getCluster.mockImplementation(async (name: string) => {
+      if (name === 'snail') {
+        return { name, authProvider: 'oidc', oidcTokenProvider: 'oidc-snail' };
+      }
+      if (name === 'home2') {
+        return {
+          name,
+          authProvider: 'oidc',
+          oidcTokenProvider: 'oidc-gazelle',
+        };
+      }
+      return CLUSTERS[name];
+    });
+    const callsTo = (path: string) =>
+      t.fetchMock.mock.calls.filter(([url]) => String(url).includes(path));
+    const headersOf = (path: string): Record<string, string> | undefined =>
+      (callsTo(path)[0]?.[1] as RequestInit | undefined)?.headers as
+        Record<string, string> | undefined;
+    return { ...t, callsTo, headersOf };
+  }
+
+  it('mints the brokered token for a derived installation once the backend says it requires one', async () => {
+    const t = derivedSetup();
+
+    await t.client.filterTools({ installation: 'snail', limit: 1 });
+
+    expect(t.headersOf('/tools/filter')?.[HEADER]).toBe('brokered-token');
+    expect(t.getBrokeredCredentials).toHaveBeenCalledWith('oidc.oidc-snail');
+    expect(t.getMainCredentials).not.toHaveBeenCalled();
+    // The backend's list was consulted, without a token of its own.
+    expect(t.callsTo('/installations')).toHaveLength(1);
+    expect(t.headersOf('/installations')?.[HEADER]).toBeUndefined();
+  });
+
+  it('sends the main-login token to a derived home installation under gs.authProvider', async () => {
+    const t = derivedSetup();
+
+    await t.client.listServers('home2');
+
+    expect(t.headersOf('/servers')?.[HEADER]).toBe('main-id-token');
+    expect(t.getMainCredentials).toHaveBeenCalledWith('oidc-gazelle');
+    expect(t.getBrokeredCredentials).not.toHaveBeenCalled();
+  });
+
+  it('sends no token to a derived installation the backend reports as needing none', async () => {
+    const t = derivedSetup();
+
+    await t.client.listServers('ungated');
+
+    expect(t.headersOf('/servers')?.[HEADER]).toBeUndefined();
+    expect(t.getMainCredentials).not.toHaveBeenCalled();
+    expect(t.getBrokeredCredentials).not.toHaveBeenCalled();
+  });
+
+  it("reads the backend's list once for any number of requests", async () => {
+    const t = derivedSetup();
+
+    await t.client.listServers('snail');
+    await t.client.listServers('home2');
+    await t.client.filterTools({ installation: 'snail', limit: 1 });
+
+    expect(t.callsTo('/installations')).toHaveLength(1);
+  });
+
+  it('does not keep a failed read of the list', async () => {
+    const t = derivedSetup();
+    t.fetchMock.mockImplementationOnce(async () =>
+      errorResponse(503, { error: { name: 'ServiceUnavailableError' } }),
+    );
+
+    await expect(t.client.listServers('snail')).rejects.toBeDefined();
+    await t.client.listServers('snail');
+
+    expect(t.callsTo('/installations')).toHaveLength(2);
+    expect(t.headersOf('/servers')?.[HEADER]).toBe('brokered-token');
+  });
+
+  it('signIn mints the brokered token for a derived installation', async () => {
+    const t = derivedSetup();
+
+    await expect(t.client.signIn('snail')).resolves.toBe(true);
+    expect(t.getBrokeredCredentials).toHaveBeenCalledWith('oidc.oidc-snail');
+    expect(t.getMainCredentials).not.toHaveBeenCalled();
+  });
+
+  it('still trusts the configured authProvider first', async () => {
+    // golem is listed in muster.installations with an authProvider; the
+    // backend's list is not needed to decide.
+    const t = derivedSetup();
+
+    await t.client.listServers('golem');
+
+    expect(t.headersOf('/servers')?.[HEADER]).toBe('brokered-token');
+    expect(t.callsTo('/installations')).toHaveLength(0);
+  });
+});

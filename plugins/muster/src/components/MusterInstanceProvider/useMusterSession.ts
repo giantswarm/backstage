@@ -112,6 +112,19 @@ export function unreachableFailure(
 }
 
 /**
+ * Whether the session's only problem is that the backend cannot reach the
+ * installation's muster from this portal. The live-MCP screens (tool explorer,
+ * MCP usage, the runtime state on the servers page) render the session gate's
+ * "not reachable" note instead of their content when this is true; the
+ * CRD-backed screens are unaffected. One predicate, so every screen agrees.
+ */
+export function isUnreachableSession(
+  session: Pick<MusterSession, 'failure'>,
+): boolean {
+  return session.failure?.kind === 'unreachable';
+}
+
+/**
  * Resolves whether the browsing user has an authenticated muster session for
  * the active installation, why not if not, and exposes a connect action. A
  * single lightweight `filter_tools(limit=1)` probe doubles as the auth check:

@@ -10,6 +10,7 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { useInstallationInventory } from '@giantswarm/backstage-plugin-gs';
 import {
   useResources,
   useShowErrors,
@@ -17,6 +18,7 @@ import {
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
 import { musterApiRef } from '../../apis';
 import { MusterInstallationInfo } from '../../apis/types';
+import { selectMusterInstallations } from './selectInstallations';
 
 const STORAGE_KEY = 'muster-installation';
 
@@ -46,11 +48,19 @@ export function hasUnknownReachability(
 
 export type MusterInstance = {
   /**
-   * The muster installations the picker may offer. Sourced from the backend's
-   * `/installations` (config-driven), so it lists muster aggregators ONLY --
-   * an MC without a muster can never appear here.
+   * The muster installations the picker may offer, home first: the backend's
+   * installations (an endpoint the proxy can target, derived from the base
+   * domain or configured) intersected with the installations whose inventory
+   * has the `muster.giantswarm.io` API group -- see `selectMusterInstallations`.
+   * An installation without a muster never appears here.
    */
   installations: string[];
+  /** The same installations with the backend's endpoint, auth and reachability. */
+  installationInfos: MusterInstallationInfo[];
+  /**
+   * True while the backend's list or the inventory's home installation has not
+   * answered yet; the picker stays hidden and no default is written back.
+   */
   isLoadingInstallations: boolean;
   /** The single active muster instance every screen is scoped to. */
   activeInstallation: string | undefined;
@@ -137,24 +147,18 @@ export const MusterInstanceProvider = ({
   const musterApi = useApi(musterApiRef);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const { data: installationsData, isLoading: isLoadingInstallations } =
-    useQuery({
-      queryKey: ['muster', 'installations'],
-      queryFn: () => musterApi.listInstallations(),
-      refetchInterval: query =>
-        hasUnknownReachability(query.state.data?.installations)
-          ? INSTALLATIONS_REFETCH_WHILE_UNKNOWN_MS
-          : false,
-    });
+  const { data: installationsData, isLoading: isLoadingBackend } = useQuery({
+    queryKey: ['muster', 'installations'],
+    queryFn: () => musterApi.listInstallations(),
+    refetchInterval: query =>
+      hasUnknownReachability(query.state.data?.installations)
+        ? INSTALLATIONS_REFETCH_WHILE_UNKNOWN_MS
+        : false,
+  });
 
-  const installationInfos = useMemo(
+  const backendInstallations = useMemo(
     () => installationsData?.installations ?? [],
     [installationsData],
-  );
-
-  const installations = useMemo(
-    () => installationInfos.map(i => i.name),
-    [installationInfos],
   );
 
   const urlInstallation = searchParams.get('installation');
@@ -165,10 +169,33 @@ export const MusterInstanceProvider = ({
       return null;
     }
   });
+  const preferred = urlInstallation ?? stored;
+
+  // Which installations run muster at all comes from the installation
+  // inventory (one `GET /apis` per installation, home first); the backend only
+  // knows where a muster *would* be. While the inventory is still loading
+  // (home not answered), the list is not known yet and nothing is written back
+  // to the URL, so a deep link is never replaced by a premature default.
+  const inventory = useInstallationInventory();
+
+  const installationInfos = useMemo(
+    () => selectMusterInstallations(backendInstallations, inventory, preferred),
+    [backendInstallations, inventory, preferred],
+  );
+
+  const installations = useMemo(
+    () => installationInfos.map(i => i.name),
+    [installationInfos],
+  );
+
+  const isLoadingInstallations = isLoadingBackend || inventory.isLoading;
 
   const activeInstallation = useMemo(
-    () => resolveActive(installations, urlInstallation ?? stored),
-    [installations, urlInstallation, stored],
+    () =>
+      isLoadingInstallations
+        ? undefined
+        : resolveActive(installations, preferred),
+    [isLoadingInstallations, installations, preferred],
   );
 
   const setActiveInstallation = useCallback(
@@ -302,6 +329,7 @@ export const MusterInstanceProvider = ({
   const value: MusterInstance = useMemo(
     () => ({
       installations,
+      installationInfos,
       isLoadingInstallations,
       activeInstallation,
       activeInstallationInfo,
@@ -322,6 +350,7 @@ export const MusterInstanceProvider = ({
     }),
     [
       installations,
+      installationInfos,
       isLoadingInstallations,
       activeInstallation,
       activeInstallationInfo,

@@ -22,6 +22,7 @@ import {
   McpServerListResponse,
   MusterApi,
   MusterAuthProvidersApi,
+  MusterInstallationInfo,
   MusterInstallationsResponse,
   ServerSignInResult,
   ServerSignOutResult,
@@ -68,6 +69,16 @@ export const musterApiRef = createApiRef<MusterApi>({
  */
 const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
 
+/**
+ * The provider name the home path resolves the main-login token under when
+ * the installation has no `authProvider` of its own (a derived installation
+ * with no `muster.installations` entry): `gs.authProvider`, the person's main
+ * sign-in provider, for which `MusterAuthProviders` has no dedicated MCP
+ * provider and therefore answers the main ID token. Only reached when
+ * `gs.authProvider` is unset as well.
+ */
+const MAIN_LOGIN_PROVIDER = 'main';
+
 export class MusterApiClient implements MusterApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
@@ -75,6 +86,13 @@ export class MusterApiClient implements MusterApi {
   private readonly authProvidersApi?: MusterAuthProvidersApi;
   private readonly kubernetesApi?: KubernetesApi;
   private readonly kubernetesAuthProvidersApi?: KubernetesAuthProvidersApi;
+  /**
+   * The backend's `/installations`, read once per client for the token
+   * decision on installations the frontend config does not list (derived
+   * ones). The list is a function of the backend's configuration, so it does
+   * not change while the page lives; a failed read is not kept.
+   */
+  private installationsPromise?: Promise<MusterInstallationsResponse>;
 
   /**
    * `kubernetesApi` + `kubernetesAuthProvidersApi` mint the per-installation
@@ -278,7 +296,7 @@ export class MusterApiClient implements MusterApi {
    * can re-run the mint from a button and re-probe afterwards.
    */
   async signIn(installation?: string): Promise<boolean> {
-    if (!this.resolveAuthProvider(installation)) {
+    if (!(await this.requiresToken(installation))) {
       return true;
     }
     try {
@@ -289,12 +307,61 @@ export class MusterApiClient implements MusterApi {
   }
 
   /**
+   * Whether the installation's muster needs the person's token, and under
+   * which provider name the home path resolves it.
+   *
+   * A configured installation says so through its `authProvider`
+   * ({@link resolveAuthProvider}). A derived installation has no entry in the
+   * frontend config at all; the backend, which derived it, reports
+   * `requiresAuth` on `/installations` (always true for derived entries --
+   * every muster gates), and the home path then resolves the main-login token
+   * under `gs.authProvider`. Which token is sent does not depend on the
+   * provider name (see {@link resolveToken}).
+   */
+  private async requiresToken(
+    installation?: string,
+  ): Promise<{ authProvider: string } | undefined> {
+    const configured = this.resolveAuthProvider(installation);
+    if (configured) {
+      return { authProvider: configured };
+    }
+    if (!installation) {
+      return undefined;
+    }
+    const info = await this.backendInstallation(installation);
+    if (!info?.requiresAuth) {
+      return undefined;
+    }
+    return {
+      authProvider:
+        this.configApi?.getOptionalString('gs.authProvider') ??
+        MAIN_LOGIN_PROVIDER,
+    };
+  }
+
+  private async backendInstallation(
+    name: string,
+  ): Promise<MusterInstallationInfo | undefined> {
+    if (!this.installationsPromise) {
+      this.installationsPromise = this.listInstallations().catch(error => {
+        this.installationsPromise = undefined;
+        throw error;
+      });
+    }
+    const response = await this.installationsPromise;
+    return (response?.installations ?? []).find(
+      installation => installation.name === name,
+    );
+  }
+
+  /**
    * The muster server's `authProvider`. Resolved per installation from
    * `muster.installations[]` (the same config the muster-backend proxy reads),
    * falling back to the legacy single-installation `aiChat.mcp` entry selected
    * by `muster.serverName` (default `muster`). When set, the installation
    * requires a per-user token; which token depends on whether it is the home
-   * installation (see {@link resolveToken}).
+   * installation (see {@link resolveToken}). A derived installation has no
+   * entry here -- see {@link requiresToken}.
    */
   private resolveAuthProvider(installation?: string): string | undefined {
     if (!this.configApi) {
@@ -346,8 +413,8 @@ export class MusterApiClient implements MusterApi {
   private async resolveToken(
     installation?: string,
   ): Promise<string | undefined> {
-    const authProvider = this.resolveAuthProvider(installation);
-    if (!authProvider) {
+    const required = await this.requiresToken(installation);
+    if (!required) {
       return undefined;
     }
     if (installation && !(await this.isHomeInstallation(installation))) {
@@ -356,7 +423,9 @@ export class MusterApiClient implements MusterApi {
     if (!this.authProvidersApi) {
       return undefined;
     }
-    const { token } = await this.authProvidersApi.getCredentials(authProvider);
+    const { token } = await this.authProvidersApi.getCredentials(
+      required.authProvider,
+    );
     if (!token) {
       // The main-login token is the only source here, so its absence means the
       // portal session is gone (or the re-login was declined).

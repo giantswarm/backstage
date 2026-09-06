@@ -9,8 +9,12 @@ import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { InstallationPicker } from '../InstallationPicker';
-import { useMusterInstance } from '../MusterInstanceProvider';
-import { SectionHeader, ServerSignIn } from '../shared';
+import {
+  isUnreachableSession,
+  useMusterInstance,
+  useMusterSession,
+} from '../MusterInstanceProvider';
+import { SectionHeader, ServerSignIn, SessionGate } from '../shared';
 import { ToolBrowser } from './ToolBrowser';
 import { ToolDetailPanel } from './ToolDetailPanel';
 import { useToolPrefs } from './useToolPrefs';
@@ -185,6 +189,31 @@ function ExplorerBody({ installation }: { installation: string }) {
  */
 export function ToolExplorerPage() {
   const { activeInstallation } = useMusterInstance();
+  // Every tool read here goes through the live muster session; when the
+  // backend cannot reach the installation's muster, the explorer says so
+  // instead of firing requests that can only fail.
+  const session = useMusterSession();
+
+  let body;
+  if (!activeInstallation) {
+    body = (
+      <EmptyState
+        missing="data"
+        title="Select an installation"
+        description="Choose a muster installation above to browse and run its aggregated tools."
+      />
+    );
+  } else if (isUnreachableSession(session)) {
+    body = (
+      <SessionGate
+        session={session}
+        installation={activeInstallation}
+        context="Tools are read through a live muster session."
+      />
+    );
+  } else {
+    body = <ExplorerBody installation={activeInstallation} />;
+  }
 
   return (
     <Content>
@@ -194,16 +223,7 @@ export function ToolExplorerPage() {
         description="Browse, search, and run the tools this muster aggregates — core tools, every connected server, and workflows."
       />
       <InstallationPicker />
-
-      {!activeInstallation ? (
-        <EmptyState
-          missing="data"
-          title="Select an installation"
-          description="Choose a muster installation above to browse and run its aggregated tools."
-        />
-      ) : (
-        <ExplorerBody installation={activeInstallation} />
-      )}
+      {body}
     </Content>
   );
 }

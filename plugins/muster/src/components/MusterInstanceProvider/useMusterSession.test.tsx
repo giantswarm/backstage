@@ -25,6 +25,7 @@ function instance(overrides: Partial<MusterInstance> = {}): MusterInstance {
   return {
     installations: ['gazelle', 'golem'],
     isLoadingInstallations: false,
+    installationInfos: [],
     activeInstallation: 'golem',
     activeInstallationInfo: { name: 'golem', requiresAuth: true },
     setActiveInstallation: jest.fn(),
