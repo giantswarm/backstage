@@ -252,6 +252,7 @@ describe('createRouter', () => {
           endpoint: 'injected',
           requiresAuth: false,
           reachable: true,
+          source: 'configured',
         },
       ],
     });
@@ -312,12 +313,14 @@ describe('createRouter', () => {
           name: 'gazelle',
           endpoint: 'https://muster.gazelle.example.io/mcp',
           requiresAuth: false,
+          source: 'configured',
           reachable: 'unknown',
         },
         {
           name: 'golem',
           endpoint: 'https://muster.golem.example.io/mcp',
           requiresAuth: true,
+          source: 'configured',
           reachable: 'unknown',
         },
       ]);
@@ -366,6 +369,118 @@ describe('createRouter', () => {
       );
       expect(musterProbeUrl('http://localhost:8090/mcp')).toBe(
         'http://localhost:8090/.well-known/oauth-protected-resource',
+      );
+    });
+  });
+
+  describe('installations derived from the fleet configuration', () => {
+    // gazelle and golem have a base domain, so each gets a derived muster
+    // endpoint; gazelle's is then overridden by an explicit entry. snail has
+    // no base domain and is not a muster installation the proxy can reach.
+    const FLEET: JsonObject = {
+      gs: {
+        installations: {
+          gazelle: { baseDomain: 'gazelle.example.test' },
+          golem: { baseDomain: 'golem.example.test' },
+          snail: { pipeline: 'testing' },
+        },
+      },
+    };
+
+    async function buildFleetApp(data: JsonObject) {
+      const logger = mockServices.logger.mock();
+      const config = mockServices.rootConfig({ data });
+      const router = await createRouter({
+        logger,
+        config,
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+      const fleetApp = express();
+      fleetApp.use(router);
+      fleetApp.use(MiddlewareFactory.create({ logger, config }).error());
+      return { fleetApp, logger };
+    }
+
+    it('lists derived and configured installations with their source', async () => {
+      const { fleetApp } = await buildFleetApp({
+        ...FLEET,
+        muster: {
+          installations: [
+            {
+              name: 'gazelle',
+              url: 'https://muster-internal.gazelle.example.test/mcp',
+              authProvider: 'mcp-muster',
+            },
+          ],
+        },
+      });
+
+      const response = await request(fleetApp).get('/installations');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        installations: [
+          {
+            name: 'gazelle',
+            endpoint: 'https://muster-internal.gazelle.example.test/mcp',
+            requiresAuth: true,
+            source: 'configured',
+            reachable: true,
+          },
+          {
+            name: 'golem',
+            endpoint: 'https://muster.golem.example.test/mcp',
+            requiresAuth: true,
+            source: 'derived',
+            reachable: true,
+          },
+        ],
+      });
+    });
+
+    it('logs the counts once at start', async () => {
+      const { logger } = await buildFleetApp({
+        ...FLEET,
+        muster: {
+          installations: [
+            { name: 'gazelle', url: 'https://muster.gazelle.example.test/mcp' },
+            { name: 'lab', url: 'https://muster.lab.example.test/mcp' },
+          ],
+        },
+      });
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'Muster proxy installations: 1 derived from gs.installations base domains, 2 configured in muster.installations, 3 total.',
+      );
+    });
+
+    it("requires the person's token for a derived installation", async () => {
+      const { fleetApp } = await buildFleetApp(FLEET);
+      listTools.mockResolvedValue({ tools: [], servers_requiring_auth: [] });
+
+      const without = await request(fleetApp).get('/tools?installation=golem');
+      expect(without.status).toBe(401);
+      expect(without.body.error.message).toContain(
+        "installation 'golem' requires a user token",
+      );
+      expect(listTools).not.toHaveBeenCalled();
+
+      const withToken = await request(fleetApp)
+        .get('/tools?installation=golem')
+        .set(MUSTER_AUTH_HEADER, 'user-token');
+      expect(withToken.status).toBe(200);
+      expect(listTools).toHaveBeenCalledWith({ authToken: 'user-token' });
+    });
+
+    it('does not target an installation without a base domain', async () => {
+      const { fleetApp } = await buildFleetApp(FLEET);
+
+      const response = await request(fleetApp).get('/tools?installation=snail');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain(
+        "Unknown muster installation 'snail'",
       );
     });
   });

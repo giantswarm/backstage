@@ -18,9 +18,10 @@ import {
 import {
   MusterInstallationConfig,
   MusterMcpClient,
+  musterInstallationRequiresAuth,
   ReachabilityCache,
   reachabilityFields,
-  readMusterInstallationsFromConfig,
+  resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { getMcpUsage } from './mcpUsage';
 
@@ -85,7 +86,16 @@ export async function createRouter(
 ): Promise<express.Router> {
   const { logger, config } = options;
 
-  const installations = readMusterInstallationsFromConfig(config, logger);
+  // The installations this proxy can target: one derived from every
+  // `gs.installations` entry with a base domain (`https://muster.<baseDomain>/
+  // mcp`), overridden or extended by `muster.installations`, or the legacy
+  // single `aiChat.mcp` entry when neither is set. Whether an installation
+  // actually runs muster is the frontend's question (the installation
+  // inventory); whether its endpoint is reachable from here is the probe's.
+  const { installations, counts } = resolveMusterInstallations(config, logger);
+  logger.info(
+    `Muster proxy installations: ${counts.derived} derived from gs.installations base domains, ${counts.configured} configured in muster.installations, ${counts.total} total.`,
+  );
 
   // Map each installation to a client. When a client is injected (tests),
   // reuse it for every installation; synthesize a default installation if
@@ -105,10 +115,14 @@ export async function createRouter(
     for (const [name, installation] of installations) {
       clients.set(name, new MusterMcpClient(installation, logger));
       logger.info(
-        `Muster proxy installation '${name}' connected to ${installation.url}${
+        `Muster proxy installation '${name}' (${
+          installation.source ?? 'configured'
+        }) connected to ${installation.url}${
           installation.authProvider
             ? ` (per-user auth via provider '${installation.authProvider}')`
-            : ''
+            : musterInstallationRequiresAuth(installation)
+              ? " (per-user auth with the installation's token)"
+              : ''
         }`,
       );
     }
@@ -116,7 +130,7 @@ export async function createRouter(
 
   if (installations.size === 0) {
     logger.info(
-      'No muster installations configured (set muster.installations, or an aiChat.mcp entry named per muster.serverName, default "muster"); muster endpoints will return 503.',
+      'No muster installations configured (no gs.installations entry has a baseDomain to derive one from, and neither muster.installations nor an aiChat.mcp entry named per muster.serverName, default "muster", is set); muster endpoints will return 503.',
     );
   }
 
@@ -156,7 +170,10 @@ export async function createRouter(
         // card). Per-MC domain isn't derivable from the name, so it comes from
         // config rather than being fabricated frontend-side.
         endpoint: installation.url,
-        requiresAuth: Boolean(installation.authProvider),
+        requiresAuth: musterInstallationRequiresAuth(installation),
+        // Whether the endpoint was derived from the installation's base
+        // domain or listed in `muster.installations`.
+        source: installation.source ?? 'configured',
         ...reachabilityFields(
           reachability.get(musterProbeUrl(installation.url)),
         ),
@@ -204,22 +221,27 @@ export async function createRouter(
   };
 
   /**
-   * When the target installation requires per-user auth, the frontend must
-   * forward the user's token; without it the muster server would reject the
-   * connection anyway, so fail fast with a 401 the frontend can act on.
+   * When the target installation requires per-user auth (a configured entry
+   * with an `authProvider`, or any derived entry -- every muster gates), the
+   * frontend must forward the person's token; without it the muster server
+   * would reject the connection anyway, so fail fast with a 401 the frontend
+   * can act on.
    */
   const readCallOptions = (
     req: express.Request,
     installation: MusterInstallationConfig,
   ): { authToken?: string } => {
-    if (!installation.authProvider) {
+    if (!musterInstallationRequiresAuth(installation)) {
       return {};
     }
     const headerValue = req.headers[MUSTER_AUTH_HEADER];
     const authToken = Array.isArray(headerValue) ? headerValue[0] : headerValue;
     if (!authToken) {
+      const why = installation.authProvider
+        ? `for auth provider '${installation.authProvider}'`
+        : 'for its muster (the endpoint is derived from the installation base domain)';
       throw new AuthenticationError(
-        `The muster installation '${installation.name}' requires a user token for auth provider '${installation.authProvider}', but the request did not include one.`,
+        `The muster installation '${installation.name}' requires a user token ${why}, but the request did not include one.`,
       );
     }
     return { authToken };
@@ -387,10 +409,11 @@ export async function createRouter(
    * the next user call it under the first user's OAuth grant.
    *
    * Read-only discovery tolerates that shared session; per-user auth cannot, so
-   * these two routes are inert unless the installation forwards a user token.
+   * these two routes are inert unless the installation forwards a user token
+   * (a configured entry with an `authProvider`, or any derived entry).
    */
   const hasPerUserSession = (installation: MusterInstallationConfig) =>
-    Boolean(installation.authProvider);
+    musterInstallationRequiresAuth(installation);
 
   /**
    * Per-server authentication status for the calling user's muster session
