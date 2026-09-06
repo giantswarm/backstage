@@ -552,3 +552,47 @@ describe('useInstallationInventory', () => {
     expect(result.current.isProbing).toBe(false);
   });
 });
+
+describe('useInstallationInventory while access probes settle', () => {
+  beforeEach(() => __resetInstallationsConfigForTests());
+  afterEach(() => __resetInstallationsConfigForTests());
+
+  it('keeps probing while an installation with a cached answer is still connecting', async () => {
+    // A repeat visit: snail's inventory answer is in the (persisted) cache, but
+    // its cluster-access probe has not settled yet. `installationsWith` cannot
+    // list it (not healthy), so a tab pinned to snail has nothing to query --
+    // for now. It must read as still settling, not as "no agents here".
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(installationInventoryQueryKey('snail'), {
+      kagent: true,
+      muster: false,
+      kserve: false,
+      capi: false,
+    });
+    const { result, statusApi, proxy } = setup({
+      queryClient,
+      states: { golem: 'healthy', wombat: 'degraded', snail: 'connecting' },
+    });
+
+    await waitFor(() => expect(probesOf(result).golem).toBe('answered'));
+    expect(probesOf(result).snail).toBe('answered');
+    expect(result.current.installationsWith('kagent')).toEqual(['golem']);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isProbing).toBe(true);
+
+    act(() => statusApi.recordHealthy('snail'));
+    await settle();
+
+    await waitFor(() => expect(result.current.isProbing).toBe(false));
+    expect(result.current.installationsWith('kagent')).toEqual([
+      'golem',
+      'snail',
+    ]);
+    // The cached answer is fresh: no probe went to snail.
+    expect(proxy.mock.calls.map(call => call[0].clusterName)).toEqual([
+      'golem',
+    ]);
+  });
+});

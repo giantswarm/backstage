@@ -256,6 +256,14 @@ export function useInstallationInventory(): InstallationInventory {
 
     const canStillAnswer = (entry: InstallationInventoryEntry) =>
       entry.probe === 'pending' && CAN_STILL_ANSWER.has(entry.accessState);
+    // An installation whose access probe has not settled is not listed by
+    // `installationsWith` yet (it is not `healthy`), even when its inventory
+    // answer is already in the cache from an earlier visit -- so a tab has
+    // nothing to query for it *for now*, not for good. It counts as still
+    // settling, or a pinned installation would read as "no agents here" for
+    // the seconds until its `/version` probe answers.
+    const accessSettling = (entry: InstallationInventoryEntry) =>
+      entry.accessState === 'connecting';
     const homeEntry = entries.find(entry => entry.home);
     // Until the status set has any entry at all (the cluster-access connector
     // seeds it right after the auth providers initialise, but a page can mount
@@ -287,7 +295,10 @@ export function useInstallationInventory(): InstallationInventory {
         isLoadingInstallations ||
         nothingKnownYet ||
         (homeEntry !== undefined && canStillAnswer(homeEntry)),
-      isProbing: nothingKnownYet || entries.some(canStillAnswer),
+      isProbing:
+        nothingKnownYet ||
+        entries.some(canStillAnswer) ||
+        entries.some(accessSettling),
       installationsWith,
       refresh,
     };
