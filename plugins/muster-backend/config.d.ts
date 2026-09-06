@@ -25,10 +25,21 @@ export interface Config {
       /** Muster MCP aggregator endpoint, e.g. https://muster.<mc>.<domain>/mcp */
       url: string;
       /**
-       * Auth provider whose per-user OAuth token the frontend forwards for
-       * this installation. When set, requests without a forwarded token are
-       * rejected with 401. Frontend-visible (a provider name, not a secret) so
-       * the frontend can resolve which OAuth token to forward per installation.
+       * Marks this installation as requiring a per-user token: requests
+       * without a forwarded token are rejected with 401, and `/installations`
+       * reports it as `requiresAuth`.
+       *
+       * Which token the frontend forwards depends on the installation. For the
+       * HOME installation (the `gs.installations` entry whose
+       * `oidcTokenProvider` is `gs.authProvider`; the only installation on a
+       * standalone install) it is this provider's token -- with no dedicated
+       * `mcp-*` provider configured, the person's main-login Dex ID token,
+       * which the home muster trusts. For every OTHER installation the value
+       * is not used to pick a token: the frontend forwards the token the
+       * cluster token broker mints for that installation (issued by its own
+       * Dex, `aud: [dex-k8s-authenticator, …]`), which that muster trusts and
+       * the kagent/model-manager proxies already send. Frontend-visible (a
+       * provider name, not a secret).
        * @visibility frontend
        */
       authProvider?: string;

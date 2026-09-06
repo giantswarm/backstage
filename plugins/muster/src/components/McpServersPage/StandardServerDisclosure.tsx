@@ -253,7 +253,7 @@ export function StandardServerDisclosure({
         {authenticated ? (
           <ServerTools server={representative} prefixOverride={toolPrefix} />
         ) : (
-          <Gate label="Authenticate to muster to inspect this server's tools." />
+          <Gate label="This server's tools are read through the muster session, which is not available -- see the notice above." />
         )}
       </DetailBlock>
 

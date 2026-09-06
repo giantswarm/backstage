@@ -6,6 +6,10 @@ import {
   fetchApiRef,
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
+import {
+  kubernetesApiRef,
+  kubernetesAuthProvidersApiRef,
+} from '@backstage/plugin-kubernetes-react';
 
 import {
   musterApiRef,
@@ -44,6 +48,11 @@ const musterSubPage = SubPageBlueprint.make({
   },
 });
 
+// The kubernetes APIs are dependencies because a muster other than the home
+// installation's is reached with that installation's brokered Dex token, minted
+// through them (kubernetesApi.getCluster → kubernetesAuthProvidersApi
+// .getCredentials) exactly like the kagent and model-manager clients do. The
+// home installation keeps the `authProvidersApi` (main-login) token.
 const musterApi = ApiBlueprint.make({
   name: 'muster',
   params: defineParams =>
@@ -54,14 +63,10 @@ const musterApi = ApiBlueprint.make({
         fetchApi: fetchApiRef,
         configApi: configApiRef,
         authProvidersApi: musterAuthProvidersApiRef,
+        kubernetesApi: kubernetesApiRef,
+        kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
       },
-      factory: ({ discoveryApi, fetchApi, configApi, authProvidersApi }) =>
-        new MusterApiClient({
-          discoveryApi,
-          fetchApi,
-          configApi,
-          authProvidersApi,
-        }),
+      factory: deps => new MusterApiClient(deps),
     }),
 });
 

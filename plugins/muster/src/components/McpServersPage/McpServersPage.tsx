@@ -1,17 +1,9 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
+import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
 import Dns from '@material-ui/icons/Dns';
 import Power from '@material-ui/icons/Power';
 import Build from '@material-ui/icons/Build';
-import Lock from '@material-ui/icons/Lock';
 import AddIcon from '@material-ui/icons/Add';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -23,6 +15,7 @@ import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
   SectionHeader,
   Gate,
+  SessionGate,
   DisclosureAccordion,
   FreshnessIndicator,
 } from '../shared';
@@ -93,11 +86,8 @@ export function McpServersPage() {
 
   // Session state (and the connect action) are resolved once via the shared
   // hook so the manager, the dashboard and the workflows page agree (ADR D3).
-  const {
-    authenticated,
-    connecting,
-    connect: handleConnect,
-  } = useMusterSession();
+  const session = useMusterSession();
+  const { authenticated } = session;
 
   const { standard, integration } = useMemo(
     () => partitionServers(mcpServers),
@@ -155,26 +145,10 @@ export function McpServersPage() {
       <Box className={classes.column}>
         {requiresAuth && !authenticated && (
           <Box className={classes.topGate}>
-            <Gate
-              label="Server topology is visible from the CRDs, but tools and core families require an authenticated muster session."
-              action={
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="primary"
-                  disabled={connecting}
-                  startIcon={
-                    connecting ? (
-                      <CircularProgress size={14} color="inherit" />
-                    ) : (
-                      <Lock style={{ fontSize: 14 }} />
-                    )
-                  }
-                  onClick={handleConnect}
-                >
-                  Connect to muster
-                </Button>
-              }
+            <SessionGate
+              session={session}
+              installation={activeInstallation}
+              context="Server topology is visible from the CRDs; tools and core families need a live muster session."
             />
           </Box>
         )}
@@ -273,7 +247,7 @@ export function McpServersPage() {
               {authenticated ? (
                 <CoreFamiliesPanel installation={activeInstallation} />
               ) : (
-                <Gate label="Authenticate to muster to inspect its core tools." />
+                <Gate label="Core tools are read through the muster session, which is not available -- see the notice above." />
               )}
             </DisclosureAccordion>
           </Box>

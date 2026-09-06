@@ -4,6 +4,16 @@ export {
   useMusterInstance,
 } from './MusterInstanceProvider';
 export type { MusterInstance } from './MusterInstanceProvider';
-export { useMusterSession } from './useMusterSession';
-export type { MusterSession } from './useMusterSession';
+export {
+  useMusterSession,
+  classifySessionFailure,
+  musterRejectionDetail,
+} from './useMusterSession';
+export type {
+  MusterSession,
+  MusterSessionFailure,
+  MusterSessionFailureKind,
+} from './useMusterSession';
+export { sessionGateCopy } from './sessionCopy';
+export type { SessionGateCopy } from './sessionCopy';
 export { useMusterMutationRefresh } from './useMusterMutationRefresh';

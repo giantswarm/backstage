@@ -21,8 +21,12 @@ export interface Config {
        */
       name: string;
       /**
-       * Auth provider whose per-user OAuth token the frontend forwards for this
-       * installation (a provider name, not a secret).
+       * Marks the installation as requiring a per-user token. Only the home
+       * installation (the `gs.installations` entry whose `oidcTokenProvider`
+       * is `gs.authProvider`) forwards this provider's token; every other
+       * installation is reached with the token the cluster token broker mints
+       * for it, and the value is not consulted beyond "requires a token". A
+       * provider name, not a secret.
        * @visibility frontend
        */
       authProvider?: string;
