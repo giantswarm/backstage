@@ -159,9 +159,22 @@ function timestampValue(value: string | undefined): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-/** Default ordering: most recent activity first, then title. */
-export function sortSessionRows(rows: SessionRow[]): SessionRow[] {
+/**
+ * Default ordering: the home installation's sessions first, then everyone
+ * else's; within that, most recent activity first, then title. Without a
+ * `home` it is recency alone.
+ */
+export function sortSessionRows(
+  rows: SessionRow[],
+  home?: string,
+): SessionRow[] {
+  const rank = (installation: string) =>
+    home !== undefined && installation === home ? 0 : 1;
   return [...rows].sort((a, b) => {
+    const byHome = rank(a.installation) - rank(b.installation);
+    if (byHome !== 0) {
+      return byHome;
+    }
     const aTime = timestampValue(a.updatedAt);
     const bTime = timestampValue(b.updatedAt);
     if (aTime !== bTime) {

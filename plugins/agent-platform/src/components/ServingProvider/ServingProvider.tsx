@@ -1,7 +1,9 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import {
+  applyInstallationScope,
   useInstallationInventory,
   useInstallations,
+  useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import {
@@ -102,11 +104,16 @@ export function ServingProvider({ children }: { children: ReactNode }) {
 
   // The KServe source reads CRs, so it follows the installation inventory: only
   // installations whose API groups include `serving.kserve.io` and whose access
-  // is healthy, home first. The inventory is one `GET /apis` per installation,
-  // shared with the Agents, Sessions and Models providers, so KServe costs no
-  // discovery request of its own any more.
+  // is healthy, home first, narrowed to the section's installation scope. The
+  // inventory is one `GET /apis` per installation, shared with the Agents,
+  // Sessions and Models providers, so KServe costs no discovery request of its
+  // own any more.
   const inventory = useInstallationInventory();
-  const kserveInstallations = inventory.installationsWith('kserve');
+  const { scope } = useInstallationScope();
+  const kserveInstallations = applyInstallationScope(
+    inventory.installationsWith('kserve'),
+    scope,
+  );
   const kserveKey = kserveInstallations.join(',');
   // An installation whose inventory probe failed could not be asked whether it
   // runs KServe; the source lists it as unreadable, as the old per-installation
@@ -115,7 +122,8 @@ export function ServingProvider({ children }: { children: ReactNode }) {
     entry =>
       entry.probe === 'failed' &&
       entry.accessState === 'healthy' &&
-      entry.error,
+      entry.error &&
+      applyInstallationScope([entry.installation], scope).length > 0,
   );
   const failedProbesKey = failedProbes
     .map(entry => entry.installation)
@@ -136,10 +144,14 @@ export function ServingProvider({ children }: { children: ReactNode }) {
   );
 
   // model-manager registers no API group, so the inventory cannot see it: the
-  // backend's configured list decides, over every reachable installation as
-  // before (home first).
-  const { installations: reachableInstallations } =
+  // backend's configured list decides, over every reachable installation in
+  // scope as before (home first).
+  const { installations: allReachableInstallations } =
     useReachableInstallations(allInstallations);
+  const reachableInstallations = applyInstallationScope(
+    allReachableInstallations,
+    scope,
+  );
 
   const kserve = useKServeServingSource(kserveTargets);
   const modelManager = useModelManagerServingSource(reachableInstallations);

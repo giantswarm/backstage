@@ -27,6 +27,16 @@ jest.mock('../ServingProvider', () => ({
   ServingProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
+// Whether the list renders as one group per installation is the section
+// scope's decision (gs); here it is whatever the test says. The group
+// components themselves are real.
+let mockGrouped = false;
+jest.mock('../InstallationGroups', () => ({
+  ...jest.requireActual('../InstallationGroups'),
+  useGroupedByInstallation: () => mockGrouped,
+  InstallationScopeNote: () => null,
+}));
+
 // Stub ui-react so the test doesn't need the PageHeaderActionsProvider (supplied
 // by GSPageLayout in the real app). `StatusLabel` is stubbed to its label only —
 // this suite covers the page's state branches, and the real status rendering is
@@ -43,15 +53,125 @@ const renderPage = () =>
 
 const baseValue: AgentsContextValue = {
   rows: [],
+  groups: [],
+  scope: 'all',
+  installations: [],
   isLoading: false,
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
 };
 
+const triager = {
+  id: 'inst-1/sre/triager',
+  installation: 'inst-1',
+  namespace: 'sre',
+  name: 'Incident triager',
+  technicalName: 'triager',
+  description: 'Triages incidents',
+  model: 'Claude Sonnet 4.6',
+  skillCount: 3,
+  readiness: 'ready' as const,
+};
+
+const reviewer = {
+  id: 'inst-2/dev/reviewer',
+  installation: 'inst-2',
+  namespace: 'dev',
+  name: 'Code reviewer',
+  technicalName: 'reviewer',
+  description: '',
+  model: undefined,
+  skillCount: 0,
+  readiness: 'ready' as const,
+};
+
 describe('AgentsIndexPage', () => {
   beforeEach(() => {
     mockUseAgents.mockReset();
+    mockGrouped = false;
+  });
+
+  describe('under "All installations" on a multi-installation portal', () => {
+    beforeEach(() => {
+      mockGrouped = true;
+    });
+
+    it('renders one group per installation, home first, each with a status line', async () => {
+      mockUseAgents.mockReturnValue({
+        ...baseValue,
+        rows: [triager, reviewer],
+        installations: ['inst-1', 'inst-2', 'inst-3', 'inst-4'],
+        groups: [
+          {
+            installation: 'inst-1',
+            home: true,
+            pipeline: 'testing',
+            rows: [triager],
+            status: 'ready',
+          },
+          {
+            installation: 'inst-2',
+            home: false,
+            rows: [reviewer],
+            status: 'ready',
+          },
+          { installation: 'inst-3', home: false, rows: [], status: 'loading' },
+          { installation: 'inst-4', home: false, rows: [], status: 'empty' },
+        ],
+      });
+
+      await renderPage();
+
+      const headings = screen.getAllByRole('heading', { level: 3 });
+      expect(headings.map(heading => heading.textContent)).toEqual([
+        'inst-1',
+        'inst-2',
+        'inst-3',
+        'inst-4',
+      ]);
+      expect(screen.getByText('testing')).toBeInTheDocument();
+      expect(screen.getAllByText('1 agent')).toHaveLength(2);
+      expect(screen.getByText('loading…')).toBeInTheDocument();
+      expect(screen.getByText('no agents here')).toBeInTheDocument();
+      // Each group's rows are its own table.
+      expect(screen.getAllByRole('grid')).toHaveLength(2);
+      expect(screen.getByText('Incident triager')).toBeInTheDocument();
+      expect(screen.getByText('Code reviewer')).toBeInTheDocument();
+    });
+
+    it('falls back to the empty table while no installation is known yet', async () => {
+      mockUseAgents.mockReturnValue({ ...baseValue, groups: [] });
+
+      await renderPage();
+
+      expect(screen.getByText('No agents found.')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { level: 3 }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders no group headers on a single-installation portal or under a pinned scope', async () => {
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      rows: [triager],
+      installations: ['inst-1'],
+      groups: [
+        {
+          installation: 'inst-1',
+          home: true,
+          rows: [triager],
+          status: 'ready',
+        },
+      ],
+    });
+
+    await renderPage();
+
+    expect(screen.getByText('Incident triager')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('grid')).toHaveLength(1);
   });
 
   it('shows the no-installations empty state', async () => {

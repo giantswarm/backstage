@@ -17,21 +17,29 @@ let mockKagent: {
   installations: string[];
   isProbing: boolean;
   isLoading?: boolean;
+  home?: string;
 } = {
   installations: ['gazelle', 'golem'],
   isProbing: false,
 };
+// The section's installation scope: everything, or one pinned installation.
+let mockScope = 'all';
 let mockAgentRows: unknown[] = [];
 let mockCapabilities: Record<string, { isUserScoped?: boolean }> = {};
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ALL_INSTALLATIONS: 'all',
+  applyInstallationScope: (installations: string[], scope: string) =>
+    scope === 'all'
+      ? installations
+      : installations.filter(installation => installation === scope),
   useInstallations: () => ({
     installations: mockConfigInstallations.map(name => ({ name })),
     isLoading: false,
   }),
   useInstallationInventory: () => ({
     entries: [],
-    home: mockKagent.installations[0],
+    home: mockKagent.home,
     isLoading: mockKagent.isLoading ?? false,
     isProbing: mockKagent.isProbing,
     // Only kagent matters to this provider; the inventory's other components
@@ -39,6 +47,14 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     installationsWith: (component: string) =>
       component === 'kagent' ? mockKagent.installations : [],
     refresh: () => {},
+  }),
+  useInstallationScope: () => ({
+    scope: mockScope,
+    setScope: () => {},
+    installations: [],
+    home: mockKagent.home,
+    isSingleInstallation: false,
+    isLoading: false,
   }),
 }));
 
@@ -499,5 +515,94 @@ describe('SessionsDataProvider', () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+});
+
+describe('SessionsDataProvider installation scope', () => {
+  beforeEach(() => {
+    mockKagent = {
+      installations: ['gazelle', 'golem'],
+      isProbing: false,
+      home: 'gazelle',
+    };
+    mockScope = 'all';
+  });
+
+  it('requests the home installation alone until it has answered, then the rest', async () => {
+    let answerHome!: (sessions: KagentSession[]) => void;
+    listSessions.mockImplementation((installation: string) =>
+      installation === 'gazelle'
+        ? new Promise<KagentSession[]>(resolve => {
+            answerHome = resolve;
+          })
+        : Promise.resolve([
+            session({ id: 'golem/g1', sessionId: 'g1', installation: 'golem' }),
+          ]),
+    );
+
+    const { result } = renderProvider();
+
+    await waitFor(() => expect(listSessions).toHaveBeenCalledWith('gazelle'));
+    // Nothing leaves for the other installation before the home has answered.
+    expect(listSessions).not.toHaveBeenCalledWith('golem');
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.groups.map(group => group.status)).toEqual([
+      'loading',
+      'loading',
+    ]);
+
+    answerHome([session()]);
+
+    await waitFor(() => expect(listSessions).toHaveBeenCalledWith('golem'));
+    await waitFor(() =>
+      expect(result.current.rows.map(row => row.installation)).toEqual([
+        'gazelle',
+        'golem',
+      ]),
+    );
+    expect(
+      result.current.groups.map(group => [
+        group.installation,
+        group.home,
+        group.status,
+      ]),
+    ).toEqual([
+      ['gazelle', true, 'ready'],
+      ['golem', false, 'ready'],
+    ]);
+  });
+
+  it('narrows the reads to a pinned installation', async () => {
+    mockScope = 'golem';
+    listSessions.mockResolvedValue([
+      session({ id: 'golem/g1', sessionId: 'g1', installation: 'golem' }),
+    ]);
+
+    const { result } = renderProvider();
+
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(listSessions).toHaveBeenCalledTimes(1);
+    expect(listSessions).toHaveBeenCalledWith('golem');
+    expect(result.current.scope).toBe('golem');
+    expect(result.current.installations).toEqual(['golem']);
+  });
+
+  it('lists an installation the portal cannot reach as a group of its own', async () => {
+    listInstallations.mockResolvedValue([
+      proxied('gazelle'),
+      proxied('golem', false, 'no answer within 3000 ms'),
+    ]);
+    listSessions.mockResolvedValue([session()]);
+
+    const { result } = renderProvider();
+
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(
+      result.current.groups.map(group => [group.installation, group.status]),
+    ).toEqual([
+      ['gazelle', 'ready'],
+      ['golem', 'not-reachable'],
+    ]);
+    expect(result.current.installations).toEqual(['gazelle', 'golem']);
   });
 });

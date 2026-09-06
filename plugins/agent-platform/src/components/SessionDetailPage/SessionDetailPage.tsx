@@ -33,6 +33,7 @@ import { AvatarSize } from '../../lib/agentAvatar';
 import { AWAITING_INPUT_STATES } from '../../lib/kagentSessionState';
 import { sessionsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
+import { InstallationChip } from '../InstallationChip';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
 import { SessionActionsMenu } from './SessionActionsMenu';
@@ -645,9 +646,12 @@ export function SessionDetailPage() {
                 <Text variant="body-medium">{row.agentName}</Text>
               </Flex>
             )}
-            <Text variant="body-medium" color="secondary">
-              on {row.installation}
-            </Text>
+            <Flex align="center" gap="1">
+              <Text variant="body-medium" color="secondary">
+                on
+              </Text>
+              <InstallationChip installation={row.installation} />
+            </Flex>
           </Flex>
 
           {/* Absolute, not relative. Both ends of a session are frequently within

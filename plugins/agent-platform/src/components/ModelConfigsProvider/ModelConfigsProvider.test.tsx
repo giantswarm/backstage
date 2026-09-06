@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { buildResourceErrors } from '../resourceErrorFixtures';
 import { ModelConfigsProvider, useModelConfigs } from './ModelConfigsProvider';
@@ -14,19 +14,27 @@ let mockKagent: {
   installations: string[];
   isProbing: boolean;
   isLoading?: boolean;
+  home?: string;
 } = {
   installations: ['alpha', 'beta', 'gaggle'],
   isProbing: false,
 };
+// The section's installation scope: everything, or one pinned installation.
+let mockScope = 'all';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ALL_INSTALLATIONS: 'all',
+  applyInstallationScope: (installations: string[], scope: string) =>
+    scope === 'all'
+      ? installations
+      : installations.filter(installation => installation === scope),
   useInstallations: () => ({
     installations: mockConfigInstallations.map(name => ({ name })),
     isLoading: false,
   }),
   useInstallationInventory: () => ({
     entries: [],
-    home: mockKagent.installations[0],
+    home: mockKagent.home,
     isLoading: mockKagent.isLoading ?? false,
     isProbing: mockKagent.isProbing,
     // Only kagent matters to this provider; the inventory's other components
@@ -34,6 +42,14 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     installationsWith: (component: string) =>
       component === 'kagent' ? mockKagent.installations : [],
     refresh: () => {},
+  }),
+  useInstallationScope: () => ({
+    scope: mockScope,
+    setScope: () => {},
+    installations: [],
+    home: mockKagent.home,
+    isSingleInstallation: false,
+    isLoading: false,
   }),
 }));
 
@@ -70,8 +86,14 @@ function result({
   const resources = Object.entries(succeeded).flatMap(([cluster, count]) =>
     Array.from({ length: count }, () => fakeModelConfig(cluster)),
   );
+  // The raw per-cluster result, present for every cluster that answered
+  // (an empty list included) -- what the provider counts as "settled".
+  const clustersData = Object.keys(succeeded).map(cluster => ({
+    cluster,
+    data: [],
+  }));
   const errors = buildResourceErrors({ failed, notFound });
-  return { resources, isLoading, errors };
+  return { resources, clustersData, isLoading, errors };
 }
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -164,5 +186,49 @@ describe('ModelConfigsProvider', () => {
     const { result: hook } = renderUseModelConfigs();
 
     expect(hook.current.hasInstallations).toBe(false);
+  });
+});
+
+describe('ModelConfigsProvider installation scope', () => {
+  beforeEach(() => {
+    mockUseResources.mockReset();
+    mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
+    mockKagent = {
+      installations: ['alpha', 'beta', 'gaggle'],
+      isProbing: false,
+      home: 'alpha',
+    };
+    mockScope = 'all';
+  });
+
+  it('queries the home installation alone until it has answered, then the rest', async () => {
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: 1 } }));
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(mockUseResources.mock.calls[0][0]).toEqual(['alpha']);
+    await waitFor(() =>
+      expect(mockUseResources.mock.calls.at(-1)?.[0]).toEqual([
+        'alpha',
+        'beta',
+        'gaggle',
+      ]),
+    );
+    expect(hook.current.installations).toEqual(['alpha', 'beta', 'gaggle']);
+    expect(hook.current.pendingInstallations).toEqual(['beta', 'gaggle']);
+    expect(hook.current.home).toBe('alpha');
+  });
+
+  it('narrows the read to a pinned installation', () => {
+    mockScope = 'gaggle';
+    mockUseResources.mockReturnValue(result({ succeeded: { gaggle: 2 } }));
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(mockUseResources.mock.calls[0][0]).toEqual(['gaggle']);
+    expect(hook.current.scope).toBe('gaggle');
+    expect(hook.current.installations).toEqual(['gaggle']);
+    expect(hook.current.availableInstallations).toEqual(['gaggle']);
+    expect(hook.current.pendingInstallations).toEqual([]);
   });
 });

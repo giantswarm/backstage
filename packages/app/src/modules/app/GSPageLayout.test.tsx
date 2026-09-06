@@ -1,6 +1,14 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
+import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 import { GSPageLayout } from './GSPageLayout';
+
+// Routed content that registers a header action, the way a tab's index page
+// registers its "New agent" button.
+function TabContent() {
+  useProvidePageHeaderActions(<button type="button">New agent</button>);
+  return <div>content</div>;
+}
 
 const tabs = [
   { id: 'list', label: 'List view', href: 'list' },
@@ -61,6 +69,30 @@ describe('GSPageLayout', () => {
       'aria-selected',
       'false',
     );
+  });
+
+  it("renders the page's own header actions alongside the ones the content registers", async () => {
+    await renderInTestApp(
+      <GSPageLayout
+        title="Agent Platform"
+        tabs={tabs}
+        headerActions={[<select key="scope" aria-label="Installation scope" />]}
+      >
+        <TabContent />
+      </GSPageLayout>,
+      {
+        mountPath: '/agent-platform',
+        initialRouteEntries: ['/agent-platform/list'],
+      },
+    );
+
+    // The section-wide control is not displaced by the tab's button.
+    expect(
+      screen.getByRole('combobox', { name: 'Installation scope' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'New agent' }),
+    ).toBeInTheDocument();
   });
 
   it('renders only the content when noHeader is set', async () => {

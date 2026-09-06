@@ -213,7 +213,11 @@ describe('SessionDetailPage', () => {
     // identically rather than showing the raw `issue_tracker` identifier. Appears
     // twice on purpose: in the header, and as the author of its messages.
     expect(screen.getAllByText('Issue tracker').length).toBeGreaterThan(0);
-    expect(screen.getByText('on gazelle')).toBeInTheDocument();
+    // The installation as a chip in the header, the same chip the agent and
+    // model pages carry.
+    expect(screen.getByTestId('installation-chip')).toHaveTextContent(
+      'gazelle',
+    );
   });
 
   it('offers the actions menu once the session is loaded', async () => {

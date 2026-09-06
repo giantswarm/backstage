@@ -105,16 +105,16 @@ const MusterViews = () => {
 // The "MCP Servers" tab of the Agent Platform page.
 //
 // The index redirect is a sibling of the views, NOT a route inside
-// MusterViews/MusterProviders, and it has to stay that way: MusterInstanceProvider
-// writes the active installation into `?installation=` from an effect, and a
-// search-only navigation resolves against the pathname of the render it was
-// created in. Mounted alongside the redirect, that write lands on the
-// pre-redirect path and silently replaces `/muster/dashboard` back with
-// `/muster`, leaving the section with no view and no selected tab. It only shows
-// once the installations query is cached (i.e. from the second visit in a
-// session), because a pending query makes the effect bail out and lose the race.
-// Redirecting before the providers mount keeps the two writes in separate
-// commits. Same reason the legacy `workflows/:name/run` redirect lives here.
+// MusterViews/MusterProviders. It had to be, while MusterInstanceProvider wrote
+// the active installation into `?installation=` from an effect: a search-only
+// navigation resolves against the pathname of the render it was created in, so
+// mounted alongside the redirect that write landed on the pre-redirect path and
+// silently replaced `/muster/dashboard` back with `/muster`. The provider now
+// reads the section-wide installation scope (gs `useInstallationScope`) and
+// writes nothing on mount; the scope's own URL sync runs in the page header,
+// outside these routes. The placement stays: it keeps any future search-only
+// write in a separate commit from the redirect. Same reason the legacy
+// `workflows/:name/run` redirect lives here.
 export const MusterSection = () => (
   <Routes>
     <Route index element={<IndexRedirect />} />

@@ -25,6 +25,7 @@ import {
 import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
+import { InstallationChip } from '../InstallationChip';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { toModelServedBy } from '../ModelsTable';
@@ -239,14 +240,17 @@ export function ModelDetailPage() {
   return (
     <Content>
       <div className={classes.column}>
-        <Text
-          as="h2"
-          variant="title-large"
-          weight="bold"
+        <Flex
+          align="center"
+          gap="2"
           className={classes.pageTitle}
+          style={{ flexWrap: 'wrap' }}
         >
-          {modelConfig.getDisplayName()}
-        </Text>
+          <Text as="h2" variant="title-large" weight="bold">
+            {modelConfig.getDisplayName()}
+          </Text>
+          <InstallationChip installation={installation} />
+        </Flex>
         <Text as="p" color="secondary" className={classes.intro}>
           ModelConfig <code>{`${namespace}/${name}`}</code> on {installation}.
         </Text>

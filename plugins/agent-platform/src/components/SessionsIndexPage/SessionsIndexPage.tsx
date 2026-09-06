@@ -1,18 +1,28 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Box, Flex, Text } from '@backstage/ui';
+import { Alert, Box, Flex, SearchField, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import { SESSIONS_NOUN } from '../../lib/installationGroups';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
+import {
+  InstallationGroups,
+  InstallationScopeNote,
+  useGroupedByInstallation,
+} from '../InstallationGroups';
 import { isStartableAgent, NewSessionComposer } from '../NewSessionComposer';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
-import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
+import {
+  SessionsDataProvider,
+  sessionSearchFn,
+  useSessions,
+} from '../SessionsDataProvider';
 import { SessionsTable } from '../SessionsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
@@ -143,6 +153,7 @@ function StartNewSession() {
 function SessionsIndexPageContent() {
   const {
     rows,
+    groups,
     isLoading,
     isLoadingMore,
     hasInstallations,
@@ -150,6 +161,20 @@ function SessionsIndexPageContent() {
     notUserScopedInstallations,
     notReachableInstallations,
   } = useSessions();
+  // Under "All installations" on a multi-installation portal the rows render
+  // as one group per installation, home first, and the search field moves up
+  // here so one search covers every group; a pinned scope and a
+  // single-installation portal keep the flat table with its own search.
+  const grouped = useGroupedByInstallation();
+  const [search, setSearch] = useState('');
+  const searchedGroups = useMemo(
+    () =>
+      groups.map(group => ({
+        ...group,
+        rows: sessionSearchFn(group.rows, search),
+      })),
+    [groups, search],
+  );
 
   if (!isLoading && !hasInstallations) {
     return (
@@ -179,6 +204,8 @@ function SessionsIndexPageContent() {
 
         <StartNewSession />
 
+        <InstallationScopeNote component="kagent" />
+
         {isLoading ? (
           // No rows yet — show activity instead of an empty table skeleton.
           <Progress aria-label="Loading sessions" />
@@ -190,7 +217,26 @@ function SessionsIndexPageContent() {
             )}
 
             <Box>
-              <SessionsTable rows={rows} />
+              {grouped ? (
+                <Flex direction="column" gap="3">
+                  <SearchField
+                    aria-label="Search sessions"
+                    placeholder="Search by session, agent, or installation"
+                    value={search}
+                    onChange={setSearch}
+                  />
+                  <InstallationGroups
+                    groups={searchedGroups}
+                    noun={SESSIONS_NOUN}
+                    renderRows={groupRows => (
+                      <SessionsTable rows={groupRows} showSearch={false} />
+                    )}
+                    fallback={<SessionsTable rows={[]} showSearch={false} />}
+                  />
+                </Flex>
+              ) : (
+                <SessionsTable rows={rows} />
+              )}
             </Box>
           </>
         )}

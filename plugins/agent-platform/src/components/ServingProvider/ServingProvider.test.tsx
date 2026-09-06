@@ -18,7 +18,23 @@ let mockInventory: {
   failed?: { installation: string; error: Error }[];
 } = { kserve: ['alpha'], isProbing: false };
 
+// The section's installation scope: everything, or one pinned installation.
+let mockScope = 'all';
+
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ALL_INSTALLATIONS: 'all',
+  applyInstallationScope: (installations: string[], scope: string) =>
+    scope === 'all'
+      ? installations
+      : installations.filter(installation => installation === scope),
+  useInstallationScope: () => ({
+    scope: mockScope,
+    setScope: () => {},
+    installations: [],
+    home: 'alpha',
+    isSingleInstallation: false,
+    isLoading: false,
+  }),
   useInstallations: () => ({
     installations: [{ name: 'alpha' }, { name: 'beta' }, { name: 'gamma' }],
     isLoading: false,
@@ -293,5 +309,47 @@ describe('ServingProvider', () => {
     expect(() => renderHook(() => useServing())).toThrow(
       'useServing must be used within a ServingProvider',
     );
+  });
+});
+
+describe('ServingProvider installation scope', () => {
+  beforeEach(() => {
+    mockUseKServeServingSource.mockReset();
+    mockUseKServeServingSource.mockReturnValue(empty);
+    mockUseModelManagerServingSource.mockReset();
+    mockUseModelManagerServingSource.mockReturnValue(empty);
+    mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
+    mockInventory = { kserve: ['alpha', 'beta'], isProbing: false };
+  });
+
+  afterEach(() => {
+    mockScope = 'all';
+  });
+
+  it('narrows both sources to a pinned installation', () => {
+    mockScope = 'beta';
+
+    renderHook(() => useServing(), { wrapper });
+
+    expect(mockUseKServeServingSource).toHaveBeenCalledWith({
+      installations: ['beta'],
+      isProbing: false,
+      errors: [],
+    });
+    expect(mockUseModelManagerServingSource).toHaveBeenCalledWith(['beta']);
+  });
+
+  it('feeds both sources every installation under all', () => {
+    renderHook(() => useServing(), { wrapper });
+
+    expect(mockUseKServeServingSource).toHaveBeenCalledWith({
+      installations: ['alpha', 'beta'],
+      isProbing: false,
+      errors: [],
+    });
+    expect(mockUseModelManagerServingSource).toHaveBeenCalledWith([
+      'alpha',
+      'beta',
+    ]);
   });
 });

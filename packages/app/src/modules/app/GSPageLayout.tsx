@@ -44,9 +44,19 @@ export function GSPageLayout(props: PageLayoutProps) {
 function PageLayoutWithHeader(props: PageLayoutProps) {
   const { title, icon, titleLink, headerActions, tabs, children } = props;
 
-  // Actions injected by the active routed content (if any) take precedence over
-  // the page's static header actions.
+  // Two kinds of actions share the header's action area. The page's own
+  // (`PluginHeaderActionBlueprint`, e.g. the Agent Platform's installation
+  // scope selector) are controls that belong to the whole section and stay put
+  // while the tabs change; the ones injected by the active routed content
+  // (`useProvidePageHeaderActions`, e.g. a tab's "New agent" button) come and
+  // go with it. Both render, the page's first: a section-wide control must
+  // not vanish because a tab registered a button.
   const dynamicActions = usePageHeaderActionsSlot();
+  const staticActions = headerActions?.filter(Boolean) ?? [];
+  const customActions =
+    staticActions.length > 0 || dynamicActions
+      ? [...staticActions, dynamicActions]
+      : undefined;
 
   // The page is mounted at a splat route (e.g. `/flux/*`); resolve its base path
   // so the sub-page tab hrefs below are absolute.
@@ -70,7 +80,7 @@ function PageLayoutWithHeader(props: PageLayoutProps) {
         title={title}
         icon={icon}
         titleLink={titleLink}
-        customActions={dynamicActions ?? headerActions}
+        customActions={customActions}
         tabs={headerTabs}
       />
       {children}

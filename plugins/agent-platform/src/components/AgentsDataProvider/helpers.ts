@@ -265,10 +265,17 @@ export function toAgentRow(
   };
 }
 
-/** Stable ordering: by installation, then display name. */
-export function sortAgentRows(rows: AgentRow[]): AgentRow[] {
+/**
+ * Stable ordering: the home installation's rows first, then by installation,
+ * then display name. Without a `home` (a portal without one, or a caller that
+ * does not care) it is installation-then-name alone.
+ */
+export function sortAgentRows(rows: AgentRow[], home?: string): AgentRow[] {
+  const rank = (installation: string) =>
+    home !== undefined && installation === home ? 0 : 1;
   return [...rows].sort(
     (a, b) =>
+      rank(a.installation) - rank(b.installation) ||
       a.installation.localeCompare(b.installation) ||
       a.name.localeCompare(b.name),
   );

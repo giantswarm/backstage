@@ -3,7 +3,11 @@ import userEvent from '@testing-library/user-event';
 
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { modelWarningFor, NewSessionComposer } from './NewSessionComposer';
+import {
+  agentOptionLabel,
+  modelWarningFor,
+  NewSessionComposer,
+} from './NewSessionComposer';
 
 const mockBuildAvatarUrl = jest.fn(
   (installation: string, name: string) =>
@@ -518,5 +522,35 @@ describe('the model behind the agent', () => {
     expect(modelWarningFor(idleModel)).toBeUndefined();
     expect(modelWarningFor(sre)).toBeUndefined();
     expect(modelWarningFor(undefined)).toBeUndefined();
+  });
+});
+
+describe('NewSessionComposer installation labels', () => {
+  it('names the installation in every option and in the selected value when the fleet has more than one', async () => {
+    renderComposer({ agents: [sre, platform], defaultAgent: sre });
+
+    // The selected value tells the installation too, not only the open list.
+    expect(agentPicker()).toHaveTextContent('SRE Agent · gazelle');
+
+    await userEvent.click(agentPicker());
+
+    expect(
+      screen.getByRole('option', { name: /SRE Agent · gazelle/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: /Platform Agent · golem/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps plain names while every agent is on one installation', async () => {
+    renderComposer({ agents: [sre, issues], defaultAgent: sre });
+
+    expect(agentPicker()).toHaveTextContent('SRE Agent');
+    expect(agentPicker()).not.toHaveTextContent('gazelle');
+  });
+
+  it('agentOptionLabel spells the two forms', () => {
+    expect(agentOptionLabel(sre, true)).toBe('SRE Agent · gazelle');
+    expect(agentOptionLabel(sre, false)).toBe('SRE Agent');
   });
 });
