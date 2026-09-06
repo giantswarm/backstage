@@ -3,8 +3,22 @@ import { mockServices } from '@backstage/backend-test-utils';
 import { NotFoundError } from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
+import {
+  EndpointProbeResult,
+  ReachabilityCache,
+} from '@giantswarm/backstage-plugin-gs-node';
 import { KAGENT_AUTH_HEADER, KagentClient } from './KagentClient';
-import { createRouter, RouterOptions } from './router';
+import { createRouter, kagentProbeUrl, RouterOptions } from './router';
+
+/**
+ * A reachability cache that never touches the network: every endpoint answers
+ * as reachable, immediately. Tests of the reachability route build their own.
+ */
+function reachableEverywhere() {
+  return new ReachabilityCache({
+    probe: async () => ({ reachable: true, checkedAt: 0 }),
+  });
+}
 
 /** Two installations with base domains, as gs.installations would provide. */
 const twoInstallations = {
@@ -55,6 +69,7 @@ describe('createRouter', () => {
       logger,
       config,
       client: mockClient,
+      reachability: reachableEverywhere(),
       ...options,
     });
     const app = express();
@@ -86,12 +101,18 @@ describe('createRouter', () => {
     expect(response.body).toEqual({ status: 'ok', configured: 2 });
   });
 
-  it('lists installations by name only, sorted', async () => {
+  it('lists installations by name with their reachability, sorted', async () => {
+    // The probes have settled (the fake cache answers synchronously on its
+    // first tick), so nothing is 'unknown' here.
+    await new Promise(resolve => setTimeout(resolve, 0));
     const response = await request(app).get('/kagent/installations');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
-      installations: [{ name: 'gazelle' }, { name: 'golem' }],
+      installations: [
+        { name: 'gazelle', reachable: true },
+        { name: 'golem', reachable: true },
+      ],
     });
   });
 
@@ -99,11 +120,111 @@ describe('createRouter', () => {
     const response = await request(app).get('/kagent/installations');
 
     // baseDomain deanonymizes customers, so the derived URL must stay
-    // backend-only.
+    // backend-only -- and the reachability fields must not smuggle it in.
     for (const installation of response.body.installations) {
-      expect(Object.keys(installation)).toEqual(['name']);
+      expect(Object.keys(installation).sort()).toEqual(['name', 'reachable']);
     }
     expect(JSON.stringify(response.body)).not.toContain('example.io');
+  });
+
+  describe('endpoint reachability', () => {
+    // The probe is unauthenticated and carries no user data; these tests only
+    // check what the route does with its answers. See gs-node's
+    // probeEndpoint tests for the classification itself.
+    function controlledCache() {
+      const pending = new Map<string, (result: EndpointProbeResult) => void>();
+      const probe = jest.fn(
+        (url: string) =>
+          new Promise<EndpointProbeResult>(resolve => {
+            pending.set(url, resolve);
+          }),
+      );
+      return { cache: new ReachabilityCache({ probe }), probe, pending };
+    }
+
+    it('probes the sessions route of every installation once at startup, without a token', async () => {
+      const { probe } = controlledCache();
+
+      await buildApp(twoInstallations, {
+        reachability: new ReachabilityCache({ probe }),
+      });
+
+      expect(probe).toHaveBeenCalledTimes(2);
+      expect(probe).toHaveBeenCalledWith(
+        'https://kagent.gazelle.example.io/api/sessions',
+      );
+      expect(probe).toHaveBeenCalledWith(
+        'https://kagent.golem.example.io/api/sessions',
+      );
+      // The probe is handed a URL and nothing else: no header, no identity.
+      for (const call of probe.mock.calls) {
+        expect(call).toHaveLength(1);
+      }
+    });
+
+    it("answers 'unknown' while the first probe is in flight, never waiting for it", async () => {
+      const { cache, pending } = controlledCache();
+      const probing = await buildApp(twoInstallations, { reachability: cache });
+
+      const response = await request(probing).get('/kagent/installations');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        installations: [
+          { name: 'gazelle', reachable: 'unknown' },
+          { name: 'golem', reachable: 'unknown' },
+        ],
+      });
+      // Not repeated while the first probe is still out.
+      expect(pending.size).toBe(2);
+    });
+
+    it('reports an unreachable installation with the probe reason once it settles', async () => {
+      const { cache, pending } = controlledCache();
+      const probing = await buildApp(twoInstallations, { reachability: cache });
+
+      pending.get('https://kagent.gazelle.example.io/api/sessions')!({
+        reachable: true,
+        checkedAt: 1,
+      });
+      pending.get('https://kagent.golem.example.io/api/sessions')!({
+        reachable: false,
+        reason: 'DNS lookup failed (ENOTFOUND)',
+        checkedAt: 1,
+      });
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const response = await request(probing).get('/kagent/installations');
+
+      expect(response.body).toEqual({
+        installations: [
+          { name: 'gazelle', reachable: true },
+          {
+            name: 'golem',
+            reachable: false,
+            reason: 'DNS lookup failed (ENOTFOUND)',
+          },
+        ],
+      });
+      expect(JSON.stringify(response.body)).not.toContain('example.io');
+    });
+
+    it('derives the probe URL from the (possibly overridden) apiBaseUrl', () => {
+      expect(
+        kagentProbeUrl({
+          name: 'gazelle',
+          apiBaseUrl: 'https://kagent.gazelle.example.io/api',
+        }),
+      ).toBe('https://kagent.gazelle.example.io/api/sessions');
+      // An installation whose kagent endpoint is an internal service URL is
+      // probed exactly where the proxy would call it.
+      expect(
+        kagentProbeUrl({
+          name: 'golem',
+          apiBaseUrl: 'https://kagent-golem.agent-platform.svc:8443/api',
+        }),
+      ).toBe('https://kagent-golem.agent-platform.svc:8443/api/sessions');
+    });
   });
 
   describe('when nothing is configured', () => {
@@ -112,7 +233,11 @@ describe('createRouter', () => {
     async function buildUnconfiguredApp() {
       const logger = mockServices.logger.mock();
       const config = mockServices.rootConfig({ data: {} });
-      const router = await createRouter({ logger, config });
+      const router = await createRouter({
+        logger,
+        config,
+        reachability: reachableEverywhere(),
+      });
       const unconfigured = express();
       unconfigured.use(router);
       unconfigured.use(MiddlewareFactory.create({ logger, config }).error());
@@ -1369,7 +1494,9 @@ describe('createRouter', () => {
 
       const response = await request(restricted).get('/kagent/installations');
 
-      expect(response.body).toEqual({ installations: [{ name: 'gazelle' }] });
+      expect(
+        response.body.installations.map((i: { name: string }) => i.name),
+      ).toEqual(['gazelle']);
     });
   });
 });

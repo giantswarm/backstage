@@ -3,8 +3,27 @@ import { mockServices } from '@backstage/backend-test-utils';
 import { JsonObject } from '@backstage/types';
 import express from 'express';
 import request from 'supertest';
-import { MusterMcpClient } from '@giantswarm/backstage-plugin-gs-node';
-import { createRouter, MUSTER_AUTH_HEADER, RouterOptions } from './router';
+import {
+  EndpointProbeResult,
+  MusterMcpClient,
+  ReachabilityCache,
+} from '@giantswarm/backstage-plugin-gs-node';
+import {
+  createRouter,
+  MUSTER_AUTH_HEADER,
+  musterProbeUrl,
+  RouterOptions,
+} from './router';
+
+/**
+ * A reachability cache that never touches the network: every endpoint answers
+ * as reachable, immediately. Tests of the reachability fields build their own.
+ */
+function reachableEverywhere() {
+  return new ReachabilityCache({
+    probe: async () => ({ reachable: true, checkedAt: 0 }),
+  });
+}
 
 describe('createRouter', () => {
   const callTool = jest.fn();
@@ -39,6 +58,7 @@ describe('createRouter', () => {
       logger,
       config,
       client: mockClient,
+      reachability: reachableEverywhere(),
       ...options,
     });
     const app = express();
@@ -49,12 +69,21 @@ describe('createRouter', () => {
 
   // Build an app with explicit muster.installations config, still backed by
   // the injected mock client for every installation.
-  async function buildMultiApp(installations: JsonObject[]) {
+  async function buildMultiApp(
+    installations: JsonObject[],
+    options: Partial<RouterOptions> = {},
+  ) {
     const logger = mockServices.logger.mock();
     const config = mockServices.rootConfig({
       data: { muster: { installations } },
     });
-    const router = await createRouter({ logger, config, client: mockClient });
+    const router = await createRouter({
+      logger,
+      config,
+      client: mockClient,
+      reachability: reachableEverywhere(),
+      ...options,
+    });
     const app = express();
     app.use(router);
     app.use(MiddlewareFactory.create({ logger, config }).error());
@@ -193,7 +222,11 @@ describe('createRouter', () => {
   it('returns 503 when no muster server is configured', async () => {
     const logger = mockServices.logger.mock();
     const config = mockServices.rootConfig({ data: {} });
-    const router = await createRouter({ logger, config });
+    const router = await createRouter({
+      logger,
+      config,
+      reachability: reachableEverywhere(),
+    });
     const unconfiguredApp = express();
     unconfiguredApp.use(router);
     unconfiguredApp.use(MiddlewareFactory.create({ logger, config }).error());
@@ -206,7 +239,9 @@ describe('createRouter', () => {
     expect(response.body.error.name).toBe('ServiceUnavailableError');
   });
 
-  it('lists installations', async () => {
+  it('lists installations with their reachability', async () => {
+    // The fake cache settles on its first tick, so nothing is 'unknown' here.
+    await new Promise(resolve => setTimeout(resolve, 0));
     const response = await request(app).get('/installations');
 
     expect(response.status).toBe(200);
@@ -216,8 +251,122 @@ describe('createRouter', () => {
           name: 'muster',
           endpoint: 'injected',
           requiresAuth: false,
+          reachable: true,
         },
       ],
+    });
+  });
+
+  describe('endpoint reachability', () => {
+    // The probe is unauthenticated and carries no user data; these tests only
+    // check what the route does with its answers. See gs-node's
+    // probeEndpoint tests for the classification itself.
+    const twoMusters: JsonObject[] = [
+      { name: 'gazelle', url: 'https://muster.gazelle.example.io/mcp' },
+      {
+        name: 'golem',
+        url: 'https://muster.golem.example.io/mcp',
+        authProvider: 'oidc-golem',
+      },
+    ];
+
+    function controlledCache() {
+      const pending = new Map<string, (result: EndpointProbeResult) => void>();
+      const probe = jest.fn(
+        (url: string) =>
+          new Promise<EndpointProbeResult>(resolve => {
+            pending.set(url, resolve);
+          }),
+      );
+      return { cache: new ReachabilityCache({ probe }), probe, pending };
+    }
+
+    it('probes the RFC 9728 metadata of every installation once at startup, without a token', async () => {
+      const { probe } = controlledCache();
+
+      await buildMultiApp(twoMusters, {
+        reachability: new ReachabilityCache({ probe }),
+      });
+
+      expect(probe).toHaveBeenCalledTimes(2);
+      expect(probe).toHaveBeenCalledWith(
+        'https://muster.gazelle.example.io/.well-known/oauth-protected-resource',
+      );
+      expect(probe).toHaveBeenCalledWith(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      );
+      for (const call of probe.mock.calls) {
+        expect(call).toHaveLength(1);
+      }
+    });
+
+    it("answers 'unknown' while the first probe is in flight, never waiting for it", async () => {
+      const { cache, pending } = controlledCache();
+      const probing = await buildMultiApp(twoMusters, { reachability: cache });
+
+      const response = await request(probing).get('/installations');
+
+      expect(response.status).toBe(200);
+      expect(response.body.installations).toEqual([
+        {
+          name: 'gazelle',
+          endpoint: 'https://muster.gazelle.example.io/mcp',
+          requiresAuth: false,
+          reachable: 'unknown',
+        },
+        {
+          name: 'golem',
+          endpoint: 'https://muster.golem.example.io/mcp',
+          requiresAuth: true,
+          reachable: 'unknown',
+        },
+      ]);
+      expect(pending.size).toBe(2);
+    });
+
+    it('reports an unreachable installation with the probe reason once it settles', async () => {
+      const { cache, pending } = controlledCache();
+      const probing = await buildMultiApp(twoMusters, { reachability: cache });
+
+      pending.get(
+        'https://muster.gazelle.example.io/.well-known/oauth-protected-resource',
+      )!({ reachable: true, checkedAt: 1 });
+      pending.get(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      )!({
+        reachable: false,
+        reason: 'no answer within 3000 ms',
+        checkedAt: 1,
+      });
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const response = await request(probing).get('/installations');
+
+      expect(response.body.installations).toEqual([
+        expect.objectContaining({ name: 'gazelle', reachable: true }),
+        expect.objectContaining({
+          name: 'golem',
+          reachable: false,
+          reason: 'no answer within 3000 ms',
+        }),
+      ]);
+      expect(response.body.installations[0]).not.toHaveProperty('reason');
+    });
+
+    it('derives the probe URL next to the /mcp endpoint', () => {
+      expect(musterProbeUrl('https://muster.golem.example.io/mcp')).toBe(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      );
+      expect(musterProbeUrl('https://muster.golem.example.io/mcp/')).toBe(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      );
+      // A URL without the /mcp suffix (a local aggregator) is probed at its root.
+      expect(musterProbeUrl('http://muster:8090')).toBe(
+        'http://muster:8090/.well-known/oauth-protected-resource',
+      );
+      expect(musterProbeUrl('http://localhost:8090/mcp')).toBe(
+        'http://localhost:8090/.well-known/oauth-protected-resource',
+      );
     });
   });
 

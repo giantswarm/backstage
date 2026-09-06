@@ -8,6 +8,10 @@ import {
 import express from 'express';
 import Router from 'express-promise-router';
 import {
+  ReachabilityCache,
+  reachabilityFields,
+} from '@giantswarm/backstage-plugin-gs-node';
+import {
   DEFAULT_KAGENT_TIMEOUT_MS,
   DEFAULT_KAGENT_TURN_TIMEOUT_MS,
   isTurnPendingError,
@@ -28,6 +32,23 @@ export interface RouterOptions {
   client?: KagentClient;
   /** Same, for the model-manager routes (see modelManagerRouter). */
   modelManagerClient?: ModelManagerClient;
+  /**
+   * The cache of unauthenticated reachability probes behind
+   * `/kagent/installations`. Overridable for tests; defaults to one that
+   * probes for real with a 3 s budget and a 5 min TTL.
+   */
+  reachability?: ReachabilityCache;
+}
+
+/**
+ * The URL the reachability probe GETs for an installation: the sessions
+ * route itself. It is what the proxy will call, and it sits behind kagent's
+ * oauth2-proxy -- so an unauthenticated GET answers 401 or 403, which is a
+ * perfectly good proof that the route exists from where the portal runs. The
+ * probe carries no token and no user data; it never reads a session.
+ */
+export function kagentProbeUrl(installation: KagentInstallationConfig): string {
+  return `${installation.apiBaseUrl}/sessions`;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -173,6 +194,21 @@ export async function createRouter(
     );
   }
 
+  // Whether each installation's kagent endpoint is reachable *from this
+  // portal*, learned without a user: an unauthenticated GET per endpoint,
+  // cached five minutes (see gs-node's probeEndpoint for the classification).
+  // The cache is lazy, so warm it now rather than on the first request: the
+  // frontend caches the installation list for an hour, and a list answered
+  // entirely with 'unknown' because the pod had just started would keep every
+  // doomed per-user request alive for that hour. Not awaited -- the router is
+  // usable immediately and the route answers 'unknown' until a probe settles.
+  // Results are logged at INFO, one line per endpoint per state change.
+  const reachability =
+    options.reachability ?? new ReachabilityCache({ logger });
+  for (const installation of installations.values()) {
+    void reachability.refresh(kagentProbeUrl(installation));
+  }
+
   const router = Router();
 
   // Raised from the 100 kB default for headroom, so that
@@ -188,16 +224,27 @@ export async function createRouter(
   });
 
   /**
-   * The installations this proxy can reach kagent on. Names only, on purpose:
-   * the URL is derived from `baseDomain`, which is backend-only because it
-   * deanonymizes customers. The frontend intersects these with the
-   * installations it already considers reachable.
+   * The installations this proxy has a kagent endpoint for, each with whether
+   * that endpoint is reachable from this portal.
+   *
+   * `reachable` is `true`, `false` or `'unknown'` (no probe has settled yet --
+   * the route never waits for one), and `reason` names the failure class when
+   * `false`. The frontend skips the per-user calls for an installation reported
+   * `false` and labels it "not reachable from this portal"; `'unknown'` is
+   * treated as reachable, as everything was before the probe existed.
+   *
+   * No URL, on purpose: it is derived from `baseDomain`, which is backend-only
+   * because it deanonymizes customers, and the probe's reasons are built from
+   * error codes alone so they cannot leak it either.
    */
   router.get('/kagent/installations', (_, res) => {
     res.json({
-      installations: [...installations.keys()]
-        .sort((a, b) => a.localeCompare(b))
-        .map(name => ({ name })),
+      installations: [...installations.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(installation => ({
+          name: installation.name,
+          ...reachabilityFields(reachability.get(kagentProbeUrl(installation))),
+        })),
     });
   });
 

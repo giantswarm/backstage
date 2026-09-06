@@ -18,6 +18,8 @@ import {
 import {
   MusterInstallationConfig,
   MusterMcpClient,
+  ReachabilityCache,
+  reachabilityFields,
   readMusterInstallationsFromConfig,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { getMcpUsage } from './mcpUsage';
@@ -37,6 +39,24 @@ export interface RouterOptions {
   config: Config;
   /** Overridable for tests; used as the client for every installation. */
   client?: MusterMcpClient;
+  /**
+   * The cache of unauthenticated reachability probes behind `/installations`.
+   * Overridable for tests; defaults to one that probes for real with a 3 s
+   * budget and a 5 min TTL.
+   */
+  reachability?: ReachabilityCache;
+}
+
+/**
+ * The URL the reachability probe GETs for a muster installation: the
+ * aggregator's OAuth protected-resource metadata (RFC 9728), served
+ * unauthenticated next to its `/mcp` endpoint. Any HTTP answer proves the
+ * route from where the portal runs; the probe carries no token and no user
+ * data and never opens an MCP session.
+ */
+export function musterProbeUrl(endpoint: string): string {
+  const base = endpoint.replace(/\/+$/, '').replace(/\/mcp$/, '');
+  return `${base}/.well-known/oauth-protected-resource`;
 }
 
 function parseOptionalInt(value: unknown, name: string): number | undefined {
@@ -100,6 +120,19 @@ export async function createRouter(
     );
   }
 
+  // Whether each installation's muster is reachable *from this portal*,
+  // learned without a user: an unauthenticated GET of its RFC 9728 metadata,
+  // cached five minutes (see gs-node's probeEndpoint for the classification).
+  // Warmed here rather than on the first request so the first `/installations`
+  // answer after a pod start already carries the state; not awaited, the
+  // route answers 'unknown' until a probe settles. Results are logged at INFO,
+  // one line per endpoint per state change.
+  const reachability =
+    options.reachability ?? new ReachabilityCache({ logger });
+  for (const installation of installations.values()) {
+    void reachability.refresh(musterProbeUrl(installation.url));
+  }
+
   const router = Router();
   router.use(express.json());
 
@@ -107,6 +140,14 @@ export async function createRouter(
     res.json({ status: 'ok', configured: clients.size > 0 });
   });
 
+  /**
+   * The configured installations, each with whether its muster is reachable
+   * from this portal: `reachable` is `true`, `false` or `'unknown'` (no probe
+   * has settled yet -- the route never waits for one) and `reason` names the
+   * failure class when `false`. The frontend does not run its per-user auth
+   * probe against an installation reported `false` and says "not reachable
+   * from this portal" instead of offering a connect that cannot help.
+   */
   router.get('/installations', (_, res) => {
     res.json({
       installations: [...installations.values()].map(installation => ({
@@ -116,6 +157,9 @@ export async function createRouter(
         // config rather than being fabricated frontend-side.
         endpoint: installation.url,
         requiresAuth: Boolean(installation.authProvider),
+        ...reachabilityFields(
+          reachability.get(musterProbeUrl(installation.url)),
+        ),
       })),
     });
   });

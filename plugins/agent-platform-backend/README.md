@@ -26,7 +26,7 @@ All routes are under `/api/agent-platform` and require `?installation=<name>`.
 | Route                            | Token    | Purpose                                                    |
 | -------------------------------- | -------- | ---------------------------------------------------------- |
 | `GET /health`                    | —        | `{ status, configured }` — how many installations resolved |
-| `GET /kagent/installations`      | —        | Names of installations kagent can be proxied for           |
+| `GET /kagent/installations`      | —        | Installations kagent can be proxied for, with reachability |
 | `GET /kagent/sessions`           | required | The user's sessions, kagent's JSON verbatim                |
 | `GET /kagent/sessions/:id`       | required | One session object (asks kagent for `limit=1`, see below)  |
 | `GET /kagent/sessions/:id/tasks` | required | The session's A2A tasks — conversation, state, token usage |
@@ -34,6 +34,22 @@ All routes are under `/api/agent-platform` and require `?installation=<name>`.
 
 The user token is read from the `backstage-kagent-authorization` header, which
 must match `KAGENT_AUTH_HEADER` in `plugins/agent-platform`.
+
+`GET /kagent/installations` answers `{ installations: [{ name, reachable,
+reason? }] }`. `reachable` is `true`, `false` or `'unknown'`: whether the
+installation's kagent endpoint can be reached _from this portal_, learned from
+an **unauthenticated** `GET <apiBaseUrl>/sessions` per installation — no
+token, no user data, nothing performed; any HTTP answer (a 401 or 403 from
+kagent's oauth2-proxy included) proves the route, while a DNS failure, a
+refused or reset connection, a TLS failure or no answer within 3 s means
+`false`, with `reason` naming the failure class (codes only, never the host).
+Answers are cached five minutes and refreshed in the background; the route
+never waits for a probe, so it says `'unknown'` until the first one settles.
+The frontend skips the per-user calls for an installation reported `false` and
+labels it "not reachable from this portal", which is what stops the 10 s
+timeout and the 500 per unreachable installation per page view. The probes
+are shared code in `plugins/gs-node` (`probeEndpoint`, `ReachabilityCache`)
+and log one INFO line per endpoint per state change.
 
 Every kagent-side path stays under `/api`, because that is the only prefix either
 door proxies to the controller.

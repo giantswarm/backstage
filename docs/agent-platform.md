@@ -549,13 +549,21 @@ and availability all vary per installation:
 
 1. `useReachableInstallations` narrows to installations the app considers
    reachable, so the fan-out doesn't hang on unreachable clusters.
-2. `GET /kagent/installations` says which of those the backend can reach kagent
-   on. **The session queries wait for this**, deliberately: kagent runs on only a
-   couple of installations, and querying the rest would fire a doomed request each
-   — every one of which mints that installation's Dex token first. One cached call
-   up front is much cheaper than N wasted ones per cold load. If the allowlist
-   itself fails, we fall back to the reachable set so a backend hiccup doesn't look
-   like an empty session list.
+2. `GET /kagent/installations` says which of those the backend has a kagent
+   endpoint for, and whether that endpoint is **reachable from the portal**
+   (`reachable: true | false | 'unknown'`, from an unauthenticated probe the
+   backend runs and caches — see the backend README). **The session queries wait
+   for this**, deliberately: kagent runs on only a couple of installations, and
+   querying the rest would fire a doomed request each — every one of which mints
+   that installation's Dex token first. One cached call up front is much cheaper
+   than N wasted ones per cold load. An installation reported `false` is never
+   queried; the tab lists it as "not reachable from this portal" instead of
+   letting its request time out into a 500. If the allowlist itself fails, we
+   fall back to the reachable set so a backend hiccup doesn't look like an empty
+   session list. The list is cached under `kagentInstallationsQueryKey()`
+   (`['agent-platform', 'kagent', 'installations', 'v2']` — versioned because the
+   shape changed from names to objects and the cache is persisted, see
+   backstage#2264).
 3. One react-query per installation, so each loads, caches and fails
    independently. Rows are merged and re-sorted across the fleet, each tagged with
    its installation.
