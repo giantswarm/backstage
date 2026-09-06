@@ -196,6 +196,18 @@ export interface MusterInstallationInfo {
   /** The aggregator's MCP endpoint URL (mono-rendered on the dashboard). */
   endpoint?: string;
   requiresAuth: boolean;
+  /**
+   * Whether the muster endpoint is reachable *from this portal*, learned by
+   * the backend from an unauthenticated probe (no token, no user data):
+   * `true` when anything answered, `false` when DNS, the connection, TLS or
+   * the 3 s budget failed, `'unknown'` while no probe has settled yet. Only
+   * `false` is acted on: the session probe is not run and the gate says "not
+   * reachable from this portal" instead of offering a connect that cannot
+   * help. Absent from an older backend, which reads as `'unknown'`.
+   */
+  reachable?: boolean | 'unknown';
+  /** The failure class, when `reachable` is `false`. Never names the host. */
+  reason?: string;
 }
 
 export interface MusterInstallationsResponse {

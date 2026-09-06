@@ -40,7 +40,16 @@ function renderAgentSessions(listSessions: jest.Mock, seed?: KagentSession[]) {
 
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TestApiProvider apis={[[kagentApiRef, { listSessions }]]}>
+      <TestApiProvider
+        apis={[
+          [
+            kagentApiRef,
+            // The capabilities probe underneath consults the backend's
+            // installation list; an empty one means nothing is unreachable.
+            { listSessions, listInstallations: async () => [] },
+          ],
+        ]}
+      >
         {children}
       </TestApiProvider>
     </QueryClientProvider>

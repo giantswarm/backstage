@@ -7,6 +7,10 @@ import { useMusterInstance } from './MusterInstanceProvider';
 
 /**
  * Why there is no muster session for the active installation:
+ * - `unreachable` -- the backend's unauthenticated probe says the muster
+ *   endpoint cannot be reached from this portal (DNS, connection, TLS or
+ *   timeout), so no token was minted and nothing was sent. There is nothing
+ *   the person can do from here; the gate offers no action.
  * - `session-expired` -- no token could be minted because the person's main
  *   portal session is gone. The single main re-login fixes it; muster is fine.
  * - `mint-failed` -- no token could be minted for another reason (installation
@@ -15,7 +19,7 @@ import { useMusterInstance } from './MusterInstanceProvider';
  *   it) answered with an error; `message` quotes it.
  */
 export type MusterSessionFailureKind =
-  'session-expired' | 'mint-failed' | 'muster-rejected';
+  'unreachable' | 'session-expired' | 'mint-failed' | 'muster-rejected';
 
 export type MusterSessionFailure = {
   kind: MusterSessionFailureKind;
@@ -91,6 +95,23 @@ export function classifySessionFailure(
 }
 
 /**
+ * The failure for an installation whose muster the backend reports as not
+ * reachable from this portal. Nothing was tried on the person's behalf, so the
+ * sentence names the fact and the backend's reason, not an action.
+ */
+export function unreachableFailure(
+  installation: string | undefined,
+  reason: string | undefined,
+): MusterSessionFailure {
+  const where = installation ? ` on ${installation}` : '';
+  const why = reason ? ` (${reason})` : '';
+  return {
+    kind: 'unreachable',
+    message: `muster${where} is not reachable from this portal${why}.`,
+  };
+}
+
+/**
  * Resolves whether the browsing user has an authenticated muster session for
  * the active installation, why not if not, and exposes a connect action. A
  * single lightweight `filter_tools(limit=1)` probe doubles as the auth check:
@@ -100,12 +121,20 @@ export function classifySessionFailure(
  * Shared by every surface that gates muster mutations/tools so they agree on
  * session state (ADR D3) -- the probe is keyed per installation so react-query
  * dedupes it across pages.
+ *
+ * The probe is not run at all for an installation the backend reports as not
+ * reachable from this portal (`activeInstallationInfo.reachable === false`,
+ * from its unauthenticated probe): it would mint a token for a request that
+ * can only time out, and the gate would offer a connect that cannot help.
+ * `failure.kind` is `'unreachable'` instead, with no action.
  */
 export function useMusterSession(): MusterSession {
   const { activeInstallation, activeInstallationInfo } = useMusterInstance();
   const musterApi = useApi(musterApiRef);
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
-  const enabled = Boolean(activeInstallation);
+  const unreachable = activeInstallationInfo?.reachable === false;
+  const unreachableReason = activeInstallationInfo?.reason;
+  const enabled = Boolean(activeInstallation) && !unreachable;
 
   const {
     data: probe,
@@ -120,18 +149,32 @@ export function useMusterSession(): MusterSession {
     enabled,
   });
 
-  const authenticated = !requiresAuth || (!probeFailed && Boolean(probe));
+  const authenticated =
+    !unreachable && (!requiresAuth || (!probeFailed && Boolean(probe)));
   const pending = requiresAuth && enabled && status === 'pending';
-  const failure = useMemo(
-    () =>
-      requiresAuth && probeFailed
-        ? classifySessionFailure(probeError, activeInstallation)
-        : undefined,
-    [requiresAuth, probeFailed, probeError, activeInstallation],
-  );
+  const failure = useMemo(() => {
+    if (unreachable) {
+      return unreachableFailure(activeInstallation, unreachableReason);
+    }
+    return requiresAuth && probeFailed
+      ? classifySessionFailure(probeError, activeInstallation)
+      : undefined;
+  }, [
+    unreachable,
+    unreachableReason,
+    requiresAuth,
+    probeFailed,
+    probeError,
+    activeInstallation,
+  ]);
 
   const [connecting, setConnecting] = useState(false);
   const connect = useCallback(async () => {
+    if (unreachable) {
+      // No action is offered for an unreachable muster; a caller that reaches
+      // this anyway must not mint a token for a request that cannot arrive.
+      return;
+    }
     setConnecting(true);
     try {
       // signIn re-runs the mint (for a gone main session this is the single
@@ -142,7 +185,7 @@ export function useMusterSession(): MusterSession {
     } finally {
       setConnecting(false);
     }
-  }, [musterApi, activeInstallation, refetch]);
+  }, [musterApi, activeInstallation, refetch, unreachable]);
 
   return { authenticated, pending, failure, connecting, connect };
 }

@@ -13,8 +13,9 @@ export type SessionGateCopy = {
  * One wording per session state, shared by every gate so the manager, the
  * dashboard and the register flow say the same thing. Never a generic "not
  * authenticated": the sentence names the cause, and the action matches it --
- * an expired portal session needs the single re-login, everything else a
- * retry of the mint and probe.
+ * an expired portal session needs the single re-login, a muster the portal
+ * cannot reach offers no action at all (nothing was tried, nothing can be
+ * retried from here), everything else a retry of the mint and probe.
  */
 export function sessionGateCopy(
   session: Pick<MusterSession, 'authenticated' | 'pending' | 'failure'>,
@@ -28,6 +29,9 @@ export function sessionGateCopy(
     };
   }
   const failure = session.failure;
+  if (failure?.kind === 'unreachable') {
+    return { badge: 'Not reachable', sentence: failure.message };
+  }
   if (failure?.kind === 'session-expired') {
     return {
       badge: 'Session expired',

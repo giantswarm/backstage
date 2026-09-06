@@ -11,6 +11,7 @@ import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { isStartableAgent, NewSessionComposer } from '../NewSessionComposer';
+import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsTable } from '../SessionsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -147,6 +148,7 @@ function SessionsIndexPageContent() {
     hasInstallations,
     unreachableInstallations,
     notUserScopedInstallations,
+    notReachableInstallations,
   } = useSessions();
 
   if (!isLoading && !hasInstallations) {
@@ -215,6 +217,14 @@ function SessionsIndexPageContent() {
         <UnreachableInstallationsAlert
           installations={unreachableInstallations}
           resourceName="Sessions"
+        />
+
+        {/* Installations that run kagent but whose endpoint the portal cannot
+            reach (the backend's unauthenticated probe says so). Never queried,
+            so not a read failure and not something to retry: a quiet line, not
+            a warning card. */}
+        <NotReachableInstallationsNote
+          installations={notReachableInstallations}
         />
       </Flex>
     </Content>

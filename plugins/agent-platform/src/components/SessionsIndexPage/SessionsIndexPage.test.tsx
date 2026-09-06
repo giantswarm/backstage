@@ -75,6 +75,7 @@ const loadedSessions: SessionsContextValue = {
   hasInstallations: true,
   unreachableInstallations: [],
   notUserScopedInstallations: [],
+  notReachableInstallations: [],
 };
 
 const loadedAgents: AgentsContextValue = {
@@ -331,6 +332,21 @@ describe('SessionsIndexPage', () => {
         'Select an agent',
       );
     });
+  });
+
+  it('names installations the portal cannot reach in a quiet note, not a warning', async () => {
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      notReachableInstallations: ['golem', 'wombat'],
+    });
+
+    await render();
+
+    expect(
+      screen.getByText('golem, wombat: not reachable from this portal'),
+    ).toBeInTheDocument();
+    // Never queried, so not a read failure: the warning card stays away.
+    expect(screen.queryByText(/Couldn't read/)).toBeNull();
   });
 
   it('still explains an unconfigured instance', async () => {

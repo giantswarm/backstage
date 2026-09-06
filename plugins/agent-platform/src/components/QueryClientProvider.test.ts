@@ -13,8 +13,11 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
 
   it.each([
     [
-      'the kagent installation allowlist',
-      ['agent-platform', 'kagent', 'installations'],
+      // `kagentInstallationsQueryKey()`: the backend's list with per-installation
+      // reachability. The 'v2' segment is what keeps a rehydrated names-only
+      // entry from the previous key from ever being read as this shape.
+      'the kagent installation list with reachability',
+      ['agent-platform', 'kagent', 'installations', 'v2'],
     ],
     [
       'fleet agents',

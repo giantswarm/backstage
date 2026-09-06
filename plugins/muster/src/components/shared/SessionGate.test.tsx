@@ -34,6 +34,13 @@ const REJECTED: MusterSession = session({
     message: 'muster on golem rejected the token: Token validation failed',
   },
 });
+const UNREACHABLE: MusterSession = session({
+  failure: {
+    kind: 'unreachable',
+    message:
+      'muster on golem is not reachable from this portal (no answer within 3000 ms).',
+  },
+});
 
 describe('SessionGate', () => {
   it('shows a neutral checking state with no button while the probe runs', () => {
@@ -74,6 +81,19 @@ describe('SessionGate', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
+  it('says the muster is not reachable from this portal and offers no button', () => {
+    // Nothing was tried on the person's behalf and nothing can be retried
+    // from here, so a Connect button would be a dead one.
+    render(<SessionGate session={UNREACHABLE} installation="golem" />);
+
+    expect(
+      screen.getByText(
+        'muster on golem is not reachable from this portal (no answer within 3000 ms).',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('leads with the context sentence when given one', () => {
     render(
       <SessionGate
@@ -107,6 +127,7 @@ describe('SessionGate', () => {
     ['session-expired', EXPIRED],
     ['mint-failed', MINT_FAILED],
     ['muster-rejected', REJECTED],
+    ['unreachable', UNREACHABLE],
     ['unknown', session()],
   ])('never claims a generic "not authenticated" (%s)', (_name, s) => {
     render(<SessionGate session={s} installation="golem" />);
@@ -133,6 +154,10 @@ describe('sessionGateCopy', () => {
       badge: 'Rejected by muster',
       sentence: REJECTED.failure!.message,
       action: 'Retry',
+    });
+    expect(sessionGateCopy(UNREACHABLE, 'golem')).toEqual({
+      badge: 'Not reachable',
+      sentence: UNREACHABLE.failure!.message,
     });
   });
 

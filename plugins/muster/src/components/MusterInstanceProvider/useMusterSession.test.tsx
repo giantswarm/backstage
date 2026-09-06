@@ -10,6 +10,7 @@ import {
 import {
   classifySessionFailure,
   musterRejectionDetail,
+  unreachableFailure,
   useMusterSession,
 } from './useMusterSession';
 
@@ -200,6 +201,108 @@ describe('useMusterSession', () => {
     expect(result.current.connecting).toBe(false);
   });
 
+  describe('an installation the backend reports as not reachable from this portal', () => {
+    const unreachableGolem = instance({
+      activeInstallationInfo: {
+        name: 'golem',
+        requiresAuth: true,
+        reachable: false,
+        reason: 'no answer within 3000 ms',
+      },
+    });
+
+    it('does not run the probe and reports the unreachable failure with no pending state', async () => {
+      const api: Api = {
+        filterTools: jest.fn().mockResolvedValue(PROBE_OK),
+        signIn: jest.fn(),
+      };
+      const { result } = renderHook(() => useMusterSession(), {
+        wrapper: wrapper(api, unreachableGolem),
+      });
+
+      expect(result.current.pending).toBe(false);
+      expect(result.current.authenticated).toBe(false);
+      expect(result.current.failure).toEqual({
+        kind: 'unreachable',
+        message:
+          'muster on golem is not reachable from this portal (no answer within 3000 ms).',
+      });
+
+      // Give a would-be probe every chance to fire: it must not.
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(api.filterTools).not.toHaveBeenCalled();
+    });
+
+    it('does not mint a token when connect is called anyway', async () => {
+      const api: Api = {
+        filterTools: jest.fn().mockResolvedValue(PROBE_OK),
+        signIn: jest.fn().mockResolvedValue(true),
+      };
+      const { result } = renderHook(() => useMusterSession(), {
+        wrapper: wrapper(api, unreachableGolem),
+      });
+
+      await act(() => result.current.connect());
+
+      expect(api.signIn).not.toHaveBeenCalled();
+      expect(api.filterTools).not.toHaveBeenCalled();
+      expect(result.current.failure?.kind).toBe('unreachable');
+    });
+
+    it('is unreachable even when the installation needs no token', async () => {
+      const api: Api = {
+        filterTools: jest.fn().mockResolvedValue(PROBE_OK),
+        signIn: jest.fn(),
+      };
+      const { result } = renderHook(() => useMusterSession(), {
+        wrapper: wrapper(
+          api,
+          instance({
+            activeInstallationInfo: {
+              name: 'golem',
+              requiresAuth: false,
+              reachable: false,
+            },
+          }),
+        ),
+      });
+
+      expect(result.current.authenticated).toBe(false);
+      expect(result.current.failure).toEqual({
+        kind: 'unreachable',
+        message: 'muster on golem is not reachable from this portal.',
+      });
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(api.filterTools).not.toHaveBeenCalled();
+    });
+
+    it.each([true, 'unknown'] as const)(
+      'probes as usual when reachability is %s',
+      async reachable => {
+        const api: Api = {
+          filterTools: jest.fn().mockResolvedValue(PROBE_OK),
+          signIn: jest.fn(),
+        };
+        const { result } = renderHook(() => useMusterSession(), {
+          wrapper: wrapper(
+            api,
+            instance({
+              activeInstallationInfo: {
+                name: 'golem',
+                requiresAuth: true,
+                reachable,
+              },
+            }),
+          ),
+        });
+
+        await waitFor(() => expect(result.current.authenticated).toBe(true));
+        expect(api.filterTools).toHaveBeenCalledTimes(1);
+        expect(result.current.failure).toBeUndefined();
+      },
+    );
+  });
+
   it('is authenticated without a session when the installation needs no token', async () => {
     const api: Api = {
       filterTools: jest
@@ -237,6 +340,22 @@ describe('musterRejectionDetail', () => {
       'authentication failure: no session',
     );
     expect(musterRejectionDetail('broken { json')).toBe('broken { json');
+  });
+});
+
+describe('unreachableFailure', () => {
+  it('names the installation and the backend reason, and copes without either', () => {
+    expect(
+      unreachableFailure('golem', 'DNS lookup failed (ENOTFOUND)'),
+    ).toEqual({
+      kind: 'unreachable',
+      message:
+        'muster on golem is not reachable from this portal (DNS lookup failed (ENOTFOUND)).',
+    });
+    expect(unreachableFailure(undefined, undefined)).toEqual({
+      kind: 'unreachable',
+      message: 'muster is not reachable from this portal.',
+    });
   });
 });
 

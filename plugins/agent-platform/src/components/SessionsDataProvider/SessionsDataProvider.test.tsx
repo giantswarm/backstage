@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { kagentApiRef } from '../../apis';
-import { KagentApi } from '../../apis/types';
+import { KagentApi, KagentInstallation } from '../../apis/types';
 import { KagentSession } from '../../lib/kagentSessions';
 import { SessionsDataProvider, useSessions } from './SessionsDataProvider';
 
@@ -54,6 +54,15 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
 const listSessions = jest.fn();
 const listInstallations = jest.fn();
 
+/** One entry of the backend's list; reachable unless said otherwise. */
+function proxied(
+  name: string,
+  reachable: KagentInstallation['reachable'] = true,
+  reason?: string,
+): KagentInstallation {
+  return { name, reachable, ...(reason && { reason }) };
+}
+
 const kagentApi = {
   listSessions,
   listInstallations,
@@ -77,10 +86,11 @@ function namedError(name: string): Error {
   return error;
 }
 
-function renderProvider() {
-  const queryClient = new QueryClient({
+function renderProvider(
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
-  });
+  }),
+) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
       <QueryClientProvider client={queryClient}>
@@ -94,7 +104,7 @@ function renderProvider() {
 beforeEach(() => {
   listSessions.mockReset();
   listInstallations.mockReset();
-  listInstallations.mockResolvedValue(['gazelle', 'golem']);
+  listInstallations.mockResolvedValue([proxied('gazelle'), proxied('golem')]);
   mockConfigInstallations = ['gazelle', 'golem'];
   mockKagent = { installations: ['gazelle', 'golem'], isProbing: false };
   mockAgentRows = [];
@@ -154,7 +164,11 @@ describe('SessionsDataProvider', () => {
     // inventory, every such installation was asked and answered 404 or, when
     // its hostname is private, a 500 after the proxy timeout — on every view.
     mockConfigInstallations = ['gazelle', 'golem', 'wombat'];
-    listInstallations.mockResolvedValue(['gazelle', 'golem', 'wombat']);
+    listInstallations.mockResolvedValue([
+      proxied('gazelle'),
+      proxied('golem'),
+      proxied('wombat'),
+    ]);
     mockKagent = { installations: ['gazelle', 'golem'], isProbing: false };
     listSessions.mockResolvedValue([]);
 
@@ -170,7 +184,7 @@ describe('SessionsDataProvider', () => {
     // kagent runs on only some installations; querying the rest is wasted work —
     // and each wasted request mints that installation's Dex token before it can
     // fail.
-    listInstallations.mockResolvedValue(['gazelle']);
+    listInstallations.mockResolvedValue([proxied('gazelle')]);
     listSessions.mockResolvedValue([]);
 
     renderProvider();
@@ -183,9 +197,9 @@ describe('SessionsDataProvider', () => {
   it('queries nothing until the allowlist resolves', async () => {
     // The whole point of waiting: no request may go out before we know which
     // installations actually have kagent, or the fan-out is doomed-by-default.
-    let resolveAllowlist: (value: string[]) => void = () => {};
+    let resolveAllowlist: (value: KagentInstallation[]) => void = () => {};
     listInstallations.mockReturnValue(
-      new Promise<string[]>(resolve => {
+      new Promise<KagentInstallation[]>(resolve => {
         resolveAllowlist = resolve;
       }),
     );
@@ -196,7 +210,7 @@ describe('SessionsDataProvider', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(true));
     expect(listSessions).not.toHaveBeenCalled();
 
-    resolveAllowlist(['gazelle']);
+    resolveAllowlist([proxied('gazelle')]);
 
     await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(1));
   });
@@ -210,6 +224,93 @@ describe('SessionsDataProvider', () => {
 
     await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(2));
     expect(result.current.rows.length).toBeGreaterThan(0);
+  });
+
+  describe('endpoint reachability', () => {
+    it('never queries an installation the backend reports as not reachable from this portal', async () => {
+      // The backend's unauthenticated probe already knows the answer; the
+      // per-user request would only mint a token and wait out the proxy's
+      // timeout into a 500, on every page view.
+      listInstallations.mockResolvedValue([
+        proxied('gazelle'),
+        proxied('golem', false, 'DNS lookup failed (ENOTFOUND)'),
+      ]);
+      listSessions.mockResolvedValue([session()]);
+
+      const { result } = renderProvider();
+
+      await waitFor(() => expect(result.current.rows).toHaveLength(1));
+      expect(listSessions).toHaveBeenCalledTimes(1);
+      expect(listSessions).toHaveBeenCalledWith('gazelle');
+      expect(result.current.notReachableInstallations).toEqual(['golem']);
+      // Not a read failure: nothing was read.
+      expect(result.current.unreachableInstallations).toEqual([]);
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.isLoadingMore).toBe(false);
+    });
+
+    it("queries an installation whose reachability is still 'unknown'", async () => {
+      // The backend answers 'unknown' until its first probe settles; that is
+      // not a verdict, so the installation is treated as it always was.
+      listInstallations.mockResolvedValue([
+        proxied('gazelle'),
+        proxied('golem', 'unknown'),
+      ]);
+      listSessions.mockResolvedValue([]);
+
+      const { result } = renderProvider();
+
+      await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(2));
+      expect(listSessions).toHaveBeenCalledWith('golem');
+      expect(result.current.notReachableInstallations).toEqual([]);
+    });
+
+    it('lists only installations that run kagent as not reachable', async () => {
+      // The backend derives a kagent URL for every installation with a base
+      // domain, so it also probes installations without kagent; an
+      // unreachable URL there is nothing the Sessions tab needs to mention.
+      mockConfigInstallations = ['gazelle', 'golem', 'wombat'];
+      mockKagent = { installations: ['gazelle', 'golem'], isProbing: false };
+      listInstallations.mockResolvedValue([
+        proxied('gazelle'),
+        proxied('golem', false, 'no answer within 3000 ms'),
+        proxied('wombat', false, 'no answer within 3000 ms'),
+      ]);
+      listSessions.mockResolvedValue([]);
+
+      const { result } = renderProvider();
+
+      await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(1));
+      expect(result.current.notReachableInstallations).toEqual(['golem']);
+    });
+
+    it('ignores a names-only list persisted under the previous query key', async () => {
+      // The agent-platform cache is persisted across releases. Before this
+      // shape the list lived under ['agent-platform','kagent','installations']
+      // as an array of names, for up to an hour; it must not be read as the
+      // new shape, and must not stop the new key from being fetched.
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      queryClient.setQueryData(
+        ['agent-platform', 'kagent', 'installations'],
+        ['gazelle', 'golem', 'wombat'],
+      );
+      listInstallations.mockResolvedValue([
+        proxied('gazelle'),
+        proxied('golem', false, 'connection refused (ECONNREFUSED)'),
+      ]);
+      listSessions.mockResolvedValue([]);
+
+      const { result } = renderProvider(queryClient);
+
+      await waitFor(() => expect(listInstallations).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(result.current.notReachableInstallations).toEqual(['golem']),
+      );
+      expect(listSessions).toHaveBeenCalledTimes(1);
+      expect(listSessions).toHaveBeenCalledWith('gazelle');
+    });
   });
 
   it('excludes A2A subagent sessions', async () => {
