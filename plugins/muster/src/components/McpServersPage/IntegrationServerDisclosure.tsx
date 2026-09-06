@@ -96,7 +96,7 @@ export function IntegrationServerDisclosure({
         {authenticated ? (
           <RuntimeState server={server} />
         ) : (
-          <Gate label="Authenticate to muster to see live runtime state." />
+          <Gate label="Live runtime state is read through the muster session, which is not available -- see the notice above." />
         )}
       </DetailBlock>
 
@@ -110,7 +110,7 @@ export function IntegrationServerDisclosure({
         {authenticated ? (
           <ServerTools server={server} />
         ) : (
-          <Gate label="Authenticate to muster to inspect this server's tools." />
+          <Gate label="This server's tools are read through the muster session, which is not available -- see the notice above." />
         )}
       </DetailBlock>
 

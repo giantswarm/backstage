@@ -22,7 +22,7 @@ import {
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
-import { Gate } from '../shared';
+import { SessionGate } from '../shared';
 
 const useStyles = makeStyles(theme => ({
   column: {
@@ -123,11 +123,8 @@ export function NewMcpServerReviewPage() {
   const verifyLink = useRouteRef(newMcpServerVerifyRouteRef);
   const { state, definition, isComplete, registeredName, setRegisteredName } =
     useNewMcpServerForm();
-  const {
-    authenticated,
-    connecting,
-    connect: handleConnect,
-  } = useMusterSession();
+  const session = useMusterSession();
+  const { authenticated } = session;
 
   const isEdit = Boolean(registeredName);
   const [busy, setBusy] = useState(false);
@@ -321,18 +318,9 @@ export function NewMcpServerReviewPage() {
             <CardBody>
               <Flex direction="column" gap="3">
                 {!authenticated && (
-                  <Gate
-                    label="Registering runs live through muster, which needs an authenticated session."
-                    action={
-                      <Button
-                        variant="primary"
-                        size="small"
-                        isDisabled={connecting}
-                        onPress={handleConnect}
-                      >
-                        {connecting ? 'Connecting…' : 'Connect to muster'}
-                      </Button>
-                    }
+                  <SessionGate
+                    session={session}
+                    context="Registering runs live through muster, which needs a live session."
                   />
                 )}
                 {error && (
