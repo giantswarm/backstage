@@ -8,11 +8,12 @@ import { FALLBACK_KAGENT_CAPABILITIES } from '../lib/kagentCapabilities';
 import { useKagentCapabilitiesMap } from './useKagentCapabilities';
 
 const getIdentity = jest.fn();
+const listInstallations = jest.fn();
 
 const kagentApi = {
   getIdentity,
   listSessions: jest.fn(),
-  listInstallations: jest.fn(),
+  listInstallations,
 } as unknown as KagentApi;
 
 function renderWith(installations: string[]) {
@@ -30,9 +31,88 @@ function renderWith(installations: string[]) {
 
 beforeEach(() => {
   getIdentity.mockReset();
+  listInstallations.mockReset();
+  // Every installation reachable unless a test says otherwise.
+  listInstallations.mockResolvedValue([
+    { name: 'gazelle', reachable: true },
+    { name: 'golem', reachable: true },
+  ]);
 });
 
 describe('useKagentCapabilitiesMap', () => {
+  it('never identity-probes an installation the backend reports unreachable', async () => {
+    // The probe would mint that installation's Dex token and wait out the
+    // proxy timeout into a 500 -- for an answer the backend already knows.
+    listInstallations.mockResolvedValue([
+      { name: 'gazelle', reachable: true },
+      { name: 'golem', reachable: false, reason: 'no answer within 3000 ms' },
+    ]);
+    getIdentity.mockResolvedValue({ sub: 'marian@giantswarm.io' });
+
+    const { result } = renderWith(['gazelle', 'golem']);
+
+    await waitFor(() =>
+      expect(result.current('gazelle').isUserScoped).toBe(true),
+    );
+    expect(getIdentity).toHaveBeenCalledTimes(1);
+    expect(getIdentity).toHaveBeenCalledWith('gazelle');
+    // Nothing was learned about golem, and nothing is claimed.
+    expect(result.current('golem').isUserScoped).toBeUndefined();
+  });
+
+  it('waits for the backend list before probing anything', async () => {
+    // Firing while the list is loading would probe the unreachable
+    // installation once on every cold load -- exactly the request this exists
+    // to prevent.
+    let resolveList: (value: unknown) => void = () => {};
+    listInstallations.mockReturnValue(
+      new Promise(resolve => {
+        resolveList = resolve;
+      }),
+    );
+    getIdentity.mockResolvedValue({ sub: 'marian@giantswarm.io' });
+
+    const { result } = renderWith(['gazelle', 'golem']);
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(getIdentity).not.toHaveBeenCalled();
+
+    resolveList([
+      { name: 'gazelle', reachable: true },
+      { name: 'golem', reachable: false, reason: 'no answer within 3000 ms' },
+    ]);
+
+    await waitFor(() =>
+      expect(result.current('gazelle').isUserScoped).toBe(true),
+    );
+    expect(getIdentity).toHaveBeenCalledTimes(1);
+    expect(getIdentity).toHaveBeenCalledWith('gazelle');
+  });
+
+  it('probes as before when the backend list itself fails', async () => {
+    listInstallations.mockRejectedValue(new Error('backend down'));
+    getIdentity.mockResolvedValue({ sub: 'marian@giantswarm.io' });
+
+    const { result } = renderWith(['gazelle']);
+
+    await waitFor(() =>
+      expect(result.current('gazelle').isUserScoped).toBe(true),
+    );
+  });
+
+  it("still probes an installation whose reachability is 'unknown'", async () => {
+    listInstallations.mockResolvedValue([
+      { name: 'gazelle', reachable: 'unknown' },
+    ]);
+    getIdentity.mockResolvedValue({ sub: 'marian@giantswarm.io' });
+
+    const { result } = renderWith(['gazelle']);
+
+    await waitFor(() =>
+      expect(result.current('gazelle').isUserScoped).toBe(true),
+    );
+  });
+
   it('reports a user-scoped installation once the probe resolves', async () => {
     getIdentity.mockResolvedValue({ sub: 'marian@giantswarm.io' });
 

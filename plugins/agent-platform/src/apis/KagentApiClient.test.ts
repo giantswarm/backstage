@@ -190,21 +190,52 @@ describe('KagentApiClient', () => {
   });
 
   describe('listInstallations', () => {
-    it('maps the names-only response to strings without a token', async () => {
+    it('reads each installation with its reachability, without a token', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          installations: [
+            { name: 'gazelle', reachable: true },
+            {
+              name: 'golem',
+              reachable: false,
+              reason: 'DNS lookup failed (ENOTFOUND)',
+            },
+            { name: 'wombat', reachable: 'unknown' },
+          ],
+        }),
+      );
+
+      const installations = await buildClient().listInstallations();
+
+      expect(installations).toEqual([
+        { name: 'gazelle', reachable: true },
+        {
+          name: 'golem',
+          reachable: false,
+          reason: 'DNS lookup failed (ENOTFOUND)',
+        },
+        { name: 'wombat', reachable: 'unknown' },
+      ]);
+      // No installation means no token minting, and no popup risk.
+      expect(getCredentials).not.toHaveBeenCalled();
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://backend/api/agent-platform/kagent/installations',
+      );
+    });
+
+    it("reads the previous names-only shape as reachability 'unknown'", async () => {
+      // An older backend, or a proxy answering from a stale cache: the probe
+      // never ran, so neither "reachable" nor "unreachable" would be honest.
       fetchMock.mockResolvedValue(
         jsonResponse({
           installations: [{ name: 'gazelle' }, { name: 'golem' }],
         }),
       );
 
-      const installations = await buildClient().listInstallations();
-
-      expect(installations).toEqual(['gazelle', 'golem']);
-      // No installation means no token minting, and no popup risk.
-      expect(getCredentials).not.toHaveBeenCalled();
-      expect(fetchMock.mock.calls[0][0]).toBe(
-        'http://backend/api/agent-platform/kagent/installations',
-      );
+      await expect(buildClient().listInstallations()).resolves.toEqual([
+        { name: 'gazelle', reachable: 'unknown' },
+        { name: 'golem', reachable: 'unknown' },
+      ]);
     });
 
     it('tolerates a missing or malformed list', async () => {
@@ -213,11 +244,19 @@ describe('KagentApiClient', () => {
 
       fetchMock.mockResolvedValue(
         jsonResponse({
-          installations: [{ name: 'gazelle' }, {}, { name: '' }],
+          installations: [
+            { name: 'gazelle', reachable: 'sometimes' },
+            {},
+            { name: '' },
+            42,
+            // A reason only means something for an unreachable installation.
+            { name: 'golem', reachable: true, reason: 'stale' },
+          ],
         }),
       );
       await expect(buildClient().listInstallations()).resolves.toEqual([
-        'gazelle',
+        { name: 'gazelle', reachable: 'unknown' },
+        { name: 'golem', reachable: true },
       ]);
     });
   });

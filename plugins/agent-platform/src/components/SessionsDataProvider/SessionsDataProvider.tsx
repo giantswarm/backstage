@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import {
   useInstallationInventory,
   useInstallations,
@@ -8,6 +8,7 @@ import {
 import { kagentApiRef } from '../../apis';
 import { sessionsQueryKey } from '../../lib/queryKeys';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
+import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { useAgents } from '../AgentsDataProvider';
 import {
   buildAgentIndex,
@@ -16,9 +17,6 @@ import {
   sortSessionRows,
   toSessionRow,
 } from './helpers';
-
-/** The backend's kagent installation list changes with config, not with navigation. */
-const INSTALLATIONS_STALE_TIME_MS = 60 * 60 * 1000;
 
 export type SessionsContextValue = {
   /** Sessions flattened into plain rows, most recent activity first. */
@@ -47,6 +45,14 @@ export type SessionsContextValue = {
    * shown; the UI must stop describing them as the user's own.
    */
   notUserScopedInstallations: string[];
+  /**
+   * Installations that run kagent but whose kagent endpoint the backend
+   * reports as not reachable from this portal (its unauthenticated probe
+   * failed: DNS, connection, TLS or timeout). Never queried, so nothing was
+   * tried on the user's behalf and nothing can be retried -- listed in a quiet
+   * note rather than counted in `unreachableInstallations`.
+   */
+  notReachableInstallations: string[];
 };
 
 const SessionsContext = createContext<SessionsContextValue | undefined>(
@@ -85,45 +91,59 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
 
   // Which installations the backend proxies kagent for: a kagent URL derived
   // per installation, or the configured `agentPlatform.kagent.installations`
-  // (URL override and hard allowlist). The intersection with the inventory is
-  // what gets queried — the backend knows the URLs, the inventory knows who runs
-  // kagent; neither alone is enough.
+  // (URL override and hard allowlist) -- each with whether that URL is
+  // reachable from this portal, from the backend's unauthenticated probe. The
+  // intersection with the inventory is what gets queried — the backend knows
+  // the URLs and whether they answer, the inventory knows who runs kagent;
+  // none alone is enough.
   //
   // We deliberately *wait* for this before querying anything. It is one cheap
   // backend call, cached for an hour and persisted, so paying a single round-trip
   // up front is far cheaper than a wasted request to an installation the backend
   // has no route for.
   const {
-    data: proxiedInstallations,
+    installations: proxiedInstallations,
+    proxied,
+    notReachable,
     isLoading: isLoadingAllowlist,
     isError: allowlistFailed,
-  } = useQuery({
-    queryKey: ['agent-platform', 'kagent', 'installations'],
-    queryFn: () => kagentApi.listInstallations(),
-    staleTime: INSTALLATIONS_STALE_TIME_MS,
-  });
+  } = useKagentInstallations();
 
-  // Key memos on contents, not identity: both arrays are derived fresh each
+  // Key memos on contents, not identity: the arrays are derived fresh each
   // render. Extracted to variables so the deps can be statically checked.
   const kagentKey = kagentInstallations.join(',');
-  const proxiedKey = proxiedInstallations?.join(',');
+  const proxiedKey = proxied.join(',');
+  const notReachableKey = notReachable.join(',');
 
-  const targets = useMemo(() => {
+  const { targets, notReachableInstallations } = useMemo(() => {
     // If the backend's list itself is unavailable, fall back to the inventory's
     // kagent installations rather than showing an empty page: a backend hiccup
     // shouldn't look like "you have no sessions".
     if (allowlistFailed) {
-      return kagentInstallations;
+      return { targets: kagentInstallations, notReachableInstallations: [] };
     }
     if (!proxiedInstallations) {
-      return [];
+      return { targets: [], notReachableInstallations: [] };
     }
-    const allowed = new Set(proxiedInstallations);
-    return kagentInstallations.filter(installation =>
-      allowed.has(installation),
-    );
+    // An installation the backend reports as not reachable from this portal
+    // (`reachable === false`) is skipped: its request would mint a token and
+    // wait out the proxy's 10 s timeout into a 500, once per page view, for an
+    // answer the backend already has. `'unknown'` (no probe settled yet) is
+    // queried as before -- only an explicit `false` is acted on.
+    const allowed = new Set(proxied);
+    const unreachable = new Set(notReachable);
+    return {
+      targets: kagentInstallations.filter(installation =>
+        allowed.has(installation),
+      ),
+      // Only installations that actually run kagent: a derived-but-unreachable
+      // kagent URL on an installation without kagent is nothing to report.
+      notReachableInstallations: kagentInstallations.filter(installation =>
+        unreachable.has(installation),
+      ),
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kagentKey, proxiedKey, allowlistFailed]);
+  }, [kagentKey, proxiedKey, notReachableKey, allowlistFailed]);
 
   const sessionQueries = useQueries({
     queries: targets.map(installation => ({
@@ -240,6 +260,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       hasInstallations,
       unreachableInstallations: unreachable,
       notUserScopedInstallations,
+      notReachableInstallations,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -249,6 +270,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     isProbing,
     isLoadingAllowlist,
     allInstallations.length,
+    notReachableInstallations,
   ]);
 
   return (
