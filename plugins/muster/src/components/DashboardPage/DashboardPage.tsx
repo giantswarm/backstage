@@ -24,6 +24,7 @@ import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
+  isUnreachableSession,
   sessionGateCopy,
   useMusterInstance,
   useMusterSession,
@@ -313,12 +314,14 @@ export function DashboardPage() {
 
   // The tool count is the only stat that needs the muster session; read it from
   // the (deduped) overview query rather than the session hook, which only
-  // exposes auth state.
+  // exposes auth state. Like the hook's probe, it is not run at all for an
+  // installation the backend reports as not reachable from this portal: the
+  // request could only time out and land as a 500 in Sentry.
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ['muster', 'overview', activeInstallation],
     queryFn: () =>
       musterApi.filterTools({ installation: activeInstallation, limit: 1 }),
-    enabled: Boolean(activeInstallation),
+    enabled: Boolean(activeInstallation) && !isUnreachableSession(session),
   });
   const toolCount = overview?.total;
 
