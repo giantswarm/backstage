@@ -123,6 +123,21 @@ export type NewSessionComposerProps = {
  */
 const DESCRIPTION_MAX_LENGTH = 100;
 
+/**
+ * The picker's label for an agent: its name, and -- when the offered agents
+ * span more than one installation -- the installation it runs on, so the
+ * selected value and every row tell two same-named agents apart. Exported for
+ * the callers that mirror the label (tests, the sessions list's default).
+ */
+export function agentOptionLabel(
+  agent: Pick<AgentRow, 'name' | 'installation'>,
+  multipleInstallations: boolean,
+): string {
+  return multipleInstallations
+    ? `${agent.name} · ${agent.installation}`
+    : agent.name;
+}
+
 /** What to say about an agent under its name in the picker. */
 function describeAgent(agent: AgentRow): string | undefined {
   if (!agent.description) {
@@ -249,19 +264,24 @@ export function NewSessionComposer({
 
   // Grouped by installation only when there is more than one, since a single
   // group heading repeating the only installation's name is pure noise. Order is
-  // already installation-then-name from `sortAgentRows`, so grouping keeps it.
+  // already home-then-installation-then-name from `sortAgentRows`, so grouping
+  // keeps it. With more than one installation the label itself names the
+  // installation too (`agentOptionLabel`): the group heading is only visible
+  // in the open list, and the selected value must still tell an "SRE Agent"
+  // on one installation from its namesake on another.
   const options = useMemo(() => {
+    const installations = [
+      ...new Set(offered.map(agent => agent.installation)),
+    ];
+    const multipleInstallations = installations.length > 1;
     const toOption = (agent: AgentRow) => ({
       id: agent.id,
-      label: agent.name,
+      label: agentOptionLabel(agent, multipleInstallations),
       description: describeAgent(agent),
       leadingIcon: renderAvatar(agent),
     });
 
-    const installations = [
-      ...new Set(offered.map(agent => agent.installation)),
-    ];
-    if (installations.length <= 1) {
+    if (!multipleInstallations) {
       return offered.map(toOption);
     }
 

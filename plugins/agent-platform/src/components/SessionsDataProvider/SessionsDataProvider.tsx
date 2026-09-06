@@ -1,12 +1,25 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
-import { useQueries } from '@tanstack/react-query';
 import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  type ReactNode,
+} from 'react';
+import { useApi } from '@backstage/core-plugin-api';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
+import {
+  applyInstallationScope,
   useInstallationInventory,
   useInstallations,
+  useInstallationScope,
+  type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import { kagentApiRef } from '../../apis';
 import { sessionsQueryKey } from '../../lib/queryKeys';
+import {
+  groupRowsByInstallation,
+  type InstallationGroup,
+} from '../../lib/installationGroups';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { useAgents } from '../AgentsDataProvider';
@@ -19,8 +32,25 @@ import {
 } from './helpers';
 
 export type SessionsContextValue = {
-  /** Sessions flattened into plain rows, most recent activity first. */
+  /**
+   * Sessions flattened into plain rows: the home installation's first, then
+   * the others'; most recent activity first within that.
+   */
   rows: SessionRow[];
+  /**
+   * The same rows as one group per installation in scope, home first, each
+   * with its own status (loading, rows, empty, could not be read, not
+   * reachable from this portal). See `groupRowsByInstallation`.
+   */
+  groups: InstallationGroup<SessionRow>[];
+  /** The section's installation scope the rows are narrowed to. */
+  scope: InstallationScope;
+  /**
+   * The installations in scope that run kagent and that the backend knows a
+   * kagent endpoint for, home first -- the groups' order. Includes the ones the
+   * backend reports as not reachable, which are listed but never queried.
+   */
+  installations: string[];
   /**
    * Initial load: no rows yet and the fleet is still being queried. Only true
    * until the first installation responds — one slow installation must not keep
@@ -60,8 +90,9 @@ const SessionsContext = createContext<SessionsContextValue | undefined>(
 );
 
 /**
- * Lists the signed-in user's kagent sessions across every installation that
- * runs kagent and that the backend proxies, and exposes them as plain rows.
+ * Lists the signed-in user's kagent sessions across every installation in the
+ * section's scope that runs kagent and that the backend proxies, and exposes
+ * them as plain rows.
  *
  * Agent names and avatars are resolved against the `Agent` CRs loaded by
  * {@link AgentsDataProvider}, so this must be mounted inside one.
@@ -76,17 +107,23 @@ const SessionsContext = createContext<SessionsContextValue | undefined>(
  */
 export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const kagentApi = useApi(kagentApiRef);
+  const queryClient = useQueryClient();
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
   // Which installations run kagent: those whose inventory has the `kagent.dev`
   // API group and whose access is healthy, home first (gs
   // `useInstallationInventory`, one `GET /apis` per installation shared by every
-  // tab). Same reason as the other providers, and then some: a sessions request
-  // to an installation without kagent is doomed, and each one mints that
-  // installation's Dex token before it can fail.
+  // tab), narrowed to the section's scope. Same reason as the other providers,
+  // and then some: a sessions request to an installation without kagent is
+  // doomed, and each one mints that installation's Dex token before it can
+  // fail.
   const inventory = useInstallationInventory();
-  const kagentInstallations = inventory.installationsWith('kagent');
+  const { scope, home } = useInstallationScope();
+  const kagentInstallations = applyInstallationScope(
+    inventory.installationsWith('kagent'),
+    scope,
+  );
   const isProbing = inventory.isLoading || inventory.isProbing;
 
   // Which installations the backend proxies kagent for: a kagent URL derived
@@ -145,17 +182,39 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kagentKey, proxiedKey, notReachableKey, allowlistFailed]);
 
+  // Home first, literally: the home installation's sessions are requested
+  // alone, and the other installations' only once that request has answered
+  // (or failed), so the person's own sessions are on screen before any other
+  // installation is asked -- and before any other installation's token is
+  // minted. Read from the cache rather than from `sessionQueries` below, which
+  // this decides the `enabled` flags of; the home query is one of them, so its
+  // answer re-renders this provider and the flags follow.
+  const homeTargeted = home !== undefined && targets.includes(home);
+  const homeState = homeTargeted
+    ? queryClient.getQueryState(sessionsQueryKey(home))
+    : undefined;
+  const homeSettled =
+    !homeTargeted ||
+    homeState?.status === 'success' ||
+    homeState?.status === 'error';
+  const queriedTargets = homeSettled
+    ? targets
+    : targets.filter(installation => installation === home);
+
   const sessionQueries = useQueries({
     queries: targets.map(installation => ({
       queryKey: sessionsQueryKey(installation),
       queryFn: () => kagentApi.listSessions(installation),
+      enabled: homeSettled || installation === home,
       // No `retry` override: the QueryClientProvider predicate already declines
       // to retry NotFoundError/ServiceUnavailableError, which is the normal
       // outcome for the installations without kagent.
     })),
   });
 
-  const capabilitiesFor = useKagentCapabilitiesMap(targets);
+  // The identity probes follow the same order: no request leaves for another
+  // installation before the home has answered.
+  const capabilitiesFor = useKagentCapabilitiesMap(queriedTargets);
 
   const { rows: agentRows } = useAgents();
   // Keyed on id *and* display name: `AgentRow.id` is
@@ -185,9 +244,17 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     })
     .join('|');
 
+  const pipelineFor = useCallback(
+    (installation: string) =>
+      installations.find(candidate => candidate.name === installation)
+        ?.pipeline,
+    [installations],
+  );
+
   const value = useMemo<SessionsContextValue>(() => {
     const rows: SessionRow[] = [];
     const unreachable: string[] = [];
+    const pending: string[] = [];
 
     targets.forEach((installation, index) => {
       const query = sessionQueries[index];
@@ -205,6 +272,8 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       }
 
       if (query.status !== 'error') {
+        // No answer yet -- in flight, or not asked until the home has answered.
+        pending.push(installation);
         return;
       }
 
@@ -251,10 +320,34 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       hasInstallations &&
       (isProbing ||
         isLoadingAllowlist ||
+        !homeSettled ||
         sessionQueries.some(query => query.isLoading));
 
+    const sortedRows = sortSessionRows(rows, home);
+
+    // The groups: every kagent installation in scope that the backend knows an
+    // endpoint for -- queried, or listed as not reachable. One the backend does
+    // not proxy at all (outside its allowlist) is not a group, as it was not a
+    // row before.
+    const groupInstallations = kagentInstallations.filter(
+      installation =>
+        targets.includes(installation) ||
+        notReachableInstallations.includes(installation),
+    );
+    const groups = groupRowsByInstallation(sortedRows, {
+      installations: groupInstallations,
+      home,
+      pending,
+      unreachable,
+      notReachable: notReachableInstallations,
+      pipelineFor,
+    });
+
     return {
-      rows: sortSessionRows(rows),
+      rows: sortedRows,
+      groups,
+      scope,
+      installations: groupInstallations,
       isLoading: isBusy && rows.length === 0,
       isLoadingMore: isBusy && rows.length > 0,
       hasInstallations,
@@ -269,6 +362,11 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     capabilitiesFor,
     isProbing,
     isLoadingAllowlist,
+    homeSettled,
+    home,
+    scope,
+    kagentKey,
+    pipelineFor,
     allInstallations.length,
     notReachableInstallations,
   ]);

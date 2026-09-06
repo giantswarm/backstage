@@ -8,9 +8,15 @@ import AddIcon from '@material-ui/icons/Add';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { newAgentRouteRef } from '../../routes';
+import { AGENTS_NOUN } from '../../lib/installationGroups';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { AgentsTable } from '../AgentsTable';
+import {
+  InstallationGroups,
+  InstallationScopeNote,
+  useGroupedByInstallation,
+} from '../InstallationGroups';
 import { ServingProvider } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
@@ -30,11 +36,16 @@ function AgentsIndexPageContent() {
   const newAgentLink = useRouteRef(newAgentRouteRef);
   const {
     rows,
+    groups,
     isLoading,
     isLoadingMore,
     hasInstallations,
     unreachableInstallations,
   } = useAgents();
+  // Under "All installations" on a multi-installation portal the rows render
+  // as one group per installation, home first; a pinned scope and a
+  // single-installation portal keep the flat table.
+  const grouped = useGroupedByInstallation();
 
   // Memoized so the header actions slot only updates when the handler changes.
   const actions = useMemo(
@@ -70,6 +81,8 @@ function AgentsIndexPageContent() {
           Agents running across your management clusters.
         </Text>
 
+        <InstallationScopeNote component="kagent" />
+
         {isLoading ? (
           // No rows yet — show activity instead of an empty table skeleton.
           <Progress aria-label="Loading agents" />
@@ -89,7 +102,16 @@ function AgentsIndexPageContent() {
             </Box>
 
             <Box>
-              <AgentsTable rows={rows} />
+              {grouped ? (
+                <InstallationGroups
+                  groups={groups}
+                  noun={AGENTS_NOUN}
+                  renderRows={groupRows => <AgentsTable rows={groupRows} />}
+                  fallback={<AgentsTable rows={[]} />}
+                />
+              ) : (
+                <AgentsTable rows={rows} />
+              )}
             </Box>
           </>
         )}

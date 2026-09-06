@@ -48,6 +48,36 @@ export {
   type PlatformComponents,
   type UseHomeInstallationResult,
 } from './apis/installationInventory';
+// The Agent Platform section's one installation scope (`'all'` or a pinned
+// installation), read by the agent-platform tabs and the muster section
+// alike. A module store, not a React context: the two plugins share a page
+// but not a provider tree.
+export {
+  useInstallationScope,
+  useInstallationScopeUrlSync,
+  applyInstallationScope,
+  describeInstallationScopeOption,
+  isPlatformInstallation,
+  selectPlatformInstallations,
+  setInstallationScope,
+  getInstallationScopeSnapshot,
+  subscribeInstallationScope,
+  readStoredInstallationScope,
+  ALL_INSTALLATIONS,
+  INSTALLATION_SCOPE_SEARCH_PARAM,
+  INSTALLATION_SCOPE_STORAGE_KEY,
+  PLATFORM_COMPONENT_LABELS,
+  PLATFORM_SCOPE_COMPONENTS,
+  __resetInstallationScopeForTests,
+  type InstallationScope,
+  type InstallationScopeState,
+  type UseInstallationScopeResult,
+} from './apis/installationScope';
+export {
+  InstallationScopeSelect,
+  ALL_INSTALLATIONS_LABEL,
+  type InstallationScopeSelectProps,
+} from './components/InstallationScopeSelect';
 export {
   clusterAccessStatusApiRef,
   type ClusterAccessStatusApi,

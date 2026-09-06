@@ -88,41 +88,50 @@ export function shouldDehydrateAgentPlatformQuery(queryKey: QueryKey): boolean {
   return !isUserScopedQueryKey(queryKey);
 }
 
-export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
-  const queryClient = useMemo(() => {
-    const config: QueryClientConfig = {
-      defaultOptions: {
-        queries: {
-          refetchOnWindowFocus: false,
-          refetchOnReconnect: false,
-          // Cached list data is treated as fresh for a minute, so switching tabs
-          // or remounting reuses it without an immediate background refetch (the
-          // refetch is what could error on a single cluster and drop its rows).
-          staleTime: 60_000,
-          retry: (failureCount, error) => {
-            const name = (error as Error).name;
-            if (
-              name === 'RejectedError' ||
-              name === 'NotFoundError' ||
-              name === 'UnauthorizedError' ||
-              name === 'ForbiddenError' ||
-              name === 'ServiceUnavailableError'
-            ) {
-              return false;
-            }
-            return failureCount <= 2;
-          },
-          // Capped exponential backoff so a persistently failing cluster (e.g. an
-          // unreachable MC) is retried with increasing spacing instead of
-          // hammered, and never waits longer than 30s between attempts.
-          retryDelay: attempt => Math.min(1000 * 2 ** attempt, 30000),
-          gcTime,
-        },
+const queryClientConfig: QueryClientConfig = {
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      // Cached list data is treated as fresh for a minute, so switching tabs
+      // or remounting reuses it without an immediate background refetch (the
+      // refetch is what could error on a single cluster and drop its rows).
+      staleTime: 60_000,
+      retry: (failureCount, error) => {
+        const name = (error as Error).name;
+        if (
+          name === 'RejectedError' ||
+          name === 'NotFoundError' ||
+          name === 'UnauthorizedError' ||
+          name === 'ForbiddenError' ||
+          name === 'ServiceUnavailableError'
+        ) {
+          return false;
+        }
+        return failureCount <= 2;
       },
-    };
-    return new QueryClient(config);
-  }, []);
+      // Capped exponential backoff so a persistently failing cluster (e.g. an
+      // unreachable MC) is retried with increasing spacing instead of
+      // hammered, and never waits longer than 30s between attempts.
+      retryDelay: attempt => Math.min(1000 * 2 ** attempt, 30000),
+      gcTime,
+    },
+  },
+};
 
+/**
+ * One live client for every mount of this provider -- the three tab routers
+ * and the section's header control (the installation scope selector, which
+ * reads the installation inventory). They used to get a client each and only
+ * met through the persisted copy in localStorage, written at most every 30 s:
+ * a cold load probed the inventory once per client, and a tab switch dropped
+ * whatever the previous tab had read in the last half minute. Sharing the
+ * client (as the muster plugin does) makes the inventory one set of requests
+ * per page load and a tab switch a cache read.
+ */
+const queryClient = new QueryClient(queryClientConfig);
+
+export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   const persister = useMemo(
     () =>
       createPluginQueryPersister({
