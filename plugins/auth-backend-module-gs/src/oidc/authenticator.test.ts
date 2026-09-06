@@ -1,5 +1,5 @@
 import { oidcAuthenticator } from '@backstage/plugin-auth-backend-module-oidc-provider';
-import { gsOidcAuthenticator } from './authenticator';
+import { gsOidcAuthenticator, requestedConnectorId } from './authenticator';
 
 jest.mock('@backstage/plugin-auth-backend-module-oidc-provider', () => ({
   oidcAuthenticator: {
@@ -33,12 +33,76 @@ describe('gsOidcAuthenticator', () => {
   });
 
   it('delegates request handling to the upstream authenticator', () => {
-    expect(gsOidcAuthenticator.start).toBe(oidcAuthenticator.start);
     expect(gsOidcAuthenticator.authenticate).toBe(
       oidcAuthenticator.authenticate,
     );
     expect(gsOidcAuthenticator.refresh).toBe(oidcAuthenticator.refresh);
     expect(gsOidcAuthenticator.logout).toBe(oidcAuthenticator.logout);
+  });
+
+  describe('start', () => {
+    const mockStart = oidcAuthenticator.start as jest.Mock;
+    const ctx = initializeResult(
+      Promise.resolve({ helper: 'helper' }),
+    ) as unknown as Parameters<typeof gsOidcAuthenticator.start>[1];
+    const startInput = (query: unknown) =>
+      ({ scope: 'openid', state: 's', req: { query } }) as Parameters<
+        typeof oidcAuthenticator.start
+      >[0];
+
+    it('passes the request through untouched when no connector is asked for', async () => {
+      mockStart.mockResolvedValue({ url: 'https://dex/auth', status: 302 });
+
+      await gsOidcAuthenticator.start(startInput({ env: 'production' }), ctx);
+
+      expect(mockStart).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: 'openid' }),
+        ctx,
+      );
+    });
+
+    it('pins the requested connector on top of the configured search params', async () => {
+      mockStart.mockResolvedValue({ url: 'https://dex/auth', status: 302 });
+
+      await gsOidcAuthenticator.start(
+        startInput({ env: 'production', connector_id: 'giantswarm-ad' }),
+        ctx,
+      );
+
+      const [, pinned] = mockStart.mock.calls[0];
+      expect(pinned.searchParams).toEqual({
+        connector: 'giantswarm',
+        connector_id: 'giantswarm-ad',
+      });
+      expect(pinned.initializedPrompt).toBe('auto');
+      // the lazy discovery getter is preserved, not evaluated eagerly
+      await expect(pinned.promise).resolves.toEqual({ helper: 'helper' });
+      // the configured context is not mutated
+      expect(ctx.searchParams).toEqual({ connector: 'giantswarm' });
+    });
+
+    it('ignores malformed connector ids', async () => {
+      mockStart.mockResolvedValue({ url: 'https://dex/auth', status: 302 });
+
+      for (const bad of ['../x', 'a b', ['giantswarm-ad'], '', 42]) {
+        mockStart.mockClear();
+        await gsOidcAuthenticator.start(startInput({ connector_id: bad }), ctx);
+        expect(mockStart).toHaveBeenCalledWith(expect.anything(), ctx);
+      }
+    });
+  });
+
+  describe('requestedConnectorId', () => {
+    it('accepts plain identifiers only', () => {
+      expect(
+        requestedConnectorId({ query: { connector_id: 'giantswarm-github' } }),
+      ).toBe('giantswarm-github');
+      expect(requestedConnectorId({ query: {} })).toBeUndefined();
+      expect(requestedConnectorId({})).toBeUndefined();
+      expect(
+        requestedConnectorId({ query: { connector_id: 'a/b' } }),
+      ).toBeUndefined();
+    });
   });
 
   it('passes through context fields and memoizes a successful discovery', async () => {

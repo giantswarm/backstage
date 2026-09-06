@@ -3,7 +3,6 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import type { Selection } from 'react-aria-components';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
-  Alert,
   Badge,
   List,
   ListRow,
@@ -39,6 +38,7 @@ import { rootRouteRef } from '../../routes';
 import { AnnotatedMarkdown } from '../AnnotatedMarkdown';
 import { CommentForm, CommentItem } from '../Comments';
 import { DiffView } from '../ProposedTab/DiffView';
+import { PlansErrorAlert } from '../PlansErrorAlert';
 
 const NAV_WIDTH = 260;
 const READING_WIDTH = 860;
@@ -179,10 +179,9 @@ function OverviewPanel(props: { repo: string; pull: PlanPull }) {
       </Text>
       {isLoading && <Progress />}
       {error ? (
-        <Alert
-          status="danger"
+        <PlansErrorAlert
           title="Failed to load discussion"
-          description={(error as Error).message}
+          error={error as Error}
         />
       ) : null}
       {data?.comments.length === 0 && (
@@ -248,10 +247,9 @@ function DocumentPanel(props: {
       body = <Progress />;
     } else if (error) {
       body = (
-        <Alert
-          status="danger"
+        <PlansErrorAlert
           title="Failed to load document"
-          description={(error as Error).message}
+          error={error as Error}
         />
       );
     } else if (!data) {
@@ -435,10 +433,9 @@ export function PullReviewPage() {
   if (loadError) {
     return (
       <Content>
-        <Alert
-          status="danger"
+        <PlansErrorAlert
           title="Failed to load pull request"
-          description={(loadError as Error).message}
+          error={loadError as Error}
         />
       </Content>
     );

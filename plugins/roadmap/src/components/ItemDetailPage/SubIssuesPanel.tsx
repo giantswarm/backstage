@@ -19,6 +19,7 @@ import { Link, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { roadmapApiRef } from '../../apis';
+import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
 
 const useStyles = makeStyles((theme: Theme) => ({
   addForm: {
@@ -92,7 +93,7 @@ export function SubIssuesPanel(props: {
     return <Progress />;
   }
   if (error) {
-    return <Alert severity="error">{(error as Error).message}</Alert>;
+    return <RoadmapErrorAlert error={error as Error} />;
   }
 
   const subIssues = data?.subIssues ?? [];

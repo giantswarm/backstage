@@ -199,3 +199,41 @@ describe('PullModelDialog', () => {
     );
   });
 });
+
+describe('PullModelDialog · an installation running several backends', () => {
+  it('lists each backend as its own target and pulls on the chosen one', async () => {
+    pullModel.mockResolvedValue({ job, created: true });
+    await render([
+      { name: 'lab', backend: 'ollama', canWire: true },
+      { name: 'lab', backend: 'lemonade', canWire: true },
+    ]);
+
+    const select = screen.getByRole('button', {
+      name: /Installation and backend/,
+    });
+    await userEvent.click(select);
+    await userEvent.click(
+      screen.getByRole('option', { name: 'lab · Lemonade' }),
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /Model reference/ }),
+      'qwen3-4b-FLM',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Pull' }));
+
+    await waitFor(() =>
+      expect(pullModel).toHaveBeenCalledWith('lab', {
+        model: 'qwen3-4b-FLM',
+        backend: 'lemonade',
+        wire: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Pulling qwen3-4b-FLM on lab · Lemonade',
+        }),
+      ),
+    );
+  });
+});

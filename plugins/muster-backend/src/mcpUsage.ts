@@ -1,4 +1,7 @@
-import { MusterInstallationConfig, MusterMcpClient } from './MusterMcpClient';
+import {
+  MusterInstallationConfig,
+  MusterMcpClient,
+} from '@giantswarm/backstage-plugin-gs-node';
 import { parsePromToolText, PromSeries } from './promText';
 
 /**

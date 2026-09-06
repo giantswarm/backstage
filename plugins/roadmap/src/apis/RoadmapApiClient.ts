@@ -2,10 +2,11 @@ import {
   createApiRef,
   DiscoveryApi,
   FetchApi,
-  OAuthApi,
 } from '@backstage/core-plugin-api';
+import { RoadmapAuthApi } from './auth';
 import {
   RoadmapApi,
+  RoadmapConnectionResponse,
   RoadmapItemDetailResponse,
   RoadmapItemFilters,
   RoadmapItemsResponse,
@@ -19,26 +20,43 @@ export const roadmapApiRef = createApiRef<RoadmapApi>({
 });
 
 /**
- * GitHub OAuth scopes required for board mutations. Projects v2 field
- * updates need the classic `project` scope, which is not in the portal's
- * default scope set -- it is requested incrementally on the first write so
- * only roadmap users ever see the extra consent prompt.
+ * Header carrying the caller's muster token to the roadmap backend. Must
+ * match MUSTER_AUTH_HEADER in @giantswarm/backstage-plugin-gs-node.
  */
-const WRITE_SCOPES = ['repo', 'project'];
+const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
+
+/**
+ * The caller has no grant for the board's pro server in muster yet. `authUrl`
+ * is muster's sign-in URL: one visit connects the person's GitHub account,
+ * for this and every later session.
+ */
+export class MusterServerNotConnectedError extends Error {
+  readonly name = 'MusterServerNotConnectedError';
+  constructor(
+    message: string,
+    readonly authUrl?: string,
+  ) {
+    super(message);
+  }
+}
 
 export class RoadmapApiClient implements RoadmapApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
-  private readonly githubAuthApi: OAuthApi;
+  private readonly authApi: RoadmapAuthApi;
 
   constructor(options: {
     discoveryApi: DiscoveryApi;
     fetchApi: FetchApi;
-    githubAuthApi: OAuthApi;
+    authApi: RoadmapAuthApi;
   }) {
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
-    this.githubAuthApi = options.githubAuthApi;
+    this.authApi = options.authApi;
+  }
+
+  async getConnection(): Promise<RoadmapConnectionResponse> {
+    return this.request<RoadmapConnectionResponse>('/connection', {});
   }
 
   async getSchema(): Promise<RoadmapSchemaResponse> {
@@ -108,22 +126,17 @@ export class RoadmapApiClient implements RoadmapApi {
     );
   }
 
-  /**
-   * Board mutations run with the caller's GitHub OAuth token (X-GitHub-Token)
-   * so they are attributed to the person, never to the shared App identity.
-   */
+  /** Board mutations, as the caller like every read. */
   private async write(
     path: string,
     options: { method: string; body?: unknown },
   ): Promise<unknown> {
-    const token = await this.githubAuthApi.getAccessToken(WRITE_SCOPES);
     return this.request(
       path,
       {},
       {
         method: options.method,
         headers: {
-          'X-GitHub-Token': token,
           ...(options.body !== undefined && {
             'Content-Type': 'application/json',
           }),
@@ -147,14 +160,30 @@ export class RoadmapApiClient implements RoadmapApi {
         url.searchParams.set(key, value);
       }
     }
-    const response = init
-      ? await this.fetchApi.fetch(url.toString(), init)
-      : await this.fetchApi.fetch(url.toString());
+    // Every request, reads included, runs as the caller: the user's muster
+    // token goes along, muster holds the person's GitHub grant.
+    const { token } = await this.authApi.getCredentials();
+    const headers = {
+      ...((init?.headers as Record<string, string> | undefined) ?? {}),
+      ...(token && { [MUSTER_AUTH_HEADER]: token }),
+    };
+    const response = await this.fetchApi.fetch(url.toString(), {
+      ...init,
+      headers,
+    });
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorData = (await response.json().catch(() => ({}))) as {
+        error?: { name?: string; message?: string; authUrl?: string };
+      };
       const message =
-        (errorData as { error?: { message?: string } })?.error?.message ??
+        errorData?.error?.message ??
         `Roadmap request failed with status ${response.status}`;
+      if (errorData?.error?.name === 'MusterServerNotConnectedError') {
+        throw new MusterServerNotConnectedError(
+          message,
+          errorData.error.authUrl,
+        );
+      }
       const error = new Error(message);
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';

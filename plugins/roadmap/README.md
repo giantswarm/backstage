@@ -18,18 +18,22 @@ internal portals opt in via `app.extensions`.
 - **Item detail** (`/roadmap/items/:id`): issue body, comments, board
   fields editable inline, and the sub-issue tree with link/unlink.
 
-## Writes and GitHub attribution
+## GitHub as the person
 
-Reads go through the backend's shared GitHub App token. Writes (status and
-field changes, sub-issue linking) send the caller's per-user GitHub OAuth
-token in the `X-GitHub-Token` header, so every board mutation is attributed
-to the person who made it. The token comes from the portal's existing
-`githubAuthApiRef` session; Projects v2 mutations additionally need the
-classic `project` scope, which is requested incrementally on the first
-write (a one-time consent prompt for roadmap users only).
+Every board read and write runs as the signed-in person: the frontend forwards
+the user's main login (Dex) ID token in the `backstage-muster-authorization`
+header (the same credential the muster plugin sends), the roadmap backend runs
+pro's board tools through muster with it, and muster holds the person's GitHub
+grant. No GitHub token and no GitHub App identity exist in the portal, so every
+mutation is attributed to the person who made it and reads see what they can
+see.
 
-Users without org access or project write permission get GitHub's 403
-surfaced inline; there is no separate permission model in Backstage.
+A person whose muster session has no GitHub grant yet sees a **Connect
+GitHub** alert instead of the board; the button opens muster's sign-in (a
+redirect without a consent prompt when the GitHub App is already authorized,
+i.e. after the Dex GitHub login) and the page reloads once muster confirms the
+connection. Users without org access or project write permission get GitHub's
+403 surfaced inline; there is no separate permission model in Backstage.
 
 ## Enabling
 
@@ -45,5 +49,5 @@ roadmap:
     - Bumblebee🐝
 ```
 
-See `plugins/roadmap-backend/README.md` for the backend configuration and
-GitHub App permission requirements.
+See `plugins/roadmap-backend/README.md` for the backend configuration
+(`roadmap.muster`) and the permissions the person's GitHub grant needs.

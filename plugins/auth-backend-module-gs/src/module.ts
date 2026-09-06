@@ -9,6 +9,8 @@ import {
 import { oauth2Authenticator } from './oauth2/authenticator';
 import { createCimdRouter } from './oauth2/cimdRouter';
 import { createClusterTokenRouter } from './clusterToken/router';
+import { createGithubTokenRouter } from './githubToken/router';
+import { MusterServerClient } from '@giantswarm/backstage-plugin-gs-node';
 import { gsOidcAuthenticator } from './oidc/authenticator';
 import { customSignInResolver } from './signInResolver';
 import { waitForIssuerMetadata } from './oidc/issuerMetadata';
@@ -61,9 +63,13 @@ export const authModuleGsProviders = createBackendModule({
 
           // The main login provider is required: a portal without login is
           // unusable, and skipping registration here would serve 404s on
-          // every login until the pod is manually restarted. Retry to absorb
-          // transient Dex unavailability, then let the error fail startup so
-          // the orchestrator restarts the backend until Dex is reachable.
+          // every login until the pod is manually restarted. Wait, with
+          // backoff and without giving up, until Dex answers discovery:
+          // startup stays blocked, so the pod reports NotReady until the
+          // issuer is reachable and then finishes booting on its own.
+          // Failing startup instead would restart nothing -- the backend
+          // swallows the startup rejection and keeps serving readiness 503
+          // (giantswarm/backstage#2144).
           await waitForIssuerMetadata(mainAuthProvider, metadataUrl, logger);
 
           providersExtensionPoint.registerProvider({
@@ -120,6 +126,28 @@ export const authModuleGsProviders = createBackendModule({
             'Cluster token broker is configured, registering cluster token route',
           );
           httpRouter.use(clusterTokenRouter);
+        }
+
+        // GitHub as the person through muster (gs.github): the standard
+        // githubAuthApiRef mints from this route; the grant lives in muster.
+        const github = MusterServerClient.fromConfig(
+          config,
+          logger,
+          'gs.github',
+        );
+        if (github) {
+          const githubTokenRouter = createGithubTokenRouter({
+            config,
+            logger,
+            httpAuth,
+            github,
+          });
+          if (githubTokenRouter) {
+            logger.info(
+              `GitHub via muster is configured (server '${github.server}'), registering github-token routes`,
+            );
+            httpRouter.use(githubTokenRouter);
+          }
         }
       },
     });

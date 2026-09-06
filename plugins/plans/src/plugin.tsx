@@ -7,7 +7,7 @@ import {
 } from '@backstage/frontend-plugin-api';
 import AssignmentIcon from '@material-ui/icons/Assignment';
 
-import { plansApiRef, PlansApiClient } from './apis';
+import { plansApiRef, PlansApiClient, plansAuthApiRef } from './apis';
 import {
   pullRouteRef,
   roadmapItemExternalRouteRef,
@@ -46,9 +46,10 @@ const plansApi = ApiBlueprint.make({
       deps: {
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
+        authApi: plansAuthApiRef,
       },
-      factory: ({ discoveryApi, fetchApi }) =>
-        new PlansApiClient({ discoveryApi, fetchApi }),
+      factory: ({ discoveryApi, fetchApi, authApi }) =>
+        new PlansApiClient({ discoveryApi, fetchApi, authApi }),
     }),
 });
 

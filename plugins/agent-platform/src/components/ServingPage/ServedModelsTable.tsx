@@ -268,7 +268,9 @@ export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
           .map(row => row.runtime)
           .filter((runtime): runtime is string => runtime !== undefined),
       ).size > 1,
-    capabilities: rows.some(row => row.capabilities !== undefined),
+    capabilities: rows.some(
+      row => row.capabilities !== undefined || row.engine !== undefined,
+    ),
   };
 }
 
@@ -285,7 +287,12 @@ export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
 export function memoryLine(
   row: Pick<
     ServedModelRow,
-    'loaded' | 'memoryBytes' | 'memoryVramBytes' | 'loadedUntil'
+    | 'loaded'
+    | 'memoryBytes'
+    | 'memoryVramBytes'
+    | 'loadedUntil'
+    | 'device'
+    | 'pinned'
   >,
 ): string | undefined {
   if (row.loaded === undefined) {
@@ -294,7 +301,12 @@ export function memoryLine(
   if (!row.loaded) {
     return 'Not loaded';
   }
-  if (row.memoryBytes === undefined && !row.loadedUntil) {
+  if (
+    row.memoryBytes === undefined &&
+    !row.loadedUntil &&
+    !row.device &&
+    !row.pinned
+  ) {
     return undefined;
   }
   const parts = [
@@ -305,6 +317,15 @@ export function memoryLine(
   const share = formatGpuShare(row.memoryBytes, row.memoryVramBytes);
   if (share) {
     parts.push(share);
+  }
+  // Where a backend says which device runs the model (Lemonade: the NPU,
+  // the GPU, the CPU), that is the split; a pinned model is exempt from the
+  // backend's slot eviction.
+  if (row.device) {
+    parts.push(`on the ${row.device.toUpperCase()}`);
+  }
+  if (row.pinned) {
+    parts.push('pinned');
   }
   if (row.loadedUntil) {
     parts.push(`evicts ${formatTime(row.loadedUntil)}`);
@@ -482,15 +503,30 @@ const NO_TOOLS_TITLE =
   'Agents cannot use this model: it does not support tool calling.';
 
 /**
+ * What a backend's engine (Lemonade's recipe) means, for the chip's tooltip:
+ * the one fact that tells an NPU model from a GPU one on such a host.
+ */
+export const ENGINE_TITLE: Record<string, string> = {
+  flm: 'Runs with FastFlowLM on the AMD Ryzen AI NPU',
+  llamacpp: 'Runs with llama.cpp on the GPU or CPU',
+  'ryzenai-llm': 'Runs with the Ryzen AI LLM runtime',
+  oga: 'Runs with ONNX Runtime GenAI',
+};
+
+export function engineTitle(engine: string): string {
+  return ENGINE_TITLE[engine] ?? `Runs with the ${engine} engine`;
+}
+
+/**
  * The features a model reports, as chips for the ones that matter to agents,
  * with a warning icon where the one they need — tool calling — is missing.
  * An empty cell when the backend reports no features for this row.
  */
 export function ModelFeaturesCell({ row }: { row: ServedModelRow }) {
-  if (row.capabilities === undefined) {
+  if (row.capabilities === undefined && row.engine === undefined) {
     return <Cell>{null}</Cell>;
   }
-  const chips = row.capabilities.filter(capability =>
+  const chips = (row.capabilities ?? []).filter(capability =>
     FEATURE_CHIPS.includes(capability),
   );
   return (
@@ -499,8 +535,13 @@ export function ModelFeaturesCell({ row }: { row: ServedModelRow }) {
         align="center"
         gap="1"
         style={{ flexWrap: 'wrap' }}
-        title={row.capabilities.join(', ')}
+        title={row.capabilities?.join(', ')}
       >
+        {row.engine && (
+          <span title={engineTitle(row.engine)}>
+            <Badge size="small">{row.engine}</Badge>
+          </span>
+        )}
         {chips.map(capability => (
           <Badge key={capability} size="small">
             {capability}

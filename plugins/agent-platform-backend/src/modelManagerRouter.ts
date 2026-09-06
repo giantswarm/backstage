@@ -8,6 +8,7 @@ import {
 import express from 'express';
 import Router from 'express-promise-router';
 import {
+  BACKEND_NAME_PATTERN,
   DEFAULT_MODEL_MANAGER_LOAD_TIMEOUT_MS,
   DEFAULT_MODEL_MANAGER_TIMEOUT_MS,
   KUBERNETES_NAME_MAX_LENGTH,
@@ -127,6 +128,38 @@ function readModelOrPreset(body: Record<string, unknown>): {
     ...(preset && { preset }),
     ...(node && { node }),
   };
+}
+
+/**
+ * The `backend` a call is scoped to, from the body of a mutation or the query
+ * of a read/delete: optional (one model-manager may run several backends,
+ * 0.17 on), and when given a backend name (`ollama`, `kserve`, `lemonade`).
+ * Forwarded as such; model-manager answers 400 for a name it does not run.
+ */
+function readBackendScope(
+  req: express.Request,
+  body?: Record<string, unknown>,
+): string | undefined {
+  const raw =
+    body !== undefined
+      ? body.backend
+      : singleQueryValue(req.query.backend, 'backend');
+  if (raw === undefined || raw === null || raw === '') {
+    return undefined;
+  }
+  if (typeof raw !== 'string') {
+    throw new InputError('backend must be a string');
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (!BACKEND_NAME_PATTERN.test(trimmed)) {
+    throw new InputError(
+      'backend must be a backend name such as ollama, kserve or lemonade',
+    );
+  }
+  return trimmed;
 }
 
 function readOptionalBoolean(
@@ -280,17 +313,42 @@ export function createModelManagerRouter(
 
   router.get('/model-manager/backend', async (req, res) => {
     const client = resolveClient(req);
-    res.json(await client.getBackend({ userToken: readUserToken(req) }));
+    res.json(
+      await client.getBackend({
+        userToken: readUserToken(req),
+        backend: readBackendScope(req),
+      }),
+    );
+  });
+
+  /**
+   * Every backend the installation's model-manager runs (0.17 on). A
+   * model-manager before that has no such route and answers 404, which the
+   * frontend reads as "one backend, described by /backend".
+   */
+  router.get('/model-manager/backends', async (req, res) => {
+    const client = resolveClient(req);
+    res.json(await client.listBackends({ userToken: readUserToken(req) }));
   });
 
   router.get('/model-manager/models', async (req, res) => {
     const client = resolveClient(req);
-    res.json(await client.listModels({ userToken: readUserToken(req) }));
+    res.json(
+      await client.listModels({
+        userToken: readUserToken(req),
+        backend: readBackendScope(req),
+      }),
+    );
   });
 
   router.get('/model-manager/loaded', async (req, res) => {
     const client = resolveClient(req);
-    res.json(await client.listLoaded({ userToken: readUserToken(req) }));
+    res.json(
+      await client.listLoaded({
+        userToken: readUserToken(req),
+        backend: readBackendScope(req),
+      }),
+    );
   });
 
   // The operation routes are registered before the wildcard `GET|DELETE
@@ -311,7 +369,7 @@ export function createModelManagerRouter(
         ...(preset !== undefined && { preset }),
         ...(node !== undefined && { node }),
       },
-      { userToken },
+      { userToken, backend: readBackendScope(req, body(req)) },
     );
     // 202, matching model-manager's own answer: the import has started, the
     // body is the job to poll.
@@ -340,7 +398,7 @@ export function createModelManagerRouter(
     res.json(
       await client.loadModel(
         { ...target, ...(keepAlive !== undefined && { keepAlive }) },
-        { userToken },
+        { userToken, backend: readBackendScope(req, body(req)) },
       ),
     );
   });
@@ -354,7 +412,10 @@ export function createModelManagerRouter(
     const client = resolveClient(req);
     const userToken = readUserToken(req);
     res.json(
-      await client.fitCheck(readModelOrPreset(body(req)), { userToken }),
+      await client.fitCheck(readModelOrPreset(body(req)), {
+        userToken,
+        backend: readBackendScope(req, body(req)),
+      }),
     );
   });
 
@@ -362,27 +423,47 @@ export function createModelManagerRouter(
     const client = resolveClient(req);
     const userToken = readUserToken(req);
     const model = readModelRef(body(req));
-    res.json(await client.unloadModel({ model }, { userToken }));
+    res.json(
+      await client.unloadModel(
+        { model },
+        { userToken, backend: readBackendScope(req, body(req)) },
+      ),
+    );
   });
 
   router.post('/model-manager/models/wire', async (req, res) => {
     const client = resolveClient(req);
     const userToken = readUserToken(req);
     const model = readModelRef(body(req));
-    res.json(await client.wireModel({ model }, { userToken }));
+    res.json(
+      await client.wireModel(
+        { model },
+        { userToken, backend: readBackendScope(req, body(req)) },
+      ),
+    );
   });
 
   router.post('/model-manager/models/unwire', async (req, res) => {
     const client = resolveClient(req);
     const userToken = readUserToken(req);
     const model = readModelRef(body(req));
-    res.json(await client.unwireModel({ model }, { userToken }));
+    res.json(
+      await client.unwireModel(
+        { model },
+        { userToken, backend: readBackendScope(req, body(req)) },
+      ),
+    );
   });
 
   router.get('/model-manager/models/*name', async (req, res) => {
     const client = resolveClient(req);
     const userToken = readUserToken(req);
-    res.json(await client.getModel(readModelName(req), { userToken }));
+    res.json(
+      await client.getModel(readModelName(req), {
+        userToken,
+        backend: readBackendScope(req),
+      }),
+    );
   });
 
   /**
@@ -403,13 +484,21 @@ export function createModelManagerRouter(
     }
     const unwire = rawUnwire !== 'false';
     res.json(
-      await client.deleteModel(readModelName(req), unwire, { userToken }),
+      await client.deleteModel(readModelName(req), unwire, {
+        userToken,
+        backend: readBackendScope(req),
+      }),
     );
   });
 
   router.get('/model-manager/jobs', async (req, res) => {
     const client = resolveClient(req);
-    res.json(await client.listJobs({ userToken: readUserToken(req) }));
+    res.json(
+      await client.listJobs({
+        userToken: readUserToken(req),
+        backend: readBackendScope(req),
+      }),
+    );
   });
 
   // The kserve capabilities. A backend without them answers `unsupported`,
@@ -417,7 +506,12 @@ export function createModelManagerRouter(
   // capability flag is true, so reaching that is a hand-made request.
   router.get('/model-manager/presets', async (req, res) => {
     const client = resolveClient(req);
-    res.json(await client.listPresets({ userToken: readUserToken(req) }));
+    res.json(
+      await client.listPresets({
+        userToken: readUserToken(req),
+        backend: readBackendScope(req),
+      }),
+    );
   });
 
   router.get('/model-manager/search', async (req, res) => {
@@ -442,12 +536,22 @@ export function createModelManagerRouter(
         );
       }
     }
-    res.json(await client.search(query, limit, { userToken }));
+    res.json(
+      await client.search(query, limit, {
+        userToken,
+        backend: readBackendScope(req),
+      }),
+    );
   });
 
   router.get('/model-manager/nodes', async (req, res) => {
     const client = resolveClient(req);
-    res.json(await client.listNodes({ userToken: readUserToken(req) }));
+    res.json(
+      await client.listNodes({
+        userToken: readUserToken(req),
+        backend: readBackendScope(req),
+      }),
+    );
   });
 
   router.get('/model-manager/jobs/:jobId', async (req, res) => {

@@ -11,6 +11,7 @@ import tasksApproval from '../../lib/__fixtures__/tasks.approval.json';
 import tasksAskUser from '../../lib/__fixtures__/tasks.ask-user.json';
 import tasksAskUserPending from '../../lib/__fixtures__/tasks.ask-user-pending.json';
 import tasksEmpty from '../../lib/__fixtures__/tasks.empty-no-data.json';
+import tasksFailed from '../../lib/__fixtures__/tasks.failed.json';
 
 function timelineFor(fixture: unknown) {
   return buildTimeline(normalizeTaskList(fixture).tasks);
@@ -302,6 +303,31 @@ describe('SessionTimeline', () => {
       await render(pending, 'SRE Agent');
 
       expect(screen.getByText('Awaiting a reply')).toBeInTheDocument();
+    });
+  });
+
+  describe('a turn that failed', () => {
+    it('shows why, under the agent’s name', async () => {
+      // The reason lives only on the failed task's status.message. Before it was
+      // read, this session rendered as two user messages with nothing under them.
+      await render(tasksFailed, 'gpt6');
+
+      expect(screen.getAllByText('This turn failed')).toHaveLength(2);
+      expect(
+        screen.getAllByText(/does not exist or you do not have access to it/),
+      ).toHaveLength(2);
+      expect(screen.getAllByText('gpt6').length).toBeGreaterThan(0);
+    });
+
+    it('is not activity, so there is nothing to hide or expand', async () => {
+      await render(tasksFailed);
+
+      expect(
+        screen.queryByRole('radio', { name: 'Hidden' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /This turn failed/ }),
+      ).not.toBeInTheDocument();
     });
   });
 

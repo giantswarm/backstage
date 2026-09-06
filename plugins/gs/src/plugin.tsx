@@ -37,6 +37,7 @@ import {
 import {
   isEntityHelmChartTagged,
   isEntityInstallationResource,
+  isEntityReadinessAvailable,
   isEntityKlausPersonality,
   isEntityWithOciRepository,
 } from './components/utils/entity';
@@ -44,6 +45,7 @@ import {
   gsAuthProvidersApiRef,
   GSAuthProviders,
   gsAuthApiRef,
+  gsFallbackSignInAuthApiRef,
 } from './apis/auth';
 import {
   clusterAccessStatusApiRef,
@@ -175,6 +177,25 @@ const gsAuthApi = ApiBlueprint.make({
     }),
 });
 
+/**
+ * The login page's fallback card: the main login provider pinned to another
+ * Dex connector. Only instantiated when the card is rendered, i.e. when
+ * `gs.signInFallbackProvider.connectorId` is configured.
+ */
+const gsFallbackSignInAuthApi = ApiBlueprint.make({
+  name: 'auth-fallback-sign-in',
+  params: defineParams =>
+    defineParams({
+      api: gsFallbackSignInAuthApiRef,
+      deps: {
+        gsAuthProvidersApi: gsAuthProvidersApiRef,
+      },
+      factory: ({ gsAuthProvidersApi: authProviders }) => {
+        return authProviders.getFallbackSignInAuthApi();
+      },
+    }),
+});
+
 const containerRegistryApi = ApiBlueprint.make({
   name: 'container-registry',
   params: defineParams =>
@@ -267,6 +288,23 @@ const helmChartVersionHistoryEntityCard = EntityCardBlueprint.make({
       const { EntityHelmChartVersionHistoryCard } =
         await import('./components/catalog/EntityHelmChartVersionHistoryCard');
       return <EntityHelmChartVersionHistoryCard />;
+    },
+  },
+});
+
+const appReadinessEntityCard = EntityCardBlueprint.make({
+  name: 'app-readiness',
+  params: {
+    type: 'info',
+    // Present wherever there is readiness data from either source — the
+    // catalog importer's chart-metadata verdict as much as
+    // AppReadinessProcessor's release verdict — rather than rendering an empty
+    // shell where there is neither.
+    filter: entity => isEntityReadinessAvailable(entity),
+    loader: async () => {
+      const { EntityAppReadinessCard } =
+        await import('./components/catalog/EntityAppReadinessCard');
+      return <EntityAppReadinessCard />;
     },
   },
 });
@@ -609,11 +647,13 @@ export const gsPlugin = createFrontendPlugin({
     mutedInstallationsApi,
     gsAuthProvidersApi,
     gsAuthApi,
+    gsFallbackSignInAuthApi,
     containerRegistryApi,
     gitHubApi,
     mimirApi,
     // Entity cards
     appDeploymentEntityCard,
+    appReadinessEntityCard,
     installationDetailsEntityCard,
     readmeEntityCard,
     soulEntityCard,

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Badge, Flex, List, ListRow } from '@backstage/ui';
+import { Badge, Flex, List, ListRow } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { EmptyState, Progress } from '@backstage/core-components';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
@@ -9,6 +9,7 @@ import { plansApiRef } from '../../apis';
 import { formatDate } from '../../lib/dates';
 import { pullRouteRef } from '../../routes';
 import { EpicChip } from '../EpicChip';
+import { PlansErrorAlert } from '../PlansErrorAlert';
 
 // bui only applies row affordances (pointer, hover/press background, padding)
 // to selection lists. This is an action list — clicking a row navigates — so
@@ -75,10 +76,9 @@ export function ProposedTab({ repo }: { repo: string }) {
   }
   if (error) {
     return (
-      <Alert
-        status="danger"
+      <PlansErrorAlert
         title="Failed to load proposed plans"
-        description={(error as Error).message}
+        error={error as Error}
       />
     );
   }

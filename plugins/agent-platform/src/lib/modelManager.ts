@@ -107,8 +107,22 @@ export type ModelManagerLoading = z.infer<typeof modelManagerLoadingSchema>;
 
 /** `GET /api/v1/backend`. */
 export const modelManagerBackendSchema = z.looseObject({
-  /** `ollama` or `kserve` today; kept open for what comes next. */
+  /** `ollama`, `kserve` or `lemonade` today; kept open for what comes next. */
   backend: z.string(),
+  /**
+   * Every backend this model-manager runs, in order — the first is the
+   * default backend, the one this descriptor describes when `GET /backend`
+   * was asked without a name (model-manager 0.17 on: one process fronts
+   * several servers). Absent on an older model-manager, which runs one.
+   */
+  backends: z
+    .unknown()
+    .transform(value =>
+      Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string')
+        : undefined,
+    )
+    .optional(),
   /** Backend server version, when known. */
   version: wireString,
   /** The backend endpoint as model-manager reaches it. */
@@ -171,6 +185,13 @@ export const modelConfigRefSchema = z.looseObject({
   /** Mirrors the kagent `Accepted` condition. */
   ready: wireBoolean(false),
   message: wireString,
+  /**
+   * The backend the ModelConfig belongs to (the
+   * `model-manager.giantswarm.io/backend` label): with the model reference it
+   * identifies the ModelConfig — the same reference on two backends is two
+   * ModelConfigs. Absent on an older model-manager or a label-less ModelConfig.
+   */
+  backend: wireString,
 });
 
 export type ModelConfigRef = z.infer<typeof modelConfigRefSchema>;
@@ -200,6 +221,12 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   gpus: wireNumber,
   /** KServe — `app.kubernetes.io/managed-by` of the InferenceService (model-manager, backstage, …). */
   managedBy: wireString,
+  /** The backend serving it (model-manager 0.17 on); absent = the descriptor's. */
+  backend: wireString,
+  /** Lemonade — where the model runs as the server reports it: `npu`, `gpu`, `cpu`, or several (`gpu npu`). */
+  device: wireString,
+  /** Lemonade — exempt from slot eviction (loaded with keepAlive -1). */
+  pinned: wireOptionalBoolean,
 });
 
 export type ModelManagerLoadedModel = z.infer<
@@ -209,6 +236,18 @@ export type ModelManagerLoadedModel = z.infer<
 /** One entry of `GET /api/v1/models`: a downloaded model, enriched. */
 export const modelManagerModelSchema = z.looseObject({
   name: z.string(),
+  /**
+   * The backend holding the model (model-manager 0.17 on, when one process
+   * fronts several); absent = the installation's one descriptor's backend.
+   */
+  backend: wireString,
+  /**
+   * What the backend runs the model with, on backends that have several
+   * (Lemonade: the recipe — `flm` is FastFlowLM on the NPU, `llamacpp`,
+   * `ryzenai-llm`, …); absent on Ollama (one runtime) and KServe (the preset
+   * says).
+   */
+  runtime: wireString,
   digest: wireString,
   /** On-disk size. */
   sizeBytes: wireNumber,
@@ -274,6 +313,8 @@ export type ModelManagerJobPhase = (typeof MODEL_MANAGER_JOB_PHASES)[number];
 /** A background operation (`type: pull`), polled through `GET /api/v1/jobs/{id}`. */
 export const modelManagerJobSchema = z.looseObject({
   id: z.string(),
+  /** The backend the job runs on (model-manager 0.17 on); absent = the installation's one backend. */
+  backend: wireString,
   type: wireString,
   model: z.string(),
   phase: z.unknown().transform((value): ModelManagerJobPhase =>
@@ -447,6 +488,8 @@ export type ModelManagerFitResult = z.infer<typeof modelManagerFitResultSchema>;
  */
 export const modelManagerNodeSchema = z.looseObject({
   name: z.string(),
+  /** The backend reporting the node (model-manager 0.17 on); absent = the installation's one backend. */
+  backend: wireString,
   ready: wireBoolean(false),
   architecture: wireString,
   allocatableMemoryBytes: wireNumber,

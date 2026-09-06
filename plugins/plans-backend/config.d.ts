@@ -10,5 +10,30 @@ export interface Config {
      * @visibility frontend
      */
     repositories?: string[];
+
+    /**
+     * Where GitHub is reached as the signed-in person: a GitHub MCP server
+     * registered in a muster installation. The frontend forwards the user's
+     * Dex ID token (the installation's `authProvider`), muster holds the
+     * person's GitHub grant and runs the server's tools with it. Without this
+     * block the plans endpoints return 503.
+     */
+    muster?: {
+      /**
+       * Name of the muster installation in `muster.installations`.
+       * @visibility frontend
+       */
+      installation: string;
+      /**
+       * Name of the GitHub MCPServer in that muster -- the target of
+       * `core_auth_login` when the person has no grant yet.
+       */
+      server: string;
+      /**
+       * Tool prefix muster exposes the server's tools under (tools are
+       * `x_<prefix>_<tool>`). Default: the server name.
+       */
+      toolPrefix?: string;
+    };
   };
 }

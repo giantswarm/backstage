@@ -10,9 +10,15 @@ export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/Dis
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
 export {
   gsAuthApiRef,
+  gsFallbackSignInAuthApiRef,
   gsAuthProvidersApiRef,
   type GSAuthProvidersApi,
 } from './apis/auth/types';
+export {
+  LocalStorageSignInConnectorMemory,
+  SIGN_IN_CONNECTOR_STORAGE_KEY,
+  type SignInConnectorMemory,
+} from './apis/auth/signInConnectorMemory';
 export {
   useInstallations,
   type InstallationConfig,

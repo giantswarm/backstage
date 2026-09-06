@@ -1,6 +1,7 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import {
   getLatestStableRelease,
+  getRetryDelayMs,
   listLatestReleasesByPrefix,
 } from './githubReleases';
 
@@ -186,5 +187,49 @@ describe('getLatestStableRelease', () => {
     });
 
     expect(result).toBeUndefined();
+  });
+});
+
+describe('getRetryDelayMs', () => {
+  function response(headers: Record<string, string>): Response {
+    return new Response(null, { status: 429, headers });
+  }
+
+  it('caps a rate-limit reset an hour out', () => {
+    // These sleeps are awaited inside preProcessEntity, three times over, so an
+    // uncapped delay parks a catalog processing worker for the whole window.
+    const anHourFromNow = Math.floor((Date.now() + 60 * 60 * 1000) / 1000);
+
+    expect(
+      getRetryDelayMs(response({ 'x-ratelimit-reset': String(anHourFromNow) })),
+    ).toBe(60_000);
+  });
+
+  it('keeps a reset that is sooner than the cap', () => {
+    const inTenSeconds = Math.floor((Date.now() + 10_000) / 1000);
+
+    const delay = getRetryDelayMs(
+      response({ 'x-ratelimit-reset': String(inTenSeconds) }),
+    );
+
+    expect(delay).toBeGreaterThan(0);
+    expect(delay).toBeLessThanOrEqual(10_000);
+  });
+
+  it('caps retry-after too', () => {
+    expect(getRetryDelayMs(response({ 'retry-after': '3600' }))).toBe(60_000);
+    expect(getRetryDelayMs(response({ 'retry-after': '5' }))).toBe(5_000);
+  });
+
+  it('falls back to the cap when the response carries no timing header', () => {
+    expect(getRetryDelayMs(response({}))).toBe(60_000);
+  });
+
+  it('ignores a reset that has already passed', () => {
+    const inThePast = Math.floor((Date.now() - 10_000) / 1000);
+
+    expect(
+      getRetryDelayMs(response({ 'x-ratelimit-reset': String(inThePast) })),
+    ).toBe(60_000);
   });
 });

@@ -16,6 +16,11 @@ import {
 } from './DefaultAuthConnector';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { getOIDCScopes } from './scopes';
+import { GithubGrantAuthConnector } from './GithubGrantAuthConnector';
+import {
+  LocalStorageSignInConnectorMemory,
+  SignInConnectorMemory,
+} from './signInConnectorMemory';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { getInstallationsConfig } from '../installations';
 
@@ -23,6 +28,13 @@ const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
 
 const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
+
+/** `oidc-gazelle` -> `gazelle`; other provider names are shown as they are. */
+function mainProviderDisplayName(providerName: string): string {
+  return providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX)
+    ? providerName.split(OIDC_PROVIDER_NAME_PREFIX)[1]
+    : providerName;
+}
 
 /** Human-readable text shown in the cluster-access status popover. */
 const CLUSTER_TOKEN_ERROR_MESSAGES: Record<ClusterTokenErrorReason, string> = {
@@ -80,17 +92,31 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // alone (which stays frontend-visible). It does NOT need `gs.installations`,
   // so sign-in works before installations are loaded.
   private readonly mainAuthApi?: AuthApi;
+  // The login page's fallback card: the main provider pinned to another Dex
+  // connector. Built on first use, since most deployments configure none.
+  private fallbackSignInAuthApi?: AuthApi;
 
   private readonly mcpAuthProviders: AuthProvider[];
   private readonly mcpAuthApis: { [providerName: string]: AuthApi };
 
+  // Backstage's standard GitHub auth API on the person's GitHub grant in
+  // muster (`gs.github`). Built on first use; undefined when not configured.
+  private githubAuthApi?: OAuth2;
+
   private readonly clusterAccessStatusApi?: ClusterAccessStatusApi;
+
+  // Shared by the main sign-in API and the fallback card: the fallback card
+  // records the connector it signed in with, the main API's re-login popups
+  // read it. Per-installation and MCP providers have no say in it.
+  private readonly signInConnectorMemory: SignInConnectorMemory;
 
   constructor(options: GSAuthProvidersApiCreateOptions) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
     this.oauthRequestApi = options.oauthRequestApi;
     this.clusterAccessStatusApi = options.clusterAccessStatusApi;
+    this.signInConnectorMemory =
+      options.signInConnectorMemory ?? new LocalStorageSignInConnectorMemory();
 
     this.mainAuthApi = this.createMainAuthApi();
 
@@ -116,15 +142,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     if (!mainProviderName) {
       return undefined;
     }
-    const providerDisplayName = mainProviderName.startsWith(
-      OIDC_PROVIDER_NAME_PREFIX,
-    )
-      ? mainProviderName.split(OIDC_PROVIDER_NAME_PREFIX)[1]
-      : mainProviderName;
 
     return this.createKubernetesAuthApi(
       mainProviderName,
-      providerDisplayName,
+      mainProviderDisplayName(mainProviderName),
       undefined,
       true,
     );
@@ -361,13 +382,16 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   /**
    * Creates a single kubernetes (OIDC) OAuth2 auth API. Shared by the main
    * sign-in provider (no cluster-token provider) and the lazily-built
-   * per-installation providers (broker-backed cluster-token provider).
+   * per-installation providers (broker-backed cluster-token provider). Only
+   * the main provider's instances -- the sign-in API and the fallback card --
+   * take part in remembering the Dex connector of the browser's sign-in.
    */
   private createKubernetesAuthApi(
     providerName: string,
     providerDisplayName: string,
     clusterTokenProvider?: () => Promise<ClusterToken | undefined>,
     isMainProvider = false,
+    startParams?: Record<string, string>,
   ): AuthApi {
     const authConnector = new DefaultAuthConnector({
       configApi: this.configApi,
@@ -382,6 +406,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       },
       clusterTokenProvider,
       isMainProvider,
+      startParams,
+      signInConnectorMemory: isMainProvider
+        ? this.signInConnectorMemory
+        : undefined,
       sessionTransform({ backstageIdentity, ...res }): OAuth2Session {
         const session: OAuth2Session = {
           ...res,
@@ -541,6 +569,79 @@ export class GSAuthProviders implements GSAuthProvidersApi {
           providerName !== mainProviderName && Boolean(clusterTokenAudience),
       )
       .map(({ installationName }) => installationName);
+  }
+
+  /**
+   * The main login provider pinned to the fallback Dex connector
+   * (`gs.signInFallbackProvider.connectorId`): same backend provider,
+   * cookies and session as {@link getMainAuthApi}, with `connector_id` on the
+   * authorization request so Dex skips its connector picker and sends the
+   * user to that upstream IdP instead of the deployment's default one. A
+   * sign-in through it is remembered for this browser, so the main API's
+   * later re-login popups return to the same connector.
+   */
+  getFallbackSignInAuthApi(): AuthApi {
+    const mainProviderName =
+      this.configApi?.getOptionalString('gs.authProvider');
+    const connectorId = this.configApi?.getOptionalString(
+      'gs.signInFallbackProvider.connectorId',
+    );
+    if (!mainProviderName || !connectorId) {
+      throw new Error(
+        'No fallback sign-in configured. "gs.signInFallbackProvider.connectorId" (with "gs.authProvider") is missing.',
+      );
+    }
+    if (!this.fallbackSignInAuthApi) {
+      this.fallbackSignInAuthApi = this.createKubernetesAuthApi(
+        mainProviderName,
+        mainProviderDisplayName(mainProviderName),
+        undefined,
+        true,
+        { connector_id: connectorId },
+      );
+    }
+    return this.fallbackSignInAuthApi;
+  }
+
+  /**
+   * Backstage's standard GitHub auth API (`githubAuthApiRef`) implemented on
+   * the person's own GitHub grant in muster: tokens are minted from
+   * `POST /api/auth/github-token`, a missing grant sends the browser through
+   * muster's connect once (full-page, back to the current page), signing out
+   * revokes the grant in muster. Configured by `gs.github`; returns undefined
+   * otherwise, so the app can keep the upstream GitHub provider.
+   *
+   * The consumers -- the GitHub Actions and Pull Requests tabs, `ScmAuth`,
+   * the scaffolder pickers -- keep their own GitHub clients; this only
+   * supplies the token.
+   */
+  getGithubAuthApi(): AuthApi | undefined {
+    if (!this.hasGithubAuthApi()) {
+      return undefined;
+    }
+    if (!this.githubAuthApi) {
+      const mainAuthApi = this.getMainAuthApi();
+      const backendBaseUrl = this.configApi!.getString('backend.baseUrl');
+      this.githubAuthApi = OAuth2.create({
+        authConnector: new GithubGrantAuthConnector({
+          backendBaseUrl,
+          mainAuthApi,
+        }),
+        // What the portal's plugins ask for (see the app's github-auth
+        // factory); echoed by the connector, since a GitHub App user token
+        // carries no scopes of its own.
+        defaultScopes: ['read:user', 'repo', 'read:org'],
+      });
+    }
+    return this.githubAuthApi;
+  }
+
+  /** Whether `gs.github` puts the GitHub auth API on muster. */
+  hasGithubAuthApi(): boolean {
+    return Boolean(
+      this.configApi?.getOptionalString('gs.github.brokerAudience') &&
+      this.configApi?.getOptionalString('gs.authProvider'),
+    );
   }
 
   getAuthApi(providerName: string) {

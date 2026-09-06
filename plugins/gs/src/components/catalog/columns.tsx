@@ -6,11 +6,23 @@ import {
   getHelmChartsFromEntity,
   getLatestReleaseDateFromEntity,
   getLatestReleaseTagFromEntity,
+  getReadinessFlagsFromEntity,
+  getReadinessFromEntity,
 } from '../utils/entity';
+import {
+  READINESS_MEANINGS,
+  partitionReadinessFlags,
+  readinessIntent,
+  readinessLabel,
+  readinessRank,
+} from '../utils/readiness';
 import { DateComponent } from '../UI';
 import { compareDates } from '../utils/helpers';
 import { Entity } from '@backstage/catalog-model';
-import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  semverCompareSort,
+  StatusLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const noWrapStyle = {
   overflow: 'hidden',
@@ -47,6 +59,33 @@ export function autoWidthColumn<T extends TableColumn<any>>(column: T) {
     ...column,
     width: 'auto',
   };
+}
+
+/**
+ * Hover detail for the release-readiness cell: the release blockers, and
+ * nothing else.
+ *
+ * `giantswarm.io/readiness-flags` also carries the importer's chart-metadata
+ * gaps, and `giantswarm.io/readiness-advisory` carries gaps that four charts in
+ * five have. Putting either in this tooltip would hang a long list of things
+ * that are not about releasing off a column titled "Release readiness", and
+ * would lead a green "Releasable" row with an unprefixed NO-VALUES-SCHEMA that
+ * reads as a blocker. That detail belongs to the card, which has a section per
+ * verdict and an explanation per flag.
+ *
+ * With no release blockers to name — every `releasable` cell, and every
+ * `unknown` one, since `verdict()` returns no flags on any unknown path — the
+ * hover falls back to what the verdict means. `unknown` is the verdict a reader
+ * can least interpret unaided, so leaving it as a bare chip would be the worst
+ * place to say nothing.
+ */
+function readinessTitle(
+  readiness: string,
+  releaseFlags: string[],
+): string | undefined {
+  return releaseFlags.length > 0
+    ? releaseFlags.join(', ')
+    : READINESS_MEANINGS[readiness];
 }
 
 export const columnFactories = Object.freeze({
@@ -123,6 +162,44 @@ export const columnFactories = Object.freeze({
           relative
         />
       ),
+    };
+  },
+  createReadinessColumn(
+    options: {
+      hidden: boolean;
+    } = { hidden: false },
+  ): TableColumn<CatalogTableRow> {
+    return {
+      title: 'Release readiness',
+      hidden: options.hidden,
+      width: 'auto',
+      // Filtering belongs to the sidebar picker, which queries the label
+      // server-side rather than matching rendered text.
+      filtering: false,
+      customSort({ entity: entity1 }, { entity: entity2 }) {
+        return (
+          readinessRank(getReadinessFromEntity(entity1)) -
+          readinessRank(getReadinessFromEntity(entity2))
+        );
+      },
+      render: ({ entity }) => {
+        const readiness = getReadinessFromEntity(entity);
+        if (!readiness) {
+          return undefined;
+        }
+
+        const { release: releaseFlags } = partitionReadinessFlags(
+          getReadinessFlagsFromEntity(entity),
+        );
+
+        return (
+          <StatusLabel
+            label={readinessLabel(readiness)}
+            intent={readinessIntent(readiness)}
+            title={readinessTitle(readiness, releaseFlags)}
+          />
+        );
+      },
     };
   },
   createHelmChartsColunm(

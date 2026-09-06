@@ -448,7 +448,21 @@ reach Sentry.
 - **Docker**: Backend Dockerfile in `packages/backend/Dockerfile`
 - **Helm**: Charts in `helm/backstage/` directory
 - **CI/CD**: CircleCI (see `.circleci/config.yml`)
-- **Release Process**: Two axes. The app (image + Helm chart) is released automatically by git-cliff from conventional-commit PR titles on merge to `main` (`zz_generated.auto_release.yaml`); just merge a PR with a conventional title and CircleCI publishes the tagged image and chart. The `@giantswarm/backstage-plugin-*` packages are published to npm via Changesets — add a `.changeset/*.md` entry to trigger a "Version Packages" PR.
+- **Release Process**: Two axes.
+
+  - **App** (image + Helm chart): released on every push to `main`. git-cliff
+    turns conventional-commit PR titles into a tag + GitHub Release
+    (`zz_generated.auto_release.yaml`), which triggers the CircleCI architect
+    pipeline. The tagger does not bump `package.json`, so the root `version`
+    (0.138.0) lags the tags (v0.220.x) by design — don't "fix" it.
+  - **Plugin packages**: changeset-managed, but that axis is dormant — nothing is
+    published to npm and nothing consumes `.changeset/*.md` today (see #1772).
+    Still add one for any user-facing `plugins/*` change (`minor` for a new
+    feature or export, `patch` for a fix): it's the queued release note for when
+    the axis is switched back on, and nobody reconstructs it from a diff months
+    later. `yarn changeset status` can't check your work here — it reports an
+    empty list either way, so just look for the file. The `changeset` skill has
+    the mechanics and the full state of both axes.
 
 ### Dependencies
 

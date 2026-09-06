@@ -17,16 +17,33 @@ import type { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Serving backends a source can report. `kserve` — InferenceServices read as
- * CRs; `ollama` — the model-manager's host-Ollama backend (arrives with the
- * model-manager source; listed here so the union is settled).
+ * CRs, or model-manager's KServe backend; `ollama` — model-manager's
+ * host-Ollama backend; `lemonade` — model-manager's Lemonade Server backend
+ * (FastFlowLM on AMD Ryzen AI NPUs, llama.cpp). One model-manager may run
+ * several of them on one installation (0.17 on), so an installation can have
+ * several backends at once — rows, capabilities and loading semantics are
+ * kept per (installation, backend), see {@link servingGroupKey}.
  */
-export type ServingBackend = 'kserve' | 'ollama';
+export type ServingBackend = 'kserve' | 'ollama' | 'lemonade';
 
 /** How each backend is named in prose ("Served by Ollama model …"). */
 export const SERVING_BACKEND_LABEL: Record<ServingBackend, string> = {
   kserve: 'InferenceService',
   ollama: 'Ollama model',
+  lemonade: 'Lemonade model',
 };
+
+/**
+ * The key of one backend on one installation — what a Serving group is, and
+ * what per-backend capabilities and loading semantics are filed under when an
+ * installation runs several backends behind one model-manager.
+ */
+export function servingGroupKey(
+  installation: string,
+  backend: ServingBackend,
+): string {
+  return `${installation}/${backend}`;
+}
 
 /**
  * Readiness of a served model, backend-neutral — the one vocabulary the
@@ -212,8 +229,27 @@ export type ServedModel = {
   namespace?: string;
   /** Where the weights come from: `hf://…`, `pvc://…`, an Ollama tag. */
   modelSource?: string;
-  /** What serves it: a (Cluster)ServingRuntime name, `ollama`, … */
+  /** What serves it: a (Cluster)ServingRuntime name, `ollama 0.33.2`, `lemonade 11.9.0`, … */
   runtime?: string;
+  /**
+   * What the backend runs *this* model with, on backends that have several
+   * engines (Lemonade: the recipe — `flm` is FastFlowLM on the NPU,
+   * `llamacpp`, …). `undefined` where the backend has one engine or the
+   * runtime says.
+   */
+  engine?: string;
+  /**
+   * Where a loaded model runs as the backend reports it (Lemonade: `npu`,
+   * `gpu`, `cpu`, or several such as `gpu npu`). `undefined` when the backend
+   * does not say.
+   */
+  device?: string;
+  /**
+   * Whether a loaded model is pinned against the backend's slot eviction
+   * (Lemonade: loaded with keepAlive -1). `undefined` where the notion does
+   * not exist.
+   */
+  pinned?: boolean;
   readiness: ServedModelReadiness;
   /** The backend's own explanation of a non-ready state, for the tooltip. */
   readinessMessage?: string;
@@ -396,9 +432,11 @@ export function hasServedModelActions(
 
 /** A GPU-carrying node as the capacity panel shows it. */
 export type GpuNode = {
-  /** Stable unique key: installation + node name. */
+  /** Stable unique key: installation + node name (+ backend for a backend host). */
   id: string;
   installation: string;
+  /** The backend that reported the node, when one did (a backend host is one per backend). */
+  backend?: ServingBackend;
   name: string;
   ready: boolean;
   /** `nvidia.com/gpu.product` from gpu-feature-discovery. */
@@ -509,9 +547,30 @@ export type ServingSourceSnapshot = {
   sourceBackends?: Record<string, ServingBackend[]>;
   /**
    * What the source can do per installation in `installations`. Optional:
-   * a source that omits it offers nothing beyond listing there.
+   * a source that omits it offers nothing beyond listing there. With several
+   * backends on one installation this is the OR over them; the per-backend
+   * flags are in `backendCapabilities`.
    */
   capabilities?: Record<string, ServingCapabilities>;
+  /**
+   * What each backend can do, per installation and backend: the flags a
+   * row's controls follow when an installation runs several backends behind
+   * one model-manager (presets on its kserve backend, none on its ollama
+   * one). Optional; `capabilities` stands in for a backend not listed.
+   */
+  backendCapabilities?: Record<
+    string,
+    Partial<Record<ServingBackend, ServingCapabilities>>
+  >;
+  /**
+   * How each backend loads models, per installation and backend, where the
+   * backend reports it. Optional; `loading` stands in for a backend not
+   * listed.
+   */
+  backendLoading?: Record<
+    string,
+    Partial<Record<ServingBackend, ServingLoading>>
+  >;
   /**
    * How the backend loads models, per installation in `installations`, where
    * the source's backend reports it. Optional: a source whose backend says
@@ -564,17 +623,20 @@ export function gpuFree(node: GpuNode): number | undefined {
 /**
  * Whether a node is a backend's host rather than a cluster node: its memory
  * budget is the host's memory as the serving layer's pod sees it
- * (`host-meminfo`) or the operator's figure for it (`override`, set where the
- * pod's view is not the host's), and it carries no GPU product, count or
- * device-plugin figure — the backend's API does not expose the accelerator.
- * What model-manager's Ollama driver reports for the machine it proxies.
+ * (`host-meminfo`), the operator's figure for it (`override`, set where the
+ * pod's view is not the host's), or what the host's own server reports
+ * (`system-info`, Lemonade). What model-manager's Ollama and Lemonade drivers
+ * report for the machine they proxy; the Ollama host carries no GPU product,
+ * count or device-plugin figure (its API does not expose the accelerator),
+ * the Lemonade host names the accelerators Lemonade enumerates.
  */
 export function isHostMemoryNode(
   node: Pick<GpuNode, 'memoryBudgetSource'>,
 ): boolean {
   return (
     node.memoryBudgetSource === 'host-meminfo' ||
-    node.memoryBudgetSource === 'override'
+    node.memoryBudgetSource === 'override' ||
+    node.memoryBudgetSource === 'system-info'
   );
 }
 
@@ -831,7 +893,15 @@ export function mergeServingSnapshots(
   const backends: Record<string, ServingBackend> = {};
   const sourceBackends: Record<string, ServingBackend[]> = {};
   const capabilities: Record<string, ServingCapabilities> = {};
+  const backendCapabilities: Record<
+    string,
+    Partial<Record<ServingBackend, ServingCapabilities>>
+  > = {};
   const loading: Record<string, ServingLoading> = {};
+  const backendLoading: Record<
+    string,
+    Partial<Record<ServingBackend, ServingLoading>>
+  > = {};
   const sharedHosts: Record<string, string[]> = {};
   const gpuCapacityUnavailable: Record<string, GpuCapacityUnavailableReason> =
     {};
@@ -846,8 +916,45 @@ export function mergeServingSnapshots(
         sourceBackends[installation] = [...known, backend];
       }
     }
+    // A source that runs several backends on one installation (a
+    // model-manager 0.17) names them all; every one has a say there.
+    for (const [installation, list] of Object.entries(
+      snapshot.sourceBackends ?? {},
+    )) {
+      const known = sourceBackends[installation] ?? [];
+      sourceBackends[installation] = [
+        ...known,
+        ...list.filter(backend => !known.includes(backend)),
+      ];
+    }
     // Like the backend label: the later source's word on how models load.
     Object.assign(loading, snapshot.loading ?? {});
+    for (const [installation, perBackend] of Object.entries(
+      snapshot.backendLoading ?? {},
+    )) {
+      backendLoading[installation] = {
+        ...(backendLoading[installation] ?? {}),
+        ...perBackend,
+      };
+    }
+    for (const [installation, perBackend] of Object.entries(
+      snapshot.backendCapabilities ?? {},
+    )) {
+      const known = backendCapabilities[installation] ?? {};
+      for (const [backend, flags] of Object.entries(perBackend) as [
+        ServingBackend,
+        ServingCapabilities,
+      ][]) {
+        const merged = { ...(known[backend] ?? NO_SERVING_CAPABILITIES) };
+        for (const flag of Object.keys(
+          flags,
+        ) as (keyof ServingCapabilities)[]) {
+          merged[flag] = merged[flag] || flags[flag];
+        }
+        known[backend] = merged;
+      }
+      backendCapabilities[installation] = known;
+    }
     for (const [installation, hosts] of Object.entries(
       snapshot.sharedHosts ?? {},
     )) {
@@ -908,7 +1015,9 @@ export function mergeServingSnapshots(
     backends,
     sourceBackends,
     capabilities,
+    backendCapabilities,
     loading,
+    backendLoading,
     sharedHosts,
     unreachableInstallations: Array.from(unreachable).sort(),
     servedModels,

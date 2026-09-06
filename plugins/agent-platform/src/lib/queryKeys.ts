@@ -33,6 +33,17 @@ export function modelManagerBackendQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'backend', installation] as const;
 }
 
+/**
+ * The list of every backend the installation's model-manager runs (`GET
+ * /api/v1/backends`, model-manager 0.17 on). A key of its own, not the
+ * single-descriptor key above: the cache is persisted across releases, and
+ * an entry written by an older portal under `backend` holds one descriptor
+ * object where this one holds an array.
+ */
+export function modelManagerBackendsQueryKey(installation: string) {
+  return ['agent-platform', 'model-manager', 'backends', installation] as const;
+}
+
 export function modelManagerModelsQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'models', installation] as const;
 }

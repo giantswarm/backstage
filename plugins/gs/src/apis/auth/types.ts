@@ -11,9 +11,19 @@ import {
 } from '@backstage/core-plugin-api';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
+import { SignInConnectorMemory } from './signInConnectorMemory';
 
 export const gsAuthApiRef = createApiRef<AuthApi>({
   id: 'plugin.gs.auth',
+});
+
+/**
+ * Second sign-in entry point of the main login provider, pinned to the Dex
+ * connector `gs.signInFallbackProvider.connectorId`. Same backend provider
+ * and session as {@link gsAuthApiRef}; only the login popup differs.
+ */
+export const gsFallbackSignInAuthApiRef = createApiRef<AuthApi>({
+  id: 'plugin.gs.auth.fallback-sign-in',
 });
 
 export const gsAuthProvidersApiRef = createApiRef<GSAuthProvidersApi>({
@@ -40,8 +50,22 @@ export type AuthProvider = {
 export type GSAuthProvidersApi = {
   getAuthApi: (providerName: string) => AuthApi | undefined;
   getMainAuthApi: () => AuthApi;
+  /**
+   * The main login provider pinned to the fallback Dex connector
+   * (`gs.signInFallbackProvider.connectorId`), for the login page's second
+   * card. Throws when no fallback connector is configured.
+   */
+  getFallbackSignInAuthApi: () => AuthApi;
   getKubernetesAuthApis: () => { [providerName: string]: AuthApi };
   getMCPAuthApis: () => { [providerName: string]: AuthApi };
+  /**
+   * Backstage's standard GitHub auth API on the person's GitHub grant in
+   * muster, when `gs.github` is configured; undefined otherwise (the app then
+   * keeps the upstream GitHub auth provider).
+   */
+  getGithubAuthApi: () => AuthApi | undefined;
+  /** Whether `gs.github` puts the GitHub auth API on muster. */
+  hasGithubAuthApi: () => boolean;
   getProviders: () => AuthProvider[];
   /**
    * Ensures the lazily-loaded per-installation auth providers/APIs have been
@@ -77,4 +101,10 @@ export type GSAuthProvidersApiCreateOptions = {
    * non-broker setups can omit it.
    */
   clusterAccessStatusApi?: ClusterAccessStatusApi;
+  /**
+   * Where this browser remembers the Dex connector of a sign-in through the
+   * fallback card, so the main provider's silent re-logins reuse it. Defaults
+   * to localStorage; tests pass their own.
+   */
+  signInConnectorMemory?: SignInConnectorMemory;
 };

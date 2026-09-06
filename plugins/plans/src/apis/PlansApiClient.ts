@@ -3,12 +3,14 @@ import {
   DiscoveryApi,
   FetchApi,
 } from '@backstage/core-plugin-api';
+import { PlansAuthApi } from './auth';
 import {
   NewReviewComment,
   PlanComment,
   PlanReviewComment,
   PlansApi,
   PlansCommentsResponse,
+  PlansConnectionResponse,
   PlansContentResponse,
   PlansEpicsResponse,
   PlansPullFilesResponse,
@@ -22,17 +24,54 @@ export const plansApiRef = createApiRef<PlansApi>({
   id: 'plugin.plans.api',
 });
 
+/**
+ * Header carrying the caller's muster token to the plans backend. Must match
+ * MUSTER_AUTH_HEADER in @giantswarm/backstage-plugin-gs-node.
+ */
+const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
+
+/**
+ * The caller has no GitHub grant in muster yet. `authUrl` is muster's
+ * sign-in URL: one visit connects the person's GitHub account, for this and
+ * every later session.
+ */
+export class MusterServerNotConnectedError extends Error {
+  readonly name = 'MusterServerNotConnectedError';
+  constructor(
+    message: string,
+    readonly authUrl?: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Client for the plans backend. Every request carries the signed-in user's
+ * muster token; the backend calls GitHub through muster as that person, so
+ * plan repositories are read as them and comments are authored by them on
+ * GitHub -- there is no GitHub credential anywhere in the portal.
+ */
 export class PlansApiClient implements PlansApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
+  private readonly authApi: PlansAuthApi;
 
-  constructor(options: { discoveryApi: DiscoveryApi; fetchApi: FetchApi }) {
+  constructor(options: {
+    discoveryApi: DiscoveryApi;
+    fetchApi: FetchApi;
+    authApi: PlansAuthApi;
+  }) {
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
+    this.authApi = options.authApi;
   }
 
   async listRepos(): Promise<PlansReposResponse> {
     return this.get<PlansReposResponse>('/repos');
+  }
+
+  async getConnection(): Promise<PlansConnectionResponse> {
+    return this.get<PlansConnectionResponse>('/connection');
   }
 
   async listPulls(repo?: string): Promise<PlansPullsResponse> {
@@ -113,7 +152,7 @@ export class PlansApiClient implements PlansApi {
     path: string,
     query: Record<string, string | undefined> = {},
   ): Promise<T> {
-    return this.request<T>(path, query);
+    return this.request<T>(path, query, {});
   }
 
   private async post<T>(
@@ -131,7 +170,7 @@ export class PlansApiClient implements PlansApi {
   private async request<T>(
     path: string,
     query: Record<string, string | undefined>,
-    init?: RequestInit,
+    init: RequestInit & { headers?: Record<string, string> },
   ): Promise<T> {
     const baseUrl = await this.discoveryApi.getBaseUrl('plans');
     const url = new URL(`${baseUrl}${path}`);
@@ -140,14 +179,27 @@ export class PlansApiClient implements PlansApi {
         url.searchParams.set(key, value);
       }
     }
-    const response = init
-      ? await this.fetchApi.fetch(url.toString(), init)
-      : await this.fetchApi.fetch(url.toString());
+    const { token } = await this.authApi.getCredentials();
+    const response = await this.fetchApi.fetch(url.toString(), {
+      ...init,
+      headers: {
+        ...init.headers,
+        ...(token && { [MUSTER_AUTH_HEADER]: token }),
+      },
+    });
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorData = (await response.json().catch(() => ({}))) as {
+        error?: { name?: string; message?: string; authUrl?: string };
+      };
       const message =
-        (errorData as { error?: { message?: string } })?.error?.message ??
+        errorData?.error?.message ??
         `Plans request failed with status ${response.status}`;
+      if (errorData?.error?.name === 'MusterServerNotConnectedError') {
+        throw new MusterServerNotConnectedError(
+          message,
+          errorData.error.authUrl,
+        );
+      }
       const error = new Error(message);
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';

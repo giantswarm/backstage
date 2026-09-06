@@ -46,6 +46,28 @@ export class EntityPipelineFilter implements EntityFilter {
   }
 }
 
+/**
+ * Filters on the release-readiness verdict. Keys on a label rather than an
+ * annotation because the catalog API only filters server-side on labels.
+ */
+export class EntityReadinessFilter implements EntityFilter {
+  constructor(readonly values: string[]) {}
+
+  getCatalogFilters(): Record<string, string | string[]> {
+    return { 'metadata.labels.giantswarm.io/readiness': this.values };
+  }
+
+  filterEntity(entity: Entity): boolean {
+    return this.values.some(
+      v => entity.metadata.labels?.['giantswarm.io/readiness'] === v,
+    );
+  }
+
+  toQueryValue(): string[] {
+    return this.values;
+  }
+}
+
 export class EntityProviderFilter implements EntityFilter {
   constructor(readonly values: string[]) {}
 
@@ -68,6 +90,7 @@ export type CustomFilters = DefaultEntityFilters & {
   customer?: EntityCustomerFilter;
   pipelines?: EntityPipelineFilter;
   providers?: EntityProviderFilter;
+  readiness?: EntityReadinessFilter;
 };
 
 /**

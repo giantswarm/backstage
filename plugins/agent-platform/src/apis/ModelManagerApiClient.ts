@@ -29,7 +29,11 @@ import {
   type ModelManagerPreset,
   type ModelManagerSearchResult,
 } from '../lib/modelManager';
-import { MODEL_MANAGER_AUTH_HEADER, ModelManagerApi } from './ModelManagerApi';
+import {
+  MODEL_MANAGER_AUTH_HEADER,
+  type BackendScope,
+  ModelManagerApi,
+} from './ModelManagerApi';
 
 export const modelManagerApiRef = createApiRef<ModelManagerApi>({
   id: 'plugin.agent-platform.model-manager',
@@ -44,6 +48,11 @@ function upstreamError(message: string): Error {
   const error = new Error(message);
   error.name = 'UpstreamError';
   return error;
+}
+
+/** The `?backend=` of a scoped read, or nothing. */
+function scopeQuery(scope?: BackendScope): Record<string, string> | undefined {
+  return scope?.backend ? { backend: scope.backend } : undefined;
 }
 
 /**
@@ -106,23 +115,63 @@ export class ModelManagerApiClient implements ModelManagerApi {
     return parsed.data;
   }
 
-  async listModels(installation: string): Promise<ModelManagerModel[]> {
+  async listBackends(installation: string): Promise<ModelManagerBackend[]> {
+    let body: unknown;
+    try {
+      body = await this.request('GET', '/model-manager/backends', {
+        installation,
+      });
+    } catch (error) {
+      // A model-manager before 0.17 has no /backends: it runs one backend,
+      // described by /backend.
+      if ((error as Error).name === 'NotFoundError') {
+        return [await this.getBackend(installation)];
+      }
+      throw error;
+    }
+    const backends = parseModelManagerList(
+      body,
+      'backends',
+      modelManagerBackendSchema,
+    );
+    if (backends.length === 0) {
+      throw upstreamError(
+        `model-manager on ${installation} lists no backend this portal can read.`,
+      );
+    }
+    return backends;
+  }
+
+  async listModels(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerModel[]> {
     const body = await this.request('GET', '/model-manager/models', {
       installation,
+      query: scopeQuery(scope),
     });
     return parseModelManagerList(body, 'models', modelManagerModelSchema);
   }
 
-  async listLoaded(installation: string): Promise<ModelManagerLoadedModel[]> {
+  async listLoaded(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerLoadedModel[]> {
     const body = await this.request('GET', '/model-manager/loaded', {
       installation,
+      query: scopeQuery(scope),
     });
     return parseModelManagerList(body, 'loaded', modelManagerLoadedModelSchema);
   }
 
   async pullModel(
     installation: string,
-    request: { model: string; wire?: boolean; preset?: string; node?: string },
+    request: {
+      model: string;
+      wire?: boolean;
+      preset?: string;
+      node?: string;
+    } & BackendScope,
   ): Promise<{ job: ModelManagerJob; created: boolean }> {
     const body = await this.request<{ job?: unknown; created?: unknown }>(
       'POST',
@@ -145,7 +194,7 @@ export class ModelManagerApiClient implements ModelManagerApi {
       keepAlive?: string;
       preset?: string;
       node?: string;
-    },
+    } & BackendScope,
   ): Promise<ModelManagerModel> {
     const body = await this.request('POST', '/model-manager/models/load', {
       installation,
@@ -162,7 +211,7 @@ export class ModelManagerApiClient implements ModelManagerApi {
 
   async fitCheck(
     installation: string,
-    request: { model?: string; preset?: string; node?: string },
+    request: { model?: string; preset?: string; node?: string } & BackendScope,
   ): Promise<ModelManagerFitResult> {
     const body = await this.request('POST', '/model-manager/models/fit-check', {
       installation,
@@ -177,9 +226,13 @@ export class ModelManagerApiClient implements ModelManagerApi {
     return parsed.data;
   }
 
-  async listPresets(installation: string): Promise<ModelManagerPreset[]> {
+  async listPresets(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerPreset[]> {
     const body = await this.request('GET', '/model-manager/presets', {
       installation,
+      query: scopeQuery(scope),
     });
     return parseModelManagerList(body, 'presets', modelManagerPresetSchema);
   }
@@ -188,12 +241,14 @@ export class ModelManagerApiClient implements ModelManagerApi {
     installation: string,
     query: string,
     limit?: number,
+    scope?: BackendScope,
   ): Promise<ModelManagerSearchResult[]> {
     const body = await this.request('GET', '/model-manager/search', {
       installation,
       query: {
         q: query,
         ...(limit !== undefined && { limit: String(limit) }),
+        ...scopeQuery(scope),
       },
     });
     return parseModelManagerList(
@@ -203,56 +258,76 @@ export class ModelManagerApiClient implements ModelManagerApi {
     );
   }
 
-  async listNodes(installation: string): Promise<ModelManagerNode[]> {
+  async listNodes(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerNode[]> {
     const body = await this.request('GET', '/model-manager/nodes', {
       installation,
+      query: scopeQuery(scope),
     });
     return parseModelManagerList(body, 'nodes', modelManagerNodeSchema);
   }
 
-  async unloadModel(installation: string, model: string): Promise<void> {
+  async unloadModel(
+    installation: string,
+    model: string,
+    scope?: BackendScope,
+  ): Promise<void> {
     await this.request('POST', '/model-manager/models/unload', {
       installation,
-      body: { model },
+      body: { model, ...scopeQuery(scope) },
     });
   }
 
   async deleteModel(
     installation: string,
     model: string,
-    options: { unwire?: boolean } = {},
+    options: { unwire?: boolean } & BackendScope = {},
   ): Promise<void> {
-    const query = options.unwire === false ? { unwire: 'false' } : undefined;
+    const query: Record<string, string> = {
+      ...(options.unwire === false && { unwire: 'false' }),
+      ...scopeQuery(options),
+    };
     await this.request(
       'DELETE',
       `/model-manager/models/${encodeModelRef(model)}`,
-      { installation, query },
+      { installation, query: Object.keys(query).length ? query : undefined },
     );
   }
 
   async wireModel(
     installation: string,
     model: string,
+    scope?: BackendScope,
   ): Promise<ModelConfigRef | undefined> {
     const body = await this.request<{ modelConfig?: unknown }>(
       'POST',
       '/model-manager/models/wire',
-      { installation, body: { model } },
+      { installation, body: { model, ...scopeQuery(scope) } },
     );
     const parsed = modelConfigRefSchema.safeParse(body?.modelConfig);
     return parsed.success ? parsed.data : undefined;
   }
 
-  async unwireModel(installation: string, model: string): Promise<void> {
+  async unwireModel(
+    installation: string,
+    model: string,
+    scope?: BackendScope,
+  ): Promise<void> {
     await this.request('POST', '/model-manager/models/unwire', {
       installation,
-      body: { model },
+      body: { model, ...scopeQuery(scope) },
     });
   }
 
-  async listJobs(installation: string): Promise<ModelManagerJob[]> {
+  async listJobs(
+    installation: string,
+    scope?: BackendScope,
+  ): Promise<ModelManagerJob[]> {
     const body = await this.request('GET', '/model-manager/jobs', {
       installation,
+      query: scopeQuery(scope),
     });
     return parseModelManagerList(body, 'jobs', modelManagerJobSchema);
   }

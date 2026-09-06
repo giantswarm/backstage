@@ -9,13 +9,18 @@ import {
   modelManagerNodesQueryKey,
 } from '../lib/queryKeys';
 
-/** The per-model operations of the model-manager API, as one union. */
+/**
+ * The per-model operations of the model-manager API, as one union. `backend`
+ * names the backend the model belongs to, so a model-manager running several
+ * (0.17 on) needs no resolving — and cannot mistake a same-named reference on
+ * another backend; one running a single backend ignores it.
+ */
 export type ServedModelAction =
-  | { type: 'load'; model: string }
-  | { type: 'unload'; model: string }
-  | { type: 'delete'; model: string; unwire: boolean }
-  | { type: 'wire'; model: string }
-  | { type: 'unwire'; model: string };
+  | { type: 'load'; model: string; backend?: string; keepAlive?: string }
+  | { type: 'unload'; model: string; backend?: string }
+  | { type: 'delete'; model: string; backend?: string; unwire: boolean }
+  | { type: 'wire'; model: string; backend?: string }
+  | { type: 'unwire'; model: string; backend?: string };
 
 export const SERVED_MODEL_ACTION_LABEL: Record<
   ServedModelAction['type'],
@@ -96,25 +101,31 @@ export function useServedModelAction(installation: string) {
 
   const mutation = useMutation({
     mutationFn: async (action: ServedModelAction) => {
+      const scope = action.backend ? { backend: action.backend } : {};
       switch (action.type) {
         case 'load':
           await modelManagerApi.loadModel(installation, {
             model: action.model,
+            ...(action.keepAlive !== undefined && {
+              keepAlive: action.keepAlive,
+            }),
+            ...scope,
           });
           break;
         case 'unload':
-          await modelManagerApi.unloadModel(installation, action.model);
+          await modelManagerApi.unloadModel(installation, action.model, scope);
           break;
         case 'delete':
           await modelManagerApi.deleteModel(installation, action.model, {
             unwire: action.unwire,
+            ...scope,
           });
           break;
         case 'wire':
-          await modelManagerApi.wireModel(installation, action.model);
+          await modelManagerApi.wireModel(installation, action.model, scope);
           break;
         case 'unwire':
-          await modelManagerApi.unwireModel(installation, action.model);
+          await modelManagerApi.unwireModel(installation, action.model, scope);
           break;
         default:
           throw new Error('Unknown served-model action');

@@ -36,3 +36,25 @@ export const Constants = {
   // App name for imported resources
   CAPI_IMPORTER_APP_NAME: 'crossplane-capi-import',
 } as const;
+
+/**
+ * The release blockers `AppReadinessProcessor` writes into the
+ * `giantswarm.io/readiness-flags` annotation.
+ *
+ * Shared across the package boundary because that annotation has two authors:
+ * backstage-catalog-importer merges its enforced chart-metadata gaps
+ * (`META-NO-TEAM`, `NO-VALUES-SCHEMA`) into the same list. The frontend has to
+ * tell the two apart to attribute each flag to the verdict it belongs to, and
+ * it does so by recognising the names below — so a blocker added to the
+ * processor alone would be presented as a chart-metadata gap, under a heading
+ * that makes a definite and wrong claim about it.
+ */
+export const ReleaseReadinessFlags = {
+  releaseNotPublished: 'RELEASE-NOT-PUBLISHED',
+  neverPublished: 'NEVER-PUBLISHED',
+} as const;
+
+/** The flag names above, for membership tests. */
+export const releaseReadinessFlagNames: string[] = Object.values(
+  ReleaseReadinessFlags,
+);

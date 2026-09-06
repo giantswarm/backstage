@@ -511,3 +511,184 @@ describe('createRouter mounts the model-manager routes', () => {
     });
   });
 });
+
+describe('createModelManagerRouter · the backend scope of one model-manager running several backends', () => {
+  const methods = {
+    getBackend: jest.fn(),
+    listBackends: jest.fn(),
+    listModels: jest.fn(),
+    getModel: jest.fn(),
+    deleteModel: jest.fn(),
+    listLoaded: jest.fn(),
+    pullModel: jest.fn(),
+    loadModel: jest.fn(),
+    unloadModel: jest.fn(),
+    wireModel: jest.fn(),
+    unwireModel: jest.fn(),
+    listJobs: jest.fn(),
+    getJob: jest.fn(),
+    cancelJob: jest.fn(),
+    fitCheck: jest.fn(),
+    listPresets: jest.fn(),
+    search: jest.fn(),
+    listNodes: jest.fn(),
+  };
+  const mockClient = methods as unknown as ModelManagerClient;
+  const auth = { [MODEL_MANAGER_AUTH_HEADER]: 'dex-token' };
+  let app: express.Express;
+
+  beforeEach(() => {
+    Object.values(methods).forEach(fn => fn.mockReset());
+    const logger = mockServices.logger.mock();
+    const config = mockServices.rootConfig({ data: twoInstallations });
+    const router = createModelManagerRouter({
+      logger,
+      config,
+      client: mockClient,
+    });
+    app = express();
+    app.use(router);
+    app.use(MiddlewareFactory.create({ logger, config }).error());
+  });
+
+  it('serves the list of backends', async () => {
+    methods.listBackends.mockResolvedValue({
+      backends: [{ backend: 'ollama' }, { backend: 'lemonade' }],
+    });
+    const response = await request(app)
+      .get('/model-manager/backends?installation=lab')
+      .set(auth);
+    expect(response.status).toBe(200);
+    expect(response.body.backends).toHaveLength(2);
+    expect(methods.listBackends).toHaveBeenCalledWith({
+      userToken: 'dex-token',
+    });
+  });
+
+  it('forwards ?backend= on reads and the delete, and none when absent', async () => {
+    methods.listModels.mockResolvedValue({ models: [] });
+    methods.getModel.mockResolvedValue({ name: 'qwen3-4b-FLM' });
+    methods.deleteModel.mockResolvedValue({ deleted: true });
+    methods.listJobs.mockResolvedValue({ jobs: [] });
+    methods.listNodes.mockResolvedValue({ nodes: [] });
+    methods.getBackend.mockResolvedValue({ backend: 'lemonade' });
+
+    await request(app)
+      .get('/model-manager/models?installation=lab&backend=lemonade')
+      .set(auth);
+    expect(methods.listModels).toHaveBeenCalledWith({
+      userToken: 'dex-token',
+      backend: 'lemonade',
+    });
+    await request(app).get('/model-manager/models?installation=lab').set(auth);
+    expect(methods.listModels).toHaveBeenLastCalledWith({
+      userToken: 'dex-token',
+      backend: undefined,
+    });
+    await request(app)
+      .get(
+        '/model-manager/models/qwen3-4b-FLM?installation=lab&backend=lemonade',
+      )
+      .set(auth);
+    expect(methods.getModel).toHaveBeenCalledWith('qwen3-4b-FLM', {
+      userToken: 'dex-token',
+      backend: 'lemonade',
+    });
+    await request(app)
+      .delete(
+        '/model-manager/models/qwen3-4b-FLM?installation=lab&backend=lemonade&unwire=false',
+      )
+      .set(auth);
+    expect(methods.deleteModel).toHaveBeenCalledWith('qwen3-4b-FLM', false, {
+      userToken: 'dex-token',
+      backend: 'lemonade',
+    });
+    await request(app)
+      .get('/model-manager/jobs?installation=lab&backend=ollama')
+      .set(auth);
+    expect(methods.listJobs).toHaveBeenCalledWith({
+      userToken: 'dex-token',
+      backend: 'ollama',
+    });
+    await request(app)
+      .get('/model-manager/nodes?installation=lab&backend=ollama')
+      .set(auth);
+    expect(methods.listNodes).toHaveBeenCalledWith({
+      userToken: 'dex-token',
+      backend: 'ollama',
+    });
+    await request(app)
+      .get('/model-manager/backend?installation=lab&backend=lemonade')
+      .set(auth);
+    expect(methods.getBackend).toHaveBeenCalledWith({
+      userToken: 'dex-token',
+      backend: 'lemonade',
+    });
+  });
+
+  it('forwards the backend of a mutation from its body', async () => {
+    methods.pullModel.mockResolvedValue({ job: { id: 'j1' }, created: true });
+    methods.loadModel.mockResolvedValue({ name: 'qwen3-4b-FLM', loaded: true });
+    methods.unloadModel.mockResolvedValue({ loaded: false });
+    methods.wireModel.mockResolvedValue({ modelConfig: null });
+    methods.unwireModel.mockResolvedValue({ modelConfig: null });
+
+    await request(app)
+      .post('/model-manager/models/pull?installation=lab')
+      .set(auth)
+      .send({ model: 'qwen3-4b-FLM', backend: 'lemonade' });
+    expect(methods.pullModel).toHaveBeenCalledWith(
+      { model: 'qwen3-4b-FLM' },
+      { userToken: 'dex-token', backend: 'lemonade' },
+    );
+    await request(app)
+      .post('/model-manager/models/load?installation=lab')
+      .set(auth)
+      .send({ model: 'qwen3-4b-FLM', backend: 'lemonade', keepAlive: '-1' });
+    expect(methods.loadModel).toHaveBeenCalledWith(
+      { model: 'qwen3-4b-FLM', keepAlive: '-1' },
+      { userToken: 'dex-token', backend: 'lemonade' },
+    );
+    await request(app)
+      .post('/model-manager/models/unload?installation=lab')
+      .set(auth)
+      .send({ model: 'qwen3:0.6b', backend: 'ollama' });
+    expect(methods.unloadModel).toHaveBeenCalledWith(
+      { model: 'qwen3:0.6b' },
+      { userToken: 'dex-token', backend: 'ollama' },
+    );
+    await request(app)
+      .post('/model-manager/models/wire?installation=lab')
+      .set(auth)
+      .send({ model: 'qwen3:0.6b' });
+    expect(methods.wireModel).toHaveBeenCalledWith(
+      { model: 'qwen3:0.6b' },
+      { userToken: 'dex-token', backend: undefined },
+    );
+    await request(app)
+      .post('/model-manager/models/unwire?installation=lab')
+      .set(auth)
+      .send({ model: 'qwen3:0.6b', backend: '' });
+    expect(methods.unwireModel).toHaveBeenCalledWith(
+      { model: 'qwen3:0.6b' },
+      { userToken: 'dex-token', backend: undefined },
+    );
+  });
+
+  it('refuses a backend that is not a backend name', async () => {
+    const response = await request(app)
+      .get('/model-manager/models?installation=lab&backend=Ollama%20Server')
+      .set(auth);
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toContain(
+      'backend must be a backend name',
+    );
+    const posted = await request(app)
+      .post('/model-manager/models/pull?installation=lab')
+      .set(auth)
+      .send({ model: 'x:1', backend: 42 });
+    expect(posted.status).toBe(400);
+    expect(methods.listModels).not.toHaveBeenCalled();
+    expect(methods.pullModel).not.toHaveBeenCalled();
+  });
+});

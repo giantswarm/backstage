@@ -14,9 +14,11 @@ import {
   parsePart,
   readFunctionCall,
   readFunctionResponse,
+  readMessageText,
   readPartText,
   unwrapProxiedCall,
 } from './kagentParts';
+import { FAILED_STATES } from './kagentSessionState';
 import { TimelineItem } from './kagentTimeline';
 
 /**
@@ -166,6 +168,18 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
       const isFinal = event.final === true;
       if (isFinal) {
         next.isFinal = true;
+      }
+
+      if (isFinal && state && FAILED_STATES.has(state)) {
+        // The turn ended in error, and `status.message` is now the *reason*, not
+        // a reply. Ingesting it as one showed the provider's error as the agent's
+        // prose for a moment — then the poll, whose history holds no reply at
+        // all, replaced the preview with nothing and the error was gone. Rendered
+        // instead as the failed turn `buildTimeline` will produce from the polled
+        // task, under the same messageId so that copy supersedes this one.
+        flushLiveRun(next);
+        pushFailureItem(next, state, readAgentMessage(event.status?.message));
+        return next;
       }
 
       const message = readAgentMessage(event.status?.message);
@@ -557,6 +571,33 @@ function pushTextItem(
       messageId,
       author,
       text: trimmed,
+    },
+  ];
+  turn.nextItemId += 1;
+}
+
+/**
+ * The terminal failure of a streamed turn, as the failed-turn entry the polled
+ * timeline will carry. No adjacent-text dedupe: a failure is never the repeat of
+ * an artifact chunk.
+ */
+function pushFailureItem(
+  turn: StreamTurn,
+  state: string,
+  message: A2aMessageWire | undefined,
+) {
+  turn.items = [
+    ...turn.items,
+    {
+      kind: 'turn-failed',
+      id: `stream:${turn.nextItemId}`,
+      taskIndex: 0,
+      messageId: message?.messageId,
+      author: message
+        ? readKagentMetadataString(message.metadata, 'author')
+        : undefined,
+      state,
+      reason: message ? readMessageText(message) : undefined,
     },
   ];
   turn.nextItemId += 1;

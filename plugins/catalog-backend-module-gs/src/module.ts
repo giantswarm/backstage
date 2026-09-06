@@ -10,6 +10,7 @@ import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-nod
 import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
 import { KlausProvider } from './KlausProvider';
 import { LatestOciReleaseProcessor } from './LatestOciReleaseProcessor';
+import { AppReadinessProcessor } from './AppReadinessProcessor';
 import { LatestReleaseProcessor } from './LatestReleaseProcessor';
 import { PagerDutyAnnotationProcessor } from './PagerDutyAnnotationProcessor';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
@@ -87,6 +88,19 @@ export const catalogModuleGS = createBackendModule({
         if (latestOciReleaseEnabled) {
           catalog.addProcessor(
             LatestOciReleaseProcessor.fromConfig({
+              config,
+              logger,
+              containerRegistry,
+            }),
+          );
+        }
+
+        const appReadinessEnabled = config.getOptionalBoolean(
+          'catalog.processors.appReadiness.enabled',
+        );
+        if (appReadinessEnabled) {
+          catalog.addProcessor(
+            AppReadinessProcessor.fromConfig({
               config,
               logger,
               containerRegistry,

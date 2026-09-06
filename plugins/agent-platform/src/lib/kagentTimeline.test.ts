@@ -9,6 +9,7 @@ import askUserPending from './__fixtures__/tasks.ask-user-pending.json';
 import malformed from './__fixtures__/tasks.malformed.json';
 import emptyNoData from './__fixtures__/tasks.empty-no-data.json';
 import bareArray from './__fixtures__/tasks.bare-array.json';
+import failed from './__fixtures__/tasks.failed.json';
 
 /** Parse a fixture the way the client does, then build its timeline. */
 function timelineFor(fixture: unknown): ReturnType<typeof buildTimeline> {
@@ -379,6 +380,94 @@ describe('buildTimeline', () => {
       auth.data[1].status.state = 'auth-required';
 
       expect(kinds(timelineFor(auth).items)).toContain('approval');
+    });
+  });
+
+  describe('a turn that failed', () => {
+    it('renders the reason from status.message as a failed turn', () => {
+      // The Go runtime writes the provider's error to the failed task's
+      // status.message and nothing to history, so without this the page showed
+      // the user's message with no reply under it — and a "Failed" badge as the
+      // only hint that anything had happened.
+      const { items } = timelineFor(failed);
+
+      expect(kinds(items)).toEqual([
+        'user-message',
+        'turn-failed',
+        'user-message',
+        'turn-failed',
+      ]);
+      expect(items[1]).toMatchObject({
+        kind: 'turn-failed',
+        state: 'failed',
+        taskIndex: 0,
+        messageId: 'm-failure-1',
+        reason: expect.stringContaining(
+          'The model `gpt-6-astra` does not exist or you do not have access to it.',
+        ),
+      });
+    });
+
+    it('takes the failure at its task timestamp', () => {
+      const { items } = timelineFor(failed);
+
+      expect(items[1].at).toBe('2026-09-04T09:04:28.933Z');
+    });
+
+    it('counts no tokens for it and reports no unreadable message', () => {
+      const { tokens, skippedMessages } = timelineFor(failed);
+
+      expect(tokens.total).toBe(0);
+      expect(skippedMessages).toBe(0);
+    });
+
+    it('still marks the turn when kagent gave no reason', () => {
+      const silent = structuredClone(failed) as typeof failed;
+      delete (silent.data[0].status as { message?: unknown }).message;
+      const { items } = timelineFor(silent);
+
+      expect(items[1]).toMatchObject({ kind: 'turn-failed', state: 'failed' });
+      expect((items[1] as { reason?: string }).reason).toBeUndefined();
+    });
+
+    it('does not repeat a reason history already carries', () => {
+      // A runtime that also records the failing reply in history has already
+      // rendered it as prose; the entry then says only that the turn failed.
+      const echoed = structuredClone(failed) as typeof failed;
+      (echoed.data[0].history as unknown[]).push(echoed.data[0].status.message);
+      const { items } = timelineFor(echoed);
+
+      expect(kinds(items).slice(0, 3)).toEqual([
+        'user-message',
+        'agent-message',
+        'turn-failed',
+      ]);
+      expect((items[2] as { reason?: string }).reason).toBeUndefined();
+    });
+
+    it('reads a rejected turn the same way', () => {
+      const rejected = structuredClone(failed) as typeof failed;
+      rejected.data[0].status.state = 'rejected';
+      const { items } = timelineFor(rejected);
+
+      expect(items[1]).toMatchObject({
+        kind: 'turn-failed',
+        state: 'rejected',
+      });
+    });
+
+    it('leaves a completed turn’s status message alone', () => {
+      // The mirror image, restated beside it: on a completed task status.message
+      // is the reply, which history already holds.
+      const done = structuredClone(failed) as typeof failed;
+      done.data[0].status.state = 'completed';
+      const { items } = timelineFor(done);
+
+      expect(kinds(items)).toEqual([
+        'user-message',
+        'user-message',
+        'turn-failed',
+      ]);
     });
   });
 

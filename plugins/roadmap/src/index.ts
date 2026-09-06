@@ -1,7 +1,15 @@
 export { roadmapPlugin as default, roadmapPlugin } from './plugin';
-export { roadmapApiRef, RoadmapApiClient } from './apis';
+export {
+  roadmapApiRef,
+  RoadmapApiClient,
+  MusterServerNotConnectedError,
+  roadmapAuthApiRef,
+  RoadmapMainAuth,
+} from './apis';
+export type { RoadmapAuthApi, RoadmapAuthCredentials } from './apis';
 export type {
   RoadmapApi,
+  RoadmapConnectionResponse,
   RoadmapField,
   RoadmapSchemaResponse,
   RoadmapItem,

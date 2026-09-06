@@ -49,6 +49,22 @@ export const AWAITING_INPUT_STATES = new Set([
 ]);
 
 /**
+ * The terminal states in which a turn ended in error.
+ *
+ * Both are `tone: 'danger'` below, and in both the turn's `status.message` — when
+ * kagent wrote one — holds the *reason* rather than a reply. The Go runtime puts
+ * the provider's error there ("OpenAI chat completion request failed: … 404 …
+ * model_not_found") and nothing at all in `history`, so unless something reads
+ * that field a failed session renders as the user's message with no reply under
+ * it, and a "Failed" badge as the only hint. The timeline turns it into a
+ * failed-turn entry, and the stream reducer does the same for the terminal event
+ * of a live send, so the failure shows at once and stays shown.
+ *
+ * Legacy (v0) spellings, like {@link AWAITING_INPUT_STATES}.
+ */
+export const FAILED_STATES = new Set(['failed', 'rejected']);
+
+/**
  * The A2A task states kagent can report, as of a2a 0.3 / kagent v0.10.
  *
  * Deliberately a lookup rather than a `z.enum` at the parse boundary: a state we

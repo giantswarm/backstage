@@ -106,6 +106,7 @@ export function useStopServedModel() {
           await modelManagerApi.unloadModel(
             model.installation,
             managerRefOf(model),
+            { backend: model.backend },
           );
         } catch (error) {
           // model-manager knows the InferenceService but serves no model it

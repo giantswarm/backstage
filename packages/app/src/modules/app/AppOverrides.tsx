@@ -41,7 +41,7 @@ import {
 } from '@backstage/core-app-api';
 import {
   GSDiscoveryApiClient,
-  gsAuthApiRef,
+  gsAuthProvidersApiRef,
   InstallationsConfigLoader,
 } from '@giantswarm/backstage-plugin-gs';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
@@ -57,6 +57,7 @@ import {
 import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 import { GSPageLayout } from './GSPageLayout';
+import { signInProviders } from './signInProviders';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -154,6 +155,14 @@ export const appOverrides = createFrontendModule({
      * ['read:user'] is used by default.
      * ['read:user', 'repo'] is required by @roadiehq/backstage-plugin-github-pull-requests.
      * ['read:user', 'repo', 'read:org'] is required by @backstage-community/plugin-github-actions.
+     *
+     * With `gs.github` configured the API runs on the person's own GitHub
+     * grant in muster (no GitHub App or GitHub login in the portal): tokens
+     * come from the auth backend's github-token route through muster's token
+     * broker, a missing grant bounces once through muster's connect, and
+     * signing out revokes the grant in muster. Without it the upstream
+     * provider (`auth.providers.github`) is used as before -- customer
+     * portals are unchanged. `scm-auth` above consumes whichever it is.
      */
     ApiBlueprint.make({
       name: 'github-auth',
@@ -164,8 +173,15 @@ export const appOverrides = createFrontendModule({
             configApi: configApiRef,
             discoveryApi: discoveryApiRef,
             oauthRequestApi: oauthRequestApiRef,
+            gsAuthProvidersApi: gsAuthProvidersApiRef,
           },
-          factory: ({ configApi, discoveryApi, oauthRequestApi }) =>
+          factory: ({
+            configApi,
+            discoveryApi,
+            oauthRequestApi,
+            gsAuthProvidersApi,
+          }) =>
+            gsAuthProvidersApi.getGithubAuthApi() ??
             GithubAuth.create({
               configApi,
               discoveryApi,
@@ -262,24 +278,15 @@ export const appOverrides = createFrontendModule({
           }) => {
             const configApi = useApi(configApiRef);
             if (configApi.has('gs.authProvider')) {
+              const providers = signInProviders(configApi);
+              // One option signs in automatically (existing session, else
+              // an instant popup). Several show the chooser; an existing
+              // session with any of them is still picked up silently.
               return (
                 <SignInPage
                   {...props}
-                  auto
-                  providers={[
-                    {
-                      id: 'dex-auth-provider',
-                      title:
-                        configApi.getOptionalString(
-                          'gs.signInProvider.title',
-                        ) ?? 'Dex',
-                      message:
-                        configApi.getOptionalString(
-                          'gs.signInProvider.message',
-                        ) ?? 'Sign in using Dex',
-                      apiRef: gsAuthApiRef,
-                    },
-                  ]}
+                  auto={providers.length === 1}
+                  providers={providers}
                 />
               );
             }

@@ -1,31 +1,32 @@
 # @giantswarm/backstage-plugin-roadmap-backend
 
 Backend plugin (`pluginId: roadmap`) that exposes a REST API over the GitHub
-Projects v2 roadmap board. It is built on the
-[`@giantswarm-io/pro`](https://github.com/giantswarm/pro) core library -- the
-same board logic (board registry, GraphQL queries, field semantics) that backs
-the pro MCP server -- and is consumed by the roadmap frontend plugin.
+Projects v2 roadmap board, consumed by the roadmap frontend plugin. The board
+logic lives in [pro](https://github.com/giantswarm/pro), the MCP server behind
+the `pro` tools; this plugin runs those tools through muster.
 
-All routes require an authenticated Backstage user. There are two GitHub
-credential paths:
+All routes require an authenticated Backstage user and run as that person:
+the frontend sends the user's main login (Dex) ID token in the
+`backstage-muster-authorization` header, the backend calls pro's tools
+(`list_issues`, `get_board_schema`, `get_item_by_issue`, `get_issue_details`,
+the sub-issue tools, `update_issue_field`) through the muster installation
+named in `roadmap.muster`, and muster executes them with the person's own
+GitHub grant -- reads and writes alike. No GitHub App token is used anywhere;
+board reads are cached in memory per person with a short TTL (a full board
+read paginates the project, >10s), stale-while-revalidate, and writes patch
+the person's cached lists in place.
 
-- **Reads** use the deployed GitHub App credentials via the standard
-  `integrations.github` config (`ScmIntegrations` +
-  `DefaultGithubCredentialsProvider`). Results are cached in memory with a
-  short TTL, since board queries paginate the full project. The GitHub App
-  needs org-level **Projects: read** (and **Issues: read** for sub-issue
-  trees and item bodies).
-- **Writes** require the caller's per-user GitHub OAuth token in the
-  `X-GitHub-Token` header, so every board mutation is attributed to the
-  person who made it. The backend passes the token straight through to pro
-  core and never falls back to the App token for mutations. Successful
-  writes invalidate the read cache. Projects v2 mutations need the classic
-  `project` scope on the user token.
+A caller whose muster session has no grant yet gets `401` with
+`error.name: MusterServerNotConnectedError` and `error.authUrl`, muster's
+sign-in URL; `GET /api/roadmap/connection` reports the same without failing a
+request, so the frontend can offer "Connect GitHub" and poll until the person
+completed it.
 
 ## Endpoints
 
 | Route                                                                    | Purpose                                                                                                                            |
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/roadmap/connection`                                            | Whether the caller can reach the board, else the sign-in URL                                                                       |
 | `GET /api/roadmap/schema`                                                | Board fields with option/iteration values, plus configured teams                                                                   |
 | `GET /api/roadmap/items`                                                 | Board items; filters: `team`, `status`, `kind`, `availability`, `quarter`, `assignee`, `state`, `updated`, `repository`, `keyword` |
 | `GET /api/roadmap/items/:id`                                             | Item detail (body, comments, all field values)                                                                                     |
@@ -52,8 +53,15 @@ roadmap:
   # to the frontend via GET /schema as `defaultTeams`.
   teams:
     - Bumblebee🐝
+  # The pro MCP server behind muster that serves the board as the person.
+  muster:
+    installation: gazelle # a name from muster.installations
+    server: gazelle-mcp-pro # the pro MCPServer in that muster
+    toolPrefix: pro # tools are x_<prefix>_<tool>; default: the server name
 ```
 
-For local development the dev GitHub App must have the Projects org
-permission; a PAT-style `integrations.github` token works as a fallback
-(same pattern as the plans plugin).
+Without `roadmap.board` or `roadmap.muster` the endpoints return 503. The
+person's GitHub grant needs org-level Projects access (read for the board,
+write for field changes) and Issues access for sub-issue trees and bodies;
+with a GitHub App as muster's client, the App's permissions and installation
+decide what the grant can reach.

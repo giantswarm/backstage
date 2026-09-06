@@ -687,3 +687,136 @@ describe('formatGpuShare', () => {
     expect(formatGpuShare(Number.NaN, 1)).toBeUndefined();
   });
 });
+
+describe('several backends behind one model-manager', () => {
+  const lemonade = {
+    ...modelManagerBackendSchema.parse({
+      backend: 'lemonade',
+      backends: ['ollama', 'lemonade'],
+      version: '11.9.0',
+      endpoint: 'http://172.21.0.1:13305',
+      agentEndpoint: 'http://172.21.0.1:13305/api/v1',
+      healthy: true,
+      capabilities: {
+        pull: true,
+        pullProgress: true,
+        delete: true,
+        load: true,
+        unload: true,
+        loadedModels: true,
+        wire: true,
+        presets: false,
+        fitCheck: false,
+        nodeInventory: true,
+        search: false,
+      },
+      loading: { onDemand: true, idleEviction: false },
+    }),
+    backend: 'lemonade' as const,
+  };
+
+  it('knows the lemonade backend', () => {
+    expect(toServingBackend('lemonade')).toBe('lemonade');
+  });
+
+  it('maps a Lemonade model with its engine, device and pin, on its own host:port', () => {
+    const model = modelManagerModelSchema.parse({
+      name: 'qwen3-4b-FLM',
+      backend: 'lemonade',
+      runtime: 'flm',
+      sizeBytes: 3_100_000_000,
+      capabilities: ['completion', 'tools', 'thinking'],
+      loaded: true,
+      running: {
+        name: 'qwen3-4b-FLM',
+        backend: 'lemonade',
+        sizeBytes: 3_100_000_000,
+        status: 'loaded',
+        device: 'npu',
+        pinned: true,
+      },
+    });
+    const row = toServedModelFromManager('lab', lemonade, model);
+    expect(row).toMatchObject({
+      id: 'lab/lemonade//qwen3-4b-FLM',
+      backend: 'lemonade',
+      runtime: 'lemonade 11.9.0',
+      engine: 'flm',
+      device: 'npu',
+      pinned: true,
+      readiness: 'ready',
+      readinessMessage: 'Loaded on the NPU, pinned against eviction.',
+      endpointHosts: ['172.21.0.1:13305'],
+      internalUrl: 'http://172.21.0.1:13305/api/v1',
+    });
+    // Lemonade's host is shared by its models — on its own port, so
+    // Ollama's clients on :11434 are not its.
+    expect(sharedHostsOf(lemonade)).toEqual(['172.21.0.1:13305']);
+  });
+
+  it('reads a not-loaded Lemonade model as Idle and names the server that loads it', () => {
+    const model = modelManagerModelSchema.parse({
+      name: 'gemma3-4b-FLM',
+      backend: 'lemonade',
+      runtime: 'flm',
+      sizeBytes: 4_500_000_000,
+      loaded: false,
+    });
+    const row = toServedModelFromManager('lab', lemonade, model);
+    expect(row.readiness).toBe('idle');
+    expect(row.readinessMessage).toContain(
+      'Lemonade loads it on the first request',
+    );
+    expect(row.readinessMessage).not.toContain('evicted again');
+  });
+
+  it('keeps one capacity row per backend host: the same address, reported by Ollama and by Lemonade', () => {
+    const ollamaHost = toGpuNodeFromManager(
+      'lab',
+      modelManagerNodeSchema.parse({
+        name: '172.21.0.1',
+        backend: 'ollama',
+        ready: true,
+        eligible: true,
+        allocatableMemoryBytes: 92417933312,
+        gpuCount: 0,
+        budgetBytes: 92417933312,
+        budgetSource: 'host-meminfo',
+        reservedBytes: 0,
+        freeBytes: 92417933312,
+      }),
+      'ollama',
+    );
+    const lemonadeHost = toGpuNodeFromManager(
+      'lab',
+      modelManagerNodeSchema.parse({
+        name: '172.21.0.1',
+        backend: 'lemonade',
+        ready: true,
+        eligible: true,
+        allocatableMemoryBytes: 92417933312,
+        gpuCount: 2,
+        gpuProduct: 'AMD NPU (NPU Strix)',
+        budgetBytes: 92417933312,
+        budgetSource: 'system-info',
+        reservedBytes: 3_100_000_000,
+        freeBytes: 89317933312,
+      }),
+      'lemonade',
+    );
+    expect(ollamaHost.id).toBe('lab/ollama/172.21.0.1');
+    expect(lemonadeHost.id).toBe('lab/lemonade/172.21.0.1');
+    expect(ollamaHost.backend).toBe('ollama');
+    expect(lemonadeHost.backend).toBe('lemonade');
+    // Ollama cannot count accelerators (0 = not counted); Lemonade
+    // enumerates them, so its count and product stand.
+    expect(ollamaHost.labeledCount).toBeUndefined();
+    expect(lemonadeHost.labeledCount).toBe(2);
+    expect(lemonadeHost.product).toBe('AMD NPU (NPU Strix)');
+    expect(lemonadeHost.memoryBudgetSource).toBe('system-info');
+    // A cluster node keeps its installation-wide id: the CR source folds onto it.
+    expect(toGpuNodeFromManager('gpu', kserveNodes[0], 'kserve').id).toBe(
+      `gpu/${kserveNodes[0].name}`,
+    );
+  });
+});

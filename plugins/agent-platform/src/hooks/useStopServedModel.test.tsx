@@ -135,7 +135,11 @@ describe('useStopServedModel', () => {
 
     // The name, not the repository: an InferenceService composed from another
     // model's preset is still found by its name.
-    expect(unloadModel).toHaveBeenCalledWith('gazelle', 'qwen3-14b');
+    // …and on the row's backend, so a model-manager running several never
+    // mistakes a same-named reference elsewhere.
+    expect(unloadModel).toHaveBeenCalledWith('gazelle', 'qwen3-14b', {
+      backend: 'kserve',
+    });
     expect(mockDeleteResource).not.toHaveBeenCalled();
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });

@@ -5,8 +5,8 @@ import {
 
 /**
  * Label muster sets on every aggregated MCPServer CR identifying the target
- * management cluster the server talks to. Drives the fleet health matrix's
- * row dimension.
+ * management cluster the server talks to. Drives the per-cluster pills on the
+ * MCP servers page and the dashboard's fleet coverage.
  */
 export const MANAGEMENT_CLUSTER_LABEL =
   'muster.giantswarm.io/management-cluster';

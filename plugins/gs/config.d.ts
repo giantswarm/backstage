@@ -53,6 +53,26 @@ export interface Config {
     };
 
     /**
+     * Second sign-in card next to the main provider's, signing in through the
+     * same OIDC login provider but pinned to another Dex connector
+     * (`connector_id` on the authorization request). The main card uses the
+     * deployment's default connector -- set it with the login provider's
+     * `startUrlSearchParams.connector_id` -- and this card is the fallback for
+     * people that connector cannot sign in. Both cards yield the same portal
+     * session. Without `connectorId` the login page shows the main card alone
+     * and signs in automatically.
+     * @deepVisibility frontend
+     */
+    signInFallbackProvider?: {
+      /** Dex connector id, e.g. `giantswarm-ad`. */
+      connectorId: string;
+      /** Card title. Default: `Other identity provider`. */
+      title?: string;
+      /** Card message. Default: `Sign in through another identity provider`. */
+      message?: string;
+    };
+
+    /**
      * Cluster token broker (muster) used to silently mint per-management-cluster
      * tokens from the user's main Dex session, replacing the per-cluster OAuth
      * popups for covered installations.
@@ -79,6 +99,46 @@ export interface Config {
        * @visibility backend
        */
       scope?: string;
+    };
+
+    /**
+     * GitHub as the signed-in person for Backstage's standard GitHub auth API
+     * (`githubAuthApiRef`, used by the GitHub Actions and Pull Requests tabs,
+     * `ScmAuth` and the scaffolder pickers) without a GitHub App or GitHub
+     * login in the portal: the token is the person's own GitHub grant held
+     * by muster (the grant behind `plans.muster` / `roadmap.muster`),
+     * released to the portal's backend through muster's token broker
+     * (`gs.clusterTokenBroker` credentials, RFC 8693, audience
+     * `brokerAudience`). A person without a grant is sent through muster's
+     * connect once -- a full-page bounce that comes straight back for an App
+     * they already authorized at their login -- never a "Login Required"
+     * dialog. Signing out of GitHub in the settings revokes the grant in
+     * muster for every session. Unset keeps the upstream GitHub auth
+     * provider (`auth.providers.github`).
+     */
+    github?: {
+      /**
+       * Audience of the broker grant target that releases the GitHub grant
+       * (`tokenExchangeBroker.targets.<audience>.grantIssuer` in muster).
+       * Its presence switches the frontend's GitHub auth API to muster.
+       * @visibility frontend
+       */
+      brokerAudience: string;
+      /**
+       * The muster installation and MCPServer whose grant this is: the
+       * server a person without a grant is asked to connect
+       * (`core_auth_login`, the sign-in URL of the bounce) and signed out of
+       * (`core_auth_logout`). Same shape as `plans.muster`.
+       * @visibility backend
+       */
+      muster: {
+        /** Name of the muster installation in `muster.installations`. */
+        installation: string;
+        /** Name of the MCPServer in that muster, e.g. `github`. */
+        server: string;
+        /** Tool prefix muster exposes the server's tools under; default: the server name. */
+        toolPrefix?: string;
+      };
     };
 
     /** @deepVisibility frontend */

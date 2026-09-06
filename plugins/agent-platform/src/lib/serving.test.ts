@@ -698,6 +698,8 @@ describe('mergeServingSnapshots', () => {
       isLoading: false,
       installations: [],
       backends: {},
+      backendCapabilities: {},
+      backendLoading: {},
       sourceBackends: {},
       capabilities: {},
       loading: {},

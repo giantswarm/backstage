@@ -4,6 +4,16 @@
  */
 
 /** Compact field description served by GET /schema for the filter UI. */
+/**
+ * Whether the caller's muster session can reach the board. `authUrl` is the
+ * sign-in to complete once when it cannot yet.
+ */
+export interface RoadmapConnectionResponse {
+  connected: boolean;
+  authUrl?: string;
+  message?: string;
+}
+
 export interface RoadmapField {
   name: string;
   type: 'singleSelect' | 'iteration' | 'date' | 'text' | 'other';
@@ -103,6 +113,7 @@ export interface RoadmapItemFilters {
 }
 
 export interface RoadmapApi {
+  getConnection(): Promise<RoadmapConnectionResponse>;
   getSchema(): Promise<RoadmapSchemaResponse>;
   listItems(filters?: RoadmapItemFilters): Promise<RoadmapItemsResponse>;
   getItem(id: string): Promise<RoadmapItemDetailResponse>;

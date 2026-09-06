@@ -61,8 +61,8 @@ export function ModelConfigsPage() {
             state
               ? toModelServedBy(
                   state,
-                  capabilitiesFor(installation),
-                  backends[installation],
+                  capabilitiesFor(installation, state.model?.backend),
+                  state.model?.backend ?? backends[installation],
                 )
               : undefined,
           );
