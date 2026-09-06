@@ -24,6 +24,13 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
       'fleet model configs',
       ['cluster', 'gazelle', 'list', 'kagent.dev', 'v1alpha2', 'modelconfigs'],
     ],
+    [
+      // The gs hook's key (`installationInventoryQueryKey`): which platform
+      // components an installation runs, one GET /apis per installation. Fleet
+      // state, and the reason a reload does not re-probe the whole fleet.
+      'the installation inventory',
+      ['gs', 'installation-inventory', 'v1', 'gazelle'],
+    ],
   ])('still persists installation-wide %s', (_label, queryKey) => {
     // Identical for every user, so caching across reloads is the whole point.
     expect(shouldDehydrateAgentPlatformQuery(queryKey)).toBe(true);

@@ -7,19 +7,18 @@ import {
   type NodeInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { buildResourceErrors } from '../resourceErrorFixtures';
-import { useKServeServingSource } from './useKServeServingSource';
+import {
+  useKServeServingSource,
+  type KServeInstallations,
+} from './useKServeServingSource';
 
-// The three fetch layers are mocked so each fixture drives the merge logic
-// directly: which installations have KServe, what their InferenceServices,
-// nodes and pods say, and how failures at each layer surface.
-const mockUseKServeInstallations = jest.fn();
+// The inventory's KServe verdict is handed in, and the two fetch layers are
+// mocked, so each fixture drives the merge logic directly: which installations
+// have KServe, what their InferenceServices, nodes and pods say, and how
+// failures at each layer surface.
+const kserveInstallations = jest.fn<KServeInstallations, []>();
 const mockUseResources = jest.fn();
 const mockUsePodLists = jest.fn();
-
-jest.mock('../../hooks/useKServeInstallations', () => ({
-  useKServeInstallations: (...args: unknown[]) =>
-    mockUseKServeInstallations(...args),
-}));
 
 jest.mock('../../hooks/usePodLists', () => ({
   usePodLists: (...args: unknown[]) => mockUsePodLists(...args),
@@ -202,16 +201,16 @@ function mockPods(
   });
 }
 
-function render(reachable = ['alpha', 'beta']) {
-  return renderHook(() => useKServeServingSource(reachable));
+function render(kserve: KServeInstallations = kserveInstallations()) {
+  return renderHook(() => useKServeServingSource(kserve));
 }
 
 describe('useKServeServingSource', () => {
   beforeEach(() => {
-    mockUseKServeInstallations.mockReset();
+    kserveInstallations.mockReset();
     mockUseResources.mockReset();
     mockUsePodLists.mockReset();
-    mockUseKServeInstallations.mockReturnValue({
+    kserveInstallations.mockReturnValue({
       installations: ['alpha'],
       isProbing: false,
       errors: [],
@@ -221,10 +220,9 @@ describe('useKServeServingSource', () => {
   });
 
   it('reads InferenceServices, nodes and pods only on installations with KServe', () => {
-    render(['alpha', 'beta']);
+    render();
 
-    expect(mockUseKServeInstallations).toHaveBeenCalledWith(['alpha', 'beta']);
-    // Both resource reads are scoped to the probe's answer, not the input.
+    // Both resource reads are scoped to the inventory's answer.
     for (const call of mockUseResources.mock.calls) {
       expect(call[0]).toEqual(['alpha']);
     }
@@ -238,7 +236,7 @@ describe('useKServeServingSource', () => {
   });
 
   it('contributes nothing on a fleet without KServe (no CRD anywhere)', () => {
-    mockUseKServeInstallations.mockReturnValue({
+    kserveInstallations.mockReturnValue({
       installations: [],
       isProbing: false,
       errors: [],
@@ -481,7 +479,7 @@ describe('useKServeServingSource', () => {
   });
 
   it('surfaces an installation whose probe failed as unreachable', () => {
-    mockUseKServeInstallations.mockReturnValue({
+    kserveInstallations.mockReturnValue({
       installations: ['alpha'],
       isProbing: false,
       errors: [{ installation: 'beta', error: new Error('HTTP 502') }],
@@ -494,7 +492,7 @@ describe('useKServeServingSource', () => {
   });
 
   it('surfaces an installation whose InferenceServices could not be listed', () => {
-    mockUseKServeInstallations.mockReturnValue({
+    kserveInstallations.mockReturnValue({
       installations: ['alpha', 'beta'],
       isProbing: false,
       errors: [],
@@ -515,7 +513,7 @@ describe('useKServeServingSource', () => {
     // The probe verdict is cached for minutes; a 404 on the list itself is
     // the earliest sign KServe was uninstalled. Neither a failure nor an empty
     // section: the installation simply leaves the Serving view.
-    mockUseKServeInstallations.mockReturnValue({
+    kserveInstallations.mockReturnValue({
       installations: ['alpha', 'beta'],
       isProbing: false,
       errors: [],
@@ -562,14 +560,14 @@ describe('useKServeServingSource', () => {
   });
 
   it('is loading while any layer is still in flight', () => {
-    mockUseKServeInstallations.mockReturnValue({
+    kserveInstallations.mockReturnValue({
       installations: [],
       isProbing: true,
       errors: [],
     });
     expect(render().result.current.isLoading).toBe(true);
 
-    mockUseKServeInstallations.mockReturnValue({
+    kserveInstallations.mockReturnValue({
       installations: ['alpha'],
       isProbing: false,
       errors: [],

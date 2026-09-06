@@ -12,8 +12,10 @@ import {
   ModelConfig,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useInstallations } from '@giantswarm/backstage-plugin-gs';
-import { useReachableInstallations } from '../../hooks/useReachableInstallations';
+import {
+  useInstallationInventory,
+  useInstallations,
+} from '@giantswarm/backstage-plugin-gs';
 import { clientLookupOf } from '../../lib/serving';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
@@ -53,20 +55,26 @@ export type AgentsContextValue = {
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
 
 /**
- * Lists kagent Agents across every reachable installation (all namespaces) and
- * exposes them as plain rows. Model references are resolved against the
- * ModelConfigs queried by {@link ModelConfigsProvider}, so this must be mounted
- * inside one.
+ * Lists kagent Agents across every installation that runs kagent (all
+ * namespaces) and exposes them as plain rows. Model references are resolved
+ * against the ModelConfigs queried by {@link ModelConfigsProvider}, so this must
+ * be mounted inside one.
  */
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Only query reachable installations so the fleet-wide query doesn't fan out
-  // to unreachable/forbidden clusters (each hangs for the full proxy timeout
-  // and retries, dominating the tail). Same rationale as ModelConfigsProvider.
-  const { installations: reachableInstallations, isProbing } =
-    useReachableInstallations(allInstallations);
+  // Only query installations whose inventory has the `kagent.dev` API group and
+  // whose access is healthy, home first (gs `useInstallationInventory`, one
+  // `GET /apis` per installation shared by every tab). The fleet-wide list then
+  // never fans out to a cluster without kagent (it used to 404 there, two
+  // requests per installation per tab) or to an unreachable one (each hangs for
+  // the full proxy timeout and retries, dominating the tail). `isProbing`
+  // covers the inventory's own probes and the access probes still settling.
+  // Same rationale as ModelConfigsProvider.
+  const inventory = useInstallationInventory();
+  const reachableInstallations = inventory.installationsWith('kagent');
+  const isProbing = inventory.isLoading || inventory.isProbing;
 
   // allInstallations/reachableInstallations are derived fresh each render; key
   // memos/effects on their contents rather than their (unstable) identity.
@@ -109,9 +117,9 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   );
 
   // Sticky, per-installation caches. The set of installations `useResources`
-  // queries churns during a session: it starts optimistically wide (every
-  // configured installation) and then narrows to the reachable subset once the
-  // cluster-access probes settle. `resources`/`errors` only ever reflect the
+  // queries churns during a session: it grows as the inventory answers for one
+  // installation after another and shrinks when one loses access.
+  // `resources`/`errors` only ever reflect the
   // *current* set, so an installation dropping out of that set would otherwise
   // make its agents vanish from the table. We instead remember the last-known
   // result per installation and only ever replace an installation's entry when
@@ -157,10 +165,10 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // A 404 means the kagent.dev API group isn't installed on that cluster —
-    // kagent simply isn't deployed there. Treat it as a successful empty read
-    // (zero agents), not a "couldn't read" failure: the cluster is reachable and
-    // we can list it, there just are no Agents. Genuine failures (403 forbidden,
-    // unreachable) still count as errors.
+    // kagent was uninstalled since the (hour-long) inventory answered. Treat it
+    // as a successful empty read (zero agents), not a "couldn't read" failure:
+    // the cluster is reachable and we can list it, there just are no Agents.
+    // Genuine failures (403 forbidden, unreachable) still count as errors.
     const notInstalled = new Set(
       errors.filter(isNotFoundError).map(e => e.cluster),
     );
@@ -247,9 +255,8 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // The fleet-wide query reports "loading" until every installation settles,
     // so gate the blocking state on having no rows yet — otherwise one slow or
     // failing installation would hide agents already loaded from healthy ones.
-    // Also gate on hasInstallations: with none configured, useReachableInstallations
-    // reports isProbing forever (its empty-status fallback), which would otherwise
-    // pin isLoading true and hide the "no installations configured" empty state.
+    // Also gate on hasInstallations, so an instance with none configured shows
+    // the "no installations configured" empty state instead of a spinner.
     const hasInstallations = allInstallations.length > 0;
     const isBusy = hasInstallations && (isProbing || isLoading);
 
@@ -262,13 +269,13 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // "loading more".
     //
     // `isProbing` covers the other half, and is why it cannot be dropped: an
-    // installation still `connecting` is not in `reachableInstallations` at all
-    // (that set is `healthy`-only), so it cannot appear in `pendingInstallations`
-    // — yet it may resolve to healthy and contribute rows seconds later. Without
-    // it the bar switches off during exactly the cold-load fan-in it exists for.
-    // It does not churn: the cluster-access connector only seeds `connecting` for
-    // installations it is not already tracking, so this settles once and stays
-    // settled across re-probes.
+    // installation still `connecting`, or healthy but without an inventory answer
+    // yet, is not in `reachableInstallations` at all, so it cannot appear in
+    // `pendingInstallations` — yet it may turn out to run kagent and contribute
+    // rows seconds later. Without it the bar switches off during exactly the
+    // cold-load fan-in it exists for. It does not churn: the cluster-access
+    // connector only seeds `connecting` for installations it is not already
+    // tracking, and an inventory answer is cached for an hour.
     const pendingInstallations = reachableInstallations.filter(
       cluster =>
         !(cluster in agentsByInstallation) &&

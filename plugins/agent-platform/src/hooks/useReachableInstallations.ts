@@ -3,6 +3,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import {
   ClusterAccessStatusEntry,
   clusterAccessStatusApiRef,
+  useHomeInstallation,
 } from '@giantswarm/backstage-plugin-gs';
 
 /** States we treat as worth querying. Only `healthy` — a confirmed apiserver
@@ -12,15 +13,40 @@ import {
 const REACHABLE_STATES = new Set(['healthy']);
 
 export type ReachableInstallations = {
-  /** Configured installations the app currently considers reachable. */
+  /**
+   * Configured installations the app currently considers reachable: the home
+   * installation first, the rest in config order.
+   */
   installations: string[];
   /** True while access probes are still settling (reachable set may grow). */
   isProbing: boolean;
 };
 
 /**
+ * The home installation (the one signed in with the main provider, see gs
+ * `useHomeInstallation`) first, the rest in the order given. Exported for tests.
+ */
+export function homeFirst(
+  installations: string[],
+  home: string | undefined,
+): string[] {
+  if (!home || !installations.includes(home)) {
+    return installations;
+  }
+  return [home, ...installations.filter(name => name !== home)];
+}
+
+/**
  * Narrows a list of installations to those the app should query: currently
- * `healthy` per the shared cluster-access status (see gs `ClusterAccessConnector`).
+ * `healthy` per the shared cluster-access status (see gs `ClusterAccessConnector`),
+ * ordered with the home installation first so the person's own installation is
+ * queried, and rendered, before any other.
+ *
+ * This is the *access* filter only. Which installations run a given platform
+ * component is the gs `useInstallationInventory`'s question; the fleet-wide
+ * providers ask that (`installationsWith('kagent')` and so on) and use this hook
+ * only for components the inventory cannot see (model-manager, configured
+ * through the backend).
  *
  * Only `healthy` installations are kept; `connecting` (probe still in flight),
  * `degraded`, `session-expired`, and installations absent from the status set
@@ -48,6 +74,8 @@ export function useReachableInstallations(
   allInstallations: string[],
 ): ReachableInstallations {
   const statusApi = useApi(clusterAccessStatusApiRef);
+  const { home } = useHomeInstallation();
+  const homeName = home?.name;
   const [entries, setEntries] = useState<ClusterAccessStatusEntry[]>(() =>
     statusApi.getSnapshot(),
   );
@@ -58,8 +86,9 @@ export function useReachableInstallations(
   }, [statusApi]);
 
   return useMemo(() => {
+    const ordered = homeFirst(allInstallations, homeName);
     if (entries.length === 0) {
-      return { installations: allInstallations, isProbing: true };
+      return { installations: ordered, isProbing: true };
     }
 
     const reachable = new Set(
@@ -69,11 +98,11 @@ export function useReachableInstallations(
     );
 
     return {
-      installations: allInstallations.filter(name => reachable.has(name)),
+      installations: ordered.filter(name => reachable.has(name)),
       isProbing: entries.some(e => e.state === 'connecting'),
     };
     // allInstallations is derived fresh each render from config; key on its
     // contents rather than identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, allInstallations.join(',')]);
+  }, [entries, allInstallations.join(','), homeName]);
 }

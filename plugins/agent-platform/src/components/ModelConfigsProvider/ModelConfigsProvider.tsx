@@ -4,8 +4,10 @@ import {
   ModelConfig,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useInstallations } from '@giantswarm/backstage-plugin-gs';
-import { useReachableInstallations } from '../../hooks/useReachableInstallations';
+import {
+  useInstallationInventory,
+  useInstallations,
+} from '@giantswarm/backstage-plugin-gs';
 
 export type ModelConfigsContextValue = {
   /** Discovery/list still in flight across the fleet. */
@@ -13,8 +15,8 @@ export type ModelConfigsContextValue = {
   /** Whether any installation is configured at all. */
   hasInstallations: boolean;
   /**
-   * Installations (in config order) that returned at least one ModelConfig —
-   * i.e. the ones where creating an agent is actually possible.
+   * Installations (home first, then in inventory order) that returned at least
+   * one ModelConfig — i.e. the ones where creating an agent is actually possible.
    */
   availableInstallations: string[];
   /**
@@ -32,21 +34,24 @@ const ModelConfigsContext = createContext<ModelConfigsContextValue | undefined>(
 );
 
 /**
- * Queries kagent ModelConfigs across every reachable installation once, and
- * exposes which installations actually have models. Shared by the installation
- * select (to only offer usable installations) and the model picker (to list a
- * selected installation's models) so the fleet is only queried once.
+ * Queries kagent ModelConfigs across every installation that runs kagent once,
+ * and exposes which installations actually have models. Shared by the
+ * installation select (to only offer usable installations) and the model picker
+ * (to list a selected installation's models) so the fleet is only queried once.
  */
 export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Only query installations the app currently considers reachable, so the
-  // fleet-wide query doesn't fan out to unreachable/forbidden clusters (each of
+  // Only query installations whose inventory has the `kagent.dev` API group and
+  // whose access is healthy, home first (gs `useInstallationInventory`): the
+  // fleet-wide query fans out neither to clusters without kagent (a 404 per
+  // installation per tab before) nor to unreachable/forbidden ones (each of
   // which otherwise hangs for the full proxy timeout and retries before
   // settling, dominating the tail).
-  const { installations: reachableInstallations, isProbing } =
-    useReachableInstallations(allInstallations);
+  const inventory = useInstallationInventory();
+  const reachableInstallations = inventory.installationsWith('kagent');
+  const isProbing = inventory.isLoading || inventory.isProbing;
 
   // We type against a single ModelConfig version (v1alpha2), so skip API
   // version discovery: it adds two round-trips per cluster plus its own retry
@@ -64,9 +69,10 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ModelConfigsContextValue>(() => {
     const withModels = new Set(resources.map(mc => mc.cluster));
 
-    // A 404 means the kagent.dev API group isn't installed on that cluster, so it
-    // simply has no ModelConfigs — not a "couldn't read" failure. Only genuine
-    // failures (403 forbidden, unreachable) that produced no models are surfaced.
+    // A 404 means the kagent.dev API group has gone since the (hour-long)
+    // inventory answered, so the cluster simply has no ModelConfigs — not a
+    // "couldn't read" failure. Only genuine failures (403 forbidden,
+    // unreachable) that produced no models are surfaced.
     const unreachableInstallations = Array.from(
       new Set(errors.filter(e => !isNotFoundError(e)).map(e => e.cluster)),
     ).filter(name => !withModels.has(name));

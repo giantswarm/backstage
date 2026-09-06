@@ -25,6 +25,29 @@ export {
   type UseInstallationsResult,
 } from './apis/installations';
 export { InstallationsConfigLoader } from './components/InstallationsConfigLoader';
+// One inventory of the Agent Platform components per installation (one
+// `GET /apis` each, home first), consumed by the agent-platform and muster
+// plugins to decide which installations to query.
+export {
+  useInstallationInventory,
+  useHomeInstallation,
+  findHomeInstallation,
+  installationInventoryQueryKey,
+  INSTALLATION_INVENTORY_QUERY_KEY_PREFIX,
+  INSTALLATION_INVENTORY_STALE_TIME_MS,
+  INVENTORY_PROBE_PATH,
+  parseApiGroupList,
+  isPlatformComponents,
+  NO_PLATFORM_COMPONENTS,
+  PLATFORM_API_GROUPS,
+  PLATFORM_COMPONENTS,
+  type InstallationInventory,
+  type InstallationInventoryEntry,
+  type InstallationProbeState,
+  type PlatformComponent,
+  type PlatformComponents,
+  type UseHomeInstallationResult,
+} from './apis/installationInventory';
 export {
   clusterAccessStatusApiRef,
   type ClusterAccessStatusApi,

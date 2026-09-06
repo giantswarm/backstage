@@ -1,11 +1,13 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { useInstallations } from '@giantswarm/backstage-plugin-gs';
+import {
+  useInstallationInventory,
+  useInstallations,
+} from '@giantswarm/backstage-plugin-gs';
 import { kagentApiRef } from '../../apis';
 import { sessionsQueryKey } from '../../lib/queryKeys';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
-import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import { useAgents } from '../AgentsDataProvider';
 import {
   buildAgentIndex,
@@ -15,7 +17,7 @@ import {
   toSessionRow,
 } from './helpers';
 
-/** The backend's kagent allowlist changes with config, not with navigation. */
+/** The backend's kagent installation list changes with config, not with navigation. */
 const INSTALLATIONS_STALE_TIME_MS = 60 * 60 * 1000;
 
 export type SessionsContextValue = {
@@ -52,8 +54,8 @@ const SessionsContext = createContext<SessionsContextValue | undefined>(
 );
 
 /**
- * Lists the signed-in user's kagent sessions across every reachable installation
- * that has kagent configured, and exposes them as plain rows.
+ * Lists the signed-in user's kagent sessions across every installation that
+ * runs kagent and that the backend proxies, and exposes them as plain rows.
  *
  * Agent names and avatars are resolved against the `Agent` CRs loaded by
  * {@link AgentsDataProvider}, so this must be mounted inside one.
@@ -71,21 +73,26 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Only query reachable installations, for the same reason as the other
-  // providers: an unreachable cluster otherwise hangs for the full proxy timeout
-  // and retries, dominating the tail.
-  const { installations: reachableInstallations, isProbing } =
-    useReachableInstallations(allInstallations);
+  // Which installations run kagent: those whose inventory has the `kagent.dev`
+  // API group and whose access is healthy, home first (gs
+  // `useInstallationInventory`, one `GET /apis` per installation shared by every
+  // tab). Same reason as the other providers, and then some: a sessions request
+  // to an installation without kagent is doomed, and each one mints that
+  // installation's Dex token before it can fail.
+  const inventory = useInstallationInventory();
+  const kagentInstallations = inventory.installationsWith('kagent');
+  const isProbing = inventory.isLoading || inventory.isProbing;
 
-  // Which installations the backend can actually reach kagent on.
+  // Which installations the backend proxies kagent for: a kagent URL derived
+  // per installation, or the configured `agentPlatform.kagent.installations`
+  // (URL override and hard allowlist). The intersection with the inventory is
+  // what gets queried — the backend knows the URLs, the inventory knows who runs
+  // kagent; neither alone is enough.
   //
-  // We deliberately *wait* for this before querying anything. kagent runs on only
-  // a couple of installations, so fanning out to the whole reachable set first
-  // would fire a doomed request per remaining installation — and each one mints
-  // that installation's Dex token before it can fail, which may involve a broker
-  // exchange. This is one cheap backend call, cached for an hour and persisted, so
-  // paying a single round-trip up front is far cheaper than N wasted ones on every
-  // cold load.
+  // We deliberately *wait* for this before querying anything. It is one cheap
+  // backend call, cached for an hour and persisted, so paying a single round-trip
+  // up front is far cheaper than a wasted request to an installation the backend
+  // has no route for.
   const {
     data: proxiedInstallations,
     isLoading: isLoadingAllowlist,
@@ -98,25 +105,25 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
 
   // Key memos on contents, not identity: both arrays are derived fresh each
   // render. Extracted to variables so the deps can be statically checked.
-  const reachableKey = reachableInstallations.join(',');
+  const kagentKey = kagentInstallations.join(',');
   const proxiedKey = proxiedInstallations?.join(',');
 
   const targets = useMemo(() => {
-    // If the allowlist itself is unavailable, fall back to the reachable set
-    // rather than showing an empty page: a backend hiccup shouldn't look like
-    // "you have no sessions".
+    // If the backend's list itself is unavailable, fall back to the inventory's
+    // kagent installations rather than showing an empty page: a backend hiccup
+    // shouldn't look like "you have no sessions".
     if (allowlistFailed) {
-      return reachableInstallations;
+      return kagentInstallations;
     }
     if (!proxiedInstallations) {
       return [];
     }
     const allowed = new Set(proxiedInstallations);
-    return reachableInstallations.filter(installation =>
+    return kagentInstallations.filter(installation =>
       allowed.has(installation),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reachableKey, proxiedKey, allowlistFailed]);
+  }, [kagentKey, proxiedKey, allowlistFailed]);
 
   const sessionQueries = useQueries({
     queries: targets.map(installation => ({
@@ -217,9 +224,9 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     );
 
     const hasInstallations = allInstallations.length > 0;
-    // Includes the allowlist query: without it there is a window where nothing is
-    // loading yet and the table would flash "No sessions found." before the first
-    // installation is even queried.
+    // Includes the backend's list and the inventory: without them there is a
+    // window where nothing is loading yet and the table would flash "No sessions
+    // found." before the first installation is even queried.
     const isBusy =
       hasInstallations &&
       (isProbing ||
