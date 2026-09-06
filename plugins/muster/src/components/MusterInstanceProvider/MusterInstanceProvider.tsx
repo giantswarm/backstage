@@ -28,6 +28,22 @@ const STORAGE_KEY = 'muster-installation';
 // intervals.
 const HEALTH_REFETCH_INTERVAL_MS = 30_000;
 
+// The backend's `/installations` carries each muster's reachability from an
+// unauthenticated probe that may not have settled when the list is first read
+// (a pod that just started answers 'unknown'). Re-read every few seconds until
+// every entry is settled, then leave the list alone: a list pinned at 'unknown'
+// would run the session probe against a muster the portal cannot reach.
+const INSTALLATIONS_REFETCH_WHILE_UNKNOWN_MS = 5_000;
+
+/** Whether any installation's reachability has not been probed yet. */
+export function hasUnknownReachability(
+  installations: MusterInstallationInfo[] | undefined,
+): boolean {
+  return Boolean(
+    installations?.some(installation => installation.reachable === 'unknown'),
+  );
+}
+
 export type MusterInstance = {
   /**
    * The muster installations the picker may offer. Sourced from the backend's
@@ -38,7 +54,12 @@ export type MusterInstance = {
   isLoadingInstallations: boolean;
   /** The single active muster instance every screen is scoped to. */
   activeInstallation: string | undefined;
-  /** Config-derived metadata (endpoint, auth/mutation posture) for the active instance. */
+  /**
+   * Config-derived metadata (endpoint, auth/mutation posture) for the active
+   * instance, plus the backend's `reachable` / `reason` from its
+   * unauthenticated probe -- `useMusterSession` reads it to skip the session
+   * probe for a muster the portal cannot reach.
+   */
   activeInstallationInfo: MusterInstallationInfo | undefined;
   setActiveInstallation: (installation: string) => void;
   /** MCPServer CRs of the active instance (one installation, not fan-out). */
@@ -120,6 +141,10 @@ export const MusterInstanceProvider = ({
     useQuery({
       queryKey: ['muster', 'installations'],
       queryFn: () => musterApi.listInstallations(),
+      refetchInterval: query =>
+        hasUnknownReachability(query.state.data?.installations)
+          ? INSTALLATIONS_REFETCH_WHILE_UNKNOWN_MS
+          : false,
     });
 
   const installationInfos = useMemo(
