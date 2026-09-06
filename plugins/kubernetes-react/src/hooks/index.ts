@@ -11,4 +11,5 @@ export * from './utils/fetchResourceList';
 export * from './utils/patchResource';
 export * from './utils/queries';
 export * from './utils/queryPersistence';
+export * from './utils/queryPersister';
 export * from './utils/selfSubjectAccessReview';
