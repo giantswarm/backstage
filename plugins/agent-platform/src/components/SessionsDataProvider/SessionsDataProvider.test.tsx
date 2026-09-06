@@ -11,7 +11,13 @@ import { SessionsDataProvider, useSessions } from './SessionsDataProvider';
 // loading logic directly. `mock`-prefixed names are the only out-of-scope
 // references jest allows inside a mock factory.
 let mockConfigInstallations: string[] = ['gazelle', 'golem'];
-let mockReachable: { installations: string[]; isProbing: boolean } = {
+// What the gs installation inventory reports for kagent: the installations
+// whose API groups include kagent.dev and whose access is healthy (home first).
+let mockKagent: {
+  installations: string[];
+  isProbing: boolean;
+  isLoading?: boolean;
+} = {
   installations: ['gazelle', 'golem'],
   isProbing: false,
 };
@@ -23,10 +29,17 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     installations: mockConfigInstallations.map(name => ({ name })),
     isLoading: false,
   }),
-}));
-
-jest.mock('../../hooks/useReachableInstallations', () => ({
-  useReachableInstallations: () => mockReachable,
+  useInstallationInventory: () => ({
+    entries: [],
+    home: mockKagent.installations[0],
+    isLoading: mockKagent.isLoading ?? false,
+    isProbing: mockKagent.isProbing,
+    // Only kagent matters to this provider; the inventory's other components
+    // are somebody else's question.
+    installationsWith: (component: string) =>
+      component === 'kagent' ? mockKagent.installations : [],
+    refresh: () => {},
+  }),
 }));
 
 jest.mock('../AgentsDataProvider', () => ({
@@ -83,7 +96,7 @@ beforeEach(() => {
   listInstallations.mockReset();
   listInstallations.mockResolvedValue(['gazelle', 'golem']);
   mockConfigInstallations = ['gazelle', 'golem'];
-  mockReachable = { installations: ['gazelle', 'golem'], isProbing: false };
+  mockKagent = { installations: ['gazelle', 'golem'], isProbing: false };
   mockAgentRows = [];
   mockCapabilities = {};
 });
@@ -125,7 +138,7 @@ describe('SessionsDataProvider', () => {
     ]);
   });
 
-  it('queries one installation per reachable, allowlisted installation', async () => {
+  it('queries one installation per kagent installation the backend proxies', async () => {
     listSessions.mockResolvedValue([]);
 
     renderProvider();
@@ -133,6 +146,24 @@ describe('SessionsDataProvider', () => {
     await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(2));
     expect(listSessions).toHaveBeenCalledWith('gazelle');
     expect(listSessions).toHaveBeenCalledWith('golem');
+  });
+
+  it('never queries an installation the backend lists but whose inventory lacks kagent', async () => {
+    // The backend derives a kagent URL for every installation with a base
+    // domain, so its list says nothing about who runs kagent. Before the
+    // inventory, every such installation was asked and answered 404 or, when
+    // its hostname is private, a 500 after the proxy timeout — on every view.
+    mockConfigInstallations = ['gazelle', 'golem', 'wombat'];
+    listInstallations.mockResolvedValue(['gazelle', 'golem', 'wombat']);
+    mockKagent = { installations: ['gazelle', 'golem'], isProbing: false };
+    listSessions.mockResolvedValue([]);
+
+    renderProvider();
+
+    await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(2));
+    expect(listSessions).toHaveBeenCalledWith('gazelle');
+    expect(listSessions).toHaveBeenCalledWith('golem');
+    expect(listSessions).not.toHaveBeenCalledWith('wombat');
   });
 
   it('trims the fan-out to the backend’s kagent allowlist', async () => {
@@ -170,7 +201,7 @@ describe('SessionsDataProvider', () => {
     await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(1));
   });
 
-  it('falls back to the reachable set when the allowlist itself fails', async () => {
+  it('falls back to the inventory’s kagent installations when the backend list fails', async () => {
     // A backend hiccup must not look like "you have no sessions".
     listInstallations.mockRejectedValue(new Error('backend down'));
     listSessions.mockResolvedValue([session()]);
@@ -276,7 +307,7 @@ describe('SessionsDataProvider', () => {
       // without the hasInstallations gate this would pin isLoading true and hide
       // the "no installations configured" empty state.
       mockConfigInstallations = [];
-      mockReachable = { installations: [], isProbing: true };
+      mockKagent = { installations: [], isProbing: true };
 
       const { result } = renderProvider();
 

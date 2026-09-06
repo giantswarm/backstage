@@ -8,7 +8,13 @@ import { ModelConfigsProvider, useModelConfigs } from './ModelConfigsProvider';
 // references jest allows inside a mock factory.
 const mockUseResources = jest.fn();
 let mockConfigInstallations: string[] = ['alpha', 'beta', 'gaggle'];
-let mockReachable: { installations: string[]; isProbing: boolean } = {
+// What the gs installation inventory reports for kagent (see
+// AgentsDataProvider.test.tsx).
+let mockKagent: {
+  installations: string[];
+  isProbing: boolean;
+  isLoading?: boolean;
+} = {
   installations: ['alpha', 'beta', 'gaggle'],
   isProbing: false,
 };
@@ -18,10 +24,17 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     installations: mockConfigInstallations.map(name => ({ name })),
     isLoading: false,
   }),
-}));
-
-jest.mock('../../hooks/useReachableInstallations', () => ({
-  useReachableInstallations: () => mockReachable,
+  useInstallationInventory: () => ({
+    entries: [],
+    home: mockKagent.installations[0],
+    isLoading: mockKagent.isLoading ?? false,
+    isProbing: mockKagent.isProbing,
+    // Only kagent matters to this provider; the inventory's other components
+    // are somebody else's question.
+    installationsWith: (component: string) =>
+      component === 'kagent' ? mockKagent.installations : [],
+    refresh: () => {},
+  }),
 }));
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -72,14 +85,16 @@ describe('ModelConfigsProvider', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
-    mockReachable = {
+    mockKagent = {
       installations: ['alpha', 'beta', 'gaggle'],
       isProbing: false,
     };
   });
 
-  it('only queries the reachable installations', () => {
-    mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
+  it('only queries the installations whose inventory has kagent', () => {
+    // gaggle is configured and healthy but has no kagent.dev API group: it is
+    // never asked for ModelConfigs.
+    mockKagent = { installations: ['alpha', 'beta'], isProbing: false };
     mockUseResources.mockReturnValue(result({}));
 
     renderUseModelConfigs();
@@ -124,7 +139,16 @@ describe('ModelConfigsProvider', () => {
   });
 
   it('reports loading while probes are still settling', () => {
-    mockReachable = { installations: [], isProbing: true };
+    mockKagent = { installations: [], isProbing: true };
+    mockUseResources.mockReturnValue(result({ isLoading: false }));
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(hook.current.isLoading).toBe(true);
+  });
+
+  it('reports loading while the inventory has not answered for the home yet', () => {
+    mockKagent = { installations: [], isProbing: false, isLoading: true };
     mockUseResources.mockReturnValue(result({ isLoading: false }));
 
     const { result: hook } = renderUseModelConfigs();
@@ -134,7 +158,7 @@ describe('ModelConfigsProvider', () => {
 
   it('reports hasInstallations from the configured set', () => {
     mockConfigInstallations = [];
-    mockReachable = { installations: [], isProbing: false };
+    mockKagent = { installations: [], isProbing: false };
     mockUseResources.mockReturnValue(result({}));
 
     const { result: hook } = renderUseModelConfigs();

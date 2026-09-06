@@ -34,7 +34,10 @@ const PERSIST_THROTTLE_MS = 1000 * 30;
  * must therefore never be written to localStorage.
  *
  * Everything else cached here (Agents, ModelConfigs, the kagent installation
- * list) is installation state: identical for every user, and safe to persist.
+ * list, and the gs installation inventory under `['gs', 'installation-inventory',
+ * …]` — which platform components each installation runs, one `GET /apis` per
+ * installation, read by every tab's provider under this client) is installation
+ * state: identical for every user, and safe to persist.
  * kagent sessions are not — the rows are one user's chat titles, the identity
  * probe caches their subject (an email address), and a session's tasks are the
  * whole conversation, including tool arguments and results.
