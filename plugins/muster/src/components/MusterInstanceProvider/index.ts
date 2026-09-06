@@ -4,6 +4,8 @@ export {
   useMusterInstance,
 } from './MusterInstanceProvider';
 export type { MusterInstance } from './MusterInstanceProvider';
+export { selectMusterInstallations, homeFirst } from './selectInstallations';
+export type { InventoryView } from './selectInstallations';
 export {
   useMusterSession,
   classifySessionFailure,
