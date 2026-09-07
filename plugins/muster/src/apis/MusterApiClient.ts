@@ -5,6 +5,12 @@ import {
   FetchApi,
 } from '@backstage/core-plugin-api';
 import {
+  KubernetesApi,
+  KubernetesAuthProvidersApi,
+} from '@backstage/plugin-kubernetes-react';
+import { getInstallationOidcToken } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { isHomeInstallation, MusterTokenMintError } from './installationToken';
+import {
   AuthStatusResponse,
   FilterCapabilitiesOptions,
   FilterPromptsResponse,
@@ -16,6 +22,7 @@ import {
   McpServerListResponse,
   MusterApi,
   MusterAuthProvidersApi,
+  MusterInstallationInfo,
   MusterInstallationsResponse,
   ServerSignInResult,
   ServerSignOutResult,
@@ -62,22 +69,51 @@ export const musterApiRef = createApiRef<MusterApi>({
  */
 const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
 
+/**
+ * The provider name the home path resolves the main-login token under when
+ * the installation has no `authProvider` of its own (a derived installation
+ * with no `muster.installations` entry): `gs.authProvider`, the person's main
+ * sign-in provider, for which `MusterAuthProviders` has no dedicated MCP
+ * provider and therefore answers the main ID token. Only reached when
+ * `gs.authProvider` is unset as well.
+ */
+const MAIN_LOGIN_PROVIDER = 'main';
+
 export class MusterApiClient implements MusterApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
   private readonly configApi?: ConfigApi;
   private readonly authProvidersApi?: MusterAuthProvidersApi;
+  private readonly kubernetesApi?: KubernetesApi;
+  private readonly kubernetesAuthProvidersApi?: KubernetesAuthProvidersApi;
+  /**
+   * The backend's `/installations`, read once per client for the token
+   * decision on installations the frontend config does not list (derived
+   * ones). The list is a function of the backend's configuration, so it does
+   * not change while the page lives; a failed read is not kept.
+   */
+  private installationsPromise?: Promise<MusterInstallationsResponse>;
 
+  /**
+   * `kubernetesApi` + `kubernetesAuthProvidersApi` mint the per-installation
+   * token for musters other than the home installation (see
+   * {@link isHomeInstallation}); without them every installation is reached
+   * with the `authProvidersApi` token, as before.
+   */
   constructor(options: {
     discoveryApi: DiscoveryApi;
     fetchApi: FetchApi;
     configApi?: ConfigApi;
     authProvidersApi?: MusterAuthProvidersApi;
+    kubernetesApi?: KubernetesApi;
+    kubernetesAuthProvidersApi?: KubernetesAuthProvidersApi;
   }) {
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
     this.configApi = options.configApi;
     this.authProvidersApi = options.authProvidersApi;
+    this.kubernetesApi = options.kubernetesApi;
+    this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
   }
 
   async listInstallations(): Promise<MusterInstallationsResponse> {
@@ -254,29 +290,78 @@ export class MusterApiClient implements MusterApi {
   }
 
   /**
-   * Resolve (and if needed mint, via the OAuth popup) a token for the target
-   * installation's muster auth provider. Unlike getAuthHeaders this surfaces
-   * success/failure so the UI can report whether sign-in worked.
+   * Resolve (and if needed mint, via the single main re-login) the token for
+   * the target installation's muster, the same way every request does. Unlike
+   * getAuthHeaders this reports success/failure instead of throwing, so the UI
+   * can re-run the mint from a button and re-probe afterwards.
    */
   async signIn(installation?: string): Promise<boolean> {
-    const authProvider = this.resolveAuthProvider(installation);
-    if (!authProvider) {
+    if (!(await this.requiresToken(installation))) {
       return true;
     }
-    if (!this.authProvidersApi) {
+    try {
+      return Boolean(await this.resolveToken(installation));
+    } catch {
       return false;
     }
-    const credentials =
-      await this.authProvidersApi.getCredentials(authProvider);
-    return Boolean(credentials.token);
+  }
+
+  /**
+   * Whether the installation's muster needs the person's token, and under
+   * which provider name the home path resolves it.
+   *
+   * A configured installation says so through its `authProvider`
+   * ({@link resolveAuthProvider}). A derived installation has no entry in the
+   * frontend config at all; the backend, which derived it, reports
+   * `requiresAuth` on `/installations` (always true for derived entries --
+   * every muster gates), and the home path then resolves the main-login token
+   * under `gs.authProvider`. Which token is sent does not depend on the
+   * provider name (see {@link resolveToken}).
+   */
+  private async requiresToken(
+    installation?: string,
+  ): Promise<{ authProvider: string } | undefined> {
+    const configured = this.resolveAuthProvider(installation);
+    if (configured) {
+      return { authProvider: configured };
+    }
+    if (!installation) {
+      return undefined;
+    }
+    const info = await this.backendInstallation(installation);
+    if (!info?.requiresAuth) {
+      return undefined;
+    }
+    return {
+      authProvider:
+        this.configApi?.getOptionalString('gs.authProvider') ??
+        MAIN_LOGIN_PROVIDER,
+    };
+  }
+
+  private async backendInstallation(
+    name: string,
+  ): Promise<MusterInstallationInfo | undefined> {
+    if (!this.installationsPromise) {
+      this.installationsPromise = this.listInstallations().catch(error => {
+        this.installationsPromise = undefined;
+        throw error;
+      });
+    }
+    const response = await this.installationsPromise;
+    return (response?.installations ?? []).find(
+      installation => installation.name === name,
+    );
   }
 
   /**
    * The muster server's `authProvider`. Resolved per installation from
    * `muster.installations[]` (the same config the muster-backend proxy reads),
    * falling back to the legacy single-installation `aiChat.mcp` entry selected
-   * by `muster.serverName` (default `muster`). When set, requests carry the
-   * user's OAuth token for that provider.
+   * by `muster.serverName` (default `muster`). When set, the installation
+   * requires a per-user token; which token depends on whether it is the home
+   * installation (see {@link resolveToken}). A derived installation has no
+   * entry here -- see {@link requiresToken}.
    */
   private resolveAuthProvider(installation?: string): string | undefined {
     if (!this.configApi) {
@@ -306,16 +391,87 @@ export class MusterApiClient implements MusterApi {
   private async getAuthHeaders(
     installation?: string,
   ): Promise<Record<string, string>> {
-    const authProvider = this.resolveAuthProvider(installation);
-    if (!authProvider || !this.authProvidersApi) {
-      return {};
+    const token = await this.resolveToken(installation);
+    return token ? { [MUSTER_AUTH_HEADER]: token } : {};
+  }
+
+  /**
+   * The bearer token for the target installation's muster, or undefined when
+   * the installation needs none.
+   *
+   * - Home installation (or no installation named): the `authProvider`'s token
+   *   from `authProvidersApi` -- on the Dev Portal the person's main-login Dex
+   *   ID token, which the home muster trusts.
+   * - Any other installation: the token the cluster token broker mints for it,
+   *   issued by that installation's own Dex (`getInstallationOidcToken`, the
+   *   kagent/model-manager path). Its `authProvider` config is not consulted
+   *   beyond "requires a token".
+   *
+   * Throws {@link MusterTokenMintError} when the token cannot be obtained, so
+   * callers can tell "no token could be minted" from muster's own 401.
+   */
+  private async resolveToken(
+    installation?: string,
+  ): Promise<string | undefined> {
+    const required = await this.requiresToken(installation);
+    if (!required) {
+      return undefined;
     }
-    const credentials =
-      await this.authProvidersApi.getCredentials(authProvider);
-    if (!credentials.token) {
-      return {};
+    if (installation && !(await this.isHomeInstallation(installation))) {
+      return this.mintInstallationToken(installation);
     }
-    return { [MUSTER_AUTH_HEADER]: credentials.token };
+    if (!this.authProvidersApi) {
+      return undefined;
+    }
+    const { token } = await this.authProvidersApi.getCredentials(
+      required.authProvider,
+    );
+    if (!token) {
+      // The main-login token is the only source here, so its absence means the
+      // portal session is gone (or the re-login was declined).
+      throw new MusterTokenMintError(
+        installation,
+        'session-expired',
+        `Your portal session has expired; no sign-in token is available for muster${
+          installation ? ` on ${installation}` : ''
+        }.`,
+      );
+    }
+    return token;
+  }
+
+  /**
+   * Whether `installation` is reached with the main-login token. Decided from
+   * the kubernetes API's cluster entry (`oidcTokenProvider`) against the main
+   * provider `gs.authProvider`; a cluster lookup that fails or a client wired
+   * without the kubernetes APIs keeps the main-token path.
+   */
+  private async isHomeInstallation(installation: string): Promise<boolean> {
+    if (!this.kubernetesApi || !this.kubernetesAuthProvidersApi) {
+      return true;
+    }
+    const mainProvider = this.configApi?.getOptionalString('gs.authProvider');
+    if (!mainProvider) {
+      return true;
+    }
+    try {
+      const cluster = await this.kubernetesApi.getCluster(installation);
+      return isHomeInstallation(cluster, mainProvider);
+    } catch {
+      return true;
+    }
+  }
+
+  private async mintInstallationToken(installation: string): Promise<string> {
+    try {
+      return await getInstallationOidcToken(
+        this.kubernetesApi!,
+        this.kubernetesAuthProvidersApi!,
+        installation,
+      );
+    } catch (error) {
+      throw MusterTokenMintError.fromMintFailure(installation, error);
+    }
   }
 
   /**

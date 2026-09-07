@@ -20,6 +20,22 @@ export function sessionsQueryKey(installation: string) {
 }
 
 /**
+ * The backend's kagent installation list with per-installation reachability
+ * (`GET /kagent/installations`, read by `useKagentInstallations`).
+ *
+ * Carries a version segment because the cache is persisted across releases
+ * and the data shape changed: the previous key,
+ * `['agent-platform', 'kagent', 'installations']`, held an array of *names*
+ * for up to an hour in every browser, and this one holds objects. A stale
+ * entry under the old key is simply never read again; a reader of this key
+ * still guards the shape (`isKagentInstallationList`) so a foreign entry is
+ * treated as "not answered yet" and refetched -- backstage#2264's rule.
+ */
+export function kagentInstallationsQueryKey() {
+  return ['agent-platform', 'kagent', 'installations', 'v2'] as const;
+}
+
+/**
  * The model-manager reads, per installation. Prefixed `model-manager` (not
  * `kagent`) so `components/QueryClientProvider`'s user-scoped filter leaves
  * them alone: an installation's inventory, backend descriptor and pull jobs

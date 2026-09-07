@@ -40,6 +40,7 @@ import {
   toAgentRow,
 } from '../AgentsDataProvider';
 import { READINESS_PRESENTATION } from '../AgentsTable/readinessStatus';
+import { InstallationChip } from '../InstallationChip';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { AgentActionsMenu } from './AgentActionsMenu';
@@ -308,6 +309,9 @@ function AgentDetailPageContent() {
                     icon={readiness.icon}
                   />
                 </span>
+                {/* Where the agent runs, where a person reads: two agents may
+                    share a name across installations. */}
+                <InstallationChip installation={installation} />
               </Flex>
 
               <Text variant="body-small" color="secondary">

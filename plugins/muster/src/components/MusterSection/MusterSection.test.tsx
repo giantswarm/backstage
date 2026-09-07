@@ -28,6 +28,35 @@ jest.mock('../UsagePage', () => ({
 
 // MusterInstanceProvider is deliberately NOT stubbed: its `?installation=` write
 // is what used to clobber the index redirect. Only its data sources are.
+// An empty inventory (no gs.installations) makes the provider list the
+// backend's installations as they are.
+jest.mock('@giantswarm/backstage-plugin-gs', () => {
+  const { useSearchParams } = jest.requireActual('react-router-dom');
+  return {
+    ALL_INSTALLATIONS: 'all',
+    useInstallationInventory: () => ({
+      entries: [],
+      home: undefined,
+      isLoading: false,
+      isProbing: false,
+      installationsWith: () => [],
+      refresh: jest.fn(),
+    }),
+    // The section-wide scope, reduced to what these routing tests need: the URL
+    // parameter when present, "all" otherwise -- the gs hook's first rule.
+    useInstallationScope: () => {
+      const [params] = useSearchParams();
+      return {
+        scope: params.get('installation') ?? 'all',
+        setScope: jest.fn(),
+        installations: [],
+        home: undefined,
+        isSingleInstallation: false,
+        isLoading: false,
+      };
+    },
+  };
+});
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: () => ({
@@ -94,13 +123,12 @@ describe('MusterSection', () => {
   // within a session has the installations list already cached. That used to
   // make MusterInstanceProvider's `?installation=` effect run in the same commit
   // as the index redirect and overwrite it with the pre-redirect path, leaving
-  // the section on `/muster` with no view and no selected tab.
+  // the section on `/muster` with no view and no selected tab. The provider no
+  // longer writes the default back at all -- under "All installations" the
+  // home muster is shown without pinning it -- so the URL stays clean.
   it('keeps the redirect when the installations query is already cached', async () => {
     const first = renderSection('/agent-platform/muster/dashboard');
     expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent('installation=');
-    });
     first.unmount();
 
     renderSection('/agent-platform/muster');
@@ -108,9 +136,10 @@ describe('MusterSection', () => {
     expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/muster/dashboard?installation=gazelle',
+        '/agent-platform/muster/dashboard',
       );
     });
+    expect(screen.getByTestId('path')).not.toHaveTextContent('installation=');
   });
 
   it('keeps an explicit installation across the index redirect', async () => {

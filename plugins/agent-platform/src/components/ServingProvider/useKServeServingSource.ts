@@ -5,7 +5,6 @@ import {
   Node,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useKServeInstallations } from '../../hooks/useKServeInstallations';
 import { usePodLists, type PodListRequest } from '../../hooks/usePodLists';
 import { useModelServingConfigs } from '../../hooks/useServingPresets';
 import {
@@ -34,9 +33,26 @@ export const KSERVE_CR_CAPABILITIES: ServingCapabilities = {
 };
 
 /**
+ * Which installations the KServe source reads: what the gs installation
+ * inventory (`useInstallationInventory`, one `GET /apis` per installation) says
+ * about the `serving.kserve.io` API group, handed in by the ServingProvider.
+ */
+export type KServeInstallations = {
+  /**
+   * Installations whose API groups include `serving.kserve.io` and whose
+   * access is healthy, home first.
+   */
+  installations: string[];
+  /** The inventory has not answered yet for some installation that still can. */
+  isProbing: boolean;
+  /** Installations whose inventory probe failed: they could not be asked. */
+  errors: { installation: string; error: Error }[];
+};
+
+/**
  * The KServe serving source: InferenceServices, nodes and pods read as
- * Kubernetes resources with the user's own RBAC, on the installations that
- * serve the InferenceService CRD.
+ * Kubernetes resources with the user's own RBAC, on the installations whose
+ * inventory has the `serving.kserve.io` API group.
  *
  * Reads, per installation with KServe (nothing at all is read elsewhere):
  * 1. the InferenceServices (all namespaces);
@@ -55,17 +71,13 @@ export const KSERVE_CR_CAPABILITIES: ServingCapabilities = {
  * `requested` (and thus free) unknown.
  */
 export function useKServeServingSource(
-  reachableInstallations: string[],
+  kserve: KServeInstallations,
 ): ServingSourceSnapshot {
-  const {
-    installations,
-    isProbing,
-    errors: probeErrors,
-  } = useKServeInstallations(reachableInstallations);
+  const { installations, isProbing, errors: probeErrors } = kserve;
   const installationsKey = installations.join(',');
 
   // Single InferenceService version (v1beta1), so skip API version discovery —
-  // the probe already established the group/version is served. Polled: a
+  // the inventory already established the group is served. Polled: a
   // model's readiness is written into the CR by the controller minutes after
   // it is created, and the auto-wiring acts on it.
   const inferenceServices = useResources(
@@ -162,10 +174,10 @@ export function useKServeServingSource(
       ),
     );
 
-    // A 404 on the InferenceService list after a positive probe means the CRD
-    // has gone since the (cached) probe answered — KServe was uninstalled. Drop
-    // the installation right away rather than showing an empty Serving view
-    // until the probe's cache expires.
+    // A 404 on the InferenceService list after a positive inventory means the
+    // CRD has gone since the (cached, hour-long) probe answered — KServe was
+    // uninstalled. Drop the installation right away rather than showing an
+    // empty Serving view until the inventory is read again.
     const crdGone = new Set(
       inferenceServices.errors.filter(isNotFoundError).map(e => e.cluster),
     );
@@ -173,9 +185,9 @@ export function useKServeServingSource(
       installation => !crdGone.has(installation),
     );
 
-    // An installation counts as unreadable when the probe itself failed, or the
-    // InferenceService list did (403, unreachable) and produced nothing — same
-    // classification as ModelConfigsProvider.
+    // An installation counts as unreadable when the inventory probe itself
+    // failed, or the InferenceService list did (403, unreachable) and produced
+    // nothing — same classification as ModelConfigsProvider.
     const withModels = new Set(servedModels.map(model => model.installation));
     const unreachable = new Set<string>(
       probeErrors.map(({ installation }) => installation),

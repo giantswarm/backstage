@@ -1,5 +1,10 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { useInstallations } from '@giantswarm/backstage-plugin-gs';
+import {
+  applyInstallationScope,
+  useInstallationInventory,
+  useInstallations,
+  useInstallationScope,
+} from '@giantswarm/backstage-plugin-gs';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import {
   findServedModel,
@@ -14,7 +19,10 @@ import {
   type ServingLoading,
   type ServingSourceSnapshot,
 } from '../../lib/serving';
-import { useKServeServingSource } from './useKServeServingSource';
+import {
+  useKServeServingSource,
+  type KServeInstallations,
+} from './useKServeServingSource';
 import { useModelManagerServingSource } from './useModelManagerServingSource';
 
 export type ServingContextValue = ServingSourceSnapshot & {
@@ -78,12 +86,12 @@ const ServingContext = createContext<ServingContextValue | undefined>(
  * source the portal knows, merged into one backend-agnostic view.
  *
  * Sources are hooks called here in a fixed order and merged with
- * {@link mergeServingSnapshots}; each decides for itself which installations
- * it applies to (the KServe source: those serving the InferenceService CRD;
- * the model-manager source: those the backend proxies a model-manager for),
- * so an installation without any backend contributes nothing and the Serving
- * section stays hidden there. The table, capacity panel and ModelConfig
- * linking below read only the merge.
+ * {@link mergeServingSnapshots}; each applies to its own installations (the
+ * KServe source: those whose installation inventory has the `serving.kserve.io`
+ * API group; the model-manager source: those the backend proxies a
+ * model-manager for), so an installation without any backend contributes
+ * nothing and the Serving section stays hidden there. The table, capacity
+ * panel and ModelConfig linking below read only the merge.
  *
  * Order matters only where both sources claim one installation (a lab with
  * KServe CRDs *and* a model-manager): the later, model-manager source then
@@ -93,12 +101,59 @@ const ServingContext = createContext<ServingContextValue | undefined>(
 export function ServingProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
-  // Same narrowing as ModelConfigsProvider: never fan out to installations the
-  // app does not currently consider reachable.
-  const { installations: reachableInstallations } =
-    useReachableInstallations(allInstallations);
 
-  const kserve = useKServeServingSource(reachableInstallations);
+  // The KServe source reads CRs, so it follows the installation inventory: only
+  // installations whose API groups include `serving.kserve.io` and whose access
+  // is healthy, home first, narrowed to the section's installation scope. The
+  // inventory is one `GET /apis` per installation, shared with the Agents,
+  // Sessions and Models providers, so KServe costs no discovery request of its
+  // own any more.
+  const inventory = useInstallationInventory();
+  const { scope } = useInstallationScope();
+  const kserveInstallations = applyInstallationScope(
+    inventory.installationsWith('kserve'),
+    scope,
+  );
+  const kserveKey = kserveInstallations.join(',');
+  // An installation whose inventory probe failed could not be asked whether it
+  // runs KServe; the source lists it as unreadable, as the old per-installation
+  // probe did.
+  const failedProbes = inventory.entries.filter(
+    entry =>
+      entry.probe === 'failed' &&
+      entry.accessState === 'healthy' &&
+      entry.error &&
+      applyInstallationScope([entry.installation], scope).length > 0,
+  );
+  const failedProbesKey = failedProbes
+    .map(entry => entry.installation)
+    .join(',');
+  const kserveProbing = inventory.isLoading || inventory.isProbing;
+  const kserveTargets = useMemo<KServeInstallations>(
+    () => ({
+      installations: kserveInstallations,
+      isProbing: kserveProbing,
+      errors: failedProbes.map(entry => ({
+        installation: entry.installation,
+        error: entry.error as Error,
+      })),
+    }),
+    // Both arrays are derived fresh each render; key on their contents.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [kserveKey, failedProbesKey, kserveProbing],
+  );
+
+  // model-manager registers no API group, so the inventory cannot see it: the
+  // backend's configured list decides, over every reachable installation in
+  // scope as before (home first).
+  const { installations: allReachableInstallations } =
+    useReachableInstallations(allInstallations);
+  const reachableInstallations = applyInstallationScope(
+    allReachableInstallations,
+    scope,
+  );
+
+  const kserve = useKServeServingSource(kserveTargets);
   const modelManager = useModelManagerServingSource(reachableInstallations);
 
   const value = useMemo<ServingContextValue>(() => {

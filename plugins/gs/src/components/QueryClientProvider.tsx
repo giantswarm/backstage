@@ -1,11 +1,22 @@
 import { ReactNode, useMemo } from 'react';
 import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { shouldPersistQuery } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import {
+  createPluginQueryPersister,
+  shouldPersistQuery,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 const gcTime = 1000 * 60 * 60;
 const maxAge = gcTime;
+
+/**
+ * This plugin's own localStorage key. The gs, flux and agent-platform providers
+ * used to share the library default and so merged their caches into one blob
+ * (see `LEGACY_SHARED_PERSISTER_KEY` in kubernetes-react); each now has its own,
+ * with a size guard. A change to what a query stores still calls for a new
+ * *query* key, not a new persister key: the blob under this one outlives releases.
+ */
+export const GS_PERSISTER_KEY = 'gs-react-query-cache';
 
 export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   const queryOptions: QueryClientConfig = useMemo(
@@ -48,9 +59,10 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
     [queryOptions],
   );
 
-  const persister = createAsyncStoragePersister({
-    storage: window.localStorage,
-  });
+  const persister = useMemo(
+    () => createPluginQueryPersister({ key: GS_PERSISTER_KEY }),
+    [],
+  );
 
   return (
     <PersistQueryClientProvider

@@ -18,7 +18,10 @@ import {
 import {
   MusterInstallationConfig,
   MusterMcpClient,
-  readMusterInstallationsFromConfig,
+  musterInstallationRequiresAuth,
+  ReachabilityCache,
+  reachabilityFields,
+  resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { getMcpUsage } from './mcpUsage';
 
@@ -37,6 +40,35 @@ export interface RouterOptions {
   config: Config;
   /** Overridable for tests; used as the client for every installation. */
   client?: MusterMcpClient;
+  /**
+   * The cache of unauthenticated reachability probes behind `/installations`.
+   * Overridable for tests; defaults to one that probes for real with a 3 s
+   * budget and a 5 min TTL.
+   */
+  reachability?: ReachabilityCache;
+}
+
+/**
+ * The URL the reachability probe GETs for a muster installation: the
+ * aggregator's OAuth protected-resource metadata (RFC 9728), served
+ * unauthenticated next to its `/mcp` endpoint. Any HTTP answer proves the
+ * route from where the portal runs; the probe carries no token and no user
+ * data and never opens an MCP session.
+ */
+export function musterProbeUrl(endpoint: string): string {
+  const base = endpoint.replace(/\/+$/, '').replace(/\/mcp$/, '');
+  return `${base}/.well-known/oauth-protected-resource`;
+}
+
+/** How the installation authenticates, for the start-up log line. */
+function authNote(installation: MusterInstallationConfig): string {
+  if (installation.authProvider) {
+    return ` (per-user auth via provider '${installation.authProvider}')`;
+  }
+  if (musterInstallationRequiresAuth(installation)) {
+    return " (per-user auth with the installation's token)";
+  }
+  return '';
 }
 
 function parseOptionalInt(value: unknown, name: string): number | undefined {
@@ -65,7 +97,17 @@ export async function createRouter(
 ): Promise<express.Router> {
   const { logger, config } = options;
 
-  const installations = readMusterInstallationsFromConfig(config, logger);
+  // The installations this proxy can target: one derived from every
+  // `gs.installations` entry with a base domain (`https://muster.<baseDomain>/
+  // mcp`), overridden or extended by `muster.installations`, or the legacy
+  // single `aiChat.mcp` entry when neither is set. Whether an installation
+  // actually runs muster is the frontend's question (the installation
+  // inventory); whether its endpoint is reachable from here is the probe's.
+  const { installations, counts: installationCounts } =
+    resolveMusterInstallations(config, logger);
+  logger.info(
+    `Muster proxy installations: ${installationCounts.derived} derived from gs.installations base domains, ${installationCounts.configured} configured in muster.installations, ${installationCounts.total} total.`,
+  );
 
   // Map each installation to a client. When a client is injected (tests),
   // reuse it for every installation; synthesize a default installation if
@@ -85,19 +127,30 @@ export async function createRouter(
     for (const [name, installation] of installations) {
       clients.set(name, new MusterMcpClient(installation, logger));
       logger.info(
-        `Muster proxy installation '${name}' connected to ${installation.url}${
-          installation.authProvider
-            ? ` (per-user auth via provider '${installation.authProvider}')`
-            : ''
-        }`,
+        `Muster proxy installation '${name}' (${
+          installation.source ?? 'configured'
+        }) connected to ${installation.url}${authNote(installation)}`,
       );
     }
   }
 
   if (installations.size === 0) {
     logger.info(
-      'No muster installations configured (set muster.installations, or an aiChat.mcp entry named per muster.serverName, default "muster"); muster endpoints will return 503.',
+      'No muster installations configured (no gs.installations entry has a baseDomain to derive one from, and neither muster.installations nor an aiChat.mcp entry named per muster.serverName, default "muster", is set); muster endpoints will return 503.',
     );
+  }
+
+  // Whether each installation's muster is reachable *from this portal*,
+  // learned without a user: an unauthenticated GET of its RFC 9728 metadata,
+  // cached five minutes (see gs-node's probeEndpoint for the classification).
+  // Warmed here rather than on the first request so the first `/installations`
+  // answer after a pod start already carries the state; not awaited, the
+  // route answers 'unknown' until a probe settles. Results are logged at INFO,
+  // one line per endpoint per state change.
+  const reachability =
+    options.reachability ?? new ReachabilityCache({ logger });
+  for (const installation of installations.values()) {
+    void reachability.refresh(musterProbeUrl(installation.url));
   }
 
   const router = Router();
@@ -107,6 +160,14 @@ export async function createRouter(
     res.json({ status: 'ok', configured: clients.size > 0 });
   });
 
+  /**
+   * The configured installations, each with whether its muster is reachable
+   * from this portal: `reachable` is `true`, `false` or `'unknown'` (no probe
+   * has settled yet -- the route never waits for one) and `reason` names the
+   * failure class when `false`. The frontend does not run its per-user auth
+   * probe against an installation reported `false` and says "not reachable
+   * from this portal" instead of offering a connect that cannot help.
+   */
   router.get('/installations', (_, res) => {
     res.json({
       installations: [...installations.values()].map(installation => ({
@@ -115,7 +176,13 @@ export async function createRouter(
         // card). Per-MC domain isn't derivable from the name, so it comes from
         // config rather than being fabricated frontend-side.
         endpoint: installation.url,
-        requiresAuth: Boolean(installation.authProvider),
+        requiresAuth: musterInstallationRequiresAuth(installation),
+        // Whether the endpoint was derived from the installation's base
+        // domain or listed in `muster.installations`.
+        source: installation.source ?? 'configured',
+        ...reachabilityFields(
+          reachability.get(musterProbeUrl(installation.url)),
+        ),
       })),
     });
   });
@@ -160,22 +227,27 @@ export async function createRouter(
   };
 
   /**
-   * When the target installation requires per-user auth, the frontend must
-   * forward the user's token; without it the muster server would reject the
-   * connection anyway, so fail fast with a 401 the frontend can act on.
+   * When the target installation requires per-user auth (a configured entry
+   * with an `authProvider`, or any derived entry -- every muster gates), the
+   * frontend must forward the person's token; without it the muster server
+   * would reject the connection anyway, so fail fast with a 401 the frontend
+   * can act on.
    */
   const readCallOptions = (
     req: express.Request,
     installation: MusterInstallationConfig,
   ): { authToken?: string } => {
-    if (!installation.authProvider) {
+    if (!musterInstallationRequiresAuth(installation)) {
       return {};
     }
     const headerValue = req.headers[MUSTER_AUTH_HEADER];
     const authToken = Array.isArray(headerValue) ? headerValue[0] : headerValue;
     if (!authToken) {
+      const why = installation.authProvider
+        ? `for auth provider '${installation.authProvider}'`
+        : 'for its muster (the endpoint is derived from the installation base domain)';
       throw new AuthenticationError(
-        `The muster installation '${installation.name}' requires a user token for auth provider '${installation.authProvider}', but the request did not include one.`,
+        `The muster installation '${installation.name}' requires a user token ${why}, but the request did not include one.`,
       );
     }
     return { authToken };
@@ -343,10 +415,11 @@ export async function createRouter(
    * the next user call it under the first user's OAuth grant.
    *
    * Read-only discovery tolerates that shared session; per-user auth cannot, so
-   * these two routes are inert unless the installation forwards a user token.
+   * these two routes are inert unless the installation forwards a user token
+   * (a configured entry with an `authProvider`, or any derived entry).
    */
   const hasPerUserSession = (installation: MusterInstallationConfig) =>
-    Boolean(installation.authProvider);
+    musterInstallationRequiresAuth(installation);
 
   /**
    * Per-server authentication status for the calling user's muster session

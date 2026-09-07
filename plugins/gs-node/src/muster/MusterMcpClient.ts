@@ -54,6 +54,13 @@ export interface MusterInstallationConfig extends MusterServerConfig {
    * then to the only prometheus-ish server.
    */
   prometheusServer?: string;
+  /**
+   * Where the entry came from: `derived` from a `gs.installations` entry's
+   * `baseDomain`, `configured` in `muster.installations` (or the legacy
+   * `aiChat.mcp` entry). Set by `resolveMusterInstallations`; absent from
+   * entries built elsewhere, which read as configured.
+   */
+  source?: 'derived' | 'configured';
 }
 
 /**

@@ -20,7 +20,12 @@ import {
   SectionHeader,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useInstallations } from '@giantswarm/backstage-plugin-gs';
+import {
+  ALL_INSTALLATIONS,
+  useInstallationInventory,
+  useInstallations,
+  useInstallationScope,
+} from '@giantswarm/backstage-plugin-gs';
 
 import { modelConfigsRouteRef } from '../../routes';
 import {
@@ -29,7 +34,6 @@ import {
   ModelConfigFormValues,
   validateModelConfigForm,
 } from '../../lib/modelConfigs';
-import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 
@@ -55,16 +59,33 @@ export function NewModelPage() {
   const toastApi = useApi(toastApiRef);
   const modelsLink = useRouteRef(modelConfigsRouteRef);
 
-  // Every reachable installation is offered — deliberately not just the ones
-  // that already have models (the agent create flow's filter): an installation
-  // with none is exactly where the first model gets added.
+  // Every reachable installation that runs kagent is offered, home first (the
+  // gs installation inventory) — deliberately not just the ones that already
+  // have models (the agent create flow's filter): an installation with none is
+  // exactly where the first model gets added.
   const { installations, isLoading: isLoadingInstallations } =
     useInstallations();
-  const allInstallations = installations.map(installation => installation.name);
-  const { installations: reachableInstallations, isProbing } =
-    useReachableInstallations(allInstallations);
+  const inventory = useInstallationInventory();
+  const reachableInstallations = inventory.installationsWith('kagent');
+  const isProbing = inventory.isLoading || inventory.isProbing;
 
   const [installation, setInstallation] = useState<string | undefined>();
+
+  // A pinned installation scope is the obvious default here: the person came
+  // from a list narrowed to it. Only ever fills an empty choice, and only once
+  // the installation is known to run kagent.
+  const { scope } = useInstallationScope();
+  useEffect(() => {
+    if (
+      installation === undefined &&
+      scope !== ALL_INSTALLATIONS &&
+      reachableInstallations.includes(scope)
+    ) {
+      setInstallation(scope);
+    }
+    // reachableInstallations is derived fresh each render; key on its contents.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [installation, scope, reachableInstallations.join(',')]);
   const [values, setValues] = useState<ModelConfigFormValues>(
     INITIAL_MODEL_CONFIG_FORM,
   );

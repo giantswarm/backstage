@@ -23,15 +23,20 @@ import { Content, Link, Progress } from '@backstage/core-components';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
+import {
+  isUnreachableSession,
+  sessionGateCopy,
+  useMusterInstance,
+  useMusterSession,
+} from '../MusterInstanceProvider';
 import { InstallationPicker } from '../InstallationPicker';
 import { CapabilitySurface } from './CapabilitySurface';
 import { FleetCoverage } from './FleetCoverage';
 import { InventoryBreakdown } from './InventoryBreakdown';
 import {
   FreshnessIndicator,
-  Gate,
   SectionHeader,
+  SessionGate,
   Stat,
   StateBadge,
 } from '../shared';
@@ -303,20 +308,20 @@ export function DashboardPage() {
   // The hook's probe and the count query below share the
   // `['muster', 'overview', <installation>]` key, so react-query dedupes them to
   // one round-trip and a connect refetch updates both.
-  const {
-    authenticated,
-    connecting,
-    connect: handleConnect,
-  } = useMusterSession();
+  const session = useMusterSession();
+  const { authenticated, connecting, connect: handleConnect } = session;
+  const sessionCopy = sessionGateCopy(session, activeInstallation);
 
   // The tool count is the only stat that needs the muster session; read it from
   // the (deduped) overview query rather than the session hook, which only
-  // exposes auth state.
+  // exposes auth state. Like the hook's probe, it is not run at all for an
+  // installation the backend reports as not reachable from this portal: the
+  // request could only time out and land as a 500 in Sentry.
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ['muster', 'overview', activeInstallation],
     queryFn: () =>
       musterApi.filterTools({ installation: activeInstallation, limit: 1 }),
-    enabled: Boolean(activeInstallation),
+    enabled: Boolean(activeInstallation) && !isUnreachableSession(session),
   });
   const toolCount = overview?.total;
 
@@ -402,6 +407,13 @@ export function DashboardPage() {
                   {activeInstallationInfo?.endpoint ??
                     `${activeInstallation} (endpoint not configured)`}
                 </code>
+                {activeInstallationInfo?.source && (
+                  <Typography variant="caption" color="textSecondary">
+                    {activeInstallationInfo.source === 'derived'
+                      ? 'Endpoint derived from the installation base domain'
+                      : 'Endpoint from the portal configuration'}
+                  </Typography>
+                )}
               </Box>
 
               <Box className={classes.authBlock}>
@@ -420,23 +432,31 @@ export function DashboardPage() {
                   </>
                 ) : (
                   <>
-                    <StateBadge tone="warning" label="Not authenticated" />
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="primary"
-                      startIcon={
-                        connecting ? (
-                          <CircularProgress size={14} color="inherit" />
-                        ) : (
-                          <Lock style={{ fontSize: 14 }} />
-                        )
-                      }
-                      disabled={connecting}
-                      onClick={handleConnect}
-                    >
-                      Connect to muster
-                    </Button>
+                    <StateBadge
+                      tone={session.pending ? 'neutral' : 'warning'}
+                      label={sessionCopy.badge}
+                    />
+                    <span className={classes.authMeta}>
+                      {sessionCopy.sentence}
+                    </span>
+                    {sessionCopy.action && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        startIcon={
+                          connecting ? (
+                            <CircularProgress size={14} color="inherit" />
+                          ) : (
+                            <Lock style={{ fontSize: 14 }} />
+                          )
+                        }
+                        disabled={connecting}
+                        onClick={handleConnect}
+                      >
+                        {connecting ? 'Connecting…' : sessionCopy.action}
+                      </Button>
+                    )}
                   </>
                 )}
               </Box>
@@ -537,26 +557,10 @@ export function DashboardPage() {
                 installation={activeInstallation}
               />
             ) : (
-              <Gate
-                label="Authenticate to muster to count the tools, resources and prompts each server contributes."
-                action={
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="primary"
-                    disabled={connecting}
-                    startIcon={
-                      connecting ? (
-                        <CircularProgress size={14} color="inherit" />
-                      ) : (
-                        <Lock style={{ fontSize: 14 }} />
-                      )
-                    }
-                    onClick={handleConnect}
-                  >
-                    Connect to muster
-                  </Button>
-                }
+              <SessionGate
+                session={session}
+                installation={activeInstallation}
+                context="Counting the tools, resources and prompts each server contributes needs a live muster session."
               />
             )}
           </Box>

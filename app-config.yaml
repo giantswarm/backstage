@@ -388,14 +388,18 @@ aiChat:
 # CRD-backed views (dashboard, MCP-server manager, workflow definitions, fleet
 # matrix) read MCPServer/Workflow CRs (muster.giantswarm.io/v1alpha1) through
 # the Kubernetes proxy -- discovered live per cluster, so no
-# `kubernetes.customResources` entry is required. The InstallationPicker
-# derives its list from the configured `kubernetes` clusters automatically.
+# `kubernetes.customResources` entry is required. The InstallationPicker lists
+# the installations whose inventory (one `GET /apis` per installation) has the
+# `muster.giantswarm.io` API group and whose endpoint the backend can target.
 #
-# Uncomment `installations` to enable the MCP proxy used for the tool
-# explorer, workflow runs, and live aggregator/auth state. One entry per
-# muster aggregator; `name` must match the Kubernetes cluster name. The proxy
-# is read-only by default -- mutating `call_tool` names and workflow runs are
-# blocked unless `allowMutations: true`. See app-config.example.yaml.
+# The MCP proxy (tool explorer, workflow runs, live aggregator/auth state)
+# derives one endpoint per `gs.installations` entry with a `baseDomain`, at
+# `https://muster.<baseDomain>/mcp`; nothing has to be listed for an
+# installation that adopts muster. `installations` holds OVERRIDES of that
+# derived list (url, headers, prometheusServer, authProvider per name) and
+# additions the fleet configuration does not know. The proxy is read-only by
+# default -- mutating `call_tool` names and workflow runs are blocked unless
+# `allowMutations: true`. See app-config.example.yaml.
 # muster:
 #   installations:
 #     - name: main

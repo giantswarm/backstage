@@ -8,6 +8,10 @@ import {
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
+import {
+  KagentInstallation,
+  parseKagentInstallations,
+} from '../lib/kagentInstallations';
 import { kagentMeWireSchema } from '../lib/kagentSchema';
 import {
   KagentSession,
@@ -145,13 +149,13 @@ export class KagentApiClient implements KagentApi {
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
   }
 
-  async listInstallations(): Promise<string[]> {
-    const body = await this.get<{ installations?: { name?: string }[] }>(
-      '/kagent/installations',
-    );
-    return (body.installations ?? [])
-      .map(installation => installation.name)
-      .filter((name): name is string => Boolean(name));
+  async listInstallations(): Promise<KagentInstallation[]> {
+    // No installation named, so no token is minted: this is the one kagent
+    // route that carries no user at all. The backend's reachability per
+    // installation rides along; `parseKagentInstallations` tolerates the
+    // previous names-only shape (→ `'unknown'`).
+    const body = await this.get<unknown>('/kagent/installations');
+    return parseKagentInstallations(body);
   }
 
   async listSessions(installation: string): Promise<KagentSession[]> {

@@ -7,6 +7,7 @@ import {
   isUserScopedSubject,
   KagentCapabilities,
 } from '../lib/kagentCapabilities';
+import { useKagentInstallations } from './useKagentInstallations';
 
 /**
  * A deployment's auth mode changes on reconfiguration, not on navigation, so
@@ -34,11 +35,29 @@ export function useKagentCapabilitiesMap(
 ): (installation: string) => KagentCapabilities {
   const kagentApi = useApi(kagentApiRef);
 
+  // An installation the backend reports as not reachable from this portal is
+  // never identity-probed: the request would mint that installation's Dex
+  // token and then wait out the proxy's timeout into a 500, for an answer the
+  // backend already knows. The capabilities stay at "unknown" for it, which
+  // is the honest reading -- nothing was learned about its auth mode.
+  //
+  // The probes wait for the backend's list (one cached call) rather than
+  // firing while it is still loading, or a cold load would probe the
+  // unreachable installation once anyway. Should the list itself fail, they
+  // proceed as before the list existed.
+  const {
+    installations: proxiedInstallations,
+    isError: listFailed,
+    isNotReachable,
+  } = useKagentInstallations();
+  const reachabilityKnown = proxiedInstallations !== undefined || listFailed;
+
   const identityQueries = useQueries({
     queries: installations.map(installation => ({
       queryKey: kagentIdentityQueryKey(installation),
       queryFn: () => kagentApi.getIdentity(installation),
       staleTime: IDENTITY_STALE_TIME_MS,
+      enabled: reachabilityKnown && !isNotReachable(installation),
       // No `retry` override: a per-query value would *replace* the
       // QueryClientProvider's predicate, which returns false for
       // NotFoundError/ServiceUnavailableError precisely so that "kagent isn't

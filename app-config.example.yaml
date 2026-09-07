@@ -108,20 +108,20 @@ gs:
 # (muster.giantswarm.io/v1alpha1) through the Kubernetes proxy using the
 # `kubernetes` clusters configured above. The CRs are discovered live per
 # cluster, so no `kubernetes.customResources` registration is needed. The
-# InstallationPicker derives its list from those same clusters, so every MC
-# that runs a muster aggregator appears automatically -- nothing is hardcoded.
+# InstallationPicker lists the installations whose inventory (one `GET /apis`
+# per installation) has the `muster.giantswarm.io` API group, so every MC that
+# runs a muster aggregator appears automatically -- nothing is hardcoded.
 #
-# `muster.installations` configures the MCP proxy (muster-backend) used for
-# live tool execution, workflow runs, and aggregator/auth state. List one
-# entry per muster aggregator -- a single muster federates many management
-# clusters. The endpoint is the per-MC muster URL
-# `https://muster.<mc>.<domain>/mcp`; the domain differs per installation and
-# cannot be derived from the name, so it is given here. Keep the
-# deployment-specific fleet out of source control via env-var substitution
-# (real per-MC endpoints live in each cluster's deployed config). Each entry's
-# `name` must match the Kubernetes cluster name above so the CRD picker and
-# the MCP proxy line up. Routes select the active installation via
-# `?installation=<name>`.
+# The MCP proxy (muster-backend: live tool execution, workflow runs,
+# aggregator/auth state) derives one endpoint per `gs.installations` entry
+# with a `baseDomain`, at `https://muster.<baseDomain>/mcp`. Nothing has to be
+# listed for an installation that adopts muster. `muster.installations` holds
+# OVERRIDES of that derived list: an entry named like a fleet installation
+# overrides its url / headers / prometheusServer / authProvider; an entry the
+# fleet configuration does not know adds an installation (then `url` is
+# required). `GET /api/muster/installations` reports each entry's `source`
+# (`derived` or `configured`) and whether it is reachable from this portal.
+# Routes select the active installation via `?installation=<name>`.
 muster:
   installations:
     - name: main

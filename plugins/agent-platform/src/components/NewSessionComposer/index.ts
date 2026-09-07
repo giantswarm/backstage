@@ -1,4 +1,5 @@
 export {
+  agentOptionLabel,
   isStartableAgent,
   modelWarningFor,
   NewSessionComposer,

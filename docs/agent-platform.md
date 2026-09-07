@@ -427,6 +427,64 @@ covered.) The generated `HelmRelease` sets it from
 `agentPlatform.fluxServiceAccountName`. This is currently a **placeholder** — see
 the open TODOs.
 
+## The installation scope
+
+The four tabs of the section — Agents, Sessions, Models and the muster plugin's
+MCP Servers — share **one installation scope**: `'all'` (the default) or one
+pinned installation. It lives in the `gs` plugin (`useInstallationScope`,
+`plugins/gs/src/apis/installationScope/`) as a module store read through
+`useSyncExternalStore`, not as a React context: the muster section is a
+different plugin with its own providers, mounted as a tab of the same page, so
+a context could not cross the boundary. The store is the contract.
+
+- **Sources, in order.** `?installation=` in the URL wins while present (a deep
+  link narrows the very first render). Otherwise the store, which mirrors the
+  pinned installation to localStorage under `muster-installation` — the key
+  the muster picker always used, so a choice made before the section shared a
+  scope is honoured. A stored value naming the _home_ installation reads as
+  `'all'`: the old picker wrote its default there for everyone who ever opened
+  the MCP Servers tab, and honouring it would have pinned every existing person
+  to one installation on their first visit. `useInstallationScopeUrlSync`,
+  mounted once by the selector, reconciles drift between URL and store (a tab
+  link without a query string keeps the pin; the back button to a URL with the
+  parameter adopts it); `setScope` writes store, localStorage and URL at once.
+- **The selector** (`InstallationScopeSelect`, gs) is a plugin header action of
+  the Agent Platform page (`PluginHeaderActionBlueprint` in `plugin.tsx`,
+  rendered by `InstallationScopeHeaderControl`), so it sits in the page header
+  next to the tab's own actions and stays put while the tabs change. It offers
+  "All installations" and every installation whose inventory has kagent,
+  muster or KServe, home first, each with its state — signed out, not
+  reachable, "no kagent here" for the current tab (the header control maps the
+  tab's path to the component), and "not reachable from this portal" from the
+  kagent backend's probe on the kagent tabs. A portal whose inventory has one
+  installation renders no selector, and the section looks exactly as before.
+- **Home first, literally.** Under `'all'`, `AgentsDataProvider`,
+  `SessionsDataProvider` and `ModelConfigsProvider` query the home installation
+  alone and the others only once it has answered (rows, an empty list, or a
+  failure), so the person's own rows are on screen before any other
+  installation — or its token — is asked for. On a repeat visit the home's
+  answer comes from the persisted cache and the others follow at once. The rows
+  render as one group per installation (`groupRowsByInstallation`,
+  `InstallationGroups`), each headed by the installation's name, pipeline and a
+  status line: loading, N items, none here, could not be read, not reachable
+  from this portal. A pinned scope and a single-installation portal keep the
+  flat table (`useGroupedByInstallation`); `sortAgentRows` / `sortSessionRows`
+  put the home installation's rows first in the flat lists as well.
+- **Pinning** narrows every tab (`applyInstallationScope` over the inventory's
+  installations in each provider, `ServingProvider` included). Under `'all'`
+  the MCP Servers tab shows the home muster — one muster is one aggregator —
+  and under a pinned installation that muster; `MusterInstanceProvider` reads
+  the scope instead of owning `?installation=`, its picker pins the shared
+  scope, and it writes no default back any more.
+- **Naming.** Detail pages carry an `InstallationChip` in the header; the
+  New-session composer names the installation in every picker row and in the
+  selected value once the offered agents span more than one installation
+  (`agentOptionLabel`).
+
+The tabs share one live react-query client (`QueryClientProvider` holds a
+module singleton), so the header control and the tabs read the installation
+inventory once per page load and a tab switch is a cache read.
+
 ## The Sessions tab
 
 `/agent-platform/sessions` lists the signed-in user's kagent chat sessions across
@@ -549,13 +607,21 @@ and availability all vary per installation:
 
 1. `useReachableInstallations` narrows to installations the app considers
    reachable, so the fan-out doesn't hang on unreachable clusters.
-2. `GET /kagent/installations` says which of those the backend can reach kagent
-   on. **The session queries wait for this**, deliberately: kagent runs on only a
-   couple of installations, and querying the rest would fire a doomed request each
-   — every one of which mints that installation's Dex token first. One cached call
-   up front is much cheaper than N wasted ones per cold load. If the allowlist
-   itself fails, we fall back to the reachable set so a backend hiccup doesn't look
-   like an empty session list.
+2. `GET /kagent/installations` says which of those the backend has a kagent
+   endpoint for, and whether that endpoint is **reachable from the portal**
+   (`reachable: true | false | 'unknown'`, from an unauthenticated probe the
+   backend runs and caches — see the backend README). **The session queries wait
+   for this**, deliberately: kagent runs on only a couple of installations, and
+   querying the rest would fire a doomed request each — every one of which mints
+   that installation's Dex token first. One cached call up front is much cheaper
+   than N wasted ones per cold load. An installation reported `false` is never
+   queried; the tab lists it as "not reachable from this portal" instead of
+   letting its request time out into a 500. If the allowlist itself fails, we
+   fall back to the reachable set so a backend hiccup doesn't look like an empty
+   session list. The list is cached under `kagentInstallationsQueryKey()`
+   (`['agent-platform', 'kagent', 'installations', 'v2']` — versioned because the
+   shape changed from names to objects and the cache is persisted, see
+   backstage#2264).
 3. One react-query per installation, so each loads, caches and fails
    independently. Rows are merged and re-sorted across the fleet, each tagged with
    its installation.

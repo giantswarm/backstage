@@ -1,4 +1,19 @@
-import { shouldDehydrateAgentPlatformQuery } from './QueryClientProvider';
+import { LEGACY_SHARED_PERSISTER_KEY } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  AGENT_PLATFORM_PERSISTER_KEY,
+  shouldDehydrateAgentPlatformQuery,
+} from './QueryClientProvider';
+
+describe('AGENT_PLATFORM_PERSISTER_KEY', () => {
+  it("is this plugin's own localStorage key, not the shared library default", () => {
+    // Sharing the default key with the gs and flux providers merged the three
+    // caches into one blob that grew towards the origin's quota.
+    expect(AGENT_PLATFORM_PERSISTER_KEY).toBe(
+      'agent-platform-react-query-cache',
+    );
+    expect(AGENT_PLATFORM_PERSISTER_KEY).not.toBe(LEGACY_SHARED_PERSISTER_KEY);
+  });
+});
 
 describe('shouldDehydrateAgentPlatformQuery', () => {
   it.each([
@@ -13,8 +28,11 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
 
   it.each([
     [
-      'the kagent installation allowlist',
-      ['agent-platform', 'kagent', 'installations'],
+      // `kagentInstallationsQueryKey()`: the backend's list with per-installation
+      // reachability. The 'v2' segment is what keeps a rehydrated names-only
+      // entry from the previous key from ever being read as this shape.
+      'the kagent installation list with reachability',
+      ['agent-platform', 'kagent', 'installations', 'v2'],
     ],
     [
       'fleet agents',
@@ -23,6 +41,13 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
     [
       'fleet model configs',
       ['cluster', 'gazelle', 'list', 'kagent.dev', 'v1alpha2', 'modelconfigs'],
+    ],
+    [
+      // The gs hook's key (`installationInventoryQueryKey`): which platform
+      // components an installation runs, one GET /apis per installation. Fleet
+      // state, and the reason a reload does not re-probe the whole fleet.
+      'the installation inventory',
+      ['gs', 'installation-inventory', 'v1', 'gazelle'],
     ],
   ])('still persists installation-wide %s', (_label, queryKey) => {
     // Identical for every user, so caching across reloads is the whole point.

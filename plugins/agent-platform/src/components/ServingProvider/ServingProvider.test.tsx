@@ -9,11 +9,51 @@ const mockUseModelManagerServingSource = jest.fn<
   [string[]]
 >();
 let mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
+// What the gs installation inventory reports: who runs KServe (healthy, home
+// first), whether it is still probing, and whose probe failed outright.
+let mockInventory: {
+  kserve: string[];
+  isProbing: boolean;
+  isLoading?: boolean;
+  failed?: { installation: string; error: Error }[];
+} = { kserve: ['alpha'], isProbing: false };
+
+// The section's installation scope: everything, or one pinned installation.
+let mockScope = 'all';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ALL_INSTALLATIONS: 'all',
+  applyInstallationScope: (installations: string[], scope: string) =>
+    scope === 'all'
+      ? installations
+      : installations.filter(installation => installation === scope),
+  useInstallationScope: () => ({
+    scope: mockScope,
+    setScope: () => {},
+    installations: [],
+    home: 'alpha',
+    isSingleInstallation: false,
+    isLoading: false,
+  }),
   useInstallations: () => ({
     installations: [{ name: 'alpha' }, { name: 'beta' }, { name: 'gamma' }],
     isLoading: false,
+  }),
+  useInstallationInventory: () => ({
+    entries: (mockInventory.failed ?? []).map(({ installation, error }) => ({
+      installation,
+      home: false,
+      accessState: 'healthy',
+      probe: 'failed',
+      components: { kagent: false, muster: false, kserve: false, capi: false },
+      error,
+    })),
+    home: 'alpha',
+    isLoading: mockInventory.isLoading ?? false,
+    isProbing: mockInventory.isProbing,
+    installationsWith: (component: string) =>
+      component === 'kserve' ? mockInventory.kserve : [],
+    refresh: () => {},
   }),
 }));
 
@@ -82,16 +122,51 @@ describe('ServingProvider', () => {
     mockUseModelManagerServingSource.mockReset();
     mockUseModelManagerServingSource.mockReturnValue(empty);
     mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
+    mockInventory = { kserve: ['alpha'], isProbing: false };
   });
 
-  it('feeds the sources only the reachable installations', () => {
+  it('feeds the KServe source the inventory’s KServe installations and the model-manager source the reachable ones', () => {
     renderHook(() => useServing(), { wrapper });
 
-    expect(mockUseKServeServingSource).toHaveBeenCalledWith(['alpha', 'beta']);
+    // beta is reachable but its API groups have no serving.kserve.io: the
+    // KServe source never reads there. model-manager has no API group, so the
+    // backend's list decides over every reachable installation.
+    expect(mockUseKServeServingSource).toHaveBeenCalledWith({
+      installations: ['alpha'],
+      isProbing: false,
+      errors: [],
+    });
     expect(mockUseModelManagerServingSource).toHaveBeenCalledWith([
       'alpha',
       'beta',
     ]);
+  });
+
+  it('hands the KServe source the inventory’s probing state and failed probes', () => {
+    const error = new Error('HTTP 502');
+    mockInventory = {
+      kserve: [],
+      isProbing: true,
+      failed: [{ installation: 'beta', error }],
+    };
+
+    renderHook(() => useServing(), { wrapper });
+
+    expect(mockUseKServeServingSource).toHaveBeenCalledWith({
+      installations: [],
+      isProbing: true,
+      errors: [{ installation: 'beta', error }],
+    });
+  });
+
+  it('reports the KServe source as probing while the inventory has not answered for the home', () => {
+    mockInventory = { kserve: [], isProbing: false, isLoading: true };
+
+    renderHook(() => useServing(), { wrapper });
+
+    expect(mockUseKServeServingSource).toHaveBeenCalledWith(
+      expect.objectContaining({ isProbing: true }),
+    );
   });
 
   it('lists both sources side by side on one installation, the later deciding its backend', () => {
@@ -234,5 +309,47 @@ describe('ServingProvider', () => {
     expect(() => renderHook(() => useServing())).toThrow(
       'useServing must be used within a ServingProvider',
     );
+  });
+});
+
+describe('ServingProvider installation scope', () => {
+  beforeEach(() => {
+    mockUseKServeServingSource.mockReset();
+    mockUseKServeServingSource.mockReturnValue(empty);
+    mockUseModelManagerServingSource.mockReset();
+    mockUseModelManagerServingSource.mockReturnValue(empty);
+    mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
+    mockInventory = { kserve: ['alpha', 'beta'], isProbing: false };
+  });
+
+  afterEach(() => {
+    mockScope = 'all';
+  });
+
+  it('narrows both sources to a pinned installation', () => {
+    mockScope = 'beta';
+
+    renderHook(() => useServing(), { wrapper });
+
+    expect(mockUseKServeServingSource).toHaveBeenCalledWith({
+      installations: ['beta'],
+      isProbing: false,
+      errors: [],
+    });
+    expect(mockUseModelManagerServingSource).toHaveBeenCalledWith(['beta']);
+  });
+
+  it('feeds both sources every installation under all', () => {
+    renderHook(() => useServing(), { wrapper });
+
+    expect(mockUseKServeServingSource).toHaveBeenCalledWith({
+      installations: ['alpha', 'beta'],
+      isProbing: false,
+      errors: [],
+    });
+    expect(mockUseModelManagerServingSource).toHaveBeenCalledWith([
+      'alpha',
+      'beta',
+    ]);
   });
 });

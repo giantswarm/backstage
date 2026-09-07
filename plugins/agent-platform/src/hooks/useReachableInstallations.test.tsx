@@ -6,7 +6,23 @@ import {
   ClusterAccessStatusEntry,
   clusterAccessStatusApiRef,
 } from '@giantswarm/backstage-plugin-gs';
-import { useReachableInstallations } from './useReachableInstallations';
+import {
+  homeFirst,
+  useReachableInstallations,
+} from './useReachableInstallations';
+
+// The home installation comes from gs (`oidcTokenProvider` = `gs.authProvider`);
+// here it is whatever the test says. `mock`-prefixed, as jest requires inside a
+// mock factory.
+let mockHome: string | undefined;
+
+jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
+  useHomeInstallation: () => ({
+    home: mockHome ? { name: mockHome } : undefined,
+    isLoading: false,
+  }),
+}));
 
 function fakeStatusApi(
   snapshot: ClusterAccessStatusEntry[],
@@ -47,7 +63,75 @@ const entry = (
   state: ClusterAccessStatusEntry['state'],
 ): ClusterAccessStatusEntry => ({ installation, state, lastChecked: 0 });
 
+describe('homeFirst', () => {
+  it('moves the home to the front and keeps the rest in order', () => {
+    expect(homeFirst(['gazelle', 'graveler', 'grizzly'], 'graveler')).toEqual([
+      'graveler',
+      'gazelle',
+      'grizzly',
+    ]);
+  });
+
+  it('leaves the order alone without a home, or with one that is not listed', () => {
+    expect(homeFirst(['gazelle', 'graveler'], undefined)).toEqual([
+      'gazelle',
+      'graveler',
+    ]);
+    expect(homeFirst(['gazelle', 'graveler'], 'grizzly')).toEqual([
+      'gazelle',
+      'graveler',
+    ]);
+  });
+});
+
 describe('useReachableInstallations', () => {
+  beforeEach(() => {
+    mockHome = undefined;
+  });
+
+  it('puts the home installation first, then the others in config order', () => {
+    mockHome = 'graveler';
+    const { result } = renderWith(
+      ['gazelle', 'graveler', 'grizzly'],
+      [
+        entry('gazelle', 'healthy'),
+        entry('graveler', 'healthy'),
+        entry('grizzly', 'healthy'),
+      ],
+    );
+
+    expect(result.current.installations).toEqual([
+      'graveler',
+      'gazelle',
+      'grizzly',
+    ]);
+  });
+
+  it('still drops the home when it is not healthy', () => {
+    mockHome = 'graveler';
+    const { result } = renderWith(
+      ['gazelle', 'graveler', 'grizzly'],
+      [
+        entry('gazelle', 'healthy'),
+        entry('graveler', 'session-expired'),
+        entry('grizzly', 'healthy'),
+      ],
+    );
+
+    expect(result.current.installations).toEqual(['gazelle', 'grizzly']);
+  });
+
+  it('puts the home first in the fallback too, before any status is known', () => {
+    mockHome = 'grizzly';
+    const { result } = renderWith(['gazelle', 'graveler', 'grizzly'], []);
+
+    expect(result.current.installations).toEqual([
+      'grizzly',
+      'gazelle',
+      'graveler',
+    ]);
+  });
+
   it('keeps only healthy installations', () => {
     const { result } = renderWith(
       ['gazelle', 'graveler', 'grizzly', 'gerbil'],

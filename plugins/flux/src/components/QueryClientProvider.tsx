@@ -1,8 +1,10 @@
 import { ReactNode } from 'react';
 import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { shouldPersistQuery } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import {
+  createPluginQueryPersister,
+  shouldPersistQuery,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 const gcTime = 1000 * 60 * 60;
 const maxAge = gcTime;
@@ -40,9 +42,19 @@ const queryOptions: QueryClientConfig = {
 // every mount.
 const queryClient = new QueryClient(queryOptions);
 
-const persister = createAsyncStoragePersister({
-  storage: window.localStorage,
-});
+/**
+ * This plugin's own localStorage key. The gs, flux and agent-platform providers
+ * used to share the library default and so merged their caches into one blob
+ * (see `LEGACY_SHARED_PERSISTER_KEY` in kubernetes-react); each now has its own,
+ * with a size guard. Flux is the one that needs it: the Kustomization lists of
+ * a large fleet measured 3.6 MB on the Dev Portal, so the persisted copy keeps
+ * the most recently read installations and drops the oldest beyond the budget.
+ * A change to what a query stores still calls for a new *query* key, not a new
+ * persister key: the blob under this one outlives releases.
+ */
+export const FLUX_PERSISTER_KEY = 'flux-react-query-cache';
+
+const persister = createPluginQueryPersister({ key: FLUX_PERSISTER_KEY });
 
 export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   return (

@@ -30,7 +30,19 @@ jest.mock('../SessionsDataProvider', () => ({
 // The table is not what these tests are about, and it mounts a bui Table with its
 // own machinery.
 jest.mock('../SessionsTable', () => ({
-  SessionsTable: () => <div data-testid="sessions-table" />,
+  SessionsTable: ({ rows }: { rows: unknown[] }) => (
+    <div data-testid="sessions-table">{rows.length}</div>
+  ),
+}));
+
+// Whether the list renders as one group per installation is the section
+// scope's decision (gs); here it is whatever the test says. The group
+// components themselves are real.
+let mockGrouped = false;
+jest.mock('../InstallationGroups', () => ({
+  ...jest.requireActual('../InstallationGroups'),
+  useGroupedByInstallation: () => mockGrouped,
+  InstallationScopeNote: () => null,
 }));
 
 const mockCreateSession = jest.fn();
@@ -70,15 +82,22 @@ const issues = agentRow({
 
 const loadedSessions: SessionsContextValue = {
   rows: [],
+  groups: [],
+  scope: 'all',
+  installations: [],
   isLoading: false,
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
   notUserScopedInstallations: [],
+  notReachableInstallations: [],
 };
 
 const loadedAgents: AgentsContextValue = {
   rows: [sre, issues],
+  groups: [],
+  scope: 'all',
+  installations: ['gazelle'],
   isLoading: false,
   isLoadingMore: false,
   hasInstallations: true,
@@ -333,6 +352,21 @@ describe('SessionsIndexPage', () => {
     });
   });
 
+  it('names installations the portal cannot reach in a quiet note, not a warning', async () => {
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      notReachableInstallations: ['golem', 'wombat'],
+    });
+
+    await render();
+
+    expect(
+      screen.getByText('golem, wombat: not reachable from this portal'),
+    ).toBeInTheDocument();
+    // Never queried, so not a read failure: the warning card stays away.
+    expect(screen.queryByText(/Couldn't read/)).toBeNull();
+  });
+
   it('still explains an unconfigured instance', async () => {
     mockUseSessions.mockReturnValue({
       ...loadedSessions,
@@ -341,5 +375,84 @@ describe('SessionsIndexPage', () => {
     await render();
 
     expect(screen.getByText('No installations configured')).toBeInTheDocument();
+  });
+});
+
+describe('SessionsIndexPage under "All installations" on a multi-installation portal', () => {
+  const gazelleSession = {
+    id: 'gazelle/s1',
+    sessionId: 's1',
+    installation: 'gazelle',
+    title: 'Triage the incident',
+    agentName: 'SRE Agent',
+  };
+  const golemSession = {
+    id: 'golem/s2',
+    sessionId: 's2',
+    installation: 'golem',
+    title: 'Review the release',
+    agentName: 'Reviewer',
+  };
+
+  beforeEach(() => {
+    mockGrouped = true;
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      rows: [gazelleSession, golemSession],
+      installations: ['gazelle', 'golem', 'wombat'],
+      groups: [
+        {
+          installation: 'gazelle',
+          home: true,
+          pipeline: 'testing',
+          rows: [gazelleSession],
+          status: 'ready',
+        },
+        {
+          installation: 'golem',
+          home: false,
+          rows: [golemSession],
+          status: 'ready',
+        },
+        {
+          installation: 'wombat',
+          home: false,
+          rows: [],
+          status: 'not-reachable',
+        },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    mockGrouped = false;
+  });
+
+  it('renders one group per installation, home first, with a status line each', async () => {
+    await render();
+
+    expect(
+      screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent),
+    ).toEqual(['gazelle', 'golem', 'wombat']);
+    expect(screen.getAllByText('1 session')).toHaveLength(2);
+    expect(
+      screen.getByText('not reachable from this portal'),
+    ).toBeInTheDocument();
+    // One table per group with rows; none for the unreachable one.
+    expect(screen.getAllByTestId('sessions-table')).toHaveLength(2);
+  });
+
+  it('searches across every group from one field', async () => {
+    await render();
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search sessions' }),
+      'release',
+    );
+
+    // gazelle's group keeps its header but its table has no matching row left;
+    // golem's still has one.
+    const tables = screen.getAllByTestId('sessions-table');
+    expect(tables.map(table => table.textContent)).toEqual(['0', '1']);
   });
 });

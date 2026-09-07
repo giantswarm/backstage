@@ -3,8 +3,27 @@ import { mockServices } from '@backstage/backend-test-utils';
 import { JsonObject } from '@backstage/types';
 import express from 'express';
 import request from 'supertest';
-import { MusterMcpClient } from '@giantswarm/backstage-plugin-gs-node';
-import { createRouter, MUSTER_AUTH_HEADER, RouterOptions } from './router';
+import {
+  EndpointProbeResult,
+  MusterMcpClient,
+  ReachabilityCache,
+} from '@giantswarm/backstage-plugin-gs-node';
+import {
+  createRouter,
+  MUSTER_AUTH_HEADER,
+  musterProbeUrl,
+  RouterOptions,
+} from './router';
+
+/**
+ * A reachability cache that never touches the network: every endpoint answers
+ * as reachable, immediately. Tests of the reachability fields build their own.
+ */
+function reachableEverywhere() {
+  return new ReachabilityCache({
+    probe: async () => ({ reachable: true, checkedAt: 0 }),
+  });
+}
 
 describe('createRouter', () => {
   const callTool = jest.fn();
@@ -39,6 +58,7 @@ describe('createRouter', () => {
       logger,
       config,
       client: mockClient,
+      reachability: reachableEverywhere(),
       ...options,
     });
     const app = express();
@@ -49,12 +69,21 @@ describe('createRouter', () => {
 
   // Build an app with explicit muster.installations config, still backed by
   // the injected mock client for every installation.
-  async function buildMultiApp(installations: JsonObject[]) {
+  async function buildMultiApp(
+    installations: JsonObject[],
+    options: Partial<RouterOptions> = {},
+  ) {
     const logger = mockServices.logger.mock();
     const config = mockServices.rootConfig({
       data: { muster: { installations } },
     });
-    const router = await createRouter({ logger, config, client: mockClient });
+    const router = await createRouter({
+      logger,
+      config,
+      client: mockClient,
+      reachability: reachableEverywhere(),
+      ...options,
+    });
     const app = express();
     app.use(router);
     app.use(MiddlewareFactory.create({ logger, config }).error());
@@ -193,7 +222,11 @@ describe('createRouter', () => {
   it('returns 503 when no muster server is configured', async () => {
     const logger = mockServices.logger.mock();
     const config = mockServices.rootConfig({ data: {} });
-    const router = await createRouter({ logger, config });
+    const router = await createRouter({
+      logger,
+      config,
+      reachability: reachableEverywhere(),
+    });
     const unconfiguredApp = express();
     unconfiguredApp.use(router);
     unconfiguredApp.use(MiddlewareFactory.create({ logger, config }).error());
@@ -206,7 +239,9 @@ describe('createRouter', () => {
     expect(response.body.error.name).toBe('ServiceUnavailableError');
   });
 
-  it('lists installations', async () => {
+  it('lists installations with their reachability', async () => {
+    // The fake cache settles on its first tick, so nothing is 'unknown' here.
+    await new Promise(resolve => setTimeout(resolve, 0));
     const response = await request(app).get('/installations');
 
     expect(response.status).toBe(200);
@@ -216,8 +251,237 @@ describe('createRouter', () => {
           name: 'muster',
           endpoint: 'injected',
           requiresAuth: false,
+          reachable: true,
+          source: 'configured',
         },
       ],
+    });
+  });
+
+  describe('endpoint reachability', () => {
+    // The probe is unauthenticated and carries no user data; these tests only
+    // check what the route does with its answers. See gs-node's
+    // probeEndpoint tests for the classification itself.
+    const twoMusters: JsonObject[] = [
+      { name: 'gazelle', url: 'https://muster.gazelle.example.io/mcp' },
+      {
+        name: 'golem',
+        url: 'https://muster.golem.example.io/mcp',
+        authProvider: 'oidc-golem',
+      },
+    ];
+
+    function controlledCache() {
+      const pending = new Map<string, (result: EndpointProbeResult) => void>();
+      const probe = jest.fn(
+        (url: string) =>
+          new Promise<EndpointProbeResult>(resolve => {
+            pending.set(url, resolve);
+          }),
+      );
+      return { cache: new ReachabilityCache({ probe }), probe, pending };
+    }
+
+    it('probes the RFC 9728 metadata of every installation once at startup, without a token', async () => {
+      const { probe } = controlledCache();
+
+      await buildMultiApp(twoMusters, {
+        reachability: new ReachabilityCache({ probe }),
+      });
+
+      expect(probe).toHaveBeenCalledTimes(2);
+      expect(probe).toHaveBeenCalledWith(
+        'https://muster.gazelle.example.io/.well-known/oauth-protected-resource',
+      );
+      expect(probe).toHaveBeenCalledWith(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      );
+      for (const call of probe.mock.calls) {
+        expect(call).toHaveLength(1);
+      }
+    });
+
+    it("answers 'unknown' while the first probe is in flight, never waiting for it", async () => {
+      const { cache, pending } = controlledCache();
+      const probing = await buildMultiApp(twoMusters, { reachability: cache });
+
+      const response = await request(probing).get('/installations');
+
+      expect(response.status).toBe(200);
+      expect(response.body.installations).toEqual([
+        {
+          name: 'gazelle',
+          endpoint: 'https://muster.gazelle.example.io/mcp',
+          requiresAuth: false,
+          source: 'configured',
+          reachable: 'unknown',
+        },
+        {
+          name: 'golem',
+          endpoint: 'https://muster.golem.example.io/mcp',
+          requiresAuth: true,
+          source: 'configured',
+          reachable: 'unknown',
+        },
+      ]);
+      expect(pending.size).toBe(2);
+    });
+
+    it('reports an unreachable installation with the probe reason once it settles', async () => {
+      const { cache, pending } = controlledCache();
+      const probing = await buildMultiApp(twoMusters, { reachability: cache });
+
+      pending.get(
+        'https://muster.gazelle.example.io/.well-known/oauth-protected-resource',
+      )!({ reachable: true, checkedAt: 1 });
+      pending.get(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      )!({
+        reachable: false,
+        reason: 'no answer within 3000 ms',
+        checkedAt: 1,
+      });
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const response = await request(probing).get('/installations');
+
+      expect(response.body.installations).toEqual([
+        expect.objectContaining({ name: 'gazelle', reachable: true }),
+        expect.objectContaining({
+          name: 'golem',
+          reachable: false,
+          reason: 'no answer within 3000 ms',
+        }),
+      ]);
+      expect(response.body.installations[0]).not.toHaveProperty('reason');
+    });
+
+    it('derives the probe URL next to the /mcp endpoint', () => {
+      expect(musterProbeUrl('https://muster.golem.example.io/mcp')).toBe(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      );
+      expect(musterProbeUrl('https://muster.golem.example.io/mcp/')).toBe(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      );
+      // A URL without the /mcp suffix (a local aggregator) is probed at its root.
+      expect(musterProbeUrl('http://muster:8090')).toBe(
+        'http://muster:8090/.well-known/oauth-protected-resource',
+      );
+      expect(musterProbeUrl('http://localhost:8090/mcp')).toBe(
+        'http://localhost:8090/.well-known/oauth-protected-resource',
+      );
+    });
+  });
+
+  describe('installations derived from the fleet configuration', () => {
+    // gazelle and golem have a base domain, so each gets a derived muster
+    // endpoint; gazelle's is then overridden by an explicit entry. snail has
+    // no base domain and is not a muster installation the proxy can reach.
+    const FLEET: JsonObject = {
+      gs: {
+        installations: {
+          gazelle: { baseDomain: 'gazelle.example.test' },
+          golem: { baseDomain: 'golem.example.test' },
+          snail: { pipeline: 'testing' },
+        },
+      },
+    };
+
+    async function buildFleetApp(data: JsonObject) {
+      const logger = mockServices.logger.mock();
+      const config = mockServices.rootConfig({ data });
+      const router = await createRouter({
+        logger,
+        config,
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+      const fleetApp = express();
+      fleetApp.use(router);
+      fleetApp.use(MiddlewareFactory.create({ logger, config }).error());
+      return { fleetApp, logger };
+    }
+
+    it('lists derived and configured installations with their source', async () => {
+      const { fleetApp } = await buildFleetApp({
+        ...FLEET,
+        muster: {
+          installations: [
+            {
+              name: 'gazelle',
+              url: 'https://muster-internal.gazelle.example.test/mcp',
+              authProvider: 'mcp-muster',
+            },
+          ],
+        },
+      });
+
+      const response = await request(fleetApp).get('/installations');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        installations: [
+          {
+            name: 'gazelle',
+            endpoint: 'https://muster-internal.gazelle.example.test/mcp',
+            requiresAuth: true,
+            source: 'configured',
+            reachable: true,
+          },
+          {
+            name: 'golem',
+            endpoint: 'https://muster.golem.example.test/mcp',
+            requiresAuth: true,
+            source: 'derived',
+            reachable: true,
+          },
+        ],
+      });
+    });
+
+    it('logs the counts once at start', async () => {
+      const { logger } = await buildFleetApp({
+        ...FLEET,
+        muster: {
+          installations: [
+            { name: 'gazelle', url: 'https://muster.gazelle.example.test/mcp' },
+            { name: 'lab', url: 'https://muster.lab.example.test/mcp' },
+          ],
+        },
+      });
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'Muster proxy installations: 1 derived from gs.installations base domains, 2 configured in muster.installations, 3 total.',
+      );
+    });
+
+    it("requires the person's token for a derived installation", async () => {
+      const { fleetApp } = await buildFleetApp(FLEET);
+      listTools.mockResolvedValue({ tools: [], servers_requiring_auth: [] });
+
+      const without = await request(fleetApp).get('/tools?installation=golem');
+      expect(without.status).toBe(401);
+      expect(without.body.error.message).toContain(
+        "installation 'golem' requires a user token",
+      );
+      expect(listTools).not.toHaveBeenCalled();
+
+      const withToken = await request(fleetApp)
+        .get('/tools?installation=golem')
+        .set(MUSTER_AUTH_HEADER, 'user-token');
+      expect(withToken.status).toBe(200);
+      expect(listTools).toHaveBeenCalledWith({ authToken: 'user-token' });
+    });
+
+    it('does not target an installation without a base domain', async () => {
+      const { fleetApp } = await buildFleetApp(FLEET);
+
+      const response = await request(fleetApp).get('/tools?installation=snail');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain(
+        "Unknown muster installation 'snail'",
+      );
     });
   });
 

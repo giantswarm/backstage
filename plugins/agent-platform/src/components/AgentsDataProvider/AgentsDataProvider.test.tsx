@@ -10,20 +10,50 @@ import { AgentsDataProvider, useAgents } from './AgentsDataProvider';
 // references jest allows inside a mock factory.
 const mockUseResources = jest.fn();
 let mockConfigInstallations: string[] = ['alpha', 'beta', 'gaggle'];
-let mockReachable: { installations: string[]; isProbing: boolean } = {
+// What the gs installation inventory reports for kagent: the installations
+// whose API groups include kagent.dev and whose access is healthy (home
+// first), and whether some installation may still answer.
+let mockKagent: {
+  installations: string[];
+  isProbing: boolean;
+  isLoading?: boolean;
+  home?: string;
+} = {
   installations: ['alpha', 'beta', 'gaggle'],
   isProbing: false,
 };
+// The section's installation scope: everything, or one pinned installation.
+let mockScope = 'all';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ALL_INSTALLATIONS: 'all',
+  applyInstallationScope: (installations: string[], scope: string) =>
+    scope === 'all'
+      ? installations
+      : installations.filter(installation => installation === scope),
   useInstallations: () => ({
     installations: mockConfigInstallations.map(name => ({ name })),
     isLoading: false,
   }),
-}));
-
-jest.mock('../../hooks/useReachableInstallations', () => ({
-  useReachableInstallations: () => mockReachable,
+  useInstallationInventory: () => ({
+    entries: [],
+    home: mockKagent.home,
+    isLoading: mockKagent.isLoading ?? false,
+    isProbing: mockKagent.isProbing,
+    // Only kagent matters to this provider; the inventory's other components
+    // are somebody else's question.
+    installationsWith: (component: string) =>
+      component === 'kagent' ? mockKagent.installations : [],
+    refresh: () => {},
+  }),
+  useInstallationScope: () => ({
+    scope: mockScope,
+    setScope: () => {},
+    installations: [],
+    home: mockKagent.home,
+    isSingleInstallation: false,
+    isLoading: false,
+  }),
 }));
 
 jest.mock('../ModelConfigsProvider', () => ({
@@ -111,10 +141,31 @@ describe('AgentsDataProvider', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
-    mockReachable = {
+    mockKagent = {
       installations: ['alpha', 'beta', 'gaggle'],
       isProbing: false,
     };
+  });
+
+  it('lists Agents only on installations whose inventory has kagent, never elsewhere', () => {
+    // gaggle is configured and reachable but runs no kagent: the inventory
+    // leaves it out, so no list request ever goes there (it used to 404).
+    mockKagent = { installations: ['alpha', 'beta'], isProbing: false };
+    mockUseResources.mockReturnValue(result({}));
+
+    renderUseAgents();
+
+    expect(mockUseResources.mock.calls[0][0]).toEqual(['alpha', 'beta']);
+  });
+
+  it('shows a blocking skeleton while the inventory has not answered for the home yet', () => {
+    mockKagent = { installations: [], isProbing: false, isLoading: true };
+    mockUseResources.mockReturnValue(result({}));
+
+    const { result: hook } = renderUseAgents();
+
+    expect(hook.current.isLoading).toBe(true);
+    expect(hook.current.rows).toHaveLength(0);
   });
 
   it('shows a blocking skeleton only until the first installation responds', () => {
@@ -132,7 +183,7 @@ describe('AgentsDataProvider', () => {
     // forever (empty-status fallback). isLoading must not be pinned true, or the
     // "no installations configured" empty state is unreachable.
     mockConfigInstallations = [];
-    mockReachable = { installations: [], isProbing: true };
+    mockKagent = { installations: [], isProbing: true };
     mockUseResources.mockReturnValue(result({}));
 
     const { result: hook } = renderUseAgents();
@@ -214,7 +265,7 @@ describe('AgentsDataProvider', () => {
 
     // beta drops out of the reachable set (session-expired / degraded / removed)
     // and is no longer queried — its stale agents must be pruned.
-    mockReachable = { installations: ['alpha', 'gaggle'], isProbing: false };
+    mockKagent = { installations: ['alpha', 'gaggle'], isProbing: false };
     mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
     rerender();
 
@@ -270,7 +321,7 @@ describe('AgentsDataProvider', () => {
   // exactly this fan-in.
   it('reports loading more while installations are still being probed', async () => {
     // Only alpha is healthy so far; beta and gaggle are still connecting.
-    mockReachable = { installations: ['alpha'], isProbing: true };
+    mockKagent = { installations: ['alpha'], isProbing: true };
     mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
 
     const { result: hook } = renderUseAgents();
@@ -298,7 +349,7 @@ describe('AgentsDataProvider', () => {
   it('reclassifies a cluster when its error flips 404 → 403 on a refetch', async () => {
     // grizzly must be reachable for the card to consider it at all.
     mockConfigInstallations = ['alpha', 'grizzly'];
-    mockReachable = { installations: ['alpha', 'grizzly'], isProbing: false };
+    mockKagent = { installations: ['alpha', 'grizzly'], isProbing: false };
 
     // First render: grizzly 404s (kagent not installed) → treated as empty.
     mockUseResources.mockReturnValue(
@@ -339,7 +390,7 @@ describe('AgentsDataProvider', () => {
     // gaggle degrades mid-session: it leaves the reachable (healthy) set and is
     // no longer queried. The sidebar Cluster-access widget owns that state, so it
     // must drop out of the "couldn't read" card rather than duplicate it.
-    mockReachable = { installations: ['alpha', 'beta'], isProbing: false };
+    mockKagent = { installations: ['alpha', 'beta'], isProbing: false };
     mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
     rerender();
 
@@ -365,5 +416,109 @@ describe('AgentsDataProvider', () => {
       expect(hook.current.unreachableInstallations).toEqual([]),
     );
     expect(hook.current.rows).toHaveLength(1);
+  });
+});
+
+describe('AgentsDataProvider installation scope', () => {
+  beforeEach(() => {
+    mockUseResources.mockReset();
+    mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
+    mockKagent = {
+      installations: ['alpha', 'beta', 'gaggle'],
+      isProbing: false,
+      home: 'alpha',
+    };
+    mockScope = 'all';
+  });
+
+  it('queries the home installation alone until it has answered, then the rest', async () => {
+    // Whatever is asked, only alpha answers at first.
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: ['a1'] } }));
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    // The very first read asks for the home installation only.
+    expect(mockUseResources.mock.calls[0][0]).toEqual(['alpha']);
+    await waitFor(() =>
+      expect(hook.current.rows.map(row => row.name)).toEqual(['a1']),
+    );
+    // Once it answered, everyone in scope is asked.
+    await waitFor(() =>
+      expect(mockUseResources.mock.calls.at(-1)?.[0]).toEqual([
+        'alpha',
+        'beta',
+        'gaggle',
+      ]),
+    );
+    // Rows are on screen while the others load: not "loading", but "more".
+    expect(hook.current.isLoading).toBe(false);
+    expect(hook.current.isLoadingMore).toBe(true);
+    expect(hook.current.groups.map(group => group.status)).toEqual([
+      'ready',
+      'loading',
+      'loading',
+    ]);
+  });
+
+  it('asks everyone at once when the home answers with a failure too', async () => {
+    mockUseResources.mockReturnValue(result({ failed: ['alpha'] }));
+
+    renderHook(() => useAgents(), { wrapper });
+
+    await waitFor(() =>
+      expect(mockUseResources.mock.calls.at(-1)?.[0]).toEqual([
+        'alpha',
+        'beta',
+        'gaggle',
+      ]),
+    );
+  });
+
+  it('narrows every read to a pinned installation', async () => {
+    mockScope = 'beta';
+    mockUseResources.mockReturnValue(
+      result({ succeeded: { alpha: ['a1'], beta: ['b1'] } }),
+    );
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    expect(mockUseResources.mock.calls[0][0]).toEqual(['beta']);
+    await waitFor(() =>
+      expect(hook.current.rows.map(row => row.name)).toEqual(['b1']),
+    );
+    expect(hook.current.scope).toBe('beta');
+    expect(hook.current.installations).toEqual(['beta']);
+    expect(hook.current.groups).toHaveLength(1);
+    expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  it('groups the rows by installation, home first, with the pipeline and status', async () => {
+    mockUseResources.mockReturnValue(
+      result({
+        succeeded: { alpha: ['a2', 'a1'], beta: [] },
+        failed: ['gaggle'],
+      }),
+    );
+
+    const { result: hook } = renderHook(() => useAgents(), { wrapper });
+
+    await waitFor(() => expect(hook.current.groups).toHaveLength(3));
+    expect(
+      hook.current.groups.map(group => [
+        group.installation,
+        group.home,
+        group.status,
+        group.rows.map(row => row.name),
+      ]),
+    ).toEqual([
+      ['alpha', true, 'ready', ['a1', 'a2']],
+      ['beta', false, 'empty', []],
+      ['gaggle', false, 'unreachable', []],
+    ]);
+    // The flat rows put the home installation first as well.
+    expect(hook.current.rows.map(row => row.installation)).toEqual([
+      'alpha',
+      'alpha',
+    ]);
   });
 });

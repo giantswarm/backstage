@@ -4,6 +4,19 @@ export {
   useMusterInstance,
 } from './MusterInstanceProvider';
 export type { MusterInstance } from './MusterInstanceProvider';
-export { useMusterSession } from './useMusterSession';
-export type { MusterSession } from './useMusterSession';
+export { selectMusterInstallations, homeFirst } from './selectInstallations';
+export type { InventoryView } from './selectInstallations';
+export {
+  useMusterSession,
+  classifySessionFailure,
+  musterRejectionDetail,
+  isUnreachableSession,
+} from './useMusterSession';
+export type {
+  MusterSession,
+  MusterSessionFailure,
+  MusterSessionFailureKind,
+} from './useMusterSession';
+export { sessionGateCopy } from './sessionCopy';
+export type { SessionGateCopy } from './sessionCopy';
 export { useMusterMutationRefresh } from './useMusterMutationRefresh';

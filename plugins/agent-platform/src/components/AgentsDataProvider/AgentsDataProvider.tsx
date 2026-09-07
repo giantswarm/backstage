@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -12,9 +13,18 @@ import {
   ModelConfig,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useInstallations } from '@giantswarm/backstage-plugin-gs';
-import { useReachableInstallations } from '../../hooks/useReachableInstallations';
+import {
+  applyInstallationScope,
+  useInstallationInventory,
+  useInstallations,
+  useInstallationScope,
+  type InstallationScope,
+} from '@giantswarm/backstage-plugin-gs';
 import { clientLookupOf } from '../../lib/serving';
+import {
+  groupRowsByInstallation,
+  type InstallationGroup,
+} from '../../lib/installationGroups';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
 import {
@@ -26,8 +36,24 @@ import {
 } from './helpers';
 
 export type AgentsContextValue = {
-  /** Agents flattened into plain rows, ordered by installation + name. */
+  /**
+   * Agents flattened into plain rows, ordered home installation first, then by
+   * installation and name.
+   */
   rows: AgentRow[];
+  /**
+   * The same rows as one group per installation in scope, home first, each
+   * with its own status (loading, rows, empty, could not be read) -- what the
+   * "All installations" view renders. See `groupRowsByInstallation`.
+   */
+  groups: InstallationGroup<AgentRow>[];
+  /** The section's installation scope the rows are narrowed to. */
+  scope: InstallationScope;
+  /**
+   * The installations in scope that run kagent and are reachable, home first:
+   * the groups' order, and the installations the composer may offer agents of.
+   */
+  installations: string[];
   /**
    * Initial load: no rows to show yet and the fleet is still being queried.
    * Only true until the first installation responds — a single slow or failing
@@ -53,25 +79,68 @@ export type AgentsContextValue = {
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
 
 /**
- * Lists kagent Agents across every reachable installation (all namespaces) and
- * exposes them as plain rows. Model references are resolved against the
- * ModelConfigs queried by {@link ModelConfigsProvider}, so this must be mounted
- * inside one.
+ * Lists kagent Agents across every installation in the section's scope that
+ * runs kagent (all namespaces) and exposes them as plain rows. Model references
+ * are resolved against the ModelConfigs queried by {@link ModelConfigsProvider},
+ * so this must be mounted inside one.
  */
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Only query reachable installations so the fleet-wide query doesn't fan out
-  // to unreachable/forbidden clusters (each hangs for the full proxy timeout
-  // and retries, dominating the tail). Same rationale as ModelConfigsProvider.
-  const { installations: reachableInstallations, isProbing } =
-    useReachableInstallations(allInstallations);
+  // Only query installations whose inventory has the `kagent.dev` API group and
+  // whose access is healthy, home first (gs `useInstallationInventory`, one
+  // `GET /apis` per installation shared by every tab), narrowed to the
+  // section's scope: every one of them under "All installations", the pinned
+  // one alone otherwise. The fleet-wide list then never fans out to a cluster
+  // without kagent (it used to 404 there, two requests per installation per
+  // tab) or to an unreachable one (each hangs for the full proxy timeout and
+  // retries, dominating the tail). `isProbing` covers the inventory's own
+  // probes and the access probes still settling. Same rationale as
+  // ModelConfigsProvider.
+  const inventory = useInstallationInventory();
+  const { scope, home } = useInstallationScope();
+  const scopedInstallations = applyInstallationScope(
+    inventory.installationsWith('kagent'),
+    scope,
+  );
+  const isProbing = inventory.isLoading || inventory.isProbing;
 
-  // allInstallations/reachableInstallations are derived fresh each render; key
+  // allInstallations/scopedInstallations are derived fresh each render; key
   // memos/effects on their contents rather than their (unstable) identity.
   const allInstallationsKey = allInstallations.join(',');
-  const reachableInstallationsKey = reachableInstallations.join(',');
+  const scopedInstallationsKey = scopedInstallations.join(',');
+
+  // Sticky, per-installation caches. The set of installations `useResources`
+  // queries churns during a session: it grows as the inventory answers for one
+  // installation after another and shrinks when one loses access.
+  // `resources`/`errors` only ever reflect the
+  // *current* set, so an installation dropping out of that set would otherwise
+  // make its agents vanish from the table. We instead remember the last-known
+  // result per installation and only ever replace an installation's entry when
+  // it responds again — so a healthy installation's agents stay put even after
+  // it leaves the queried set (or a background refetch transiently fails).
+  const [agentsByInstallation, setAgentsByInstallation] = useState<
+    Record<string, Agent[]>
+  >({});
+  const [erroredInstallations, setErroredInstallations] = useState<string[]>(
+    [],
+  );
+
+  // Home first, literally: the home installation is queried alone, and the
+  // others only once it has answered (rows, an empty list, or a failure), so
+  // its rows are on screen before any other installation is asked. On a
+  // repeat visit its answer comes from the persisted cache, so the others
+  // follow at once. A portal without a home, or a scope that leaves the home
+  // out, queries everything in scope from the start.
+  const homeSettled =
+    home === undefined ||
+    !scopedInstallations.includes(home) ||
+    home in agentsByInstallation ||
+    erroredInstallations.includes(home);
+  const queriedInstallations = homeSettled
+    ? scopedInstallations
+    : scopedInstallations.filter(installation => installation === home);
 
   // Single Agent version (v1alpha2), so skip API version discovery — it adds
   // round-trips per cluster for no benefit here. `clustersData` is the raw
@@ -82,7 +151,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // the whole fleet fast: only installations with an agent that is still
   // converging get the short interval.
   const { resources, clustersData, isLoading, errors } = useResources(
-    reachableInstallations,
+    queriedInstallations,
     Agent,
     {},
     { enableDiscovery: false, refetchInterval: getAgentsRefetchInterval },
@@ -106,22 +175,6 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             )
         : undefined,
     [serving],
-  );
-
-  // Sticky, per-installation caches. The set of installations `useResources`
-  // queries churns during a session: it starts optimistically wide (every
-  // configured installation) and then narrows to the reachable subset once the
-  // cluster-access probes settle. `resources`/`errors` only ever reflect the
-  // *current* set, so an installation dropping out of that set would otherwise
-  // make its agents vanish from the table. We instead remember the last-known
-  // result per installation and only ever replace an installation's entry when
-  // it responds again — so a healthy installation's agents stay put even after
-  // it leaves the queried set (or a background refetch transiently fails).
-  const [agentsByInstallation, setAgentsByInstallation] = useState<
-    Record<string, Agent[]>
-  >({});
-  const [erroredInstallations, setErroredInstallations] = useState<string[]>(
-    [],
   );
 
   // Stable signature of this render's per-cluster outcome, so the reconciling
@@ -157,10 +210,10 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // A 404 means the kagent.dev API group isn't installed on that cluster —
-    // kagent simply isn't deployed there. Treat it as a successful empty read
-    // (zero agents), not a "couldn't read" failure: the cluster is reachable and
-    // we can list it, there just are no Agents. Genuine failures (403 forbidden,
-    // unreachable) still count as errors.
+    // kagent was uninstalled since the (hour-long) inventory answered. Treat it
+    // as a successful empty read (zero agents), not a "couldn't read" failure:
+    // the cluster is reachable and we can list it, there just are no Agents.
+    // Genuine failures (403 forbidden, unreachable) still count as errors.
     const notInstalled = new Set(
       errors.filter(isNotFoundError).map(e => e.cluster),
     );
@@ -200,28 +253,35 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readSignature]);
 
-  // Prune cached entries for installations that have durably left the reachable
-  // set (session-expired, degraded, or removed from config). They are no longer
-  // queried, so they'd never produce a success/error to refresh or clear them —
-  // leaving stale agents shown as if live. A *transient* refetch failure keeps
-  // the installation reachable, so its rows are retained; only a durable
-  // drop-out is pruned here.
+  // Prune cached entries for installations that have durably left the scoped
+  // set (session-expired, degraded, removed from config, or outside a pinned
+  // scope). They are no longer queried, so they'd never produce a
+  // success/error to refresh or clear them — leaving stale agents shown as if
+  // live. A *transient* refetch failure keeps the installation in the set, so
+  // its rows are retained; only a durable drop-out is pruned here.
   useEffect(() => {
-    const reachable = new Set(reachableInstallations);
+    const scoped = new Set(scopedInstallations);
     setAgentsByInstallation(prev => {
       const kept = Object.fromEntries(
-        Object.entries(prev).filter(([cluster]) => reachable.has(cluster)),
+        Object.entries(prev).filter(([cluster]) => scoped.has(cluster)),
       );
       return Object.keys(kept).length === Object.keys(prev).length
         ? prev
         : kept;
     });
     setErroredInstallations(prev => {
-      const kept = prev.filter(cluster => reachable.has(cluster));
+      const kept = prev.filter(cluster => scoped.has(cluster));
       return kept.length === prev.length ? prev : kept;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reachableInstallationsKey]);
+  }, [scopedInstallationsKey]);
+
+  const pipelineFor = useCallback(
+    (installation: string) =>
+      installations.find(candidate => candidate.name === installation)
+        ?.pipeline,
+    [installations],
+  );
 
   const value = useMemo<AgentsContextValue>(() => {
     const rows = sortAgentRows(
@@ -230,53 +290,65 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
           toAgentRow(agent, modelConfigsFor(cluster), resolveServing),
         ),
       ),
+      home,
     );
 
     // Surface only the genuinely actionable case: a currently-healthy cluster we
-    // have *nothing* for. Intersecting with the reachable (healthy) set means a
+    // have *nothing* for. Intersecting with the scoped (healthy) set means a
     // cluster that degrades mid-session drops out of the card immediately — the
     // sidebar Cluster-access widget owns that state, so we'd otherwise duplicate
     // it. And if we're still showing an installation's last-known agents, don't
     // also claim we couldn't read it.
-    const reachableSet = new Set(reachableInstallations);
+    const scopedSet = new Set(scopedInstallations);
     const unreachableInstallations = erroredInstallations.filter(
       cluster =>
-        reachableSet.has(cluster) && !agentsByInstallation[cluster]?.length,
+        scopedSet.has(cluster) && !agentsByInstallation[cluster]?.length,
     );
 
     // The fleet-wide query reports "loading" until every installation settles,
     // so gate the blocking state on having no rows yet — otherwise one slow or
     // failing installation would hide agents already loaded from healthy ones.
-    // Also gate on hasInstallations: with none configured, useReachableInstallations
-    // reports isProbing forever (its empty-status fallback), which would otherwise
-    // pin isLoading true and hide the "no installations configured" empty state.
+    // Also gate on hasInstallations, so an instance with none configured shows
+    // the "no installations configured" empty state instead of a spinner.
     const hasInstallations = allInstallations.length > 0;
-    const isBusy = hasInstallations && (isProbing || isLoading);
+    const isBusy = hasInstallations && (isProbing || isLoading || !homeSettled);
 
     // "More rows may still arrive", from two independent sources.
     //
     // `pendingInstallations` covers an installation we already know is healthy
-    // but which has not reported its first result yet. Once it has an entry —
-    // even an empty one — it can only ever *replace* its rows, never contribute
-    // the first ones, so it is settled and a background refetch of it is not
+    // but which has not reported its first result yet -- including those not
+    // asked yet because the home has not answered. Once it has an entry — even
+    // an empty one — it can only ever *replace* its rows, never contribute the
+    // first ones, so it is settled and a background refetch of it is not
     // "loading more".
     //
     // `isProbing` covers the other half, and is why it cannot be dropped: an
-    // installation still `connecting` is not in `reachableInstallations` at all
-    // (that set is `healthy`-only), so it cannot appear in `pendingInstallations`
-    // — yet it may resolve to healthy and contribute rows seconds later. Without
-    // it the bar switches off during exactly the cold-load fan-in it exists for.
-    // It does not churn: the cluster-access connector only seeds `connecting` for
-    // installations it is not already tracking, so this settles once and stays
-    // settled across re-probes.
-    const pendingInstallations = reachableInstallations.filter(
+    // installation still `connecting`, or healthy but without an inventory answer
+    // yet, is not in `scopedInstallations` at all, so it cannot appear in
+    // `pendingInstallations` — yet it may turn out to run kagent and contribute
+    // rows seconds later. Without it the bar switches off during exactly the
+    // cold-load fan-in it exists for. It does not churn: the cluster-access
+    // connector only seeds `connecting` for installations it is not already
+    // tracking, and an inventory answer is cached for an hour.
+    const pendingInstallations = scopedInstallations.filter(
       cluster =>
         !(cluster in agentsByInstallation) &&
         !erroredInstallations.includes(cluster),
     );
 
+    const groups = groupRowsByInstallation(rows, {
+      installations: scopedInstallations,
+      home,
+      pending: pendingInstallations,
+      unreachable: unreachableInstallations,
+      pipelineFor,
+    });
+
     return {
       rows,
+      groups,
+      scope,
+      installations: scopedInstallations,
       isLoading: isBusy && rows.length === 0,
       isLoadingMore:
         rows.length > 0 && (pendingInstallations.length > 0 || isProbing),
@@ -289,10 +361,14 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     erroredInstallations,
     isLoading,
     isProbing,
+    homeSettled,
+    home,
+    scope,
     modelConfigsFor,
     resolveServing,
+    pipelineFor,
     allInstallationsKey,
-    reachableInstallationsKey,
+    scopedInstallationsKey,
   ]);
 
   return (

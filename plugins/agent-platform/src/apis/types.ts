@@ -1,6 +1,9 @@
+import { KagentInstallation } from '../lib/kagentInstallations';
 import { KagentSession } from '../lib/kagentSessions';
 import { KagentSessionDetail } from '../lib/kagentSessionDetail';
 import { A2aTaskWire } from '../lib/kagentTaskSchema';
+
+export type { KagentInstallation } from '../lib/kagentInstallations';
 
 /**
  * Header carrying the user's per-installation Dex OIDC ID token, read by the
@@ -18,8 +21,13 @@ export type KagentIdentity = {
 };
 
 export interface KagentApi {
-  /** Installations the backend can proxy kagent for. Names only. */
-  listInstallations(): Promise<string[]>;
+  /**
+   * Installations the backend can proxy kagent for, each with whether its
+   * kagent endpoint is reachable from this portal (the backend's
+   * unauthenticated probe; `'unknown'` until it has settled). Tolerates the
+   * previous names-only shape, which reads as `'unknown'`.
+   */
+  listInstallations(): Promise<KagentInstallation[]>;
 
   /**
    * The signed-in user's sessions on one installation, already parsed and

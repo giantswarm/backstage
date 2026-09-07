@@ -45,8 +45,42 @@ per-user auth does not.
 
 ## Configuration
 
-The plugin reuses the muster entry of the existing `aiChat.mcp` server list,
-so the muster endpoint is configured in one place:
+The installations the proxy can target are **derived from the fleet
+configuration**: every `gs.installations` entry with a `baseDomain` yields a
+muster endpoint at `https://muster.<baseDomain>/mcp` (the same derivation the
+kagent proxy uses for `https://kagent.<baseDomain>/api`). Nothing has to be
+listed for an installation that adopts muster; whether it actually runs muster
+is the frontend's question (the installation inventory reads the
+`muster.giantswarm.io` API group), and whether the endpoint is reachable from
+this portal is answered by the unauthenticated reachability probe.
+
+`muster.installations` holds **overrides** of that derived list. An entry with
+the same `name` as a fleet installation overrides its `url`, `headers`,
+`prometheusServer` and `authProvider` field by field; an entry whose name the
+fleet configuration does not know adds an installation (then `url` is
+required):
+
+```yaml
+muster:
+  installations:
+    # Overrides only the endpoint of a derived installation.
+    - name: gazelle
+      url: https://muster-internal.gazelle.example/mcp
+    # Adds an installation the fleet configuration does not know.
+    - name: lab
+      url: https://muster.lab.example/mcp
+      authProvider: mcp-muster
+```
+
+`GET /api/muster/installations` reports each installation with its `source`
+(`derived` or `configured`), whether it requires the person's token
+(`requiresAuth`; always true for a derived installation, since every muster
+gates) and its reachability from this portal. One line is logged at start with
+the counts (`N derived …, M configured …, T total`).
+
+When nothing is derived and nothing is listed, the plugin falls back to the
+legacy single-installation setup and reuses the muster entry of the
+`aiChat.mcp` server list:
 
 ```yaml
 aiChat:
@@ -55,17 +89,10 @@ aiChat:
       url: http://localhost:8091/mcp
 ```
 
-The entry is selected by name (`muster` by default). To use a different
-entry, set:
-
-```yaml
-muster:
-  serverName: muster-prod
-```
-
-Entries with static `headers` are supported. Entries that require per-user
-auth (`authProvider`, `useBackstageUserToken`) are not supported by this
-server-side proxy; the plugin logs a warning and the endpoints return 503.
+The entry is selected by name (`muster` by default); set `muster.serverName`
+to use a different one. Entries with static `headers` are supported; entries
+with `useBackstageUserToken` are not, the plugin logs a warning and the
+endpoints return 503.
 
 The MCP client connection is cached for 30 minutes and recreated when the
 transport reports closure (same self-healing approach as ai-chat-backend).

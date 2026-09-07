@@ -4,6 +4,7 @@ import {
   discoveryApiRef,
   fetchApiRef,
   PageBlueprint,
+  PluginHeaderActionBlueprint,
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
@@ -107,6 +108,24 @@ const modelsSubPage = SubPageBlueprint.make({
   },
 });
 
+// The section's installation scope selector, in the page header next to the
+// tabs' own actions: "All installations" (home first, the others as groups) or
+// one pinned installation, for the three tabs above and the muster plugin's
+// "MCP Servers" tab alike. A header action rather than part of a tab, so it
+// stays put while the tabs change underneath it; the scope itself lives in the
+// gs plugin (`useInstallationScope`), URL `?installation=` plus localStorage.
+// Renders nothing on a portal that knows one installation.
+const installationScopeHeaderAction = PluginHeaderActionBlueprint.make({
+  name: 'installation-scope',
+  params: {
+    loader: async () => {
+      const { InstallationScopeHeaderControl } =
+        await import('./components/InstallationScopeHeaderControl');
+      return <InstallationScopeHeaderControl />;
+    },
+  },
+});
+
 // Client for the kagent REST API, via the agent-platform-backend proxy. The
 // kubernetes APIs are dependencies because each installation's Dex ID token is
 // minted through them (kubernetesApi.getCluster →
@@ -153,6 +172,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentsSubPage,
     sessionsSubPage,
     modelsSubPage,
+    installationScopeHeaderAction,
     kagentApi,
     modelManagerApi,
   ],
