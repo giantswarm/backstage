@@ -1,17 +1,5 @@
-import { formatTokens, groupIntoTurns } from './helpers';
+import { groupIntoTurns } from './helpers';
 import { TimelineItem } from '../../lib/kagentTimeline';
-
-describe('formatTokens', () => {
-  it.each([
-    [0, '0'],
-    [999, '999'],
-    [1_000, '1.0k'],
-    [2_600, '2.6k'],
-    [1_400_000, '1.4M'],
-  ])('formats %p as %s', (value, expected) => {
-    expect(formatTokens(value as number)).toBe(expected);
-  });
-});
 
 describe('groupIntoTurns', () => {
   function item(taskIndex: number, at?: string): TimelineItem {

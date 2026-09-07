@@ -72,6 +72,11 @@ const USER_SCOPED_RESOURCES = new Set([
   'session',
   'session-tasks',
   'session-states',
+  // A per-user breakdown of what someone ran, which agents they spent on and
+  // which tools they reached for. The same rule as the rows above, with the
+  // sharpest reason to hold it: it is a behavioural profile, and small enough
+  // that nothing but the rule keeps it off the disk.
+  'session-usage',
 ]);
 
 function isUserScopedQueryKey(queryKey: QueryKey): boolean {

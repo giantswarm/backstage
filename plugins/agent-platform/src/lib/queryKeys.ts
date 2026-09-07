@@ -49,6 +49,18 @@ export function sessionStatesQueryKey(installation: string) {
 }
 
 /**
+ * The caller's usage summary for one installation, computed by the backend.
+ *
+ * `'session-usage'` is on `components/QueryClientProvider`'s never-persist list
+ * for a stronger version of the reason `'sessions'` is: this is a breakdown of
+ * what one person ran and which tools they reached for, which is a behavioural
+ * profile and must not outlive sign-out on a shared workstation's disk.
+ */
+export function sessionUsageQueryKey(installation: string) {
+  return ['agent-platform', 'kagent', 'session-usage', installation] as const;
+}
+
+/**
  * The model-manager reads, per installation. Prefixed `model-manager` (not
  * `kagent`) so `components/QueryClientProvider`'s user-scoped filter leaves
  * them alone: an installation's inventory, backend descriptor and pull jobs

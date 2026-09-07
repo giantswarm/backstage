@@ -21,7 +21,9 @@ import {
   normalizeSessionDetail,
   normalizeSessionList,
   normalizeSessionStates,
+  normalizeSessionUsage,
   SessionStatesResponse,
+  SessionUsageResponse,
   normalizeTaskList,
   parseCreatedSessionId,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -234,6 +236,18 @@ export class KagentApiClient implements KagentApi {
       installation,
     );
     return normalizeSessionStates(body);
+  }
+
+  /**
+   * The caller's usage summary for one installation.
+   *
+   * Parsed the same permissive way as the states summary, and for the same
+   * reason: the page renders it beside copy that already admits it can be
+   * incomplete, so a malformed row is dropped rather than costing every number.
+   */
+  async getSessionUsage(installation: string): Promise<SessionUsageResponse> {
+    const body = await this.get<unknown>('/kagent/session-usage', installation);
+    return normalizeSessionUsage(body);
   }
 
   async listSessionTasks(

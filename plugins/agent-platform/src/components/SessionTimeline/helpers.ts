@@ -185,13 +185,6 @@ export function summarizeArgs(args: unknown): string | undefined {
     .join(', ');
 }
 
-/** Format a token count compactly (`1.5k`, `1.2M`). */
-export function formatTokens(total: number): string {
-  if (total < 1000) {
-    return String(total);
-  }
-  if (total < 1_000_000) {
-    return `${(total / 1000).toFixed(1)}k`;
-  }
-  return `${(total / 1_000_000).toFixed(1)}M`;
-}
+// Moved to `lib/formatNumbers` once the Usage page needed it too. Re-exported
+// here so this module's barrel keeps exporting it and its callers do not churn.
+export { formatTokens } from '../../lib/formatNumbers';

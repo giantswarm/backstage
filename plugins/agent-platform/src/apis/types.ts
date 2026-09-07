@@ -4,6 +4,7 @@ import {
   KagentSession,
   KagentSessionDetail,
   SessionStatesResponse,
+  SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 export type { KagentInstallation } from '../lib/kagentInstallations';
@@ -79,6 +80,22 @@ export interface KagentApi {
    * affordable.
    */
   listSessionStates(installation: string): Promise<SessionStatesResponse>;
+
+  /**
+   * The caller's token, turn and tool usage on this installation, over the
+   * window the backend fixes — what the Usage tab reports.
+   *
+   * Computed by the backend for the same reason the states summary is: the
+   * numbers live in every session's whole conversation, and totalling them in
+   * the browser is not affordable.
+   *
+   * **These are one user's own numbers**, because kagent scopes its session
+   * list to the forwarded token's subject. The exception is an installation
+   * running kagent in `unsecure` mode, where the list is everyone's — detected
+   * by `useKagentCapabilities`, and the page's copy has to switch rather than
+   * claim ownership it cannot support.
+   */
+  getSessionUsage(installation: string): Promise<SessionUsageResponse>;
 
   /**
    * Start a session with one agent, and return its id.

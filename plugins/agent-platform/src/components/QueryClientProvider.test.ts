@@ -19,6 +19,13 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
   it.each([
     ['sessions', ['agent-platform', 'kagent', 'sessions', 'gazelle']],
     ['identity', ['agent-platform', 'kagent', 'me', 'gazelle']],
+    [
+      // `sessionUsageQueryKey()`: what one person ran, which agents they spent
+      // on and which tools they reached for — a behavioural profile, and small
+      // enough that nothing but this rule keeps it off the disk.
+      'the usage summary',
+      ['agent-platform', 'kagent', 'session-usage', 'gazelle'],
+    ],
   ])('never persists user-scoped %s data', (_label, queryKey) => {
     // These hold one user's chat titles and their email. Persisting them would
     // leave them on disk after sign-out and let PersistQueryClientProvider
