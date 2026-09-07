@@ -1,6 +1,8 @@
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
   buildCatalogue,
+  isDestructive,
+  isReadOnly,
   isUnknownPresetError,
   MAX_INLINE_SELECTORS,
   orderPresets,
@@ -331,6 +333,26 @@ describe('buildCatalogue', () => {
         groups,
       ),
     ).toEqual(['server:pro']);
+  });
+});
+
+describe('markers', () => {
+  it('lets read-only win over the MCP default destructive hint', () => {
+    // Live shape from agent-manager through muster 5.11.0: both hints true.
+    expect(
+      isDestructive({
+        annotations: { readOnlyHint: true, destructiveHint: true },
+      }),
+    ).toBe(false);
+    expect(isDestructive({ annotations: { destructiveHint: true } })).toBe(
+      true,
+    );
+    expect(
+      isReadOnly({
+        annotations: { readOnlyHint: true, destructiveHint: true },
+      }),
+    ).toBe(true);
+    expect(isDestructive({})).toBe(false);
   });
 });
 
