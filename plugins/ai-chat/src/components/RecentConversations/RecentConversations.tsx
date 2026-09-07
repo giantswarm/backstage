@@ -6,12 +6,11 @@ import type { Selection } from 'react-aria-components';
 import type { ConversationApi } from '../../api';
 import { useConversations } from '../../hooks/useConversations';
 import { getConversationTitle } from '../../utils';
-import { useContainerDimensions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PLUGIN_CONTENT_VIEWPORT_OFFSET,
+  useContainerDimensions,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-// Parent chrome the sidebar sits beneath. Update if either changes.
-const PLUGIN_HEADER_HEIGHT = 89; // <PluginHeader> from @backstage/ui
-const CONTENT_PADDING = 24; // <Content> from @backstage/core-components
-const VIEWPORT_OFFSET = PLUGIN_HEADER_HEIGHT + CONTENT_PADDING;
 const ITEM_HEIGHT = 32;
 const LINK_HEIGHT = 24; // "+N more" Text (body-small) + marginTop
 
@@ -20,7 +19,7 @@ const useStyles = makeStyles(theme => ({
     position: 'sticky',
     top: 0,
     height: '100%',
-    maxHeight: `calc(100dvh - ${VIEWPORT_OFFSET}px)`,
+    maxHeight: `calc(100dvh - ${PLUGIN_CONTENT_VIEWPORT_OFFSET}px)`,
     padding: theme.spacing(2),
     display: 'flex',
     flexDirection: 'column',

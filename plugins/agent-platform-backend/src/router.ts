@@ -23,6 +23,7 @@ import {
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
 import { ModelManagerClient } from './ModelManagerClient';
+import { SessionStateReader } from './sessionStates';
 import { createModelManagerRouter } from './modelManagerRouter';
 
 export interface RouterOptions {
@@ -188,6 +189,37 @@ export async function createRouter(
     }
   }
 
+  // One summariser per installation, each with its own short-lived cache. Built
+  // here rather than per request so the cache survives between polls, which is
+  // the entire point of it.
+  const sessionStateOptions = {
+    maxSessions: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionStates.maxSessions',
+    ),
+    maxAgeMs: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionStates.maxAgeMs',
+    ),
+    concurrency: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionStates.concurrency',
+    ),
+    taskTimeoutMs: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionStates.taskTimeoutMs',
+    ),
+    budgetMs: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionStates.budgetMs',
+    ),
+    cacheTtlMs: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionStates.cacheTtlMs',
+    ),
+  };
+  const sessionStateReaders = new Map<string, SessionStateReader>();
+  for (const [name, client] of clients) {
+    sessionStateReaders.set(
+      name,
+      new SessionStateReader(client, logger, name, sessionStateOptions),
+    );
+  }
+
   if (installations.size === 0) {
     logger.info(
       'No kagent installations resolved (needs gs.installations entries with a baseDomain, or an explicit agentPlatform.kagent.installations block); kagent endpoints will return 503.',
@@ -255,7 +287,11 @@ export async function createRouter(
    */
   const resolveInstallation = (
     req: express.Request,
-  ): { config: KagentInstallationConfig; client: KagentClient } => {
+  ): {
+    config: KagentInstallationConfig;
+    client: KagentClient;
+    sessionStates: SessionStateReader;
+  } => {
     if (clients.size === 0) {
       // Kept as a 503 — unlike "kagent is absent on this installation", nothing
       // configured at all is a genuine misconfiguration worth a Sentry event. It
@@ -282,7 +318,9 @@ export async function createRouter(
         `Unknown kagent installation '${name}'; configured installations: ${configured}`,
       );
     }
-    return { config: installationConfig, client };
+    // Present for every entry in `clients` by construction.
+    const sessionStates = sessionStateReaders.get(name)!;
+    return { config: installationConfig, client, sessionStates };
   };
 
   /**
@@ -325,6 +363,37 @@ export async function createRouter(
     const raw = req.params.sessionId;
     return typeof raw === 'string' ? raw : '';
   };
+
+  /**
+   * Derived state for the caller's sessions on one installation — what the
+   * session switcher rail groups by.
+   *
+   * **A sibling of `/kagent/sessions`, not a child.** `/kagent/sessions/states`
+   * would sit under the `:sessionId` matcher below and resolve correctly only
+   * because it is registered first; a session literally named `states` is not
+   * impossible enough to bet on.
+   *
+   * **This is the one route that interprets kagent rather than forwarding it**,
+   * and it earns the exception by arithmetic. A kagent `Session` carries no
+   * state; the only way to learn one is to read the session's whole conversation
+   * (2.8 MB across a real 21-session account) and look at its newest task. Doing
+   * that per session in the browser is not affordable, so it happens here and
+   * about 700 bytes go back. The derivation runs through the same parser and the
+   * same state map the UI renders badges from, shared from
+   * `agent-platform-common`, so the rail and the page cannot disagree.
+   *
+   * **No tuning parameters.** The fan-out bound is a cost lever, so it lives in
+   * config, never in the query string.
+   */
+  router.get('/kagent/session-states', async (req, res) => {
+    const { sessionStates } = resolveInstallation(req);
+    const result = await sessionStates.read(
+      readUserToken(req, { required: true })!,
+    );
+    // Derived from one user's session list; never store it anywhere shared.
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  });
 
   router.get('/kagent/sessions', async (req, res) => {
     const { client } = resolveInstallation(req);

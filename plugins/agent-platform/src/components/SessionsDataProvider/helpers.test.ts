@@ -1,9 +1,8 @@
-import { KagentSession } from '../../lib/kagentSessions';
+import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
 import {
   buildAgentIndex,
   decodeAgentIdLabel,
-  isListableSession,
   SESSION_TITLE_FALLBACK,
   sessionSearchFn,
   SessionRow,
@@ -150,22 +149,6 @@ describe('decodeAgentIdLabel', () => {
 
   it('handles an id without the namespace marker', () => {
     expect(decodeAgentIdLabel('lonely_agent')).toBe('lonely-agent');
-  });
-});
-
-describe('isListableSession', () => {
-  it('excludes A2A subagent sessions', () => {
-    expect(isListableSession(session({ source: 'agent' }))).toBe(false);
-  });
-
-  it.each([
-    ['user', 'user'],
-    ['an unknown future value', 'scheduled'],
-    ['absent', undefined],
-  ])('includes a session whose source is %s', (_label, source) => {
-    // Absent is the real-world case: live v0.9.9 responses omit `source`, so this
-    // filter hides nothing today and must not start hiding rows.
-    expect(isListableSession(session({ source }))).toBe(true);
   });
 });
 

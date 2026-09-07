@@ -540,6 +540,10 @@ export class KagentClient {
   async listSessionTasks(
     sessionId: string,
     options: KagentRequestOptions,
+    // The session-state summary reads many of these in one pass and gives each a
+    // shorter leash than the client default, so one hung connection cannot spend
+    // the whole pass's budget.
+    extra: { timeoutMs?: number } = {},
   ): Promise<unknown> {
     return this.request(
       `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
@@ -547,6 +551,9 @@ export class KagentClient {
       )}/tasks`,
       options,
       {
+        ...(extra.timeoutMs === undefined
+          ? {}
+          : { timeoutMs: extra.timeoutMs }),
         notFound: {
           missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
           endpoint: 'session tasks',

@@ -46,6 +46,67 @@ export interface Config {
       turnTimeoutMs?: number;
 
       /**
+       * Bounds on the derived session-state summary that backs the session
+       * switcher rail (`GET /kagent/session-states`).
+       *
+       * A kagent `Session` carries no state, so the only way to learn one is to
+       * read that session's whole conversation and look at its newest task. The
+       * route therefore fans out over task reads, and these are the levers on how
+       * much that may cost. They are config rather than constants because the one
+       * thing we cannot predict is how this behaves against an account far larger
+       * than any measured — that wants a knob, not a release.
+       *
+       * Deliberately not query parameters: the browser must not be able to ask
+       * for a bigger fan-out.
+       */
+      sessionStates?: {
+        /**
+         * How many sessions may be evaluated in one pass, newest activity first.
+         * Defaults to 20 — a measured real account held 21 sessions in total.
+         */
+        maxSessions?: number;
+
+        /**
+         * How stale a session may be and still be worth a task read, in
+         * milliseconds. Defaults to 604800000 (7 days).
+         *
+         * Generous on purpose: a session waiting on a human can sit for days, and
+         * that is exactly what the rail exists to surface. `maxSessions` is the
+         * real bound; this only trims a long tail.
+         */
+        maxAgeMs?: number;
+
+        /** Task reads in flight at once. Defaults to 4. */
+        concurrency?: number;
+
+        /**
+         * Per-task-read timeout in milliseconds. Defaults to 5000 — below the
+         * client's own `timeoutMs`, so one hung read cannot spend the whole pass.
+         */
+        taskTimeoutMs?: number;
+
+        /**
+         * Whole-pass deadline in milliseconds. Defaults to 8000. Anything still
+         * unread when it expires is reported as skipped rather than waited for.
+         *
+         * **Keep it below the frontend's fastest poll** (10s), or a slow answer
+         * lets requests pile up behind the interval that asked for it.
+         */
+        budgetMs?: number;
+
+        /**
+         * How long a computed summary is reused, in milliseconds. Defaults to
+         * 15000.
+         *
+         * **Must exceed the frontend's fast poll** (10s) or it misses on nearly
+         * every request and buys nothing. Cached in process memory only, keyed by
+         * a hash of the caller's token, and never written anywhere shared: the
+         * summary is derived from one user's session list.
+         */
+        cacheTtlMs?: number;
+      };
+
+      /**
        * Installations to proxy kagent for, keyed by installation name — the
        * same keys as `gs.installations`.
        *

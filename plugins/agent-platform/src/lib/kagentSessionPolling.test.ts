@@ -1,5 +1,7 @@
-import type { A2aTaskWire } from './kagentTaskSchema';
-import { deriveSessionState } from './kagentSessionState';
+import {
+  A2aTaskWire,
+  deriveSessionState,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   ACTIVE_MAX_AGE_MS,
   ACTIVE_REFETCH_INTERVAL_MS,

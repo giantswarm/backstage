@@ -14,6 +14,7 @@ import {
   useInstallationScope,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { isListableSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../../apis';
 import { sessionsQueryKey } from '../../lib/queryKeys';
 import {
@@ -22,14 +23,8 @@ import {
 } from '../../lib/installationGroups';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useKagentInstallations } from '../../hooks/useKagentInstallations';
-import { useAgents } from '../AgentsDataProvider';
-import {
-  buildAgentIndex,
-  isListableSession,
-  SessionRow,
-  sortSessionRows,
-  toSessionRow,
-} from './helpers';
+import { useAgentIndex } from '../../hooks/useAgentIndex';
+import { SessionRow, sortSessionRows, toSessionRow } from './helpers';
 
 export type SessionsContextValue = {
   /**
@@ -216,22 +211,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   // installation before the home has answered.
   const capabilitiesFor = useKagentCapabilitiesMap(queriedTargets);
 
-  const { rows: agentRows } = useAgents();
-  // Keyed on id *and* display name: `AgentRow.id` is
-  // `installation/namespace/name`, which does not change when an agent's
-  // display-name annotation does. AgentsDataProvider picks such an edit up (its
-  // signature includes resourceVersion) and emits fresh rows, so keying on ids
-  // alone would leave this index holding the previous objects and the table
-  // showing the old name until an agent is added or removed.
-  const agentRowsKey = agentRows
-    .map(agent => `${agent.id}@${agent.name}`)
-    .join('|');
-  const agentIndex = useMemo(
-    () => buildAgentIndex(agentRows),
-    // Rebuild only when the agents actually change, not on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [agentRowsKey],
-  );
+  const agentIndex = useAgentIndex();
 
   // useQueries returns fresh arrays every render, so key the memo on a stable
   // signature of the per-installation outcomes.

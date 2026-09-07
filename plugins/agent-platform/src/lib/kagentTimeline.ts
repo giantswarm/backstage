@@ -1,11 +1,12 @@
-import { a2aMessageWireSchema, A2aTaskWire } from './kagentTaskSchema';
-import { readKagentMetadataString } from './kagentMetadata';
-import { normalizeTimestamp } from './kagentSessions';
 import {
+  a2aMessageWireSchema,
+  A2aTaskWire,
   AWAITING_INPUT_STATES,
   describeSessionState,
   FAILED_STATES,
-} from './kagentSessionState';
+  normalizeTimestamp,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import { readKagentMetadataString } from './kagentMetadata';
 import {
   addTokenUsage,
   ASK_USER_TOOL_NAME,

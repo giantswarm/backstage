@@ -218,3 +218,20 @@ export function parseCreatedSessionId(raw: unknown): string | undefined {
 
   return parseSessionWire(parsed.data.session)?.id;
 }
+
+/**
+ * Whether a session belongs in a user-facing list.
+ *
+ * A2A subagent sessions (`source === 'agent'`) are child threads spawned by a
+ * parent agent, not work the user started, so they are excluded.
+ *
+ * Note this is forward-compatibility rather than active filtering: live kagent
+ * v0.9.9 responses omit `source` entirely, so nothing is hidden today. An absent
+ * or unrecognised value is listable — only an explicit `'agent'` is not.
+ *
+ * Shared with the backend, which applies the same rule before spending a task
+ * read on a session: the two must agree about what a session even is.
+ */
+export function isListableSession(session: KagentSession): boolean {
+  return session.source !== 'agent';
+}

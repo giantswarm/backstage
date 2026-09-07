@@ -1,0 +1,372 @@
+import { LoggerService } from '@backstage/backend-plugin-api';
+import { createHash } from 'crypto';
+import {
+  isListableSession,
+  normalizeSessionList,
+  normalizeTaskList,
+  readNewestTaskState,
+  SessionStateEntry,
+  SessionStatesResponse,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+import { KagentClient } from './KagentClient';
+
+/**
+ * How many of a user's sessions may be evaluated in one pass.
+ *
+ * A real account on gazelle held 21 sessions whose task payloads totalled 2.8 MB,
+ * so 20 covers a whole history today. It is here for the account that is ten
+ * times that: the reads are the expensive part and their cost is unbounded in the
+ * session count alone.
+ */
+export const DEFAULT_MAX_SESSIONS = 20;
+
+/**
+ * How stale a session may be and still be worth a task read.
+ *
+ * Deliberately generous. A session in `input-required` is blocked on a human and
+ * can sit for days — that is precisely what the rail's WAITING group exists to
+ * surface, so a tight window would delete the feature's main use case rather than
+ * trim its cost.
+ */
+export const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Task reads in flight at once.
+ *
+ * A sliding pool rather than batches: payloads ranged 1.6 KB to 481 KB on real
+ * data, so a batch would run at the pace of its largest member while three
+ * connections idled. Four bounds resident JSON at roughly 2 MB.
+ */
+export const DEFAULT_CONCURRENCY = 4;
+
+/**
+ * Per-read timeout, below the client's own default.
+ *
+ * Measured reads took 44–118 ms. Five seconds is far outside that, and exists so
+ * one hung connection cannot consume the whole pass.
+ */
+export const DEFAULT_TASK_TIMEOUT_MS = 5_000;
+
+/**
+ * Whole-pass deadline.
+ *
+ * Under the frontend's 10 s active poll on purpose: an answer slower than the
+ * interval that asks for it would let requests pile up. A complete pass measured
+ * ~500 ms, so this only ever engages when something is wrong.
+ */
+export const DEFAULT_BUDGET_MS = 8_000;
+
+/**
+ * How long a computed summary is reused.
+ *
+ * Must exceed the frontend's fast poll (10 s) or it would miss on nearly every
+ * request and buy nothing. At 15 s the fan-out runs at most four times a minute
+ * per user per installation, while the rail is never more than 15 s behind — an
+ * order of magnitude inside the five minutes the state semantics already tolerate
+ * before they stop calling a session live.
+ */
+export const DEFAULT_CACHE_TTL_MS = 15_000;
+
+/**
+ * Cache entries retained per installation.
+ *
+ * One entry per distinct token, so an instance that has served many users over a
+ * long uptime would otherwise accumulate one each. Expired entries are purged on
+ * access; this is the backstop.
+ */
+export const CACHE_MAX_ENTRIES = 200;
+
+/**
+ * The least time a task read is worth starting with.
+ *
+ * Without a floor a worker could dispatch with 1 ms of budget left, get
+ * `timeoutMs: 1`, and all but certainly time out — landing in `unreadable`
+ * ("we asked and failed") when the truth is that the pass ran out of time,
+ * which belongs in `skipped`. The two are worded differently to the operator,
+ * so the mis-attribution would put a fault in front of them for a budget
+ * cutoff.
+ */
+export const MIN_READ_SLICE_MS = 250;
+
+export type SessionStateOptions = {
+  maxSessions?: number;
+  maxAgeMs?: number;
+  concurrency?: number;
+  taskTimeoutMs?: number;
+  budgetMs?: number;
+  cacheTtlMs?: number;
+};
+
+type CacheEntry = {
+  expiresAt: number;
+  value: Promise<SessionStatesResponse>;
+};
+
+/**
+ * Derived session-state summaries for one installation.
+ *
+ * This is the one place in the proxy that *interprets* kagent rather than
+ * forwarding it, and the exception is deliberate: the rail needs one state string
+ * per session, and the only way to learn it is to read each session's whole
+ * conversation. On real data that is 2.8 MB to answer with about 700 bytes, which
+ * belongs on this side of the wire. It stays honest by deriving through the very
+ * same parser and state map the UI renders from, shared from
+ * `agent-platform-common` so the two cannot disagree.
+ */
+export class SessionStateReader {
+  private readonly cache = new Map<string, CacheEntry>();
+  private readonly maxSessions: number;
+  private readonly maxAgeMs: number;
+  private readonly concurrency: number;
+  private readonly taskTimeoutMs: number;
+  private readonly budgetMs: number;
+  private readonly cacheTtlMs: number;
+
+  constructor(
+    private readonly client: KagentClient,
+    private readonly logger: LoggerService,
+    private readonly installation: string,
+    options: SessionStateOptions = {},
+    private readonly now: () => number = Date.now,
+  ) {
+    // Floored, because `??` only substitutes for `undefined` — a configured `0`
+    // reaches here intact and silently disables the route rather than being
+    // rejected. `concurrency: 0` spawns no workers, so `Promise.all([])`
+    // resolves at once and every candidate is reported as skipped; the same
+    // shape applies to `maxSessions: 0` (no candidates) and a non-positive
+    // `budgetMs` (deadline already expired). These are knobs meant to be turned
+    // in an emergency, so a mistyped one must degrade loudly, not quietly.
+    this.maxSessions = atLeast(1, options.maxSessions, DEFAULT_MAX_SESSIONS);
+    this.maxAgeMs = atLeast(1, options.maxAgeMs, DEFAULT_MAX_AGE_MS);
+    this.concurrency = atLeast(1, options.concurrency, DEFAULT_CONCURRENCY);
+    // Floored to a slice that can actually complete a read rather than to 1 ms:
+    // below `MIN_READ_SLICE_MS` a worker declines to dispatch at all, so a 1 ms
+    // floor would satisfy the type and still evaluate nothing.
+    this.taskTimeoutMs = atLeast(
+      MIN_READ_SLICE_MS,
+      options.taskTimeoutMs,
+      DEFAULT_TASK_TIMEOUT_MS,
+    );
+    this.budgetMs = atLeast(
+      MIN_READ_SLICE_MS,
+      options.budgetMs,
+      DEFAULT_BUDGET_MS,
+    );
+    // A zero TTL is meaningful here — it means "do not cache" — so only
+    // negatives are floored.
+    this.cacheTtlMs = atLeast(0, options.cacheTtlMs, DEFAULT_CACHE_TTL_MS);
+  }
+
+  /**
+   * Summarise the caller's sessions.
+   *
+   * Keyed on a hash of the token rather than on the Backstage identity: kagent
+   * scopes its list by the `sub` of *this* token, so the token is exactly the
+   * scoping key. It also means a rotated token, or a sign-out, cannot read a
+   * previous holder's summary — the entry simply stops being addressable.
+   */
+  async read(userToken: string): Promise<SessionStatesResponse> {
+    const key = createHash('sha256').update(userToken).digest('hex');
+    const now = this.now();
+
+    for (const [candidate, entry] of this.cache) {
+      if (entry.expiresAt <= now) {
+        this.cache.delete(candidate);
+      }
+    }
+
+    const cached = this.cache.get(key);
+    if (cached) {
+      return cached.value;
+    }
+
+    // The promise goes in before it resolves, so two polls landing together —
+    // two browser tabs, or a re-render racing itself — share one fan-out rather
+    // than doubling it.
+    // Declared before the promise so the rejection handler can recognise its
+    // own entry. An unconditional `delete(key)` would let a slow failing pass
+    // evict a *newer, healthy* one: a pass can outlive `cacheTtlMs` when kagent
+    // is degraded, by which time its entry has been purged and a later request
+    // has installed and resolved a fresh one under the same key. Deleting then
+    // throws away a valid in-TTL summary and every subsequent poll starts
+    // another fan-out.
+    const entry: CacheEntry = {
+      expiresAt: now + this.cacheTtlMs,
+      value: this.compute(userToken).catch(error => {
+        // A failed pass must not be cached: the next request should retry rather
+        // than be handed the same rejection for the whole TTL.
+        if (this.cache.get(key) === entry) {
+          this.cache.delete(key);
+        }
+        throw error;
+      }),
+    };
+    const value = entry.value;
+    this.cache.set(key, entry);
+
+    while (this.cache.size > CACHE_MAX_ENTRIES) {
+      const oldest = this.cache.keys().next();
+      if (oldest.done) {
+        break;
+      }
+      this.cache.delete(oldest.value);
+    }
+
+    return value;
+  }
+
+  private async compute(userToken: string): Promise<SessionStatesResponse> {
+    const raw = await this.client.listSessions({ userToken });
+    const { sessions } = normalizeSessionList(raw, this.installation);
+
+    const listable = sessions.filter(isListableSession);
+    const { candidates, pastCap } = selectCandidates(listable, {
+      now: this.now(),
+      maxAgeMs: this.maxAgeMs,
+      maxSessions: this.maxSessions,
+    });
+    // Deliberately *not* `listable.length - candidates.length`: that would fold
+    // the routine `maxAgeMs` window exclusion in with genuine shortfalls, and a
+    // single session older than the window — the normal state of an account
+    // after a week — would make `skipped` permanently non-zero. The UI reads
+    // this as "we could not tell", so conflating them replaced an over-claim
+    // with a permanent under-claim and a retry that could never change it.
+    let skipped = pastCap;
+
+    const deadline = this.now() + this.budgetMs;
+    const states: SessionStateEntry[] = [];
+    const unreadable: string[] = [];
+    let failures = 0;
+
+    const queue = [...candidates];
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const session = queue.shift();
+        if (!session) {
+          return;
+        }
+        const remaining = deadline - this.now();
+        if (remaining < MIN_READ_SLICE_MS) {
+          // Everything still queued is unevaluated, including this one. Put it
+          // back so the count is taken in one place below.
+          queue.unshift(session);
+          return;
+        }
+        try {
+          const payload = await this.client.listSessionTasks(
+            session.sessionId,
+            { userToken },
+            // Clamped to what is left of the pass, not the flat per-read
+            // timeout. Checking the deadline only before dispatching would
+            // bound *dispatch* time: a worker starting a read at
+            // `budgetMs - 1ms` would still wait the full `taskTimeoutMs`, so
+            // the route could hold a request for `budgetMs + taskTimeoutMs`
+            // (13 s on the defaults) — past the frontend's 10 s poll, which is
+            // the pile-up `budgetMs` exists to prevent.
+            { timeoutMs: Math.min(this.taskTimeoutMs, remaining) },
+          );
+          const { tasks } = normalizeTaskList(payload);
+          const newest = readNewestTaskState(tasks);
+          states.push({
+            sessionId: session.sessionId,
+            state: newest?.state.raw ?? null,
+            ...(newest?.changedAt === undefined
+              ? {}
+              : { changedAt: newest.changedAt }),
+          });
+        } catch {
+          // Individually caught, always. A session deleted between the list and
+          // the read, or one installation hiccup, must cost that row and not the
+          // whole rail.
+          failures += 1;
+          unreadable.push(session.sessionId);
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(this.concurrency, queue.length) }, worker),
+    );
+    skipped += queue.length;
+
+    if (failures > 0) {
+      // `debug`, and a count rather than ids: the root logger forwards warn and
+      // error to Sentry, and a partial read is the expected outcome this route is
+      // built around, not a fault anyone should be paged about. The installation
+      // travels as structured metadata so it cannot fingerprint into one issue
+      // per installation.
+      this.logger.debug(
+        'Some kagent task reads failed while summarising session states',
+        { failed: failures, evaluated: candidates.length },
+      );
+    }
+
+    return { evaluatedAt: this.now(), states, unreadable, skipped };
+  }
+}
+
+/**
+ * A configured number, floored — or the default when nothing is configured.
+ *
+ * Absent means "use the default"; present but out of range means someone typed
+ * a value that would disable the route, and the nearest working one is a better
+ * answer than silence.
+ */
+function atLeast(
+  floor: number,
+  configured: number | undefined,
+  fallback: number,
+): number {
+  if (configured === undefined) {
+    return fallback;
+  }
+  return Math.max(floor, configured);
+}
+
+type Candidate = { sessionId: string; updatedAt?: string };
+
+/**
+ * Which sessions are worth a task read, newest activity first.
+ *
+ * Bounding happens here, before a single byte of conversation is fetched — the
+ * cap is the real protection, and the window only trims a long tail that a busy
+ * account would have hit the cap on anyway.
+ *
+ * A session with no usable `updated_at` is **kept**. `normalizeTimestamp` already
+ * rejects Go zero time and anything unparseable, so an absent value means "we
+ * cannot tell", and dropping those would silently hide a session on the strength
+ * of a field kagent need not populate. They sort last, where the cap can still
+ * reach them.
+ */
+export function selectCandidates(
+  sessions: Candidate[],
+  opts: { now: number; maxAgeMs: number; maxSessions: number },
+): { candidates: Candidate[]; pastCap: number } {
+  const withTime = sessions.map(session => ({
+    session,
+    at: session.updatedAt ? Date.parse(session.updatedAt) : undefined,
+  }));
+
+  const inWindow = withTime.filter(
+    ({ at }) => at === undefined || opts.now - at <= opts.maxAgeMs,
+  );
+
+  inWindow.sort((a, b) => {
+    if (a.at === undefined && b.at === undefined) return 0;
+    if (a.at === undefined) return 1;
+    if (b.at === undefined) return -1;
+    return b.at - a.at;
+  });
+
+  return {
+    candidates: inWindow
+      .slice(0, opts.maxSessions)
+      .map(({ session }) => session),
+    // Only the cap is a shortfall. Sessions outside the window are out of scope
+    // by policy — the same kind of decision as excluding subagent sessions — and
+    // counting them as "not checked" would be permanent on any account more than
+    // a week old, which makes the UI's "cannot tell" state unreachable-to-escape
+    // rather than informative.
+    pastCap: Math.max(0, inWindow.length - opts.maxSessions),
+  };
+}

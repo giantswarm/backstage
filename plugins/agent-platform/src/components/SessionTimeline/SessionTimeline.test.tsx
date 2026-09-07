@@ -3,15 +3,17 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { buildTimeline } from '../../lib/kagentTimeline';
-import { normalizeTaskList } from '../../lib/kagentSessionDetail';
+import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { SessionTimeline } from './SessionTimeline';
 
-import tasksV099 from '../../lib/__fixtures__/tasks.v0-9-9.json';
-import tasksApproval from '../../lib/__fixtures__/tasks.approval.json';
-import tasksAskUser from '../../lib/__fixtures__/tasks.ask-user.json';
-import tasksAskUserPending from '../../lib/__fixtures__/tasks.ask-user-pending.json';
-import tasksEmpty from '../../lib/__fixtures__/tasks.empty-no-data.json';
-import tasksFailed from '../../lib/__fixtures__/tasks.failed.json';
+import {
+  tasksApproval,
+  tasksAskUser,
+  tasksAskUserPending,
+  tasksEmptyNoData as tasksEmpty,
+  tasksFailed,
+  tasksV099,
+} from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 
 function timelineFor(fixture: unknown) {
   return buildTimeline(normalizeTaskList(fixture).tasks);

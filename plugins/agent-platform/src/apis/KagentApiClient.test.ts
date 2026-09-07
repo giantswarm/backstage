@@ -3,11 +3,13 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
-import realV0_9_9 from '../lib/__fixtures__/sessions.real-v0-9-9.json';
-import v0_9_9 from '../lib/__fixtures__/sessions.v0-9-9.json';
-import detailV0_9_9 from '../lib/__fixtures__/session-detail.v0-9-9.json';
-import tasksV0_9_9 from '../lib/__fixtures__/tasks.v0-9-9.json';
-import tasksMalformed from '../lib/__fixtures__/tasks.malformed.json';
+import {
+  sessionDetailV099 as detailV0_9_9,
+  sessionsRealV099 as realV0_9_9,
+  sessionsV099 as v0_9_9,
+  tasksMalformed,
+  tasksV099 as tasksV0_9_9,
+} from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 import { KagentApiClient } from './KagentApiClient';
 import { KAGENT_AUTH_HEADER } from './types';
 

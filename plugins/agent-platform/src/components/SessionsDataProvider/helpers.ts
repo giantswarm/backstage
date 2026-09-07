@@ -1,4 +1,4 @@
-import { KagentSession } from '../../lib/kagentSessions';
+import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
 
 /**
@@ -134,20 +134,6 @@ export function toSessionRow(
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
-}
-
-/**
- * Whether a session belongs in the list.
- *
- * A2A subagent sessions (`source === 'agent'`) are child threads spawned by a
- * parent agent, not work the user started, so they are excluded.
- *
- * Note this is forward-compatibility rather than active filtering: live kagent
- * v0.9.9 responses omit `source` entirely, so nothing is hidden today. An absent
- * or unrecognised value is listable — only an explicit `'agent'` is not.
- */
-export function isListableSession(session: KagentSession): boolean {
-  return session.source !== 'agent';
 }
 
 /** Sort key for a timestamp, placing unknown values last in either direction. */

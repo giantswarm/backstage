@@ -15,7 +15,12 @@ import {
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Avatar, Badge, Box, Flex, Text } from '@backstage/ui';
-import { makeStyles, Tooltip } from '@material-ui/core';
+import {
+  makeStyles,
+  Tooltip,
+  useMediaQuery,
+  useTheme,
+} from '@material-ui/core';
 import {
   DateComponent,
   useProvidePageHeaderActions,
@@ -29,17 +34,20 @@ import { useRenameSession } from '../../hooks/useRenameSession';
 import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { AvatarSize } from '../../lib/agentAvatar';
-import { AWAITING_INPUT_STATES } from '../../lib/kagentSessionState';
+import {
+  AWAITING_INPUT_STATES,
+  SessionStateEntry,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { sessionsRouteRef } from '../../routes';
-import { useAgents } from '../AgentsDataProvider';
 import { InstallationChip } from '../InstallationChip';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
+import { SessionSwitcherRail } from '../SessionSwitcherRail';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
-  buildAgentIndex,
   SESSION_TITLE_FALLBACK,
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
@@ -53,6 +61,17 @@ import {
 const AVATAR_SIZE: AvatarSize = 48;
 
 const useStyles = makeStyles(theme => ({
+  // Rail beside content. `alignItems` must stay at its `stretch` default — a
+  // `flex-start` here would content-size the rail and stop it sticking past its
+  // own height, which is the bug that makes a sticky flex child look broken.
+  page: {
+    display: 'flex',
+    gap: theme.spacing(3),
+  },
+  main: {
+    flex: 1,
+    minWidth: 0,
+  },
   // One readable column, like any chat surface: full-bleed prose is hard to
   // scan, and the conversation is what this page is for.
   column: {
@@ -144,6 +163,47 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 /**
+ * The page's outer frame: the switcher rail, then the conversation column.
+ *
+ * A separate component so every one of the page's exits gets it — loading,
+ * not-found, unreadable, and the real thing. A session that has been deleted is
+ * *precisely* when the switcher is wanted, and a rail that vanished on the error
+ * states would strand the reader on a dead page with only the back link.
+ *
+ * The rail is not rendered below `sm`, rather than hidden with CSS, so a narrow
+ * viewport does not pay for its two queries and their polling.
+ */
+function Shell({
+  installation,
+  sessionId,
+  currentSessionState,
+  children,
+}: {
+  installation: string;
+  sessionId: string;
+  /** Only the loaded path knows this; the early returns leave it undefined. */
+  currentSessionState?: SessionStateEntry;
+  children: ReactNode;
+}) {
+  const classes = useStyles();
+  const theme = useTheme();
+  const showRail = useMediaQuery(theme.breakpoints.up('sm'));
+
+  return (
+    <Content className={classes.page}>
+      {showRail && (
+        <SessionSwitcherRail
+          installation={installation}
+          currentSessionId={sessionId}
+          currentSessionState={currentSessionState}
+        />
+      )}
+      <div className={classes.main}>{children}</div>
+    </Content>
+  );
+}
+
+/**
  * One kagent session: what it was, how it ended, and what the agent did.
  *
  * The session can be **continued** through the composer at the bottom (see
@@ -176,6 +236,7 @@ export function SessionDetailPage() {
     detail,
     timeline,
     state,
+    stateChangedAt,
     isAgentWorking: agentIsWorking,
     pendingConfirmation,
     taskCount,
@@ -189,15 +250,7 @@ export function SessionDetailPage() {
 
   // The same join the list uses, so a session's agent is named identically in both
   // places — and falls back to the same lossy decode when no Agent CR matched.
-  const { rows: agentRows } = useAgents();
-  const agentRowsKey = agentRows
-    .map(agent => `${agent.id}@${agent.name}`)
-    .join('|');
-  const agentIndex = useMemo(
-    () => buildAgentIndex(agentRows),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [agentRowsKey],
-  );
+  const agentIndex = useAgentIndex();
 
   const row = useMemo(
     () => (detail ? toSessionRow(detail.session, agentIndex) : undefined),
@@ -404,17 +457,59 @@ export function SessionDetailPage() {
     }
   }, [streamTick]);
 
+  /**
+   * Whether to say the agent is working.
+   *
+   * Two signals, because neither covers a whole turn on its own:
+   *
+   * - the conversation's own verdict (`isAgentWorking` — active, not waiting on a
+   *   human, and moved recently), which only arrives once a poll has seen the new
+   *   task, up to 10 s after sending;
+   * - the in-flight send, which covers exactly that gap and cannot carry the rest:
+   *   the gateway cuts the request off well before a long turn ends (60 s on a
+   *   stock route), so it goes false mid-turn while the agent works on.
+   */
+  const showWorking = send.isSending || agentIsWorking;
+
+  /**
+   * What the rail should believe about *this* session.
+   *
+   * The rail's own source is a summary the backend caches for 15 s, so it is
+   * structurally behind this page — which polls the session's tasks directly and
+   * additionally knows about a send still in flight. Left to the summary, a
+   * message appended to a finished session would leave it filed under "Recently
+   * finished" while the agent is visibly working beside it.
+   *
+   * `showWorking` is the same signal the "Working…" indicator uses, so the rail
+   * and the page cannot disagree about whether the agent is busy. When nothing
+   * is in flight this still overrides, with the state and timestamp read from
+   * the same task — a fresher copy of what the summary would eventually say.
+   */
+  const currentSessionState = useMemo<SessionStateEntry | undefined>(() => {
+    if (showWorking) {
+      return { sessionId, state: 'working', changedAt: Date.now() };
+    }
+    if (!state) {
+      return undefined;
+    }
+    return {
+      sessionId,
+      state: state.raw,
+      ...(stateChangedAt === undefined ? {} : { changedAt: stateChangedAt }),
+    };
+  }, [showWorking, sessionId, state, stateChangedAt]);
+
   if (isLoading) {
     return (
-      <Content>
+      <Shell installation={installation} sessionId={sessionId}>
         <Progress aria-label="Loading session" />
-      </Content>
+      </Shell>
     );
   }
 
   if (isNotFound) {
     return (
-      <Content>
+      <Shell installation={installation} sessionId={sessionId}>
         <EmptyState
           missing="data"
           title="Session not found"
@@ -423,7 +518,7 @@ export function SessionDetailPage() {
           }. It may have been deleted, or belong to another user — kagent only lets you read your own sessions.`}
           action={<BackToSessions>Back to sessions</BackToSessions>}
         />
-      </Content>
+      </Shell>
     );
   }
 
@@ -441,7 +536,7 @@ export function SessionDetailPage() {
   // over a session that has a full conversation. Absent is not empty.
   if (!detail || !row || !hasConversation) {
     return (
-      <Content>
+      <Shell installation={installation} sessionId={sessionId}>
         <Flex direction="column" gap="3">
           <Alert
             status="danger"
@@ -453,23 +548,9 @@ export function SessionDetailPage() {
           />
           <BackToSessions>Back to sessions</BackToSessions>
         </Flex>
-      </Content>
+      </Shell>
     );
   }
-
-  /**
-   * Whether to say the agent is working.
-   *
-   * Two signals, because neither covers a whole turn on its own:
-   *
-   * - the conversation's own verdict (`isAgentWorking` — active, not waiting on a
-   *   human, and moved recently), which only arrives once a poll has seen the new
-   *   task, up to 10 s after sending;
-   * - the in-flight send, which covers exactly that gap and cannot carry the rest:
-   *   the gateway cuts the request off well before a long turn ends (60 s on a
-   *   stock route), so it goes false mid-turn while the agent works on.
-   */
-  const showWorking = send.isSending || agentIsWorking;
 
   /**
    * Why the composer is not offered, when it is not.
@@ -586,7 +667,11 @@ export function SessionDetailPage() {
     : undefined;
 
   return (
-    <Content>
+    <Shell
+      installation={installation}
+      sessionId={sessionId}
+      currentSessionState={currentSessionState}
+    >
       <Flex direction="column" gap="4" className={classes.column}>
         {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped
@@ -724,6 +809,6 @@ export function SessionDetailPage() {
         }}
         isUserScoped={isUserScoped}
       />
-    </Content>
+    </Shell>
   );
 }

@@ -1,15 +1,19 @@
 import { buildTimeline, TimelineItem } from './kagentTimeline';
-import { normalizeTaskList } from './kagentSessionDetail';
-import { A2aTaskWire } from './kagentTaskSchema';
+import {
+  A2aTaskWire,
+  normalizeTaskList,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
-import kagentPrefixed from './__fixtures__/tasks.v0-9-9.json';
-import adkPrefixed from './__fixtures__/tasks.adk-prefixed.json';
-import approval from './__fixtures__/tasks.approval.json';
-import askUserPending from './__fixtures__/tasks.ask-user-pending.json';
-import malformed from './__fixtures__/tasks.malformed.json';
-import emptyNoData from './__fixtures__/tasks.empty-no-data.json';
-import bareArray from './__fixtures__/tasks.bare-array.json';
-import failed from './__fixtures__/tasks.failed.json';
+import {
+  tasksAdkPrefixed as adkPrefixed,
+  tasksApproval as approval,
+  tasksAskUserPending as askUserPending,
+  tasksBareArray as bareArray,
+  tasksEmptyNoData as emptyNoData,
+  tasksFailed as failed,
+  tasksMalformed as malformed,
+  tasksV099 as kagentPrefixed,
+} from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 
 /** Parse a fixture the way the client does, then build its timeline. */
 function timelineFor(fixture: unknown): ReturnType<typeof buildTimeline> {

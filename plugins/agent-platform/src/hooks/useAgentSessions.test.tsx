@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
-import { KagentSession } from '../lib/kagentSessions';
+import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { useAgentSessions } from './useAgentSessions';
 
 jest.mock('./useKagentCapabilities', () => ({

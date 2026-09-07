@@ -1,7 +1,10 @@
 import { KagentInstallation } from '../lib/kagentInstallations';
-import { KagentSession } from '../lib/kagentSessions';
-import { KagentSessionDetail } from '../lib/kagentSessionDetail';
-import { A2aTaskWire } from '../lib/kagentTaskSchema';
+import {
+  A2aTaskWire,
+  KagentSession,
+  KagentSessionDetail,
+  SessionStatesResponse,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 export type { KagentInstallation } from '../lib/kagentInstallations';
 
@@ -68,6 +71,14 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
   ): Promise<A2aTaskWire[]>;
+
+  /**
+   * Derived state for this installation's sessions — what the switcher rail
+   * groups by. Computed by the backend, because a session's state lives in its
+   * whole conversation and reading every one of them in the browser is not
+   * affordable.
+   */
+  listSessionStates(installation: string): Promise<SessionStatesResponse>;
 
   /**
    * Start a session with one agent, and return its id.

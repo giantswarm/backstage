@@ -4,7 +4,7 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { kagentApiRef } from '../../apis';
 import { KagentApi, KagentInstallation } from '../../apis/types';
-import { KagentSession } from '../../lib/kagentSessions';
+import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { SessionsDataProvider, useSessions } from './SessionsDataProvider';
 
 // Mock the fleet plumbing so the test drives the fan-out, classification and

@@ -10,10 +10,21 @@ import realV0_9_9 from './__fixtures__/sessions.real-v0-9-9.json';
 import v0_10 from './__fixtures__/sessions.v0-10.json';
 import v0_9_9 from './__fixtures__/sessions.v0-9-9.json';
 import {
+  isListableSession,
+  KagentSession,
   normalizeSessionList,
   normalizeTimestamp,
   parseCreatedSessionId,
 } from './kagentSessions';
+
+function makeSession(overrides: Partial<KagentSession> = {}): KagentSession {
+  return {
+    id: 'gazelle/abc',
+    sessionId: 'abc',
+    installation: 'gazelle',
+    ...overrides,
+  };
+}
 
 describe('normalizeSessionList — version matrix', () => {
   // The contract this whole layer exists for: kagent ships no OpenAPI spec and
@@ -255,5 +266,21 @@ describe('parseCreatedSessionId', () => {
     expect(
       parseCreatedSessionId({ error: true, data: { id: 'abc123' } }),
     ).toBeUndefined();
+  });
+});
+
+describe('isListableSession', () => {
+  it('excludes A2A subagent sessions', () => {
+    expect(isListableSession(makeSession({ source: 'agent' }))).toBe(false);
+  });
+
+  it.each([
+    ['user', 'user'],
+    ['an unknown future value', 'scheduled'],
+    ['absent', undefined],
+  ])('includes a session whose source is %s', (_label, source) => {
+    // Absent is the real-world case: live v0.9.9 responses omit `source`, so this
+    // filter hides nothing today and must not start hiding rows.
+    expect(isListableSession(makeSession({ source }))).toBe(true);
   });
 });
