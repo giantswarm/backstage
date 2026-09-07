@@ -679,7 +679,7 @@ function commonLeadingSegments(names: string[][]): string[] {
   return common;
 }
 
-function byName(a: ToolSummary, b: ToolSummary): number {
+function compareByName(a: ToolSummary, b: ToolSummary): number {
   return a.name.localeCompare(b.name);
 }
 
@@ -728,7 +728,7 @@ export function groupWorkflows(
     groups.push({
       key: leading,
       label: common.length > 0 ? common.join('-') : leading,
-      workflows: [...members].sort(byName),
+      workflows: [...members].sort(compareByName),
     });
   }
   groups.sort((a, b) => a.label.localeCompare(b.label));
@@ -736,7 +736,7 @@ export function groupWorkflows(
     groups.push({
       key: OTHER_WORKFLOWS_KEY,
       label: 'Other workflows',
-      workflows: singles.sort(byName),
+      workflows: singles.sort(compareByName),
     });
   }
   return groups;

@@ -465,7 +465,7 @@ describe('groupWorkflows', () => {
       groups?.map(group => [
         group.key,
         group.label,
-        group.workflows.map(tool => tool.name),
+        group.workflows.map(entry => entry.name),
       ]),
     ).toEqual([
       [

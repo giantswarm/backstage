@@ -229,6 +229,14 @@ export function NewAgentToolsPage() {
   const isCatalogueLoading =
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
 
+  let resolvedListEmptyText =
+    'This toolset resolves to no tools for you right now.';
+  if (shape === 'none') {
+    resolvedListEmptyText = 'No tools, as chosen.';
+  } else if (state.toolset.length === 0) {
+    resolvedListEmptyText = 'Nothing selected yet.';
+  }
+
   const inventoryLine =
     trimmed === ''
       ? `${countNoun(inventory.servers, 'server')} · ${countNoun(
@@ -496,13 +504,7 @@ export function NewAgentToolsPage() {
                 <ToolsetResolutionList
                   resolution={resolution}
                   servers={servers}
-                  emptyText={
-                    shape === 'none'
-                      ? 'No tools, as chosen.'
-                      : state.toolset.length === 0
-                        ? 'Nothing selected yet.'
-                        : 'This toolset resolves to no tools for you right now.'
-                  }
+                  emptyText={resolvedListEmptyText}
                 />
               </Flex>
             </CardBody>
