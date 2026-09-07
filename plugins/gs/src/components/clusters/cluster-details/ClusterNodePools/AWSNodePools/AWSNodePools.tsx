@@ -39,7 +39,13 @@ export const AWSNodePools = () => {
         availabilityZones: awsMachinePool?.getAvailabilityZones(),
         minSize: awsMachinePool?.getMinSize(),
         maxSize: awsMachinePool?.getMaxSize(),
-        limits: karpenterMachinePool?.getLimits(),
+        // `undefined` means the CR was not read; `{}` means it sets no
+        // limits. `getLimits()` collapses both to `undefined`, so the
+        // distinction has to be made here, where we still know whether the CR
+        // itself came back.
+        limits: karpenterMachinePool
+          ? (karpenterMachinePool.getLimits() ?? {})
+          : undefined,
         phase: pool.getPhase(),
         created: pool.getCreatedTimestamp(),
       };

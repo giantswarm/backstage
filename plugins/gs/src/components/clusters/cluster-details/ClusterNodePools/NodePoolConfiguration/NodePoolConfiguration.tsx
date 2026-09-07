@@ -23,6 +23,9 @@ import { EnvelopeTable, type EnvelopeRow } from './EnvelopeTable';
 import { RunningSummary } from './RunningSummary';
 import { formatResourceName } from './resourceFormat';
 
+/** Resources `RunningSummary` draws a meter for. */
+const METERED_RESOURCES = ['cpu', 'memory'] as const;
+
 /** Dimensions we can compare against live data, in reading order. */
 const COMPARED_KEYS = [
   { key: CAPACITY_TYPE_KEY, label: 'Capacity type' },
@@ -114,12 +117,14 @@ export const NodePoolConfiguration = ({
       running: undefined,
     }));
 
-  // `||` would treat a pool scaled to zero as unknown and render no figure at
-  // all, rather than the accurate "0 nodes".
+  // `||` would treat a pool scaled to zero as unknown; coercing to 0 would do
+  // the reverse and report an unread count as an empty pool. A genuine zero
+  // still arrives as `status.replicas: 0`, and RunningSummary omits the figure
+  // entirely when both sources are absent.
   const providerIds = pool.getProviderIDs();
   const fallbackNodes = providerIds.length
     ? providerIds.length
-    : (pool.getReplicas() ?? 0);
+    : pool.getReplicas();
 
   const lifecycle: Fact[] = [];
   // consolidationPolicy is optional and consolidateAfter is required, so a pool
@@ -226,10 +231,15 @@ export const NodePoolConfiguration = ({
 
   // Limits are shown as meters in the summary when metrics supply them; fall
   // back to the CR's own values when they don't.
-  // The meters only cover resources Mimir reported. Falling back for *all*
-  // resources whenever any one was metered would hide the rest — a pool with a
-  // GPU limit and a metered CPU limit would drop the GPU limit entirely.
-  const meteredResources = new Set(Object.keys(status?.limits ?? {}));
+  // Karpenter emits a limit series per resource, but RunningSummary only draws
+  // meters for cpu and memory. Filtering the fallback against everything Mimir
+  // returned would drop, say, a GPU limit from both — so filter against the
+  // resources that are actually rendered.
+  const meteredResources = new Set<string>(
+    METERED_RESOURCES.filter(
+      resource => status?.limits?.[resource] !== undefined,
+    ),
+  );
   const unmeteredLimits = formatLimits(pool.getLimits()).filter(
     limit => !meteredResources.has(limit.resource),
   );
