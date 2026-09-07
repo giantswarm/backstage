@@ -1,6 +1,8 @@
 import {
   MCPServer,
   MCPServerSeverity,
+  TOOL_GROUP_ORDER,
+  ToolGroupKey,
   mcpServerStateSeverity,
   worstSeverity,
 } from './k8s';
@@ -8,43 +10,126 @@ import {
 /** Placeholder for a missing family / management-cluster label. */
 export const UNLABELED = '—';
 
+/**
+ * A server family: the MCPServer CRs sharing one `spec.family.name`, i.e. the
+ * same server federated across management clusters. Rendered as one row with
+ * per-cluster pills; the unit fleet coverage is measured for.
+ */
 export type StandardGroup = { family: string; servers: MCPServer[] };
 
 /**
- * Partition a muster instance's MCPServer CRs into the two server shapes the
- * UI renders: standard servers (a `spec.family.name` groups equivalent
- * instances federated across management clusters) and integration servers
- * (singular servers with no family -- customer integrations and shared
- * services). Family presence is the discriminator.
- *
- * Shared by the MCP-servers manager and the dashboard's coverage and
- * capability views so all of them group the fleet identically.
+ * One row of the MCP servers page: a family collapsed into a single row, or a
+ * singular server (no `spec.family`) standing on its own.
  */
-export function partitionServers(servers: MCPServer[]): {
-  standard: StandardGroup[];
-  integration: MCPServer[];
-} {
-  const standardByFamily = new Map<string, MCPServer[]>();
-  const integration: MCPServer[] = [];
+export type ServerRow =
+  | { kind: 'family'; family: string; servers: MCPServer[] }
+  | { kind: 'server'; server: MCPServer };
+
+/** The servers of one tool group, in the row shape the page renders. */
+export type ToolGroupPartition = {
+  group: ToolGroupKey;
+  /** Family rows first (alphabetical), then singular servers (alphabetical). */
+  rows: ServerRow[];
+};
+
+/**
+ * The tool group a family is rendered under. Its members should agree -- one
+ * chart stamps them all -- but while a label rollout is in flight across a
+ * fleet only some management clusters carry it. The family stays one row
+ * either way: the labelled members decide (the most common declared group,
+ * ties broken by display order), and a family no member has labelled yet is
+ * a Registered server like any other unlabelled CR.
+ */
+export function familyToolGroup(servers: MCPServer[]): ToolGroupKey {
+  const votes = new Map<ToolGroupKey, number>();
+  for (const server of servers) {
+    const group = server.getToolGroup();
+    if (group) {
+      votes.set(group, (votes.get(group) ?? 0) + 1);
+    }
+  }
+  if (votes.size === 0) {
+    return 'registered';
+  }
+  return [...votes.entries()].sort(
+    (a, b) =>
+      b[1] - a[1] ||
+      TOOL_GROUP_ORDER.indexOf(a[0]) - TOOL_GROUP_ORDER.indexOf(b[0]),
+  )[0][0];
+}
+
+/**
+ * Partition a muster instance's MCPServer CRs by tool group, in display order
+ * (Agent Platform, Infrastructure, Registered servers), each group in the row
+ * shape the UI renders: servers sharing a `spec.family.name` collapse into one
+ * family row (equivalent instances federated across management clusters,
+ * shown once with per-cluster health), singular servers are a row each.
+ *
+ * The tier comes from the tool-group label the shipping chart stamps on the
+ * CR ({@link MCPServer.getToolGroup}); nothing is inferred from names,
+ * provenance or topology. An installation whose charts carry no labels yet
+ * therefore lists everything under Registered servers -- one long list,
+ * never an empty or broken page. Every group is always present, possibly with
+ * no rows, so callers render a stable set of sections.
+ *
+ * Shared by the MCP-servers manager and the dashboard's capability view so
+ * both group the fleet identically; fleet coverage reads the family rows
+ * across all groups through {@link familyGroups}.
+ */
+export function partitionServers(servers: MCPServer[]): ToolGroupPartition[] {
+  const families = new Map<string, MCPServer[]>();
+  const singular: MCPServer[] = [];
 
   for (const server of servers) {
     const family = server.getFamily();
     if (family) {
-      standardByFamily.set(family, [
-        ...(standardByFamily.get(family) ?? []),
-        server,
-      ]);
+      families.set(family, [...(families.get(family) ?? []), server]);
     } else {
-      integration.push(server);
+      singular.push(server);
     }
   }
 
-  const standard = [...standardByFamily.entries()]
-    .map(([family, group]) => ({ family, servers: group }))
-    .sort((a, b) => a.family.localeCompare(b.family));
-  integration.sort((a, b) => a.getName().localeCompare(b.getName()));
+  const rowsByGroup = new Map<ToolGroupKey, ServerRow[]>(
+    TOOL_GROUP_ORDER.map(group => [group, []]),
+  );
+  const push = (group: ToolGroupKey, row: ServerRow) =>
+    rowsByGroup.get(group)!.push(row);
 
-  return { standard, integration };
+  for (const [family, members] of [...families.entries()].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    push(familyToolGroup(members), {
+      kind: 'family',
+      family,
+      servers: members,
+    });
+  }
+  for (const server of [...singular].sort((a, b) =>
+    a.getName().localeCompare(b.getName()),
+  )) {
+    push(server.getToolGroupKey(), { kind: 'server', server });
+  }
+
+  return TOOL_GROUP_ORDER.map(group => ({
+    group,
+    rows: rowsByGroup.get(group)!,
+  }));
+}
+
+/**
+ * Every family row across all tool groups, alphabetical -- the families fleet
+ * coverage is measured for. Federation is a row shape, not a tier: a family
+ * reaches across the fleet whichever group it is listed under.
+ */
+export function familyGroups(partition: ToolGroupPartition[]): StandardGroup[] {
+  return partition
+    .flatMap(group => group.rows)
+    .flatMap(row =>
+      row.kind === 'family'
+        ? [{ family: row.family, servers: row.servers }]
+        : [],
+    )
+    .sort((a, b) => a.family.localeCompare(b.family));
 }
 
 export type Representative = {

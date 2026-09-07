@@ -138,7 +138,7 @@ export interface StandardServerDisclosureProps {
  * says how many of the installation's clusters the family is deployed on.
  * Expanding lists every cluster (degraded first), names the clusters the
  * family is not deployed on, and reveals per-cluster diagnostics, the shared
- * config/auth chain, the tools, and GitOps provenance. Standard servers are
+ * config/auth chain, the tools, and GitOps provenance. Family servers are
  * Flux/Helm-managed, hence read-only here.
  */
 export function StandardServerDisclosure({

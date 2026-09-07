@@ -11,6 +11,83 @@ import {
 export const MANAGEMENT_CLUSTER_LABEL =
   'muster.giantswarm.io/management-cluster';
 
+/**
+ * Label the chart that ships an MCP server stamps on its CR to declare the
+ * server's tool group -- the Agent Platform's tiering of MCP servers. Two
+ * values; a CR without the label is a *Registered server* (anything an
+ * installation or a user registers, through GitOps or the portal's Register
+ * server flow, which sets no label by construction). The portal never infers
+ * the tier from names, provenance or topology.
+ */
+export const TOOL_GROUP_LABEL = 'agent-platform.giantswarm.io/tool-group';
+
+/** The two tool groups a chart can declare on an MCPServer CR. */
+export type ToolGroup = 'agent-platform' | 'infrastructure';
+
+/**
+ * The three tool groups every surface renders -- the declared two plus
+ * `registered` for servers without the label.
+ */
+export type ToolGroupKey = ToolGroup | 'registered';
+
+export interface ToolGroupInfo {
+  key: ToolGroupKey;
+  /** Display name, identical on the MCP servers page, the Tools step and the docs. */
+  title: string;
+  /** One line explaining what belongs in the group. */
+  description: string;
+}
+
+/**
+ * The tool groups with their display names and one-line descriptions -- the
+ * one vocabulary for the MCP servers page, the dashboard, the agent
+ * creation Tools step and the agent detail page. Render them in
+ * {@link TOOL_GROUP_ORDER}.
+ */
+export const TOOL_GROUPS: Readonly<Record<ToolGroupKey, ToolGroupInfo>> = {
+  'agent-platform': {
+    key: 'agent-platform',
+    title: 'Agent Platform',
+    description:
+      "The platform's own management surface: the managers for agents, models and clusters, and muster's core tools. Writes act as the caller.",
+  },
+  infrastructure: {
+    key: 'infrastructure',
+    title: 'Infrastructure',
+    description:
+      'Servers for the infrastructure the platform runs on -- the management clusters this installation federates, as families with one instance per cluster.',
+  },
+  registered: {
+    key: 'registered',
+    title: 'Registered servers',
+    description:
+      'Everything this installation or its users registered -- integrations and shared services, through GitOps or the Register server flow.',
+  },
+};
+
+/** The order the tool groups appear in on every surface. */
+export const TOOL_GROUP_ORDER: readonly ToolGroupKey[] = [
+  'agent-platform',
+  'infrastructure',
+  'registered',
+];
+
+const DECLARED_TOOL_GROUPS: readonly ToolGroup[] = [
+  'agent-platform',
+  'infrastructure',
+];
+
+/**
+ * Narrow a label value to a declared tool group. Anything else -- absent,
+ * empty, a typo in a chart's values -- reads as undefined, so a mislabelled
+ * server lands in *Registered servers* instead of breaking the page.
+ */
+export function parseToolGroup(
+  value: string | undefined,
+): ToolGroup | undefined {
+  return DECLARED_TOOL_GROUPS.find(group => group === value);
+}
+
 /** Infrastructure state reported in `.status.state` (mirrors muster CRD enum). */
 export type MCPServerState =
   | 'Running'
@@ -119,6 +196,26 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
 
   getManagementCluster() {
     return this.findLabel(MANAGEMENT_CLUSTER_LABEL);
+  }
+
+  /**
+   * The tool group the shipping chart declared through
+   * {@link TOOL_GROUP_LABEL}: `agent-platform` for the platform's own
+   * managers, `infrastructure` for the servers of the management clusters
+   * underneath it, undefined for a server without (or with an unknown) label
+   * -- a *Registered server*. Orientation and preset membership, not
+   * authorization.
+   */
+  getToolGroup(): ToolGroup | undefined {
+    return parseToolGroup(this.findLabel(TOOL_GROUP_LABEL));
+  }
+
+  /**
+   * The tool group this server is rendered under: its declared group, or
+   * `registered` when it declares none.
+   */
+  getToolGroupKey(): ToolGroupKey {
+    return this.getToolGroup() ?? 'registered';
   }
 
   getType() {
