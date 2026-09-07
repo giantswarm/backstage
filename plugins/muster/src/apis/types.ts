@@ -285,6 +285,44 @@ export interface ToolSummary {
   score?: number;
   labels?: Record<string, string>;
   inputSchema?: JsonSchema;
+  /**
+   * The aggregated MCPServer this tool comes from (its CR / definition name;
+   * the family name for a federated family). Omitted for muster's own core
+   * tools and for workflows. Reported since muster's toolset release
+   * (muster#1169); absent from older aggregators, where the caller falls back
+   * to the `x_<server>_` name prefix.
+   */
+  server?: string;
+  /** What kind of catalogue entry this is; absent from older aggregators. */
+  kind?: ToolKind;
+  /**
+   * The downstream server's MCP tool annotations, forwarded verbatim, plus the
+   * derived `readOnlyHint` on a workflow whose every step tool is read-only.
+   * Omitted when the server declares none.
+   */
+  annotations?: ToolAnnotations;
+}
+
+/** `tool` = an aggregated server's tool, `workflow` = `workflow_<name>`, `core` = `core_*`. */
+export type ToolKind = 'tool' | 'workflow' | 'core';
+
+/** MCP tool annotations (spec `ToolAnnotations`), as muster forwards them. */
+export interface ToolAnnotations {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
+/**
+ * One toolset preset muster knows: a built-in (`read-only`, `none`, `full`) or
+ * one from its `toolsetPresets` configuration. Returned by `filter_tools`
+ * when asked (`include_presets`) or when a `toolset` was given.
+ */
+export interface ToolsetPreset {
+  name: string;
+  description?: string;
+  built_in?: boolean;
 }
 
 export interface FilterToolsResponse {
@@ -292,6 +330,17 @@ export interface FilterToolsResponse {
   filtered_count: number;
   truncated: boolean;
   tools: ToolSummary[] | null;
+  /**
+   * The toolset the response was resolved within, echoed back when the request
+   * gave one. Its absence after sending a `toolset` is how the portal tells an
+   * aggregator that does not evaluate toolsets yet (it ignores the argument and
+   * answers the unscoped catalogue) from one that does.
+   */
+  toolset?: string[];
+  /** Selectors of the requested toolset that match nothing for this caller. */
+  toolset_unmatched?: string[];
+  /** The presets muster knows, when `include_presets` or a `toolset` was given. */
+  presets?: ToolsetPreset[];
 }
 
 export interface FilterToolsOptions {
@@ -301,6 +350,15 @@ export interface FilterToolsOptions {
   includeSchema?: boolean;
   limit?: number;
   offset?: number;
+  /**
+   * Resolve within this toolset (inline selectors: `preset:<name>`,
+   * `server:<name>`, `workflow:<name>`, `tool:<name>`) instead of the whole
+   * per-session catalogue. An unknown preset is a request error carrying
+   * muster's message.
+   */
+  toolset?: string[];
+  /** Ask muster to list the presets it knows in the response. */
+  includePresets?: boolean;
 }
 
 /**
@@ -382,6 +440,10 @@ export interface ToolDetail {
   name: string;
   description?: string;
   inputSchema?: JsonSchema;
+  /** See {@link ToolSummary.server}; absent from older aggregators. */
+  server?: string;
+  kind?: ToolKind;
+  annotations?: ToolAnnotations;
 }
 
 /** A server the aggregator cannot use until the caller authenticates. */

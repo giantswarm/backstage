@@ -419,3 +419,35 @@ describe('MusterApiClient token selection for derived installations', () => {
     expect(t.callsTo('/installations')).toHaveLength(0);
   });
 });
+
+describe('MusterApiClient.filterTools toolset arguments', () => {
+  it('sends one toolset= entry per selector, in order, plus include_presets', async () => {
+    const t = setup();
+
+    await t.client.filterTools({
+      installation: 'gazelle',
+      toolset: ['preset:read-only', 'workflow:incident-triage'],
+      includePresets: true,
+      limit: 1000,
+    });
+
+    const url = new URL(String(t.fetchMock.mock.calls[0][0]));
+    expect(url.pathname).toBe('/api/muster/tools/filter');
+    expect(url.searchParams.getAll('toolset')).toEqual([
+      'preset:read-only',
+      'workflow:incident-triage',
+    ]);
+    expect(url.searchParams.get('include_presets')).toBe('true');
+    expect(url.searchParams.get('limit')).toBe('1000');
+  });
+
+  it('sends neither parameter when the caller gives no toolset', async () => {
+    const t = setup();
+
+    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+
+    const url = new URL(String(t.fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.has('toolset')).toBe(false);
+    expect(url.searchParams.has('include_presets')).toBe(false);
+  });
+});

@@ -509,6 +509,74 @@ describe('createRouter', () => {
     );
   });
 
+  it('passes a repeated toolset= parameter through as a selector list, in order', async () => {
+    filterTools.mockResolvedValue({
+      tools: [],
+      toolset: ['preset:read-only', 'workflow:incident-triage'],
+      toolset_unmatched: ['workflow:incident-triage'],
+      presets: [{ name: 'read-only', built_in: true }],
+    });
+
+    const response = await request(app).get(
+      '/tools/filter?toolset=preset:read-only&toolset=workflow:incident-triage&include_presets=true&limit=1000',
+    );
+
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith(
+      {
+        toolset: ['preset:read-only', 'workflow:incident-triage'],
+        include_presets: true,
+        limit: 1000,
+      },
+      {},
+    );
+    // muster's toolset fields travel back untouched.
+    expect(response.body.toolset_unmatched).toEqual([
+      'workflow:incident-triage',
+    ]);
+    expect(response.body.presets).toEqual([
+      { name: 'read-only', built_in: true },
+    ]);
+  });
+
+  it('accepts a single toolset= parameter as a one-selector list', async () => {
+    filterTools.mockResolvedValue({ tools: [], toolset: ['preset:none'] });
+
+    const response = await request(app).get('/tools/filter?toolset=preset:none');
+
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith(
+      { toolset: ['preset:none'] },
+      {},
+    );
+  });
+
+  it('does not read bracket syntax as a toolset (the simple query parser leaves it unexpanded)', async () => {
+    filterTools.mockResolvedValue({ tools: [] });
+
+    const response = await request(app).get(
+      '/tools/filter?toolset[x]=preset:none',
+    );
+
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith({}, {});
+  });
+
+  it("surfaces muster's unknown-preset refusal as the request error", async () => {
+    // gs-node's client turns an `isError` meta-tool result into a thrown Error
+    // carrying muster's text; the frontend shows that text verbatim.
+    filterTools.mockRejectedValue(
+      new Error(
+        'toolset [preset:foo] names unknown preset "foo"; known presets: read-only, none, full',
+      ),
+    );
+
+    const response = await request(app).get('/tools/filter?toolset=preset:foo');
+
+    expect(response.status).toBe(500);
+    expect(response.body.error.message).toContain('unknown preset "foo"');
+  });
+
   it('filters resources by server and pattern', async () => {
     filterResources.mockResolvedValue({ resources: [] });
 
