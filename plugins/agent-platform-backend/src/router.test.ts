@@ -440,6 +440,160 @@ describe('createRouter', () => {
     });
   });
 
+  describe('GET /kagent/session-usage', () => {
+    const sessionWire = (id: string, updatedAt = '2026-09-04T11:00:00Z') => ({
+      id,
+      name: `session ${id}`,
+      user_id: 'marian@giantswarm.io',
+      created_at: '2026-09-01T10:00:00Z',
+      updated_at: updatedAt,
+      agent_id: 'kagent__NS__sre_agent',
+    });
+    const usageTasksWire = () => ({
+      error: false,
+      data: [
+        {
+          id: 't1',
+          contextId: 'c1',
+          kind: 'task',
+          status: { state: 'completed', timestamp: '2026-09-04T11:00:00Z' },
+          history: [
+            {
+              kind: 'message',
+              role: 'agent',
+              messageId: 'm1',
+              metadata: {
+                kagent_usage_metadata: {
+                  promptTokenCount: 100,
+                  candidatesTokenCount: 10,
+                },
+              },
+              parts: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    it('requires the installation query parameter', async () => {
+      const response = await request(app)
+        .get('/kagent/session-usage')
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain('installation');
+      expect(listSessions).not.toHaveBeenCalled();
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .get('/kagent/session-usage')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(listSessions).not.toHaveBeenCalled();
+    });
+
+    it('answers with a usage summary and no-store', async () => {
+      listSessions.mockResolvedValue({
+        error: false,
+        data: [sessionWire('a')],
+      });
+      listSessionTasks.mockResolvedValue(usageTasksWire());
+
+      const response = await request(app)
+        .get('/kagent/session-usage')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body.totals).toMatchObject({
+        sessions: 1,
+        turns: 1,
+        inputTokens: 100,
+        outputTokens: 10,
+      });
+      expect(response.body.windowDays).toBeGreaterThan(0);
+      // Dense: every UTC day in the window, so a chart means what it shows.
+      expect(response.body.daily).toHaveLength(response.body.windowDays + 1);
+    });
+
+    it('still answers 200 when every task read fails', async () => {
+      // The guard that matters most. A partial read is the expected outcome
+      // this route is built around, and MiddlewareFactory forwards any >=500 to
+      // Sentry regardless of our own log level.
+      listSessions.mockResolvedValue({
+        error: false,
+        data: [sessionWire('a')],
+      });
+      listSessionTasks.mockRejectedValue(
+        new Error('kagent is having a moment'),
+      );
+
+      const response = await request(app)
+        .get('/kagent/session-usage')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body.totals.sessions).toBe(0);
+      expect(response.body.unreadable).toEqual(['a']);
+    });
+
+    it('reports a missing session list as 404', async () => {
+      listSessions.mockRejectedValue(new NotFoundError('no kagent here'));
+
+      const response = await request(app)
+        .get('/kagent/session-usage')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
+    });
+
+    it('ignores client-supplied tuning parameters', async () => {
+      // The fan-out bound is a cost lever; the browser must not be able to
+      // widen it.
+      listSessions.mockResolvedValue({
+        error: false,
+        data: [sessionWire('a')],
+      });
+      listSessionTasks.mockResolvedValue(usageTasksWire());
+
+      const response = await request(app)
+        .get('/kagent/session-usage')
+        .query({
+          installation: 'gazelle',
+          windowDays: '365',
+          maxSessions: '1000',
+        })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body.windowDays).toBe(30);
+    });
+
+    it('does not collide with a session whose id is \u201csession-usage\u201d', async () => {
+      // Why this route is a sibling of /kagent/sessions rather than a child.
+      getSession.mockResolvedValue({
+        error: false,
+        data: { id: 'session-usage' },
+      });
+
+      const response = await request(app)
+        .get('/kagent/sessions/session-usage')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(getSession).toHaveBeenCalledWith(
+        'session-usage',
+        expect.anything(),
+      );
+    });
+  });
+
   describe('GET /kagent/sessions', () => {
     it('requires the installation query parameter', async () => {
       const response = await request(app)

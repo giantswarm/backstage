@@ -24,6 +24,7 @@ import {
 } from './KagentClient';
 import { ModelManagerClient } from './ModelManagerClient';
 import { SessionStateReader } from './sessionStates';
+import { SessionUsageReader } from './sessionUsage';
 import { createModelManagerRouter } from './modelManagerRouter';
 
 export interface RouterOptions {
@@ -220,6 +221,41 @@ export async function createRouter(
     );
   }
 
+  // The usage summariser, same shape and its own bounds. Its numbers differ
+  // from the session-states ones on purpose -- see the comments on each default
+  // in ./sessionUsage -- because that pass is sized to a 10 s poll and this one
+  // is read on a tab visit.
+  const sessionUsageOptions = {
+    windowDays: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionUsage.windowDays',
+    ),
+    maxSessions: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionUsage.maxSessions',
+    ),
+    maxAgeMs: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionUsage.maxAgeMs',
+    ),
+    concurrency: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionUsage.concurrency',
+    ),
+    taskTimeoutMs: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionUsage.taskTimeoutMs',
+    ),
+    budgetMs: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionUsage.budgetMs',
+    ),
+    cacheTtlMs: config.getOptionalNumber(
+      'agentPlatform.kagent.sessionUsage.cacheTtlMs',
+    ),
+  };
+  const sessionUsageReaders = new Map<string, SessionUsageReader>();
+  for (const [name, client] of clients) {
+    sessionUsageReaders.set(
+      name,
+      new SessionUsageReader(client, logger, name, sessionUsageOptions),
+    );
+  }
+
   if (installations.size === 0) {
     logger.info(
       'No kagent installations resolved (needs gs.installations entries with a baseDomain, or an explicit agentPlatform.kagent.installations block); kagent endpoints will return 503.',
@@ -291,6 +327,7 @@ export async function createRouter(
     config: KagentInstallationConfig;
     client: KagentClient;
     sessionStates: SessionStateReader;
+    sessionUsage: SessionUsageReader;
   } => {
     if (clients.size === 0) {
       // Kept as a 503 — unlike "kagent is absent on this installation", nothing
@@ -320,7 +357,8 @@ export async function createRouter(
     }
     // Present for every entry in `clients` by construction.
     const sessionStates = sessionStateReaders.get(name)!;
-    return { config: installationConfig, client, sessionStates };
+    const sessionUsage = sessionUsageReaders.get(name)!;
+    return { config: installationConfig, client, sessionStates, sessionUsage };
   };
 
   /**
@@ -391,6 +429,41 @@ export async function createRouter(
       readUserToken(req, { required: true })!,
     );
     // Derived from one user's session list; never store it anywhere shared.
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  });
+
+  /**
+   * The caller's token, turn and tool usage on one installation, over a fixed
+   * window — what the Usage tab reports.
+   *
+   * **A sibling of `/kagent/sessions`, not a child**, for the same reason the
+   * states route is: `/kagent/sessions/usage` would sit under the `:sessionId`
+   * matcher below and resolve only because it is registered first, and a
+   * session literally named `usage` is more plausible than one named
+   * `session-states`.
+   *
+   * **This can only ever be personal.** kagent's `GET /api/sessions` is
+   * `WHERE user_id = <sub>` with no pagination, no date filter and no
+   * cross-user endpoint at all, so no team or fleet view grows out of this
+   * route — that needs a different data source, and the page's copy must not
+   * imply otherwise.
+   *
+   * **No tuning parameters.** The fan-out bound is a cost lever, so it lives in
+   * config, never in the query string.
+   *
+   * Answers 200 even when every task read failed, reporting them in
+   * `unreadable` with zeroed totals. `MiddlewareFactory.error()` logs any status
+   * >= 500 at `error` and the root logger forwards that to Sentry, so a 5xx here
+   * would page someone for kagent having a moment.
+   */
+  router.get('/kagent/session-usage', async (req, res) => {
+    const { sessionUsage } = resolveInstallation(req);
+    const result = await sessionUsage.read(
+      readUserToken(req, { required: true })!,
+    );
+    // A per-user breakdown of what someone ran and which tools they reached
+    // for; never store it anywhere shared.
     res.setHeader('Cache-Control', 'no-store');
     res.json(result);
   });
