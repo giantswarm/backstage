@@ -373,3 +373,121 @@ describe('SessionStateReader', () => {
     });
   });
 });
+
+describe('SessionStateReader — bounds that must hold', () => {
+  const listSessions = jest.fn();
+  const listSessionTasks = jest.fn();
+  const client = { listSessions, listSessionTasks } as unknown as KagentClient;
+  const logger = mockServices.logger.mock();
+
+  function reader(options = {}, now: () => number = () => NOW) {
+    return new SessionStateReader(client, logger, 'gazelle', options, now);
+  }
+
+  beforeEach(() => {
+    listSessions.mockReset();
+    listSessionTasks.mockReset();
+  });
+
+  it('clamps a read to what is left of the pass, not the flat timeout', async () => {
+    // Otherwise `budgetMs` bounds dispatch rather than response: a read
+    // starting just inside the budget would still wait the full
+    // `taskTimeoutMs`, holding the request past the frontend's 10s poll.
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(wireTasks('completed'));
+    let clock = NOW;
+
+    await reader(
+      { budgetMs: 2_000, taskTimeoutMs: 5_000, concurrency: 1 },
+      () => clock,
+    ).read('tok');
+
+    // 2s of budget remained, so the read may not be given the 5s default.
+    expect(listSessionTasks).toHaveBeenCalledWith('a', expect.anything(), {
+      timeoutMs: 2_000,
+    });
+  });
+
+  it('keeps the flat timeout while there is budget to spare', async () => {
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(wireTasks('completed'));
+
+    await reader({ budgetMs: 8_000, taskTimeoutMs: 5_000 }).read('tok');
+
+    expect(listSessionTasks).toHaveBeenCalledWith('a', expect.anything(), {
+      timeoutMs: 5_000,
+    });
+  });
+
+  it('a slow failing pass does not evict the healthy entry that replaced it', async () => {
+    // Pass A is slow and fails; by the time it rejects its entry has expired
+    // and pass B has installed a valid one. Deleting unconditionally would
+    // throw B away and send every later poll into another fan-out.
+    let clock = NOW;
+    let failSlowly: (reason: Error) => void = () => {};
+    listSessions
+      .mockImplementationOnce(
+        () => new Promise((_, reject) => (failSlowly = reject)),
+      )
+      .mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(wireTasks('working'));
+
+    const subject = reader({ cacheTtlMs: 15_000 }, () => clock);
+
+    const slow = subject.read('tok');
+    const slowSettled = slow.catch(() => 'rejected');
+
+    // A's entry expires, so a later request installs and resolves its own.
+    clock += 20_000;
+    const healthy = await subject.read('tok');
+    expect(healthy.states).toHaveLength(1);
+
+    // Now A finally fails.
+    failSlowly(new Error('kagent went away'));
+    expect(await slowSettled).toBe('rejected');
+
+    // B must still be cached: another read inside its TTL does no more work.
+    const callsBefore = listSessions.mock.calls.length;
+    const again = await subject.read('tok');
+    expect(again.states).toHaveLength(1);
+    expect(listSessions.mock.calls.length).toBe(callsBefore);
+  });
+
+  it.each([
+    ['concurrency', { concurrency: 0 }],
+    ['maxSessions', { maxSessions: 0 }],
+    ['budgetMs', { budgetMs: 0 }],
+  ])(
+    'floors a configured %s of 0 rather than disabling the route',
+    async (_label, options) => {
+      // `??` only substitutes for undefined, so a configured 0 arrives intact.
+      // Left alone it answers 200 with no states and everything skipped — which
+      // the rail cannot distinguish from a healthy idle fleet without the
+      // `skipped` count it now reads.
+      listSessions.mockResolvedValue({
+        error: false,
+        data: [wireSession('a')],
+      });
+      listSessionTasks.mockResolvedValue(wireTasks('working'));
+
+      const result = await reader(options).read('tok');
+
+      expect(listSessionTasks).toHaveBeenCalled();
+      expect(result.states).toEqual([
+        expect.objectContaining({ sessionId: 'a', state: 'working' }),
+      ]);
+      expect(result.skipped).toBe(0);
+    },
+  );
+
+  it('still honours a deliberate zero cache TTL', async () => {
+    // Unlike the others, 0 is meaningful here: it means "do not cache".
+    listSessions.mockResolvedValue({ error: false, data: [] });
+    const subject = reader({ cacheTtlMs: 0 });
+
+    await subject.read('tok');
+    await subject.read('tok');
+
+    expect(listSessions).toHaveBeenCalledTimes(2);
+  });
+});

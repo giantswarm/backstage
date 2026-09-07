@@ -1119,6 +1119,21 @@ and a 280 px column cannot carry one legibly.
 A failed _refetch_ keeps the previous states rather than collapsing to the notice,
 so one bad poll does not blank the rail.
 
+**"All caught up." is a claim, and it is only made when the summary was
+complete.** The route reports `unreadable` (asked and failed) and `skipped`
+(never asked — past the window, the cap, or the pass budget) precisely so the
+rail can tell "nothing is active" from "we cannot tell". With either non-zero and
+nothing to show, the rail says _"Couldn't tell what's active."_ with the counts
+and a Retry; with groups to show, it footnotes the shortfall beneath them; and
+the header's count renders as `N+` rather than `N`, because it is then a floor
+and not a total.
+
+Both cases are reachable and neither is exotic. Every task read failing answers
+**200** with no states, so `isError` is false and the reassuring copy would call
+an unreachable kagent an idle fleet. And a session blocked on a human for days
+has an old `updated_at`, which makes it the _first_ to fall past `maxSessions` on
+a busy account — the exact session the WAITING group exists for.
+
 #### Collapsing
 
 A `ButtonIcon` in the rail header toggles it, remembered under

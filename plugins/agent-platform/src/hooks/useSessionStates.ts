@@ -9,6 +9,24 @@ import { ACTIVE_REFETCH_INTERVAL_MS } from '../lib/kagentSessionPolling';
 export type SessionStatesView = {
   /** Derived state per session id. Absent means the summary did not evaluate it. */
   states: Map<string, SessionStateEntry>;
+  /**
+   * How many sessions the backend tried to read and could not.
+   *
+   * Their state is genuinely unknown, which is **not** the same as terminal —
+   * so a rail with none of its own states must not claim the fleet is idle. See
+   * the empty-state handling in `SessionSwitcherRail`.
+   */
+  unreadableCount: number;
+  /**
+   * How many listable sessions were never evaluated at all — past the activity
+   * window, past the cap, or cut off by the pass budget.
+   *
+   * A session blocked on a human for days has an old `updated_at`, so on a busy
+   * account it is exactly the kind that falls past the cap. Counting it here is
+   * what lets the rail admit the list is incomplete instead of implying it is
+   * exhaustive.
+   */
+  skippedCount: number;
   isLoading: boolean;
   isError: boolean;
   refetch: () => void;
@@ -50,6 +68,8 @@ export function useSessionStates(installation: string): SessionStatesView {
 
   return {
     states,
+    unreadableCount: query.data?.unreadable.length ?? 0,
+    skippedCount: query.data?.skipped ?? 0,
     // `isLoading` only on the first load. A failed *refetch* keeps the previous
     // states, so the rail goes on rendering what it last knew rather than
     // collapsing to a notice for one bad poll.

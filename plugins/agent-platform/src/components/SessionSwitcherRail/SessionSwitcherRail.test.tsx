@@ -74,6 +74,9 @@ function view(
   return {
     groups,
     activeCount: 3,
+    unreadableCount: 0,
+    skippedCount: 0,
+    isPartial: false,
     isLoading: false,
     isStatesLoading: false,
     isError: false,
@@ -214,6 +217,27 @@ describe('SessionSwitcherRail', () => {
       expect(screen.getByText('1')).toBeInTheDocument();
     });
 
+    it('only claims aria-controls while its target exists', async () => {
+      // Collapsed, the controlled scroller is not rendered, so a dangling
+      // reference would break the relationship in exactly the state
+      // `aria-expanded="false"` is there to describe.
+      await renderRail();
+      const expandedToggle = screen.getByRole('button', {
+        name: 'Collapse session switcher',
+      });
+      const controls = expandedToggle.getAttribute('aria-controls');
+      expect(controls).toBeTruthy();
+      expect(document.getElementById(controls!)).toBeInTheDocument();
+
+      await userEvent.click(expandedToggle);
+
+      const collapsedToggle = screen.getByRole('button', {
+        name: 'Expand session switcher',
+      });
+      expect(collapsedToggle).not.toHaveAttribute('aria-controls');
+      expect(collapsedToggle).toHaveAttribute('aria-expanded', 'false');
+    });
+
     it('remembers the choice across renders', async () => {
       const { unmount } = await renderRail();
       await userEvent.click(
@@ -241,5 +265,100 @@ describe('SessionSwitcherRail', () => {
       expect(screen.getByText('Active sessions')).toBeInTheDocument();
       expect(screen.getAllByRole('link')).toHaveLength(3);
     });
+  });
+});
+
+describe('SessionSwitcherRail — an incomplete summary', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('does not claim "All caught up." when every session was unreadable', async () => {
+    // The route answers 200 with no states and every id in `unreadable` when
+    // kagent cannot be read. Reporting that as an empty fleet would hide
+    // sessions sitting in input-required, waiting on the operator.
+    const refetch = jest.fn();
+    mockUseSessionSwitcher.mockReturnValue(
+      view({
+        groups: [],
+        activeCount: 0,
+        unreadableCount: 4,
+        isPartial: true,
+        refetch,
+      }),
+    );
+    await renderRail();
+
+    expect(screen.queryByText('All caught up.')).toBeNull();
+    expect(
+      screen.getByText('Couldn’t tell what’s active.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('4 couldn’t be read.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it('does not claim "All caught up." when sessions fell past the cap', async () => {
+    // A session blocked on a human for days has an old `updated_at`, so it is
+    // the first to fall past `maxSessions` on a busy account — the exact case
+    // the WAITING group exists for.
+    mockUseSessionSwitcher.mockReturnValue(
+      view({ groups: [], activeCount: 0, skippedCount: 7, isPartial: true }),
+    );
+    await renderRail();
+
+    expect(screen.queryByText('All caught up.')).toBeNull();
+    expect(screen.getByText('7 not checked.')).toBeInTheDocument();
+  });
+
+  it('names both reasons when both apply', async () => {
+    mockUseSessionSwitcher.mockReturnValue(
+      view({
+        groups: [],
+        activeCount: 0,
+        unreadableCount: 2,
+        skippedCount: 5,
+        isPartial: true,
+      }),
+    );
+    await renderRail();
+
+    expect(
+      screen.getByText('2 couldn’t be read, 5 not checked.'),
+    ).toBeInTheDocument();
+  });
+
+  it('still says "All caught up." when the summary was complete', async () => {
+    mockUseSessionSwitcher.mockReturnValue(
+      view({ groups: [], activeCount: 0 }),
+    );
+    await renderRail();
+
+    expect(screen.getByText('All caught up.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.getByText('0 non-terminal')).toBeInTheDocument();
+  });
+
+  it('footnotes the shortfall beneath the groups it did read', async () => {
+    mockUseSessionSwitcher.mockReturnValue(
+      view({ unreadableCount: 1, skippedCount: 12, isPartial: true }),
+    );
+    await renderRail();
+
+    expect(screen.getAllByRole('link')).toHaveLength(3);
+    expect(
+      screen.getByText('1 couldn’t be read, 12 not checked.'),
+    ).toBeInTheDocument();
+  });
+
+  it('marks the header count as a floor when the summary is incomplete', async () => {
+    // A bare "3 non-terminal" would state a total we do not know.
+    mockUseSessionSwitcher.mockReturnValue(
+      view({ skippedCount: 4, isPartial: true }),
+    );
+    await renderRail();
+
+    expect(screen.getByText('3+ non-terminal')).toBeInTheDocument();
   });
 });

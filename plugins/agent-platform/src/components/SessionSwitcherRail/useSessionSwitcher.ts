@@ -24,6 +24,17 @@ const AGE_TICK_MS = 30_000;
 export type SessionSwitcherView = {
   groups: RailGroup[];
   activeCount: number;
+  /**
+   * Sessions the backend could not read, plus ones it never evaluated.
+   *
+   * Together these are why the rail must not present an empty result as "All
+   * caught up.": with either non-zero, the honest claim is that it cannot tell,
+   * and `activeCount` is a floor rather than a total.
+   */
+  unreadableCount: number;
+  skippedCount: number;
+  /** True when the summary is incomplete, so what the rail shows is a subset. */
+  isPartial: boolean;
   /** The session list has not arrived yet. */
   isLoading: boolean;
   /** The list is here but the states are not, so nothing can be grouped yet. */
@@ -76,6 +87,8 @@ export function useSessionSwitcher(
 
   const {
     states,
+    unreadableCount,
+    skippedCount,
     isLoading: isStatesLoading,
     isError: isStatesError,
     refetch: refetchStates,
@@ -107,6 +120,9 @@ export function useSessionSwitcher(
   return {
     groups,
     activeCount: countSessions(groups),
+    unreadableCount,
+    skippedCount,
+    isPartial: unreadableCount > 0 || skippedCount > 0,
     isLoading: sessions.isLoading,
     isStatesLoading,
     isError: (sessions.isError && sessions.data === undefined) || isStatesError,

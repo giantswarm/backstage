@@ -117,12 +117,25 @@ export class SessionStateReader {
     options: SessionStateOptions = {},
     private readonly now: () => number = Date.now,
   ) {
-    this.maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
-    this.maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
-    this.concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
-    this.taskTimeoutMs = options.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
-    this.budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
-    this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
+    // Floored, because `??` only substitutes for `undefined` — a configured `0`
+    // reaches here intact and silently disables the route rather than being
+    // rejected. `concurrency: 0` spawns no workers, so `Promise.all([])`
+    // resolves at once and every candidate is reported as skipped; the same
+    // shape applies to `maxSessions: 0` (no candidates) and a non-positive
+    // `budgetMs` (deadline already expired). These are knobs meant to be turned
+    // in an emergency, so a mistyped one must degrade loudly, not quietly.
+    this.maxSessions = atLeast(1, options.maxSessions, DEFAULT_MAX_SESSIONS);
+    this.maxAgeMs = atLeast(1, options.maxAgeMs, DEFAULT_MAX_AGE_MS);
+    this.concurrency = atLeast(1, options.concurrency, DEFAULT_CONCURRENCY);
+    this.taskTimeoutMs = atLeast(
+      1,
+      options.taskTimeoutMs,
+      DEFAULT_TASK_TIMEOUT_MS,
+    );
+    this.budgetMs = atLeast(1, options.budgetMs, DEFAULT_BUDGET_MS);
+    // A zero TTL is meaningful here — it means "do not cache" — so only
+    // negatives are floored.
+    this.cacheTtlMs = atLeast(0, options.cacheTtlMs, DEFAULT_CACHE_TTL_MS);
   }
 
   /**
@@ -151,13 +164,26 @@ export class SessionStateReader {
     // The promise goes in before it resolves, so two polls landing together —
     // two browser tabs, or a re-render racing itself — share one fan-out rather
     // than doubling it.
-    const value = this.compute(userToken).catch(error => {
-      // A failed pass must not be cached: the next request should retry rather
-      // than be handed the same rejection for the whole TTL.
-      this.cache.delete(key);
-      throw error;
-    });
-    this.cache.set(key, { expiresAt: now + this.cacheTtlMs, value });
+    // Declared before the promise so the rejection handler can recognise its
+    // own entry. An unconditional `delete(key)` would let a slow failing pass
+    // evict a *newer, healthy* one: a pass can outlive `cacheTtlMs` when kagent
+    // is degraded, by which time its entry has been purged and a later request
+    // has installed and resolved a fresh one under the same key. Deleting then
+    // throws away a valid in-TTL summary and every subsequent poll starts
+    // another fan-out.
+    const entry: CacheEntry = {
+      expiresAt: now + this.cacheTtlMs,
+      value: this.compute(userToken).catch(error => {
+        // A failed pass must not be cached: the next request should retry rather
+        // than be handed the same rejection for the whole TTL.
+        if (this.cache.get(key) === entry) {
+          this.cache.delete(key);
+        }
+        throw error;
+      }),
+    };
+    const value = entry.value;
+    this.cache.set(key, entry);
 
     while (this.cache.size > CACHE_MAX_ENTRIES) {
       const oldest = this.cache.keys().next();
@@ -194,7 +220,8 @@ export class SessionStateReader {
         if (!session) {
           return;
         }
-        if (this.now() >= deadline) {
+        const remaining = deadline - this.now();
+        if (remaining <= 0) {
           // Everything still queued is unevaluated, including this one. Put it
           // back so the count is taken in one place below.
           queue.unshift(session);
@@ -204,7 +231,14 @@ export class SessionStateReader {
           const payload = await this.client.listSessionTasks(
             session.sessionId,
             { userToken },
-            { timeoutMs: this.taskTimeoutMs },
+            // Clamped to what is left of the pass, not the flat per-read
+            // timeout. Checking the deadline only before dispatching would
+            // bound *dispatch* time: a worker starting a read at
+            // `budgetMs - 1ms` would still wait the full `taskTimeoutMs`, so
+            // the route could hold a request for `budgetMs + taskTimeoutMs`
+            // (13 s on the defaults) — past the frontend's 10 s poll, which is
+            // the pile-up `budgetMs` exists to prevent.
+            { timeoutMs: Math.min(this.taskTimeoutMs, remaining) },
           );
           const { tasks } = normalizeTaskList(payload);
           const newest = readNewestTaskState(tasks);
@@ -244,6 +278,24 @@ export class SessionStateReader {
 
     return { evaluatedAt: this.now(), states, unreadable, skipped };
   }
+}
+
+/**
+ * A configured number, floored — or the default when nothing is configured.
+ *
+ * Absent means "use the default"; present but out of range means someone typed
+ * a value that would disable the route, and the nearest working one is a better
+ * answer than silence.
+ */
+function atLeast(
+  floor: number,
+  configured: number | undefined,
+  fallback: number,
+): number {
+  if (configured === undefined) {
+    return fallback;
+  }
+  return Math.max(floor, configured);
 }
 
 type Candidate = { sessionId: string; updatedAt?: string };

@@ -67,6 +67,11 @@ export interface KagentApi {
    * from {@link getSessionDetail} happens in the calling hook, because neither
    * request can see the other's result.
    */
+  listSessionTasks(
+    installation: string,
+    sessionId: string,
+  ): Promise<A2aTaskWire[]>;
+
   /**
    * Derived state for this installation's sessions — what the switcher rail
    * groups by. Computed by the backend, because a session's state lives in its
@@ -74,11 +79,6 @@ export interface KagentApi {
    * affordable.
    */
   listSessionStates(installation: string): Promise<SessionStatesResponse>;
-
-  listSessionTasks(
-    installation: string,
-    sessionId: string,
-  ): Promise<A2aTaskWire[]>;
 
   /**
    * Start a session with one agent, and return its id.

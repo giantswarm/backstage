@@ -24,6 +24,9 @@ export const RAIL_WIDTH_COLLAPSED = 48;
  */
 const STICKY_TOP = 16;
 
+/** The scroller `aria-controls` names — rendered only in the expanded branch. */
+const SESSIONS_REGION_ID = 'session-switcher-sessions';
+
 /** Placeholder cards shown while the states resolve. */
 const SKELETON_COUNT = 3;
 
@@ -90,6 +93,12 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
+  },
+  footnote: {
+    display: 'block',
+    marginTop: theme.spacing(2),
+    paddingTop: theme.spacing(1),
+    borderTop: `1px solid ${theme.palette.divider}`,
   },
   notice: {
     display: 'flex',
@@ -158,6 +167,9 @@ export function SessionSwitcherRail({
     isLoading,
     isStatesLoading,
     isError,
+    isPartial,
+    unreadableCount,
+    skippedCount,
     now,
     refetch,
   } = useSessionSwitcher(installation, { currentSessionState });
@@ -174,7 +186,12 @@ export function SessionSwitcherRail({
         collapsed ? 'Expand session switcher' : 'Collapse session switcher'
       }
       aria-expanded={!collapsed}
-      aria-controls="session-switcher-sessions"
+      // Set only when expanded, because the element it names is only rendered
+      // then. Pointing it at a missing id is worse than omitting it: a reader
+      // that follows the reference finds no target, so the relationship would
+      // break precisely when `aria-expanded` is false — the state it exists to
+      // describe.
+      {...(collapsed ? {} : { 'aria-controls': SESSIONS_REGION_ID })}
       onClick={() => setCollapsed(!collapsed)}
     />
   );
@@ -226,7 +243,11 @@ export function SessionSwitcherRail({
           </Text>
           {!isLoading && !isStatesLoading && !isError && (
             <Text as="span" variant="body-small" color="secondary">
-              {activeCount} non-terminal
+              {/* One string, not spliced nodes: `+` marks the count as a floor
+                  when the summary is incomplete, since with sessions unread or
+                  never evaluated a bare number would state a total we do not
+                  know. */}
+              {`${activeCount}${isPartial ? '+' : ''} non-terminal`}
             </Text>
           )}
         </div>
@@ -234,7 +255,7 @@ export function SessionSwitcherRail({
       </div>
 
       <div
-        id="session-switcher-sessions"
+        id={SESSIONS_REGION_ID}
         className={classes.scroller}
         aria-busy={isLoading || isStatesLoading ? true : undefined}
       >
@@ -243,6 +264,8 @@ export function SessionSwitcherRail({
           isStatesLoading={isStatesLoading}
           isError={isError}
           groups={groups}
+          unreadableCount={unreadableCount}
+          skippedCount={skippedCount}
           currentSessionId={currentSessionId}
           now={now}
           onRetry={refetch}
@@ -257,6 +280,8 @@ function RailBody({
   isStatesLoading,
   isError,
   groups,
+  unreadableCount,
+  skippedCount,
   currentSessionId,
   now,
   onRetry,
@@ -265,6 +290,8 @@ function RailBody({
   isStatesLoading: boolean;
   isError: boolean;
   groups: ReturnType<typeof useSessionSwitcher>['groups'];
+  unreadableCount: number;
+  skippedCount: number;
   currentSessionId?: string;
   now: number;
   onRetry: () => void;
@@ -303,6 +330,26 @@ function RailBody({
   }
 
   if (groups.length === 0) {
+    // "All caught up." is a claim, and it is only true when the summary was
+    // complete. With sessions unread or never evaluated, an empty result means
+    // we cannot tell — and the reassuring copy would hide exactly the session
+    // the rail exists to surface (one blocked for days has an old `updated_at`,
+    // so it is the first to fall past the cap).
+    if (unreadableCount > 0 || skippedCount > 0) {
+      return (
+        <div className={classes.notice}>
+          <Text variant="body-small" color="secondary">
+            Couldn’t tell what’s active.
+          </Text>
+          <Text variant="body-small" color="secondary">
+            {describeIncomplete(unreadableCount, skippedCount)}
+          </Text>
+          <Button variant="tertiary" size="small" onClick={onRetry}>
+            Retry
+          </Button>
+        </div>
+      );
+    }
     return (
       <Text variant="body-small" color="secondary">
         All caught up.
@@ -320,6 +367,37 @@ function RailBody({
           now={now}
         />
       ))}
+      {(unreadableCount > 0 || skippedCount > 0) && (
+        // Shown beneath the groups rather than as an alert: what is listed is
+        // still usable, it just is not everything.
+        <Text
+          as="span"
+          variant="body-small"
+          color="secondary"
+          className={classes.footnote}
+        >
+          {describeIncomplete(unreadableCount, skippedCount)}
+        </Text>
+      )}
     </>
   );
+}
+
+/**
+ * Why the rail's list is incomplete, in the fewest words a 280px column allows.
+ *
+ * The two counts mean different things and are worth separating: `unreadable` is
+ * "we asked and failed", `skipped` is "we never asked" (past the activity
+ * window, past the cap, or cut off by the pass budget). Either way the operator
+ * should know the list is a subset before trusting it.
+ */
+function describeIncomplete(unreadable: number, skipped: number): string {
+  const parts: string[] = [];
+  if (unreadable > 0) {
+    parts.push(`${unreadable} couldn’t be read`);
+  }
+  if (skipped > 0) {
+    parts.push(`${skipped} not checked`);
+  }
+  return `${parts.join(', ')}.`;
 }

@@ -59,6 +59,14 @@ sticks 16px below the viewport top rather than flush against it, and does not
 override the flex parent's `stretch` — `align-self: flex-start` content-sizes a
 sticky child and silently stops it sticking.
 
+**"All caught up." is only said when the summary was complete.** The route
+reports `unreadable` (asked and failed) and `skipped` (never asked) so the rail
+can tell "nothing is active" from "we cannot tell": with either non-zero it says
+so and offers a retry, footnotes the shortfall when it does have groups to show,
+and renders the header count as `N+` because it is then a floor. Both cases are
+reachable — every task read failing still answers 200, and a session blocked for
+days has an old `updated_at`, making it the first to fall past the cap.
+
 Collapsing is remembered under `gs-agent-platform-session-rail-collapsed` and
 leaves a 48px strip rather than nothing — the rail exists to answer "is anything
 waiting on me?", and the strip's dots and counts keep answering it without
