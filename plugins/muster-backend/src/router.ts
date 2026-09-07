@@ -97,7 +97,10 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
  * string, several an array. Anything else (an object from `toolset[x]=`
  * bracket syntax) is refused rather than forwarded.
  */
-function repeatedQueryValues(value: unknown, name: string): string[] | undefined {
+function repeatedQueryValues(
+  value: unknown,
+  name: string,
+): string[] | undefined {
   if (value === undefined) {
     return undefined;
   }

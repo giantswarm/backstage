@@ -192,7 +192,10 @@ function ServerTools({
               : `Its tools are listed once your session is signed in to it. The whole server can be selected without signing in — it then resolves for the people who have access to it — but individual tools can only be picked once they are listed.`
           }
         />
-        {signInAvailable && bucket.canSignIn && !bucket.unknownServer && (
+        {/* muster naming the server in servers_requiring_auth is reason enough
+            to offer its sign-in — a muster running from configuration rather
+            than CRs has no MCPServer resource to go with it. */}
+        {signInAvailable && bucket.canSignIn && (
           <ServerSignIn serverName={bucket.name} installation={installation} />
         )}
       </Flex>

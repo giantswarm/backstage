@@ -542,13 +542,12 @@ describe('createRouter', () => {
   it('accepts a single toolset= parameter as a one-selector list', async () => {
     filterTools.mockResolvedValue({ tools: [], toolset: ['preset:none'] });
 
-    const response = await request(app).get('/tools/filter?toolset=preset:none');
+    const response = await request(app).get(
+      '/tools/filter?toolset=preset:none',
+    );
 
     expect(response.status).toBe(200);
-    expect(filterTools).toHaveBeenCalledWith(
-      { toolset: ['preset:none'] },
-      {},
-    );
+    expect(filterTools).toHaveBeenCalledWith({ toolset: ['preset:none'] }, {});
   });
 
   it('does not read bracket syntax as a toolset (the simple query parser leaves it unexpanded)', async () => {
