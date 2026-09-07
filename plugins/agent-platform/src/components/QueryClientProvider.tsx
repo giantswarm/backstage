@@ -76,6 +76,16 @@ const USER_SCOPED_RESOURCES = new Set([
 
 function isUserScopedQueryKey(queryKey: QueryKey): boolean {
   const [scope, subsystem, resource] = queryKey as unknown[];
+  // Everything read through the muster gateway is one person's view: a
+  // toolset resolution is toolset ∩ that person's session catalogue, the
+  // catalogue itself lists only the servers they have signed in to, and the
+  // muster plugin's own `auth://status` and pending-sign-in entries (its hooks
+  // run under this client when rendered inline on the Tools step and the
+  // agent page) describe their session. The muster plugin never persists
+  // any of it, and neither does this client — see `lib/queryKeys.ts`.
+  if (scope === 'muster') {
+    return true;
+  }
   return (
     scope === 'agent-platform' &&
     subsystem === 'kagent' &&

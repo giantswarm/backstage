@@ -23,6 +23,13 @@ export const newAgentSkillsRouteRef = createSubRouteRef({
   parent: agentsRouteRef,
 });
 
+// The Tools step (`/agent-platform/agents/new/tools`): the agent's toolset,
+// composed from muster's presets and catalogue. Between Skills and Review.
+export const newAgentToolsRouteRef = createSubRouteRef({
+  path: '/new/tools',
+  parent: agentsRouteRef,
+});
+
 export const newAgentReviewRouteRef = createSubRouteRef({
   path: '/new/review',
   parent: agentsRouteRef,

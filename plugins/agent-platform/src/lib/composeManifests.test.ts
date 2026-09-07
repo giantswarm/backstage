@@ -14,6 +14,7 @@ const model = {
     ref: string;
     name: string;
   }[],
+  toolset: ['preset:read-only'],
 };
 
 // The namespace is derived from the selected ModelConfig's namespace by the
@@ -201,5 +202,40 @@ describe('composeManifests', () => {
     expect(helmInstallCommand).toContain(
       '--values go-service-reviewer-values.yaml',
     );
+  });
+});
+
+describe('composeManifests toolset', () => {
+  it('emits the toolset as the top-level chart value, verbatim and in order', () => {
+    const { valuesYaml, files } = composeManifests(
+      { ...model, toolset: ['preset:read-only', 'workflow:incident-triage'] },
+      ctx,
+    );
+
+    expect(load(valuesYaml)).toMatchObject({
+      toolset: ['preset:read-only', 'workflow:incident-triage'],
+    });
+    const hr = parse(files[0].content);
+    expect(hr.spec.values.toolset).toEqual([
+      'preset:read-only',
+      'workflow:incident-triage',
+    ]);
+    // Never the kagent-side allowlist, which narrowed nothing against muster.
+    expect(hr.spec.values.muster).toBeUndefined();
+  });
+
+  it('emits exactly ["preset:none"] for a chat-only agent (the chart then omits the gateway entry)', () => {
+    const values = load(
+      composeManifests({ ...model, toolset: ['preset:none'] }, ctx).valuesYaml,
+    ) as Record<string, unknown>;
+    expect(values.toolset).toEqual(['preset:none']);
+  });
+
+  it('writes no toolset key at all when the caller passes none', () => {
+    // The chart's unscoped default; the wizard itself never reaches this.
+    const values = load(
+      composeManifests({ ...model, toolset: [] }, ctx).valuesYaml,
+    ) as Record<string, unknown>;
+    expect('toolset' in values).toBe(false);
   });
 });

@@ -1,0 +1,613 @@
+/**
+ * The toolset an agent declares: the selector grammar, the presets, how a
+ * declared toolset is read back off an Agent resource, and how muster's
+ * resolution of one is grouped for display.
+ *
+ * A toolset is composition, not authorization: it bounds which of the
+ * gateway's tools the agent's meta-tools can see and call, within whatever the
+ * invoking person may reach. Nothing here says "restricted", "enforced" or
+ * "permission", because none of that is what a toolset does.
+ *
+ * Pure functions over plain data, so the wizard step, the review page, the
+ * detail card and the composer agree by construction and every rule is
+ * testable without a DOM.
+ */
+
+import type {
+  Agent,
+  AgentTool,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  TOOL_GROUPS,
+  type FilterToolsResponse,
+  type ToolGroupKey,
+  type ToolSummary,
+  type ToolsetPreset,
+} from '@giantswarm/backstage-plugin-muster';
+
+/** The request header the Generic chart renders a toolset into. */
+export const TOOLSET_HEADER = 'X-Muster-Toolset';
+
+/** Inline selectors are capped; beyond this, the platform admin defines a preset. */
+export const MAX_INLINE_SELECTORS = 32;
+
+export const SELECTOR_KINDS = ['preset', 'server', 'workflow', 'tool'] as const;
+export type SelectorKind = (typeof SELECTOR_KINDS)[number];
+
+/** `<kind>:<exact name>`; a name never contains whitespace or a comma. */
+export const SELECTOR_PATTERN = /^(preset|server|workflow|tool):[^\s,]+$/;
+
+export const PRESET_READ_ONLY = 'preset:read-only';
+export const PRESET_NONE = 'preset:none';
+export const PRESET_FULL = 'preset:full';
+
+/**
+ * The presets built into muster — offered even when muster cannot be asked
+ * (the muster plugin is not installed, or the aggregator predates toolsets).
+ */
+export const BUILT_IN_PRESETS: ToolsetPreset[] = [
+  {
+    name: 'read-only',
+    description:
+      "Every tool whose server marks it read-only, and every workflow whose steps only use such tools. Evaluated live, so it follows the servers' own annotations.",
+    built_in: true,
+  },
+  {
+    name: 'none',
+    description:
+      'No tools at all. The agent gets no gateway entry and chats from its prompt and skills alone.',
+    built_in: true,
+  },
+  {
+    name: 'full',
+    description:
+      "Everything the gateway exposes to whoever invokes the agent, including the platform administration tools. Today's unbounded behaviour, made explicit.",
+    built_in: true,
+  },
+];
+
+/** A parsed selector. */
+export type Selector = { kind: SelectorKind; name: string };
+
+export function parseSelector(raw: string): Selector | undefined {
+  const match = SELECTOR_PATTERN.exec(raw);
+  if (!match) {
+    return undefined;
+  }
+  return {
+    kind: match[1] as SelectorKind,
+    name: raw.slice(match[1].length + 1),
+  };
+}
+
+export function formatSelector(selector: Selector): string {
+  return `${selector.kind}:${selector.name}`;
+}
+
+/**
+ * Why a selector is not acceptable inline, in the words muster would use — or
+ * `undefined` when it is fine. Mirrors the grammar the chart schema and
+ * agent-manager enforce, so the wizard refuses what they would refuse.
+ */
+export function selectorProblem(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === '') {
+    return 'A selector cannot be empty.';
+  }
+  if (trimmed.startsWith('toolset:')) {
+    return `"${trimmed}" is reserved for shared toolsets, which do not exist yet.`;
+  }
+  if (trimmed.startsWith('label:')) {
+    return `"${trimmed}" selects by label, which is allowed inside presets only. Ask a platform admin for a preset.`;
+  }
+  if (!SELECTOR_PATTERN.test(trimmed)) {
+    return `"${trimmed}" is not a selector. Use preset:<name>, server:<name>, workflow:<name> or tool:<name> with the exact name.`;
+  }
+  return undefined;
+}
+
+/**
+ * Everything wrong with a whole toolset, for the step to block Continue on.
+ * Empty when the toolset is acceptable. An empty list is not reported here:
+ * the step reads "nothing chosen yet" as its own state.
+ */
+export function toolsetProblems(selectors: string[]): string[] {
+  const problems = selectors
+    .map(selectorProblem)
+    .filter((problem): problem is string => problem !== undefined);
+  if (selectors.length > MAX_INLINE_SELECTORS) {
+    problems.push(
+      `${selectors.length} selectors is more than the ${MAX_INLINE_SELECTORS} a toolset may list inline. Define a preset for this selection and reference it instead.`,
+    );
+  }
+  return problems;
+}
+
+/** Splits a rendered header back into its selectors (`a, b ,c` → `[a, b, c]`). */
+export function parseToolsetHeader(value: string): string[] {
+  return value
+    .split(',')
+    .map(part => part.trim())
+    .filter(part => part !== '');
+}
+
+export function presetSelector(name: string): string {
+  return `preset:${name}`;
+}
+
+/** The preset name of a `preset:` selector, else `undefined`. */
+export function presetNameOf(selector: string): string | undefined {
+  const parsed = parseSelector(selector);
+  return parsed?.kind === 'preset' ? parsed.name : undefined;
+}
+
+/** The label the step and the detail card show for a preset. */
+export function presetLabel(name: string): string {
+  switch (name) {
+    case 'read-only':
+      return 'Read-only tools';
+    case 'none':
+      return 'No tools';
+    case 'full':
+      return 'Full gateway';
+    case 'infrastructure':
+      return 'Infrastructure';
+    case 'agent-platform':
+      return 'Agent Platform';
+    default:
+      return name;
+  }
+}
+
+// Presets lead with the safe choices and end with the powerful one: the
+// constrained agent is one click, the unbounded one takes deliberate effort
+// past everything else. Installation-defined presets sit between the shipped
+// ones and `full`, alphabetically.
+const PRESET_RANK: Record<string, number> = {
+  'read-only': 0,
+  none: 1,
+  infrastructure: 2,
+  'agent-platform': 3,
+};
+const FULL_RANK = Number.MAX_SAFE_INTEGER;
+
+export function orderPresets(presets: ToolsetPreset[]): ToolsetPreset[] {
+  const rank = (preset: ToolsetPreset) =>
+    preset.name === 'full' ? FULL_RANK : (PRESET_RANK[preset.name] ?? 100);
+  return [...presets].sort(
+    (a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name),
+  );
+}
+
+/**
+ * Merges what muster reports with the built-ins, so the three shipped presets
+ * are always offered even if an aggregator's list omits one, and muster's own
+ * description wins when it has one.
+ */
+export function withBuiltInPresets(reported: ToolsetPreset[]): ToolsetPreset[] {
+  const byName = new Map<string, ToolsetPreset>();
+  for (const preset of BUILT_IN_PRESETS) {
+    byName.set(preset.name, preset);
+  }
+  for (const preset of reported) {
+    const known = byName.get(preset.name);
+    byName.set(preset.name, {
+      ...known,
+      ...preset,
+      description: preset.description || known?.description,
+    });
+  }
+  return orderPresets([...byName.values()]);
+}
+
+/**
+ * `none` and `full` stand alone: adding anything to "no tools" contradicts it,
+ * and adding anything to "everything" changes nothing. Choosing either replaces
+ * the selection; choosing anything else drops them.
+ */
+export const EXCLUSIVE_PRESETS: ReadonlySet<string> = new Set([
+  PRESET_NONE,
+  PRESET_FULL,
+]);
+
+export function toggleSelector(current: string[], selector: string): string[] {
+  if (current.includes(selector)) {
+    return current.filter(entry => entry !== selector);
+  }
+  if (EXCLUSIVE_PRESETS.has(selector)) {
+    return [selector];
+  }
+  return [...current.filter(entry => !EXCLUSIVE_PRESETS.has(entry)), selector];
+}
+
+/** What a toolset amounts to, for the loud labels. */
+export type ToolsetShape = 'none' | 'full' | 'composed';
+
+export function toolsetShape(selectors: string[]): ToolsetShape {
+  if (selectors.length === 1 && selectors[0] === PRESET_NONE) {
+    return 'none';
+  }
+  if (selectors.includes(PRESET_FULL)) {
+    return 'full';
+  }
+  return 'composed';
+}
+
+/**
+ * The toolset as an Agent resource declares it.
+ *
+ * - `declared`: the muster tool entry carries the `X-Muster-Toolset` header the
+ *   chart rendered from the `toolset` value.
+ * - `implicit-full`: there is a muster tool entry but no header — an agent from
+ *   before toolsets, or a hand-written release without the value. It reaches
+ *   everything the gateway exposes to its invoker, and the page says so.
+ * - `no-gateway`: no muster tool entry at all, which is what `preset:none`
+ *   renders to. The agent has no tools.
+ */
+export type DeclaredToolset =
+  | { state: 'declared'; selectors: string[] }
+  | { state: 'implicit-full' }
+  | { state: 'no-gateway' };
+
+/**
+ * A predicate for the tool entries that point at the muster gateway, by the
+ * `RemoteMCPServer` name the chart references (`muster` by default). A name
+ * match, like the detail page's Tool Explorer link: the namespace is a chart
+ * value and installations may place the gateway elsewhere.
+ */
+export function gatewayEntry(gatewayName: string) {
+  return (tool: AgentTool): boolean => tool.mcpServer?.name === gatewayName;
+}
+
+/**
+ * `spec.declarative.tools[]` entries pointing at the muster gateway, with their
+ * `headersFrom` — a sibling of `mcpServer` on the entry (kagent's CRD puts the
+ * headers on the tool reference, not inside the server reference).
+ */
+export function toolsetOfAgent(
+  agent: Pick<Agent, 'getTools'>,
+  isGateway: (tool: AgentTool) => boolean,
+): DeclaredToolset {
+  const gatewayEntries = agent.getTools().filter(isGateway);
+  if (gatewayEntries.length === 0) {
+    return { state: 'no-gateway' };
+  }
+  for (const entry of gatewayEntries) {
+    const header = (entry.headersFrom ?? []).find(
+      candidate =>
+        candidate.name.toLowerCase() === TOOLSET_HEADER.toLowerCase(),
+    );
+    if (header?.value !== undefined) {
+      return { state: 'declared', selectors: parseToolsetHeader(header.value) };
+    }
+  }
+  return { state: 'implicit-full' };
+}
+
+/**
+ * What the grouping needs to know about one MCPServer CR. An adapter over the
+ * muster plugin's `MCPServer`, kept structural so the grouping is testable
+ * without building CRs.
+ */
+export interface ServerInfo {
+  /** The CR name — what `server:<name>` selects for a single server. */
+  name: string;
+  /**
+   * The family name, for a federated family whose members share one tool
+   * surface. `server:<family>` selects the family; muster reports the family
+   * as the tool's `server`.
+   */
+  family?: string;
+  group: ToolGroupKey;
+  /** The `x_<segment>` prefix muster gives this server's tools. */
+  toolNamePrefix: string;
+  /** The CR's `.status.state`, e.g. `Auth Required`. */
+  state?: string;
+  /** Whether the server declares per-user OAuth (`spec.auth.type: oauth`). */
+  oauth: boolean;
+}
+
+/** The name a server surface goes by: the family for a family member, else the CR name. */
+export function surfaceName(server: ServerInfo): string {
+  return server.family ?? server.name;
+}
+
+/**
+ * The server surface a tool belongs to, by muster's `server` field when the
+ * aggregator reports one, else by the longest matching `x_<segment>` prefix
+ * (the way the Tool Explorer attributes tools on older aggregators).
+ */
+export function serverOfTool(
+  tool: Pick<ToolSummary, 'name' | 'server'>,
+  servers: ServerInfo[],
+): string | undefined {
+  if (tool.server) {
+    return tool.server;
+  }
+  let best: ServerInfo | undefined;
+  for (const server of servers) {
+    const prefix = server.toolNamePrefix;
+    if (tool.name === prefix || tool.name.startsWith(`${prefix}_`)) {
+      if (!best || prefix.length > best.toolNamePrefix.length) {
+        best = server;
+      }
+    }
+  }
+  return best ? surfaceName(best) : undefined;
+}
+
+export function isCoreTool(tool: Pick<ToolSummary, 'name' | 'kind'>): boolean {
+  return tool.kind === 'core' || (!tool.kind && tool.name.startsWith('core_'));
+}
+
+export function isWorkflowTool(
+  tool: Pick<ToolSummary, 'name' | 'kind'>,
+): boolean {
+  return (
+    tool.kind === 'workflow' ||
+    (!tool.kind && tool.name.startsWith('workflow_'))
+  );
+}
+
+/** The workflow name behind a `workflow_<name>` tool. */
+export function workflowNameOf(toolName: string): string {
+  return toolName.startsWith('workflow_')
+    ? toolName.slice('workflow_'.length)
+    : toolName;
+}
+
+/** The selector that picks exactly this catalogue entry. */
+export function selectorForTool(
+  tool: Pick<ToolSummary, 'name' | 'kind'>,
+): string {
+  return isWorkflowTool(tool)
+    ? `workflow:${workflowNameOf(tool.name)}`
+    : `tool:${tool.name}`;
+}
+
+export function isReadOnly(tool: Pick<ToolSummary, 'annotations'>): boolean {
+  return tool.annotations?.readOnlyHint === true;
+}
+
+export function isDestructive(tool: Pick<ToolSummary, 'annotations'>): boolean {
+  return tool.annotations?.destructiveHint === true;
+}
+
+/**
+ * A group on the Tools step and the detail card: the muster plugin's three
+ * server groups plus Workflows, which span servers and so are their own group.
+ */
+export type PickerGroupKey = ToolGroupKey | 'workflows';
+
+/**
+ * The picker's order — Infrastructure first, as the PRD lists the groups for
+ * an author browsing tools; the MCP servers page leads with Agent Platform
+ * (`TOOL_GROUP_ORDER` in the muster plugin). Same names, same membership.
+ */
+export const PICKER_GROUP_ORDER: readonly PickerGroupKey[] = [
+  'infrastructure',
+  'agent-platform',
+  'registered',
+  'workflows',
+];
+
+/** The display name — the muster plugin's for its three groups. */
+export function toolGroupTitle(key: PickerGroupKey): string {
+  return key === 'workflows' ? 'Workflows' : TOOL_GROUPS[key].title;
+}
+
+/** One server surface inside a group, with the tools listed for the caller. */
+export interface ServerBucket {
+  /** The surface name — `server:<name>` selects it. */
+  name: string;
+  /** Whether this is a federated family (several CRs, one surface). */
+  isFamily: boolean;
+  tools: ToolSummary[];
+  /** The caller's session has not authenticated with this server, so its tools are not listed. */
+  needsSignIn: boolean;
+  /** Whether a person can sign in to it at all (a sigv4 server cannot). */
+  canSignIn: boolean;
+  /** `.status.state` of the CR (the worst one, for a family). */
+  state?: string;
+  /** Present when muster listed tools for a server no CR describes. */
+  unknownServer: boolean;
+}
+
+export interface CatalogueGroup {
+  key: PickerGroupKey;
+  title: string;
+  servers: ServerBucket[];
+  /**
+   * muster's own `core_*` tools, only under Agent Platform. Selectable
+   * explicitly, never through a shipped preset except `full` — they manage the
+   * platform itself, which is why they are set apart and warned about.
+   */
+  platformAdministration: ToolSummary[];
+  /** Workflow tools, only under Workflows. */
+  workflows: ToolSummary[];
+}
+
+/**
+ * Arranges the catalogue the way the platform thinks about it: the three
+ * server groups from the tool-group label, plus Workflows. Every CR the
+ * installation has is listed — as an empty, sign-in-gated bucket when the
+ * caller's session cannot see its tools — so an author can pick a whole server
+ * they cannot browse themselves. Tools muster attributes to a server no CR
+ * describes still appear (under Registered servers) so nothing is hidden.
+ * Empty groups are dropped.
+ */
+export function buildCatalogue(
+  tools: ToolSummary[],
+  servers: ServerInfo[],
+  serversRequiringAuth: string[],
+): CatalogueGroup[] {
+  const groups = new Map<PickerGroupKey, CatalogueGroup>();
+  const group = (key: PickerGroupKey): CatalogueGroup => {
+    const existing = groups.get(key);
+    if (existing) {
+      return existing;
+    }
+    const created: CatalogueGroup = {
+      key,
+      title: toolGroupTitle(key),
+      servers: [],
+      platformAdministration: [],
+      workflows: [],
+    };
+    groups.set(key, created);
+    return created;
+  };
+
+  // One bucket per surface, seeded from the CRs so unlisted servers exist.
+  const buckets = new Map<string, ServerBucket & { group: ToolGroupKey }>();
+  const needsAuth = new Set(serversRequiringAuth);
+  for (const server of servers) {
+    const name = surfaceName(server);
+    const existing = buckets.get(name);
+    const needsSignIn =
+      needsAuth.has(name) ||
+      needsAuth.has(server.name) ||
+      server.state === 'Auth Required';
+    if (existing) {
+      existing.isFamily = true;
+      existing.needsSignIn = existing.needsSignIn || needsSignIn;
+      existing.canSignIn = existing.canSignIn || server.oauth;
+      existing.state = worstState(existing.state, server.state);
+      continue;
+    }
+    buckets.set(name, {
+      name,
+      isFamily: server.family !== undefined,
+      tools: [],
+      needsSignIn,
+      canSignIn: server.oauth || needsSignIn,
+      state: server.state,
+      unknownServer: false,
+      group: server.group,
+    });
+  }
+
+  for (const tool of tools) {
+    if (isCoreTool(tool)) {
+      group('agent-platform').platformAdministration.push(tool);
+      continue;
+    }
+    if (isWorkflowTool(tool)) {
+      group('workflows').workflows.push(tool);
+      continue;
+    }
+    const surface = serverOfTool(tool, servers) ?? segmentOf(tool.name);
+    let bucket = buckets.get(surface);
+    if (!bucket) {
+      bucket = {
+        name: surface,
+        isFamily: false,
+        tools: [],
+        needsSignIn: needsAuth.has(surface),
+        canSignIn: needsAuth.has(surface),
+        unknownServer: true,
+        group: 'registered',
+      };
+      buckets.set(surface, bucket);
+    }
+    bucket.tools.push(tool);
+  }
+
+  // A server muster reports as needing auth but no CR and no tool named.
+  for (const name of needsAuth) {
+    if (!buckets.has(name)) {
+      buckets.set(name, {
+        name,
+        isFamily: false,
+        tools: [],
+        needsSignIn: true,
+        canSignIn: true,
+        unknownServer: true,
+        group: 'registered',
+      });
+    }
+  }
+
+  for (const bucket of buckets.values()) {
+    const { group: key, ...rest } = bucket;
+    // Tools listed means the session sees the server: the CR-level state is
+    // then stale for this caller, and the sign-in offer would be misleading.
+    const needsSignIn = rest.tools.length === 0 && rest.needsSignIn;
+    group(key).servers.push({ ...rest, needsSignIn });
+  }
+
+  for (const entry of groups.values()) {
+    entry.servers.sort((a, b) => a.name.localeCompare(b.name));
+    for (const bucket of entry.servers) {
+      bucket.tools.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    entry.platformAdministration.sort((a, b) => a.name.localeCompare(b.name));
+    entry.workflows.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return PICKER_GROUP_ORDER.map(key => groups.get(key)).filter(
+    (entry): entry is CatalogueGroup =>
+      entry !== undefined &&
+      (entry.servers.length > 0 ||
+        entry.platformAdministration.length > 0 ||
+        entry.workflows.length > 0),
+  );
+}
+
+/** The bare `<segment>` of an `x_<segment>_…` tool name, for an unattributed tool. */
+function segmentOf(name: string): string {
+  if (name.startsWith('x_')) {
+    return name.slice(2).split('_')[0] || name;
+  }
+  return name.split('_')[0] || name;
+}
+
+const STATE_SEVERITY: Record<string, number> = {
+  Failed: 4,
+  Disconnected: 3,
+  Stopped: 3,
+  'Auth Required': 2,
+  Connecting: 1,
+  Starting: 1,
+  Connected: 0,
+  Running: 0,
+};
+
+function worstState(a?: string, b?: string): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return (STATE_SEVERITY[a] ?? 0) >= (STATE_SEVERITY[b] ?? 0) ? a : b;
+}
+
+/**
+ * Whether the aggregator evaluated the toolset. An aggregator from before
+ * toolsets ignores the argument and answers the unscoped catalogue without
+ * echoing `toolset`; treating that answer as "the resolution" would show the
+ * author the whole gateway as if their selection resolved to it.
+ */
+export function toolsetWasEvaluated(
+  response: Pick<FilterToolsResponse, 'toolset'>,
+): boolean {
+  return Array.isArray(response.toolset);
+}
+
+/** Whether muster refused the toolset for naming a preset it does not know (D12). */
+export function isUnknownPresetError(message: string): boolean {
+  return /unknown preset/i.test(message);
+}
+
+/** The `server:` selectors of a toolset whose server the caller cannot see. */
+export function unsignedServerSelectors(
+  selectors: string[],
+  catalogue: CatalogueGroup[],
+): string[] {
+  const gated = new Set(
+    catalogue.flatMap(entry =>
+      entry.servers.filter(bucket => bucket.needsSignIn).map(b => b.name),
+    ),
+  );
+  return selectors.filter(selector => {
+    const parsed = parseSelector(selector);
+    return parsed?.kind === 'server' && gated.has(parsed.name);
+  });
+}

@@ -43,6 +43,15 @@ export type AgentModel = {
   iconUrl: string;
   /** Selected skills → agent.skills.gitRefs. Empty → the block is omitted. */
   skills: AgentSkillRef[];
+  /**
+   * The agent's toolset: the selector list the Tools step composed, emitted as
+   * the chart's top-level `toolset` value exactly as given (the chart joins it
+   * into the `X-Muster-Toolset` header; exactly `["preset:none"]` makes it omit
+   * the gateway entry altogether). The wizard never lets this be empty — an
+   * empty list is a render error in the chart, by design — but a caller that
+   * passes none gets no `toolset` key, which is the chart's unscoped default.
+   */
+  toolset: string[];
 };
 
 /**
@@ -161,6 +170,14 @@ function buildValues(model: AgentModel): Record<string, unknown> {
         name: skill.name,
       })),
     };
+  }
+
+  // The toolset is a top-level value (component-neutral on purpose: the
+  // declaration outlives muster as the enforcement point), a list of selector
+  // strings passed through verbatim. `muster.toolNames` is never written: it
+  // only ever filtered the gateway's meta-tools and narrowed nothing.
+  if (model.toolset.length > 0) {
+    values.toolset = [...model.toolset];
   }
 
   return values;
