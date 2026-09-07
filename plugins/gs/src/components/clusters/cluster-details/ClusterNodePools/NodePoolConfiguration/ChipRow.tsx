@@ -1,3 +1,4 @@
+import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { Chip } from './Chip';
 
@@ -16,12 +17,15 @@ interface ChipRowProps {
   values: string[];
   variant?: 'include' | 'exclude';
   limit?: number;
+  /** Appended once after the chips, e.g. `MiB` for an instance-memory key. */
+  unit?: string;
 }
 
 export const ChipRow = ({
   values,
   variant = 'include',
   limit = DEFAULT_LIMIT,
+  unit,
 }: ChipRowProps) => {
   const classes = useStyles();
   const shown = values.slice(0, limit);
@@ -35,6 +39,11 @@ export const ChipRow = ({
         </Chip>
       ))}
       {hidden > 0 && <Chip variant={variant}>{`+${hidden}`}</Chip>}
+      {unit && (
+        <Text variant="body-small" color="secondary">
+          {unit}
+        </Text>
+      )}
     </span>
   );
 };

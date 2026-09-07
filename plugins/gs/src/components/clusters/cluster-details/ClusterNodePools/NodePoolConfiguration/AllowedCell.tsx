@@ -36,7 +36,11 @@ export const AllowedCell = ({ entry }: AllowedCellProps) => {
                 (no values)
               </Text>
             ) : (
-              <ChipRow key={index} values={constraint.values} />
+              <ChipRow
+                key={index}
+                values={constraint.values}
+                unit={entry.unit}
+              />
             );
 
           case 'deny':
@@ -45,7 +49,11 @@ export const AllowedCell = ({ entry }: AllowedCellProps) => {
                 <Text variant="body-small" color="secondary">
                   any except
                 </Text>
-                <ChipRow values={constraint.values} variant="exclude" />
+                <ChipRow
+                  values={constraint.values}
+                  variant="exclude"
+                  unit={entry.unit}
+                />
               </Flex>
             );
 
@@ -80,7 +88,7 @@ export const AllowedCell = ({ entry }: AllowedCellProps) => {
                 <Text variant="body-small" color="secondary">
                   {constraint.rawOperator}
                 </Text>
-                <ChipRow values={constraint.values} />
+                <ChipRow values={constraint.values} unit={entry.unit} />
               </Flex>
             );
         }

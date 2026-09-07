@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { type MixEntry } from '../../../../hooks';
-import { type RequirementEntry } from '../karpenter';
+import { getWellKnownKey, type RequirementEntry } from '../karpenter';
 import { AllowedCell } from './AllowedCell';
 
 const useStyles = makeStyles({
@@ -79,8 +79,19 @@ interface EnvelopeTableProps {
 }
 
 /** Always `count × value`, so every row of the column reads the same way. */
-function formatMix(entries: MixEntry[]): string {
-  return entries.map(e => `${e.count} × ${e.value}`).join(' · ');
+/**
+ * Always `count × value`, so every row of the column reads the same way.
+ *
+ * Values go through the key's own formatter where it has one, so the Running
+ * side speaks the same vocabulary as Allowed: a row must not read
+ * `Spot On-demand` beside `14 × spot · 2 × on-demand` and leave the reader to
+ * decide whether those are the same things.
+ */
+function formatMix(entries: MixEntry[], key: string): string {
+  const format = getWellKnownKey(key)?.formatValue;
+  return entries
+    .map(e => `${e.count} × ${format ? format(e.value) : e.value}`)
+    .join(' · ');
 }
 
 /**
@@ -136,7 +147,9 @@ export const EnvelopeTable = ({ rows }: EnvelopeTableProps) => {
                 &mdash;
               </Text>
             ) : (
-              <Text variant="body-small">{formatMix(row.running)}</Text>
+              <Text variant="body-small">
+                {formatMix(row.running, row.key)}
+              </Text>
             )}
           </div>
         </Fragment>
