@@ -125,6 +125,12 @@ const useStyles = makeStyles(theme => ({
     height: 8,
     borderRadius: '50%',
   },
+  stripUnknown: {
+    fontSize: theme.typography.caption.fontSize,
+    fontWeight: theme.typography.fontWeightBold as number,
+    color: theme.palette.text.secondary,
+    cursor: 'default',
+  },
   stripCount: {
     fontSize: theme.typography.caption.fontSize,
     fontVariantNumeric: 'tabular-nums',
@@ -210,6 +216,21 @@ export function SessionSwitcherRail({
       >
         <div className={classes.strip}>
           {toggle}
+          {(isPartial || isError) && (
+            // The strip exists so it can keep answering "is anything waiting on
+            // me?" — so it has to be able to answer "cannot tell" too. Without
+            // this it renders empty, which reads as an idle fleet: the exact
+            // over-claim the expanded rail's empty state was fixed to avoid.
+            <Tooltip
+              title={
+                isError
+                  ? 'Couldn’t load active sessions'
+                  : 'Some sessions couldn’t be read'
+              }
+            >
+              <span className={classes.stripUnknown}>?</span>
+            </Tooltip>
+          )}
           {groups.map(group => (
             // MUI's Tooltip, not bui's: bui wraps react-aria's TooltipTrigger,
             // which only wires up its own focusable components, and this is a

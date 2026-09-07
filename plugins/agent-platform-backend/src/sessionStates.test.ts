@@ -48,7 +48,7 @@ describe('selectCandidates', () => {
   const opts = { now: NOW, maxAgeMs: DEFAULT_MAX_AGE_MS, maxSessions: 20 };
 
   it('orders by last activity, newest first', () => {
-    const picked = selectCandidates(
+    const { candidates: picked } = selectCandidates(
       [
         { sessionId: 'old', updatedAt: '2026-09-02T10:00:00Z' },
         { sessionId: 'new', updatedAt: '2026-09-04T10:00:00Z' },
@@ -66,7 +66,10 @@ describe('selectCandidates', () => {
       updatedAt: new Date(NOW - i * MINUTE).toISOString(),
     }));
 
-    const picked = selectCandidates(sessions, { ...opts, maxSessions: 20 });
+    const { candidates: picked } = selectCandidates(sessions, {
+      ...opts,
+      maxSessions: 20,
+    });
 
     expect(picked).toHaveLength(20);
     expect(picked[0].sessionId).toBe('s0');
@@ -74,7 +77,7 @@ describe('selectCandidates', () => {
   });
 
   it('drops sessions outside the activity window', () => {
-    const picked = selectCandidates(
+    const { candidates: picked } = selectCandidates(
       [
         { sessionId: 'recent', updatedAt: new Date(NOW - DAY).toISOString() },
         {
@@ -91,7 +94,7 @@ describe('selectCandidates', () => {
   it('keeps a session that waited for days, well inside the window', () => {
     // The whole point of a seven-day window rather than a tight one: a session
     // blocked on a human is what the WAITING group exists to show.
-    const picked = selectCandidates(
+    const { candidates: picked } = selectCandidates(
       [
         {
           sessionId: 'waiting',
@@ -108,7 +111,7 @@ describe('selectCandidates', () => {
     // `normalizeTimestamp` has already rejected Go zero time and anything
     // unparseable, so an absent value means "cannot tell" — not "old". Dropping
     // it would hide a session on the strength of a field kagent need not send.
-    const picked = selectCandidates(
+    const { candidates: picked } = selectCandidates(
       [
         { sessionId: 'unknown' },
         { sessionId: 'dated', updatedAt: '2026-09-04T10:00:00Z' },
@@ -395,7 +398,7 @@ describe('SessionStateReader — bounds that must hold', () => {
     // `taskTimeoutMs`, holding the request past the frontend's 10s poll.
     listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
     listSessionTasks.mockResolvedValue(wireTasks('completed'));
-    let clock = NOW;
+    const clock = NOW;
 
     await reader(
       { budgetMs: 2_000, taskTimeoutMs: 5_000, concurrency: 1 },
@@ -489,5 +492,98 @@ describe('SessionStateReader — bounds that must hold', () => {
     await subject.read('tok');
 
     expect(listSessions).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('SessionStateReader — what counts as a shortfall', () => {
+  const listSessions = jest.fn();
+  const listSessionTasks = jest.fn();
+  const client = { listSessions, listSessionTasks } as unknown as KagentClient;
+  const logger = mockServices.logger.mock();
+
+  function reader(options = {}, now: () => number = () => NOW) {
+    return new SessionStateReader(client, logger, 'gazelle', options, now);
+  }
+
+  beforeEach(() => {
+    listSessions.mockReset();
+    listSessionTasks.mockReset();
+  });
+
+  it('does not count a session outside the activity window as skipped', async () => {
+    // The gap that let the regression through: `skipped` is what the UI reads as
+    // "we could not tell". The window is a deliberate scope decision, and any
+    // account more than a week old holds such a session — so counting it would
+    // make the rail permanently claim uncertainty, with a retry that recomputes
+    // the same answer for ever.
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [
+        wireSession('recent', { updated_at: '2026-09-04T11:00:00Z' }),
+        wireSession('ancient', { updated_at: '2026-07-01T10:00:00Z' }),
+      ],
+    });
+    listSessionTasks.mockResolvedValue(wireTasks('completed'));
+
+    const result = await reader().read('tok');
+
+    expect(listSessionTasks).toHaveBeenCalledTimes(1);
+    expect(result.states.map(state => state.sessionId)).toEqual(['recent']);
+    expect(result.skipped).toBe(0);
+  });
+
+  it('still counts sessions past the cap as skipped', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: Array.from({ length: 5 }, (_, i) => wireSession(`s${i}`)),
+    });
+    listSessionTasks.mockResolvedValue(wireTasks('completed'));
+
+    const result = await reader({ maxSessions: 2 }).read('tok');
+
+    expect(result.skipped).toBe(3);
+  });
+
+  it('separates the two even when both apply', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [
+        ...Array.from({ length: 4 }, (_, i) =>
+          wireSession(`fresh${i}`, { updated_at: '2026-09-04T11:00:00Z' }),
+        ),
+        wireSession('ancient', { updated_at: '2026-07-01T10:00:00Z' }),
+      ],
+    });
+    listSessionTasks.mockResolvedValue(wireTasks('completed'));
+
+    const result = await reader({ maxSessions: 2 }).read('tok');
+
+    // 4 in window, cap 2 → 2 past the cap. The out-of-window one is not counted.
+    expect(result.skipped).toBe(2);
+  });
+
+  it('attributes a budget cutoff to skipped, not to unreadable', async () => {
+    // A read dispatched with a sliver of budget left would time out and be
+    // reported as a fault the operator can act on, when the truth is that the
+    // pass ran out of time.
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [wireSession('a'), wireSession('b')],
+    });
+    let clock = NOW;
+    listSessionTasks.mockImplementation(async () => {
+      // Leave only a sliver after the first read.
+      clock += 1_900;
+      return wireTasks('completed');
+    });
+
+    const result = await reader(
+      { budgetMs: 2_000, concurrency: 1 },
+      () => clock,
+    ).read('tok');
+
+    expect(result.states).toHaveLength(1);
+    expect(result.unreadable).toEqual([]);
+    expect(result.skipped).toBe(1);
   });
 });

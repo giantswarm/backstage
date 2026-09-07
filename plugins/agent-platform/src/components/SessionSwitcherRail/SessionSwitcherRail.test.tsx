@@ -362,3 +362,54 @@ describe('SessionSwitcherRail — an incomplete summary', () => {
     expect(screen.getByText('3+ non-terminal')).toBeInTheDocument();
   });
 });
+
+describe('SessionSwitcherRail — the collapsed strip', () => {
+  const STRIP_KEY = 'gs-agent-platform-session-rail-collapsed';
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem(STRIP_KEY, 'true');
+  });
+
+  it('says it cannot tell rather than rendering an empty strip', async () => {
+    // An empty strip reads as "nothing waiting" — the same over-claim the
+    // expanded rail's empty state exists to prevent. The strip's whole purpose
+    // is to keep answering "is anything waiting on me?", so it has to be able
+    // to answer "cannot tell".
+    mockUseSessionSwitcher.mockReturnValue(
+      view({ groups: [], activeCount: 0, unreadableCount: 3, isPartial: true }),
+    );
+    await renderRail();
+
+    expect(screen.getByText('?')).toBeInTheDocument();
+  });
+
+  it('says it cannot tell when the reads failed outright', async () => {
+    mockUseSessionSwitcher.mockReturnValue(
+      view({ groups: [], activeCount: 0, isError: true }),
+    );
+    await renderRail();
+
+    expect(screen.getByText('?')).toBeInTheDocument();
+  });
+
+  it('stays quiet when the summary was complete', async () => {
+    mockUseSessionSwitcher.mockReturnValue(
+      view({ groups: [], activeCount: 0 }),
+    );
+    await renderRail();
+
+    expect(screen.queryByText('?')).toBeNull();
+  });
+
+  it('shows the counts alongside the marker when it has both', async () => {
+    mockUseSessionSwitcher.mockReturnValue(
+      view({ skippedCount: 4, isPartial: true }),
+    );
+    await renderRail();
+
+    expect(screen.getByText('?')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
+});

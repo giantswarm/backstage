@@ -894,7 +894,11 @@ flattening any pair loses information:
   i.e. created and never run;
 - an id in `unreadable` — the task read failed, so the state is genuinely
   unknown, which is not the same as terminal;
-- and a `skipped` count for sessions never evaluated at all.
+- and a `skipped` count for sessions that should have been evaluated and were
+  not — past the cap, or cut off by the pass budget. The activity-window
+  exclusion is deliberately **not** counted here: it is a scope decision, and
+  counting it would make the UI's "cannot tell" state permanent on any account
+  more than a week old.
 
 Terminal states come back unfiltered. Filtering server-side would save about a
 kilobyte and make "terminal" indistinguishable from "not evaluated"; which
@@ -1121,7 +1125,8 @@ so one bad poll does not blank the rail.
 
 **"All caught up." is a claim, and it is only made when the summary was
 complete.** The route reports `unreadable` (asked and failed) and `skipped`
-(never asked — past the window, the cap, or the pass budget) precisely so the
+(should have been asked and was not — past the cap, or cut off by the pass
+budget) precisely so the
 rail can tell "nothing is active" from "we cannot tell". With either non-zero and
 nothing to show, the rail says _"Couldn't tell what's active."_ with the counts
 and a Retry; with groups to show, it footnotes the shortfall beneath them; and

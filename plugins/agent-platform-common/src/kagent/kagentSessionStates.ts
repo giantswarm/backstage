@@ -32,7 +32,16 @@ export type SessionStatesResponse = {
    * not the same as terminal, and not the same as never evaluated.
    */
   unreadable: string[];
-  /** Listable sessions not evaluated at all: past the window, the cap, or the budget. */
+  /**
+   * Listable sessions that *should* have been evaluated and were not: past the
+   * cap, or cut off by the pass budget.
+   *
+   * Deliberately **excludes** the activity-window exclusion, which is a scope
+   * decision rather than a shortfall. Folding it in here would make this
+   * permanently non-zero for any account holding a session older than the
+   * window — the normal state after a week — and the UI reads a non-zero value
+   * as "we could not tell".
+   */
   skipped: number;
 };
 

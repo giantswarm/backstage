@@ -76,6 +76,18 @@ export const DEFAULT_CACHE_TTL_MS = 15_000;
  */
 export const CACHE_MAX_ENTRIES = 200;
 
+/**
+ * The least time a task read is worth starting with.
+ *
+ * Without a floor a worker could dispatch with 1 ms of budget left, get
+ * `timeoutMs: 1`, and all but certainly time out — landing in `unreadable`
+ * ("we asked and failed") when the truth is that the pass ran out of time,
+ * which belongs in `skipped`. The two are worded differently to the operator,
+ * so the mis-attribution would put a fault in front of them for a budget
+ * cutoff.
+ */
+export const MIN_READ_SLICE_MS = 250;
+
 export type SessionStateOptions = {
   maxSessions?: number;
   maxAgeMs?: number;
@@ -127,12 +139,19 @@ export class SessionStateReader {
     this.maxSessions = atLeast(1, options.maxSessions, DEFAULT_MAX_SESSIONS);
     this.maxAgeMs = atLeast(1, options.maxAgeMs, DEFAULT_MAX_AGE_MS);
     this.concurrency = atLeast(1, options.concurrency, DEFAULT_CONCURRENCY);
+    // Floored to a slice that can actually complete a read rather than to 1 ms:
+    // below `MIN_READ_SLICE_MS` a worker declines to dispatch at all, so a 1 ms
+    // floor would satisfy the type and still evaluate nothing.
     this.taskTimeoutMs = atLeast(
-      1,
+      MIN_READ_SLICE_MS,
       options.taskTimeoutMs,
       DEFAULT_TASK_TIMEOUT_MS,
     );
-    this.budgetMs = atLeast(1, options.budgetMs, DEFAULT_BUDGET_MS);
+    this.budgetMs = atLeast(
+      MIN_READ_SLICE_MS,
+      options.budgetMs,
+      DEFAULT_BUDGET_MS,
+    );
     // A zero TTL is meaningful here — it means "do not cache" — so only
     // negatives are floored.
     this.cacheTtlMs = atLeast(0, options.cacheTtlMs, DEFAULT_CACHE_TTL_MS);
@@ -201,12 +220,18 @@ export class SessionStateReader {
     const { sessions } = normalizeSessionList(raw, this.installation);
 
     const listable = sessions.filter(isListableSession);
-    const candidates = selectCandidates(listable, {
+    const { candidates, pastCap } = selectCandidates(listable, {
       now: this.now(),
       maxAgeMs: this.maxAgeMs,
       maxSessions: this.maxSessions,
     });
-    let skipped = listable.length - candidates.length;
+    // Deliberately *not* `listable.length - candidates.length`: that would fold
+    // the routine `maxAgeMs` window exclusion in with genuine shortfalls, and a
+    // single session older than the window — the normal state of an account
+    // after a week — would make `skipped` permanently non-zero. The UI reads
+    // this as "we could not tell", so conflating them replaced an over-claim
+    // with a permanent under-claim and a retry that could never change it.
+    let skipped = pastCap;
 
     const deadline = this.now() + this.budgetMs;
     const states: SessionStateEntry[] = [];
@@ -221,7 +246,7 @@ export class SessionStateReader {
           return;
         }
         const remaining = deadline - this.now();
-        if (remaining <= 0) {
+        if (remaining < MIN_READ_SLICE_MS) {
           // Everything still queued is unevaluated, including this one. Put it
           // back so the count is taken in one place below.
           queue.unshift(session);
@@ -316,7 +341,7 @@ type Candidate = { sessionId: string; updatedAt?: string };
 export function selectCandidates(
   sessions: Candidate[],
   opts: { now: number; maxAgeMs: number; maxSessions: number },
-): Candidate[] {
+): { candidates: Candidate[]; pastCap: number } {
   const withTime = sessions.map(session => ({
     session,
     at: session.updatedAt ? Date.parse(session.updatedAt) : undefined,
@@ -333,5 +358,15 @@ export function selectCandidates(
     return b.at - a.at;
   });
 
-  return inWindow.slice(0, opts.maxSessions).map(({ session }) => session);
+  return {
+    candidates: inWindow
+      .slice(0, opts.maxSessions)
+      .map(({ session }) => session),
+    // Only the cap is a shortfall. Sessions outside the window are out of scope
+    // by policy — the same kind of decision as excluding subagent sessions — and
+    // counting them as "not checked" would be permanent on any account more than
+    // a week old, which makes the UI's "cannot tell" state unreachable-to-escape
+    // rather than informative.
+    pastCap: Math.max(0, inWindow.length - opts.maxSessions),
+  };
 }

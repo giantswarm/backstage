@@ -60,7 +60,9 @@ override the flex parent's `stretch` — `align-self: flex-start` content-sizes 
 sticky child and silently stops it sticking.
 
 **"All caught up." is only said when the summary was complete.** The route
-reports `unreadable` (asked and failed) and `skipped` (never asked) so the rail
+reports `unreadable` (asked and failed) and `skipped` (should have been asked and
+was not — past the cap or the budget, _not_ the routine activity-window
+exclusion, which would make the state permanent) so the rail
 can tell "nothing is active" from "we cannot tell": with either non-zero it says
 so and offers a retry, footnotes the shortfall when it does have groups to show,
 and renders the header count as `N+` because it is then a floor. Both cases are
