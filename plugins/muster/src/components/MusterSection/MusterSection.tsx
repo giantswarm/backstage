@@ -9,13 +9,15 @@ import { Box, Tab, TabList, Tabs } from '@backstage/ui';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
 
-import { workflowDetailRouteRef } from '../../routes';
+import {
+  agentPlatformUsageExternalRouteRef,
+  workflowDetailRouteRef,
+} from '../../routes';
 import { MusterProviders } from '../MusterProviders';
 import { DashboardPage } from '../DashboardPage';
 import { McpServersRouter } from '../McpServersRouter';
 import { WorkflowsRouter } from '../WorkflowsRouter';
 import { ToolExplorerPage } from '../ToolExplorerPage';
-import { UsagePage } from '../UsagePage';
 
 // The muster views. This used to be four SubPageBlueprint tabs on a standalone
 // muster page; muster is now a section embedded under the Agent Platform page's
@@ -23,7 +25,6 @@ import { UsagePage } from '../UsagePage';
 // Dashboard is first, so the section index redirects to it.
 const VIEWS = [
   { path: 'dashboard', title: 'Dashboard' },
-  { path: 'usage', title: 'MCP usage' },
   { path: 'servers', title: 'Servers' },
   { path: 'workflows', title: 'Workflows' },
   { path: 'tools', title: 'Tool explorer' },
@@ -50,6 +51,33 @@ const IndexRedirect = () => {
  * relative to the section root, so a bare `..` would land on the index (and from
  * there on the Dashboard) instead of the workflows list.
  */
+/**
+ * `/agent-platform/muster/usage` moved to the Agent Platform's own Usage tab,
+ * where it sits beside the personal section. The redirect is **required, not a
+ * courtesy**: the old path is linkable, and without it the section's `*` route
+ * matches, `MusterViews` renders, and its inner `<Routes>` has no fallback — so
+ * the tab strip would draw over blank content.
+ *
+ * A sibling of the index redirect rather than a route inside `MusterViews`, for
+ * the same reason that one is, and it preserves the query string so an
+ * `?installation=` in a deep link survives. Falls back to `dashboard` when the
+ * external ref is unbound (agent-platform disabled), which is where the section
+ * index goes anyway.
+ */
+const LegacyUsageRedirect = () => {
+  const { search } = useLocation();
+  const usageLink = useRouteRef(agentPlatformUsageExternalRouteRef);
+  // The fallback is spelled `../dashboard`, not `dashboard`: this route is
+  // matched at `usage`, so a bare relative path resolves *under* it and lands on
+  // `/muster/usage/dashboard`. Same trap `LegacyRunRedirect` documents below.
+  return (
+    <Navigate
+      to={`${usageLink ? usageLink() : '../dashboard'}${search}`}
+      replace
+    />
+  );
+};
+
 const LegacyRunRedirect = () => {
   const { name = '' } = useParams();
   const { search } = useLocation();
@@ -93,7 +121,6 @@ const MusterViews = () => {
       </Box>
       <Routes>
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="usage" element={<UsagePage />} />
         <Route path="servers/*" element={<McpServersRouter />} />
         <Route path="workflows/*" element={<WorkflowsRouter />} />
         <Route path="tools" element={<ToolExplorerPage />} />
@@ -118,6 +145,7 @@ const MusterViews = () => {
 export const MusterSection = () => (
   <Routes>
     <Route index element={<IndexRedirect />} />
+    <Route path="usage" element={<LegacyUsageRedirect />} />
     <Route path="workflows/:name/run" element={<LegacyRunRedirect />} />
     <Route path="*" element={<MusterViews />} />
   </Routes>

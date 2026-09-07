@@ -17,13 +17,14 @@ import {
   MusterAuthProviders,
   musterAuthProvidersApiRef,
 } from './apis';
+import { mcpUsageSection } from './mcpUsageSection';
 import {
+  agentPlatformUsageExternalRouteRef,
   mcpServersRouteRef,
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
   rootRouteRef,
   toolExplorerRouteRef,
-  usageRouteRef,
   workflowDetailRouteRef,
   workflowsRouteRef,
 } from './routes';
@@ -84,7 +85,12 @@ const musterAuthProvidersApi = ApiBlueprint.make({
 
 export const musterPlugin = createFrontendPlugin({
   pluginId: 'muster',
-  extensions: [musterSubPage, musterApi, musterAuthProvidersApi],
+  extensions: [
+    musterSubPage,
+    mcpUsageSection,
+    musterApi,
+    musterAuthProvidersApi,
+  ],
   routes: {
     root: rootRouteRef,
     mcpServers: mcpServersRouteRef,
@@ -93,6 +99,12 @@ export const musterPlugin = createFrontendPlugin({
     workflows: workflowsRouteRef,
     toolExplorer: toolExplorerRouteRef,
     workflowDetail: workflowDetailRouteRef,
-    usage: usageRouteRef,
+  },
+  // Points at the Agent Platform's Usage tab, where the MCP usage view now
+  // lives. `defaultTarget` resolves it without an app-config binding and leaves
+  // it simply unbound when that plugin is disabled, so every `useRouteRef` call
+  // site must handle `undefined`.
+  externalRoutes: {
+    agentPlatformUsage: agentPlatformUsageExternalRouteRef,
   },
 });

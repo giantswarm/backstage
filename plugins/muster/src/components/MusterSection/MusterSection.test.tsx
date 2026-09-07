@@ -22,9 +22,6 @@ jest.mock('../WorkflowsRouter', () => ({
 jest.mock('../ToolExplorerPage', () => ({
   ToolExplorerPage: () => <div>tools-view</div>,
 }));
-jest.mock('../UsagePage', () => ({
-  UsagePage: () => <div>usage-view</div>,
-}));
 
 // MusterInstanceProvider is deliberately NOT stubbed: its `?installation=` write
 // is what used to clobber the index redirect. Only its data sources are.
@@ -153,15 +150,27 @@ describe('MusterSection', () => {
     });
   });
 
-  it('routes the MCP usage view', async () => {
+  it('no longer offers MCP usage as a view of this section', async () => {
+    // It moved to the Agent Platform's own Usage tab, beside the personal
+    // section, so the tab strip must not still advertise it.
+    renderSection('/agent-platform/muster/dashboard');
+
+    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'MCP usage' })).toBeNull();
+  });
+
+  it('redirects the legacy MCP usage deep link, keeping the query string', async () => {
+    // Required, not a courtesy: without the redirect the path falls through to
+    // `*`, MusterViews renders, and its inner Routes has no fallback — so the
+    // tab strip would draw over blank content.
     renderSection('/agent-platform/muster/usage?installation=alpha');
 
-    expect(await screen.findByText('usage-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/muster/usage?installation=alpha',
+        '?installation=alpha',
       );
     });
+    expect(screen.getByTestId('path')).not.toHaveTextContent('muster/usage');
   });
 
   it('redirects the legacy workflow run deep link to the workflow detail', async () => {

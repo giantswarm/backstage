@@ -43,9 +43,9 @@ import {
 import { serversHealthSummary } from '../../lib/k8s';
 import { musterApiRef } from '../../apis';
 import {
+  agentPlatformUsageExternalRouteRef,
   mcpServersRouteRef,
   toolExplorerRouteRef,
-  usageRouteRef,
   workflowsRouteRef,
 } from '../../routes';
 
@@ -293,7 +293,10 @@ export function DashboardPage() {
   const identityApi = useApi(identityApiRef);
   const mcpServersLink = useRouteRef(mcpServersRouteRef);
   const workflowsLink = useRouteRef(workflowsRouteRef);
-  const usageLink = useRouteRef(usageRouteRef);
+  // The Agent Platform's Usage tab, where the MCP usage view now lives.
+  // Unbound when that plugin is disabled, so the card is withheld rather than
+  // pointing at nothing.
+  const usageLink = useRouteRef(agentPlatformUsageExternalRouteRef);
   const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
 
   // The logged-in Backstage identity, shown in the "Authenticated as" badge.
@@ -533,13 +536,15 @@ export function DashboardPage() {
                     : 'Requires a muster session'
                 }
               />
-              <BrowseCard
-                to={withInstallation(usageLink?.() ?? '#', activeInstallation)}
-                icon={<BarChart />}
-                title="MCP usage"
-                description="Tool calls dispatched to the servers behind this muster — volume, outcomes, latency, top tools."
-                count="From muster's own metrics"
-              />
+              {usageLink && (
+                <BrowseCard
+                  to={withInstallation(usageLink(), activeInstallation)}
+                  icon={<BarChart />}
+                  title="MCP usage"
+                  description="Tool calls dispatched to the servers behind this muster, from every caller — volume, outcomes, latency, top tools."
+                  count="On the Usage tab"
+                />
+              )}
             </Box>
           </Box>
 
