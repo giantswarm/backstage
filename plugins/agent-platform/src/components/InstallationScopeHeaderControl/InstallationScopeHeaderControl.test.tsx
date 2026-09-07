@@ -35,6 +35,17 @@ jest.mock('../../hooks/useKagentInstallations', () => ({
   }),
 }));
 
+// The muster backend's probe, read through the muster plugin's hook.
+let mockMusterNotReachable: string[] = [];
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  useMusterInstallations: () => ({
+    installations: [],
+    isLoading: false,
+    isNotReachable: (installation: string) =>
+      mockMusterNotReachable.includes(installation),
+  }),
+}));
+
 function entry(installation: string): InstallationInventoryEntry {
   return {
     installation,
@@ -75,6 +86,7 @@ describe('InstallationScopeHeaderControl', () => {
   beforeEach(() => {
     mockSelect.mockClear();
     mockNotReachable = [];
+    mockMusterNotReachable = [];
   });
 
   it('tells the selector which component the current tab reads', async () => {
@@ -98,5 +110,22 @@ describe('InstallationScopeHeaderControl', () => {
 
     const { describe } = mockSelect.mock.calls.at(-1)![0];
     expect(describe(entry('golem'))).toBeUndefined();
+  });
+
+  it('marks installations whose muster the portal cannot reach, on the MCP Servers tab only', async () => {
+    mockMusterNotReachable = ['wombat'];
+    await renderAt('/agent-platform/muster/dashboard');
+
+    const { describe } = mockSelect.mock.calls.at(-1)![0];
+    expect(describe(entry('wombat'))).toBe('not reachable from this portal');
+    expect(describe(entry('golem'))).toBeUndefined();
+  });
+
+  it('says nothing about muster reachability on the kagent tabs', async () => {
+    mockMusterNotReachable = ['wombat'];
+    await renderAt('/agent-platform/agents');
+
+    const { describe } = mockSelect.mock.calls.at(-1)![0];
+    expect(describe(entry('wombat'))).toBeUndefined();
   });
 });

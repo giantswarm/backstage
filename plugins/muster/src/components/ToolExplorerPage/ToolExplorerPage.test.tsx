@@ -28,6 +28,9 @@ function instance(overrides: Partial<MusterInstance> = {}): MusterInstance {
     installationInfos,
     isLoadingInstallations: false,
     activeInstallation: 'wombat',
+    scope: 'wombat',
+    homeInstallation: 'gazelle',
+    isSingleInstallation: false,
     activeInstallationInfo: installationInfos[1],
     setActiveInstallation: jest.fn(),
     mcpServers: [],
@@ -75,8 +78,6 @@ describe('ToolExplorerPage on an installation the portal cannot reach', () => {
       screen.queryByRole('button', { name: /connect|retry|sign in/i }),
     ).toBeNull();
     expect(screen.queryByText(/Select a tool to view its schema/)).toBeNull();
-    // The picker still lists the installation, so the person can switch away.
-    expect(screen.getByDisplayValue('wombat')).toBeInTheDocument();
 
     await act(() => new Promise(resolve => setTimeout(resolve, 20)));
     expect(api.filterTools).not.toHaveBeenCalled();

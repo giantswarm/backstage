@@ -27,7 +27,7 @@ import {
   useMusterInstance,
   useMusterSession,
 } from '../MusterInstanceProvider';
-import { InstallationPicker } from '../InstallationPicker';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { SectionHeader, SessionGate, Stat } from '../shared';
 
 /** Selectable time windows; hours drives both the query and the bucket size. */
@@ -336,7 +336,7 @@ export function UsagePage() {
 
   return (
     <Content>
-      <InstallationPicker />
+      <ActiveInstallationNote />
       <Box className={classes.column}>
         <SectionHeader
           icon={<BarChartIcon />}

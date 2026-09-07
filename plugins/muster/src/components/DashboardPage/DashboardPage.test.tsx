@@ -39,6 +39,9 @@ function instance(overrides: Partial<MusterInstance> = {}): MusterInstance {
     installationInfos,
     isLoadingInstallations: false,
     activeInstallation: 'wombat',
+    scope: 'wombat',
+    homeInstallation: 'gazelle',
+    isSingleInstallation: false,
     activeInstallationInfo: installationInfos[1],
     setActiveInstallation: jest.fn(),
     mcpServers: [],
@@ -135,6 +138,7 @@ describe('DashboardPage on an installation the portal cannot reach', () => {
       api,
       instance({
         activeInstallation: 'gazelle',
+        scope: 'gazelle',
         activeInstallationInfo: {
           name: 'gazelle',
           requiresAuth: true,

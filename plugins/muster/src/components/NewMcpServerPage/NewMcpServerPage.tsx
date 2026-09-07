@@ -26,7 +26,7 @@ import {
   type McpServerTransport,
 } from '../../lib/mcpServerDefinition';
 import { useMusterInstance } from '../MusterInstanceProvider';
-import { InstallationPicker } from '../InstallationPicker';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
 import { StateBadge } from '../shared/StateBadge';
@@ -111,9 +111,9 @@ export function NewMcpServerPage() {
   );
 
   // The wizard registers onto the section's active installation — the same
-  // instance every muster view is scoped to, switched via the picker above the
-  // form. Mirrored into the form state so validation and the composed
-  // definition see it.
+  // instance every muster view is scoped to, switched via the installation
+  // selector in the page header. Mirrored into the form state so validation
+  // and the composed definition see it.
   useEffect(() => {
     if (state.installation !== activeInstallation) {
       setInstallation(activeInstallation);
@@ -205,9 +205,9 @@ export function NewMcpServerPage() {
           its tools through the gateway.
         </Text>
 
-        <Flex direction="column" gap="4">
-          <InstallationPicker />
+        <ActiveInstallationNote />
 
+        <Flex direction="column" gap="4">
           <Card>
             <CardBody>
               <SectionHeader

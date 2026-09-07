@@ -30,7 +30,7 @@ export function homeFirst<T extends { name: string }>(
 }
 
 /**
- * The muster installations the picker offers: the backend's installations
+ * The muster installations the section can show: the backend's installations
  * (an endpoint the proxy can target -- derived from the base domain or
  * configured) intersected with the installations whose inventory has the
  * `muster.giantswarm.io` API group and whose cluster access is healthy

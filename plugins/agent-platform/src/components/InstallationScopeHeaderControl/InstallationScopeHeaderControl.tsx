@@ -5,6 +5,7 @@ import {
   type InstallationInventoryEntry,
   type PlatformComponent,
 } from '@giantswarm/backstage-plugin-gs';
+import { useMusterInstallations } from '@giantswarm/backstage-plugin-muster';
 import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { QueryClientProvider } from '../QueryClientProvider';
 
@@ -37,17 +38,22 @@ function HeaderControl() {
   const splat = useParams()['*'] ?? '';
   const component = componentForTab(splat);
 
-  // The backend's kagent endpoint probe (`GET /kagent/installations`): an
-  // installation whose kagent the portal cannot reach is worth saying on the
-  // kagent tabs, next to what the inventory knows. muster's reachability is
-  // the muster plugin's to show; its own picker marks it.
-  const { isNotReachable } = useKagentInstallations();
+  // The backends' endpoint probes (`GET /kagent/installations`, the muster
+  // backend's `/installations`): an installation whose kagent (on the kagent
+  // tabs) or muster (on the MCP Servers tab) the portal cannot reach is worth
+  // saying next to what the inventory knows -- this selector is the one
+  // control that scopes the muster section too, and its views say the same
+  // instead of offering a connect that cannot help.
+  const { isNotReachable: kagentNotReachable } = useKagentInstallations();
+  const { isNotReachable: musterNotReachable } = useMusterInstallations();
   const describe = useCallback(
-    (entry: InstallationInventoryEntry) =>
-      component === 'kagent' && isNotReachable(entry.installation)
-        ? NOT_REACHABLE
-        : undefined,
-    [component, isNotReachable],
+    (entry: InstallationInventoryEntry) => {
+      const notReachable =
+        (component === 'kagent' && kagentNotReachable(entry.installation)) ||
+        (component === 'muster' && musterNotReachable(entry.installation));
+      return notReachable ? NOT_REACHABLE : undefined;
+    },
+    [component, kagentNotReachable, musterNotReachable],
   );
 
   return (

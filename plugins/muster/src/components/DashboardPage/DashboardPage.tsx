@@ -29,7 +29,7 @@ import {
   useMusterInstance,
   useMusterSession,
 } from '../MusterInstanceProvider';
-import { InstallationPicker } from '../InstallationPicker';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { CapabilitySurface } from './CapabilitySurface';
 import { FleetCoverage } from './FleetCoverage';
 import { InventoryBreakdown } from './InventoryBreakdown';
@@ -354,7 +354,7 @@ export function DashboardPage() {
 
   return (
     <Content>
-      <InstallationPicker />
+      <ActiveInstallationNote />
 
       {!activeInstallation ? (
         <Progress />
