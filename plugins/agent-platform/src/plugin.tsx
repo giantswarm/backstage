@@ -111,7 +111,7 @@ const modelsSubPage = SubPageBlueprint.make({
 });
 
 // The section's installation scope selector, in the page header next to the
-// tabs' own actions: "All installations" (home first, the others as groups) or
+// tabs' own actions: "All installations" (home first) or
 // one pinned installation, for the three tabs above and the muster plugin's
 // "MCP Servers" tab alike. A header action rather than part of a tab, so it
 // stays put while the tabs change underneath it; the scope itself lives in the
