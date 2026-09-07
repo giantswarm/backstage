@@ -22,6 +22,7 @@ export * from './PageHeaderActions';
 export * from './SectionHeader';
 export * from './SimpleAccordion';
 export * from './SingleSelect';
+export * from './Stat';
 export * from './StackedBarChart';
 export * from './StatusLabel';
 export * from './StructuredMetadataList';

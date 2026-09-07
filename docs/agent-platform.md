@@ -1226,12 +1226,15 @@ session's id, and subagent sessions are filtered out of the list anyway.
 
 ### The stats strip
 
-`Turns · Duration · Input tokens (billed, cumulative) · Output tokens`.
+`Turns · Duration · Input tokens (billed) · Output tokens`.
 
-**Input tokens are labelled "billed, cumulative" on purpose.** Every model call
-re-sends the whole context, so a 4-turn session with a large tool catalogue reached
-**1.4M prompt tokens across 14 calls** (3.9k–144k each). That is genuine billed
-usage and kagent's own UI sums it identically — but unlabelled it reads as a bug.
+**Input tokens are labelled "billed" on purpose.** Every model call re-sends the
+whole context, so a 4-turn session with a large tool catalogue reached **1.4M
+prompt tokens across 14 calls** (3.9k–144k each). That is genuine billed,
+cumulative usage and kagent's own UI sums it identically — but unlabelled it
+reads as a bug. The label reads "(billed)" rather than "(billed, cumulative)"
+because the strip's `Stat` renders it uppercase, where the longer form wrapped;
+this paragraph is where the full reasoning lives.
 
 There is deliberately **no combined total**: input and output tokens are priced
 differently, so their sum is not a number anyone acts on.

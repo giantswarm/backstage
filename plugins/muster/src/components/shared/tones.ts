@@ -1,51 +1,19 @@
-import { Theme } from '@material-ui/core';
+import { Tone } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServerSeverity } from '../../lib/k8s';
 
 /**
- * The five tones the muster mockups use, ported from their Tailwind palette
- * (emerald / amber / red / blue / violet) to MUI theme colours. Defined once
- * here so every primitive (StateBadge, Stat, step badges) stays consistent
- * instead of each screen re-deriving a colour.
+ * The tone palette moved to `ui-react` once a second plugin needed it; this
+ * re-export keeps muster's own ~13 importers on a local path.
  */
-export type Tone = 'ok' | 'warning' | 'error' | 'info' | 'neutral';
+export { toneColors, VIOLET } from '@giantswarm/backstage-plugin-ui-react';
+export type { Tone, ToneColors } from '@giantswarm/backstage-plugin-ui-react';
 
-/** Mockup violet (`#7c3aed`) for workflow / "Calls workflow" accents. */
-export const VIOLET = '#7c3aed';
-
-export interface ToneColors {
-  /** Strong colour for dots, used at full saturation. */
-  main: string;
-  /** Readable text colour for labels/values on the page background. */
-  text: string;
-}
-
-export function toneColors(theme: Theme, tone: Tone): ToneColors {
-  const isDark = theme.palette.type === 'dark';
-  switch (tone) {
-    case 'ok':
-      return {
-        main: theme.palette.success.main,
-        text: theme.palette.success.dark,
-      };
-    case 'warning':
-      return {
-        main: theme.palette.warning.main,
-        text: theme.palette.warning.dark,
-      };
-    case 'error':
-      return { main: theme.palette.error.main, text: theme.palette.error.dark };
-    case 'info':
-      return { main: VIOLET, text: isDark ? '#b794f6' : VIOLET };
-    case 'neutral':
-    default:
-      return {
-        main: theme.palette.text.disabled,
-        text: theme.palette.text.secondary,
-      };
-  }
-}
-
-/** Maps the MCPServer severity used across the plugin onto a badge tone. */
+/**
+ * Maps the MCPServer severity used across the plugin onto a badge tone.
+ *
+ * Stays here rather than moving with the palette: it takes a muster type, so a
+ * generic component library has no business knowing about it.
+ */
 export function severityTone(severity: MCPServerSeverity): Tone {
   switch (severity) {
     case 'ok':
