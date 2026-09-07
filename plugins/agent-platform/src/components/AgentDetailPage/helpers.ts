@@ -29,10 +29,19 @@ export function mcpServerRefId(ref: AgentMcpServerRef): string {
  *
  * `toolNames` is an allowlist; an absent or empty one means the agent may call
  * everything the server exposes, which is worth stating rather than leaving to be
- * inferred from a missing value.
+ * inferred from a missing value. For the muster gateway that allowlist only ever
+ * covers muster's meta-tools, so the row points at the Toolset card, where the
+ * agent's actual tool access is declared and resolved.
  */
 export function describeToolScope(ref: AgentMcpServerRef): string {
   const toolNames = ref.toolNames ?? [];
+  if (isMusterServerRef(ref)) {
+    return toolNames.length === 0
+      ? 'The gateway; which of its tools the agent can use is its toolset — see Toolset below'
+      : `The gateway, with ${toolNames.length} meta-tool${
+          toolNames.length === 1 ? '' : 's'
+        } (${toolNames.join(', ')}); which tools the agent can use is its toolset — see Toolset below`;
+  }
   if (toolNames.length === 0) {
     return 'All tools from this server';
   }

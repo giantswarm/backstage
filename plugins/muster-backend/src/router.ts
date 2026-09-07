@@ -92,6 +92,25 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
   return value;
 }
 
+/**
+ * A query parameter that may repeat (`?toolset=a&toolset=b`): one value is a
+ * string, several an array. Anything else (an object from `toolset[x]=`
+ * bracket syntax) is refused rather than forwarded.
+ */
+function repeatedQueryValues(
+  value: unknown,
+  name: string,
+): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const values = Array.isArray(value) ? value : [value];
+  if (!values.every(entry => typeof entry === 'string')) {
+    throw new InputError(`${name} must be a string or a list of strings`);
+  }
+  return values as string[];
+}
+
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
@@ -294,6 +313,21 @@ export async function createRouter(
     const offset = parseOptionalInt(req.query.offset, 'offset');
     if (offset !== undefined) {
       args.offset = offset;
+    }
+    // A toolset travels as one `toolset=` entry per selector (a selector never
+    // contains a comma or whitespace). Passed through verbatim: muster owns the
+    // grammar and answers an unknown preset or a malformed selector with its
+    // own message, which the frontend shows as is.
+    const toolset = repeatedQueryValues(req.query.toolset, 'toolset');
+    if (toolset !== undefined) {
+      args.toolset = toolset;
+    }
+    const includePresets = singleQueryValue(
+      req.query.include_presets,
+      'include_presets',
+    );
+    if (includePresets !== undefined) {
+      args.include_presets = includePresets === 'true';
     }
 
     const result = await client.filterTools(

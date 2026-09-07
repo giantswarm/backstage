@@ -49,6 +49,7 @@ import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentSkillsCard } from './AgentSkillsCard';
 import { AgentStatusCard } from './AgentStatusCard';
 import { AgentSystemPromptCard } from './AgentSystemPromptCard';
+import { AgentToolsetCard } from './AgentToolsetCard';
 
 /** Matches the list's row avatar: two lines of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 96;
@@ -374,6 +375,7 @@ function AgentDetailPageContent() {
         </Grid.Root>
 
         <AgentSystemPromptCard agent={agent} />
+        <AgentToolsetCard agent={agent} />
         <AgentSkillsCard agent={agent} />
         <AgentSessionsCard sessions={sessions} />
       </Flex>

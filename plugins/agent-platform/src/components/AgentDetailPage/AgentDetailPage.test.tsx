@@ -71,6 +71,14 @@ jest.mock('../../hooks/useCreateSession', () => ({
   }),
 }));
 
+// The toolset card reads muster through react-query hooks that need this
+// plugin's QueryClientProvider and API, neither of which is part of this page
+// test; it is covered by AgentToolsetCard.test.tsx. Here only its presence in
+// the page is asserted.
+jest.mock('./AgentToolsetCard', () => ({
+  AgentToolsetCard: () => <div data-testid="agent-toolset-card" />,
+}));
+
 // The serving layer's word on the model behind the agent is driven per case;
 // the provider (which would read the fleet) becomes a pass-through.
 const mockServingStateFor = jest.fn<
@@ -527,9 +535,10 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByText('RemoteMCPServer agent-platform/muster'),
       ).toBeInTheDocument();
-      expect(
-        screen.getByText('All tools from this server'),
-      ).toBeInTheDocument();
+      // The gateway row defers to the toolset card rather than claiming "all
+      // tools": which of the gateway's tools the agent can use is its toolset.
+      expect(screen.getByText(/see Toolset below/)).toBeInTheDocument();
+      expect(screen.getByTestId('agent-toolset-card')).toBeInTheDocument();
     });
 
     it('describes a restricted server by its allowlist', async () => {
@@ -587,8 +596,10 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(screen.getByText('1 tool: list_tools')).toBeInTheDocument();
-      expect(screen.getByText('1 tool: call_tool')).toBeInTheDocument();
+      expect(
+        screen.getByText(/1 meta-tool \(list_tools\)/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/1 meta-tool \(call_tool\)/)).toBeInTheDocument();
       expect(
         screen.getByText('Requires approval: call_tool'),
       ).toBeInTheDocument();

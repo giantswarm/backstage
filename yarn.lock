@@ -7505,6 +7505,7 @@ __metadata:
     "@giantswarm/backstage-plugin-flux-react": "workspace:^"
     "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
+    "@giantswarm/backstage-plugin-muster": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.7.1"
     "@material-ui/core": "npm:^4.12.4"

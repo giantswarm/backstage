@@ -19,6 +19,28 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
   it.each([
     ['sessions', ['agent-platform', 'kagent', 'sessions', 'gazelle']],
     ['identity', ['agent-platform', 'kagent', 'me', 'gazelle']],
+    [
+      // `musterToolsetResolutionQueryKey`: toolset ∩ the caller's own session
+      // catalogue, read for the Tools step and the agent page.
+      'toolset resolutions',
+      [
+        'muster',
+        'agent-platform',
+        'toolset-resolution',
+        'gazelle',
+        'preset:read-only',
+      ],
+    ],
+    [
+      'the per-session tool catalogue',
+      ['muster', 'agent-platform', 'tool-catalogue', 'gazelle'],
+    ],
+    [
+      // The muster plugin's `useServerSignIn` keys, when its hook renders
+      // inline under this client.
+      "the muster plugin's per-session auth status",
+      ['muster', 'auth-status', 'gazelle'],
+    ],
   ])('never persists user-scoped %s data', (_label, queryKey) => {
     // These hold one user's chat titles and their email. Persisting them would
     // leave them on disk after sign-out and let PersistQueryClientProvider

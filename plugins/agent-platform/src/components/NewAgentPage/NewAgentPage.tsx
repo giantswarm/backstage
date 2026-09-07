@@ -20,8 +20,8 @@ import {
 
 import {
   agentsRouteRef,
-  newAgentReviewRouteRef,
   newAgentSkillsRouteRef,
+  newAgentToolsRouteRef,
 } from '../../routes';
 import { useAgentChart } from '../../hooks/useAgentChart';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
@@ -65,7 +65,7 @@ function NewAgentPageContent() {
   const navigate = useNavigate();
   const agentsLink = useRouteRef(agentsRouteRef);
   const skillsLink = useRouteRef(newAgentSkillsRouteRef);
-  const reviewLink = useRouteRef(newAgentReviewRouteRef);
+  const toolsLink = useRouteRef(newAgentToolsRouteRef);
   // Called here for two reasons beyond this page's own rendering: it starts the
   // (backend, git-tree-walking) skill discovery while the user is still filling
   // in this form, so step 2 usually has its catalogue ready instead of showing
@@ -108,9 +108,10 @@ function NewAgentPageContent() {
   const errorCount = validationErrors.length;
   // Skip the skills step when no repositories are configured — it would be an
   // empty page whose only advice is admin-side app-config the person creating
-  // an agent usually can't change.
-  const nextLink = hasRepositories ? skillsLink : reviewLink;
-  const totalSteps = hasRepositories ? 3 : 2;
+  // an agent usually can't change. The Tools step always exists: every agent
+  // declares a toolset.
+  const nextLink = hasRepositories ? skillsLink : toolsLink;
+  const totalSteps = hasRepositories ? 4 : 3;
   const onContinue = useCallback(() => {
     if (errorCount > 0) {
       setShowValidation(true);
@@ -251,8 +252,8 @@ function NewAgentPageContent() {
               <Flex direction="column" gap="3">
                 <Text as="p" color="secondary" className={classes.footerNote}>
                   {hasRepositories
-                    ? 'The next step lets you pick skills for this agent, then review and deploy it.'
-                    : 'The next step composes the Helm values and manifests so you can review them before the agent is deployed.'}
+                    ? 'The next steps let you pick skills and the tools for this agent, then review and deploy it.'
+                    : 'The next step chooses the tools for this agent; then you review and deploy it.'}
                 </Text>
                 {showValidation && validationErrors.length > 0 && (
                   <Alert

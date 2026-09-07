@@ -4,7 +4,18 @@ export {
   musterAuthProvidersApiRef,
   MusterAuthProviders,
 } from './apis';
-export type { MusterApi, MusterAuthProvidersApi } from './apis';
+export type {
+  MusterApi,
+  MusterAuthProvidersApi,
+  FilterToolsOptions,
+  FilterToolsResponse,
+  ListToolsResponse,
+  ServerRequiringAuth,
+  ToolAnnotations,
+  ToolKind,
+  ToolSummary,
+  ToolsetPreset,
+} from './apis';
 export {
   MCPServer,
   MusterWorkflow,
@@ -38,6 +49,8 @@ export {
   Stat,
   DisclosureAccordion,
   ToolList,
+  ServerSignIn,
+  useServerSignIn,
   toneColors,
   severityTone,
   VIOLET,
@@ -49,6 +62,8 @@ export type {
   DisclosureAccordionProps,
   ToolListItem,
   ToolListProps,
+  ServerSignInProps,
+  ServerSignInState,
   Tone,
   ToneColors,
 } from './components/shared';

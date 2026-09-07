@@ -84,3 +84,40 @@ export function modelManagerJobsQueryKey(installation: string) {
 export function modelManagerNodesQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'nodes', installation] as const;
 }
+
+/**
+ * The muster-backed reads the agent creation Tools step and the agent detail
+ * page make: the aggregator's presets, the per-session tool catalogue and the
+ * resolution of one toolset for the caller.
+ *
+ * Deliberately prefixed `muster`, not `agent-platform`: the muster plugin's
+ * `useServerSignIn` — rendered inline on both surfaces — invalidates every
+ * `['muster', …]` query once a sign-in completes, and that is exactly when the
+ * catalogue and the resolution must be re-read (the newly connected server's
+ * tools appear). Sharing the prefix makes that one invalidation reach them.
+ *
+ * All three are per user (a resolution is toolset ∩ the caller's own session
+ * catalogue; even the preset list is read through the caller's session), so
+ * `components/QueryClientProvider` keeps the whole `muster` prefix out of
+ * localStorage. New keys for a new data shape, per backstage#2264.
+ */
+export function musterToolsetPresetsQueryKey(installation: string) {
+  return ['muster', 'agent-platform', 'toolset-presets', installation] as const;
+}
+
+export function musterToolCatalogueQueryKey(installation: string) {
+  return ['muster', 'agent-platform', 'tool-catalogue', installation] as const;
+}
+
+export function musterToolsetResolutionQueryKey(
+  installation: string,
+  selectors: string[],
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'toolset-resolution',
+    installation,
+    selectors.join(','),
+  ] as const;
+}
