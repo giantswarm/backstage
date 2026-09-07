@@ -95,7 +95,6 @@ const loadedSessions: SessionsContextValue = {
 
 const loadedAgents: AgentsContextValue = {
   rows: [sre, issues],
-  groups: [],
   scope: 'all',
   installations: ['gazelle'],
   isLoading: false,

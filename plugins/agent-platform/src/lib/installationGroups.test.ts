@@ -1,7 +1,7 @@
 import {
-  AGENTS_NOUN,
   describeInstallationGroup,
   groupRowsByInstallation,
+  MODELS_NOUN,
   SESSIONS_NOUN,
 } from './installationGroups';
 
@@ -80,8 +80,8 @@ describe('groupRowsByInstallation', () => {
 describe('describeInstallationGroup', () => {
   it('counts rows with the right noun', () => {
     expect(
-      describeInstallationGroup({ status: 'ready', rows: [1] }, AGENTS_NOUN),
-    ).toBe('1 agent');
+      describeInstallationGroup({ status: 'ready', rows: [1] }, MODELS_NOUN),
+    ).toBe('1 model');
     expect(
       describeInstallationGroup(
         { status: 'ready', rows: [1, 2, 3] },
@@ -92,17 +92,17 @@ describe('describeInstallationGroup', () => {
 
   it('words every other state', () => {
     expect(
-      describeInstallationGroup({ status: 'loading', rows: [] }, AGENTS_NOUN),
+      describeInstallationGroup({ status: 'loading', rows: [] }, MODELS_NOUN),
     ).toBe('loading…');
     expect(
-      describeInstallationGroup({ status: 'empty', rows: [] }, AGENTS_NOUN),
-    ).toBe('no agents here');
+      describeInstallationGroup({ status: 'empty', rows: [] }, MODELS_NOUN),
+    ).toBe('no models here');
     expect(
       describeInstallationGroup(
         { status: 'unreachable', rows: [] },
-        AGENTS_NOUN,
+        MODELS_NOUN,
       ),
-    ).toBe('agents could not be read');
+    ).toBe('models could not be read');
     expect(
       describeInstallationGroup(
         { status: 'not-reachable', rows: [] },

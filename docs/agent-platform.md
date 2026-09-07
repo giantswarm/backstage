@@ -463,13 +463,15 @@ a context could not cross the boundary. The store is the contract.
   alone and the others only once it has answered (rows, an empty list, or a
   failure), so the person's own rows are on screen before any other
   installation — or its token — is asked for. On a repeat visit the home's
-  answer comes from the persisted cache and the others follow at once. The rows
-  render as one group per installation (`groupRowsByInstallation`,
-  `InstallationGroups`), each headed by the installation's name, pipeline and a
-  status line: loading, N items, none here, could not be read, not reachable
-  from this portal. A pinned scope and a single-installation portal keep the
-  flat table (`useGroupedByInstallation`); `sortAgentRows` / `sortSessionRows`
-  put the home installation's rows first in the flat lists as well.
+  answer comes from the persisted cache and the others follow at once. The
+  Sessions and Models rows render as one group per installation
+  (`groupRowsByInstallation`, `InstallationGroups`), each headed by the
+  installation's name, pipeline and a status line: loading, N items, none
+  here, could not be read, not reachable from this portal. A pinned scope and
+  a single-installation portal keep the flat table (`useGroupedByInstallation`).
+  The Agents tab is one flat table under every scope: its Installation column,
+  the table's initial sort, tells the rows apart. `sortAgentRows` /
+  `sortSessionRows` put the home installation's rows first in the flat lists.
 - **Pinning** narrows every tab (`applyInstallationScope` over the inventory's
   installations in each provider, `ServingProvider` included). Under `'all'`
   the MCP Servers tab shows the home muster — one muster is one aggregator —

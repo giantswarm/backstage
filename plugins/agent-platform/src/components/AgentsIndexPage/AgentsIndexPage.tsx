@@ -8,15 +8,10 @@ import AddIcon from '@material-ui/icons/Add';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { newAgentRouteRef } from '../../routes';
-import { AGENTS_NOUN } from '../../lib/installationGroups';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { AgentsTable } from '../AgentsTable';
-import {
-  InstallationGroups,
-  InstallationScopeNote,
-  useGroupedByInstallation,
-} from '../InstallationGroups';
+import { InstallationScopeNote } from '../InstallationGroups';
 import { ServingProvider } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
@@ -36,16 +31,11 @@ function AgentsIndexPageContent() {
   const newAgentLink = useRouteRef(newAgentRouteRef);
   const {
     rows,
-    groups,
     isLoading,
     isLoadingMore,
     hasInstallations,
     unreachableInstallations,
   } = useAgents();
-  // Under "All installations" on a multi-installation portal the rows render
-  // as one group per installation, home first; a pinned scope and a
-  // single-installation portal keep the flat table.
-  const grouped = useGroupedByInstallation();
 
   // Memoized so the header actions slot only updates when the handler changes.
   const actions = useMemo(
@@ -101,17 +91,12 @@ function AgentsIndexPageContent() {
               )}
             </Box>
 
+            {/* One flat table under every scope. Under "All installations" the
+                Installation column — the table's initial sort, home first —
+                tells the rows apart; an installation without agents has no
+                row, and one that could not be read is called out below. */}
             <Box>
-              {grouped ? (
-                <InstallationGroups
-                  groups={groups}
-                  noun={AGENTS_NOUN}
-                  renderRows={groupRows => <AgentsTable rows={groupRows} />}
-                  fallback={<AgentsTable rows={[]} />}
-                />
-              ) : (
-                <AgentsTable rows={rows} />
-              )}
+              <AgentsTable rows={rows} />
             </Box>
           </>
         )}

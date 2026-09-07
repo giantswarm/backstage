@@ -453,11 +453,6 @@ describe('AgentsDataProvider installation scope', () => {
     // Rows are on screen while the others load: not "loading", but "more".
     expect(hook.current.isLoading).toBe(false);
     expect(hook.current.isLoadingMore).toBe(true);
-    expect(hook.current.groups.map(group => group.status)).toEqual([
-      'ready',
-      'loading',
-      'loading',
-    ]);
   });
 
   it('asks everyone at once when the home answers with a failure too', async () => {
@@ -488,11 +483,10 @@ describe('AgentsDataProvider installation scope', () => {
     );
     expect(hook.current.scope).toBe('beta');
     expect(hook.current.installations).toEqual(['beta']);
-    expect(hook.current.groups).toHaveLength(1);
     expect(hook.current.isLoadingMore).toBe(false);
   });
 
-  it('groups the rows by installation, home first, with the pipeline and status', async () => {
+  it('reports an installation that could not be read next to the rows of the others', async () => {
     mockUseResources.mockReturnValue(
       result({
         succeeded: { alpha: ['a2', 'a1'], beta: [] },
@@ -502,23 +496,15 @@ describe('AgentsDataProvider installation scope', () => {
 
     const { result: hook } = renderHook(() => useAgents(), { wrapper });
 
-    await waitFor(() => expect(hook.current.groups).toHaveLength(3));
-    expect(
-      hook.current.groups.map(group => [
-        group.installation,
-        group.home,
-        group.status,
-        group.rows.map(row => row.name),
-      ]),
-    ).toEqual([
-      ['alpha', true, 'ready', ['a1', 'a2']],
-      ['beta', false, 'empty', []],
-      ['gaggle', false, 'unreachable', []],
-    ]);
-    // The flat rows put the home installation first as well.
-    expect(hook.current.rows.map(row => row.installation)).toEqual([
-      'alpha',
-      'alpha',
+    await waitFor(() =>
+      expect(hook.current.unreachableInstallations).toEqual(['gaggle']),
+    );
+    // Everyone in scope is listed; the flat rows are sorted by installation
+    // and name, the home installation first.
+    expect(hook.current.installations).toEqual(['alpha', 'beta', 'gaggle']);
+    expect(hook.current.rows.map(row => [row.installation, row.name])).toEqual([
+      ['alpha', 'a1'],
+      ['alpha', 'a2'],
     ]);
   });
 });

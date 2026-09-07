@@ -1,6 +1,5 @@
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -21,10 +20,6 @@ import {
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import { clientLookupOf } from '../../lib/serving';
-import {
-  groupRowsByInstallation,
-  type InstallationGroup,
-} from '../../lib/installationGroups';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
 import {
@@ -41,17 +36,11 @@ export type AgentsContextValue = {
    * installation and name.
    */
   rows: AgentRow[];
-  /**
-   * The same rows as one group per installation in scope, home first, each
-   * with its own status (loading, rows, empty, could not be read) -- what the
-   * "All installations" view renders. See `groupRowsByInstallation`.
-   */
-  groups: InstallationGroup<AgentRow>[];
   /** The section's installation scope the rows are narrowed to. */
   scope: InstallationScope;
   /**
    * The installations in scope that run kagent and are reachable, home first:
-   * the groups' order, and the installations the composer may offer agents of.
+   * the installations the composer may offer agents of.
    */
   installations: string[];
   /**
@@ -276,13 +265,6 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedInstallationsKey]);
 
-  const pipelineFor = useCallback(
-    (installation: string) =>
-      installations.find(candidate => candidate.name === installation)
-        ?.pipeline,
-    [installations],
-  );
-
   const value = useMemo<AgentsContextValue>(() => {
     const rows = sortAgentRows(
       Object.entries(agentsByInstallation).flatMap(([cluster, agents]) =>
@@ -336,17 +318,8 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
         !erroredInstallations.includes(cluster),
     );
 
-    const groups = groupRowsByInstallation(rows, {
-      installations: scopedInstallations,
-      home,
-      pending: pendingInstallations,
-      unreachable: unreachableInstallations,
-      pipelineFor,
-    });
-
     return {
       rows,
-      groups,
       scope,
       installations: scopedInstallations,
       isLoading: isBusy && rows.length === 0,
@@ -366,7 +339,6 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     scope,
     modelConfigsFor,
     resolveServing,
-    pipelineFor,
     allInstallationsKey,
     scopedInstallationsKey,
   ]);
