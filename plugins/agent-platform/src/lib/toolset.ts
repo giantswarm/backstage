@@ -470,6 +470,11 @@ export function buildCatalogue(
   // One bucket per surface, seeded from the CRs so unlisted servers exist.
   const buckets = new Map<string, ServerBucket & { group: ToolGroupKey }>();
   const needsAuth = new Set(serversRequiringAuth);
+  // muster names family *members* in servers_requiring_auth (`kubernetes-a`),
+  // while the surface a member belongs to is the family (`kubernetes`).
+  const surfaceOfCr = new Map(
+    servers.map(server => [server.name, surfaceName(server)] as const),
+  );
   for (const server of servers) {
     const name = surfaceName(server);
     const existing = buckets.get(name);
@@ -522,9 +527,10 @@ export function buildCatalogue(
     bucket.tools.push(tool);
   }
 
-  // A server muster reports as needing auth but no CR and no tool named.
+  // A server muster reports as needing auth but no CR and no tool named — not
+  // a family member, whose sign-in state already sits on the family's bucket.
   for (const name of needsAuth) {
-    if (!buckets.has(name)) {
+    if (!buckets.has(surfaceOfCr.get(name) ?? name)) {
       buckets.set(name, {
         name,
         isFamily: false,

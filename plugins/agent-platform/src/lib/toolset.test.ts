@@ -329,6 +329,40 @@ describe('buildCatalogue', () => {
     expect(pro?.tools).toHaveLength(1);
   });
 
+  it('keeps a family member muster names in servers_requiring_auth on the family row, not as a server of its own', () => {
+    const groups = buildCatalogue(
+      [],
+      [
+        {
+          name: 'kubernetes-lab-01',
+          family: 'kubernetes',
+          group: 'infrastructure',
+          toolNamePrefix: 'x_kubernetes',
+          state: 'Auth Required',
+          oauth: true,
+        },
+        {
+          name: 'kubernetes-lab-02',
+          family: 'kubernetes',
+          group: 'infrastructure',
+          toolNamePrefix: 'x_kubernetes',
+          state: 'Auth Required',
+          oauth: true,
+        },
+      ],
+      ['kubernetes-lab-01', 'kubernetes-lab-02', 'somewhere-else'],
+    );
+    expect(
+      groups.map(group => [
+        group.key,
+        group.servers.map(bucket => [bucket.name, bucket.needsSignIn]),
+      ]),
+    ).toEqual([
+      ['infrastructure', [['kubernetes', true]]],
+      ['registered', [['somewhere-else', true]]],
+    ]);
+  });
+
   it('flags server: selectors whose server the caller cannot see', () => {
     const groups = buildCatalogue([], SERVERS, ['pro']);
     expect(
