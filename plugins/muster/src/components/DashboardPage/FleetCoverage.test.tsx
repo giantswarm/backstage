@@ -46,7 +46,7 @@ describe('FleetCoverage', () => {
           ...['gaggle', 'garm'].map(mc =>
             makeServer(`capi-${mc}`, { family: 'capi', mc }),
           ),
-          // Integration servers have no cluster and do not count.
+          // Singular servers have no cluster and do not count.
           makeServer('miro'),
         ]}
       />,
@@ -71,7 +71,7 @@ describe('FleetCoverage', () => {
     ).toHaveAttribute('aria-valuemax', '4');
   });
 
-  it('says so when the installation federates no standard family', async () => {
+  it('says so when the installation federates no family', async () => {
     await renderInTestApp(<FleetCoverage servers={[makeServer('miro')]} />);
 
     expect(

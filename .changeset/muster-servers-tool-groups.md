@@ -1,0 +1,11 @@
+---
+'@giantswarm/backstage-plugin-muster': minor
+---
+
+Group MCP servers by tool group — **Agent Platform**, **Infrastructure**, **Registered servers** — instead of by topology.
+
+The MCP servers page used to split servers into "Standard servers" (a `spec.family` federated across management clusters), "Integration servers" (everything singular) and a "muster core" section. That put the platform's own agent-manager and model-manager between GitHub, PagerDuty and a hand-registered server. The platform now tiers its MCP servers through a label the shipping chart stamps on the CR, `agent-platform.giantswarm.io/tool-group: agent-platform | infrastructure`; a CR without the label is a _Registered server_. The portal reads that label and infers nothing from names, provenance or topology.
+
+- **MCP servers page**: three sections in that order, each with a one-line explanation. Federation stays a row shape inside a section: servers sharing a `spec.family` still collapse into one family row with per-cluster pills and coverage, singular servers keep their disclosure. muster core is the last row of Agent Platform; the ad-hoc registration action sits under Registered servers. An installation whose charts do not carry the label yet lists everything under Registered servers — one long list, never an empty or broken page — and the empty groups say so. A family mid-rollout (only some clusters labelled) stays one row, placed by its labelled members.
+- **Dashboard**: the Capability surface groups its rows by tool group, muster core closing Agent Platform; Fleet coverage keeps measuring per family, whichever group a family is listed under.
+- **Public API** (for the agent creation Tools step and the agent detail page, which group the tool catalogue the same way): `MCPServer.getToolGroup()` (`'agent-platform' | 'infrastructure' | undefined`), `MCPServer.getToolGroupKey()` (adds `'registered'`), `TOOL_GROUP_LABEL`, `TOOL_GROUPS` (key, display title, one-line description per group), `TOOL_GROUP_ORDER`, `parseToolGroup`, and the types `ToolGroup`, `ToolGroupKey`, `ToolGroupInfo`. `partitionServers` now returns the groups in display order, each as rows (`{ kind: 'family' }` / `{ kind: 'server' }`); `familyGroups` flattens the family rows for coverage.

@@ -572,7 +572,7 @@ export function DashboardPage() {
             <SectionHeader
               icon={<DeviceHub />}
               title="Fleet coverage"
-              description="How far each standard server family reaches across the management clusters this installation federates. A family missing from a cluster is not deployed there; a degraded cluster has it deployed but not connected. Expand a family on the MCP servers page for every cluster."
+              description="How far each server family reaches across the management clusters this installation federates. A family missing from a cluster is not deployed there; a degraded cluster has it deployed but not connected. Expand a family on the MCP servers page for every cluster."
               action={
                 <FreshnessIndicator
                   updatedAt={dataUpdatedAt}

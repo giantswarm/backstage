@@ -1,7 +1,11 @@
 import {
   MCPServer,
   MCPServerState,
+  TOOL_GROUP_LABEL,
+  TOOL_GROUPS,
+  TOOL_GROUP_ORDER,
   mcpServerStateSeverity,
+  parseToolGroup,
   serversHealthSummary,
 } from './MCPServer';
 
@@ -67,6 +71,75 @@ describe('MCPServer sigv4 accessors', () => {
           ...(auth ? { auth } : {}),
         }).canAuthenticateInteractively(),
       ).toBe(true);
+    }
+  });
+});
+
+describe('MCPServer.getToolGroup', () => {
+  function makeLabelled(labels: Record<string, string>): MCPServer {
+    return new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'srv', labels },
+        spec: { type: 'streamable-http' },
+      } as never,
+      'gazelle',
+    );
+  }
+
+  it('reads the tool group the shipping chart declared on the CR', () => {
+    expect(
+      makeLabelled({ [TOOL_GROUP_LABEL]: 'agent-platform' }).getToolGroup(),
+    ).toBe('agent-platform');
+    expect(
+      makeLabelled({ [TOOL_GROUP_LABEL]: 'infrastructure' }).getToolGroup(),
+    ).toBe('infrastructure');
+  });
+
+  it('is undefined -- a Registered server -- without the label', () => {
+    expect(makeLabelled({}).getToolGroup()).toBeUndefined();
+    expect(makeLabelled({}).getToolGroupKey()).toBe('registered');
+    expect(
+      makeLabelled({
+        'muster.giantswarm.io/type': 'agent-manager',
+      }).getToolGroup(),
+    ).toBeUndefined();
+  });
+
+  it('reads an unknown label value as unlabelled rather than failing', () => {
+    // A typo in a chart's values must land the server under Registered
+    // servers, never break the page.
+    expect(
+      makeLabelled({ [TOOL_GROUP_LABEL]: 'platform' }).getToolGroup(),
+    ).toBeUndefined();
+    expect(
+      makeLabelled({ [TOOL_GROUP_LABEL]: '' }).getToolGroup(),
+    ).toBeUndefined();
+    expect(parseToolGroup('Infrastructure')).toBeUndefined();
+    expect(parseToolGroup(undefined)).toBeUndefined();
+  });
+
+  it('uses the label key of the cross-chart contract', () => {
+    expect(TOOL_GROUP_LABEL).toBe('agent-platform.giantswarm.io/tool-group');
+  });
+});
+
+describe('TOOL_GROUPS', () => {
+  it('names the three groups the way every surface does, in display order', () => {
+    expect(TOOL_GROUP_ORDER).toEqual([
+      'agent-platform',
+      'infrastructure',
+      'registered',
+    ]);
+    expect(TOOL_GROUP_ORDER.map(key => TOOL_GROUPS[key].title)).toEqual([
+      'Agent Platform',
+      'Infrastructure',
+      'Registered servers',
+    ]);
+    for (const key of TOOL_GROUP_ORDER) {
+      expect(TOOL_GROUPS[key].key).toBe(key);
+      expect(TOOL_GROUPS[key].description.length).toBeGreaterThan(0);
     }
   });
 });
