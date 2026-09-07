@@ -1,5 +1,7 @@
 import {
   ApiBlueprint,
+  coreExtensionData,
+  createExtensionInput,
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
@@ -36,6 +38,7 @@ import {
   servingRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
+  usageRouteRef,
 } from './routes';
 
 // The Agent Platform section is a tabbed page: with no loader of its own,
@@ -87,6 +90,38 @@ const sessionsSubPage = SubPageBlueprint.make({
       const { SessionsRouter } = await import('./components/SessionsRouter');
       return <SessionsRouter />;
     },
+  },
+});
+
+// The "Usage" tab: your own agent usage over the backend's window (personal,
+// derived from kagent's stored conversations), plus the MCP tool calls on the
+// installation (every caller, from muster's Prometheus metrics) contributed by
+// the muster plugin through the `sections` input below.
+//
+// `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
+// list/tree filter inputs — so muster can attach its section by node id
+// (`sub-page:agent-platform/usage`, input `sections`) without either plugin
+// depending on the other, exactly as it already attaches its "MCP Servers" tab
+// to `page:agent-platform`. An empty `sections` (muster not registered) renders
+// the personal section alone rather than a hole.
+const usageSubPage = SubPageBlueprint.makeWithOverrides({
+  name: 'usage',
+  inputs: {
+    sections: createExtensionInput([coreExtensionData.reactElement]),
+  },
+  factory(originalFactory, { inputs }) {
+    return originalFactory({
+      path: 'usage',
+      title: 'Usage',
+      routeRef: usageRouteRef,
+      loader: async () => {
+        const { UsageRouter } = await import('./components/UsageRouter');
+        const sections = inputs.sections.map(section =>
+          section.get(coreExtensionData.reactElement),
+        );
+        return <UsageRouter sections={<>{sections}</>} />;
+      },
+    });
   },
 });
 
@@ -171,6 +206,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentPlatformPage,
     agentsSubPage,
     sessionsSubPage,
+    usageSubPage,
     modelsSubPage,
     installationScopeHeaderAction,
     kagentApi,
@@ -185,6 +221,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,
+    usage: usageRouteRef,
     models: modelsRouteRef,
     modelConfigs: modelConfigsRouteRef,
     modelDetail: modelDetailRouteRef,

@@ -433,6 +433,10 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
+      '/agent-platform/usage',
+      // Pre-existing gaps in this list, closed while adding the one above.
+      '/agent-platform/models',
+      '/agent-platform/models/serving',
       '/plans',
       '/plans/pr/22',
       '/roadmap',
