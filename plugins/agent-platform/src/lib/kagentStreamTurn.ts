@@ -1,12 +1,9 @@
 import {
-  a2aMessageWireSchema,
   A2aMessageWire,
+  a2aMessageWireSchema,
   a2aStreamEventWireSchema,
-  FAILED_STATES,
-} from '@giantswarm/backstage-plugin-agent-platform-common';
-import { readKagentMetadata, readKagentMetadataString } from './kagentMetadata';
-import {
   CONFIRMATION_TOOL_NAME,
+  FAILED_STATES,
   isAgentToolName,
   isFunctionCallPart,
   isFunctionResponsePart,
@@ -15,10 +12,13 @@ import {
   parsePart,
   readFunctionCall,
   readFunctionResponse,
+  readKagentMetadata,
+  readKagentMetadataString,
   readMessageText,
   readPartText,
   unwrapProxiedCall,
-} from './kagentParts';
+} from '@giantswarm/backstage-plugin-agent-platform-common';
+
 import { TimelineItem } from './kagentTimeline';
 
 /**

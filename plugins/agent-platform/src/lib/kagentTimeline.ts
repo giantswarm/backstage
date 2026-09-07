@@ -1,32 +1,30 @@
 import {
   a2aMessageWireSchema,
   A2aTaskWire,
-  AWAITING_INPUT_STATES,
-  describeSessionState,
-  FAILED_STATES,
-  normalizeTimestamp,
-} from '@giantswarm/backstage-plugin-agent-platform-common';
-import { readKagentMetadataString } from './kagentMetadata';
-import {
   addTokenUsage,
   ASK_USER_TOOL_NAME,
+  AWAITING_INPUT_STATES,
   CONFIRMATION_TOOL_NAME,
+  describeSessionState,
+  FAILED_STATES,
   isAgentToolName,
   isFunctionCallPart,
   isFunctionResponsePart,
   isInternalToolName,
   isThoughtPart,
+  normalizeTimestamp,
   parseHistoryEntry,
   parsePart,
   readFunctionCall,
   readFunctionResponse,
+  readKagentMetadataString,
   readMessageText,
   readNestedTokenUsage,
   readPartText,
   readTokenUsage,
   TokenUsage,
   unwrapProxiedCall,
-} from './kagentParts';
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 /** Fields every timeline item carries. */
 type TimelineItemBase = {
