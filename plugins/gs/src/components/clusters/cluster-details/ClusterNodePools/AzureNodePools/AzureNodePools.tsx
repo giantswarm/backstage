@@ -4,7 +4,7 @@ import { useNodePoolsForAzureCluster } from '../../../../hooks';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { NodePoolDetailsLayout } from '../NodePoolDetailsLayout';
 import { useSelectedNodePool } from '../useSelectedNodePool';
-import { NodePoolNodes } from '../NodePoolNodes';
+import { AzureNodePoolDetails } from '../AzureNodePoolDetails';
 import { AzureNodePoolsTable } from '../AzureNodePoolsTable';
 import { AzureNodePoolRow } from '../AzureNodePoolsTable/columns';
 
@@ -20,45 +20,48 @@ export const AzureNodePools = () => {
 
   const data: AzureNodePoolRow[] = useMemo(() => {
     return machineDeployments.map(deployment => {
-      const infraRef = deployment.getInfrastructureRef();
-      const infraName = infraRef?.name;
-
-      let vmSize: string | undefined;
-
-      if (infraName) {
-        const template = azureMachineTemplates.find(
-          t => t.getName() === infraName,
-        );
-        if (template) {
-          vmSize = template.getVmSize();
-        }
-      }
+      const infraName = deployment.getInfrastructureRef()?.name;
+      const template = infraName
+        ? azureMachineTemplates.find(t => t.getName() === infraName)
+        : undefined;
 
       return {
         id: deployment.getName(),
         name: deployment.getName(),
         desiredReplicas: deployment.getDesiredReplicas(),
         readyReplicas: deployment.getReadyReplicas(),
-        vmSize,
+        vmSize: template?.getVmSize(),
         phase: deployment.getPhase(),
         created: deployment.getCreatedTimestamp(),
       };
     });
   }, [machineDeployments, azureMachineTemplates]);
 
-  const details = selectedNodePool ? (
-    <NodePoolNodes
-      installationName={installationName}
-      clusterName={cluster.getName()}
-      nodePoolName={selectedNodePool}
-      provider="azure"
-      onClose={clearSelectedNodePool}
-    />
-  ) : null;
+  const selectedDeployment = selectedNodePool
+    ? machineDeployments.find(d => d.getName() === selectedNodePool)
+    : undefined;
+
+  const selectedInfraName = selectedDeployment?.getInfrastructureRef()?.name;
+  const selectedTemplate = selectedInfraName
+    ? azureMachineTemplates.find(t => t.getName() === selectedInfraName)
+    : undefined;
+
+  const details =
+    selectedNodePool && selectedDeployment ? (
+      <AzureNodePoolDetails
+        installationName={installationName}
+        clusterName={cluster.getName()}
+        nodePoolName={selectedNodePool}
+        machineDeployment={selectedDeployment}
+        azureMachineTemplate={selectedTemplate}
+        onClose={clearSelectedNodePool}
+      />
+    ) : null;
 
   return (
     <NodePoolDetailsLayout
-      selectedNodePool={selectedNodePool}
+      // See AWSNodePools: keyed off the resolved deployment, not the URL.
+      selectedNodePool={selectedDeployment ? selectedNodePool : null}
       details={details}
     >
       <AzureNodePoolsTable

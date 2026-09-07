@@ -254,6 +254,38 @@ export const CertmanagerCertificateReadyStatus = {
   source: 'cert-manager',
 } as const satisfies PrometheusMetric;
 
+export const KarpenterNodesAllocatable = {
+  name: 'karpenter_nodes_allocatable',
+  description:
+    'Allocatable resources of a Karpenter-provisioned node. One series per resource per node (`resource_type`), so node counts must pin a single resource type. Carries the node facts Karpenter knows and kube-state-metrics does not expose: `capacity_type` (spot/on-demand), `arch`, `instance_type`, `instance_family`, `instance_category`, `instance_size`, `instance_generation`, `zone` and `node_name`, keyed by `nodepool` and `cluster_id`.',
+  type: 'gauge',
+  source: 'karpenter',
+} as const satisfies PrometheusMetric;
+
+export const KarpenterNodePoolsLimit = {
+  name: 'karpenter_nodepools_limit',
+  description:
+    'Configured provisioning ceiling of a Karpenter NodePool, by `nodepool` and `resource_type` (e.g. cpu, memory).',
+  type: 'gauge',
+  source: 'karpenter',
+} as const satisfies PrometheusMetric;
+
+export const KarpenterNodePoolsUsage = {
+  name: 'karpenter_nodepools_usage',
+  description:
+    'Current resources provisioned by a Karpenter NodePool, by `nodepool` and `resource_type`. Includes `nodes` and `pods` alongside cpu and memory, so it doubles as a direct node count.',
+  type: 'gauge',
+  source: 'karpenter',
+} as const satisfies PrometheusMetric;
+
+export const KarpenterNodePoolsAllowedDisruptions = {
+  name: 'karpenter_nodepools_allowed_disruptions',
+  description:
+    'Number of nodes of a Karpenter NodePool that may be disrupted right now, after applying its disruption budgets.',
+  type: 'gauge',
+  source: 'karpenter',
+} as const satisfies PrometheusMetric;
+
 /**
  * All registered metrics. Use this to enumerate or inspect the full set
  * of metrics the application relies on.
@@ -290,4 +322,8 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   GatewayApiGatewayListenerInfo,
   CertmanagerCertificateExpirationTimestampSeconds,
   CertmanagerCertificateReadyStatus,
+  KarpenterNodesAllocatable,
+  KarpenterNodePoolsLimit,
+  KarpenterNodePoolsUsage,
+  KarpenterNodePoolsAllowedDisruptions,
 ];

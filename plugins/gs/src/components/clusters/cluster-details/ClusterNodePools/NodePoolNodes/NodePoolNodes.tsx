@@ -1,28 +1,24 @@
 import { Typography } from '@material-ui/core';
-import { useMimirNodePoolNodes } from '../../../../hooks';
+import { NodePoolNode } from '../../../../hooks';
 import { NodePoolNodesTable } from '../NodePoolNodesTable';
 
 interface NodePoolNodesProps {
-  installationName: string;
-  clusterName: string;
-  nodePoolName: string;
+  nodes: NodePoolNode[];
+  isLoading: boolean;
+  error: Error | null;
   provider: 'aws' | 'azure';
-  onClose: () => void;
 }
 
+/**
+ * Presentational: the Mimir query is owned by the surrounding details
+ * component, so switching tabs cannot tear it down and restart it.
+ */
 export const NodePoolNodes = ({
-  installationName,
-  clusterName,
-  nodePoolName,
+  nodes,
+  isLoading,
+  error,
   provider,
-  onClose,
 }: NodePoolNodesProps) => {
-  const { nodes, isLoading, error } = useMimirNodePoolNodes({
-    installationName,
-    clusterName,
-    nodePoolName,
-  });
-
   if (error) {
     return (
       <Typography color="error" variant="body2">
@@ -42,11 +38,9 @@ export const NodePoolNodes = ({
 
   return (
     <NodePoolNodesTable
-      nodePoolName={nodePoolName}
       nodes={nodes}
       isLoading={isLoading}
       provider={provider}
-      onClose={onClose}
     />
   );
 };

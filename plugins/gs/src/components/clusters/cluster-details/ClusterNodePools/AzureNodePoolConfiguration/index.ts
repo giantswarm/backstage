@@ -1,0 +1,1 @@
+export { AzureNodePoolConfiguration } from './AzureNodePoolConfiguration';
