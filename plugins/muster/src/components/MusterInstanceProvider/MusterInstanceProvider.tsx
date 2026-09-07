@@ -5,21 +5,20 @@ import {
   useContext,
   useMemo,
 } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
-import { useQuery } from '@tanstack/react-query';
 import {
   ALL_INSTALLATIONS,
   useInstallationInventory,
   useInstallationScope,
+  type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import {
   useResources,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
-import { musterApiRef } from '../../apis';
 import { MusterInstallationInfo } from '../../apis/types';
 import { selectMusterInstallations } from './selectInstallations';
+import { useMusterInstallations } from './useMusterInstallations';
 
 // A light background refetch so the live health reads (per-MC pills, the
 // "Servers healthy" stat, fleet coverage) don't drift silently from the CRD
@@ -29,25 +28,9 @@ import { selectMusterInstallations } from './selectInstallations';
 // intervals.
 const HEALTH_REFETCH_INTERVAL_MS = 30_000;
 
-// The backend's `/installations` carries each muster's reachability from an
-// unauthenticated probe that may not have settled when the list is first read
-// (a pod that just started answers 'unknown'). Re-read every few seconds until
-// every entry is settled, then leave the list alone: a list pinned at 'unknown'
-// would run the session probe against a muster the portal cannot reach.
-const INSTALLATIONS_REFETCH_WHILE_UNKNOWN_MS = 5_000;
-
-/** Whether any installation's reachability has not been probed yet. */
-export function hasUnknownReachability(
-  installations: MusterInstallationInfo[] | undefined,
-): boolean {
-  return Boolean(
-    installations?.some(installation => installation.reachable === 'unknown'),
-  );
-}
-
 export type MusterInstance = {
   /**
-   * The muster installations the picker may offer, home first: the backend's
+   * The muster installations the section can show, home first: the backend's
    * installations (an endpoint the proxy can target, derived from the base
    * domain or configured) intersected with the installations whose inventory
    * has the `muster.giantswarm.io` API group -- see `selectMusterInstallations`.
@@ -58,11 +41,26 @@ export type MusterInstance = {
   installationInfos: MusterInstallationInfo[];
   /**
    * True while the backend's list or the inventory's home installation has not
-   * answered yet; the picker stays hidden and no default is written back.
+   * answered yet; there is no active installation and no default is written.
    */
   isLoadingInstallations: boolean;
   /** The single active muster instance every screen is scoped to. */
   activeInstallation: string | undefined;
+  /**
+   * The section's installation scope the active instance was resolved from
+   * (gs `useInstallationScope`, set by the page header's selector): `'all'`,
+   * or a pinned installation. Differs from `activeInstallation` under "All
+   * installations" and when the pinned installation runs no muster -- the two
+   * cases `ActiveInstallationNote` explains on the views.
+   */
+  scope: InstallationScope;
+  /** The home installation's name, once the installations config is known. */
+  homeInstallation: string | undefined;
+  /**
+   * The portal knows one installation: the header shows no selector and the
+   * section behaves as it did before it had a scope.
+   */
+  isSingleInstallation: boolean;
   /**
    * Config-derived metadata (endpoint, auth/mutation posture) for the active
    * instance, plus the backend's `reachable` / `reason` from its
@@ -140,31 +138,20 @@ type MusterInstanceProviderProps = {
  * list, replacing the old multi-select MusterDataProvider. The active
  * instance follows the Agent Platform section's installation scope (gs
  * `useInstallationScope`: `?installation=` plus localStorage under the key
- * this provider used to own), so pinning an installation anywhere in the
- * section -- the header selector, the picker here -- scopes every tab, and
- * "All installations" shows the home muster. CRD reads (MCPServer, Workflow)
- * are scoped to that one installation via the Backstage kubernetes proxy -- no
+ * this provider used to own), set by the page header's selector -- the one
+ * control that scopes every tab, MCP Servers included -- so "All
+ * installations" shows the home muster. CRD reads (MCPServer, Workflow) are
+ * scoped to that one installation via the Backstage kubernetes proxy -- no
  * muster MCP session is needed for the reads.
  */
 export const MusterInstanceProvider = ({
   children,
 }: MusterInstanceProviderProps) => {
-  const musterApi = useApi(musterApiRef);
-  const { scope, setScope } = useInstallationScope();
+  const { scope, setScope, home, isSingleInstallation } =
+    useInstallationScope();
 
-  const { data: installationsData, isLoading: isLoadingBackend } = useQuery({
-    queryKey: ['muster', 'installations'],
-    queryFn: () => musterApi.listInstallations(),
-    refetchInterval: query =>
-      hasUnknownReachability(query.state.data?.installations)
-        ? INSTALLATIONS_REFETCH_WHILE_UNKNOWN_MS
-        : false,
-  });
-
-  const backendInstallations = useMemo(
-    () => installationsData?.installations ?? [],
-    [installationsData],
-  );
+  const { installations: backendInstallations, isLoading: isLoadingBackend } =
+    useMusterInstallations();
 
   // The pinned installation, or nothing under "All installations": then the
   // home muster is the one shown (see `resolveActive`).
@@ -197,11 +184,11 @@ export const MusterInstanceProvider = ({
     [isLoadingInstallations, installations, preferred],
   );
 
-  // Choosing an installation here pins the whole section's scope (store,
+  // Choosing an installation through the section pins the whole scope (store,
   // localStorage, URL), exactly what the header selector does. Nothing is
-  // written back on mount any more: the default (the home muster) is a
-  // resolution, not a choice, and writing it would have pinned every tab of
-  // the section to one installation.
+  // written back on mount: the default (the home muster) is a resolution, not
+  // a choice, and writing it would have pinned every tab of the section to one
+  // installation.
   const setActiveInstallation = useCallback(
     (installation: string) => {
       setScope(installation);
@@ -290,6 +277,9 @@ export const MusterInstanceProvider = ({
       installationInfos,
       isLoadingInstallations,
       activeInstallation,
+      scope,
+      homeInstallation: home,
+      isSingleInstallation,
       activeInstallationInfo,
       setActiveInstallation,
       mcpServers,
@@ -311,6 +301,9 @@ export const MusterInstanceProvider = ({
       installationInfos,
       isLoadingInstallations,
       activeInstallation,
+      scope,
+      home,
+      isSingleInstallation,
       activeInstallationInfo,
       setActiveInstallation,
       mcpServers,

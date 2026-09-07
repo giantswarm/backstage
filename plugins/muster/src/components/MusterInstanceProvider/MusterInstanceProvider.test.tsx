@@ -142,8 +142,12 @@ describe('MusterInstanceProvider installations', () => {
       'derived',
     ]);
     // Under "All installations" the home muster is shown -- a resolution, not
-    // a choice: nothing is pinned for the section.
+    // a choice: nothing is pinned for the section. The scope it was resolved
+    // from and the home travel with it, for the views' note.
     expect(result.current.activeInstallation).toBe('gazelle');
+    expect(result.current.scope).toBe('all');
+    expect(result.current.homeInstallation).toBe('gazelle');
+    expect(result.current.isSingleInstallation).toBe(false);
     expect(result.current.activeInstallationInfo).toEqual({
       name: 'gazelle',
       requiresAuth: true,
@@ -162,6 +166,7 @@ describe('MusterInstanceProvider installations', () => {
     await waitFor(() =>
       expect(result.current.activeInstallation).toBe('snail'),
     );
+    expect(result.current.scope).toBe('snail');
     expect(result.current.activeInstallationInfo?.source).toBe('derived');
   });
 

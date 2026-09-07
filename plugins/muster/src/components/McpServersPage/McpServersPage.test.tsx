@@ -33,9 +33,6 @@ jest.mock('./IntegrationServerDisclosure', () => ({
 jest.mock('./ServerMutationActions', () => ({
   AddAdHocServerButton: () => <button type="button">Add ad-hoc server</button>,
 }));
-jest.mock('../InstallationPicker', () => ({
-  InstallationPicker: () => <div>installation-picker</div>,
-}));
 
 let mcpServers: MCPServer[] = [];
 
@@ -44,6 +41,9 @@ jest.mock('../MusterInstanceProvider', () => ({
     installations: ['gazelle'],
     isLoadingInstallations: false,
     activeInstallation: 'gazelle',
+    scope: 'gazelle',
+    homeInstallation: 'gazelle',
+    isSingleInstallation: false,
     activeInstallationInfo: {
       name: 'gazelle',
       endpoint: 'https://muster.gazelle.example.com/mcp',

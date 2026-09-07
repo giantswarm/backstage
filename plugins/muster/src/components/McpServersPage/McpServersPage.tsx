@@ -18,7 +18,7 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button as UiButton } from '@backstage/ui';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 import { newMcpServerRouteRef } from '../../routes';
-import { InstallationPicker } from '../InstallationPicker';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
   SectionHeader,
@@ -274,8 +274,8 @@ export function McpServersPage() {
     ) : (
       <EmptyState
         missing="data"
-        title="Select an installation"
-        description="Choose a muster installation above to list its aggregated MCP servers."
+        title="No muster installation"
+        description="None of the installations this portal knows runs muster, so there are no aggregated MCP servers to list."
       />
     );
   } else if (mcpServers.length === 0) {
@@ -322,7 +322,7 @@ export function McpServersPage() {
 
   return (
     <Content>
-      <InstallationPicker />
+      <ActiveInstallationNote />
       {body}
     </Content>
   );

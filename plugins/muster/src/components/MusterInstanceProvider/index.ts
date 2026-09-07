@@ -5,6 +5,13 @@ export {
 } from './MusterInstanceProvider';
 export type { MusterInstance } from './MusterInstanceProvider';
 export { selectMusterInstallations, homeFirst } from './selectInstallations';
+export {
+  useMusterInstallations,
+  musterInstallationsQueryKey,
+  hasUnknownReachability,
+  isNotReachable,
+} from './useMusterInstallations';
+export type { MusterInstallations } from './useMusterInstallations';
 export type { InventoryView } from './selectInstallations';
 export {
   useMusterSession,

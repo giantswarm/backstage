@@ -41,8 +41,12 @@ export type {
 export {
   MusterInstanceProvider,
   useMusterInstance,
+  useMusterInstallations,
 } from './components/MusterInstanceProvider';
-export type { MusterInstance } from './components/MusterInstanceProvider';
+export type {
+  MusterInstance,
+  MusterInstallations,
+} from './components/MusterInstanceProvider';
 export {
   SectionHeader,
   StateBadge,
