@@ -174,3 +174,152 @@ export function SelectableCard({
     </button>
   );
 }
+
+// The compact sibling of the card: one row per option, for lists that run to
+// dozens or hundreds of entries (a server's tools, a catalogue of workflows).
+// Same indicator, same selection semantics, a fraction of the height — the
+// description is one truncated line with the full text on hover.
+const useRowStyles = makeStyles(theme => ({
+  list: {
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: theme.shape.borderRadius,
+    overflow: 'hidden',
+    background: theme.palette.background.paper,
+  },
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+    width: '100%',
+    textAlign: 'left',
+    cursor: 'pointer',
+    padding: theme.spacing(0.75, 1.5),
+    border: 0,
+    background: 'transparent',
+    color: theme.palette.text.primary,
+    font: 'inherit',
+    '&:not(:last-child)': {
+      borderBottom: `1px solid ${theme.palette.divider}`,
+    },
+    '&:hover': {
+      background: theme.palette.action.hover,
+    },
+    '&:focus-visible': {
+      outline: `2px solid ${theme.palette.primary.main}`,
+      outlineOffset: -2,
+    },
+  },
+  rowSelected: {
+    background: theme.palette.action.selected,
+  },
+  rowMain: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+    maxWidth: '100%',
+  },
+  rowTitle: {
+    fontWeight: 600,
+    fontSize: 13,
+  },
+  rowTitleCode: {
+    fontFamily: 'monospace',
+  },
+  rowSummary: {
+    flex: '1 1 220px',
+    minWidth: 0,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    color: theme.palette.text.secondary,
+    fontSize: 12,
+  },
+}));
+
+type SelectableRowListProps = {
+  /** `group` for multi-select, `radiogroup` for single-select. */
+  role: 'radiogroup' | 'group';
+  ariaLabel: string;
+  children: ReactNode;
+};
+
+/** A bordered stack of {@link SelectableRow}s. */
+export function SelectableRowList({
+  role,
+  ariaLabel,
+  children,
+}: SelectableRowListProps) {
+  const classes = useRowStyles();
+  return (
+    <div className={classes.list} role={role} aria-label={ariaLabel}>
+      {children}
+    </div>
+  );
+}
+
+type SelectableRowProps = {
+  role: 'radio' | 'checkbox';
+  selected: boolean;
+  ariaLabel: string;
+  onSelect: () => void;
+  /** The option's name. */
+  title: ReactNode;
+  /** Set the title in monospace — a tool or selector name. */
+  code?: boolean;
+  /** Markers and other short badges next to the title. */
+  meta?: ReactNode;
+  /** One line, truncated; the full text is the row's tooltip. */
+  summary?: string;
+};
+
+/** A full-width selectable row with the same indicator as {@link SelectableCard}. */
+export function SelectableRow({
+  role,
+  selected,
+  ariaLabel,
+  onSelect,
+  title,
+  code = false,
+  meta,
+  summary,
+}: SelectableRowProps) {
+  const cardClasses = useStyles();
+  const classes = useRowStyles();
+  const SelectedIcon = role === 'radio' ? CheckCircleIcon : CheckBoxIcon;
+  const UnselectedIcon =
+    role === 'radio' ? RadioButtonUncheckedIcon : CheckBoxOutlineBlankIcon;
+  const Indicator = selected ? SelectedIcon : UnselectedIcon;
+
+  return (
+    <button
+      type="button"
+      role={role}
+      aria-checked={selected}
+      aria-label={ariaLabel}
+      title={summary}
+      onClick={onSelect}
+      className={`${classes.row} ${selected ? classes.rowSelected : ''}`}
+    >
+      <Indicator
+        fontSize="small"
+        aria-hidden
+        className={`${cardClasses.indicator} ${
+          selected
+            ? cardClasses.indicatorSelected
+            : cardClasses.indicatorUnselected
+        }`}
+      />
+      <span className={classes.rowMain}>
+        <span
+          className={`${classes.rowTitle} ${code ? classes.rowTitleCode : ''}`}
+        >
+          {title}
+        </span>
+        {meta}
+      </span>
+      {summary && <span className={classes.rowSummary}>{summary}</span>}
+    </button>
+  );
+}

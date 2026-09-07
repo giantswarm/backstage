@@ -8,10 +8,12 @@ import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
   buildCatalogue,
   CatalogueGroup,
+  groupWorkflows,
   isDestructive,
   isReadOnly,
   ServerInfo,
 } from '../../lib/toolset';
+import { ShowMore } from '../ShowMore';
 
 const useStyles = makeStyles(theme => ({
   list: {
@@ -32,6 +34,13 @@ const useStyles = makeStyles(theme => ({
   name: {
     fontFamily: 'monospace',
     fontSize: 13,
+  },
+  summary: {
+    flex: '1 1 220px',
+    minWidth: 0,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   groupTitle: {
     marginTop: theme.spacing(1),
@@ -80,37 +89,93 @@ export function ToolMarkers({ tool }: { tool: ToolSummary }) {
   );
 }
 
+/** The rows of one section — the first page at once, the rest behind *Show all*. */
 function ToolRows({
   tools,
   toolHref,
+  noun = 'tool',
 }: {
   tools: ToolSummary[];
   toolHref?: (name: string) => string | undefined;
+  noun?: 'tool' | 'workflow';
 }) {
   const classes = useStyles();
   return (
-    <div className={classes.list} role="list">
-      {tools.map(tool => {
-        const href = toolHref?.(tool.name);
-        return (
-          <div key={tool.name} className={classes.row} role="listitem">
-            {href ? (
-              <Link to={href} className={classes.name}>
-                {tool.name}
-              </Link>
-            ) : (
-              <span className={classes.name}>{tool.name}</span>
-            )}
-            <ToolMarkers tool={tool} />
-            {(tool.summary || tool.description) && (
-              <Text variant="body-x-small" color="secondary">
-                {tool.summary ?? tool.description}
-              </Text>
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <ShowMore items={tools} noun={noun}>
+      {visible => (
+        <div className={classes.list} role="list">
+          {visible.map(tool => {
+            const href = toolHref?.(tool.name);
+            return (
+              <div
+                key={tool.name}
+                className={classes.row}
+                role="listitem"
+                title={tool.summary ?? tool.description}
+              >
+                {href ? (
+                  <Link to={href} className={classes.name}>
+                    {tool.name}
+                  </Link>
+                ) : (
+                  <span className={classes.name}>{tool.name}</span>
+                )}
+                <ToolMarkers tool={tool} />
+                {(tool.summary || tool.description) && (
+                  <Text
+                    variant="body-x-small"
+                    color="secondary"
+                    className={classes.summary}
+                  >
+                    {tool.summary ?? tool.description}
+                  </Text>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </ShowMore>
+  );
+}
+
+/**
+ * The resolved workflows, grouped by name prefix like the catalogue when there
+ * are enough to need it, so a preset that resolves to hundreds of workflows
+ * reads as a handful of headed sections rather than one wall of rows.
+ */
+function WorkflowRows({
+  workflows,
+  toolHref,
+}: {
+  workflows: ToolSummary[];
+  toolHref?: (name: string) => string | undefined;
+}) {
+  const classes = useStyles();
+  const groups = groupWorkflows(workflows);
+  if (!groups) {
+    return <ToolRows tools={workflows} toolHref={toolHref} noun="workflow" />;
+  }
+  return (
+    <>
+      {groups.map(group => (
+        <div key={group.key}>
+          <Text
+            as="h5"
+            variant="body-small"
+            color="secondary"
+            className={classes.serverTitle}
+          >
+            {group.label} · {group.workflows.length}
+          </Text>
+          <ToolRows
+            tools={group.workflows}
+            toolHref={toolHref}
+            noun="workflow"
+          />
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -260,7 +325,7 @@ export function ToolsetResolutionList({
               </div>
             )}
             {group.workflows.length > 0 && (
-              <ToolRows tools={group.workflows} toolHref={toolHref} />
+              <WorkflowRows workflows={group.workflows} toolHref={toolHref} />
             )}
           </Fragment>
         ))

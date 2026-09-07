@@ -1,11 +1,15 @@
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
   buildCatalogue,
+  catalogueInventory,
+  countNoun,
+  groupWorkflows,
   isDestructive,
   isReadOnly,
   isUnknownPresetError,
   MAX_INLINE_SELECTORS,
   orderPresets,
+  OTHER_WORKFLOWS_KEY,
   parseSelector,
   parseToolsetHeader,
   presetLabel,
@@ -389,5 +393,129 @@ describe('muster answers', () => {
     expect(isUnknownPresetError('Muster request failed with status 503')).toBe(
       false,
     );
+  });
+});
+
+describe('groupWorkflows', () => {
+  const wf = (name: string): ToolSummary => ({
+    name: `workflow_${name}`,
+    kind: 'workflow',
+  });
+
+  it('leaves a short catalogue ungrouped', () => {
+    expect(groupWorkflows(['a-1', 'a-2', 'b-1'].map(wf))).toBeUndefined();
+    expect(groupWorkflows([])).toBeUndefined();
+  });
+
+  it('groups by the leading name segment, labels with the longest shared prefix, gathers singletons last', () => {
+    const groups = groupWorkflows(
+      [
+        'mc-etcd-space-low',
+        'mc-node-not-ready',
+        'mc-api-down',
+        'wc-pod-pending',
+        'wc-node-taint',
+        'cert-manager-down',
+        'cert-manager-too-many-requests',
+        'certificate-expiring',
+        'kube-api-latency',
+        'kube-controller-down',
+        'kube_scheduler_down',
+        'flux-helm-release-failed',
+        'flux-kustomization-failed',
+        'lonely-one',
+        'another-single',
+      ].map(wf),
+    );
+    expect(
+      groups?.map(group => [
+        group.key,
+        group.label,
+        group.workflows.map(tool => tool.name),
+      ]),
+    ).toEqual([
+      [
+        'cert',
+        'cert-manager',
+        [
+          'workflow_cert-manager-down',
+          'workflow_cert-manager-too-many-requests',
+        ],
+      ],
+      [
+        'flux',
+        'flux',
+        [
+          'workflow_flux-helm-release-failed',
+          'workflow_flux-kustomization-failed',
+        ],
+      ],
+      [
+        'kube',
+        'kube',
+        [
+          'workflow_kube_scheduler_down',
+          'workflow_kube-api-latency',
+          'workflow_kube-controller-down',
+        ],
+      ],
+      [
+        'mc',
+        'mc',
+        [
+          'workflow_mc-api-down',
+          'workflow_mc-etcd-space-low',
+          'workflow_mc-node-not-ready',
+        ],
+      ],
+      ['wc', 'wc', ['workflow_wc-node-taint', 'workflow_wc-pod-pending']],
+      [
+        OTHER_WORKFLOWS_KEY,
+        'Other workflows',
+        [
+          'workflow_another-single',
+          'workflow_certificate-expiring',
+          'workflow_lonely-one',
+        ],
+      ],
+    ]);
+  });
+});
+
+describe('catalogueInventory', () => {
+  it('counts servers, their tools, core tools and workflows across the groups', () => {
+    const groups = buildCatalogue(
+      [
+        { name: 'x_kubernetes_get_pods', server: 'kubernetes', kind: 'tool' },
+        { name: 'x_kubernetes_get_nodes', server: 'kubernetes', kind: 'tool' },
+        { name: 'core_service_list', kind: 'core' },
+        { name: 'workflow_triage', kind: 'workflow' },
+      ],
+      [
+        {
+          name: 'kubernetes-a',
+          family: 'kubernetes',
+          group: 'infrastructure',
+          toolNamePrefix: 'x_kubernetes',
+          oauth: false,
+        },
+        {
+          name: 'pro',
+          group: 'registered',
+          toolNamePrefix: 'x_pro',
+          state: 'Auth Required',
+          oauth: true,
+        },
+      ],
+      ['pro'],
+    );
+    expect(catalogueInventory(groups)).toEqual({
+      servers: 2,
+      tools: 2,
+      platformAdministration: 1,
+      workflows: 1,
+    });
+    expect(countNoun(1, 'tool')).toBe('1 tool');
+    expect(countNoun(2, 'tool')).toBe('2 tools');
   });
 });

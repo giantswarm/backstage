@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -23,6 +23,8 @@ import { useToolsetPresets } from '../../hooks/useToolsetPresets';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
   buildCatalogue,
+  catalogueInventory,
+  countNoun,
   MAX_INLINE_SELECTORS,
   selectorProblem,
   toolsetShape,
@@ -39,6 +41,7 @@ import { CopyFromAgent } from './CopyFromAgent';
 import { filterCatalogue } from './filterCatalogue';
 import { PresetCards } from './PresetCards';
 import { ToolCatalogue } from './ToolCatalogue';
+import { ToolsetSummaryBar } from './ToolsetSummaryBar';
 
 const useStyles = makeStyles(theme => ({
   column: {
@@ -80,29 +83,8 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     gap: theme.spacing(1.5),
   },
-  selectors: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(1),
-  },
-  selector: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    fontFamily: 'monospace',
-    fontSize: 13,
-    padding: theme.spacing(0.25, 1),
-    borderRadius: 999,
-    border: `1px solid ${theme.palette.divider}`,
-  },
-  removeSelector: {
-    border: 0,
-    background: 'none',
-    cursor: 'pointer',
-    color: theme.palette.text.secondary,
-    font: 'inherit',
-    lineHeight: 1,
-    padding: 0,
+  afterPresets: {
+    marginTop: theme.spacing(2),
   },
 }));
 
@@ -128,42 +110,6 @@ function SectionTitle({
         {description}
       </Text>
     </>
-  );
-}
-
-/** The current toolset as removable selector chips — the step's own output, always visible. */
-function SelectedToolset({
-  selectors,
-  onRemove,
-}: {
-  selectors: string[];
-  onRemove: (selector: string) => void;
-}) {
-  const classes = useStyles();
-  if (selectors.length === 0) {
-    return (
-      <Text color="secondary">
-        Nothing selected yet. The agent gets no tool access you did not add
-        here.
-      </Text>
-    );
-  }
-  return (
-    <div className={classes.selectors} role="list" aria-label="Toolset">
-      {selectors.map(selector => (
-        <span key={selector} className={classes.selector} role="listitem">
-          {selector}
-          <button
-            type="button"
-            className={classes.removeSelector}
-            aria-label={`Remove ${selector}`}
-            onClick={() => onRemove(selector)}
-          >
-            ×
-          </button>
-        </span>
-      ))}
-    </div>
   );
 }
 
@@ -194,6 +140,10 @@ export function NewAgentToolsPage() {
 
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
+  // The catalogue is the second path, behind the presets: opened on request,
+  // or by a search — typing is asking to see what matches.
+  const [browsing, setBrowsing] = useState(false);
+  const showCatalogue = browsing || trimmed !== '';
 
   const groups = useMemo(
     () =>
@@ -203,6 +153,11 @@ export function NewAgentToolsPage() {
   const visibleGroups = useMemo(
     () => filterCatalogue(groups, trimmed),
     [groups, trimmed],
+  );
+  const inventory = useMemo(() => catalogueInventory(groups), [groups]);
+  const matches = useMemo(
+    () => catalogueInventory(visibleGroups),
+    [visibleGroups],
   );
   const selected = useMemo(() => new Set(state.toolset), [state.toolset]);
   const unsigned = useMemo(
@@ -229,6 +184,15 @@ export function NewAgentToolsPage() {
       toggleToolsetSelector(value);
     }
   }, [manualSelector, state.toolset, toggleToolsetSelector]);
+
+  // The summary bar stays in view; the full resolved list is one click down.
+  const resolvedListRef = useRef<HTMLDivElement>(null);
+  const showResolvedList = useCallback(() => {
+    resolvedListRef.current?.scrollIntoView?.({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  }, []);
 
   const backLink = hasRepositories ? skillsLink : newAgentLink;
   const stepNumber = hasRepositories ? 3 : 2;
@@ -265,6 +229,17 @@ export function NewAgentToolsPage() {
   const isCatalogueLoading =
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
 
+  const inventoryLine =
+    trimmed === ''
+      ? `${countNoun(inventory.servers, 'server')} · ${countNoun(
+          inventory.tools + inventory.platformAdministration,
+          'tool',
+        )} · ${countNoun(inventory.workflows, 'workflow')}`
+      : `${countNoun(
+          matches.tools + matches.platformAdministration,
+          'tool',
+        )} and ${countNoun(matches.workflows, 'workflow')} match`;
+
   return (
     <Content>
       <div className={classes.column}>
@@ -287,9 +262,10 @@ export function NewAgentToolsPage() {
         <Text as="p" className={classes.intro}>
           The toolset bounds which of the gateway's tools this agent can
           discover and call, within whatever the person using it may reach
-          themselves. Start from a preset, then add servers, workflows or
-          individual tools — or choose <strong>No tools</strong> for a chat-only
-          agent. Required: nothing is granted until you add it.
+          themselves. Start from a preset — <strong>Read-only tools</strong>{' '}
+          fits most agents. Add servers, workflows or single tools from the
+          catalogue if you need more, or choose <strong>No tools</strong> for a
+          chat-only agent. Required: nothing is granted until you add it.
         </Text>
 
         <Flex direction="column" gap="4">
@@ -297,7 +273,7 @@ export function NewAgentToolsPage() {
             <CardBody>
               <SectionTitle
                 title="Presets"
-                description="Named selections the platform defines. Read-only tools is the safe default; Full gateway is today's unbounded behaviour, made explicit."
+                description="Named selections the platform defines. Read-only tools is the safe default; Full gateway is today's unbounded behaviour, made explicit. A preset combines with anything you add from the catalogue."
               />
               <Flex direction="column" gap="3">
                 {presets.source === 'built-in' && musterApi && installation && (
@@ -317,20 +293,15 @@ export function NewAgentToolsPage() {
                   onToggle={toggleToolsetSelector}
                 />
               </Flex>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardBody>
-              <SectionTitle
-                title="Start from an existing agent"
-                description="Copy another agent's toolset into this step, then adjust it."
-              />
-              <details className={classes.details}>
+              <details className={`${classes.details} ${classes.afterPresets}`}>
                 <summary className={classes.summaryLine}>
-                  Agents on {installation} with a declared toolset
+                  Or start from an existing agent's toolset
                 </summary>
                 <div className={classes.detailsBody}>
+                  <Text variant="body-small" color="secondary">
+                    Copy another agent's toolset into this step, then adjust it.
+                    Agents on {installation} with a declared toolset:
+                  </Text>
                   <CopyFromAgent
                     installation={installation}
                     current={state.toolset}
@@ -341,11 +312,20 @@ export function NewAgentToolsPage() {
             </CardBody>
           </Card>
 
+          <ToolsetSummaryBar
+            selectors={state.toolset}
+            onRemove={toggleToolsetSelector}
+            resolution={resolution}
+            unsigned={unsigned}
+            problems={toolsetProblems}
+            onShowDetails={showResolvedList}
+          />
+
           <Card>
             <CardBody>
               <SectionTitle
                 title="Catalogue"
-                description="Every server the gateway aggregates, grouped as Infrastructure, Agent Platform, Registered servers and Workflows. Select a whole server, or expand it and pick individual tools."
+                description="Every server the gateway aggregates and every workflow it runs, grouped as Infrastructure, Agent Platform, Registered servers and Workflows. Search across all of it, or browse group by group; select a whole server, or open it and pick single tools."
               />
               <Flex direction="column" gap="3">
                 {!musterApi && (
@@ -367,12 +347,7 @@ export function NewAgentToolsPage() {
                 )}
                 {groups.length > 0 && (
                   <>
-                    <Flex
-                      align="center"
-                      justify="between"
-                      gap="2"
-                      style={{ flexWrap: 'wrap' }}
-                    >
+                    <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
                       <Flex grow basis="240px" direction="column">
                         <SearchField
                           aria-label="Search tools"
@@ -381,24 +356,45 @@ export function NewAgentToolsPage() {
                           onChange={setQuery}
                         />
                       </Flex>
+                      {trimmed === '' ? (
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          aria-expanded={browsing}
+                          onPress={() => setBrowsing(value => !value)}
+                        >
+                          {browsing
+                            ? 'Hide the catalogue'
+                            : 'Browse the catalogue'}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="tertiary"
+                          size="small"
+                          onPress={() => setQuery('')}
+                        >
+                          Show everything again
+                        </Button>
+                      )}
                       <Text variant="body-small" color="secondary">
-                        {state.toolset.length} selected
+                        {inventoryLine}
                       </Text>
                     </Flex>
-                    {visibleGroups.length > 0 ? (
-                      <ToolCatalogue
-                        groups={visibleGroups}
-                        query={trimmed}
-                        installation={installation}
-                        signInAvailable={Boolean(musterApi)}
-                        selected={selected}
-                        onToggle={toggleToolsetSelector}
-                      />
-                    ) : (
-                      <Text color="secondary">
-                        Nothing matches &quot;{trimmed}&quot;.
-                      </Text>
-                    )}
+                    {showCatalogue &&
+                      (visibleGroups.length > 0 ? (
+                        <ToolCatalogue
+                          groups={visibleGroups}
+                          query={trimmed}
+                          installation={installation}
+                          signInAvailable={Boolean(musterApi)}
+                          selected={selected}
+                          onToggle={toggleToolsetSelector}
+                        />
+                      ) : (
+                        <Text color="secondary">
+                          Nothing matches &quot;{trimmed}&quot;.
+                        </Text>
+                      ))}
                   </>
                 )}
 
@@ -456,15 +452,13 @@ export function NewAgentToolsPage() {
 
           <Card>
             <CardBody>
-              <SectionTitle
-                title="Toolset"
-                description="What you have selected, and the tools it resolves to for you right now. The review step shows the same list."
-              />
-              <Flex direction="column" gap="3">
-                <SelectedToolset
-                  selectors={state.toolset}
-                  onRemove={toggleToolsetSelector}
+              <div ref={resolvedListRef}>
+                <SectionTitle
+                  title="Toolset"
+                  description="What your selection resolves to for you right now, grouped like the catalogue. The review step shows the same list."
                 />
+              </div>
+              <Flex direction="column" gap="3">
                 {toolsetProblems.length > 0 && (
                   <Alert
                     status="danger"
@@ -505,7 +499,9 @@ export function NewAgentToolsPage() {
                   emptyText={
                     shape === 'none'
                       ? 'No tools, as chosen.'
-                      : 'This toolset resolves to no tools for you right now.'
+                      : state.toolset.length === 0
+                        ? 'Nothing selected yet.'
+                        : 'This toolset resolves to no tools for you right now.'
                   }
                 />
               </Flex>

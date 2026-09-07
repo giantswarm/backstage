@@ -620,3 +620,156 @@ export function unsignedServerSelectors(
     return parsed?.kind === 'server' && gated.has(parsed.name);
   });
 }
+
+/** The whole-server selector of a bucket. */
+export function serverSelector(name: string): string {
+  return `server:${name}`;
+}
+
+/**
+ * How many rows a list on the Tools step (and a section of the resolved list)
+ * shows before asking for a click: a gateway lists hundreds of tools, and a
+ * page that renders every one of them at once is the page nobody scrolls.
+ */
+export const INITIAL_ROWS = 20;
+
+/**
+ * Below this many workflows there is nothing to group — one short list reads
+ * better than a handful of one-entry groups.
+ */
+export const WORKFLOW_GROUPING_MIN = 12;
+
+/** The key of the group gathering workflows whose name prefix nothing else shares. */
+export const OTHER_WORKFLOWS_KEY = 'other';
+
+/** A run of workflows that share a name prefix, for the picker and the resolved list. */
+export interface WorkflowGroup {
+  /** Stable within a catalogue — the shared leading segment, or {@link OTHER_WORKFLOWS_KEY}. */
+  key: string;
+  /** The prefix the members share (`cert-manager`, `mc`), or *Other workflows*. */
+  label: string;
+  workflows: ToolSummary[];
+}
+
+function nameSegments(name: string): string[] {
+  return name.split(/[-_]/).filter(segment => segment !== '');
+}
+
+/** The leading segments every name shares, in order. */
+function commonLeadingSegments(names: string[][]): string[] {
+  if (names.length === 0) {
+    return [];
+  }
+  const shortest = Math.min(...names.map(segments => segments.length));
+  const common: string[] = [];
+  for (let index = 0; index < shortest; index += 1) {
+    const segment = names[0][index];
+    if (names.every(segments => segments[index] === segment)) {
+      common.push(segment);
+    } else {
+      break;
+    }
+  }
+  return common;
+}
+
+function byName(a: ToolSummary, b: ToolSummary): number {
+  return a.name.localeCompare(b.name);
+}
+
+/**
+ * Groups workflows by the leading segment of their name — the one structure a
+ * workflow catalogue reliably carries. muster's `filter_tools` reports a
+ * workflow's `kind`, `labels` (its CR labels, which on a GitOps-managed catalogue
+ * are Helm ownership plus whatever the chart adds) and the derived
+ * `readOnlyHint`; neither it nor `core_workflow_list` exposes a workflow's steps,
+ * and reading each workflow's definition to learn its servers would be one call
+ * per workflow. The name prefix needs no extra call and, where authors name
+ * workflows `<component>-<what>` (`cert-manager-down`, `mc-etcd-…`), it *is* the
+ * component grouping.
+ *
+ * A group's label is the longest prefix its members share (`cert-manager`, not
+ * `cert`); workflows whose leading segment nothing else shares are gathered under
+ * *Other workflows*, last. `undefined` when there are too few workflows to group.
+ */
+export function groupWorkflows(
+  workflows: ToolSummary[],
+): WorkflowGroup[] | undefined {
+  if (workflows.length <= WORKFLOW_GROUPING_MIN) {
+    return undefined;
+  }
+  const byLeadingSegment = new Map<string, ToolSummary[]>();
+  for (const workflow of workflows) {
+    const name = workflowNameOf(workflow.name);
+    const leading = nameSegments(name)[0] ?? name;
+    const members = byLeadingSegment.get(leading);
+    if (members) {
+      members.push(workflow);
+    } else {
+      byLeadingSegment.set(leading, [workflow]);
+    }
+  }
+  const groups: WorkflowGroup[] = [];
+  const singles: ToolSummary[] = [];
+  for (const [leading, members] of byLeadingSegment) {
+    if (members.length < 2) {
+      singles.push(...members);
+      continue;
+    }
+    const common = commonLeadingSegments(
+      members.map(member => nameSegments(workflowNameOf(member.name))),
+    );
+    groups.push({
+      key: leading,
+      label: common.length > 0 ? common.join('-') : leading,
+      workflows: [...members].sort(byName),
+    });
+  }
+  groups.sort((a, b) => a.label.localeCompare(b.label));
+  if (singles.length > 0) {
+    groups.push({
+      key: OTHER_WORKFLOWS_KEY,
+      label: 'Other workflows',
+      workflows: singles.sort(byName),
+    });
+  }
+  return groups;
+}
+
+/** What a catalogue holds, for the one-line inventory before it is opened. */
+export interface CatalogueInventory {
+  servers: number;
+  /** Tools of aggregated servers — not core tools, not workflows. */
+  tools: number;
+  platformAdministration: number;
+  workflows: number;
+}
+
+export function catalogueInventory(
+  groups: CatalogueGroup[],
+): CatalogueInventory {
+  const inventory: CatalogueInventory = {
+    servers: 0,
+    tools: 0,
+    platformAdministration: 0,
+    workflows: 0,
+  };
+  for (const group of groups) {
+    inventory.servers += group.servers.length;
+    for (const bucket of group.servers) {
+      inventory.tools += bucket.tools.length;
+    }
+    inventory.platformAdministration += group.platformAdministration.length;
+    inventory.workflows += group.workflows.length;
+  }
+  return inventory;
+}
+
+/** `1 tool` / `3 tools`. */
+export function countNoun(
+  count: number,
+  noun: string,
+  plural = `${noun}s`,
+): string {
+  return `${count} ${count === 1 ? noun : plural}`;
+}
