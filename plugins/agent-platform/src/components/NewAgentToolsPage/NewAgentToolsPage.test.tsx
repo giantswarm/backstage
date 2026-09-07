@@ -3,7 +3,7 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, { UserEvent } from '@testing-library/user-event';
 import {
   MCPServer,
   musterApiRef,
@@ -140,6 +140,36 @@ const PRO_TOOL: ToolSummary = {
   annotations: { readOnlyHint: true },
 };
 
+/** A registered server (no CR) with more tools than one page shows. */
+const GITHUB_TOOLS: ToolSummary[] = Array.from({ length: 25 }, (_, i) => ({
+  name: `x_github_tool_${String(i).padStart(2, '0')}`,
+  summary: `GitHub tool ${i}`,
+  server: 'github',
+  kind: 'tool' as const,
+}));
+
+/** Enough workflows to be grouped, named the way a runbook catalogue names them. */
+const MANY_WORKFLOWS: ToolSummary[] = [
+  'mc-etcd-space-low',
+  'mc-node-not-ready',
+  'mc-api-down',
+  'wc-pod-pending',
+  'wc-node-taint',
+  'cert-manager-down',
+  'cert-manager-too-many-requests',
+  'kube-api-latency',
+  'kube-controller-down',
+  'kube-scheduler-down',
+  'flux-helm-release-failed',
+  'flux-kustomization-failed',
+  'lonely-one',
+].map(name => ({
+  name: `workflow_${name}`,
+  summary: `Triage ${name}`,
+  kind: 'workflow' as const,
+  annotations: { readOnlyHint: true },
+}));
+
 const PRESETS = [
   { name: 'read-only', description: 'Read-only, from muster', built_in: true },
   { name: 'none', built_in: true },
@@ -152,6 +182,8 @@ type Scenario = {
   signedIn: boolean;
   /** Whether this muster evaluates toolsets (echoes `toolset`) at all. */
   evaluatesToolsets: boolean;
+  /** More catalogue entries, for the long-list and grouping cases. */
+  extraTools?: ToolSummary[];
 };
 
 /**
@@ -161,7 +193,8 @@ type Scenario = {
  * visible only after the sign-in.
  */
 function makeMusterApi(scenario: Scenario) {
-  const visible = () => (scenario.signedIn ? [...TOOLS, PRO_TOOL] : TOOLS);
+  const base = [...TOOLS, ...(scenario.extraTools ?? [])];
+  const visible = () => (scenario.signedIn ? [...base, PRO_TOOL] : base);
 
   const resolve = (selectors: string[]): FilterToolsResponse => {
     const matched = new Set<ToolSummary>();
@@ -356,12 +389,26 @@ async function renderStep(
 const continueButton = () => screen.getByRole('button', { name: 'Continue' });
 const toolsetOutput = () => screen.getByTestId('toolset').textContent;
 /**
- * The Toolset card, where the live resolution renders. Assertions on resolved
- * tool names are scoped to it: the same names sit in the catalogue's (collapsed)
- * tool cards, which `getByText` does not filter out.
+ * The Toolset card, where the full resolution renders. Assertions on resolved
+ * tool names are scoped to it: the same names sit in the catalogue's rows once
+ * a group is open, which `getByText` does not filter out.
  */
 const toolsetCard = () =>
-  screen.getByRole('heading', { name: 'Toolset' }).parentElement as HTMLElement;
+  screen.getByRole('heading', { name: 'Toolset' }).parentElement!
+    .parentElement as HTMLElement;
+/** The sticky *Selected so far* bar. */
+const summaryBar = () =>
+  screen.getByRole('region', { name: 'Selected so far' });
+
+/** The catalogue is behind a toggle; every group inside it is collapsed. */
+async function browseCatalogue(user: UserEvent) {
+  await user.click(
+    await screen.findByRole('button', { name: 'Browse the catalogue' }),
+  );
+}
+async function open(user: UserEvent, name: RegExp) {
+  await user.click(await screen.findByRole('button', { name }));
+}
 
 describe('NewAgentToolsPage', () => {
   let windowOpen: jest.SpyInstance;
@@ -383,6 +430,7 @@ describe('NewAgentToolsPage', () => {
     expect(screen.getByText('Step 2 of 3: Tools')).toBeInTheDocument();
     expect(toolsetOutput()).toBe('');
     expect(continueButton()).toBeDisabled();
+    expect(within(summaryBar()).getByText(/Nothing yet/)).toBeInTheDocument();
     expect(
       screen.getByText(/Choose a preset or compose a toolset to continue/),
     ).toBeInTheDocument();
@@ -391,7 +439,66 @@ describe('NewAgentToolsPage', () => {
 
     expect(toolsetOutput()).toBe('preset:none');
     expect(continueButton()).toBeEnabled();
+    expect(
+      within(summaryBar()).getByText('No tools, as chosen'),
+    ).toBeInTheDocument();
     expect(screen.getByText('No tools, as chosen.')).toBeInTheDocument();
+  });
+
+  it('lands compact: presets and the summary, the catalogue behind its toggle with an inventory, no group open', async () => {
+    const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
+    await renderStep({ api });
+    const user = userEvent.setup();
+
+    expect(
+      await screen.findByRole('button', { name: 'Browse the catalogue' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    // 3 CRs (kubernetes family, agent-manager, pro), 3 server tools + 1 core
+    // tool, 1 workflow.
+    expect(
+      screen.getByText('3 servers · 4 tools · 1 workflow'),
+    ).toBeInTheDocument();
+    // Nothing of the catalogue is rendered yet — not a group, not a row.
+    expect(
+      screen.queryByRole('button', { name: /^Infrastructure/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: /^(Tool|Workflow|Server) / }),
+    ).not.toBeInTheDocument();
+    // The search box is there before the catalogue is.
+    expect(screen.getByLabelText('Search tools')).toBeInTheDocument();
+
+    await browseCatalogue(user);
+
+    // The four groups, collapsed, each saying what it holds.
+    expect(
+      screen.getByRole('button', {
+        name: 'Infrastructure — 1 server · 2 tools',
+      }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.getByRole('button', {
+        name: 'Agent Platform — 1 server · 1 tool · 1 platform administration tool',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: 'Registered servers — 1 server · 1 awaiting sign-in',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Workflows — 1 workflow' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: /^(Tool|Workflow|Server) / }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Hide the catalogue' }),
+    );
+    expect(
+      screen.queryByRole('button', { name: /^Infrastructure/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("offers muster's presets safe-first with Full gateway last and warned", async () => {
@@ -421,7 +528,7 @@ describe('NewAgentToolsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the resolved list for a preset, with read-only and destructive markers', async () => {
+  it('shows the resolved count in the summary and the resolved list for a preset, with read-only and destructive markers', async () => {
     const { api, filterTools } = makeMusterApi({
       signedIn: false,
       evaluatesToolsets: true,
@@ -432,6 +539,14 @@ describe('NewAgentToolsPage', () => {
     await user.click(
       await screen.findByRole('checkbox', { name: 'Preset Read-only tools' }),
     );
+
+    // The effect, where the author is looking: the summary under the presets.
+    expect(
+      await within(summaryBar()).findByText('Resolves to 2 tools for you'),
+    ).toBeInTheDocument();
+    expect(
+      within(summaryBar()).getByRole('listitem', { name: '' }),
+    ).toHaveTextContent('preset:read-only');
 
     const resolved = within(toolsetCard());
     await resolved.findByText('x_kubernetes_get_pods');
@@ -461,10 +576,11 @@ describe('NewAgentToolsPage', () => {
     );
     await within(toolsetCard()).findByText('x_kubernetes_get_pods');
 
-    // Expand the kubernetes family and pick the destructive tool.
-    await user.click(
-      screen.getByRole('button', { name: /kubernetes \(family\)/ }),
-    );
+    // Open the catalogue, the Infrastructure group, the kubernetes family, and
+    // pick the destructive tool from its rows.
+    await browseCatalogue(user);
+    await open(user, /^Infrastructure — /);
+    await open(user, /^kubernetes \(family\) — 2 tools/);
     await user.click(
       await screen.findByRole('checkbox', {
         name: 'Tool x_kubernetes_delete_pod',
@@ -481,6 +597,15 @@ describe('NewAgentToolsPage', () => {
         }),
       ),
     );
+    // The pick is counted on the collapsed-able triggers and in the summary.
+    expect(
+      screen.getByRole('button', {
+        name: 'Infrastructure — 1 server · 2 tools · 1 selected',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await within(summaryBar()).findByText('Resolves to 3 tools for you'),
+    ).toBeInTheDocument();
     // The resolution card lists the destructive tool, marked.
     await waitFor(() =>
       expect(
@@ -490,32 +615,27 @@ describe('NewAgentToolsPage', () => {
     expect(within(toolsetCard()).getByText('destructive')).toBeInTheDocument();
   });
 
-  it('lists every registered server regardless of the viewer’s auth state, grouped by the label', async () => {
+  it('lists every registered server regardless of the viewer’s auth state, grouped by the label, each group opening to its rows', async () => {
     const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
     await renderStep({ api });
-
-    await screen.findByRole('heading', { name: 'Infrastructure' });
-    expect(
-      screen.getByRole('heading', { name: 'Agent Platform' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Registered servers' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Workflows' }),
-    ).toBeInTheDocument();
+    const user = userEvent.setup();
+    await browseCatalogue(user);
 
     // Infrastructure: the family, one row across its members.
+    await open(user, /^Infrastructure — /);
     expect(
       screen.getByRole('button', { name: /^kubernetes \(family\) — 2 tools/ }),
     ).toBeInTheDocument();
-    // Agent Platform: the labelled server, plus the warned core tools.
+    // Agent Platform: the labelled server, plus the warned core tools — both
+    // collapsed until opened.
+    await open(user, /^Agent Platform — /);
     expect(
       screen.getByRole('button', { name: /^agent-manager — 1 tool/ }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Platform administration' }),
-    ).toBeInTheDocument();
+      screen.queryByText('These tools manage the platform itself'),
+    ).not.toBeInTheDocument();
+    await open(user, /^Platform administration — 1 tool of muster itself/);
     expect(
       screen.getByText('These tools manage the platform itself'),
     ).toBeInTheDocument();
@@ -524,10 +644,140 @@ describe('NewAgentToolsPage', () => {
     ).toBeInTheDocument();
     // Registered servers: the unlabelled one the viewer has not signed in to
     // is a row all the same.
+    await open(user, /^Registered servers — /);
     expect(
       screen.getByRole('button', { name: /^pro — sign in to see its tools/ }),
     ).toBeInTheDocument();
-    // Workflows are their own group.
+    // Workflows are their own group; few enough for a plain list.
+    await open(user, /^Workflows — 1 workflow/);
+    expect(
+      screen.getByRole('checkbox', { name: 'Workflow incident-triage' }),
+    ).toBeInTheDocument();
+  });
+
+  it('a search opens only the groups with matches, and clearing it puts the catalogue away again', async () => {
+    const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
+    await renderStep({ api });
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText('Search tools'), 'pods');
+
+    // No click needed: the Infrastructure group and the family are open and
+    // the matching row is there; the other groups are gone.
+    expect(
+      await screen.findByRole('checkbox', {
+        name: 'Tool x_kubernetes_get_pods',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^Infrastructure — / }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.queryByRole('button', { name: /^Workflows — / }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: 'Tool x_kubernetes_delete_pod' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('1 tool and 0 workflows match'),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Show everything again' }),
+    );
+
+    expect(
+      screen.queryByRole('checkbox', { name: 'Tool x_kubernetes_get_pods' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Browse the catalogue' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the first 20 rows of a long list and the rest on request', async () => {
+    const { api } = makeMusterApi({
+      signedIn: false,
+      evaluatesToolsets: true,
+      extraTools: GITHUB_TOOLS,
+    });
+    await renderStep({ api });
+    const user = userEvent.setup();
+
+    await browseCatalogue(user);
+    await open(
+      user,
+      /^Registered servers — 2 servers · 25 tools · 1 awaiting sign-in/,
+    );
+    await open(user, /^github — 25 tools/);
+
+    expect(
+      screen.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
+    ).toHaveLength(20);
+    expect(screen.getByText('20 tools shown, 5 more')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show all 25 tools' }));
+
+    expect(
+      screen.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
+    ).toHaveLength(25);
+    expect(
+      screen.queryByRole('button', { name: /^Show all/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('groups many workflows by their name prefix, each collapsed with its count, singletons gathered', async () => {
+    const { api } = makeMusterApi({
+      signedIn: false,
+      evaluatesToolsets: true,
+      extraTools: MANY_WORKFLOWS,
+    });
+    await renderStep({ api });
+    const user = userEvent.setup();
+
+    await browseCatalogue(user);
+    await open(user, /^Workflows — 14 workflows/);
+
+    // The shared prefix names the group — the longest one, so `cert-manager`
+    // rather than `cert` — and the two workflows nothing else shares a prefix
+    // with sit under Other workflows, last.
+    expect(
+      screen
+        .getAllByRole('button', { name: / — \d+ workflows?$/ })
+        .map(button => button.textContent),
+    ).toEqual([
+      'Workflows — 14 workflows',
+      'cert-manager — 2 workflows',
+      'flux — 2 workflows',
+      'kube — 3 workflows',
+      'mc — 3 workflows',
+      'wc — 2 workflows',
+      'Other workflows — 2 workflows',
+    ]);
+    expect(
+      screen.queryByRole('checkbox', { name: /^Workflow / }),
+    ).not.toBeInTheDocument();
+
+    await open(user, /^mc — 3 workflows/);
+
+    expect(
+      screen
+        .getAllByRole('checkbox', { name: /^Workflow / })
+        .map(row => row.getAttribute('aria-label')),
+    ).toEqual([
+      'Workflow mc-api-down',
+      'Workflow mc-etcd-space-low',
+      'Workflow mc-node-not-ready',
+    ]);
+    // Rows carry the markers and one line of the description.
+    expect(screen.getAllByText('read-only').length).toBeGreaterThanOrEqual(3);
+    expect(
+      screen.getByRole('checkbox', { name: 'Workflow mc-api-down' }),
+    ).toHaveAttribute('title', 'Triage mc-api-down');
+
+    await open(user, /^Other workflows — 2 workflows/);
+    expect(
+      screen.getByRole('checkbox', { name: 'Workflow lonely-one' }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('checkbox', { name: 'Workflow incident-triage' }),
     ).toBeInTheDocument();
@@ -541,11 +791,9 @@ describe('NewAgentToolsPage', () => {
     await renderStep({ api });
     const user = userEvent.setup();
 
-    await user.click(
-      await screen.findByRole('button', {
-        name: /^pro — sign in to see its tools/,
-      }),
-    );
+    await browseCatalogue(user);
+    await open(user, /^Registered servers — /);
+    await open(user, /^pro — sign in to see its tools/);
     expect(
       await screen.findByText('Sign in to see the tools of pro'),
     ).toBeInTheDocument();
@@ -559,7 +807,7 @@ describe('NewAgentToolsPage', () => {
       expect(signInServer).toHaveBeenCalledWith('pro', 'gazelle'),
     );
     // The catalogue re-reads (the `['muster']` invalidation) and pro's tool
-    // becomes a selectable card.
+    // becomes a selectable row.
     expect(
       await screen.findByRole('checkbox', { name: 'Tool x_pro_list_boards' }),
     ).toBeInTheDocument();
@@ -574,18 +822,16 @@ describe('NewAgentToolsPage', () => {
     await renderStep({ api });
     const user = userEvent.setup();
 
-    await user.click(
-      await screen.findByRole('button', {
-        name: /^pro — sign in to see its tools/,
-      }),
-    );
+    await browseCatalogue(user);
+    await open(user, /^Registered servers — /);
+    await open(user, /^pro — sign in to see its tools/);
     await user.click(
       await screen.findByRole('checkbox', { name: 'Server pro' }),
     );
 
     expect(toolsetOutput()).toBe('server:pro');
     expect(continueButton()).toBeEnabled();
-    // Flagged in the panel and in the toolset card.
+    // Flagged in the panel, in the toolset card and in the summary.
     expect(
       screen.getAllByText(/Selected without a sign-in/).length,
     ).toBeGreaterThanOrEqual(2);
@@ -594,13 +840,18 @@ describe('NewAgentToolsPage', () => {
         name: /^pro — sign in to see its tools · whole server selected/,
       }),
     ).toBeInTheDocument();
-    // Nothing to pick: no tool cards for a server whose tools are not listed.
+    // Nothing to pick: no tool rows for a server whose tools are not listed.
     expect(
       screen.queryByRole('checkbox', { name: /^Tool x_pro_/ }),
     ).not.toBeInTheDocument();
     // And muster reports the selector as matching nothing for this viewer.
     expect(
       await screen.findByText('Some selectors match nothing for you'),
+    ).toBeInTheDocument();
+    expect(
+      within(summaryBar()).getByText(
+        '1 server selected without a sign-in · 1 selector match nothing for you',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -628,6 +879,13 @@ describe('NewAgentToolsPage', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Preset Read-only tools' }),
     ).toBeChecked();
+    await browseCatalogue(user);
+    expect(
+      screen.getByRole('button', {
+        name: 'Workflows — 1 workflow · 1 selected',
+      }),
+    ).toBeInTheDocument();
+    await open(user, /^Workflows — /);
     expect(
       screen.getByRole('checkbox', { name: 'Workflow incident-triage' }),
     ).toBeChecked();
@@ -651,6 +909,9 @@ describe('NewAgentToolsPage', () => {
     expect(
       screen.getByText('Too many selectors — define a preset'),
     ).toBeInTheDocument();
+    expect(
+      within(summaryBar()).getByText('The toolset cannot be applied as it is'),
+    ).toBeInTheDocument();
     expect(continueButton()).toBeDisabled();
   });
 
@@ -668,7 +929,8 @@ describe('NewAgentToolsPage', () => {
         'The toolset names a preset this installation does not define',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText(/unknown preset "foo"/)).toBeInTheDocument();
+    // In the card and in the summary.
+    expect(screen.getAllByText(/unknown preset "foo"/).length).toBe(2);
   });
 
   it('refuses a malformed or reserved selector typed by hand', async () => {
@@ -705,12 +967,13 @@ describe('NewAgentToolsPage', () => {
       screen.getByRole('checkbox', { name: 'Preset Read-only tools' }),
     );
 
-    // The unscoped answer is not presented as the resolution.
+    // The unscoped answer is not presented as the resolution — in the card
+    // and in the summary.
     expect(
-      await screen.findByText(
+      await screen.findAllByText(
         "This installation's muster does not evaluate toolsets yet",
       ),
-    ).toBeInTheDocument();
+    ).toHaveLength(2);
     // The declaration is still made and the flow can continue.
     expect(toolsetOutput()).toBe('preset:read-only');
     expect(continueButton()).toBeEnabled();
@@ -759,11 +1022,14 @@ describe('NewAgentToolsPage', () => {
     );
     expect(toolsetOutput()).toBe('preset:full');
 
+    await browseCatalogue(user);
+    await open(user, /^Workflows — /);
     await user.click(
       screen.getByRole('checkbox', { name: 'Workflow incident-triage' }),
     );
     expect(toolsetOutput()).toBe('workflow:incident-triage');
 
+    // Removed from the summary bar's chips.
     await user.click(
       screen.getByRole('button', { name: 'Remove workflow:incident-triage' }),
     );

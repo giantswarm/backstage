@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import {
   Accordion,
   AccordionGroup,
@@ -16,32 +16,108 @@ import {
 
 import {
   CatalogueGroup,
+  countNoun,
+  groupWorkflows,
   selectorForTool,
   ServerBucket,
+  serverSelector,
   workflowNameOf,
 } from '../../lib/toolset';
 import {
-  SelectableCard,
-  SelectableCardGrid,
+  SelectableRow,
+  SelectableRowList,
   useSelectableCardStyles,
 } from '../SelectableCard';
+import { ShowMore } from '../ShowMore';
 import { ToolMarkers } from '../ToolsetResolutionList';
 
 const useStyles = makeStyles(theme => ({
-  groupTitle: {
-    marginTop: theme.spacing(1),
-    marginBottom: theme.spacing(0.5),
+  group: {
+    // bui's accordion trigger has no bottom padding; an expanded header would
+    // sit flush against its panel. The selector must reach the button, which
+    // is what carries `aria-expanded` (see ui-react's SimpleAccordion).
+    '& .bui-AccordionTriggerButton[aria-expanded="true"]': {
+      paddingBottom: theme.spacing(1),
+    },
   },
-  subgroupHeading: {
-    marginTop: theme.spacing(2),
+  nested: {
+    borderLeft: `2px solid ${theme.palette.divider}`,
+    paddingLeft: theme.spacing(1.5),
     marginBottom: theme.spacing(1),
   },
-  serverCard: {
-    marginBottom: theme.spacing(1.5),
+  panel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2),
+    paddingBottom: theme.spacing(1),
   },
 }));
 
-function ToolCard({
+/**
+ * Controlled expansion, re-seeded like the Skills step: everything collapsed
+ * while nothing is searched — a gateway lists hundreds of tools, and the
+ * presets above are the usual starting point — and every visible entry open
+ * while a query is active, because a search must reveal its matches. Within a
+ * stable query and set of entries, what the author toggles sticks.
+ */
+function useSearchExpansion(
+  keys: string[],
+  query: string,
+): [Set<string>, (next: Set<string>) => void] {
+  const signature = keys.join('|');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setExpanded(new Set(query === '' ? [] : keys));
+    // signature stands in for keys (a new array each render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, signature]);
+  return [expanded, setExpanded];
+}
+
+type DisclosureEntry = {
+  key: string;
+  trigger: ReactNode;
+  /** Rendered only while expanded, so a collapsed group costs no rows. */
+  panel: () => ReactNode;
+};
+
+/** A stack of collapsible entries whose expansion follows the search. */
+function Disclosures({
+  entries,
+  query,
+  nested = false,
+}: {
+  entries: DisclosureEntry[];
+  query: string;
+  nested?: boolean;
+}) {
+  const classes = useStyles();
+  const [expanded, setExpanded] = useSearchExpansion(
+    entries.map(entry => entry.key),
+    query,
+  );
+  return (
+    <AccordionGroup
+      allowsMultiple
+      expandedKeys={expanded}
+      onExpandedChange={next => setExpanded(new Set(next as Set<string>))}
+      className={`${classes.group} ${nested ? classes.nested : ''}`}
+    >
+      {entries.map(entry => (
+        <Accordion id={entry.key} key={entry.key}>
+          <AccordionTrigger>{entry.trigger}</AccordionTrigger>
+          <AccordionPanel>
+            {expanded.has(entry.key) ? (
+              <div className={classes.panel}>{entry.panel()}</div>
+            ) : null}
+          </AccordionPanel>
+        </Accordion>
+      ))}
+    </AccordionGroup>
+  );
+}
+
+function ToolRow({
   tool,
   selected,
   onSelect,
@@ -50,121 +126,72 @@ function ToolCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const classes = useSelectableCardStyles();
   const isWorkflow = selectorForTool(tool).startsWith('workflow:');
   const title = isWorkflow ? workflowNameOf(tool.name) : tool.name;
   return (
-    <SelectableCard
+    <SelectableRow
       role="checkbox"
       selected={selected}
       ariaLabel={`${isWorkflow ? 'Workflow' : 'Tool'} ${title}`}
       onSelect={onSelect}
-    >
-      <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-        <Text weight="bold" className={classes.code}>
-          {title}
-        </Text>
-        <ToolMarkers tool={tool} />
-      </Flex>
-      {(tool.summary || tool.description) && (
-        <Text variant="body-small" color="secondary">
-          {tool.summary ?? tool.description}
-        </Text>
-      )}
-    </SelectableCard>
+      title={title}
+      code
+      meta={<ToolMarkers tool={tool} />}
+      summary={tool.summary ?? tool.description}
+    />
   );
 }
 
-function ToolGrid({
+/** Compact rows, the first few at once and the rest behind *Show all*. */
+function ToolRows({
   tools,
   ariaLabel,
+  noun,
   selected,
   onToggle,
 }: {
   tools: ToolSummary[];
   ariaLabel: string;
+  noun: 'tool' | 'workflow';
   selected: ReadonlySet<string>;
   onToggle: (selector: string) => void;
 }) {
   return (
-    <SelectableCardGrid role="group" ariaLabel={ariaLabel} minWidth={260}>
-      {tools.map(tool => {
-        const selector = selectorForTool(tool);
-        return (
-          <ToolCard
-            key={tool.name}
-            tool={tool}
-            selected={selected.has(selector)}
-            onSelect={() => onToggle(selector)}
-          />
-        );
-      })}
-    </SelectableCardGrid>
+    <ShowMore items={tools} noun={noun}>
+      {visible => (
+        <SelectableRowList role="group" ariaLabel={ariaLabel}>
+          {visible.map(tool => {
+            const selector = selectorForTool(tool);
+            return (
+              <ToolRow
+                key={tool.name}
+                tool={tool}
+                selected={selected.has(selector)}
+                onSelect={() => onToggle(selector)}
+              />
+            );
+          })}
+        </SelectableRowList>
+      )}
+    </ShowMore>
   );
 }
 
-function ServerPanel({
-  bucket,
-  installation,
-  signInAvailable,
-  selected,
-  onToggle,
-}: {
-  bucket: ServerBucket;
-  installation: string | undefined;
-  signInAvailable: boolean;
-  selected: ReadonlySet<string>;
-  onToggle: (selector: string) => void;
-}) {
-  const classes = useStyles();
-  const cardClasses = useSelectableCardStyles();
-  const serverSelector = `server:${bucket.name}`;
-  const wholeServerSelected = selected.has(serverSelector);
-
-  return (
-    <Flex direction="column" gap="2">
-      <div className={classes.serverCard}>
-        <SelectableCardGrid
-          role="group"
-          ariaLabel={`Whole server ${bucket.name}`}
-          minWidth={260}
-        >
-          <SelectableCard
-            role="checkbox"
-            selected={wholeServerSelected}
-            ariaLabel={`Server ${bucket.name}`}
-            onSelect={() => onToggle(serverSelector)}
-          >
-            <Text weight="bold">
-              Every tool of{' '}
-              <span className={cardClasses.code}>{bucket.name}</span>
-            </Text>
-            <Text variant="body-small" color="secondary">
-              {bucket.isFamily
-                ? 'A federated family: one tool surface across the management clusters it runs on.'
-                : 'Whatever this server exposes, now and after it adds tools.'}
-            </Text>
-            <Text variant="body-x-small" color="secondary">
-              <span className={cardClasses.code}>{serverSelector}</span>
-              {bucket.state ? ` · ${bucket.state}` : ''}
-            </Text>
-          </SelectableCard>
-        </SelectableCardGrid>
-      </div>
-
-      <ServerTools
-        bucket={bucket}
-        installation={installation}
-        signInAvailable={signInAvailable}
-        wholeServerSelected={wholeServerSelected}
-        selected={selected}
-        onToggle={onToggle}
-      />
-    </Flex>
-  );
+function pickedSuffix(count: number, whole = false): string {
+  if (whole) {
+    return ' · whole server selected';
+  }
+  return count > 0 ? ` · ${count} selected` : '';
 }
 
-/** Below the whole-server card: the sign-in, the tool cards, or why there are none. */
+function pickedTools(
+  tools: ToolSummary[],
+  selected: ReadonlySet<string>,
+): number {
+  return tools.filter(tool => selected.has(selectorForTool(tool))).length;
+}
+
+/** Below the whole-server row: the sign-in, the tool rows, or why there are none. */
 function ServerTools({
   bucket,
   installation,
@@ -203,9 +230,10 @@ function ServerTools({
   }
   if (bucket.tools.length > 0) {
     return (
-      <ToolGrid
+      <ToolRows
         tools={bucket.tools}
         ariaLabel={`Tools of ${bucket.name}`}
+        noun="tool"
         selected={selected}
         onToggle={onToggle}
       />
@@ -220,77 +248,213 @@ function ServerTools({
   );
 }
 
-function ServerAccordions({
-  group,
-  query,
+function ServerPanel({
+  bucket,
   installation,
   signInAvailable,
   selected,
   onToggle,
 }: {
-  group: CatalogueGroup;
-  query: string;
+  bucket: ServerBucket;
   installation: string | undefined;
   signInAvailable: boolean;
   selected: ReadonlySet<string>;
   onToggle: (selector: string) => void;
 }) {
-  const keys = group.servers.map(bucket => `${group.key}/${bucket.name}`);
-  const signature = keys.join('|');
-
-  // Controlled expansion, re-seeded like the Skills step: a search must reveal
-  // its matches, and a server whose whole-server card is selected stays
-  // readable. Collapsed by default when nothing is searched — a gateway lists
-  // hundreds of tools, and the presets above are the usual starting point.
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    setExpandedKeys(new Set(query === '' ? [] : keys));
-    // signature stands in for keys (a new array each render).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, signature]);
-
+  const cardClasses = useSelectableCardStyles();
+  const selector = serverSelector(bucket.name);
+  const wholeServerSelected = selected.has(selector);
   return (
-    <AccordionGroup
-      allowsMultiple
-      expandedKeys={expandedKeys}
-      onExpandedChange={next => setExpandedKeys(new Set(next as Set<string>))}
-    >
-      {group.servers.map(bucket => {
-        const id = `${group.key}/${bucket.name}`;
-        const isSelected = selected.has(`server:${bucket.name}`);
-        const pickedTools = bucket.tools.filter(tool =>
-          selected.has(selectorForTool(tool)),
-        ).length;
-        const summary = bucket.needsSignIn
-          ? 'sign in to see its tools'
-          : `${bucket.tools.length} tool${bucket.tools.length === 1 ? '' : 's'}`;
-        let picked = '';
-        if (isSelected) {
-          picked = ' · whole server selected';
-        } else if (pickedTools > 0) {
-          picked = ` · ${pickedTools} selected`;
-        }
-        return (
-          <Accordion id={id} key={id}>
-            <AccordionTrigger>
-              {bucket.name}
-              {bucket.isFamily ? ' (family)' : ''} — {summary}
-              {picked}
-            </AccordionTrigger>
-            <AccordionPanel>
-              <ServerPanel
-                bucket={bucket}
-                installation={installation}
-                signInAvailable={signInAvailable}
-                selected={selected}
-                onToggle={onToggle}
-              />
-            </AccordionPanel>
-          </Accordion>
-        );
-      })}
-    </AccordionGroup>
+    <>
+      <SelectableRowList role="group" ariaLabel={`Whole server ${bucket.name}`}>
+        <SelectableRow
+          role="checkbox"
+          selected={wholeServerSelected}
+          ariaLabel={`Server ${bucket.name}`}
+          onSelect={() => onToggle(selector)}
+          title={`Every tool of ${bucket.name}`}
+          meta={
+            <Text variant="body-x-small" color="secondary">
+              <span className={cardClasses.code}>{selector}</span>
+              {bucket.state ? ` · ${bucket.state}` : ''}
+            </Text>
+          }
+          summary={
+            bucket.isFamily
+              ? 'A federated family: one tool surface across the management clusters it runs on.'
+              : 'Whatever this server exposes, now and after it adds tools.'
+          }
+        />
+      </SelectableRowList>
+      <ServerTools
+        bucket={bucket}
+        installation={installation}
+        signInAvailable={signInAvailable}
+        wholeServerSelected={wholeServerSelected}
+        selected={selected}
+        onToggle={onToggle}
+      />
+    </>
   );
+}
+
+function serverEntries(
+  group: CatalogueGroup,
+  props: Pick<
+    ToolCatalogueProps,
+    'installation' | 'signInAvailable' | 'selected' | 'onToggle'
+  >,
+): DisclosureEntry[] {
+  return group.servers.map(bucket => {
+    const whole = props.selected.has(serverSelector(bucket.name));
+    const summary = bucket.needsSignIn
+      ? 'sign in to see its tools'
+      : countNoun(bucket.tools.length, 'tool');
+    return {
+      key: `${group.key}/${bucket.name}`,
+      trigger: `${bucket.name}${bucket.isFamily ? ' (family)' : ''} — ${summary}${pickedSuffix(
+        pickedTools(bucket.tools, props.selected),
+        whole,
+      )}`,
+      panel: () => (
+        <ServerPanel
+          bucket={bucket}
+          installation={props.installation}
+          signInAvailable={props.signInAvailable}
+          selected={props.selected}
+          onToggle={props.onToggle}
+        />
+      ),
+    };
+  });
+}
+
+/** muster's own core tools: warned, collapsed, selectable one by one (D7). */
+function platformAdministrationEntry(
+  group: CatalogueGroup,
+  selected: ReadonlySet<string>,
+  onToggle: (selector: string) => void,
+): DisclosureEntry {
+  const tools = group.platformAdministration;
+  return {
+    key: `${group.key}/platform-administration`,
+    trigger: `Platform administration — ${countNoun(
+      tools.length,
+      'tool',
+    )} of muster itself${pickedSuffix(pickedTools(tools, selected))}`,
+    panel: () => (
+      <>
+        <Alert
+          status="warning"
+          title="These tools manage the platform itself"
+          description="muster's own core tools register and control servers, run and change workflows, and read and change configuration. No shipped preset includes them except Full gateway; give them to an agent deliberately, one by one."
+        />
+        <ToolRows
+          tools={tools}
+          ariaLabel="Platform administration tools"
+          noun="tool"
+          selected={selected}
+          onToggle={onToggle}
+        />
+      </>
+    ),
+  };
+}
+
+/**
+ * The workflows, grouped by name prefix when there are enough of them to need
+ * it — one collapsed group per prefix with its count — and one plain list when
+ * there are not.
+ */
+function Workflows({
+  workflows,
+  query,
+  selected,
+  onToggle,
+}: {
+  workflows: ToolSummary[];
+  query: string;
+  selected: ReadonlySet<string>;
+  onToggle: (selector: string) => void;
+}) {
+  const groups = groupWorkflows(workflows);
+  if (!groups) {
+    return (
+      <ToolRows
+        tools={workflows}
+        ariaLabel="Workflows"
+        noun="workflow"
+        selected={selected}
+        onToggle={onToggle}
+      />
+    );
+  }
+  return (
+    <Disclosures
+      nested
+      query={query}
+      entries={groups.map(group => ({
+        key: `workflows/${group.key}`,
+        trigger: `${group.label} — ${countNoun(
+          group.workflows.length,
+          'workflow',
+        )}${pickedSuffix(pickedTools(group.workflows, selected))}`,
+        panel: () => (
+          <ToolRows
+            tools={group.workflows}
+            ariaLabel={`Workflows ${group.label}`}
+            noun="workflow"
+            selected={selected}
+            onToggle={onToggle}
+          />
+        ),
+      }))}
+    />
+  );
+}
+
+/** The trigger line of a group: what it holds, and how much of it is picked. */
+export function groupSummary(
+  group: CatalogueGroup,
+  selected: ReadonlySet<string>,
+): string {
+  const parts: string[] = [];
+  if (group.servers.length > 0) {
+    parts.push(countNoun(group.servers.length, 'server'));
+    const tools = group.servers.reduce(
+      (sum, bucket) => sum + bucket.tools.length,
+      0,
+    );
+    const awaiting = group.servers.filter(bucket => bucket.needsSignIn).length;
+    // "0 tools" next to "1 awaiting sign-in" would read as a contradiction.
+    if (tools > 0 || awaiting === 0) {
+      parts.push(countNoun(tools, 'tool'));
+    }
+    if (awaiting > 0) {
+      parts.push(`${awaiting} awaiting sign-in`);
+    }
+  }
+  if (group.platformAdministration.length > 0) {
+    parts.push(
+      `${countNoun(
+        group.platformAdministration.length,
+        'platform administration tool',
+      )}`,
+    );
+  }
+  if (group.workflows.length > 0) {
+    parts.push(countNoun(group.workflows.length, 'workflow'));
+  }
+  const picked =
+    group.servers.filter(bucket => selected.has(serverSelector(bucket.name)))
+      .length +
+    group.servers.reduce(
+      (sum, bucket) => sum + pickedTools(bucket.tools, selected),
+      0,
+    ) +
+    pickedTools(group.platformAdministration, selected) +
+    pickedTools(group.workflows, selected);
+  return `${parts.join(' · ')}${pickedSuffix(picked)}`;
 }
 
 export type ToolCatalogueProps = {
@@ -311,79 +475,52 @@ export type ToolCatalogueProps = {
 
 /**
  * The gateway's catalogue, grouped the way the platform thinks about it:
- * Infrastructure, Agent Platform (with muster's own core tools as a warned
- * *Platform administration* sub-group), Registered servers and Workflows.
- * Every registered server is a row, signed in to or not; an *Auth Required*
- * server offers the muster plugin's Sign in right here, and its tools become
- * selectable once the callback lands.
+ * Infrastructure, Agent Platform (with muster's own core tools as a warned,
+ * collapsed *Platform administration* entry), Registered servers and
+ * Workflows (by name prefix). Every group is collapsed until the author opens
+ * it or a search matches inside it, and every list of rows shows a first page
+ * before the rest, so no state of the page renders hundreds of options at
+ * once. Every registered server is a row, signed in to or not; an *Auth
+ * Required* server offers the muster plugin's Sign in right here, and its tools
+ * become selectable once the callback lands.
  */
-export function ToolCatalogue({
-  groups,
-  query,
-  installation,
-  signInAvailable,
-  selected,
-  onToggle,
-}: ToolCatalogueProps) {
-  const classes = useStyles();
-
+export function ToolCatalogue(props: ToolCatalogueProps) {
+  const { groups, query, selected, onToggle } = props;
   return (
-    <Flex direction="column" gap="4">
-      {groups.map(group => (
-        <div key={group.key}>
-          <Text
-            as="h3"
-            variant="title-x-small"
-            weight="bold"
-            className={classes.groupTitle}
-          >
-            {group.title}
-          </Text>
-          {group.servers.length > 0 && (
-            <ServerAccordions
-              group={group}
-              query={query}
-              installation={installation}
-              signInAvailable={signInAvailable}
-              selected={selected}
-              onToggle={onToggle}
-            />
-          )}
-          {group.platformAdministration.length > 0 && (
-            <div>
-              <Text
-                as="h4"
-                weight="bold"
-                variant="body-small"
-                className={classes.subgroupHeading}
-              >
-                Platform administration
-              </Text>
-              <Flex direction="column" gap="2">
-                <Alert
-                  status="warning"
-                  title="These tools manage the platform itself"
-                  description="muster's own core tools register and control servers, run and change workflows, and read and change configuration. No shipped preset includes them except Full gateway; give them to an agent deliberately, one by one."
-                />
-                <ToolGrid
-                  tools={group.platformAdministration}
-                  ariaLabel="Platform administration tools"
-                  selected={selected}
-                  onToggle={onToggle}
-                />
-              </Flex>
-            </div>
-          )}
-          {group.workflows.length > 0 && (
-            <ToolGrid
-              tools={group.workflows}
-              ariaLabel="Workflows"
-              selected={selected}
-              onToggle={onToggle}
-            />
-          )}
-        </div>
-      ))}
-    </Flex>
+    <Disclosures
+      query={query}
+      entries={groups.map(group => ({
+        key: group.key,
+        trigger: `${group.title} — ${groupSummary(group, selected)}`,
+        panel: () => (
+          <>
+            {group.servers.length > 0 && (
+              <Disclosures
+                nested
+                query={query}
+                entries={serverEntries(group, props)}
+              />
+            )}
+            {group.platformAdministration.length > 0 && (
+              <Disclosures
+                nested
+                query={query}
+                entries={[
+                  platformAdministrationEntry(group, selected, onToggle),
+                ]}
+              />
+            )}
+            {group.workflows.length > 0 && (
+              <Workflows
+                workflows={group.workflows}
+                query={query}
+                selected={selected}
+                onToggle={onToggle}
+              />
+            )}
+          </>
+        ),
+      }))}
+    />
   );
 }
