@@ -8,14 +8,13 @@ Add `GET /kagent/session-states`, which reports the derived state of each of the
 caller's sessions on one installation. Nothing renders it yet — the session
 switcher rail is the consumer.
 
-**The first route here that interprets kagent rather than forwarding it**, and
-the exception is arithmetic. A kagent `Session` carries no state; the only way to
-learn one is to read that session's whole conversation and look at its newest
-task. Measured against a real 21-session account on gazelle, that is **2.8 MB**
-(individual sessions 1.6 KB–481 KB) to produce about 700 bytes of answer — not
-something to do in a browser, on a poll. It derives through the same parser and
-the same state map the UI badges from, shared from `agent-platform-common`, so
-the two cannot disagree.
+**The first route here that interprets kagent rather than forwarding it**, and the
+exception is arithmetic. A kagent `Session` carries no state; the only way to learn one
+is to read that session's whole conversation and look at its newest task. Measured
+against a real 21-session account on an internal installation, that is **2.8 MB**
+(individual sessions 1.6 KB–481 KB) to produce about 700 bytes of answer — not something
+to do in a browser, on a poll. It derives through the same parser and the same state map
+the UI badges from, shared from `agent-platform-common`, so the two cannot disagree.
 
 **There is no bulk endpoint, and this was checked, not assumed.** On kagent 0.9.9
 the A2A `tasks/list` returns `-32601 METHOD_NOT_FOUND`, while `tasks/get` on the

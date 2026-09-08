@@ -13,8 +13,8 @@
  * interop mechanism kagent itself relies on. Prefer `adk_`, fall back to
  * `kagent_`.
  *
- * **Both prefixes really do occur, on the same installation.** Two gazelle
- * sessions read a day apart carried `kagent_usage_metadata` and
+ * **Both prefixes really do occur, on the same installation.** Two sessions on one
+ * internal installation, read a day apart, carried `kagent_usage_metadata` and
  * `adk_usage_metadata` respectively. This is therefore load-bearing rather than
  * defensive: reading only one prefix makes a session's token totals silently zero.
  *

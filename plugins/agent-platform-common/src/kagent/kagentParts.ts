@@ -250,7 +250,7 @@ export function isInternalToolName(name: string | undefined): boolean {
  * no breakdown, is still worth showing.
  *
  * **`totalTokenCount` is derived when kagent doesn't report one.** Confirmed on a
- * real gazelle session, whose every message carried exactly
+ * real session on an internal installation, whose every message carried exactly
  * `adk_usage_metadata: {promptTokenCount, candidatesTokenCount}` — no
  * `totalTokenCount` at all. Summing the reported totals therefore gave "Total 0"
  * next to 1.4M input, which reads as broken. kagent's own UI has the same hole

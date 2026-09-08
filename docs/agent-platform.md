@@ -756,16 +756,15 @@ wired up.
 | `…/sessions/:id?limit=1` | the session object: title, agent, timestamps, existence |
 | `…/sessions/:id/tasks`   | the conversation, its state, and token usage            |
 
-The conversation comes from **tasks**, which is what kagent's own UI renders from.
-The `events` array on the first response is ignored entirely, and `limit=1` keeps it
-off the wire. kagent's Go type calls each event's `data` a
-`JSON-serialized protocol.Message`, which suggested events could supply the
-per-message timestamps A2A messages lack. A real gazelle session disproved it: the
-decoded value is an **ADK event** (`author`, `content`, `invocation_id`, `partial`,
-`timestamp`, …) with no `messageId` at all, so nothing correlates with task history.
-On that session the events were 591 KB against 261 bytes of session metadata.
-(`limit` must be `1`, not `0` — kagent gates its LIMIT clause on `opts.Limit > 0`,
-so zero reads as _unlimited_.)
+The conversation comes from **tasks**, which is what kagent's own UI renders from. The
+`events` array on the first response is ignored entirely, and `limit=1` keeps it off the
+wire. kagent's Go type calls each event's `data` a `JSON-serialized protocol.Message`,
+which suggested events could supply the per-message timestamps A2A messages lack. A real
+session on an internal installation disproved it: the decoded value is an **ADK event**
+(`author`, `content`, `invocation_id`, `partial`, `timestamp`, …) with no `messageId` at
+all, so nothing correlates with task history. On that session the events were 591 KB
+against 261 bytes of session metadata. (`limit` must be `1`, not `0` — kagent gates its
+LIMIT clause on `opts.Limit > 0`, so zero reads as _unlimited_.)
 
 **Consequence for the UI: timestamps are per turn, not per item.** A task's
 timestamp is the finest granularity that exists, so the timeline shows it once per
@@ -824,17 +823,17 @@ or deleted from another client. Stopping would freeze the page for exactly the c
 this polling exists to fix. 60 s equals the query client's `staleTime`, so nothing
 is refetched that the client still considers fresh.
 
-Polls only fire while the tab is **visible** — `refetchIntervalInBackground` defaults
-to `false`, and react-query's focus manager keys off `document.visibilityState`, not
-window focus, so a visible-but-unfocused window keeps polling. Verified on gazelle:
-nothing was requested across 80 s hidden, and the interval resumed by itself
-afterwards.
+Polls only fire while the tab is **visible** — `refetchIntervalInBackground` defaults to
+`false`, and react-query's focus manager keys off `document.visibilityState`, not window
+focus, so a visible-but-unfocused window keeps polling. Verified on an internal
+installation: nothing was requested across 80 s hidden, and the interval resumed by
+itself afterwards.
 
 Going **offline** is different again, and quieter than it looks: react-query's
 default `networkMode: 'online'` _pauses_ these queries rather than failing them, so a
 disconnected browser makes no request, raises no error and shows no warning — the
 page just stops updating until the connection returns, at which point the interval
-resumes on its own. Also verified on gazelle.
+resumes on its own. Also verified on an internal installation.
 
 An unchanged response costs no re-render: react-query's structural sharing returns
 the previous reference when the payload is deep-equal, so the `useMemo`s that rebuild
@@ -885,13 +884,13 @@ answer:
 each of the caller's sessions, what state it is in. The session switcher rail
 groups by it.
 
-**This is the only route in the proxy that interprets kagent rather than
-forwarding it**, and the exception is arithmetic rather than taste. A kagent
-`Session` carries no state at all (see "What the list can and cannot show"); the
-only way to learn one is to read that session's whole conversation and look at
-its newest task. Measured on gazelle against a real 21-session account, the full
-fan-out is **2.8 MB** — individual sessions ranged 1.6 KB to 481 KB — to produce
-about 700 bytes of answer. That does not belong in a browser, on a poll.
+**This is the only route in the proxy that interprets kagent rather than forwarding
+it**, and the exception is arithmetic rather than taste. A kagent `Session` carries no
+state at all (see "What the list can and cannot show"); the only way to learn one is to
+read that session's whole conversation and look at its newest task. Measured on an
+internal installation against a real 21-session account, the full fan-out is **2.8 MB**
+— individual sessions ranged 1.6 KB to 481 KB — to produce about 700 bytes of answer.
+That does not belong in a browser, on a poll.
 
 It stays honest by deriving through the _same_ parser and the _same_ state map
 the UI renders its badge from, shared from `agent-platform-common`. Two copies
@@ -1203,12 +1202,12 @@ yanking someone who scrolled up out of what they were reading.
 | Failed turn          | a task in state `failed`/`rejected`, with the reason from `status.message` |
 
 **Calls through Muster are unwrapped.** Agents reach most MCP tools via muster's
-`call_tool`, so untreated every row reads `call_tool` with the real tool buried in
-the arguments — the problem reported in
-[klaus-gateway#163](https://github.com/giantswarm/klaus-gateway/issues/163). The
-parser looks through the wrapper (`unwrapProxiedCall`), so the row names the tool
-actually invoked and carries a `via Muster` badge; on a real gazelle session that
-unwrapped 7 of 17 calls.
+`call_tool`, so untreated every row reads `call_tool` with the real tool buried in the
+arguments — the problem reported in
+[klaus-gateway#163](https://github.com/giantswarm/klaus-gateway/issues/163). The parser
+looks through the wrapper (`unwrapProxiedCall`), so the row names the tool actually
+invoked and carries a `via Muster` badge; on a real session on an internal installation
+that unwrapped 7 of 17 calls.
 
 Unwrapping requires the payload to be _nothing but_ the wrapper: a non-empty `name`,
 and no key besides `name` and `arguments`. That second half is what keeps the
@@ -1448,23 +1447,23 @@ resolve to an agent that does not exist. `SessionRow` therefore carries
 has no addressable agent at all.
 
 **`message/send` answers only when the agent has finished.** Verified against 0.9.9 on
-gazelle: the reply is the finished task (`result.kind === 'task'`, with `status.state`
-and the full `history`).
+an internal installation: the reply is the finished task (`result.kind === 'task'`, with
+`status.state` and the full `history`).
 
-**Waiting that out is neither possible nor necessary.** Gazelle's
+**Waiting that out is neither possible nor necessary.** That installation's
 `agent-platform-connectivity-ui` HTTPRoute carries an Envoy `BackendTrafficPolicy` with
 `requestTimeout: 60s`, so any turn of substance is cut off with a **502** long before it
 finishes. And **the turn survives the cut**: observed live, an agent answered a message
 whose own request had already died with a 502.
 
 Since the turn survives, waiting buys nothing but a held-open socket, and
-`agentPlatform.kagent.turnTimeoutMs` is deliberately **short — 30 seconds**. That
-number is not about how long a turn may take; it is chosen to lose a race. The
-browser's request traverses a door of its own in front of _Backstage_, and if that door
-fires first the frontend gets a 502/504 that nothing here can turn into "still
-running", because this process never got to answer. At 30 s we always answer before a
-60 s door. (Gazelle's Backstage route happens to set `requestTimeout: 0s`, disabling
-it — but the send path must not depend on that being true everywhere.) It is also short
+`agentPlatform.kagent.turnTimeoutMs` is deliberately **short — 30 seconds**. That number
+is not about how long a turn may take; it is chosen to lose a race. The browser's
+request traverses a door of its own in front of _Backstage_, and if that door fires
+first the frontend gets a 502/504 that nothing here can turn into "still running",
+because this process never got to answer. At 30 s we always answer before a 60 s door.
+(That installation's Backstage route happens to set `requestTimeout: 0s`, disabling it —
+but the send path must not depend on that being true everywhere.) It is also short
 enough that a genuine rejection still surfaces inline.
 
 So a lost connection is not a failed message, and the client does not guess — **it goes
@@ -1582,13 +1581,13 @@ stream is not previewed: the answer panel works off the polled task's
 preview would invite answering a question that is not yet answerable. Answers
 themselves still go over `message/send`.
 
-**What a gateway timeout does to this.** agent-platform-standalone's backstage
-and kagent controller routes set `timeouts.request: "0s"`, so there the stream
-lives as long as the turn. gazelle's `agent-platform-connectivity-ui` route
-carries its 60 s Envoy `BackendTrafficPolicy`, so a long turn's stream dies at
-60 s — which lands in the first bullet above: preview ends, poll takes over,
-nothing is reported. Streaming is strictly additive; where a door cuts it, the
-page behaves exactly as it did before streaming existed.
+**What a gateway timeout does to this.** agent-platform-standalone's backstage and
+kagent controller routes set `timeouts.request: "0s"`, so there the stream lives as long
+as the turn. An internal installation's `agent-platform-connectivity-ui` route carries
+its 60 s Envoy `BackendTrafficPolicy`, so a long turn's stream dies at 60 s — which
+lands in the first bullet above: preview ends, poll takes over, nothing is reported.
+Streaming is strictly additive; where a door cuts it, the page behaves exactly as it did
+before streaming existed.
 
 **The sent message appears at once and vanishes by recognition.** The composer
 generates the `messageId` before sending, so the optimistic copy is dropped exactly
@@ -1719,10 +1718,10 @@ fine. But the suspended call never receives its function response: the old task 
 **klaus-gateway has this bug today.** It sends the id as `params.taskId`
 (`pkg/a2a/kagent_client.go`), which is not a field of `MessageSendParams` in any A2A
 version and is dropped by the v0→v1 conversion. Every question answered from Slack
-therefore leaves its task suspended. Verified on gazelle: a session with three
-questions answered from Slack holds **seven tasks, three of them stranded**. The same
-session answered from here holds **one task**, resumed in place, with its history
-grown from 6 entries to 11. The fix on their side is one line — move it onto the
+therefore leaves its task suspended. Verified on an internal installation: a session
+with three questions answered from Slack holds **seven tasks, three of them stranded**.
+The same session answered from here holds **one task**, resumed in place, with its
+history grown from 6 entries to 11. The fix on their side is one line — move it onto the
 message.
 
 Two constraints come with naming the task: the message's `contextId` must match the
@@ -1732,8 +1731,8 @@ finished one is rejected outright.
 
 #### The wire format
 
-Verified twice over: read out of kagent's own source, and observed on live traffic on
-gazelle. `POST <apiBaseUrl>/a2a/{ns}/{name}`, `method: "message/send"`, no
+Verified twice over: read out of kagent's own source, and observed on live traffic on an
+internal installation. `POST <apiBaseUrl>/a2a/{ns}/{name}`, `method: "message/send"`, no
 `A2A-Version` header (matching every other call here):
 
 ```json
@@ -2450,14 +2449,14 @@ above). What remains is a separate, deeper concern:
 
 ### Features
 
-- **Name-conflict pre-check.** The create form does not yet check whether the
-  chosen name is already taken on the target installation. kagent `Agent` names
-  are unique per namespace (e.g. `sre-agent` already exists on gazelle), so a
-  duplicate `Agent` — and likewise a colliding `OCIRepository` or `HelmRelease`
-  of the same name — makes the deploy fail late, at apply time. We should catch
-  this early: validate the slug against the existing `Agent`/`OCIRepository`/
-  `HelmRelease` resources in the target namespace and block "next"/"deploy" with
-  an inline error before the user reaches the review page.
+- **Name-conflict pre-check.** The create form does not yet check whether the chosen
+  name is already taken on the target installation. kagent `Agent` names are unique per
+  namespace (e.g. `sre-agent` already exists on an internal installation), so a
+  duplicate `Agent` — and likewise a colliding `OCIRepository` or `HelmRelease` of the
+  same name — makes the deploy fail late, at apply time. We should catch this early:
+  validate the slug against the existing `Agent`/`OCIRepository`/ `HelmRelease`
+  resources in the target namespace and block "next"/"deploy" with an inline error
+  before the user reaches the review page.
 - **Skills — remaining work.** Discovery and selection are implemented (see
   "Skill discovery" above), and the values now match the `agent` chart's
   top-level `skills.gitRefs`. Still open: (1) **private skill repos** need
@@ -2518,17 +2517,17 @@ above). What remains is a separate, deeper concern:
   rather than `/api/a2a/…`, require `contextId`, and 409 on a second session. Nothing
   filters them out, and nothing needs to: they are a separate `SandboxAgent` kind, so
   the `Agent` CRs both the send path and the composer's picker read cannot contain one
-  (see "The agent implies the installation"). Supporting them means reading that kind
-  as well, plus the sandbox A2A path and handling the one-session 409. gazelle runs none
-  today — every agent there is the default workload type — so nothing is hidden by it
-  yet.
+  (see "The agent implies the installation"). Supporting them means reading that kind as
+  well, plus the sandbox A2A path and handling the one-session 409. The internal
+  installation this was verified on runs none today — every agent there is the default
+  workload type — so nothing is hidden by it yet.
 - **Sending depends on a token muster also accepts.** An agent forwards the caller's
   `Authorization` header to its MCP servers (`allowedHeaders: ["authorization"]`), so a
   token good enough for kagent but not for muster fails the turn at tool-listing rather
   than doing anything — `failed to list MCP tools … Unauthorized`, observed while
-  probing with a hand-made token. Every agent on gazelle depends on muster, so this is
-  a real dependency of the send path and not a corner case, even though the Dex token
-  the proxy forwards is expected to satisfy both.
+  probing with a hand-made token. Every agent on the internal installation this was
+  verified on depends on muster, so this is a real dependency of the send path and not a
+  corner case, even though the Dex token the proxy forwards is expected to satisfy both.
 - **The rename fallback is waiting on a kagent bump.** Rename works on v0.9.x only
   through the session upsert, because `HandleUpdateSession` there cannot rename at all
   (see "Renaming a session"). Everything propping that up is marked

@@ -162,7 +162,8 @@ const EMPTY_USAGE: TokenUsage = { total: 0, prompt: 0, completion: 0 };
  * because the approval path is supposed to render it — and that path only ever
  * looked at history. The question fell between the two.
  *
- * Verified against a live gazelle session: the pending `status.message` carries a
+ * Verified against a live session on an internal installation: the pending
+ * `status.message` carries a
  * distinct `messageId` that appears nowhere in `history`, wrapping the question in
  * the same `adk_request_confirmation` shape an answered one has. So appending it
  * as a final entry gets the existing approval handling — including the
@@ -279,7 +280,8 @@ function readTurnFailure(
  *
  * **On timestamps:** every item takes its *task's* timestamp, because A2A
  * messages carry none of their own and there is no finer-grained source. The
- * session's stored events looked like one, but a real gazelle payload showed each
+ * session's stored events looked like one, but a real payload from an internal
+ * installation showed each
  * event's `data` to be a serialized ADK event with no `messageId` — nothing to
  * join on — and its `invocation_id` only distinguishes turns, which the task
  * already does. So items within a turn deliberately share a time, and the UI
@@ -698,7 +700,7 @@ function readProposedCall(
 /**
  * The questions an `ask_user` call is putting to the user.
  *
- * Shape on the wire, from a live gazelle session:
+ * Shape on the wire, from a live session on an internal installation:
  * `args: { questions: [{ question: "…" }] }` — one entry per question, and a real
  * `ask_user` can ask several at once.
  *
