@@ -72,15 +72,14 @@ The conversation comes from `…/tasks`, which is what kagent's own UI renders f
 `history` is already structured as A2A messages and carries the per-message
 `{adk,kagent}_usage_metadata` the token totals are built from.
 
-**The `events` array on `…/sessions/:id` is ignored entirely,** and the request
-asks for `limit=1` to avoid transferring it. kagent's Go type calls each event's
-`data` a `JSON-serialized protocol.Message`, which suggested events could supply
-the per-message timestamps A2A messages lack. A real gazelle session disproved it:
-the decoded value is an **ADK event** (`author`, `content`, `invocation_id`,
-`partial`, `timestamp`, `usage_metadata`, …) with no `messageId` anywhere, so
-there is nothing to correlate with task history — 36 events, zero usable ids. Its
-`invocation_id` does correlate, but only per turn, which the task's own timestamp
-already provides.
+**The `events` array on `…/sessions/:id` is ignored entirely,** and the request asks for
+`limit=1` to avoid transferring it. kagent's Go type calls each event's `data` a
+`JSON-serialized protocol.Message`, which suggested events could supply the per-message
+timestamps A2A messages lack. A real session on an internal installation disproved it:
+the decoded value is an **ADK event** (`author`, `content`, `invocation_id`, `partial`,
+`timestamp`, `usage_metadata`, …) with no `messageId` anywhere, so there is nothing to
+correlate with task history — 36 events, zero usable ids. Its `invocation_id` does
+correlate, but only per turn, which the task's own timestamp already provides.
 
 That matters for payload size: on that session the events were **591 KB against
 261 bytes** of session metadata. Timeline items therefore share one timestamp per
@@ -217,7 +216,7 @@ agentPlatform:
   kagent:
     timeoutMs: 10000
     installations:
-      gazelle: {} # enabled, use the derived URL
+      lab: {} # enabled, use the derived URL
       golem:
         # Point at a different ingress, e.g. the agentgateway door.
         apiBaseUrl: https://agentgateway.golem.example.io/kagent/api

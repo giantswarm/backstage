@@ -25,14 +25,14 @@ Three details worth knowing:
   v0.9.9 parses it inline in `HandleGetSession`, v0.10 in
   `eventQueryOptionsFromRequest` — and a version that ignored it would simply
   return everything, which is the previous behaviour.
-- **The conversation comes from `…/tasks`, not from `…/sessions/:id`'s `events`.**
-  That is what kagent's own UI renders from, and only task history is structured
-  as A2A messages carrying the session's state and token usage. The `events` array
-  is not a second view of the same thing: kagent's Go type calls each event's
-  `data` a `JSON-serialized protocol.Message`, but a real gazelle payload decodes
-  to an **ADK event** (`author`, `content`, `invocation_id`, `partial`,
-  `timestamp`, …) with no `messageId` at all — so it cannot be correlated with
-  task history, and it is ignored entirely. Hence `limit=1` above.
+- **The conversation comes from `…/tasks`, not from `…/sessions/:id`'s `events`.** That
+  is what kagent's own UI renders from, and only task history is structured as A2A
+  messages carrying the session's state and token usage. The `events` array is not a
+  second view of the same thing: kagent's Go type calls each event's `data` a
+  `JSON-serialized protocol.Message`, but a real payload from an internal installation
+  decodes to an **ADK event** (`author`, `content`, `invocation_id`, `partial`,
+  `timestamp`, …) with no `messageId` at all — so it cannot be correlated with task
+  history, and it is ignored entirely. Hence `limit=1` above.
 - **No `A2A-Version` header is sent.** kagent's `NegotiateA2AWireVersion` treats a
   missing header as the legacy v0 wire on both v0.9.9 and v0.10, which is the
   shape kagent's UI consumes and therefore the best-tested one. Opting into the

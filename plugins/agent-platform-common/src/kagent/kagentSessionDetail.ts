@@ -16,10 +16,11 @@ import {
  *
  * Only `session` is read. The response's `events` array is deliberately ignored:
  * despite what kagent's Go type claims (`Data string // JSON-serialized
- * protocol.Message`), a stored event is **not** an A2A message — a real gazelle
- * payload holds an ADK event (`author`, `content`, `invocation_id`, `partial`,
- * `timestamp`, …) with no `messageId` anywhere. So events cannot be correlated
- * with the task history that makes up the timeline, and they carry no state.
+ * protocol.Message`), a stored event is **not** an A2A message — a real payload
+ * from an internal installation holds an ADK event (`author`, `content`,
+ * `invocation_id`, `partial`, `timestamp`, …) with no `messageId` anywhere. So
+ * events cannot be correlated with the task history that makes up the timeline,
+ * and they carry no state.
  *
  * They are also enormous: in that same payload the events were 591 KB against
  * 261 bytes of session metadata, which is why the request asks kagent for as few

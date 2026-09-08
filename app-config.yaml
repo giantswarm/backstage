@@ -427,6 +427,6 @@ agentPlatform:
   # kagent:
   #   timeoutMs: 10000
   #   installations:
-  #     gazelle: {}   # enabled, use the derived URL
+  #     lab: {}   # enabled, use the derived URL
   #     golem:
   #       apiBaseUrl: https://agentgateway.<baseDomain>/kagent/api

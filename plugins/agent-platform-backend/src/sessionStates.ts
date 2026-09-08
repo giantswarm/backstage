@@ -19,7 +19,8 @@ import {
 /**
  * How many of a user's sessions may be evaluated in one pass.
  *
- * A real account on gazelle held 21 sessions whose task payloads totalled 2.8 MB,
+ * A real account on an internal installation held 21 sessions whose task payloads
+ * totalled 2.8 MB,
  * so 20 covers a whole history today. It is here for the account that is ten
  * times that: the reads are the expensive part and their cost is unbounded in the
  * session count alone.

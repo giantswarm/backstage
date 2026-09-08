@@ -28,7 +28,8 @@ export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
  * `message/send` answers only once the agent has finished, so this is not "how
  * long a turn may take" — it is how long we are willing to hold a response open
  * before reporting the turn as dispatched. **The turn survives us stopping**
- * (verified on gazelle: an agent answered a message whose request had already died
+ * (verified on an internal installation: an agent answered a message whose request
+ * had already died
  * with a 502), so waiting longer buys nothing except a held-open socket.
  *
  * **It must stay below the timeout of whatever fronts Backstage**, and that is the
@@ -577,7 +578,8 @@ export class KagentClient {
    * that does not exist. The caller knows the real names from the `Agent`
    * resource and sends those.
    *
-   * Two behaviours worth knowing, both observed against v0.9.9 on gazelle:
+   * Two behaviours worth knowing, both observed against v0.9.9 on an internal
+   * installation:
    *
    * - **It answers with the finished task**, not an acknowledgement:
    *   `result.kind === 'task'`, carrying `status.state` and the full `history`.
@@ -792,9 +794,10 @@ export class KagentClient {
       result = await this.postMessage(sessionId, agent, message, options);
     } catch (error) {
       // A lost connection is not a failed message. The gateway in front of kagent
-      // cuts the request off long before an agent is done — 60 s on gazelle's
-      // `agent-platform-connectivity-ui` route, against turns that run minutes —
-      // and the turn keeps running regardless: verified on gazelle, where the
+      // cuts the request off long before an agent is done — 60 s on an internal
+      // installation's `agent-platform-connectivity-ui` route, against turns that
+      // run minutes — and the turn keeps running regardless: verified on that
+      // installation, where the
       // agent answered a message whose own request had already died with a 502.
       //
       // So the only honest way to report this is to go and look. If the message
@@ -863,7 +866,7 @@ export class KagentClient {
    * turns the reply into a resume.
    *
    * What the wire needs, verified against kagent's source and against live traffic
-   * on gazelle:
+   * on an internal installation:
    *
    * - **`decision_type` is mandatory, including for a question.** Both the Go and
    *   Python executors read it *before* they look at anything else and bail out of

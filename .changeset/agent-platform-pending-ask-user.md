@@ -8,13 +8,12 @@ the agent's previous message, so it read as if the agent had trailed off mid
 conversation, with only the "Waiting for input" badge in the header hinting otherwise.
 
 The question fell between two paths that each assumed the other had it. The raw
-`ask_user` call **is** in `task.history`, but it is deliberately skipped as ADK
-plumbing (`INTERNAL_TOOL_NAMES`) on the grounds that the approval path renders it —
-and that path only ever read `history`. For an _unanswered_ question there is nothing
-there to read: kagent puts the pending `adk_request_confirmation` on
-`task.status.message` and nowhere else. Verified against a live gazelle session, where
-the pending message carries a `messageId` that appears in none of its task's history
-entries.
+`ask_user` call **is** in `task.history`, but it is deliberately skipped as ADK plumbing
+(`INTERNAL_TOOL_NAMES`) on the grounds that the approval path renders it — and that path
+only ever read `history`. For an _unanswered_ question there is nothing there to read:
+kagent puts the pending `adk_request_confirmation` on `task.status.message` and nowhere
+else. Verified against a live session on an internal installation, where the pending
+message carries a `messageId` that appears in none of its task's history entries.
 
 So `status.message` is now appended as a final history entry when the task is waiting
 on it, which gets the existing approval handling — dedupe, part walking, the

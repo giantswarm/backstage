@@ -53,11 +53,11 @@ The important part is that the answer **names the task it resumes**
 (`params.message.taskId`). Without that, kagent opens a new task: the agent reads the
 words, but its suspended tool call never receives a response, so the task stays
 `input-required` for ever and the model history holds a `tool_use` with no
-`tool_result`. Verified on gazelle — a session with three questions answered from Slack
-holds seven tasks, three of them stranded; the same question answered here resumed a
-single task in place and the agent continued where it stopped. (klaus-gateway sends the
-id as `params.taskId`, which no A2A version defines and the v0 conversion drops. That
-is a one-line fix on their side.)
+`tool_result`. Verified on an internal installation — a session with three questions
+answered from Slack holds seven tasks, three of them stranded; the same question
+answered here resumed a single task in place and the agent continued where it stopped.
+(klaus-gateway sends the id as `params.taskId`, which no A2A version defines and the v0
+conversion drops. That is a one-line fix on their side.)
 
 Three further details of the format, each verified against kagent's source and against
 live traffic: `decision_type` is mandatory even for a question, because both executors

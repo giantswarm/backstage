@@ -116,7 +116,8 @@ export type NewSessionComposerProps = {
  * Longest description a picker option will carry.
  *
  * A bound is needed, not cosmetic. `readinessMessage` for a `notAccepted` agent is
- * the controller's raw reconcile error, and a real one on gazelle is a 400-character
+ * the controller's raw reconcile error, and a real one on an internal installation
+ * is a 400-character
  * multi-line Postgres dial failure repeated twice — which turns one option into a
  * wall of text and pushes every other agent off the screen. The full message is on
  * the Agents tab and the agent's own page, where there is room for it.
@@ -144,8 +145,9 @@ function describeAgent(agent: AgentRow): string | undefined {
     return undefined;
   }
 
-  // One line, bounded: a description is free text and a couple on gazelle run to
-  // several sentences, which would push the other options off the screen.
+  // One line, bounded: a description is free text and a couple on an internal
+  // installation run to several sentences, which would push the other options
+  // off the screen.
   const collapsed = agent.description.replace(/\s+/g, ' ').trim();
   return collapsed.length > DESCRIPTION_MAX_LENGTH
     ? `${collapsed.slice(0, DESCRIPTION_MAX_LENGTH).trimEnd()}…`

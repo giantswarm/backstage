@@ -25,10 +25,10 @@ with no matching `Agent` has no addressable agent at all, which is one of the ca
 where the composer is withheld rather than offered.
 
 **`message/send` answers only once the agent has finished**, verified against kagent
-0.9.9 on gazelle: the reply is the whole finished task, `result.kind === 'task'`, with
-`status.state` and full `history`.
+0.9.9 on an internal installation: the reply is the whole finished task, `result.kind
+=== 'task'`, with `status.state` and full `history`.
 
-**That wait can neither be completed nor is needed.** Gazelle's
+**That wait can neither be completed nor is needed.** That installation's
 `agent-platform-connectivity-ui` HTTPRoute carries an Envoy `BackendTrafficPolicy` with
 `requestTimeout: 60s`, so any turn of substance is cut off with a 502 well before it
 ends — and **the turn survives the cut**, observed live where an agent answered a
@@ -39,8 +39,9 @@ Since it survives, waiting buys nothing but a held-open socket, and
 That value is chosen to lose a race rather than to bound a turn: the browser's request
 traverses a door of its own in front of Backstage, and if that fires first the frontend
 gets a 502/504 nothing here can reinterpret, because this service never got to answer.
-30 s always beats a 60 s door. (Gazelle's Backstage route sets `requestTimeout: 0s`,
-disabling it — but the send path must not rely on that holding everywhere.)
+30 s always beats a 60 s door. (That installation's Backstage route sets
+`requestTimeout: 0s`, disabling it — but the send path must not rely on that holding
+everywhere.)
 
 So a lost connection is not a failed message, and the client does not guess: on a
 502/504, its own timeout, **or a socket that simply died**, it re-reads
@@ -166,4 +167,5 @@ Smaller decisions:
 - `AWAITING_INPUT_STATES` moves to `kagentSessionState`, now that the timeline and the
   composer both need it.
 - Sandbox agents are out of scope: they need `/api/a2a-sandboxes/…`, require
-  `contextId`, and 409 on a second session. Confirmed that gazelle runs none.
+  `contextId`, and 409 on a second session. Confirmed that the internal installation
+  this was verified on runs none.

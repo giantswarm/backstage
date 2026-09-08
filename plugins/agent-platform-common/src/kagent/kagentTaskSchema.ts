@@ -221,7 +221,8 @@ export const kagentSessionDetailSchema = z
 //
 // kagent's Go type says `Data string // JSON-serialized protocol.Message`, which
 // suggested events could supply the per-message timestamps A2A messages lack. A
-// real gazelle payload disproved it: the decoded value is an **ADK event**
+// real payload from an internal installation disproved it: the decoded value is an
+// **ADK event**
 // (`author`, `content`, `invocation_id`, `partial`, `timestamp`, `usage_metadata`,
 // …) with no `messageId` at all, so there is nothing to join task history against.
 //

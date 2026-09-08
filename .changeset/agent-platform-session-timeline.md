@@ -48,9 +48,9 @@ individually and counted, so one bad row costs that row rather than the page.
 
 ### Validated against a real payload
 
-The parsers were run against a live gazelle session (4 tasks, 32 messages, 12
-tool calls) before this landed. It produced 29 items with no drift and no skipped
-rows, and corrected three things:
+The parsers were run against a live session on an internal installation (4 tasks, 32
+messages, 12 tool calls) before this landed. It produced 29 items with no drift and no
+skipped rows, and corrected three things:
 
 - **Per-message timestamps are not obtainable, so that code is gone.** kagent's
   Go type says `Data string // JSON-serialized protocol.Message`, which implied
