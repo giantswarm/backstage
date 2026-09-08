@@ -35,7 +35,7 @@ import { findReferencedBy } from '../../lib/workflowReferences';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { WorkflowMutationActions } from '../WorkflowsListPage/WorkflowMutationActions';
 import { useMusterInstance } from '../MusterInstanceProvider';
-import { InstallationPicker } from '../InstallationPicker';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import {
   SectionHeader,
   AvailabilityBadge,
@@ -234,7 +234,7 @@ function WorkflowDetailContent() {
   if (isLoading) {
     return (
       <Content>
-        <InstallationPicker />
+        <ActiveInstallationNote />
         <Progress />
       </Content>
     );
@@ -243,14 +243,14 @@ function WorkflowDetailContent() {
   if (!workflow) {
     return (
       <Content>
-        <InstallationPicker />
+        <ActiveInstallationNote />
         <EmptyState
           missing="data"
           title={`Workflow "${name}" not found`}
           description={
             !activeInstallation
-              ? 'Select the installation that hosts this workflow above.'
-              : 'No Workflow CR with this name in the selected installation. Try switching to the installation it belongs to.'
+              ? 'None of the installations this portal knows runs muster.'
+              : `No Workflow CR with this name on ${activeInstallation}. Pin the installation it belongs to in the page header.`
           }
         />
       </Content>
@@ -292,7 +292,7 @@ function WorkflowDetailContent() {
 
   return (
     <Content>
-      <InstallationPicker />
+      <ActiveInstallationNote />
 
       <Box className={classes.column}>
         {/* Header */}

@@ -12,10 +12,19 @@ import { CHART_NAME, composeManifests } from '../../lib/composeManifests';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentChart } from '../../hooks/useAgentChart';
 import { useDeployAgent } from '../../hooks/useDeployAgent';
+import { useMusterServers } from '../../hooks/useMusterServers';
+import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
-import { newAgentRouteRef, newAgentSkillsRouteRef } from '../../routes';
+import { useToolsetResolution } from '../../hooks/useToolsetResolution';
+import {
+  buildCatalogue,
+  toolsetShape,
+  unsignedServerSelectors,
+} from '../../lib/toolset';
+import { newAgentRouteRef, newAgentToolsRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CodeBlock } from '../CodeBlock';
+import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
 // Standard scaffolder task route in this app (scaffolder mounts at /create).
 const taskPath = (taskId: string) => `/create/tasks/${taskId}`;
@@ -79,6 +88,20 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+/** The one-line Tools summary: the loud labels, or a selector count. */
+function toolsetSummaryLabel(
+  shape: 'none' | 'full' | 'composed',
+  count: number,
+): string {
+  if (shape === 'none') {
+    return 'No tools';
+  }
+  if (shape === 'full') {
+    return 'Full gateway access';
+  }
+  return `${count} selector${count === 1 ? '' : 's'}`;
+}
+
 function SummaryItem({
   label,
   children,
@@ -101,12 +124,36 @@ export function NewAgentReviewPage() {
   const navigate = useNavigate();
   const configApi = useApi(configApiRef);
   const newAgentLink = useRouteRef(newAgentRouteRef);
-  const skillsLink = useRouteRef(newAgentSkillsRouteRef);
-  const { state, isComplete } = useNewAgentForm();
-  // Only to mirror step 1's flow shape: with no skill repositories configured
-  // the skills step doesn't exist, so "Back" must not send the user to a page
-  // that immediately redirects here. Cached by the time this page renders.
+  const toolsLink = useRouteRef(newAgentToolsRouteRef);
+  const { state, isComplete, isToolsetChosen } = useNewAgentForm();
+  // Only to number the steps: with no skill repositories configured the skills
+  // step doesn't exist. Cached by the time this page renders.
   const { hasRepositories } = useSkillCatalog();
+
+  // The toolset as the Tools step showed it — the same resolution for the same
+  // person, from the same cached queries — so what is reviewed is exactly what
+  // is applied, and the "selected without a sign-in" flag is repeated here.
+  const toolCatalogue = useMusterToolCatalogue(state.installation);
+  const { servers } = useMusterServers(state.installation);
+  const resolution = useToolsetResolution(state.installation, state.toolset);
+  const unsignedServers = useMemo(
+    () =>
+      unsignedServerSelectors(
+        state.toolset,
+        buildCatalogue(
+          toolCatalogue.tools,
+          servers,
+          toolCatalogue.serversRequiringAuth,
+        ),
+      ),
+    [
+      state.toolset,
+      toolCatalogue.tools,
+      servers,
+      toolCatalogue.serversRequiringAuth,
+    ],
+  );
+  const shape = toolsetShape(state.toolset);
   const { deploy, status } = useDeployAgent();
   const [deployError, setDeployError] = useState<string | undefined>();
 
@@ -150,6 +197,7 @@ export function NewAgentReviewPage() {
             ref: skill.ref,
             name: skill.name,
           })),
+          toolset: state.toolset,
         },
         {
           installation: state.installation ?? '',
@@ -166,6 +214,7 @@ export function NewAgentReviewPage() {
       state.modelConfigName,
       state.systemMessage,
       state.selectedSkills,
+      state.toolset,
       state.installation,
       buildAvatarUrl,
       namespace,
@@ -206,10 +255,10 @@ export function NewAgentReviewPage() {
   };
   const deployLabel = deployLabelByPhase[status.phase] ?? 'Deploy agent';
 
-  // "Back" goes to the immediately preceding step, which is the skills step only
-  // when that step exists.
-  const backLink = hasRepositories ? skillsLink : newAgentLink;
-  const stepNumber = hasRepositories ? 3 : 2;
+  // "Back" goes to the immediately preceding step, which is always the Tools
+  // step.
+  const backLink = toolsLink;
+  const stepNumber = hasRepositories ? 4 : 3;
 
   // Memoized so the header actions slot only updates when the handlers/labels
   // actually change (see useProvidePageHeaderActions).
@@ -240,6 +289,11 @@ export function NewAgentReviewPage() {
   // stable across renders.)
   if (!isComplete) {
     return <Navigate to={newAgentLink ? newAgentLink() : '..'} replace />;
+  }
+  // The Tools step is required: without a toolset there is nothing to review,
+  // and the chart would not accept the release anyway.
+  if (!isToolsetChosen) {
+    return <Navigate to={toolsLink ? toolsLink() : '..'} replace />;
   }
 
   return (
@@ -284,6 +338,14 @@ export function NewAgentReviewPage() {
               {CHART_NAME}:{chartVersion}
             </span>
           </SummaryItem>
+          <SummaryItem label="Tools">
+            <Text variant="body-small">
+              {toolsetSummaryLabel(shape, state.toolset.length)}
+            </Text>
+            <Text variant="body-x-small" color="secondary">
+              <span className={classes.code}>{state.toolset.join(', ')}</span>
+            </Text>
+          </SummaryItem>
           {/* Named here, not just buried in the values YAML — skills are chosen
               on their own step, so this is the only compact confirmation of
               what that step produced. */}
@@ -300,6 +362,57 @@ export function NewAgentReviewPage() {
               )}
             </SummaryItem>
           )}
+        </div>
+
+        <div className={classes.section}>
+          <Text
+            as="h3"
+            variant="title-small"
+            weight="bold"
+            className={classes.sectionTitle}
+          >
+            Tools
+          </Text>
+          <Text as="p" color="secondary" className={classes.sectionDescription}>
+            The toolset this agent declares, and what it resolves to for you
+            right now. Resolution happens per person: someone with access to
+            more servers sees more through the same agent, never less than the
+            toolset allows.
+          </Text>
+          <Flex direction="column" gap="3">
+            {shape === 'full' && (
+              <Alert
+                status="warning"
+                title="Full gateway access"
+                description="This agent can discover and call every tool the gateway exposes to whoever invokes it — platform administration included."
+              />
+            )}
+            {shape === 'none' && (
+              <Alert
+                status="info"
+                title="No tools"
+                description="A chat-only agent: the release carries no gateway entry."
+              />
+            )}
+            {unsignedServers.length > 0 && (
+              <Alert
+                status="info"
+                title="Selected without a sign-in"
+                description={`${unsignedServers.join(
+                  ', ',
+                )} — part of the toolset, resolving for the people who have access to them. The list below is incomplete for you until you sign in to them.`}
+              />
+            )}
+            <ToolsetResolutionList
+              resolution={resolution}
+              servers={servers}
+              emptyText={
+                shape === 'none'
+                  ? 'No tools, as chosen.'
+                  : 'This toolset resolves to no tools for you right now.'
+              }
+            />
+          </Flex>
         </div>
 
         <div className={classes.section}>

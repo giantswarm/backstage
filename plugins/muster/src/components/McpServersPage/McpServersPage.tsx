@@ -1,25 +1,36 @@
-import { useMemo } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Typography,
+  makeStyles,
+  Theme,
+} from '@material-ui/core';
 import Dns from '@material-ui/icons/Dns';
 import Power from '@material-ui/icons/Power';
 import Build from '@material-ui/icons/Build';
+import Lock from '@material-ui/icons/Lock';
 import AddIcon from '@material-ui/icons/Add';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button as UiButton } from '@backstage/ui';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 import { newMcpServerRouteRef } from '../../routes';
-import { InstallationPicker } from '../InstallationPicker';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
   SectionHeader,
   Gate,
-  SessionGate,
   DisclosureAccordion,
   FreshnessIndicator,
 } from '../shared';
+import { TOOL_GROUPS, ToolGroupKey } from '../../lib/k8s';
 import {
+  ServerRow,
+  ToolGroupPartition,
+  familyGroups,
   fleetManagementClusters,
   partitionServers,
 } from '../../lib/serverGrouping';
@@ -70,6 +81,35 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
+/** The section glyph per tool group. */
+const GROUP_ICONS: Record<ToolGroupKey, ReactNode> = {
+  'agent-platform': <Build />,
+  infrastructure: <Dns />,
+  registered: <Power />,
+};
+
+/**
+ * What an empty tool group says. The tier is declared by the chart that
+ * ships a server, so "nothing here" on an installation whose charts have not
+ * rolled the label yet is expected -- and its servers are listed further
+ * down, not missing.
+ */
+function emptyGroupNote(group: ToolGroupKey): string {
+  const { title } = TOOL_GROUPS[group];
+  switch (group) {
+    case 'registered':
+      return 'No registered servers in this installation.';
+    default:
+      return `No servers declare the ${title} tool group in this installation. Servers whose charts do not carry the tool-group label yet are listed under ${TOOL_GROUPS.registered.title}.`;
+  }
+}
+
+function rowKey(row: ServerRow): string {
+  return row.kind === 'family'
+    ? `family:${row.family}`
+    : `server:${row.server.cluster}/${row.server.getName()}`;
+}
+
 export function McpServersPage() {
   const classes = useStyles();
   const {
@@ -86,13 +126,17 @@ export function McpServersPage() {
 
   // Session state (and the connect action) are resolved once via the shared
   // hook so the manager, the dashboard and the workflows page agree (ADR D3).
-  const session = useMusterSession();
-  const { authenticated } = session;
+  const {
+    authenticated,
+    connecting,
+    connect: handleConnect,
+  } = useMusterSession();
 
-  const { standard, integration } = useMemo(
-    () => partitionServers(mcpServers),
-    [mcpServers],
-  );
+  // Tool groups in display order (Agent Platform, Infrastructure, Registered
+  // servers), each already in row shape: families collapsed, singular servers
+  // one row each. Every group is present even when empty, so the page keeps a
+  // stable set of sections.
+  const partition = useMemo(() => partitionServers(mcpServers), [mcpServers]);
 
   // "Register server" in the shared Agent Platform page header (agent-flow
   // convention) — the primary path for bringing a remote MCP server onto the
@@ -113,13 +157,115 @@ export function McpServersPage() {
   );
   useProvidePageHeaderActions(headerActions);
 
-  // The fleet every family's coverage is measured against: a family present
-  // on fewer clusters than this is still being rolled out (or was withdrawn),
-  // which its row says as "10/24 clusters" plus the missing names when expanded.
+  // The fleet every family's coverage is measured against, whichever tool
+  // group the family is listed under: a family present on fewer clusters than
+  // this is still being rolled out (or was withdrawn), which its row says as
+  // "10/24 clusters" plus the missing names when expanded.
   const fleetClusters = useMemo(
-    () => fleetManagementClusters(standard),
-    [standard],
+    () => fleetManagementClusters(familyGroups(partition)),
+    [partition],
   );
+
+  const renderRow = (row: ServerRow) =>
+    row.kind === 'family' ? (
+      <StandardServerDisclosure
+        key={rowKey(row)}
+        family={row.family}
+        servers={row.servers}
+        fleetClusters={fleetClusters}
+        activeInstallation={activeInstallation}
+        authenticated={authenticated}
+        defaultExpanded={false}
+      />
+    ) : (
+      <IntegrationServerDisclosure
+        key={rowKey(row)}
+        server={row.server}
+        authenticated={authenticated}
+      />
+    );
+
+  // muster itself, as a server: the last row of the Agent Platform group. It
+  // provides tools directly for managing workflows, services, configuration,
+  // MCP server definitions and authentication wherever muster is reachable.
+  const coreRow = (
+    <DisclosureAccordion
+      key="core"
+      defaultExpanded={false}
+      summary={
+        <Box className={classes.coreSummary}>
+          <code className={classes.coreName}>muster</code>
+          <span className={classes.coreKind}>core / control plane</span>
+        </Box>
+      }
+    >
+      {authenticated && activeInstallation ? (
+        <CoreFamiliesPanel installation={activeInstallation} />
+      ) : (
+        <Gate label="Authenticate to muster to inspect its core tools." />
+      )}
+    </DisclosureAccordion>
+  );
+
+  const renderGroup = ({ group, rows }: ToolGroupPartition, index: number) => {
+    const { title, description } = TOOL_GROUPS[group];
+    const families = rows.filter(row => row.kind === 'family').length;
+    let action: ReactNode;
+    if (index === 0) {
+      action = (
+        <FreshnessIndicator
+          updatedAt={dataUpdatedAt}
+          isRefreshing={isRefreshing}
+          onRefresh={retry}
+        />
+      );
+    } else if (group === 'registered') {
+      // Registering a server is what fills this group -- the ad-hoc dialog
+      // sits with it; the header's Register server button is the primary path.
+      action = (
+        <AddAdHocServerButton
+          installation={activeInstallation}
+          authenticated={authenticated}
+        />
+      );
+    }
+    const isAgentPlatform = group === 'agent-platform';
+
+    return (
+      <Box
+        key={group}
+        className={classes.section}
+        component="section"
+        aria-label={title}
+      >
+        <SectionHeader
+          icon={GROUP_ICONS[group]}
+          title={title}
+          description={description}
+          action={action}
+        />
+        {rows.length === 0 && !isAgentPlatform ? (
+          <Typography variant="body2" color="textSecondary">
+            {emptyGroupNote(group)}
+          </Typography>
+        ) : (
+          <>
+            {families > 0 && (
+              <Typography variant="body2" className={classes.presentNote}>
+                {families} {families === 1 ? 'family' : 'families'} across{' '}
+                {fleetClusters.length}{' '}
+                {fleetClusters.length === 1 ? 'cluster' : 'clusters'}.
+              </Typography>
+            )}
+            <Box className={classes.stack}>
+              {rows.map(renderRow)}
+              {isAgentPlatform && coreRow}
+            </Box>
+          </>
+        )}
+      </Box>
+    );
+  };
 
   let body;
   if (isLoading || !activeInstallation) {
@@ -128,8 +274,8 @@ export function McpServersPage() {
     ) : (
       <EmptyState
         missing="data"
-        title="Select an installation"
-        description="Choose a muster installation above to list its aggregated MCP servers."
+        title="No muster installation"
+        description="None of the installations this portal knows runs muster, so there are no aggregated MCP servers to list."
       />
     );
   } else if (mcpServers.length === 0) {
@@ -145,120 +291,38 @@ export function McpServersPage() {
       <Box className={classes.column}>
         {requiresAuth && !authenticated && (
           <Box className={classes.topGate}>
-            <SessionGate
-              session={session}
-              installation={activeInstallation}
-              context="Server topology is visible from the CRDs; tools and core families need a live muster session."
+            <Gate
+              label="Server topology is visible from the CRDs, but tools and core families require an authenticated muster session."
+              action={
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="primary"
+                  disabled={connecting}
+                  startIcon={
+                    connecting ? (
+                      <CircularProgress size={14} color="inherit" />
+                    ) : (
+                      <Lock style={{ fontSize: 14 }} />
+                    )
+                  }
+                  onClick={handleConnect}
+                >
+                  Connect to muster
+                </Button>
+              }
             />
           </Box>
         )}
 
-        {/* Standard servers — federated across management clusters */}
-        <Box className={classes.section}>
-          <SectionHeader
-            icon={<Dns />}
-            title="Standard servers"
-            description="muster federates the same backend MCP servers across the management clusters in this installation. Each family's tool surface is identical, so it is shown once; connection health is tracked per management cluster, degraded clusters first. Expand a family for every cluster it is deployed on."
-            action={
-              <FreshnessIndicator
-                updatedAt={dataUpdatedAt}
-                isRefreshing={isRefreshing}
-                onRefresh={retry}
-              />
-            }
-          />
-          {standard.length === 0 ? (
-            <Typography variant="body2" color="textSecondary">
-              No federated (management-cluster-labelled) servers in this
-              installation.
-            </Typography>
-          ) : (
-            <>
-              <Typography variant="body2" className={classes.presentNote}>
-                {standard.length}{' '}
-                {standard.length === 1 ? 'family' : 'families'} across{' '}
-                {fleetClusters.length}{' '}
-                {fleetClusters.length === 1 ? 'cluster' : 'clusters'}.
-              </Typography>
-              <Box className={classes.stack}>
-                {standard.map(group => (
-                  <StandardServerDisclosure
-                    key={group.family}
-                    family={group.family}
-                    servers={group.servers}
-                    fleetClusters={fleetClusters}
-                    activeInstallation={activeInstallation}
-                    authenticated={authenticated}
-                    defaultExpanded={false}
-                  />
-                ))}
-              </Box>
-            </>
-          )}
-        </Box>
-
-        {/* Integration servers — singular, outside the MC structure */}
-        <Box className={classes.section}>
-          <SectionHeader
-            icon={<Power />}
-            title="Integration servers"
-            description="Singular MCP servers muster fronts outside the management-cluster structure — customer integrations and shared services. Each carries its own endpoint, auth chain, and tool surface."
-            action={
-              <AddAdHocServerButton
-                installation={activeInstallation}
-                authenticated={authenticated}
-              />
-            }
-          />
-          {integration.length === 0 ? (
-            <Typography variant="body2" color="textSecondary">
-              No singular integration servers in this installation.
-            </Typography>
-          ) : (
-            <Box className={classes.stack}>
-              {integration.map(server => (
-                <IntegrationServerDisclosure
-                  key={`${server.cluster}/${server.getName()}`}
-                  server={server}
-                  authenticated={authenticated}
-                />
-              ))}
-            </Box>
-          )}
-        </Box>
-
-        {/* muster core — muster itself, as a server */}
-        <Box className={classes.section}>
-          <SectionHeader
-            icon={<Build />}
-            title="muster core"
-            description="muster itself is an MCP server — it provides tools directly for managing workflows, services, configuration, MCP server definitions, and authentication. Always available wherever muster is reachable, grouped by family."
-          />
-          <Box className={classes.stack}>
-            <DisclosureAccordion
-              defaultExpanded={false}
-              summary={
-                <Box className={classes.coreSummary}>
-                  <code className={classes.coreName}>muster</code>
-                  <span className={classes.coreKind}>core / control plane</span>
-                </Box>
-              }
-            >
-              {authenticated ? (
-                <CoreFamiliesPanel installation={activeInstallation} />
-              ) : (
-                <Gate label="Core tools are read through the muster session, which is not available -- see the notice above." />
-              )}
-            </DisclosureAccordion>
-          </Box>
-        </Box>
+        {partition.map(renderGroup)}
       </Box>
     );
   }
 
   return (
     <Content>
-      <InstallationPicker />
+      <ActiveInstallationNote />
       {body}
     </Content>
   );

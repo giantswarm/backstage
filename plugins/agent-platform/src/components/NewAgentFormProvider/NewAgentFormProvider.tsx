@@ -8,6 +8,7 @@ import {
 
 import { slugify } from '../../lib/slugify';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
+import { toggleSelector, toolsetProblems } from '../../lib/toolset';
 
 export type NewAgentFormState = {
   name: string;
@@ -19,6 +20,13 @@ export type NewAgentFormState = {
   systemMessage: string;
   /** Skills the user picked, in selection order. Optional — may be empty. */
   selectedSkills: DiscoveredSkill[];
+  /**
+   * The agent's toolset: inline selectors (`preset:`, `server:`, `workflow:`,
+   * `tool:`), in selection order. Starts empty on purpose — nothing the author
+   * did not consciously add — and the Tools step does not let the flow continue
+   * until it holds at least one selector (`preset:none` is one).
+   */
+  toolset: string[];
 };
 
 export type NewAgentFormContextValue = {
@@ -31,6 +39,22 @@ export type NewAgentFormContextValue = {
   setSystemMessage: (systemMessage: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
   toggleSkill: (skill: DiscoveredSkill) => void;
+  /**
+   * Adds the selector if absent, removes it if present. `preset:none` and
+   * `preset:full` replace the whole selection; adding anything else drops them
+   * (see `toggleSelector`).
+   */
+  toggleToolsetSelector: (selector: string) => void;
+  /** Replaces the whole toolset — start from an existing agent's, or clear it. */
+  setToolset: (selectors: string[]) => void;
+  /**
+   * True when the toolset can be applied: at least one selector, none of them
+   * malformed, and no more than the inline cap. What the Tools step's Continue
+   * and the review page's deploy gate on.
+   */
+  isToolsetChosen: boolean;
+  /** Why the toolset cannot be applied yet, empty when it can (or is still empty). */
+  toolsetProblems: string[];
   reset: () => void;
   /** True when the form has no validation errors. */
   isComplete: boolean;
@@ -52,6 +76,7 @@ const initialState: NewAgentFormState = {
   // "use the chart default" (composeManifests omits it).
   systemMessage: '',
   selectedSkills: [],
+  toolset: [],
 };
 
 // RFC1123 DNS label: the slug becomes the Agent CR name and the
@@ -100,6 +125,12 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
     }
     const isComplete = validationErrors.length === 0;
 
+    // Kept apart from `isComplete`: the step-1 fields decide whether the later
+    // steps may render at all (a deep link without them goes back to step 1),
+    // while the toolset is step 3's own output and gates only the way forward.
+    const problems = toolsetProblems(state.toolset);
+    const isToolsetChosen = state.toolset.length > 0 && problems.length === 0;
+
     return {
       state,
       setName: name =>
@@ -131,6 +162,15 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
         })),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
+      toggleToolsetSelector: selector =>
+        setState(prev => ({
+          ...prev,
+          toolset: toggleSelector(prev.toolset, selector),
+        })),
+      setToolset: selectors =>
+        setState(prev => ({ ...prev, toolset: [...selectors] })),
+      isToolsetChosen,
+      toolsetProblems: problems,
       toggleSkill: skill =>
         setState(prev => {
           const id = skillId(skill);

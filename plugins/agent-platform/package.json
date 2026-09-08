@@ -36,6 +36,7 @@
     "@giantswarm/backstage-plugin-flux-react": "workspace:^",
     "@giantswarm/backstage-plugin-gs": "workspace:^",
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
+    "@giantswarm/backstage-plugin-muster": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
     "@material-ui/core": "^4.12.4",
     "@material-ui/icons": "^4.11.3",

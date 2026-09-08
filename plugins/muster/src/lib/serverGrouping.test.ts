@@ -1,6 +1,14 @@
-import { MCPServer, MANAGEMENT_CLUSTER_LABEL } from './k8s';
 import {
+  MCPServer,
+  MANAGEMENT_CLUSTER_LABEL,
+  TOOL_GROUP_LABEL,
+  ToolGroup,
+} from './k8s';
+import {
+  ServerRow,
   familyCoverage,
+  familyGroups,
+  familyToolGroup,
   fleetManagementClusters,
   orderPresenceDegradedFirst,
   partitionServers,
@@ -14,6 +22,8 @@ function makeServer(opts: {
   family?: string;
   mc?: string;
   state?: string;
+  /** The tool-group label value; `undefined` leaves the CR unlabelled. */
+  toolGroup?: ToolGroup | string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -21,7 +31,10 @@ function makeServer(opts: {
       kind: 'MCPServer',
       metadata: {
         name: opts.name,
-        labels: opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {},
+        labels: {
+          ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
+          ...(opts.toolGroup ? { [TOOL_GROUP_LABEL]: opts.toolGroup } : {}),
+        },
       },
       spec: opts.family ? { family: { name: opts.family } } : {},
       status: opts.state ? { state: opts.state } : {},
@@ -30,18 +43,253 @@ function makeServer(opts: {
   );
 }
 
+/** Narrows a row to a family row, failing the test if it is not one. */
+function familyRow(row: ServerRow): Extract<ServerRow, { kind: 'family' }> {
+  if (row.kind !== 'family') {
+    throw new Error(`expected a family row, got ${row.kind}`);
+  }
+  return row;
+}
+
+/** A row as `family:<name>` or `server:<name>`, for order assertions. */
+function rowId(row: ServerRow): string {
+  return row.kind === 'family'
+    ? `family:${row.family}`
+    : `server:${row.server.getName()}`;
+}
+
 describe('partitionServers', () => {
-  it('splits family servers (standard) from family-less ones (integration)', () => {
-    const { standard, integration } = partitionServers([
+  // A labelled fleet: the managers declare agent-platform, the three
+  // federated families declare infrastructure on every cluster, and the
+  // installation's own integrations carry no label.
+  const labelledFleet = () => [
+    makeServer({ name: 'pro' }),
+    makeServer({ name: 'model-manager', toolGroup: 'agent-platform' }),
+    makeServer({
+      name: 'prometheus-beta',
+      family: 'prometheus',
+      mc: 'beta',
+      toolGroup: 'infrastructure',
+    }),
+    makeServer({
+      name: 'kubernetes-beta',
+      family: 'kubernetes',
+      mc: 'beta',
+      toolGroup: 'infrastructure',
+    }),
+    makeServer({
+      name: 'kubernetes-alpha',
+      family: 'kubernetes',
+      mc: 'alpha',
+      toolGroup: 'infrastructure',
+    }),
+    makeServer({ name: 'agent-manager', toolGroup: 'agent-platform' }),
+    makeServer({ name: 'github' }),
+    makeServer({
+      name: 'capi-alpha',
+      family: 'capi',
+      mc: 'alpha',
+      toolGroup: 'infrastructure',
+    }),
+  ];
+
+  it('lists the three tool groups in display order, always', () => {
+    expect(partitionServers([]).map(g => g.group)).toEqual([
+      'agent-platform',
+      'infrastructure',
+      'registered',
+    ]);
+    expect(partitionServers(labelledFleet()).map(g => g.group)).toEqual([
+      'agent-platform',
+      'infrastructure',
+      'registered',
+    ]);
+  });
+
+  it('places labelled servers by tier, families collapsed to one row, sorted', () => {
+    const [agentPlatform, infrastructure, registered] =
+      partitionServers(labelledFleet());
+
+    expect(agentPlatform.rows.map(rowId)).toEqual([
+      'server:agent-manager',
+      'server:model-manager',
+    ]);
+    expect(infrastructure.rows.map(rowId)).toEqual([
+      'family:capi',
+      'family:kubernetes',
+      'family:prometheus',
+    ]);
+    expect(registered.rows.map(rowId)).toEqual(['server:github', 'server:pro']);
+
+    expect(
+      familyRow(infrastructure.rows[1]).servers.map(s =>
+        s.getManagementCluster(),
+      ),
+    ).toEqual(['beta', 'alpha']);
+  });
+
+  it('lists everything under Registered servers when no CR carries the label (fallback)', () => {
+    // An installation whose charts have not rolled the label yet: the page
+    // degrades to one long list, never to an empty or broken one.
+    const [agentPlatform, infrastructure, registered] = partitionServers([
       makeServer({ name: 'kubernetes-a', family: 'kubernetes', mc: 'alpha' }),
       makeServer({ name: 'kubernetes-b', family: 'kubernetes', mc: 'beta' }),
       makeServer({ name: 'prometheus-a', family: 'prometheus', mc: 'alpha' }),
+      makeServer({ name: 'agent-manager' }),
       makeServer({ name: 'customer-integration' }),
     ]);
 
-    expect(standard.map(g => g.family)).toEqual(['kubernetes', 'prometheus']);
-    expect(standard[0].servers).toHaveLength(2);
-    expect(integration.map(s => s.getName())).toEqual(['customer-integration']);
+    expect(agentPlatform.rows).toEqual([]);
+    expect(infrastructure.rows).toEqual([]);
+    expect(registered.rows.map(rowId)).toEqual([
+      'family:kubernetes',
+      'family:prometheus',
+      'server:agent-manager',
+      'server:customer-integration',
+    ]);
+  });
+
+  it('puts family rows before singular rows within a tier', () => {
+    const [, infrastructure] = partitionServers([
+      makeServer({ name: 'aaa-standalone-k8s', toolGroup: 'infrastructure' }),
+      makeServer({
+        name: 'zzz-k8s',
+        family: 'kubernetes',
+        mc: 'alpha',
+        toolGroup: 'infrastructure',
+      }),
+    ]);
+
+    expect(infrastructure.rows.map(rowId)).toEqual([
+      'family:kubernetes',
+      'server:aaa-standalone-k8s',
+    ]);
+  });
+
+  it('treats an unknown label value as unlabelled', () => {
+    const [agentPlatform, infrastructure, registered] = partitionServers([
+      makeServer({ name: 'typo', toolGroup: 'Infrastructure' }),
+    ]);
+
+    expect(agentPlatform.rows).toEqual([]);
+    expect(infrastructure.rows).toEqual([]);
+    expect(registered.rows.map(rowId)).toEqual(['server:typo']);
+  });
+
+  it('keeps a family in one row while its label rolls out across the fleet', () => {
+    // Mid-rollout: two of three clusters carry the label already. The family
+    // must not split into an Infrastructure row and a Registered row.
+    const partition = partitionServers([
+      makeServer({ name: 'k8s-alpha', family: 'kubernetes', mc: 'alpha' }),
+      makeServer({
+        name: 'k8s-beta',
+        family: 'kubernetes',
+        mc: 'beta',
+        toolGroup: 'infrastructure',
+      }),
+      makeServer({
+        name: 'k8s-gamma',
+        family: 'kubernetes',
+        mc: 'gamma',
+        toolGroup: 'infrastructure',
+      }),
+    ]);
+
+    expect(partition.map(g => g.rows.map(rowId))).toEqual([
+      [],
+      ['family:kubernetes'],
+      [],
+    ]);
+    expect(familyRow(partition[1].rows[0]).servers).toHaveLength(3);
+  });
+});
+
+describe('familyToolGroup', () => {
+  it('is registered when no member is labelled', () => {
+    expect(
+      familyToolGroup([
+        makeServer({ name: 'a', family: 'f', mc: 'alpha' }),
+        makeServer({ name: 'b', family: 'f', mc: 'beta' }),
+      ]),
+    ).toBe('registered');
+  });
+
+  it('follows the labelled members, majority first', () => {
+    expect(
+      familyToolGroup([
+        makeServer({ name: 'a', family: 'f', mc: 'alpha' }),
+        makeServer({
+          name: 'b',
+          family: 'f',
+          mc: 'beta',
+          toolGroup: 'infrastructure',
+        }),
+        makeServer({
+          name: 'c',
+          family: 'f',
+          mc: 'gamma',
+          toolGroup: 'infrastructure',
+        }),
+        makeServer({
+          name: 'd',
+          family: 'f',
+          mc: 'delta',
+          toolGroup: 'agent-platform',
+        }),
+      ]),
+    ).toBe('infrastructure');
+  });
+
+  it('breaks a tie by display order', () => {
+    expect(
+      familyToolGroup([
+        makeServer({
+          name: 'a',
+          family: 'f',
+          mc: 'alpha',
+          toolGroup: 'infrastructure',
+        }),
+        makeServer({
+          name: 'b',
+          family: 'f',
+          mc: 'beta',
+          toolGroup: 'agent-platform',
+        }),
+      ]),
+    ).toBe('agent-platform');
+  });
+});
+
+describe('familyGroups', () => {
+  it('collects the family rows of every tier, alphabetical', () => {
+    const groups = familyGroups(
+      partitionServers([
+        makeServer({
+          name: 'prom-alpha',
+          family: 'prometheus',
+          mc: 'alpha',
+          toolGroup: 'infrastructure',
+        }),
+        // A family an installation labelled agent-platform, and one it did
+        // not label at all: fleet coverage counts both.
+        makeServer({
+          name: 'mgr-alpha',
+          family: 'managers',
+          mc: 'alpha',
+          toolGroup: 'agent-platform',
+        }),
+        makeServer({ name: 'k8s-alpha', family: 'kubernetes', mc: 'alpha' }),
+        makeServer({ name: 'k8s-beta', family: 'kubernetes', mc: 'beta' }),
+        makeServer({ name: 'pro' }),
+      ]),
+    );
+
+    expect(groups.map(g => g.family)).toEqual([
+      'kubernetes',
+      'managers',
+      'prometheus',
+    ]);
+    expect(groups[0].servers).toHaveLength(2);
   });
 });
 

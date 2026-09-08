@@ -2,13 +2,13 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { makeStyles, Theme } from '@material-ui/core';
 import BuildIcon from '@material-ui/icons/Build';
-import { Content, EmptyState } from '@backstage/core-components';
+import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { Alert, Box, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
-import { InstallationPicker } from '../InstallationPicker';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import {
   isUnreachableSession,
   useMusterInstance,
@@ -188,19 +188,21 @@ function ExplorerBody({ installation }: { installation: string }) {
  * readable result viewer.
  */
 export function ToolExplorerPage() {
-  const { activeInstallation } = useMusterInstance();
+  const { activeInstallation, isLoadingInstallations } = useMusterInstance();
   // Every tool read here goes through the live muster session; when the
   // backend cannot reach the installation's muster, the explorer says so
   // instead of firing requests that can only fail.
   const session = useMusterSession();
 
   let body;
-  if (!activeInstallation) {
+  if (isLoadingInstallations) {
+    body = <Progress />;
+  } else if (!activeInstallation) {
     body = (
       <EmptyState
         missing="data"
-        title="Select an installation"
-        description="Choose a muster installation above to browse and run its aggregated tools."
+        title="No muster installation"
+        description="None of the installations this portal knows runs muster, so there are no aggregated tools to browse."
       />
     );
   } else if (isUnreachableSession(session)) {
@@ -222,7 +224,7 @@ export function ToolExplorerPage() {
         title="Tool explorer"
         description="Browse, search, and run the tools this muster aggregates — core tools, every connected server, and workflows."
       />
-      <InstallationPicker />
+      <ActiveInstallationNote />
       {body}
     </Content>
   );

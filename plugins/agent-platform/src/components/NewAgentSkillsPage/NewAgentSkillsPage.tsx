@@ -21,7 +21,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newAgentRouteRef, newAgentReviewRouteRef } from '../../routes';
+import { newAgentRouteRef, newAgentToolsRouteRef } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { DiscoveredSkill, repoSlug, skillId } from '../../lib/skills';
@@ -216,7 +216,7 @@ export function NewAgentSkillsPage() {
   const classes = useStyles();
   const navigate = useNavigate();
   const newAgentLink = useRouteRef(newAgentRouteRef);
-  const reviewLink = useRouteRef(newAgentReviewRouteRef);
+  const toolsLink = useRouteRef(newAgentToolsRouteRef);
   const { state, toggleSkill, isComplete } = useNewAgentForm();
   const {
     skills,
@@ -272,13 +272,13 @@ export function NewAgentSkillsPage() {
         </Button>
         <Button
           variant="primary"
-          onPress={() => reviewLink && navigate(reviewLink())}
+          onPress={() => toolsLink && navigate(toolsLink())}
         >
           Continue
         </Button>
       </Flex>
     ),
-    [newAgentLink, reviewLink, navigate],
+    [newAgentLink, toolsLink, navigate],
   );
 
   // Guarded like NewAgentReviewPage: when this render only produces a redirect,
@@ -295,10 +295,10 @@ export function NewAgentSkillsPage() {
 
   // Without configured repositories there is nothing to pick and no action the
   // agent's creator could take (the fix is admin-side app-config), so this step
-  // doesn't exist: step 1 sends them straight to review, and a deep link here
-  // follows. `hasRepositories` is pure config, so this needs no fetch.
+  // doesn't exist: step 1 sends them straight to the Tools step, and a deep
+  // link here follows. `hasRepositories` is pure config, so this needs no fetch.
   if (!hasRepositories) {
-    return <Navigate to={reviewLink ? reviewLink() : '..'} replace />;
+    return <Navigate to={toolsLink ? toolsLink() : '..'} replace />;
   }
 
   return (
@@ -310,7 +310,7 @@ export function NewAgentSkillsPage() {
           color="secondary"
           className={classes.stepLabel}
         >
-          Step 2 of 3: Skills
+          Step 2 of 4: Skills
         </Text>
         <Text
           as="h2"
@@ -412,8 +412,8 @@ export function NewAgentSkillsPage() {
             <CardBody>
               <Flex direction="column" gap="3">
                 <Text as="p" color="secondary" className={classes.footerNote}>
-                  The next step composes the Helm values and manifests so you
-                  can review them before the agent is deployed.
+                  The next step chooses the agent's tools — the toolset it can
+                  discover and call through the gateway.
                 </Text>
                 {actions}
               </Flex>

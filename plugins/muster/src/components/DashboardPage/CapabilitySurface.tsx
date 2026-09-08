@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import {
   Paper,
   Table,
@@ -14,7 +15,12 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import type { McpServerRuntime } from '../../apis/types';
-import { MCPServer } from '../../lib/k8s';
+import {
+  MCPServer,
+  TOOL_GROUPS,
+  TOOL_GROUP_ORDER,
+  ToolGroupKey,
+} from '../../lib/k8s';
 import { partitionServers } from '../../lib/serverGrouping';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -41,12 +47,24 @@ const useStyles = makeStyles((theme: Theme) => ({
     padding: theme.spacing(1.5, 2),
     color: theme.palette.text.secondary,
   },
+  groupCell: {
+    paddingTop: theme.spacing(1.5),
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    color: theme.palette.text.secondary,
+    borderBottom: 'none',
+  },
 }));
 
 export type CapabilityRow = {
   key: string;
   name: string;
-  kind: 'standard server' | 'integration server' | 'core';
+  /** A family shown once, a singular server, or muster's own core tools. */
+  kind: 'family' | 'server' | 'core';
+  /** The tool group the row is listed under. */
+  group: ToolGroupKey;
   /** Instances behind the row: a family's clusters, 1 for a singular server. */
   instances: number;
   tools?: number;
@@ -67,17 +85,18 @@ function sumDefined(values: (number | undefined)[]): number | undefined {
 }
 
 /**
- * The per-server-group capability counts: the CRD partition says which groups
- * exist, muster's runtime list (`core_mcpserver_list`) says what each
- * contributes to this session, and muster core is appended as a row of its
- * own.
+ * The per-server capability counts, grouped by tool group in display order:
+ * the CRD partition says which rows exist and under which group, muster's
+ * runtime list (`core_mcpserver_list`) says what each contributes to this
+ * session, and muster core closes the Agent Platform group as a row of its
+ * own -- the same order as the MCP servers page.
  *
  * A family's tools are counted once: muster deduplicates them across the
  * family's instances under `x_<family>_*`, so one instance's count is the
  * family's contribution -- the maximum, so an instance that is down and
  * reports none does not hide the family's tools. Resources and prompts are per
  * instance (muster#1096, muster#1100) and add up. `undefined` means the
- * runtime reports nothing for the group: the server exposes none, or is not
+ * runtime reports nothing for the row: the server exposes none, or is not
  * connected for this session.
  */
 export function capabilityRows(
@@ -86,46 +105,61 @@ export function capabilityRows(
   coreTools?: number,
 ): CapabilityRow[] {
   const byName = new Map(runtime.map(entry => [entry.name, entry]));
-  const { standard, integration } = partitionServers(servers);
   const rows: CapabilityRow[] = [];
 
-  for (const group of standard) {
-    const instances = group.servers
-      .map(server => byName.get(server.getName()))
-      .filter((entry): entry is McpServerRuntime => Boolean(entry));
-    rows.push({
-      key: `family:${group.family}`,
-      name: group.family,
-      kind: 'standard server',
-      instances: group.servers.length,
-      tools: maxDefined(instances.map(entry => entry.toolsCount)),
-      resources: sumDefined(instances.map(entry => entry.resourcesCount)),
-      prompts: sumDefined(instances.map(entry => entry.promptsCount)),
-    });
+  for (const { group, rows: groupRows } of partitionServers(servers)) {
+    for (const row of groupRows) {
+      if (row.kind === 'family') {
+        const instances = row.servers
+          .map(server => byName.get(server.getName()))
+          .filter((entry): entry is McpServerRuntime => Boolean(entry));
+        rows.push({
+          key: `family:${row.family}`,
+          name: row.family,
+          kind: 'family',
+          group,
+          instances: row.servers.length,
+          tools: maxDefined(instances.map(entry => entry.toolsCount)),
+          resources: sumDefined(instances.map(entry => entry.resourcesCount)),
+          prompts: sumDefined(instances.map(entry => entry.promptsCount)),
+        });
+      } else {
+        const entry = byName.get(row.server.getName());
+        rows.push({
+          key: `server:${row.server.getName()}`,
+          name: row.server.getName(),
+          kind: 'server',
+          group,
+          instances: 1,
+          tools: entry?.toolsCount,
+          resources: entry?.resourcesCount,
+          prompts: entry?.promptsCount,
+        });
+      }
+    }
+    if (group === 'agent-platform') {
+      rows.push({
+        key: 'core',
+        name: 'muster',
+        kind: 'core',
+        group,
+        instances: 1,
+        tools: coreTools,
+      });
+    }
   }
-
-  for (const server of integration) {
-    const entry = byName.get(server.getName());
-    rows.push({
-      key: `server:${server.getName()}`,
-      name: server.getName(),
-      kind: 'integration server',
-      instances: 1,
-      tools: entry?.toolsCount,
-      resources: entry?.resourcesCount,
-      prompts: entry?.promptsCount,
-    });
-  }
-
-  rows.push({
-    key: 'core',
-    name: 'muster',
-    kind: 'core',
-    instances: 1,
-    tools: coreTools,
-  });
 
   return rows;
+}
+
+/** The rows of one tool group, in the order {@link capabilityRows} returns them. */
+export function capabilityRowsByGroup(
+  rows: CapabilityRow[],
+): { group: ToolGroupKey; rows: CapabilityRow[] }[] {
+  return TOOL_GROUP_ORDER.map(group => ({
+    group,
+    rows: rows.filter(row => row.group === group),
+  })).filter(entry => entry.rows.length > 0);
 }
 
 function formatCount(value: number | undefined): string {
@@ -139,11 +173,12 @@ export interface CapabilitySurfaceProps {
 }
 
 /**
- * What agents can reach through this muster, per server group: the tools,
- * resources and prompts each contributes to the aggregated catalogue for the
- * current session, plus muster's own core tools. Reads the same runtime list
- * the MCP servers page uses for its live state (react-query dedupes the two)
- * and `list_core_tools`; the caller gates it behind an authenticated session.
+ * What agents can reach through this muster, per server and grouped by tool
+ * group: the tools, resources and prompts each contributes to the aggregated
+ * catalogue for the current session, plus muster's own core tools under Agent
+ * Platform. Reads the same runtime list the MCP servers page uses for its
+ * live state (react-query dedupes the two) and `list_core_tools`; the caller
+ * gates it behind an authenticated session.
  */
 export function CapabilitySurface({
   servers,
@@ -190,25 +225,39 @@ export function CapabilitySurface({
           </TableRow>
         </TableHead>
         <TableBody>
-          {rows.map(row => (
-            <TableRow key={row.key}>
-              <TableCell>
-                <code className={classes.name}>{row.name}</code>
-                <span className={classes.kind}>
-                  {row.kind}
-                  {row.instances > 1 ? ` · ${row.instances} instances` : ''}
-                </span>
-              </TableCell>
-              <TableCell align="right" className={classes.numeric}>
-                {formatCount(row.tools)}
-              </TableCell>
-              <TableCell align="right" className={classes.numeric}>
-                {formatCount(row.resources)}
-              </TableCell>
-              <TableCell align="right" className={classes.numeric}>
-                {formatCount(row.prompts)}
-              </TableCell>
-            </TableRow>
+          {capabilityRowsByGroup(rows).map(({ group, rows: groupRows }) => (
+            <Fragment key={group}>
+              <TableRow>
+                <TableCell
+                  colSpan={4}
+                  className={classes.groupCell}
+                  component="th"
+                  scope="rowgroup"
+                >
+                  {TOOL_GROUPS[group].title}
+                </TableCell>
+              </TableRow>
+              {groupRows.map(row => (
+                <TableRow key={row.key}>
+                  <TableCell>
+                    <code className={classes.name}>{row.name}</code>
+                    <span className={classes.kind}>
+                      {row.kind}
+                      {row.instances > 1 ? ` · ${row.instances} instances` : ''}
+                    </span>
+                  </TableCell>
+                  <TableCell align="right" className={classes.numeric}>
+                    {formatCount(row.tools)}
+                  </TableCell>
+                  <TableCell align="right" className={classes.numeric}>
+                    {formatCount(row.resources)}
+                  </TableCell>
+                  <TableCell align="right" className={classes.numeric}>
+                    {formatCount(row.prompts)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </Fragment>
           ))}
         </TableBody>
       </Table>

@@ -33,6 +33,7 @@ import {
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
+  newAgentToolsRouteRef,
   newModelRouteRef,
   rootRouteRef,
   servingRouteRef,
@@ -62,7 +63,8 @@ const agentPlatformPage = PageBlueprint.make({
 
 // The "Agents" tab. Its content is the agent list, one agent's details
 // (`/agent-platform/agents/<installation>/<namespace>/<name>`) and the create
-// flow (`/agent-platform/agents/new`, `.../new/skills` and `.../new/review`),
+// flow (`/agent-platform/agents/new`, `.../new/skills`, `.../new/tools` and
+// `.../new/review`),
 // all driven by an internal react-router in AgentsRouter.
 const agentsSubPage = SubPageBlueprint.make({
   name: 'agents',
@@ -150,7 +152,7 @@ const modelsSubPage = SubPageBlueprint.make({
 });
 
 // The section's installation scope selector, in the page header next to the
-// tabs' own actions: "All installations" (home first, the others as groups) or
+// tabs' own actions: "All installations" (home first) or
 // one pinned installation, for the three tabs above and the muster plugin's
 // "MCP Servers" tab alike. A header action rather than part of a tab, so it
 // stays put while the tabs change underneath it; the scope itself lives in the
@@ -224,6 +226,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentDetail: agentDetailRouteRef,
     newAgent: newAgentRouteRef,
     newAgentSkills: newAgentSkillsRouteRef,
+    newAgentTools: newAgentToolsRouteRef,
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,

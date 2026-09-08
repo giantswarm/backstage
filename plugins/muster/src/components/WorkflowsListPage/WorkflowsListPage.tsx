@@ -6,7 +6,7 @@ import {
 } from '@backstage/core-components';
 import { Box, Typography } from '@material-ui/core';
 import { FiltersLayout } from '@giantswarm/backstage-plugin-ui-react';
-import { InstallationPicker } from '../InstallationPicker';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { WorkflowsDataProvider } from './WorkflowsDataProvider';
 import { WorkflowsFilters } from './filters';
@@ -18,7 +18,7 @@ export function WorkflowsListPage() {
   if (isLoading) {
     return (
       <Content>
-        <InstallationPicker />
+        <ActiveInstallationNote />
         <Progress />
       </Content>
     );
@@ -27,11 +27,10 @@ export function WorkflowsListPage() {
   if (!activeInstallation) {
     return (
       <Content>
-        <InstallationPicker />
         <EmptyState
           missing="data"
-          title="Select an installation"
-          description="Choose a muster installation above to list its workflows."
+          title="No muster installation"
+          description="None of the installations this portal knows runs muster, so there are no workflows to list."
         />
       </Content>
     );
@@ -39,6 +38,7 @@ export function WorkflowsListPage() {
 
   return (
     <Content>
+      <ActiveInstallationNote />
       <Box mb={2}>
         <Typography variant="body2" color="textSecondary">
           Workflows are a way to execute MCP tool calls in sequence, which saves

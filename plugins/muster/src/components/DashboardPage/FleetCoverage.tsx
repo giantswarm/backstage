@@ -10,6 +10,7 @@ import { MCPServer } from '../../lib/k8s';
 import {
   FamilyCoverage,
   familyCoverage,
+  familyGroups,
   fleetManagementClusters,
   partitionServers,
 } from '../../lib/serverGrouping';
@@ -141,17 +142,19 @@ export interface FleetCoverageProps {
 }
 
 /**
- * How far each standard server family reaches across the management clusters
- * the installation federates. Measured per family against the union of every
+ * How far each server family reaches across the management clusters the
+ * installation federates. Measured per family against the union of every
  * family's clusters, so a family still being rolled out reads as "10/24
  * clusters" with the missing clusters named -- a different fact from a
  * family that is deployed everywhere but disconnected somewhere, which the
  * degraded count carries. Read from `.status.state` and the
- * management-cluster label alone, so it needs no muster session.
+ * management-cluster label alone, so it needs no muster session. Coverage
+ * measures federation, not tiers: families count whichever tool group they
+ * are listed under.
  */
 export function FleetCoverage({ servers }: FleetCoverageProps) {
   const classes = useStyles();
-  const { standard } = partitionServers(servers);
+  const standard = familyGroups(partitionServers(servers));
 
   if (standard.length === 0) {
     return (

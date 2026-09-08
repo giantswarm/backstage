@@ -26,6 +26,7 @@ import {
   useMusterInstance,
   useMusterSession,
 } from '../MusterInstanceProvider';
+import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { MusterProviders } from '../MusterProviders';
 import { SessionGate, Stat } from '../shared';
 
@@ -382,6 +383,11 @@ function McpUsageBody() {
         title="MCP tool calls on this installation"
         description="Every tool call dispatched to the MCP servers behind this installation's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
       />
+      {/* Below the heading rather than above it, unlike muster's own views:
+          there this note is page-level, here it explains which muster *this
+          section* shows, so it belongs under the heading that names it. The
+          personal section above carries the same note for its own read. */}
+      <ActiveInstallationNote />
       {body}
     </Box>
   );

@@ -21,6 +21,9 @@ jest.mock('../MusterInstanceProvider', () => ({
     isLoadingInstallations: false,
     installationInfos: [],
     activeInstallation: 'gazelle',
+    scope: 'gazelle',
+    homeInstallation: 'gazelle',
+    isSingleInstallation: false,
     activeInstallationInfo: {
       name: 'gazelle',
       endpoint: 'https://muster.gazelle.example.com/mcp',
