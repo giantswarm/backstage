@@ -287,15 +287,15 @@ describe('SessionDetailPage', () => {
     expect(screen.getByText('Working')).toBeInTheDocument();
   });
 
-  it('labels token totals as cumulative, since the raw number is startling', async () => {
+  it('labels token totals as billed, since the raw number is startling', async () => {
     // Every model call re-sends the whole context, so a short session can total
     // millions of prompt tokens. Genuine billed usage, but it reads as a bug
-    // without the label.
+    // without the label. Shortened from "(billed, cumulative)" when the label
+    // started rendering uppercase; the full reasoning is in the component and
+    // in docs/agent-platform.md.
     await render();
 
-    expect(
-      screen.getByText('Input tokens (billed, cumulative)'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Input tokens (billed)')).toBeInTheDocument();
     expect(screen.getByText('Turns')).toBeInTheDocument();
     expect(screen.getByText('Output tokens')).toBeInTheDocument();
   });

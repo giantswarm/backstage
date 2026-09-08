@@ -988,4 +988,64 @@ describe('KagentApiClient', () => {
       });
     });
   });
+
+  describe('getSessionUsage', () => {
+    const usageBody = {
+      evaluatedAt: 1_757_000_000_000,
+      windowStart: 1_754_400_000_000,
+      windowDays: 30,
+      totals: {
+        sessions: 2,
+        turns: 5,
+        inputTokens: 1_000,
+        outputTokens: 100,
+        totalTokens: 1_100,
+        toolCalls: 3,
+      },
+      daily: [
+        { day: '2026-09-04', inputTokens: 1_000, outputTokens: 100, turns: 5 },
+      ],
+      byAgent: [],
+      topTools: [{ tool: 'x_kubernetes_get', calls: 3 }],
+      topMcpServers: [{ server: 'kubernetes', calls: 3 }],
+      undatedTurns: 0,
+      unreadable: [],
+      skipped: 0,
+    };
+
+    it('reads the summary from the installation-scoped route', async () => {
+      fetchMock.mockResolvedValue(jsonResponse(usageBody));
+
+      const usage = await buildClient().getSessionUsage('gazelle');
+
+      expect(usage.totals.inputTokens).toBe(1_000);
+      expect(usage.topTools).toEqual([{ tool: 'x_kubernetes_get', calls: 3 }]);
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/session-usage?installation=gazelle',
+      );
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBeDefined();
+    });
+
+    it('maps a 404 to NotFoundError, so the page can say kagent is absent', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}, 404));
+
+      await expect(
+        buildClient().getSessionUsage('gazelle'),
+      ).rejects.toMatchObject({ name: 'NotFoundError' });
+    });
+
+    it('degrades a malformed body to zeros rather than throwing', async () => {
+      // The page renders this beside copy that already admits it can be
+      // incomplete, so losing every number to one bad row would be worse than
+      // showing an empty window.
+      fetchMock.mockResolvedValue(jsonResponse({ totals: 'nope', daily: 7 }));
+
+      const usage = await buildClient().getSessionUsage('gazelle');
+
+      expect(usage.totals.inputTokens).toBe(0);
+      expect(usage.daily).toEqual([]);
+    });
+  });
 });

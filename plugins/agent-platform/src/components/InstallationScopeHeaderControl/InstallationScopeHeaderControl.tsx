@@ -20,6 +20,15 @@ import { QueryClientProvider } from '../QueryClientProvider';
 const TAB_COMPONENTS: Record<string, PlatformComponent> = {
   agents: 'kagent',
   sessions: 'kagent',
+  // Only kagent, though the Usage tab shows a muster section too. `component`
+  // is a single value driving the selector's per-option remark, and the
+  // personal kagent section is the page's primary content — the one whose
+  // emptiness a reader will want explained. muster reports its own
+  // reachability inside its section, the same division of labour the `muster`
+  // row below relies on. An installation running muster but not kagent is
+  // absent from the backend's kagent list, so it gets no misleading remark
+  // either.
+  usage: 'kagent',
   models: 'kagent',
   muster: 'muster',
 };

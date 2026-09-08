@@ -23,6 +23,7 @@ import {
 } from '@material-ui/core';
 import {
   DateComponent,
+  Stat,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -109,9 +110,6 @@ const useStyles = makeStyles(theme => ({
     borderTop: `1px solid ${theme.palette.divider}`,
     borderBottom: `1px solid ${theme.palette.divider}`,
   },
-  statValue: {
-    fontVariantNumeric: 'tabular-nums',
-  },
   // A real <button>, stripped of its chrome, rather than a click handler on the
   // heading: the title is an editing affordance, and only a button is reachable
   // by keyboard and announced as actionable. Everything visual is inherited so
@@ -146,20 +144,6 @@ function BackToSessions({ children }: { children: ReactNode }) {
     return null;
   }
   return <Link to={sessionsRoute()}>{children}</Link>;
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  const classes = useStyles();
-  return (
-    <Flex direction="column" gap="1">
-      <Text variant="body-small" color="secondary">
-        {label}
-      </Text>
-      <Text variant="title-small" className={classes.statValue}>
-        {value}
-      </Text>
-    </Flex>
-  );
 }
 
 /**
@@ -770,7 +754,7 @@ export function SessionDetailPage() {
               There is deliberately no combined total: input and output are priced
               differently, so the sum is not a number anyone acts on. */}
           <Stat
-            label="Input tokens (billed, cumulative)"
+            label="Input tokens (billed)"
             value={formatTokens(timeline.tokens.prompt)}
           />
           <Stat

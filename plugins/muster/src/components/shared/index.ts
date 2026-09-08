@@ -4,8 +4,11 @@ export { StateBadge } from './StateBadge';
 export type { StateBadgeProps } from './StateBadge';
 export { AvailabilityBadge } from './AvailabilityBadge';
 export type { AvailabilityBadgeProps } from './AvailabilityBadge';
-export { Stat } from './Stat';
-export type { StatProps } from './Stat';
+// `Stat` moved to `ui-react` when the agent-platform Usage page needed it too.
+// Re-exported from here so muster's own call sites and its public
+// `src/index.ts` surface stay unchanged.
+export { Stat } from '@giantswarm/backstage-plugin-ui-react';
+export type { StatProps } from '@giantswarm/backstage-plugin-ui-react';
 export { DisclosureAccordion } from './DisclosureAccordion';
 export type { DisclosureAccordionProps } from './DisclosureAccordion';
 export { ToolList } from './ToolList';

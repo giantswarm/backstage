@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
-import { useTheme, makeStyles, Theme } from '@material-ui/core';
-import { Tone, toneColors } from './tones';
+import { makeStyles, Theme, useTheme } from '@material-ui/core';
+import { Tone, toneColors } from '../../utils/tones';
 
 const useStyles = makeStyles((theme: Theme) => ({
   root: {
@@ -19,6 +19,8 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontSize: '1.25rem',
     fontWeight: 600,
     lineHeight: 1.2,
+    // Tabular figures so a column of stats does not jitter as values change,
+    // and so digits line up across a strip.
     fontVariantNumeric: 'tabular-nums',
     letterSpacing: '-0.01em',
   },
@@ -32,8 +34,12 @@ export interface StatProps {
 }
 
 /**
- * The mockups' `Stat`: an uppercase muted label over a large tabular-nums
- * value, optionally tone-coloured. Ported 1:1 from `components/stat.tsx`.
+ * One labelled number: an uppercase muted label over a large tabular-nums
+ * value, optionally tone-coloured.
+ *
+ * The primitive a stats strip is built from. Use it for a figure a reader
+ * scans rather than acts on; a value that is good or bad takes a `tone`, and
+ * one that is merely a count takes none.
  */
 export function Stat({ label, value, tone }: StatProps) {
   const classes = useStyles();

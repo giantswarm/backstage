@@ -7,7 +7,14 @@ import {
   MusterInstance,
   MusterInstanceContext,
 } from '../MusterInstanceProvider';
-import { UsagePage } from './UsagePage';
+import { McpUsageSection } from './McpUsageSection';
+
+// The section brings its own MusterProviders so it can be mounted anywhere;
+// passed through here so these tests keep injecting MusterInstanceContext
+// directly rather than standing up the real provider stack.
+jest.mock('../MusterProviders', () => ({
+  MusterProviders: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
 
 const NOTE =
   'muster on wombat is not reachable from this portal (no answer within 3000 ms).';
@@ -41,7 +48,7 @@ function instance(): MusterInstance {
   };
 }
 
-describe('UsagePage on an installation the portal cannot reach', () => {
+describe('McpUsageSection on an installation the portal cannot reach', () => {
   it('says so instead of the metrics, offers no connect and asks the backend nothing', async () => {
     const api = {
       getMcpUsage: jest.fn(),
@@ -61,7 +68,7 @@ describe('UsagePage on an installation the portal cannot reach', () => {
       </TestApiProvider>
     );
 
-    render(<UsagePage />, { wrapper });
+    render(<McpUsageSection />, { wrapper });
 
     expect(
       screen.getByText(
@@ -76,5 +83,44 @@ describe('UsagePage on an installation the portal cannot reach', () => {
     await act(() => new Promise(resolve => setTimeout(resolve, 20)));
     expect(api.getMcpUsage).not.toHaveBeenCalled();
     expect(api.filterTools).not.toHaveBeenCalled();
+  });
+
+  it('renders neither an installation picker nor a time-range control', async () => {
+    // Both went when this moved onto the shared Usage page: the page header
+    // already carries the section's installation scope, and one section's own
+    // window control would make the page's stated window false for the other.
+    const api = {
+      getMcpUsage: jest.fn(),
+      filterTools: jest.fn(),
+      signIn: jest.fn(),
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+        <QueryClientProvider client={queryClient}>
+          <MusterInstanceContext.Provider value={instance()}>
+            {children}
+          </MusterInstanceContext.Provider>
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+
+    render(<McpUsageSection />, { wrapper });
+
+    expect(screen.queryByRole('group', { name: /time range/i })).toBeNull();
+    for (const label of ['24h', '7d', '30d']) {
+      expect(screen.queryByRole('button', { name: label })).toBeNull();
+    }
+    expect(screen.queryByRole('combobox')).toBeNull();
+
+    // And the heading says whose numbers these are, which is what keeps it from
+    // being read as the personal section above it.
+    expect(
+      screen.getByText('MCP tool calls on this installation'),
+    ).toBeInTheDocument();
+
+    await act(() => new Promise(resolve => setTimeout(resolve, 20)));
   });
 });

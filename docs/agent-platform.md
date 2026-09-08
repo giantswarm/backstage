@@ -429,9 +429,9 @@ the open TODOs.
 
 ## The installation scope
 
-The four tabs of the section — Agents, Sessions, Models and the muster plugin's
-MCP Servers — share **one installation scope**: `'all'` (the default) or one
-pinned installation. It lives in the `gs` plugin (`useInstallationScope`,
+The five tabs of the section — Agents, Sessions, Models, Usage and the muster
+plugin's MCP Servers — share **one installation scope**: `'all'` (the default) or
+one pinned installation. It lives in the `gs` plugin (`useInstallationScope`,
 `plugins/gs/src/apis/installationScope/`) as a module store read through
 `useSyncExternalStore`, not as a React context: the muster section is a
 different plugin with its own providers, mounted as a tab of the same page, so
@@ -458,6 +458,10 @@ a context could not cross the boundary. The store is the contract.
   tab's path to the component), and "not reachable from this portal" from the
   kagent backend's probe on the kagent tabs. A portal whose inventory has one
   installation renders no selector, and the section looks exactly as before.
+- **Usage is the exception: it reads one installation, never the fleet.** Under
+  `'all'` it resolves to the home installation and says which one it is
+  reporting on. See [One installation at a
+  time](#one-installation-at-a-time) for why.
 - **Home first, literally.** Under `'all'`, `AgentsDataProvider`,
   `SessionsDataProvider` and `ModelConfigsProvider` query the home installation
   alone and the others only once it has answered (rows, an empty list, or a
@@ -1228,12 +1232,15 @@ session's id, and subagent sessions are filtered out of the list anyway.
 
 ### The stats strip
 
-`Turns · Duration · Input tokens (billed, cumulative) · Output tokens`.
+`Turns · Duration · Input tokens (billed) · Output tokens`.
 
-**Input tokens are labelled "billed, cumulative" on purpose.** Every model call
-re-sends the whole context, so a 4-turn session with a large tool catalogue reached
-**1.4M prompt tokens across 14 calls** (3.9k–144k each). That is genuine billed
-usage and kagent's own UI sums it identically — but unlabelled it reads as a bug.
+**Input tokens are labelled "billed" on purpose.** Every model call re-sends the
+whole context, so a 4-turn session with a large tool catalogue reached **1.4M
+prompt tokens across 14 calls** (3.9k–144k each). That is genuine billed,
+cumulative usage and kagent's own UI sums it identically — but unlabelled it
+reads as a bug. The label reads "(billed)" rather than "(billed, cumulative)"
+because the strip's `Stat` renders it uppercase, where the longer form wrapped;
+this paragraph is where the full reasoning lives.
 
 There is deliberately **no combined total**: input and output tokens are priced
 differently, so their sum is not a number anyone acts on.
@@ -2154,29 +2161,223 @@ already detects — the copy switches rather than claiming ownership it cannot.
 ### What it cannot show
 
 The prototype's stats strip — sessions all-time, sessions in the last 30 days, a
-success rate — has **no data behind it**. kagent keeps no per-agent counters and
-scopes sessions to the caller, so every one of those would be a number invented
-from one person's history, wrong by orders of magnitude on a shared agent. There is
-deliberately no stats strip; creation age moved into the header instead. Please
-don't add them speculatively.
+success rate — has **no data behind it** _on this page_. kagent keeps no
+per-agent counters and scopes sessions to the caller, so a band here would be a
+number invented from one person's history and presented as the agent's, wrong by
+orders of magnitude on a shared agent. There is deliberately no stats strip;
+creation age moved into the header instead. Please don't add one speculatively.
+
+Note the line this draws, because [the Usage tab](#the-usage-tab) does show
+per-agent totals: there they are explicitly **one person's own** usage, the
+heading says so, and the copy switches when kagent cannot scope to the caller.
+The same numbers offered as _the agent's_ are what has no data behind them.
+
+## The Usage tab
+
+`/agent-platform/usage`, the last of the section's own tabs. Two sections,
+deliberately different in scope:
+
+1. **Your agent usage** — the caller's own sessions over the last 30 days, from
+   kagent. Totals (sessions, turns, input, output, tool calls), two per-day
+   token charts, breakdowns per agent and per model, and the top tools and MCP
+   servers.
+2. **MCP tool calls on this installation** — every caller's, from muster's
+   Prometheus metrics. Contributed by the muster plugin (see below).
+
+Each heading states its own scope, and that is the whole reason they share a page
+rather than living in two places: a reader can see both without being able to
+confuse them.
+
+### Why the numbers have to be derived
+
+kagent stores **no usage summary of any kind** — not per session, not per agent,
+not as a Prometheus metric (its only collector is `kagent_build_info`). Tokens
+exist solely as per-message metadata inside each session's task payloads. So
+totalling a user's usage means reading every session's whole conversation, which
+is megabytes to answer with a couple of kilobytes and therefore happens in the
+backend: `GET /kagent/session-usage`, the second route that interprets kagent
+rather than forwarding it.
+
+It shares the fan-out machinery with the session-states route
+(`sessionFanOut.ts`: candidate bound, sliding read pool with a budget, and a
+token-keyed cache) and its arithmetic with the timeline the session detail page
+renders (`reduceSessionUsage` in `agent-platform-common`).
+`usageAgreesWithTimeline.test.ts` runs both over every captured task fixture and
+asserts the sums are equal — without it the two surfaces could quietly report
+different numbers for one session.
+
+### It can only ever be personal
+
+kagent's `GET /api/sessions` is `WHERE user_id = <sub>`, with no pagination, no
+date filter and **no cross-user endpoint**. So no team or fleet view grows out of
+this route; that needs a different data source, and the page's copy must never
+imply otherwise. (A cross-user query does exist at kagent's DB layer,
+`ListSessionsForAgentAllUsers`, but it is wired only to the sandbox-agent
+one-session check and no route exposes it.)
+
+On an installation running kagent in `unsecure` mode the session list is
+everyone's. The existing `/me` probe detects it, and the page's copy **switches**
+— heading, table titles and the coverage note all drop "your" — rather than
+adding a warning under a heading that still claims ownership. Gated on a strict
+`false`: `undefined` means the probe has not resolved or kagent reported no
+subject, which is reachable on a healthy deployment.
+
+### Why input and output are two charts, not one stack
+
+Input runs roughly a hundred times output — see [the stats
+strip](#the-stats-strip) for the measured session — so stacking them draws
+output as an invisible hairline, and a shared y-domain would flatten it just the
+same. The two charts therefore have **independent y-scales**, which is the point
+rather than an oversight.
+
+### One installation at a time
+
+The scope resolves to a single installation: the pinned one if it runs kagent,
+else home, else the first candidate. A pinned installation that does _not_ run
+kagent resolves to **nothing** rather than falling back — the pin is a
+deliberate choice, and quietly reporting another installation's usage under it
+would misattribute someone's tokens.
+
+No fleet fan-out, which is where this diverges from the Sessions tab. Each
+installation costs a whole session-list-plus-task fan-out, the most expensive
+read in the plugin; a cross-installation token total answers no question, since
+the model bill and the agents are per installation; and the MCP section on the
+same page is one muster per installation and cannot fan out either, so fanning
+out the top section would give one page two scope semantics. A totals-only fleet
+strip, if it is ever wanted, is an `?installation=all` on the backend route —
+not a browser-side `useQueries`.
+
+### By model is derived, and it is the _current_ model
+
+kagent's usage carries no model, and neither does its session record. So the
+By model table is a frontend join: each agent's `Agent` CR already resolves its
+`ModelConfig` (`AgentRow.model`, what the Agents tab shows), and the per-agent
+totals are rolled up by that.
+
+**It is therefore the model each agent runs on now, not the model each session
+ran on.** kagent records no per-session model and does not pin an agent version
+to a session (see the "agent version is not pinned" note above), so an agent
+whose `ModelConfig` changed inside the window has its whole history attributed
+to its current model. The table carries that caveat in place rather than
+implying a historical breakdown — please do not remove it without the data
+changing first.
+
+Agents whose CR is not in view — deleted since, or on another installation —
+group under "Unknown model", together with agents that genuinely reference none
+(BYO agents). Their spend stays in the total, because dropping it would make
+the table disagree with the tiles above.
+
+Note the label is whatever `AgentRow.model` resolves to, which falls back to the
+`ModelConfig`'s own name when it carries no display-name annotation — so a row
+can read `default-model-config` rather than a model. That is the same label the
+Agents tab shows, and fixing it means annotating the `ModelConfig`.
+
+### The honesty line
+
+`skipped` is "should have been evaluated and was not" — past the session cap, or
+cut off by the pass budget. `unreadable` is "asked and failed". They are
+different facts and only one is retryable, so they are worded separately. The
+activity-window exclusion is deliberately in neither: it is a scope decision,
+and folding it in would make the line permanently non-zero for any account
+holding an older session.
+
+`undatedTurns` is the third: a task whose `status.timestamp` kagent never wrote
+is counted in the totals but sits in no day bucket, so the charts legitimately
+sum to less than the tiles. Dropping such a turn would silently zero a kagent
+that stopped writing the field; dating it would claim a date we do not have.
+
+`evaluatedAt` is always shown. The summary is cached for five minutes, and a
+30-day total with no visible timestamp is exactly the kind of number that gets
+quoted as current.
+
+### Caching
+
+The response is never persisted to `localStorage` — `'session-usage'` is on
+`QueryClientProvider`'s never-persist list. Same rule as the session titles, with
+a sharper reason: this is a breakdown of what one person ran, which agents they
+spent on and which tools they reached for. Server-side it is a five-minute
+in-process cache keyed by a hash of the caller's token, never `cacheService`,
+for the reason [the states route documents](#caching-user-scoped-data-is-never-persisted).
+
+Nothing polls it, unlike the session-states summary: the buckets are days.
+
+### One window, 30 days
+
+Fixed, with no switcher anywhere on the page — including muster's former
+24h/7d/30d control, which was removed. The kagent route takes no window
+parameter, so a control on one section would make the page's stated window false
+for whichever section the reader just switched; the two would stop being
+comparable, which is why they share a page; and muster's bucket size changes with
+the window, so a 24h selection put an hourly-bucketed chart directly under a
+daily one. Bringing a control back means **one page-level** control driving both
+sections, once the kagent route accepts a window.
+
+`windowDays` and `windowStart` travel in the response, so no heading hardcodes
+"30 days" and shortening the window re-labels the page.
+
+### Your top MCP servers is prefix-derived
+
+muster names an aggregated tool `x_{family|toolPrefix|name}_{tool}`
+(`MCPServer.getToolNamePrefix`), so the segment after `x_` is the server. That is
+exact for every server observed, and collapses a multi-segment prefix
+(`x_kubernetes_gazelle_*` reads as `kubernetes`) — the family level, and the
+useful grouping anyway. Exact resolution needs the installation's `MCPServer`
+CRs, which the backend cannot read. Which is a good argument for the merge: the
+section directly below resolves servers exactly, from Prometheus's
+`mcpserver_name` label.
+
+### The MCP section is contributed, not imported
+
+muster attaches it with a plain `createExtension` to
+`sub-page:agent-platform/usage`, input `sections` — declared there with
+`SubPageBlueprint.makeWithOverrides` + `createExtensionInput`. Neither plugin
+depends on the other, which is the same mechanism muster already uses to put its
+"MCP Servers" tab on `page:agent-platform`, one level deeper.
+
+An import would instead pull muster's whole bundle into the Usage tab even where
+muster is switched off, and would leave the section with no extension id to
+disable. An empty input renders the personal section alone. The id contract is
+commented on both ends, because a cross-plugin coupling by string fails
+silently. If a second contributor ever appears, promote it to a blueprint
+exported from an `alpha` entry point, mirroring
+`plugins/flux-react/src/alpha/blueprints/`.
+
+`/agent-platform/muster/usage` redirects here, preserving the query string.
+
+### What it cannot show
+
+**Cost**, tokens/second and context-window usage: kagent records none of them at
+any version. Every provider adapter populates only `promptTokenCount` and
+`candidatesTokenCount`, and a repo-wide search for cached-input or thinking-token
+fields finds nothing. `totalTokens` is carried on the wire anyway, because a
+reported total can legitimately exceed its parts when a model bills thinking
+tokens separately — summing the two would under-report such a model with no way
+to notice.
+
+One thing to know per installation: kagent 0.10 can prune sessions older than a
+configured number of days, **deleting them outright**. If that is ever set below
+the window, the totals are silently incomplete and no field in the response can
+say so. Nothing configures it on the fleet today.
 
 ## Configuration
 
 All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
 `plugins/agent-platform-backend/config.d.ts`):
 
-| Key                          | Purpose                                                                                                                                                                                             |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `chart.ociUrl`               | OCI URL of the agent chart (no tag).                                                                                                                                                                |
-| `chart.version`              | Version floor / fallback. The deployed OCIRepository auto-upgrades via a semver range; this is only used for the manual snapshot.                                                                   |
-| `fluxServiceAccountName`     | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional.                                                                                                |
-| `deployTemplateRef`          | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                                                                                                 |
-| `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                                                                                              |
-| `kagent.timeoutMs`           | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                                                                                              |
-| `kagent.installations`       | Which installations to proxy kagent for, keyed by name; also the allowlist. `apiBaseUrl` overrides the derived URL. Backend-only.                                                                   |
-| `modelManager.installations` | Installations that run model-manager, keyed by name, each with the required `apiBaseUrl` (`https://agentgateway.<baseDomain>/model-manager` through the gateway). Nothing is derived. Backend-only. |
-| `modelManager.timeoutMs`     | Per-request timeout toward a model-manager API (default 10000). Backend-only.                                                                                                                       |
-| `modelManager.loadTimeoutMs` | Timeout for `POST /api/v1/models/load`, which blocks until the model is in memory (default 120000). Backend-only.                                                                                   |
+| Key                          | Purpose                                                                                                                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `chart.ociUrl`               | OCI URL of the agent chart (no tag).                                                                                                                                                                               |
+| `chart.version`              | Version floor / fallback. The deployed OCIRepository auto-upgrades via a semver range; this is only used for the manual snapshot.                                                                                  |
+| `fluxServiceAccountName`     | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional.                                                                                                               |
+| `deployTemplateRef`          | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                                                                                                                |
+| `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                                                                                                             |
+| `kagent.timeoutMs`           | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                                                                                                             |
+| `kagent.sessionStates.*`     | Bounds on the derived session-state summary behind the session switcher rail: `maxSessions`, `maxAgeMs`, `concurrency`, `taskTimeoutMs`, `budgetMs`, `cacheTtlMs`. Sized to the frontend's 10s poll. Backend-only. |
+| `kagent.sessionUsage.*`      | Bounds on the usage summary behind the Usage tab: `windowDays` plus the same six levers. Numbers differ from `sessionStates` on purpose — read on a tab visit, reporting on days. Backend-only.                    |
+| `kagent.installations`       | Which installations to proxy kagent for, keyed by name; also the allowlist. `apiBaseUrl` overrides the derived URL. Backend-only.                                                                                  |
+| `modelManager.installations` | Installations that run model-manager, keyed by name, each with the required `apiBaseUrl` (`https://agentgateway.<baseDomain>/model-manager` through the gateway). Nothing is derived. Backend-only.                |
+| `modelManager.timeoutMs`     | Per-request timeout toward a model-manager API (default 10000). Backend-only.                                                                                                                                      |
+| `modelManager.loadTimeoutMs` | Timeout for `POST /api/v1/models/load`, which blocks until the model is in memory (default 120000). Backend-only.                                                                                                  |
 
 The `kagent` and `modelManager` keys keep the default **backend** visibility and
 are never served to the frontend: `apiBaseUrl` embeds `baseDomain` (or the

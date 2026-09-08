@@ -1,5 +1,4 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
-import { createHash } from 'crypto';
 import {
   isListableSession,
   normalizeSessionList,
@@ -9,6 +8,13 @@ import {
   SessionStatesResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { KagentClient } from './KagentClient';
+import {
+  atLeast,
+  MIN_READ_SLICE_MS,
+  readTasksInPool,
+  selectCandidates,
+  TokenKeyedCache,
+} from './sessionFanOut';
 
 /**
  * How many of a user's sessions may be evaluated in one pass.
@@ -67,27 +73,6 @@ export const DEFAULT_BUDGET_MS = 8_000;
  */
 export const DEFAULT_CACHE_TTL_MS = 15_000;
 
-/**
- * Cache entries retained per installation.
- *
- * One entry per distinct token, so an instance that has served many users over a
- * long uptime would otherwise accumulate one each. Expired entries are purged on
- * access; this is the backstop.
- */
-export const CACHE_MAX_ENTRIES = 200;
-
-/**
- * The least time a task read is worth starting with.
- *
- * Without a floor a worker could dispatch with 1 ms of budget left, get
- * `timeoutMs: 1`, and all but certainly time out — landing in `unreadable`
- * ("we asked and failed") when the truth is that the pass ran out of time,
- * which belongs in `skipped`. The two are worded differently to the operator,
- * so the mis-attribution would put a fault in front of them for a budget
- * cutoff.
- */
-export const MIN_READ_SLICE_MS = 250;
-
 export type SessionStateOptions = {
   maxSessions?: number;
   maxAgeMs?: number;
@@ -95,11 +80,6 @@ export type SessionStateOptions = {
   taskTimeoutMs?: number;
   budgetMs?: number;
   cacheTtlMs?: number;
-};
-
-type CacheEntry = {
-  expiresAt: number;
-  value: Promise<SessionStatesResponse>;
 };
 
 /**
@@ -112,15 +92,17 @@ type CacheEntry = {
  * belongs on this side of the wire. It stays honest by deriving through the very
  * same parser and state map the UI renders from, shared from
  * `agent-platform-common` so the two cannot disagree.
+ *
+ * The bounding, pooling and caching are `./sessionFanOut`; what is here is the
+ * reduction — one A2A state per session — and the numbers it is bounded by.
  */
 export class SessionStateReader {
-  private readonly cache = new Map<string, CacheEntry>();
+  private readonly cache: TokenKeyedCache<SessionStatesResponse>;
   private readonly maxSessions: number;
   private readonly maxAgeMs: number;
   private readonly concurrency: number;
   private readonly taskTimeoutMs: number;
   private readonly budgetMs: number;
-  private readonly cacheTtlMs: number;
 
   constructor(
     private readonly client: KagentClient,
@@ -154,65 +136,15 @@ export class SessionStateReader {
     );
     // A zero TTL is meaningful here — it means "do not cache" — so only
     // negatives are floored.
-    this.cacheTtlMs = atLeast(0, options.cacheTtlMs, DEFAULT_CACHE_TTL_MS);
+    this.cache = new TokenKeyedCache<SessionStatesResponse>(
+      atLeast(0, options.cacheTtlMs, DEFAULT_CACHE_TTL_MS),
+      this.now,
+    );
   }
 
-  /**
-   * Summarise the caller's sessions.
-   *
-   * Keyed on a hash of the token rather than on the Backstage identity: kagent
-   * scopes its list by the `sub` of *this* token, so the token is exactly the
-   * scoping key. It also means a rotated token, or a sign-out, cannot read a
-   * previous holder's summary — the entry simply stops being addressable.
-   */
+  /** Summarise the caller's sessions. */
   async read(userToken: string): Promise<SessionStatesResponse> {
-    const key = createHash('sha256').update(userToken).digest('hex');
-    const now = this.now();
-
-    for (const [candidate, entry] of this.cache) {
-      if (entry.expiresAt <= now) {
-        this.cache.delete(candidate);
-      }
-    }
-
-    const cached = this.cache.get(key);
-    if (cached) {
-      return cached.value;
-    }
-
-    // The promise goes in before it resolves, so two polls landing together —
-    // two browser tabs, or a re-render racing itself — share one fan-out rather
-    // than doubling it.
-    // Declared before the promise so the rejection handler can recognise its
-    // own entry. An unconditional `delete(key)` would let a slow failing pass
-    // evict a *newer, healthy* one: a pass can outlive `cacheTtlMs` when kagent
-    // is degraded, by which time its entry has been purged and a later request
-    // has installed and resolved a fresh one under the same key. Deleting then
-    // throws away a valid in-TTL summary and every subsequent poll starts
-    // another fan-out.
-    const entry: CacheEntry = {
-      expiresAt: now + this.cacheTtlMs,
-      value: this.compute(userToken).catch(error => {
-        // A failed pass must not be cached: the next request should retry rather
-        // than be handed the same rejection for the whole TTL.
-        if (this.cache.get(key) === entry) {
-          this.cache.delete(key);
-        }
-        throw error;
-      }),
-    };
-    const value = entry.value;
-    this.cache.set(key, entry);
-
-    while (this.cache.size > CACHE_MAX_ENTRIES) {
-      const oldest = this.cache.keys().next();
-      if (oldest.done) {
-        break;
-      }
-      this.cache.delete(oldest.value);
-    }
-
-    return value;
+    return this.cache.read(userToken, () => this.compute(userToken));
   }
 
   private async compute(userToken: string): Promise<SessionStatesResponse> {
@@ -225,69 +157,30 @@ export class SessionStateReader {
       maxAgeMs: this.maxAgeMs,
       maxSessions: this.maxSessions,
     });
-    // Deliberately *not* `listable.length - candidates.length`: that would fold
-    // the routine `maxAgeMs` window exclusion in with genuine shortfalls, and a
-    // single session older than the window — the normal state of an account
-    // after a week — would make `skipped` permanently non-zero. The UI reads
-    // this as "we could not tell", so conflating them replaced an over-claim
-    // with a permanent under-claim and a retry that could never change it.
-    let skipped = pastCap;
-
-    const deadline = this.now() + this.budgetMs;
     const states: SessionStateEntry[] = [];
-    const unreadable: string[] = [];
-    let failures = 0;
 
-    const queue = [...candidates];
-    const worker = async (): Promise<void> => {
-      for (;;) {
-        const session = queue.shift();
-        if (!session) {
-          return;
-        }
-        const remaining = deadline - this.now();
-        if (remaining < MIN_READ_SLICE_MS) {
-          // Everything still queued is unevaluated, including this one. Put it
-          // back so the count is taken in one place below.
-          queue.unshift(session);
-          return;
-        }
-        try {
-          const payload = await this.client.listSessionTasks(
-            session.sessionId,
-            { userToken },
-            // Clamped to what is left of the pass, not the flat per-read
-            // timeout. Checking the deadline only before dispatching would
-            // bound *dispatch* time: a worker starting a read at
-            // `budgetMs - 1ms` would still wait the full `taskTimeoutMs`, so
-            // the route could hold a request for `budgetMs + taskTimeoutMs`
-            // (13 s on the defaults) — past the frontend's 10 s poll, which is
-            // the pile-up `budgetMs` exists to prevent.
-            { timeoutMs: Math.min(this.taskTimeoutMs, remaining) },
-          );
-          const { tasks } = normalizeTaskList(payload);
-          const newest = readNewestTaskState(tasks);
-          states.push({
-            sessionId: session.sessionId,
-            state: newest?.state.raw ?? null,
-            ...(newest?.changedAt === undefined
-              ? {}
-              : { changedAt: newest.changedAt }),
-          });
-        } catch {
-          // Individually caught, always. A session deleted between the list and
-          // the read, or one installation hiccup, must cost that row and not the
-          // whole rail.
-          failures += 1;
-          unreadable.push(session.sessionId);
-        }
-      }
-    };
-
-    await Promise.all(
-      Array.from({ length: Math.min(this.concurrency, queue.length) }, worker),
-    );
-    skipped += queue.length;
+    const { unreadable, skipped, failures } = await readTasksInPool({
+      candidates,
+      bounds: {
+        concurrency: this.concurrency,
+        taskTimeoutMs: this.taskTimeoutMs,
+        budgetMs: this.budgetMs,
+      },
+      now: this.now,
+      read: (sessionId, timeoutMs) =>
+        this.client.listSessionTasks(sessionId, { userToken }, { timeoutMs }),
+      onPayload: (session, payload) => {
+        const { tasks } = normalizeTaskList(payload);
+        const newest = readNewestTaskState(tasks);
+        states.push({
+          sessionId: session.sessionId,
+          state: newest?.state.raw ?? null,
+          ...(newest?.changedAt === undefined
+            ? {}
+            : { changedAt: newest.changedAt }),
+        });
+      },
+    });
 
     if (failures > 0) {
       // `debug`, and a count rather than ids: the root logger forwards warn and
@@ -301,72 +194,18 @@ export class SessionStateReader {
       );
     }
 
-    return { evaluatedAt: this.now(), states, unreadable, skipped };
+    return {
+      evaluatedAt: this.now(),
+      states,
+      unreadable,
+      // The cap and the budget cutoff, and deliberately *not*
+      // `listable.length - candidates.length`: that would fold the routine
+      // `maxAgeMs` window exclusion in with genuine shortfalls, and a single
+      // session older than the window — the normal state of an account after a
+      // week — would make `skipped` permanently non-zero. The UI reads this as
+      // "we could not tell", so conflating them replaces an over-claim with a
+      // permanent under-claim and a retry that can never change it.
+      skipped: pastCap + skipped,
+    };
   }
-}
-
-/**
- * A configured number, floored — or the default when nothing is configured.
- *
- * Absent means "use the default"; present but out of range means someone typed
- * a value that would disable the route, and the nearest working one is a better
- * answer than silence.
- */
-function atLeast(
-  floor: number,
-  configured: number | undefined,
-  fallback: number,
-): number {
-  if (configured === undefined) {
-    return fallback;
-  }
-  return Math.max(floor, configured);
-}
-
-type Candidate = { sessionId: string; updatedAt?: string };
-
-/**
- * Which sessions are worth a task read, newest activity first.
- *
- * Bounding happens here, before a single byte of conversation is fetched — the
- * cap is the real protection, and the window only trims a long tail that a busy
- * account would have hit the cap on anyway.
- *
- * A session with no usable `updated_at` is **kept**. `normalizeTimestamp` already
- * rejects Go zero time and anything unparseable, so an absent value means "we
- * cannot tell", and dropping those would silently hide a session on the strength
- * of a field kagent need not populate. They sort last, where the cap can still
- * reach them.
- */
-export function selectCandidates(
-  sessions: Candidate[],
-  opts: { now: number; maxAgeMs: number; maxSessions: number },
-): { candidates: Candidate[]; pastCap: number } {
-  const withTime = sessions.map(session => ({
-    session,
-    at: session.updatedAt ? Date.parse(session.updatedAt) : undefined,
-  }));
-
-  const inWindow = withTime.filter(
-    ({ at }) => at === undefined || opts.now - at <= opts.maxAgeMs,
-  );
-
-  inWindow.sort((a, b) => {
-    if (a.at === undefined && b.at === undefined) return 0;
-    if (a.at === undefined) return 1;
-    if (b.at === undefined) return -1;
-    return b.at - a.at;
-  });
-
-  return {
-    candidates: inWindow
-      .slice(0, opts.maxSessions)
-      .map(({ session }) => session),
-    // Only the cap is a shortfall. Sessions outside the window are out of scope
-    // by policy — the same kind of decision as excluding subagent sessions — and
-    // counting them as "not checked" would be permanent on any account more than
-    // a week old, which makes the UI's "cannot tell" state unreachable-to-escape
-    // rather than informative.
-    pastCap: Math.max(0, inWindow.length - opts.maxSessions),
-  };
 }

@@ -1,13 +1,11 @@
 import {
-  ASK_USER_TOOL_NAME,
-  CONFIRMATION_TOOL_NAME,
-  parsePart,
-} from './kagentParts';
-import {
   A2aTaskWire,
+  ASK_USER_TOOL_NAME,
   AWAITING_INPUT_STATES,
+  CONFIRMATION_TOOL_NAME,
   describeSessionState,
   findNewestStatefulTaskIndex,
+  parsePart,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 /**

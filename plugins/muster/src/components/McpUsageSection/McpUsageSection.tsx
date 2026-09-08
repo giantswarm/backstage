@@ -1,8 +1,5 @@
-import { useState } from 'react';
 import {
   Box,
-  Button,
-  ButtonGroup,
   Paper,
   Table,
   TableBody,
@@ -14,11 +11,13 @@ import {
   useTheme,
   Theme,
 } from '@material-ui/core';
-import BarChartIcon from '@material-ui/icons/BarChart';
-import { Content, Progress } from '@backstage/core-components';
+import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { StackedBarChart } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  SectionHeader,
+  StackedBarChart,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
 import type { McpUsage } from '../../apis';
@@ -28,14 +27,27 @@ import {
   useMusterSession,
 } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
-import { SectionHeader, SessionGate, Stat } from '../shared';
+import { MusterProviders } from '../MusterProviders';
+import { SessionGate, Stat } from '../shared';
 
-/** Selectable time windows; hours drives both the query and the bucket size. */
-const RANGES = [
-  { hours: 24, label: '24h' },
-  { hours: 7 * 24, label: '7d' },
-  { hours: 30 * 24, label: '30d' },
-] as const;
+/**
+ * The window, fixed at 30 days to match the personal section above it.
+ *
+ * There used to be a 24h/7d/30d switcher here, and it had to go when this moved
+ * onto the shared Usage page. Three reasons. The kagent route backing the
+ * section above takes no window parameter, so a control on this one alone would
+ * make the page's stated window false for whichever section a reader just
+ * switched. The two stop being comparable, which is the whole reason they share
+ * a page. And the bucket size changes with the window (`formatBucketTick`
+ * switches to hours below 24h), so a 24h selection put an hourly-bucketed chart
+ * directly under a daily one — same idiom, different meaning per bar.
+ *
+ * What was lost is the 24h zoom, whose real question ("is muster dispatching
+ * right now") the muster Dashboard already answers. Bringing a control back
+ * means one *page-level* control driving both sections, once the kagent route
+ * accepts a window.
+ */
+const WINDOW_HOURS = 30 * 24;
 
 const useStyles = makeStyles((theme: Theme) => ({
   column: {
@@ -73,9 +85,11 @@ const useStyles = makeStyles((theme: Theme) => ({
     overflow: 'hidden',
   },
   toolName: {
-    fontFamily: 'monospace',
-    fontSize: 13,
-    wordBreak: 'break-all',
+    // The body font, matching the personal section's tables directly above on
+    // the Usage page — the same kind of value rendered two ways on one page
+    // reads as a bug. `anywhere` rather than `break-all`, which split names
+    // mid-word (`…resolve_cluste / r`) once the pitch stopped being fixed.
+    overflowWrap: 'anywhere',
   },
   numeric: {
     fontVariantNumeric: 'tabular-nums',
@@ -158,8 +172,8 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
   const okColor = theme.palette.success.main;
   const errorResultColor = theme.palette.warning.main;
   const errorColor = theme.palette.error.main;
-  const rangeLabel =
-    RANGES.find(range => range.hours === hours)?.label ?? `${hours}h`;
+  // One fixed window now, so the label is derived rather than looked up.
+  const rangeLabel = `${Math.round(hours / 24)}d`;
 
   return (
     <>
@@ -291,15 +305,30 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
 }
 
 /**
- * The "MCP usage" view: tool-call volume, outcomes, latency, and top
- * tools/servers for the selected installation, derived from muster's own
- * Prometheus metrics by the muster-backend's `/usage` route.
+ * The installation-wide half of the Agent Platform's Usage tab: tool-call
+ * volume, outcomes, latency and top tools/servers for the selected
+ * installation, from muster's own Prometheus metrics via the muster-backend's
+ * `/usage` route.
+ *
+ * Contributed to `sub-page:agent-platform/usage` (see `../../mcpUsageSection`)
+ * rather than imported by that plugin, so neither plugin depends on the other.
+ * It therefore brings its own `MusterProviders`: that stack is designed to be
+ * mounted per view — the QueryClient is a module singleton and the active
+ * installation lives in the URL plus localStorage — so mounting it here is a
+ * cache read, not a refetch.
+ *
+ * **These numbers are every caller's**, not the reader's: muster's metrics carry
+ * no user label. That is the whole reason the heading says so, and why this sits
+ * below a section that is explicitly personal rather than merging into it.
+ *
+ * No installation picker: the Agent Platform page header already carries the
+ * section's installation scope, and muster's picker wrote to that very same
+ * store — so on this page it would have been a second control for one value.
  */
-export function UsagePage() {
+function McpUsageBody() {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const { activeInstallation } = useMusterInstance();
-  const [hours, setHours] = useState<number>(RANGES[0].hours);
   // The usage route reads muster's own metrics through the live session; an
   // installation whose muster the backend cannot reach gets the note instead
   // of a request that can only fail.
@@ -307,9 +336,12 @@ export function UsagePage() {
   const unreachable = isUnreachableSession(session);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['muster', 'mcp-usage', activeInstallation, hours],
+    queryKey: ['muster', 'mcp-usage', activeInstallation, WINDOW_HOURS],
     queryFn: () =>
-      musterApi.getMcpUsage({ installation: activeInstallation, hours }),
+      musterApi.getMcpUsage({
+        installation: activeInstallation,
+        hours: WINDOW_HOURS,
+      }),
     enabled: Boolean(activeInstallation) && !unreachable,
   });
 
@@ -331,33 +363,41 @@ export function UsagePage() {
       </Typography>
     );
   } else if (data) {
-    body = <UsageBody data={data} hours={hours} />;
+    body = <UsageBody data={data} hours={WINDOW_HOURS} />;
   }
 
   return (
-    <Content>
+    <Box className={classes.column}>
+      {/* ui-react's SectionHeader, not muster's own: this section sits beside a
+          section of the host page, and the two headings have to look and rank
+          identically. muster's variant carries an icon square and a different
+          type scale, which is right on muster's own screens (where the page
+          title is in the plugin header) and wrong here. `h3` also matters
+          beyond looks — as a paragraph, this section's content was filed under
+          the previous section's heading in the accessibility tree, so a screen
+          reader heard installation-wide numbers as part of "Your agent
+          usage". */}
+      <SectionHeader
+        as="h3"
+        variant="title-x-small"
+        title="MCP tool calls on this installation"
+        description="Every tool call dispatched to the MCP servers behind this installation's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
+      />
+      {/* Below the heading rather than above it, unlike muster's own views:
+          there this note is page-level, here it explains which muster *this
+          section* shows, so it belongs under the heading that names it. The
+          personal section above carries the same note for its own read. */}
       <ActiveInstallationNote />
-      <Box className={classes.column}>
-        <SectionHeader
-          icon={<BarChartIcon />}
-          title="MCP usage"
-          description="Tool calls dispatched to the MCP servers behind this muster, from muster's own metrics."
-          action={
-            <ButtonGroup size="small" aria-label="time range">
-              {RANGES.map(range => (
-                <Button
-                  key={range.hours}
-                  variant={range.hours === hours ? 'contained' : 'outlined'}
-                  onClick={() => setHours(range.hours)}
-                >
-                  {range.label}
-                </Button>
-              ))}
-            </ButtonGroup>
-          }
-        />
-        {body}
-      </Box>
-    </Content>
+      {body}
+    </Box>
+  );
+}
+
+/** The section, self-contained so it can be mounted anywhere. */
+export function McpUsageSection() {
+  return (
+    <MusterProviders>
+      <McpUsageBody />
+    </MusterProviders>
   );
 }

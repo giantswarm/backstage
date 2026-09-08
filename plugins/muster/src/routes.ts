@@ -1,4 +1,5 @@
 import {
+  createExternalRouteRef,
   createRouteRef,
   createSubRouteRef,
 } from '@backstage/frontend-plugin-api';
@@ -43,12 +44,19 @@ export const toolExplorerRouteRef = createSubRouteRef({
   parent: rootRouteRef,
 });
 
-export const usageRouteRef = createSubRouteRef({
-  path: '/usage',
-  parent: rootRouteRef,
-});
-
 export const workflowDetailRouteRef = createSubRouteRef({
   path: '/workflows/:name',
   parent: rootRouteRef,
+});
+
+/**
+ * The Agent Platform's Usage tab, where the MCP usage view now lives.
+ *
+ * External because it belongs to the other plugin. `defaultTarget` resolves it
+ * without an app-config binding and leaves it unbound when agent-platform is
+ * disabled -- the mirror of that plugin's `musterToolExplorer` ref, and the
+ * reason every call site has to handle `undefined`.
+ */
+export const agentPlatformUsageExternalRouteRef = createExternalRouteRef({
+  defaultTarget: 'agent-platform.usage',
 });

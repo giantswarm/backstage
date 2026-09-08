@@ -36,6 +36,21 @@ export interface StackedBarChartProps<T extends object> {
   formatXAxisTick?: (value: string) => string;
   /** Format the category heading shown in the tooltip. */
   formatTooltipLabel?: (value: string) => string;
+  /**
+   * Format a y-axis tick (e.g. `1432871` as `1.4M`).
+   *
+   * Widen {@link yAxisWidth} to match: the default gutter fits about four
+   * digits, so a six- or seven-digit series clips without both.
+   */
+  formatYAxisTick?: (value: number) => string;
+  /** Width reserved for the y-axis, in pixels. Defaults to 40. */
+  yAxisWidth?: number;
+  /**
+   * Format a value in the tooltip (thousands separators, or the same compact
+   * form as the axis). Unformatted, a seven-digit integer reads as a run of
+   * digits.
+   */
+  formatValue?: (value: number) => string;
 }
 
 interface TooltipEntry {
@@ -54,6 +69,7 @@ interface ChartTooltipProps {
   borderColor: string;
   secondaryTextColor: string;
   formatLabel?: (value: string) => string;
+  formatValue?: (value: number) => string;
 }
 
 /** Themed replacement for recharts' default (unthemed) tooltip. */
@@ -66,6 +82,7 @@ function ChartTooltip({
   borderColor,
   secondaryTextColor,
   formatLabel,
+  formatValue,
 }: ChartTooltipProps) {
   if (!active || !payload || payload.length === 0) {
     return null;
@@ -110,7 +127,10 @@ function ChartTooltip({
             }}
           />
           <Typography variant="caption" style={{ color: secondaryTextColor }}>
-            {entry.value} {entry.name}
+            {entry.value !== undefined && formatValue
+              ? formatValue(entry.value)
+              : entry.value}{' '}
+            {entry.name}
           </Typography>
         </Box>
       ))}
@@ -131,6 +151,9 @@ export function StackedBarChart<T extends object>({
   height = 160,
   formatXAxisTick,
   formatTooltipLabel,
+  formatYAxisTick,
+  yAxisWidth = 40,
+  formatValue,
 }: StackedBarChartProps<T>) {
   const theme = useTheme();
 
@@ -162,8 +185,9 @@ export function StackedBarChart<T extends object>({
         <YAxis
           allowDecimals={false}
           tick={tickStyle}
+          tickFormatter={formatYAxisTick}
           stroke={gridColor}
-          width={40}
+          width={yAxisWidth}
         />
         <Tooltip
           cursor={{ fill: theme.palette.action.hover }}
@@ -174,6 +198,7 @@ export function StackedBarChart<T extends object>({
               borderColor={gridColor}
               secondaryTextColor={theme.palette.text.secondary}
               formatLabel={formatTooltipLabel}
+              formatValue={formatValue}
             />
           }
         />

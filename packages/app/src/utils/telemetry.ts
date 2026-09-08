@@ -166,6 +166,16 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Agent detail' };
       break;
 
+    // Must stay above the generic '/agent-platform' cases below, like the
+    // Sessions cases: `switch (true)` takes the first match, and without this
+    // the Usage tab would report as `page: 'Agents', view: 'usage'` — merging
+    // its views into the Agents page's numbers, which is exactly the question a
+    // new tab exists to answer. It carries no `view`: the page is one view, and
+    // the installation it reports on is scope state, not a page identity.
+    case pathname === '/agent-platform/usage':
+      payload = { page: 'Usage' };
+      break;
+
     case pathname === '/agent-platform':
       payload = { page: 'Agents index' };
       break;

@@ -62,6 +62,13 @@ export const sessionDetailRouteRef = createSubRouteRef({
   parent: sessionsRouteRef,
 });
 
+// The "Usage" tab (`/agent-platform/usage`). No sub-routes: one page carrying
+// two sections, one of them contributed by the muster plugin. Last of this
+// plugin's own tabs — `plugin.tsx` declares it after `modelsSubPage`, giving
+// Agents · Sessions · Models · Usage, then muster's MCP Servers. Tab order
+// lives there, not here.
+export const usageRouteRef = createRouteRef();
+
 // The "Models" tab (`/agent-platform/models`): the kagent ModelConfigs agents
 // run on, the serving layer beneath them, and the platform-admin flows that
 // manage both. Like the muster section, the tab carries a second-level tab row

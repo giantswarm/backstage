@@ -107,6 +107,99 @@ export interface Config {
       };
 
       /**
+       * Bounds on the usage summary that backs the Usage tab
+       * (`GET /kagent/session-usage`).
+       *
+       * The same shape as `sessionStates` above, and for the same reason:
+       * kagent stores no usage summary either, so totalling a user's tokens
+       * means reading every session's whole conversation. These are the levers
+       * on how much that may cost.
+       *
+       * **The numbers differ from the `sessionStates` ones deliberately**, so
+       * a near-identical block sitting above this one does not read as a
+       * copy-paste error. That pass is sized to a 10s frontend poll; this route
+       * is read on a tab visit and reports on *days*.
+       *
+       * Deliberately not query parameters: the browser must not be able to ask
+       * for a bigger fan-out.
+       */
+      sessionUsage?: {
+        /**
+         * The window the page reports on, in days. Defaults to 30.
+         *
+         * Travels in the response, so shortening it re-labels the page rather
+         * than making a heading lie.
+         *
+         * **Check the deployed kagent's own session retention before raising
+         * it.** kagent 0.10 can prune sessions older than a configured number
+         * of days, deleting them outright — past that point the window is
+         * silently incomplete and no field in the response can say so.
+         */
+        windowDays?: number;
+
+        /**
+         * How many sessions may be evaluated in one pass, newest activity
+         * first. Defaults to 60 — three times a measured real account.
+         *
+         * Higher than the `sessionStates` cap because the window here *is* the
+         * reported scope, which makes this cap the only thing that can make the
+         * page under-report. Exceeding it is surfaced as `skipped`.
+         */
+        maxSessions?: number;
+
+        /**
+         * How stale a session may be and still be worth a task read, in
+         * milliseconds. Defaults to 2678400000 (31 days) — the window plus a
+         * day of slack for clock skew and the UTC day boundary.
+         *
+         * Safe because kagent bumps `session.updated_at` on every task write,
+         * so a session with no activity in 31 days holds no turn inside a
+         * 30-day window. Raise it with `windowDays`.
+         */
+        maxAgeMs?: number;
+
+        /**
+         * Task reads in flight at once. Defaults to 6 — higher than the
+         * `sessionStates` pass, which has no poll behind it to stay clear of
+         * and three times fewer sessions to cover.
+         */
+        concurrency?: number;
+
+        /**
+         * Per-task-read timeout in milliseconds. Defaults to 5000, below the
+         * client's own `timeoutMs`.
+         */
+        taskTimeoutMs?: number;
+
+        /**
+         * Whole-pass deadline in milliseconds. Defaults to 20000. Anything
+         * still unread when it expires is reported as skipped.
+         *
+         * **Higher than the `sessionStates` budget on purpose**, and the
+         * warning inverts: there is no poll to stay under, but **keep it below
+         * the request timeout of whatever fronts Backstage** (often 30s), or
+         * the browser gets a 504 instead of a partial 200 it could render.
+         */
+        budgetMs?: number;
+
+        /**
+         * How long a computed summary is reused, in milliseconds. Defaults to
+         * 300000 (5 minutes).
+         *
+         * **Much longer than the `sessionStates` TTL on purpose.** That one is
+         * pinned by a 10s poll it must beat; this route is read on a tab visit
+         * and its buckets are days, so five minutes covers a tab bounce, a
+         * reload and a second browser tab with one fan-out. `evaluatedAt`
+         * travels in the response, so the staleness is shown, not hidden.
+         *
+         * Cached in process memory only, keyed by a hash of the caller's token,
+         * and never written anywhere shared: it is a per-user breakdown of what
+         * someone ran and which tools they reached for.
+         */
+        cacheTtlMs?: number;
+      };
+
+      /**
        * Installations to proxy kagent for, keyed by installation name — the
        * same keys as `gs.installations`.
        *

@@ -1,5 +1,7 @@
 import {
   ApiBlueprint,
+  coreExtensionData,
+  createExtensionInput,
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
@@ -37,6 +39,7 @@ import {
   servingRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
+  usageRouteRef,
 } from './routes';
 
 // The Agent Platform section is a tabbed page: with no loader of its own,
@@ -92,11 +95,49 @@ const sessionsSubPage = SubPageBlueprint.make({
   },
 });
 
+// The "Usage" tab: your own agent usage over the backend's window (personal,
+// derived from kagent's stored conversations), plus the MCP tool calls on the
+// installation (every caller, from muster's Prometheus metrics) contributed by
+// the muster plugin through the `sections` input below.
+//
+// Declared last, so it is the last of this plugin's own tabs. It cannot be the
+// last tab in the row: muster's "MCP Servers" tab is attached from another
+// plugin and lands after every tab declared here, because the page gathers its
+// `pages` input in feature-registration order (see App.tsx). Putting Usage
+// after it would mean registering muster first, which moves MCP Servers to the
+// front of the row and changes the tab a bare `/agent-platform` lands on.
+//
+// `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
+// list/tree filter inputs — so muster can attach its section by node id
+// (`sub-page:agent-platform/usage`, input `sections`) without either plugin
+// depending on the other, exactly as it already attaches its "MCP Servers" tab
+// to `page:agent-platform`. An empty `sections` (muster not registered) renders
+// the personal section alone rather than a hole.
+const usageSubPage = SubPageBlueprint.makeWithOverrides({
+  name: 'usage',
+  inputs: {
+    sections: createExtensionInput([coreExtensionData.reactElement]),
+  },
+  factory(originalFactory, { inputs }) {
+    return originalFactory({
+      path: 'usage',
+      title: 'Usage',
+      routeRef: usageRouteRef,
+      loader: async () => {
+        const { UsageRouter } = await import('./components/UsageRouter');
+        const sections = inputs.sections.map(section =>
+          section.get(coreExtensionData.reactElement),
+        );
+        return <UsageRouter sections={<>{sections}</>} />;
+      },
+    });
+  },
+});
+
 // The "Models" tab: the kagent ModelConfigs agents run on — list, create,
 // edit, delete — and the serving layer beneath them, as a second-level tab row
 // (Model configs, Serving, GPU capacity) driven by ModelsRouter. A
-// platform-admin capability, placed after the tabs everyone uses; the muster
-// plugin's "MCP Servers" tab follows it (registration order, see App.tsx).
+// platform-admin capability, placed after the tabs everyone uses.
 const modelsSubPage = SubPageBlueprint.make({
   name: 'models',
   params: {
@@ -174,6 +215,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentsSubPage,
     sessionsSubPage,
     modelsSubPage,
+    usageSubPage,
     installationScopeHeaderAction,
     kagentApi,
     modelManagerApi,
@@ -188,6 +230,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,
+    usage: usageRouteRef,
     models: modelsRouteRef,
     modelConfigs: modelConfigsRouteRef,
     modelDetail: modelDetailRouteRef,
