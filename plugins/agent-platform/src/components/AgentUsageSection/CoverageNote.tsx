@@ -25,12 +25,18 @@ export function CoverageNote({ usage, isPersonal }: CoverageNoteProps) {
   const { skipped, unreadable, undatedTurns, totals, evaluatedAt } = usage;
   const parts: string[] = [];
 
-  const sessions = formatCount(totals.sessions);
-  parts.push(
-    isPersonal
-      ? `Based on your ${sessions} most recent sessions with activity in the window.`
-      : `Based on the ${sessions} most recent sessions with activity in the window.`,
-  );
+  // The lead sentence only makes sense once something was read. With nothing
+  // readable the note renders beside a "could not be read" line, and "based on
+  // your 0 most recent sessions" would be noise in front of the counts that
+  // matter.
+  if (totals.sessions > 0) {
+    const sessions = formatCount(totals.sessions);
+    parts.push(
+      isPersonal
+        ? `Based on your ${sessions} most recent sessions with activity in the window.`
+        : `Based on the ${sessions} most recent sessions with activity in the window.`,
+    );
+  }
 
   if (skipped > 0) {
     parts.push(

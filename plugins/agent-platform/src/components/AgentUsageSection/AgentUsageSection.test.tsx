@@ -14,6 +14,7 @@ const state = {
   isLoading: false,
   isError: false,
   isNotDeployed: false,
+  probedInstallations: [] as string[],
 };
 
 const DEFAULTS = { ...state };
@@ -40,7 +41,13 @@ jest.mock('../../hooks/useSessionUsage', () => ({
 }));
 
 jest.mock('../../hooks/useKagentCapabilities', () => ({
-  useKagentCapabilities: () => ({ isUserScoped: state.isUserScoped }),
+  // The map form, which is what the section uses: the singular wrapper would
+  // not skip for an unresolved installation. `probedInstallations` records what
+  // it was handed, so a test can assert the empty-string probe is gone.
+  useKagentCapabilitiesMap: (installations: string[]) => {
+    state.probedInstallations = installations;
+    return () => ({ isUserScoped: state.isUserScoped });
+  },
 }));
 
 jest.mock('../AgentsDataProvider', () => ({
@@ -131,13 +138,41 @@ describe('AgentUsageSection', () => {
     expect(screen.queryByText('Input tokens per day')).not.toBeInTheDocument();
   });
 
-  it('reports an installation the portal cannot reach', () => {
+  it('reports unreachable installations, and claims nothing about sessions', () => {
+    // Shaped the way the real hook can actually produce it: `candidates` comes
+    // from the reachable set and `notReachable` from its complement, so the two
+    // are disjoint and `installation` never resolves here. The previous version
+    // of this test set `installation` and `notReachable` to the same value,
+    // which the hook cannot do — so it passed while the production path fell
+    // through to "you have no agent sessions on  in the last 30 days".
+    state.installation = undefined;
+    state.candidates = [];
     state.notReachable = ['gazelle'];
     render(<AgentUsageSection />);
 
     expect(
       screen.getByText(/not reachable from this portal/i),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/no agent sessions/i)).not.toBeInTheDocument();
+  });
+
+  it('does not probe kagent identity before an installation resolves', () => {
+    // `useKagentCapabilities('')` did not skip — its gate asks
+    // `isNotReachable('')`, false for an empty string — so it fired
+    // `GET /kagent/me` with no installation parameter, a guaranteed 400 per
+    // mount.
+    state.installation = undefined;
+    state.candidates = [];
+    render(<AgentUsageSection />);
+
+    expect(state.probedInstallations).toEqual([]);
+  });
+
+  it('probes only the installation it resolved', () => {
+    state.usage = usage();
+    render(<AgentUsageSection />);
+
+    expect(state.probedInstallations).toEqual(['gazelle']);
   });
 
   it('says kagent is absent rather than calling it a failure', () => {
@@ -215,6 +250,78 @@ describe('AgentUsageSection', () => {
       screen.queryByText('These numbers are not scoped to you'),
     ).not.toBeInTheDocument();
     expect(screen.getByText('Your agent usage')).toBeInTheDocument();
+  });
+
+  it('says nothing could be read, not that there are no sessions', () => {
+    // The route answers 200 with zeroed totals and a populated `unreadable`
+    // when every task read fails. Telling the user they have no sessions then
+    // states a factual negative the response itself contradicts — and the
+    // coverage note carrying the counts used to be unreachable in this state.
+    state.usage = usage({
+      totals: {
+        sessions: 0,
+        turns: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        toolCalls: 0,
+      },
+      unreadable: ['a', 'b', 'c'],
+    });
+    render(<AgentUsageSection />);
+
+    expect(screen.getByText(/could not be read/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no agent sessions/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/3 could not be read at all/i)).toBeInTheDocument();
+  });
+
+  it('treats a cap-shortened empty pass the same way', () => {
+    state.usage = usage({
+      totals: {
+        sessions: 0,
+        turns: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        toolCalls: 0,
+      },
+      skipped: 4,
+    });
+    render(<AgentUsageSection />);
+
+    expect(screen.queryByText(/no agent sessions/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/were not read/i)).toBeInTheDocument();
+  });
+
+  it('still says the window is empty when it genuinely is', () => {
+    // Nothing read *and* nothing to report is a real empty window, and must not
+    // be dressed up as a failure.
+    state.usage = usage({
+      totals: {
+        sessions: 0,
+        turns: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        toolCalls: 0,
+      },
+    });
+    render(<AgentUsageSection />);
+
+    expect(
+      screen.getByText(/no agent sessions on gazelle/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/could not be read/i)).not.toBeInTheDocument();
+  });
+
+  it('never renders a zero-day window from an unreadable body', () => {
+    // `normalizeSessionUsage` coerces an unparseable `windowDays` to 0, so a
+    // `??` fallback never fired and the copy read "in the last 0 days".
+    state.usage = usage({ windowDays: 0 });
+    render(<AgentUsageSection />);
+
+    expect(screen.queryByText(/last 0 days/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/last 30 days/i)).toBeInTheDocument();
   });
 
   it('admits partial coverage when the backend skipped sessions', () => {

@@ -310,12 +310,28 @@ describe('createRouter', () => {
     });
   });
 
+  /**
+   * Timestamps relative to the wall clock.
+   *
+   * The router builds its own `SessionStateReader`/`SessionUsageReader` and does
+   * not expose their injected clock, so these suites run on real `Date.now()`
+   * and every fixture is compared against a window measured from *now*
+   * (`maxAgeMs`: 7 days for states, 31 for usage). Hardcoded dates therefore have
+   * an expiry: they quietly stop being "recent", `selectCandidates` drops the
+   * session, no task is read, and the assertions fail on a date with no code
+   * change. `sessionUsage.test.ts` and `sessionStates.test.ts` inject a fixed
+   * clock instead; here, relative is the fix that does not require faking timers
+   * under supertest.
+   */
+  const minutesAgo = (minutes: number) =>
+    new Date(Date.now() - minutes * 60_000).toISOString();
+
   describe('GET /kagent/session-states', () => {
-    const sessionWire = (id: string, updatedAt = '2026-09-04T11:00:00Z') => ({
+    const sessionWire = (id: string, updatedAt = minutesAgo(60)) => ({
       id,
       name: `session ${id}`,
       user_id: 'marian@giantswarm.io',
-      created_at: '2026-09-01T10:00:00Z',
+      created_at: minutesAgo(3 * 24 * 60),
       updated_at: updatedAt,
     });
     const tasksWire = (state: string) => ({
@@ -441,11 +457,11 @@ describe('createRouter', () => {
   });
 
   describe('GET /kagent/session-usage', () => {
-    const sessionWire = (id: string, updatedAt = '2026-09-04T11:00:00Z') => ({
+    const sessionWire = (id: string, updatedAt = minutesAgo(60)) => ({
       id,
       name: `session ${id}`,
       user_id: 'marian@giantswarm.io',
-      created_at: '2026-09-01T10:00:00Z',
+      created_at: minutesAgo(3 * 24 * 60),
       updated_at: updatedAt,
       agent_id: 'kagent__NS__sre_agent',
     });
@@ -456,7 +472,8 @@ describe('createRouter', () => {
           id: 't1',
           contextId: 'c1',
           kind: 'task',
-          status: { state: 'completed', timestamp: '2026-09-04T11:00:00Z' },
+          // Inside the window whenever the suite runs — see `minutesAgo`.
+          status: { state: 'completed', timestamp: minutesAgo(60) },
           history: [
             {
               kind: 'message',

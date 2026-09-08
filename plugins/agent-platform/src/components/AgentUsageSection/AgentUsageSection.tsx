@@ -7,7 +7,7 @@ import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { agentDetailRouteRef } from '../../routes';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
-import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
+import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useAgents } from '../AgentsDataProvider';
 import { InstallationScopeNote } from '../InstallationGroups';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
@@ -19,6 +19,7 @@ import { TokensPerDayCard } from './TokensPerDayCard';
 import { TopCallsTable } from './TopCallsTable';
 import { TotalsStrip } from './TotalsStrip';
 import {
+  couldNotTell,
   fillMissingDays,
   hasAnyUsage,
   toByAgentRows,
@@ -33,6 +34,12 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
+/**
+ * Shown only until a response arrives, or when one could not be read at all —
+ * the real window travels in the response (`windowDays`).
+ */
+const FALLBACK_WINDOW_DAYS = 30;
+
 /** Copy that has to stop claiming ownership on an unsecure-mode installation. */
 const PERSONAL_COPY = {
   title: 'Your agent usage',
@@ -44,6 +51,8 @@ const PERSONAL_COPY = {
   topServers: 'Your top MCP servers',
   empty: (days: number, installation: string) =>
     `You have no agent sessions on ${installation} in the last ${days} days.`,
+  unreadable: (installation: string) =>
+    `None of your sessions on ${installation} could be read, so there is nothing to total yet.`,
 };
 
 const SHARED_COPY = {
@@ -56,6 +65,8 @@ const SHARED_COPY = {
   topServers: 'Top MCP servers',
   empty: (days: number, installation: string) =>
     `There are no agent sessions on ${installation} in the last ${days} days.`,
+  unreadable: (installation: string) =>
+    `No sessions on ${installation} could be read, so there is nothing to total yet.`,
 };
 
 /**
@@ -78,13 +89,28 @@ export function AgentUsageSection() {
     hasInstallations,
   } = useUsageInstallation();
 
-  const notReachableHere =
-    installation !== undefined && notReachable.includes(installation);
-  const { isUserScoped } = useKagentCapabilities(installation ?? '');
-  const { usage, isLoading, isError, isNotDeployed } = useSessionUsage(
-    installation,
-    { enabled: !notReachableHere },
+  // Probe capabilities only once an installation has resolved. The singular
+  // `useKagentCapabilities('')` would *not* skip: its reachability gate asks
+  // `isNotReachable('')`, which is false for an empty string, so it fired
+  // `GET /kagent/me` with no `installation` parameter — a guaranteed 400,
+  // cached under the key `[…,'me','']`, on every mount before the installation
+  // settled. An empty list runs no queries and still answers "unknown".
+  const capabilityInstallations = useMemo(
+    () => (installation ? [installation] : []),
+    [installation],
   );
+  const capabilitiesFor = useKagentCapabilitiesMap(capabilityInstallations);
+  const { isUserScoped } = capabilitiesFor(installation ?? '');
+
+  // No `enabled` gate on reachability: `useUsageInstallation` only ever resolves
+  // `installation` out of `candidates`, which is built from the *reachable* set,
+  // so an unreachable installation can never be the one being read. The hook's
+  // own `Boolean(installation)` is the whole gate. (There used to be a
+  // `notReachable.includes(installation)` check here; the two sets are disjoint
+  // by construction, so it was dead and the state it guarded fell through to a
+  // wrong claim — see the branch for it below.)
+  const { usage, isLoading, isError, isNotDeployed } =
+    useSessionUsage(installation);
 
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
@@ -96,7 +122,12 @@ export function AgentUsageSection() {
   const isPersonal = isUserScoped !== false;
   const copy = isPersonal ? PERSONAL_COPY : SHARED_COPY;
 
-  const windowDays = usage?.windowDays ?? 30;
+  // `||`, not `??`: `normalizeSessionUsage` coerces an unparseable
+  // `windowDays` to `0` and `emptyUsage()` sets `0` explicitly, so `??` never
+  // fired and a body this parser could not fully read rendered "over the last
+  // 0 days" — and made `fillMissingDays` short-circuit. `0` is not a value the
+  // backend can mean: the reader floors it at 1.
+  const windowDays = usage?.windowDays || FALLBACK_WINDOW_DAYS;
   const daily = useMemo(
     () => fillMissingDays(usage?.daily ?? [], windowDays),
     [usage?.daily, windowDays],
@@ -162,6 +193,21 @@ export function AgentUsageSection() {
   } else if (
     !isResolving &&
     candidates.length === 0 &&
+    notReachable.length > 0
+  ) {
+    // Everything in scope that runs kagent is unreachable from this portal, so
+    // nothing was tried and `installation` never resolved. Gated on the
+    // *unreachable set* rather than on `notReachable.includes(installation)`,
+    // which could never be true: `candidates` comes from the reachable set and
+    // `notReachable` from its complement, so the two are disjoint and
+    // `installation` is only ever drawn from the former. That dead check used
+    // to leave this case falling through to "you have no agent sessions on  in
+    // the last 30 days" — a factual negative about the account, with an empty
+    // installation name, when nothing had been asked.
+    body = <NotReachableInstallationsNote installations={notReachable} />;
+  } else if (
+    !isResolving &&
+    candidates.length === 0 &&
     notReachable.length === 0
   ) {
     // Under a pinned scope `InstallationScopeNote` names the installation and
@@ -175,9 +221,6 @@ export function AgentUsageSection() {
         </Text>
       </>
     );
-  } else if (notReachableHere) {
-    // Nothing was tried on the user's behalf, so there is nothing to retry.
-    body = <NotReachableInstallationsNote installations={[installation!]} />;
   } else if (isResolving || isLoading) {
     body = <Progress aria-label="Loading usage" />;
   } else if (isNotDeployed) {
@@ -196,8 +239,24 @@ export function AgentUsageSection() {
         resourceName="usage"
       />
     );
+  } else if (usage && !hasAnyUsage(usage) && couldNotTell(usage)) {
+    // Nothing readable, but not nothing: the route answers 200 with zeroed
+    // totals and a populated `unreadable`/`skipped` when reads fail or the cap
+    // bites, so "you have no sessions in the last 30 days" would state a
+    // factual negative the response itself contradicts. `CoverageNote` carries
+    // the counts, and used to be unreachable here because it only rendered in
+    // the full-body branch below.
+    body = (
+      <>
+        <Text variant="body-medium" color="secondary">
+          {copy.unreadable(installation ?? '')}
+        </Text>
+        <CoverageNote usage={usage} isPersonal={isPersonal} />
+      </>
+    );
   } else if (!hasAnyUsage(usage)) {
-    // Not a strip of zeros beside two empty charts, which reads as broken.
+    // Genuinely nothing in the window. Not a strip of zeros beside two empty
+    // charts, which reads as broken.
     body = (
       <Text variant="body-medium" color="secondary">
         {copy.empty(windowDays, installation ?? '')}

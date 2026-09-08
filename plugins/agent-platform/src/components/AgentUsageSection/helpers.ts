@@ -88,6 +88,21 @@ export function hasAnyUsage(usage: SessionUsageResponse | undefined): boolean {
 }
 
 /**
+ * Whether an empty summary means "we could not tell" rather than "nothing
+ * happened".
+ *
+ * The route answers 200 with zeroed totals when every task read failed, or when
+ * the cap or the pass budget cut the fan-out short — its own doc comment and
+ * `router.test.ts` pin that. Those two outcomes have to read differently: a
+ * user told "you have no agent sessions in the last 30 days" about their own
+ * account, when nothing could be read, is being told something the response
+ * itself contradicts.
+ */
+export function couldNotTell(usage: SessionUsageResponse): boolean {
+  return usage.unreadable.length > 0 || usage.skipped > 0;
+}
+
+/**
  * Fill any gap in the day series with zeros.
  *
  * The backend already answers densely, because it owns the window. This is the
