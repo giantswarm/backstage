@@ -55,8 +55,8 @@ roadmap:
     - Bumblebee🐝
   # The pro MCP server behind muster that serves the board as the person.
   muster:
-    installation: gazelle # a name from muster.installations
-    server: gazelle-mcp-pro # the pro MCPServer in that muster
+    installation: golem # a name from muster.installations
+    server: golem-mcp-pro # the pro MCPServer in that muster
     toolPrefix: pro # tools are x_<prefix>_<tool>; default: the server name
 ```
 

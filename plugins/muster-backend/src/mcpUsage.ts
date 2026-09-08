@@ -286,8 +286,8 @@ export async function getMcpUsage(
   // lookback: Mimir's query-frontend splits range queries into short
   // subqueries, while `increase(x[24h])` at an instant needs one long-range
   // read from the store-gateway path — which is exactly what degrades when a
-  // store-gateway has a bad day (observed on gazelle: [1h] fine, [12h]+
-  // returning 500 while the equivalent range query kept working).
+  // store-gateway has a bad day (observed on an internal installation: [1h]
+  // fine, [12h]+ returning 500 while the equivalent range query kept working).
   const rangeQuery = (query: string): Promise<PromSeries[]> =>
     runQuery(RANGE_TOOL, {
       query,

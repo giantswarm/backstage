@@ -64,8 +64,8 @@ required):
 muster:
   installations:
     # Overrides only the endpoint of a derived installation.
-    - name: gazelle
-      url: https://muster-internal.gazelle.example/mcp
+    - name: golem
+      url: https://muster-internal.golem.example/mcp
     # Adds an installation the fleet configuration does not know.
     - name: lab
       url: https://muster.lab.example/mcp

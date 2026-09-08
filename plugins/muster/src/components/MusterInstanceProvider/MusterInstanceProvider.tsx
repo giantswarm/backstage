@@ -102,10 +102,11 @@ export function useMusterInstance(): MusterInstance {
 /**
  * Resolves the active installation. Preference order: the section's pinned
  * installation scope if it is a real muster installation, then the muster on
- * the *current* cluster (matched by a host segment, e.g. `devportal.gazelle.…`
- * -> gazelle), then the first installation -- which is the home installation,
- * since the list is home first. Under "All installations" the tab therefore
- * shows the home installation: one muster is one aggregator.
+ * the *current* cluster (matched by a host segment, e.g.
+ * `devportal.<installation>.…` -> that installation), then the first
+ * installation -- which is the home installation, since the list is home
+ * first. Under "All installations" the tab therefore shows the home
+ * installation: one muster is one aggregator.
  *
  * ponytail: "current cluster" is approximated by a host-segment match rather
  * than a dedicated config key -- good enough for the deployed devportal and a
