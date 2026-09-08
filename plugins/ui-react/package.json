@@ -52,7 +52,7 @@
     "react-use": "^17.6.0",
     "recharts": "^3.9.0",
     "semver": "^7.7.2",
-    "use-local-storage-state": "^19.5.0"
+    "use-local-storage-state": "^20.0.0"
   },
   "peerDependencies": {
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0",
