@@ -134,3 +134,40 @@ export function formatDayTooltip(day: string): string {
     timeZone: 'UTC',
   });
 }
+
+/**
+ * Sort the by-agent rows for the bui table.
+ *
+ * `useTable` in `complete` mode needs this: `sortFn` is optional in the type,
+ * but without one it has no way to compare rows, so every column header moves
+ * its indicator and re-renders the same order. That is exactly how this table
+ * shipped broken once.
+ *
+ * Always tie-breaks on the agent name, so equal counts render in a stable order
+ * rather than however the backend's ranking happened to leave them.
+ */
+export function sortByAgentRows(
+  rows: ByAgentRow[],
+  sort: { column: unknown; direction: 'ascending' | 'descending' },
+): ByAgentRow[] {
+  const column = String(sort.column);
+  const factor = sort.direction === 'ascending' ? 1 : -1;
+
+  return [...rows].sort((a, b) => {
+    if (column === 'agentName') {
+      return a.agentName.localeCompare(b.agentName) * factor;
+    }
+
+    const key =
+      column === 'sessions' ||
+      column === 'turns' ||
+      column === 'inputTokens' ||
+      column === 'outputTokens'
+        ? column
+        : 'inputTokens';
+
+    return a[key] === b[key]
+      ? a.agentName.localeCompare(b.agentName)
+      : (a[key] - b[key]) * factor;
+  });
+}

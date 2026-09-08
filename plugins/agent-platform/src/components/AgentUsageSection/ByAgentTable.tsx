@@ -1,7 +1,8 @@
 import { makeStyles, Paper, Theme } from '@material-ui/core';
-import { Cell, CellText, Table, useTable } from '@backstage/ui';
+import { Cell, CellText, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import { formatCount, formatTokens } from '../../lib/formatNumbers';
+import { sortByAgentRows } from './helpers';
 import type { ByAgentRow } from './helpers';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -24,16 +25,11 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 export type ByAgentTableProps = {
   rows: ByAgentRow[];
-  isLoading?: boolean;
   emptyMessage: string;
 };
 
 /** Usage split by the agent that ran it. */
-export function ByAgentTable({
-  rows,
-  isLoading,
-  emptyMessage,
-}: ByAgentTableProps) {
+export function ByAgentTable({ rows, emptyMessage }: ByAgentTableProps) {
   const classes = useStyles();
 
   const number = (value: number, compact = false) => (
@@ -81,6 +77,9 @@ export function ByAgentTable({
   const { tableProps } = useTable<ByAgentRow>({
     mode: 'complete',
     data: rows,
+    // Required in practice, though the type marks it optional: without it the
+    // header indicator moves and the rows do not.
+    sortFn: sortByAgentRows,
     // The backend already ranks by spend; this keeps that as the default view
     // while letting a reader re-sort.
     initialSort: { column: 'inputTokens', direction: 'descending' },
@@ -92,11 +91,19 @@ export function ByAgentTable({
   return (
     <Paper variant="outlined" className={classes.card}>
       <div className={classes.title}>By agent</div>
+      {/* No `data` prop here: `tableProps` already carries the *sorted* rows,
+          and passing `data` after the spread overrides them with the unsorted
+          input — which silently breaks every column header while leaving the
+          sort indicator working. The section above renders a spinner while
+          loading, so this table only ever mounts with data. */}
       <Table<ByAgentRow>
         {...tableProps}
-        data={isLoading ? undefined : rows}
         columnConfig={columnConfig}
-        emptyState={<CellText title={emptyMessage} />}
+        emptyState={
+          <Text variant="body-medium" color="secondary">
+            {emptyMessage}
+          </Text>
+        }
       />
     </Paper>
   );

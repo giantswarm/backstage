@@ -43,7 +43,7 @@ const PERSONAL_COPY = {
 const SHARED_COPY = {
   title: 'Agent usage',
   description: (days: number, installation: string) =>
-    `Agent sessions on ${installation} over the last ${days} days, derived from kagent's stored conversations.`,
+    `Every user's agent sessions on ${installation} over the last ${days} days, derived from kagent's stored conversations.`,
   descriptionWithoutInstallation: (days: number) =>
     `Agent sessions over the last ${days} days, derived from kagent's stored conversations.`,
   topTools: 'Top tools',
@@ -114,10 +114,17 @@ export function AgentUsageSection() {
 
   const header = (
     <SectionHeader
+      // `h3`, under the page's own `h2`. Without that level this heading was the
+      // page's, and "Your agent usage" then read as scoping the MCP section
+      // below it too — which is every caller's, not the reader's.
+      as="h3"
+      variant="title-x-small"
       title={copy.title}
       // A description is required, and before an installation resolves there is
       // none to name — so the generic form stands in rather than the component
-      // taking an optional it does not want.
+      // taking an optional it does not want. The window is stated *here* rather
+      // than in the page heading, because it is configurable and arrives in the
+      // response — only a section that has read one can name it truthfully.
       description={
         installation
           ? copy.description(windowDays, installation)
@@ -215,9 +222,12 @@ export function AgentUsageSection() {
             nameLabel="MCP server"
             rows={usage.topMcpServers.map((entry, position) => ({
               id: entry.server ?? `direct-${position}`,
-              // `null` means the tool is not muster-proxied, so there is no
-              // server to name. The wire deliberately leaves the wording here.
-              name: entry.server ?? 'Not through muster',
+              // `null` means the call resolved to no aggregated downstream
+              // server. NOT "not through muster": muster's own core tools
+              // (`filter_tools`, `describe_tool`) land here too, and real data
+              // showed 44 such calls mislabelled as bypassing the thing they
+              // went through. The wire leaves the wording to us.
+              name: entry.server ?? 'No downstream server',
               calls: entry.calls,
             }))}
             emptyMessage="No tool calls in this window."

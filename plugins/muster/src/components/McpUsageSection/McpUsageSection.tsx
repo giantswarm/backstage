@@ -11,11 +11,13 @@ import {
   useTheme,
   Theme,
 } from '@material-ui/core';
-import BarChartIcon from '@material-ui/icons/BarChart';
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { StackedBarChart } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  SectionHeader,
+  StackedBarChart,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
 import type { McpUsage } from '../../apis';
@@ -25,7 +27,7 @@ import {
   useMusterSession,
 } from '../MusterInstanceProvider';
 import { MusterProviders } from '../MusterProviders';
-import { SectionHeader, SessionGate, Stat } from '../shared';
+import { SessionGate, Stat } from '../shared';
 
 /**
  * The window, fixed at 30 days to match the personal section above it.
@@ -363,8 +365,18 @@ function McpUsageBody() {
 
   return (
     <Box className={classes.column}>
+      {/* ui-react's SectionHeader, not muster's own: this section sits beside a
+          section of the host page, and the two headings have to look and rank
+          identically. muster's variant carries an icon square and a different
+          type scale, which is right on muster's own screens (where the page
+          title is in the plugin header) and wrong here. `h3` also matters
+          beyond looks — as a paragraph, this section's content was filed under
+          the previous section's heading in the accessibility tree, so a screen
+          reader heard installation-wide numbers as part of "Your agent
+          usage". */}
       <SectionHeader
-        icon={<BarChartIcon />}
+        as="h3"
+        variant="title-x-small"
         title="MCP tool calls on this installation"
         description="Every tool call dispatched to the MCP servers behind this installation's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
       />

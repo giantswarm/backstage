@@ -69,7 +69,13 @@ export function utcDayKey(epochMs: number): string {
 const MUSTER_TOOL_PREFIX = 'x_';
 
 /**
- * The muster server a tool name implies, or `null` when it is not proxied.
+ * The muster server a tool name implies, or `null` when the call resolved to no
+ * aggregated downstream server.
+ *
+ * `null` is **not** "did not go through muster": muster's own core tools
+ * (`filter_tools`, `describe_tool`, `list_tools`) and workflow tools are not
+ * `x_`-prefixed and land here too, as do any kagent built-ins. The frontend's
+ * wording has to cover all of them.
  *
  * muster names an aggregated tool `x_{family|toolPrefix|name}_{tool}`
  * (`MCPServer.getToolNamePrefix`), so the first `_`-delimited segment after

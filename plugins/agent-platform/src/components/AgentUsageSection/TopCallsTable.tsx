@@ -1,5 +1,5 @@
 import { makeStyles, Paper, Theme } from '@material-ui/core';
-import { Cell, CellText, Table, useTable } from '@backstage/ui';
+import { Cell, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import { formatCount } from '../../lib/formatNumbers';
 
@@ -34,7 +34,6 @@ export type TopCallsTableProps = {
   /** Heading of the name column — "Tool", or "MCP server". */
   nameLabel: string;
   rows: TopCallsRow[];
-  isLoading?: boolean;
   emptyMessage: string;
 };
 
@@ -46,7 +45,6 @@ export function TopCallsTable({
   title,
   nameLabel,
   rows,
-  isLoading,
   emptyMessage,
 }: TopCallsTableProps) {
   const classes = useStyles();
@@ -83,13 +81,16 @@ export function TopCallsTable({
   return (
     <Paper variant="outlined" className={classes.card}>
       <div className={classes.title}>{title}</div>
+      {/* No `data` prop: it would override the rows `tableProps` already
+          carries. See the note in ByAgentTable. */}
       <Table<TopCallsRow>
         {...tableProps}
-        // `undefined` while loading renders the skeleton; `[]` renders the
-        // empty state, which would be wrong before anything has been read.
-        data={isLoading ? undefined : rows}
         columnConfig={columnConfig}
-        emptyState={<CellText title={emptyMessage} />}
+        emptyState={
+          <Text variant="body-medium" color="secondary">
+            {emptyMessage}
+          </Text>
+        }
       />
     </Paper>
   );
