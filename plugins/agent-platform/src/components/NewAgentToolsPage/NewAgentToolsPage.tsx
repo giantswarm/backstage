@@ -25,9 +25,11 @@ import {
   buildCatalogue,
   catalogueInventory,
   countNoun,
+  declaredToolset,
   MAX_INLINE_SELECTORS,
   selectorProblem,
   toolsetShape,
+  type ToolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
 import {
@@ -88,6 +90,19 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+/** The line above the step's actions: what happens next, or what blocks it. */
+function footerNote(isToolsetValid: boolean, shape: ToolsetShape): string {
+  if (!isToolsetValid) {
+    return 'Fix the toolset to continue.';
+  }
+  const next =
+    'The next step composes the Helm values and manifests so you can review them before the agent is deployed.';
+  if (shape === 'none') {
+    return `Nothing selected: the agent is created without tools. ${next}`;
+  }
+  return next;
+}
+
 function SectionTitle({
   title,
   description,
@@ -124,7 +139,7 @@ export function NewAgentToolsPage() {
     toggleToolsetSelector,
     setToolset,
     isComplete,
-    isToolsetChosen,
+    isToolsetValid,
     toolsetProblems,
   } = useNewAgentForm();
   // Cached by now; only decides where "Back" goes and what the step is numbered.
@@ -164,7 +179,8 @@ export function NewAgentToolsPage() {
     () => unsignedServerSelectors(state.toolset, groups),
     [state.toolset, groups],
   );
-  const shape = toolsetShape(state.toolset);
+  // The empty selection is no tools: the shape is that of what will be declared.
+  const shape = toolsetShape(declaredToolset(state.toolset));
 
   // A selector typed by hand: how a power user adds `server:x` on a portal
   // without the muster plugin, or a tool they know by name. Validated against
@@ -209,14 +225,14 @@ export function NewAgentToolsPage() {
         </Button>
         <Button
           variant="primary"
-          isDisabled={!isToolsetChosen}
+          isDisabled={!isToolsetValid}
           onPress={() => reviewLink && navigate(reviewLink())}
         >
           Continue
         </Button>
       </Flex>
     ),
-    [backLink, reviewLink, navigate, isToolsetChosen],
+    [backLink, reviewLink, navigate, isToolsetValid],
   );
 
   useProvidePageHeaderActions(isComplete ? actions : null);
@@ -228,14 +244,6 @@ export function NewAgentToolsPage() {
 
   const isCatalogueLoading =
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
-
-  let resolvedListEmptyText =
-    'This toolset resolves to no tools for you right now.';
-  if (shape === 'none') {
-    resolvedListEmptyText = 'No tools, as chosen.';
-  } else if (state.toolset.length === 0) {
-    resolvedListEmptyText = 'Nothing selected yet.';
-  }
 
   const inventoryLine =
     trimmed === ''
@@ -271,9 +279,10 @@ export function NewAgentToolsPage() {
           The toolset bounds which of the gateway's tools this agent can
           discover and call, within whatever the person using it may reach
           themselves. Start from a preset — <strong>Read-only tools</strong>{' '}
-          fits most agents. Add servers, workflows or single tools from the
-          catalogue if you need more, or choose <strong>No tools</strong> for a
-          chat-only agent. Required: nothing is granted until you add it.
+          fits most agents — and add servers, workflows or single tools from the
+          catalogue if you need more. Nothing is granted until you add it: with
+          nothing selected the agent has <strong>no tools</strong> and works
+          from its prompt and skills alone.
         </Text>
 
         <Flex direction="column" gap="4">
@@ -482,7 +491,7 @@ export function NewAgentToolsPage() {
                   <Alert
                     status="info"
                     title="No tools"
-                    description="A chat-only agent: it gets no gateway entry at all and works from its prompt and skills alone."
+                    description="Nothing is selected, so this is a chat-only agent: it gets no gateway entry at all and works from its prompt and skills alone. Add a preset or pick from the catalogue to give it tools."
                   />
                 )}
                 {shape === 'full' && (
@@ -504,7 +513,6 @@ export function NewAgentToolsPage() {
                 <ToolsetResolutionList
                   resolution={resolution}
                   servers={servers}
-                  emptyText={resolvedListEmptyText}
                 />
               </Flex>
             </CardBody>
@@ -514,9 +522,7 @@ export function NewAgentToolsPage() {
             <CardBody>
               <Flex direction="column" gap="3">
                 <Text as="p" color="secondary" className={classes.footerNote}>
-                  {isToolsetChosen
-                    ? 'The next step composes the Helm values and manifests so you can review them before the agent is deployed.'
-                    : 'Choose a preset or compose a toolset to continue — No tools is a choice too.'}
+                  {footerNote(isToolsetValid, shape)}
                 </Text>
                 {actions}
               </Flex>

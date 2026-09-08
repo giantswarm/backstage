@@ -181,7 +181,7 @@ export function orderPresets(presets: ToolsetPreset[]): ToolsetPreset[] {
 
 /**
  * Merges what muster reports with the built-ins, so the three shipped presets
- * are always offered even if an aggregator's list omits one, and muster's own
+ * are always known even if an aggregator's list omits one, and muster's own
  * description wins when it has one.
  */
 export function withBuiltInPresets(reported: ToolsetPreset[]): ToolsetPreset[] {
@@ -201,23 +201,62 @@ export function withBuiltInPresets(reported: ToolsetPreset[]): ToolsetPreset[] {
 }
 
 /**
- * `none` and `full` stand alone: adding anything to "no tools" contradicts it,
- * and adding anything to "everything" changes nothing. Choosing either replaces
- * the selection; choosing anything else drops them.
+ * The presets the Tools step offers as cards: muster's list without `none`. On
+ * the step, no tools is what the empty selection means — there is nothing to
+ * pick for it, and a card for it among the presets read as one more thing to
+ * add. `preset:none` stays what the wizard declares for the empty selection
+ * ({@link declaredToolset}); it is just not a card.
  */
-export const EXCLUSIVE_PRESETS: ReadonlySet<string> = new Set([
-  PRESET_NONE,
-  PRESET_FULL,
-]);
+export function offeredPresets(presets: ToolsetPreset[]): ToolsetPreset[] {
+  return presets.filter(preset => preset.name !== 'none');
+}
 
+/**
+ * `full` stands alone: adding anything to "everything" changes nothing, so
+ * choosing it replaces the selection and choosing anything else drops it.
+ */
+export const EXCLUSIVE_PRESETS: ReadonlySet<string> = new Set([PRESET_FULL]);
+
+/**
+ * Toggles one selector in the step's selection. `preset:none` is not a
+ * selection on the step but the empty one ({@link declaredToolset}), so toggling
+ * it clears the selection, and it never survives inside one.
+ */
 export function toggleSelector(current: string[], selector: string): string[] {
+  if (selector === PRESET_NONE) {
+    return [];
+  }
   if (current.includes(selector)) {
     return current.filter(entry => entry !== selector);
   }
   if (EXCLUSIVE_PRESETS.has(selector)) {
     return [selector];
   }
-  return [...current.filter(entry => !EXCLUSIVE_PRESETS.has(entry)), selector];
+  return [
+    ...current.filter(
+      entry => entry !== PRESET_NONE && !EXCLUSIVE_PRESETS.has(entry),
+    ),
+    selector,
+  ];
+}
+
+/**
+ * A selector list as the step holds it: without `preset:none`, because on the
+ * step no tools is the empty selection. What a copied toolset passes through.
+ */
+export function normalizeSelection(selectors: string[]): string[] {
+  return selectors.filter(selector => selector !== PRESET_NONE);
+}
+
+/**
+ * The toolset the wizard declares for a selection. The empty selection is *no
+ * tools*, declared as `preset:none`: an empty `toolset` list is a render error
+ * in the chart and an absent value is the unscoped default, so "nothing chosen"
+ * has to reach the release as the one selector that means nothing. Anything
+ * else is declared as selected.
+ */
+export function declaredToolset(selection: string[]): string[] {
+  return selection.length === 0 ? [PRESET_NONE] : selection;
 }
 
 /** What a toolset amounts to, for the loud labels. */

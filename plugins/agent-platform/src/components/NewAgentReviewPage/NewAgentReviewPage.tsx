@@ -18,6 +18,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
   buildCatalogue,
+  declaredToolset,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
@@ -125,7 +126,7 @@ export function NewAgentReviewPage() {
   const configApi = useApi(configApiRef);
   const newAgentLink = useRouteRef(newAgentRouteRef);
   const toolsLink = useRouteRef(newAgentToolsRouteRef);
-  const { state, isComplete, isToolsetChosen } = useNewAgentForm();
+  const { state, isComplete, isToolsetValid } = useNewAgentForm();
   // Only to number the steps: with no skill repositories configured the skills
   // step doesn't exist. Cached by the time this page renders.
   const { hasRepositories } = useSkillCatalog();
@@ -153,7 +154,12 @@ export function NewAgentReviewPage() {
       toolCatalogue.serversRequiringAuth,
     ],
   );
-  const shape = toolsetShape(state.toolset);
+  // What the release declares: the selection, or `preset:none` for none.
+  const declared = useMemo(
+    () => declaredToolset(state.toolset),
+    [state.toolset],
+  );
+  const shape = toolsetShape(declared);
   const { deploy, status } = useDeployAgent();
   const [deployError, setDeployError] = useState<string | undefined>();
 
@@ -197,7 +203,7 @@ export function NewAgentReviewPage() {
             ref: skill.ref,
             name: skill.name,
           })),
-          toolset: state.toolset,
+          toolset: declared,
         },
         {
           installation: state.installation ?? '',
@@ -214,7 +220,7 @@ export function NewAgentReviewPage() {
       state.modelConfigName,
       state.systemMessage,
       state.selectedSkills,
-      state.toolset,
+      declared,
       state.installation,
       buildAvatarUrl,
       namespace,
@@ -290,9 +296,9 @@ export function NewAgentReviewPage() {
   if (!isComplete) {
     return <Navigate to={newAgentLink ? newAgentLink() : '..'} replace />;
   }
-  // The Tools step is required: without a toolset there is nothing to review,
-  // and the chart would not accept the release anyway.
-  if (!isToolsetChosen) {
+  // A toolset that cannot be applied (a malformed selector, over the inline
+  // cap) is fixed on the Tools step; the chart would refuse the release anyway.
+  if (!isToolsetValid) {
     return <Navigate to={toolsLink ? toolsLink() : '..'} replace />;
   }
 
@@ -340,10 +346,10 @@ export function NewAgentReviewPage() {
           </SummaryItem>
           <SummaryItem label="Tools">
             <Text variant="body-small">
-              {toolsetSummaryLabel(shape, state.toolset.length)}
+              {toolsetSummaryLabel(shape, declared.length)}
             </Text>
             <Text variant="body-x-small" color="secondary">
-              <span className={classes.code}>{state.toolset.join(', ')}</span>
+              <span className={classes.code}>{declared.join(', ')}</span>
             </Text>
           </SummaryItem>
           {/* Named here, not just buried in the values YAML — skills are chosen
@@ -403,15 +409,7 @@ export function NewAgentReviewPage() {
                 )} — part of the toolset, resolving for the people who have access to them. The list below is incomplete for you until you sign in to them.`}
               />
             )}
-            <ToolsetResolutionList
-              resolution={resolution}
-              servers={servers}
-              emptyText={
-                shape === 'none'
-                  ? 'No tools, as chosen.'
-                  : 'This toolset resolves to no tools for you right now.'
-              }
-            />
+            <ToolsetResolutionList resolution={resolution} servers={servers} />
           </Flex>
         </div>
 

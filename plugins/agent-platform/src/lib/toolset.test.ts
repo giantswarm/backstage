@@ -3,11 +3,14 @@ import {
   buildCatalogue,
   catalogueInventory,
   countNoun,
+  declaredToolset,
   groupWorkflows,
   isDestructive,
   isReadOnly,
   isUnknownPresetError,
   MAX_INLINE_SELECTORS,
+  normalizeSelection,
+  offeredPresets,
   orderPresets,
   OTHER_WORKFLOWS_KEY,
   parseSelector,
@@ -96,7 +99,7 @@ describe('presets', () => {
     ]);
   });
 
-  it('always offers the three built-ins, letting muster describe them', () => {
+  it('always knows the three built-ins, letting muster describe them', () => {
     const merged = withBuiltInPresets([
       { name: 'read-only', description: 'from muster', built_in: true },
       { name: 'infrastructure', description: 'label-selected' },
@@ -111,6 +114,30 @@ describe('presets', () => {
     expect(merged[1].description).toMatch(/No tools at all/);
   });
 
+  it('offers every preset but none as a card — no tools is the empty selection', () => {
+    const offered = offeredPresets(
+      withBuiltInPresets([{ name: 'infrastructure' }]),
+    );
+    expect(offered.map(p => p.name)).toEqual([
+      'read-only',
+      'infrastructure',
+      'full',
+    ]);
+  });
+
+  it('declares the empty selection as preset:none and anything else as selected', () => {
+    expect(declaredToolset([])).toEqual(['preset:none']);
+    expect(declaredToolset(['preset:read-only', 'server:pro'])).toEqual([
+      'preset:read-only',
+      'server:pro',
+    ]);
+    expect(normalizeSelection(['preset:none'])).toEqual([]);
+    expect(normalizeSelection(['preset:none', 'server:pro'])).toEqual([
+      'server:pro',
+    ]);
+    expect(toolsetShape(declaredToolset([]))).toBe('none');
+  });
+
   it('labels the shipped presets for people', () => {
     expect(presetLabel('read-only')).toBe('Read-only tools');
     expect(presetLabel('none')).toBe('No tools');
@@ -118,16 +145,15 @@ describe('presets', () => {
     expect(presetLabel('custom-thing')).toBe('custom-thing');
   });
 
-  it('keeps none and full exclusive when toggling', () => {
+  it('keeps full exclusive when toggling, and none clears the selection', () => {
     expect(toggleSelector([], 'preset:read-only')).toEqual([
       'preset:read-only',
     ]);
     expect(
       toggleSelector(['preset:read-only'], 'workflow:incident-triage'),
     ).toEqual(['preset:read-only', 'workflow:incident-triage']);
-    expect(toggleSelector(['preset:read-only'], 'preset:none')).toEqual([
-      'preset:none',
-    ]);
+    expect(toggleSelector(['preset:read-only'], 'preset:none')).toEqual([]);
+    expect(toggleSelector([], 'preset:none')).toEqual([]);
     expect(toggleSelector(['preset:none'], 'server:pro')).toEqual([
       'server:pro',
     ]);

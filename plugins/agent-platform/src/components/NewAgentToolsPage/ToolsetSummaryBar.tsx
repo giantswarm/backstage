@@ -2,7 +2,7 @@ import { Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 
 import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
-import { countNoun, toolsetShape } from '../../lib/toolset';
+import { countNoun, declaredToolset, toolsetShape } from '../../lib/toolset';
 
 const useStyles = makeStyles(theme => ({
   bar: {
@@ -67,10 +67,7 @@ export function toolsetEffect({
   resolution: ToolsetResolution;
   unsigned: string[];
   problems: string[];
-}): ToolsetEffect | undefined {
-  if (selectors.length === 0) {
-    return undefined;
-  }
+}): ToolsetEffect {
   if (problems.length > 0) {
     return {
       line: 'The toolset cannot be applied as it is',
@@ -78,9 +75,14 @@ export function toolsetEffect({
       tone: 'danger',
     };
   }
-  const shape = toolsetShape(selectors);
+  // The empty selection is no tools — said here, where the author is looking.
+  const shape = toolsetShape(declaredToolset(selectors));
   if (shape === 'none') {
-    return { line: 'No tools, as chosen', tone: 'primary' };
+    return {
+      line: 'No tools',
+      hint: 'Nothing selected: the agent works from its prompt and skills alone.',
+      tone: 'primary',
+    };
   }
   if (shape === 'full') {
     return {
@@ -192,8 +194,7 @@ export function ToolsetSummaryBar({
           </Text>
           {selectors.length === 0 ? (
             <Text variant="body-small" color="secondary">
-              Nothing yet. The agent gets no tool access you do not add here — a
-              preset is the usual start.
+              Nothing added yet — a preset is the usual start.
             </Text>
           ) : (
             <div className={classes.selectors} role="list" aria-label="Toolset">
@@ -217,26 +218,19 @@ export function ToolsetSummaryBar({
             </div>
           )}
         </Flex>
-        {effect && (
-          <Flex
-            direction="column"
-            align="end"
-            gap="1"
-            className={classes.effect}
-          >
-            <Text variant="body-small" weight="bold" color={effect.tone}>
-              {effect.line}
+        <Flex direction="column" align="end" gap="1" className={classes.effect}>
+          <Text variant="body-small" weight="bold" color={effect.tone}>
+            {effect.line}
+          </Text>
+          {effect.hint && (
+            <Text variant="body-x-small" color="secondary">
+              {effect.hint}
             </Text>
-            {effect.hint && (
-              <Text variant="body-x-small" color="secondary">
-                {effect.hint}
-              </Text>
-            )}
-            <Button variant="tertiary" size="small" onPress={onShowDetails}>
-              Show the resolved list
-            </Button>
-          </Flex>
-        )}
+          )}
+          <Button variant="tertiary" size="small" onPress={onShowDetails}>
+            Show the resolved list
+          </Button>
+        </Flex>
       </Flex>
     </div>
   );

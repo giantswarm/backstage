@@ -5,7 +5,11 @@ import {
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { gatewayEntry, toolsetOfAgent } from '../../lib/toolset';
+import {
+  declaredToolset,
+  gatewayEntry,
+  toolsetOfAgent,
+} from '../../lib/toolset';
 import { MUSTER_MCP_SERVER_NAME } from '../AgentDetailPage/helpers';
 import {
   SelectableCard,
@@ -67,7 +71,8 @@ export function CopyFromAgent({
     { enabled: Boolean(installation) },
   );
   const sources = useMemo(() => agentToolsetSources(resources), [resources]);
-  const currentKey = current.join(',');
+  // Compared as declared, so an agent without tools matches the empty selection.
+  const currentKey = declaredToolset(current).join(',');
 
   if (isLoading && sources.length === 0) {
     return <Text color="secondary">Reading the installation's agents…</Text>;

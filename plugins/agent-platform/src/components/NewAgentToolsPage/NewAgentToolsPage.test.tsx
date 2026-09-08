@@ -422,27 +422,77 @@ describe('NewAgentToolsPage', () => {
     windowOpen.mockRestore();
   });
 
-  it('starts with nothing selected and blocks Continue until a choice is made; No tools is a choice', async () => {
+  it('starts with nothing selected, which is No tools: Continue is enabled and the step says so, without a No tools card', async () => {
     const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
     await renderStep({ api });
     const user = userEvent.setup();
 
     expect(screen.getByText('Step 2 of 3: Tools')).toBeInTheDocument();
     expect(toolsetOutput()).toBe('');
-    expect(continueButton()).toBeDisabled();
-    expect(within(summaryBar()).getByText(/Nothing yet/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/Choose a preset or compose a toolset to continue/),
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByRole('checkbox', { name: 'Preset No tools' }));
-
-    expect(toolsetOutput()).toBe('preset:none');
     expect(continueButton()).toBeEnabled();
     expect(
-      within(summaryBar()).getByText('No tools, as chosen'),
+      within(summaryBar()).getByText(/Nothing added yet/),
     ).toBeInTheDocument();
-    expect(screen.getByText('No tools, as chosen.')).toBeInTheDocument();
+    expect(within(summaryBar()).getByText('No tools')).toBeInTheDocument();
+    expect(
+      within(summaryBar()).getByText(/Nothing selected: the agent works from/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Nothing selected: the agent is created without tools/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Nothing is selected, so this is a chat-only agent/),
+    ).toBeInTheDocument();
+    await screen.findByRole('checkbox', { name: 'Preset Read-only tools' });
+    expect(
+      screen.queryByRole('checkbox', { name: 'Preset No tools' }),
+    ).not.toBeInTheDocument();
+
+    // A choice, then taking it back, is No tools again.
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Preset Read-only tools' }),
+    );
+    expect(toolsetOutput()).toBe('preset:read-only');
+    expect(
+      within(summaryBar()).queryByText('No tools'),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'Remove preset:read-only' }),
+    );
+    expect(toolsetOutput()).toBe('');
+    expect(continueButton()).toBeEnabled();
+    expect(within(summaryBar()).getByText('No tools')).toBeInTheDocument();
+  });
+
+  it('treats preset:none typed by hand or copied as the empty selection', async () => {
+    const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
+    await renderStep({
+      api,
+      agents: [agentWithToolset('chat-only', 'preset:none')],
+    });
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole('checkbox', { name: 'Preset Read-only tools' }),
+    );
+    await user.type(screen.getByLabelText('Selector'), 'preset:none');
+    await user.click(screen.getByRole('button', { name: 'Add selector' }));
+    expect(toolsetOutput()).toBe('');
+    expect(within(summaryBar()).getByText('No tools')).toBeInTheDocument();
+
+    // The agent without tools is offered as a source and matches the empty
+    // selection; copying it keeps the selection empty.
+    const source = screen.getByRole('radio', {
+      name: 'Copy the toolset of Existing agent',
+    });
+    expect(source).toBeChecked();
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Preset Read-only tools' }),
+    );
+    expect(source).not.toBeChecked();
+    await user.click(source);
+    expect(toolsetOutput()).toBe('');
+    expect(continueButton()).toBeEnabled();
   });
 
   it('lands compact: presets and the summary, the catalogue behind its toggle with an inventory, no group open', async () => {
@@ -513,7 +563,6 @@ describe('NewAgentToolsPage', () => {
           .map(card => card.getAttribute('aria-label')),
       ).toEqual([
         'Preset Read-only tools',
-        'Preset No tools',
         'Preset Infrastructure',
         'Preset Full gateway',
       ]),
@@ -991,12 +1040,8 @@ describe('NewAgentToolsPage', () => {
       within(presets)
         .getAllByRole('checkbox')
         .map(card => card.getAttribute('aria-label')),
-    ).toEqual([
-      'Preset Read-only tools',
-      'Preset No tools',
-      'Preset Full gateway',
-    ]);
-    expect(continueButton()).toBeDisabled();
+    ).toEqual(['Preset Read-only tools', 'Preset Full gateway']);
+    expect(continueButton()).toBeEnabled();
 
     await user.click(
       screen.getByRole('checkbox', { name: 'Preset Full gateway' }),
@@ -1009,7 +1054,7 @@ describe('NewAgentToolsPage', () => {
     expect(continueButton()).toBeEnabled();
   });
 
-  it('keeps none and full exclusive of everything else', async () => {
+  it('keeps full exclusive of everything else; an emptied selection is No tools again', async () => {
     const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
     await renderStep({ api });
     const user = userEvent.setup();
@@ -1029,11 +1074,12 @@ describe('NewAgentToolsPage', () => {
     );
     expect(toolsetOutput()).toBe('workflow:incident-triage');
 
-    // Removed from the summary bar's chips.
+    // Removed from the summary bar's chips: back to No tools, still a valid answer.
     await user.click(
       screen.getByRole('button', { name: 'Remove workflow:incident-triage' }),
     );
     expect(toolsetOutput()).toBe('');
-    expect(continueButton()).toBeDisabled();
+    expect(continueButton()).toBeEnabled();
+    expect(within(summaryBar()).getByText('No tools')).toBeInTheDocument();
   });
 });
