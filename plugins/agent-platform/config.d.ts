@@ -21,12 +21,18 @@ export interface Config {
     };
 
     /**
-     * ServiceAccount the generated HelmRelease runs as
-     * (`spec.serviceAccountName`). GS's Flux multi-tenancy admission policy
-     * requires this for HelmReleases in tenant namespaces (which the agent's
-     * namespace is). The referenced ServiceAccount must exist in that namespace
-     * with RBAC to install the chart. Provisional until the platform defines
-     * the canonical agent-deployment ServiceAccount.
+     * ServiceAccount the generated HelmRelease executes as
+     * (`spec.serviceAccountName`). This is the tenant identity the Agent
+     * Platform chart's connectivity component renders in the agent namespace
+     * — a ServiceAccount with a namespace-scoped RoleBinding to `cluster-admin`
+     * — named by the chart value `kagent.fluxServiceAccountName` (default
+     * `kagent-flux`). The same chart value feeds agent-manager, so an
+     * installation that renames the account does so in one place and sets
+     * this key to match. Required under a Flux multi-tenancy lockdown (the
+     * admission policy on Giant Swarm management clusters, or a helm-controller
+     * with a rights-less default ServiceAccount): a HelmRelease without it
+     * executes as the default account and fails. Unset, the HelmRelease
+     * carries no `spec.serviceAccountName`.
      * @visibility frontend
      */
     fluxServiceAccountName?: string;
