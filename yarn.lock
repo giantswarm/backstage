@@ -354,15 +354,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@apidevtools/json-schema-ref-parser@npm:^15.3.1":
-  version: 15.5.2
-  resolution: "@apidevtools/json-schema-ref-parser@npm:15.5.2"
+"@apidevtools/json-schema-ref-parser@npm:^16.0.0":
+  version: 16.0.2
+  resolution: "@apidevtools/json-schema-ref-parser@npm:16.0.2"
   dependencies:
-    js-yaml: "npm:^5.2.2"
-    undici: "npm:^6.28.0"
+    js-yaml: "npm:^5.4.1"
+    undici: "npm:^8.10.2"
   peerDependencies:
     "@types/json-schema": ^7.0.15
-  checksum: 10c0/bf37d0c4f922a099232475c2b45cb18e1450751e1cea17744d6f36007796e527e79dc69a2ff4d2de377a7503a22457b7afd0fdcea6ae7d0b0bc771753c00a1c1
+  checksum: 10c0/7c8aff95410a78fcdfdd722b6b449a566489c9b12c6a98422fe27f2bb38afdb49c3a2caca6c5a8887b0fa66aa0f3643858331ea87c3dbde12d5760d399e0f002
   languageName: node
   linkType: hard
 
@@ -7803,7 +7803,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs@workspace:plugins/gs"
   dependencies:
-    "@apidevtools/json-schema-ref-parser": "npm:^15.3.1"
+    "@apidevtools/json-schema-ref-parser": "npm:^16.0.0"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/core-app-api": "backstage:^"
@@ -29162,7 +29162,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"js-yaml@npm:^5.0.0, js-yaml@npm:^5.1.0, js-yaml@npm:^5.2.2":
+"js-yaml@npm:^5.0.0, js-yaml@npm:^5.1.0, js-yaml@npm:^5.4.1":
   version: 5.4.1
   resolution: "js-yaml@npm:5.4.1"
   dependencies:
@@ -40613,7 +40613,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici@npm:^8.7.0, undici@npm:^8.9.0":
+"undici@npm:^8.10.2, undici@npm:^8.7.0, undici@npm:^8.9.0":
   version: 8.10.2
   resolution: "undici@npm:8.10.2"
   checksum: 10c0/66d7fc69149207cab570d6abbc9e965b6afe1ae889a7d46945b431165c973d6a56f3dd8b70a856e7ae1e550b6366a1cde6f06e68640587f0dadca38de72995ee
