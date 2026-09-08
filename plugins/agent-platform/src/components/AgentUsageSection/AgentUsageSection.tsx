@@ -13,11 +13,17 @@ import { InstallationScopeNote } from '../InstallationGroups';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { ByAgentTable } from './ByAgentTable';
+import { ByModelTable } from './ByModelTable';
 import { CoverageNote } from './CoverageNote';
 import { TokensPerDayCard } from './TokensPerDayCard';
 import { TopCallsTable } from './TopCallsTable';
 import { TotalsStrip } from './TotalsStrip';
-import { fillMissingDays, hasAnyUsage, toByAgentRows } from './helpers';
+import {
+  fillMissingDays,
+  hasAnyUsage,
+  toByAgentRows,
+  toByModelRows,
+} from './helpers';
 
 const useStyles = makeStyles((theme: Theme) => ({
   row: {
@@ -110,6 +116,19 @@ export function AgentUsageSection() {
         'Unattributed',
       ),
     [usage?.byAgent, installation, agentRows, agentDetailRoute],
+  );
+  const byModelRows = useMemo(
+    () =>
+      toByModelRows(
+        usage?.byAgent ?? [],
+        installation,
+        agentRows,
+        // Covers both "the CR is not in view" and "this agent references no
+        // model" (a BYO agent) — neither is knowable from here, and the spend
+        // still belongs in the totals above.
+        'Unknown model',
+      ),
+    [usage?.byAgent, installation, agentRows],
   );
 
   const header = (
@@ -205,6 +224,10 @@ export function AgentUsageSection() {
         <ByAgentTable
           rows={byAgentRows}
           emptyMessage="kagent recorded no agent for these sessions."
+        />
+        <ByModelTable
+          rows={byModelRows}
+          emptyMessage="No model could be resolved for these sessions."
         />
         <div className={classes.row}>
           <TopCallsTable

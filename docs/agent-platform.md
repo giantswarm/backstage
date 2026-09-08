@@ -2177,7 +2177,8 @@ deliberately different in scope:
 
 1. **Your agent usage** — the caller's own sessions over the last 30 days, from
    kagent. Totals (sessions, turns, input, output, tool calls), two per-day
-   token charts, a per-agent breakdown, and the top tools and MCP servers.
+   token charts, breakdowns per agent and per model, and the top tools and MCP
+   servers.
 2. **MCP tool calls on this installation** — every caller's, from muster's
    Prometheus metrics. Contributed by the muster plugin (see below).
 
@@ -2243,6 +2244,31 @@ same page is one muster per installation and cannot fan out either, so fanning
 out the top section would give one page two scope semantics. A totals-only fleet
 strip, if it is ever wanted, is an `?installation=all` on the backend route —
 not a browser-side `useQueries`.
+
+### By model is derived, and it is the _current_ model
+
+kagent's usage carries no model, and neither does its session record. So the
+By model table is a frontend join: each agent's `Agent` CR already resolves its
+`ModelConfig` (`AgentRow.model`, what the Agents tab shows), and the per-agent
+totals are rolled up by that.
+
+**It is therefore the model each agent runs on now, not the model each session
+ran on.** kagent records no per-session model and does not pin an agent version
+to a session (see the "agent version is not pinned" note above), so an agent
+whose `ModelConfig` changed inside the window has its whole history attributed
+to its current model. The table carries that caveat in place rather than
+implying a historical breakdown — please do not remove it without the data
+changing first.
+
+Agents whose CR is not in view — deleted since, or on another installation —
+group under "Unknown model", together with agents that genuinely reference none
+(BYO agents). Their spend stays in the total, because dropping it would make
+the table disagree with the tiles above.
+
+Note the label is whatever `AgentRow.model` resolves to, which falls back to the
+`ModelConfig`'s own name when it carries no display-name annotation — so a row
+can read `default-model-config` rather than a model. That is the same label the
+Agents tab shows, and fixing it means annotating the `ModelConfig`.
 
 ### The honesty line
 

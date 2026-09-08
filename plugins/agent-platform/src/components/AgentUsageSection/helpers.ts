@@ -5,6 +5,18 @@ import {
 import { AgentRow } from '../AgentsDataProvider';
 import { buildAgentIndex, decodeAgentIdLabel } from '../SessionsDataProvider';
 
+export type ByModelRow = {
+  id: string;
+  /** The model label, or the caller's wording for "we cannot tell". */
+  model: string;
+  /** How many of the reader's agents ran on it in the window. */
+  agents: number;
+  sessions: number;
+  turns: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+
 export type ByAgentRow = {
   id: string;
   /** Display name when the agent's CR matched, else the decoded id. */
@@ -136,38 +148,102 @@ export function formatDayTooltip(day: string): string {
 }
 
 /**
- * Sort the by-agent rows for the bui table.
+ * Sort a usage breakdown for the bui table.
  *
  * `useTable` in `complete` mode needs this: `sortFn` is optional in the type,
  * but without one it has no way to compare rows, so every column header moves
- * its indicator and re-renders the same order. That is exactly how this table
- * shipped broken once.
+ * its indicator and re-renders the same order. That is exactly how the By agent
+ * table shipped broken once.
  *
- * Always tie-breaks on the agent name, so equal counts render in a stable order
- * rather than however the backend's ranking happened to leave them.
+ * Always tie-breaks on the row's label, so equal counts render in a stable
+ * order rather than however the backend's ranking happened to leave them.
  */
-export function sortByAgentRows(
-  rows: ByAgentRow[],
+export function sortUsageRows<T extends Record<string, unknown>>(
+  rows: T[],
   sort: { column: unknown; direction: 'ascending' | 'descending' },
-): ByAgentRow[] {
+  labelKey: keyof T & string,
+): T[] {
   const column = String(sort.column);
   const factor = sort.direction === 'ascending' ? 1 : -1;
+  const label = (row: T) => String(row[labelKey] ?? '');
 
   return [...rows].sort((a, b) => {
-    if (column === 'agentName') {
-      return a.agentName.localeCompare(b.agentName) * factor;
+    if (column === labelKey) {
+      return label(a).localeCompare(label(b)) * factor;
     }
 
-    const key =
-      column === 'sessions' ||
-      column === 'turns' ||
-      column === 'inputTokens' ||
-      column === 'outputTokens'
-        ? column
-        : 'inputTokens';
-
-    return a[key] === b[key]
-      ? a.agentName.localeCompare(b.agentName)
-      : (a[key] - b[key]) * factor;
+    const left = a[column];
+    const right = b[column];
+    if (typeof left !== 'number' || typeof right !== 'number') {
+      // An unsortable or unknown column: keep the incoming order rather than
+      // inventing one.
+      return 0;
+    }
+    return left === right
+      ? label(a).localeCompare(label(b))
+      : (left - right) * factor;
   });
+}
+
+/**
+ * Roll the per-agent totals up by the model each agent runs on.
+ *
+ * Purely a frontend join: kagent's usage carries no model, and its session
+ * record carries none either — the model is read off the agent's `Agent` CR,
+ * which `AgentsDataProvider` has already resolved through its ModelConfig.
+ *
+ * **This is the agent's model *now*, not the model each session actually ran
+ * on.** kagent records no per-session model and does not pin an agent version
+ * to a session (see the "agent version is not pinned" note in
+ * `docs/agent-platform.md`), so if an agent's ModelConfig changed inside the
+ * window, that agent's whole history is attributed to its current model. The
+ * table says so rather than implying a historical breakdown.
+ *
+ * An agent whose CR is not in view — deleted since, or on another installation —
+ * has no knowable model and lands under the caller's `unknownLabel`, together
+ * with agents that genuinely reference none (BYO agents). Its spend is still
+ * part of the totals above, so dropping it would make the table disagree with
+ * them.
+ */
+export function toByModelRows(
+  byAgent: SessionUsageResponse['byAgent'],
+  installation: string | undefined,
+  agents: AgentRow[],
+  unknownLabel: string,
+): ByModelRow[] {
+  const index = buildAgentIndex(agents);
+  const byModel = new Map<string | null, ByModelRow>();
+
+  for (const entry of byAgent) {
+    const matched =
+      entry.agentId === null || installation === undefined
+        ? undefined
+        : index.get(`${installation}|${entry.agentId}`);
+    const model = matched?.model ?? null;
+
+    const row =
+      byModel.get(model) ??
+      ({
+        id: model ?? 'unknown-model',
+        model: model ?? unknownLabel,
+        agents: 0,
+        sessions: 0,
+        turns: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+      } satisfies ByModelRow);
+
+    row.agents += 1;
+    row.sessions += entry.sessions;
+    row.turns += entry.turns;
+    row.inputTokens += entry.inputTokens;
+    row.outputTokens += entry.outputTokens;
+    byModel.set(model, row);
+  }
+
+  return [...byModel.values()].sort(
+    (a, b) =>
+      b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens) ||
+      a.model.localeCompare(b.model),
+  );
 }

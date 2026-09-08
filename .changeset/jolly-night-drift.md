@@ -11,8 +11,10 @@ showing your own agent usage over the last 30 days alongside the installation's
 MCP tool calls.
 
 - The personal section reports sessions, turns, input and output tokens and tool
-  calls, two per-day token charts, a per-agent breakdown, and your top tools and
-  MCP servers. Every number is **your own**: kagent scopes its session list to
+  calls, two per-day token charts, breakdowns per agent and per model, and your
+  top tools and MCP servers. The per-model breakdown is derived from each
+  agent's ModelConfig, so it reflects the model an agent runs on _now_ — kagent
+  records none per session — and the table says so. Every number is **your own**: kagent scopes its session list to
   the caller, and on an installation running kagent in `unsecure` mode — where
   the list is everyone's — the page's copy switches rather than claiming
   ownership it cannot support.

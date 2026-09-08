@@ -1,9 +1,9 @@
 import { makeStyles, Paper, Theme } from '@material-ui/core';
-import { Cell, CellText, Table, Text, useTable } from '@backstage/ui';
+import { Cell, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import { formatCount, formatTokens } from '../../lib/formatNumbers';
 import { sortUsageRows } from './helpers';
-import type { ByAgentRow } from './helpers';
+import type { ByModelRow } from './helpers';
 
 const useStyles = makeStyles((theme: Theme) => ({
   card: {
@@ -18,18 +18,29 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.text.secondary,
     marginBottom: theme.spacing(1),
   },
+  note: {
+    marginTop: theme.spacing(1),
+    display: 'block',
+  },
   number: {
     fontVariantNumeric: 'tabular-nums',
   },
 }));
 
-export type ByAgentTableProps = {
-  rows: ByAgentRow[];
+export type ByModelTableProps = {
+  rows: ByModelRow[];
   emptyMessage: string;
 };
 
-/** Usage split by the agent that ran it. */
-export function ByAgentTable({ rows, emptyMessage }: ByAgentTableProps) {
+/**
+ * Usage rolled up by the model behind each agent.
+ *
+ * Carries a caveat rather than implying a historical breakdown: the model is
+ * the one each agent runs on *now*. kagent records no per-session model, so an
+ * agent whose ModelConfig changed inside the window has its whole history
+ * attributed to its current model.
+ */
+export function ByModelTable({ rows, emptyMessage }: ByModelTableProps) {
   const classes = useStyles();
 
   const number = (value: number, compact = false) => (
@@ -40,13 +51,23 @@ export function ByAgentTable({ rows, emptyMessage }: ByAgentTableProps) {
     </Cell>
   );
 
-  const columnConfig: ColumnConfig<ByAgentRow>[] = [
+  const columnConfig: ColumnConfig<ByModelRow>[] = [
     {
-      id: 'agentName',
-      label: 'Agent',
+      id: 'model',
+      label: 'Model',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <CellText title={row.agentName} href={row.href} />,
+      cell: row => (
+        <Cell>
+          <span>{row.model}</span>
+        </Cell>
+      ),
+    },
+    {
+      id: 'agents',
+      label: 'Agents',
+      isSortable: true,
+      cell: row => number(row.agents),
     },
     {
       id: 'sessions',
@@ -74,29 +95,19 @@ export function ByAgentTable({ rows, emptyMessage }: ByAgentTableProps) {
     },
   ];
 
-  const { tableProps } = useTable<ByAgentRow>({
+  const { tableProps } = useTable<ByModelRow>({
     mode: 'complete',
     data: rows,
-    // Required in practice, though the type marks it optional: without it the
-    // header indicator moves and the rows do not.
-    sortFn: (data, sort) => sortUsageRows(data, sort, 'agentName'),
-    // The backend already ranks by spend; this keeps that as the default view
-    // while letting a reader re-sort.
+    sortFn: (data, sort) => sortUsageRows(data, sort, 'model'),
     initialSort: { column: 'inputTokens', direction: 'descending' },
-    // Off for the reason AgentsTable documents: `useCompletePagination` does
-    // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
 
   return (
     <Paper variant="outlined" className={classes.card}>
-      <div className={classes.title}>By agent</div>
-      {/* No `data` prop here: `tableProps` already carries the *sorted* rows,
-          and passing `data` after the spread overrides them with the unsorted
-          input — which silently breaks every column header while leaving the
-          sort indicator working. The section above renders a spinner while
-          loading, so this table only ever mounts with data. */}
-      <Table<ByAgentRow>
+      <div className={classes.title}>By model</div>
+      {/* No `data` prop: `tableProps` already carries the sorted rows. */}
+      <Table<ByModelRow>
         {...tableProps}
         columnConfig={columnConfig}
         emptyState={
@@ -105,6 +116,11 @@ export function ByAgentTable({ rows, emptyMessage }: ByAgentTableProps) {
           </Text>
         }
       />
+      <Text variant="body-small" color="secondary" className={classes.note}>
+        The model each agent runs on now. kagent records no model per session,
+        so an agent whose model changed inside the window counts entirely
+        towards its current one.
+      </Text>
     </Paper>
   );
 }
