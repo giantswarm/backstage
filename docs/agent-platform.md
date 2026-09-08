@@ -423,9 +423,24 @@ would risk pruning of ad-hoc, UI-applied resources).
 GS enforces a Flux multi-tenancy admission policy: a `HelmRelease` in a **tenant**
 namespace (which the ModelConfig namespace is) is rejected unless it sets
 `spec.serviceAccountName`. (`flux-giantswarm` is exempt; `OCIRepository` is not
-covered.) The generated `HelmRelease` sets it from
-`agentPlatform.fluxServiceAccountName`. This is currently a **placeholder** — see
-the open TODOs.
+covered.) The same holds on any cluster whose helm-controller runs the Flux
+multi-tenancy lockdown: a `HelmRelease` without the field executes as the
+rights-less `default` account and fails. The generated `HelmRelease` sets it from
+`agentPlatform.fluxServiceAccountName`.
+
+The value names the **tenant identity the Agent Platform chart renders**. The
+chart's connectivity component creates a ServiceAccount in the agent namespace
+with a namespace-scoped RoleBinding to `cluster-admin` (full control of that
+namespace, nothing outside it), named by the chart value
+`kagent.fluxServiceAccountName` (default `kagent-flux`). The same chart value is
+derived into agent-manager's `flux.helmReleaseServiceAccount`, and when the
+chart installs Backstage as a component, its connectivity component renders this
+key into the portal's app-config from that value too — so the ServiceAccount,
+its RoleBinding, agent-manager and the portal cannot disagree, and an
+installation that renames the account does so in one place. A Backstage instance
+configured by hand sets the key to the chart's value; on Giant Swarm management
+clusters that is `kagent-flux`. Unset, the composed `HelmRelease` carries no
+`spec.serviceAccountName` (see `composeManifests`).
 
 ## The installation scope
 
@@ -2368,7 +2383,7 @@ All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `chart.ociUrl`               | OCI URL of the agent chart (no tag).                                                                                                                                                                               |
 | `chart.version`              | Version floor / fallback. The deployed OCIRepository auto-upgrades via a semver range; this is only used for the manual snapshot.                                                                                  |
-| `fluxServiceAccountName`     | ServiceAccount the HelmRelease runs as. Required for direct apply in tenant namespaces. Provisional.                                                                                                               |
+| `fluxServiceAccountName`     | ServiceAccount the HelmRelease executes as: the tenant identity the platform chart renders (chart value `kagent.fluxServiceAccountName`, default `kagent-flux`). Required under Flux multi-tenancy.                |
 | `deployTemplateRef`          | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                                                                                                                |
 | `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                                                                                                             |
 | `kagent.timeoutMs`           | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                                                                                                             |
@@ -2405,9 +2420,6 @@ provisional:
   expects a per-installation `muster.stsWellKnownUri`. The create flow does not
   set these, so it relies on the chart defaults — a reconcile-time dependency to
   revisit.
-- `fluxServiceAccountName` is set to whatever clears admission (e.g.
-  `kagent-controller` in local dev), not the canonical deploy identity (an
-  `automation`-style SA in the target namespace).
 
 ---
 
@@ -2432,11 +2444,6 @@ above). What remains is a separate, deeper concern:
 
 ### Deployment
 
-- **Flux ServiceAccount.** `fluxServiceAccountName` is a placeholder that only
-  clears the multi-tenancy admission policy. The **canonical deploy
-  ServiceAccount and its RBAC** — provisioned per target namespace so Flux can
-  actually install agent charts — is an open platform decision. Until then,
-  reconciliation cannot succeed even with a real chart.
 - **muster defaults.** The chart wires the muster gateway by default; the create
   flow doesn't set the per-installation `muster.stsWellKnownUri` (or opt out via
   `extraAgentSpec`/config), so this needs revisiting once agents actually run.
