@@ -13,8 +13,9 @@ import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
  * The presets, one card each, in the order `orderPresets` gives them: the
  * safe choices first, *Full gateway* last with its warning. Checkboxes rather
  * than radios because a preset combines with servers, workflows and tools —
- * "read-only plus this one workflow" is a toolset — while `none` and `full`
- * stand alone (the form's toggle keeps them exclusive).
+ * "read-only plus this one workflow" is a toolset — while `full` stands alone
+ * (the form's toggle keeps it exclusive). *No tools* is not a card: it is what
+ * the empty selection means, and the summary bar says so.
  */
 export function PresetCards({
   presets,

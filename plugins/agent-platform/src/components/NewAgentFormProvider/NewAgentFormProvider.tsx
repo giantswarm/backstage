@@ -8,7 +8,11 @@ import {
 
 import { slugify } from '../../lib/slugify';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
-import { toggleSelector, toolsetProblems } from '../../lib/toolset';
+import {
+  normalizeSelection,
+  toggleSelector,
+  toolsetProblems,
+} from '../../lib/toolset';
 
 export type NewAgentFormState = {
   name: string;
@@ -21,10 +25,11 @@ export type NewAgentFormState = {
   /** Skills the user picked, in selection order. Optional — may be empty. */
   selectedSkills: DiscoveredSkill[];
   /**
-   * The agent's toolset: inline selectors (`preset:`, `server:`, `workflow:`,
-   * `tool:`), in selection order. Starts empty on purpose — nothing the author
-   * did not consciously add — and the Tools step does not let the flow continue
-   * until it holds at least one selector (`preset:none` is one).
+   * The agent's toolset as selected: inline selectors (`preset:`, `server:`,
+   * `workflow:`, `tool:`), in selection order. Starts empty on purpose —
+   * nothing the author did not consciously add — and empty is a complete
+   * answer: no tools. The wizard declares that as `preset:none`
+   * (`declaredToolset`), so `preset:none` itself never sits in this list.
    */
   toolset: string[];
 };
@@ -40,20 +45,23 @@ export type NewAgentFormContextValue = {
   /** Adds the skill if not selected, removes it if already selected. */
   toggleSkill: (skill: DiscoveredSkill) => void;
   /**
-   * Adds the selector if absent, removes it if present. `preset:none` and
-   * `preset:full` replace the whole selection; adding anything else drops them
-   * (see `toggleSelector`).
+   * Adds the selector if absent, removes it if present. `preset:full` replaces
+   * the whole selection and adding anything else drops it; `preset:none` clears
+   * the selection, since no tools is the empty selection (see `toggleSelector`).
    */
   toggleToolsetSelector: (selector: string) => void;
-  /** Replaces the whole toolset — start from an existing agent's, or clear it. */
+  /**
+   * Replaces the whole selection — start from an existing agent's toolset, or
+   * clear it. `preset:none` in the list is dropped: it is the empty selection.
+   */
   setToolset: (selectors: string[]) => void;
   /**
-   * True when the toolset can be applied: at least one selector, none of them
-   * malformed, and no more than the inline cap. What the Tools step's Continue
-   * and the review page's deploy gate on.
+   * True when the toolset can be applied: none of the selectors malformed and
+   * no more than the inline cap. The empty selection is valid — it is no tools.
+   * What the Tools step's Continue and the review page's deploy gate on.
    */
-  isToolsetChosen: boolean;
-  /** Why the toolset cannot be applied yet, empty when it can (or is still empty). */
+  isToolsetValid: boolean;
+  /** Why the toolset cannot be applied, empty when it can. */
   toolsetProblems: string[];
   reset: () => void;
   /** True when the form has no validation errors. */
@@ -127,9 +135,10 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
 
     // Kept apart from `isComplete`: the step-1 fields decide whether the later
     // steps may render at all (a deep link without them goes back to step 1),
-    // while the toolset is step 3's own output and gates only the way forward.
+    // while the toolset is step 3's own output and gates only the way forward —
+    // and only when it cannot be applied; nothing selected is no tools.
     const problems = toolsetProblems(state.toolset);
-    const isToolsetChosen = state.toolset.length > 0 && problems.length === 0;
+    const isToolsetValid = problems.length === 0;
 
     return {
       state,
@@ -168,8 +177,8 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
           toolset: toggleSelector(prev.toolset, selector),
         })),
       setToolset: selectors =>
-        setState(prev => ({ ...prev, toolset: [...selectors] })),
-      isToolsetChosen,
+        setState(prev => ({ ...prev, toolset: normalizeSelection(selectors) })),
+      isToolsetValid,
       toolsetProblems: problems,
       toggleSkill: skill =>
         setState(prev => {

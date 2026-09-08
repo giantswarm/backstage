@@ -4,13 +4,17 @@ import type { ToolsetPreset } from '@giantswarm/backstage-plugin-muster';
 import { musterToolsetPresetsQueryKey } from '../lib/queryKeys';
 import {
   BUILT_IN_PRESETS,
+  offeredPresets,
   orderPresets,
   withBuiltInPresets,
 } from '../lib/toolset';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
 export type ToolsetPresets = {
-  /** The presets to offer, safe ones first and `full` last. Never empty. */
+  /**
+   * The presets to offer as cards, safe ones first and `full` last. Never
+   * `none` — on the step, no tools is the empty selection — and never empty.
+   */
   presets: ToolsetPreset[];
   isLoading: boolean;
   /**
@@ -48,7 +52,7 @@ export function useToolsetPresets(
 
   if (!musterApi || !installation) {
     return {
-      presets: orderPresets(BUILT_IN_PRESETS),
+      presets: offeredPresets(orderPresets(BUILT_IN_PRESETS)),
       isLoading: false,
       source: 'built-in',
     };
@@ -56,14 +60,14 @@ export function useToolsetPresets(
 
   if (data && Array.isArray(data.presets)) {
     return {
-      presets: withBuiltInPresets(data.presets),
+      presets: offeredPresets(withBuiltInPresets(data.presets)),
       isLoading: false,
       source: 'muster',
     };
   }
 
   return {
-    presets: orderPresets(BUILT_IN_PRESETS),
+    presets: offeredPresets(orderPresets(BUILT_IN_PRESETS)),
     isLoading,
     source: 'built-in',
     error: error ? (error as Error).message : undefined,
