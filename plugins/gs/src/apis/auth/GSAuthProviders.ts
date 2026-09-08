@@ -29,7 +29,10 @@ const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
 
 const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
 
-/** `oidc-gazelle` -> `gazelle`; other provider names are shown as they are. */
+/**
+ * `oidc-<installation>` -> `<installation>`; other provider names are shown as
+ * they are.
+ */
 function mainProviderDisplayName(providerName: string): string {
   return providerName.startsWith(OIDC_PROVIDER_NAME_PREFIX)
     ? providerName.split(OIDC_PROVIDER_NAME_PREFIX)[1]

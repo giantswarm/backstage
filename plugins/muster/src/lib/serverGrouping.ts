@@ -252,7 +252,7 @@ export function orderPresenceDegradedFirst(
  * How many cluster pills a collapsed family row shows before the healthy
  * remainder folds into a "+N more" count. Eight keeps the row on one line at
  * the pages' 1024px reading width even when two of the pills carry a state
- * ("gaggle Failed" is half again as wide as "gaggle"); a family across two
+ * ("<name> Failed" is half again as wide as "<name>"); a family across two
  * dozen clusters used to wrap onto a second and third line.
  */
 export const SUMMARY_PILL_LIMIT = 8;

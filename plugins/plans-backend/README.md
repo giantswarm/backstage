@@ -44,7 +44,7 @@ plans:
   repositories:
     - giantswarm/bumblebee-plans
   muster:
-    installation: gazelle # a name from muster.installations
+    installation: golem # a name from muster.installations
     server: github # the GitHub MCPServer in that muster
     # toolPrefix: github  # default: the server name; tools are x_<prefix>_<tool>
 ```

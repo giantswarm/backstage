@@ -372,7 +372,8 @@ export function worstSeverity(
  * "Servers healthy" stat flips to amber.
  *
  * muster federates ~26 management clusters, so at least one remote backend is
- * almost always degraded (goose/violet/garm DNS failures across trials).
+ * almost always degraded (DNS failures on a few remote installations across
+ * trials).
  * Colouring the stat amber on `healthy != total` made it near-permanently amber
  * and therefore useless as a signal (dashboard review F1). Warn only when a
  * meaningful fraction is unhealthy so the colour means "act on this".
