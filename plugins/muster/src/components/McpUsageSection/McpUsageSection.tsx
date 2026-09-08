@@ -84,9 +84,11 @@ const useStyles = makeStyles((theme: Theme) => ({
     overflow: 'hidden',
   },
   toolName: {
-    fontFamily: 'monospace',
-    fontSize: 13,
-    wordBreak: 'break-all',
+    // The body font, matching the personal section's tables directly above on
+    // the Usage page — the same kind of value rendered two ways on one page
+    // reads as a bug. `anywhere` rather than `break-all`, which split names
+    // mid-word (`…resolve_cluste / r`) once the pitch stopped being fixed.
+    overflowWrap: 'anywhere',
   },
   numeric: {
     fontVariantNumeric: 'tabular-nums',

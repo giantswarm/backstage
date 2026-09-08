@@ -19,8 +19,10 @@ const useStyles = makeStyles((theme: Theme) => ({
     marginBottom: theme.spacing(1),
   },
   name: {
-    fontFamily: 'monospace',
-    fontSize: '0.8rem',
+    // The body font, not monospace: these are names to read, and the column
+    // carries no alignment that a fixed pitch would serve. `anywhere` rather
+    // than `break-all` so a long `x_…` name breaks only when it must.
+    overflowWrap: 'anywhere',
   },
   calls: {
     fontVariantNumeric: 'tabular-nums',
