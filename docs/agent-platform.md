@@ -429,7 +429,7 @@ the open TODOs.
 
 ## The installation scope
 
-The five tabs of the section — Agents, Sessions, Usage, Models and the muster
+The five tabs of the section — Agents, Sessions, Models, Usage and the muster
 plugin's MCP Servers — share **one installation scope**: `'all'` (the default) or
 one pinned installation. It lives in the `gs` plugin (`useInstallationScope`,
 `plugins/gs/src/apis/installationScope/`) as a module store read through
@@ -2172,8 +2172,8 @@ The same numbers offered as _the agent's_ are what has no data behind them.
 
 ## The Usage tab
 
-`/agent-platform/usage`, between Sessions and Models. Two sections, deliberately
-different in scope:
+`/agent-platform/usage`, the last of the section's own tabs. Two sections,
+deliberately different in scope:
 
 1. **Your agent usage** — the caller's own sessions over the last 30 days, from
    kagent. Totals (sessions, turns, input, output, tool calls), two per-day
