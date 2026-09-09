@@ -76,7 +76,7 @@ export function deriveModelConfigReadiness(
  * Agent Platform section's Models tab lists and manages them.
  */
 export class ModelConfig extends KubeObject<ModelConfigInterface> {
-  static readonly supportedVersions = ['v1alpha2'] as const;
+  static readonly supportedVersions = ['v1alpha3'] as const;
   static readonly group = 'kagent.dev';
   static readonly kind = 'ModelConfig' as const;
   static readonly plural = 'modelconfigs';

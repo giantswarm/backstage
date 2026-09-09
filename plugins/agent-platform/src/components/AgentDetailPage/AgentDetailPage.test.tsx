@@ -1,18 +1,19 @@
 import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
-import { crds } from '@giantswarm/k8s-types';
 import { agentsRouteRef, modelsRouteRef } from '../../routes';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { ClientServingState } from '../../lib/serving';
 import { AgentDetailPage } from './AgentDetailPage';
 
-type AgentInterface = crds.kagent.v1alpha2.Agent;
+type AgentInterface = AgentTemplateInterface;
 
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
 // is mocked — so the page is exercised against the actual getters, readiness
 // derivation and provenance helpers rather than a duck-typed stand-in.
 const mockUseResource = jest.fn();
+
+import type { AgentTemplateInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
@@ -130,8 +131,8 @@ const READY_CONDITIONS = [
 function makeAgent(overrides: Partial<AgentInterface> = {}) {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: {
         name: 'pr-reviewer',
         namespace: 'agent-platform',
@@ -145,33 +146,24 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
         ...(overrides.metadata as object),
       },
       spec: {
-        type: 'Declarative',
         description: 'Reviews pull requests in depth.',
-        declarative: {
-          modelConfig: 'opus-4-7',
-          systemMessage: 'You review pull requests.',
-          tools: [
-            {
-              type: 'McpServer',
-              mcpServer: { name: 'muster', namespace: 'agent-platform' },
-            },
-          ],
-        },
-        skills: {
-          gitRefs: [
-            {
-              url: 'https://github.com/giantswarm/skills',
+        modelConfig: { name: 'opus-4-7' },
+        systemPrompt: 'You review pull requests.',
+        tools: [{ mcp: { server: { kind: 'RemoteMCPServer', name: 'muster' } } }],
+        skills: [
+          {
+            name: 'PR review conventions',
+            source: {
+              git: { url: 'https://github.com/giantswarm/skills', commit: 'v2.0.0' },
               path: 'pr-review',
-              ref: 'v2.0.0',
-              name: 'PR review conventions',
             },
-          ],
-        },
+          },
+        ],
         ...(overrides.spec as object),
       },
       status: {
         observedGeneration: 1,
-        conditions: READY_CONDITIONS,
+        harnesses: [{ harness: 'kagent', conditions: READY_CONDITIONS }],
         ...(overrides.status as object),
       },
     },
@@ -182,7 +174,7 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
 function makeModelConfig() {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: {
         name: 'opus-4-7',
@@ -376,22 +368,29 @@ describe('AgentDetailPage', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
-  it('says when a skill is unpinned, since it then changes under the agent', async () => {
+  it('shows the pinned commit of a skill — a v1alpha3 skill is always pinned', async () => {
     stubResources({
       resource: makeAgent({
         spec: {
-          skills: {
-            gitRefs: [
-              { url: 'https://github.com/giantswarm/skills', path: 'demo' },
-            ],
-          },
+          skills: [
+            {
+              name: 'demo',
+              source: {
+                git: {
+                  url: 'https://github.com/giantswarm/skills',
+                  commit: 'c'.repeat(40),
+                },
+                path: 'demo',
+              },
+            },
+          ],
         },
       } as Partial<AgentInterface>),
     });
 
     await renderPage();
 
-    expect(screen.getByText('default branch (unpinned)')).toBeInTheDocument();
+    expect(screen.getByText('c'.repeat(40))).toBeInTheDocument();
   });
 
   it('falls back to the bare ModelConfig reference when it cannot be read', async () => {
@@ -409,7 +408,10 @@ describe('AgentDetailPage', () => {
         resource: makeAgent({
           status: {
             observedGeneration: 1,
-            conditions: [
+            harnesses: [
+              {
+                harness: 'kagent',
+                conditions: [
               READY_CONDITIONS[0],
               {
                 type: 'Ready',
@@ -417,6 +419,8 @@ describe('AgentDetailPage', () => {
                 reason: 'DeploymentNotReady',
                 message: 'Deployment is not ready, 0/1 pods are ready',
                 lastTransitionTime: '2026-07-31T10:05:00Z',
+              },
+            ],
               },
             ],
           },
@@ -439,13 +443,18 @@ describe('AgentDetailPage', () => {
         resource: makeAgent({
           status: {
             observedGeneration: 1,
-            conditions: [
+            harnesses: [
+              {
+                harness: 'kagent',
+                conditions: [
               {
                 type: 'Accepted',
                 status: 'False',
                 reason: 'ReconcileFailed',
                 message: 'modelconfigs.kagent.dev "opus-4-7" not found',
                 lastTransitionTime: '2026-07-31T10:05:00Z',
+              },
+            ],
               },
             ],
           },
@@ -469,7 +478,10 @@ describe('AgentDetailPage', () => {
             namespace: 'agent-platform',
             generation: 5,
           },
-          status: { observedGeneration: 4, conditions: READY_CONDITIONS },
+          status: {
+            observedGeneration: 4,
+            harnesses: [{ harness: 'kagent', conditions: READY_CONDITIONS }],
+          },
         } as Partial<AgentInterface>),
       });
 
@@ -483,7 +495,7 @@ describe('AgentDetailPage', () => {
     it('explains an agent the controller has not reported on yet', async () => {
       stubResources({
         resource: makeAgent({
-          status: { conditions: [] },
+          status: { harnesses: [] },
         } as Partial<AgentInterface>),
       });
 
@@ -500,14 +512,11 @@ describe('AgentDetailPage', () => {
         resource: makeAgent({
           status: {
             observedGeneration: 1,
-            conditions: [
-              ...READY_CONDITIONS,
+            harnesses: [
               {
-                type: 'UnsupportedFeatures',
-                status: 'True',
-                reason: 'UnsupportedFeatures',
-                message: 'memory is not supported by the go runtime',
-                lastTransitionTime: '2026-07-31T10:03:00Z',
+                harness: 'kagent',
+                conditions: READY_CONDITIONS,
+                warnings: ['memory is not supported by the go runtime'],
               },
             ],
           },
@@ -533,7 +542,7 @@ describe('AgentDetailPage', () => {
       // and that a non-muster server gets no link (below) — the binding itself is
       // muster's to provide.
       expect(
-        screen.getByText('RemoteMCPServer agent-platform/muster'),
+        screen.getByText('RemoteMCPServer muster'),
       ).toBeInTheDocument();
       // The gateway row defers to the toolset card rather than claiming "all
       // tools": which of the gateway's tools the agent can use is its toolset.
@@ -545,16 +554,14 @@ describe('AgentDetailPage', () => {
       stubResources({
         resource: makeAgent({
           spec: {
-            declarative: {
-              tools: [
-                {
-                  mcpServer: {
-                    name: 'grafana',
-                    toolNames: ['query', 'dashboards'],
-                  },
+            tools: [
+              {
+                mcp: {
+                  server: { kind: 'RemoteMCPServer', name: 'grafana' },
+                  tools: ['query', 'dashboards'],
                 },
-              ],
-            },
+              },
+            ],
           },
         } as Partial<AgentInterface>),
       });
@@ -578,18 +585,20 @@ describe('AgentDetailPage', () => {
       stubResources({
         resource: makeAgent({
           spec: {
-            declarative: {
-              tools: [
-                { mcpServer: { name: 'muster', toolNames: ['list_tools'] } },
-                {
-                  mcpServer: {
-                    name: 'muster',
-                    toolNames: ['call_tool'],
-                    requireApproval: ['call_tool'],
-                  },
+            tools: [
+              {
+                mcp: {
+                  server: { kind: 'RemoteMCPServer', name: 'muster' },
+                  tools: ['list_tools'],
                 },
-              ],
-            },
+              },
+              {
+                mcp: {
+                  server: { kind: 'RemoteMCPServer', name: 'muster' },
+                  tools: ['call_tool'],
+                },
+              },
+            ],
           },
         } as Partial<AgentInterface>),
       });
@@ -600,9 +609,6 @@ describe('AgentDetailPage', () => {
         screen.getByText(/1 meta-tool \(list_tools\)/),
       ).toBeInTheDocument();
       expect(screen.getByText(/1 meta-tool \(call_tool\)/)).toBeInTheDocument();
-      expect(
-        screen.getByText('Requires approval: call_tool'),
-      ).toBeInTheDocument();
       expect(consoleError).not.toHaveBeenCalledWith(
         expect.stringContaining('same key'),
         expect.anything(),
@@ -616,7 +622,7 @@ describe('AgentDetailPage', () => {
     it('says so when the agent declares no tool servers', async () => {
       stubResources({
         resource: makeAgent({
-          spec: { declarative: { modelConfig: 'opus-4-7' } },
+          spec: { modelConfig: { name: 'opus-4-7' }, tools: [] },
         } as Partial<AgentInterface>),
       });
 
@@ -702,7 +708,7 @@ describe('AgentDetailPage', () => {
   it('says an unset system prompt is unset, not empty', async () => {
     stubResources({
       resource: makeAgent({
-        spec: { declarative: { modelConfig: 'opus-4-7' } },
+        spec: { modelConfig: { name: 'opus-4-7' }, systemPrompt: undefined },
       } as Partial<AgentInterface>),
     });
 

@@ -1,6 +1,8 @@
 import { crds } from '@giantswarm/k8s-types';
 import {
   Agent,
+  AgentTemplateCondition,
+  AgentTemplateInterface,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServedModel } from '../../lib/serving';
@@ -14,11 +16,9 @@ import {
   toAgentRow,
 } from './helpers';
 
-type AgentInterface = crds.kagent.v1alpha2.Agent;
+type AgentInterface = AgentTemplateInterface;
 type ModelConfigInterface = crds.kagent.v1alpha2.ModelConfig;
-type AgentCondition = NonNullable<
-  NonNullable<AgentInterface['status']>['conditions']
->[number];
+type AgentCondition = AgentTemplateCondition;
 
 function makeAgent(
   partial: {
@@ -28,7 +28,6 @@ function makeAgent(
     description?: string;
     modelConfig?: string;
     skills?: number;
-    type?: 'Declarative' | 'BYO';
     conditions?: AgentCondition[];
     generation?: number;
     observedGeneration?: number;
@@ -43,7 +42,6 @@ function makeAgent(
     description,
     modelConfig,
     skills = 0,
-    type = 'Declarative',
     conditions,
     generation = 1,
     observedGeneration = 1,
@@ -51,8 +49,8 @@ function makeAgent(
   } = partial;
 
   const json = {
-    apiVersion: 'kagent.dev/v1alpha2',
-    kind: 'Agent',
+    apiVersion: 'kagent.dev/v1alpha3',
+    kind: 'AgentTemplate',
     metadata: {
       name,
       namespace,
@@ -62,19 +60,23 @@ function makeAgent(
         ? { 'ui.giantswarm.io/display-name': displayName }
         : undefined,
     },
-    status: conditions ? { conditions, observedGeneration } : undefined,
+    status: conditions
+      ? { observedGeneration, harnesses: [{ harness: 'kagent', conditions }] }
+      : undefined,
     spec: {
-      type,
       description,
-      declarative: modelConfig ? { modelConfig } : undefined,
+      modelConfig: modelConfig ? { name: modelConfig } : undefined,
       skills:
         skills > 0
-          ? {
-              gitRefs: Array.from({ length: skills }, (_, i) => ({
-                url: 'https://github.com/giantswarm/skills',
-                name: `skill-${i}`,
-              })),
-            }
+          ? Array.from({ length: skills }, (_, i) => ({
+              name: `skill-${i}`,
+              source: {
+                git: {
+                  url: 'https://github.com/giantswarm/skills',
+                  commit: 'a'.repeat(40),
+                },
+              },
+            }))
           : undefined,
     },
   } as AgentInterface;
@@ -155,8 +157,8 @@ describe('resolveModelLabel', () => {
     expect(resolveModelLabel(agent, modelConfigs)).toBe('sonnet-4-6');
   });
 
-  it('returns undefined when the agent references no model (BYO)', () => {
-    const agent = makeAgent({ type: 'BYO', modelConfig: undefined });
+  it('returns undefined when the agent references no model', () => {
+    const agent = makeAgent({ modelConfig: undefined });
 
     expect(resolveModelLabel(agent, [])).toBeUndefined();
   });

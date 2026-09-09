@@ -11,6 +11,7 @@ import {
 import {
   A2AService,
   Role,
+  StreamResponseSchema,
   TaskSchema,
   TaskState,
   type SendMessageRequest,
@@ -20,6 +21,7 @@ import {
   AgentInstanceSchema,
   AgentInstanceService,
   AgentInstanceState,
+  type AgentInstance,
 } from './kagent/gen/kagent/api/v1alpha1/agent_instances_pb';
 import {
   AgentTemplateSchema,
@@ -47,8 +49,8 @@ function jwt(claims: Record<string, unknown>): string {
 const TOKEN = jwt({ sub: 'dex-sub', email: 'dev@lab.local' });
 const NOW = new Date('2026-09-09T15:35:42.000Z');
 
-function instance(overrides: Partial<Parameters<typeof create<typeof AgentInstanceSchema>>[1]> = {}) {
-  return create(AgentInstanceSchema, {
+function instance(overrides: Partial<AgentInstance> = {}): AgentInstance {
+  const base = create(AgentInstanceSchema, {
     id: '01a086cf-7f84-761d-980a-48f485eded5e',
     creator: 'dev@lab.local',
     harness: { namespace: 'kagent', name: 'kagent' },
@@ -58,8 +60,8 @@ function instance(overrides: Partial<Parameters<typeof create<typeof AgentInstan
     updatedAt: timestampFromDate(NOW),
     name: 'Cluster health check',
     contextId: 'b61c731a-75e6-43e6-92cf-6f478680c09e',
-    ...overrides,
   });
+  return { ...base, ...overrides };
 }
 
 function template(harnesses: Array<{ harness: string; ready: boolean }>) {
@@ -598,21 +600,18 @@ describe('KagentClient streamMessage', () => {
   it('relays the streaming turn as v0 SSE frames', async () => {
     const { client } = clientWith(router => {
       router.service(A2AService, {
-        // eslint-disable-next-line require-yield
-        async *sendStreamingMessage(): AsyncGenerator<
-          Partial<StreamResponse>
-        > {
-          yield {
+        async *sendStreamingMessage(): AsyncGenerator<StreamResponse> {
+          yield create(StreamResponseSchema, {
             payload: {
               case: 'task',
-              value: create(TaskSchema, {
+              value: {
                 id: 't1',
                 contextId: 'ctx',
                 status: { state: TaskState.SUBMITTED },
-              }),
+              },
             },
-          };
-          yield {
+          });
+          yield create(StreamResponseSchema, {
             payload: {
               case: 'artifactUpdate',
               value: {
@@ -626,8 +625,8 @@ describe('KagentClient streamMessage', () => {
                 lastChunk: false,
               },
             },
-          };
-          yield {
+          });
+          yield create(StreamResponseSchema, {
             payload: {
               case: 'statusUpdate',
               value: {
@@ -636,7 +635,7 @@ describe('KagentClient streamMessage', () => {
                 status: { state: TaskState.COMPLETED },
               },
             },
-          };
+          });
         },
       });
     });
@@ -710,12 +709,15 @@ describe('KagentClient error mapping', () => {
   });
 
   it('maps a socket-level Unavailable to a transport-borne 404', async () => {
-    const error = await failingWith(
+    const error: Error = await failingWith(
       Code.Unavailable,
       'connect ECONNREFUSED 10.0.0.1:443',
     )
       .listSessions({ userToken: TOKEN })
-      .catch(e => e);
+      .then(
+        () => new Error('resolved'),
+        (e: unknown) => e as Error,
+      );
     expect(error.name).toBe('NotFoundError');
     expect(isTransportFailure(error)).toBe(true);
   });

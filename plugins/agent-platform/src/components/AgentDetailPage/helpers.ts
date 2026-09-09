@@ -49,7 +49,11 @@ export function describeToolScope(ref: AgentMcpServerRef): string {
   return `${toolNames.length} tool${toolNames.length === 1 ? '' : 's'}: ${toolNames.join(', ')}`;
 }
 
-type SkillRef = ReturnType<Agent['getSkillRefs']>[number];
+/**
+ * What a skill row needs to label itself. Structural rather than the class's
+ * own `AgentSkillRef`, so the label logic is testable with bare objects.
+ */
+type SkillRef = { name?: string; path?: string; url?: string };
 
 /**
  * Display label for a mounted skill: the explicit `name` when the manifest sets
@@ -66,13 +70,10 @@ export function skillLabel(ref: SkillRef): string {
     return fromPath;
   }
 
-  const fromUrl = ref.url
-    .replace(/\.git$/, '')
-    .split('/')
-    .filter(Boolean)
-    .pop();
+  const url = ref.url ?? '';
+  const fromUrl = url.replace(/\.git$/, '').split('/').filter(Boolean).pop();
 
-  return fromUrl ?? ref.url;
+  return fromUrl ?? url;
 }
 
 /**

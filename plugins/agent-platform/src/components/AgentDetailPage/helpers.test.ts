@@ -1,5 +1,7 @@
-import { crds } from '@giantswarm/k8s-types';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  AgentTemplateInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   describeToolScope,
   isMusterServerRef,
@@ -8,13 +10,13 @@ import {
   toAgentManifestYaml,
 } from './helpers';
 
-type AgentInterface = crds.kagent.v1alpha2.Agent;
+type AgentInterface = AgentTemplateInterface;
 
 function makeAgent(overrides: Partial<AgentInterface> = {}): Agent {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: { name: 'pr-reviewer', namespace: 'agent-platform' },
       ...overrides,
     } as AgentInterface,
@@ -124,26 +126,31 @@ describe('toAgentManifestYaml', () => {
   it('renders the resource as YAML, status included', () => {
     const yaml = toAgentManifestYaml(
       makeAgent({
-        spec: { type: 'Declarative', declarative: { modelConfig: 'opus' } },
+        spec: { modelConfig: { name: 'opus' } },
         status: {
           observedGeneration: 1,
-          conditions: [
+          harnesses: [
             {
-              type: 'Ready',
-              status: 'True',
-              reason: 'DeploymentReady',
-              message: 'Deployment is ready',
-              lastTransitionTime: '2026-07-31T10:00:00Z',
+              harness: 'kagent',
+              conditions: [
+                {
+                  type: 'Ready',
+                  status: 'True',
+                  reason: 'Ready',
+                  message: 'ActorTemplate golden snapshot is ready',
+                  lastTransitionTime: '2026-07-31T10:00:00Z',
+                },
+              ],
             },
           ],
         },
       } as Partial<AgentInterface>),
     );
 
-    expect(yaml).toContain('kind: Agent');
-    expect(yaml).toContain('apiVersion: kagent.dev/v1alpha2');
+    expect(yaml).toContain('kind: AgentTemplate');
+    expect(yaml).toContain('apiVersion: kagent.dev/v1alpha3');
     expect(yaml).toContain('name: pr-reviewer');
-    expect(yaml).toContain('modelConfig: opus');
+    expect(yaml).toContain('name: opus');
     // The point of this view is to see what the page does not surface.
     expect(yaml).toContain('observedGeneration: 1');
   });
@@ -236,7 +243,7 @@ describe('toAgentManifestYaml', () => {
     const systemMessage = 'You review pull requests. '.repeat(20).trim();
     const yaml = toAgentManifestYaml(
       makeAgent({
-        spec: { declarative: { systemMessage } },
+        spec: { systemPrompt: systemMessage },
       } as Partial<AgentInterface>),
     );
 

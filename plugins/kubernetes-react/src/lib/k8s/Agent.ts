@@ -1,101 +1,176 @@
-import { crds } from '@giantswarm/k8s-types';
-import { KubeObject } from './KubeObject';
-
-type AgentInterface = crds.kagent.v1alpha2.Agent;
-type AgentCondition = NonNullable<
-  NonNullable<AgentInterface['status']>['conditions']
->[number];
+import { KubeObject, KubeObjectInterface } from './KubeObject';
 
 /**
- * One entry of `spec.declarative.tools` — a reference to something the agent may
- * call. The CRD models the list as a union of fixed-length tuples (its
- * `maxItems: 20`), so it is indexed here to recover the element type.
+ * `kagent.dev/v1alpha3 AgentTemplate` — the agent unit on kagent `main`.
+ *
+ * The 0.10 `Agent` CRD (one Deployment per agent, `spec.declarative.*`) is gone
+ * on kagent `main`; an agent is an **AgentTemplate** — model, prompt, tools,
+ * skills — that a **Harness** admits (by label selector) and prepares, and that
+ * people instantiate per conversation as an AgentInstance. The class keeps the
+ * name `Agent` and its getter surface so the Agent Platform pages need no
+ * rename; the JSON shape underneath is the v1alpha3 template.
+ *
+ * Typed locally: `@giantswarm/k8s-types` carries no v1alpha3 yet.
  */
-export type AgentTool = NonNullable<
-  NonNullable<NonNullable<AgentInterface['spec']>['declarative']>['tools']
->[number];
+export interface AgentTemplateCondition {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+  lastTransitionTime?: string;
+  observedGeneration?: number;
+}
 
-/** An `McpServer` tool reference: a `RemoteMCPServer`/`MCPServer` and, optionally, which of its tools to expose. */
-export type AgentMcpServerRef = NonNullable<AgentTool['mcpServer']>;
+/** `status.harnesses[]` — one entry per Harness that admits the template. */
+export interface AgentTemplateHarnessStatus {
+  harness: string;
+  desiredRevision?: string;
+  latestSuccessfulRevision?: string;
+  /** Compile downgrades: features the harness could not honour. */
+  warnings?: string[];
+  conditions?: AgentTemplateCondition[];
+}
 
-/** An `Agent` tool reference: another agent invoked as a tool over A2A. */
-export type AgentToolAgentRef = NonNullable<AgentTool['agent']>;
+/** `spec.tools[]` — an MCP server (whole, or a subset of its tools) or another template. */
+export interface AgentTemplateToolBinding {
+  mcp?: {
+    server: { apiGroup?: string; kind?: string; name: string };
+    tools?: string[];
+  };
+  agent?: {
+    name: string;
+    description?: string;
+    templateRef: { name: string };
+    isolation?: 'Shared' | 'Dedicated';
+  };
+}
+
+/** `spec.skills[]` — a skill directory mounted from a git commit, an OCI artifact or a bucket object. */
+export interface AgentTemplateSkill {
+  name: string;
+  source: {
+    oci?: string;
+    git?: { url: string; commit: string };
+    bucket?: { s3: { endpoint: string; bucket: string; key: string; versionId: string; region?: string } };
+    path?: string;
+  };
+}
+
+export interface AgentTemplateInterface extends KubeObjectInterface {
+  spec?: {
+    modelConfig?: { name: string };
+    description?: string;
+    systemPrompt?: string;
+    systemPromptFrom?: { name: string; key: string };
+    tools?: AgentTemplateToolBinding[];
+    skills?: AgentTemplateSkill[];
+    plugins?: unknown[];
+  };
+  status?: {
+    observedGeneration?: number;
+    harnesses?: AgentTemplateHarnessStatus[];
+  };
+}
+
+type AgentInterface = AgentTemplateInterface;
 
 /**
- * Condition types the kagent controller sets on an Agent. `Accepted` reports
- * whether the spec reconciled, `Ready` whether the backing workload is up, and
- * `UnsupportedFeatures` is a soft warning that does not block reconciliation
- * (the controller removes the condition entirely once the warning clears).
+ * A tool entry in the shape the Agent Platform pages consume — the 0.10
+ * `spec.declarative.tools[]` vocabulary (`mcpServer`, `agent`), rendered from a
+ * v1alpha3 tool binding. `headersFrom` is always absent on a template: on kagent
+ * `main` headers live on the `RemoteMCPServer` a binding points at, not on the
+ * binding.
+ */
+export type AgentTool = {
+  mcpServer?: AgentMcpServerRef;
+  agent?: AgentToolAgentRef;
+  headersFrom?: Array<{ name: string; value?: string }>;
+};
+
+/** An MCP server binding: which `RemoteMCPServer`/`MCPServer`, and optionally which of its tools. */
+export type AgentMcpServerRef = {
+  kind?: string;
+  name: string;
+  /** Always the template's own namespace — v1alpha3 bindings are same-namespace. */
+  namespace?: string;
+  toolNames?: string[];
+  /** Not a v1alpha3 concept; kept so approval-aware consumers compile. */
+  requireApproval?: string[];
+};
+
+/** Another template invoked as a tool over A2A. */
+export type AgentToolAgentRef = {
+  name: string;
+  namespace?: string;
+  description?: string;
+};
+
+/** A skill reference in the shape the create flow and the skill cards share. */
+export type AgentSkillRef = {
+  name: string;
+  /** The git repository URL, or the OCI reference. */
+  url?: string;
+  /** Subdirectory within the source, when the skill is not at its root. */
+  path?: string;
+  /** The pinned git commit. */
+  ref?: string;
+  source: 'git' | 'oci' | 'bucket';
+};
+
+/**
+ * Condition types the kagent controller sets **per harness** on a template:
+ * `Accepted` (the harness's admission selector matches), `ResolvedRefs` (model
+ * config, servers and skills resolve), `Compatible` (the resolved configuration
+ * fits the harness) and `Ready` (the harness prepared the template — its golden
+ * snapshot exists). Warnings are a list on the harness status, not a condition.
  */
 export const AgentConditionType = {
   Accepted: 'Accepted',
+  ResolvedRefs: 'ResolvedRefs',
+  Compatible: 'Compatible',
   Ready: 'Ready',
+  /** Not set on kagent `main`; kept for consumers that name it. */
   UnsupportedFeatures: 'UnsupportedFeatures',
 } as const;
 
 /**
- * Note on readiness and condition *reasons*.
+ * Readiness of an agent, derived from its harness statuses.
  *
- * kagent's own REST API gates its `deploymentReady` flag on both
- * `Ready=True` *and* the reason being one of `DeploymentReady` (a
- * Deployment-backed agent) or `WorkloadReady` (a sandbox workload). We
- * deliberately do **not** copy that allowlist, and key on the condition's status
- * alone.
- *
- * The allowlist's apparent purpose is to reject a missing Deployment, which the
- * controller reports as `Ready=Unknown` / `DeploymentNotFound` — but that is
- * already excluded by the status check, so the allowlist adds nothing for the
- * case that motivates it. What it does add is a failure mode on version skew: a
- * kagent that introduces a third ready reason (say `StatefulSetReady`) would make
- * a healthy fleet render as "not ready", with a tooltip showing that condition's
- * own message ("Deployment is ready") and thus contradicting the label.
- *
- * Trusting `Ready=True` fails in the opposite direction — a kagent that sets
- * `Ready=True` to mean something other than ready — which would be a bug
- * upstream rather than an expected evolution.
- */
-
-/**
- * Readiness of an agent, derived from its status conditions.
- *
- * - `ready` — accepted, and the backing workload has an available replica.
- * - `notReady` — accepted, but the workload is not up.
- * - `notAccepted` — the controller rejected the spec.
+ * - `ready` — at least one harness reports `Ready=True`: sessions can start.
+ * - `notReady` — a harness admits it but has not (or could not) prepare it.
+ * - `notAccepted` — no harness admits it (no `kagent.dev/harness` label a
+ *   Harness selects), or every admitting harness rejects the spec.
  * - `pending` — not reconciled yet, or reconciled against an older generation,
- *   so the conditions do not describe the current spec. Distinct from
+ *   so the status does not describe the current spec. Distinct from
  *   `notReady`: it means "not known yet", not "broken".
  */
 export type AgentReadiness = 'ready' | 'notReady' | 'notAccepted' | 'pending';
 
-function findAgentCondition(
-  json: AgentInterface,
-  type: string,
-): AgentCondition | undefined {
-  return json.status?.conditions?.find(condition => condition.type === type);
+function harnessStatuses(json: AgentInterface): AgentTemplateHarnessStatus[] {
+  return json.status?.harnesses ?? [];
 }
 
-/**
- * Derive an agent's readiness from its raw status conditions.
- *
- * Exported as a free function (rather than only as an {@link Agent} method) so
- * callers holding raw list data — e.g. a react-query `refetchInterval`
- * callback, which sees `KubeObjectInterface[]` and not hydrated instances — can
- * reuse the exact same derivation instead of reimplementing it.
- */
+function conditionOf(
+  harness: AgentTemplateHarnessStatus,
+  type: string,
+): AgentTemplateCondition | undefined {
+  return harness.conditions?.find(condition => condition.type === type);
+}
+
+function isTrue(
+  harness: AgentTemplateHarnessStatus,
+  type: string,
+): boolean {
+  return conditionOf(harness, type)?.status === 'True';
+}
+
 /**
  * Whether the reported status describes an *older* spec than the one currently
  * stored — the controller has seen the object but not yet caught up.
  *
  * Staleness is only claimed when observedGeneration is actually present and
- * behind. The controller stamps it on every status write (including when
- * reconciliation *fails*, so a rejected spec settles on `notAccepted` rather
- * than sticking at `pending`), but the CRD marks it optional — whereas
- * `metadata.generation` is always set by the apiserver. Treating "absent" as
- * "stale" would therefore fail closed: against a build that writes conditions
- * but not `status.observedGeneration`, *every* agent on that installation would
- * read `pending`, hiding healthy and broken agents behind the same
- * explanation-free label. Absent means "cannot tell", so this reports `false`
- * and callers report what the conditions actually say.
+ * behind. Absent means "cannot tell", so this reports `false` and callers report
+ * what the harness statuses actually say.
  */
 export function isAgentStatusStale(json: AgentInterface): boolean {
   const { generation } = json.metadata ?? {};
@@ -108,36 +183,44 @@ export function isAgentStatusStale(json: AgentInterface): boolean {
   );
 }
 
+/**
+ * Derive an agent's readiness from its raw harness statuses.
+ *
+ * Exported as a free function (rather than only as an {@link Agent} method) so
+ * callers holding raw list data — e.g. a react-query `refetchInterval`
+ * callback, which sees `KubeObjectInterface[]` and not hydrated instances — can
+ * reuse the exact same derivation instead of reimplementing it.
+ */
 export function deriveAgentReadiness(json: AgentInterface): AgentReadiness {
-  const conditions = json.status?.conditions;
+  const harnesses = harnessStatuses(json);
 
-  // The controller has not written a status at all yet.
-  if (!conditions?.length) {
-    return 'pending';
+  if (harnesses.length === 0) {
+    // No harness admits the template. Before the controller has looked at it
+    // that is unknown; once it has (an observedGeneration is recorded) it is a
+    // fact about the labels, and nothing will change without a spec edit.
+    return json.status?.observedGeneration === undefined
+      ? 'pending'
+      : 'notAccepted';
   }
 
   if (isAgentStatusStale(json)) {
     return 'pending';
   }
 
-  if (
-    findAgentCondition(json, AgentConditionType.Accepted)?.status !== 'True'
-  ) {
+  if (harnesses.some(harness => isTrue(harness, AgentConditionType.Ready))) {
+    return 'ready';
+  }
+
+  if (harnesses.every(harness => !isTrue(harness, AgentConditionType.Accepted))) {
     return 'notAccepted';
   }
 
-  // Status only, not reason — see the note above READY_REASONS' removal.
-  if (findAgentCondition(json, AgentConditionType.Ready)?.status !== 'True') {
-    return 'notReady';
-  }
-
-  return 'ready';
+  return 'notReady';
 }
 
 /**
  * Whether an agent has not settled into a healthy state, and so is worth
- * re-checking sooner than the rest of the fleet. Mirrors kagent's own
- * `!accepted || !deploymentReady`, plus our `pending`.
+ * re-checking sooner than the rest of the fleet.
  */
 export function isAgentTransitional(readiness: AgentReadiness): boolean {
   return readiness !== 'ready';
@@ -145,21 +228,22 @@ export function isAgentTransitional(readiness: AgentReadiness): boolean {
 
 /**
  * When the agent's status last changed, as epoch milliseconds: the most recent
- * `lastTransitionTime` across its conditions, falling back to the creation
- * timestamp for an agent the controller has not written a status for yet.
- * `undefined` when neither is parseable.
+ * `lastTransitionTime` across every harness's conditions, falling back to the
+ * creation timestamp for an agent the controller has not written a status for
+ * yet. `undefined` when neither is parseable.
  *
  * "Most recent across all conditions" is deliberately an *activity* signal, not
- * a per-condition age: while the controller is actively flipping an agent's
- * conditions it keeps moving, and once the agent is durably stuck it stops. That
- * is what lets a caller back off from polling an agent that is broken rather
- * than still converging.
+ * a per-condition age: while the controller is actively flipping conditions it
+ * keeps moving, and once the agent is durably stuck it stops. That is what lets
+ * a caller back off from polling an agent that is broken rather than still
+ * converging.
  */
 export function getAgentStatusChangedAt(
   json: AgentInterface,
 ): number | undefined {
-  const transitionTimes = (json.status?.conditions ?? [])
-    .map(condition => Date.parse(condition.lastTransitionTime))
+  const transitionTimes = harnessStatuses(json)
+    .flatMap(harness => harness.conditions ?? [])
+    .map(condition => Date.parse(condition.lastTransitionTime ?? ''))
     .filter(time => !Number.isNaN(time));
 
   if (transitionTimes.length > 0) {
@@ -172,15 +256,84 @@ export function getAgentStatusChangedAt(
 }
 
 /**
- * kagent Agent — a reusable agent definition, deployed via the
- * `general-purpose-agent` Helm chart. The capability surface (model, system
- * prompt, skills) lives under `spec.declarative` for declarative agents.
+ * The harness whose conditions explain the agent's readiness: a Ready one if
+ * any, else the first that admits it.
+ */
+function explainingHarness(
+  json: AgentInterface,
+): AgentTemplateHarnessStatus | undefined {
+  const harnesses = harnessStatuses(json);
+  return (
+    harnesses.find(harness => isTrue(harness, AgentConditionType.Ready)) ??
+    harnesses[0]
+  );
+}
+
+/**
+ * A v1alpha3 binding in the `mcpServer` / `agent` vocabulary. No namespace is
+ * stamped on the refs: v1alpha3 bindings are same-namespace by construction, and
+ * consumers default an absent namespace to the template's own.
+ */
+function toAgentTool(binding: AgentTemplateToolBinding): AgentTool {
+  const tool: AgentTool = {};
+  if (binding.mcp) {
+    tool.mcpServer = {
+      kind: binding.mcp.server.kind,
+      name: binding.mcp.server.name,
+      ...(binding.mcp.tools &&
+        binding.mcp.tools.length > 0 && { toolNames: binding.mcp.tools }),
+    };
+  }
+  if (binding.agent) {
+    tool.agent = {
+      name: binding.agent.templateRef.name,
+      ...(binding.agent.description && {
+        description: binding.agent.description,
+      }),
+    };
+  }
+  return tool;
+}
+
+function toSkillRef(skill: AgentTemplateSkill): AgentSkillRef {
+  const { source } = skill;
+  if (source.git) {
+    return {
+      name: skill.name,
+      url: source.git.url,
+      ref: source.git.commit,
+      ...(source.path && { path: source.path }),
+      source: 'git',
+    };
+  }
+  if (source.oci) {
+    return {
+      name: skill.name,
+      url: source.oci,
+      ...(source.path && { path: source.path }),
+      source: 'oci',
+    };
+  }
+  return {
+    name: skill.name,
+    ...(source.bucket && {
+      url: `${source.bucket.s3.endpoint}/${source.bucket.s3.bucket}/${source.bucket.s3.key}`,
+    }),
+    ...(source.path && { path: source.path }),
+    source: 'bucket',
+  };
+}
+
+/**
+ * kagent AgentTemplate — a reusable agent definition (model, system prompt,
+ * tools, skills) that Harnesses admit by label and people instantiate per
+ * conversation.
  */
 export class Agent extends KubeObject<AgentInterface> {
-  static readonly supportedVersions = ['v1alpha2'] as const;
+  static readonly supportedVersions = ['v1alpha3'] as const;
   static readonly group = 'kagent.dev';
-  static readonly kind = 'Agent' as const;
-  static readonly plural = 'agents';
+  static readonly kind = 'AgentTemplate' as const;
+  static readonly plural = 'agenttemplates';
 
   /**
    * Friendly name for lists. Prefers the `ui.giantswarm.io/display-name`
@@ -193,67 +346,108 @@ export class Agent extends KubeObject<AgentInterface> {
     );
   }
 
-  /** `Declarative` (chart-configured) or `BYO` (bring-your-own container). */
-  getType() {
-    return this.jsonData.spec?.type;
+  /**
+   * Every template is declarative on kagent `main` — there is no bring-your-own
+   * container variant; a BYO runtime is a Harness, not an agent.
+   */
+  getType(): 'Declarative' {
+    return 'Declarative';
   }
 
   getDescription() {
     return this.jsonData.spec?.description;
   }
 
-  /** Name of the referenced ModelConfig (declarative agents only). */
+  /** Name of the referenced ModelConfig, always in the template's own namespace. */
   getModelConfigName() {
-    return this.jsonData.spec?.declarative?.modelConfig;
+    return this.jsonData.spec?.modelConfig?.name;
   }
 
+  /** The inline system prompt. A prompt sourced from a ConfigMap reads as undefined. */
   getSystemMessage() {
-    return this.jsonData.spec?.declarative?.systemMessage;
+    return this.jsonData.spec?.systemPrompt;
   }
 
-  /**
-   * Git repositories the agent pulls skills from, each mounted under `/skills`.
-   * (The v1alpha2 CRD models skills as `spec.skills.gitRefs`.)
-   */
-  getSkillRefs() {
-    return this.jsonData.spec?.skills?.gitRefs ?? [];
+  /** Where the system prompt comes from when it is not inline. */
+  getSystemMessageSource() {
+    return this.jsonData.spec?.systemPromptFrom;
+  }
+
+  /** The skills mounted into the agent, in the shape the skill cards render. */
+  getSkillRefs(): AgentSkillRef[] {
+    return (this.jsonData.spec?.skills ?? []).map(toSkillRef);
   }
 
   /** Number of skills mounted by the agent. */
   getSkillCount() {
-    return this.getSkillRefs().length;
+    return this.jsonData.spec?.skills?.length ?? 0;
+  }
+
+  /** The raw v1alpha3 tool bindings. */
+  getToolBindings(): AgentTemplateToolBinding[] {
+    return [...(this.jsonData.spec?.tools ?? [])];
   }
 
   /**
-   * Everything the agent may call: MCP servers and other agents. Spread into a
-   * plain array because the CRD types the field as a union of tuples.
+   * Everything the agent may call — MCP servers and other templates — in the
+   * `mcpServer` / `agent` vocabulary the pages consume.
    */
   getTools(): AgentTool[] {
-    return [...(this.jsonData.spec?.declarative?.tools ?? [])];
+    return this.getToolBindings().map(toAgentTool);
   }
 
-  /**
-   * The MCP servers the agent draws tools from.
-   *
-   * Discriminated on the presence of `mcpServer` rather than on `type`, which is
-   * optional in the CRD — a hand-written or chart-rendered tool entry commonly
-   * omits it and lets the controller infer the kind.
-   */
+  /** The MCP servers the agent draws tools from. */
   getMcpServerRefs(): AgentMcpServerRef[] {
     return this.getTools()
       .map(tool => tool.mcpServer)
       .filter((ref): ref is AgentMcpServerRef => Boolean(ref));
   }
 
-  /** Other agents this agent invokes as tools (A2A). */
+  /** Other templates this agent invokes as tools (A2A). */
   getAgentRefs(): AgentToolAgentRef[] {
     return this.getTools()
       .map(tool => tool.agent)
       .filter((ref): ref is AgentToolAgentRef => Boolean(ref));
   }
 
-  getConditions() {
-    return this.jsonData.status?.conditions;
+  /** The label a Harness selects the template by, when present. */
+  getHarnessLabel(): string | undefined {
+    return this.getLabels()?.['kagent.dev/harness'];
+  }
+
+  /** `status.harnesses[]` verbatim. */
+  getHarnessStatuses(): AgentTemplateHarnessStatus[] {
+    return harnessStatuses(this.jsonData);
+  }
+
+  /**
+   * The harnesses that admit the agent, readiest first — what the agent runs on.
+   * A session can be started on any of them; kagent prepares each separately.
+   */
+  getHarnesses(): { name: string; ready: boolean; warnings: string[] }[] {
+    return this.getHarnessStatuses()
+      .map(harness => ({
+        name: harness.harness,
+        ready: isTrue(harness, AgentConditionType.Ready),
+        warnings: harness.warnings ?? [],
+      }))
+      .sort((a, b) => Number(b.ready) - Number(a.ready));
+  }
+
+  /** Names of the harnesses that report the agent Ready. */
+  getReadyHarnessNames(): string[] {
+    return this.getHarnesses()
+      .filter(harness => harness.ready)
+      .map(harness => harness.name);
+  }
+
+  /**
+   * The conditions that explain the current readiness: those of a Ready harness
+   * when there is one, else of the first harness that admits the template.
+   * `undefined` when no harness does.
+   */
+  getConditions(): AgentTemplateCondition[] | undefined {
+    return explainingHarness(this.jsonData)?.conditions;
   }
 
   /** Spec revision currently stored, bumped by the apiserver on every change. */
@@ -266,40 +460,49 @@ export class Agent extends KubeObject<AgentInterface> {
     return this.jsonData.status?.observedGeneration;
   }
 
-  /**
-   * Whether the reported status is known to describe an older spec. See
-   * {@link isAgentStatusStale} — notably, this is `false` when the controller
-   * records no `observedGeneration` at all.
-   */
+  /** Whether the reported status is known to describe an older spec. See {@link isAgentStatusStale}. */
   isStale(): boolean {
     return isAgentStatusStale(this.jsonData);
   }
 
   getCondition(type: string) {
-    return findAgentCondition(this.jsonData, type);
+    const harness = explainingHarness(this.jsonData);
+    return harness ? conditionOf(harness, type) : undefined;
   }
 
-  /** Readiness derived from the status conditions. See {@link AgentReadiness}. */
+  /** Readiness derived from the harness statuses. See {@link AgentReadiness}. */
   getReadiness(): AgentReadiness {
     return deriveAgentReadiness(this.jsonData);
   }
 
   /**
    * Human-readable detail for the current readiness, taken from whichever
-   * condition determined it: the reconcile error for `notAccepted`, and the
-   * controller's "N/M pods are ready" (or the Deployment lookup error) for
-   * `notReady`. `undefined` when the agent is ready, or when the state needs no
-   * explanation.
+   * condition determined it. `undefined` when the agent is ready, or when the
+   * state needs no explanation.
    */
   getReadinessMessage(): string | undefined {
     switch (this.getReadiness()) {
-      case 'notAccepted':
+      case 'notAccepted': {
+        if (this.getHarnessStatuses().length === 0) {
+          const label = this.getHarnessLabel();
+          return label
+            ? `No Harness admits this agent: nothing selects the label kagent.dev/harness=${label}.`
+            : 'No Harness admits this agent: it carries no kagent.dev/harness label.';
+        }
         return (
           this.getCondition(AgentConditionType.Accepted)?.message || undefined
         );
+      }
       case 'notReady':
         return (
-          this.getCondition(AgentConditionType.Ready)?.message || undefined
+          [
+            AgentConditionType.ResolvedRefs,
+            AgentConditionType.Compatible,
+            AgentConditionType.Ready,
+          ]
+            .map(type => this.getCondition(type))
+            .find(condition => condition && condition.status !== 'True')
+            ?.message || undefined
         );
       default:
         return undefined;
@@ -307,16 +510,19 @@ export class Agent extends KubeObject<AgentInterface> {
   }
 
   /**
-   * Soft warning from the controller when the spec uses features the chosen
-   * runtime does not support. Independent of readiness — an agent can be fully
-   * ready and still carry this — so it is reported separately rather than
-   * folded into {@link getReadiness}.
+   * Soft warnings from the harnesses: features the runtime downgraded while
+   * compiling the template. Independent of readiness — a ready agent can carry
+   * them — so they are reported separately rather than folded into
+   * {@link getReadiness}.
    */
   getUnsupportedFeaturesWarning(): string | undefined {
-    const condition = this.getCondition(AgentConditionType.UnsupportedFeatures);
-
-    return condition?.status === 'True'
-      ? condition.message || undefined
-      : undefined;
+    const warnings = this.getHarnessStatuses().flatMap(harness =>
+      (harness.warnings ?? []).map(warning =>
+        this.getHarnessStatuses().length > 1
+          ? `${harness.harness}: ${warning}`
+          : warning,
+      ),
+    );
+    return warnings.length > 0 ? warnings.join('\n') : undefined;
   }
 }

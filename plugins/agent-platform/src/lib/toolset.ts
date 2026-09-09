@@ -295,7 +295,31 @@ export type DeclaredToolset =
  * value and installations may place the gateway elsewhere.
  */
 export function gatewayEntry(gatewayName: string) {
-  return (tool: AgentTool): boolean => tool.mcpServer?.name === gatewayName;
+  return (tool: AgentTool): boolean => {
+    const name = tool.mcpServer?.name;
+    // On kagent `main` a toolset is a copy of the gateway server named
+    // `<gateway>-<agent>`, carrying the header; the copy is a gateway entry too.
+    return name === gatewayName || Boolean(name?.startsWith(`${gatewayName}-`));
+  };
+}
+
+/** The headers a named MCP server is called with, when a caller can look them up. */
+export type ServerHeadersLookup = (
+  serverName: string,
+) => Array<{ name: string; value?: string }> | undefined;
+
+/**
+ * A lookup over the `RemoteMCPServer`s read from an installation, by name.
+ * Structural on purpose, so it is testable with bare objects.
+ */
+export function remoteServerHeaders(
+  servers: Array<{
+    getName(): string;
+    getHeadersFrom(): Array<{ name: string; value?: string }>;
+  }>,
+): ServerHeadersLookup {
+  return serverName =>
+    servers.find(server => server.getName() === serverName)?.getHeadersFrom();
 }
 
 /**
@@ -306,13 +330,23 @@ export function gatewayEntry(gatewayName: string) {
 export function toolsetOfAgent(
   agent: Pick<Agent, 'getTools'>,
   isGateway: (tool: AgentTool) => boolean,
+  /**
+   * Where the header lives on kagent `main`: on the `RemoteMCPServer` the
+   * binding names, not on the binding. Without a lookup only inline
+   * `headersFrom` (the 0.10 shape) is read.
+   */
+  serverHeaders?: ServerHeadersLookup,
 ): DeclaredToolset {
   const gatewayEntries = agent.getTools().filter(isGateway);
   if (gatewayEntries.length === 0) {
     return { state: 'no-gateway' };
   }
   for (const entry of gatewayEntries) {
-    const header = (entry.headersFrom ?? []).find(
+    const headers =
+      entry.headersFrom ??
+      (entry.mcpServer ? serverHeaders?.(entry.mcpServer.name) : undefined) ??
+      [];
+    const header = headers.find(
       candidate =>
         candidate.name.toLowerCase() === TOOLSET_HEADER.toLowerCase(),
     );

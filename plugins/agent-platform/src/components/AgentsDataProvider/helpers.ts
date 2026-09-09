@@ -1,8 +1,8 @@
-import type { crds } from '@giantswarm/k8s-types';
 import type { Query } from '@tanstack/react-query';
 import {
   Agent,
   AgentReadiness,
+  AgentTemplateInterface,
   deriveAgentReadiness,
   getAgentStatusChangedAt,
   isAgentTransitional,
@@ -56,7 +56,7 @@ const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
  * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists.
  */
 function isAgentConverging(
-  json: crds.kagent.v1alpha2.Agent,
+  json: AgentTemplateInterface,
   now: number,
 ): boolean {
   if (!isAgentTransitional(deriveAgentReadiness(json))) {
@@ -81,7 +81,7 @@ function isAgentConverging(
 export function getAgentRefetchInterval(
   query: Query<KubeObjectInterface>,
 ): number {
-  const json = query.state.data as crds.kagent.v1alpha2.Agent | undefined;
+  const json = query.state.data as AgentTemplateInterface | undefined;
   if (!json) {
     return BASELINE_REFETCH_INTERVAL_MS;
   }
@@ -126,7 +126,7 @@ export function getAgentsRefetchInterval(
 
   // This query lists Agents, so its items are Agent JSON — narrow to read the
   // status conditions the shared derivation expects.
-  const isConverging = (items as crds.kagent.v1alpha2.Agent[]).some(json =>
+  const isConverging = (items as AgentTemplateInterface[]).some(json =>
     isAgentConverging(json, now),
   );
 

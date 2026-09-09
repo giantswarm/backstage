@@ -50,10 +50,10 @@ function makeModelConfig({
 
 function makeAgentJson(modelConfig: string) {
   return {
-    apiVersion: 'kagent.dev/v1alpha2',
-    kind: 'Agent',
+    apiVersion: 'kagent.dev/v1alpha3',
+    kind: 'AgentTemplate',
     metadata: { name: `agent-on-${modelConfig}`, namespace: NAMESPACE },
-    spec: { type: 'Declarative', declarative: { modelConfig } },
+    spec: { modelConfig: { name: modelConfig } },
   };
 }
 

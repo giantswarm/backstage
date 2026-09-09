@@ -8,6 +8,7 @@ import {
   Agent,
   HelmRelease,
   OCIRepository,
+  AgentTemplateInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useDeleteAgent } from './useDeleteAgent';
 
@@ -34,8 +35,8 @@ const NAMESPACE = 'agent-platform';
 function makeAgent(labels?: Record<string, string>): Agent {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: {
         name: 'pr-reviewer',
         namespace: NAMESPACE,
@@ -44,8 +45,8 @@ function makeAgent(labels?: Record<string, string>): Agent {
           'helm.toolkit.fluxcd.io/namespace': NAMESPACE,
         },
       },
-      spec: { type: 'Declarative', declarative: { modelConfig: 'opus-4-7' } },
-    } as crds.kagent.v1alpha2.Agent,
+      spec: { modelConfig: { name: 'opus-4-7' } },
+    } as AgentTemplateInterface,
     CLUSTER,
   );
 }

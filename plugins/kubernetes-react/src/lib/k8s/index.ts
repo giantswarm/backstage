@@ -17,9 +17,20 @@ export {
 export type {
   AgentMcpServerRef,
   AgentReadiness,
+  AgentSkillRef,
+  AgentTemplateCondition,
+  AgentTemplateHarnessStatus,
+  AgentTemplateInterface,
+  AgentTemplateSkill,
+  AgentTemplateToolBinding,
   AgentTool,
   AgentToolAgentRef,
 } from './Agent';
+export { RemoteMCPServer } from './RemoteMCPServer';
+export type {
+  RemoteMCPServerHeader,
+  RemoteMCPServerInterface,
+} from './RemoteMCPServer';
 export { App } from './App';
 export { ClusterSecretStore } from './ClusterSecretStore';
 export { ConfigMap } from './ConfigMap';

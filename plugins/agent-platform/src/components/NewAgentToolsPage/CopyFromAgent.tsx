@@ -2,13 +2,16 @@ import { useMemo } from 'react';
 import { Text } from '@backstage/ui';
 import {
   Agent,
+  RemoteMCPServer,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import {
   declaredToolset,
   gatewayEntry,
+  remoteServerHeaders,
   toolsetOfAgent,
+  type ServerHeadersLookup,
 } from '../../lib/toolset';
 import { MUSTER_MCP_SERVER_NAME } from '../AgentDetailPage/helpers';
 import {
@@ -25,12 +28,16 @@ export type AgentToolsetSource = {
 };
 
 /** The agents on an installation that declare a toolset, as copy sources. */
-export function agentToolsetSources(agents: Agent[]): AgentToolsetSource[] {
+export function agentToolsetSources(
+  agents: Agent[],
+  serverHeaders?: ServerHeadersLookup,
+): AgentToolsetSource[] {
   return agents
     .map(agent => {
       const declared = toolsetOfAgent(
         agent,
         gatewayEntry(MUSTER_MCP_SERVER_NAME),
+        serverHeaders,
       );
       if (declared.state !== 'declared' || declared.selectors.length === 0) {
         return undefined;
@@ -70,7 +77,18 @@ export function CopyFromAgent({
     {},
     { enabled: Boolean(installation) },
   );
-  const sources = useMemo(() => agentToolsetSources(resources), [resources]);
+  // The toolset header lives on the RemoteMCPServer an agent binds, so the
+  // installation's servers are read alongside its agents.
+  const { resources: remoteServers } = useResources(
+    installation ? [installation] : [],
+    RemoteMCPServer,
+    {},
+    { enabled: Boolean(installation), enableDiscovery: false },
+  );
+  const sources = useMemo(
+    () => agentToolsetSources(resources, remoteServerHeaders(remoteServers)),
+    [resources, remoteServers],
+  );
   // Compared as declared, so an agent without tools matches the empty selection.
   const currentKey = declaredToolset(current).join(',');
 

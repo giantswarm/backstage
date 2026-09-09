@@ -9,7 +9,10 @@ import {
   type FilterToolsOptions,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  RemoteMCPServer,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { agentsRouteRef } from '../../routes';
 import { AgentToolsetCard } from './AgentToolsetCard';
@@ -52,19 +55,41 @@ type ToolEntry = {
   headersFrom?: { name: string; value: string }[];
 };
 
+/**
+ * The RemoteMCPServers the agent's toolset bindings point at. On kagent `main`
+ * a toolset is a copy of the gateway server (`<gateway>-<agent>`) carrying the
+ * header, so an entry with `headersFrom` becomes such a copy plus the binding.
+ */
+let REMOTE_SERVERS: RemoteMCPServer[] = [];
+
 function makeAgent(tools: ToolEntry[]) {
+  REMOTE_SERVERS = [];
+  const bindings = tools.map(tool => {
+    if (!tool.headersFrom) {
+      return {
+        mcp: { server: { kind: 'RemoteMCPServer', name: tool.mcpServer.name } },
+      };
+    }
+    const copyName = `${tool.mcpServer.name}-pr-reviewer`;
+    REMOTE_SERVERS.push(
+      new RemoteMCPServer(
+        {
+          apiVersion: 'kagent.dev/v1alpha3',
+          kind: 'RemoteMCPServer',
+          metadata: { name: copyName, namespace: 'kagent' },
+          spec: { url: 'http://muster:8090/mcp', headersFrom: tool.headersFrom },
+        },
+        'gazelle',
+      ),
+    );
+    return { mcp: { server: { kind: 'RemoteMCPServer', name: copyName } } };
+  });
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: { name: 'pr-reviewer', namespace: 'kagent' },
-      spec: {
-        type: 'Declarative',
-        declarative: {
-          modelConfig: 'opus',
-          tools: tools.map(tool => ({ type: 'McpServer', ...tool })),
-        },
-      },
+      spec: { modelConfig: { name: 'opus' }, tools: bindings },
     } as never,
     'gazelle',
   );
@@ -146,11 +171,13 @@ const resolvedAnswer =
   });
 
 async function renderCard(agent: Agent, api?: MusterApi) {
-  mockUseResources.mockImplementation(() => ({
-    resources: SERVER_CRS,
-    isLoading: false,
-    errors: [],
-  }));
+  mockUseResources.mockImplementation(
+    (_clusters: unknown, ResourceClass: unknown) => ({
+      resources: ResourceClass === RemoteMCPServer ? REMOTE_SERVERS : SERVER_CRS,
+      isLoading: false,
+      errors: [],
+    }),
+  );
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

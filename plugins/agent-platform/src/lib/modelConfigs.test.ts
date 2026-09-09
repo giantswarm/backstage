@@ -237,7 +237,7 @@ describe('buildModelConfigManifest', () => {
     );
 
     expect(manifest).toEqual({
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: {
         name: 'qwen3',

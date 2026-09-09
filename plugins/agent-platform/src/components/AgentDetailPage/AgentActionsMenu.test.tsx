@@ -1,13 +1,15 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { crds } from '@giantswarm/k8s-types';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  AgentTemplateInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { agentsRouteRef } from '../../routes';
 import type { UseDeleteAgentResult } from '../../hooks/useDeleteAgent';
 import { AgentActionsMenu } from './AgentActionsMenu';
 
-type AgentInterface = crds.kagent.v1alpha2.Agent;
+type AgentInterface = AgentTemplateInterface;
 
 // The delete state arrives as a prop — the menu renders in the shared plugin
 // header, outside the plugin's QueryClientProvider, so it cannot call the hook
@@ -38,17 +40,14 @@ jest.mock('@backstage/frontend-plugin-api', () => {
 function makeAgent(): Agent {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: {
         name: 'pr-reviewer',
         namespace: 'agent-platform',
         managedFields: [{ manager: 'helm-controller', operation: 'Apply' }],
       },
-      spec: {
-        type: 'Declarative',
-        declarative: { modelConfig: 'opus-4-7' },
-      },
+      spec: { modelConfig: { name: 'opus-4-7' } },
     } as AgentInterface,
     'gazelle',
   );

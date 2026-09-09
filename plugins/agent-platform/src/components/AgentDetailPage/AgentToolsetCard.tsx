@@ -2,7 +2,11 @@ import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  RemoteMCPServer,
+  useResources,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -18,6 +22,7 @@ import {
   toolsetOfAgent,
   toolsetShape,
   unsignedServerSelectors,
+  remoteServerHeaders,
 } from '../../lib/toolset';
 import { musterToolExplorerExternalRouteRef } from '../../routes';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
@@ -112,13 +117,26 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
   const installation = agent.cluster;
   // One memo for both, so `selectors` keeps its identity across renders (the
   // resolution and grouping memos below depend on it).
+  // The toolset header lives on the RemoteMCPServer the agent binds (the
+  // `muster-<agent>` copy of the gateway), so the namespace's servers are read
+  // alongside the agent.
+  const { resources: remoteServers } = useResources(
+    installation,
+    RemoteMCPServer,
+    { [installation]: { namespace: agent.getNamespace() } },
+    { enableDiscovery: false },
+  );
   const { declared, selectors } = useMemo(() => {
-    const result = toolsetOfAgent(agent, gatewayEntry(MUSTER_MCP_SERVER_NAME));
+    const result = toolsetOfAgent(
+      agent,
+      gatewayEntry(MUSTER_MCP_SERVER_NAME),
+      remoteServerHeaders(remoteServers),
+    );
     return {
       declared: result,
       selectors: result.state === 'declared' ? result.selectors : [],
     };
-  }, [agent]);
+  }, [agent, remoteServers]);
   const shape = toolsetShape(selectors);
 
   const musterApi = useMusterPluginApi();

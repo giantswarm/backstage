@@ -29,7 +29,7 @@ function SkillCard({ skill }: { skill: SkillRef }) {
     <StaticCard>
       <Text weight="bold">{label}</Text>
       <Text variant="body-x-small" color="secondary">
-        <ExternalLink href={skill.url}>{repoSlug(skill.url)}</ExternalLink>
+        <ExternalLink href={skill.url ?? ''}>{repoSlug(skill.url ?? '')}</ExternalLink>
         {showPath && (
           <>
             {' · '}

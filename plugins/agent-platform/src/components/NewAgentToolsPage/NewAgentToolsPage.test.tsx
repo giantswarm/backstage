@@ -13,7 +13,10 @@ import {
   type MusterApi,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  RemoteMCPServer,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
@@ -75,28 +78,38 @@ const SERVER_CRS = [
   mcpServer('pro', { auth: { type: 'oauth' } }, {}, 'Auth Required'),
 ];
 
+/** The toolset copies of the gateway server the fixture agents bind. */
+const REMOTE_SERVERS: RemoteMCPServer[] = [];
+
 function agentWithToolset(name: string, toolset: string) {
+  REMOTE_SERVERS.push(
+    new RemoteMCPServer(
+      {
+        apiVersion: 'kagent.dev/v1alpha3',
+        kind: 'RemoteMCPServer',
+        metadata: { name: `muster-${name}`, namespace: 'kagent' },
+        spec: {
+          url: 'http://muster:8090/mcp',
+          headersFrom: [{ name: 'X-Muster-Toolset', value: toolset }],
+        },
+      },
+      'gazelle',
+    ),
+  );
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: {
         name,
         namespace: 'kagent',
         annotations: { 'ui.giantswarm.io/display-name': 'Existing agent' },
       },
       spec: {
-        type: 'Declarative',
-        declarative: {
-          modelConfig: 'opus',
-          tools: [
-            {
-              type: 'McpServer',
-              mcpServer: { name: 'muster', namespace: 'agent-platform' },
-              headersFrom: [{ name: 'X-Muster-Toolset', value: toolset }],
-            },
-          ],
-        },
+        modelConfig: { name: 'opus' },
+        tools: [
+          { mcp: { server: { kind: 'RemoteMCPServer', name: `muster-${name}` } } },
+        ],
       },
     } as never,
     'gazelle',
@@ -350,6 +363,9 @@ async function renderStep(
     (_clusters: string[], ResourceClass: unknown) => {
       if (ResourceClass === MCPServer) {
         return { resources: SERVER_CRS, isLoading: false, errors: [] };
+      }
+      if (ResourceClass === RemoteMCPServer) {
+        return { resources: REMOTE_SERVERS, isLoading: false, errors: [] };
       }
       if (ResourceClass === Agent) {
         return {
