@@ -514,6 +514,65 @@ session"). A session opens into its detail page, where it can be **renamed** and
 **deleted** (see "Renaming a session" and "Deleting a session"); the list rows
 themselves carry no actions.
 
+### The first-run state
+
+An empty table with column headers over the words "No sessions found." is the
+worst thing to show the one user who most needs direction, so neither this tab
+nor the Agents tab renders one. Three states, all shared between the two tabs
+via `FirstAgentCard` and `EmptyStateCard` (the latter in `ui-react`):
+
+- **No agents on the fleet.** Both tabs show the same card: what an agent is, and
+  a **Create your first agent** button into the create flow. Creating an agent is
+  the step before any session can exist, so the Sessions tab points there rather
+  than explaining itself.
+- **Agents but no sessions.** The Sessions tab drops the table, the search field
+  and the "your sessions across the fleet" blurb, and puts the composer —
+  expanded, not its collapsed strip — inside the card under "Start your first
+  session". The prompt box _is_ the invitation; there is no list below it to make
+  room for.
+- **Nothing could be read.** Deliberately _not_ an invitation. An empty list
+  because every installation failed is not an empty fleet, and sending the user
+  to the create flow would be the wrong path; these keep the "couldn't read"
+  warning card, and a fleet whose agents are all deployed-but-not-ready keeps the
+  sentence pointing at the Agents tab, where the reason is. This is the same
+  distinction `StartNewSession` has always drawn — it is why the branch tests
+  `unreachableInstallations` and not just `rows.length`.
+
+An empty list is therefore necessary but not sufficient for either invitation.
+Two further gates, each covering a state that looks identical in `rows` alone:
+
+- **Somewhere to deploy to.** The agent invitation also requires `installations`
+  — the scoped set that runs kagent and is reachable — to be non-empty. Pinned to
+  an installation without kagent there are no rows _and_ no errors, and the create
+  flow the card points at would have no target, while `InstallationScopeNote`
+  directly above already says kagent is not installed there. That scope keeps the
+  table and its own empty state instead.
+- **Something actually queried.** The session invitation requires at least one
+  scoped installation that is not in `notReachableInstallations` — the backend
+  never queries those, so nothing was asked on the user's behalf and an empty list
+  says nothing about their history. This is deliberately _not_ "no unreachable
+  installations at all": a portal that reaches one installation and not five
+  others still knows the user has no sessions, and on a typical local portal
+  `notReachableInstallations` is never empty, so the stricter rule would suppress
+  the invitation permanently.
+
+`isLoading` is only ever true while no rows exist yet, so `!isLoading &&
+rows.length === 0` is the fleet's final answer and needs no separate settled
+flag. Two consequences of gating the screen on it, both handled in
+`SessionsIndexPageContent`:
+
+- The composer is **withheld until the list settles**, and which container it
+  mounts in is **latched** at that first settled answer. `StartNewSession`
+  returns a card root on first run and a `Flex` root otherwise; flipping between
+  them changes the root element type, which remounts `NewSessionComposer` and
+  discards a half-typed prompt. On an empty fleet that flip would be the norm
+  rather than an edge case, because `isLoading` stays true until _every_
+  installation answers.
+- The sessions `Progress` also covers `isEmpty && useAgents().isLoading`. The
+  agents are a second, independent fan-out: with the blurb and the table both
+  gated off and the composer withheld, that window would otherwise render an
+  entirely blank tab.
+
 ### Why it needs a backend proxy
 
 Unlike agents and model configs, kagent **sessions are not Kubernetes
