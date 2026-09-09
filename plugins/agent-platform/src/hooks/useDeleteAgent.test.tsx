@@ -207,13 +207,74 @@ describe('useDeleteAgent', () => {
     expect(result.current.isDeletable).toBe(false);
   });
 
-  it('refuses when the agent carries no Flux Helm labels', () => {
-    // Applied directly rather than released, so there is no HelmRelease whose
-    // removal would take it away.
+  it('offers the deletion of a directly-applied template when the access review allows it', () => {
+    // No Flux Helm labels: applied directly (the create flow on kagent main, or
+    // kubectl), so the template itself is what goes.
     const { result } = setup({ agent: makeAgent({}) });
 
-    expect(result.current.isDeletable).toBe(false);
+    expect(result.current.isDeletable).toBe(true);
     expect(result.current.isCheckingDeletable).toBe(false);
+    expect(mockUseSelfSubjectAccessReview).toHaveBeenCalledWith(
+      CLUSTER,
+      expect.objectContaining({
+        group: 'kagent.dev',
+        resource: 'agenttemplates',
+        name: 'pr-reviewer',
+        verb: 'delete',
+      }),
+      { enabled: true },
+    );
+  });
+
+  it('refuses a directly-applied template when the access review says no', () => {
+    const { result } = setup({ agent: makeAgent({}), allowed: false });
+
+    expect(result.current.isDeletable).toBe(false);
+  });
+
+  it('deletes a directly-applied template together with its toolset server copy', async () => {
+    const agent = new Agent(
+      {
+        apiVersion: 'kagent.dev/v1alpha3',
+        kind: 'AgentTemplate',
+        metadata: { name: 'pr-reviewer', namespace: NAMESPACE },
+        spec: {
+          modelConfig: { name: 'opus-4-7' },
+          tools: [
+            {
+              mcp: {
+                server: { kind: 'RemoteMCPServer', name: 'muster-pr-reviewer' },
+              },
+            },
+          ],
+        },
+      } as AgentTemplateInterface,
+      CLUSTER,
+    );
+    mockDeleteResource.mockResolvedValue(undefined);
+    const { result } = setup({ agent });
+
+    await act(async () => {
+      await result.current.deleteAgent();
+    });
+
+    expect(mockDeleteResource).toHaveBeenCalledTimes(2);
+    expect(mockDeleteResource).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        gvk: expect.objectContaining({ plural: 'agenttemplates' }),
+        name: 'pr-reviewer',
+        namespace: NAMESPACE,
+      }),
+    );
+    expect(mockDeleteResource).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        gvk: expect.objectContaining({ plural: 'remotemcpservers' }),
+        name: 'muster-pr-reviewer',
+        namespace: NAMESPACE,
+      }),
+    );
   });
 
   it('refuses when the owning release could not be read', () => {

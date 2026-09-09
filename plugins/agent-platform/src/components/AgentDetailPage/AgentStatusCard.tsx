@@ -35,6 +35,7 @@ export function AgentStatusCard({ agent }: { agent: Agent }) {
   const readinessMessage = agent.getReadinessMessage();
   const unsupportedFeatures = agent.getUnsupportedFeaturesWarning();
   const conditions = agent.getConditions() ?? [];
+  const harnesses = agent.getHarnesses();
 
   return (
     <InfoCard title="Status">
@@ -58,6 +59,21 @@ export function AgentStatusCard({ agent }: { agent: Agent }) {
           )}
         </Flex>
 
+        {/* Where the agent runs: every Harness that admits the template, and
+            whether it has prepared it. A session starts on a ready one. */}
+        {harnesses.length > 0 && (
+          <Flex direction="column" gap="1" data-testid="agent-harnesses">
+            <Text variant="body-small" weight="bold">
+              Harnesses
+            </Text>
+            {harnesses.map(harness => (
+              <Text key={harness.name} variant="body-small">
+                {harness.name} — {harness.ready ? 'ready' : 'not ready'}
+              </Text>
+            ))}
+          </Flex>
+        )}
+
         {/* Independent of readiness — a fully ready agent can carry this — so it
             is reported separately rather than folded into the label above. */}
         {unsupportedFeatures && (
@@ -74,8 +90,8 @@ export function AgentStatusCard({ agent }: { agent: Agent }) {
           emptyContent={
             <Text variant="body-small" color="secondary">
               kagent has not reported a status for this agent yet. A newly
-              created agent shows this until the controller reconciles it for
-              the first time.
+              created agent shows this until a Harness admits it and the
+              controller reconciles it for the first time.
             </Text>
           }
         />

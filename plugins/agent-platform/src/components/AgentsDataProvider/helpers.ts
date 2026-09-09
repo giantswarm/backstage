@@ -159,8 +159,15 @@ export type AgentRow = {
    */
   model?: string;
   skillCount: number;
-  /** Readiness derived from the agent's status conditions. */
+  /** Readiness derived from the agent's harness statuses. */
   readiness: AgentReadiness;
+  /**
+   * The Harnesses that admit the agent, readiest first; sessions run on one of
+   * them. Optional only so hand-built rows in tests need not name any.
+   */
+  harnesses?: string[];
+  /** The subset of {@link harnesses} that report the agent Ready. */
+  readyHarnesses?: string[];
   /**
    * Detail explaining a non-ready readiness (the reconcile error, or
    * "N/M pods are ready"), for a tooltip. `undefined` when there is nothing to
@@ -259,6 +266,8 @@ export function toAgentRow(
     model: modelConfig?.getDisplayName() ?? agent.getModelConfigName(),
     skillCount: agent.getSkillCount(),
     readiness: agent.getReadiness(),
+    harnesses: agent.getHarnesses().map(harness => harness.name),
+    readyHarnesses: agent.getReadyHarnessNames(),
     readinessMessage: agent.getReadinessMessage(),
     unsupportedFeaturesWarning: agent.getUnsupportedFeaturesWarning(),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),

@@ -94,6 +94,8 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getReadiness: () => spec.readiness ?? 'ready',
     getReadinessMessage: () => undefined,
     getUnsupportedFeaturesWarning: () => undefined,
+    getHarnesses: () => [{ name: 'kagent', ready: true, warnings: [] }],
+    getReadyHarnessNames: () => ['kagent'],
   };
 }
 

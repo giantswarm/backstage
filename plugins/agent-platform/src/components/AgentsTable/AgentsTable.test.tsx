@@ -121,7 +121,8 @@ describe('AgentsTable', () => {
     await renderTable(<AgentsTable rows={rows} />);
 
     expect(screen.getByText('BYO agent')).toBeInTheDocument();
-    expect(screen.getByText('—')).toBeInTheDocument();
+    // The model cell and the harness cell both fall back to a dash.
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
   it('shows the empty state when there are no agents', async () => {

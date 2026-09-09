@@ -1,18 +1,24 @@
 // Composes the manifests for a new agent from the create-form model.
 //
-// The default deploy path applies these resources directly to the selected
-// installation via the `kube:apply` scaffolder action, so `combinedManifest` is
-// the source of truth: a single multi-document YAML (Namespace + OCIRepository +
-// HelmRelease) that is both previewed on the review page and applied verbatim —
-// what you see is what gets applied. The same resources are also exposed as
-// individual `files` (for the review cards) and as a standalone values block +
-// `helm install` command for the manual fallback.
+// On kagent `main` the agent unit is a `kagent.dev/v1alpha3 AgentTemplate`: the
+// model config, the system prompt, the tool bindings and the skills, admitted by a
+// Harness through the `kagent.dev/harness` label and instantiated per
+// conversation. There is no per-agent Helm release any more.
 //
-// We inline the agent values into `HelmRelease.spec.values` rather than
-// referencing a ConfigMap (the prototype's dangling reference), which is the
-// common self-contained Flux pattern. The values follow the `agent` chart's
-// schema (github.com/giantswarm/agent, helm/agent): `agent`, `modelConfig` and
-// `skills` are top-level keys.
+// A toolset is a copy of the platform's muster `RemoteMCPServer` that carries the
+// `X-Muster-Toolset` header — kagent `main` puts the headers an agent calls a
+// server with on the server, not on the binding — so an agent with a toolset gets
+// two objects: the `RemoteMCPServer muster-<agent>` and a template that binds it.
+// Without a toolset the template binds the platform's `muster` directly (implicit
+// full access, as the gateway grants it to the caller); `preset:none` binds no
+// tools at all.
+//
+// The default deploy path applies these resources directly to the selected
+// installation via the `kube:apply` scaffolder action, as the signed-in person, so
+// `combinedManifest` is the source of truth: one multi-document YAML that is both
+// previewed on the review page and applied verbatim — what you see is what gets
+// applied. The same resources are exposed as individual `files` (for the review
+// cards) and the fallback is a `kubectl apply` of the same documents.
 //
 // Manifests are built as plain objects and serialized with `yaml.dump`, never
 // by string concatenation — js-yaml handles quoting, escaping and (critically)
@@ -20,80 +26,69 @@
 // YAML.
 
 import { dump } from 'js-yaml';
+import { PRESET_NONE, TOOLSET_HEADER } from './toolset';
 
 export type AgentModel = {
-  /** Display name (agent.displayName). */
   name: string;
-  /** URL-friendly identifier; also the HelmRelease/release name. */
   slug: string;
   description: string;
-  /**
-   * ModelConfig CR name (chart `modelConfig.name`). The chart resolves it in
-   * the agent's own namespace, so no namespace is passed in the values — the
-   * agent is deployed into the ModelConfig's namespace instead (see
-   * DeployContext.namespace).
-   */
   modelConfigName: string;
-  /** System message (agent.systemMessage). */
   systemMessage: string;
-  /**
-   * Canonical avatar URL (chart `agent.iconUrl`), derived from the technical
-   * name — see agentAvatar. Empty → the field is omitted (chart default).
-   */
   iconUrl: string;
-  /** Selected skills → agent.skills.gitRefs. Empty → the block is omitted. */
+  /** Selected skills → `spec.skills[]`. Empty → the block is omitted. */
   skills: AgentSkillRef[];
   /**
-   * The agent's toolset: the selector list the Tools step composed, emitted as
-   * the chart's top-level `toolset` value exactly as given (the chart joins it
-   * into the `X-Muster-Toolset` header; exactly `["preset:none"]` makes it omit
-   * the gateway entry altogether). The wizard never lets this be empty — an
-   * empty list is a render error in the chart, by design — but a caller that
-   * passes none gets no `toolset` key, which is the chart's unscoped default.
+   * The toolset selectors, verbatim and in order. Empty → the template binds
+   * the gateway directly (implicit full access); exactly `preset:none` → no
+   * tools; anything else → a `RemoteMCPServer` copy carrying the header.
    */
   toolset: string[];
+  /**
+   * The Harness that admits the template, via the `kagent.dev/harness` label.
+   * Defaults to {@link DEFAULT_HARNESS}.
+   */
+  harness?: string;
 };
 
 /**
- * A kagent `spec.skills.gitRefs` entry: a git repo + subdirectory to materialize
- * as a skill under `/skills`. Emitted into the chart values as
- * `agent.skills.gitRefs`.
+ * One selected skill, as the picker hands it over. kagent `main` mounts a skill
+ * from a **pinned commit** (`spec.skills[].source.git.commit`, a 40- or
+ * 64-character hex SHA) — a branch or tag is not accepted by the CRD, so `ref`
+ * is expected to be a commit.
  */
 export type AgentSkillRef = {
   /** Git repository URL. */
   url: string;
   /** Subdirectory within the repo (skill root); omitted from YAML when ''. */
   path: string;
-  /** Git ref (branch/tag/SHA); omitted from YAML when ''. */
+  /** The pinned commit SHA. */
   ref: string;
   /** Skill directory name under /skills. */
   name: string;
+};
+
+/** The platform's gateway `RemoteMCPServer`, as read from the installation. */
+export type GatewayServer = {
+  name: string;
+  /** Its spec, copied verbatim into the toolset server (headers aside). */
+  spec: Record<string, unknown>;
 };
 
 export type DeployContext = {
   /** Installation / management cluster name (applied to; used in file paths). */
   installation: string;
   /**
-   * Namespace the HelmRelease/OCIRepository are placed in. Derived from the
-   * selected ModelConfig's namespace so the agent is co-located with it (and
-   * where kagent watches). With `targetNamespace` unset, Flux also deploys the
-   * chart's output here.
+   * Namespace the AgentTemplate (and its toolset server) are placed in. kagent
+   * `main` binds tools and model configs same-namespace, so this is the
+   * namespace of the selected ModelConfig — which is where kagent watches.
    */
   namespace: string;
-  /** Chart OCI URL without a tag. */
-  chartOciUrl: string;
   /**
-   * Concrete latest chart version, used only for the manual `helm install`
-   * snapshot. The Flux OCIRepository does not pin it — it tracks a semver range
-   * and auto-upgrades to the latest published release.
+   * The platform's muster gateway server on that installation, when it could
+   * be read. A toolset copies its spec; without it the copy falls back to the
+   * platform's in-cluster muster URL.
    */
-  chartVersion: string;
-  /**
-   * ServiceAccount the HelmRelease runs as. Required by GS's Flux
-   * multi-tenancy admission policy for HelmReleases in tenant namespaces
-   * (which the ModelConfig namespace is). Omitted from the manifest when unset.
-   */
-  serviceAccountName?: string;
+  gateway?: GatewayServer;
 };
 
 export type ComposedFile = {
@@ -107,168 +102,173 @@ export type ComposedFile = {
 export type ComposedManifests = {
   files: ComposedFile[];
   /**
-   * Single multi-document YAML (OCIRepository + HelmRelease) applied verbatim by
-   * the direct-apply path. This is what the review page previews.
+   * Single multi-document YAML (the toolset `RemoteMCPServer` when there is one,
+   * then the `AgentTemplate`) applied verbatim by the direct-apply path. This is
+   * what the review page previews.
    */
   combinedManifest: string;
-  /** Standalone agent values (for the manual `helm install --values` path). */
-  valuesYaml: string;
-  helmInstallCommand: string;
+  /** The same documents applied by hand, for the manual fallback. */
+  applyCommand: string;
 };
 
-export const CHART_NAME = 'agent';
+/** The v1alpha3 API every composed object is written at. */
+export const KAGENT_API_VERSION = 'kagent.dev/v1alpha3';
 
-// The OCIRepository tracks the chart by semver range rather than a pinned tag,
-// so Flux automatically upgrades the agent to the latest published release
-// (GS "major upgrades" convention: every position is a wildcard).
-const CHART_SEMVER_RANGE = 'x.x.x';
+/** The Harness a new agent is admitted by unless the form says otherwise. */
+export const DEFAULT_HARNESS = 'kagent';
 
-// lineWidth: -1 disables line wrapping so URLs/prompts aren't folded; noRefs
-// avoids YAML anchors for repeated values.
-const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
+/** The platform's gateway server name, and the prefix of every toolset copy. */
+export const GATEWAY_SERVER_NAME = 'muster';
 
 /**
- * The chart values object. Follows the `agent` chart's schema: `agent`,
- * `modelConfig` and `skills` are top-level (each forbids extra keys).
+ * Where the platform's muster listens in-cluster when the gateway server could
+ * not be read from the installation. The agent-platform-connectivity chart renders
+ * exactly this URL on its `RemoteMCPServer muster`.
  */
-function buildValues(model: AgentModel): Record<string, unknown> {
-  const agent: Record<string, unknown> = {
-    // Pin the technical (CR) name to the slug so it doesn't depend on Flux's
-    // release-name derivation; the chart would otherwise default it.
-    name: model.slug,
-    displayName: model.name,
-  };
-  if (model.description.trim()) {
-    agent.description = model.description;
-  }
-  // Deterministic avatar URL for the agent's technical name; omitted when it
-  // can't be resolved so the chart keeps its default (empty) rather than us
-  // writing an empty string.
-  if (model.iconUrl.trim()) {
-    agent.iconUrl = model.iconUrl;
-  }
-  // Only override the prompt when the user provided one; an empty field means
-  // "use the chart's default agent.systemMessage" (and the chart requires a
-  // non-empty value, so we must not emit an empty one).
-  if (model.systemMessage.trim()) {
-    agent.systemMessage = model.systemMessage;
-  }
+export const DEFAULT_GATEWAY_SPEC: Record<string, unknown> = {
+  url: 'http://muster.agent-platform.svc.cluster.local:8090/mcp',
+  protocol: 'STREAMABLE_HTTP',
+};
 
-  const values: Record<string, unknown> = {
-    agent,
-    modelConfig: { name: model.modelConfigName },
-  };
+const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
 
-  // skills is optional and gitRefs requires ≥1 entry, so the whole block is
-  // omitted when no skills are selected.
-  if (model.skills.length > 0) {
-    values.skills = {
-      gitRefs: model.skills.map(skill => ({
-        url: skill.url,
-        ...(skill.path ? { path: skill.path } : {}),
-        ...(skill.ref ? { ref: skill.ref } : {}),
-        name: skill.name,
-      })),
-    };
-  }
-
-  // The toolset is a top-level value (component-neutral on purpose: the
-  // declaration outlives muster as the enforcement point), a list of selector
-  // strings passed through verbatim. `muster.toolNames` is never written: it
-  // only ever filtered the gateway's meta-tools and narrowed nothing.
-  if (model.toolset.length > 0) {
-    values.toolset = [...model.toolset];
-  }
-
-  return values;
+/** Name of the toolset copy of the gateway server for one agent. */
+export function toolsetServerName(slug: string): string {
+  return `${GATEWAY_SERVER_NAME}-${slug}`;
 }
 
-function buildHelmRelease(
+/** Whether the model's toolset is exactly "no tools". */
+function isChatOnly(toolset: string[]): boolean {
+  return toolset.length === 1 && toolset[0] === PRESET_NONE;
+}
+
+/** Whether the model declares a toolset that needs a header, i.e. a server copy. */
+export function needsToolsetServer(toolset: string[]): boolean {
+  return toolset.length > 0 && !isChatOnly(toolset);
+}
+
+/**
+ * The toolset copy of the gateway server: the platform's spec, plus the
+ * `X-Muster-Toolset` header naming the selectors. Never a header named
+ * `Authorization` — the caller's own bearer is the only one, and kagent applies
+ * `headersFrom` last, so such a header would override the person.
+ */
+function buildToolsetServer(
   model: AgentModel,
   ctx: DeployContext,
-  values: Record<string, unknown>,
-): string {
-  const spec: Record<string, unknown> = { interval: '10m' };
-  // Required by the flux-multi-tenancy admission policy in tenant namespaces.
-  if (ctx.serviceAccountName) {
-    spec.serviceAccountName = ctx.serviceAccountName;
-  }
-  spec.chartRef = {
-    kind: 'OCIRepository',
-    name: CHART_NAME,
-    namespace: ctx.namespace,
-  };
-  spec.values = values;
-
-  return dump(
-    {
-      apiVersion: 'helm.toolkit.fluxcd.io/v2',
-      kind: 'HelmRelease',
-      metadata: { name: model.slug, namespace: ctx.namespace },
-      spec,
-    },
-    YAML_OPTS,
-  );
-}
-
-function buildOCIRepository(ctx: DeployContext): string {
-  return dump(
-    {
-      apiVersion: 'source.toolkit.fluxcd.io/v1',
-      kind: 'OCIRepository',
-      metadata: { name: CHART_NAME, namespace: ctx.namespace },
-      spec: {
-        interval: '30m',
-        url: ctx.chartOciUrl,
-        ref: { semver: CHART_SEMVER_RANGE },
+): Record<string, unknown> {
+  const base = { ...(ctx.gateway?.spec ?? DEFAULT_GATEWAY_SPEC) };
+  const inherited = Array.isArray(base.headersFrom)
+    ? (base.headersFrom as Array<{ name: string }>).filter(
+        header =>
+          header.name.toLowerCase() !== TOOLSET_HEADER.toLowerCase() &&
+          header.name.toLowerCase() !== 'authorization',
+      )
+    : [];
+  return {
+    apiVersion: KAGENT_API_VERSION,
+    kind: 'RemoteMCPServer',
+    metadata: {
+      name: toolsetServerName(model.slug),
+      namespace: ctx.namespace,
+      labels: {
+        'agent-platform.giantswarm.io/agent': model.slug,
+        // Discovery stays off: the gateway needs the person's OAuth, which no
+        // controller has. Same as the platform's own `muster` server.
+        'kagent.dev/discovery': 'disabled',
       },
     },
-    YAML_OPTS,
-  );
+    spec: {
+      ...base,
+      description: `Muster gateway for agent ${model.slug} (toolset copy)`,
+      headersFrom: [
+        ...inherited,
+        { name: TOOLSET_HEADER, value: model.toolset.join(',') },
+      ],
+    },
+  };
 }
 
-function buildHelmInstall(model: AgentModel, ctx: DeployContext): string {
-  return `helm install ${model.slug} \\
-  ${ctx.chartOciUrl} \\
-  --version ${ctx.chartVersion} \\
-  --namespace ${ctx.namespace} \\
-  --create-namespace \\
-  --values ${model.slug}-values.yaml`;
+function buildTemplate(model: AgentModel, ctx: DeployContext): Record<string, unknown> {
+  const annotations: Record<string, string> = {
+    'ui.giantswarm.io/display-name': model.name,
+  };
+  if (model.iconUrl.trim()) {
+    annotations['ui.giantswarm.io/icon-url'] = model.iconUrl;
+  }
+
+  const spec: Record<string, unknown> = {
+    modelConfig: { name: model.modelConfigName },
+  };
+  if (model.description.trim()) {
+    spec.description = model.description;
+  }
+  if (model.systemMessage.trim()) {
+    spec.systemPrompt = model.systemMessage;
+  }
+
+  if (!isChatOnly(model.toolset)) {
+    const serverName = needsToolsetServer(model.toolset)
+      ? toolsetServerName(model.slug)
+      : ctx.gateway?.name ?? GATEWAY_SERVER_NAME;
+    spec.tools = [
+      { mcp: { server: { kind: 'RemoteMCPServer', name: serverName } } },
+    ];
+  }
+
+  if (model.skills.length > 0) {
+    spec.skills = model.skills.map(skill => ({
+      name: skill.name,
+      source: {
+        git: { url: skill.url, commit: skill.ref },
+        ...(skill.path ? { path: skill.path } : {}),
+      },
+    }));
+  }
+
+  return {
+    apiVersion: KAGENT_API_VERSION,
+    kind: 'AgentTemplate',
+    metadata: {
+      name: model.slug,
+      namespace: ctx.namespace,
+      labels: { 'kagent.dev/harness': model.harness ?? DEFAULT_HARNESS },
+      annotations,
+    },
+    spec,
+  };
+}
+
+function buildApplyCommand(model: AgentModel, ctx: DeployContext): string {
+  return `kubectl apply --namespace ${ctx.namespace} \\
+  --filename ${model.slug}.yaml`;
 }
 
 export function composeManifests(
   model: AgentModel,
   ctx: DeployContext,
 ): ComposedManifests {
-  const values = buildValues(model);
-  const valuesYaml = dump(values, YAML_OPTS);
   const dir = `clusters/${ctx.installation}/${ctx.namespace}`;
 
-  const helmReleaseFile: ComposedFile = {
+  const files: ComposedFile[] = [];
+  if (needsToolsetServer(model.toolset)) {
+    files.push({
+      path: `${dir}/${toolsetServerName(model.slug)}.yaml`,
+      filename: `${toolsetServerName(model.slug)}.yaml`,
+      content: dump(buildToolsetServer(model, ctx), YAML_OPTS),
+    });
+  }
+  files.push({
     path: `${dir}/${model.slug}.yaml`,
     filename: `${model.slug}.yaml`,
-    content: buildHelmRelease(model, ctx, values),
-  };
-
-  const ociRepositoryFile: ComposedFile = {
-    path: `${dir}/${CHART_NAME}.yaml`,
-    filename: `${CHART_NAME}.yaml`,
-    content: buildOCIRepository(ctx),
-  };
-
-  // Multi-document YAML for the direct-apply path. OCIRepository first so the
-  // chart source exists before the HelmRelease references it (Flux reconciles
-  // asynchronously regardless, but this reads cleanly and applies cleanly).
-  // Each dump() output already ends with a newline.
-  const combinedManifest = [
-    ociRepositoryFile.content,
-    helmReleaseFile.content,
-  ].join('---\n');
+    content: dump(buildTemplate(model, ctx), YAML_OPTS),
+  });
 
   return {
-    files: [helmReleaseFile, ociRepositoryFile],
-    combinedManifest,
-    valuesYaml,
-    helmInstallCommand: buildHelmInstall(model, ctx),
+    files,
+    // The server first: the template's binding resolves against it, and kagent
+    // reports ResolvedRefs=False until it exists.
+    combinedManifest: files.map(file => file.content).join('---\n'),
+    applyCommand: buildApplyCommand(model, ctx),
   };
 }

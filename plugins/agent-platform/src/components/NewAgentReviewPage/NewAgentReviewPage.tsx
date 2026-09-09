@@ -1,16 +1,21 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Box, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { CHART_DEFAULTS } from '../../lib/agentDefaults';
-import { CHART_NAME, composeManifests } from '../../lib/composeManifests';
+import {
+  RemoteMCPServer,
+  useResource,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  composeManifests,
+  GATEWAY_SERVER_NAME,
+  KAGENT_API_VERSION,
+} from '../../lib/composeManifests';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
-import { useAgentChart } from '../../hooks/useAgentChart';
 import { useDeployAgent } from '../../hooks/useDeployAgent';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
@@ -123,7 +128,6 @@ function SummaryItem({
 export function NewAgentReviewPage() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const configApi = useApi(configApiRef);
   const newAgentLink = useRouteRef(newAgentRouteRef);
   const toolsLink = useRouteRef(newAgentToolsRouteRef);
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
@@ -163,15 +167,31 @@ export function NewAgentReviewPage() {
   const { deploy, status } = useDeployAgent();
   const [deployError, setDeployError] = useState<string | undefined>();
 
-  const ap = configApi.getOptionalConfig('agentPlatform');
-  const chartOciUrl =
-    ap?.getOptionalString('chart.ociUrl') ?? CHART_DEFAULTS.ociUrl;
-  const serviceAccountName = ap?.getOptionalString('fluxServiceAccountName');
+  // The agent's resources are applied alongside the ModelConfig it uses — that
+  // namespace already exists and is where kagent watches. On kagent `main` the
+  // template's bindings resolve same-namespace, so the gateway copy lives there
+  // too.
+  const namespace = state.modelConfigNamespace ?? '';
 
-  // Deploy the latest published chart version (resolved from the registry;
-  // falls back to the configured floor). Shares useAgentChart's query cache
-  // with the create form.
-  const { version: chartVersion } = useAgentChart();
+  // The platform's muster gateway server on the installation: a toolset is a
+  // copy of it carrying the header, so its spec is read to be copied verbatim.
+  // Best-effort — the composer falls back to the in-cluster muster URL.
+  const { resource: gatewayServer } = useResource(
+    state.installation ?? '',
+    RemoteMCPServer,
+    { name: GATEWAY_SERVER_NAME, namespace, enableDiscovery: false },
+    { enabled: Boolean(state.installation && namespace) },
+  );
+  const gateway = useMemo(
+    () =>
+      gatewayServer
+        ? {
+            name: gatewayServer.getName(),
+            spec: (gatewayServer.jsonData.spec ?? {}) as Record<string, unknown>,
+          }
+        : undefined,
+    [gatewayServer],
+  );
 
   // Persist the same deterministic avatar the UI renders onto the resource, as
   // the size-agnostic canonical URL. Seeded by the technical name (= agent.name)
@@ -179,15 +199,11 @@ export function NewAgentReviewPage() {
   // configured base domain (then the chart keeps its default).
   const buildAvatarUrl = useAgentAvatarUrl();
 
-  // The agent's resources are applied alongside the ModelConfig it uses — that
-  // namespace already exists and is where kagent watches.
-  const namespace = state.modelConfigNamespace ?? '';
-
   // Memoized so the YAML isn't recomposed (and the CodeMirror editors re-seeded)
-  // on every re-render — this page re-renders as useAgentChart resolves and as
-  // the deploy status advances. Computed before the completeness guard below so
-  // the hook order stays stable (its result is only rendered when complete).
-  const { files, combinedManifest, valuesYaml, helmInstallCommand } = useMemo(
+  // on every re-render — this page re-renders as the gateway read resolves and
+  // as the deploy status advances. Computed before the completeness guard below
+  // so the hook order stays stable (its result is only rendered when complete).
+  const { files, combinedManifest, applyCommand } = useMemo(
     () =>
       composeManifests(
         {
@@ -208,9 +224,7 @@ export function NewAgentReviewPage() {
         {
           installation: state.installation ?? '',
           namespace,
-          chartOciUrl,
-          chartVersion,
-          serviceAccountName,
+          gateway,
         },
       ),
     [
@@ -224,9 +238,7 @@ export function NewAgentReviewPage() {
       state.installation,
       buildAvatarUrl,
       namespace,
-      chartOciUrl,
-      chartVersion,
-      serviceAccountName,
+      gateway,
     ],
   );
 
@@ -330,7 +342,7 @@ export function NewAgentReviewPage() {
         </Text>
 
         <div className={classes.summary}>
-          <SummaryItem label="Release">
+          <SummaryItem label="Name">
             <span className={classes.code}>{state.slug}</span>
           </SummaryItem>
           <SummaryItem label="Installation">
@@ -339,9 +351,9 @@ export function NewAgentReviewPage() {
           <SummaryItem label="Namespace">
             <span className={classes.code}>{namespace}</span>
           </SummaryItem>
-          <SummaryItem label="Chart">
+          <SummaryItem label="Kind">
             <span className={classes.code}>
-              {CHART_NAME}:{chartVersion}
+              AgentTemplate ({KAGENT_API_VERSION})
             </span>
           </SummaryItem>
           <SummaryItem label="Tools">
@@ -425,10 +437,11 @@ export function NewAgentReviewPage() {
           <Text as="p" color="secondary" className={classes.sectionDescription}>
             These are applied to{' '}
             <span className={classes.code}>{state.installation}</span> exactly
-            as shown: the Flux{' '}
-            <span className={classes.code}>OCIRepository</span> that sources the
-            chart and the <span className={classes.code}>HelmRelease</span> that
-            installs the agent (with its values inlined).
+            as shown, as you: the{' '}
+            <span className={classes.code}>AgentTemplate</span> kagent runs the
+            agent from and, when a toolset is declared, the{' '}
+            <span className={classes.code}>RemoteMCPServer</span> copy of the
+            gateway that carries it.
           </Text>
           <div className={classes.files}>
             {files.map(file => (
@@ -496,15 +509,10 @@ export function NewAgentReviewPage() {
             <div className={classes.detailsBody}>
               <Text variant="body-small" color="secondary">
                 Prefer to keep this in your own GitOps repo, or apply it
-                yourself? Copy the resources above, or save the values below and
-                run the command once against the cluster.
+                yourself? Save the resources above as one file and run the
+                command once against the cluster.
               </Text>
-              <CodeBlock
-                filename={`${state.slug}-values.yaml`}
-                content={valuesYaml}
-                language="yaml"
-              />
-              <CodeBlock content={helmInstallCommand} />
+              <CodeBlock content={applyCommand} />
             </div>
           </details>
         </div>

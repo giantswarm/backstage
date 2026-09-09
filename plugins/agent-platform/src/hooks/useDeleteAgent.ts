@@ -12,6 +12,7 @@ import {
   getHelmReleaseNamespace,
   isManagedByFlux,
   OCIRepository,
+  RemoteMCPServer,
   useResource,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -188,8 +189,61 @@ export function useDeleteAgent(agent: Agent | undefined) {
     );
   };
 
+  // Without a Flux owner the template was applied directly (the portal's own
+  // create flow on kagent `main`, or kubectl): it is deleted as itself, together
+  // with the toolset copy of the gateway server it binds, when there is one.
+  const { allowed: isDirectDeleteAllowed, isLoading: isCheckingDirect } =
+    useSelfSubjectAccessReview(
+      cluster,
+      {
+        group: Agent.group,
+        resource: Agent.plural,
+        namespace: agent?.getNamespace(),
+        name: agent?.getName(),
+        verb: 'delete',
+      },
+      { enabled: Boolean(agent) && !hasOwner },
+    );
+
+  const deleteDirectly = async (template: Agent) => {
+    const templateGVK = template.getResolvedGVK();
+    const serverGVK = RemoteMCPServer.getGVK();
+    await deleteResource({
+      kubernetesApi,
+      cluster,
+      gvk: templateGVK,
+      name: template.getName(),
+      namespace: template.getNamespace(),
+    });
+    // The toolset copy is named after the agent; a shared server is never one.
+    const toolsetServers = template
+      .getMcpServerRefs()
+      .map(ref => ref.name)
+      .filter(name => name === `muster-${template.getName()}`);
+    for (const serverName of toolsetServers) {
+      try {
+        await deleteResource({
+          kubernetesApi,
+          cluster,
+          gvk: serverGVK,
+          name: serverName,
+          namespace: template.getNamespace(),
+        });
+      } catch (error) {
+        if ((error as Error).name !== 'NotFoundError') {
+          throw error;
+        }
+      }
+    }
+    await invalidateReads([templateGVK, serverGVK]);
+  };
+
   const mutation = useMutation({
     mutationFn: async () => {
+      if (agent && !hasOwner) {
+        await deleteDirectly(agent);
+        return;
+      }
       if (!agent || !helmRelease || !helmReleaseName) {
         throw new Error(
           'The HelmRelease that reconciles this agent could not be read, so it cannot be deleted from here. Try reloading the page.',
@@ -284,10 +338,13 @@ export function useDeleteAgent(agent: Agent | undefined) {
        * `ServiceUnavailableError`, and this read does not poll) or RBAC granting
        * `delete` without `get`.
        */
-      isDeletable: Boolean(helmRelease) && !isGitOpsOwned && isAllowed,
+      isDeletable: hasOwner
+        ? Boolean(helmRelease) && !isGitOpsOwned && isAllowed
+        : Boolean(agent) && isDirectDeleteAllowed,
       /** Still establishing the above. Withhold the affordance rather than guess. */
-      isCheckingDeletable:
-        hasOwner && (isLoadingHelmRelease || isCheckingPermission),
+      isCheckingDeletable: hasOwner
+        ? isLoadingHelmRelease || isCheckingPermission
+        : isCheckingDirect,
       deleteAgent,
       isDeleting: mutation.isPending,
       error: mutation.error as Error | null,
@@ -296,8 +353,11 @@ export function useDeleteAgent(agent: Agent | undefined) {
     // `helmRelease` itself is deliberately not returned: the confirmation dialog
     // says nothing mechanical, so it is internal to the mutation now.
     [
+      agent,
       hasOwner,
       helmRelease,
+      isDirectDeleteAllowed,
+      isCheckingDirect,
       isGitOpsOwned,
       isAllowed,
       isLoadingHelmRelease,

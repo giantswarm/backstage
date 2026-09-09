@@ -153,6 +153,17 @@ function getColumnConfig(
       cell: row => <AgentModelCell row={row} />,
     },
     {
+      id: 'harness',
+      label: 'Harness',
+      isSortable: false,
+      cell: row => (
+        <CellText
+          title={row.harnesses?.length ? row.harnesses.join(', ') : '—'}
+          color={isAgentRowMuted(row) ? 'secondary' : undefined}
+        />
+      ),
+    },
+    {
       id: 'skills',
       label: 'Skills',
       isSortable: true,

@@ -193,6 +193,8 @@ describe('toAgentRow', () => {
       skillCount: 3,
       // No status written by the fixture, so the controller has not reconciled.
       readiness: 'pending',
+      harnesses: [],
+      readyHarnesses: [],
     });
   });
 

@@ -1,241 +1,270 @@
 import { load, loadAll } from 'js-yaml';
-import { composeManifests } from './composeManifests';
+import {
+  AgentModel,
+  composeManifests,
+  DEFAULT_GATEWAY_SPEC,
+  DeployContext,
+  needsToolsetServer,
+  toolsetServerName,
+} from './composeManifests';
 
-const model = {
-  name: 'Go service reviewer',
-  slug: 'go-service-reviewer',
-  description: "Reviews pull requests on the platform team's Go services.",
+const model: AgentModel = {
+  name: 'PR reviewer',
+  slug: 'pr-reviewer',
+  description: 'Reviews pull requests.',
   modelConfigName: 'opus-4-7',
-  systemMessage: 'You review pull requests.\nRead for intent first.',
-  iconUrl: 'https://avatars.gazelle.example.io/v1/go-service-reviewer.png',
-  skills: [] as {
-    url: string;
-    path: string;
-    ref: string;
-    name: string;
-  }[],
-  toolset: ['preset:read-only'],
+  systemMessage: 'You review pull requests.',
+  iconUrl: 'https://avatars.example.io/pr-reviewer.svg',
+  skills: [],
+  toolset: [],
 };
 
-// The namespace is derived from the selected ModelConfig's namespace by the
-// caller; composeManifests just receives it.
-const ctx = {
+const ctx: DeployContext = {
   installation: 'gazelle',
   namespace: 'kagent',
-  chartOciUrl: 'oci://gsoci.azurecr.io/charts/giantswarm/agent',
-  chartVersion: '1.4.2',
+  gateway: {
+    name: 'muster',
+    spec: {
+      url: 'http://muster.agent-platform.svc.cluster.local:8090/mcp',
+      protocol: 'STREAMABLE_HTTP',
+      timeout: '30s',
+    },
+  },
 };
 
-/** Parses a single-document manifest string into an object. */
-function parse(content: string): any {
-  return load(content);
+type Doc = {
+  apiVersion: string;
+  kind: string;
+  metadata: {
+    name: string;
+    namespace: string;
+    labels?: Record<string, string>;
+    annotations?: Record<string, string>;
+  };
+  spec: Record<string, any>;
+};
+
+function docs(manifest: string): Doc[] {
+  return loadAll(manifest) as Doc[];
 }
 
 describe('composeManifests', () => {
-  it('emits a HelmRelease and an OCIRepository in the target namespace', () => {
-    const { files } = composeManifests(model, ctx);
+  it('emits one v1alpha3 AgentTemplate in the target namespace, admitted by the default harness', () => {
+    const { files, combinedManifest } = composeManifests(model, ctx);
 
-    expect(files).toHaveLength(2);
-    const [helmRelease, ociRepository] = files;
+    expect(files.map(f => f.filename)).toEqual(['pr-reviewer.yaml']);
+    expect(files[0].path).toBe('clusters/gazelle/kagent/pr-reviewer.yaml');
 
-    expect(helmRelease.filename).toBe('go-service-reviewer.yaml');
-    const hr = parse(helmRelease.content);
-    expect(hr.kind).toBe('HelmRelease');
-    expect(hr.metadata.name).toBe('go-service-reviewer');
-    expect(hr.metadata.namespace).toBe('kagent');
-
-    expect(ociRepository.filename).toBe('agent.yaml');
-    const oci = parse(ociRepository.content);
-    expect(oci.kind).toBe('OCIRepository');
-    expect(oci.metadata.name).toBe('agent');
-    expect(oci.spec.url).toBe('oci://gsoci.azurecr.io/charts/giantswarm/agent');
-    // Tracks a semver range for auto-upgrade, not a pinned tag.
-    expect(oci.spec.ref).toEqual({ semver: 'x.x.x' });
-    expect(oci.spec.ref.tag).toBeUndefined();
+    const [template] = docs(combinedManifest);
+    expect(template).toMatchObject({
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
+      metadata: {
+        name: 'pr-reviewer',
+        namespace: 'kagent',
+        labels: { 'kagent.dev/harness': 'kagent' },
+        annotations: {
+          'ui.giantswarm.io/display-name': 'PR reviewer',
+          'ui.giantswarm.io/icon-url': 'https://avatars.example.io/pr-reviewer.svg',
+        },
+      },
+      spec: {
+        modelConfig: { name: 'opus-4-7' },
+        description: 'Reviews pull requests.',
+        systemPrompt: 'You review pull requests.',
+      },
+    });
   });
 
-  it('sets spec.serviceAccountName on the HelmRelease only when provided', () => {
-    const without = parse(composeManifests(model, ctx).files[0].content);
-    expect(without.spec.serviceAccountName).toBeUndefined();
-
-    const withSa = parse(
-      composeManifests(model, {
-        ...ctx,
-        serviceAccountName: 'kagent-controller',
-      }).files[0].content,
-    );
-    expect(withSa.spec.serviceAccountName).toBe('kagent-controller');
+  it('binds the platform gateway directly when no toolset is declared (implicit full access)', () => {
+    const [template] = docs(composeManifests(model, ctx).combinedManifest);
+    expect(template.spec.tools).toEqual([
+      { mcp: { server: { kind: 'RemoteMCPServer', name: 'muster' } } },
+    ]);
   });
 
-  it('inlines the agent values into the HelmRelease at spec.values', () => {
-    const hr = parse(composeManifests(model, ctx).files[0].content);
-    const values = hr.spec.values;
-
-    expect(values.agent.name).toBe('go-service-reviewer');
-    expect(values.agent.displayName).toBe('Go service reviewer');
-    expect(values.agent.systemMessage).toBe(
-      'You review pull requests.\nRead for intent first.',
+  it('honours the harness the form picked', () => {
+    const [template] = docs(
+      composeManifests({ ...model, harness: 'claude' }, ctx).combinedManifest,
     );
-    // modelConfig is a top-level values key (name only — no namespace).
-    expect(values.modelConfig).toEqual({ name: 'opus-4-7' });
-    expect(values.agent.modelConfig).toBeUndefined();
-    // No skills selected → the skills block is omitted (gitRefs requires ≥1).
-    expect(values.skills).toBeUndefined();
+    expect(template.metadata.labels).toEqual({ 'kagent.dev/harness': 'claude' });
   });
 
-  it('sets agent.iconUrl from the model (also in the standalone values)', () => {
-    const { files, valuesYaml } = composeManifests(model, ctx);
-
-    const hr = parse(files[0].content);
-    expect(hr.spec.values.agent.iconUrl).toBe(
-      'https://avatars.gazelle.example.io/v1/go-service-reviewer.png',
+  it('omits the icon annotation, description and prompt when they are empty', () => {
+    const [template] = docs(
+      composeManifests(
+        { ...model, iconUrl: '', description: '  ', systemMessage: '' },
+        ctx,
+      ).combinedManifest,
     );
-    // The manual `helm install --values` path carries it too.
-    expect(parse(valuesYaml).agent.iconUrl).toBe(
-      'https://avatars.gazelle.example.io/v1/go-service-reviewer.png',
-    );
-  });
-
-  it('omits agent.iconUrl when it is empty (chart default applies)', () => {
-    const hr = parse(
-      composeManifests({ ...model, iconUrl: '' }, ctx).files[0].content,
-    );
-    expect(hr.spec.values.agent.iconUrl).toBeUndefined();
-    expect(hr.spec.values.agent.name).toBe('go-service-reviewer');
-  });
-
-  it('omits agent.systemMessage when the prompt is empty (chart default applies)', () => {
-    const hr = parse(
-      composeManifests({ ...model, systemMessage: '   ' }, ctx).files[0]
-        .content,
-    );
-    expect(hr.spec.values.agent.systemMessage).toBeUndefined();
-    expect(hr.spec.values.agent.displayName).toBe('Go service reviewer');
-    expect(hr.spec.values.modelConfig.name).toBe('opus-4-7');
+    expect(template.metadata.annotations).toEqual({
+      'ui.giantswarm.io/display-name': 'PR reviewer',
+    });
+    expect(template.spec).not.toHaveProperty('description');
+    expect(template.spec).not.toHaveProperty('systemPrompt');
   });
 
   it('produces valid YAML even when the prompt has irregular indentation', () => {
-    // A prompt whose first content line is more indented than a later line used
-    // to break the hand-rolled block scalar (invalid YAML). yaml.dump handles it.
-    const trickyPrompt = '  Indented intro line\nLess indented instruction';
-    const { files, combinedManifest } = composeManifests(
-      { ...model, systemMessage: trickyPrompt },
+    const systemMessage = 'Line one\n    indented\n  less indented\n\ttab';
+    const { combinedManifest } = composeManifests(
+      { ...model, systemMessage },
       ctx,
     );
-
-    // Round-trips cleanly and preserves the prompt verbatim.
-    const hr = parse(files[0].content);
-    expect(hr.spec.values.agent.systemMessage).toBe(trickyPrompt);
-    // The combined multi-doc manifest also parses (what kube:apply loads).
-    expect(() => loadAll(combinedManifest)).not.toThrow();
+    const [template] = docs(combinedManifest);
+    expect(template.spec.systemPrompt).toBe(systemMessage);
   });
 
-  it('combines both resources into one multi-document manifest for direct apply', () => {
-    const { combinedManifest } = composeManifests(model, ctx);
-
-    const docs = loadAll(combinedManifest) as any[];
-    expect(docs).toHaveLength(2);
-    // OCIRepository first, then the HelmRelease.
-    expect(docs[0].kind).toBe('OCIRepository');
-    expect(docs[1].kind).toBe('HelmRelease');
-  });
-
-  it('renders selected skills as spec.skills.gitRefs when present', () => {
-    const { valuesYaml } = composeManifests(
+  it('renders selected skills as pinned git sources, omitting an empty path', () => {
+    const sha = 'a'.repeat(40);
+    const [template] = docs(
+      composeManifests(
+        {
+          ...model,
+          skills: [
+            {
+              url: 'https://github.com/giantswarm/skills',
+              path: 'pr/review',
+              ref: sha,
+              name: 'pr-review',
+            },
+            {
+              url: 'https://github.com/giantswarm/root-skill',
+              path: '',
+              ref: sha,
+              name: 'root',
+            },
+          ],
+        },
+        ctx,
+      ).combinedManifest,
+    );
+    expect(template.spec.skills).toEqual([
       {
-        ...model,
-        skills: [
-          {
-            url: 'https://github.com/giantswarm/agent-skills',
-            path: 'demo',
-            ref: 'main',
-            name: 'demo',
-          },
-        ],
+        name: 'pr-review',
+        source: {
+          git: { url: 'https://github.com/giantswarm/skills', commit: sha },
+          path: 'pr/review',
+        },
       },
-      ctx,
-    );
-
-    const values = parse(valuesYaml);
-    expect(values.skills.gitRefs).toEqual([
       {
-        url: 'https://github.com/giantswarm/agent-skills',
-        path: 'demo',
-        ref: 'main',
-        name: 'demo',
+        name: 'root',
+        source: {
+          git: { url: 'https://github.com/giantswarm/root-skill', commit: sha },
+        },
       },
     ]);
   });
 
-  it('omits path for a repo-root skill', () => {
-    const { valuesYaml } = composeManifests(
-      {
-        ...model,
-        skills: [
-          {
-            url: 'https://github.com/giantswarm/agent-skills',
-            path: '',
-            ref: 'main',
-            name: 'agent-skills',
-          },
-        ],
-      },
-      ctx,
-    );
-
-    const [skill] = parse(valuesYaml).skills.gitRefs;
-    expect(skill.path).toBeUndefined();
-    expect(skill).toEqual({
-      url: 'https://github.com/giantswarm/agent-skills',
-      ref: 'main',
-      name: 'agent-skills',
-    });
-  });
-
-  it('builds a helm install command that creates the namespace', () => {
-    const { helmInstallCommand } = composeManifests(model, ctx);
-
-    expect(helmInstallCommand).toContain('helm install go-service-reviewer');
-    expect(helmInstallCommand).toContain('--version 1.4.2');
-    expect(helmInstallCommand).toContain('--namespace kagent');
-    expect(helmInstallCommand).toContain('--create-namespace');
-    expect(helmInstallCommand).toContain(
-      '--values go-service-reviewer-values.yaml',
+  it('builds a kubectl apply command for the manual fallback', () => {
+    expect(composeManifests(model, ctx).applyCommand).toBe(
+      'kubectl apply --namespace kagent \\\n  --filename pr-reviewer.yaml',
     );
   });
 });
 
 describe('composeManifests toolset', () => {
-  it('emits the toolset as the top-level chart value, verbatim and in order', () => {
-    const { valuesYaml, files } = composeManifests(
-      { ...model, toolset: ['preset:read-only', 'workflow:incident-triage'] },
+  const withToolset = {
+    ...model,
+    toolset: ['preset:read-only', 'server:kubernetes', 'tool:x_get_pods'],
+  };
+
+  it('emits a RemoteMCPServer copy of the gateway carrying the header, then the template binding it', () => {
+    const { files, combinedManifest } = composeManifests(withToolset, ctx);
+
+    expect(files.map(f => f.filename)).toEqual([
+      'muster-pr-reviewer.yaml',
+      'pr-reviewer.yaml',
+    ]);
+    const [server, template] = docs(combinedManifest);
+
+    expect(server).toMatchObject({
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'RemoteMCPServer',
+      metadata: {
+        name: 'muster-pr-reviewer',
+        namespace: 'kagent',
+        labels: {
+          'agent-platform.giantswarm.io/agent': 'pr-reviewer',
+          'kagent.dev/discovery': 'disabled',
+        },
+      },
+      spec: {
+        url: 'http://muster.agent-platform.svc.cluster.local:8090/mcp',
+        protocol: 'STREAMABLE_HTTP',
+        timeout: '30s',
+        headersFrom: [
+          {
+            name: 'X-Muster-Toolset',
+            value: 'preset:read-only,server:kubernetes,tool:x_get_pods',
+          },
+        ],
+      },
+    });
+    expect(template.spec.tools).toEqual([
+      { mcp: { server: { kind: 'RemoteMCPServer', name: 'muster-pr-reviewer' } } },
+    ]);
+  });
+
+  it('never copies an Authorization header and replaces an existing toolset header', () => {
+    const [server] = docs(
+      composeManifests(withToolset, {
+        ...ctx,
+        gateway: {
+          name: 'muster',
+          spec: {
+            url: 'http://muster:8090/mcp',
+            headersFrom: [
+              { name: 'Authorization', value: 'Bearer nope' },
+              { name: 'X-Muster-Toolset', value: 'preset:full' },
+              { name: 'X-Trace', value: 'keep' },
+            ],
+          },
+        },
+      }).combinedManifest,
+    );
+    expect(server.spec.headersFrom).toEqual([
+      { name: 'X-Trace', value: 'keep' },
+      {
+        name: 'X-Muster-Toolset',
+        value: 'preset:read-only,server:kubernetes,tool:x_get_pods',
+      },
+    ]);
+  });
+
+  it('falls back to the platform in-cluster muster URL when the gateway could not be read', () => {
+    const [server] = docs(
+      composeManifests(withToolset, { ...ctx, gateway: undefined })
+        .combinedManifest,
+    );
+    expect(server.spec).toMatchObject(DEFAULT_GATEWAY_SPEC);
+  });
+
+  it('binds no tools at all for a chat-only agent (preset:none)', () => {
+    const { files, combinedManifest } = composeManifests(
+      { ...model, toolset: ['preset:none'] },
       ctx,
     );
+    expect(files).toHaveLength(1);
+    const [template] = docs(combinedManifest);
+    expect(template.spec).not.toHaveProperty('tools');
+  });
 
-    expect(load(valuesYaml)).toMatchObject({
-      toolset: ['preset:read-only', 'workflow:incident-triage'],
-    });
-    const hr = parse(files[0].content);
-    expect(hr.spec.values.toolset).toEqual([
-      'preset:read-only',
-      'workflow:incident-triage',
+  it('names the copy after the agent and knows when one is needed', () => {
+    expect(toolsetServerName('pr-reviewer')).toBe('muster-pr-reviewer');
+    expect(needsToolsetServer([])).toBe(false);
+    expect(needsToolsetServer(['preset:none'])).toBe(false);
+    expect(needsToolsetServer(['preset:read-only'])).toBe(true);
+  });
+
+  it('keeps the combined manifest loadable as two documents', () => {
+    const { combinedManifest } = composeManifests(withToolset, ctx);
+    expect(docs(combinedManifest).map(d => d.kind)).toEqual([
+      'RemoteMCPServer',
+      'AgentTemplate',
     ]);
-    // Never the kagent-side allowlist, which narrowed nothing against muster.
-    expect(hr.spec.values.muster).toBeUndefined();
-  });
-
-  it('emits exactly ["preset:none"] for a chat-only agent (the chart then omits the gateway entry)', () => {
-    const values = load(
-      composeManifests({ ...model, toolset: ['preset:none'] }, ctx).valuesYaml,
-    ) as Record<string, unknown>;
-    expect(values.toolset).toEqual(['preset:none']);
-  });
-
-  it('writes no toolset key at all when the caller passes none', () => {
-    // The chart's unscoped default; the wizard itself never reaches this.
-    const values = load(
-      composeManifests({ ...model, toolset: [] }, ctx).valuesYaml,
-    ) as Record<string, unknown>;
-    expect('toolset' in values).toBe(false);
+    // Each file alone is a single document.
+    for (const file of composeManifests(withToolset, ctx).files) {
+      expect(load(file.content)).toBeTruthy();
+    }
   });
 });

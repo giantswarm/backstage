@@ -214,13 +214,15 @@ export interface Config {
       installations?: {
         [installationName: string]: {
           /**
-           * Full kagent API base URL for this installation, overriding the
-           * derived `https://kagent.<baseDomain>/api`. No trailing slash.
+           * kagent controller base URL for this installation — the gRPC-Web
+           * door, no trailing slash and no path suffix; the service paths
+           * (`/kagent.api.v1alpha1.AgentInstanceService/…`,
+           * `/lf.a2a.v1.A2AService/…`) are appended. Overrides the derived
+           * `https://kagent.<baseDomain>`.
            *
-           * Use this to point at a different ingress — for example the
-           * agentgateway door (`https://agentgateway.<baseDomain>/kagent/api`)
-           * on installations where the oauth2-proxy-fronted kagent hostname is
-           * not available.
+           * On the agent-platform installations this is the agentgateway door,
+           * `https://agentgateway.<baseDomain>/kagent`, whose route strips the
+           * `/kagent` prefix before the controller.
            */
           apiBaseUrl?: string;
         };

@@ -587,13 +587,30 @@ Two things then force a backend hop, which `agent-platform-backend` provides:
   separate `backstage-kagent-authorization` header and is promoted to
   `Authorization` by the proxy. Same approach as `muster-backend`.
 
-The URL is derived per installation as `https://kagent.<baseDomain>/api` (the
-oauth2-proxy-fronted host whose nginx sidecar proxies `/api/` to
-`kagent-controller:8083`), overridable via `agentPlatform.kagent.installations`.
-Everything stays under `/api`: that is the only prefix either ingress routes to
-the controller, which is also why there is **no version probe** — kagent serves
-`/version` at its server root, where the derived door's nginx answers from the UI
-and the agentgateway override's `/kagent` prefix does not match.
+**kagent `main` (API v2) — POC.** The 0.10 REST sessions API and the JSON-RPC
+A2A endpoint are gone on kagent `main`; the proxy speaks Connect **gRPC-Web over
+HTTP/1.1** to the controller: `kagent.api.v1alpha1.AgentInstanceService` for
+sessions (an AgentInstance is one conversation of one person with one
+AgentTemplate on one Harness), `lf.a2a.v1.A2AService` for turns (`SendMessage`,
+`SendStreamingMessage`, `ListTasks`, keyed by the `x-kagent-agent-instance-id`
+metadata), `AgentTemplateService` and `SystemService` for templates, the version
+and the identity probe. Every call carries `authorization: Bearer <dex id_token>`
+**and** `x-user-id: <email>` (read off the token's `email` claim, unverified):
+kagent partitions instances by `x-user-id` and forwards the bearer to the agent,
+which re-emits it on its MCP calls so muster sees the person. The controller's
+answers are rendered into the 0.10 envelope and A2A v0 task JSON (agent
+artifacts folded into `history` as agent messages), so the routes below, the
+session readers and the frontend schemas are unchanged.
+
+The URL is derived per installation as `https://kagent.<baseDomain>` — the
+controller serves gRPC-Web at its root, so there is no `/api` suffix any more —
+overridable via `agentPlatform.kagent.installations`. On the agent-platform
+installations the chart configures the agentgateway door,
+`https://agentgateway.<baseDomain>/kagent`, whose route strips `/kagent` before
+the controller. `GET /kagent/version` (`SystemService/GetVersion`) and
+`GET /kagent/agent-templates?namespace=` (`AgentTemplateService`, with each
+template's admitting harnesses and readiness) exist for headless callers; the
+reachability probe targets the version path.
 
 ### ⚠️ Prerequisite: kagent's oauth2-proxy must accept Backstage's audience
 
@@ -617,7 +634,7 @@ agentPlatform:
   kagent:
     installations:
       <installation>:
-        apiBaseUrl: https://agentgateway.<baseDomain>/kagent/api
+        apiBaseUrl: https://agentgateway.<baseDomain>/kagent
 ```
 
 Local dev only — that door is unauthenticated on GS installations and must never
