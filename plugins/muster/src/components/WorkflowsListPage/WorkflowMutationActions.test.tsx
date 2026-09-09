@@ -75,6 +75,7 @@ function makeInstance(retry: () => void): MusterInstance {
     dataUpdatedAt: undefined,
     isRefreshing: false,
     retry,
+    refreshInventory: jest.fn(),
   };
 }
 

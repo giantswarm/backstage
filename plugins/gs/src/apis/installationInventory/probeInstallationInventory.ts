@@ -26,6 +26,54 @@ function errorNameForStatus(status: number): string | undefined {
 }
 
 /**
+ * The names of a probe the API server (or the proxy in front of it) refused
+ * for want of a valid token or a permission.
+ */
+const AUTH_ERROR_NAMES: ReadonlySet<string> = new Set([
+  'UnauthorizedError',
+  'ForbiddenError',
+]);
+
+/**
+ * The probe's answer was an HTTP error. `name` follows the kubernetes-react
+ * reads (`UnauthorizedError` for a 401, and so on), so the
+ * QueryClientProviders' retry predicates decline to retry it; `status` and
+ * `reason` let the gates quote what happened.
+ */
+export class InventoryProbeError extends Error {
+  readonly installation: string;
+  readonly status: number;
+  /**
+   * `HTTP 401 Unauthorized`, or `HTTP 401` when the response carried no
+   * reason phrase (HTTP/2 responses never do).
+   */
+  readonly reason: string;
+
+  constructor(installation: string, status: number, statusText: string) {
+    const reason = statusText
+      ? `HTTP ${status} ${statusText}`
+      : `HTTP ${status}`;
+    super(
+      `Failed to read the API groups of ${installation} (GET ${INVENTORY_PROBE_PATH}). Reason: ${reason}.`,
+    );
+    this.name = errorNameForStatus(status) ?? 'InventoryProbeError';
+    this.installation = installation;
+    this.status = status;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Whether a probe failed because the API server (or the proxy in front of it)
+ * refused the caller -- a 401 or a 403. Such a failure does not change until
+ * the person signs in again or is granted access, so nothing re-runs the probe
+ * on its own (see `useInstallationInventory`).
+ */
+export function isInventoryAuthError(error: unknown): boolean {
+  return error instanceof Error && AUTH_ERROR_NAMES.has(error.name);
+}
+
+/**
  * Asks one installation which platform components it runs.
  *
  * `/apis` is served to any authenticated caller, so a 403 or a 404 here is
@@ -51,16 +99,11 @@ export async function probeInstallationInventory(
   } as Parameters<KubernetesClient['proxy']>[0]);
 
   if (!response.ok) {
-    // HTTP/2 responses carry no reason phrase; fall back to the status code.
-    const reason = response.statusText || `HTTP ${response.status}`;
-    const error = new Error(
-      `Failed to read the API groups of ${installation} (GET ${INVENTORY_PROBE_PATH}). Reason: ${reason}.`,
+    throw new InventoryProbeError(
+      installation,
+      response.status,
+      response.statusText,
     );
-    const name = errorNameForStatus(response.status);
-    if (name) {
-      error.name = name;
-    }
-    throw error;
   }
 
   return parseApiGroupList(await response.json());

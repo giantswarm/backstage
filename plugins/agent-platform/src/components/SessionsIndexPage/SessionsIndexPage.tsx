@@ -4,6 +4,7 @@ import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Box, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
+import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCreateSession } from '../../hooks/useCreateSession';
@@ -291,6 +292,10 @@ function SessionsIndexPageContent() {
         {!isLoading && <StartNewSession firstRun={firstRun} />}
 
         <InstallationScopeNote component="kagent" />
+
+        {/* Same gate as the Agents tab: the installation this tab reads could
+            not be asked whether it runs kagent. Renders nothing otherwise. */}
+        <InstallationInventoryGate context="Which installations run kagent is read through their Kubernetes API." />
 
         {/* No rows yet — show activity instead of an empty table skeleton.
             Also while the agents are still resolving on an empty list: the

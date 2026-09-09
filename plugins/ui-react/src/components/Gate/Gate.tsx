@@ -28,9 +28,11 @@ export interface GateProps {
 }
 
 /**
- * The mockups' auth gate: a dashed-border box with a lock icon, shown in place
- * of any content that requires an authenticated muster session (tools, core
- * families). Optionally carries a sign-in action on the right.
+ * An auth gate: a dashed-border box with a lock icon, shown in place of
+ * content the person cannot see yet -- tools behind a live muster session, an
+ * installation whose API server rejected their token. Optionally carries the
+ * action that fixes it on the right. Moved here from the muster plugin when
+ * the gs installation-inventory gate needed the same box.
  */
 export function Gate({ label, action }: GateProps) {
   const classes = useStyles();
