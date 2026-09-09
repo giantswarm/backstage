@@ -1,7 +1,7 @@
 import { matchesQuery } from '@giantswarm/backstage-plugin-ui-react';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
-import type { CatalogueGroup } from '../../lib/toolset';
+import type { CatalogueGroup } from './toolset';
 
 function toolMatches(query: string, tool: ToolSummary): boolean {
   return matchesQuery(

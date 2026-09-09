@@ -1,14 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react';
-import {
-  Accordion,
-  AccordionGroup,
-  AccordionPanel,
-  AccordionTrigger,
-  Alert,
-  Flex,
-  Text,
-} from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { Alert, Flex, Text } from '@backstage/ui';
 import {
   ServerSignIn,
   type ToolSummary,
@@ -23,6 +13,7 @@ import {
   serverSelector,
   workflowNameOf,
 } from '../../lib/toolset';
+import { Disclosures, type DisclosureEntry } from '../Disclosures';
 import {
   SelectableRow,
   SelectableRowList,
@@ -30,92 +21,6 @@ import {
 } from '../SelectableCard';
 import { ShowMore } from '../ShowMore';
 import { ToolMarkers } from '../ToolsetResolutionList';
-
-const useStyles = makeStyles(theme => ({
-  group: {
-    // bui's accordion trigger has no bottom padding; an expanded header would
-    // sit flush against its panel. The selector must reach the button, which
-    // is what carries `aria-expanded` (see ui-react's SimpleAccordion).
-    '& .bui-AccordionTriggerButton[aria-expanded="true"]': {
-      paddingBottom: theme.spacing(1),
-    },
-  },
-  nested: {
-    borderLeft: `2px solid ${theme.palette.divider}`,
-    paddingLeft: theme.spacing(1.5),
-    marginBottom: theme.spacing(1),
-  },
-  panel: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
-    paddingBottom: theme.spacing(1),
-  },
-}));
-
-/**
- * Controlled expansion, re-seeded like the Skills step: everything collapsed
- * while nothing is searched — a gateway lists hundreds of tools, and the
- * presets above are the usual starting point — and every visible entry open
- * while a query is active, because a search must reveal its matches. Within a
- * stable query and set of entries, what the author toggles sticks.
- */
-function useSearchExpansion(
-  keys: string[],
-  query: string,
-): [Set<string>, (next: Set<string>) => void] {
-  const signature = keys.join('|');
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    setExpanded(new Set(query === '' ? [] : keys));
-    // signature stands in for keys (a new array each render).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, signature]);
-  return [expanded, setExpanded];
-}
-
-type DisclosureEntry = {
-  key: string;
-  trigger: ReactNode;
-  /** Rendered only while expanded, so a collapsed group costs no rows. */
-  panel: () => ReactNode;
-};
-
-/** A stack of collapsible entries whose expansion follows the search. */
-function Disclosures({
-  entries,
-  query,
-  nested = false,
-}: {
-  entries: DisclosureEntry[];
-  query: string;
-  nested?: boolean;
-}) {
-  const classes = useStyles();
-  const [expanded, setExpanded] = useSearchExpansion(
-    entries.map(entry => entry.key),
-    query,
-  );
-  return (
-    <AccordionGroup
-      allowsMultiple
-      expandedKeys={expanded}
-      onExpandedChange={next => setExpanded(new Set(next as Set<string>))}
-      className={`${classes.group} ${nested ? classes.nested : ''}`}
-    >
-      {entries.map(entry => (
-        <Accordion id={entry.key} key={entry.key}>
-          <AccordionTrigger>{entry.trigger}</AccordionTrigger>
-          <AccordionPanel>
-            {expanded.has(entry.key) ? (
-              <div className={classes.panel}>{entry.panel()}</div>
-            ) : null}
-          </AccordionPanel>
-        </Accordion>
-      ))}
-    </AccordionGroup>
-  );
-}
 
 function ToolRow({
   tool,
