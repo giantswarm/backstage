@@ -10,7 +10,7 @@ const meta = {
   args: {
     title: 'No agents yet',
     description:
-      'Agents are assistants that run on your management clusters. Create your first one to get started.',
+      'Agents are assistants that run in a cluster. Create your first one to get started.',
     actions: <Button variant="primary">Create your first agent</Button>,
   },
   parameters: {

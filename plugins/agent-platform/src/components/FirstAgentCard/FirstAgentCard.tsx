@@ -27,7 +27,7 @@ export function FirstAgentCard() {
   return (
     <EmptyStateCard
       title="No agents yet"
-      description="An agent is an assistant with a model, a system prompt and a set of tools, running on one of your management clusters. Create your first one and it is ready to chat with."
+      description="An agent is an assistant with a model, a system prompt and a set of tools, running in a cluster. Create your first one and it is ready to use."
       actions={
         <Button
           variant="primary"
