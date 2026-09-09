@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -50,6 +50,7 @@ function StartNewSession({ firstRun }: { firstRun: boolean }) {
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const {
     rows: agents,
+    installations: agentInstallations,
     isLoading: isLoadingAgents,
     isLoadingMore: isLoadingMoreAgents,
     unreachableInstallations,
@@ -110,21 +111,31 @@ function StartNewSession({ firstRun }: { firstRun: boolean }) {
   const startable = agents.filter(isStartableAgent);
 
   if (startable.length === 0) {
-    // Nothing is deployed and the fleet answered: this is the first-run state,
-    // and it is the Agents tab's invitation rather than a sentence about
-    // sessions -- creating an agent is the step before any session exists.
-    if (agents.length === 0 && unreachableInstallations.length === 0) {
+    // Nothing is deployed, the fleet answered, and there is somewhere to deploy
+    // to: this is the first-run state, and it is the Agents tab's invitation
+    // rather than a sentence about sessions -- creating an agent is the step
+    // before any session exists.
+    if (
+      agents.length === 0 &&
+      unreachableInstallations.length === 0 &&
+      agentInstallations.length > 0
+    ) {
       return <FirstAgentCard />;
     }
 
-    // The two remaining situations, and conflating them would tell the user to
-    // look in the wrong place: nothing could be read (look at the warning), or
+    // Three distinct situations, and conflating them would tell the user to look
+    // in the wrong place: nothing could be read (look at the warning), nothing
+    // is deployed and there is nowhere to deploy to either (an installation
+    // scope that runs no kagent -- `InstallationScopeNote` says so), or
     // something is deployed but none of it is ready (look at the Agents tab,
     // where the reason is).
     let reason: string;
-    if (agents.length === 0) {
+    if (unreachableInstallations.length > 0 && agents.length === 0) {
       reason =
         'No agents could be read, so there is none to start a session with. See the warning below.';
+    } else if (agents.length === 0) {
+      reason =
+        'No agents are deployed on the reachable installations, so there is none to start a session with.';
     } else {
       reason =
         agents.length === 1
@@ -183,6 +194,7 @@ function SessionsIndexPageContent() {
   const {
     rows,
     groups,
+    installations,
     isLoading,
     isLoadingMore,
     hasInstallations,
@@ -190,12 +202,18 @@ function SessionsIndexPageContent() {
     notUserScopedInstallations,
     notReachableInstallations,
   } = useSessions();
+  // The agents fan-out is a second, independent load: the sessions can settle
+  // long before it, and on first run the composer is all there is to show.
+  const { isLoading: isLoadingAgents } = useAgents();
   // Under "All installations" on a multi-installation portal the rows render
   // as one group per installation, home first, and the search field moves up
   // here so one search covers every group; a pinned scope and a
   // single-installation portal keep the flat table with its own search.
   const grouped = useGroupedByInstallation();
   const [search, setSearch] = useState('');
+  // Which container the composer mounts in, decided once — see the latch below.
+  // Declared up here because the `hasInstallations` guard returns early.
+  const firstRunRef = useRef<boolean | undefined>(undefined);
   const searchedGroups = useMemo(
     () =>
       groups.map(group => ({
@@ -218,9 +236,42 @@ function SessionsIndexPageContent() {
   }
 
   // The fleet has settled with nothing: `isLoading` is only true while no rows
-  // exist yet. So an empty list here is the final answer, and the screen is the
-  // composer's alone -- see `StartNewSession`.
+  // exist yet. So an empty list here is the final answer -- though not
+  // necessarily "you have never had a session", which is the stronger claim
+  // below.
   const isEmpty = !isLoading && rows.length === 0;
+
+  // The installations actually asked: the scoped kagent ones minus the ones the
+  // backend never queried because it cannot reach them.
+  const queriedInstallations = installations.filter(
+    installation => !notReachableInstallations.includes(installation),
+  );
+
+  // "You have never started a session" needs more than an empty list. A read
+  // that failed is not an empty fleet -- the same line the Agents tab draws --
+  // and neither is a scope whose every kagent endpoint is unreachable from this
+  // portal, where nothing was ever asked. Note this is deliberately *not*
+  // `notReachableInstallations.length === 0`: on a portal that can reach one
+  // installation and not five others, the one that answered is enough to know
+  // the user has no sessions, and the quiet note below names the rest.
+  const invitesFirstSession =
+    isEmpty &&
+    unreachableInstallations.length === 0 &&
+    queriedInstallations.length > 0;
+
+  // Latch the container at the first settled answer, and never re-read it.
+  //
+  // `StartNewSession` returns a card root on first run and a `Flex` root
+  // otherwise. Flipping between them changes the root element type, so React
+  // unmounts the subtree and mounts a fresh `NewSessionComposer` -- discarding
+  // whatever the user had typed. On a genuinely empty fleet that flip is not
+  // hypothetical: `isLoading` stays true until every installation answers, so
+  // the composer would render inline for the whole fan-out and then jump into
+  // the card. Deciding once, after the list settles, is what keeps the prompt.
+  if (firstRunRef.current === undefined && !isLoading) {
+    firstRunRef.current = invitesFirstSession;
+  }
+  const firstRun = firstRunRef.current === true;
 
   return (
     <Content>
@@ -233,7 +284,7 @@ function SessionsIndexPageContent() {
 
             Dropped entirely on first run: describing a list that isn't there
             competes with the invitation, which is the whole screen then. */}
-        {!isEmpty && (
+        {!invitesFirstSession && (
           <Text color="secondary">
             {notUserScopedInstallations.length > 0
               ? 'Agent chat sessions across the management clusters.'
@@ -241,12 +292,19 @@ function SessionsIndexPageContent() {
           </Text>
         )}
 
-        <StartNewSession firstRun={isEmpty} />
+        {/* Withheld until the list settles, so `firstRun` is known before the
+            composer mounts -- see the latch above. */}
+        {!isLoading && <StartNewSession firstRun={firstRun} />}
 
         <InstallationScopeNote component="kagent" />
 
-        {/* No rows yet — show activity instead of an empty table skeleton. */}
-        {isLoading && <Progress aria-label="Loading sessions" />}
+        {/* No rows yet — show activity instead of an empty table skeleton.
+            Also while the agents are still resolving on an empty list: the
+            composer is withheld until they are in, the blurb and table are
+            gated off, and without this the tab would render nothing at all. */}
+        {(isLoading || (isEmpty && isLoadingAgents)) && (
+          <Progress aria-label="Loading sessions" />
+        )}
 
         {/* An empty fleet gets no list at all, rather than an empty table (or,
             under "All installations", a stack of headings each saying "no

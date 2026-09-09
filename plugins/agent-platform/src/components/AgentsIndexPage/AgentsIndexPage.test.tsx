@@ -61,7 +61,9 @@ const renderPage = () =>
 const baseValue: AgentsContextValue = {
   rows: [],
   scope: 'all',
-  installations: [],
+  // The scoped installations that run kagent and are reachable: somewhere for
+  // the create flow to deploy to, which the first-run invitation requires.
+  installations: ['inst-1'],
   isLoading: false,
   isLoadingMore: false,
   hasInstallations: true,
@@ -168,6 +170,21 @@ describe('AgentsIndexPage', () => {
     );
 
     expect(mockNavigate).toHaveBeenCalledWith('/agent-platform/agents/new');
+  });
+
+  it('does not invite creating an agent where no installation runs kagent', async () => {
+    // A pinned scope whose installation has no kagent yields no rows and no
+    // errors. The create flow would have no target, and InstallationScopeNote
+    // already says why the tab is empty -- so the table's own empty state, not
+    // an invitation that contradicts the note.
+    mockUseAgents.mockReturnValue({ ...baseValue, installations: [] });
+
+    await renderPage();
+
+    expect(
+      screen.queryByRole('heading', { name: 'No agents yet' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('No agents found.')).toBeInTheDocument();
   });
 
   it('does not invite creating an agent when nothing could be read', async () => {

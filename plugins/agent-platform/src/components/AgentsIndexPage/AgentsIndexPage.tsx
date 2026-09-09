@@ -32,6 +32,7 @@ function AgentsIndexPageContent() {
   const newAgentLink = useRouteRef(newAgentRouteRef);
   const {
     rows,
+    installations,
     isLoading,
     isLoadingMore,
     hasInstallations,
@@ -70,9 +71,24 @@ function AgentsIndexPageContent() {
   // final answer -- either the fleet genuinely holds no agent, or nothing could
   // be read.
   const isEmpty = !isLoading && rows.length === 0;
-  // Only invite creating an agent once the fleet has answered. "Nothing could
-  // be read" is not "nothing is there", and the warning below says which it is.
-  const invitesFirstAgent = isEmpty && unreachableInstallations.length === 0;
+  // Reads failed and produced nothing: the warning card below is the whole
+  // answer, and an empty table beside it would contradict it.
+  const nothingCouldBeRead = isEmpty && unreachableInstallations.length > 0;
+  // Two things have to hold before inviting the user to create an agent.
+  //
+  // The fleet must have *answered*: "nothing could be read" is not "nothing is
+  // there", and the warning below says which it is.
+  //
+  // And there must be somewhere to deploy to. `installations` is the scoped
+  // set that runs kagent and is reachable, so an empty one means the create
+  // flow has no target -- and under a pinned scope `InstallationScopeNote`
+  // above already says kagent is not installed there. Inviting anyway would
+  // contradict that note and dead-end in the form.
+  const invitesFirstAgent =
+    isEmpty && !nothingCouldBeRead && installations.length > 0;
+  // Everything else keeps the table, including a scope that runs kagent
+  // nowhere: its own empty state is the honest answer there.
+  const showsTable = !isLoading && !invitesFirstAgent && !nothingCouldBeRead;
 
   return (
     <Content>
@@ -92,10 +108,7 @@ function AgentsIndexPageContent() {
 
         {invitesFirstAgent && <FirstAgentCard />}
 
-        {/* An empty fleet gets no table at all: with nothing to put in it, "No
-            agents found." either repeats the card above or contradicts the
-            "couldn't read" warning below. */}
-        {!isLoading && !isEmpty && (
+        {showsTable && (
           <>
             {/* Rows are in, but more installations are still resolving. A thin
                 bar signals background activity without a blocking skeleton or
