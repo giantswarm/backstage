@@ -11,6 +11,7 @@ import { newAgentRouteRef } from '../../routes';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { AgentsTable } from '../AgentsTable';
+import { FirstAgentCard } from '../FirstAgentCard';
 import { InstallationScopeNote } from '../InstallationGroups';
 import { ServingProvider } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -64,19 +65,37 @@ function AgentsIndexPageContent() {
     );
   }
 
+  // The fleet has settled with nothing: `isLoading` is only true while no rows
+  // exist yet, and `isLoadingMore` requires rows. So an empty list here is the
+  // final answer -- either the fleet genuinely holds no agent, or nothing could
+  // be read.
+  const isEmpty = !isLoading && rows.length === 0;
+  // Only invite creating an agent once the fleet has answered. "Nothing could
+  // be read" is not "nothing is there", and the warning below says which it is.
+  const invitesFirstAgent = isEmpty && unreachableInstallations.length === 0;
+
   return (
     <Content>
       <Flex direction="column" gap="3">
-        <Text color="secondary">
-          Agents running across your management clusters.
-        </Text>
+        {/* Dropped for the first-run card, which is the whole message then --
+            a blurb about agents running across the fleet contradicts it. */}
+        {!invitesFirstAgent && (
+          <Text color="secondary">
+            Agents running across your management clusters.
+          </Text>
+        )}
 
         <InstallationScopeNote component="kagent" />
 
-        {isLoading ? (
-          // No rows yet — show activity instead of an empty table skeleton.
-          <Progress aria-label="Loading agents" />
-        ) : (
+        {/* No rows yet — show activity instead of an empty table skeleton. */}
+        {isLoading && <Progress aria-label="Loading agents" />}
+
+        {invitesFirstAgent && <FirstAgentCard />}
+
+        {/* An empty fleet gets no table at all: with nothing to put in it, "No
+            agents found." either repeats the card above or contradicts the
+            "couldn't read" warning below. */}
+        {!isLoading && !isEmpty && (
           <>
             {/* Rows are in, but more installations are still resolving. A thin
                 bar signals background activity without a blocking skeleton or

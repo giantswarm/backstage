@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 
-import { sessionsRouteRef } from '../../routes';
+import { agentsRouteRef, sessionsRouteRef } from '../../routes';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionsContextValue } from '../SessionsDataProvider';
 import { SessionsIndexPage } from './SessionsIndexPage';
@@ -80,6 +80,16 @@ const issues = agentRow({
   technicalName: 'issue-tracker',
 });
 
+// One session, for the tests that are about the page with a list on it. An empty
+// `rows` is the first-run state now, which renders a different screen.
+const session = {
+  id: 'gazelle/s1',
+  sessionId: 's1',
+  installation: 'gazelle',
+  title: 'Triage the incident',
+  agentName: 'SRE Agent',
+};
+
 const loadedSessions: SessionsContextValue = {
   rows: [],
   groups: [],
@@ -105,7 +115,11 @@ const loadedAgents: AgentsContextValue = {
 
 async function render() {
   return renderInTestApp(<SessionsIndexPage />, {
-    mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/sessions': sessionsRouteRef,
+      // The Agents tab: the first-run state links into its create flow.
+      '/agent-platform/agents': agentsRouteRef,
+    },
   });
 }
 
@@ -122,7 +136,7 @@ beforeEach(() => {
     error: null,
     reset: jest.fn(),
   });
-  mockUseSessions.mockReturnValue(loadedSessions);
+  mockUseSessions.mockReturnValue({ ...loadedSessions, rows: [session] });
   mockUseAgents.mockReturnValue(loadedAgents);
 });
 
@@ -149,14 +163,18 @@ describe('SessionsIndexPage', () => {
   });
 
   describe('when there is no agent to start a session with', () => {
-    it('says so rather than offering a box that refuses every Start', async () => {
+    it('invites creating one rather than offering a box that refuses every Start', async () => {
+      // Nothing deployed and the fleet answered: the step before any session is
+      // creating an agent, so this is the Agents tab's invitation rather than a
+      // sentence about sessions.
       mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [] });
       await render();
 
       expect(
-        screen.getByText(
-          'No agents are deployed on the reachable installations, so there is none to start a session with.',
-        ),
+        screen.getByRole('heading', { name: 'No agents yet' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /Create your first agent/ }),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('textbox', { name: 'Prompt' }),
@@ -246,6 +264,62 @@ describe('SessionsIndexPage', () => {
         screen.queryByRole('textbox', { name: 'Prompt' }),
       ).not.toBeInTheDocument();
       expect(screen.queryByText(/none to start a session with/)).toBeNull();
+    });
+  });
+
+  describe('with no session on the fleet yet', () => {
+    beforeEach(() => {
+      mockUseSessions.mockReturnValue(loadedSessions);
+    });
+
+    it('makes the composer the invitation and shows no empty table', async () => {
+      await render();
+
+      expect(
+        screen.getByRole('heading', { name: 'Start your first session' }),
+      ).toBeInTheDocument();
+      // Expanded from the start: there is no list below for it to make room for,
+      // so the Start button is there without having to click into the box first.
+      expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
+      expect(screen.queryByTestId('sessions-table')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('searchbox', { name: 'Search sessions' }),
+      ).not.toBeInTheDocument();
+      // The blurb describes a list that isn't there.
+      expect(
+        screen.queryByText(/agent chat sessions/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows no group headings under "All installations" either', async () => {
+      mockGrouped = true;
+      mockUseSessions.mockReturnValue({
+        ...loadedSessions,
+        installations: ['gazelle', 'golem'],
+        groups: [
+          { installation: 'gazelle', home: true, rows: [], status: 'empty' },
+          { installation: 'golem', home: false, rows: [], status: 'empty' },
+        ],
+      });
+
+      await render();
+
+      expect(
+        screen.queryByRole('heading', { level: 3 }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('no sessions here')).not.toBeInTheDocument();
+      mockGrouped = false;
+    });
+
+    it('invites creating an agent when the fleet holds none', async () => {
+      mockUseAgents.mockReturnValue({ ...loadedAgents, rows: [] });
+
+      await render();
+
+      expect(
+        screen.getByRole('heading', { name: 'No agents yet' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('sessions-table')).not.toBeInTheDocument();
     });
   });
 

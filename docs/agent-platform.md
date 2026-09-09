@@ -514,6 +514,34 @@ session"). A session opens into its detail page, where it can be **renamed** and
 **deleted** (see "Renaming a session" and "Deleting a session"); the list rows
 themselves carry no actions.
 
+### The first-run state
+
+An empty table with column headers over the words "No sessions found." is the
+worst thing to show the one user who most needs direction, so neither this tab
+nor the Agents tab renders one. Three states, all shared between the two tabs
+via `FirstAgentCard` and `EmptyStateCard` (the latter in `ui-react`):
+
+- **No agents on the fleet.** Both tabs show the same card: what an agent is, and
+  a **Create your first agent** button into the create flow. Creating an agent is
+  the step before any session can exist, so the Sessions tab points there rather
+  than explaining itself.
+- **Agents but no sessions.** The Sessions tab drops the table, the search field
+  and the "your sessions across the fleet" blurb, and puts the composer —
+  expanded, not its collapsed strip — inside the card under "Start your first
+  session". The prompt box _is_ the invitation; there is no list below it to make
+  room for.
+- **Nothing could be read.** Deliberately _not_ an invitation. An empty list
+  because every installation failed is not an empty fleet, and sending the user
+  to the create flow would be the wrong path; these keep the "couldn't read"
+  warning card, and a fleet whose agents are all deployed-but-not-ready keeps the
+  sentence pointing at the Agents tab, where the reason is. This is the same
+  distinction `StartNewSession` has always drawn — it is why the branch tests
+  `unreachableInstallations` and not just `rows.length`.
+
+`isLoading` is only ever true while no rows exist yet, so `!isLoading &&
+rows.length === 0` is the fleet's final answer and needs no separate settled
+flag.
+
 ### Why it needs a backend proxy
 
 Unlike agents and model configs, kagent **sessions are not Kubernetes

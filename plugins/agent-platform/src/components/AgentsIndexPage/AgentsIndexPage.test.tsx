@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { AgentsContextValue } from '../AgentsDataProvider';
 import { agentsRouteRef } from '../../routes';
@@ -34,13 +35,22 @@ jest.mock('../InstallationGroups', () => ({
   InstallationScopeNote: () => null,
 }));
 
-// Stub ui-react so the test doesn't need the PageHeaderActionsProvider (supplied
-// by GSPageLayout in the real app). `StatusLabel` is stubbed to its label only —
-// this suite covers the page's state branches, and the real status rendering is
+// Stub the two ui-react pieces this suite doesn't want, keeping the rest real —
+// the empty state renders the shared `EmptyStateCard`. `useProvidePageHeaderActions`
+// is a no-op so the test doesn't need the PageHeaderActionsProvider (supplied by
+// GSPageLayout in the real app), and `StatusLabel` renders its label only: this
+// suite covers the page's state branches, and the real status rendering is
 // exercised in AgentsTable.test.tsx, which uses the actual component.
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   useProvidePageHeaderActions: jest.fn(),
   StatusLabel: ({ label }: { label: string }) => <span>{label}</span>,
+}));
+
+const mockNavigate = jest.fn();
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: () => mockNavigate,
 }));
 
 const renderPage = () =>
@@ -85,6 +95,7 @@ const reviewer = {
 describe('AgentsIndexPage', () => {
   beforeEach(() => {
     mockUseAgents.mockReset();
+    mockNavigate.mockReset();
   });
 
   it('renders one flat table with the installation on every row under "All installations"', async () => {
@@ -127,12 +138,56 @@ describe('AgentsIndexPage', () => {
     expect(screen.queryByText('No agents found.')).not.toBeInTheDocument();
   });
 
-  it('shows the table empty state when there are no agents', async () => {
+  it('invites creating the first agent when the fleet holds none', async () => {
     mockUseAgents.mockReturnValue(baseValue);
 
     await renderPage();
 
-    expect(screen.getByText('No agents found.')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'No agents yet' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Create your first agent/ }),
+    ).toBeInTheDocument();
+    // The table, and its bare "No agents found.", is gone entirely — as is the
+    // blurb about agents running across the fleet, which would contradict the
+    // card.
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    expect(screen.queryByText('No agents found.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Agents running across your management clusters.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('goes to the create flow from the invitation', async () => {
+    mockUseAgents.mockReturnValue(baseValue);
+
+    await renderPage();
+    await userEvent.click(
+      screen.getByRole('button', { name: /Create your first agent/ }),
+    );
+
+    expect(mockNavigate).toHaveBeenCalledWith('/agent-platform/agents/new');
+  });
+
+  it('does not invite creating an agent when nothing could be read', async () => {
+    // An empty list because every installation failed is not an empty fleet.
+    // Inviting the user to create their first agent would send them down the
+    // wrong path; the warning card is the whole answer.
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      unreachableInstallations: ['gremlin'],
+    });
+
+    await renderPage();
+
+    expect(
+      screen.queryByRole('heading', { name: 'No agents yet' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Couldn't read 1 installation"),
+    ).toBeInTheDocument();
   });
 
   it('renders agent rows', async () => {
@@ -189,6 +244,7 @@ describe('AgentsIndexPage', () => {
   it('surfaces unreachable installations in a warning card below the table', async () => {
     mockUseAgents.mockReturnValue({
       ...baseValue,
+      rows: [triager],
       unreachableInstallations: ['gremlin', 'gauss'],
     });
 

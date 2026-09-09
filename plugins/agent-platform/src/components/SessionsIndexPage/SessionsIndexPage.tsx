@@ -4,6 +4,7 @@ import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Box, Flex, SearchField, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
+import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
@@ -11,6 +12,7 @@ import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { SESSIONS_NOUN } from '../../lib/installationGroups';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
+import { FirstAgentCard } from '../FirstAgentCard';
 import {
   InstallationGroups,
   InstallationScopeNote,
@@ -37,8 +39,13 @@ import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert'
  *
  * Withheld with a reason when the fleet offers no agent at all. An inert prompt
  * box that refuses every Start would be worse than saying why.
+ *
+ * With `firstRun` -- no session on the fleet yet -- the composer is the whole
+ * screen rather than a strip above a list, so it comes out of its collapsed
+ * strip and into the same invitation card the Agents tab uses. There is no list
+ * below it to compete with.
  */
-function StartNewSession() {
+function StartNewSession({ firstRun }: { firstRun: boolean }) {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const {
@@ -103,17 +110,21 @@ function StartNewSession() {
   const startable = agents.filter(isStartableAgent);
 
   if (startable.length === 0) {
-    // Three distinct situations, and conflating them would tell the user to look in
-    // the wrong place: nothing could be read (look at the warning), nothing is
-    // deployed (deploy one), or something is deployed but none of it is ready (look
-    // at the Agents tab, where the reason is).
+    // Nothing is deployed and the fleet answered: this is the first-run state,
+    // and it is the Agents tab's invitation rather than a sentence about
+    // sessions -- creating an agent is the step before any session exists.
+    if (agents.length === 0 && unreachableInstallations.length === 0) {
+      return <FirstAgentCard />;
+    }
+
+    // The two remaining situations, and conflating them would tell the user to
+    // look in the wrong place: nothing could be read (look at the warning), or
+    // something is deployed but none of it is ready (look at the Agents tab,
+    // where the reason is).
     let reason: string;
-    if (unreachableInstallations.length > 0 && agents.length === 0) {
+    if (agents.length === 0) {
       reason =
         'No agents could be read, so there is none to start a session with. See the warning below.';
-    } else if (agents.length === 0) {
-      reason =
-        'No agents are deployed on the reachable installations, so there is none to start a session with.';
     } else {
       reason =
         agents.length === 1
@@ -128,20 +139,38 @@ function StartNewSession() {
     );
   }
 
+  const composer = (
+    <NewSessionComposer
+      agents={agents}
+      isLoadingAgents={isLoadingMoreAgents}
+      defaultAgent={lastUsedAgent}
+      // Collapsed only when it sits above a list of sessions. On first run it
+      // is the invitation, so it opens showing the agent picker and the Start
+      // button -- there is nothing for it to make room for.
+      collapsible={!firstRun}
+      isStarting={creation.isCreating}
+      error={creation.error?.message}
+      onStart={onStart}
+    />
+  );
+
+  if (firstRun) {
+    return (
+      <EmptyStateCard
+        title="Start your first session"
+        description="Pick an agent, say what you need, and the conversation opens as soon as it starts."
+      >
+        {composer}
+      </EmptyStateCard>
+    );
+  }
+
   return (
     <Flex direction="column" gap="2">
       <Text as="h2" variant="title-x-small">
         Start a new session
       </Text>
-      <NewSessionComposer
-        agents={agents}
-        isLoadingAgents={isLoadingMoreAgents}
-        defaultAgent={lastUsedAgent}
-        collapsible
-        isStarting={creation.isCreating}
-        error={creation.error?.message}
-        onStart={onStart}
-      />
+      {composer}
     </Flex>
   );
 }
@@ -188,6 +217,11 @@ function SessionsIndexPageContent() {
     );
   }
 
+  // The fleet has settled with nothing: `isLoading` is only true while no rows
+  // exist yet. So an empty list here is the final answer, and the screen is the
+  // composer's alone -- see `StartNewSession`.
+  const isEmpty = !isLoading && rows.length === 0;
+
   return (
     <Content>
       <Flex direction="column" gap="3">
@@ -195,21 +229,29 @@ function SessionsIndexPageContent() {
             reports that its kagent does not identify individual users —
             otherwise the page would promise it at the top and contradict itself
             in the warning below the table, and the reassuring claim is the one
-            read first. */}
-        <Text color="secondary">
-          {notUserScopedInstallations.length > 0
-            ? 'Agent chat sessions across the management clusters.'
-            : 'Your agent chat sessions across the management clusters. kagent scopes sessions to the signed-in user, so only your own are listed.'}
-        </Text>
+            read first.
 
-        <StartNewSession />
+            Dropped entirely on first run: describing a list that isn't there
+            competes with the invitation, which is the whole screen then. */}
+        {!isEmpty && (
+          <Text color="secondary">
+            {notUserScopedInstallations.length > 0
+              ? 'Agent chat sessions across the management clusters.'
+              : 'Your agent chat sessions across the management clusters. kagent scopes sessions to the signed-in user, so only your own are listed.'}
+          </Text>
+        )}
+
+        <StartNewSession firstRun={isEmpty} />
 
         <InstallationScopeNote component="kagent" />
 
-        {isLoading ? (
-          // No rows yet — show activity instead of an empty table skeleton.
-          <Progress aria-label="Loading sessions" />
-        ) : (
+        {/* No rows yet — show activity instead of an empty table skeleton. */}
+        {isLoading && <Progress aria-label="Loading sessions" />}
+
+        {/* An empty fleet gets no list at all, rather than an empty table (or,
+            under "All installations", a stack of headings each saying "no
+            sessions here") beneath the invitation above. */}
+        {!isLoading && !isEmpty && (
           <>
             {/* Rows are in, but more installations are still resolving. */}
             {isLoadingMore && (
