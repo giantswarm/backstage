@@ -2248,4 +2248,3 @@ export const A2AService: GenService<{
   },
 }> = /*@__PURE__*/
   serviceDesc(file_a2a, 0);
-

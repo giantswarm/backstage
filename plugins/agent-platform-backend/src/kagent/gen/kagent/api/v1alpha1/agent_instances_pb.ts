@@ -772,4 +772,3 @@ export const AgentInstanceService: GenService<{
   },
 }> = /*@__PURE__*/
   serviceDesc(file_kagent_api_v1alpha1_agent_instances, 0);
-

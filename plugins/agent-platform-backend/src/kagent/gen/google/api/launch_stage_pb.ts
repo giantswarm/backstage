@@ -115,4 +115,3 @@ export enum LaunchStage {
  */
 export const LaunchStageSchema: GenEnum<LaunchStage> = /*@__PURE__*/
   enumDesc(file_google_api_launch_stage, 0);
-

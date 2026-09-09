@@ -101,4 +101,3 @@ export type PageResponse = Message<"kagent.api.v1alpha1.PageResponse"> & {
  */
 export const PageResponseSchema: GenMessage<PageResponse> = /*@__PURE__*/
   messageDesc(file_kagent_api_v1alpha1_common, 3);
-

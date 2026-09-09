@@ -471,4 +471,3 @@ export type CustomHttpPattern = Message<"google.api.CustomHttpPattern"> & {
  */
 export const CustomHttpPatternSchema: GenMessage<CustomHttpPattern> = /*@__PURE__*/
   messageDesc(file_google_api_http, 2);
-

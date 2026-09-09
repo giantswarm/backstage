@@ -445,4 +445,3 @@ export const SystemService: GenService<{
   },
 }> = /*@__PURE__*/
   serviceDesc(file_kagent_api_v1alpha1_system, 0);
-

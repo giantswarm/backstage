@@ -204,4 +204,3 @@ export const HarnessService: GenService<{
   },
 }> = /*@__PURE__*/
   serviceDesc(file_kagent_api_v1alpha1_harnesses, 0);
-
