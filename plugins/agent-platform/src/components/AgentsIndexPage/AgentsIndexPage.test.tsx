@@ -34,6 +34,14 @@ jest.mock('../InstallationGroups', () => ({
   InstallationScopeNote: () => null,
 }));
 
+// The inventory gate reads the installation inventory and the section scope
+// from gs (kubernetes proxy, cluster-access status); it is covered by its own
+// tests there and renders nothing in this page's state branches.
+jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
+  InstallationInventoryGate: () => null,
+}));
+
 // Stub ui-react so the test doesn't need the PageHeaderActionsProvider (supplied
 // by GSPageLayout in the real app). `StatusLabel` is stubbed to its label only —
 // this suite covers the page's state branches, and the real status rendering is

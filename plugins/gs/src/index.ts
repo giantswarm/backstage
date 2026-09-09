@@ -36,18 +36,38 @@ export {
   INSTALLATION_INVENTORY_QUERY_KEY_PREFIX,
   INSTALLATION_INVENTORY_STALE_TIME_MS,
   INVENTORY_PROBE_PATH,
+  InventoryProbeError,
+  isInventoryAuthError,
   parseApiGroupList,
   isPlatformComponents,
   NO_PLATFORM_COMPONENTS,
   PLATFORM_API_GROUPS,
   PLATFORM_COMPONENTS,
+  classifyInventoryFailure,
+  inventoryFailureCopy,
+  selectInventoryFailure,
   type InstallationInventory,
   type InstallationInventoryEntry,
   type InstallationProbeState,
+  type InventoryFailure,
+  type InventoryFailureCopy,
+  type InventoryFailureKind,
   type PlatformComponent,
   type PlatformComponents,
+  type SelectInventoryFailureOptions,
   type UseHomeInstallationResult,
 } from './apis/installationInventory';
+// The gate a section renders when the installation it would read could not
+// be asked which platform components it runs (a rejected token, a refused
+// read): names the installation, quotes the reason, offers the remedy.
+export {
+  InventoryFailureGate,
+  type InventoryFailureGateProps,
+} from './components/InventoryFailureGate';
+export {
+  InstallationInventoryGate,
+  type InstallationInventoryGateProps,
+} from './components/InstallationInventoryGate';
 // The Agent Platform section's one installation scope (`'all'` or a pinned
 // installation), read by the agent-platform tabs and the muster section
 // alike. A module store, not a React context: the two plugins share a page

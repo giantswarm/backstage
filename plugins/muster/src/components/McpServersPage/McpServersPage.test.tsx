@@ -56,6 +56,7 @@ jest.mock('../MusterInstanceProvider', () => ({
     dataUpdatedAt: Date.now(),
     isRefreshing: false,
     retry: jest.fn(),
+    refreshInventory: jest.fn(),
   }),
   // Unauthenticated: the core row shows its gate instead of loading the core
   // families, which keeps the page free of muster API calls here.

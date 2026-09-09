@@ -4,6 +4,10 @@ import { screen, waitFor } from '@testing-library/react';
 // the legacy-run redirect) resolves against the new route-resolution API, which
 // the classic `@backstage/test-utils` app does not provide.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  InventoryProbeError,
+  type InstallationInventory,
+} from '@giantswarm/backstage-plugin-gs';
 import { MusterApi, musterApiRef } from '../../apis';
 import { rootRouteRef } from '../../routes';
 import { MusterSection } from './MusterSection';
@@ -27,18 +31,23 @@ jest.mock('../ToolExplorerPage', () => ({
 // is what used to clobber the index redirect. Only its data sources are.
 // An empty inventory (no gs.installations) makes the provider list the
 // backend's installations as they are.
+const EMPTY_INVENTORY: InstallationInventory = {
+  entries: [],
+  home: undefined,
+  isLoading: false,
+  isProbing: false,
+  installationsWith: () => [],
+  refresh: jest.fn(),
+};
+let mockInventory: InstallationInventory = EMPTY_INVENTORY;
 jest.mock('@giantswarm/backstage-plugin-gs', () => {
   const { useSearchParams } = jest.requireActual('react-router-dom');
   return {
+    // The real module for `selectInventoryFailure` and the inventory gate;
+    // the two hooks are the data sources these tests set.
+    ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
     ALL_INSTALLATIONS: 'all',
-    useInstallationInventory: () => ({
-      entries: [],
-      home: undefined,
-      isLoading: false,
-      isProbing: false,
-      installationsWith: () => [],
-      refresh: jest.fn(),
-    }),
+    useInstallationInventory: () => mockInventory,
     // The section-wide scope, reduced to what these routing tests need: the URL
     // parameter when present, "all" otherwise -- the gs hook's first rule.
     useInstallationScope: () => {
@@ -103,7 +112,49 @@ function renderSection(path: string) {
 describe('MusterSection', () => {
   // The active installation is persisted, so each case has to start from a clean
   // slate to exercise the default resolution rather than the previous test's pick.
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    window.localStorage.clear();
+    mockInventory = EMPTY_INVENTORY;
+  });
+
+  it('renders the inventory gate in place of the views when the only installation refused the probe', async () => {
+    // The incident: the home's `GET /apis` answered 401, the section listed
+    // no installation, and the dashboard sat on its progress bar with nothing
+    // to say. The gate names the installation, quotes the 401 and offers the
+    // sign-out; the tab strip stays so the person still knows where they are.
+    mockInventory = {
+      ...EMPTY_INVENTORY,
+      home: 'gazelle',
+      entries: [
+        {
+          installation: 'gazelle',
+          home: true,
+          accessState: 'healthy',
+          probe: 'failed',
+          components: {
+            kagent: false,
+            muster: false,
+            kserve: false,
+            capi: false,
+          },
+          error: new InventoryProbeError('gazelle', 401, ''),
+        },
+      ],
+    };
+
+    renderSection('/agent-platform/muster/dashboard');
+
+    expect(
+      await screen.findByText(
+        "The MCP servers, workflows and tools of an installation are read through its Kubernetes API. The API server of gazelle rejected the portal's token (HTTP 401): your sign-in did not grant what it requires, and a silent refresh cannot repair that. Sign out of the portal and sign in again.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign out' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('dashboard-view')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Dashboard' })).toBeInTheDocument();
+  });
 
   it('redirects the section index to the dashboard view', async () => {
     renderSection('/agent-platform/muster');

@@ -389,6 +389,57 @@ describe('useInstallationInventory', () => {
     );
   });
 
+  it('does not ask an installation again whose probe was refused, however often the hook mounts', async () => {
+    // One rejected token used to show up as ten `401 GET /apis` per page
+    // load: a failed probe has no data, so react-query counted it as stale and
+    // re-ran it for every mount of the hook on the page (the section's
+    // provider, the header's selector, a view's note...). The refusal does not
+    // change until the person signs in again; a 5xx may, and is still retried
+    // on the next mount.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const answers: Record<string, Answer> = {
+      golem: { status: 401 },
+      wombat: { status: 200, groups: ['apps'] },
+      snail: { status: 500 },
+    };
+
+    const first = setup({ answers, states: allHealthy, queryClient });
+    await waitFor(() => expect(first.result.current.isProbing).toBe(false));
+
+    expect(probesOf(first.result)).toEqual({
+      golem: 'failed',
+      wombat: 'answered',
+      snail: 'failed',
+    });
+    expect(first.result.current.entries[0].error).toMatchObject({
+      name: 'UnauthorizedError',
+      installation: 'golem',
+      status: 401,
+      reason: 'HTTP 401',
+    });
+    expect(first.proxy).toHaveBeenCalledTimes(3);
+
+    // Another component on the same page mounts the hook on the same client.
+    const second = setup({ answers, states: allHealthy, queryClient });
+    await waitFor(() => expect(second.result.current.isProbing).toBe(false));
+
+    // wombat's answer is fresh, golem's refusal is final: only snail's failure
+    // is worth another try.
+    expect(second.proxy.mock.calls.map(call => call[0].clusterName)).toEqual([
+      'snail',
+    ]);
+    expect(probesOf(second.result).golem).toBe('failed');
+
+    // An explicit refresh asks everyone again, golem included.
+    act(() => second.result.current.refresh());
+    await waitFor(() => expect(second.result.current.isProbing).toBe(false));
+    expect(
+      second.proxy.mock.calls.map(call => call[0].clusterName).sort(),
+    ).toEqual(['golem', 'snail', 'snail', 'wombat']);
+  });
+
   it('reads a persisted entry of another shape as not answered yet and probes again', async () => {
     // The agent-platform QueryClientProvider persists this cache across
     // releases (backstage#2264): whatever an older release left under the key

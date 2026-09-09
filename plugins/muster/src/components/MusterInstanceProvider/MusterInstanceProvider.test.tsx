@@ -2,10 +2,11 @@ import { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
-import type {
-  InstallationInventory,
-  InstallationInventoryEntry,
-  InstallationScope,
+import {
+  InventoryProbeError,
+  type InstallationInventory,
+  type InstallationInventoryEntry,
+  type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import { MusterApi, musterApiRef } from '../../apis';
 import type { MusterInstallationInfo } from '../../apis/types';
@@ -24,6 +25,9 @@ const mockSetScope = jest.fn((next: InstallationScope) => {
   mockScope = next;
 });
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  // The real module for `selectInventoryFailure`; the two hooks are the
+  // provider's data sources and are what each test sets.
+  ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   ALL_INSTALLATIONS: 'all',
   useInstallationInventory: () => mockInventory,
   useInstallationScope: () => ({
@@ -252,6 +256,80 @@ describe('MusterInstanceProvider installations', () => {
       expect(result.current.installations).toEqual(['gazelle', 'golem']),
     );
     expect(result.current.activeInstallation).toBe('golem');
+  });
+
+  it('lists nothing, is not loading, and explains the home installation whose probe was refused', async () => {
+    // The incident: the home's `GET /apis` answered 401 (the ID token carried
+    // no audience the apiserver accepts). The section used to end up with no
+    // installation, no gate and no error -- the dashboard on its progress bar.
+    const error = new InventoryProbeError('gazelle', 401, '');
+    mockInventory = inventory([
+      entry('gazelle', { probe: 'failed', components: NONE, error }),
+      entry('golem', { components: NONE }),
+    ]);
+
+    const { result } = renderInstance();
+
+    await waitFor(() =>
+      expect(result.current.isLoadingInstallations).toBe(false),
+    );
+    expect(result.current.installations).toEqual([]);
+    expect(result.current.activeInstallation).toBeUndefined();
+    expect(result.current.inventoryFailure).toEqual({
+      installation: 'gazelle',
+      kind: 'unauthorized',
+      error,
+    });
+
+    act(() => result.current.refreshInventory());
+    expect(mockInventory.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains the pinned installation's failure over the home's, and the home's when the pinned one runs no muster", async () => {
+    const unauthorized = new InventoryProbeError('gazelle', 401, '');
+    const forbidden = new InventoryProbeError('golem', 403, '');
+    mockInventory = inventory([
+      entry('gazelle', {
+        probe: 'failed',
+        components: NONE,
+        error: unauthorized,
+      }),
+      entry('golem', { probe: 'failed', components: NONE, error: forbidden }),
+      entry('wombat', { components: NONE }),
+    ]);
+    mockScope = 'golem';
+
+    const { result, rerender } = renderInstance();
+    await waitFor(() =>
+      expect(result.current.isLoadingInstallations).toBe(false),
+    );
+    expect(result.current.inventoryFailure).toMatchObject({
+      installation: 'golem',
+      kind: 'forbidden',
+    });
+
+    // Pinned to an installation that answered without muster: the section
+    // falls back to the home, and the home's refusal is why it shows nothing.
+    mockScope = 'wombat';
+    rerender();
+    await waitFor(() =>
+      expect(result.current.inventoryFailure).toMatchObject({
+        installation: 'gazelle',
+        kind: 'unauthorized',
+      }),
+    );
+    expect(result.current.activeInstallation).toBeUndefined();
+  });
+
+  it('has no failure to explain while the home probe is pending or once it answered', async () => {
+    mockInventory = inventory([entry('gazelle'), entry('golem')]);
+
+    const { result } = renderInstance();
+    await waitFor(() =>
+      expect(result.current.activeInstallation).toBe('gazelle'),
+    );
+
+    expect(result.current.inventoryFailure).toBeUndefined();
   });
 
   it('lists the backend installations as they are when the portal has no inventory', async () => {

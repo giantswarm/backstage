@@ -5,8 +5,10 @@ import {
   useLocation,
   useParams,
 } from 'react-router-dom';
+import { Content } from '@backstage/core-components';
 import { Box, Tab, TabList, Tabs } from '@backstage/ui';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { InventoryFailureGate } from '@giantswarm/backstage-plugin-gs';
 import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -14,6 +16,7 @@ import {
   workflowDetailRouteRef,
 } from '../../routes';
 import { MusterProviders } from '../MusterProviders';
+import { useMusterInstance } from '../MusterInstanceProvider';
 import { DashboardPage } from '../DashboardPage';
 import { McpServersRouter } from '../McpServersRouter';
 import { WorkflowsRouter } from '../WorkflowsRouter';
@@ -86,6 +89,45 @@ const LegacyRunRedirect = () => {
   return <Navigate to={`${to}${search}`} replace />;
 };
 
+/**
+ * The routed view -- or, when the section has no installation to show because
+ * the one it would show could not be asked whether it runs muster, the gate
+ * that says so once for every view: which installation, what the API server
+ * answered (a 401 the person's token cannot repair, a 403, another error) and
+ * what fixes it. Before this, a rejected token left the section without an
+ * installation, without a gate and without an error: the dashboard sat on its
+ * progress bar and the other views claimed no installation runs muster.
+ */
+const MusterViewsBody = () => {
+  const {
+    activeInstallation,
+    isLoadingInstallations,
+    inventoryFailure,
+    refreshInventory,
+  } = useMusterInstance();
+
+  if (!isLoadingInstallations && !activeInstallation && inventoryFailure) {
+    return (
+      <Content>
+        <InventoryFailureGate
+          failure={inventoryFailure}
+          onRetry={refreshInventory}
+          context="The MCP servers, workflows and tools of an installation are read through its Kubernetes API."
+        />
+      </Content>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="dashboard" element={<DashboardPage />} />
+      <Route path="servers/*" element={<McpServersRouter />} />
+      <Route path="workflows/*" element={<WorkflowsRouter />} />
+      <Route path="tools" element={<ToolExplorerPage />} />
+    </Routes>
+  );
+};
+
 // The second-level tab row (a plain bui Tabs strip — the section title comes from
 // the Agent Platform header above, so no PluginHeader here) plus the routed view.
 // The tabs are navigation links whose active state follows the route
@@ -119,12 +161,7 @@ const MusterViews = () => {
           </TabList>
         </Tabs>
       </Box>
-      <Routes>
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="servers/*" element={<McpServersRouter />} />
-        <Route path="workflows/*" element={<WorkflowsRouter />} />
-        <Route path="tools" element={<ToolExplorerPage />} />
-      </Routes>
+      <MusterViewsBody />
     </MusterProviders>
   );
 };

@@ -45,6 +45,7 @@ function instance(): MusterInstance {
     dataUpdatedAt: undefined,
     isRefreshing: false,
     retry: jest.fn(),
+    refreshInventory: jest.fn(),
   };
 }
 
