@@ -232,6 +232,17 @@ export function parseCreatedSessionId(raw: unknown): string | undefined {
  * Shared with the backend, which applies the same rule before spending a task
  * read on a session: the two must agree about what a session even is.
  */
+/**
+ * kagent's encoding of an agent reference as a session's `agent_id`: the
+ * "python identifier" form, `<namespace>__NS__<name>` with every `-` rewritten
+ * to `_`. Lossless to encode, lossy to decode — so both sides of the join
+ * (the backend rendering sessions, the frontend indexing agents) encode with
+ * this one function and never decode.
+ */
+export function encodeKagentAgentId(namespace: string, name: string): string {
+  return `${namespace}/${name}`.replace(/-/g, '_').replace('/', '__NS__');
+}
+
 export function isListableSession(session: KagentSession): boolean {
   return session.source !== 'agent';
 }

@@ -1,4 +1,7 @@
-import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  encodeKagentAgentId,
+  KagentSession,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
 
 /**
@@ -62,7 +65,7 @@ export type SessionRow = {
  * because encoding is lossless and decoding is not.
  */
 export function toAgentIdentifier(namespace: string, name: string): string {
-  return `${namespace}/${name}`.replace(/-/g, '_').replace('/', '__NS__');
+  return encodeKagentAgentId(namespace, name);
 }
 
 /**

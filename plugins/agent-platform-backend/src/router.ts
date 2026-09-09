@@ -43,14 +43,14 @@ export interface RouterOptions {
 }
 
 /**
- * The URL the reachability probe GETs for an installation: the sessions
- * route itself. It is what the proxy will call, and it sits behind kagent's
- * oauth2-proxy -- so an unauthenticated GET answers 401 or 403, which is a
- * perfectly good proof that the route exists from where the portal runs. The
- * probe carries no token and no user data; it never reads a session.
+ * The URL the reachability probe GETs for an installation: the controller's
+ * `SystemService/GetVersion` path. gRPC-Web answers a plain GET with an error
+ * status, and any HTTP answer at all is a perfectly good proof that the door
+ * exists from where the portal runs. The probe carries no token and no user
+ * data; it never reads an instance.
  */
 export function kagentProbeUrl(installation: KagentInstallationConfig): string {
-  return `${installation.apiBaseUrl}/sessions`;
+  return `${installation.apiBaseUrl}/kagent.api.v1alpha1.SystemService/GetVersion`;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -172,7 +172,7 @@ export async function createRouter(
     if (installations.size === 0) {
       installations.set('test', {
         name: 'test',
-        apiBaseUrl: 'https://kagent.test/api',
+        apiBaseUrl: 'https://kagent.test',
       });
     }
     for (const name of installations.keys()) {
@@ -182,7 +182,13 @@ export async function createRouter(
     for (const [name, installation] of installations) {
       clients.set(
         name,
-        new KagentClient(installation, logger, fetch, timeoutMs, turnTimeoutMs),
+        new KagentClient(
+          installation,
+          logger,
+          undefined,
+          timeoutMs,
+          turnTimeoutMs,
+        ),
       );
       logger.info(
         `kagent proxy installation '${name}' pointed at ${installation.apiBaseUrl}`,
@@ -504,9 +510,15 @@ export async function createRouter(
     const agentNamespace = readRequiredString(body, 'agentNamespace');
     const agentName = readRequiredString(body, 'agentName');
     const name = readSessionName(body);
+    // The Harness to run the instance on. Optional: the client picks the first
+    // one that reports the template Ready when the caller does not say.
+    const harness =
+      body.harness === undefined
+        ? undefined
+        : readRequiredString(body, 'harness');
 
     const result = await client.createSession(
-      { namespace: agentNamespace, name: agentName },
+      { namespace: agentNamespace, name: agentName, harness },
       name,
       { userToken: readUserToken(req, { required: true }) },
     );
@@ -784,6 +796,37 @@ export async function createRouter(
   // neither supported door proxies the root to the controller — the derived
   // door's nginx sends `/` to the kagent UI, and the agentgateway override only
   // matches the `/kagent` prefix. See the comment in KagentClient for details.
+
+  /**
+   * The controller's version (`SystemService/GetVersion`). Needs no identity;
+   * the token is forwarded when the caller has one.
+   */
+  router.get('/kagent/version', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const result = await client.getVersion({
+      userToken: readUserToken(req, { required: false }),
+    });
+    res.json(result);
+  });
+
+  /**
+   * The agents of one namespace as kagent sees them
+   * (`AgentTemplateService/ListAgentTemplates`): each AgentTemplate with the
+   * harnesses that admit it, whether any reports it Ready, and the CR itself.
+   * The frontend lists templates through the Kubernetes proxy; this route is
+   * for callers that want kagent's own view, headlessly.
+   */
+  router.get('/kagent/agent-templates', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const namespace = singleQueryValue(req.query.namespace, 'namespace');
+    if (!namespace) {
+      throw new InputError('namespace query parameter is required');
+    }
+    const result = await client.listAgentTemplates(namespace, {
+      userToken: readUserToken(req, { required: true }),
+    });
+    res.json(result);
+  });
 
   /**
    * Identity probe. Diagnoses the two ways a correct-looking sessions list can

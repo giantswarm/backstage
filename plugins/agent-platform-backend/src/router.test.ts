@@ -7,7 +7,11 @@ import {
   EndpointProbeResult,
   ReachabilityCache,
 } from '@giantswarm/backstage-plugin-gs-node';
-import { KAGENT_AUTH_HEADER, KagentClient } from './KagentClient';
+import {
+  KAGENT_AUTH_HEADER,
+  KagentClient,
+  SESSION_NAME_MAX_LENGTH,
+} from './KagentClient';
 import { createRouter, kagentProbeUrl, RouterOptions } from './router';
 
 /**
@@ -42,8 +46,12 @@ describe('createRouter', () => {
   const streamMessage = jest.fn();
   const createSession = jest.fn();
   const answerConfirmation = jest.fn();
+  const getVersion = jest.fn();
+  const listAgentTemplates = jest.fn();
 
   const mockClient = {
+    getVersion,
+    listAgentTemplates,
     listSessions,
     getMe,
     getSession,
@@ -142,7 +150,7 @@ describe('createRouter', () => {
       return { cache: new ReachabilityCache({ probe }), probe, pending };
     }
 
-    it('probes the sessions route of every installation once at startup, without a token', async () => {
+    it('probes the version route of every installation once at startup, without a token', async () => {
       const { probe } = controlledCache();
 
       await buildApp(twoInstallations, {
@@ -151,10 +159,10 @@ describe('createRouter', () => {
 
       expect(probe).toHaveBeenCalledTimes(2);
       expect(probe).toHaveBeenCalledWith(
-        'https://kagent.gazelle.example.io/api/sessions',
+        'https://kagent.gazelle.example.io/kagent.api.v1alpha1.SystemService/GetVersion',
       );
       expect(probe).toHaveBeenCalledWith(
-        'https://kagent.golem.example.io/api/sessions',
+        'https://kagent.golem.example.io/kagent.api.v1alpha1.SystemService/GetVersion',
       );
       // The probe is handed a URL and nothing else: no header, no identity.
       for (const call of probe.mock.calls) {
@@ -183,11 +191,11 @@ describe('createRouter', () => {
       const { cache, pending } = controlledCache();
       const probing = await buildApp(twoInstallations, { reachability: cache });
 
-      pending.get('https://kagent.gazelle.example.io/api/sessions')!({
+      pending.get('https://kagent.gazelle.example.io/kagent.api.v1alpha1.SystemService/GetVersion')!({
         reachable: true,
         checkedAt: 1,
       });
-      pending.get('https://kagent.golem.example.io/api/sessions')!({
+      pending.get('https://kagent.golem.example.io/kagent.api.v1alpha1.SystemService/GetVersion')!({
         reachable: false,
         reason: 'DNS lookup failed (ENOTFOUND)',
         checkedAt: 1,
@@ -213,17 +221,21 @@ describe('createRouter', () => {
       expect(
         kagentProbeUrl({
           name: 'gazelle',
-          apiBaseUrl: 'https://kagent.gazelle.example.io/api',
+          apiBaseUrl: 'https://kagent.gazelle.example.io',
         }),
-      ).toBe('https://kagent.gazelle.example.io/api/sessions');
+      ).toBe(
+        'https://kagent.gazelle.example.io/kagent.api.v1alpha1.SystemService/GetVersion',
+      );
       // An installation whose kagent endpoint is an internal service URL is
       // probed exactly where the proxy would call it.
       expect(
         kagentProbeUrl({
           name: 'golem',
-          apiBaseUrl: 'https://kagent-golem.agent-platform.svc:8443/api',
+          apiBaseUrl: 'https://kagent-golem.agent-platform.svc:8443/kagent',
         }),
-      ).toBe('https://kagent-golem.agent-platform.svc:8443/api/sessions');
+      ).toBe(
+        'https://kagent-golem.agent-platform.svc:8443/kagent/kagent.api.v1alpha1.SystemService/GetVersion',
+      );
     });
   });
 
@@ -736,7 +748,7 @@ describe('createRouter', () => {
       expect(response.status).toBe(201);
       expect(response.body).toEqual(createdBody);
       expect(createSession).toHaveBeenCalledWith(
-        { namespace: 'kagent', name: 'issue-tracker' },
+        { namespace: 'kagent', name: 'issue-tracker', harness: undefined },
         'Why is the ingress failing?',
         { userToken: 'user-token' },
       );
@@ -1188,7 +1200,7 @@ describe('createRouter', () => {
         .put('/kagent/sessions/abc')
         .query({ installation: 'gazelle' })
         .set(KAGENT_AUTH_HEADER, 'user-token')
-        .send({ name: 'x'.repeat(255) });
+        .send({ name: 'x'.repeat(SESSION_NAME_MAX_LENGTH) });
 
       expect(response.status).toBe(200);
     });
@@ -1366,15 +1378,16 @@ describe('createRouter', () => {
     });
   });
 
-  it('exposes no version route', async () => {
-    // kagent's /version lives at the server root, which neither supported door
-    // proxies to the controller, so a probe would fail on every healthy
-    // installation. Asserted so the route is not reintroduced casually.
+  it('answers the controller version, with or without a token', async () => {
+    getVersion.mockResolvedValue({ kagent_version: 'v0.0.1-poc' });
+
     const response = await request(app)
       .get('/kagent/version')
       .query({ installation: 'gazelle' });
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ kagent_version: 'v0.0.1-poc' });
+    expect(getVersion).toHaveBeenCalledWith({ userToken: undefined });
   });
 
   describe('POST /kagent/sessions/:sessionId/messages', () => {

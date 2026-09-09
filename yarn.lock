@@ -6145,6 +6145,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@bufbuild/protobuf@npm:2.14.1":
+  version: 2.14.1
+  resolution: "@bufbuild/protobuf@npm:2.14.1"
+  checksum: 10c0/3f913aca03df8419c4b21d800ea54d7f6c836a5343e65d6f686279ec3566c4907729938ef2f94a5e27d92e8d3f4adcd6e027118ba29ba764d21e1c637cddc702
+  languageName: node
+  linkType: hard
+
 "@cfworker/json-schema@npm:^4.1.1":
   version: 4.1.1
   resolution: "@cfworker/json-schema@npm:4.1.1"
@@ -6516,6 +6523,25 @@ __metadata:
   peerDependencies:
     commander: ~13.1.0
   checksum: 10c0/ff799f0641f68855aa73c976912a607c25d564df34fd8e262927a80b19f6cccd882fe7ce098a0e072a497fd0020cbd19fd1e4d5cc98a461cd6623abf8ed5f4e7
+  languageName: node
+  linkType: hard
+
+"@connectrpc/connect-node@npm:2.1.2":
+  version: 2.1.2
+  resolution: "@connectrpc/connect-node@npm:2.1.2"
+  peerDependencies:
+    "@bufbuild/protobuf": ^2.7.0
+    "@connectrpc/connect": 2.1.2
+  checksum: 10c0/ba8b0c9384c3829b377aa7a826dc0cd50a6093527d2ec7014604912836336ea9604a2b5acea42b10477f8be4569e49dded66ca0fc77f5f5b027035e029e13ea9
+  languageName: node
+  linkType: hard
+
+"@connectrpc/connect@npm:2.1.2":
+  version: 2.1.2
+  resolution: "@connectrpc/connect@npm:2.1.2"
+  peerDependencies:
+    "@bufbuild/protobuf": ^2.7.0
+  checksum: 10c0/4e1500089023b752efd44fa940a5ae1e1fa00e1bebc4ba0ced272bb935920d8c3b85b77450e644ad442bb8ca9a275b0c17136f896ba8eff036178131db01d615
   languageName: node
   linkType: hard
 
@@ -7465,6 +7491,9 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
     "@backstage/errors": "backstage:^"
+    "@bufbuild/protobuf": "npm:2.14.1"
+    "@connectrpc/connect": "npm:2.1.2"
+    "@connectrpc/connect-node": "npm:2.1.2"
     "@giantswarm/backstage-plugin-agent-platform-common": "workspace:^"
     "@giantswarm/backstage-plugin-gs-node": "workspace:^"
     "@types/express": "npm:^5.0.0"

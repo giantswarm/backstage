@@ -1,0 +1,9 @@
+# Regenerates the TypeScript for the kagent `main` control-plane and A2A
+# services this plugin speaks over gRPC-Web. See README.md next to this file.
+version: v2
+plugins:
+  - remote: buf.build/bufbuild/es:v2.13.0
+    out: .
+    opt:
+      - target=ts
+    include_imports: true
