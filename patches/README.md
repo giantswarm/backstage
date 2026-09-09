@@ -8,6 +8,24 @@ surfaces immediately instead of silently dropping the fix. (Without that flag
 `patch-package` only exits non-zero in CI, so a local `yarn install` would print a
 red line and carry on, leaving a developer running without the fix.)
 
+`postinstall` alone is not enough in CI. `node-build` restores `node_modules` and
+`.yarn/install-state.gz` from a cache with a prefix fallback, so a lockfile change
+reconciles against another branch's tree: `yarn install --immutable` re-extracts
+the packages whose resolutions differ — unpatched — and skips the root build step,
+leaving no patch applied. `ci:verify` and `ci:build` therefore both run
+`ci:patches` first. `patch-package` is idempotent and exits 0 on an already-patched
+tree, so the extra pass costs a second and nothing else.
+
+It only ever _adds_ patches, though, so a restored tree can still carry a patch
+this branch changes. Deleting a patch leaves the package's resolution untouched,
+so the stale patched files survive the install, `ci:patches` finds nothing to
+apply and exits 0, and CI goes green against the patch you just removed —
+distrust a warm-cache green on a patch-removal PR. Editing a patch instead fails
+`ci:patches` outright, because neither the forward apply nor `patch-package`'s
+already-applied reverse check matches the old patched files, and a re-run will
+not clear it. Both go away once the `node_modules` cache is restored on an exact
+key only (giantswarm/devctl#2183).
+
 The version in a patch filename is informational — `patch-package` warns (but
 still applies the patch) when the installed version differs. Re-check the patches
 below whenever the dependency they target is bumped, and delete a patch as soon as
