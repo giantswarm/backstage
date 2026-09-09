@@ -61,7 +61,10 @@ describe('toV0Part', () => {
   it('drops an empty metadata object', () => {
     expect(
       toV0Part(
-        create(PartSchema, { content: { case: 'text', value: 'x' }, metadata: {} }),
+        create(PartSchema, {
+          content: { case: 'text', value: 'x' },
+          metadata: {},
+        }),
       ),
     ).toEqual({ kind: 'text', text: 'x' });
   });
@@ -124,7 +127,11 @@ describe('toV0StreamEvent', () => {
     const working = create(StreamResponseSchema, {
       payload: {
         case: 'statusUpdate',
-        value: { taskId: 't', contextId: 'c', status: { state: TaskState.WORKING } },
+        value: {
+          taskId: 't',
+          contextId: 'c',
+          status: { state: TaskState.WORKING },
+        },
       },
     });
     const done = create(StreamResponseSchema, {

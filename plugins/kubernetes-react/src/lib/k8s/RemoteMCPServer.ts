@@ -20,7 +20,12 @@ export interface RemoteMCPServerInterface extends KubeObjectInterface {
   };
   status?: {
     observedGeneration?: number;
-    conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>;
+    conditions?: Array<{
+      type: string;
+      status: string;
+      reason?: string;
+      message?: string;
+    }>;
     discoveredTools?: unknown[];
   };
 }

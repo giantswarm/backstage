@@ -65,7 +65,8 @@ describe('composeManifests', () => {
         labels: { 'kagent.dev/harness': 'kagent' },
         annotations: {
           'ui.giantswarm.io/display-name': 'PR reviewer',
-          'ui.giantswarm.io/icon-url': 'https://avatars.example.io/pr-reviewer.svg',
+          'ui.giantswarm.io/icon-url':
+            'https://avatars.example.io/pr-reviewer.svg',
         },
       },
       spec: {
@@ -87,7 +88,9 @@ describe('composeManifests', () => {
     const [template] = docs(
       composeManifests({ ...model, harness: 'claude' }, ctx).combinedManifest,
     );
-    expect(template.metadata.labels).toEqual({ 'kagent.dev/harness': 'claude' });
+    expect(template.metadata.labels).toEqual({
+      'kagent.dev/harness': 'claude',
+    });
   });
 
   it('omits the icon annotation, description and prompt when they are empty', () => {
@@ -201,7 +204,11 @@ describe('composeManifests toolset', () => {
       },
     });
     expect(template.spec.tools).toEqual([
-      { mcp: { server: { kind: 'RemoteMCPServer', name: 'muster-pr-reviewer' } } },
+      {
+        mcp: {
+          server: { kind: 'RemoteMCPServer', name: 'muster-pr-reviewer' },
+        },
+      },
     ]);
   });
 

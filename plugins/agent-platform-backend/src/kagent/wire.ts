@@ -117,7 +117,10 @@ export function toSessionWire(instance: AgentInstance): JsonObject {
     context_id: instance.contextId,
     state: INSTANCE_STATE_NAMES[instance.state] ?? 'unknown',
     ...(instance.harness && {
-      harness: { namespace: instance.harness.namespace, name: instance.harness.name },
+      harness: {
+        namespace: instance.harness.namespace,
+        name: instance.harness.name,
+      },
     }),
     ...(instance.agentTemplate && {
       agent_template: {
@@ -126,7 +129,10 @@ export function toSessionWire(instance: AgentInstance): JsonObject {
       },
     }),
     ...(instance.failure && {
-      failure: { reason: instance.failure.reason, message: instance.failure.message },
+      failure: {
+        reason: instance.failure.reason,
+        message: instance.failure.message,
+      },
     }),
   };
 }
@@ -359,7 +365,9 @@ export function sortTasksOldestFirst(tasks: Task[]): Task[] {
  * know the turn is over, so it is derived from the state: every terminal state,
  * `input-required` included, ends the stream of events for this turn.
  */
-export function toV0StreamEvent(response: StreamResponse): JsonObject | undefined {
+export function toV0StreamEvent(
+  response: StreamResponse,
+): JsonObject | undefined {
   const payload = response.payload;
   switch (payload.case) {
     case 'task':
@@ -399,7 +407,9 @@ export function toV0StreamEvent(response: StreamResponse): JsonObject | undefine
  * An AgentTemplate's Kubernetes object, as the controller encodes it: the whole
  * CR — `status.harnesses[]` included — under `resource.value`.
  */
-export function templateResource(template: AgentTemplate): JsonObject | undefined {
+export function templateResource(
+  template: AgentTemplate,
+): JsonObject | undefined {
   return structToJson(template.resource?.value);
 }
 
@@ -419,8 +429,9 @@ export function harnessesOf(template: AgentTemplate): {
   ready: boolean;
 }[] {
   const resource = templateResource(template);
-  const status = (resource?.status as { harnesses?: HarnessStatus[] } | undefined)
-    ?.harnesses;
+  const status = (
+    resource?.status as { harnesses?: HarnessStatus[] } | undefined
+  )?.harnesses;
   const seen = new Map<string, boolean>();
   for (const entry of status ?? []) {
     if (!entry?.harness) {
@@ -428,7 +439,8 @@ export function harnessesOf(template: AgentTemplate): {
     }
     const ready =
       entry.conditions?.some(
-        condition => condition?.type === 'Ready' && condition?.status === 'True',
+        condition =>
+          condition?.type === 'Ready' && condition?.status === 'True',
       ) ?? false;
     seen.set(entry.harness, ready);
   }

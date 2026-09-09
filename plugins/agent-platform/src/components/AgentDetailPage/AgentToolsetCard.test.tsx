@@ -77,7 +77,10 @@ function makeAgent(tools: ToolEntry[]) {
           apiVersion: 'kagent.dev/v1alpha3',
           kind: 'RemoteMCPServer',
           metadata: { name: copyName, namespace: 'kagent' },
-          spec: { url: 'http://muster:8090/mcp', headersFrom: tool.headersFrom },
+          spec: {
+            url: 'http://muster:8090/mcp',
+            headersFrom: tool.headersFrom,
+          },
         },
         'gazelle',
       ),
@@ -173,7 +176,8 @@ const resolvedAnswer =
 async function renderCard(agent: Agent, api?: MusterApi) {
   mockUseResources.mockImplementation(
     (_clusters: unknown, ResourceClass: unknown) => ({
-      resources: ResourceClass === RemoteMCPServer ? REMOTE_SERVERS : SERVER_CRS,
+      resources:
+        ResourceClass === RemoteMCPServer ? REMOTE_SERVERS : SERVER_CRS,
       isLoading: false,
       errors: [],
     }),

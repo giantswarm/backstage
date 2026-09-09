@@ -55,10 +55,7 @@ const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
  * a *permanently* broken agent on the same terms — see
  * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists.
  */
-function isAgentConverging(
-  json: AgentTemplateInterface,
-  now: number,
-): boolean {
+function isAgentConverging(json: AgentTemplateInterface, now: number): boolean {
   if (!isAgentTransitional(deriveAgentReadiness(json))) {
     return false;
   }

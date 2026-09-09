@@ -189,7 +189,10 @@ function buildToolsetServer(
   };
 }
 
-function buildTemplate(model: AgentModel, ctx: DeployContext): Record<string, unknown> {
+function buildTemplate(
+  model: AgentModel,
+  ctx: DeployContext,
+): Record<string, unknown> {
   const annotations: Record<string, string> = {
     'ui.giantswarm.io/display-name': model.name,
   };
@@ -210,7 +213,7 @@ function buildTemplate(model: AgentModel, ctx: DeployContext): Record<string, un
   if (!isChatOnly(model.toolset)) {
     const serverName = needsToolsetServer(model.toolset)
       ? toolsetServerName(model.slug)
-      : ctx.gateway?.name ?? GATEWAY_SERVER_NAME;
+      : (ctx.gateway?.name ?? GATEWAY_SERVER_NAME);
     spec.tools = [
       { mcp: { server: { kind: 'RemoteMCPServer', name: serverName } } },
     ];

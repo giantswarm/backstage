@@ -147,9 +147,9 @@ describe('Agent (v1alpha3 AgentTemplate)', () => {
       expect(agent.getAgentRefs()).toEqual([
         { name: 'helper-template', description: 'Delegates' },
       ]);
-      expect(agent.getTools().every(tool => tool.headersFrom === undefined)).toBe(
-        true,
-      );
+      expect(
+        agent.getTools().every(tool => tool.headersFrom === undefined),
+      ).toBe(true);
     });
   });
 
@@ -236,7 +236,9 @@ describe('Agent (v1alpha3 AgentTemplate)', () => {
           ],
         },
       });
-      expect(agent.getReadinessMessage()).toBe('ModelConfig "missing" not found');
+      expect(agent.getReadinessMessage()).toBe(
+        'ModelConfig "missing" not found',
+      );
     });
 
     it('is notAccepted when every admitting harness rejects the spec', () => {
@@ -245,7 +247,11 @@ describe('Agent (v1alpha3 AgentTemplate)', () => {
           observedGeneration: 1,
           harnesses: [
             harness('kagent', [
-              { type: 'Accepted', status: 'False', message: 'selector mismatch' },
+              {
+                type: 'Accepted',
+                status: 'False',
+                message: 'selector mismatch',
+              },
             ]),
           ],
         },
@@ -257,7 +263,10 @@ describe('Agent (v1alpha3 AgentTemplate)', () => {
     it('is pending when the status describes an older generation', () => {
       const agent = makeAgent({
         metadata: { name: 'my-agent', namespace: 'kagent', generation: 3 },
-        status: { observedGeneration: 2, harnesses: [harness('kagent', READY)] },
+        status: {
+          observedGeneration: 2,
+          harnesses: [harness('kagent', READY)],
+        },
       });
       expect(agent.getReadiness()).toBe('pending');
       expect(agent.isStale()).toBe(true);
@@ -292,7 +301,10 @@ describe('Agent (v1alpha3 AgentTemplate)', () => {
   describe('deriveAgentReadiness / isAgentTransitional', () => {
     it('agree with the instance method and treat everything but ready as transitional', () => {
       const json = makeAgent({
-        status: { observedGeneration: 1, harnesses: [harness('kagent', READY)] },
+        status: {
+          observedGeneration: 1,
+          harnesses: [harness('kagent', READY)],
+        },
       }).jsonData;
       expect(deriveAgentReadiness(json)).toBe('ready');
       expect(isAgentTransitional('ready')).toBe(false);
@@ -309,19 +321,29 @@ describe('Agent (v1alpha3 AgentTemplate)', () => {
             {
               harness: 'kagent',
               conditions: [
-                { type: 'Accepted', status: 'True', lastTransitionTime: '2026-09-09T10:00:00Z' },
+                {
+                  type: 'Accepted',
+                  status: 'True',
+                  lastTransitionTime: '2026-09-09T10:00:00Z',
+                },
               ],
             },
             {
               harness: 'claude',
               conditions: [
-                { type: 'Ready', status: 'True', lastTransitionTime: '2026-09-09T11:00:00Z' },
+                {
+                  type: 'Ready',
+                  status: 'True',
+                  lastTransitionTime: '2026-09-09T11:00:00Z',
+                },
               ],
             },
           ],
         },
       }).jsonData;
-      expect(getAgentStatusChangedAt(json)).toBe(Date.parse('2026-09-09T11:00:00Z'));
+      expect(getAgentStatusChangedAt(json)).toBe(
+        Date.parse('2026-09-09T11:00:00Z'),
+      );
     });
 
     it('falls back to the creation timestamp, then undefined', () => {
@@ -332,7 +354,9 @@ describe('Agent (v1alpha3 AgentTemplate)', () => {
           creationTimestamp: '2026-09-09T09:00:00Z',
         },
       }).jsonData;
-      expect(getAgentStatusChangedAt(created)).toBe(Date.parse('2026-09-09T09:00:00Z'));
+      expect(getAgentStatusChangedAt(created)).toBe(
+        Date.parse('2026-09-09T09:00:00Z'),
+      );
       expect(getAgentStatusChangedAt(makeAgent().jsonData)).toBeUndefined();
     });
   });

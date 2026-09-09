@@ -187,7 +187,10 @@ export function NewAgentReviewPage() {
       gatewayServer
         ? {
             name: gatewayServer.getName(),
-            spec: (gatewayServer.jsonData.spec ?? {}) as Record<string, unknown>,
+            spec: (gatewayServer.jsonData.spec ?? {}) as Record<
+              string,
+              unknown
+            >,
           }
         : undefined,
     [gatewayServer],

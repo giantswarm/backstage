@@ -254,7 +254,8 @@ export function isTransportFailure(error: unknown): boolean {
  * than a gateway or kagent answering with a 5xx. connect-node reports both under
  * `Unavailable`; only the socket-level ones mean "kagent is not deployed here".
  */
-const SOCKET_FAILURE = /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ECONNRESET|EHOSTUNREACH|ENETUNREACH|socket hang up|certificate|TLS|SSL/i;
+const SOCKET_FAILURE =
+  /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ECONNRESET|EHOSTUNREACH|ENETUNREACH|socket hang up|certificate|TLS|SSL/i;
 
 /** Whether a configured URL is absolute and http(s), so a transport can use it. */
 function isAbsoluteHttpUrl(url: string): boolean {
@@ -411,7 +412,8 @@ export class KagentClient {
    */
   async listSessions(options: KagentRequestOptions): Promise<unknown> {
     const response = await this.call(
-      () => this.instanceService.listAgentInstances({}, this.callOptions(options)),
+      () =>
+        this.instanceService.listAgentInstances({}, this.callOptions(options)),
       { endpoint: 'instance list', missingResource: 'AgentInstances' },
     );
     return envelope(response.agentInstances.map(toSessionWire));
@@ -459,7 +461,9 @@ export class KagentClient {
       },
     );
     return envelope(
-      response.agentInstance ? toSessionWire(response.agentInstance) : undefined,
+      response.agentInstance
+        ? toSessionWire(response.agentInstance)
+        : undefined,
     );
   }
 
@@ -577,10 +581,12 @@ export class KagentClient {
         parts: [{ content: { case: 'text', value: message.text } }],
       },
     });
-    const stream = this.a2aService.sendStreamingMessage(request, {
-      headers: this.turnHeaders(sessionId, options),
-      signal,
-    })[Symbol.asyncIterator]();
+    const stream = this.a2aService
+      .sendStreamingMessage(request, {
+        headers: this.turnHeaders(sessionId, options),
+        signal,
+      })
+      [Symbol.asyncIterator]();
 
     // The first event is awaited under the ordinary request timeout: kagent
     // answers a `task` snapshot as soon as the turn is accepted, so a slow start
@@ -737,7 +743,9 @@ export class KagentClient {
       },
     );
     return envelope(
-      response.agentInstance ? toSessionWire(response.agentInstance) : undefined,
+      response.agentInstance
+        ? toSessionWire(response.agentInstance)
+        : undefined,
     );
   }
 
@@ -769,7 +777,9 @@ export class KagentClient {
       },
     );
     return envelope(
-      response.agentInstance ? toSessionWire(response.agentInstance) : undefined,
+      response.agentInstance
+        ? toSessionWire(response.agentInstance)
+        : undefined,
     );
   }
 
@@ -871,13 +881,19 @@ export class KagentClient {
             ),
         },
       );
-      task = response.payload.case === 'task' ? response.payload.value : undefined;
+      task =
+        response.payload.case === 'task' ? response.payload.value : undefined;
       if (response.payload.case === 'message') {
         // A bare message reply, without a task: nothing to render as a turn.
         // Wrapped in the JSON-RPC shape the frontend's send path tolerates.
-        return { jsonrpc: '2.0', id: message.messageId, result: toV0StreamEvent(
-          { $typeName: 'lf.a2a.v1.StreamResponse', payload: response.payload },
-        ) };
+        return {
+          jsonrpc: '2.0',
+          id: message.messageId,
+          result: toV0StreamEvent({
+            $typeName: 'lf.a2a.v1.StreamResponse',
+            payload: response.payload,
+          }),
+        };
       }
     } catch (error) {
       // A lost connection is not a failed message. The gateway in front of kagent
@@ -894,7 +910,9 @@ export class KagentClient {
       ) {
         throw error;
       }
-      if (!(await this.hasMessageLanded(sessionId, message.messageId, options))) {
+      if (
+        !(await this.hasMessageLanded(sessionId, message.messageId, options))
+      ) {
         throw error;
       }
       this.logger.debug(
@@ -1033,7 +1051,9 @@ export class KagentClient {
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new ConnectError('first event timed out', Code.DeadlineExceeded));
+        reject(
+          new ConnectError('first event timed out', Code.DeadlineExceeded),
+        );
       }, timeoutMs);
       const onAbort = () => {
         clearTimeout(timer);

@@ -71,7 +71,11 @@ export function skillLabel(ref: SkillRef): string {
   }
 
   const url = ref.url ?? '';
-  const fromUrl = url.replace(/\.git$/, '').split('/').filter(Boolean).pop();
+  const fromUrl = url
+    .replace(/\.git$/, '')
+    .split('/')
+    .filter(Boolean)
+    .pop();
 
   return fromUrl ?? url;
 }

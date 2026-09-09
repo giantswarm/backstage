@@ -113,7 +113,10 @@ function task(
         parts: [{ content: { case: 'text', value: text.agent } }],
         metadata: {
           adk_author: 'muster_whole_kagent',
-          adk_usage_metadata: { promptTokenCount: 700, candidatesTokenCount: 11 },
+          adk_usage_metadata: {
+            promptTokenCount: 700,
+            candidatesTokenCount: 11,
+          },
           'kagent.dev/timeline-position': new Date(
             at.getTime() + 1_000,
           ).toISOString(),
@@ -172,9 +175,11 @@ describe('readKagentInstallationsFromConfig', () => {
         },
       },
     });
-    expect([...readKagentInstallationsFromConfig(config, logger).values()]).toEqual(
-      [{ name: 'gazelle', apiBaseUrl: 'https://agentgateway.example.io/kagent' }],
-    );
+    expect([
+      ...readKagentInstallationsFromConfig(config, logger).values(),
+    ]).toEqual([
+      { name: 'gazelle', apiBaseUrl: 'https://agentgateway.example.io/kagent' },
+    ]);
   });
 });
 
@@ -263,7 +268,9 @@ describe('KagentClient sessions', () => {
       agentTemplate: { namespace: 'kagent', name: 'muster-whole' },
       name: 'Cluster health check',
     });
-    expect((created as { requestId: string }).requestId).toMatch(/[0-9a-f-]{36}/);
+    expect((created as { requestId: string }).requestId).toMatch(
+      /[0-9a-f-]{36}/,
+    );
     expect(result.data.id).toBe('01a086cf-7f84-761d-980a-48f485eded5e');
   });
 
@@ -305,15 +312,20 @@ describe('KagentClient sessions', () => {
     const { client } = clientWith(router => {
       router.service(AgentInstanceService, {
         getAgentInstance: async req => {
-          expect(req.agentInstanceId).toBe('01a086cf-7f84-761d-980a-48f485eded5e');
+          expect(req.agentInstanceId).toBe(
+            '01a086cf-7f84-761d-980a-48f485eded5e',
+          );
           return { agentInstance: instance() };
         },
       });
     });
 
-    const result = (await client.getSession('01a086cf-7f84-761d-980a-48f485eded5e', {
-      userToken: TOKEN,
-    })) as { data: { session: { id: string } } };
+    const result = (await client.getSession(
+      '01a086cf-7f84-761d-980a-48f485eded5e',
+      {
+        userToken: TOKEN,
+      },
+    )) as { data: { session: { id: string } } };
 
     expect(result.data.session.id).toBe('01a086cf-7f84-761d-980a-48f485eded5e');
   });
@@ -360,7 +372,10 @@ describe('KagentClient sessions', () => {
     const { client } = clientWith(router => {
       router.service(AgentInstanceService, {
         updateAgentInstanceName: async () => {
-          throw new ConnectError('name: must not end in whitespace', Code.InvalidArgument);
+          throw new ConnectError(
+            'name: must not end in whitespace',
+            Code.InvalidArgument,
+          );
         },
       });
     });
@@ -417,7 +432,10 @@ describe('KagentClient tasks', () => {
         taskId: 't1',
         parts: [expect.objectContaining({ kind: 'text', text: 'Hello.' })],
         metadata: expect.objectContaining({
-          adk_usage_metadata: { promptTokenCount: 700, candidatesTokenCount: 11 },
+          adk_usage_metadata: {
+            promptTokenCount: 700,
+            candidatesTokenCount: 11,
+          },
         }),
       }),
     ]);
@@ -656,7 +674,10 @@ describe('KagentClient streamMessage', () => {
       'status-update',
     ]);
     expect(events[0]).toMatchObject({ jsonrpc: '2.0', id: 'm-1' });
-    expect(events[1].result.artifact.parts[0]).toEqual({ kind: 'text', text: 'Hel' });
+    expect(events[1].result.artifact.parts[0]).toEqual({
+      kind: 'text',
+      text: 'Hel',
+    });
     expect(events[2].result).toMatchObject({
       status: { state: 'completed' },
       final: true,
@@ -698,13 +719,17 @@ describe('KagentClient error mapping', () => {
 
   it('maps Unauthenticated to a 401', async () => {
     await expect(
-      failingWith(Code.Unauthenticated, 'nope').listSessions({ userToken: TOKEN }),
+      failingWith(Code.Unauthenticated, 'nope').listSessions({
+        userToken: TOKEN,
+      }),
     ).rejects.toMatchObject({ name: 'AuthenticationError' });
   });
 
   it('maps PermissionDenied to a 403', async () => {
     await expect(
-      failingWith(Code.PermissionDenied, 'nope').listSessions({ userToken: TOKEN }),
+      failingWith(Code.PermissionDenied, 'nope').listSessions({
+        userToken: TOKEN,
+      }),
     ).rejects.toMatchObject({ name: 'NotAllowedError' });
   });
 
@@ -724,7 +749,9 @@ describe('KagentClient error mapping', () => {
 
   it('maps a gateway Unavailable to an upstream failure', async () => {
     await expect(
-      failingWith(Code.Unavailable, 'HTTP 503').listSessions({ userToken: TOKEN }),
+      failingWith(Code.Unavailable, 'HTTP 503').listSessions({
+        userToken: TOKEN,
+      }),
     ).rejects.toMatchObject({ name: 'UpstreamError' });
   });
 

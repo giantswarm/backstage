@@ -149,12 +149,17 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
         description: 'Reviews pull requests in depth.',
         modelConfig: { name: 'opus-4-7' },
         systemPrompt: 'You review pull requests.',
-        tools: [{ mcp: { server: { kind: 'RemoteMCPServer', name: 'muster' } } }],
+        tools: [
+          { mcp: { server: { kind: 'RemoteMCPServer', name: 'muster' } } },
+        ],
         skills: [
           {
             name: 'PR review conventions',
             source: {
-              git: { url: 'https://github.com/giantswarm/skills', commit: 'v2.0.0' },
+              git: {
+                url: 'https://github.com/giantswarm/skills',
+                commit: 'v2.0.0',
+              },
               path: 'pr-review',
             },
           },
@@ -412,15 +417,15 @@ describe('AgentDetailPage', () => {
               {
                 harness: 'kagent',
                 conditions: [
-              READY_CONDITIONS[0],
-              {
-                type: 'Ready',
-                status: 'False',
-                reason: 'DeploymentNotReady',
-                message: 'Deployment is not ready, 0/1 pods are ready',
-                lastTransitionTime: '2026-07-31T10:05:00Z',
-              },
-            ],
+                  READY_CONDITIONS[0],
+                  {
+                    type: 'Ready',
+                    status: 'False',
+                    reason: 'DeploymentNotReady',
+                    message: 'Deployment is not ready, 0/1 pods are ready',
+                    lastTransitionTime: '2026-07-31T10:05:00Z',
+                  },
+                ],
               },
             ],
           },
@@ -447,14 +452,14 @@ describe('AgentDetailPage', () => {
               {
                 harness: 'kagent',
                 conditions: [
-              {
-                type: 'Accepted',
-                status: 'False',
-                reason: 'ReconcileFailed',
-                message: 'modelconfigs.kagent.dev "opus-4-7" not found',
-                lastTransitionTime: '2026-07-31T10:05:00Z',
-              },
-            ],
+                  {
+                    type: 'Accepted',
+                    status: 'False',
+                    reason: 'ReconcileFailed',
+                    message: 'modelconfigs.kagent.dev "opus-4-7" not found',
+                    lastTransitionTime: '2026-07-31T10:05:00Z',
+                  },
+                ],
               },
             ],
           },
@@ -541,9 +546,7 @@ describe('AgentDetailPage', () => {
       // Unbound external route in the test app, so assert the reference is named
       // and that a non-muster server gets no link (below) — the binding itself is
       // muster's to provide.
-      expect(
-        screen.getByText('RemoteMCPServer muster'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('RemoteMCPServer muster')).toBeInTheDocument();
       // The gateway row defers to the toolset card rather than claiming "all
       // tools": which of the gateway's tools the agent can use is its toolset.
       expect(screen.getByText(/see Toolset below/)).toBeInTheDocument();

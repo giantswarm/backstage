@@ -191,11 +191,15 @@ describe('createRouter', () => {
       const { cache, pending } = controlledCache();
       const probing = await buildApp(twoInstallations, { reachability: cache });
 
-      pending.get('https://kagent.gazelle.example.io/kagent.api.v1alpha1.SystemService/GetVersion')!({
+      pending.get(
+        'https://kagent.gazelle.example.io/kagent.api.v1alpha1.SystemService/GetVersion',
+      )!({
         reachable: true,
         checkedAt: 1,
       });
-      pending.get('https://kagent.golem.example.io/kagent.api.v1alpha1.SystemService/GetVersion')!({
+      pending.get(
+        'https://kagent.golem.example.io/kagent.api.v1alpha1.SystemService/GetVersion',
+      )!({
         reachable: false,
         reason: 'DNS lookup failed (ENOTFOUND)',
         checkedAt: 1,

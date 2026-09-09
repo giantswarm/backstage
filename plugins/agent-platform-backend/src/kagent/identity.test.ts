@@ -8,7 +8,9 @@ function jwt(payload: unknown): string {
 
 describe('readEmailClaim', () => {
   it('reads the email claim of a JWT without verifying it', () => {
-    expect(readEmailClaim(jwt({ email: 'dev@lab.local' }))).toBe('dev@lab.local');
+    expect(readEmailClaim(jwt({ email: 'dev@lab.local' }))).toBe(
+      'dev@lab.local',
+    );
   });
 
   it('is undefined for a token without an email, a non-JWT, or garbage', () => {

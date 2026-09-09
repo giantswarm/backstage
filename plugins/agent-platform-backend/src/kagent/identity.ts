@@ -52,7 +52,9 @@ export function readEmailClaim(token: string | undefined): string | undefined {
  * The gRPC metadata for one call: `authorization` when a token is known and
  * `x-user-id` from the explicit id, else from the token's email claim.
  */
-export function identityHeaders(identity: KagentIdentity): Record<string, string> {
+export function identityHeaders(
+  identity: KagentIdentity,
+): Record<string, string> {
   const headers: Record<string, string> = {};
   if (identity.userToken) {
     headers.authorization = `Bearer ${identity.userToken}`;

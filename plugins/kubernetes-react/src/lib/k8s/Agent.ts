@@ -51,7 +51,15 @@ export interface AgentTemplateSkill {
   source: {
     oci?: string;
     git?: { url: string; commit: string };
-    bucket?: { s3: { endpoint: string; bucket: string; key: string; versionId: string; region?: string } };
+    bucket?: {
+      s3: {
+        endpoint: string;
+        bucket: string;
+        key: string;
+        versionId: string;
+        region?: string;
+      };
+    };
     path?: string;
   };
 }
@@ -157,10 +165,7 @@ function conditionOf(
   return harness.conditions?.find(condition => condition.type === type);
 }
 
-function isTrue(
-  harness: AgentTemplateHarnessStatus,
-  type: string,
-): boolean {
+function isTrue(harness: AgentTemplateHarnessStatus, type: string): boolean {
   return conditionOf(harness, type)?.status === 'True';
 }
 
@@ -211,7 +216,9 @@ export function deriveAgentReadiness(json: AgentInterface): AgentReadiness {
     return 'ready';
   }
 
-  if (harnesses.every(harness => !isTrue(harness, AgentConditionType.Accepted))) {
+  if (
+    harnesses.every(harness => !isTrue(harness, AgentConditionType.Accepted))
+  ) {
     return 'notAccepted';
   }
 

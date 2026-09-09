@@ -1,8 +1,6 @@
 export interface Config {
   /** Configuration for the agent-platform plugin. */
   agentPlatform?: {
-
-
     /**
      * Catalog entity ref of the hidden Template that applies the composed
      * manifest via the `kube:apply` scaffolder action. Defaults to

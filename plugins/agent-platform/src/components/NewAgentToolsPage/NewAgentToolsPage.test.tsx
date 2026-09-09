@@ -108,7 +108,11 @@ function agentWithToolset(name: string, toolset: string) {
       spec: {
         modelConfig: { name: 'opus' },
         tools: [
-          { mcp: { server: { kind: 'RemoteMCPServer', name: `muster-${name}` } } },
+          {
+            mcp: {
+              server: { kind: 'RemoteMCPServer', name: `muster-${name}` },
+            },
+          },
         ],
       },
     } as never,
