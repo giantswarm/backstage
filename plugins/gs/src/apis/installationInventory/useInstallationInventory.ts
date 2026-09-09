@@ -16,7 +16,10 @@ import {
   isPlatformComponents,
   NO_PLATFORM_COMPONENTS,
 } from './parseApiGroupList';
-import { probeInstallationInventory } from './probeInstallationInventory';
+import {
+  isInventoryAuthError,
+  probeInstallationInventory,
+} from './probeInstallationInventory';
 import {
   INSTALLATION_INVENTORY_QUERY_KEY_PREFIX,
   INSTALLATION_INVENTORY_STALE_TIME_MS,
@@ -111,6 +114,11 @@ export function orderInstallations(
  * - `refresh()` re-reads every healthy installation; an installation turning
  *   `healthy` again after `degraded`, `session-expired` or leaving the status
  *   set is re-read on its own.
+ * - A probe the API server refused (401, 403) is not asked again on its own:
+ *   the answer does not change until the person signs in again. It stays
+ *   `failed`, with the error, for the gates to explain
+ *   (`selectInventoryFailure`); `refresh()` and a healthy-again transition
+ *   still re-run it.
  *
  * Runs under whichever react-query client is in context (agent-platform's,
  * muster's or gs's own) and creates none of its own.
@@ -206,20 +214,34 @@ export function useInstallationInventory(): InstallationInventory {
   );
 
   const probes = useQueries({
-    queries: ordered.map(installation => ({
-      queryKey: installationInventoryQueryKey(installation),
-      queryFn: () =>
-        probeInstallationInventory(kubernetesApi, installation, {
-          background: installation !== home,
-        }),
-      enabled: accessStates.get(installation) === 'healthy',
-      // A rehydrated entry of another shape is stale at once, so it is fetched
-      // again instead of read; a real answer is kept for an hour.
-      staleTime: (query: { state: { data: unknown } }) =>
-        isPlatformComponents(query.state.data)
-          ? INSTALLATION_INVENTORY_STALE_TIME_MS
-          : 0,
-    })),
+    queries: ordered.map(installation => {
+      const queryKey = installationInventoryQueryKey(installation);
+      return {
+        queryKey,
+        queryFn: () =>
+          probeInstallationInventory(kubernetesApi, installation, {
+            background: installation !== home,
+          }),
+        enabled: accessStates.get(installation) === 'healthy',
+        // A rehydrated entry of another shape is stale at once, so it is
+        // fetched again instead of read; a real answer is kept for an hour.
+        staleTime: (query: { state: { data: unknown } }) =>
+          isPlatformComponents(query.state.data)
+            ? INSTALLATION_INVENTORY_STALE_TIME_MS
+            : 0,
+        // A probe the API server refused stays failed until the person signs
+        // in again, so no mount re-runs it. A failed query has no data and is
+        // therefore always stale; without this, every mount of the hook on the
+        // page -- the section's provider, the header's selector, a view's
+        // note, each on its own render -- asked the same question again,
+        // retry predicate or not: one rejected token showed up as ten
+        // `401 GET /apis` per page load. Other failures (a 5xx, a timeout)
+        // keep the default and are retried on the next mount.
+        retryOnMount: !isInventoryAuthError(
+          queryClient.getQueryState(queryKey)?.error,
+        ),
+      };
+    }),
     combine,
   });
 

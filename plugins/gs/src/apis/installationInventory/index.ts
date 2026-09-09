@@ -19,8 +19,19 @@ export {
 } from './queryKey';
 export {
   INVENTORY_PROBE_PATH,
+  InventoryProbeError,
+  isInventoryAuthError,
   probeInstallationInventory,
 } from './probeInstallationInventory';
+export {
+  classifyInventoryFailure,
+  inventoryFailureCopy,
+  selectInventoryFailure,
+  type InventoryFailure,
+  type InventoryFailureCopy,
+  type InventoryFailureKind,
+  type SelectInventoryFailureOptions,
+} from './inventoryFailure';
 export {
   findHomeInstallation,
   useHomeInstallation,

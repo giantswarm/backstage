@@ -11,6 +11,7 @@ export * from './DateComponent';
 export * from './DetailsPane';
 export * from './ErrorStatus';
 export * from './ExternalLink';
+export * from './Gate';
 export * from './GSMarkdownContent';
 export * from './InfoCard';
 export * from './JsonHighlight';
