@@ -23,6 +23,12 @@ app:
     # every tab agent-platform declares — so "Dashboards" could not be last.
     # Agents stays first because a bare `/agent-platform` lands on the first
     # tab in this row.
+    #
+    # NOTE: config arrays are replaced, not merged, so any overlay that sets
+    # `app.extensions` at all (e.g. `backstage.appConfig` in the Helm values)
+    # takes over this whole list — losing the tab order *and* the enabling of
+    # the two disabled-by-default extensions above. Extend the list there
+    # rather than restating part of it.
     - page:agent-platform
     - nav-item:agent-platform
     - sub-page:agent-platform/agents
@@ -30,6 +36,21 @@ app:
     - sub-page:agent-platform/models
     - sub-page:muster/mcp-servers
     - sub-page:agent-platform/dashboards
+    # `/agent-platform/usage` — the Dashboards tab's former single-page form —
+    # is linkable, and without this it matches the page's own `/*` route while
+    # matching none of its tab routes: `PageBlueprint`'s inner `<Routes>` has an
+    # index redirect and one route per tab but no fallback, so the section drew
+    # its full tab row over an empty body. `app/routes` mounts redirects ahead
+    # of the page routes, and `/agent-platform/usage/*` outranks
+    # `/agent-platform/*`, so this catches it first. The query string is not
+    # carried over (`RedirectWithParams` only substitutes path params) — the
+    # only one that page took was `?installation=`, and the tab it lands on
+    # re-resolves the scope from localStorage.
+    - app/routes:
+        config:
+          redirects:
+            - from: /agent-platform/usage
+              to: /agent-platform/dashboards
     - page:ai-chat
     - api:ai-chat/service
     - api:ai-chat/drawer

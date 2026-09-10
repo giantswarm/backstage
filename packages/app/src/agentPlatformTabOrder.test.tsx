@@ -4,27 +4,36 @@
 import fs from 'fs';
 // eslint-disable-next-line no-restricted-imports
 import path from 'path';
+import agentPlatformPlugin from '@giantswarm/backstage-plugin-agent-platform';
+import musterPlugin from '@giantswarm/backstage-plugin-muster';
+
+const AGENT_PLATFORM_PAGE = 'page:agent-platform';
 
 /**
  * The ids listed under `app.extensions` in the real `app-config.yaml`, in order.
  *
  * Read as text rather than parsed: the file carries `$env`/`$include`
  * placeholders and a real config load belongs to the backend, while all this
- * needs is the order of a flat list of strings. Entries carrying a value
- * (`- page:pagerduty: false`, the disables) are deliberately skipped — they say
- * nothing about order.
+ * needs is the order of a flat list. Entries carrying a value are skipped
+ * (`- page:pagerduty: false`, the disables; `- app/routes: {config}`, the
+ * redirects) — they are not tabs. They do still take part in the ordering, so
+ * do not read this as "values are ignored by the app".
  */
 function listedExtensionIds(): string[] {
   const lines = fs
     .readFileSync(path.resolve(__dirname, '../../../app-config.yaml'), 'utf8')
     .split('\n');
 
-  const start = lines.findIndex(line => line === '  extensions:');
+  const start = lines.findIndex(line => /^ {2}extensions:\s*$/.test(line));
   expect(start).toBeGreaterThan(-1);
 
   const ids: string[] = [];
   for (const line of lines.slice(start + 1)) {
-    // Any key back at `app:`-child indentation ends the list.
+    // Blank lines and comments belong to the block; any key back at
+    // `app:`-child indentation ends it.
+    if (/^\s*(#|$)/.test(line)) {
+      continue;
+    }
     if (/^ {2}\S/.test(line)) {
       break;
     }
@@ -34,6 +43,40 @@ function listedExtensionIds(): string[] {
     }
   }
   return ids;
+}
+
+/** Every extension the two plugins declare, by id, with its attachment. */
+function declaredExtensions(): Map<
+  string,
+  { attachTo: { id: string; input: string }; inputs: string[] }
+> {
+  // `extensions` is not on the public `FrontendPlugin` type — it is reached
+  // here deliberately. The alternative is booting a whole app tree, which
+  // needs `@backstage/plugin-app` as a dependency of this package and resolves
+  // a second copy of the Backstage frontend subtree; that is a steep price for
+  // a wiring assertion.
+  const plugins = [agentPlatformPlugin, musterPlugin] as unknown as {
+    extensions: {
+      id: string;
+      attachTo: { id: string; input: string };
+      inputs?: object;
+    }[];
+  }[];
+
+  return new Map(
+    plugins.flatMap(plugin =>
+      plugin.extensions.map(
+        extension =>
+          [
+            extension.id,
+            {
+              attachTo: extension.attachTo,
+              inputs: Object.keys(extension.inputs ?? {}),
+            },
+          ] as const,
+      ),
+    ),
+  );
 }
 
 describe('Agent Platform tab order', () => {
@@ -56,8 +99,8 @@ describe('Agent Platform tab order', () => {
     //   only move MCP Servers to the front of the row.
     //
     // Delete these entries and the row silently becomes
-    // Agents · Sessions · Models · Dashboards · MCP Servers — no test, type or
-    // lint rule notices, which is why this one reads the config file itself.
+    // Agents · Sessions · Models · Dashboards · MCP Servers — no type or lint
+    // rule notices, which is why this reads the config file itself.
     const tabs = listedExtensionIds().filter(id => id.startsWith('sub-page:'));
 
     expect(tabs).toEqual([
@@ -67,5 +110,42 @@ describe('Agent Platform tab order', () => {
       'sub-page:muster/mcp-servers',
       'sub-page:agent-platform/dashboards',
     ]);
+  });
+
+  it('names ids that exist, and every tab of the page', () => {
+    // Without this the list above is only a string. A config entry for an id
+    // no plugin declares is *not* an error the app throws on — it is reported
+    // to the error collector and otherwise ignored — so renaming a sub-page
+    // (`name: 'dashboards'`) without editing the config would leave the entry
+    // a silent no-op and revert the row, with the assertion above still
+    // passing. And a *new* tab attached to this page that nobody adds to the
+    // config would land after all five, quietly taking Dashboards' place at
+    // the end.
+    const declared = declaredExtensions();
+    const attachedToPage = [...declared.entries()]
+      .filter(([, extension]) => extension.attachTo?.id === AGENT_PLATFORM_PAGE)
+      .map(([id]) => id);
+    const listed = listedExtensionIds().filter(id =>
+      id.startsWith('sub-page:'),
+    );
+
+    expect([...listed].sort()).toEqual([...attachedToPage].sort());
+  });
+
+  it('keeps both ends of the MCP dashboard attachment in agreement', () => {
+    // A coupling by string across two plugins that fails silently: a mismatch
+    // in either the node id or the input name makes the MCP tab vanish with no
+    // error anywhere. Asserted here rather than in either plugin's own tests,
+    // because neither can see the other end.
+    const declared = declaredExtensions();
+
+    const contribution = declared.get('agent-platform-dashboard:muster/mcp');
+    const host = declared.get('sub-page:agent-platform/dashboards');
+
+    expect(contribution?.attachTo).toEqual({
+      id: 'sub-page:agent-platform/dashboards',
+      input: 'mcpDashboard',
+    });
+    expect(host?.inputs).toContain('mcpDashboard');
   });
 });

@@ -5,7 +5,10 @@ import { screen, waitFor } from '@testing-library/react';
 // the classic `@backstage/test-utils` app does not provide.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { MusterApi, musterApiRef } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import {
+  agentPlatformMcpDashboardExternalRouteRef,
+  rootRouteRef,
+} from '../../routes';
 import { MusterSection } from './MusterSection';
 
 // The views are irrelevant here -- this is about the section's routing -- and
@@ -78,20 +81,28 @@ const CurrentPath = () => {
 
 function renderSection(path: string) {
   return renderInTestApp(
-    <Routes>
-      <Route
-        path="/agent-platform/muster/*"
-        element={
-          <>
-            <MusterSection />
-            <CurrentPath />
-          </>
-        }
-      />
-    </Routes>,
+    // `CurrentPath` sits *outside* the routes, not inside the element: the
+    // legacy redirects now navigate out of `/agent-platform/muster/*`
+    // altogether, so a probe mounted in that route unmounts with it and there
+    // would be nothing left to read the landing path off.
+    <>
+      <Routes>
+        <Route path="/agent-platform/muster/*" element={<MusterSection />} />
+      </Routes>
+      <CurrentPath />
+    </>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: {
+        '/agent-platform/muster': rootRouteRef,
+        // Bound, so the legacy redirects below assert where they actually land
+        // rather than the `../servers` fallback they take when agent-platform
+        // is disabled. This also checks the `defaultTarget` spelling
+        // (`agent-platform.mcpDashboard`) — the second coupling-by-string in
+        // this pair of plugins, and one that fails silently.
+        '/agent-platform/dashboards/mcp':
+          agentPlatformMcpDashboardExternalRouteRef,
+      },
       apis: [[musterApiRef, musterApi]],
     },
   );
@@ -158,7 +169,7 @@ describe('MusterSection', () => {
   });
 
   it.each(['dashboard', 'usage'])(
-    'redirects the legacy %s deep link, keeping the query string',
+    'redirects the legacy %s deep link to the MCP dashboard, keeping the query string',
     async path => {
       // Required, not a courtesy: without the redirect the path falls through
       // to `*`, MusterViews renders, and its inner Routes has no fallback — so
@@ -168,14 +179,39 @@ describe('MusterSection', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
-          '?installation=alpha',
+          '/agent-platform/dashboards/mcp?installation=alpha',
         );
       });
-      expect(screen.getByTestId('path')).not.toHaveTextContent(
-        `muster/${path}`,
-      );
     },
   );
+
+  it('falls back to the servers view when agent-platform is disabled', async () => {
+    // The external ref is then unbound, and the redirect has to land
+    // *somewhere* — the tab strip over blank content is the failure it exists
+    // to prevent, so the fallback matters as much as the target.
+    renderInTestApp(
+      <>
+        <Routes>
+          <Route path="/agent-platform/muster/*" element={<MusterSection />} />
+        </Routes>
+        <CurrentPath />
+      </>,
+      {
+        initialRouteEntries: ['/agent-platform/muster/dashboard'],
+        // No `agentPlatformMcpDashboard` binding here: that is what "disabled"
+        // means for the target plugin.
+        mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+        apis: [[musterApiRef, musterApi]],
+      },
+    );
+
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/muster/servers',
+      );
+    });
+  });
 
   it('redirects the legacy workflow run deep link to the workflow detail', async () => {
     renderSection('/agent-platform/muster/workflows/my-flow/run');

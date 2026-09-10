@@ -175,6 +175,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Dashboards index' };
       break;
 
+    // The Dashboards tab's former single-page form, kept as a redirect (see
+    // `app.routes.redirects` in app-config.yaml). Counted with the tab it
+    // redirects to rather than falling to the generic case below, which would
+    // file these reads under the Agents tab and quietly inflate it.
+    case pathname === '/agent-platform/usage':
+      payload = { page: 'Dashboards index' };
+      break;
+
     // One dashboard: `agents` or `mcp`. The `view` is a fixed tab name, not
     // user data — unlike the installation the dashboard reports on, which is
     // scope state and deliberately never part of a page identity.

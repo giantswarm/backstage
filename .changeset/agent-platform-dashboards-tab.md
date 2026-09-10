@@ -34,9 +34,11 @@ into one dashboard per domain, and move muster's overview into it.
 - Sessions and Models deliberately get no dashboard of their own — session
   volume is what the Agents dashboard already charts, and the Models tab's
   Serving and GPU capacity views already are the model-side signals.
-- `/agent-platform/usage` is **not** redirected: the tab was one release old,
-  internal-only and behind a disabled-by-default extension. Bookmarks to it land
-  on Not Found; use `/agent-platform/dashboards`.
+- `/agent-platform/usage`, the tab's former single-page form, redirects to
+  `/agent-platform/dashboards` (via `app.routes.redirects`, so no dummy tab is
+  needed to host it). Without it that path matched the section's own `/*` route
+  but none of its tab routes, and drew the full tab row over an empty body.
+  The query string is not carried over.
 - muster's shared `SectionHeader` takes an optional `as` prop (default `p`,
   unchanged), so a screen that does have a heading tree can file each section
   under its own heading.

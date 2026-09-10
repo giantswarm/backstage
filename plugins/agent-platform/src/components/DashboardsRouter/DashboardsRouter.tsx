@@ -85,7 +85,14 @@ export const DashboardsRouter = ({
             </QueryClientProvider>
           }
         />
-        {mcpDashboard && <Route path={MCP_VIEW.path} element={mcpDashboard} />}
+        {/* `/*`, not a bare path: the dashboard is contributed whole by
+            another plugin, so it owns everything under its tab — without the
+            splat any sub-path it ever routed to (a drilldown, a selected
+            server) would fall to the catch-all below and bounce the reader to
+            a different tab. Same reason MusterSection mounts `servers/*`. */}
+        {mcpDashboard && (
+          <Route path={`${MCP_VIEW.path}/*`} element={mcpDashboard} />
+        )}
         {/* Both the index and anything unmatched (an old deep link, or
             `/dashboards/mcp` with muster switched off) land on the first
             dashboard rather than on a tab strip over nothing. */}

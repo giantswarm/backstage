@@ -95,8 +95,9 @@ function renderDashboard(api: Partial<MusterApi>, value: MusterInstance) {
       <McpDashboard />
     </Wrapper>,
     {
-      // muster's own section root, which the dashboard's remaining links
-      // resolve against.
+      // The dashboard itself resolves no route refs any more — the `Browse`
+      // cards that did are gone — but muster's section root is still what any
+      // future link here would resolve against, and mounting it costs nothing.
       mountedRoutes: { '/agent-platform/muster': rootRouteRef },
       apis: [
         [musterApiRef, api as MusterApi],

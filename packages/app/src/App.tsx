@@ -58,16 +58,16 @@ const app = createApp({
     fluxPluginOverrides,
     aiChatPlugin,
     aiChatPluginOverrides,
-    // Order matters: `agentPlatformPlugin` must come before `musterPlugin`.
-    // The Agent Platform page's level-1 tabs are gathered in feature-registration
-    // order — the "Agents" tab is contributed by agent-platform, the "MCP Servers"
-    // tab is attached externally by muster (`attachTo: page:agent-platform`).
-    // Registering agent-platform first keeps Agents as the first tab (and the
-    // tab a bare `/agent-platform` lands on). Reordering here flips the tabs.
-    //
-    // The row's exact order is pinned in `app-config.yaml`'s `app.extensions`,
-    // which wins over this list — that is the only way "Dashboards" can sit
-    // after muster's tab. See `agentPlatformTabOrder.test.tsx`.
+    // The Agent Platform page's level-1 tabs — its own, plus the "MCP Servers"
+    // tab muster attaches externally (`attachTo: page:agent-platform`) — are
+    // gathered in feature-registration order, i.e. the order of this list...
+    // *unless* they are named in `app-config.yaml`'s `app.extensions`, whose
+    // order the app applies first. All five of them are, which is the only way
+    // "Dashboards" can sit after muster's tab, so **the row's order lives in
+    // that config file and reordering these two lines does not change it**.
+    // Keeping agent-platform first anyway: it is the order the config states,
+    // and the one thing that must not drift is Agents staying first — it is the
+    // tab a bare `/agent-platform` lands on. See `agentPlatformTabOrder.test.tsx`.
     agentPlatformPlugin,
     musterPlugin,
     musterPluginOverrides,

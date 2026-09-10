@@ -23,7 +23,6 @@ import {
 } from './apis';
 import {
   agentDetailRouteRef,
-  agentsDashboardRouteRef,
   agentsRouteRef,
   dashboardsRouteRef,
   deploymentDetailsExternalRouteRef,
@@ -83,7 +82,9 @@ const agentsSubPage = SubPageBlueprint.make({
 
 // The "Sessions" tab. Read-only list of the signed-in user's kagent chat
 // sessions across the fleet, via the agent-platform-backend kagent proxy.
-// Declared after the Agents tab because tab order follows the `extensions` array.
+// Declared after the Agents tab to match the row, though the row's order is
+// pinned in `app-config.yaml` rather than by this array — see the Dashboards
+// tab below.
 const sessionsSubPage = SubPageBlueprint.make({
   name: 'sessions',
   params: {
@@ -120,14 +121,19 @@ const sessionsSubPage = SubPageBlueprint.make({
 //
 // `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
 // list/tree filter inputs — so muster can attach its dashboard by node id
-// (`sub-page:agent-platform/dashboards`, input `mcpDashboard`) without either
-// plugin depending on the other, exactly as it already attaches its "MCP
-// Servers" tab to `page:agent-platform`.
+// (`sub-page:agent-platform/dashboards`, input `mcpDashboard`), exactly as it
+// already attaches its "MCP Servers" tab to `page:agent-platform`. The
+// direction that matters: **muster does not depend on agent-platform** (this
+// package does depend on muster, for `MCPServer` and the tool pickers), so the
+// attacher stays installable on its own and this tab's bundle is only pulled in
+// where muster is registered.
 //
 // **The tab's path, title and route ref live here, not in muster**, even though
-// its content does not: the route has to exist for the redirects that point at
-// it to resolve, and the tab strip has to know its label before the content
-// loads. An empty input means no MCP tab and no MCP route — not a hole.
+// its content does not: the *route ref* has to resolve for the two muster
+// redirects that point at it whether or not muster is registered, and the tab
+// strip has to know the label before the content loads. With an empty input
+// there is no MCP tab and no mounted `mcp` route — a deep link falls through to
+// the Agents dashboard rather than leaving a hole.
 const dashboardsSubPage = SubPageBlueprint.makeWithOverrides({
   name: 'dashboards',
   inputs: {
@@ -251,7 +257,6 @@ export const agentPlatformPlugin = createFrontendPlugin({
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,
     dashboards: dashboardsRouteRef,
-    agentsDashboard: agentsDashboardRouteRef,
     mcpDashboard: mcpDashboardRouteRef,
     models: modelsRouteRef,
     modelConfigs: modelConfigsRouteRef,

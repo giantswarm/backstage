@@ -71,19 +71,17 @@ export const sessionDetailRouteRef = createSubRouteRef({
 // order lives there, not here.
 export const dashboardsRouteRef = createRouteRef();
 
-// The "Agents" dashboard (`/agent-platform/dashboards/agents`): agent-session
-// usage over the backend's window, derived from kagent's stored conversations.
-// First view, so the tab index redirects to it.
-export const agentsDashboardRouteRef = createSubRouteRef({
-  path: '/agents',
-  parent: dashboardsRouteRef,
-});
+// There is deliberately no route ref for the "Agents" dashboard
+// (`/agent-platform/dashboards/agents`): nothing links to it from outside, and
+// `DashboardsRouter` reaches it by relative path as the tab index. The MCP one
+// below exists only because muster's redirects have to resolve it.
 
 // The "MCP" dashboard (`/agent-platform/dashboards/mcp`): the muster aggregator
 // this installation runs — its inventory, health, capability surface and the
 // tool calls dispatched through it. The whole view is contributed by the muster
-// plugin (see `plugin.tsx`); the route and the tab are declared here so the path
-// exists, and redirects to it resolve, whether or not muster is registered.
+// plugin (see `plugin.tsx`). This ref is declared here — not there — so the two
+// muster redirects that target it resolve whether or not muster is registered;
+// the tab and the mounted route exist only when it actually contributes one.
 export const mcpDashboardRouteRef = createSubRouteRef({
   path: '/mcp',
   parent: dashboardsRouteRef,

@@ -443,6 +443,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/ai-chat/history',
       '/agent-platform/muster',
       '/agent-platform/muster/dashboard',
+      // Still a registered path: a redirect to the MCP dashboard.
+      '/agent-platform/muster/usage',
       '/agent-platform/muster/servers',
       '/agent-platform/muster/workflows',
       '/agent-platform/muster/workflows/my-workflow',
@@ -458,7 +460,10 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/dashboards',
       '/agent-platform/dashboards/agents',
       '/agent-platform/dashboards/mcp',
-      // Pre-existing gaps in this list, closed while adding the one above.
+      // Still a registered path: a redirect to the Dashboards tab.
+      '/agent-platform/usage',
+      // Pre-existing gaps in this list, closed while adding the Usage tab
+      // (now the three Dashboards paths above).
       '/agent-platform/models',
       '/agent-platform/models/serving',
       '/plans',
