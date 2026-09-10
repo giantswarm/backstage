@@ -244,6 +244,16 @@ nodeSelector: {}
 # -- Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume.
 strategy: {}
 
+# -- Network policy settings
+networkPolicy:
+  # @schema type:boolean
+  # -- Render the network policies the chart ships. Turn this off on a cluster whose policy flavor the chart does not render.
+  enabled: true
+
+  # @schema enum:[cilium, kubernetes]
+  # -- Policy flavor to render. The `kubernetes` flavor is not an exact equivalent of the `cilium` one: it has no `world` or `kube-apiserver` entity, so the egress leg that carries object storage and Kubernetes API traffic is `0.0.0.0/0` on 443 and 6443. Widen that leg in the template if the cluster reaches an object store on another port.
+  flavor: cilium
+
 # -- Database configuration
 database:
   # @schema enum:[sqlite, postgresql]
@@ -259,6 +269,10 @@ database:
     # @schema type:string
     # -- Persistent volume size for the PostgreSQL CNPG cluster
     storageSize: 5Gi
+
+    # @schema type:string
+    # -- Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation.
+    operatorNamespace: cnpg-system
 
     # @schema type:string
     # -- PostgreSQL container image for the CNPG cluster (registry.domain is prepended)

@@ -1,0 +1,158 @@
+{{- if and (eq .Values.database.engine "postgresql") .Values.networkPolicy.enabled }}
+{{- $clusterName := printf "%s-%s" .Chart.Name .Values.database.postgresql.clusterNameSuffix }}
+{{- $operatorNamespace := .Values.database.postgresql.operatorNamespace }}
+{{- if eq .Values.networkPolicy.flavor "cilium" }}
+---
+# Policy for the PostgreSQL cluster members.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  labels:
+    {{- include "labels.backstage" $ | nindent 4 }}
+  name: {{ $clusterName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: {{ $clusterName }}
+  egress:
+    # A replica resolves <cluster>-rw before it streams, so a denied lookup
+    # leaves the Cluster at one instance with no event to explain it.
+    # The k8s-app label of the DNS pods differs by cluster, so all three known
+    # values are matched.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: coredns
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: k8s-dns-node-cache
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+            - port: "1053"
+              protocol: UDP
+            - port: "1053"
+              protocol: TCP
+    # Allow egress to other CNPG cluster members.
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: {{ $clusterName }}
+      toPorts:
+        - ports:
+            - port: "5432"
+    # Allow egress to world and apiserver for object storage
+    - toEntities:
+      - world
+      - kube-apiserver
+  ingress:
+    - fromEndpoints:
+        # Allow ingress from backstage
+        - matchLabels:
+            app.kubernetes.io/instance: {{ .Chart.Name }}
+        # Allow ingress from other CNPG cluster members (including join pods)
+        - matchLabels:
+            cnpg.io/cluster: {{ $clusterName }}
+      toPorts:
+        - ports:
+            - port: "5432"
+    # The operator extracts instance status over this port. Selected by
+    # namespace, so an operator upgrade that renames its pods keeps working.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: {{ $operatorNamespace }}
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    # The metrics port the chart's PodMonitor points the monitoring agent at.
+    - fromEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - port: "9187"
+              protocol: TCP
+{{- else }}
+---
+# Policy for the PostgreSQL cluster members. `world` and the kube-apiserver have
+# no equivalent selector here, so the egress leg that carries object storage and
+# API traffic is a CIDR on the two ports those endpoints answer on.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    {{- include "labels.backstage" $ | nindent 4 }}
+  name: {{ $clusterName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: {{ $clusterName }}
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchExpressions:
+              - key: k8s-app
+                operator: In
+                values: [kube-dns, coredns, k8s-dns-node-cache]
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+        - port: 1053
+          protocol: UDP
+        - port: 1053
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: {{ $clusterName }}
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Chart.Name }}
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: {{ $clusterName }}
+      ports:
+        - port: 5432
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $operatorNamespace }}
+      ports:
+        - port: 8000
+          protocol: TCP
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - port: 9187
+          protocol: TCP
+{{- end }}
+{{- end }}
