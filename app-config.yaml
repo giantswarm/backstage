@@ -12,8 +12,24 @@ app:
     - nav-item:gs/installations
     - page:flux
     - nav-item:flux
+    # The Agent Platform page and its tab row. The page and nav item are
+    # listed because both are disabled by default (the section is still
+    # internal-only); the sub-pages are listed to pin the **tab order**.
+    #
+    # Order in this list is the app's ordering mechanism: extensions named here
+    # are attached in the order given, ahead of every unnamed one. Without the
+    # sub-page entries the row falls back to feature-registration order (see
+    # App.tsx), which puts muster's externally-attached "MCP Servers" tab after
+    # every tab agent-platform declares — so "Dashboards" could not be last.
+    # Agents stays first because a bare `/agent-platform` lands on the first
+    # tab in this row.
     - page:agent-platform
     - nav-item:agent-platform
+    - sub-page:agent-platform/agents
+    - sub-page:agent-platform/sessions
+    - sub-page:agent-platform/models
+    - sub-page:muster/mcp-servers
+    - sub-page:agent-platform/dashboards
     - page:ai-chat
     - api:ai-chat/service
     - api:ai-chat/drawer

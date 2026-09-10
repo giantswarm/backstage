@@ -27,6 +27,17 @@ export interface SectionHeaderProps {
   /** A `@material-ui/icons` glyph rendered in the muted icon square. */
   icon: ReactNode;
   title: string;
+  /**
+   * Element the title renders as. Defaults to `p` — muster's own screens carry
+   * their page title in the plugin header and have no heading tree of their
+   * own, and promoting these to headings there would invent one.
+   *
+   * Pass a heading level on a screen that *does* have one, so the section's
+   * content is filed under its own heading in the accessibility tree rather
+   * than under whatever heading precedes it. Purely semantic: the bui `Text`
+   * variant, and so the visual result, is the same either way.
+   */
+  as?: 'p' | 'h2' | 'h3' | 'h4';
   description?: string;
   /** Optional trailing content (e.g. a button) aligned to the right. */
   action?: ReactNode;
@@ -40,6 +51,7 @@ export interface SectionHeaderProps {
 export function SectionHeader({
   icon,
   title,
+  as = 'p',
   description,
   action,
 }: SectionHeaderProps) {
@@ -48,7 +60,7 @@ export function SectionHeader({
     <Flex align="start" gap="2" mb="5">
       <span className={classes.iconSquare}>{icon}</span>
       <Flex direction="column" gap="1" style={{ minWidth: 0, flexGrow: 1 }}>
-        <Text as="p" variant="body-large" weight="bold">
+        <Text as={as} variant="body-large" weight="bold">
           {title}
         </Text>
         {description && (

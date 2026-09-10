@@ -17,9 +17,9 @@ import {
   MusterAuthProviders,
   musterAuthProvidersApiRef,
 } from './apis';
-import { mcpUsageSection } from './mcpUsageSection';
+import { mcpDashboard } from './mcpDashboard';
 import {
-  agentPlatformUsageExternalRouteRef,
+  agentPlatformMcpDashboardExternalRouteRef,
   mcpServersRouteRef,
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
@@ -33,8 +33,12 @@ import {
 // attaches to `page:agent-platform` as its "MCP Servers" tab (mounted at
 // `/agent-platform/muster`). `rootRouteRef` is carried here so muster's route refs
 // resolve relative to `/agent-platform/muster`, keeping every `useRouteRef` link
-// working. The four muster views (Dashboard, MCP servers, Workflows, Tool explorer)
-// render as a second-level tab row inside MusterSection.
+// working. The three muster views (Servers, Workflows, Tool explorer) render as
+// a second-level tab row inside MusterSection. What this tab deliberately does
+// *not* carry is a dashboard: the aggregator's inventory, health and usage are
+// one view on the Agent Platform's Dashboards tab (see `./mcpDashboard`), so
+// the platform has a single place for metrics and this tab is only the servers,
+// workflows and tools themselves.
 const musterSubPage = SubPageBlueprint.make({
   name: 'mcp-servers',
   attachTo: { id: 'page:agent-platform', input: 'pages' },
@@ -85,12 +89,7 @@ const musterAuthProvidersApi = ApiBlueprint.make({
 
 export const musterPlugin = createFrontendPlugin({
   pluginId: 'muster',
-  extensions: [
-    musterSubPage,
-    mcpUsageSection,
-    musterApi,
-    musterAuthProvidersApi,
-  ],
+  extensions: [musterSubPage, mcpDashboard, musterApi, musterAuthProvidersApi],
   routes: {
     root: rootRouteRef,
     mcpServers: mcpServersRouteRef,
@@ -100,11 +99,12 @@ export const musterPlugin = createFrontendPlugin({
     toolExplorer: toolExplorerRouteRef,
     workflowDetail: workflowDetailRouteRef,
   },
-  // Points at the Agent Platform's Usage tab, where the MCP usage view now
-  // lives. `defaultTarget` resolves it without an app-config binding and leaves
-  // it simply unbound when that plugin is disabled, so every `useRouteRef` call
-  // site must handle `undefined`.
+  // Points at the Agent Platform's MCP dashboard, where this section's former
+  // "Dashboard" view and the MCP usage view both live. `defaultTarget` resolves
+  // it without an app-config binding and leaves it simply unbound when that
+  // plugin is disabled, so every `useRouteRef` call site must handle
+  // `undefined`.
   externalRoutes: {
-    agentPlatformUsage: agentPlatformUsageExternalRouteRef,
+    agentPlatformMcpDashboard: agentPlatformMcpDashboardExternalRouteRef,
   },
 });

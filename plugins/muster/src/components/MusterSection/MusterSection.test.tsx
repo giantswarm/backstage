@@ -10,9 +10,6 @@ import { MusterSection } from './MusterSection';
 
 // The views are irrelevant here -- this is about the section's routing -- and
 // stubbing them keeps the tree free of the kubernetes/muster reads they do.
-jest.mock('../DashboardPage', () => ({
-  DashboardPage: () => <div>dashboard-view</div>,
-}));
 jest.mock('../McpServersRouter', () => ({
   McpServersRouter: () => <div>servers-view</div>,
 }));
@@ -105,13 +102,13 @@ describe('MusterSection', () => {
   // slate to exercise the default resolution rather than the previous test's pick.
   beforeEach(() => window.localStorage.clear());
 
-  it('redirects the section index to the dashboard view', async () => {
+  it('redirects the section index to the servers view', async () => {
     renderSection('/agent-platform/muster');
 
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/muster/dashboard',
+        '/agent-platform/muster/servers',
       );
     });
   });
@@ -124,16 +121,16 @@ describe('MusterSection', () => {
   // longer writes the default back at all -- under "All installations" the
   // home muster is shown without pinning it -- so the URL stays clean.
   it('keeps the redirect when the installations query is already cached', async () => {
-    const first = renderSection('/agent-platform/muster/dashboard');
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    const first = renderSection('/agent-platform/muster/servers');
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
     first.unmount();
 
     renderSection('/agent-platform/muster');
 
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/muster/dashboard',
+        '/agent-platform/muster/servers',
       );
     });
     expect(screen.getByTestId('path')).not.toHaveTextContent('installation=');
@@ -142,36 +139,43 @@ describe('MusterSection', () => {
   it('keeps an explicit installation across the index redirect', async () => {
     renderSection('/agent-platform/muster?installation=alpha');
 
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/muster/dashboard?installation=alpha',
+        '/agent-platform/muster/servers?installation=alpha',
       );
     });
   });
 
-  it('no longer offers MCP usage as a view of this section', async () => {
-    // It moved to the Agent Platform's own Usage tab, beside the personal
-    // section, so the tab strip must not still advertise it.
-    renderSection('/agent-platform/muster/dashboard');
+  it('no longer offers a dashboard or MCP usage as views of this section', async () => {
+    // Both moved to the Agent Platform's Dashboards tab, so the tab strip must
+    // not still advertise either.
+    renderSection('/agent-platform/muster/servers');
 
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Dashboard' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'MCP usage' })).toBeNull();
   });
 
-  it('redirects the legacy MCP usage deep link, keeping the query string', async () => {
-    // Required, not a courtesy: without the redirect the path falls through to
-    // `*`, MusterViews renders, and its inner Routes has no fallback — so the
-    // tab strip would draw over blank content.
-    renderSection('/agent-platform/muster/usage?installation=alpha');
+  it.each(['dashboard', 'usage'])(
+    'redirects the legacy %s deep link, keeping the query string',
+    async path => {
+      // Required, not a courtesy: without the redirect the path falls through
+      // to `*`, MusterViews renders, and its inner Routes has no fallback — so
+      // the tab strip would draw over blank content. `dashboard` matters most:
+      // the section index used to redirect there, so it is what bookmarks hold.
+      renderSection(`/agent-platform/muster/${path}?installation=alpha`);
 
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '?installation=alpha',
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(
+          '?installation=alpha',
+        );
+      });
+      expect(screen.getByTestId('path')).not.toHaveTextContent(
+        `muster/${path}`,
       );
-    });
-    expect(screen.getByTestId('path')).not.toHaveTextContent('muster/usage');
-  });
+    },
+  );
 
   it('redirects the legacy workflow run deep link to the workflow detail', async () => {
     renderSection('/agent-platform/muster/workflows/my-flow/run');

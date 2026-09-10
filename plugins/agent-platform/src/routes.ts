@@ -62,12 +62,32 @@ export const sessionDetailRouteRef = createSubRouteRef({
   parent: sessionsRouteRef,
 });
 
-// The "Usage" tab (`/agent-platform/usage`). No sub-routes: one page carrying
-// two sections, one of them contributed by the muster plugin. Last of this
-// plugin's own tabs — `plugin.tsx` declares it after `modelsSubPage`, giving
-// Agents · Sessions · Models · Usage, then muster's MCP Servers. Tab order
-// lives there, not here.
-export const usageRouteRef = createRouteRef();
+// The "Dashboards" tab (`/agent-platform/dashboards`): the section's one place
+// for metrics and signals about the platform, organised as a second-level tab
+// row — one dashboard per domain, so a reader always knows whose numbers over
+// what scope they are looking at. Last tab in the row: Agents · Sessions ·
+// Models · MCP Servers · Dashboards, which is pinned in `app-config.yaml`'s
+// `app.extensions` rather than by declaration order (see `plugin.tsx`). Tab
+// order lives there, not here.
+export const dashboardsRouteRef = createRouteRef();
+
+// The "Agents" dashboard (`/agent-platform/dashboards/agents`): agent-session
+// usage over the backend's window, derived from kagent's stored conversations.
+// First view, so the tab index redirects to it.
+export const agentsDashboardRouteRef = createSubRouteRef({
+  path: '/agents',
+  parent: dashboardsRouteRef,
+});
+
+// The "MCP" dashboard (`/agent-platform/dashboards/mcp`): the muster aggregator
+// this installation runs — its inventory, health, capability surface and the
+// tool calls dispatched through it. The whole view is contributed by the muster
+// plugin (see `plugin.tsx`); the route and the tab are declared here so the path
+// exists, and redirects to it resolve, whether or not muster is registered.
+export const mcpDashboardRouteRef = createSubRouteRef({
+  path: '/mcp',
+  parent: dashboardsRouteRef,
+});
 
 // The "Models" tab (`/agent-platform/models`): the kagent ModelConfigs agents
 // run on, the serving layer beneath them, and the platform-admin flows that

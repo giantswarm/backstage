@@ -9,7 +9,21 @@ import {
   MusterInstance,
   MusterInstanceContext,
 } from '../MusterInstanceProvider';
-import { DashboardPage } from './DashboardPage';
+import { McpDashboard } from './McpDashboard';
+
+// The dashboard brings its own MusterProviders so it can be mounted on the
+// Agent Platform's Dashboards tab; passed through here so these tests keep
+// injecting MusterInstanceContext directly rather than standing up the real
+// provider stack.
+jest.mock('../MusterProviders', () => ({
+  MusterProviders: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+// The tool-call section is its own unit (see UsageSection.test.tsx); stubbing it
+// keeps the metrics read out of these tests, which are about the inventory half.
+jest.mock('./UsageSection', () => ({
+  UsageSection: () => <h3>Tool calls</h3>,
+}));
 
 // The CRD reads behind the dashboard are somebody else's question here.
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -78,10 +92,11 @@ function renderDashboard(api: Partial<MusterApi>, value: MusterInstance) {
   );
   return renderInTestApp(
     <Wrapper>
-      <DashboardPage />
+      <McpDashboard />
     </Wrapper>,
     {
-      // The section root; the dashboard's tab links are sub routes of it.
+      // muster's own section root, which the dashboard's remaining links
+      // resolve against.
       mountedRoutes: { '/agent-platform/muster': rootRouteRef },
       apis: [
         [musterApiRef, api as MusterApi],
@@ -91,7 +106,7 @@ function renderDashboard(api: Partial<MusterApi>, value: MusterInstance) {
   );
 }
 
-describe('DashboardPage on an installation the portal cannot reach', () => {
+describe('McpDashboard on an installation the portal cannot reach', () => {
   it('says so, offers no connect and sends the tool-count probe nowhere', async () => {
     const api = {
       filterTools: jest.fn(),

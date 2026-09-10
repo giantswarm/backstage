@@ -277,6 +277,28 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for the dashboards tab index', () => {
+    const result = getTelemetryPageViewPayload('/agent-platform/dashboards');
+    expect(result).toEqual({
+      page: 'Dashboards index',
+      path: '/agent-platform/dashboards',
+    });
+  });
+
+  it.each([
+    ['agents', '/agent-platform/dashboards/agents'],
+    ['mcp', '/agent-platform/dashboards/mcp'],
+  ])('should report the %s dashboard as its own view', (view, path) => {
+    // Reported under `Dashboards` rather than falling through to the generic
+    // agent-platform case, which would label both `page: 'Agents'` and merge
+    // them into the Agents tab's numbers.
+    expect(getTelemetryPageViewPayload(path)).toEqual({
+      page: 'Dashboards',
+      view,
+      path,
+    });
+  });
+
   it('should return correct payload for the sessions tab', () => {
     // Reported as its own page rather than falling through to the generic
     // agent-platform case, which would label it `page: 'Agents'`.
@@ -433,7 +455,9 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
-      '/agent-platform/usage',
+      '/agent-platform/dashboards',
+      '/agent-platform/dashboards/agents',
+      '/agent-platform/dashboards/mcp',
       // Pre-existing gaps in this list, closed while adding the one above.
       '/agent-platform/models',
       '/agent-platform/models/serving',

@@ -11,13 +11,11 @@ import {
   useTheme,
   Theme,
 } from '@material-ui/core';
+import BarChart from '@material-ui/icons/BarChart';
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import {
-  SectionHeader,
-  StackedBarChart,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { StackedBarChart } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
 import type { McpUsage } from '../../apis';
@@ -26,33 +24,28 @@ import {
   useMusterInstance,
   useMusterSession,
 } from '../MusterInstanceProvider';
-import { ActiveInstallationNote } from '../ActiveInstallationNote';
-import { MusterProviders } from '../MusterProviders';
-import { SessionGate, Stat } from '../shared';
+import { SectionHeader, SessionGate, Stat } from '../shared';
 
 /**
- * The window, fixed at 30 days to match the personal section above it.
+ * The window, fixed at 30 days to match the Agents dashboard's.
  *
- * There used to be a 24h/7d/30d switcher here, and it had to go when this moved
- * onto the shared Usage page. Three reasons. The kagent route backing the
- * section above takes no window parameter, so a control on this one alone would
- * make the page's stated window false for whichever section a reader just
- * switched. The two stop being comparable, which is the whole reason they share
- * a page. And the bucket size changes with the window (`formatBucketTick`
- * switches to hours below 24h), so a 24h selection put an hourly-bucketed chart
- * directly under a daily one — same idiom, different meaning per bar.
+ * There used to be a 24h/7d/30d switcher here, and it went when this section
+ * moved under the Agent Platform's Dashboards tab. Two reasons still hold. The
+ * kagent route behind the Agents dashboard takes no window parameter, so a
+ * control on this dashboard alone would leave the two reporting different
+ * windows with only one of them saying so — and the whole point of putting them
+ * one tab apart is that they can be compared. And the bucket size changes with
+ * the window (`formatBucketTick` switches to hours below 24h), so a 24h
+ * selection drew hourly bars in a chart a reader had just read as daily.
  *
  * What was lost is the 24h zoom, whose real question ("is muster dispatching
- * right now") the muster Dashboard already answers. Bringing a control back
- * means one *page-level* control driving both sections, once the kagent route
+ * right now") the inventory and health above answer. Bringing a control back
+ * means one *tab-level* control driving both dashboards, once the kagent route
  * accepts a window.
  */
 const WINDOW_HOURS = 30 * 24;
 
 const useStyles = makeStyles((theme: Theme) => ({
-  column: {
-    maxWidth: 1024,
-  },
   statRow: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -85,10 +78,10 @@ const useStyles = makeStyles((theme: Theme) => ({
     overflow: 'hidden',
   },
   toolName: {
-    // The body font, matching the personal section's tables directly above on
-    // the Usage page — the same kind of value rendered two ways on one page
-    // reads as a bug. `anywhere` rather than `break-all`, which split names
-    // mid-word (`…resolve_cluste / r`) once the pitch stopped being fixed.
+    // The body font, matching the tables on the Agents dashboard — the same
+    // kind of value rendered two ways one tab apart reads as a bug. `anywhere`
+    // rather than `break-all`, which split names mid-word
+    // (`…resolve_cluste / r`) once the pitch stopped being fixed.
     overflowWrap: 'anywhere',
   },
   numeric: {
@@ -305,28 +298,19 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
 }
 
 /**
- * The installation-wide half of the Agent Platform's Usage tab: tool-call
- * volume, outcomes, latency and top tools/servers for the selected
- * installation, from muster's own Prometheus metrics via the muster-backend's
- * `/usage` route.
- *
- * Contributed to `sub-page:agent-platform/usage` (see `../../mcpUsageSection`)
- * rather than imported by that plugin, so neither plugin depends on the other.
- * It therefore brings its own `MusterProviders`: that stack is designed to be
- * mounted per view — the QueryClient is a module singleton and the active
- * installation lives in the URL plus localStorage — so mounting it here is a
- * cache read, not a refetch.
+ * The tool-call section of the MCP dashboard: volume, outcomes, latency and top
+ * tools/servers for the selected installation, from muster's own Prometheus
+ * metrics via the muster-backend's `/usage` route.
  *
  * **These numbers are every caller's**, not the reader's: muster's metrics carry
- * no user label. That is the whole reason the heading says so, and why this sits
- * below a section that is explicitly personal rather than merging into it.
+ * no user label. The description says so, which is what keeps them from being
+ * read as the personal totals the Agents dashboard one tab over reports.
  *
- * No installation picker: the Agent Platform page header already carries the
- * section's installation scope, and muster's picker wrote to that very same
- * store — so on this page it would have been a second control for one value.
+ * No installation picker and no `ActiveInstallationNote` of its own: the Agent
+ * Platform page header carries the section's installation scope, and the
+ * dashboard around this states which muster it is reading once, at the top.
  */
-function McpUsageBody() {
-  const classes = useStyles();
+export function UsageSection() {
   const musterApi = useApi(musterApiRef);
   const { activeInstallation } = useMusterInstance();
   // The usage route reads muster's own metrics through the live session; an
@@ -367,37 +351,19 @@ function McpUsageBody() {
   }
 
   return (
-    <Box className={classes.column}>
-      {/* ui-react's SectionHeader, not muster's own: this section sits beside a
-          section of the host page, and the two headings have to look and rank
-          identically. muster's variant carries an icon square and a different
-          type scale, which is right on muster's own screens (where the page
-          title is in the plugin header) and wrong here. `h3` also matters
-          beyond looks — as a paragraph, this section's content was filed under
-          the previous section's heading in the accessibility tree, so a screen
-          reader heard installation-wide numbers as part of "Your agent
-          usage". */}
+    <Box>
+      {/* muster's own SectionHeader, so this section carries the same icon
+          square and rhythm as the ones around it. `as="h3"` because this
+          dashboard *does* have a heading tree (the `h2` at the top of
+          McpDashboard) — as a paragraph, this section's content was filed
+          under the preceding section's heading in the accessibility tree. */}
       <SectionHeader
         as="h3"
-        variant="title-x-small"
-        title="MCP tool calls on this installation"
+        icon={<BarChart />}
+        title="Tool calls"
         description="Every tool call dispatched to the MCP servers behind this installation's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
       />
-      {/* Below the heading rather than above it, unlike muster's own views:
-          there this note is page-level, here it explains which muster *this
-          section* shows, so it belongs under the heading that names it. The
-          personal section above carries the same note for its own read. */}
-      <ActiveInstallationNote />
       {body}
     </Box>
-  );
-}
-
-/** The section, self-contained so it can be mounted anywhere. */
-export function McpUsageSection() {
-  return (
-    <MusterProviders>
-      <McpUsageBody />
-    </MusterProviders>
   );
 }

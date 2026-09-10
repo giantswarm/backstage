@@ -50,13 +50,17 @@ export const workflowDetailRouteRef = createSubRouteRef({
 });
 
 /**
- * The Agent Platform's Usage tab, where the MCP usage view now lives.
+ * The Agent Platform's MCP dashboard (`/agent-platform/dashboards/mcp`), where
+ * both this section's former "Dashboard" view and the MCP usage view now live.
  *
- * External because it belongs to the other plugin. `defaultTarget` resolves it
- * without an app-config binding and leaves it unbound when agent-platform is
- * disabled -- the mirror of that plugin's `musterToolExplorer` ref, and the
- * reason every call site has to handle `undefined`.
+ * External because the tab belongs to the other plugin even though muster
+ * contributes its content. `defaultTarget` resolves it without an app-config
+ * binding and leaves it unbound when agent-platform is disabled -- the mirror
+ * of that plugin's `musterToolExplorer` ref, and the reason every call site has
+ * to handle `undefined`.
  */
-export const agentPlatformUsageExternalRouteRef = createExternalRouteRef({
-  defaultTarget: 'agent-platform.usage',
-});
+export const agentPlatformMcpDashboardExternalRouteRef = createExternalRouteRef(
+  {
+    defaultTarget: 'agent-platform.mcpDashboard',
+  },
+);

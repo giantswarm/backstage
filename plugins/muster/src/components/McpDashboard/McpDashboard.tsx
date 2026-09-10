@@ -1,4 +1,3 @@
-import { ReactNode } from 'react';
 import {
   Box,
   Button,
@@ -10,18 +9,12 @@ import {
   useTheme,
   Theme,
 } from '@material-ui/core';
-import Dns from '@material-ui/icons/Dns';
-import AccountTree from '@material-ui/icons/AccountTree';
-import ArrowForward from '@material-ui/icons/ArrowForward';
-import BarChart from '@material-ui/icons/BarChart';
-import Build from '@material-ui/icons/Build';
 import DeviceHub from '@material-ui/icons/DeviceHub';
 import Extension from '@material-ui/icons/Extension';
 import VerifiedUser from '@material-ui/icons/VerifiedUser';
 import Lock from '@material-ui/icons/Lock';
-import { Content, Link, Progress } from '@backstage/core-components';
+import { Content, Progress } from '@backstage/core-components';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
   isUnreachableSession,
@@ -30,9 +23,11 @@ import {
   useMusterSession,
 } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
+import { MusterProviders } from '../MusterProviders';
 import { CapabilitySurface } from './CapabilitySurface';
 import { FleetCoverage } from './FleetCoverage';
 import { InventoryBreakdown } from './InventoryBreakdown';
+import { UsageSection } from './UsageSection';
 import {
   FreshnessIndicator,
   SectionHeader,
@@ -42,16 +37,13 @@ import {
 } from '../shared';
 import { serversHealthSummary } from '../../lib/k8s';
 import { musterApiRef } from '../../apis';
-import {
-  agentPlatformUsageExternalRouteRef,
-  mcpServersRouteRef,
-  toolExplorerRouteRef,
-  workflowsRouteRef,
-} from '../../routes';
 
 // muster identity, ported verbatim from the mockup's `lib/mock/mcp-servers.ts`
 // so the overview reads identically; the per-instance endpoint comes from the
 // backend config (activeInstallationInfo.endpoint), not this literal.
+//
+// `name` doubles as the dashboard's `h2` below, which is why it stays a plain
+// noun rather than a sentence.
 const MUSTER_IDENTITY = {
   name: 'muster',
   tagline: 'MCP aggregator & control plane',
@@ -153,130 +145,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     paddingTop: theme.spacing(2),
     borderTop: `1px solid ${theme.palette.divider}`,
   },
-  browseHeading: {
-    marginBottom: theme.spacing(1.5),
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    color: theme.palette.text.secondary,
-  },
-  browseGrid: {
-    display: 'grid',
-    gap: theme.spacing(1.5),
-    [theme.breakpoints.up('sm')]: {
-      gridTemplateColumns: '1fr 1fr',
-    },
-  },
-  browseLink: {
-    display: 'block',
-    '&:hover': {
-      textDecoration: 'none',
-    },
-  },
-  browseCard: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: theme.spacing(1.5),
-    padding: theme.spacing(2),
-    borderRadius: theme.shape.borderRadius * 2,
-    transition: 'background-color 120ms',
-    '&:hover': {
-      backgroundColor: theme.palette.action.hover,
-    },
-  },
-  browseIcon: {
-    flexShrink: 0,
-    width: 32,
-    height: 32,
-    marginTop: 2,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: theme.palette.action.hover,
-    color: theme.palette.text.secondary,
-    '& svg': { fontSize: 18 },
-  },
-  browseBody: {
-    minWidth: 0,
-    flex: 1,
-  },
-  browseTitleRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing(1),
-  },
-  browseTitle: {
-    fontWeight: 600,
-  },
-  browseArrow: {
-    flexShrink: 0,
-    fontSize: 18,
-    color: theme.palette.text.secondary,
-  },
-  browseDescription: {
-    marginTop: theme.spacing(0.5),
-    color: theme.palette.text.secondary,
-  },
-  browseCount: {
-    marginTop: theme.spacing(1),
-    display: 'block',
-    fontVariantNumeric: 'tabular-nums',
-    color: theme.palette.text.secondary,
-  },
   section: {
     marginTop: theme.spacing(5),
   },
 }));
 
-/** Append `?installation=` to a route path so deep links keep the instance. */
-function withInstallation(base: string, installation?: string): string {
-  if (!installation) {
-    return base;
-  }
-  const params = new URLSearchParams({ installation });
-  return `${base}?${params.toString()}`;
-}
-
-function BrowseCard({
-  to,
-  icon,
-  title,
-  description,
-  count,
-}: {
-  to: string;
-  icon: ReactNode;
-  title: string;
-  description: string;
-  count: string;
-}) {
-  const classes = useStyles();
-  return (
-    <Link to={to} className={classes.browseLink}>
-      <Paper variant="outlined" className={classes.browseCard}>
-        <span className={classes.browseIcon}>{icon}</span>
-        <Box className={classes.browseBody}>
-          <Box className={classes.browseTitleRow}>
-            <Typography variant="subtitle1" className={classes.browseTitle}>
-              {title}
-            </Typography>
-            <ArrowForward className={classes.browseArrow} />
-          </Box>
-          <Typography variant="body2" className={classes.browseDescription}>
-            {description}
-          </Typography>
-          <Typography variant="caption" className={classes.browseCount}>
-            {count}
-          </Typography>
-        </Box>
-      </Paper>
-    </Link>
-  );
-}
-
-export function DashboardPage() {
+function McpDashboardBody() {
   const classes = useStyles();
   const theme = useTheme();
   const {
@@ -291,13 +165,6 @@ export function DashboardPage() {
   } = useMusterInstance();
   const musterApi = useApi(musterApiRef);
   const identityApi = useApi(identityApiRef);
-  const mcpServersLink = useRouteRef(mcpServersRouteRef);
-  const workflowsLink = useRouteRef(workflowsRouteRef);
-  // The Agent Platform's Usage tab, where the MCP usage view now lives.
-  // Unbound when that plugin is disabled, so the card is withheld rather than
-  // pointing at nothing.
-  const usageLink = useRouteRef(agentPlatformUsageExternalRouteRef);
-  const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
 
   // The logged-in Backstage identity, shown in the "Authenticated as" badge.
   const { data: profile } = useQuery({
@@ -370,10 +237,11 @@ export function DashboardPage() {
             />
           )}
           <Typography variant="body2" className={classes.intro}>
-            The live inventory of everything the platform&apos;s agents can
-            reach right now — the MCP servers, their tools, and the reusable
-            workflows provided through muster. This view is scoped to the
-            selected installation and your authenticated muster session.
+            What the platform&apos;s agents can reach through muster right now —
+            the MCP servers, their tools and the reusable workflows — and the
+            tool calls actually dispatched through it. Scoped to the selected
+            installation and your authenticated muster session. Browse and
+            manage any of it on the MCP Servers tab.
           </Typography>
 
           {/* muster identity */}
@@ -388,7 +256,14 @@ export function DashboardPage() {
               className={classes.appIcon}
             />
             <Box>
-              <Typography variant="subtitle1" className={classes.identityTitle}>
+              {/* The dashboard's own heading, and the only `h2` on it: the
+                  level-2 tab above says "MCP", the tree below hangs off this.
+                  `component`, not `variant` — the look is unchanged. */}
+              <Typography
+                variant="subtitle1"
+                component="h2"
+                className={classes.identityTitle}
+              >
                 {MUSTER_IDENTITY.name}
               </Typography>
               <Typography
@@ -490,68 +365,18 @@ export function DashboardPage() {
             </Box>
           </Paper>
 
-          {/* Browse */}
+          {/* Tool calls — the headline signal, directly under the stats that
+              say what there is to call. Read through the muster session like
+              the Tools stat, and gated the same way inside the section. */}
           <Box className={classes.section}>
-            <Typography variant="caption" className={classes.browseHeading}>
-              Browse
-            </Typography>
-            <Box className={classes.browseGrid}>
-              <BrowseCard
-                to={withInstallation(
-                  mcpServersLink?.() ?? '#',
-                  activeInstallation,
-                )}
-                icon={<Dns />}
-                title="MCP servers"
-                description="The MCP servers muster aggregates and the tools they expose, with per-cluster health."
-                count={
-                  serversPending ? 'Loading…' : `${mcpServers.length} servers`
-                }
-              />
-              <BrowseCard
-                to={withInstallation(
-                  workflowsLink?.() ?? '#',
-                  activeInstallation,
-                )}
-                icon={<AccountTree />}
-                title="Workflows"
-                description="Reusable, named compositions of tool calls — searchable and filterable by availability."
-                count={
-                  workflowsPending
-                    ? 'Loading…'
-                    : `${workflows.length} workflows`
-                }
-              />
-              <BrowseCard
-                to={withInstallation(
-                  toolExplorerLink?.() ?? '#',
-                  activeInstallation,
-                )}
-                icon={<Build />}
-                title="Tool explorer"
-                description="Browse and search the live aggregated tool catalogue, inspect input schemas, and run a tool."
-                count={
-                  authenticated
-                    ? `${toolStat} tools`
-                    : 'Requires a muster session'
-                }
-              />
-              {usageLink && (
-                <BrowseCard
-                  to={withInstallation(usageLink(), activeInstallation)}
-                  icon={<BarChart />}
-                  title="MCP usage"
-                  description="Tool calls dispatched to the servers behind this muster, from every caller — volume, outcomes, latency, top tools."
-                  count="On the Usage tab"
-                />
-              )}
-            </Box>
+            <UsageSection />
           </Box>
 
           {/* Capability surface — what agents can reach, per server group.
               Session-scoped like the Tools stat, hence gated. */}
           <Box className={classes.section}>
             <SectionHeader
+              as="h3"
               icon={<Extension />}
               title="Capability surface"
               description="What agents can reach through this muster: the tools, resources and prompts each server contributes to the aggregated catalogue, and muster's own core tools."
@@ -575,6 +400,7 @@ export function DashboardPage() {
               cannot show; the full per-cluster picture lives there. */}
           <Box className={classes.section}>
             <SectionHeader
+              as="h3"
               icon={<DeviceHub />}
               title="Fleet coverage"
               description="How far each server family reaches across the management clusters this installation federates. A family missing from a cluster is not deployed there; a degraded cluster has it deployed but not connected. Expand a family on the MCP servers page for every cluster."
@@ -598,6 +424,7 @@ export function DashboardPage() {
           {/* Provenance & authentication — the governance view, CRD reads. */}
           <Box className={classes.section}>
             <SectionHeader
+              as="h3"
               icon={<VerifiedUser />}
               title="Provenance & authentication"
               description="How the servers and workflows in this installation are managed, and how the servers' users authenticate. GitOps-managed resources are read-only here and change through a PR; live-registered ones can be edited in place."
@@ -613,5 +440,33 @@ export function DashboardPage() {
         </Box>
       )}
     </Content>
+  );
+}
+
+/**
+ * The "MCP" dashboard of the Agent Platform's Dashboards tab: the muster
+ * aggregator this installation runs — what agents can reach through it, how
+ * healthy it is, and the tool calls dispatched through it.
+ *
+ * It used to be the "Dashboard" view of muster's own "MCP Servers" tab, with
+ * the tool-call numbers on a separate Usage page. Both moved here so the
+ * section has **one** place that answers "how is the platform doing" — the
+ * Dashboards tab — and the MCP Servers tab is left as what its name says: the
+ * servers, workflows and tools themselves. The `Browse` cards went with the
+ * move: on a landing page for that tab they were navigation, here they would
+ * duplicate the tab strip two rows up.
+ *
+ * Contributed to `sub-page:agent-platform/dashboards` (see
+ * `../../mcpDashboard`) rather than imported by that plugin, so neither plugin
+ * depends on the other. It therefore brings its own `MusterProviders`: that
+ * stack is designed to be mounted per view — the QueryClient is a module
+ * singleton and the active installation lives in the URL plus localStorage — so
+ * mounting it here is a cache read, not a refetch.
+ */
+export function McpDashboard() {
+  return (
+    <MusterProviders>
+      <McpDashboardBody />
+    </MusterProviders>
   );
 }

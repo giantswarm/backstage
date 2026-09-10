@@ -64,6 +64,10 @@ const app = createApp({
     // tab is attached externally by muster (`attachTo: page:agent-platform`).
     // Registering agent-platform first keeps Agents as the first tab (and the
     // tab a bare `/agent-platform` lands on). Reordering here flips the tabs.
+    //
+    // The row's exact order is pinned in `app-config.yaml`'s `app.extensions`,
+    // which wins over this list — that is the only way "Dashboards" can sit
+    // after muster's tab. See `agentPlatformTabOrder.test.tsx`.
     agentPlatformPlugin,
     musterPlugin,
     musterPluginOverrides,

@@ -167,14 +167,25 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // Must stay above the generic '/agent-platform' cases below, like the
-    // Sessions cases: `switch (true)` takes the first match, and without this
-    // the Usage tab would report as `page: 'Agents', view: 'usage'` — merging
-    // its views into the Agents page's numbers, which is exactly the question a
-    // new tab exists to answer. It carries no `view`: the page is one view, and
-    // the installation it reports on is scope state, not a page identity.
-    case pathname === '/agent-platform/usage':
-      payload = { page: 'Usage' };
+    // Sessions cases: `switch (true)` takes the first match, and without these
+    // the Dashboards tab would report as `page: 'Agents', view: 'dashboards/…'`
+    // — merging its views into the Agents page's numbers, which is exactly the
+    // question a separate tab exists to answer.
+    case pathname === '/agent-platform/dashboards':
+      payload = { page: 'Dashboards index' };
       break;
+
+    // One dashboard: `agents` or `mcp`. The `view` is a fixed tab name, not
+    // user data — unlike the installation the dashboard reports on, which is
+    // scope state and deliberately never part of a page identity.
+    case pathname.startsWith('/agent-platform/dashboards/'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Dashboards',
+        view: parts[3],
+      };
+      break;
+    }
 
     case pathname === '/agent-platform':
       payload = { page: 'Agents index' };

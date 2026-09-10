@@ -10,21 +10,24 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
-  agentPlatformUsageExternalRouteRef,
+  agentPlatformMcpDashboardExternalRouteRef,
   workflowDetailRouteRef,
 } from '../../routes';
 import { MusterProviders } from '../MusterProviders';
-import { DashboardPage } from '../DashboardPage';
 import { McpServersRouter } from '../McpServersRouter';
 import { WorkflowsRouter } from '../WorkflowsRouter';
 import { ToolExplorerPage } from '../ToolExplorerPage';
 
-// The muster views. This used to be four SubPageBlueprint tabs on a standalone
+// The muster views. These used to be four SubPageBlueprint tabs on a standalone
 // muster page; muster is now a section embedded under the Agent Platform page's
-// "MCP Servers" tab, so these render as a second-level tab row here instead.
-// Dashboard is first, so the section index redirects to it.
+// "MCP Servers" tab, so they render as a second-level tab row here instead.
+// Servers is first, so the section index redirects to it.
+//
+// There is deliberately no "Dashboard" view: the aggregator's inventory, health
+// and tool-call usage are one dashboard on the Agent Platform's Dashboards tab,
+// so the section has a single place for metrics and this tab is only the
+// servers, workflows and tools themselves. Both old paths redirect there.
 const VIEWS = [
-  { path: 'dashboard', title: 'Dashboard' },
   { path: 'servers', title: 'Servers' },
   { path: 'workflows', title: 'Workflows' },
   { path: 'tools', title: 'Tool explorer' },
@@ -38,7 +41,7 @@ const VIEWS = [
  */
 const IndexRedirect = () => {
   const { search } = useLocation();
-  return <Navigate to={{ pathname: 'dashboard', search }} replace />;
+  return <Navigate to={{ pathname: 'servers', search }} replace />;
 };
 
 /**
@@ -49,30 +52,35 @@ const IndexRedirect = () => {
  *
  * The fallback is spelled `../workflows` rather than `..`: this route is matched
  * relative to the section root, so a bare `..` would land on the index (and from
- * there on the Dashboard) instead of the workflows list.
+ * there on the first view) instead of the workflows list.
  */
 /**
- * `/agent-platform/muster/usage` moved to the Agent Platform's own Usage tab,
- * where it sits beside the personal section. The redirect is **required, not a
- * courtesy**: the old path is linkable, and without it the section's `*` route
- * matches, `MusterViews` renders, and its inner `<Routes>` has no fallback — so
- * the tab strip would draw over blank content.
+ * Both `/agent-platform/muster/dashboard` — this section's former index — and
+ * `/agent-platform/muster/usage` before it now live on the Agent Platform's own
+ * Dashboards tab, as its MCP dashboard.
+ *
+ * The redirect is **required, not a courtesy**: both paths are linkable (and
+ * `dashboard` is what every bookmark of this section holds, because the index
+ * used to redirect there), and without it the section's `*` route matches,
+ * `MusterViews` renders, and its inner `<Routes>` has no fallback — so the tab
+ * strip would draw over blank content.
  *
  * A sibling of the index redirect rather than a route inside `MusterViews`, for
  * the same reason that one is, and it preserves the query string so an
- * `?installation=` in a deep link survives. Falls back to `dashboard` when the
+ * `?installation=` in a deep link survives. Falls back to `servers` when the
  * external ref is unbound (agent-platform disabled), which is where the section
  * index goes anyway.
  */
-const LegacyUsageRedirect = () => {
+const LegacyDashboardRedirect = () => {
   const { search } = useLocation();
-  const usageLink = useRouteRef(agentPlatformUsageExternalRouteRef);
-  // The fallback is spelled `../dashboard`, not `dashboard`: this route is
-  // matched at `usage`, so a bare relative path resolves *under* it and lands on
-  // `/muster/usage/dashboard`. Same trap `LegacyRunRedirect` documents below.
+  const dashboardLink = useRouteRef(agentPlatformMcpDashboardExternalRouteRef);
+  // The fallback is spelled `../servers`, not `servers`: this route is matched
+  // at `dashboard` (or `usage`), so a bare relative path resolves *under* it and
+  // lands on `/muster/dashboard/servers`. Same trap `LegacyRunRedirect`
+  // documents below.
   return (
     <Navigate
-      to={`${usageLink ? usageLink() : '../dashboard'}${search}`}
+      to={`${dashboardLink ? dashboardLink() : '../servers'}${search}`}
       replace
     />
   );
@@ -120,7 +128,6 @@ const MusterViews = () => {
         </Tabs>
       </Box>
       <Routes>
-        <Route path="dashboard" element={<DashboardPage />} />
         <Route path="servers/*" element={<McpServersRouter />} />
         <Route path="workflows/*" element={<WorkflowsRouter />} />
         <Route path="tools" element={<ToolExplorerPage />} />
@@ -136,16 +143,17 @@ const MusterViews = () => {
 // the active installation into `?installation=` from an effect: a search-only
 // navigation resolves against the pathname of the render it was created in, so
 // mounted alongside the redirect that write landed on the pre-redirect path and
-// silently replaced `/muster/dashboard` back with `/muster`. The provider now
+// silently replaced `/muster/servers` back with `/muster`. The provider now
 // reads the section-wide installation scope (gs `useInstallationScope`) and
 // writes nothing on mount; the scope's own URL sync runs in the page header,
 // outside these routes. The placement stays: it keeps any future search-only
 // write in a separate commit from the redirect. Same reason the legacy
-// `workflows/:name/run` redirect lives here.
+// `workflows/:name/run` and `dashboard`/`usage` redirects live here.
 export const MusterSection = () => (
   <Routes>
     <Route index element={<IndexRedirect />} />
-    <Route path="usage" element={<LegacyUsageRedirect />} />
+    <Route path="dashboard" element={<LegacyDashboardRedirect />} />
+    <Route path="usage" element={<LegacyDashboardRedirect />} />
     <Route path="workflows/:name/run" element={<LegacyRunRedirect />} />
     <Route path="*" element={<MusterViews />} />
   </Routes>

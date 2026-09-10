@@ -2240,26 +2240,81 @@ number invented from one person's history and presented as the agent's, wrong by
 orders of magnitude on a shared agent. There is deliberately no stats strip;
 creation age moved into the header instead. Please don't add one speculatively.
 
-Note the line this draws, because [the Usage tab](#the-usage-tab) does show
-per-agent totals: there they are explicitly **one person's own** usage, the
+Note the line this draws, because [the Agents dashboard](#the-dashboards-tab)
+does show per-agent totals: there they are explicitly **one person's own** usage, the
 heading says so, and the copy switches when kagent cannot scope to the caller.
 The same numbers offered as _the agent's_ are what has no data behind them.
 
-## The Usage tab
+## The Dashboards tab
 
-`/agent-platform/usage`, the last of the section's own tabs. Two sections,
-deliberately different in scope:
+`/agent-platform/dashboards`, the **last tab in the row** (Agents · Sessions ·
+Models · MCP Servers · Dashboards) and the section's **one** place for metrics
+and signals about the platform. Everything else in the section is a thing you
+manage; this is where you find out how it is doing.
 
-1. **Your agent usage** — the caller's own sessions over the last 30 days, from
-   kagent. Totals (sessions, turns, input, output, tool calls), two per-day
-   token charts, breakdowns per agent and per model, and the top tools and MCP
-   servers.
-2. **MCP tool calls on this installation** — every caller's, from muster's
-   Prometheus metrics. Contributed by the muster plugin (see below).
+A second-level tab row, one dashboard per domain — the same shape as the Models
+tab and the muster section:
 
-Each heading states its own scope, and that is the whole reason they share a page
-rather than living in two places: a reader can see both without being able to
-confuse them.
+1. **Agents** (`/dashboards/agents`) — the caller's own agent sessions over the
+   last 30 days, from kagent. Totals (sessions, turns, input, output, tool
+   calls), two per-day token charts, breakdowns per agent and per model, and the
+   top tools and MCP servers. This plugin's own.
+2. **MCP** (`/dashboards/mcp`) — the muster aggregator behind the platform:
+   endpoint and session state, inventory and health, capability surface, fleet
+   coverage, provenance, and the tool calls dispatched through it (every
+   caller's, from muster's Prometheus metrics). Contributed whole by the muster
+   plugin (see below), so the tab is absent on a portal without muster.
+
+**Why tabs rather than sections on one page.** Both halves shipped as sections
+of a single "Usage" page first, and the scopes fought each other: the personal
+section's heading ("Your agent usage") was the topmost heading in the content, so
+it read as scoping the installation-wide MCP numbers below it, which are every
+caller's. That needed a scope-neutral page heading above both to defuse — a
+heading that could claim nothing, name no window and describe only the fact that
+the sections differed. One dashboard per tab removes the confusion at the source:
+each is alone on its own tab, its own heading is the top of its content, and
+that heading states its scope and window because it is the only thing that has
+read one.
+
+**Why the MCP dashboard is here and not on the MCP Servers tab.** It was that
+tab's "Dashboard" view (its index, in fact). Both it and the separate MCP usage
+page moved here so the platform has a single place for monitoring and the MCP
+Servers tab is what its name says — the servers, workflows and tools themselves.
+The move dropped the view's `Browse` cards: as a landing page for that tab they
+were navigation, here they would duplicate the tab strip two rows up.
+`/agent-platform/muster/dashboard` and `/agent-platform/muster/usage` both
+redirect to `/agent-platform/dashboards/mcp`, preserving the query string.
+
+**How the tab gets to be last.** Not by declaration order — it cannot be. The
+page gathers its `pages` input in feature-registration order, and muster's "MCP
+Servers" tab is attached from another plugin (`attachTo: page:agent-platform`),
+so it lands after every tab agent-platform declares; registering muster first
+would only move MCP Servers to the front of the row and change the tab a bare
+`/agent-platform` lands on. So the row is pinned explicitly in
+`app-config.yaml`'s `app.extensions`, whose order the app applies ahead of
+every unnamed extension:
+
+```yaml
+- sub-page:agent-platform/agents
+- sub-page:agent-platform/sessions
+- sub-page:agent-platform/models
+- sub-page:muster/mcp-servers
+- sub-page:agent-platform/dashboards
+```
+
+Agents stays first for a second reason: `PageBlueprint` sends a tabbed page's
+index to `inputs.pages[0]`, so the first entry is also where `/agent-platform`
+lands. `packages/app/src/agentPlatformTabOrder.test.tsx` reads that very
+list out of the config file and asserts it, because deleting those entries
+reorders the tabs with nothing else complaining.
+
+**What is deliberately not a dashboard.** Sessions and Models have no dashboard
+of their own, and adding one would duplicate rather than add: session volume
+_is_ what the Agents dashboard charts (same kagent conversations, same read), and
+the Models tab's own Serving and GPU capacity views already are the fleet's
+model-side signals. GPU capacity is the plausible third dashboard if those views
+ever want to be read rather than acted on — not a second view of numbers that
+already have a home.
 
 ### Why the numbers have to be derived
 
@@ -2279,7 +2334,7 @@ renders (`reduceSessionUsage` in `agent-platform-common`).
 asserts the sums are equal — without it the two surfaces could quietly report
 different numbers for one session.
 
-### It can only ever be personal
+### The Agents dashboard can only ever be personal
 
 kagent's `GET /api/sessions` is `WHERE user_id = <sub>`, with no pagination, no
 date filter and **no cross-user endpoint**. So no team or fleet view grows out of
@@ -2314,11 +2369,11 @@ would misattribute someone's tokens.
 No fleet fan-out, which is where this diverges from the Sessions tab. Each
 installation costs a whole session-list-plus-task fan-out, the most expensive
 read in the plugin; a cross-installation token total answers no question, since
-the model bill and the agents are per installation; and the MCP section on the
-same page is one muster per installation and cannot fan out either, so fanning
-out the top section would give one page two scope semantics. A totals-only fleet
-strip, if it is ever wanted, is an `?installation=all` on the backend route —
-not a browser-side `useQueries`.
+the model bill and the agents are per installation; and the MCP dashboard one tab
+over is one muster per installation and cannot fan out either, so fanning out
+this one would give the tab two scope semantics. A totals-only fleet strip, if it
+is ever wanted, is an `?installation=all` on the backend route — not a
+browser-side `useQueries`.
 
 ### By model is derived, and it is the _current_ model
 
@@ -2376,48 +2431,54 @@ Nothing polls it, unlike the session-states summary: the buckets are days.
 
 ### One window, 30 days
 
-Fixed, with no switcher anywhere on the page — including muster's former
+Fixed, with no switcher on either dashboard — including muster's former
 24h/7d/30d control, which was removed. The kagent route takes no window
-parameter, so a control on one section would make the page's stated window false
-for whichever section the reader just switched; the two would stop being
-comparable, which is why they share a page; and muster's bucket size changes with
-the window, so a 24h selection put an hourly-bucketed chart directly under a
-daily one. Bringing a control back means **one page-level** control driving both
-sections, once the kagent route accepts a window.
+parameter, so a control on the MCP dashboard alone would leave the two reporting
+different windows with only one of them saying so, and being comparable is the
+whole point of putting them one tab apart. muster's bucket size also changes with
+the window, so a 24h selection drew hourly bars in a chart the reader had just
+read as daily. Bringing a control back means **one tab-level** control driving
+both dashboards, once the kagent route accepts a window.
 
 `windowDays` and `windowStart` travel in the response, so no heading hardcodes
-"30 days" and shortening the window re-labels the page.
+"30 days" and shortening the window re-labels the Agents dashboard.
 
-### Your top MCP servers is prefix-derived
+### The Agents dashboard's top MCP servers is prefix-derived
 
 muster names an aggregated tool `x_{family|toolPrefix|name}_{tool}`
 (`MCPServer.getToolNamePrefix`), so the segment after `x_` is the server. That is
 exact for every server observed, and collapses a multi-segment prefix
 (`x_kubernetes_gazelle_*` reads as `kubernetes`) — the family level, and the
 useful grouping anyway. Exact resolution needs the installation's `MCPServer`
-CRs, which the backend cannot read. Which is a good argument for the merge: the
-section directly below resolves servers exactly, from Prometheus's
-`mcpserver_name` label.
+CRs, which the backend cannot read. The MCP dashboard one tab over resolves
+servers exactly, from Prometheus's `mcpserver_name` label — which is worth
+knowing before reading the two side by side.
 
-### The MCP section is contributed, not imported
+### The MCP dashboard is contributed, not imported
 
 muster attaches it with a plain `createExtension` to
-`sub-page:agent-platform/usage`, input `sections` — declared there with
+`sub-page:agent-platform/dashboards`, input `mcpDashboard` — declared there with
 `SubPageBlueprint.makeWithOverrides` + `createExtensionInput`. Neither plugin
 depends on the other, which is the same mechanism muster already uses to put its
 "MCP Servers" tab on `page:agent-platform`, one level deeper.
 
-An import would instead pull muster's whole bundle into the Usage tab even where
-muster is switched off, and would leave the section with no extension id to
-disable. An empty input renders the personal section alone. The id contract is
-commented on both ends, because a cross-plugin coupling by string fails
-silently. If a second contributor ever appears, promote it to a blueprint
-exported from an `alpha` entry point, mirroring
-`plugins/flux-react/src/alpha/blueprints/`.
+An import would instead pull muster's whole bundle into the Dashboards tab even
+where muster is switched off, and would leave the dashboard with no extension id
+to disable. An empty input means **no MCP tab and no MCP route** — a deep link to
+`/dashboards/mcp` there falls through to the Agents dashboard rather than drawing
+a tab strip over blank content. The id contract is commented on both ends,
+because a cross-plugin coupling by string fails silently.
 
-`/agent-platform/muster/usage` redirects here, preserving the query string.
+The tab's **path, title and route ref live in agent-platform**, not in muster,
+even though its content does not: the route has to exist for the two muster
+redirects pointing at it to resolve, and the tab strip needs a label before the
+element loads. That is also why the input is named for the one dashboard it
+takes. If a second contributor ever appears, promote it to a blueprint exported
+from an `alpha` entry point (mirroring
+`plugins/flux-react/src/alpha/blueprints/`) with outputs for the path and title,
+which a second dashboard would need to name for itself.
 
-### What it cannot show
+### What the Agents dashboard cannot show
 
 **Cost**, tokens/second and context-window usage: kagent records none of them at
 any version. Every provider adapter populates only `promptTokenCount` and
@@ -2446,7 +2507,7 @@ All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
 | `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                                                                                                             |
 | `kagent.timeoutMs`           | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                                                                                                             |
 | `kagent.sessionStates.*`     | Bounds on the derived session-state summary behind the session switcher rail: `maxSessions`, `maxAgeMs`, `concurrency`, `taskTimeoutMs`, `budgetMs`, `cacheTtlMs`. Sized to the frontend's 10s poll. Backend-only. |
-| `kagent.sessionUsage.*`      | Bounds on the usage summary behind the Usage tab: `windowDays` plus the same six levers. Numbers differ from `sessionStates` on purpose — read on a tab visit, reporting on days. Backend-only.                    |
+| `kagent.sessionUsage.*`      | Bounds on the usage summary behind the Agents dashboard: `windowDays` plus the same six levers. Numbers differ from `sessionStates` on purpose — read on a tab visit, reporting on days. Backend-only.             |
 | `kagent.installations`       | Which installations to proxy kagent for, keyed by name; also the allowlist. `apiBaseUrl` overrides the derived URL. Backend-only.                                                                                  |
 | `modelManager.installations` | Installations that run model-manager, keyed by name, each with the required `apiBaseUrl` (`https://agentgateway.<baseDomain>/model-manager` through the gateway). Nothing is derived. Backend-only.                |
 | `modelManager.timeoutMs`     | Per-request timeout toward a model-manager API (default 10000). Backend-only.                                                                                                                                      |

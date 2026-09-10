@@ -70,7 +70,7 @@ const SHARED_COPY = {
 };
 
 /**
- * The personal half of the Usage tab, and every state it can be in.
+ * The Agents dashboard's content, and every state it can be in.
  *
  * The one state worth reading carefully is `unsecure` mode: kagent there
  * resolves every caller to a shared built-in user, so its session list is
@@ -164,10 +164,14 @@ export function AgentUsageSection() {
 
   const header = (
     <SectionHeader
-      // `h3`, under the page's own `h2`. Without that level this heading was the
-      // page's, and "Your agent usage" then read as scoping the MCP section
-      // below it too — which is every caller's, not the reader's.
-      as="h3"
+      // `h2`: this is the top of the Agents dashboard's content, and the
+      // dashboard carries no heading of its own. It ranked `h3` under a
+      // scope-neutral "Usage" page heading while the agent and MCP numbers
+      // shared one page — that heading existed only to stop this one from
+      // reading as scoping the MCP section below it, which is every caller's
+      // rather than the reader's. They are separate tabs now, so there is
+      // nothing above this to outrank it.
+      as="h2"
       variant="title-x-small"
       title={copy.title}
       // A description is required, and before an installation resolves there is

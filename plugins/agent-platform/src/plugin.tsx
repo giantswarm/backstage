@@ -23,9 +23,12 @@ import {
 } from './apis';
 import {
   agentDetailRouteRef,
+  agentsDashboardRouteRef,
   agentsRouteRef,
+  dashboardsRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
+  mcpDashboardRouteRef,
   modelConfigsRouteRef,
   modelDetailRouteRef,
   modelsRouteRef,
@@ -39,7 +42,6 @@ import {
   servingRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
-  usageRouteRef,
 } from './routes';
 
 // The Agent Platform section is a tabbed page: with no loader of its own,
@@ -95,40 +97,58 @@ const sessionsSubPage = SubPageBlueprint.make({
   },
 });
 
-// The "Usage" tab: your own agent usage over the backend's window (personal,
-// derived from kagent's stored conversations), plus the MCP tool calls on the
-// installation (every caller, from muster's Prometheus metrics) contributed by
-// the muster plugin through the `sections` input below.
+// The "Dashboards" tab: the section's one place for metrics and signals about
+// the platform, as a second-level tab row — one dashboard per domain, so a
+// reader always knows whose numbers over what scope they are looking at:
 //
-// Declared last, so it is the last of this plugin's own tabs. It cannot be the
-// last tab in the row: muster's "MCP Servers" tab is attached from another
-// plugin and lands after every tab declared here, because the page gathers its
-// `pages` input in feature-registration order (see App.tsx). Putting Usage
-// after it would mean registering muster first, which moves MCP Servers to the
-// front of the row and changes the tab a bare `/agent-platform` lands on.
+//   * "Agents" — agent-session usage over the backend's window, derived from
+//     kagent's stored conversations. This plugin's own.
+//   * "MCP" — the muster aggregator behind the platform: inventory, health,
+//     capability surface and the tool calls dispatched through it. Contributed
+//     whole by the muster plugin through the `mcpDashboard` input below, so the
+//     tab is simply absent on a portal without muster.
+//
+// **Last in the row, after muster's "MCP Servers" tab** — and that placement
+// does not come from here. The page gathers its `pages` input in
+// feature-registration order, and muster's tab is attached from another plugin,
+// so it lands after every tab declared in this array; registering muster first
+// would only move MCP Servers to the *front* (and change the tab a bare
+// `/agent-platform` lands on). The row is therefore pinned explicitly in
+// `app-config.yaml`'s `app.extensions`, whose order wins over registration
+// order. `packages/app/src/agentPlatformTabOrder.test.tsx` asserts that list,
+// because dropping those config entries silently reorders the row.
 //
 // `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
-// list/tree filter inputs — so muster can attach its section by node id
-// (`sub-page:agent-platform/usage`, input `sections`) without either plugin
-// depending on the other, exactly as it already attaches its "MCP Servers" tab
-// to `page:agent-platform`. An empty `sections` (muster not registered) renders
-// the personal section alone rather than a hole.
-const usageSubPage = SubPageBlueprint.makeWithOverrides({
-  name: 'usage',
+// list/tree filter inputs — so muster can attach its dashboard by node id
+// (`sub-page:agent-platform/dashboards`, input `mcpDashboard`) without either
+// plugin depending on the other, exactly as it already attaches its "MCP
+// Servers" tab to `page:agent-platform`.
+//
+// **The tab's path, title and route ref live here, not in muster**, even though
+// its content does not: the route has to exist for the redirects that point at
+// it to resolve, and the tab strip has to know its label before the content
+// loads. An empty input means no MCP tab and no MCP route — not a hole.
+const dashboardsSubPage = SubPageBlueprint.makeWithOverrides({
+  name: 'dashboards',
   inputs: {
-    sections: createExtensionInput([coreExtensionData.reactElement]),
+    mcpDashboard: createExtensionInput([coreExtensionData.reactElement]),
   },
   factory(originalFactory, { inputs }) {
     return originalFactory({
-      path: 'usage',
-      title: 'Usage',
-      routeRef: usageRouteRef,
+      path: 'dashboards',
+      title: 'Dashboards',
+      routeRef: dashboardsRouteRef,
       loader: async () => {
-        const { UsageRouter } = await import('./components/UsageRouter');
-        const sections = inputs.sections.map(section =>
-          section.get(coreExtensionData.reactElement),
-        );
-        return <UsageRouter sections={<>{sections}</>} />;
+        const { DashboardsRouter } =
+          await import('./components/DashboardsRouter');
+        // At most one contributor, so the first element is the dashboard. A
+        // list is what `createExtensionInput` gives; taking `[0]` rather than
+        // rendering all of them keeps the tab one view, which is what the tab
+        // strip and the route promise.
+        const mcpDashboard = inputs.mcpDashboard
+          .at(0)
+          ?.get(coreExtensionData.reactElement);
+        return <DashboardsRouter mcpDashboard={mcpDashboard} />;
       },
     });
   },
@@ -215,7 +235,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentsSubPage,
     sessionsSubPage,
     modelsSubPage,
-    usageSubPage,
+    dashboardsSubPage,
     installationScopeHeaderAction,
     kagentApi,
     modelManagerApi,
@@ -230,7 +250,9 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,
-    usage: usageRouteRef,
+    dashboards: dashboardsRouteRef,
+    agentsDashboard: agentsDashboardRouteRef,
+    mcpDashboard: mcpDashboardRouteRef,
     models: modelsRouteRef,
     modelConfigs: modelConfigsRouteRef,
     modelDetail: modelDetailRouteRef,
