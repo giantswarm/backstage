@@ -363,8 +363,7 @@ export function toolsetOfAgent(
     const carrierName = binding.server.name;
     const carrier = carriers?.find(
       server =>
-        server.getName() === carrierName &&
-        server.getNamespace() === namespace,
+        server.getName() === carrierName && server.getNamespace() === namespace,
     );
     if (!carrier) {
       unresolved ??= carrierName;
@@ -396,9 +395,7 @@ export function describeToolset(toolset: DeclaredToolset | undefined): {
   if (!toolset || toolset.state === 'unresolved') {
     return {
       summary: '—',
-      detail: toolset
-        ? `${toolset.carrier} not readable`
-        : 'carrier not read',
+      detail: toolset ? `${toolset.carrier} not readable` : 'carrier not read',
     };
   }
   switch (toolset.state) {

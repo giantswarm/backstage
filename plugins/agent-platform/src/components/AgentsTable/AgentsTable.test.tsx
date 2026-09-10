@@ -87,9 +87,7 @@ describe('AgentsTable', () => {
 
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.getByText('Not ready')).toBeInTheDocument();
-    expect(
-      screen.getByTitle('Compiling revision rev-2'),
-    ).toBeInTheDocument();
+    expect(screen.getByTitle('Compiling revision rev-2')).toBeInTheDocument();
   });
 
   // The Harness whose verdict the readiness is — where the agent's sessions run.
@@ -211,7 +209,10 @@ describe('AgentsTable', () => {
     );
     expect(
       screen.getByRole('link', { name: 'Chat-only agent' }),
-    ).toHaveAttribute('href', '/agent-platform/agents/inst-1/dev/chat-only-agent');
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/agents/inst-1/dev/chat-only-agent',
+    );
   });
 
   // The name is wrapped in a bui `Text` for its truncation, which sets its own

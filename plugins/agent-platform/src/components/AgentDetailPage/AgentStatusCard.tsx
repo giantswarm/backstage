@@ -28,6 +28,26 @@ const HARNESS_READINESS_PRESENTATION: Record<
   pending: { label: 'Pending', intent: 'neutral' },
 };
 
+/**
+ * The revision detail of one Harness entry. It explains a `progressing`
+ * verdict: the Harness is compiling a newer revision than the one it last
+ * succeeded with.
+ */
+function describeRevision({
+  desiredRevision,
+  latestSuccessfulRevision,
+}: AgentHarness): string | undefined {
+  if (!desiredRevision) {
+    return undefined;
+  }
+  if (desiredRevision === latestSuccessfulRevision) {
+    return `revision ${desiredRevision}`;
+  }
+  return latestSuccessfulRevision
+    ? `compiling ${desiredRevision}, last successful ${latestSuccessfulRevision}`
+    : `compiling ${desiredRevision}`;
+}
+
 /** One admitting Harness: its name, its verdict, and the revision it is on. */
 function HarnessRow({
   harness,
@@ -37,19 +57,7 @@ function HarnessRow({
   isDeciding: boolean;
 }) {
   const { label, intent } = HARNESS_READINESS_PRESENTATION[harness.readiness];
-  const { desiredRevision, latestSuccessfulRevision } = harness;
-  // The revision detail explains a `progressing` verdict: the Harness is
-  // compiling a newer revision than the one it last succeeded with.
-  const revision =
-    desiredRevision && desiredRevision !== latestSuccessfulRevision
-      ? `compiling ${desiredRevision}${
-          latestSuccessfulRevision
-            ? `, last successful ${latestSuccessfulRevision}`
-            : ''
-        }`
-      : desiredRevision
-        ? `revision ${desiredRevision}`
-        : undefined;
+  const revision = describeRevision(harness);
 
   return (
     <Flex direction="column" gap="1" role="listitem">

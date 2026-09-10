@@ -280,10 +280,18 @@ describe('describeToolset', () => {
       detail: 'no toolset declared',
     });
     expect(
-      describeToolset({ state: 'declared', selectors: ['preset:none'], carrier: 'a' }),
+      describeToolset({
+        state: 'declared',
+        selectors: ['preset:none'],
+        carrier: 'a',
+      }),
     ).toEqual({ summary: 'No tools', detail: 'preset:none' });
     expect(
-      describeToolset({ state: 'declared', selectors: ['preset:full'], carrier: 'a' }),
+      describeToolset({
+        state: 'declared',
+        selectors: ['preset:full'],
+        carrier: 'a',
+      }),
     ).toEqual({ summary: 'Full gateway access', detail: 'preset:full' });
     expect(
       describeToolset({
@@ -291,7 +299,10 @@ describe('describeToolset', () => {
         selectors: ['preset:read-only', 'server:pro'],
         carrier: 'a',
       }),
-    ).toEqual({ summary: 'preset:read-only, server:pro', detail: '2 selectors' });
+    ).toEqual({
+      summary: 'preset:read-only, server:pro',
+      detail: '2 selectors',
+    });
   });
 });
 

@@ -72,7 +72,14 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
     ],
     [
       'fleet agents',
-      ['cluster', 'gazelle', 'list', 'kagent.dev', 'v1alpha3', 'agenttemplates'],
+      [
+        'cluster',
+        'gazelle',
+        'list',
+        'kagent.dev',
+        'v1alpha3',
+        'agenttemplates',
+      ],
     ],
     [
       'fleet toolset carriers',

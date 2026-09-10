@@ -182,10 +182,16 @@ function harness(
   };
 }
 
-const READY = (ageMs = 0) =>
+const readyHarness = (ageMs = 0) =>
   harness([
     condition('Accepted', 'True', 'Admitted', '', ageMs),
-    condition('Ready', 'True', 'RevisionReady', 'Revision rev-1 is ready', ageMs),
+    condition(
+      'Ready',
+      'True',
+      'RevisionReady',
+      'Revision rev-1 is ready',
+      ageMs,
+    ),
   ]);
 
 describe('resolveModelLabel', () => {
@@ -274,7 +280,12 @@ describe('toAgentRow', () => {
         harness(
           [
             condition('Accepted', 'True', 'Admitted'),
-            condition('Ready', 'False', 'Compiling', 'Compiling revision rev-2'),
+            condition(
+              'Ready',
+              'False',
+              'Compiling',
+              'Compiling revision rev-2',
+            ),
           ],
           'kagent',
           { desiredRevision: 'rev-2' },
@@ -395,7 +406,7 @@ describe('getAgentsRefetchInterval', () => {
   }
 
   const readyAgent = (name: string, ageMs = 0) =>
-    makeAgent({ name, harnesses: [READY(ageMs)] });
+    makeAgent({ name, harnesses: [readyHarness(ageMs)] });
 
   const notReadyAgent = (name: string, ageMs = 0) =>
     makeAgent({

@@ -59,7 +59,7 @@ const compatible = () =>
 const ready = () =>
   condition('Ready', 'True', 'RevisionReady', 'Revision rev-1 is ready');
 
-const READY_HARNESS = () =>
+const readyHarness = () =>
   harness('kagent', [accepted(), resolved(), compatible(), ready()]);
 
 /**
@@ -80,7 +80,8 @@ function withHarnesses(
     options.observedGeneration === null
       ? undefined
       : (options.observedGeneration ?? 1);
-  const label = options.label === null ? undefined : (options.label ?? 'kagent');
+  const label =
+    options.label === null ? undefined : (options.label ?? 'kagent');
   return makeAgent({
     metadata: {
       name: 'my-agent',
@@ -293,7 +294,7 @@ describe('Agent', () => {
 
   describe('generation tracking', () => {
     it('reports the stored and observed generations', () => {
-      const agent = withHarnesses([READY_HARNESS()], {
+      const agent = withHarnesses([readyHarness()], {
         generation: 4,
         observedGeneration: 3,
       });
@@ -305,7 +306,7 @@ describe('Agent', () => {
 
     it('is not stale once the controller catches up', () => {
       expect(
-        withHarnesses([READY_HARNESS()], {
+        withHarnesses([readyHarness()], {
           generation: 4,
           observedGeneration: 4,
         }).isStale(),
@@ -314,7 +315,7 @@ describe('Agent', () => {
 
     // "Cannot tell" must not read as "stale" — see isAgentStatusStale.
     it('is not stale when the controller records no observedGeneration', () => {
-      const agent = withHarnesses([READY_HARNESS()], {
+      const agent = withHarnesses([readyHarness()], {
         generation: 4,
         observedGeneration: null,
       });
@@ -326,7 +327,7 @@ describe('Agent', () => {
 
   describe('deriveHarnessReadiness', () => {
     it('is ready on Ready=True', () => {
-      expect(deriveHarnessReadiness(READY_HARNESS())).toBe('ready');
+      expect(deriveHarnessReadiness(readyHarness())).toBe('ready');
     });
 
     it('is failed on Accepted=False or Compatible=False', () => {
@@ -385,7 +386,7 @@ describe('Agent', () => {
 
   describe('readiness', () => {
     it('is ready when the platform Harness reports the template ready', () => {
-      const agent = withHarnesses([READY_HARNESS()]);
+      const agent = withHarnesses([readyHarness()]);
 
       expect(agent.getReadiness()).toBe('ready');
       expect(agent.getReadinessMessage()).toBeUndefined();
@@ -400,7 +401,12 @@ describe('Agent', () => {
             accepted(),
             resolved(),
             compatible(),
-            condition('Ready', 'False', 'Compiling', 'Compiling revision rev-2'),
+            condition(
+              'Ready',
+              'False',
+              'Compiling',
+              'Compiling revision rev-2',
+            ),
           ],
           { desiredRevision: 'rev-2', latestSuccessfulRevision: 'rev-1' },
         ),
@@ -476,7 +482,10 @@ describe('Agent', () => {
       expect(makeAgent().getReadiness()).toBe('pending');
       // Entries empty, but the controller last looked at an older spec.
       expect(
-        withHarnesses([], { generation: 2, observedGeneration: 1 }).getReadiness(),
+        withHarnesses([], {
+          generation: 2,
+          observedGeneration: 1,
+        }).getReadiness(),
       ).toBe('pending');
       // Entries empty and no observedGeneration recorded: cannot tell.
       expect(
@@ -485,7 +494,7 @@ describe('Agent', () => {
     });
 
     it('is pending when the status lags the current generation', () => {
-      const agent = withHarnesses([READY_HARNESS()], {
+      const agent = withHarnesses([readyHarness()], {
         generation: 5,
         observedGeneration: 4,
       });
@@ -495,7 +504,7 @@ describe('Agent', () => {
 
     it('does not report pending when observedGeneration is absent but a Harness reports', () => {
       expect(
-        withHarnesses([READY_HARNESS()], {
+        withHarnesses([readyHarness()], {
           observedGeneration: null,
         }).getReadiness(),
       ).toBe('ready');
@@ -528,9 +537,7 @@ describe('Agent', () => {
     it('falls back to the readiest Harness when the label names none of them', () => {
       const agent = withHarnesses(
         [
-          harness('claude', [
-            condition('Accepted', 'False', 'Rejected', 'no'),
-          ]),
+          harness('claude', [condition('Accepted', 'False', 'Rejected', 'no')]),
           harness('codex', [accepted(), ready()]),
         ],
         { label: 'kagent' },
@@ -578,7 +585,7 @@ describe('Agent', () => {
     });
 
     it('returns nothing when no Harness warns', () => {
-      expect(withHarnesses([READY_HARNESS()]).getHarnessWarnings()).toEqual([]);
+      expect(withHarnesses([readyHarness()]).getHarnessWarnings()).toEqual([]);
     });
   });
 

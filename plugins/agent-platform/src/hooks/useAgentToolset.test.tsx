@@ -102,7 +102,11 @@ describe('useAgentToolset', () => {
 
   it('keeps the result’s identity across renders with the same inputs', () => {
     const resources = [carrier('preset:read-only')];
-    mockUseResources.mockReturnValue({ resources, isLoading: false, errors: [] });
+    mockUseResources.mockReturnValue({
+      resources,
+      isLoading: false,
+      errors: [],
+    });
 
     const { result, rerender } = renderHook(() => useAgentToolset(agent));
     const first = result.current;

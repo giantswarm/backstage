@@ -70,10 +70,15 @@ export function CopyFromAgent({
 }) {
   const classes = useSelectableCardStyles();
   const clusters = installation ? [installation] : [];
-  const { resources, isLoading } = useResources(clusters, Agent, {}, {
-    enabled: Boolean(installation),
-    enableDiscovery: false,
-  });
+  const { resources, isLoading } = useResources(
+    clusters,
+    Agent,
+    {},
+    {
+      enabled: Boolean(installation),
+      enableDiscovery: false,
+    },
+  );
   const { resources: carriers, isLoading: isLoadingCarriers } = useResources(
     clusters,
     RemoteMCPServer,

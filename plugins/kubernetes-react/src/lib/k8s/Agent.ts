@@ -118,11 +118,7 @@ export type HarnessReadiness = 'ready' | 'progressing' | 'failed' | 'pending';
  *   `notReady`: it means "not known yet", not "broken".
  */
 export type AgentReadiness =
-  | 'ready'
-  | 'notReady'
-  | 'notAccepted'
-  | 'notAdmitted'
-  | 'pending';
+  'ready' | 'notReady' | 'notAccepted' | 'notAdmitted' | 'pending';
 
 /** One admitting Harness, as the pages present it. */
 export type AgentHarness = {
@@ -239,7 +235,8 @@ export function decidingHarnessStatus(
   const harnesses = harnessStatuses(json);
   const platformHarness = json.metadata?.labels?.[HARNESS_LABEL];
   const labelled = harnesses.find(
-    harness => platformHarness !== undefined && harness.harness === platformHarness,
+    harness =>
+      platformHarness !== undefined && harness.harness === platformHarness,
   );
   if (labelled) {
     return labelled;
@@ -454,12 +451,11 @@ export class Agent extends KubeObject<AgentInterface> {
 
   /** Every admitting Harness with its verdict, the deciding one first. */
   getHarnesses(): AgentHarness[] {
-    const deciding = decidingHarnessStatus(this.jsonData);
+    const deciding = decidingHarnessStatus(this.jsonData)?.harness;
+    const rank = (harness: AgentHarness) => (harness.name === deciding ? 0 : 1);
     return harnessStatuses(this.jsonData)
       .map(toAgentHarness)
-      .sort((a, b) =>
-        a.name === deciding?.harness ? -1 : b.name === deciding?.harness ? 1 : 0,
-      );
+      .sort((a, b) => rank(a) - rank(b));
   }
 
   /** The Harness whose verdict is the agent's readiness. See {@link decidingHarnessStatus}. */
@@ -555,8 +551,8 @@ export class Agent extends KubeObject<AgentInterface> {
     return (
       types
         .map(type => this.getCondition(type))
-        .find(condition => condition && condition.status !== 'True')
-        ?.message || undefined
+        .find(condition => condition && condition.status !== 'True')?.message ||
+      undefined
     );
   }
 }

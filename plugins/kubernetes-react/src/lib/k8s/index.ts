@@ -72,10 +72,7 @@ export {
   ModelConfig,
   ModelConfigConditionType,
 } from './ModelConfig';
-export type {
-  ModelConfigCondition,
-  ModelConfigReadiness,
-} from './ModelConfig';
+export type { ModelConfigCondition, ModelConfigReadiness } from './ModelConfig';
 export { OCIRepository } from './OCIRepository';
 export { Organization } from './Organization';
 export { ProviderConfig } from './ProviderConfig';
