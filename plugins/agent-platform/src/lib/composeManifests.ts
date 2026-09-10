@@ -120,8 +120,10 @@ export const CHART_NAME = 'agent';
 
 // The OCIRepository tracks the chart by semver range rather than a pinned tag,
 // so Flux automatically upgrades the agent to the latest published release
-// (GS "major upgrades" convention: every position is a wildcard).
-const CHART_SEMVER_RANGE = 'x.x.x';
+// within the range. The range is bounded below 1.0.0: chart 1.x carries a
+// breaking values schema (kagent API v2) that agents composed by this wizard
+// cannot render, and kube:apply overwrites whatever range the object had.
+const CHART_SEMVER_RANGE = '>=0.2.1 <1.0.0';
 
 // lineWidth: -1 disables line wrapping so URLs/prompts aren't folded; noRefs
 // avoids YAML anchors for repeated values.

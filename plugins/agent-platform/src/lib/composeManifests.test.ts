@@ -49,8 +49,9 @@ describe('composeManifests', () => {
     expect(oci.kind).toBe('OCIRepository');
     expect(oci.metadata.name).toBe('agent');
     expect(oci.spec.url).toBe('oci://gsoci.azurecr.io/charts/giantswarm/agent');
-    // Tracks a semver range for auto-upgrade, not a pinned tag.
-    expect(oci.spec.ref).toEqual({ semver: 'x.x.x' });
+    // Tracks a bounded semver range for auto-upgrade, not a pinned tag; chart
+    // 1.x (kagent API v2) must not be resolved by agents composed here.
+    expect(oci.spec.ref).toEqual({ semver: '>=0.2.1 <1.0.0' });
     expect(oci.spec.ref.tag).toBeUndefined();
   });
 
