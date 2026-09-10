@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -57,6 +58,12 @@ async function renderList(resolution: ToolsetResolution) {
     { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
   );
 }
+
+/** Under AUTO_EXPAND_MAX, so the list shows itself and hides the search. */
+const SHORT = [
+  tool('x_kubernetes_get_pods', { server: 'kubernetes' }),
+  tool('x_kubernetes_get_nodes', { server: 'kubernetes' }),
+];
 
 /** A resolution big enough that nothing may render expanded. */
 const BIG = [
@@ -201,6 +208,99 @@ describe('ToolsetResolutionList', () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByText('workflow_cert-manager-0'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('drops a query when the resolution shrinks under the threshold and takes the field away', async () => {
+    // The Tools step keeps this component mounted while the selection changes,
+    // so a query typed against a large resolution outlives the switch to a
+    // short one. Without the field there is nothing left to clear it, so the
+    // query must stop filtering when it stops being editable.
+    function Harness() {
+      const [big, setBig] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setBig(false)}>
+            shrink
+          </button>
+          <ToolsetResolutionList
+            resolution={resolved(big ? BIG : SHORT)}
+            servers={SERVERS}
+          />
+        </>
+      );
+    }
+    await renderInTestApp(<Harness />, {
+      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    });
+    const user = userEvent.setup();
+
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search the resolved tools' }),
+      'op_07',
+    );
+    expect(await screen.findByText('x_kubernetes_op_07')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'shrink' }));
+
+    // The field is gone, so the query is too — the short list shows itself.
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search the resolved tools' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nothing matches/)).not.toBeInTheDocument();
+    expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
+  });
+
+  it('drops a group the resolution emptied rather than heading an empty panel', async () => {
+    // `github` is a registered server with no tool in this resolution, so
+    // Registered servers holds nothing and must not become a disclosure with
+    // an empty summary.
+    await renderList(resolved(serverTools('kubernetes', 30)));
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Infrastructure — 1 server · 30 tools',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Registered servers/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('stops offering Show fewer once a search narrows a bucket back under one page', async () => {
+    await renderList(resolved(serverTools('kubernetes', 45)));
+    const user = userEvent.setup();
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Infrastructure — 1 server · 45 tools',
+      }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'kubernetes — 45 tools' }),
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Show 20 more tools' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Show fewer' }),
+    ).toBeInTheDocument();
+
+    // Narrow the bucket to fewer rows than one page: nothing is folded away
+    // any more, so neither footer button has anything to do.
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search the resolved tools' }),
+      'op_1',
+    );
+
+    expect(
+      await screen.findByText('10 tools and 0 workflows match'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show fewer' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Show \d+ more/ }),
     ).not.toBeInTheDocument();
   });
 

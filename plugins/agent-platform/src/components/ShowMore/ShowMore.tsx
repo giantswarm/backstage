@@ -32,11 +32,15 @@ export function ShowMore<T>({
   const visible = items.slice(0, shown);
   const hidden = items.length - visible.length;
   const nextPage = Math.min(initial, hidden);
+  // `shown` is sticky, so a list that shrinks under it (a search narrowing the
+  // bucket) would otherwise keep offering *Show fewer* with nothing to fold
+  // away. What is actually rendered decides.
+  const isExpanded = visible.length > initial;
 
   return (
     <Flex direction="column" gap="2">
       {children(visible)}
-      {(hidden > 0 || shown > initial) && (
+      {(hidden > 0 || isExpanded) && (
         <Flex align="center" gap="2">
           {hidden > 0 && (
             <Button
@@ -52,7 +56,7 @@ export function ShowMore<T>({
               )}
             </Button>
           )}
-          {shown > initial && (
+          {isExpanded && (
             <Button
               variant="tertiary"
               size="small"

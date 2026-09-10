@@ -476,6 +476,22 @@ export interface CatalogueGroup {
 }
 
 /**
+ * Whether a group still holds anything worth a row. Three call sites arrive at
+ * an empty group by different routes — the catalogue's own assembly, a search
+ * that matched nothing in it, and a resolution dropping the servers with
+ * nothing matched — and an empty one must reach neither picker nor resolved
+ * list, where it renders as a disclosure with an empty summary over an empty
+ * panel.
+ */
+export function hasEntries(group: CatalogueGroup): boolean {
+  return (
+    group.servers.length > 0 ||
+    group.platformAdministration.length > 0 ||
+    group.workflows.length > 0
+  );
+}
+
+/**
  * Arranges the catalogue the way the platform thinks about it: the three
  * server groups from the tool-group label, plus Workflows. Every CR the
  * installation has is listed — as an empty, sign-in-gated bucket when the
@@ -601,10 +617,7 @@ export function buildCatalogue(
 
   return PICKER_GROUP_ORDER.map(key => groups.get(key)).filter(
     (entry): entry is CatalogueGroup =>
-      entry !== undefined &&
-      (entry.servers.length > 0 ||
-        entry.platformAdministration.length > 0 ||
-        entry.workflows.length > 0),
+      entry !== undefined && hasEntries(entry),
   );
 }
 

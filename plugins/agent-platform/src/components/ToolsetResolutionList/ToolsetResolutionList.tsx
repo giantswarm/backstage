@@ -12,6 +12,7 @@ import {
   catalogueInventory,
   countNoun,
   groupWorkflows,
+  hasEntries,
   isDestructive,
   isReadOnly,
   ServerInfo,
@@ -322,19 +323,32 @@ export function ToolsetResolutionList({
     () => (resolution.status === 'resolved' ? resolution.tools : []),
     [resolution.status, resolution.tools],
   );
+
+  // Short enough to read at a glance: no search field, nothing collapsed.
+  const isShort = tools.length <= AUTO_EXPAND_MAX;
+  // The selection can shrink the resolution under the threshold while a query
+  // is still typed. The field goes away with it, so a query that still
+  // filtered would strand the card on "Nothing matches" with nothing left to
+  // clear it. No field, no filter.
+  const activeQuery = isShort ? '' : trimmed;
+
   const groups: CatalogueGroup[] = useMemo(
     () =>
-      buildCatalogue(tools, servers, []).map(group => ({
-        ...group,
-        // A resolution lists what matched; a server with nothing matched is not
-        // a row here (the sign-in affordance lives with the selectors).
-        servers: group.servers.filter(bucket => bucket.tools.length > 0),
-      })),
+      buildCatalogue(tools, servers, [])
+        .map(group => ({
+          ...group,
+          // A resolution lists what matched; a server with nothing matched is
+          // not a row here (the sign-in affordance lives with the selectors).
+          servers: group.servers.filter(bucket => bucket.tools.length > 0),
+        }))
+        // Dropping those servers can empty a group that `buildCatalogue` kept,
+        // and an empty group is a disclosure with no summary over no panel.
+        .filter(hasEntries),
     [tools, servers],
   );
   const visibleGroups = useMemo(
-    () => filterCatalogue(groups, trimmed),
-    [groups, trimmed],
+    () => filterCatalogue(groups, activeQuery),
+    [groups, activeQuery],
   );
   const inventory = useMemo(() => catalogueInventory(groups), [groups]);
   const matches = useMemo(
@@ -383,11 +397,8 @@ export function ToolsetResolutionList({
       break;
   }
 
-  // Short enough to read at a glance: no search field, nothing collapsed.
-  const isShort = tools.length <= AUTO_EXPAND_MAX;
-
   const inventoryLine =
-    trimmed === ''
+    activeQuery === ''
       ? [
           countNoun(inventory.servers, 'server'),
           countNoun(inventory.tools + inventory.platformAdministration, 'tool'),
@@ -430,7 +441,7 @@ export function ToolsetResolutionList({
                   onChange={setQuery}
                 />
               </Flex>
-              {trimmed !== '' && (
+              {activeQuery !== '' && (
                 <Button
                   variant="tertiary"
                   size="small"
@@ -446,13 +457,18 @@ export function ToolsetResolutionList({
           )}
           {visibleGroups.length === 0 ? (
             <Text color="secondary">
-              Nothing matches &quot;{trimmed}&quot;.
+              Nothing matches &quot;{activeQuery}&quot;.
             </Text>
           ) : (
             <Disclosures
-              query={trimmed}
+              query={activeQuery}
               defaultExpanded={isShort}
-              entries={groupEntries(visibleGroups, trimmed, isShort, toolHref)}
+              entries={groupEntries(
+                visibleGroups,
+                activeQuery,
+                isShort,
+                toolHref,
+              )}
             />
           )}
         </>
