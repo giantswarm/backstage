@@ -95,16 +95,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/gateway@npm:4.0.64":
-  version: 4.0.64
-  resolution: "@ai-sdk/gateway@npm:4.0.64"
+"@ai-sdk/gateway@npm:4.0.67":
+  version: 4.0.67
+  resolution: "@ai-sdk/gateway@npm:4.0.67"
   dependencies:
     "@ai-sdk/provider": "npm:4.0.8"
-    "@ai-sdk/provider-utils": "npm:5.0.30"
+    "@ai-sdk/provider-utils": "npm:5.0.32"
     "@vercel/oidc": "npm:3.2.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/60cc91273f645e804780505f1d19816e7771a8f7a0e3712a6f676f4647d093dc8d570bce350a6d11b94d2f7340016341607bc80bbc6a12f9bbd48c8635908eb0
+  checksum: 10c0/4fd7d477fe409b06f5c7250b073acfb5cba3e707ac0d4efc317acd58046fe3d5b2075363967127f64b8984fb2ee12c6632cec2b71d65f0b8e28e74da7f391baa
   languageName: node
   linkType: hard
 
@@ -227,9 +227,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/provider-utils@npm:5.0.30":
-  version: 5.0.30
-  resolution: "@ai-sdk/provider-utils@npm:5.0.30"
+"@ai-sdk/provider-utils@npm:5.0.32":
+  version: 5.0.32
+  resolution: "@ai-sdk/provider-utils@npm:5.0.32"
   dependencies:
     "@ai-sdk/provider": "npm:4.0.8"
     "@standard-schema/spec": "npm:^1.1.0"
@@ -238,7 +238,7 @@ __metadata:
     undici: "npm:^7.28.0"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/0364eac8cd2341cba24bab6c002ae65423ed1ee77895f8885aaee953dccd2c1aebf57f5c604fa3c0bdc0267c56d7c35602d70cc68f3a83a3ee8fc9719f2a73b0
+  checksum: 10c0/b8c91f0b3a5b92f15fc5415e288f32bfb3f087921c22beead440c3e0b3deb4ebf102986f6e0e49c8bd826888f932e06afdd4e20d2af5e425c95c7c7d25050fa5
   languageName: node
   linkType: hard
 
@@ -19160,16 +19160,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ai@npm:7.0.79":
-  version: 7.0.79
-  resolution: "ai@npm:7.0.79"
+"ai@npm:7.0.83":
+  version: 7.0.83
+  resolution: "ai@npm:7.0.83"
   dependencies:
-    "@ai-sdk/gateway": "npm:4.0.64"
+    "@ai-sdk/gateway": "npm:4.0.67"
     "@ai-sdk/provider": "npm:4.0.8"
-    "@ai-sdk/provider-utils": "npm:5.0.30"
+    "@ai-sdk/provider-utils": "npm:5.0.32"
   peerDependencies:
     zod: ^3.25.76 || ^4.1.8
-  checksum: 10c0/05004b5ae4acc9feaea3b5f3d194801d37fa0d6e18e69372917e52502c729bfc482cf6729a99f95d8abb0e053ebb37f028f2ad4de310ebbf66fba4f504f631bb
+  checksum: 10c0/651b259965e0c8f842e515dbc620f95ed9318949a6cc2f6dcbb76588260310e535e27f28adc325b0092677e495460e10293ca7bfefe94342cfec49d616dab95b
   languageName: node
   linkType: hard
 
