@@ -770,27 +770,34 @@ describe('NewAgentToolsPage', () => {
     );
     await open(user, /^github — 25 tools/);
 
+    // Scoped to the catalogue: the resolved list carries the same row and
+    // footer text once a toolset is selected, and only happens to be absent
+    // here because nothing is.
+    const catalogue = within(catalogueCard());
+
     expect(
-      screen.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
+      catalogue.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
     ).toHaveLength(20);
-    expect(screen.getByText('20 tools shown, 5 more')).toBeInTheDocument();
+    expect(catalogue.getByText('20 tools shown, 5 more')).toBeInTheDocument();
 
     // A page at a time, and the last page asks for exactly what is left.
-    await user.click(screen.getByRole('button', { name: 'Show 5 more tools' }));
+    await user.click(
+      catalogue.getByRole('button', { name: 'Show 5 more tools' }),
+    );
 
     expect(
-      screen.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
+      catalogue.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
     ).toHaveLength(25);
     expect(
-      screen.queryByRole('button', { name: /^Show \d+ more/ }),
+      catalogue.queryByRole('button', { name: /^Show \d+ more/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText('25 tools shown')).toBeInTheDocument();
+    expect(catalogue.getByText('25 tools shown')).toBeInTheDocument();
 
     // And back to the first page, so a list opened by mistake can be shut.
-    await user.click(screen.getByRole('button', { name: 'Show fewer' }));
+    await user.click(catalogue.getByRole('button', { name: 'Show fewer' }));
 
     expect(
-      screen.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
+      catalogue.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
     ).toHaveLength(20);
   });
 

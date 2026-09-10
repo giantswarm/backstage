@@ -46,8 +46,11 @@ export function useSearchExpansion(
   defaultExpanded = false,
 ): [Set<string>, (next: Set<string>) => void] {
   const signature = keys.join('|');
+  // Seeded with what the effect below would set anyway: a nested stack mounted
+  // by a query-driven parent expansion is opened on its first render rather
+  // than in a second commit.
   const [expanded, setExpanded] = useState<Set<string>>(
-    new Set(defaultExpanded ? keys : []),
+    new Set(defaultExpanded || query !== '' ? keys : []),
   );
   useEffect(() => {
     setExpanded(new Set(query === '' && !defaultExpanded ? [] : keys));
