@@ -394,6 +394,7 @@ export function ToolCatalogue(props: ToolCatalogueProps) {
   return (
     <Disclosures
       query={query}
+      ariaLabel="Tool catalogue"
       entries={groups.map(group => ({
         key: group.key,
         trigger: `${group.title} — ${groupSummary(group, selected)}`,

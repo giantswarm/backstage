@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from '@backstage/core-components';
 import { Alert, Button, Flex, SearchField, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
@@ -327,10 +327,17 @@ export function ToolsetResolutionList({
   // Short enough to read at a glance: no search field, nothing collapsed.
   const isShort = tools.length <= AUTO_EXPAND_MAX;
   // The selection can shrink the resolution under the threshold while a query
-  // is still typed. The field goes away with it, so a query that still
-  // filtered would strand the card on "Nothing matches" with nothing left to
-  // clear it. No field, no filter.
+  // is still typed, and the field goes away with it. Two things follow, and
+  // both are needed: the query must stop filtering on the very render that
+  // hides the field (or the card flashes "Nothing matches" with nothing left
+  // to clear it), and it must not survive to be reapplied if the resolution
+  // grows back — the author would meet a pre-filtered list they never typed.
   const activeQuery = isShort ? '' : trimmed;
+  useEffect(() => {
+    if (isShort) {
+      setQuery('');
+    }
+  }, [isShort]);
 
   const groups: CatalogueGroup[] = useMemo(
     () =>
@@ -462,6 +469,7 @@ export function ToolsetResolutionList({
           ) : (
             <Disclosures
               query={activeQuery}
+              ariaLabel="Resolved toolset"
               defaultExpanded={isShort}
               entries={groupEntries(
                 visibleGroups,

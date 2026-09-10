@@ -72,6 +72,14 @@ export type DisclosuresProps = {
   nested?: boolean;
   /** Start open rather than collapsed — see {@link useSearchExpansion}. */
   defaultExpanded?: boolean;
+  /**
+   * Names the stack for assistive technology. Two of these can sit on one page
+   * over the same catalogue — the Tools step has one to pick from and one
+   * showing what was picked — and their triggers then carry identical
+   * accessible names. Without a name on the group, nothing but document order
+   * tells them apart.
+   */
+  ariaLabel?: string;
 };
 
 /** A stack of collapsible entries whose expansion follows the search. */
@@ -80,6 +88,7 @@ export function Disclosures({
   query,
   nested = false,
   defaultExpanded = false,
+  ariaLabel,
 }: DisclosuresProps) {
   const classes = useStyles();
   const [expanded, setExpanded] = useSearchExpansion(
@@ -87,7 +96,7 @@ export function Disclosures({
     query,
     defaultExpanded,
   );
-  return (
+  const group = (
     <AccordionGroup
       allowsMultiple
       expandedKeys={expanded}
@@ -105,5 +114,14 @@ export function Disclosures({
         </Accordion>
       ))}
     </AccordionGroup>
+  );
+  // bui's AccordionGroup renders a bare div, so an aria-label on it would name
+  // nothing. The role is what makes the name reachable.
+  return ariaLabel ? (
+    <div role="group" aria-label={ariaLabel}>
+      {group}
+    </div>
+  ) : (
+    group
   );
 }

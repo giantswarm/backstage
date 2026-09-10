@@ -304,6 +304,60 @@ describe('ToolsetResolutionList', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('forgets the query rather than reapplying it when the resolution grows back', async () => {
+    // Masking the query while the field is hidden is not enough: if it
+    // survives, growing back over the threshold hands the author a filtered
+    // list they never asked for, pre-filled with text they typed minutes ago.
+    function Harness() {
+      const [big, setBig] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setBig(value => !value)}>
+            toggle
+          </button>
+          <ToolsetResolutionList
+            resolution={resolved(big ? BIG : SHORT)}
+            servers={SERVERS}
+          />
+        </>
+      );
+    }
+    await renderInTestApp(<Harness />, {
+      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    });
+    const user = userEvent.setup();
+
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search the resolved tools' }),
+      'op_07',
+    );
+    expect(await screen.findByText('x_kubernetes_op_07')).toBeInTheDocument();
+
+    // Shrink under the threshold, then grow back.
+    await user.click(screen.getByRole('button', { name: 'toggle' }));
+    await user.click(screen.getByRole('button', { name: 'toggle' }));
+
+    const search = await screen.findByRole('searchbox', {
+      name: 'Search the resolved tools',
+    });
+    expect(search).toHaveValue('');
+    expect(
+      screen.getByText('2 servers · 55 tools · 20 workflows'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/match$/)).not.toBeInTheDocument();
+  });
+
+  it('names its accordion group, so it is distinguishable from the catalogue', async () => {
+    // The Tools step renders this list beside the catalogue, whose triggers
+    // carry the same names. Asserted here rather than assumed: the label has
+    // to survive bui's AccordionGroup to be worth anything.
+    await renderList(resolved(BIG));
+
+    expect(
+      screen.getByRole('group', { name: 'Resolved toolset' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders the non-resolution outcomes as their messages, never as an empty list', async () => {
     await renderList({
       tools: [],

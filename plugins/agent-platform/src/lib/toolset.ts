@@ -697,8 +697,17 @@ export const INITIAL_ROWS = 20;
  */
 export const WORKFLOW_GROUPING_MIN = 12;
 
-/** The key of the group gathering workflows whose name prefix nothing else shares. */
-export const OTHER_WORKFLOWS_KEY = 'other';
+/**
+ * The key of the group gathering workflows whose name prefix nothing else
+ * shares.
+ *
+ * Every other group is keyed by its leading name segment, and {@link
+ * nameSegments} splits on `-` and `_` — so a leading segment never contains a
+ * hyphen and this hyphenated key cannot collide with one. It has to be
+ * collision-proof: two groups sharing a key are one React key and one
+ * accordion id, which makes them open and close together.
+ */
+export const OTHER_WORKFLOWS_KEY = 'other-workflows';
 
 /** A run of workflows that share a name prefix, for the picker and the resolved list. */
 export interface WorkflowGroup {

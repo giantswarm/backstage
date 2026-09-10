@@ -213,8 +213,13 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
         )}
         {shape !== 'none' && (
           <>
+            {/* h3, not h4: bui's AccordionTrigger wraps every disclosure
+                heading in an h3 at every depth, so an h4 here would put this
+                section's own heading *below* the headings it contains. Flat
+                is the best available outline until the trigger's level can be
+                set. */}
             <Text
-              as="h4"
+              as="h3"
               variant="body-medium"
               weight="bold"
               className={classes.heading}
