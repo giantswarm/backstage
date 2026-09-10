@@ -6,22 +6,20 @@ import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
   buildCatalogue,
-  gatewayEntry,
   parseSelector,
   presetLabel,
-  toolsetOfAgent,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
 import { musterToolExplorerExternalRouteRef } from '../../routes';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
-import { MUSTER_MCP_SERVER_NAME } from './helpers';
 
 const useStyles = makeStyles(theme => ({
   selectors: {
@@ -94,10 +92,11 @@ function DeclaredSelectors({
  * The agent's toolset: what it declares, and what that resolves to for the
  * person looking at it.
  *
- * Reads the declaration off the Agent resource itself — the `X-Muster-Toolset`
- * header on the gateway tool entry, which the chart renders from the `toolset`
- * value — so this page, `kubectl get agent -o yaml` and agent-manager tell the
- * same story. Resolves it through the viewer's own muster session, which is
+ * Reads the declaration off the agent's carrier `RemoteMCPServer` — the
+ * `X-Muster-Toolset` header the chart renders from the `toolset` value onto the
+ * per-agent gateway server the template binds — so this page, `kubectl get
+ * remotemcpserver -o yaml` and agent-manager tell the same story. Resolves it
+ * through the viewer's own muster session, which is
  * what an agent invoked by them would get: toolset ∩ their access. Where the
  * viewer's own access is what is missing (a server they have not signed in
  * to), the sign-in is offered instead of an empty list.
@@ -110,15 +109,13 @@ function DeclaredSelectors({
 export function AgentToolsetCard({ agent }: { agent: Agent }) {
   const classes = useStyles();
   const installation = agent.cluster;
-  // One memo for both, so `selectors` keeps its identity across renders (the
-  // resolution and grouping memos below depend on it).
-  const { declared, selectors } = useMemo(() => {
-    const result = toolsetOfAgent(agent, gatewayEntry(MUSTER_MCP_SERVER_NAME));
-    return {
-      declared: result,
-      selectors: result.state === 'declared' ? result.selectors : [],
-    };
-  }, [agent]);
+  // Memoized on the read, so `selectors` keeps its identity across renders
+  // (the resolution and grouping memos below depend on it).
+  const declared = useAgentToolset(agent);
+  const selectors = useMemo(
+    () => (declared.state === 'declared' ? declared.selectors : []),
+    [declared],
+  );
   const shape = toolsetShape(selectors);
 
   const musterApi = useMusterPluginApi();
@@ -152,7 +149,15 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     : undefined;
 
   let body: React.ReactNode;
-  if (declared.state === 'no-gateway') {
+  if (declared.state === 'unresolved') {
+    body = (
+      <Alert
+        status="info"
+        title="Toolset not readable"
+        description={`This agent binds the gateway through the RemoteMCPServer ${declared.carrier}, which could not be read — it may still be loading, or not be readable for you. The toolset is declared on that server, so nothing can be said about it here.`}
+      />
+    );
+  } else if (declared.state === 'no-gateway') {
     body = (
       <Alert
         status="info"
@@ -165,7 +170,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       <Alert
         status="warning"
         title="Implicit full access"
-        description="This agent declares no toolset, so it can discover and call every tool the gateway exposes to whoever invokes it — platform administration included. Agents from before toolsets look like this until someone assigns one (agent-manager's update_agent, or the chart's toolset value)."
+        description={`This agent declares no toolset: its gateway server ${declared.carrier} carries no X-Muster-Toolset header, so it can discover and call every tool the gateway exposes to whoever invokes it — platform administration included. A hand-written template looks like this until someone assigns a toolset (agent-manager's update_agent, or the chart's toolset value).`}
       />
     );
   } else {

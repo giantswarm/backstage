@@ -1,6 +1,7 @@
 /**
  * The toolset an agent declares: the selector grammar, the presets, how a
- * declared toolset is read back off an Agent resource, and how muster's
+ * declared toolset is read back off an agent's carrier `RemoteMCPServer`,
+ * and how muster's
  * resolution of one is grouped for display.
  *
  * A toolset is composition, not authorization: it bounds which of the
@@ -15,7 +16,8 @@
 
 import type {
   Agent,
-  AgentTool,
+  AgentMcpBinding,
+  RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   TOOL_GROUPS,
@@ -27,6 +29,15 @@ import {
 
 /** The request header the Generic chart renders a toolset into. */
 export const TOOLSET_HEADER = 'X-Muster-Toolset';
+
+/**
+ * Name of the muster gateway `RemoteMCPServer`: what the Generic chart's
+ * per-agent carrier is a copy of, and the name a hand-written template binds
+ * a shared gateway server by. Matched on the name alone, not the namespace —
+ * bindings are same-namespace on API v2, and installations may place the
+ * gateway wherever they like.
+ */
+export const MUSTER_MCP_SERVER_NAME = 'muster';
 
 /** Inline selectors are capped; beyond this, the platform admin defines a preset. */
 export const MAX_INLINE_SELECTORS = 32;
@@ -273,54 +284,144 @@ export function toolsetShape(selectors: string[]): ToolsetShape {
 }
 
 /**
- * The toolset as an Agent resource declares it.
+ * The toolset an agent declares, read off the `RemoteMCPServer` its gateway
+ * binding names.
  *
- * - `declared`: the muster tool entry carries the `X-Muster-Toolset` header the
- *   chart rendered from the `toolset` value.
- * - `implicit-full`: there is a muster tool entry but no header — an agent from
- *   before toolsets, or a hand-written release without the value. It reaches
+ * - `declared`: the carrier carries the `X-Muster-Toolset` header the chart
+ *   rendered from the `toolset` value.
+ * - `implicit-full`: the agent binds the gateway but the carrier has no header
+ *   — a hand-written template, or a release without the value. It reaches
  *   everything the gateway exposes to its invoker, and the page says so.
- * - `no-gateway`: no muster tool entry at all, which is what `preset:none`
+ * - `no-gateway`: no binding reaches the gateway, which is what `preset:none`
  *   renders to. The agent has no tools.
+ * - `unresolved`: the agent binds the gateway, but the carrier named by the
+ *   binding could not be read (not loaded yet, not readable, or missing), so
+ *   nothing can be said about the toolset. Distinct from `implicit-full`: an
+ *   unreadable carrier is not evidence of full access.
  */
 export type DeclaredToolset =
-  | { state: 'declared'; selectors: string[] }
-  | { state: 'implicit-full' }
-  | { state: 'no-gateway' };
+  | { state: 'declared'; selectors: string[]; carrier: string }
+  | { state: 'implicit-full'; carrier: string }
+  | { state: 'no-gateway' }
+  | { state: 'unresolved'; carrier: string };
 
 /**
- * A predicate for the tool entries that point at the muster gateway, by the
- * `RemoteMCPServer` name the chart references (`muster` by default). A name
- * match, like the detail page's Tool Explorer link: the namespace is a chart
- * value and installations may place the gateway elsewhere.
+ * What the toolset read needs from a `RemoteMCPServer`. Structural so the read
+ * is testable with bare objects and the roster can pass its cluster-wide list.
  */
-export function gatewayEntry(gatewayName: string) {
-  return (tool: AgentTool): boolean => tool.mcpServer?.name === gatewayName;
+export type ToolsetCarrier = Pick<
+  RemoteMCPServer,
+  'getName' | 'getNamespace' | 'getHeaderValue'
+>;
+
+/**
+ * Whether an MCP binding reaches the muster gateway: the Generic chart renders
+ * the gateway into a `RemoteMCPServer` **named after the agent** in its own
+ * namespace (the per-agent toolset carrier), and a hand-written template may
+ * still bind a shared gateway server by the conventional name. A name match,
+ * like the detail page's Tool Explorer link: any other server is some other
+ * MCP server, whatever its URL.
+ */
+export function isGatewayBinding(
+  agent: Pick<Agent, 'getName'>,
+  binding: AgentMcpBinding,
+  gatewayName: string,
+): boolean {
+  const name = binding.server.name;
+  return name === agent.getName() || name === gatewayName;
+}
+
+/** The agent's bindings that reach the gateway, in declaration order. */
+export function gatewayBindings(
+  agent: Pick<Agent, 'getName' | 'getMcpBindings'>,
+  gatewayName: string,
+): AgentMcpBinding[] {
+  return agent
+    .getMcpBindings()
+    .filter(binding => isGatewayBinding(agent, binding, gatewayName));
 }
 
 /**
- * `spec.declarative.tools[]` entries pointing at the muster gateway, with their
- * `headersFrom` — a sibling of `mcpServer` on the entry (kagent's CRD puts the
- * headers on the tool reference, not inside the server reference).
+ * The toolset an agent declares: its gateway bindings, joined with the
+ * `RemoteMCPServer`s of its namespace to read the `X-Muster-Toolset` header
+ * off the carrier each binding names. `carriers` undefined means the servers
+ * have not been read yet — every gateway binding is then `unresolved`, never
+ * mistaken for implicit full access.
  */
 export function toolsetOfAgent(
-  agent: Pick<Agent, 'getTools'>,
-  isGateway: (tool: AgentTool) => boolean,
+  agent: Pick<Agent, 'getName' | 'getNamespace' | 'getMcpBindings'>,
+  gatewayName: string,
+  carriers: readonly ToolsetCarrier[] | undefined,
 ): DeclaredToolset {
-  const gatewayEntries = agent.getTools().filter(isGateway);
-  if (gatewayEntries.length === 0) {
+  const bindings = gatewayBindings(agent, gatewayName);
+  if (bindings.length === 0) {
     return { state: 'no-gateway' };
   }
-  for (const entry of gatewayEntries) {
-    const header = (entry.headersFrom ?? []).find(
-      candidate =>
-        candidate.name.toLowerCase() === TOOLSET_HEADER.toLowerCase(),
+  const namespace = agent.getNamespace();
+  let unresolved: string | undefined;
+  for (const binding of bindings) {
+    const carrierName = binding.server.name;
+    const carrier = carriers?.find(
+      server =>
+        server.getName() === carrierName &&
+        server.getNamespace() === namespace,
     );
-    if (header?.value !== undefined) {
-      return { state: 'declared', selectors: parseToolsetHeader(header.value) };
+    if (!carrier) {
+      unresolved ??= carrierName;
+      continue;
+    }
+    const header = carrier.getHeaderValue(TOOLSET_HEADER);
+    if (header !== undefined) {
+      return {
+        state: 'declared',
+        selectors: parseToolsetHeader(header),
+        carrier: carrierName,
+      };
     }
   }
-  return { state: 'implicit-full' };
+  return unresolved !== undefined
+    ? { state: 'unresolved', carrier: unresolved }
+    : { state: 'implicit-full', carrier: bindings[0].server.name };
+}
+
+/**
+ * The declared toolset in a few words, for a table cell: the summary is the
+ * cell's text, the detail its second line. The card on the detail page does the
+ * resolving; this only says what the carrier declares.
+ */
+export function describeToolset(toolset: DeclaredToolset | undefined): {
+  summary: string;
+  detail?: string;
+} {
+  if (!toolset || toolset.state === 'unresolved') {
+    return {
+      summary: '—',
+      detail: toolset
+        ? `${toolset.carrier} not readable`
+        : 'carrier not read',
+    };
+  }
+  switch (toolset.state) {
+    case 'no-gateway':
+      return { summary: 'No tools' };
+    case 'implicit-full':
+      return { summary: 'Full gateway access', detail: 'no toolset declared' };
+    default: {
+      const shape = toolsetShape(toolset.selectors);
+      if (shape === 'none') {
+        return { summary: 'No tools', detail: PRESET_NONE };
+      }
+      if (shape === 'full') {
+        return { summary: 'Full gateway access', detail: PRESET_FULL };
+      }
+      return {
+        summary: toolset.selectors.join(', '),
+        detail: `${toolset.selectors.length} selector${
+          toolset.selectors.length === 1 ? '' : 's'
+        }`,
+      };
+    }
+  }
 }
 
 /**

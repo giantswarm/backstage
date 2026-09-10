@@ -246,7 +246,8 @@ function AgentDetailPageContent() {
   if (!agent) {
     // A 404 is an expected outcome here — a stale bookmark, a deleted or renamed
     // agent — so it gets an explanation rather than an error banner. Also covers
-    // "kagent isn't installed on this installation", which answers 404 for the CRD.
+    // "no kagent API v2 on this installation": no kagent, or a kagent still on
+    // 0.10, answers 404 for the `agenttemplates` resource.
     if (errors.some(isNotFoundError)) {
       return (
         <Content>
@@ -255,7 +256,7 @@ function AgentDetailPageContent() {
             title="Agent not found"
             description={`No agent named "${name}" exists in namespace "${namespace}" on ${
               installation || 'that installation'
-            }. It may have been deleted or renamed, or kagent may not be installed there.`}
+            }. It may have been deleted or renamed, or that installation may not run kagent API v2.`}
             action={<BackToAgents>Back to agents</BackToAgents>}
           />
         </Content>

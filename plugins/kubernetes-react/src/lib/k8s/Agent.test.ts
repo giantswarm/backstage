@@ -1,12 +1,23 @@
-import { crds } from '@giantswarm/k8s-types';
-import { Agent, getAgentStatusChangedAt, isAgentTransitional } from './Agent';
+import {
+  Agent,
+  AgentHarnessCondition,
+  AgentHarnessStatus,
+  AgentTemplateInterface,
+  decidingHarnessStatus,
+  deriveHarnessReadiness,
+  getAgentStatusChangedAt,
+  HARNESS_LABEL,
+  isAgentTransitional,
+} from './Agent';
 
-type AgentInterface = crds.kagent.v1alpha2.Agent;
+type AgentInterface = AgentTemplateInterface;
+
+const AT = '2026-07-31T10:00:00Z';
 
 function makeAgent(spec: Partial<AgentInterface> = {}): Agent {
   const json = {
-    apiVersion: 'kagent.dev/v1alpha2',
-    kind: 'Agent',
+    apiVersion: 'kagent.dev/v1alpha3',
+    kind: 'AgentTemplate',
     metadata: { name: 'my-agent', namespace: 'team-a' },
     ...spec,
   } as AgentInterface;
@@ -14,139 +25,278 @@ function makeAgent(spec: Partial<AgentInterface> = {}): Agent {
   return new Agent(json, 'installation-1');
 }
 
+function condition(
+  type: string,
+  status: 'True' | 'False' | 'Unknown',
+  reason: string,
+  message = '',
+  lastTransitionTime = AT,
+): AgentHarnessCondition {
+  return { type, status, reason, message, lastTransitionTime };
+}
+
+/** A Harness entry, `desiredRevision` defaulting to a compiled-and-current one. */
+function harness(
+  name: string,
+  conditions: AgentHarnessCondition[],
+  extra: Partial<AgentHarnessStatus> = {},
+): AgentHarnessStatus {
+  return {
+    harness: name,
+    desiredRevision: 'rev-1',
+    latestSuccessfulRevision: 'rev-1',
+    ...extra,
+    conditions: conditions as AgentHarnessStatus['conditions'],
+  };
+}
+
+const accepted = () =>
+  condition('Accepted', 'True', 'Admitted', 'Template admitted');
+const resolved = () =>
+  condition('ResolvedRefs', 'True', 'Resolved', 'All references resolve');
+const compatible = () =>
+  condition('Compatible', 'True', 'Compatible', 'Configuration fits');
+const ready = () =>
+  condition('Ready', 'True', 'RevisionReady', 'Revision rev-1 is ready');
+
+const READY_HARNESS = () =>
+  harness('kagent', [accepted(), resolved(), compatible(), ready()]);
+
+/**
+ * An agent labelled for the platform Harness, with the given entries
+ * reconciled. `null` leaves the label or the observedGeneration out entirely
+ * (an explicit `undefined` would take the default).
+ */
+function withHarnesses(
+  harnesses: AgentHarnessStatus[],
+  options: {
+    generation?: number;
+    observedGeneration?: number | null;
+    label?: string | null;
+  } = {},
+): Agent {
+  const generation = options.generation ?? 1;
+  const observedGeneration =
+    options.observedGeneration === null
+      ? undefined
+      : (options.observedGeneration ?? 1);
+  const label = options.label === null ? undefined : (options.label ?? 'kagent');
+  return makeAgent({
+    metadata: {
+      name: 'my-agent',
+      namespace: 'team-a',
+      generation,
+      labels: label ? { [HARNESS_LABEL]: label } : undefined,
+    },
+    status: { harnesses, observedGeneration },
+  } as Partial<AgentInterface>);
+}
+
 describe('Agent', () => {
-  describe('getDisplayName', () => {
+  it('is the v1alpha3 AgentTemplate, single version', () => {
+    expect(Agent.group).toBe('kagent.dev');
+    expect(Agent.kind).toBe('AgentTemplate');
+    expect(Agent.plural).toBe('agenttemplates');
+    expect(Agent.supportedVersions).toEqual(['v1alpha3']);
+  });
+
+  describe('getDisplayName / getIconUrl', () => {
     it('prefers the display-name annotation', () => {
       const agent = makeAgent({
         metadata: {
           name: 'my-agent',
           namespace: 'team-a',
-          annotations: { 'ui.giantswarm.io/display-name': 'Incident triager' },
+          annotations: {
+            'ui.giantswarm.io/display-name': 'Incident triager',
+            'ui.giantswarm.io/icon-url': 'https://avatars.example/triager.png',
+          },
         },
       });
 
       expect(agent.getDisplayName()).toBe('Incident triager');
+      expect(agent.getIconUrl()).toBe('https://avatars.example/triager.png');
     });
 
     it('falls back to the resource name when no annotation is set', () => {
       expect(makeAgent().getDisplayName()).toBe('my-agent');
+      expect(makeAgent().getIconUrl()).toBeUndefined();
     });
   });
 
-  describe('getSkillRefs / getSkillCount', () => {
-    it('reads skills from spec.skills.gitRefs', () => {
+  describe('spec fields', () => {
+    it('reads description, model config, system prompt and its source', () => {
       const agent = makeAgent({
         spec: {
-          skills: {
-            gitRefs: [
-              { url: 'https://github.com/giantswarm/skills', name: 'a' },
-              { url: 'https://github.com/giantswarm/skills', name: 'b' },
-            ],
-          },
-        },
-      });
-
-      expect(agent.getSkillRefs()).toHaveLength(2);
-      expect(agent.getSkillCount()).toBe(2);
-    });
-
-    it('returns an empty list / zero when no skills are set', () => {
-      const agent = makeAgent();
-
-      expect(agent.getSkillRefs()).toEqual([]);
-      expect(agent.getSkillCount()).toBe(0);
-    });
-  });
-
-  describe('declarative fields', () => {
-    it('reads description, model config and system message', () => {
-      const agent = makeAgent({
-        spec: {
-          type: 'Declarative',
           description: 'Triages incidents',
-          declarative: {
-            modelConfig: 'sonnet-4-6',
-            systemMessage: 'You triage incidents.',
-          },
+          modelConfig: { name: 'sonnet-4-6' },
+          systemPrompt: 'You triage incidents.',
         },
       });
 
-      expect(agent.getType()).toBe('Declarative');
       expect(agent.getDescription()).toBe('Triages incidents');
       expect(agent.getModelConfigName()).toBe('sonnet-4-6');
       expect(agent.getSystemMessage()).toBe('You triage incidents.');
+      expect(agent.getSystemMessageSource()).toBeUndefined();
     });
 
-    it('returns undefined model config for BYO agents', () => {
-      const agent = makeAgent({ spec: { type: 'BYO' } });
+    it('reports a ConfigMap-sourced prompt as a source, not as text', () => {
+      const agent = makeAgent({
+        spec: { systemPromptFrom: { name: 'prompts', key: 'triager.md' } },
+      });
 
-      expect(agent.getType()).toBe('BYO');
-      expect(agent.getModelConfigName()).toBeUndefined();
-      expect(agent.getSkillCount()).toBe(0);
+      expect(agent.getSystemMessage()).toBeUndefined();
+      expect(agent.getSystemMessageSource()).toEqual({
+        name: 'prompts',
+        key: 'triager.md',
+      });
+    });
+
+    it('reads the admission label', () => {
+      expect(
+        makeAgent({
+          metadata: {
+            name: 'my-agent',
+            namespace: 'team-a',
+            labels: { [HARNESS_LABEL]: 'kagent' },
+          },
+        }).getHarnessLabel(),
+      ).toBe('kagent');
+      expect(makeAgent().getHarnessLabel()).toBeUndefined();
     });
   });
 
-  describe('tool references', () => {
-    const agentWithTools = () =>
+  describe('skills', () => {
+    const agentWithSkills = () =>
       makeAgent({
         spec: {
-          declarative: {
-            tools: [
-              // The chart's muster gateway entry: an MCP server, all its tools.
-              {
-                type: 'McpServer',
-                mcpServer: { name: 'muster', namespace: 'agent-platform' },
-              },
-              // A restricted server, and one that omits `type` entirely — which
-              // the CRD allows and the controller infers.
-              {
-                mcpServer: {
-                  name: 'grafana',
-                  toolNames: ['query', 'dashboards'],
+          skills: [
+            {
+              name: 'pr-review',
+              source: {
+                git: {
+                  url: 'https://github.com/giantswarm/skills',
+                  commit: '0123456789abcdef0123456789abcdef01234567',
                 },
+                path: 'skills/pr-review',
               },
-              {
-                type: 'Agent',
-                agent: { name: 'sre-agent', namespace: 'kagent' },
+            },
+            {
+              name: 'runbooks',
+              source: {
+                oci: `gsoci.azurecr.io/giantswarm/skills@sha256:${'a'.repeat(64)}`,
               },
-            ],
-          },
+            },
+            {
+              name: 'archive',
+              source: {
+                bucket: {
+                  s3: {
+                    endpoint: 'https://s3.example',
+                    bucket: 'skills',
+                    key: 'archive.tar',
+                    versionId: 'v-42',
+                  },
+                },
+                path: 'archive',
+              },
+            },
+          ],
         },
       } as Partial<AgentInterface>);
 
-    it('returns every tool entry', () => {
-      expect(agentWithTools().getTools()).toHaveLength(3);
+    it('flattens every source kind with its pin', () => {
+      expect(agentWithSkills().getSkills()).toEqual([
+        {
+          name: 'pr-review',
+          source: 'git',
+          url: 'https://github.com/giantswarm/skills',
+          path: 'skills/pr-review',
+          pin: '0123456789abcdef0123456789abcdef01234567',
+        },
+        {
+          name: 'runbooks',
+          source: 'oci',
+          url: 'gsoci.azurecr.io/giantswarm/skills',
+          pin: `sha256:${'a'.repeat(64)}`,
+        },
+        {
+          name: 'archive',
+          source: 'bucket',
+          url: 'https://s3.example/skills/archive.tar',
+          path: 'archive',
+          pin: 'v-42',
+        },
+      ]);
+      expect(agentWithSkills().getSkillCount()).toBe(3);
     });
 
-    // Keyed on the presence of `mcpServer`, not on `type`, which is optional.
-    it('splits MCP server references out, including entries with no type', () => {
-      const refs = agentWithTools().getMcpServerRefs();
+    it('returns an empty list / zero when no skills are set', () => {
+      expect(makeAgent().getSkills()).toEqual([]);
+      expect(makeAgent().getSkillCount()).toBe(0);
+    });
+  });
 
-      expect(refs.map(ref => ref.name)).toEqual(['muster', 'grafana']);
-      expect(refs[0].namespace).toBe('agent-platform');
-      expect(refs[1].toolNames).toEqual(['query', 'dashboards']);
+  describe('tool bindings', () => {
+    const agentWithTools = () =>
+      makeAgent({
+        spec: {
+          tools: [
+            // The chart's per-agent gateway carrier: an MCP server, all its tools.
+            { mcp: { server: { kind: 'RemoteMCPServer', name: 'my-agent' } } },
+            // A server narrowed to two tools, calls needing approval.
+            {
+              mcp: {
+                server: { kind: 'RemoteMCPServer', name: 'grafana' },
+                tools: ['query', 'dashboards'],
+                requireApproval: true,
+              },
+            },
+            {
+              agent: {
+                name: 'sre',
+                description: 'Escalate to the SRE agent',
+                templateRef: { name: 'sre-agent' },
+              },
+            },
+          ],
+        },
+      } as Partial<AgentInterface>);
+
+    it('returns every binding', () => {
+      expect(agentWithTools().getToolBindings()).toHaveLength(3);
+    });
+
+    it('splits MCP bindings out', () => {
+      const bindings = agentWithTools().getMcpBindings();
+
+      expect(bindings.map(binding => binding.server.name)).toEqual([
+        'my-agent',
+        'grafana',
+      ]);
+      expect(bindings[1].tools).toEqual(['query', 'dashboards']);
+      expect(bindings[1].requireApproval).toBe(true);
     });
 
     it('splits agent references out', () => {
       const refs = agentWithTools().getAgentRefs();
 
       expect(refs).toHaveLength(1);
-      expect(refs[0].name).toBe('sre-agent');
+      expect(refs[0].templateRef.name).toBe('sre-agent');
     });
 
     it('returns empty lists when the agent declares no tools', () => {
-      expect(makeAgent().getTools()).toEqual([]);
-      expect(makeAgent().getMcpServerRefs()).toEqual([]);
+      expect(makeAgent().getToolBindings()).toEqual([]);
+      expect(makeAgent().getMcpBindings()).toEqual([]);
       expect(makeAgent().getAgentRefs()).toEqual([]);
     });
   });
 
   describe('generation tracking', () => {
     it('reports the stored and observed generations', () => {
-      const agent = makeAgent({
-        metadata: { name: 'my-agent', namespace: 'team-a', generation: 4 },
-        status: { observedGeneration: 3, conditions: [] },
-      } as Partial<AgentInterface>);
+      const agent = withHarnesses([READY_HARNESS()], {
+        generation: 4,
+        observedGeneration: 3,
+      });
 
       expect(agent.getGeneration()).toBe(4);
       expect(agent.getObservedGeneration()).toBe(3);
@@ -154,269 +304,302 @@ describe('Agent', () => {
     });
 
     it('is not stale once the controller catches up', () => {
-      const agent = makeAgent({
-        metadata: { name: 'my-agent', namespace: 'team-a', generation: 4 },
-        status: { observedGeneration: 4, conditions: [] },
-      } as Partial<AgentInterface>);
-
-      expect(agent.isStale()).toBe(false);
+      expect(
+        withHarnesses([READY_HARNESS()], {
+          generation: 4,
+          observedGeneration: 4,
+        }).isStale(),
+      ).toBe(false);
     });
 
     // "Cannot tell" must not read as "stale" — see isAgentStatusStale.
     it('is not stale when the controller records no observedGeneration', () => {
-      const agent = makeAgent({
-        metadata: { name: 'my-agent', namespace: 'team-a', generation: 4 },
-        status: { conditions: [] },
-      } as Partial<AgentInterface>);
+      const agent = withHarnesses([READY_HARNESS()], {
+        generation: 4,
+        observedGeneration: null,
+      });
 
       expect(agent.getObservedGeneration()).toBeUndefined();
       expect(agent.isStale()).toBe(false);
     });
   });
 
-  describe('readiness', () => {
-    const AT = '2026-07-31T10:00:00Z';
-
-    function condition(
-      type: string,
-      status: 'True' | 'False' | 'Unknown',
-      reason: string,
-      message = '',
-    ) {
-      return { type, status, reason, message, lastTransitionTime: AT };
-    }
-
-    function withStatus(
-      conditions: ReturnType<typeof condition>[],
-      { generation, observedGeneration } = {
-        generation: 1,
-        observedGeneration: 1,
-      },
-    ): Agent {
-      return makeAgent({
-        metadata: { name: 'my-agent', namespace: 'team-a', generation },
-        status: { conditions, observedGeneration },
-      } as Partial<AgentInterface>);
-    }
-
-    const accepted = () =>
-      condition(
-        'Accepted',
-        'True',
-        'Reconciled',
-        'Agent configuration accepted',
-      );
-
-    it('is ready when accepted and the deployment is ready', () => {
-      const agent = withStatus([
-        accepted(),
-        condition('Ready', 'True', 'DeploymentReady', 'Deployment is ready'),
-      ]);
-
-      expect(agent.getReadiness()).toBe('ready');
-      expect(agent.getReadinessMessage()).toBeUndefined();
+  describe('deriveHarnessReadiness', () => {
+    it('is ready on Ready=True', () => {
+      expect(deriveHarnessReadiness(READY_HARNESS())).toBe('ready');
     });
 
-    it('treats a sandbox WorkloadReady agent as ready', () => {
-      const agent = withStatus([
-        accepted(),
-        condition('Ready', 'True', 'WorkloadReady', 'Workload is ready'),
-      ]);
-
-      expect(agent.getReadiness()).toBe('ready');
-    });
-
-    it('is notReady when the deployment has no available replica', () => {
-      const agent = withStatus([
-        accepted(),
-        condition(
-          'Ready',
-          'False',
-          'DeploymentNotReady',
-          'Deployment is not ready, 0/1 pods are ready',
+    it('is failed on Accepted=False or Compatible=False', () => {
+      expect(
+        deriveHarnessReadiness(
+          harness('kagent', [
+            condition('Accepted', 'False', 'Rejected', 'label mismatch'),
+          ]),
         ),
-      ]);
-
-      expect(agent.getReadiness()).toBe('notReady');
-      expect(agent.getReadinessMessage()).toBe(
-        'Deployment is not ready, 0/1 pods are ready',
-      );
-    });
-
-    // The controller reports a missing Deployment as Ready=Unknown, and kagent's
-    // REST API keys readiness on the *reason*, so this must not read as ready.
-    it('is notReady when the deployment is missing (Ready=Unknown)', () => {
-      const agent = withStatus([
-        accepted(),
-        condition('Ready', 'Unknown', 'DeploymentNotFound', 'not found'),
-      ]);
-
-      expect(agent.getReadiness()).toBe('notReady');
-    });
-
-    // Deliberate divergence from kagent's REST API, which also requires the
-    // reason to be DeploymentReady/WorkloadReady. A future kagent adding a third
-    // ready reason must not make a healthy fleet read as broken.
-    it('is ready when Ready=True carries an unrecognised reason', () => {
-      const agent = withStatus([
-        accepted(),
-        condition('Ready', 'True', 'StatefulSetReady', 'StatefulSet is ready'),
-      ]);
-
-      expect(agent.getReadiness()).toBe('ready');
-    });
-
-    it('is notAccepted when reconciliation failed, and surfaces the error', () => {
-      const agent = withStatus([
-        condition(
-          'Accepted',
-          'False',
-          'ReconcileFailed',
-          'model config "missing" not found',
-        ),
-        condition('Ready', 'True', 'DeploymentReady'),
-      ]);
-
-      expect(agent.getReadiness()).toBe('notAccepted');
-      expect(agent.getReadinessMessage()).toBe(
-        'model config "missing" not found',
-      );
-    });
-
-    it('is pending when the controller has written no status yet', () => {
-      expect(makeAgent().getReadiness()).toBe('pending');
-    });
-
-    it('is pending when the status lags the current generation', () => {
-      const agent = withStatus(
-        [
-          accepted(),
-          condition('Ready', 'True', 'DeploymentReady', 'Deployment is ready'),
-        ],
-        { generation: 4, observedGeneration: 3 },
-      );
-
-      // The conditions still say ready, but they describe the previous spec.
-      expect(agent.getReadiness()).toBe('pending');
-    });
-
-    it('is not pending once the controller observes the current generation', () => {
-      const agent = withStatus(
-        [
-          accepted(),
-          condition('Ready', 'True', 'DeploymentReady', 'Deployment is ready'),
-        ],
-        { generation: 4, observedGeneration: 4 },
-      );
-
-      expect(agent.getReadiness()).toBe('ready');
-    });
-
-    // observedGeneration is optional in the CRD while metadata.generation always
-    // exists, so treating "absent" as "stale" would make every agent on such an
-    // installation read pending — hiding both healthy and broken agents.
-    it('does not report pending when observedGeneration is absent', () => {
-      const agent = makeAgent({
-        metadata: { name: 'my-agent', namespace: 'team-a', generation: 3 },
-        status: {
-          conditions: [
+      ).toBe('failed');
+      expect(
+        deriveHarnessReadiness(
+          harness('kagent', [
             accepted(),
-            condition(
-              'Ready',
-              'True',
-              'DeploymentReady',
-              'Deployment is ready',
-            ),
-          ],
-        },
-      } as Partial<AgentInterface>);
-
-      expect(agent.getReadiness()).toBe('ready');
+            condition('Compatible', 'False', 'Incompatible', 'no HITL here'),
+          ]),
+        ),
+      ).toBe('failed');
     });
 
-    it('still surfaces a failure when observedGeneration is absent', () => {
-      const agent = makeAgent({
-        metadata: { name: 'my-agent', namespace: 'team-a', generation: 3 },
-        status: {
-          conditions: [
-            condition('Accepted', 'False', 'ReconcileFailed', 'bad spec'),
-          ],
-        },
-      } as Partial<AgentInterface>);
-
-      expect(agent.getReadiness()).toBe('notAccepted');
-      expect(agent.getReadinessMessage()).toBe('bad spec');
+    it('is progressing while accepted but not ready, whatever the revision says', () => {
+      expect(
+        deriveHarnessReadiness(
+          harness(
+            'kagent',
+            [
+              accepted(),
+              condition('Ready', 'False', 'Compiling', 'compiling rev-2'),
+            ],
+            { desiredRevision: 'rev-2', latestSuccessfulRevision: 'rev-1' },
+          ),
+        ),
+      ).toBe('progressing');
+      // A first compile: nothing succeeded yet, Ready not written at all.
+      expect(
+        deriveHarnessReadiness(
+          harness('kagent', [accepted()], {
+            desiredRevision: 'rev-1',
+            latestSuccessfulRevision: undefined,
+          }),
+        ),
+      ).toBe('progressing');
     });
 
-    // The controller stamps observedGeneration even when reconciliation fails,
-    // so a rejected spec must settle on notAccepted rather than stick at pending.
-    it('reports a rejected current generation as notAccepted, not pending', () => {
-      const agent = withStatus(
-        [condition('Accepted', 'False', 'ReconcileFailed', 'bad spec')],
-        { generation: 2, observedGeneration: 2 },
-      );
-
-      expect(agent.getReadiness()).toBe('notAccepted');
+    it('is pending until the Harness has written an Accepted verdict', () => {
+      expect(deriveHarnessReadiness(harness('kagent', []))).toBe('pending');
+      expect(
+        deriveHarnessReadiness(
+          harness('kagent', [
+            condition('Accepted', 'Unknown', 'Reconciling', 'looking'),
+          ]),
+        ),
+      ).toBe('pending');
     });
   });
 
-  describe('getUnsupportedFeaturesWarning', () => {
-    it('returns the warning message when the condition is True', () => {
-      const agent = makeAgent({
-        status: {
-          observedGeneration: 1,
-          conditions: [
-            {
-              type: 'UnsupportedFeatures',
-              status: 'True',
-              reason: 'UnsupportedFeatures',
-              message: 'memory is not supported by the go runtime',
-              lastTransitionTime: '2026-07-31T10:00:00Z',
-            },
-          ],
-        },
-      } as Partial<AgentInterface>);
+  describe('readiness', () => {
+    it('is ready when the platform Harness reports the template ready', () => {
+      const agent = withHarnesses([READY_HARNESS()]);
 
-      expect(agent.getUnsupportedFeaturesWarning()).toBe(
-        'memory is not supported by the go runtime',
+      expect(agent.getReadiness()).toBe('ready');
+      expect(agent.getReadinessMessage()).toBeUndefined();
+      expect(agent.getDecidingHarness()?.name).toBe('kagent');
+    });
+
+    it('is notReady while the platform Harness compiles, and explains why', () => {
+      const agent = withHarnesses([
+        harness(
+          'kagent',
+          [
+            accepted(),
+            resolved(),
+            compatible(),
+            condition('Ready', 'False', 'Compiling', 'Compiling revision rev-2'),
+          ],
+          { desiredRevision: 'rev-2', latestSuccessfulRevision: 'rev-1' },
+        ),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notReady');
+      expect(agent.getReadinessMessage()).toBe('Compiling revision rev-2');
+    });
+
+    it('explains an unresolved reference ahead of the Ready condition', () => {
+      const agent = withHarnesses([
+        harness('kagent', [
+          accepted(),
+          condition(
+            'ResolvedRefs',
+            'False',
+            'ModelConfigNotFound',
+            'modelconfigs.kagent.dev "opus" not found',
+          ),
+          condition('Ready', 'False', 'NotReady', 'not ready'),
+        ]),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notReady');
+      expect(agent.getReadinessMessage()).toBe(
+        'modelconfigs.kagent.dev "opus" not found',
       );
     });
 
-    it('returns undefined when no warning is set', () => {
-      expect(makeAgent().getUnsupportedFeaturesWarning()).toBeUndefined();
+    it('is notAccepted when the platform Harness rejects the template, with the reason', () => {
+      const agent = withHarnesses([
+        harness('kagent', [
+          accepted(),
+          condition(
+            'Compatible',
+            'False',
+            'Incompatible',
+            'Dedicated sub-agents are not supported by this Harness',
+          ),
+        ]),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notAccepted');
+      expect(agent.getReadinessMessage()).toBe(
+        'Dedicated sub-agents are not supported by this Harness',
+      );
+    });
+
+    // The state of its own: nothing changes without a spec edit, so it must
+    // never look like a `pending` that will resolve.
+    it('is notAdmitted when the controller has seen the spec and no Harness admits it', () => {
+      const agent = withHarnesses([], { label: null });
+
+      expect(agent.getReadiness()).toBe('notAdmitted');
+      expect(agent.getReadinessMessage()).toBe(
+        `No Harness admits this agent: it carries no ${HARNESS_LABEL} label.`,
+      );
+      expect(agent.getHarnesses()).toEqual([]);
+      expect(agent.getConditions()).toBeUndefined();
+    });
+
+    it('names the label when it is set but selects no Harness', () => {
+      const agent = withHarnesses([], { label: 'claude' });
+
+      expect(agent.getReadiness()).toBe('notAdmitted');
+      expect(agent.getReadinessMessage()).toBe(
+        `No Harness admits this agent: the label ${HARNESS_LABEL}=claude selects none.`,
+      );
+    });
+
+    it('stays pending with no Harness entry until the controller has caught up', () => {
+      // No status at all.
+      expect(makeAgent().getReadiness()).toBe('pending');
+      // Entries empty, but the controller last looked at an older spec.
+      expect(
+        withHarnesses([], { generation: 2, observedGeneration: 1 }).getReadiness(),
+      ).toBe('pending');
+      // Entries empty and no observedGeneration recorded: cannot tell.
+      expect(
+        withHarnesses([], { observedGeneration: null }).getReadiness(),
+      ).toBe('pending');
+    });
+
+    it('is pending when the status lags the current generation', () => {
+      const agent = withHarnesses([READY_HARNESS()], {
+        generation: 5,
+        observedGeneration: 4,
+      });
+
+      expect(agent.getReadiness()).toBe('pending');
+    });
+
+    it('does not report pending when observedGeneration is absent but a Harness reports', () => {
+      expect(
+        withHarnesses([READY_HARNESS()], {
+          observedGeneration: null,
+        }).getReadiness(),
+      ).toBe('ready');
+    });
+
+    it('is pending while an admitting Harness has not written its verdict', () => {
+      expect(withHarnesses([harness('kagent', [])]).getReadiness()).toBe(
+        'pending',
+      );
+    });
+
+    it('lets the labelled platform Harness decide even when another Harness is ready', () => {
+      const agent = withHarnesses([
+        harness('claude', [accepted(), ready()]),
+        harness('kagent', [
+          accepted(),
+          condition('Ready', 'False', 'Compiling', 'compiling'),
+        ]),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notReady');
+      expect(agent.getDecidingHarness()?.name).toBe('kagent');
+      // The deciding Harness leads the list.
+      expect(agent.getHarnesses().map(h => h.name)).toEqual([
+        'kagent',
+        'claude',
+      ]);
+    });
+
+    it('falls back to the readiest Harness when the label names none of them', () => {
+      const agent = withHarnesses(
+        [
+          harness('claude', [
+            condition('Accepted', 'False', 'Rejected', 'no'),
+          ]),
+          harness('codex', [accepted(), ready()]),
+        ],
+        { label: 'kagent' },
+      );
+
+      expect(decidingHarnessStatus(agent.jsonData)?.harness).toBe('codex');
+      expect(agent.getReadiness()).toBe('ready');
+    });
+  });
+
+  describe('getHarnesses', () => {
+    it('reports each Harness with its verdict, revisions and warnings', () => {
+      const agent = withHarnesses([
+        harness('kagent', [accepted(), ready()], {
+          warnings: ['memory tools downgraded'],
+        }),
+      ]);
+
+      expect(agent.getHarnesses()).toEqual([
+        {
+          name: 'kagent',
+          readiness: 'ready',
+          warnings: ['memory tools downgraded'],
+          desiredRevision: 'rev-1',
+          latestSuccessfulRevision: 'rev-1',
+          conditions: [accepted(), ready()],
+        },
+      ]);
+    });
+  });
+
+  describe('getHarnessWarnings', () => {
+    it('returns the warnings, prefixed by the Harness only when several admit the template', () => {
+      expect(
+        withHarnesses([
+          harness('kagent', [ready()], { warnings: ['a', 'b'] }),
+        ]).getHarnessWarnings(),
+      ).toEqual(['a', 'b']);
+      expect(
+        withHarnesses([
+          harness('kagent', [ready()], { warnings: ['a'] }),
+          harness('claude', [ready()], { warnings: ['c'] }),
+        ]).getHarnessWarnings(),
+      ).toEqual(['kagent: a', 'claude: c']);
+    });
+
+    it('returns nothing when no Harness warns', () => {
+      expect(withHarnesses([READY_HARNESS()]).getHarnessWarnings()).toEqual([]);
     });
   });
 
   describe('getAgentStatusChangedAt', () => {
-    it('returns the most recent condition transition time', () => {
-      const agent = makeAgent({
-        status: {
-          observedGeneration: 1,
-          conditions: [
-            {
-              type: 'Accepted',
-              status: 'True',
-              reason: 'Reconciled',
-              message: '',
-              lastTransitionTime: '2026-07-31T10:00:00Z',
-            },
-            {
-              type: 'Ready',
-              status: 'False',
-              reason: 'DeploymentNotReady',
-              message: '',
-              lastTransitionTime: '2026-07-31T10:05:00Z',
-            },
-          ],
-        },
-      } as Partial<AgentInterface>);
+    it('returns the most recent transition time across every Harness', () => {
+      const agent = withHarnesses([
+        harness('kagent', [
+          condition('Accepted', 'True', 'Admitted', '', '2026-07-31T10:00:00Z'),
+          condition('Ready', 'False', 'Compiling', '', '2026-07-31T10:05:00Z'),
+        ]),
+        harness('claude', [
+          condition('Accepted', 'True', 'Admitted', '', '2026-07-31T10:02:00Z'),
+        ]),
+      ]);
 
       expect(getAgentStatusChangedAt(agent.jsonData)).toBe(
         Date.parse('2026-07-31T10:05:00Z'),
       );
     });
 
-    it('falls back to the creation timestamp when there are no conditions', () => {
+    it('falls back to the creation timestamp when no Harness has reported', () => {
       const agent = makeAgent({
         metadata: {
           name: 'my-agent',
@@ -440,6 +623,7 @@ describe('Agent', () => {
       expect(isAgentTransitional('ready')).toBe(false);
       expect(isAgentTransitional('notReady')).toBe(true);
       expect(isAgentTransitional('notAccepted')).toBe(true);
+      expect(isAgentTransitional('notAdmitted')).toBe(true);
       expect(isAgentTransitional('pending')).toBe(true);
     });
   });

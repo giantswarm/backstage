@@ -9,7 +9,10 @@ import {
   type FilterToolsOptions,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  RemoteMCPServer,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { agentsRouteRef } from '../../routes';
 import { AgentToolsetCard } from './AgentToolsetCard';
@@ -48,37 +51,56 @@ const SERVER_CRS = [
 ];
 
 type ToolEntry = {
-  mcpServer: { name: string; namespace?: string };
-  headersFrom?: { name: string; value: string }[];
+  mcpServer: { name: string };
 };
 
 function makeAgent(tools: ToolEntry[]) {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: { name: 'pr-reviewer', namespace: 'kagent' },
       spec: {
-        type: 'Declarative',
-        declarative: {
-          modelConfig: 'opus',
-          tools: tools.map(tool => ({ type: 'McpServer', ...tool })),
-        },
+        modelConfig: { name: 'opus' },
+        tools: tools.map(tool => ({
+          mcp: { server: { kind: 'RemoteMCPServer', name: tool.mcpServer.name } },
+        })),
       },
     } as never,
     'gazelle',
   );
 }
 
-const GATEWAY = { name: 'muster', namespace: 'agent-platform' };
+// The gateway binding: the per-agent carrier RemoteMCPServer, named after the
+// agent, which carries the toolset header (or not).
+const GATEWAY = { name: 'pr-reviewer' };
+
+/** The carrier in the agent's namespace, with the header when a toolset is given. */
+function carrier(toolset?: string) {
+  return new RemoteMCPServer(
+    {
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'RemoteMCPServer',
+      metadata: { name: 'pr-reviewer', namespace: 'kagent' },
+      spec: {
+        description: 'gateway',
+        url: 'http://muster.agent-platform.svc.cluster.local:8090/mcp',
+        headersFrom: toolset
+          ? [{ name: 'X-Muster-Toolset', value: toolset }]
+          : undefined,
+      },
+    } as never,
+    'gazelle',
+  );
+}
+
+// What the RemoteMCPServer read returns for the agent's namespace; the carrier
+// without a header by default (implicit full access when bound).
+let CARRIERS: RemoteMCPServer[] = [carrier()];
 
 function withToolset(toolset: string) {
-  return makeAgent([
-    {
-      mcpServer: GATEWAY,
-      headersFrom: [{ name: 'X-Muster-Toolset', value: toolset }],
-    },
-  ]);
+  CARRIERS = [carrier(toolset)];
+  return makeAgent([{ mcpServer: GATEWAY }]);
 }
 
 const RESOLVED = [
@@ -146,11 +168,13 @@ const resolvedAnswer =
   });
 
 async function renderCard(agent: Agent, api?: MusterApi) {
-  mockUseResources.mockImplementation(() => ({
-    resources: SERVER_CRS,
-    isLoading: false,
-    errors: [],
-  }));
+  mockUseResources.mockImplementation(
+    (_clusters: unknown, ResourceClass: unknown) => ({
+      resources: ResourceClass === RemoteMCPServer ? CARRIERS : SERVER_CRS,
+      isLoading: false,
+      errors: [],
+    }),
+  );
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -175,7 +199,10 @@ const card = () =>
     .closest('article, div, section')!.parentElement as HTMLElement;
 
 describe('AgentToolsetCard', () => {
-  beforeEach(() => mockUseResources.mockReset());
+  beforeEach(() => {
+    mockUseResources.mockReset();
+    CARRIERS = [carrier()];
+  });
 
   it('labels an agent without a toolset as implicit full access', async () => {
     const { api, filterTools } = makeApi(resolvedAnswer());

@@ -52,7 +52,7 @@ const smollm: ServedModel = {
 function modelConfig(name: string, baseUrl?: string) {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name, namespace: 'kagent' },
       spec: {

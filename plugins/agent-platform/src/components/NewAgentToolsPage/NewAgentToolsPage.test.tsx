@@ -13,7 +13,10 @@ import {
   type MusterApi,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  RemoteMCPServer,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
@@ -75,28 +78,38 @@ const SERVER_CRS = [
   mcpServer('pro', { auth: { type: 'oauth' } }, {}, 'Auth Required'),
 ];
 
+// The toolset lives on the agent's carrier RemoteMCPServer (named after the
+// agent), which the copy-from-agent read lists alongside the templates.
+let CARRIERS: RemoteMCPServer[] = [];
+
 function agentWithToolset(name: string, toolset: string) {
+  CARRIERS.push(
+    new RemoteMCPServer(
+      {
+        apiVersion: 'kagent.dev/v1alpha3',
+        kind: 'RemoteMCPServer',
+        metadata: { name, namespace: 'kagent' },
+        spec: {
+          description: 'gateway',
+          url: 'http://muster.agent-platform.svc.cluster.local:8090/mcp',
+          headersFrom: [{ name: 'X-Muster-Toolset', value: toolset }],
+        },
+      } as never,
+      'gazelle',
+    ),
+  );
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: {
         name,
         namespace: 'kagent',
         annotations: { 'ui.giantswarm.io/display-name': 'Existing agent' },
       },
       spec: {
-        type: 'Declarative',
-        declarative: {
-          modelConfig: 'opus',
-          tools: [
-            {
-              type: 'McpServer',
-              mcpServer: { name: 'muster', namespace: 'agent-platform' },
-              headersFrom: [{ name: 'X-Muster-Toolset', value: toolset }],
-            },
-          ],
-        },
+        modelConfig: { name: 'opus' },
+        tools: [{ mcp: { server: { kind: 'RemoteMCPServer', name } } }],
       },
     } as never,
     'gazelle',
@@ -358,6 +371,9 @@ async function renderStep(
           errors: [],
         };
       }
+      if (ResourceClass === RemoteMCPServer) {
+        return { resources: CARRIERS, isLoading: false, errors: [] };
+      }
       return { resources: [], isLoading: false, errors: [] };
     },
   );
@@ -414,6 +430,7 @@ describe('NewAgentToolsPage', () => {
   let windowOpen: jest.SpyInstance;
   beforeEach(() => {
     mockUseResources.mockReset();
+    CARRIERS = [];
     // jsdom has no window.open; null is the popup-blocked answer the sign-in
     // hook tolerates.
     windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);

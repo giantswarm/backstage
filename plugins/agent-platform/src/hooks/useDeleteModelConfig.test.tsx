@@ -34,7 +34,7 @@ function makeModelConfig({
 } = {}): ModelConfig {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name: 'qwen3', namespace: NAMESPACE, labels },
       spec: {
@@ -43,17 +43,17 @@ function makeModelConfig({
         apiKeySecret,
         apiKeySecretKey: 'OPENAI_API_KEY',
       },
-    } as crds.kagent.v1alpha2.ModelConfig,
+    } as crds.kagent.v1alpha3.ModelConfig,
     CLUSTER,
   );
 }
 
 function makeAgentJson(modelConfig: string) {
   return {
-    apiVersion: 'kagent.dev/v1alpha2',
-    kind: 'Agent',
+    apiVersion: 'kagent.dev/v1alpha3',
+    kind: 'AgentTemplate',
     metadata: { name: `agent-on-${modelConfig}`, namespace: NAMESPACE },
-    spec: { type: 'Declarative', declarative: { modelConfig } },
+    spec: { modelConfig: { name: modelConfig } },
   };
 }
 

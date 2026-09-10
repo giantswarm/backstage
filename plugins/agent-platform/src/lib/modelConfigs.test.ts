@@ -19,13 +19,13 @@ const CLUSTER = 'gazelle';
 
 function makeModelConfig(
   overrides: {
-    metadata?: Partial<crds.kagent.v1alpha2.ModelConfig['metadata']>;
-    spec?: crds.kagent.v1alpha2.ModelConfig['spec'];
+    metadata?: Partial<crds.kagent.v1alpha3.ModelConfig['metadata']>;
+    spec?: crds.kagent.v1alpha3.ModelConfig['spec'];
   } = {},
 ): ModelConfig {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name: 'qwen3', namespace: 'kagent', ...overrides.metadata },
       spec: overrides.spec ?? {
@@ -35,7 +35,7 @@ function makeModelConfig(
         apiKeySecretKey: 'OPENAI_API_KEY',
         openAI: { baseUrl: 'https://vllm.example.test/v1' },
       },
-    } as crds.kagent.v1alpha2.ModelConfig,
+    } as crds.kagent.v1alpha3.ModelConfig,
     CLUSTER,
   );
 }
@@ -237,7 +237,7 @@ describe('buildModelConfigManifest', () => {
     );
 
     expect(manifest).toEqual({
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: {
         name: 'qwen3',
