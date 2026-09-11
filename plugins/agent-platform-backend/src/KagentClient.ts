@@ -348,11 +348,14 @@ export class KagentClient {
     const instances: AgentInstance[] = [];
     let pageToken = '';
     for (let page = 0; page < MAX_INSTANCE_PAGES; page += 1) {
+      // A per-iteration copy: the RPC closure must not capture the variable
+      // the loop rewrites.
+      const token = pageToken;
       const response = await this.call(
         () =>
           this.instanceService.listAgentInstances(
             {
-              page: { limit: PAGE_SIZE, pageToken },
+              page: { limit: PAGE_SIZE, pageToken: token },
               ...(filter.agentTemplate && {
                 agentTemplate: filter.agentTemplate,
               }),
@@ -691,19 +694,18 @@ export class KagentClient {
     }
     const payload = buildHitlResponse(request, answer);
 
-    const text =
-      answer.text ??
-      (answer.answers && answer.answers.length > 0
-        ? answer.answers.map(values => values.join(', ')).join('\n')
-        : answer.decision === 'approve'
-          ? 'Approved.'
-          : 'Rejected.');
-
     return this.dispatch(
       sessionId,
       {
         messageId: answer.messageId,
-        parts: [{ content: { case: 'text', value: text } }],
+        parts: [
+          {
+            content: {
+              case: 'text',
+              value: answer.text ?? renderDecision(answer),
+            },
+          },
+        ],
         taskId: answer.taskId,
         extensions: [HITL_EXTENSION_URI],
         metadata: { [HITL_EXTENSION_URI]: payload },
@@ -945,12 +947,14 @@ export class KagentClient {
     let totalSize = 0;
     let pageToken = '';
     for (let page = 0; page < MAX_TASK_PAGES; page += 1) {
+      // A per-iteration copy, as in `listSessions`.
+      const token = pageToken;
       const response = await this.call(
         () =>
           this.a2aService.listTasks(
             {
               pageSize: PAGE_SIZE,
-              pageToken,
+              pageToken: token,
               includeArtifacts: extra.includeArtifacts ?? true,
               ...(extra.historyLength !== undefined && {
                 historyLength: extra.historyLength,
@@ -1089,6 +1093,17 @@ export class KagentClient {
       );
     });
   }
+}
+
+/**
+ * The transcript's rendering of a decision the user gave no words for: the
+ * answers as given, else the verdict — so the reply message is never empty.
+ */
+function renderDecision(answer: HitlAnswer): string {
+  if (answer.answers && answer.answers.length > 0) {
+    return answer.answers.map(values => values.join(', ')).join('\n');
+  }
+  return answer.decision === 'approve' ? 'Approved.' : 'Rejected.';
 }
 
 /**

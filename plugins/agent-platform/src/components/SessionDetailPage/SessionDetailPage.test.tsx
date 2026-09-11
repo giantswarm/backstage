@@ -7,7 +7,9 @@ import { sessionsRouteRef } from '../../routes';
 import type { AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionDetailView } from '../../hooks/useSessionDetail';
 import type { UseAnswerConfirmationResult } from '../../hooks/useAnswerConfirmation';
+import type { UseCancelTaskResult } from '../../hooks/useCancelTask';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
+import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline } from '../../lib/kagentTimeline';
 import {
   deriveSessionState,
@@ -118,6 +120,26 @@ jest.mock('../../hooks/useAnswerConfirmation', () => ({
   useAnswerConfirmation: () => mockUseAnswerConfirmation(),
 }));
 
+// Stubbed like the other write hooks: it reads `kagentApiRef`, and this test mounts
+// no APIs and no query client.
+const mockCancelTask = jest.fn();
+const mockUseCancelTask = jest.fn<UseCancelTaskResult, []>();
+jest.mock('../../hooks/useCancelTask', () => ({
+  useCancelTask: () => mockUseCancelTask(),
+}));
+
+function idleCancel(
+  overrides: Partial<UseCancelTaskResult> = {},
+): UseCancelTaskResult {
+  return {
+    cancelTask: mockCancelTask,
+    isCancelling: false,
+    error: null,
+    reset: jest.fn(),
+    ...overrides,
+  };
+}
+
 /** The hook's idle state, which most tests want. */
 function idleConfirmation(
   overrides: Partial<UseAnswerConfirmationResult> = {},
@@ -222,6 +244,9 @@ describe('SessionDetailPage', () => {
     mockAnswer.mockReset();
     mockAnswer.mockResolvedValue(undefined);
     mockUseAnswerConfirmation.mockReturnValue(idleConfirmation());
+    mockCancelTask.mockReset();
+    mockCancelTask.mockResolvedValue(undefined);
+    mockUseCancelTask.mockReturnValue(idleCancel());
     mockUseSessionDetail.mockReturnValue(loadedView);
     mockUseAgents.mockReturnValue({
       rows: [
@@ -573,6 +598,60 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(composer()).not.toHaveFocus();
+    });
+
+    it('offers Stop in Send’s slot while the agent works on a known turn, and cancels that task', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: true,
+        currentTaskId: 'task-9',
+      });
+      await render();
+
+      expect(
+        screen.queryByRole('button', { name: 'Send' }),
+      ).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+
+      // Server-side: the task the badge describes, not the stream.
+      expect(mockCancelTask).toHaveBeenCalledWith('task-9');
+    });
+
+    it('aims Stop at the task the stream named before any poll has seen it', async () => {
+      // The first beat of a send: the poll still shows the previous, finished
+      // turn, but the stream's task snapshot has already named the new one.
+      mockUseSessionDetail.mockReturnValue({
+        ...settledView,
+        currentTaskId: 'task-old',
+      });
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          isSending: true,
+          stream: {
+            ...createStreamTurn('m1'),
+            dispatched: true,
+            taskId: 'task-new',
+          },
+        }),
+      );
+      await render();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+
+      expect(mockCancelTask).toHaveBeenCalledWith('task-new');
+    });
+
+    it('withholds Stop while the running turn is not known', async () => {
+      // Sending, but neither the stream nor the poll has named the task: Send is
+      // withheld as before and nothing pretends to be stoppable.
+      mockUseSessionDetail.mockReturnValue(settledView);
+      mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+      await render();
+
+      expect(
+        screen.queryByRole('button', { name: 'Stop' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
     });
 
     it('is withheld on a read-only session, and says so', async () => {
