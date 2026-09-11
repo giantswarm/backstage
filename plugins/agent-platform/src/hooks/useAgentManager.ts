@@ -2,7 +2,10 @@ import { useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 
 import { AgentManagerClient } from '../apis/AgentManagerClient';
-import { AGENT_MANAGER_SERVER, type AgentManagerInfo } from '../lib/agentManager';
+import {
+  AGENT_MANAGER_SERVER,
+  type AgentManagerInfo,
+} from '../lib/agentManager';
 import {
   musterAgentManagerInfoQueryKey,
   musterServersQueryKey,
@@ -64,6 +67,18 @@ export function useAgentManagerInfo(
  */
 export type AgentManagerPresence = 'available' | 'missing' | 'unknown';
 
+/** What a `core_mcpserver_list` answer says about agent-manager. */
+function presenceIn(
+  servers: { name: string }[] | null | undefined,
+): AgentManagerPresence {
+  if (!servers) {
+    return 'unknown';
+  }
+  return servers.some(server => server.name === AGENT_MANAGER_SERVER)
+    ? 'available'
+    : 'missing';
+}
+
 export type AgentManagerAvailability = {
   /** The installations whose muster lists agent-manager. */
   available: string[];
@@ -102,12 +117,7 @@ export function useAgentManagerAvailability(
   const signature = installations
     .map((installation, index) => {
       const query = queries[index];
-      const servers = query.data?.mcpServers;
-      const presence = !servers
-        ? 'unknown'
-        : servers.some(server => server.name === AGENT_MANAGER_SERVER)
-          ? 'available'
-          : 'missing';
+      const presence = presenceIn(query.data?.mcpServers);
       return `${installation}:${presence}:${query.isLoading ? 'l' : ''}`;
     })
     .join('|');

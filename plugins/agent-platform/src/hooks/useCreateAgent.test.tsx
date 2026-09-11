@@ -2,7 +2,10 @@ import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { musterApiRef, type MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 
 import type { AgentSpec } from '../lib/agentManager';
 import { useCreateAgent } from './useCreateAgent';
@@ -28,7 +31,9 @@ const spec: AgentSpec = {
   ],
 };
 
-function renderWith(options: { installation?: string } = { installation: 'gazelle' }) {
+function renderWith(
+  options: { installation?: string } = { installation: 'gazelle' },
+) {
   const { installation } = options;
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },

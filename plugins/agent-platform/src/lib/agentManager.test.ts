@@ -89,9 +89,8 @@ describe('helmInstallCommand', () => {
   };
 
   it('installs the resolved latest version from the values file', () => {
-    expect(
-      helmInstallCommand(spec, { ...chart, latestVersion: '1.0.0' }),
-    ).toBe(`helm install pr-reviewer \\
+    expect(helmInstallCommand(spec, { ...chart, latestVersion: '1.0.0' }))
+      .toBe(`helm install pr-reviewer \\
   oci://gsoci.azurecr.io/charts/giantswarm/agent \\
   --version 1.0.0 \\
   --namespace kagent \\

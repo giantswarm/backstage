@@ -109,7 +109,8 @@ function SkillCard({
         color="secondary"
         aria-label={`Pinned to commit ${shortCommit(skill.commit)} of ${skill.ref}`}
       >
-        {skill.ref} <span className={classes.code}>@{shortCommit(skill.commit)}</span>
+        {skill.ref}{' '}
+        <span className={classes.code}>@{shortCommit(skill.commit)}</span>
       </Text>
     </SelectableCard>
   );
@@ -340,8 +341,8 @@ export function NewAgentSkillsPage() {
           Packaged instructions the agent can reuse for specific kinds of tasks,
           discovered from the configured skill repositories. Each skill is
           pinned to the commit shown on its card — the head of its repository
-          when it was discovered — and stays there until you update it.
-          Optional — you can continue without selecting any.
+          when it was discovered — and stays there until you update it. Optional
+          — you can continue without selecting any.
         </Text>
 
         <Flex direction="column" gap="4">

@@ -64,10 +64,9 @@ export class AgentManagerClient {
 
   /** The dry run: the manifests a create would apply, and every violation. */
   validateAgent(spec: AgentSpec): Promise<ValidateAgentResult> {
-    return this.call<ValidateAgentResult>(
-      AGENT_MANAGER_TOOLS.validateAgent,
-      { ...spec },
-    );
+    return this.call<ValidateAgentResult>(AGENT_MANAGER_TOOLS.validateAgent, {
+      ...spec,
+    });
   }
 
   /** Applies the release as the person. */

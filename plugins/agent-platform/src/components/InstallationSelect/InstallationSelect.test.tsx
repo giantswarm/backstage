@@ -110,7 +110,9 @@ describe('InstallationSelect', () => {
       expect(
         getByText('No agent-manager on some installations'),
       ).toBeInTheDocument();
-      expect(queryByText('No installations with models')).not.toBeInTheDocument();
+      expect(
+        queryByText('No installations with models'),
+      ).not.toBeInTheDocument();
     });
 
     it('requires the muster plugin — there is no other path to agent-manager', () => {
@@ -124,7 +126,10 @@ describe('InstallationSelect', () => {
 
     it('does not hide the sole installation when its muster lacks agent-manager', () => {
       mockInstallations = [{ name: 'solo' }];
-      mockModelConfigs = { ...mockModelConfigs, availableInstallations: ['solo'] };
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['solo'],
+      };
       mockPresence = { solo: 'missing' };
 
       const { getByText } = render(<InstallationSelect />);

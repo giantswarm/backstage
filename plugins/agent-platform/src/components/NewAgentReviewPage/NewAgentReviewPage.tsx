@@ -20,7 +20,10 @@ import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-rea
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import { useCreateAgent } from '../../hooks/useCreateAgent';
+import {
+  useCreateAgent,
+  type CreateAgentFailure,
+} from '../../hooks/useCreateAgent';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
@@ -189,6 +192,17 @@ function Violations({ errors }: { errors: string[] }) {
       }
     />
   );
+}
+
+/** The headline for a refused write, by agent-manager's code. */
+function refusalTitle(code: CreateAgentFailure['code']): string {
+  if (code === 'forbidden') {
+    return 'Not permitted';
+  }
+  if (code === 'conflict') {
+    return 'Refused';
+  }
+  return 'Deploy failed';
 }
 
 /** The person's muster session is not connected to agent-manager yet. */
@@ -386,7 +400,14 @@ export function NewAgentReviewPage() {
         },
       });
     }
-  }, [creation, spec, agentDetailLink, state.installation, namespace, navigate]);
+  }, [
+    creation,
+    spec,
+    agentDetailLink,
+    state.installation,
+    namespace,
+    navigate,
+  ]);
 
   const onCommit = useCallback(async () => {
     setCommitResult(undefined);
@@ -633,7 +654,9 @@ export function NewAgentReviewPage() {
           />
           <Flex direction="column" gap="3">
             {validation.isLoading && !dryRun && (
-              <Text color="secondary">Asking agent-manager for the dry run…</Text>
+              <Text color="secondary">
+                Asking agent-manager for the dry run…
+              </Text>
             )}
             {validation.failure?.kind === 'not-connected' && (
               <ConnectAgentManager
@@ -672,8 +695,8 @@ export function NewAgentReviewPage() {
                 </div>
                 <Text variant="body-x-small" color="secondary">
                   Values validated against the chart's schema at version{' '}
-                  <span className={classes.code}>{dryRun.schemaVersion}</span>{' '}
-                  ({dryRun.schemaSource}).
+                  <span className={classes.code}>{dryRun.schemaVersion}</span> (
+                  {dryRun.schemaSource}).
                 </Text>
               </>
             )}
@@ -739,13 +762,7 @@ export function NewAgentReviewPage() {
             <Box mt="3">
               <Alert
                 status="danger"
-                title={
-                  creation.failure.code === 'forbidden'
-                    ? 'Not permitted'
-                    : creation.failure.code === 'conflict'
-                      ? 'Refused'
-                      : 'Deploy failed'
-                }
+                title={refusalTitle(creation.failure.code)}
                 description={creation.failure.message}
               />
             </Box>

@@ -2,7 +2,10 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
-import { musterApiRef, type MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { AgentCreationProgress } from './AgentCreationProgress';
@@ -82,13 +85,11 @@ describe('AgentCreationProgress', () => {
 
   it('polls get_agent_status until the platform Harness reports ready, then names the Harness', async () => {
     mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
-    callTool
-      .mockResolvedValueOnce(status('progressing'))
-      .mockResolvedValue(
-        status('ready', {
-          template: { exists: true, harnesses: [{ harness: 'kagent' }] },
-        }),
-      );
+    callTool.mockResolvedValueOnce(status('progressing')).mockResolvedValue(
+      status('ready', {
+        template: { exists: true, harnesses: [{ harness: 'kagent' }] },
+      }),
+    );
 
     await render();
 
@@ -106,10 +107,9 @@ describe('AgentCreationProgress', () => {
       expect.objectContaining({ replace: true }),
     );
 
-    await waitFor(
-      () => expect(screen.getByText('Ready')).toBeInTheDocument(),
-      { timeout: 6_000 },
-    );
+    await waitFor(() => expect(screen.getByText('Ready')).toBeInTheDocument(), {
+      timeout: 6_000,
+    });
     expect(
       screen.getByText(
         'The agent is ready on Harness kagent (created as admin@lab.local).',

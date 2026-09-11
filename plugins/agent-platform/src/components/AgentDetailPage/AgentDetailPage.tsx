@@ -331,7 +331,11 @@ function AgentDetailPageContent() {
           {description && <Text variant="body-medium">{description}</Text>}
         </Flex>
 
-        <AgentCreationProgress installation={installation} namespace={namespace} name={name} />
+        <AgentCreationProgress
+          installation={installation}
+          namespace={namespace}
+          name={name}
+        />
 
         {/* A cheap pre-check only: no Flux or Helm marker at all means there is
             nothing to resolve, so skip the lookups entirely. Whether the agent is

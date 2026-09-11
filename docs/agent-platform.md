@@ -332,7 +332,6 @@ runs, until they update it explicitly on the agent's page. Repo-root skills omit
 per-skill credential in the request (private skill repositories are a separate
 piece of platform work) and no runtime field.
 
-
 ### The review page is agent-manager's dry run
 
 Nothing in the portal composes a manifest. The review page turns the form into
@@ -3552,6 +3551,7 @@ provisional:
   contract sketched for it and may need adjusting when it lands.
 
 ---
+
 ## Open TODOs
 
 ### Installation / ModelConfig querying

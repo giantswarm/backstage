@@ -4,7 +4,10 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { musterApiRef, type MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import type {
@@ -55,9 +58,13 @@ jest.mock('../../hooks/useAgentAvatarUrl', () => ({
 // CodeMirror does not lay out in jsdom; a plain block exposes the YAML the
 // page hands it, which is what the assertions read.
 jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({ content, filename }: { content: string; filename?: string }) => (
-    <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>
-  ),
+  CodeBlock: ({
+    content,
+    filename,
+  }: {
+    content: string;
+    filename?: string;
+  }) => <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>,
 }));
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
@@ -131,7 +138,9 @@ function dryRunOf(spec: AgentSpec): ValidateAgentResult {
         'kind: HelmRelease',
         `metadata:\n  name: ${spec.name}\n  namespace: ${spec.namespace}`,
         `spec:\n  serviceAccountName: kagent-flux\n  values:\n    skills:\n      - git:\n          commit: ${
-          spec.skills && 'git' in spec.skills[0] ? spec.skills[0].git.commit : ''
+          spec.skills && 'git' in spec.skills[0]
+            ? spec.skills[0].git.commit
+            : ''
         }\n`,
       ].join('\n'),
       values,
@@ -272,7 +281,8 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
 
 const deployButton = () =>
   within(
-    screen.getByRole('heading', { name: 'Deploy' }).parentElement as HTMLElement,
+    screen.getByRole('heading', { name: 'Deploy' })
+      .parentElement as HTMLElement,
   ).getByRole('button', { name: /Deploy agent|Deploying…/ });
 
 function specSentTo(callTool: jest.Mock, tool: string): AgentSpec {
@@ -310,7 +320,10 @@ describe('NewAgentReviewPage', () => {
         {
           name: 'Incident responder',
           path: 'incident',
-          git: { url: 'https://github.com/giantswarm/agent-skills', commit: HEAD },
+          git: {
+            url: 'https://github.com/giantswarm/agent-skills',
+            commit: HEAD,
+          },
         },
       ],
       toolset: ['preset:read-only'],

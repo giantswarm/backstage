@@ -24,9 +24,7 @@ function readHandoff(state: unknown): AgentCreatedHandoff | undefined {
   if (typeof state !== 'object' || state === null) {
     return undefined;
   }
-  const candidate = (state as Record<string, unknown>)[
-    AGENT_CREATED_STATE_KEY
-  ];
+  const candidate = (state as Record<string, unknown>)[AGENT_CREATED_STATE_KEY];
   if (typeof candidate !== 'object' || candidate === null) {
     return undefined;
   }

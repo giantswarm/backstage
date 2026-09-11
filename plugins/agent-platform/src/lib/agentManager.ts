@@ -245,9 +245,6 @@ export class AgentManagerError extends Error {
  */
 export class AgentManagerNotConnectedError extends Error {
   readonly name = 'AgentManagerNotConnectedError';
-  constructor(message: string) {
-    super(message);
-  }
 }
 
 /**
