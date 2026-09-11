@@ -1,4 +1,4 @@
-import { Text } from '@backstage/ui';
+import { Button, Text } from '@backstage/ui';
 import {
   Agent,
   AgentSkill,
@@ -70,11 +70,31 @@ function SkillCard({ skill }: { skill: AgentSkill }) {
  * the template. Presented as the same grid of cards the create flow selects
  * from, so an agent's skills look like the things that were picked.
  */
-export function AgentSkillsCard({ agent }: { agent: Agent }) {
+export function AgentSkillsCard({
+  agent,
+  onUpdateSkills,
+}: {
+  agent: Agent;
+  /**
+   * Opens the Update skills dialog — the pins never move on their own; this
+   * re-pins every git skill to its repository's default-branch head after a
+   * dry run. Absent when the page cannot reach agent-manager.
+   */
+  onUpdateSkills?: () => void;
+}) {
   const skills = agent.getSkills();
 
   return (
-    <InfoCard title={`Skills${skills.length > 0 ? ` (${skills.length})` : ''}`}>
+    <InfoCard
+      title={`Skills${skills.length > 0 ? ` (${skills.length})` : ''}`}
+      headerActions={
+        onUpdateSkills && skills.length > 0 ? (
+          <Button variant="secondary" size="small" onPress={onUpdateSkills}>
+            Update skills…
+          </Button>
+        ) : undefined
+      }
+    >
       {skills.length === 0 ? (
         <Text variant="body-medium" color="secondary">
           No skills mounted. The agent works from its system prompt and tools

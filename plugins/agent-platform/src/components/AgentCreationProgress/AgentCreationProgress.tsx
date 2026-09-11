@@ -3,6 +3,7 @@ import { Alert } from '@backstage/ui';
 import {
   useAgentCreatedHandoff,
   type AgentCreatedHandoff,
+  type AgentWriteAction,
 } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import type { AgentStatus } from '../../lib/agentManager';
@@ -13,26 +14,62 @@ function harnessOf(status: AgentStatus | undefined): string | undefined {
 }
 
 /**
- * The polling half, mounted only for the agent that was just created: the
+ * How each write is named while it converges: what agent-manager did (the
+ * release was applied, updated, its skills re-pinned), what it is doing from
+ * the person's point of view, and the past participle for the outcome.
+ */
+const WORDING: Record<
+  AgentWriteAction,
+  { wrote: string; doing: string; done: string; failedTitle: string }
+> = {
+  created: {
+    wrote: 'applied the release',
+    doing: 'Deploying…',
+    done: 'Created',
+    failedTitle: 'The agent did not become ready',
+  },
+  updated: {
+    wrote: 'updated the release',
+    doing: 'Saving…',
+    done: 'Saved',
+    failedTitle: 'The updated agent did not become ready',
+  },
+  'skills-updated': {
+    wrote: 're-pinned the skills',
+    doing: 'Updating skills…',
+    done: 'Skills updated',
+    failedTitle: 'The agent did not become ready with its updated skills',
+  },
+};
+
+/**
+ * The polling half, mounted only for the agent that was just written: the
  * verdict from agent-manager's `get_agent_status`, re-read until the platform
  * Harness reports `ready` or `failed`.
  */
 function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
-  const { installation, namespace, name, requestedBy } = handoff;
+  const {
+    installation,
+    namespace,
+    name,
+    requestedBy,
+    action = 'created',
+  } = handoff;
   const { status, isSettling, error } = useAgentStatus(
     installation,
     namespace,
     name,
   );
 
+  const wording = WORDING[action];
   const as = requestedBy ? ` as ${requestedBy}` : '';
 
   if (error) {
     return (
       <Alert
         status="warning"
-        title="Created, but the readiness could not be read"
-        description={`agent-manager applied the release${as}. ${error.message}`}
+        title={`${wording.done}, but the readiness could not be read`}
+        description={`agent-manager ${wording.wrote}${as}. ${error.message}`}
       />
     );
   }
@@ -41,10 +78,10 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     return (
       <Alert
         status="info"
-        title="Deploying…"
+        title={wording.doing}
         description={
           status?.summary ??
-          `agent-manager applied the release${as}; waiting for the platform Harness to compile the template.`
+          `agent-manager ${wording.wrote}${as}; waiting for the platform Harness to compile the template.`
         }
       />
     );
@@ -58,7 +95,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
         title="Ready"
         description={`The agent is ready${
           harness ? ` on Harness ${harness}` : ' on the platform Harness'
-        }${requestedBy ? ` (created${as})` : ''}.`}
+        }${requestedBy ? ` (${wording.done.toLowerCase()}${as})` : ''}.`}
       />
     );
   }
@@ -66,7 +103,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
   return (
     <Alert
       status="danger"
-      title="The agent did not become ready"
+      title={wording.failedTitle}
       description={
         status?.summary ??
         'agent-manager reports the template failed on the platform Harness.'

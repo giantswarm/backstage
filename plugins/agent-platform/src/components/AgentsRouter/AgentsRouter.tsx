@@ -4,6 +4,7 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { NewAgentFormProvider } from '../NewAgentFormProvider';
 import { AgentDetailPage } from '../AgentDetailPage';
+import { EditAgentPage } from '../EditAgentPage';
 import { AgentsIndexPage } from '../AgentsIndexPage';
 import { NewAgentPage } from '../NewAgentPage';
 import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
@@ -21,8 +22,8 @@ function ScrollToTop() {
   return null;
 }
 
-// Content of the "Agents" tab: the list, one agent's details, and the create
-// flow. The create steps share one NewAgentFormProvider so the composed
+// Content of the "Agents" tab: the list, one agent's details, the edit page,
+// and the create flow. The create steps share one NewAgentFormProvider so the composed
 // agent survives navigation across `/agent-platform/agents/new`,
 // `.../new/skills`, `.../new/tools` and `.../new/review`.
 //
@@ -32,7 +33,8 @@ function ScrollToTop() {
 // The detail route is listed last, but order does not decide the match: react-
 // router ranks static segments above dynamic ones and matches on segment count,
 // so `new`/`new/skills`/`new/tools`/`new/review` (one and two segments) can
-// never be swallowed by the three-segment detail path.
+// never be swallowed by the three-segment detail path, nor the four-segment
+// edit path by it.
 export const AgentsRouter = () => {
   return (
     <QueryClientProvider>
@@ -47,6 +49,10 @@ export const AgentsRouter = () => {
           <Route
             path=":installation/:namespace/:name"
             element={<AgentDetailPage />}
+          />
+          <Route
+            path=":installation/:namespace/:name/edit"
+            element={<EditAgentPage />}
           />
         </Routes>
       </NewAgentFormProvider>

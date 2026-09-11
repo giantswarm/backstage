@@ -20,6 +20,10 @@ export const AGENT_MANAGER_TOOLS = {
   validateAgent: 'validate_agent',
   createAgent: 'create_agent',
   getAgentStatus: 'get_agent_status',
+  getAgent: 'get_agent',
+  updateAgent: 'update_agent',
+  deleteAgent: 'delete_agent',
+  listModelConfigs: 'list_model_configs',
 } as const;
 
 export type AgentManagerTool =
@@ -304,3 +308,115 @@ export function helmInstallCommand(
   --namespace ${spec.namespace} \\
   --values ${spec.name}-values.yaml`;
 }
+
+/**
+ * How agent-manager manages an agent: `helmrelease` — a HelmRelease it can
+ * write live; `gitops` — the release is applied by a Flux Kustomization, its
+ * desired state lives in git and a live write is refused; `none` — a bare
+ * `AgentTemplate` with no release behind it, refused as well.
+ */
+export type AgentManagedBy = 'helmrelease' | 'gitops' | 'none';
+
+/** What `get_agent` says about the release that owns the agent. */
+export type AgentHelmReleaseRef = {
+  name: string;
+  namespace: string;
+  ready: boolean | null;
+  reason?: string;
+  message?: string;
+  chartVersion?: string;
+  suspended: boolean;
+  gitOpsOwned: boolean;
+  deleting: boolean;
+};
+
+/**
+ * `get_agent`: one agent as agent-manager reads it back — the fields the edit
+ * form is pre-filled from, the skills as pinned (a git commit or an OCI
+ * digest), the declared toolset, the per-Harness status and the HelmRelease
+ * values (the chart contract). Mirrors `Agent` in `internal/agents/types.go`.
+ */
+export type AgentManagerAgent = {
+  name: string;
+  namespace: string;
+  /** False while the release has not rendered the template (yet). */
+  exists: boolean;
+  displayName?: string;
+  description?: string;
+  modelConfig?: string;
+  iconUrl?: string;
+  systemMessage?: string;
+  skills?: AgentSkillEntry[];
+  /** The declared toolset; absent for an agent without one. */
+  toolset?: string[];
+  /** No toolset declared, muster bound: sees every tool the gateway exposes. */
+  implicitFullAccess?: boolean;
+  ready: boolean | null;
+  harnesses?: HarnessStatus[];
+  managed: AgentManagedBy;
+  helmRelease?: AgentHelmReleaseRef;
+  /** The HelmRelease's inline values, when a release owns the agent. */
+  values?: Record<string, unknown>;
+};
+
+/** `list_model_configs`: a ModelConfig an agent may reference. */
+export type AgentManagerModelConfig = {
+  name: string;
+  namespace: string;
+  provider?: string;
+  model?: string;
+  accepted: boolean | null;
+  message?: string;
+  managedBy?: string;
+};
+
+/**
+ * `update_agent` (and `validate_agent` with `update: true`): a partial change.
+ * Only the fields present change; an empty string clears a field back to the
+ * chart's default; `skills` and `toolset` replace their whole list;
+ * `refreshSkills` re-pins every git skill to its repository's default-branch
+ * head and changes nothing else. The portal never sends `force`.
+ */
+export type AgentUpdate = {
+  namespace: string;
+  name: string;
+  displayName?: string;
+  description?: string;
+  systemMessage?: string;
+  modelConfig?: string;
+  iconUrl?: string;
+  skills?: AgentSkillEntry[];
+  toolset?: string[];
+  refreshSkills?: boolean;
+};
+
+/**
+ * `update_agent`: the values before and after, the dotted paths that changed
+ * (empty when the release was already in the requested state and nothing was
+ * written), and the manifests as applied.
+ */
+export type UpdateAgentResult = {
+  agent: AgentManagerAgent;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  changed: string[];
+  manifests: AgentManifests;
+  /** The authenticated caller the write ran as. */
+  requestedBy?: string;
+};
+
+/**
+ * `delete_agent`: what went. The shared per-namespace `OCIRepository` of the
+ * chart stays while another release references it (or the check could not be
+ * made) — `ociRepositoryKept` is agent-manager's reason, shown as given.
+ */
+export type DeleteAgentResult = {
+  name: string;
+  namespace: string;
+  helmReleaseDeleted: boolean;
+  agentTemplateDeleted?: boolean;
+  remoteMcpServerDeleted?: boolean;
+  ociRepositoryDeleted: boolean;
+  ociRepositoryKept?: string;
+  requestedBy?: string;
+};

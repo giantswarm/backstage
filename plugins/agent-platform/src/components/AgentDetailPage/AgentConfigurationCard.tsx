@@ -263,8 +263,8 @@ export type AgentConfigurationCardProps = {
 /**
  * What the agent *is*, as its AgentTemplate defines it.
  *
- * Read-only. Editing an agent means changing the Helm values its release renders
- * from, which this plugin has no write path for yet.
+ * Read-only here: the values behind it are changed through **Edit agent…** in
+ * the header's actions, which goes through agent-manager as the person.
  */
 export function AgentConfigurationCard({
   agent,
