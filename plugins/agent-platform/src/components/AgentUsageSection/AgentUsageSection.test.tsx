@@ -40,6 +40,21 @@ jest.mock('../../hooks/useSessionUsage', () => ({
   }),
 }));
 
+// The rate hook reaches Mimir through the gs plugin's api ref, which no test
+// app here provides — and this file is about which state renders, not about
+// pricing. `costEstimate.test.ts` covers the arithmetic; an empty `rates` here
+// makes every cost read "—", which the assertions below never look at.
+jest.mock('../../hooks/useTokenRates', () => ({
+  useTokenRates: () => ({
+    rates: {},
+    tier: 'none',
+    model: undefined,
+    isLoading: false,
+    isAvailable: true,
+    window: '7d',
+  }),
+}));
+
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   // The map form, which is what the section uses: the singular wrapper would
   // not skip for an unresolved installation. `probedInstallations` records what
@@ -112,7 +127,7 @@ describe('AgentUsageSection', () => {
     state.usage = usage();
     render(<AgentUsageSection />);
 
-    expect(screen.getByText('Your agent usage')).toBeInTheDocument();
+    expect(screen.getByText('Your sessions')).toBeInTheDocument();
     expect(screen.getByText('8.4M')).toBeInTheDocument();
     expect(screen.getByText('Input tokens per day')).toBeInTheDocument();
     expect(screen.getByText('Output tokens per day')).toBeInTheDocument();
@@ -232,9 +247,9 @@ describe('AgentUsageSection', () => {
       expect(
         screen.getByText('These numbers are not scoped to you'),
       ).toBeInTheDocument();
-      expect(screen.getByText('Agent usage')).toBeInTheDocument();
+      expect(screen.getByText('Agent sessions')).toBeInTheDocument();
       expect(screen.queryByText(/\byour\b/i)).not.toBeInTheDocument();
-      expect(screen.queryByText('Your agent usage')).not.toBeInTheDocument();
+      expect(screen.queryByText('Your sessions')).not.toBeInTheDocument();
       expect(screen.queryByText('Your top tools')).not.toBeInTheDocument();
     });
   });
@@ -249,7 +264,7 @@ describe('AgentUsageSection', () => {
     expect(
       screen.queryByText('These numbers are not scoped to you'),
     ).not.toBeInTheDocument();
-    expect(screen.getByText('Your agent usage')).toBeInTheDocument();
+    expect(screen.getByText('Your sessions')).toBeInTheDocument();
   });
 
   it('says nothing could be read, not that there are no sessions', () => {

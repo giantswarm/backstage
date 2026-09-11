@@ -7,6 +7,7 @@ export * from './ConditionsList';
 export * from './ConfirmDialog';
 export * from './ContentRow';
 export * from './FactList';
+export * from './DataBar';
 export * from './DateComponent';
 export * from './DetailsPane';
 export * from './EmptyStateCard';

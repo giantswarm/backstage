@@ -1,5 +1,5 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
-import { MimirApi, MimirQueryResponse } from './types';
+import { MimirApi, MimirQueryResponse, MimirRangeQueryResponse } from './types';
 
 export class MimirClient implements MimirApi {
   private readonly discoveryApi: DiscoveryApi;
@@ -16,11 +16,46 @@ export class MimirClient implements MimirApi {
     oidcToken: string;
   }): Promise<MimirQueryResponse> {
     const { installationName, query, oidcToken } = params;
+
+    return this.get<MimirQueryResponse>(
+      'query',
+      { query, installationName },
+      oidcToken,
+    );
+  }
+
+  async queryRange(params: {
+    installationName: string;
+    query: string;
+    start: string;
+    end: string;
+    step: string;
+    oidcToken: string;
+  }): Promise<MimirRangeQueryResponse> {
+    const { installationName, query, start, end, step, oidcToken } = params;
+
+    return this.get<MimirRangeQueryResponse>(
+      'query_range',
+      { query, installationName, start, end, step },
+      oidcToken,
+    );
+  }
+
+  /**
+   * The shared request leg. The token travels in `X-Mimir-Token` rather than
+   * `Authorization`, which on this hop carries the *Backstage* identity — the
+   * same split `KAGENT_AUTH_HEADER` makes for kagent.
+   */
+  private async get<T>(
+    path: 'query' | 'query_range',
+    params: Record<string, string>,
+    oidcToken: string,
+  ): Promise<T> {
     const baseUrl = await this.discoveryApi.getBaseUrl('gs');
-    const searchParams = new URLSearchParams({ query, installationName });
+    const searchParams = new URLSearchParams(params);
 
     const response = await this.fetchApi.fetch(
-      `${baseUrl}/mimir/query?${searchParams.toString()}`,
+      `${baseUrl}/mimir/${path}?${searchParams.toString()}`,
       {
         headers: {
           'X-Mimir-Token': oidcToken,
@@ -40,6 +75,6 @@ export class MimirClient implements MimirApi {
       throw error;
     }
 
-    return response.json() as Promise<MimirQueryResponse>;
+    return response.json() as Promise<T>;
   }
 }

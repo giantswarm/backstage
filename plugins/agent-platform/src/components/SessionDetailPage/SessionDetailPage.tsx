@@ -58,6 +58,10 @@ import {
   formatTokens,
   SessionTimeline,
 } from '../SessionTimeline';
+import { estimateCost } from '../../lib/costEstimate';
+import { describeCostBasis } from '../../lib/costBasis';
+import { formatUsd } from '../../lib/formatNumbers';
+import { useTokenRates } from '../../hooks/useTokenRates';
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
@@ -276,6 +280,30 @@ export function SessionDetailPage() {
   }, [row?.agentNamespace, row?.agentTechnicalName, handoff]);
   const send = useSendMessage(installation, sessionId, agent);
   const confirmation = useAnswerConfirmation(installation, sessionId, agent);
+
+  // The $/token to price this session's tokens at, and which observation it
+  // came from. The **model** is what matters: pricing an Opus session at the
+  // installation's Sonnet-derived blend halved a real session's figure, so a
+  // known model with no observed price yields no rate rather than borrowing
+  // another model's — see `useTokenRates`.
+  //
+  // Two Mimir queries, independent of everything above, so an installation
+  // without an observability stack loses this one stat and keeps the page.
+  const {
+    rates,
+    tier: rateTier,
+    window: rateWindow,
+  } = useTokenRates(installation, {
+    namespace: agent?.namespace,
+    name: agent?.name,
+    model: row?.agentModel,
+  });
+
+  const estimatedCostUsd = estimateCost(
+    timeline.tokens.prompt,
+    timeline.tokens.completion,
+    rates,
+  );
 
   // Dispatch the session's first message, once.
   //
@@ -784,6 +812,27 @@ export function SessionDetailPage() {
             label="Output tokens"
             value={formatTokens(timeline.tokens.completion)}
           />
+          {/* Estimated, not billed, and the tooltip has to say *how*: the
+              gateway prices whole model calls and its metrics carry no session
+              label, so a session's cost can only ever be its tokens times an
+              observed rate. Which rate that is decides whether the figure is
+              worth anything, so `describeCostBasis` names the tier rather than
+              leaving the reader to assume the best case. Reads "—" rather than
+              "$0.00" when there is no rate to apply — zero spend and unpriced
+              spend are different facts. */}
+          <Tooltip
+            title={describeCostBasis({
+              tier: rateTier,
+              model: row.agentModel,
+              installation: row.installation,
+              window: rateWindow,
+              tokens: timeline.tokens.total,
+            })}
+          >
+            <span>
+              <Stat label="Est. cost" value={formatUsd(estimatedCostUsd)} />
+            </span>
+          </Tooltip>
         </Box>
 
         <SessionTimeline
