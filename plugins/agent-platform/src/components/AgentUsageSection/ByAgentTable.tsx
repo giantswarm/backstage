@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import { makeStyles, Paper, Theme } from '@material-ui/core';
 import { Cell, CellText, Skeleton, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
-import { DataBar } from '@giantswarm/backstage-plugin-ui-react';
+import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
 import { formatCount, formatTokens, formatUsd } from '../../lib/formatNumbers';
-import { columnMax, useMeasureColor } from '../../lib/measures';
+import { useMeasureColor } from '../../lib/measures';
 import { sortUsageRows } from './helpers';
 import type { ByAgentRow } from './helpers';
 
@@ -40,6 +40,13 @@ export type ByAgentTableProps = {
   installation?: string;
   /** The rate's two Mimir queries are still in flight. */
   isRateLoading?: boolean;
+  /**
+   * Whether a rate was actually derived.
+   *
+   * `false` means every cost cell is an em dash, and the note must not then
+   * describe a rate as having been applied.
+   */
+  hasRate?: boolean;
 };
 
 /**
@@ -65,6 +72,7 @@ export function ByAgentTable({
   rateWindow,
   installation,
   isRateLoading,
+  hasRate = true,
 }: ByAgentTableProps) {
   const classes = useStyles();
   const colorFor = useMeasureColor();
@@ -217,13 +225,29 @@ export function ByAgentTable({
           </Text>
         }
       />
+      {/* The note has to match what the column actually shows. It described a
+          rate as applied even when every cell was an em dash — on an
+          installation with no Mimir, or after a failed query, that is a claim
+          about a measurement that never ran. */}
       <div className={classes.note}>
-        Cost is estimated: your token counts priced at{' '}
-        {rateWindow ? `the last ${rateWindow} of ` : ''}
-        {installation ?? 'this installation'}&apos;s observed cost per token —{' '}
-        <strong>a blend across every model</strong>, not each agent&apos;s own.
-        The session detail page prices one session at its own model&apos;s rate
-        instead, so the two will differ. Not a billed figure.
+        {hasRate ? (
+          <>
+            Cost is estimated: your token counts priced at{' '}
+            {rateWindow ? `the last ${rateWindow} of ` : ''}
+            {installation ?? 'this installation'}&apos;s observed cost per token
+            — <strong>a blend across every model</strong>, not each agent&apos;s
+            own. The session detail page prices one session at its own
+            model&apos;s rate instead, so the two will differ. Not a billed
+            figure.
+          </>
+        ) : (
+          <>
+            No cost estimate: no rate could be derived from{' '}
+            {installation ?? 'this installation'}&apos;s gateway metrics, so
+            there is nothing to price your token counts at. The counts
+            themselves are unaffected.
+          </>
+        )}
       </div>
     </Paper>
   );

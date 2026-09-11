@@ -16,6 +16,7 @@ import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
   categoricalColors,
+  columnMax,
   DataBar,
   SectionHeader,
   StackedBarChart,
@@ -28,7 +29,6 @@ import {
   useMusterInstance,
   useMusterSession,
 } from '../MusterInstanceProvider';
-import { columnMax } from './columnMax';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { MusterProviders } from '../MusterProviders';
 import { SessionGate, Stat } from '../shared';
@@ -200,9 +200,12 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
    * same measure→slot map for its own tables (`lib/measures.ts` — calls is
    * slot 0, a per-call figure slot 7), and matching it keeps "Calls" the same
    * colour across every table on the Usage tab. Importing that map would make
-   * this plugin depend on agent-platform, which the whole
-   * attach-by-node-id contract exists to avoid — so the two numbers are
-   * duplicated deliberately. Keep them in step.
+   * this plugin depend on agent-platform, which the whole attach-by-node-id
+   * contract exists to avoid — so the two numbers are duplicated deliberately.
+   * `barColors.test.ts` pins them, so drift fails CI rather than resting on
+   * this comment. (`columnMax` was duplicated the same way and has since moved
+   * to `ui-react`, which both plugins already depend on — the right home when
+   * the shared thing has no domain content.)
    *
    * Errors takes the **status** red rather than a categorical slot: an error
    * count is a status quantity, and status colours are reserved. It ships with

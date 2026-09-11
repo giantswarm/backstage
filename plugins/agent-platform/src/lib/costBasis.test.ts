@@ -60,6 +60,28 @@ describe('describeCostBasis', () => {
     expect(text).toMatch(/Working out the rate/);
   });
 
+  it.each(['unavailable', 'error'] as const)(
+    'does not blame the price catalogue for tier %s',
+    tier => {
+      // Both mean nothing was measured, so neither may borrow `none`'s cause.
+      const text = describeCostBasis({ ...base, tier });
+
+      expect(text).toContain('No estimate');
+      expect(text).not.toContain('has not priced');
+      expect(text).not.toContain('claude-opus-5');
+      expect(text).toContain('gazelle');
+    },
+  );
+
+  it('distinguishes no-metrics-here from could-not-read', () => {
+    expect(describeCostBasis({ ...base, tier: 'unavailable' })).toContain(
+      'no observability stack',
+    );
+    expect(describeCostBasis({ ...base, tier: 'error' })).toContain(
+      'could not be read',
+    );
+  });
+
   it('stays to one sentence per tier', () => {
     // The label's own "Est." prefix carries the not-a-bill caveat, so the
     // tooltip's job is only to name which rate was applied.
@@ -68,6 +90,8 @@ describe('describeCostBasis', () => {
       'agent',
       'installation',
       'loading',
+      'unavailable',
+      'error',
       'none',
     ] as const) {
       const text = describeCostBasis({ ...base, tier });

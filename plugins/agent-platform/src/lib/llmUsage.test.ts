@@ -290,6 +290,50 @@ describe('reduceReliability', () => {
     });
   });
 
+  it('does not count a series with no status label as an error', () => {
+    // One unlabelled series was enough to read the Gateway health card as a
+    // 100% error rate, in the error tone, on an installation where nothing was
+    // failing — `labels.status ?? ''` lands under `''`, which failed the 2xx
+    // test.
+    const reliability = reduceReliability({
+      requestsByStatus: [sample({}, '500'), sample({ status: '200' }, '500')],
+      p50: undefined,
+      p95: undefined,
+    });
+
+    expect(reliability.totalRequests).toBe(1000);
+    expect(reliability.errorRequests).toBe(0);
+    expect(reliability.errorRatePct).toBe(0);
+  });
+
+  it('does not count 3xx as an error', () => {
+    const reliability = reduceReliability({
+      requestsByStatus: [
+        sample({ status: '200' }, '90'),
+        sample({ status: '302' }, '10'),
+      ],
+      p50: undefined,
+      p95: undefined,
+    });
+
+    expect(reliability.errorRequests).toBe(0);
+  });
+
+  it('still counts 4xx and 5xx', () => {
+    const reliability = reduceReliability({
+      requestsByStatus: [
+        sample({ status: '200' }, '80'),
+        sample({ status: '404' }, '10'),
+        sample({ status: '503' }, '10'),
+      ],
+      p50: undefined,
+      p95: undefined,
+    });
+
+    expect(reliability.errorRequests).toBe(20);
+    expect(reliability.errorRatePct).toBe(20);
+  });
+
   it('reports no quantile for an empty histogram instead of zero', () => {
     // histogram_quantile over a histogram with no observations is NaN, which
     // must not render as a confident 0ms.

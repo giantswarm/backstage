@@ -4,7 +4,7 @@ import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { mimirApiRef } from '../../apis/mimir';
 import { MimirRangeQueryResponse } from '../../apis/mimir/types';
 import { useMimirAvailable } from './useMimirAvailable';
@@ -32,6 +32,16 @@ export function useMimirRangeQuery(options: {
   step: string;
   enabled?: boolean;
   refetchInterval?: number | false;
+  /**
+   * Keep the previous answer on screen while a **new query key** fetches,
+   * instead of reporting `isLoading` again.
+   *
+   * For a caller whose query string moves on its own — a window that snaps to
+   * a clock boundary, say. Without it the key change reads as a first load, so
+   * a page gated on `isLoading` replaces itself with a spinner every time the
+   * boundary passes, losing scroll position and table sort for a round trip.
+   */
+  keepPreviousAnswer?: boolean;
 }) {
   const {
     installationName,
@@ -41,6 +51,7 @@ export function useMimirRangeQuery(options: {
     step,
     enabled = true,
     refetchInterval,
+    keepPreviousAnswer = false,
   } = options;
 
   const mimirApi = useApi(mimirApiRef);
@@ -91,6 +102,7 @@ export function useMimirRangeQuery(options: {
     enabled: wanted && isAvailable === true,
     staleTime: 30_000,
     refetchInterval,
+    placeholderData: keepPreviousAnswer ? keepPreviousData : undefined,
   });
 
   return useMemo(

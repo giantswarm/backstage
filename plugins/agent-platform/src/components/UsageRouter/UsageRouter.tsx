@@ -36,7 +36,7 @@ const IndexRedirect = () => {
 /**
  * The old single-page Usage tab lived at `/agent-platform/usage` with no
  * sub-routes, so nothing needs redirecting — the index handles the one URL
- * that ever existed.
+ * that ever existed, and the catch-all below handles a guess or a typo.
  *
  * The tab strip plus the routed view. The tabs are navigation links whose
  * active state follows the route (`matchStrategy`); the content is driven by
@@ -47,6 +47,7 @@ const IndexRedirect = () => {
  */
 const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
   const basePath = useSplatBasePath();
+  const { search } = useLocation();
   const hasMcpSection = (sections?.length ?? 0) > 0;
   const views = [
     ...GATEWAY_VIEWS,
@@ -86,6 +87,22 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
         <Route path="cost" element={<UsageCostPage />} />
         <Route path="conversations" element={<UsageConversationsPage />} />
         <Route path="mcp" element={<UsageMcpPage sections={sections} />} />
+        {/* Anything else lands on Overview rather than on the tab strip over
+            an empty page with no tab active — which is what
+            `/agent-platform/usage/sessions` did, a likely guess given the tab
+            reads "Your sessions" while the path is `conversations`. Absolute,
+            from the splat base path, for the reason the tab hrefs are: a
+            relative target inside a splat route resolves against the whole
+            current pathname and would append rather than replace. */}
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to={{ pathname: `${basePath}/overview`, search }}
+              replace
+            />
+          }
+        />
       </Routes>
     </>
   );

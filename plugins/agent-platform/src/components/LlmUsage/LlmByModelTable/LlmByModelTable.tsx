@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Cell, CellText, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
-import { DataBar } from '@giantswarm/backstage-plugin-ui-react';
+import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
 import {
   formatCount,
@@ -10,7 +10,7 @@ import {
 } from '../../../lib/formatNumbers';
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
-import { columnMax, useMeasureColor } from '../../../lib/measures';
+import { useMeasureColor } from '../../../lib/measures';
 
 export type LlmByModelTableProps = {
   rows: LlmModelRow[];

@@ -6,6 +6,7 @@ import { useTokenRates } from './useTokenRates';
 const responses = new Map<string, MimirMetricSample[]>();
 let isAvailable: boolean | undefined = true;
 let isLoading = false;
+let hasError = false;
 
 // Partial: the query templates in `llmUsageQueries` are built from this
 // module's metric constants, so replacing it wholesale leaves them undefined.
@@ -17,7 +18,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
       data: { resultType: 'vector', result: responses.get(query) ?? [] },
     },
     isLoading,
-    error: null,
+    error: hasError ? new Error('mimir unreachable') : null,
     isAvailable,
   }),
 }));
@@ -65,6 +66,7 @@ beforeEach(() => {
   responses.clear();
   isAvailable = true;
   isLoading = false;
+  hasError = false;
 });
 
 describe('useTokenRates', () => {
@@ -192,12 +194,43 @@ describe('useTokenRates', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it('passes the Mimir availability through, so callers can say why', () => {
+  it('reports unavailable, not "none", on an installation with no Mimir', () => {
+    // `none` is a finding the tooltip states a cause for — "the gateway has
+    // not priced this model". On `mimirEnabled: false` there are no gateway
+    // metrics at all, so that names a measurement which never happened.
     isAvailable = false;
 
-    const { result } = renderHook(() => useTokenRates('gazelle'));
+    const { result } = renderHook(() =>
+      useTokenRates('gazelle', { model: 'claude-opus-5' }),
+    );
 
+    expect(result.current.tier).toBe('unavailable');
     expect(result.current.isAvailable).toBe(false);
+    expect(result.current.rates.blended).toBeUndefined();
+  });
+
+  it('reports error, not "none", when a query failed', () => {
+    hasError = true;
+    given(SONNET);
+
+    const { result } = renderHook(() =>
+      useTokenRates('gazelle', { model: 'claude-opus-5' }),
+    );
+
+    expect(result.current.tier).toBe('error');
+  });
+
+  it('only says "none" once something was actually measured', () => {
+    // The invariant behind the three tiers above: `none` must mean "we asked
+    // and nothing came back priced", never "we never asked".
+    given(SONNET);
+
+    const { result } = renderHook(() =>
+      useTokenRates('gazelle', { model: 'claude-opus-5' }),
+    );
+
     expect(result.current.tier).toBe('none');
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isAvailable).toBe(true);
   });
 });

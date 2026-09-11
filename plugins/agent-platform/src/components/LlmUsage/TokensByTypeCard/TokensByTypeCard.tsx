@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useTheme } from '@material-ui/core';
 import {
   categoricalColors,
+  otherSeriesColor,
   StackedBarChart,
   type StackedBarChartSeries,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -26,6 +27,23 @@ const TOKEN_TYPE_SERIES = [
   { key: 'output', label: 'output' },
 ] as const;
 
+/** The pooled band's key, kept out of the four so it cannot collide. */
+const OTHER_TYPE_KEY = '__other__';
+
+/** Sum the unrecognised series into one band per day. */
+function foldUnknownTypes(
+  daily: LlmDailySeries,
+  unknown: string[],
+): LlmDailySeries['rows'] {
+  return daily.rows.map(row => ({
+    ...row,
+    [OTHER_TYPE_KEY]: unknown.reduce((total, key) => {
+      const value = row[key];
+      return total + (typeof value === 'number' ? value : 0);
+    }, 0),
+  }));
+}
+
 /**
  * Tokens per day, stacked by token type.
  *
@@ -45,10 +63,14 @@ export function TokensByTypeCard({
 }) {
   const theme = useTheme();
 
-  const series = useMemo<StackedBarChartSeries[]>(() => {
+  const { rows, series } = useMemo(() => {
     const palette = categoricalColors(theme);
+    const known = new Set<string>(TOKEN_TYPE_SERIES.map(type => type.key));
     const present = new Set(daily.series);
-    return TOKEN_TYPE_SERIES.filter(type => present.has(type.key)).map(
+
+    const chartSeries: StackedBarChartSeries[] = TOKEN_TYPE_SERIES.filter(
+      type => present.has(type.key),
+    ).map(
       // Indexed off the fixed list, not the filtered one, so a type absent
       // from one installation does not shift the others' colours.
       type => ({
@@ -59,12 +81,36 @@ export function TokensByTypeCard({
           theme.palette.text.secondary,
       }),
     );
-  }, [daily.series, theme]);
+
+    // Anything the gateway reports that is not one of the four — a fifth type
+    // a release adds, or a series missing the label — is pooled rather than
+    // filtered out. Dropped, its tokens vanished from this chart while still
+    // counting in the totals strip above, so the two panels disagreed with
+    // nothing on screen explaining why. `reduceTokenTypes` anticipates the
+    // same case with its own `other` bucket.
+    const unknown = daily.series.filter(key => !known.has(key));
+    if (unknown.length === 0) {
+      return { rows: daily.rows, series: chartSeries };
+    }
+
+    const pooled = foldUnknownTypes(daily, unknown);
+    return {
+      rows: pooled,
+      series: [
+        ...chartSeries,
+        {
+          dataKey: OTHER_TYPE_KEY,
+          name: 'other',
+          color: otherSeriesColor(theme),
+        },
+      ],
+    };
+  }, [daily, theme]);
 
   return (
     <UsageCard title="Tokens per day, by type" note={note} wide>
       <StackedBarChart
-        data={daily.rows}
+        data={rows}
         xAxisKey="day"
         series={series}
         height={200}

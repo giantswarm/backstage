@@ -60,23 +60,3 @@ export function useMeasureColor(): (measure: MeasureKey) => string {
   const palette = categoricalColors(theme);
   return measure => palette[MEASURE_SLOTS[measure]];
 }
-
-/**
- * The largest value in a column, which every bar in it is scaled against.
- *
- * Non-numeric and negative values count as zero rather than skewing or
- * inverting the scale, and an all-empty column returns `0` — which `DataBar`
- * reads as "draw no fill", so a column of em dashes draws a column of empty
- * tracks rather than a column of full bars.
- */
-export function columnMax<T>(
-  rows: readonly T[],
-  read: (row: T) => number | undefined,
-): number {
-  return rows.reduce((max, row) => {
-    const value = read(row);
-    return typeof value === 'number' && Number.isFinite(value) && value > max
-      ? value
-      : max;
-  }, 0);
-}

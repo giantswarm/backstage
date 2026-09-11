@@ -24,7 +24,21 @@ export type TokenRateTier =
    * actionable, wrong claim.
    */
   | 'loading'
-  /** No usable rate — render `—`, never a number. */
+  /**
+   * The installation has no observability stack to ask
+   * (`mimirEnabled: false`).
+   *
+   * Also distinct from `none`, for the same reason and a sharper one: there
+   * are no gateway metrics on that installation *at all*, so "the gateway has
+   * not priced this model" describes a measurement that never happened.
+   */
+  | 'unavailable'
+  /** A query failed, so nothing was measured either way. */
+  | 'error'
+  /**
+   * Measured, and no usable rate came out of it — the only tier the UI is
+   * entitled to state a cause for.
+   */
   | 'none';
 
 export type TokenRatesView = {
@@ -72,8 +86,10 @@ const NO_RATES: TokenRates = {};
  *
  * So the chain is:
  *
- * 0. **`loading`** — the queries are in flight. No tier is known yet, and
- *    `none` must not stand in for that: it is a finding with a stated cause.
+ * 0. **`loading` / `unavailable` / `error`** — nothing was measured: the
+ *    queries are in flight, the installation has no Mimir, or a query failed.
+ *    `none` must not stand in for any of them, because it is a finding with a
+ *    stated cause and these are the absence of a measurement.
  * 1. **`model`** — the session's model has observed traffic. Use its rate.
  * 2. **`none`** — the model is known and has *no* observed traffic. Stop.
  * 3. **`agent`** — no model known, but this agent has traffic. Its blend is
@@ -105,6 +121,8 @@ export function useTokenRates(
   const model = scope?.model;
 
   const isLoading = cost.isLoading || tokens.isLoading;
+  const isAvailable = cost.isAvailable;
+  const hasError = Boolean(cost.error || tokens.error);
 
   return useMemo(() => {
     const costSamples = cost.data?.data?.result;
@@ -117,11 +135,19 @@ export function useTokenRates(
       );
 
     const resolved = ((): { rates: TokenRates; tier: TokenRateTier } => {
-      // Before the answers arrive every tier derives no rate, so the chain
-      // would otherwise fall through to `none` and the caller would state that
-      // as a finding. Report the wait instead.
+      // Three states in which *nothing was measured*. Each would otherwise
+      // derive no rate and fall through to `none`, which the caller states as
+      // a finding with a cause — so each has to be told apart from it. This
+      // is the same mistake three times over: the first fix only covered
+      // loading.
       if (isLoading) {
         return { rates: NO_RATES, tier: 'loading' };
+      }
+      if (isAvailable === false) {
+        return { rates: NO_RATES, tier: 'unavailable' };
+      }
+      if (hasError) {
+        return { rates: NO_RATES, tier: 'error' };
       }
 
       if (model) {
@@ -149,13 +175,14 @@ export function useTokenRates(
       ...resolved,
       model,
       isLoading,
-      isAvailable: cost.isAvailable,
+      isAvailable,
       window: RATE_WINDOW,
     };
   }, [
     cost.data,
-    cost.isAvailable,
     tokens.data,
+    isAvailable,
+    hasError,
     isLoading,
     namespace,
     name,

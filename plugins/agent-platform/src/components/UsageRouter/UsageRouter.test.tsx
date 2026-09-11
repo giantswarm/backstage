@@ -134,6 +134,35 @@ describe('UsageRouter', () => {
     expect(await screen.findByText('mcp-view:0')).toBeInTheDocument();
   });
 
+  it.each([
+    '/agent-platform/usage/sessions',
+    '/agent-platform/usage/typo',
+    '/agent-platform/usage/cost/deeper',
+  ])('sends an unknown sub-path to Overview: %s', async path => {
+    // Without a catch-all these rendered the tab strip over an empty page with
+    // no tab active — the one state the MCP route is kept mounted to avoid.
+    // `/usage/sessions` is the likely guess, since the tab reads "Your
+    // sessions" while the path is `conversations`.
+    renderTab(path);
+
+    expect(await screen.findByText('overview-view')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/usage/overview',
+      );
+    });
+  });
+
+  it('keeps the query string through the catch-all', async () => {
+    renderTab('/agent-platform/usage/sessions?installation=alpha');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/usage/overview?installation=alpha',
+      );
+    });
+  });
+
   it('hands the contributed sections to the MCP view', async () => {
     renderTab('/agent-platform/usage/mcp', MCP_SECTION);
 

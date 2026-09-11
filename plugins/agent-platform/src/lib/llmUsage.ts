@@ -453,7 +453,14 @@ export function reduceReliability(options: {
   let errorRequests = 0;
   let rateLimited = 0;
   for (const [status, count] of byStatus) {
-    if (!/^2\d\d$/.test(status)) {
+    // 2xx *and* 3xx are not errors, and a series with no `status` label at all
+    // is not one either — it is unknown. Testing only `/^2\d\d$/` counted both
+    // as failures, and a single unlabelled series was enough to read the
+    // Gateway health card as a 100% error rate, in the error tone, on an
+    // installation where nothing was failing. An unknown status still counts
+    // toward the total, because it was a request; it just cannot be called a
+    // failed one.
+    if (status !== '' && !/^[23]\d\d$/.test(status)) {
       errorRequests += count;
     }
     if (status === '429') {

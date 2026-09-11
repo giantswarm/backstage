@@ -135,7 +135,12 @@ export function AgentUsageSection() {
     rates,
     window: rateWindow,
     isLoading: isRateLoading,
+    tier: rateTier,
   } = useTokenRates(installation);
+  // Only `installation` is a rate this table can claim was applied. Every
+  // other tier here means no cost cell has a figure, and the note below has to
+  // stop describing one.
+  const hasRate = rateTier === 'installation';
 
   // Strictly `false`. `undefined` means the probe has not resolved, or kagent
   // reported no subject at all — which is reachable on a healthy deployment —
@@ -298,6 +303,7 @@ export function AgentUsageSection() {
           rateWindow={rateWindow}
           installation={installation}
           isRateLoading={isRateLoading}
+          hasRate={hasRate}
           emptyMessage="kagent recorded no agent for these sessions."
         />
         <div className={classes.row}>

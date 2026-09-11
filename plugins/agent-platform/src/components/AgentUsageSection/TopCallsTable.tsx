@@ -2,9 +2,9 @@ import { useMemo } from 'react';
 import { makeStyles, Paper, Theme } from '@material-ui/core';
 import { Cell, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
-import { DataBar } from '@giantswarm/backstage-plugin-ui-react';
+import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import { formatCount } from '../../lib/formatNumbers';
-import { columnMax, useMeasureColor } from '../../lib/measures';
+import { useMeasureColor } from '../../lib/measures';
 
 const useStyles = makeStyles((theme: Theme) => ({
   card: {

@@ -21,6 +21,11 @@ export type CostBasis = {
  * reason: an em dash with no explanation reads as a bug, and "the gateway has
  * never priced this model" is both actionable and not guessable.
  *
+ * **`none` is only for a measurement that happened and yielded nothing.** The
+ * `loading`, `unavailable` and `error` tiers exist so that its claim is never
+ * made about an installation with no Mimir, or a query that failed — a cause
+ * stated about a measurement that never ran is worse than no cause at all.
+ *
  * Kept to a sentence. Earlier drafts explained *why* borrowing another model's
  * rate would be wrong, and closed with "Not a billed figure" — the first is
  * the code's job to know rather than the reader's to be told, and the second
@@ -43,6 +48,14 @@ export function describeCostBasis(basis: CostBasis): string {
     case 'loading':
       // Neither a figure nor a diagnosis: the queries have not landed.
       return 'Working out the rate from this installation\u2019s gateway metrics\u2026';
+
+    case 'unavailable':
+      // No metrics exist here at all, so "the gateway has not priced this
+      // model" would describe a measurement that never happened.
+      return `No estimate: ${installation} has no observability stack this portal can query, so there are no gateway metrics to derive a rate from.`;
+
+    case 'error':
+      return `No estimate: ${installation}\u2019s gateway metrics could not be read just now, so there is no rate to apply.`;
 
     case 'none':
     default:

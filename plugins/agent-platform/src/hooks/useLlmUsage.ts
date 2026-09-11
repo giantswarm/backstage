@@ -83,7 +83,9 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
   // Today's bar comes from its own pair of instant queries, scoped to
   // elapsed-time-since-midnight: the range query above deliberately stops at
   // yesterday, because a point in the future makes `increase()` extrapolate a
-  // partial day into a whole one. Re-keys hourly rather than per render.
+  // partial day into a whole one. Re-keys every five minutes
+  // (`PARTIAL_SNAP_SECONDS`), not per render — which is why these two stay out
+  // of the blocking `isLoading` below.
   const todayRange = todayPartialRange();
   const todayQueries = todayPartialQueries(todayRange);
 
@@ -129,6 +131,9 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     end,
     step,
     enabled,
+    // The window re-keys at UTC midnight; hold the previous series rather than
+    // reporting a first load.
+    keepPreviousAnswer: true,
   });
   const tokensPerDay = useMimirRangeQuery({
     installationName,
@@ -137,22 +142,41 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     end,
     step,
     enabled,
+    // The window re-keys at UTC midnight; hold the previous series rather than
+    // reporting a first load.
+    keepPreviousAnswer: true,
   });
 
   const costToday = useMimirQuery({
     installationName,
     query: todayQueries.costByModel,
     enabled,
+    // This key moves every five minutes by design, so it must not read as a
+    // first load — see the note on `isLoading` below.
+    keepPreviousAnswer: true,
   });
   const tokensToday = useMimirQuery({
     installationName,
     query: todayQueries.tokensByType,
     enabled,
+    // This key moves every five minutes by design, so it must not read as a
+    // first load — see the note on `isLoading` below.
+    keepPreviousAnswer: true,
   });
 
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
 
+  // Deliberately **excludes the two today queries**.
+  //
+  // Their key moves every five minutes by design, and a fresh key has no
+  // cached entry — so folding them in here blanked the whole populated page
+  // back to a spinner each time a boundary passed, losing scroll position and
+  // table sort for a Mimir round trip. The obvious trigger is leaving the tab
+  // and coming back: `refetchOnWindowFocus` re-renders, five minutes have
+  // elapsed, and the page flashes. They only fill today's bar, so they are not
+  // worth gating the page on; `keepPreviousAnswer` holds the last answer while they
+  // refetch.
   const isLoading =
     cost.isLoading ||
     tokens.isLoading ||
@@ -162,10 +186,16 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     requestsByStatus.isLoading ||
     unpricedLookups.isLoading ||
     costPerDay.isLoading ||
-    tokensPerDay.isLoading ||
-    costToday.isLoading ||
-    tokensToday.isLoading;
-  const isError = Boolean(cost.error || tokens.error);
+    tokensPerDay.isLoading;
+  // The two **range** queries count as page failures alongside the instant
+  // vectors. A failed range query leaves `reduceDaily` with nothing, and since
+  // `days` is always supplied it densifies to 30 zero rows — a chart of empty
+  // bars directly beneath a strip showing a real non-zero total, with nothing
+  // saying a query failed. A refused quantile degrades honestly to `—`; a
+  // silently zeroed 30-day chart does not.
+  const isError = Boolean(
+    cost.error || tokens.error || costPerDay.error || tokensPerDay.error,
+  );
   const isAvailable = cost.isAvailable;
 
   const usage = useMemo(() => {
