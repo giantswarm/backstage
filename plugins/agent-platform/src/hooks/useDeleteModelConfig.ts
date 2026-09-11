@@ -93,7 +93,7 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
         );
       }
 
-      // Agents resolve `spec.declarative.modelConfig` in their own namespace,
+      // Agents resolve `spec.modelConfig.name` in their own namespace,
       // and this plugin co-locates agents with their model — so the model's
       // namespace is where its dependents are. A read failure surfaces as a
       // refusal rather than an empty list read as "nothing references it".

@@ -4,9 +4,10 @@ import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Agent,
-  AgentMcpServerRef,
+  AgentMcpBinding,
   getHelmReleaseName,
   getHelmReleaseNamespace,
+  HARNESS_LABEL,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
@@ -25,8 +26,8 @@ import {
 import { ModelServingStatus } from '../ModelServingStatus';
 import {
   describeToolScope,
-  isMusterServerRef,
-  mcpServerRefId,
+  isGatewayServerBinding,
+  mcpBindingId,
 } from './helpers';
 
 /** Monospace for identifiers the reader may retype into `kubectl`. */
@@ -82,44 +83,46 @@ function ModelValue({
 }
 
 /**
- * One MCP server the agent draws tools from.
- *
- * The prop is `server`, not `ref` — React intercepts a `ref` prop rather than
- * passing it through.
+ * One MCP server binding: the same-namespace `RemoteMCPServer` the agent draws
+ * tools from, and how much of it.
  */
-function McpServerRow({
-  server: serverRef,
-  installation,
+function McpBindingRow({
+  agent,
+  binding,
 }: {
-  server: AgentMcpServerRef;
-  installation: string;
+  agent: Agent;
+  binding: AgentMcpBinding;
 }) {
   const toolExplorerRoute = useRouteRef(musterToolExplorerExternalRouteRef);
+  const isGateway = isGatewayServerBinding(agent, binding);
 
   // Preselect the installation the agent runs on, the way muster's own
-  // cross-links do. Only offered for the Muster gateway: the Tool Explorer talks
-  // to muster, so it can say nothing about any other MCP server.
+  // cross-links do. Only offered for the gateway: the Tool Explorer talks to
+  // muster, so it can say nothing about any other MCP server.
   const musterLink =
-    isMusterServerRef(serverRef) && toolExplorerRoute
-      ? `${toolExplorerRoute()}?installation=${encodeURIComponent(installation)}`
+    isGateway && toolExplorerRoute
+      ? `${toolExplorerRoute()}?installation=${encodeURIComponent(
+          agent.cluster,
+        )}`
       : undefined;
 
   return (
     <Flex direction="column" gap="1">
       <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
         <Text variant="body-medium" style={MONO}>
-          {serverRef.kind ?? 'RemoteMCPServer'} {mcpServerRefId(serverRef)}
+          {mcpBindingId(binding)}
         </Text>
         {musterLink && <Link to={musterLink}>Explore tools</Link>}
       </Flex>
       <Text variant="body-small" color="secondary">
-        {describeToolScope(serverRef)}
+        {describeToolScope(binding, isGateway)}
       </Text>
-      {/* Rare, and the only per-tool setting that changes what a user will
-          experience mid-session, so it is worth naming. */}
-      {serverRef.requireApproval && serverRef.requireApproval.length > 0 && (
+      {/* Rare, and the only per-binding setting that changes what a user will
+          experience mid-session (the turn pauses for a decision), so it is
+          worth naming. */}
+      {binding.requireApproval && (
         <Text variant="body-small" color="secondary">
-          Requires approval: {serverRef.requireApproval.join(', ')}
+          Requires approval before every call
         </Text>
       )}
     </Flex>
@@ -129,10 +132,10 @@ function McpServerRow({
 /** The tools block: MCP servers, then any agents invoked as tools. */
 function ToolsValue({ agent }: { agent: Agent }) {
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
-  const mcpServers = agent.getMcpServerRefs();
+  const mcpBindings = agent.getMcpBindings();
   const agentRefs = agent.getAgentRefs();
 
-  if (mcpServers.length === 0 && agentRefs.length === 0) {
+  if (mcpBindings.length === 0 && agentRefs.length === 0) {
     return (
       <Text variant="body-small" color="secondary">
         This agent declares no tool servers, so it has no tools beyond its own
@@ -143,49 +146,74 @@ function ToolsValue({ agent }: { agent: Agent }) {
 
   return (
     <Flex direction="column" gap="3">
-      {mcpServers.map((serverRef, index) => (
-        <McpServerRow
-          // `namespace/name` is not unique: nothing stops two entries referencing
-          // the same server with different `toolNames`/`requireApproval`, which is
+      {mcpBindings.map((binding, index) => (
+        <McpBindingRow
+          // The server name is not unique: nothing stops two bindings referencing
+          // the same server with different `tools`/`requireApproval`, which is
           // how you express "these tools need approval, those don't" for one
           // server. Same reasoning as the skill cards.
-          key={`${mcpServerRefId(serverRef)}#${index}`}
-          server={serverRef}
-          installation={agent.cluster}
+          key={`${mcpBindingId(binding)}#${index}`}
+          agent={agent}
+          binding={binding}
         />
       ))}
 
       {agentRefs.map(ref => {
-        // Another agent invoked over A2A. Same installation by definition — a
-        // tool reference cannot cross clusters — and the namespace defaults to
-        // this agent's own when the reference omits it.
-        const namespace = ref.namespace ?? agent.getNamespace() ?? '';
+        // Another template invoked over A2A. Same installation and namespace
+        // by definition — a binding cannot cross either — and `name` is what
+        // the agent calls the tool, `templateRef.name` the template behind it.
+        const namespace = agent.getNamespace() ?? '';
+        const target = ref.templateRef.name ?? ref.name;
         const href = agentDetailRoute?.({
           installation: agent.cluster,
           namespace,
-          name: ref.name,
+          name: target,
         });
 
         return (
-          <Flex
-            key={`agent/${namespace}/${ref.name}`}
-            direction="column"
-            gap="1"
-          >
+          <Flex key={`agent/${ref.name}/${target}`} direction="column" gap="1">
             <Text variant="body-medium">
               Agent{' '}
               {href ? (
-                <Link to={href}>{`${namespace}/${ref.name}`}</Link>
+                <Link to={href}>{`${namespace}/${target}`}</Link>
               ) : (
-                <span style={MONO}>{`${namespace}/${ref.name}`}</span>
+                <span style={MONO}>{`${namespace}/${target}`}</span>
               )}
             </Text>
             <Text variant="body-small" color="secondary">
-              Called as a tool over A2A
+              Called as the tool <span style={MONO}>{ref.name}</span> over A2A
+              {ref.isolation === 'Dedicated' ? ', in its own instance' : ''}
             </Text>
           </Flex>
         );
       })}
+    </Flex>
+  );
+}
+
+/**
+ * The Harness the admission label asks to run the agent. The label is what
+ * makes a Harness admit the template; without it the agent never becomes
+ * ready, and the status card says so.
+ */
+function HarnessValue({ agent }: { agent: Agent }) {
+  const harness = agent.getHarnessLabel();
+  if (!harness) {
+    return (
+      <Text variant="body-small" color="secondary">
+        Not labelled for any Harness (<span style={MONO}>{HARNESS_LABEL}</span>{' '}
+        is missing)
+      </Text>
+    );
+  }
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant="body-medium" style={MONO}>
+        {harness}
+      </Text>
+      <Text variant="body-small" color="secondary">
+        From the label <span style={MONO}>{HARNESS_LABEL}</span>
+      </Text>
     </Flex>
   );
 }
@@ -233,7 +261,7 @@ export type AgentConfigurationCardProps = {
 };
 
 /**
- * What the agent *is*, as the Agent CR defines it.
+ * What the agent *is*, as its AgentTemplate defines it.
  *
  * Read-only. Editing an agent means changing the Helm values its release renders
  * from, which this plugin has no write path for yet.
@@ -247,7 +275,7 @@ export function AgentConfigurationCard({
   const created = agent.getCreatedTimestamp();
 
   const metadata: Record<string, ReactNode> = {
-    Type: agent.getType() ?? <NotAvailable />,
+    Harness: <HarnessValue agent={agent} />,
     Model: (
       <ModelValue
         modelConfigName={agent.getModelConfigName()}

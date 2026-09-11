@@ -3,7 +3,7 @@ import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { CodeBlock, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
- * The agent's system message (`spec.declarative.systemMessage`).
+ * The agent's system prompt (`spec.systemPrompt`).
  *
  * Rendered as a copyable code block rather than prose: it is a configured value
  * someone may want to lift verbatim into a review or a chart change, and the
@@ -11,6 +11,7 @@ import { CodeBlock, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
  */
 export function AgentSystemPromptCard({ agent }: { agent: Agent }) {
   const systemMessage = agent.getSystemMessage();
+  const source = agent.getSystemMessageSource();
 
   return (
     <InfoCard title="System prompt">
@@ -19,13 +20,18 @@ export function AgentSystemPromptCard({ agent }: { agent: Agent }) {
       ) : (
         <Flex direction="column" gap="1">
           <Text variant="body-medium" color="secondary">
-            Not set on the Agent resource.
+            {source
+              ? `Read from the ConfigMap ${source.name}, key ${source.key}.`
+              : 'Not set on the AgentTemplate.'}
           </Text>
           {/* Worth spelling out: an empty field does not mean the agent has no
-              system prompt, only that it is not configured here. */}
-          <Text variant="body-small" color="secondary">
-            The agent runs with whatever default its chart or runtime provides.
-          </Text>
+              system prompt, only that it is not configured inline here. */}
+          {!source && (
+            <Text variant="body-small" color="secondary">
+              The agent runs with whatever default its chart or Harness
+              provides.
+            </Text>
+          )}
         </Flex>
       )}
     </InfoCard>

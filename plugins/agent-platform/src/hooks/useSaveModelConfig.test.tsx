@@ -40,15 +40,15 @@ function values(
 }
 
 function makeModelConfig(
-  spec: crds.kagent.v1alpha2.ModelConfig['spec'],
+  spec: crds.kagent.v1alpha3.ModelConfig['spec'],
 ): ModelConfig {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name: 'qwen3', namespace: 'kagent' },
       spec,
-    } as crds.kagent.v1alpha2.ModelConfig,
+    } as crds.kagent.v1alpha3.ModelConfig,
     CLUSTER,
   );
 }
