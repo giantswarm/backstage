@@ -136,9 +136,9 @@ management is the point, and the portal stamps its own
 
 **Delete refuses while referenced.** The mutation lists the namespace's
 `Agent`s **fresh** at mutation time (not from the query cache) and refuses to
-delete a model any of them still references — and unlike `useDeleteAgent`'s
-shared chart source (where a failed read safely resolves to "keep"), a failed
-read here refuses the delete: proceeding is the unsafe direction, since
+delete a model any of them still references — and unlike an agent's shared
+chart source (which agent-manager keeps when a failed read leaves it unsure), a
+failed read here refuses the delete: proceeding is the unsafe direction, since
 deleting a referenced model breaks every agent on it.
 
 ### The serving layer (the Serving section of the Models tab)
@@ -3092,9 +3092,11 @@ agent in the list. All three segments are in the path because all three are part
 the agent's identity — an `Agent` name is only unique within a namespace on one
 installation.
 
-An agent can be **deleted** from the kebab menu (see "Deleting an agent"), but not
-edited: editing means changing the values its HelmRelease renders from, so it needs
-a re-release rather than a menu item.
+An agent can be **edited**, have its **skills updated** and be **deleted** from the
+kebab menu — every write through agent-manager's tools over muster as the
+signed-in person (see "Editing an agent", "Updating an agent's skills" and
+"Deleting an agent"); the portal composes nothing and performs no Kubernetes
+write for agents itself.
 
 The agent is fetched with a **single targeted `useResource`**, not read out of the
 list's `AgentsDataProvider`, so a deep link works without the list having loaded.
@@ -3127,7 +3129,9 @@ durable view of the same verdict.
 
 - **Header** — avatar, display name, derived readiness, technical name,
   installation/namespace, creation age, description. A kebab in the shared plugin
-  header opens the **manifest dialog**: the `AgentTemplate` as read-only YAML, minus
+  header offers `Edit agent…`, `Update skills…` and `Delete agent…` when the
+  installation's muster lists agent-manager (see below) and opens the
+  **manifest dialog**: the `AgentTemplate` as read-only YAML, minus
   `metadata.managedFields` (server-side-apply bookkeeping, and the bulk of a
   reconciled template) and the `last-applied-configuration` annotation. That dialog
   is the escape hatch for everything the page does not surface — `plugins`,
@@ -3169,93 +3173,156 @@ durable view of the same verdict.
 
 ### Deleting an agent
 
-`useDeleteAgent` + `AgentDeleteDialog`, offered as a `Delete agent…` item in the
-kebab. It deletes the agent's **`HelmRelease`**, which is what makes
-helm-controller uninstall the release and take the `AgentTemplate` and its carrier
-`RemoteMCPServer` with it — a template rendered by a chart cannot meaningfully be
-deleted on its own, since the release would just render it again.
+`Delete agent…` in the kebab opens `AgentDeleteDialog`; confirming calls
+**`x_agent-manager_delete_agent`** over muster as the signed-in person
+(`useAgentDeletion`). agent-manager deletes the agent's **`HelmRelease`** — which
+is what makes helm-controller uninstall the release and take the `AgentTemplate`
+and the agent's `RemoteMCPServer` with it — and the namespace's shared
+`OCIRepository` of the chart only when no other release references it. The
+portal never passes `force`.
 
-The owner is resolved through `getHelmReleaseName`/`getHelmReleaseNamespace`
-(provenance labels), not by assuming the release is named after the agent, so this
-also works for agents created outside the wizard.
+**Everything that used to be decided here is agent-manager's now.** The owning
+release, the Kustomization guard (a GitOps-owned release has its desired state
+in git — a live delete would be undone), the suspended guard (Flux drops the
+finalizer of a suspended release without uninstalling, leaving the rendered
+objects behind), the sibling list that decides whether the shared chart source
+may go: all of it lives in agent-manager (`internal/agents/service.go`) and the
+portal shows its answer. A refusal comes back with `conflict:` and is rendered
+in the dialog **verbatim**, as the error; a viewer's confirm comes back with the
+apiserver's `forbidden:` — authorization stays the apiserver's, reached through
+agent-manager as the person. The old `useDeleteAgent` (owner resolution through
+the provenance labels, `isManagedByFlux`, the `SelfSubjectAccessReview` on
+`delete helmreleases`, the fresh sibling list, the `OCIRepository` cleanup) is
+gone, and the plugin performs no direct Kubernetes write for agents any more.
 
-**The delete is only offered when three things hold**, and is withheld while any of
-them is still being established, so it never appears and then disappears:
+**What is offered is decided by feature detection, not by an access review.** The
+kebab offers `Delete agent…` — and `Edit agent…`, `Update skills…` — when the
+installation's muster lists `agent-manager` (`core_mcpserver_list`, through the
+person's own session: `useAgentManagerAvailability`, the same signal the create
+flow's installation picker uses). On an installation without one the three items
+are absent and a disabled item says why; while the server list is still being
+read they are withheld rather than appearing and disappearing. The read-only
+`View manifest` stays in every case.
 
-1. A `SelfSubjectAccessReview` says the signed-in user may `delete` `helmreleases`
-   by that name in that namespace. `useSelfSubjectAccessReview` fails closed, does
-   not retry, and is never persisted, so a verdict cannot be rehydrated for a
-   different user. The review decides what is _shown_; authorization itself is the
-   apiserver's, since the proxy forwards the user's own OIDC token — a bypassed
-   menu item still gets a real 403.
-2. The owning `HelmRelease` is **in hand** — the object, not just the label naming
-   it. Keying on the label would treat a release that could not be _read_ as "no
-   owner": the affordance would appear and then fail, and because an unreadable
-   release also reads as not-Kustomization-owned, it would quietly switch off the
-   guard below. Reachable via a proxy 5xx (`ServiceUnavailableError` is not retried
-   and this read does not poll) or RBAC granting `delete` without `get`.
-3. The release is **not** applied by a Kustomization. Those have their desired state
-   in Git and would be recreated on the next reconciliation, so they stay read-only
-   (see "GitOps provenance").
+**The dialog says one thing:** that this ends any session currently running with
+the agent, including ones started by other people that are not shown. That is
+the only thing the person clicking cannot work out for themselves — kagent scopes
+its conversations to the caller, so a quiet sessions list is not evidence that
+an agent is idle. Nothing mechanical is in it.
 
-**A suspended release is refused, not deleted.** Flux drops the finalizer on a
-suspended `HelmRelease` without running the uninstall, so deleting it would remove
-the release and leave the template and everything else the chart rendered behind —
-with no owner, so this path could not clean them up afterwards either. The mutation
-throws with an explanation instead of reporting an uninstall that will not happen.
+**On success** the person lands back on the agents list with a toast
+(`toastApiRef`) that says "Deleting", not "Deleted": the `HelmRelease` has a
+finalizer, so all that is certain is that agent-manager's delete was accepted
+and helm-controller has started uninstalling. The toast names who the delete
+ran as (`requestedBy`) and, when agent-manager kept the shared chart source,
+its reason (`ociRepositoryKept`, e.g. "still referenced by 2 other
+HelmRelease(s): sre-agent, docs-bot"). On failure the dialog stays open and
+shows the message.
 
-The owner is found the same way on API v2: helm-controller labels the rendered
-`AgentTemplate` with `helm.toolkit.fluxcd.io/{name,namespace}`, so the provenance
-readers in `kubernetes-react` need no knowledge of the kind.
+**Commit** (`delete_agent` with `mode: commit`, giantswarm/agent-manager#24 — a
+pull request that removes the agent's files from the owning GitOps repository,
+opened as the person) is wired behind `get_info.capabilities.commit`: the dialog
+offers it only when agent-manager reports the capability, and then shows the
+pull request link or the connect link (`auth_required`). Hidden otherwise, which
+is every installation today.
 
-The shared `OCIRepository` goes only when it is provably unused: the
-`HelmRelease`es in the source's namespace are listed, and any _other_ release whose
-`chartRef` resolves to the same object keeps it.
+The dialogs are rendered in the **page body**, not beside the kebab: the header
+slot lives outside the plugin's `QueryClientProvider`, and the mutations, the
+dry runs and the muster sign-in affordance (`ServerSignIn`, shown when the
+person's session is not connected to agent-manager yet) all need the plugin's
+providers. The menu only flips the page's flags.
 
-That list is read **fresh, at mutation time**, through `fetchResourceList` rather
-than `useResources` — deliberately bypassing the query cache. Two reasons, both
-learned the hard way in review. A cached list is up to `staleTime` (60s here) old,
-so a sibling agent created moments ago in another tab would be invisible; and
-`useListResources` used to key its query without the namespace, which meant a list
-for a _different_ namespace could answer the question while looking perfectly
-certain. The second is now fixed at the source (the namespace is part of the key),
-but a destructive decision should not rest on a cache either way.
+### Editing an agent
 
-Every failure resolves to keeping the source: a failed list read means "cannot
-tell", never "nothing found", and a failed delete is swallowed. The agent is gone
-by then, which is what was asked for, and an unreferenced chart source is inert and
-re-applied identically by the next agent creation. This is also why the permission
-gate does not require `delete` on `ocirepositories`. The check does not cover
-cross-namespace `chartRef`s, which would need a cluster-wide list a tenant user does
-not have; the cost of being wrong that way is a chart source the next agent creation
-re-applies.
+`Edit agent…` leads to `/agent-platform/agents/<installation>/<namespace>/<name>/edit`
+(`EditAgentPage`, four segments so it is clear of the detail path and the
+create flow). The page is pre-filled from **`x_agent-manager_get_agent`** — the
+values of the agent's release as agent-manager reads them: display name,
+description, system prompt, the model (offered from
+`x_agent-manager_list_model_configs` for the agent's namespace, read through
+agent-manager rather than the admin-only fleet-wide ModelConfigs list), the
+toolset selectors, and the skills with the commit or digest each is pinned to.
+There is **no runtime field**: every agent runs on the platform Harness (D5).
 
-**The dialog says one thing:** that this ends any session currently running with the
-agent, including ones started by other people that are not shown. That is the only
-thing the person clicking cannot work out for themselves — kagent scopes its session
-list to the caller, so a quiet sessions list is not evidence that an agent is idle.
+**The review is agent-manager's dry run.** The form keeps a baseline (agent-
+manager's reading) and the edit; `lib/agentEdit.ts` derives from the two the
+fields that changed and the `update_agent` arguments that carry **exactly
+those** — an emptied string field is sent as `""` (agent-manager's "back to the
+chart default"; an omitted field would mean "unchanged"), `toolset` and
+`skills` replace their whole list, the empty toolset selection is declared as
+`preset:none` (never an empty list, which agent-manager refuses), and an agent
+without a declared toolset keeps its implicit full access until a selector is
+picked. Whenever something changed, the page asks **`validate_agent` with
+`update: true`** for exactly that update and renders the changed fields, the
+values the release would carry (`manifests.values`, validated against the
+chart's schema) and every violation inline, in agent-manager's words. Nothing
+is composed in the portal.
 
-Everything mechanical is deliberately kept out of it: which `HelmRelease` goes, what
-happens to the shared chart source, and the fact that a **suspended** release is not
-uninstalled at all (Flux drops the finalizer without running the uninstall, leaving
-the agent's resources behind). All true, all noise at the moment of deciding, and all
-documented here instead.
+**Save** calls **`x_agent-manager_update_agent`** with the changed fields only
+(`useUpdateAgent`), then returns to the detail page with a hand-off
+(`action: 'updated'`) so the same progress element as after a create polls
+`get_agent_status` until the platform Harness has compiled the new revision
+(`ready`) or failed. The write ran as the person: agent-manager stamps them into
+the HelmRelease's `requestedBy` annotation and the apiserver audit (and muster's
+log) attribute the write to them, never to a ServiceAccount — a Kubernetes field
+manager names the tool, so `managedFields` is not where to look. A GitOps-owned
+or suspended agent's dry run already comes
+back as agent-manager's `conflict:` refusal (verbatim, Save locked); a viewer's
+Save shows the apiserver's `forbidden:`. **Commit** (`update_agent` with
+`mode: commit`) sits behind the same capability gate as on delete.
 
-Note what the dialog does _not_ claim, because an earlier draft got it wrong in both
-directions: session history is **not** lost. Sessions live in kagent's own store
-keyed by `user_id`, not in the template, and both the list and a session's detail
-are fetched by session id — see `toSessionRow`'s `decodeAgentIdLabel` fallback, which
-labels a session from its `agent_id` precisely when no template matches. Nor is a
-re-created agent a clean slate: `toAgentIdentifier` derives `agent_id` from
-`namespace/name` alone, so re-creating under the same name in the same namespace
-re-associates it with those very sessions.
+**Toolset** is edited with the same model as the create flow's Tools step
+(`lib/toolset.ts`: `toggleSelector`, `declaredToolset`, the selector grammar
+agent-manager and the chart enforce): the installation's presets as checkable
+rows, every selector of the selection as a removable tag, a field for a selector
+typed by hand, and what the selection resolves to for the person right now
+(`ToolsetResolutionList`). The catalogue browser stays with the create flow.
 
-On success the user lands back on the agents list with a toast (`toastApiRef`, not
-the deprecated `alertApi`) that says "Deleting", not "Deleted": the `HelmRelease`
-has a finalizer, so all that is certain is that the apiserver accepted the request.
-The agent can still be in the list for a few seconds. On failure the dialog stays
-open and shows the message — there is no toast, because the user is still looking
-at the modal.
+**Skills** are edited with `SkillPicker`: the configured repositories' skills as
+selectable cards (the same cards the create flow picks from), the agent's
+mounted skills selected at their pin, and the mounted skills no repository lists
+("Mounted from elsewhere", removable, otherwise left exactly as pinned). Adding
+a skill **pins it to the head commit its card shows**, resolved by skill
+discovery when the person picks it — the same rule as the create flow (D8); a
+branch is never written. Removing one drops the entry. Editing never moves an
+existing pin: that is what "Update skills" is for.
+
+### Updating an agent's skills
+
+Skills are pinned at write time and never move by themselves (D8): an agent's
+behaviour must not change under its author because someone pushed to a skills
+repository. Moving skills forward is therefore an explicit act — **`Update
+skills…`**, on the Skills card and in the kebab, both opening
+`AgentUpdateSkillsDialog`.
+
+Open, the dialog asks agent-manager for the **dry run**: `validate_agent` with
+`update: true` and `refreshSkills: true`. agent-manager re-resolves every git
+skill to the head of its repository's **default branch** — the ref `list_skills`
+reads and the only ref the fleet uses — and returns the values it would write.
+`lib/skillRefresh.ts` pairs those with the agent's current skills
+(`get_agent`) by repository and path and the dialog shows, **per git skill, the
+pinned commit next to the default-branch head and which entries would move**;
+skills pinned by digest are listed and left alone. When every git skill is
+already at its head the confirm is locked and the dialog says so. There is no
+`skills[].git.ref` in the Generic chart 1.x values, so a skill deliberately
+pinned from another branch is not moved by this action — passing it again with
+that `ref` through the edit flow's skill selection is what refreshes it.
+
+Confirming calls **`update_agent` with `refreshSkills: true` and nothing else**,
+so no other value of the release moves; the dialog closes, a toast says the
+skills are being updated and the detail page's progress element
+(`action: 'skills-updated'`) polls `get_agent_status` until the template is
+ready again on the platform Harness.
+
+**A repository agent-manager cannot reach** (`GitHub answered 404 — the
+repository does not exist, the ref is unknown, or the configured token cannot
+read it`) comes back from the dry run as an `invalid_request:` refusal: the
+dialog shows agent-manager's message, the confirm stays locked and nothing is
+written. A GitOps-owned or suspended agent is refused the same way with
+agent-manager's `conflict:` message. Note what agent-manager does **not** check
+at write time: that the skill's `path` still exists at the new head — a vanished
+path is written and then reported by the Harness on the template
+(`ResolvedRefs=False`), which the detail page's status card shows.
 
 ### The model is read directly, not from the fleet list
 

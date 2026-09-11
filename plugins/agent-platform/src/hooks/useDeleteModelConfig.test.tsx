@@ -220,9 +220,9 @@ describe('useDeleteModelConfig', () => {
   });
 
   it('refuses when the referenced-by check cannot be read', async () => {
-    // Unlike the shared chart source in useDeleteAgent (where keeping it is
-    // safe), the unsafe direction here is proceeding: deleting a referenced
-    // model breaks every agent on it. A failed read is a refusal.
+    // Unlike an agent's shared chart source (which agent-manager keeps when
+    // it cannot tell), the unsafe direction here is proceeding: deleting a
+    // referenced model breaks every agent on it. A failed read is a refusal.
     const { result } = setup({ didReadAgents: false });
 
     await act(async () => {

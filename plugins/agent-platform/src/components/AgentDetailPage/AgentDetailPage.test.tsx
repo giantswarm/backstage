@@ -46,19 +46,47 @@ jest.mock('../../hooks/useAgentSessions', () => ({
   useAgentSessions: (...args: unknown[]) => mockUseAgentSessions(...args),
 }));
 
-// The page calls this on the menu's behalf, because the menu renders in the shared
-// header — outside the plugin's QueryClientProvider — and so cannot call it itself.
-// Stubbed for the same reason `useAgentSessions` is: this page's react-query client
-// is not part of the test, and the menu is not rendered here anyway.
-jest.mock('../../hooks/useDeleteAgent', () => ({
-  useDeleteAgent: () => ({
-    isDeletable: false,
-    isCheckingDeletable: false,
+// The page calls these on the menu's behalf, because the menu renders in the
+// shared header — outside the plugin's QueryClientProvider — and so cannot call
+// them itself. Stubbed for the same reason `useAgentSessions` is: this page's
+// react-query client and the muster API are not part of the test, and the menu
+// and the write dialogs are covered by their own tests.
+jest.mock('../../hooks/useAgentDeletion', () => ({
+  useAgentDeletion: () => ({
     deleteAgent: jest.fn(),
     isDeleting: false,
-    error: null,
+    commit: jest.fn(),
+    isCommitting: false,
+    failure: undefined,
     reset: jest.fn(),
   }),
+}));
+jest.mock('../../hooks/useUpdateAgent', () => ({
+  useUpdateAgent: () => ({
+    update: jest.fn(),
+    isUpdating: false,
+    commit: jest.fn(),
+    isCommitting: false,
+    failure: undefined,
+    reset: jest.fn(),
+  }),
+}));
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerAvailability: () => ({
+    available: [],
+    missing: [],
+    presenceOf: () => 'unknown',
+    isLoading: false,
+    isUnavailable: true,
+  }),
+  useAgentManagerInfo: () => ({
+    info: undefined,
+    isLoading: false,
+    error: null,
+  }),
+}));
+jest.mock('./AgentUpdateSkillsDialog', () => ({
+  AgentUpdateSkillsDialog: () => null,
 }));
 
 // Stubbed for the same reason: it reads `kagentApiRef`, and this page's APIs and

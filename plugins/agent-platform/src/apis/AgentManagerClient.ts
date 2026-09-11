@@ -4,12 +4,17 @@ import {
   AGENT_MANAGER_TOOLS,
   agentManagerToolName,
   classifyAgentManagerError,
+  type AgentManagerAgent,
   type AgentManagerInfo,
+  type AgentManagerModelConfig,
   type AgentManagerTool,
   type AgentSpec,
   type AgentStatus,
+  type AgentUpdate,
   type CommitAgentResult,
   type CreateAgentResult,
+  type DeleteAgentResult,
+  type UpdateAgentResult,
   type ValidateAgentResult,
 } from '../lib/agentManager';
 
@@ -93,6 +98,84 @@ export class AgentManagerClient {
     return this.call<AgentStatus>(AGENT_MANAGER_TOOLS.getAgentStatus, {
       namespace,
       name,
+    });
+  }
+
+  /** The agent as agent-manager reads it: what an edit starts from. */
+  getAgent(namespace: string, name: string): Promise<AgentManagerAgent> {
+    return this.call<AgentManagerAgent>(AGENT_MANAGER_TOOLS.getAgent, {
+      namespace,
+      name,
+    });
+  }
+
+  /** The ModelConfigs of a namespace — the values `modelConfig` may take. */
+  async listModelConfigs(
+    namespace: string,
+  ): Promise<AgentManagerModelConfig[]> {
+    const result = await this.call<{
+      modelConfigs?: AgentManagerModelConfig[];
+    }>(AGENT_MANAGER_TOOLS.listModelConfigs, { namespace });
+    return result.modelConfigs ?? [];
+  }
+
+  /**
+   * The dry run of an update: the values and manifests agent-manager would
+   * write for `update` — with `refreshSkills`, every git skill re-pinned to its
+   * default-branch head — and every violation. Nothing is written.
+   */
+  validateUpdate(update: AgentUpdate): Promise<ValidateAgentResult> {
+    return this.call<ValidateAgentResult>(AGENT_MANAGER_TOOLS.validateAgent, {
+      ...update,
+      update: true,
+    });
+  }
+
+  /** Merges `update` into the release's values and writes it, as the person. */
+  updateAgent(update: AgentUpdate): Promise<UpdateAgentResult> {
+    return this.call<UpdateAgentResult>(AGENT_MANAGER_TOOLS.updateAgent, {
+      ...update,
+    });
+  }
+
+  /**
+   * Lands the update as a pull request in the owning GitOps repository instead
+   * (`mode: commit`, giantswarm/agent-manager#24). Offered only when `get_info`
+   * reports the `commit` capability.
+   */
+  commitUpdateAgent(update: AgentUpdate): Promise<CommitAgentResult> {
+    return this.call<CommitAgentResult>(AGENT_MANAGER_TOOLS.updateAgent, {
+      ...update,
+      mode: 'commit',
+    });
+  }
+
+  /**
+   * Deletes the agent's HelmRelease (helm-controller uninstalls the template
+   * and the agent's RemoteMCPServer with it) and the shared OCIRepository only
+   * when nothing else references it. Never with `force`: a GitOps-owned or
+   * suspended release is agent-manager's refusal to show, not ours to override.
+   */
+  deleteAgent(namespace: string, name: string): Promise<DeleteAgentResult> {
+    return this.call<DeleteAgentResult>(AGENT_MANAGER_TOOLS.deleteAgent, {
+      namespace,
+      name,
+    });
+  }
+
+  /**
+   * Removes the agent's files from the owning GitOps repository as a pull
+   * request instead (`mode: commit`, giantswarm/agent-manager#24). Offered only
+   * when `get_info` reports the `commit` capability.
+   */
+  commitDeleteAgent(
+    namespace: string,
+    name: string,
+  ): Promise<CommitAgentResult> {
+    return this.call<CommitAgentResult>(AGENT_MANAGER_TOOLS.deleteAgent, {
+      namespace,
+      name,
+      mode: 'commit',
     });
   }
 }

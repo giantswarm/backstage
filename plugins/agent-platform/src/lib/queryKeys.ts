@@ -183,3 +183,49 @@ export function musterAgentStatusQueryKey(
     name,
   ] as const;
 }
+
+/**
+ * The agent-manager reads the edit, update-skills and delete paths make on
+ * one agent — as the signed-in person, under the same `muster` prefix (never
+ * persisted, re-read when the person connects to agent-manager).
+ */
+export function musterAgentManagerAgentQueryKey(
+  installation: string,
+  namespace: string,
+  name: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-agent',
+    installation,
+    namespace,
+    name,
+  ] as const;
+}
+
+export function musterAgentManagerModelConfigsQueryKey(
+  installation: string,
+  namespace: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-model-configs',
+    installation,
+    namespace,
+  ] as const;
+}
+
+export function musterValidateAgentUpdateQueryKey(
+  installation: string,
+  updateSignature: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'validate-agent-update',
+    installation,
+    updateSignature,
+  ] as const;
+}

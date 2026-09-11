@@ -15,7 +15,22 @@ export type AgentCreatedHandoff = {
   name: string;
   /** The authenticated caller agent-manager wrote the release as. */
   requestedBy?: string;
+  /**
+   * Which write the page is watching converge: a create (the default), an
+   * edit's Save, or Update skills. Only the copy differs — every write ends
+   * the same way, with the platform Harness compiling a new revision.
+   */
+  action?: AgentWriteAction;
 };
+
+/** The writes after which the detail page shows the template converging. */
+export type AgentWriteAction = 'created' | 'updated' | 'skills-updated';
+
+const WRITE_ACTIONS: readonly AgentWriteAction[] = [
+  'created',
+  'updated',
+  'skills-updated',
+];
 
 /** The router-state key the review page writes and this hook reads. */
 export const AGENT_CREATED_STATE_KEY = 'agentCreated';
@@ -42,11 +57,15 @@ function readHandoff(state: unknown): AgentCreatedHandoff | undefined {
   ) {
     return undefined;
   }
+  const { action } = candidate as Record<string, unknown>;
   return {
     installation,
     namespace,
     name,
     requestedBy: typeof requestedBy === 'string' ? requestedBy : undefined,
+    action: WRITE_ACTIONS.includes(action as AgentWriteAction)
+      ? (action as AgentWriteAction)
+      : 'created',
   };
 }
 
