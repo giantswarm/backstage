@@ -63,7 +63,9 @@ function makeAgent(tools: ToolEntry[]) {
       spec: {
         modelConfig: { name: 'opus' },
         tools: tools.map(tool => ({
-          mcp: { server: { kind: 'RemoteMCPServer', name: tool.mcpServer.name } },
+          mcp: {
+            server: { kind: 'RemoteMCPServer', name: tool.mcpServer.name },
+          },
         })),
       },
     } as never,

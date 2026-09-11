@@ -131,7 +131,9 @@ describe('shortPin', () => {
   });
 
   it('keeps the algorithm prefix of a digest', () => {
-    expect(shortPin(`sha256:${'f'.repeat(64)}`)).toBe(`sha256:${'f'.repeat(12)}`);
+    expect(shortPin(`sha256:${'f'.repeat(64)}`)).toBe(
+      `sha256:${'f'.repeat(12)}`,
+    );
   });
 
   it('leaves anything else alone', () => {

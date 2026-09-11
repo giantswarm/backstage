@@ -179,7 +179,10 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
           {
             name: 'PR review conventions',
             source: {
-              git: { url: 'https://github.com/giantswarm/skills', commit: COMMIT },
+              git: {
+                url: 'https://github.com/giantswarm/skills',
+                commit: COMMIT,
+              },
               path: 'pr-review',
             },
           },
@@ -473,7 +476,9 @@ describe('AgentDetailPage', () => {
       // The Harness row says which revision it is working on.
       expect(
         screen.getByRole('list', { name: 'Admitting Harnesses' }),
-      ).toHaveTextContent(/kagent.*Progressing.*compiling rev-2, last successful rev-1/);
+      ).toHaveTextContent(
+        /kagent.*Progressing.*compiling rev-2, last successful rev-1/,
+      );
     });
 
     it('reports a rejected template as not accepted, with the Harness’s reason', async () => {
@@ -488,7 +493,8 @@ describe('AgentDetailPage', () => {
                   type: 'Compatible',
                   status: 'False',
                   reason: 'Incompatible',
-                  message: 'Dedicated sub-agents are not supported by this Harness',
+                  message:
+                    'Dedicated sub-agents are not supported by this Harness',
                   lastTransitionTime: '2026-07-31T10:05:00Z',
                 },
               ]),
@@ -540,7 +546,9 @@ describe('AgentDetailPage', () => {
         screen.queryByRole('list', { name: 'Admitting Harnesses' }),
       ).not.toBeInTheDocument();
       // The configuration says the label is missing, too.
-      expect(screen.getByText(/Not labelled for any Harness/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Not labelled for any Harness/),
+      ).toBeInTheDocument();
       // No session can start on it.
       expect(
         screen.queryByRole('button', { name: 'Start a session' }),

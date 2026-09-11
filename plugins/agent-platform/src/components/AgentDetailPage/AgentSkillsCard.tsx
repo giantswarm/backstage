@@ -1,5 +1,8 @@
 import { Text } from '@backstage/ui';
-import { Agent, AgentSkill } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  AgentSkill,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ExternalLink, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { repoSlug } from '../../lib/skills';

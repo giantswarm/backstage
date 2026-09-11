@@ -28,7 +28,8 @@ export function AgentSystemPromptCard({ agent }: { agent: Agent }) {
               system prompt, only that it is not configured inline here. */}
           {!source && (
             <Text variant="body-small" color="secondary">
-              The agent runs with whatever default its chart or Harness provides.
+              The agent runs with whatever default its chart or Harness
+              provides.
             </Text>
           )}
         </Flex>
