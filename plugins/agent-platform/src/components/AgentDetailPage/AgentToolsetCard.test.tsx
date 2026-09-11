@@ -262,14 +262,24 @@ describe('AgentToolsetCard', () => {
     expect(
       await screen.findByText('x_kubernetes_get_pods'),
     ).toBeInTheDocument();
+    // The groups are the resolved list's own disclosures, headed by their
+    // counts; a resolution this short opens itself.
     expect(
-      screen.getByRole('heading', { name: 'Infrastructure' }),
+      screen.getByRole('button', {
+        name: 'Infrastructure — 1 server · 1 tool',
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: 'Workflows' }),
+      screen.getByRole('button', { name: 'Workflows — 1 workflow' }),
     ).toBeInTheDocument();
+    // h3, matching the level bui gives every disclosure heading below it —
+    // an h4 here would put the section beneath its own contents in the
+    // document outline.
     expect(
-      screen.getByRole('heading', { name: 'Resolves to, for you (2)' }),
+      screen.getByRole('heading', {
+        name: 'Resolves to, for you (2)',
+        level: 3,
+      }),
     ).toBeInTheDocument();
     expect(filterTools).toHaveBeenCalledWith(
       expect.objectContaining({
