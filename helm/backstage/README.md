@@ -92,11 +92,15 @@ Backstage app provided by Giant Swarm
 | sharedConfig | object | `{}` | Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword |
 | nodeSelector | object | `{}` | Node selector labels to constrain pod scheduling to specific nodes |
 | strategy | object | `{}` | Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume. |
-| database | object | `{"engine":"sqlite","postgresql":{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","storageSize":"5Gi"}}` | Database configuration |
+| networkPolicy | object | `{"enabled":true,"flavor":"cilium"}` | Network policy settings |
+| networkPolicy.enabled | bool | `true` | Render the network policies the chart ships. Turn this off on a cluster whose policy flavor the chart does not render. |
+| networkPolicy.flavor | string | `"cilium"` | Policy flavor to render. The `kubernetes` flavor is not an exact equivalent of the `cilium` one: it has no `world` or `kube-apiserver` entity, so the egress leg that carries object storage and Kubernetes API traffic is `0.0.0.0/0` on 443 and 6443. Widen that leg in the template if the cluster reaches an object store on another port. |
+| database | object | `{"engine":"sqlite","postgresql":{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","operatorNamespace":"cnpg-system","storageSize":"5Gi"}}` | Database configuration |
 | database.engine | string | `"sqlite"` | Database engine to use |
-| database.postgresql | object | `{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","storageSize":"5Gi"}` | Settings for the PostgreSQL database (only used when engine is "postgresql") |
+| database.postgresql | object | `{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","operatorNamespace":"cnpg-system","storageSize":"5Gi"}` | Settings for the PostgreSQL database (only used when engine is "postgresql") |
 | database.postgresql.clusterNameSuffix | string | `"cnpg"` | Suffix appended to the chart name to form the CNPG cluster resource name |
 | database.postgresql.storageSize | string | `"5Gi"` | Persistent volume size for the PostgreSQL CNPG cluster |
+| database.postgresql.operatorNamespace | string | `"cnpg-system"` | Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation. |
 | database.postgresql.image | string | `"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716"` | PostgreSQL container image for the CNPG cluster (registry.domain is prepended) |
 | branding | object | `{"assetsPath":"/app/branding-assets","enabled":false,"volume":{"configMap":{}}}` | Custom branding/UI asset settings (logos and favicons served by the branding backend plugin) |
 | branding.enabled | bool | `false` | Enable serving custom branding assets (logos) from a mounted volume |

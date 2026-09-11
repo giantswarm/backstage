@@ -2657,6 +2657,10 @@
                             "type": "string",
                             "description": "PostgreSQL container image for the CNPG cluster (registry.domain is prepended)"
                         },
+                        "operatorNamespace": {
+                            "type": "string",
+                            "description": "Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation."
+                        },
                         "storageSize": {
                             "type": "string",
                             "description": "Persistent volume size for the PostgreSQL CNPG cluster"
@@ -2865,6 +2869,25 @@
         "name": {
             "type": "string",
             "description": "Name used for all Kubernetes resources (Deployment, Service, Ingress, etc.)"
+        },
+        "networkPolicy": {
+            "type": "object",
+            "description": "Network policy settings",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Render the network policies the chart ships. Turn this off on a cluster whose policy flavor the chart does not render."
+                },
+                "flavor": {
+                    "type": "string",
+                    "description": "Policy flavor to render. The `kubernetes` flavor is not an exact equivalent of the `cilium` one: it has no `world` or `kube-apiserver` entity, so the egress leg that carries object storage and Kubernetes API traffic is `0.0.0.0/0` on 443 and 6443. Widen that leg in the template if the cluster reaches an object store on another port.",
+                    "enum": [
+                        "cilium",
+                        "kubernetes"
+                    ]
+                }
+            }
         },
         "nodeSelector": {
             "type": "object",

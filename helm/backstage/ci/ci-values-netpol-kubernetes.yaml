@@ -1,0 +1,7 @@
+# CI case for the kubernetes network-policy flavor on the PostgreSQL engine.
+# The default flavor is cilium, so without this case the kubernetes branch of
+# the policy template renders nowhere in CI.
+database:
+  engine: postgresql
+networkPolicy:
+  flavor: kubernetes
