@@ -33,8 +33,8 @@ const SECRET_GVK: CustomResourceMatcher = {
  * The mutation refuses to delete a model an `Agent` still references. That
  * check reads a **fresh** list at mutation time, not the query cache — a
  * cached list is the wrong basis for destroying something other objects
- * depend on — and a failed read refuses the delete: unlike the shared chart
- * source in `useDeleteAgent` (where keeping it is the safe answer), here the
+ * depend on — and a failed read refuses the delete: unlike an agent's shared
+ * chart source (which agent-manager keeps whenever it cannot tell), here the
  * unsafe direction is proceeding, since deleting a referenced model breaks
  * every agent on it.
  *

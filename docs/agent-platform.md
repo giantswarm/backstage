@@ -136,9 +136,9 @@ management is the point, and the portal stamps its own
 
 **Delete refuses while referenced.** The mutation lists the namespace's
 `Agent`s **fresh** at mutation time (not from the query cache) and refuses to
-delete a model any of them still references — and unlike `useDeleteAgent`'s
-shared chart source (where a failed read safely resolves to "keep"), a failed
-read here refuses the delete: proceeding is the unsafe direction, since
+delete a model any of them still references — and unlike an agent's shared
+chart source (which agent-manager keeps when a failed read leaves it unsure), a
+failed read here refuses the delete: proceeding is the unsafe direction, since
 deleting a referenced model breaks every agent on it.
 
 ### The serving layer (the Serving section of the Models tab)
