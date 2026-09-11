@@ -30,7 +30,6 @@
     "@backstage/frontend-plugin-api": "backstage:^",
     "@backstage/plugin-catalog-react": "backstage:^",
     "@backstage/plugin-kubernetes-react": "backstage:^",
-    "@backstage/plugin-scaffolder-react": "backstage:^",
     "@backstage/ui": "backstage:^",
     "@giantswarm/backstage-plugin-agent-platform-common": "workspace:^",
     "@giantswarm/backstage-plugin-flux-react": "workspace:^",

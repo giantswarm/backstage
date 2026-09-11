@@ -24,7 +24,12 @@ import {
 import { newAgentRouteRef, newAgentToolsRouteRef } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
-import { DiscoveredSkill, repoSlug, skillId } from '../../lib/skills';
+import {
+  DiscoveredSkill,
+  repoSlug,
+  shortCommit,
+  skillId,
+} from '../../lib/skills';
 import { groupSkillsByRepo, RepoSkillGroup } from '../../lib/skillGrouping';
 import {
   SelectableCard,
@@ -94,6 +99,17 @@ function SkillCard({
             <span className={classes.code}>{skill.path}</span>
           </>
         )}
+      </Text>
+      {/* The commit the agent will be pinned to: the head of the branch when
+          the skill was discovered. Skills never move on their own after the
+          write (updating them is an explicit action on the agent's page), so
+          the pin is shown where it is chosen. */}
+      <Text
+        variant="body-x-small"
+        color="secondary"
+        aria-label={`Pinned to commit ${shortCommit(skill.commit)} of ${skill.ref}`}
+      >
+        {skill.ref} <span className={classes.code}>@{shortCommit(skill.commit)}</span>
       </Text>
     </SelectableCard>
   );
@@ -322,8 +338,10 @@ export function NewAgentSkillsPage() {
         </Text>
         <Text as="p" className={classes.intro}>
           Packaged instructions the agent can reuse for specific kinds of tasks,
-          discovered from the configured skill repositories. Optional — you can
-          continue without selecting any.
+          discovered from the configured skill repositories. Each skill is
+          pinned to the commit shown on its card — the head of its repository
+          when it was discovered — and stays there until you update it.
+          Optional — you can continue without selecting any.
         </Text>
 
         <Flex direction="column" gap="4">

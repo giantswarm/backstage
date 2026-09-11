@@ -43,6 +43,7 @@ import { READINESS_PRESENTATION } from '../AgentsTable/readinessStatus';
 import { InstallationChip } from '../InstallationChip';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { ServingProvider, useServing } from '../ServingProvider';
+import { AgentCreationProgress } from '../AgentCreationProgress';
 import { AgentActionsMenu } from './AgentActionsMenu';
 import { AgentConfigurationCard } from './AgentConfigurationCard';
 import { AgentSessionsCard } from './AgentSessionsCard';
@@ -329,6 +330,8 @@ function AgentDetailPageContent() {
 
           {description && <Text variant="body-medium">{description}</Text>}
         </Flex>
+
+        <AgentCreationProgress installation={installation} namespace={namespace} name={name} />
 
         {/* A cheap pre-check only: no Flux or Helm marker at all means there is
             nothing to resolve, so skip the lookups entirely. Whether the agent is

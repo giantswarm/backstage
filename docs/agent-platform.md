@@ -11,30 +11,38 @@ still ahead.
 
 ## Overview of the create flow
 
-Three custom in-context pages, built with **bui** (`@backstage/ui`), driving the
-scaffolder engine underneath ("Hybrid C"):
+Four custom in-context pages, built with **bui** (`@backstage/ui`). The portal
+composes nothing: the review is agent-manager's dry run and the deploy is
+agent-manager's `create_agent`, both called through the installation's muster
+as the signed-in person.
 
 1. **`/agents/new`** — the form (`NewAgentPage`). Installation, identity (name,
    auto-derived slug, description) and configuration (model, system prompt).
 2. **`/agents/new/skills`** — skill selection (`NewAgentSkillsPage`). Optional;
-   see "Skill discovery" below.
-3. **`/agents/new/review`** — review and deploy (`NewAgentReviewPage`). Shows the
-   composed manifests, deploys them directly, and offers a manual-install
-   fallback.
+   see "Skill discovery" below. Every skill is pinned to the commit its card
+   shows.
+3. **`/agents/new/tools`** — the toolset (`NewAgentToolsPage`): the selectors
+   that bound which of the gateway's tools the agent can use.
+4. **`/agents/new/review`** — review and deploy (`NewAgentReviewPage`). Shows
+   the manifests agent-manager renders for the form (`validate_agent`), its
+   violations inline, deploys through `create_agent`, and offers a manual-install
+   fallback built from the same values.
 
 Each page carries a "Step X of N" label. Only step 1 validates (name, slug,
-installation, model); steps 2 and 3 redirect back to it if those are missing, so
-a deep link into the middle of the flow can't strand the user.
+installation, model); the later steps redirect back to it if those are missing,
+so a deep link into the middle of the flow can't strand the user.
 
 **Step 2 is conditional.** With no `agentPlatform.skills.repositories`
 configured there is nothing to pick and nothing the agent's creator can do about
 it (the fix is admin-side config), so the step is skipped: step 1's Continue
-goes straight to review, the labels read "of 2", review's "Back" returns to step
-1, and a deep link to `/agents/new/skills` redirects to review. `hasRepositories`
-comes from config alone, so this decision costs no request.
+goes straight to the Tools step, the labels read "of 3", and a deep link to
+`/agents/new/skills` redirects onward. `hasRepositories` comes from config
+alone, so this decision costs no request.
 
 Cross-page form state lives in `NewAgentFormProvider`. The set of installations
-and their models is loaded once by `ModelConfigsProvider`.
+and their models is loaded once by `ModelConfigsProvider`; which of them offer
+agent creation at all is decided by `useAgentManagerAvailability` (see
+"Feature detection" below).
 
 ### Model selection
 
@@ -308,140 +316,160 @@ start discovery while the user is still filling in step 1 (the query key doesn't
 depend on form state, so it's never wasted) and to decide whether step 2 exists.
 It is the reason the step usually opens with its catalogue already loaded.
 
-A selected skill maps to a kagent **`spec.skills.gitRefs`** entry — `{ url: repo,
-path: <skill dir>, ref: <branch>, name }` — which is what `composeManifests`
-inlines into the chart values. (This is the real kagent v1alpha2 shape; there is
-no OCI/image skill source in that schema, despite a stale doc comment on the
-CRD.) Repo-root skills omit `path`; agents with no skills selected omit the
-`skills` block entirely (kagent's `gitRefs` requires ≥1 entry).
+**Skills are pinned at discovery time.** The route resolves the ref to its head
+commit first (`GET /repos/{owner}/{repo}/commits/{ref}` with the `sha` media
+type) and reads the tree and every `SKILL.md` **at that commit**, so the listing
+is one consistent snapshot and every skill carries the `commit` it was read at.
+The picker shows it as the short SHA next to the branch, and the form keeps the
+whole `DiscoveredSkill`, commit included.
 
-### Manifest composition
+A selected skill becomes a chart 1.x **`skills[]`** entry of the create request
+— `{ name, path: <skill dir>, git: { url: repo, commit } }` (`lib/agentSpec.ts`,
+`skillEntryOf`). The portal sends the commit it showed and never a branch, so
+agent-manager's own resolution is not what pins: what the person picked is what
+runs, until they update it explicitly on the agent's page. Repo-root skills omit
+`path`; agents with no skills selected omit `skills` entirely. There is no
+per-skill credential in the request (private skill repositories are a separate
+piece of platform work) and no runtime field.
 
-`src/lib/composeManifests.ts` turns the form into:
 
-- A Flux **`OCIRepository`** (sources the chart) and **`HelmRelease`** (installs
-  the agent, with the agent values inlined into `spec.values`). These are joined
-  into a single multi-document `combinedManifest` — the source of truth that is
-  both previewed on the review page and applied verbatim. The `OCIRepository`
-  tracks a **semver range** (`ref.semver: "x.x.x"`) rather than a pinned tag, so
-  Flux auto-upgrades the agent to the latest published release (GS "major
-  upgrades" convention).
-- A standalone `values.yaml` + `helm install` command for the manual fallback.
+### The review page is agent-manager's dry run
 
-We deliberately deviate from the prototype's 3-file/ConfigMap model: the
-prototype's `HelmRelease` referenced a `ConfigMap` that was never generated, so
-we inline the values instead (the common self-contained Flux pattern).
+Nothing in the portal composes a manifest. The review page turns the form into
+agent-manager's create contract (`lib/agentSpec.ts` → `AgentSpec`: `namespace`
+= the ModelConfig's, `name` = the slug, `displayName`, `description`,
+`systemMessage`, `modelConfig`, `iconUrl` from the avatar rule, `skills` pinned
+to commits, `toolset` exactly as the Tools step composed it) and asks
+agent-manager to validate it (`useValidateAgent` → `x_agent-manager_validate_agent`).
+The answer is rendered verbatim:
 
-### Chart resolution
+- **`manifests.helmRelease`** and **`manifests.ociRepository`** — the Flux
+  objects a create would apply, as YAML. The `OCIRepository` tracks the chart's
+  **`1.x`** range (agent-manager's `DefaultChartSemver`), so a portal-created
+  agent follows 1.x releases and never a 2.0.
+- **`errors[]`** — every schema violation and precondition failure (an unknown
+  ModelConfig with the valid names, an unpinnable skill, a malformed selector),
+  as an inline list. Deploy is withheld while any is present.
+- **`manifests.values`** — the values agent-manager composed, shown as the
+  standalone `values.yaml` of the manual fallback together with a `helm install`
+  command built from `get_info`'s chart (`ociUrl`, `latestVersion`).
 
-Rather than hardcoding a chart version or a default system prompt, `useAgentChart`
-resolves both from the published `agent` chart at runtime — reusing the same
-gs-backend endpoints the App Deployment scaffolder fields use:
+`get_info` (`useAgentManagerInfo`) supplies what used to be config or a
+registry read: the chart's OCI URL and range, the newest published version, the
+platform Harness's name (`harness.name`) the copy names, the muster MCP URL
+agent-manager composes (`muster.url`), the Flux ServiceAccount, and the
+capability flags. The portal has no chart knowledge of its own: no version
+resolution, no default-prompt read (an empty system prompt is sent as absent
+and the chart's default applies), no Flux settings.
 
-1. `container-registry/tags` → the **latest stable tag** (highest semver
-   non-prerelease). Used for the manual `helm install` snapshot and to read the
-   default prompt below (the deployed `OCIRepository` itself auto-upgrades via
-   the semver range and isn't pinned). Falls back to the configured
-   `chart.version` floor.
-2. `container-registry/tag-manifest` → the `io.giantswarm.application.values-schema`
-   annotation → the chart's `values.yaml` (fetched via `github/raw-content`) →
-   its `agent.systemMessage`, which **seeds the form's system-prompt default**
-   (until the user edits it). The chart's default is deliberately minimal today
-   but can grow without a UI change.
+### The seam: agent-manager over muster, as the person
 
-Each step degrades gracefully: the version falls back to config and the prompt
-to empty (the user then writes their own).
+agent-manager speaks MCP only. muster registers it as the MCPServer
+`agent-manager` and exposes its tools to a signed-in person as
+`x_agent-manager_<tool>`; the portal reaches them through the muster plugin's
+own client, `musterApi.callTool(name, args, installation)`
+(`apis/AgentManagerClient.ts`). That client sends the person's token for the
+installation's muster — the main-login token on the home installation, the
+brokered one elsewhere — and muster runs the tool with the person's own grant,
+so agent-manager writes with the person's credentials: the `HelmRelease`'s
+`managedFields` name the person, not a ServiceAccount, and the person's RBAC
+decides. There is no agent-manager URL and no REST client anywhere in the
+portal.
 
-## Direct apply via scaffolder
+Two failure shapes are told apart (`lib/agentManager.ts`,
+`classifyAgentManagerError`): agent-manager's own refusals arrive as
+`<code>: <message>` (`forbidden`, `conflict`, `invalid_request`, …) and become
+an `AgentManagerError` shown in agent-manager's words; muster's "not connected"
+answers (the tool is not in the session's tool set, the connection needs a
+sign-in) become an `AgentManagerNotConnectedError`, and the page offers the
+muster plugin's `ServerSignIn` for `agent-manager`. All agent-manager reads use
+the `['muster', 'agent-platform', …]` query keys (`lib/queryKeys.ts`): never
+persisted (they are one person's view), and re-read once the sign-in completes
+(the muster plugin's `['muster']` invalidation).
 
-Deploying **applies the resources directly** to the selected installation — there
-is no pull request. The path:
+### Feature detection
 
-1. `useDeployAgent` mints the user's per-installation OIDC token the same way the
-   `GSOIDCToken` scaffolder field does: `kubernetesApi.getCluster(installation)`
-   → `kubernetesAuthProvidersApi.getCredentials('oidc.' + oidcTokenProvider)`.
-2. It calls `scaffolderApi.scaffold()` with a hidden catalog template
-   (`agent-deployment`), passing the `combinedManifest`, the installation, and
-   the token as the `USER_OIDC_TOKEN` secret. The `oidcTokenInstallation` value
-   tells the GS scaffolder client which installation backend to route the task
-   to.
-3. The template runs the **`kube:apply`** action
-   (`@devangelista/backstage-scaffolder-kubernetes`, already wired in
-   `packages/backend/src/index.ts`), which does `yaml.loadAll` +
-   read-then-patch-or-create per resource.
-4. On success the user is sent to the scaffolder task page for the live apply
-   logs.
+Only an installation whose muster lists agent-manager (`core_mcpserver_list`,
+read through `musterApi.listServers` in the person's own session) is offered in
+the installation picker (`useAgentManagerAvailability`, `InstallationSelect`).
+One that has models but no agent-manager is named with the reason; a portal
+without the muster plugin says nothing can be created from it. There is no
+TypeScript fallback path: if agent-manager is not there, neither is the write.
+
+### Deploy through agent-manager
+
+Deploy calls `create_agent` with the same spec the dry run validated
+(`useCreateAgent`). agent-manager composes the `HelmRelease` (and the shared
+`OCIRepository` of the chart when the namespace has none yet), pins the skills,
+validates the values against the chart's `values.schema.json` and applies both
+as the person. Nothing else is on the path: no scaffolder task, no `kube:apply`,
+no OIDC token minted by the portal.
+
+On success the person lands on the agent's detail page with the create handed
+over in the router state (`useAgentCreatedHandoff`, consumed once), and
+`AgentCreationProgress` polls `get_agent_status` every 3 s until the platform
+Harness reports the template `ready` — the alert then names the Harness — or
+`failed`, with agent-manager's reason. The page's own status card derives the
+same verdict from `status.harnesses[]`, so the two agree; a `not_found` right
+after the create is the release not having rendered the template yet and is
+polled through. After the write the installation's cached `kagent.dev` lists are
+invalidated so the roster picks the new agent up.
+
+A refused write stays on the review page with agent-manager's message: the
+apiserver's Forbidden for a viewer (`forbidden`), an existing name or a
+GitOps-owned namespace (`conflict`), a request agent-manager would not compose
+(`invalid_request`). The portal never passes `force`.
+
+**Commit** — landing the manifests as a pull request in the owning GitOps
+repository instead of applying them — is `create_agent` with `mode: commit`.
+The button renders only when `get_info.capabilities.commit` is `true`; the
+result is the pull request URL, or `auth_required` with the link to connect the
+repository first. agent-manager does not report the capability yet, so the
+button is hidden today; the gate and the result handling exist so nothing in the
+portal changes when it does.
 
 ### Shared OCIRepository per namespace
 
-The `OCIRepository` is named after the chart (`agent`), **not** the agent — so
-every agent deployed into a namespace generates the same one, while each agent
-gets its own `HelmRelease` (named after the slug). The model is therefore **one
-shared `OCIRepository/agent` per namespace, many HelmReleases**.
-
-This is safe on re-deploy: `kube:apply` reads each resource and patches it if it
-exists (else creates it), so a second agent's deploy re-applies an identical
-`OCIRepository/agent` as a no-op patch — no `AlreadyExists` error, no duplicate.
-It works because all agents pin the same chart source and `semver: "x.x.x"`
-range, so the shared source is uniform.
-
-Two consequences to keep in mind:
-
-- **Deletion must not remove the shared OCIRepository** while others still use it.
-  Deleting an agent removes only that agent's `HelmRelease`, and takes
-  `OCIRepository/agent` with it only after confirming no other `HelmRelease` in
-  the source's namespace references it (see "Deleting an agent"). Every
-  uncertainty resolves to keeping it.
-- **Per-agent chart versions aren't expressible.** The sharing relies on every
-  agent tracking the same range. If a specific agent ever needed a different
-  chart version, it would need its own OCIRepository (e.g. named after the slug).
-  Not a concern under the current always-latest approach.
-
-### The `agent-deployment` template
-
-`catalog/templates/agent-deployment/template.yaml` is a thin wrapper around
-`kube:apply` (tagged `hidden` so it stays out of the `/create` list). It applies
-the manifest verbatim, so what the review page shows is exactly what is applied.
-
-> **Note:** `/catalog` is gitignored — the copy there is a **local-dev artifact**
-> only, like `app-deployment`; register it via `catalog.locations` in
-> `app-config.local.yaml` (see `app-config.local.yaml.example`). Real deployments
-> load the template from the external
-> [`giantswarm/backstage-catalogs`](https://github.com/giantswarm/backstage-catalogs/tree/main/templates/agent-deployment)
-> repo, where it is published. Keep the two in sync when changing it.
+agent-manager names the `OCIRepository` after the chart (`agent`), not the
+agent, so every agent in a namespace shares one chart source while each gets its
+own `HelmRelease` (named after the slug): **one `OCIRepository/agent` per
+namespace, many HelmReleases**. `create_agent` reuses the source when it exists
+(`created.ociRepository: false`), and agent-manager's delete keeps it while any
+other release references it. Every agent tracks the same `1.x` range, which is
+what makes the sharing sound.
 
 ### Namespace
 
-The `HelmRelease`, `OCIRepository`, and (via an unset `targetNamespace`) the
-chart's output all land in **the selected `ModelConfig`'s namespace** (e.g.
-`kagent`). This is derived, not configured: the namespace already exists, kagent
-watches it, and it co-locates the agent with the model it uses. This avoids both
-a hardcoded namespace and the GitOps-managed `flux-giantswarm` namespace (which
-would risk pruning of ad-hoc, UI-applied resources).
+The `HelmRelease`, the `OCIRepository` and the rendered objects all land in
+**the selected `ModelConfig`'s namespace** (e.g. `kagent`). This is derived, not
+configured: the namespace already exists, the platform Harness watches it, and
+it co-locates the agent with the model it uses. The portal passes it as
+`namespace`; agent-manager only accepts the namespaces it manages
+(`get_info.namespaces.managed`).
 
 ### Flux multi-tenancy ServiceAccount
 
-GS enforces a Flux multi-tenancy admission policy: a `HelmRelease` in a **tenant**
-namespace (which the ModelConfig namespace is) is rejected unless it sets
-`spec.serviceAccountName`. (`flux-giantswarm` is exempt; `OCIRepository` is not
-covered.) The same holds on any cluster whose helm-controller runs the Flux
-multi-tenancy lockdown: a `HelmRelease` without the field executes as the
-rights-less `default` account and fails. The generated `HelmRelease` sets it from
-`agentPlatform.fluxServiceAccountName`.
+Giant Swarm management clusters run a Flux multi-tenancy lockdown: a
+`HelmRelease` in a tenant namespace (which the ModelConfig namespace is) must
+name the ServiceAccount it executes as. agent-manager composes that from its own
+configuration (`flux.helmReleaseServiceAccount`, fed by the Agent Platform chart
+from the same value that renders the ServiceAccount and its RoleBinding, default
+`kagent-flux`) and reports it in `get_info.flux.serviceAccountName`. The portal
+carries no copy of it — the ServiceAccount, its RoleBinding, agent-manager and
+what the portal shows cannot disagree.
 
-The value names the **tenant identity the Agent Platform chart renders**. The
-chart's connectivity component creates a ServiceAccount in the agent namespace
-with a namespace-scoped RoleBinding to `cluster-admin` (full control of that
-namespace, nothing outside it), named by the chart value
-`kagent.fluxServiceAccountName` (default `kagent-flux`). The same chart value is
-derived into agent-manager's `flux.helmReleaseServiceAccount`, and when the
-chart installs Backstage as a component, its connectivity component renders this
-key into the portal's app-config from that value too — so the ServiceAccount,
-its RoleBinding, agent-manager and the portal cannot disagree, and an
-installation that renames the account does so in one place. A Backstage instance
-configured by hand sets the key to the chart's value; on Giant Swarm management
-clusters that is `kagent-flux`. Unset, the composed `HelmRelease` carries no
-`spec.serviceAccountName` (see `composeManifests`).
+### What is gone
+
+Until 1.0 the portal composed the manifests itself (`composeManifests.ts`),
+resolved the chart version and default prompt from the registry
+(`useAgentChart`), and applied the result through the hidden `agent-deployment`
+scaffolder template's `kube:apply` action with an OIDC token it minted
+(`useDeployAgent`). All of that, and the app-config keys behind it
+(`agentPlatform.chart.*`, `agentPlatform.fluxServiceAccountName`,
+`agentPlatform.deployTemplateRef`), left with the move to agent-manager. The
+`kube:apply` action and `scaffolder-backend-module-gs` stay for the other
+templates; the `agent-deployment` template in `giantswarm/backstage-catalogs` is
+unused and its removal is that repository's follow-up.
 
 ## The installation scope
 
@@ -3090,6 +3118,14 @@ skills grid fits three cards per row, and the sessions table has four columns.
 
 ### Sections
 
+Right after a create, the page opens with **the create's progress**
+(`AgentCreationProgress`): the review page hands the created agent over in the
+router state (consumed once, so Back does not replay it) and the alert polls
+agent-manager's `get_agent_status` until the platform Harness reports the
+template ready — then names the Harness — or failed, with agent-manager's
+reason. It renders nothing on any other visit; the status card below is the
+durable view of the same verdict.
+
 - **Header** — avatar, display name, derived readiness, technical name,
   installation/namespace, creation age, description. A kebab in the shared plugin
   header opens the **manifest dialog**: the `AgentTemplate` as read-only YAML, minus
@@ -3481,11 +3517,7 @@ All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
 
 | Key                          | Purpose                                                                                                                                                                                                            |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `chart.ociUrl`               | OCI URL of the agent chart (no tag).                                                                                                                                                                               |
-| `chart.version`              | Version floor / fallback. The deployed OCIRepository auto-upgrades via a semver range; this is only used for the manual snapshot.                                                                                  |
-| `fluxServiceAccountName`     | ServiceAccount the HelmRelease executes as: the tenant identity the platform chart renders (chart value `kagent.fluxServiceAccountName`, default `kagent-flux`). Required under Flux multi-tenancy.                |
-| `deployTemplateRef`          | Entity ref of the deploy template. Defaults to `template:default/agent-deployment`.                                                                                                                                |
-| `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill).                                                                                                                                             |
+| `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill, pinned to the repository's head commit at discovery).                                                                                        |
 | `kagent.timeoutMs`           | Per-request timeout toward a kagent API (default 10000). Backend-only.                                                                                                                                             |
 | `kagent.sessionStates.*`     | Bounds on the derived session-state summary behind the session switcher rail: `maxSessions`, `maxAgeMs`, `concurrency`, `taskTimeoutMs`, `budgetMs`, `cacheTtlMs`. Sized to the frontend's 10s poll. Backend-only. |
 | `kagent.sessionUsage.*`      | Bounds on the usage summary behind the Usage tab: `windowDays` plus the same six levers. Numbers differ from `sessionStates` on purpose — read on a tab visit, reporting on days. Backend-only.                    |
@@ -3506,23 +3538,20 @@ The plugin's page and nav item are enabled via `app.extensions` in
 
 ## Provisional / placeholder aspects
 
-The manifests target the **`agent` chart** (`github.com/giantswarm/agent`,
-`helm/agent`, published at `oci://gsoci.azurecr.io/charts/giantswarm/agent`). Its
-values schema is settled and the generated values follow it — `agent`
-(name/displayName/description/systemMessage), top-level `modelConfig.name`
-(resolved in the agent's own namespace, so no namespace is passed), and top-level
-`skills.gitRefs`. The deploy version and default system prompt are resolved from
-the published chart at runtime (see "Chart resolution"). What is still
+The agents the portal creates are releases of the **`agent` chart**
+(`github.com/giantswarm/agent`, `helm/agent`, published at
+`oci://gsoci.azurecr.io/charts/giantswarm/agent`) at the `1.x` range, composed
+and validated by agent-manager against the chart's `values.schema.json`. The
+portal does not carry the values shape: what it sends is agent-manager's create
+contract, and what it shows is agent-manager's rendering of it. What is still
 provisional:
 
-- The chart enables the **muster gateway by default** (`muster.enabled: true`),
-  which references a `RemoteMCPServer` named `muster` in `agent-platform` and
-  expects a per-installation `muster.stsWellKnownUri`. The create flow does not
-  set these, so it relies on the chart defaults — a reconcile-time dependency to
-  revisit.
+- **Commit** (`mode: commit`, a pull request instead of a live apply) is built
+  behind `get_info.capabilities.commit`, which no agent-manager reports yet. The
+  result shape (`pullRequestUrl`, `auth_required` + connect link) follows the
+  contract sketched for it and may need adjusting when it lands.
 
 ---
-
 ## Open TODOs
 
 ### Installation / ModelConfig querying
@@ -3544,31 +3573,28 @@ above). What remains is a separate, deeper concern:
 
 ### Deployment
 
-- **muster defaults.** The chart wires the muster gateway by default; the create
-  flow doesn't set the per-installation `muster.stsWellKnownUri` (or opt out via
-  `extraAgentSpec`/config), so this needs revisiting once agents actually run.
+- **The muster URL is agent-manager's.** The chart's `muster.url` is composed by
+  agent-manager from its own configuration (the platform's muster MCP URL) and
+  reported in `get_info.muster.url`; the portal shows it and sends nothing. A
+  `musterMcpUrl` app-config key on the portal's side would have no consumer —
+  `create_agent` takes no muster argument — so there is none.
 
 ### Features
 
-- **Name-conflict pre-check.** The create form does not yet check whether the chosen
-  name is already taken on the target installation. kagent `Agent` names are unique per
-  namespace (e.g. `sre-agent` already exists on an internal installation), so a
-  duplicate `Agent` — and likewise a colliding `OCIRepository` or `HelmRelease` of the
-  same name — makes the deploy fail late, at apply time. We should catch this early:
-  validate the slug against the existing `Agent`/`OCIRepository`/ `HelmRelease`
-  resources in the target namespace and block "next"/"deploy" with an inline error
-  before the user reaches the review page.
-- **Skills — remaining work.** Discovery and selection are implemented (see
-  "Skill discovery" above), and the values now match the `agent` chart's
-  top-level `skills.gitRefs`. Still open: (1) **private skill repos** need
-  `spec.skills.gitAuthSecretRef` wired (the field exists in the CRD/chart but the
-  create flow doesn't set it); (2) discovery reads a repo's **default branch** and
-  doesn't expose per-skill version/`ref` selection in the UI.
-- **Editing an agent.** Create and delete exist; edit does not. Editing means
-  changing the values its HelmRelease renders from — so it needs the create flow's
-  form driven from an existing agent, plus a decision about whether that produces
-  a live apply or a PR (GitOps-managed agents are read-only, see "GitOps
-  provenance").
+- **Name-conflict pre-check.** The create form does not check whether the chosen
+  name is already taken on the target installation before the review page. A
+  duplicate is refused by agent-manager at Deploy (`conflict`, shown inline), so
+  nothing is applied — but the person only learns it on the last step. Asking
+  agent-manager (`get_agent`) from step 1 would move that forward.
+- **Skills — remaining work.** Discovery, selection and commit pinning are
+  implemented (see "Skill discovery" above). Still open: (1) **private skill
+  repos** — the create contract carries no per-skill credential by design, so a
+  private repository needs the platform's answer, not a portal field; (2)
+  discovery reads a repo's **default branch** and exposes no per-skill `ref`
+  choice in the UI — the pin is that branch's head at discovery.
+- **Editing an agent, and moving its skills forward.** Create exists; edit,
+  delete through agent-manager and an explicit "Update skills" (re-pin every git
+  skill to its repository's head) are the companion piece on the same seam.
 - **An empty session is possible.** Starting one is a create followed by a separate
   send (see "Starting a session"), so closing the tab in between leaves a session with
   no messages. Harmless — it opens and can be continued or deleted — but a session that

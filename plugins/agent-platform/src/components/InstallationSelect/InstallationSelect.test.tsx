@@ -34,6 +34,23 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => mockModelConfigs,
 }));
 
+type Presence = 'available' | 'missing' | 'unknown';
+let mockPresence: Record<string, Presence>;
+let mockAgentManagerLoading: boolean;
+let mockMusterPluginMissing: boolean;
+
+// Feature detection: which installations' musters list agent-manager. Driven per
+// case; the hook itself is covered with the muster API in useAgentManager's tests.
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerAvailability: (installations: string[]) => ({
+    available: installations.filter(name => mockPresence[name] === 'available'),
+    missing: installations.filter(name => mockPresence[name] === 'missing'),
+    presenceOf: (name: string) => mockPresence[name] ?? 'unknown',
+    isLoading: mockAgentManagerLoading,
+    isUnavailable: mockMusterPluginMissing,
+  }),
+}));
+
 describe('InstallationSelect', () => {
   beforeEach(() => {
     mockSetInstallation.mockClear();
@@ -46,6 +63,74 @@ describe('InstallationSelect', () => {
       availableInstallations: ['alpha', 'beta'],
       unreachableInstallations: [],
     };
+    mockPresence = { alpha: 'available', beta: 'available', solo: 'available' };
+    mockAgentManagerLoading = false;
+    mockMusterPluginMissing = false;
+  });
+
+  describe('agent-manager gating', () => {
+    it('offers only the installations whose muster lists agent-manager, and says why the others are missing', () => {
+      mockPresence = { alpha: 'available', beta: 'missing' };
+
+      const { getByText, queryByText } = render(<InstallationSelect />);
+
+      expect(getByText('alpha')).toBeInTheDocument();
+      expect(queryByText('beta')).not.toBeInTheDocument();
+      expect(getByText('No agent-manager on beta')).toBeInTheDocument();
+      expect(
+        getByText(/muster on beta lists no agent-manager MCPServer/),
+      ).toBeInTheDocument();
+    });
+
+    it('withdraws a pick whose muster turns out to lack agent-manager', () => {
+      mockState = { installation: 'beta' };
+      mockPresence = { alpha: 'available', beta: 'missing' };
+
+      render(<InstallationSelect />);
+
+      expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
+    });
+
+    it('keeps the picker settling while the server lists are still being read', () => {
+      mockPresence = {};
+      mockAgentManagerLoading = true;
+
+      const { getByText } = render(<InstallationSelect />);
+
+      expect(
+        getByText('Finding installations with models and agent-manager…'),
+      ).toBeInTheDocument();
+    });
+
+    it('explains that nothing can be created when no installation has agent-manager', () => {
+      mockPresence = { alpha: 'missing', beta: 'missing' };
+
+      const { getByText, queryByText } = render(<InstallationSelect />);
+
+      expect(
+        getByText('No agent-manager on some installations'),
+      ).toBeInTheDocument();
+      expect(queryByText('No installations with models')).not.toBeInTheDocument();
+    });
+
+    it('requires the muster plugin — there is no other path to agent-manager', () => {
+      mockMusterPluginMissing = true;
+
+      const { getByText, queryByLabelText } = render(<InstallationSelect />);
+
+      expect(getByText('The muster plugin is required')).toBeInTheDocument();
+      expect(queryByLabelText('Installation')).not.toBeInTheDocument();
+    });
+
+    it('does not hide the sole installation when its muster lacks agent-manager', () => {
+      mockInstallations = [{ name: 'solo' }];
+      mockModelConfigs = { ...mockModelConfigs, availableInstallations: ['solo'] };
+      mockPresence = { solo: 'missing' };
+
+      const { getByText } = render(<InstallationSelect />);
+
+      expect(getByText('No agent-manager on solo')).toBeInTheDocument();
+    });
   });
 
   describe('with more than one installation configured', () => {
@@ -79,7 +164,7 @@ describe('InstallationSelect', () => {
       const { getByText } = render(<InstallationSelect />);
 
       expect(
-        getByText('Finding installations with models…'),
+        getByText('Finding installations with models and agent-manager…'),
       ).toBeInTheDocument();
     });
 
