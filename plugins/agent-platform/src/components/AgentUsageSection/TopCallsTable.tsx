@@ -1,7 +1,10 @@
+import { useMemo } from 'react';
 import { makeStyles, Paper, Theme } from '@material-ui/core';
 import { Cell, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
+import { DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import { formatCount } from '../../lib/formatNumbers';
+import { columnMax, useMeasureColor } from '../../lib/measures';
 
 const useStyles = makeStyles((theme: Theme) => ({
   card: {
@@ -24,9 +27,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     // than `break-all` so a long `x_…` name breaks only when it must.
     overflowWrap: 'anywhere',
   },
-  calls: {
-    fontVariantNumeric: 'tabular-nums',
-  },
 }));
 
 export type TopCallsRow = { id: string; name: string; calls: number };
@@ -42,6 +42,11 @@ export type TopCallsTableProps = {
 /**
  * A "top N by call count" table. Used twice: tools, and the muster servers
  * behind them.
+ *
+ * The call column carries a data bar, which earns its place here more than in
+ * most tables: the rows are already ranked, so the bar's job is to show *how
+ * steeply* — whether one tool dominates or the top ten are level — which the
+ * numbers alone make you do arithmetic for.
  */
 export function TopCallsTable({
   title,
@@ -50,6 +55,9 @@ export function TopCallsTable({
   emptyMessage,
 }: TopCallsTableProps) {
   const classes = useStyles();
+  const colorFor = useMeasureColor();
+
+  const maxCalls = useMemo(() => columnMax(rows, row => row.calls), [rows]);
 
   const columnConfig: ColumnConfig<TopCallsRow>[] = [
     {
@@ -67,7 +75,12 @@ export function TopCallsTable({
       label: 'Calls',
       cell: row => (
         <Cell>
-          <span className={classes.calls}>{formatCount(row.calls)}</span>
+          <DataBar
+            label={formatCount(row.calls)}
+            value={row.calls}
+            max={maxCalls}
+            color={colorFor('calls')}
+          />
         </Cell>
       ),
     },

@@ -212,3 +212,124 @@ describe('MimirService.query', () => {
     ).rejects.toThrow(ServiceUnavailableError);
   });
 });
+
+describe('MimirService.queryRange', () => {
+  let service: MimirService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = MimirService.create({
+      config: makeConfig('alba.capi.aws.k8s.3stripes.net'),
+      logger: makeLogger(),
+    });
+  });
+
+  it('hits query_range with the whole window and returns a matrix', async () => {
+    const payload = {
+      status: 'success',
+      data: {
+        resultType: 'matrix',
+        result: [
+          { metric: { model: 'sonnet' }, values: [[1757462400, '1.5']] },
+        ],
+      },
+    };
+    mockFetch.mockResolvedValue(makeResponse(200, JSON.stringify(payload)));
+
+    const result = await service.queryRange({
+      installationName: 'alba',
+      query: 'sum(increase(cost[1d]))',
+      start: '1754870400',
+      end: '1757462400',
+      step: '1d',
+      oidcToken: 'tok',
+    });
+
+    expect(result.data.result[0].values).toEqual([[1757462400, '1.5']]);
+
+    const url = new URL(mockFetch.mock.calls[0][0]);
+    expect(url.pathname).toBe('/prometheus/api/v1/query_range');
+    // Every window parameter has to reach Mimir: dropping one silently returns
+    // an instant-shaped answer, which the matrix reducers read as no data.
+    expect(url.searchParams.get('query')).toBe('sum(increase(cost[1d]))');
+    expect(url.searchParams.get('start')).toBe('1754870400');
+    expect(url.searchParams.get('end')).toBe('1757462400');
+    expect(url.searchParams.get('step')).toBe('1d');
+  });
+
+  it('sends the OIDC token and the tenant header', async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse(200, JSON.stringify({ status: 'success', data: {} })),
+    );
+
+    await service.queryRange({
+      installationName: 'alba',
+      query: 'up',
+      start: '1',
+      end: '2',
+      step: '1d',
+      oidcToken: 'tok',
+    });
+
+    expect(mockFetch.mock.calls[0][1].headers).toMatchObject({
+      Authorization: 'Bearer tok',
+      'X-Scope-OrgID': 'giantswarm',
+    });
+  });
+
+  it('throws NotFoundError without fetching when mimirEnabled is false', async () => {
+    const s = MimirService.create({
+      config: makeConfig('alba.capi.aws.k8s.3stripes.net', {
+        mimirEnabled: false,
+      }),
+      logger: makeLogger(),
+    });
+
+    await expect(
+      s.queryRange({
+        installationName: 'alba',
+        query: 'up',
+        start: '1',
+        end: '2',
+        step: '1d',
+        oidcToken: 'tok',
+      }),
+    ).rejects.toThrow(NotFoundError);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('throws AuthenticationError on 401', async () => {
+    mockFetch.mockResolvedValue(makeResponse(401, 'nope'));
+
+    await expect(
+      service.queryRange({
+        installationName: 'alba',
+        query: 'up',
+        start: '1',
+        end: '2',
+        step: '1d',
+        oidcToken: 'tok',
+      }),
+    ).rejects.toThrow(AuthenticationError);
+  });
+
+  it('throws ServiceUnavailableError when the range exceeds Mimir point limit', async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse(
+        422,
+        JSON.stringify({ error: 'exceeded maximum resolution' }),
+      ),
+    );
+
+    await expect(
+      service.queryRange({
+        installationName: 'alba',
+        query: 'up',
+        start: '1',
+        end: '2',
+        step: '1s',
+        oidcToken: 'tok',
+      }),
+    ).rejects.toThrow(ServiceUnavailableError);
+  });
+});

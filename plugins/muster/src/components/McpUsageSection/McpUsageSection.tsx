@@ -15,6 +15,8 @@ import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
+  categoricalColors,
+  DataBar,
   SectionHeader,
   StackedBarChart,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -26,6 +28,7 @@ import {
   useMusterInstance,
   useMusterSession,
 } from '../MusterInstanceProvider';
+import { columnMax } from './columnMax';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { MusterProviders } from '../MusterProviders';
 import { SessionGate, Stat } from '../shared';
@@ -72,15 +75,21 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontWeight: 500,
     color: theme.palette.text.secondary,
   },
+  /**
+   * Stacked, not side by side.
+   *
+   * Two tables sharing a row each got half the width, which squeezed the tool
+   * column that carries most of a row's meaning (`x_kubernetes_gazelle_…`
+   * names wrap to three lines at 380px) and left the numeric columns too
+   * narrow for a data bar to be worth reading. Full width also lines these up
+   * with the tables on the other Usage tabs.
+   */
   tables: {
     display: 'flex',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
     gap: theme.spacing(3),
-    alignItems: 'flex-start',
   },
   tableCard: {
-    flex: '1 1 380px',
-    minWidth: 0,
     borderRadius: theme.shape.borderRadius * 2,
     overflow: 'hidden',
   },
@@ -91,6 +100,15 @@ const useStyles = makeStyles((theme: Theme) => ({
     // mid-word (`…resolve_cluste / r`) once the pitch stopped being fixed.
     overflowWrap: 'anywhere',
   },
+  /**
+   * Left-aligned, not right.
+   *
+   * These columns carry a `DataBar`, which grows from the left — a
+   * right-aligned number over a left-anchored bar reads as two unrelated
+   * things, and a mirrored bar read as inconsistent beside the left-aligned
+   * tables on the Usage tab's other views. So the whole cell goes left and
+   * matches them.
+   */
   numeric: {
     fontVariantNumeric: 'tabular-nums',
     whiteSpace: 'nowrap',
@@ -175,6 +193,38 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
   // One fixed window now, so the label is derived rather than looked up.
   const rangeLabel = `${Math.round(hours / 24)}d`;
 
+  /**
+   * The data bars' hues, one per measure.
+   *
+   * Slot numbers rather than an import: the agent-platform plugin keeps the
+   * same measure→slot map for its own tables (`lib/measures.ts` — calls is
+   * slot 0, a per-call figure slot 7), and matching it keeps "Calls" the same
+   * colour across every table on the Usage tab. Importing that map would make
+   * this plugin depend on agent-platform, which the whole
+   * attach-by-node-id contract exists to avoid — so the two numbers are
+   * duplicated deliberately. Keep them in step.
+   *
+   * Errors takes the **status** red rather than a categorical slot: an error
+   * count is a status quantity, and status colours are reserved. It ships with
+   * a column header and its own figure, so it never rests on colour alone.
+   */
+  const palette = categoricalColors(theme);
+  const barColors = {
+    calls: palette[0],
+    latency: palette[7],
+    errors: errorColor,
+  };
+
+  // One maximum per column, so a bar is read against the column it sits in and
+  // the two tables do not borrow each other's scale.
+  const max = {
+    toolCalls: columnMax(data.top_tools, row => row.calls),
+    toolErrors: columnMax(data.top_tools, row => row.errors),
+    toolP95: columnMax(data.top_tools, row => row.p95_seconds ?? undefined),
+    serverCalls: columnMax(data.servers, row => row.calls),
+    serverErrors: columnMax(data.servers, row => row.errors),
+  };
+
   return (
     <>
       <Box className={classes.statRow}>
@@ -227,9 +277,9 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                 <TableHead>
                   <TableRow>
                     <TableCell>Top tools</TableCell>
-                    <TableCell align="right">Calls</TableCell>
-                    <TableCell align="right">Errors</TableCell>
-                    <TableCell align="right">p95</TableCell>
+                    <TableCell>Calls</TableCell>
+                    <TableCell>Errors</TableCell>
+                    <TableCell>p95</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -238,19 +288,33 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                       <TableCell className={classes.toolName}>
                         {row.tool}
                       </TableCell>
-                      <TableCell align="right" className={classes.numeric}>
-                        {formatCount(row.calls)}
+                      <TableCell className={classes.numeric}>
+                        <DataBar
+                          label={formatCount(row.calls)}
+                          value={row.calls}
+                          max={max.toolCalls}
+                          color={barColors.calls}
+                        />
                       </TableCell>
                       <TableCell
-                        align="right"
                         className={`${classes.numeric} ${
                           row.errors > 0 ? classes.errorValue : ''
                         }`}
                       >
-                        {formatCount(row.errors)}
+                        <DataBar
+                          label={formatCount(row.errors)}
+                          value={row.errors}
+                          max={max.toolErrors}
+                          color={barColors.errors}
+                        />
                       </TableCell>
-                      <TableCell align="right" className={classes.numeric}>
-                        {formatSeconds(row.p95_seconds)}
+                      <TableCell className={classes.numeric}>
+                        <DataBar
+                          label={formatSeconds(row.p95_seconds)}
+                          value={row.p95_seconds ?? undefined}
+                          max={max.toolP95}
+                          color={barColors.latency}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -263,8 +327,8 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                 <TableHead>
                   <TableRow>
                     <TableCell>MCP server</TableCell>
-                    <TableCell align="right">Calls</TableCell>
-                    <TableCell align="right">Errors</TableCell>
+                    <TableCell>Calls</TableCell>
+                    <TableCell>Errors</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -273,16 +337,25 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                       <TableCell className={classes.toolName}>
                         {row.server}
                       </TableCell>
-                      <TableCell align="right" className={classes.numeric}>
-                        {formatCount(row.calls)}
+                      <TableCell className={classes.numeric}>
+                        <DataBar
+                          label={formatCount(row.calls)}
+                          value={row.calls}
+                          max={max.serverCalls}
+                          color={barColors.calls}
+                        />
                       </TableCell>
                       <TableCell
-                        align="right"
                         className={`${classes.numeric} ${
                           row.errors > 0 ? classes.errorValue : ''
                         }`}
                       >
-                        {formatCount(row.errors)}
+                        <DataBar
+                          label={formatCount(row.errors)}
+                          value={row.errors}
+                          max={max.serverErrors}
+                          color={barColors.errors}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}

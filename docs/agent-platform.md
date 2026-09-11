@@ -1343,7 +1343,7 @@ session's id, and subagent sessions are filtered out of the list anyway.
 
 ### The stats strip
 
-`Turns · Duration · Input tokens (billed) · Output tokens`.
+`Turns · Duration · Input tokens (billed) · Output tokens · Est. cost`.
 
 **Input tokens are labelled "billed" on purpose.** Every model call re-sends the
 whole context, so a 4-turn session with a large tool catalogue reached **1.4M
@@ -1364,6 +1364,16 @@ neither part.
 
 **Duration is wall-clock**, `updated_at − created_at`: kagent records no per-turn
 durations, so it includes however long the user was away between turns.
+
+**Est. cost is an estimate and cannot be anything else.** The gateway prices
+whole model calls and its metrics carry no session label, so this is the tokens
+beside it multiplied by the $/token this agent (or, failing that, this
+installation) achieved over the last 7 days — see [Cost is an estimate, in two
+different ways](#cost-is-an-estimate-in-two-different-ways). It moves as the
+model mix moves, and reads `—` rather than `$0.00`when nothing in that window
+had a usable price. Two Mimir queries, independent of the session read, so an
+installation with`mimirEnabled: false` loses this stat and keeps the rest of
+the page.
 
 ### Timestamps are absolute here, relative in the list
 
@@ -3428,19 +3438,222 @@ The same numbers offered as _the agent's_ are what has no data behind them.
 
 ## The Usage tab
 
-`/agent-platform/usage`, the last of the section's own tabs. Two sections,
-deliberately different in scope:
+`/agent-platform/usage`, the last of the section's own tabs. Like the Models
+tab it carries a second-level tab row, and `/usage` itself only redirects to
+the first view. Three data sources, one per scope, and the tabs are what keeps
+them apart:
 
-1. **Your agent usage** — the caller's own sessions over the last 30 days, from
-   kagent. Totals (sessions, turns, input, output, tool calls), two per-day
-   token charts, breakdowns per agent and per model, and the top tools and MCP
-   servers.
-2. **MCP tool calls on this installation** — every caller's, from muster's
-   Prometheus metrics. Contributed by the muster plugin (see below).
+| View          | Path                  | Source                          | Whose            |
+| ------------- | --------------------- | ------------------------------- | ---------------- |
+| Overview      | `usage/overview`      | agentgateway metrics, via Mimir | everyone's       |
+| Cost          | `usage/cost`          | agentgateway metrics, via Mimir | everyone's       |
+| Your sessions | `usage/conversations` | kagent's stored conversations   | the caller's own |
+| MCP tools     | `usage/mcp`           | muster's Prometheus metrics     | everyone's       |
 
-Each heading states its own scope, and that is the whole reason they share a page
-rather than living in two places: a reader can see both without being able to
-confuse them.
+**The split is not cosmetic.** The views differ in _whose_ usage they report,
+and while all four shared one page that was a sentence in each section's
+description — the first thing a reader skips. A tab is a claim someone has to
+navigate to.
+
+The path is `conversations`, not `sessions`: it would otherwise sit one segment
+from the top-level `/agent-platform/sessions` tab and read as part of it, in
+the URL and in the telemetry `view`. It also has to stay scope-neutral where
+the title cannot — see [It can only ever be personal](#it-can-only-ever-be-personal).
+
+### Where each number comes from
+
+The gateway metrics and kagent answer genuinely different questions, and the
+one thing to hold on to is which of them can answer what:
+
+|                                       | agentgateway (Mimir)                | kagent                   |
+| ------------------------------------- | ----------------------------------- | ------------------------ |
+| tokens, cost, models, latency, errors | exact, all users                    | tokens only, caller only |
+| per agent                             | exact                               | yes                      |
+| per model                             | exact — the model that _answered_   | no (see below)           |
+| **per user**                          | **impossible** — no `user` label    | implicitly, one user     |
+| **per session**                       | **impossible** — no `session` label | yes                      |
+| sessions, turns, tool calls           | not a concept                       | yes                      |
+
+The metrics carry `gateway`, `listener`, `agent_namespace`, `agent`,
+`gen_ai_request_model`, `gen_ai_response_model`, `gen_ai_token_type` and
+`status`. There is no user and no session dimension, and adding one is a
+platform-side change (kagent would have to propagate the caller's identity to
+the gateway on the model call) — not something the portal can work around.
+
+`agent` is the **ServiceAccount of the calling pod**, which is why the Cost
+tab's per-agent join matches `agent_namespace`/`agent` against each `Agent`
+CR's namespace and technical name — not against kagent's encoded `agent_id`,
+which is what the Your sessions table joins on. kagent names each agent's
+Deployment ServiceAccount after the agent, so the two agree; checked on
+`gazelle` (2026-09-10), where every pair the gateway reported resolved to a CR. A label matching no CR is shown
+as `namespace/agent`, unlinked, and its spend stays in the totals; the
+gateway's own `unknown` (no Pod matched the caller IP) reads as
+"Unattributed".
+
+### One cost is measured, the other is estimated — and the labels say which
+
+Nothing here is a provider invoice, but the two figures are not the same kind
+of number, and the UI distinguishes them by name:
+
+- **Per agent and per model** (Cost tab, Overview tiles) — labelled plain
+  **"Cost"**. The gateway prices every call from its model catalogue _as the
+  call happens_; this is the sum of those. Measured, wrong only insofar as the
+  catalogue is wrong.
+- **Per session** (the session detail strip) — labelled **"Est. cost"**.
+  kagent's token counts multiplied by a $/token derived from the gateway. A
+  7-day window rather than the page's 30, because a rate applied to one session
+  should reflect the model mix in use now. Which rate is the whole question —
+  see the tier chain below.
+- **Per agent on Your sessions** — also **"Est. cost"**, but one rate for the
+  whole table: the installation's blend across every model, because the table
+  is a single query and its rows span models. Its footnote says so, and points
+  at the session page as the sharper number.
+
+Keep that naming. Calling the gateway's figure an estimate invited doubt about
+a number that is as good as the catalogue, and dropping "Est." from the session
+figure would claim a precision the metrics cannot give.
+
+#### The rate tier chain, and why a known model never falls back
+
+`useTokenRates` resolves in this order, and `describeCostBasis` turns whichever
+tier won into the tooltip on the stat:
+
+| tier           | when                                               | what it is                                                             |
+| -------------- | -------------------------------------------------- | ---------------------------------------------------------------------- |
+| `model`        | the session's model has observed traffic           | that model's own $/token — the only tier that prices a model correctly |
+| `none`         | the model is known and has **no** observed traffic | nothing. `—`, with the tooltip naming the unpriced model               |
+| `agent`        | no model resolvable, but this agent has traffic    | that agent's blend across whatever it ran                              |
+| `installation` | neither                                            | a fleet blend across every model                                       |
+| `none`         | nothing was priced anywhere                        | `—`                                                                    |
+
+**A known model with no observed price stops the chain rather than falling
+through**, which is the opposite of what a fallback chain normally does. It
+comes from a measured failure, worth keeping on record:
+
+> Session `01a05872-…` on `gazelle` runs `grill-master`, whose ModelConfig is
+> `claude-opus-5`. It totals 59,865 input + 4,018 output = 63,883 tokens. The
+> installation's 7-day blend was $3.0376/1M — derived **entirely from
+> `claude-sonnet-4-6`**, the only model with gateway traffic — so the strip
+> read **$0.194**. The gateway's own catalogue prices Opus at $5/1M input and
+> $25/1M output, i.e. **$0.40** for this session, an effective $6.26/1M. The
+> estimate was understated 2.06x, and nothing on screen said so.
+
+Two independent causes, both of which the tier chain now refuses to paper over:
+the rate was another model's, and the 7-day window did not overlap the session
+at all (it ran 31 Aug - 7 Sep; the gateway metrics begin 9 Sep).
+
+The model comes from `SessionRow.agentModel` <- `AgentRow.modelName` <-
+`ModelConfig.getModel()`. Note the distinction from `AgentRow.model`, which is
+a _display label_ falling back to the ModelConfig's resource name
+(`anthropic-opus-5`) — matching that against `gen_ai_response_model` would
+never resolve, so it must not be used for pricing. And it is the agent's model
+_now_: kagent pins no model to a session, so an agent re-pointed since carries
+the new one.
+
+Two consequences worth knowing before someone reports either as a bug.
+
+**A model with no usable price contributes no cost, not an error.** So zero
+spend and unpriced spend look identical in the metric, and the only thing that
+tells them apart is `agentgateway_cost_catalog_lookups_total` — which is why
+the "models with no usable price" table exists on the Cost tab and a compact
+warning appears on Overview. Where no rate can be derived at all the UI reads
+`—`, never `$0.00`: `deriveTokenRates` returns no rate for zero cost precisely
+so that a confident "$0.00" is unreachable.
+
+**The two per-agent cost figures will not match**, and both are right: the Cost
+tab's is the gateway's exact spend for everyone's calls through that agent,
+while Your sessions prices only the reader's own tokens.
+
+### The daily charts: 30 rows, and today comes from its own query
+
+Three things had to be got right here, and each has a failure mode that is
+invisible in the chart rather than loud.
+
+**A point is labelled by the day it covers, not the day it closes.**
+`increase(...[1d])` evaluated at a UTC midnight totals the _preceding_ calendar
+day, so `reduceDaily` shifts each key back a day. Off by one there silently
+moves every bar.
+
+**Today cannot come from the range query.** A point in the future makes
+`increase()` extrapolate a partial day up to a whole one — always on the newest
+and most-read bar. So `dailyRangeWindow` stops at today's midnight (last point
+closes yesterday), and today's bar comes from a **separate instant query** per
+chart, `increase(...[<elapsed-since-midnight>])`, which covers exactly
+midnight→now. `applyTodayPartial` writes it into the last row. That is two
+extra queries buying an honest newest bar; the alternative was either no bar
+for today or an inflated one. `reduceTrend` then drops that row, because
+comparing a part-day against whole ones would report a fall in spend every
+morning and a recovery every evening.
+
+**The axis is the window, not the data.** `reduceDaily` renders one row per day
+in `dailyWindowDayKeys()` — all `WINDOW_DAYS` of them, zeros included — rather
+than only the days Mimir answered for. Without that, a metric one day old
+produced a single-row frame and recharts drew that one bar across the whole
+chart, reading as one enormous day rather than as a day of history. (The
+gateway metrics landed on 2026-09-09, so this was the live case, not a
+hypothetical.) `StackedBarChart`'s `maxBarWidth` is the floor under it for any
+caller that still hands it a sparse frame.
+
+Snapping every boundary to a midnight also keeps `start`/`end`/`step` stable
+for a whole day — which they must be, since they are part of
+`useMimirRangeQuery`'s query key and a moving key refetches forever. Today's
+instant query re-keys as the elapsed range grows, which is the point.
+
+**The cost metric carries no `gen_ai_token_type`.** Tokens are split four ways
+(`input`, `output`, `input_cache_read`, `input_cache_write`); spend is not
+split at all. So a per-token rate can only ever be a _blend_ across input and
+output today — `deriveTokenRates` returns only `blended`, and its per-type
+branch is kept for a gateway release that adds the label rather than because
+anything exercises it now. Re-check with
+`count by (gen_ai_token_type) (agentgateway_gen_ai_client_cost_usd_total)`
+before relying on either.
+
+### Chart colours are validated, not chosen
+
+The stacked charts use `assignSeriesColors` from `ui-react`: eight hues in a
+**fixed order**, because adjacent slots are what a stack puts side by side and
+that ordering is one of the few clearing every colour-blindness gate against
+this app's card surfaces in both light and dark mode. Re-ordering it or
+swapping a hue breaks that silently — re-validate first. Past seven identities
+the rest pool into a grey "Other" rather than taking a ninth, unverified hue.
+Several slots sit below 3:1 contrast against the surface, which is why every
+chart ships a legend and why the Cost tab's tables carry the same figures: the
+identity of a band must never rest on its fill alone.
+
+Every numeric column across all four Usage tables carries `DataBar` from
+`ui-react` — a number with a proportional bar under it — scaled to **that
+column's own maximum**, with one hue per _measure_ (`lib/measures.ts`,
+`useMeasureColor`). Keyed by measure rather than by column position, so money
+is the same colour on the Cost tab and on Your sessions, and adding a column
+shifts nothing.
+
+The eleven columns across those tables do not get eleven hues: the palette has
+eight, so **measures that mean the same thing share a slot** — `cost` covers
+measured spend and a session's estimate, `calls` covers model, tool and
+MCP-server calls, `ratio` covers share-of-spend and $/1M. Each pairing is safe
+only because the two never appear in one table, which is the invariant
+`measureColors.test.tsx` pins per table rather than leaving to review. Error
+counts sit outside the map entirely, on the reserved status red.
+
+Bars always grow from the **left**, so a column carrying one is left-aligned —
+including muster's, whose numeric cells were right-aligned before. A mirrored
+right-to-left variant was built and removed: it read as inconsistent beside the
+left-aligned tables on the same tab, and its `alignItems: flex-end` had
+collapsed the track to zero width, rendering no bar at all.
+
+muster's MCP tables duplicate the slot numbers and `columnMax` rather than
+importing them: that plugin attaches to this tab by node id precisely so the
+two do not depend on each other, and two integers behind a comment is a
+cheaper price than that coupling — keep them in step. Its tables also **stack**
+rather than sharing a row: at half width the tool-name column wrapped to three
+lines and the numerics were too narrow for a bar to be worth reading.
+
+The separate hues are load-bearing, not decoration: a per-column scale makes
+bars comparable **down** a column and meaningless **across** one, and a single
+shared colour would invite exactly the cross-column reading the scaling does
+not support. The number is always rendered, so the bar is `aria-hidden` and
+identity never rests on the fill — which is also what satisfies the palette's
+relief requirement here without a separate table view.
 
 ### Why the numbers have to be derived
 
@@ -3501,30 +3714,25 @@ out the top section would give one page two scope semantics. A totals-only fleet
 strip, if it is ever wanted, is an `?installation=all` on the backend route —
 not a browser-side `useQueries`.
 
-### By model is derived, and it is the _current_ model
+### By model comes from the gateway now, not from a frontend join
 
-kagent's usage carries no model, and neither does its session record. So the
-By model table is a frontend join: each agent's `AgentTemplate` already resolves its
-`ModelConfig` (`AgentRow.model`, what the Agents tab shows), and the per-agent
-totals are rolled up by that.
+The Cost tab's By model table groups on `gen_ai_response_model` — **the model
+that actually answered each call**, recorded as the call happened.
 
-**It is therefore the model each agent runs on now, not the model each session
-ran on.** kagent records no per-session model and does not pin an agent version
-to a session (see the "agent version is not pinned" note above), so an agent
-whose `ModelConfig` changed inside the window has its whole history attributed
-to its current model. The table carries that caveat in place rather than
-implying a historical breakdown — please do not remove it without the data
-changing first.
+It used to be a frontend join instead: kagent's usage carries no model and
+neither does its session record, so the old table rolled the per-agent totals
+up by whatever each agent's `AgentTemplate` resolved its `ModelConfig` to
+_now_. An
+agent whose `ModelConfig` changed inside the window therefore had its whole
+history attributed to its current model, and the table had to carry that
+caveat in place. The gateway answers the question properly, so the derived
+table was removed rather than kept beside it — two different answers to one
+question on one page, the weaker of them carrying a footnote, is worse than
+one.
 
-Agents whose CR is not in view — deleted since, or on another installation —
-group under "Unknown model", together with agents that genuinely reference none
-(BYO agents). Their spend stays in the total, because dropping it would make
-the table disagree with the tiles above.
-
-Note the label is whatever `AgentRow.model` resolves to, which falls back to the
-`ModelConfig`'s own name when it carries no display-name annotation — so a row
-can read `default-model-config` rather than a model. That is the same label the
-Agents tab shows, and fixing it means annotating the `ModelConfig`.
+`toByModelRows` and `ByModelTable` are gone with it. Restoring anything like
+them means first checking whether kagent has started recording a per-session
+model; until then the gateway is the only source that knows.
 
 ### The honesty line
 
@@ -3557,17 +3765,19 @@ Nothing polls it, unlike the session-states summary: the buckets are days.
 
 ### One window, 30 days
 
-Fixed, with no switcher anywhere on the page — including muster's former
-24h/7d/30d control, which was removed. The kagent route takes no window
-parameter, so a control on one section would make the page's stated window false
-for whichever section the reader just switched; the two would stop being
-comparable, which is why they share a page; and muster's bucket size changes with
-the window, so a 24h selection put an hourly-bucketed chart directly under a
-daily one. Bringing a control back means **one page-level** control driving both
-sections, once the kagent route accepts a window.
+Fixed, with no switcher anywhere on the tab — including muster's former
+24h/7d/30d control, which was removed. The gateway metrics would make a control
+cheap (it is one PromQL range), but the kagent route takes no window parameter,
+so a control on one view would make the others' stated window false and the
+figures would stop being comparable across the tabs — which is much of what
+they are for. Bringing one back means **one tab-level** control driving all
+four, once the kagent route accepts a window.
 
-`windowDays` and `windowStart` travel in the response, so no heading hardcodes
-"30 days" and shortening the window re-labels the page.
+For the kagent-derived view, `windowDays` and `windowStart` travel in the
+response, so no heading hardcodes "30 days" and shortening the window re-labels
+the view. The gateway views take theirs from `WINDOW` / `WINDOW_DAYS` in
+`llmUsageQueries.ts` — the queries and the copy read the same constant, so
+those cannot drift apart either.
 
 ### Your top MCP servers is prefix-derived
 
@@ -3582,9 +3792,14 @@ section directly below resolves servers exactly, from Prometheus's
 
 ### The MCP section is contributed, not imported
 
-muster attaches it with a plain `createExtension` to
-`sub-page:agent-platform/usage`, input `sections` — declared there with
-`SubPageBlueprint.makeWithOverrides` + `createExtensionInput`. Neither plugin
+Unchanged by the move onto its own tab: muster attaches it with a plain
+`createExtension` to `sub-page:agent-platform/usage`, input `sections` —
+declared there with `SubPageBlueprint.makeWithOverrides` +
+`createExtensionInput`. The tab strip is `UsageRouter`'s business, so muster
+needed no edit; the only change on this side is that the sub-page now hands the
+router the contributed _array_ rather than a fragment, because it has to know
+whether anything was contributed at all in order to leave the tab out. Neither
+plugin
 depends on the other, which is the same mechanism muster already uses to put its
 "MCP Servers" tab on `page:agent-platform`, one level deeper.
 
@@ -3600,18 +3815,43 @@ exported from an `alpha` entry point, mirroring
 
 ### What it cannot show
 
-**Cost**, tokens/second and context-window usage: kagent records none of them at
-any version. Every provider adapter populates only `promptTokenCount` and
-`candidatesTokenCount`, and a repo-wide search for cached-input or thinking-token
-fields finds nothing. `totalTokens` is carried on the wire anyway, because a
-reported total can legitimately exceed its parts when a model bills thinking
-tokens separately — summing the two would under-report such a model with no way
-to notice.
+**Per-user anything.** Neither source can do it. kagent's session list is one
+user's by construction, and the gateway metrics carry no user label at all — so
+"which team is spending this" has no answer here, and getting one needs kagent
+to propagate the caller's identity to agentgateway on the model call. A
+platform-side change, not a portal one.
+
+**Per-session cost, exactly.** The gateway metrics carry no session label
+either, so the session figures are estimates by construction — see [Cost is an
+estimate, in two different ways](#cost-is-an-estimate-in-two-different-ways).
+
+**Anything about an agent that bypasses the gateway.** An agent pointed
+straight at a provider produces no `agentgateway_*` series, so it contributes
+nothing to any token, cost or latency figure however busy it is. Its _sessions_
+still appear on Your sessions, which is the one place such an agent is visible
+— and a large gap between the two is the symptom.
+
+**Tokens/second and context-window usage from kagent.** It records neither at
+any version: every provider adapter populates only `promptTokenCount` and
+`candidatesTokenCount`, and a repo-wide search for cached-input or
+thinking-token fields finds nothing. (The gateway _does_ split input from cache
+reads and writes, which is why the token-type chart exists — but only for calls
+that went through it.) `totalTokens` is carried on the kagent wire anyway,
+because a reported total can legitimately exceed its parts when a model bills
+thinking tokens separately — summing the two would under-report such a model
+with no way to notice.
+
+**Time to first token, or time per output token.** The gateway emits both only
+for a streamed response, and a kagent agent turn asks for a whole completion —
+so they are permanently empty here and are deliberately not registered as
+metrics. Call duration is the latency figure that works.
 
 One thing to know per installation: kagent 0.10 can prune sessions older than a
 configured number of days, **deleting them outright**. If that is ever set below
-the window, the totals are silently incomplete and no field in the response can
-say so. Nothing configures it on the fleet today.
+the window, Your sessions is silently incomplete and no field in the response
+can say so. Nothing configures it on the fleet today. The gateway metrics are
+unaffected — Mimir's retention is its own — which is another reason the two
+halves are worth keeping side by side.
 
 ## Configuration
 

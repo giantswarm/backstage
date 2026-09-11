@@ -71,12 +71,28 @@ export const sessionDetailRouteRef = createSubRouteRef({
   parent: sessionsRouteRef,
 });
 
-// The "Usage" tab (`/agent-platform/usage`). No sub-routes: one page carrying
-// two sections, one of them contributed by the muster plugin. Last of this
-// plugin's own tabs — `plugin.tsx` declares it after `modelsSubPage`, giving
-// Agents · Sessions · Models · Usage, then muster's MCP Servers. Tab order
-// lives there, not here.
+// The "Usage" tab (`/agent-platform/usage`). Last of this plugin's own tabs —
+// `plugin.tsx` declares it after `modelsSubPage`, giving Agents · Sessions ·
+// Models · Usage, then muster's MCP Servers. Tab order lives there, not here.
+//
+// Like the Models tab, this one carries a **second-level tab row**, one
+// sub-route per view, and its index redirects to the first. The split is not
+// cosmetic: the views differ in *whose* usage they report, and a tab makes that
+// structural where a heading on a shared page only made it a caveat.
 export const usageRouteRef = createRouteRef();
+
+// "Cost" (`/agent-platform/usage/cost`): the gateway metrics broken down by
+// agent and by model, plus the price-catalogue coverage that says how much the
+// cost figures understate. Overview's unpriced-models warning links here.
+//
+// The only view with a route ref: the other three (`overview`, `conversations`,
+// `mcp`) are plain routes inside `UsageRouter`, because nothing links to them
+// from outside it. Add one when something does — the tab strip builds its own
+// hrefs from the splat base path either way.
+export const usageCostRouteRef = createSubRouteRef({
+  path: '/cost',
+  parent: usageRouteRef,
+});
 
 // The "Models" tab (`/agent-platform/models`): the kagent ModelConfigs agents
 // run on, the serving layer beneath them, and the platform-admin flows that

@@ -105,6 +105,21 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
 
+// Stubbed for the same reason as the write hooks below: it reaches Mimir
+// through the gs plugin's api ref, and this test mounts no APIs. An empty
+// `rates` makes the Est. cost stat read "—", which is asserted explicitly in
+// one test rather than assumed away here.
+jest.mock('../../hooks/useTokenRates', () => ({
+  useTokenRates: () => ({
+    rates: {},
+    tier: 'none',
+    model: undefined,
+    isLoading: false,
+    isAvailable: true,
+    window: '7d',
+  }),
+}));
+
 // Stubbed for the same reason as the mutations above: no query client is mounted.
 const mockSendMessage = jest.fn();
 const mockUseSendMessage = jest.fn<UseSendMessageResult, []>();

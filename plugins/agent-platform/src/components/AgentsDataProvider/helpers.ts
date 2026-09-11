@@ -161,6 +161,17 @@ export type AgentRow = {
    * `undefined` when the template references no model.
    */
   model?: string;
+  /**
+   * The ModelConfig's actual `spec.model` — `claude-opus-5`, not a display
+   * label.
+   *
+   * Distinct from {@link model} on purpose. That one is for a reader and falls
+   * back to the ModelConfig's own resource name; this one has to match what a
+   * provider and the gateway call the model (`gen_ai_response_model`), so it
+   * is the ModelConfig's field verbatim or nothing. Pricing a session needs
+   * this; a table column wants the other.
+   */
+  modelName?: string;
   skillCount: number;
   /** Readiness derived from the template's Harness entries. */
   readiness: AgentReadiness;
@@ -275,6 +286,7 @@ export function toAgentRow(
     technicalName: name,
     description: agent.getDescription() ?? '',
     model: modelConfig?.getDisplayName() ?? agent.getModelConfigName(),
+    modelName: modelConfig?.getModel(),
     skillCount: agent.getSkillCount(),
     readiness: agent.getReadiness(),
     harness: agent.getDecidingHarness()?.name,

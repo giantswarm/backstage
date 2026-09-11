@@ -50,6 +50,19 @@ export type SessionRow = {
    * No match therefore means "we cannot address this agent", not "guess".
    */
   agentNamespace?: string;
+  /**
+   * The model the matched agent runs on, as the provider names it
+   * (`claude-opus-5`), from its ModelConfig's `spec.model`.
+   *
+   * **The agent's model now, not the model this session ran on.** kagent
+   * records no per-session model and does not pin an agent version to a
+   * session, so an agent re-pointed at another model since carries the new one
+   * here. It is still far closer than any alternative — the cost estimate uses
+   * it to pick a per-token rate, and a wrong *tier* of model is a factor-of-
+   * two error where no model at all is a factor-of-two error in an unknown
+   * direction.
+   */
+  agentModel?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -133,6 +146,7 @@ export function toSessionRow(
     agentName,
     agentTechnicalName: match?.technicalName,
     agentNamespace: match?.namespace,
+    agentModel: match?.modelName,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };

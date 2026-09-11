@@ -1,7 +1,8 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Stat } from '@giantswarm/backstage-plugin-ui-react';
 import { SessionUsageTotals } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { formatCount, formatTokens } from '../../lib/formatNumbers';
+import { estimateCost, type TokenRates } from '../../lib/costEstimate';
+import { formatCount, formatTokens, formatUsd } from '../../lib/formatNumbers';
 
 const useStyles = makeStyles((theme: Theme) => ({
   strip: {
@@ -24,8 +25,19 @@ const useStyles = makeStyles((theme: Theme) => ({
  * "(billed)" for the same reason the session detail strip does: every model
  * call re-sends the whole context, so the raw figure is startling and reads as
  * a bug unlabelled.
+ *
+ * The cost is the one figure here that is not counted but *derived*: the
+ * installation's observed $/token applied to the token totals beside it. It
+ * reads `—` rather than `$0.00` when no rate could be derived, because
+ * "nothing was priced" and "nothing was spent" are different facts.
  */
-export function TotalsStrip({ totals }: { totals: SessionUsageTotals }) {
+export function TotalsStrip({
+  totals,
+  rates,
+}: {
+  totals: SessionUsageTotals;
+  rates?: TokenRates;
+}) {
   const classes = useStyles();
   return (
     <div className={classes.strip}>
@@ -37,6 +49,12 @@ export function TotalsStrip({ totals }: { totals: SessionUsageTotals }) {
       />
       <Stat label="Output tokens" value={formatTokens(totals.outputTokens)} />
       <Stat label="Tool calls" value={formatCount(totals.toolCalls)} />
+      <Stat
+        label="Est. cost"
+        value={formatUsd(
+          estimateCost(totals.inputTokens, totals.outputTokens, rates),
+        )}
+      />
     </div>
   );
 }
