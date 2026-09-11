@@ -2099,12 +2099,12 @@ downgrades). `Harness.status` is never written. The derivation (`Agent.ts`,
 `deriveAgentReadiness`) is the one agent-manager's `get_agent_status` applies, so the
 portal and the tool agree:
 
-| Per Harness entry | When |
-| --- | --- |
-| `ready` | `Ready=True` |
-| `failed` | `Accepted=False` or `Compatible=False` |
-| `progressing` | `Accepted=True` and not ready (`desiredRevision != latestSuccessfulRevision`, or `Ready != True`) |
-| `pending` | the Harness has written no verdict yet |
+| Per Harness entry | When                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| `ready`           | `Ready=True`                                                                                      |
+| `failed`          | `Accepted=False` or `Compatible=False`                                                            |
+| `progressing`     | `Accepted=True` and not ready (`desiredRevision != latestSuccessfulRevision`, or `Ready != True`) |
+| `pending`         | the Harness has written no verdict yet                                                            |
 
 The **deciding** entry is the platform Harness named by the admission label when it
 reports, else the readiest of the others — sessions started from the portal run on
