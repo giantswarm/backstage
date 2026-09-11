@@ -31,7 +31,7 @@ export const DEFAULT_WINDOW_DAYS = 30;
 /**
  * How many of a user's sessions may be evaluated in one pass.
  *
- * Three times a measured real account (21 sessions, 2.8 MB of task payloads).
+ * Three times a measured real account (21 sessions).
  * Unlike the session-states pass, the window here *is* the reported scope, so
  * this cap is the only thing that can make the page under-report — which is why
  * it is generous and why exceeding it is surfaced as `skipped` rather than
@@ -43,9 +43,8 @@ export const DEFAULT_MAX_SESSIONS = 60;
  * How stale a session may be and still be worth a task read.
  *
  * The window plus a day of slack for clock skew and the UTC day boundary. Safe
- * because kagent bumps `session.updated_at` on every task write — `UpsertTask`
- * carries a `touched_session` CTE that does exactly that — so a session with no
- * activity in 31 days can hold no turn inside a 30-day window.
+ * because the controller bumps an instance's `updated_at` on every turn, so an
+ * instance with no activity in 31 days can hold no turn inside a 30-day window.
  */
 export const DEFAULT_MAX_AGE_MS = (DEFAULT_WINDOW_DAYS + 1) * DAY_MS;
 
@@ -134,10 +133,11 @@ function topBy<T>(
  * read every session's whole conversation. That is megabytes to answer with a
  * couple of kilobytes, which belongs on this side of the wire.
  *
- * **This can only ever be personal.** kagent's `GET /api/sessions` is
- * `WHERE user_id = <sub>` with no pagination, no date filter and no cross-user
- * endpoint, so no fleet or team view grows out of this route — that needs a
- * different data source entirely, and the page's copy must not imply otherwise.
+ * **This can only ever be personal.** `ListAgentInstances` answers for the
+ * caller the gateway identified and nothing else (the cross-creator flag needs
+ * an authorization this plugin does not ask for), so no fleet or team view grows
+ * out of this route — that needs a different data source entirely, and the
+ * page's copy must not imply otherwise.
  *
  * Bounding, pooling and caching are `./sessionFanOut`, shared with the
  * session-states reader; the arithmetic is `reduceSessionUsage`, shared with

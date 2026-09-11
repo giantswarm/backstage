@@ -37,7 +37,7 @@ describe('modelManagerBackendSchema', () => {
     });
     expect(backend.wiring).toEqual({
       namespace: 'kagent',
-      apiVersion: 'v1alpha2',
+      apiVersion: 'v1alpha3',
       autoWire: true,
     });
   });

@@ -1,0 +1,21 @@
+{
+  "agentInstance": {
+    "id": "01a08e6b-11fd-7689-b9c3-0b5ed46d960a",
+    "creator": "admin@kagent.dev",
+    "harness": {
+      "namespace": "kagent",
+      "name": "kagent"
+    },
+    "agentTemplate": {
+      "namespace": "kagent",
+      "name": "portal-proof-2344-b66d"
+    },
+    "preparedRevision": "65cb80539353b81feedaadbad17b9e19c9aa0971b46566dcf21cbc623e3f32ec",
+    "a2aAuthority": "ai-01a08e6b-11fd-7689-b9c3-0b5ed46d960a.kagent.actors.resources.substrate.ate.dev",
+    "state": "AGENT_INSTANCE_STATE_READY",
+    "createdAt": "2026-09-11T03:02:56.766392Z",
+    "updatedAt": "2026-09-11T03:02:56.771845370Z",
+    "name": "Portal proof 2344",
+    "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0"
+  }
+}

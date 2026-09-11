@@ -17,6 +17,7 @@ import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { agentDetailRouteRef } from '../../routes';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { stopRowPress } from '../../lib/rowPress';
+import { describeToolset } from '../../lib/toolset';
 import {
   AgentModelCell,
   isAgentRowMuted,
@@ -151,6 +152,23 @@ function getColumnConfig(
       label: 'Model',
       isSortable: true,
       cell: row => <AgentModelCell row={row} />,
+    },
+    {
+      id: 'toolset',
+      label: 'Toolset',
+      isSortable: false,
+      // The declaration as the agent's carrier RemoteMCPServer carries it, in a
+      // few words — the detail page's Toolset card resolves it for the viewer.
+      cell: row => {
+        const toolset = describeToolset(row.toolset);
+        return (
+          <CellText
+            title={toolset.summary}
+            description={toolset.detail}
+            color={isAgentRowMuted(row) ? 'secondary' : undefined}
+          />
+        );
+      },
     },
     {
       id: 'skills',

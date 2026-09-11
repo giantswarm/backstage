@@ -7,13 +7,16 @@ import { createRouter } from './router';
 /**
  * agentPlatformPlugin backend plugin
  *
- * Thin REST proxy over the kagent controller API, per installation, consumed by
- * the agent-platform frontend plugin's "Sessions" list.
+ * The Agent Platform frontend's door to kagent: a JSON/SSE surface for the
+ * browser over a native gRPC client of each installation's kagent API v2
+ * controller (`AgentInstanceService`, `AgentTemplateService`, `SystemService`
+ * and the A2A v1 `A2AService`), plus the model-manager pass-through.
  *
  * It exists because the browser cannot reach `kagent.<baseDomain>`
- * cross-origin, and because the user's per-installation Dex ID token has to
- * *become* the `Authorization` header toward kagent (on the inbound leg that
- * header carries the Backstage identity instead).
+ * cross-origin, because gRPC over HTTP/2 wants a server-side client, and
+ * because the user's per-installation Dex ID token has to *become* the
+ * `authorization` metadata toward kagent (on the inbound leg that header
+ * carries the Backstage identity instead).
  *
  * @public
  */

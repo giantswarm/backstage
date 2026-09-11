@@ -48,6 +48,15 @@ export const agentDetailRouteRef = createSubRouteRef({
   parent: agentsRouteRef,
 });
 
+// Editing one agent (`/agent-platform/agents/<installation>/<namespace>/<name>/edit`):
+// the form pre-filled from agent-manager's reading of the agent, its dry run
+// as the review, `update_agent` as the Save. Four segments, so it is clear of
+// the three-segment detail path and of the create flow.
+export const agentEditRouteRef = createSubRouteRef({
+  path: '/:installation/:namespace/:name/edit',
+  parent: agentsRouteRef,
+});
+
 // The "Sessions" tab (`/agent-platform/sessions`).
 export const sessionsRouteRef = createRouteRef();
 

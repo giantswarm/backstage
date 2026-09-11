@@ -1,13 +1,17 @@
 import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
-import { crds } from '@giantswarm/k8s-types';
+import { screen, within } from '@testing-library/react';
+import type {
+  AgentHarnessCondition,
+  AgentHarnessStatus,
+  AgentTemplateInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { agentsRouteRef, modelsRouteRef } from '../../routes';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { ClientServingState } from '../../lib/serving';
 import { AgentDetailPage } from './AgentDetailPage';
 
-type AgentInterface = crds.kagent.v1alpha2.Agent;
+type AgentInterface = AgentTemplateInterface;
 
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
 // is mocked — so the page is exercised against the actual getters, readiness
@@ -42,19 +46,47 @@ jest.mock('../../hooks/useAgentSessions', () => ({
   useAgentSessions: (...args: unknown[]) => mockUseAgentSessions(...args),
 }));
 
-// The page calls this on the menu's behalf, because the menu renders in the shared
-// header — outside the plugin's QueryClientProvider — and so cannot call it itself.
-// Stubbed for the same reason `useAgentSessions` is: this page's react-query client
-// is not part of the test, and the menu is not rendered here anyway.
-jest.mock('../../hooks/useDeleteAgent', () => ({
-  useDeleteAgent: () => ({
-    isDeletable: false,
-    isCheckingDeletable: false,
+// The page calls these on the menu's behalf, because the menu renders in the
+// shared header — outside the plugin's QueryClientProvider — and so cannot call
+// them itself. Stubbed for the same reason `useAgentSessions` is: this page's
+// react-query client and the muster API are not part of the test, and the menu
+// and the write dialogs are covered by their own tests.
+jest.mock('../../hooks/useAgentDeletion', () => ({
+  useAgentDeletion: () => ({
     deleteAgent: jest.fn(),
     isDeleting: false,
-    error: null,
+    commit: jest.fn(),
+    isCommitting: false,
+    failure: undefined,
     reset: jest.fn(),
   }),
+}));
+jest.mock('../../hooks/useUpdateAgent', () => ({
+  useUpdateAgent: () => ({
+    update: jest.fn(),
+    isUpdating: false,
+    commit: jest.fn(),
+    isCommitting: false,
+    failure: undefined,
+    reset: jest.fn(),
+  }),
+}));
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerAvailability: () => ({
+    available: [],
+    missing: [],
+    presenceOf: () => 'unknown',
+    isLoading: false,
+    isUnavailable: true,
+  }),
+  useAgentManagerInfo: () => ({
+    info: undefined,
+    isLoading: false,
+    error: null,
+  }),
+}));
+jest.mock('./AgentUpdateSkillsDialog', () => ({
+  AgentUpdateSkillsDialog: () => null,
 }));
 
 // Stubbed for the same reason: it reads `kagentApiRef`, and this page's APIs and
@@ -110,28 +142,46 @@ jest.mock('react-router-dom', () => ({
 const { Agent, GitRepository, HelmRelease, Kustomization, ModelConfig } =
   jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react');
 
-const READY_CONDITIONS = [
+const HARNESS_LABEL = 'agent-platform.giantswarm.io/harness';
+
+const READY_CONDITIONS: AgentHarnessCondition[] = [
   {
     type: 'Accepted',
     status: 'True',
-    reason: 'Reconciled',
-    message: 'Agent configuration accepted',
+    reason: 'Admitted',
+    message: 'Template admitted',
     lastTransitionTime: '2026-07-31T10:00:00Z',
   },
   {
     type: 'Ready',
     status: 'True',
-    reason: 'DeploymentReady',
-    message: 'Deployment is ready',
+    reason: 'RevisionReady',
+    message: 'Revision rev-1 is ready',
     lastTransitionTime: '2026-07-31T10:02:00Z',
   },
 ];
 
+/** One Harness entry of `status.harnesses[]`, the platform Harness by default. */
+function harness(
+  conditions: AgentHarnessCondition[],
+  extra: Partial<AgentHarnessStatus> = {},
+): AgentHarnessStatus {
+  return {
+    harness: 'kagent',
+    desiredRevision: 'rev-1',
+    latestSuccessfulRevision: 'rev-1',
+    ...extra,
+    conditions: conditions as AgentHarnessStatus['conditions'],
+  };
+}
+
+const COMMIT = '0123456789abcdef0123456789abcdef01234567';
+
 function makeAgent(overrides: Partial<AgentInterface> = {}) {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: {
         name: 'pr-reviewer',
         namespace: 'agent-platform',
@@ -139,39 +189,37 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
         creationTimestamp: '2026-07-21T09:00:00Z',
         annotations: { 'ui.giantswarm.io/display-name': 'PR reviewer' },
         labels: {
+          [HARNESS_LABEL]: 'kagent',
           'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
           'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
         },
         ...(overrides.metadata as object),
       },
       spec: {
-        type: 'Declarative',
         description: 'Reviews pull requests in depth.',
-        declarative: {
-          modelConfig: 'opus-4-7',
-          systemMessage: 'You review pull requests.',
-          tools: [
-            {
-              type: 'McpServer',
-              mcpServer: { name: 'muster', namespace: 'agent-platform' },
-            },
-          ],
-        },
-        skills: {
-          gitRefs: [
-            {
-              url: 'https://github.com/giantswarm/skills',
+        modelConfig: { name: 'opus-4-7' },
+        systemPrompt: 'You review pull requests.',
+        tools: [
+          // The gateway carrier the chart renders, named after the agent.
+          { mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } } },
+        ],
+        skills: [
+          {
+            name: 'PR review conventions',
+            source: {
+              git: {
+                url: 'https://github.com/giantswarm/skills',
+                commit: COMMIT,
+              },
               path: 'pr-review',
-              ref: 'v2.0.0',
-              name: 'PR review conventions',
             },
-          ],
-        },
+          },
+        ],
         ...(overrides.spec as object),
       },
       status: {
         observedGeneration: 1,
-        conditions: READY_CONDITIONS,
+        harnesses: [harness(READY_CONDITIONS)],
         ...(overrides.status as object),
       },
     },
@@ -182,7 +230,7 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
 function makeModelConfig() {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: {
         name: 'opus-4-7',
@@ -366,32 +414,49 @@ describe('AgentDetailPage', () => {
 
     expect(screen.getByText('You review pull requests.')).toBeInTheDocument();
 
-    // One skill card: the label, its repo as a link, and the ref it is pinned to.
+    // One skill card: the label, its repo as a link, and the commit it is
+    // pinned to — short on the card, full in the tooltip.
     expect(screen.getByText('PR review conventions')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'giantswarm/skills' }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/skills');
-    expect(screen.getByText('v2.0.0')).toBeInTheDocument();
+    expect(screen.getByText(COMMIT.slice(0, 12))).toHaveAttribute(
+      'title',
+      COMMIT,
+    );
     // Read-only: the picker's checkbox affordance must not come along.
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+
+    // The admitting Harness, in the configuration and in the status.
+    expect(screen.getByText(/From the label/)).toHaveTextContent(HARNESS_LABEL);
+    expect(
+      screen.getByRole('list', { name: 'Admitting Harnesses' }),
+    ).toHaveTextContent(/kagent.*Ready.*sessions run here/);
   });
 
-  it('says when a skill is unpinned, since it then changes under the agent', async () => {
+  it('shows an OCI skill by its reference and digest', async () => {
     stubResources({
       resource: makeAgent({
         spec: {
-          skills: {
-            gitRefs: [
-              { url: 'https://github.com/giantswarm/skills', path: 'demo' },
-            ],
-          },
+          skills: [
+            {
+              name: 'runbooks',
+              source: {
+                oci: `gsoci.azurecr.io/giantswarm/skills@sha256:${'f'.repeat(64)}`,
+              },
+            },
+          ],
         },
       } as Partial<AgentInterface>),
     });
 
     await renderPage();
 
-    expect(screen.getByText('default branch (unpinned)')).toBeInTheDocument();
+    expect(screen.getByText('runbooks')).toBeInTheDocument();
+    expect(
+      screen.getByText('gsoci.azurecr.io/giantswarm/skills'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(`sha256:${'f'.repeat(12)}`)).toBeInTheDocument();
   });
 
   it('falls back to the bare ModelConfig reference when it cannot be read', async () => {
@@ -404,20 +469,25 @@ describe('AgentDetailPage', () => {
   });
 
   describe('status', () => {
-    it('surfaces the Ready condition message for a not-ready agent, expanded', async () => {
+    it('surfaces the Ready condition message for a compiling agent, expanded', async () => {
       stubResources({
         resource: makeAgent({
           status: {
             observedGeneration: 1,
-            conditions: [
-              READY_CONDITIONS[0],
-              {
-                type: 'Ready',
-                status: 'False',
-                reason: 'DeploymentNotReady',
-                message: 'Deployment is not ready, 0/1 pods are ready',
-                lastTransitionTime: '2026-07-31T10:05:00Z',
-              },
+            harnesses: [
+              harness(
+                [
+                  READY_CONDITIONS[0],
+                  {
+                    type: 'Ready',
+                    status: 'False',
+                    reason: 'Compiling',
+                    message: 'Compiling revision rev-2',
+                    lastTransitionTime: '2026-07-31T10:05:00Z',
+                  },
+                ],
+                { desiredRevision: 'rev-2' },
+              ),
             ],
           },
         } as Partial<AgentInterface>),
@@ -428,25 +498,34 @@ describe('AgentDetailPage', () => {
       expectHeaderReadiness('Not ready');
       // Visible without a click — the failing condition starts expanded.
       expect(
-        screen.getAllByText('Deployment is not ready, 0/1 pods are ready')
-          .length,
+        screen.getAllByText('Compiling revision rev-2').length,
       ).toBeGreaterThan(0);
-      expect(screen.getByText('DeploymentNotReady')).toBeInTheDocument();
+      expect(screen.getByText('Compiling')).toBeInTheDocument();
+      // The Harness row says which revision it is working on.
+      expect(
+        screen.getByRole('list', { name: 'Admitting Harnesses' }),
+      ).toHaveTextContent(
+        /kagent.*Progressing.*compiling rev-2, last successful rev-1/,
+      );
     });
 
-    it('reports a rejected spec as not accepted, with the reconcile error', async () => {
+    it('reports a rejected template as not accepted, with the Harness’s reason', async () => {
       stubResources({
         resource: makeAgent({
           status: {
             observedGeneration: 1,
-            conditions: [
-              {
-                type: 'Accepted',
-                status: 'False',
-                reason: 'ReconcileFailed',
-                message: 'modelconfigs.kagent.dev "opus-4-7" not found',
-                lastTransitionTime: '2026-07-31T10:05:00Z',
-              },
+            harnesses: [
+              harness([
+                READY_CONDITIONS[0],
+                {
+                  type: 'Compatible',
+                  status: 'False',
+                  reason: 'Incompatible',
+                  message:
+                    'Dedicated sub-agents are not supported by this Harness',
+                  lastTransitionTime: '2026-07-31T10:05:00Z',
+                },
+              ]),
             ],
           },
         } as Partial<AgentInterface>),
@@ -456,9 +535,52 @@ describe('AgentDetailPage', () => {
 
       expectHeaderReadiness('Not accepted');
       expect(
-        screen.getAllByText('modelconfigs.kagent.dev "opus-4-7" not found')
-          .length,
+        screen.getAllByText(
+          'Dedicated sub-agents are not supported by this Harness',
+        ).length,
       ).toBeGreaterThan(0);
+      expect(
+        screen.getByRole('list', { name: 'Admitting Harnesses' }),
+      ).toHaveTextContent(/kagent.*Failed/);
+    });
+
+    // The state of its own: no Harness will ever run this agent until its labels
+    // change, so it must not read as a pending that will resolve.
+    it('reports a template no Harness admits as not admitted, with the missing label', async () => {
+      stubResources({
+        resource: makeAgent({
+          metadata: {
+            name: 'pr-reviewer',
+            namespace: 'agent-platform',
+            generation: 1,
+            labels: {},
+          },
+          status: { observedGeneration: 1, harnesses: [] },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderPage();
+
+      expectHeaderReadiness('Not admitted');
+      expect(
+        screen.getByText(
+          `No Harness admits this agent: it carries no ${HARNESS_LABEL} label.`,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/No Harness admits this agent, so none has written/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('list', { name: 'Admitting Harnesses' }),
+      ).not.toBeInTheDocument();
+      // The configuration says the label is missing, too.
+      expect(
+        screen.getByText(/Not labelled for any Harness/),
+      ).toBeInTheDocument();
+      // No session can start on it.
+      expect(
+        screen.queryByRole('button', { name: 'Start a session' }),
+      ).not.toBeInTheDocument();
     });
 
     it('explains a stale status by naming both generations', async () => {
@@ -469,7 +591,10 @@ describe('AgentDetailPage', () => {
             namespace: 'agent-platform',
             generation: 5,
           },
-          status: { observedGeneration: 4, conditions: READY_CONDITIONS },
+          status: {
+            observedGeneration: 4,
+            harnesses: [harness(READY_CONDITIONS)],
+          },
         } as Partial<AgentInterface>),
       });
 
@@ -480,35 +605,32 @@ describe('AgentDetailPage', () => {
       expect(screen.getByText(/generation 5/)).toBeInTheDocument();
     });
 
-    it('explains an agent the controller has not reported on yet', async () => {
+    it('explains an agent no Harness has reported on yet', async () => {
       stubResources({
         resource: makeAgent({
-          status: { conditions: [] },
+          // The controller has not looked at it: no observedGeneration yet.
+          status: { observedGeneration: undefined, harnesses: [] },
         } as Partial<AgentInterface>),
       });
 
       await renderPage();
 
+      expectHeaderReadiness('Pending');
       expect(
-        screen.getByText(/kagent has not reported a status for this agent yet/),
+        screen.getByText(/No Harness has reported on this agent yet/),
       ).toBeInTheDocument();
     });
 
-    // Abnormal-true: independent of readiness, so a ready agent can carry it.
-    it('warns about unsupported features separately from readiness', async () => {
+    // Independent of readiness, so a ready agent can carry them.
+    it('shows the Harness warnings separately from readiness', async () => {
       stubResources({
         resource: makeAgent({
           status: {
             observedGeneration: 1,
-            conditions: [
-              ...READY_CONDITIONS,
-              {
-                type: 'UnsupportedFeatures',
-                status: 'True',
-                reason: 'UnsupportedFeatures',
-                message: 'memory is not supported by the go runtime',
-                lastTransitionTime: '2026-07-31T10:03:00Z',
-              },
+            harnesses: [
+              harness(READY_CONDITIONS, {
+                warnings: ['memory tools are not supported by this Harness'],
+              }),
             ],
           },
         } as Partial<AgentInterface>),
@@ -518,8 +640,51 @@ describe('AgentDetailPage', () => {
 
       expectHeaderReadiness('Ready');
       expect(
-        screen.getByText('Some configured features are unsupported'),
+        screen.getByText(
+          'The Harness could not honour every configured feature',
+        ),
       ).toBeInTheDocument();
+      expect(
+        screen.getByText('memory tools are not supported by this Harness'),
+      ).toBeInTheDocument();
+    });
+
+    it('lists every admitting Harness, the deciding one first', async () => {
+      stubResources({
+        resource: makeAgent({
+          status: {
+            observedGeneration: 1,
+            harnesses: [
+              harness(READY_CONDITIONS, { harness: 'claude' }),
+              harness(
+                [
+                  READY_CONDITIONS[0],
+                  {
+                    type: 'Ready',
+                    status: 'False',
+                    reason: 'Compiling',
+                    message: 'compiling',
+                    lastTransitionTime: '2026-07-31T10:05:00Z',
+                  },
+                ],
+                { desiredRevision: 'rev-2' },
+              ),
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderPage();
+
+      // The labelled platform Harness decides, even though claude is ready.
+      expectHeaderReadiness('Not ready');
+      const rows = within(
+        screen.getByRole('list', { name: 'Admitting Harnesses' }),
+      ).getAllByRole('listitem');
+      expect(rows.map(row => row.textContent)).toEqual([
+        expect.stringMatching(/^kagent.*Progressing.*sessions run here/),
+        expect.stringMatching(/^claude.*Ready/),
+      ]);
     });
   });
 
@@ -530,10 +695,10 @@ describe('AgentDetailPage', () => {
       await renderPage();
 
       // Unbound external route in the test app, so assert the reference is named
-      // and that a non-muster server gets no link (below) — the binding itself is
-      // muster's to provide.
+      // and that a non-gateway server gets no link (below) — the binding itself is
+      // muster's to provide. The gateway is the carrier named after the agent.
       expect(
-        screen.getByText('RemoteMCPServer agent-platform/muster'),
+        screen.getByText('RemoteMCPServer pr-reviewer'),
       ).toBeInTheDocument();
       // The gateway row defers to the toolset card rather than claiming "all
       // tools": which of the gateway's tools the agent can use is its toolset.
@@ -545,16 +710,14 @@ describe('AgentDetailPage', () => {
       stubResources({
         resource: makeAgent({
           spec: {
-            declarative: {
-              tools: [
-                {
-                  mcpServer: {
-                    name: 'grafana',
-                    toolNames: ['query', 'dashboards'],
-                  },
+            tools: [
+              {
+                mcp: {
+                  server: { kind: 'RemoteMCPServer', name: 'grafana' },
+                  tools: ['query', 'dashboards'],
                 },
-              ],
-            },
+              },
+            ],
           },
         } as Partial<AgentInterface>),
       });
@@ -578,18 +741,21 @@ describe('AgentDetailPage', () => {
       stubResources({
         resource: makeAgent({
           spec: {
-            declarative: {
-              tools: [
-                { mcpServer: { name: 'muster', toolNames: ['list_tools'] } },
-                {
-                  mcpServer: {
-                    name: 'muster',
-                    toolNames: ['call_tool'],
-                    requireApproval: ['call_tool'],
-                  },
+            tools: [
+              {
+                mcp: {
+                  server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' },
+                  tools: ['list_tools'],
                 },
-              ],
-            },
+              },
+              {
+                mcp: {
+                  server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' },
+                  tools: ['call_tool'],
+                  requireApproval: true,
+                },
+              },
+            ],
           },
         } as Partial<AgentInterface>),
       });
@@ -601,7 +767,7 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
       expect(screen.getByText(/1 meta-tool \(call_tool\)/)).toBeInTheDocument();
       expect(
-        screen.getByText('Requires approval: call_tool'),
+        screen.getByText('Requires approval before every call'),
       ).toBeInTheDocument();
       expect(consoleError).not.toHaveBeenCalledWith(
         expect.stringContaining('same key'),
@@ -616,13 +782,43 @@ describe('AgentDetailPage', () => {
     it('says so when the agent declares no tool servers', async () => {
       stubResources({
         resource: makeAgent({
-          spec: { declarative: { modelConfig: 'opus-4-7' } },
+          spec: { modelConfig: { name: 'opus-4-7' }, tools: [] },
         } as Partial<AgentInterface>),
       });
 
       await renderPage();
 
       expect(screen.getByText(/declares no tool servers/)).toBeInTheDocument();
+    });
+
+    it('links another template invoked as a tool, by the template behind it', async () => {
+      stubResources({
+        resource: makeAgent({
+          spec: {
+            tools: [
+              {
+                agent: {
+                  name: 'escalate',
+                  description: 'Escalate to the SRE agent',
+                  templateRef: { name: 'sre-agent' },
+                },
+              },
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderPage();
+
+      expect(
+        screen.getByRole('link', { name: 'agent-platform/sre-agent' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/agents/gazelle/agent-platform/sre-agent',
+      );
+      expect(screen.getByText(/Called as the tool/)).toHaveTextContent(
+        'escalate',
+      );
     });
   });
 
@@ -702,14 +898,32 @@ describe('AgentDetailPage', () => {
   it('says an unset system prompt is unset, not empty', async () => {
     stubResources({
       resource: makeAgent({
-        spec: { declarative: { modelConfig: 'opus-4-7' } },
+        spec: { modelConfig: { name: 'opus-4-7' }, systemPrompt: undefined },
       } as Partial<AgentInterface>),
     });
 
     await renderPage();
 
     expect(
-      screen.getByText('Not set on the Agent resource.'),
+      screen.getByText('Not set on the AgentTemplate.'),
+    ).toBeInTheDocument();
+  });
+
+  it('names the ConfigMap a system prompt is read from', async () => {
+    stubResources({
+      resource: makeAgent({
+        spec: {
+          modelConfig: { name: 'opus-4-7' },
+          systemPrompt: undefined,
+          systemPromptFrom: { name: 'prompts', key: 'reviewer.md' },
+        },
+      } as Partial<AgentInterface>),
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByText('Read from the ConfigMap prompts, key reviewer.md.'),
     ).toBeInTheDocument();
   });
 

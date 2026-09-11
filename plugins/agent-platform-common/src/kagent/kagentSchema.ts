@@ -7,7 +7,7 @@ import { z } from 'zod';
  * spec, so these schemas are the only contract we have and they must be
  * maximally forgiving — one renamed or retyped field must not drop a whole row.
  */
-const wireString = z
+export const wireString = z
   .unknown()
   .transform(value =>
     typeof value === 'string' && value !== '' ? value : undefined,

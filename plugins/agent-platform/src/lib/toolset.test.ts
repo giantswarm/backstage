@@ -21,6 +21,9 @@ import {
   serverOfTool,
   ServerInfo,
   toggleSelector,
+  describeToolset,
+  gatewayBindings,
+  isGatewayBinding,
   toolsetOfAgent,
   toolsetProblems,
   toolsetShape,
@@ -171,48 +174,135 @@ describe('presets', () => {
 });
 
 describe('toolsetOfAgent', () => {
-  const gateway = (entry: { mcpServer?: { name: string } }) =>
-    entry.mcpServer?.name === 'muster';
+  const binding = (name: string) => ({
+    server: { kind: 'RemoteMCPServer', name },
+  });
+  const agent = (...servers: string[]) => ({
+    getName: () => 'pr-reviewer',
+    getNamespace: () => 'kagent',
+    getMcpBindings: () => servers.map(binding),
+  });
+  const carrier = (name: string, toolset?: string, namespace = 'kagent') => ({
+    getName: () => name,
+    getNamespace: () => namespace,
+    getHeaderValue: (header: string) =>
+      header === 'X-Muster-Toolset' ? toolset : undefined,
+  });
 
-  it('reads the declared toolset from the gateway entry header', () => {
-    const agent = {
-      getTools: () => [
-        {
-          mcpServer: { name: 'muster', namespace: 'agent-platform' },
-          headersFrom: [
-            {
-              name: 'X-Muster-Toolset',
-              value: 'preset:read-only,workflow:incident-triage',
-            },
-          ],
-        },
-      ],
-    };
-    expect(toolsetOfAgent(agent as never, gateway as never)).toEqual({
+  // The Generic chart renders the gateway into a RemoteMCPServer named after
+  // the agent; a hand-written template may bind a shared gateway by name.
+  it('recognises the agent’s own carrier and the shared gateway as gateway bindings', () => {
+    expect(isGatewayBinding(agent(), binding('pr-reviewer'), 'muster')).toBe(
+      true,
+    );
+    expect(isGatewayBinding(agent(), binding('muster'), 'muster')).toBe(true);
+    expect(isGatewayBinding(agent(), binding('grafana'), 'muster')).toBe(false);
+    expect(
+      gatewayBindings(agent('grafana', 'pr-reviewer'), 'muster').map(
+        b => b.server.name,
+      ),
+    ).toEqual(['pr-reviewer']);
+  });
+
+  it('reads the declared toolset off the carrier the gateway binding names', () => {
+    expect(
+      toolsetOfAgent(agent('pr-reviewer'), 'muster', [
+        carrier('pr-reviewer', 'preset:read-only,workflow:incident-triage'),
+      ]),
+    ).toEqual({
       state: 'declared',
       selectors: ['preset:read-only', 'workflow:incident-triage'],
+      carrier: 'pr-reviewer',
     });
   });
 
-  it('reports implicit full access for a gateway entry without the header', () => {
-    const agent = {
-      getTools: () => [{ mcpServer: { name: 'muster' } }],
-    };
-    expect(toolsetOfAgent(agent as never, gateway as never)).toEqual({
-      state: 'implicit-full',
-    });
+  it('reports implicit full access for a carrier without the header', () => {
+    expect(
+      toolsetOfAgent(agent('pr-reviewer'), 'muster', [carrier('pr-reviewer')]),
+    ).toEqual({ state: 'implicit-full', carrier: 'pr-reviewer' });
   });
 
-  it('reports no gateway when no entry points at muster (what preset:none renders to)', () => {
-    const agent = {
-      getTools: () => [{ mcpServer: { name: 'some-other-server' } }],
-    };
-    expect(toolsetOfAgent(agent as never, gateway as never)).toEqual({
+  it('reports no gateway when no binding reaches it (what preset:none renders to)', () => {
+    expect(
+      toolsetOfAgent(agent('grafana'), 'muster', [carrier('grafana', 'x')]),
+    ).toEqual({ state: 'no-gateway' });
+    expect(toolsetOfAgent(agent(), 'muster', [])).toEqual({
       state: 'no-gateway',
     });
+  });
+
+  // An unreadable carrier is not evidence of anything, least of all full access.
+  it('leaves the toolset unresolved while the carrier cannot be read', () => {
+    expect(toolsetOfAgent(agent('pr-reviewer'), 'muster', undefined)).toEqual({
+      state: 'unresolved',
+      carrier: 'pr-reviewer',
+    });
+    expect(toolsetOfAgent(agent('pr-reviewer'), 'muster', [])).toEqual({
+      state: 'unresolved',
+      carrier: 'pr-reviewer',
+    });
+    // A same-named server in another namespace is not the carrier.
     expect(
-      toolsetOfAgent({ getTools: () => [] } as never, gateway as never),
-    ).toEqual({ state: 'no-gateway' });
+      toolsetOfAgent(agent('pr-reviewer'), 'muster', [
+        carrier('pr-reviewer', 'preset:full', 'elsewhere'),
+      ]),
+    ).toEqual({ state: 'unresolved', carrier: 'pr-reviewer' });
+  });
+
+  it('prefers a declaring carrier over an unreadable one when several bindings reach the gateway', () => {
+    expect(
+      toolsetOfAgent(agent('muster', 'pr-reviewer'), 'muster', [
+        carrier('pr-reviewer', 'preset:read-only'),
+      ]),
+    ).toEqual({
+      state: 'declared',
+      selectors: ['preset:read-only'],
+      carrier: 'pr-reviewer',
+    });
+  });
+});
+
+describe('describeToolset', () => {
+  it('summarises every state for a table cell', () => {
+    expect(describeToolset(undefined)).toEqual({
+      summary: '—',
+      detail: 'carrier not read',
+    });
+    expect(describeToolset({ state: 'unresolved', carrier: 'a' })).toEqual({
+      summary: '—',
+      detail: 'a not readable',
+    });
+    expect(describeToolset({ state: 'no-gateway' })).toEqual({
+      summary: 'No tools',
+    });
+    expect(describeToolset({ state: 'implicit-full', carrier: 'a' })).toEqual({
+      summary: 'Full gateway access',
+      detail: 'no toolset declared',
+    });
+    expect(
+      describeToolset({
+        state: 'declared',
+        selectors: ['preset:none'],
+        carrier: 'a',
+      }),
+    ).toEqual({ summary: 'No tools', detail: 'preset:none' });
+    expect(
+      describeToolset({
+        state: 'declared',
+        selectors: ['preset:full'],
+        carrier: 'a',
+      }),
+    ).toEqual({ summary: 'Full gateway access', detail: 'preset:full' });
+    expect(
+      describeToolset({
+        state: 'declared',
+        selectors: ['preset:read-only', 'server:pro'],
+        carrier: 'a',
+      }),
+    ).toEqual({
+      summary: 'preset:read-only, server:pro',
+      detail: '2 selectors',
+    });
   });
 });
 

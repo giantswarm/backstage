@@ -345,3 +345,84 @@ describe('SessionComposer', () => {
     expect(screen.getByText('kagent said no')).toBeInTheDocument();
   });
 });
+
+describe('SessionComposer — Stop', () => {
+  const stopButton = () => screen.getByRole('button', { name: 'Stop' });
+
+  it('offers Stop in place of Send while the agent works and the turn is known', async () => {
+    const onStop = jest.fn();
+    renderComposer({ isAgentWorking: true, onStop });
+
+    expect(
+      screen.queryByRole('button', { name: 'Send' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /The agent is working\. Stop it, or reply once this turn finishes\./,
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(stopButton());
+
+    expect(onStop).toHaveBeenCalledTimes(1);
+    // Stopping the turn is not sending: the draft stays where it is.
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('withholds Stop when the running turn is not known yet', () => {
+    // The first beat of a send, before the stream or the poll has named the
+    // task: Send is withheld as before, and nothing pretends to be stoppable.
+    renderComposer({ isAgentWorking: true });
+
+    expect(
+      screen.queryByRole('button', { name: 'Stop' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    expect(
+      screen.getByText(
+        'The agent is working. You can reply once this turn finishes.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('withholds Stop while a confirmation is open', () => {
+    // Waiting on a human is the opposite of running; there is nothing to cancel.
+    renderComposer({
+      isAgentWorking: false,
+      disabledReason: "Answer the agent's question above to carry on.",
+      onStop: jest.fn(),
+    });
+
+    expect(
+      screen.queryByRole('button', { name: 'Stop' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the stop in progress and refuses a second press', () => {
+    renderComposer({
+      isAgentWorking: true,
+      onStop: jest.fn(),
+      isStopping: true,
+    });
+
+    expect(stopButton()).toBeDisabled();
+    expect(screen.getByText('Stopping the agent…')).toBeInTheDocument();
+  });
+
+  it('goes back to Send once the turn has ended', () => {
+    const { rerender } = renderComposer({
+      isAgentWorking: true,
+      onStop: jest.fn(),
+    });
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+
+    rerender(
+      <SessionComposer isAgentWorking={false} isFinished onSubmit={onSubmit} />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Stop' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+  });
+});

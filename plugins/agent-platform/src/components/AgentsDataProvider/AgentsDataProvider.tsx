@@ -10,6 +10,7 @@ import {
   Agent,
   isNotFoundError,
   ModelConfig,
+  RemoteMCPServer,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
@@ -24,6 +25,7 @@ import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
 import {
   AgentRow,
+  BASELINE_REFETCH_INTERVAL_MS,
   getAgentsRefetchInterval,
   ResolveModelServing,
   sortAgentRows,
@@ -68,10 +70,11 @@ export type AgentsContextValue = {
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
 
 /**
- * Lists kagent Agents across every installation in the section's scope that
- * runs kagent (all namespaces) and exposes them as plain rows. Model references
- * are resolved against the ModelConfigs queried by {@link ModelConfigsProvider},
- * so this must be mounted inside one.
+ * Lists kagent `AgentTemplate`s across every installation in the section's
+ * scope that runs kagent (all namespaces) and exposes them as plain rows. Model
+ * references are resolved against the ModelConfigs queried by
+ * {@link ModelConfigsProvider}, so this must be mounted inside one. Each row's
+ * toolset is read off the agent's carrier `RemoteMCPServer`, listed alongside.
  */
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
@@ -115,6 +118,12 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const [erroredInstallations, setErroredInstallations] = useState<string[]>(
     [],
   );
+  // Same stickiness for the carriers, for the same reason: a row's toolset must
+  // not flip to "unresolved" because one background refetch of the servers
+  // missed while the agents' own read succeeded.
+  const [carriersByInstallation, setCarriersByInstallation] = useState<
+    Record<string, RemoteMCPServer[]>
+  >({});
 
   // Home first, literally: the home installation is queried alone, and the
   // others only once it has answered (rows, an empty list, or a failure), so
@@ -131,8 +140,8 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     ? scopedInstallations
     : scopedInstallations.filter(installation => installation === home);
 
-  // Single Agent version (v1alpha2), so skip API version discovery — it adds
-  // round-trips per cluster for no benefit here. `clustersData` is the raw
+  // Single AgentTemplate version (v1alpha3), so skip API version discovery — it
+  // adds round-trips per cluster for no benefit here. `clustersData` is the raw
   // per-cluster list result (present, and possibly empty, only for clusters that
   // responded successfully); `resources` are those hydrated into Agent instances.
   // The refetch interval is two-tier and evaluated per installation — see
@@ -144,6 +153,20 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     Agent,
     {},
     { enableDiscovery: false, refetchInterval: getAgentsRefetchInterval },
+  );
+
+  // The toolset carriers: on API v2 an agent's `X-Muster-Toolset` header lives
+  // on the `RemoteMCPServer` its gateway binding names, not on the template, so
+  // the rows need the same installations' servers to say what each agent may
+  // reach. Read at the baseline cadence only — a toolset changes with a release,
+  // not while an agent converges. A failure here is not "the installation could
+  // not be read": the agents are the rows; a missing server list just leaves
+  // each row's toolset unresolved.
+  const carriers = useResources(
+    queriedInstallations,
+    RemoteMCPServer,
+    {},
+    { enableDiscovery: false, refetchInterval: BASELINE_REFETCH_INTERVAL_MS },
   );
 
   // Model labels resolve progressively as ModelConfigs arrive; we deliberately
@@ -242,6 +265,39 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readSignature]);
 
+  // The carriers' signature, same construction as `readSignature`: names and
+  // resourceVersions of every server an installation answered with.
+  const carriersSignature = useMemo(
+    () =>
+      carriers.clustersData
+        .map(
+          ({ cluster, data }) =>
+            `${cluster}:${data
+              .map(
+                item =>
+                  `${item.metadata?.namespace ?? ''}/${
+                    item.metadata?.name ?? ''
+                  }@${item.metadata?.resourceVersion ?? ''}`,
+              )
+              .join(',')}`,
+        )
+        .sort()
+        .join('|'),
+    [carriers.clustersData],
+  );
+
+  useEffect(() => {
+    const next: Record<string, RemoteMCPServer[]> = {};
+    for (const { cluster } of carriers.clustersData) {
+      next[cluster] = [];
+    }
+    for (const server of carriers.resources) {
+      next[server.cluster]?.push(server);
+    }
+    setCarriersByInstallation(prev => ({ ...prev, ...next }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carriersSignature]);
+
   // Prune cached entries for installations that have durably left the scoped
   // set (session-expired, degraded, removed from config, or outside a pinned
   // scope). They are no longer queried, so they'd never produce a
@@ -262,6 +318,14 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
       const kept = prev.filter(cluster => scoped.has(cluster));
       return kept.length === prev.length ? prev : kept;
     });
+    setCarriersByInstallation(prev => {
+      const kept = Object.fromEntries(
+        Object.entries(prev).filter(([cluster]) => scoped.has(cluster)),
+      );
+      return Object.keys(kept).length === Object.keys(prev).length
+        ? prev
+        : kept;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedInstallationsKey]);
 
@@ -269,7 +333,14 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     const rows = sortAgentRows(
       Object.entries(agentsByInstallation).flatMap(([cluster, agents]) =>
         agents.map(agent =>
-          toAgentRow(agent, modelConfigsFor(cluster), resolveServing),
+          toAgentRow(
+            agent,
+            modelConfigsFor(cluster),
+            resolveServing,
+            // Undefined until the installation's servers have answered once, so
+            // a row is "unresolved" rather than wrongly "implicit full" until then.
+            carriersByInstallation[cluster],
+          ),
         ),
       ),
       home,
@@ -331,6 +402,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     agentsByInstallation,
+    carriersByInstallation,
     erroredInstallations,
     isLoading,
     isProbing,

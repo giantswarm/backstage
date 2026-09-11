@@ -79,6 +79,8 @@ describe('useCreateSession', () => {
       'gazelle',
       { namespace: 'kagent', name: 'sre-agent' },
       'Why is the ingress failing?',
+      // One idempotency key per submission, so a retried create is the same create.
+      expect.stringMatching(/^[0-9a-f-]{36}$/),
     );
   });
 
@@ -158,5 +160,43 @@ describe('useCreateSession', () => {
     rerender();
 
     expect(result.current).toBe(first);
+  });
+
+  it('reuses the idempotency key when the same prompt is retried after a failure', async () => {
+    createSession.mockRejectedValueOnce(new Error('network down'));
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current
+        .createSession({ agent, prompt: 'Why is the ingress failing?' })
+        .catch(() => {});
+    });
+    await act(async () => {
+      await result.current.createSession({
+        agent,
+        prompt: 'Why is the ingress failing?',
+      });
+    });
+
+    const keys = createSession.mock.calls.map(call => call[3]);
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toBe(keys[1]);
+  });
+
+  it('mints a new key for a different prompt, and after a successful create', async () => {
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'first' });
+    });
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'first' });
+    });
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'second' });
+    });
+
+    const keys = createSession.mock.calls.map(call => call[3]);
+    expect(new Set(keys).size).toBe(3);
   });
 });

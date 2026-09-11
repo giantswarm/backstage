@@ -185,16 +185,18 @@ export async function createRouter({
   /**
    * GET /agent-skills
    *
-   * Discovers kagent agent skills in a GitHub repository by finding every
-   * `SKILL.md` file and reading its `name`/`description` frontmatter. Each
-   * skill maps to a `spec.skills.gitRefs` entry (repo url + subdirectory path).
+   * Discovers agent skills in a GitHub repository by finding every `SKILL.md`
+   * file and reading its `name`/`description` frontmatter, at the head commit
+   * of the ref. Each skill maps to a chart `skills[]` entry pinned to that
+   * commit (`{ name, path, git: { url, commit } }`).
    *
    * Query parameters:
    * - repoUrl: The github.com repository URL (https://github.com/<owner>/<repo>)
    * - ref: Optional git ref (branch/tag/SHA); defaults to the default branch
    *
    * Returns:
-   * - skills: Array of { name, description, repoUrl, path, ref }
+   * - skills: Array of { name, description, repoUrl, path, ref, commit }
+   * - ref, commit: the ref read and the commit it resolved to
    * - truncated: true when some skills may be missing (repo too large / a read
    *   failed)
    */

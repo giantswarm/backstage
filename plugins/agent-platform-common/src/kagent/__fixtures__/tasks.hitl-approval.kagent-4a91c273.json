@@ -1,0 +1,122 @@
+{
+  "tasks": [
+    {
+      "id": "01a08e6b-1f6b-7005-b354-9a99c8447337",
+      "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+      "status": {
+        "state": "TASK_STATE_INPUT_REQUIRED",
+        "message": {
+          "messageId": "01a08e6b-2929-7a2a-8322-d64b468949d3",
+          "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "taskId": "01a08e6b-1f6b-7005-b354-9a99c8447337",
+          "role": "ROLE_AGENT",
+          "parts": [
+            {
+              "text": "Please approve or reject the tool call filter_tools() by responding with a FunctionResponse with an expected ToolConfirmation payload."
+            }
+          ],
+          "metadata": {
+            "https://kagent.dev/extensions/hitl/v1": {
+              "hint": "Please approve or reject the tool call filter_tools() by responding with a FunctionResponse with an expected ToolConfirmation payload.",
+              "tools": [
+                {
+                  "name": "filter_tools",
+                  "args": {
+                    "query": "list kubernetes namespaces"
+                  },
+                  "id": "adk-a00fe6b7-b842-4625-b4d2-56cd9c384874",
+                  "call_id": "toolu_01AoKUFqCHiqmg3J4XvqZDPS"
+                }
+              ],
+              "type": "tool_approval_request"
+            },
+            "kagent.dev/timeline-position": "2026-09-11T03:03:02.697554692Z"
+          },
+          "extensions": ["https://kagent.dev/extensions/hitl/v1"]
+        },
+        "timestamp": "2026-09-11T03:03:02.697554692Z"
+      },
+      "artifacts": [
+        {
+          "artifactId": "01a08e6b-2922-7b1f-b3dd-20d01657861f",
+          "parts": [
+            {
+              "data": {
+                "id": "toolu_01AoKUFqCHiqmg3J4XvqZDPS",
+                "args": {
+                  "query": "list kubernetes namespaces"
+                },
+                "name": "filter_tools"
+              },
+              "metadata": {
+                "adk_is_long_running": false,
+                "adk_type": "function_call"
+              }
+            }
+          ],
+          "metadata": {
+            "kagent.dev/timeline-position": "2026-09-11T03:03:02.686924Z",
+            "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+            "adk_user_id": "admin@kagent.dev",
+            "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+            "adk_author": "portal_proof_2344_b66d_kagent",
+            "adk_invocation_id": "e-8beb2cba-e41f-4196-8492-e8c0891a102e",
+            "adk_usage_metadata": {
+              "promptTokenCount": 2900,
+              "candidatesTokenCount": 58
+            }
+          }
+        },
+        {
+          "artifactId": "01a08e6b-2926-751c-a116-e843d3f3defa",
+          "parts": [
+            {
+              "data": {
+                "response": {
+                  "error": "error tool \"filter_tools\" requires confirmation, please approve or reject"
+                },
+                "id": "toolu_01AoKUFqCHiqmg3J4XvqZDPS",
+                "name": "filter_tools"
+              },
+              "metadata": {
+                "adk_type": "function_response"
+              }
+            }
+          ],
+          "metadata": {
+            "adk_user_id": "admin@kagent.dev",
+            "adk_invocation_id": "e-8beb2cba-e41f-4196-8492-e8c0891a102e",
+            "adk_author": "portal_proof_2344_b66d_kagent",
+            "kagent.dev/timeline-position": "2026-09-11T03:03:02.690883Z",
+            "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+            "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent"
+          }
+        }
+      ],
+      "history": [
+        {
+          "messageId": "m-1789095780200",
+          "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "taskId": "01a08e6b-1f6b-7005-b354-9a99c8447337",
+          "role": "ROLE_USER",
+          "parts": [
+            {
+              "text": "How many namespaces does the management cluster have? Use your tools once and answer with the count."
+            }
+          ],
+          "metadata": {
+            "kagent.dev/timeline-position": "2026-09-11T03:03:00.202996449Z"
+          }
+        }
+      ],
+      "metadata": {
+        "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+        "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+        "kagent.dev/task-created-at": "2026-09-11T03:03:00.202996449Z",
+        "adk_user_id": "admin@kagent.dev"
+      }
+    }
+  ],
+  "pageSize": 100,
+  "totalSize": 1
+}

@@ -1,12 +1,16 @@
 import { ReactNode, useCallback, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Content,
   EmptyState,
   Link,
   Progress,
 } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import { Alert, Avatar, Button, Flex, Grid, Text } from '@backstage/ui';
 import {
   Agent,
@@ -27,12 +31,23 @@ import {
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
 import { useCreateSession } from '../../hooks/useCreateSession';
-import { useDeleteAgent } from '../../hooks/useDeleteAgent';
+import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
+import { useAgentDeletion } from '../../hooks/useAgentDeletion';
+import {
+  useAgentManagerAvailability,
+  useAgentManagerInfo,
+} from '../../hooks/useAgentManager';
+import { useUpdateAgent } from '../../hooks/useUpdateAgent';
+import type { CommitAgentResult } from '../../lib/agentManager';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { clientLookupOf } from '../../lib/serving';
-import { agentsRouteRef, sessionDetailRouteRef } from '../../routes';
+import {
+  agentEditRouteRef,
+  agentsRouteRef,
+  sessionDetailRouteRef,
+} from '../../routes';
 import {
   AgentRow,
   getAgentRefetchInterval,
@@ -43,13 +58,19 @@ import { READINESS_PRESENTATION } from '../AgentsTable/readinessStatus';
 import { InstallationChip } from '../InstallationChip';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { ServingProvider, useServing } from '../ServingProvider';
+import { AgentCreationProgress } from '../AgentCreationProgress';
 import { AgentActionsMenu } from './AgentActionsMenu';
 import { AgentConfigurationCard } from './AgentConfigurationCard';
+import { AgentDeleteDialog } from './AgentDeleteDialog';
 import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentSkillsCard } from './AgentSkillsCard';
 import { AgentStatusCard } from './AgentStatusCard';
 import { AgentSystemPromptCard } from './AgentSystemPromptCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
+import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
+
+/** Long enough to read two lines, short enough not to follow you to the next page. */
+const TOAST_TIMEOUT_MS = 8000;
 
 /** Matches the list's row avatar: two lines of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 96;
@@ -120,10 +141,53 @@ function AgentDetailPageContent() {
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
-  // Called here rather than inside the menu: the menu is rendered in the shared
-  // plugin header, which is outside this plugin's `QueryClientProvider`, so its
-  // react-query reads and mutation would have no client there.
-  const deletion = useDeleteAgent(agent);
+  // The write actions — Delete, Edit, Update skills — go through agent-manager
+  // over muster as the signed-in person, and are offered when the installation's
+  // muster lists agent-manager (feature detection; authorization stays the
+  // apiserver's, reached through agent-manager). Called here rather than inside
+  // the menu: the menu is rendered in the shared plugin header, outside this
+  // plugin's `QueryClientProvider`, so react-query has no client there. The
+  // dialogs are rendered in the page body for the same reason.
+  const availability = useAgentManagerAvailability(
+    installation ? [installation] : [],
+  );
+  const agentManagerGate = useMemo(
+    () => ({
+      presence: availability.presenceOf(installation),
+      isUnavailable: availability.isUnavailable,
+    }),
+    [availability, installation],
+  );
+  const { info: agentManagerInfo } = useAgentManagerInfo(
+    agentManagerGate.presence === 'available' ? installation : undefined,
+  );
+  // Commit (a pull request instead of a live write, giantswarm/agent-manager#24)
+  // shows only when agent-manager reports the capability.
+  const canCommit = agentManagerInfo?.capabilities?.commit === true;
+
+  const deletion = useAgentDeletion(installation, namespace, name);
+  const updating = useUpdateAgent(installation);
+  const [isDeleteOpen, setDeleteOpen] = useState(false);
+  const [isUpdateSkillsOpen, setUpdateSkillsOpen] = useState(false);
+  const [commitResult, setCommitResult] = useState<CommitAgentResult>();
+  const toastApi = useApi(toastApiRef);
+  const agentsRoute = useRouteRef(agentsRouteRef);
+  const agentEditRoute = useRouteRef(agentEditRouteRef);
+  const location = useLocation();
+
+  const { reset: resetDeletion } = deletion;
+  const openDelete = useCallback(() => {
+    // Clear a previous attempt's error, so the dialog does not open still
+    // showing it.
+    resetDeletion();
+    setCommitResult(undefined);
+    setDeleteOpen(true);
+  }, [resetDeletion]);
+  const { reset: resetUpdating } = updating;
+  const openUpdateSkills = useCallback(() => {
+    resetUpdating();
+    setUpdateSkillsOpen(true);
+  }, [resetUpdating]);
 
   // Starting a session from this page. The dialog itself is rendered in the page
   // body, not in the header: the header slot lives outside this plugin's
@@ -152,6 +216,99 @@ function AgentDetailPageContent() {
 
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
+
+  const openEdit = useCallback(() => {
+    const href = agentEditRoute?.({ installation, namespace, name });
+    if (href) {
+      navigate(href);
+    }
+  }, [agentEditRoute, installation, namespace, name, navigate]);
+
+  const { deleteAgent, commit: commitDeletion } = deletion;
+  const confirmDelete = useCallback(async () => {
+    let result;
+    try {
+      result = await deleteAgent();
+    } catch {
+      // Left to the dialog, which stays open and shows agent-manager's message
+      // — a GitOps-owned or suspended release, a viewer's Forbidden. No toast:
+      // the user is still looking at the modal they pressed Delete in.
+      return;
+    }
+    setDeleteOpen(false);
+    const as = result.requestedBy ? ` as ${result.requestedBy}` : '';
+    toastApi.post({
+      // Deliberately not "Agent deleted": the HelmRelease has a finalizer, so
+      // all that is certain here is that agent-manager's delete was accepted
+      // and helm-controller has started uninstalling. The agent can still be in
+      // the list for a few seconds.
+      title: `Deleting agent "${agent?.getDisplayName() ?? name}"`,
+      description: `agent-manager deleted its Helm release${as}; Flux is uninstalling it, so it may take a moment to disappear from the list.${
+        result.ociRepositoryKept
+          ? ` The namespace's shared chart source stays: ${result.ociRepositoryKept}.`
+          : ''
+      }`,
+      status: 'success',
+      // A ToastApi toast without a timeout is permanent, and this is an
+      // acknowledgement, not something to dismiss by hand.
+      timeout: TOAST_TIMEOUT_MS,
+    });
+    // An unbound route means the Agent Platform extension is disabled — in
+    // which case this page is not rendering either.
+    if (agentsRoute) {
+      navigate(agentsRoute());
+    }
+  }, [deleteAgent, toastApi, agent, name, agentsRoute, navigate]);
+
+  const commitDelete = useCallback(async () => {
+    setCommitResult(undefined);
+    try {
+      setCommitResult(await commitDeletion());
+    } catch {
+      // Left to the dialog.
+    }
+  }, [commitDeletion]);
+
+  // After Update skills the page watches the new revision converge exactly as
+  // it does after a create — through the same handoff, on the same URL.
+  const onSkillsUpdated = useCallback(
+    (_skills: unknown, requestedBy?: string) => {
+      toastApi.post({
+        title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
+        description: `agent-manager re-pinned the git skills${
+          requestedBy ? ` as ${requestedBy}` : ''
+        }; the platform Harness compiles a new revision.`,
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+      navigate(
+        { pathname: location.pathname, search: location.search },
+        {
+          replace: true,
+          state: {
+            [AGENT_CREATED_STATE_KEY]: {
+              installation,
+              namespace,
+              name,
+              requestedBy,
+              action: 'skills-updated',
+            },
+          },
+        },
+      );
+    },
+    [
+      toastApi,
+      agent,
+      name,
+      navigate,
+      location.pathname,
+      location.search,
+      installation,
+      namespace,
+    ],
+  );
+
   const { createSession } = creation;
   const onStartSession = useCallback(
     async (target: AgentRow, prompt: string) => {
@@ -191,10 +348,10 @@ function AgentDetailPageContent() {
     [createSession, navigate, rememberAgent, sessionDetailRoute],
   );
 
-  // `agent` is memoized on the fetched JSON, `deletion` is memoized on its own
-  // contents, and `openNewSession` is stable, so this element's identity only
-  // changes when one of them actually does — which is what keeps the header slot
-  // from re-registering (and re-rendering) on every poll.
+  // `agent` is memoized on the fetched JSON, the gate on its two values, and the
+  // handlers are stable, so this element's identity only changes when one of
+  // them actually does — which is what keeps the header slot from
+  // re-registering (and re-rendering) on every poll.
   //
   // The button is withheld for an agent that is not ready: kagent would accept the
   // session and the turn would then fail at the first message, with the readiness
@@ -208,10 +365,24 @@ function AgentDetailPageContent() {
               Start a session
             </Button>
           )}
-          <AgentActionsMenu agent={agent} deletion={deletion} />
+          <AgentActionsMenu
+            agent={agent}
+            agentManager={agentManagerGate}
+            onEdit={openEdit}
+            onUpdateSkills={openUpdateSkills}
+            onDelete={openDelete}
+          />
         </Flex>
       ) : null,
-    [agent, agentRow?.readiness, deletion, openNewSession],
+    [
+      agent,
+      agentRow?.readiness,
+      agentManagerGate,
+      openEdit,
+      openUpdateSkills,
+      openDelete,
+      openNewSession,
+    ],
   );
   useProvidePageHeaderActions(actions);
 
@@ -246,7 +417,8 @@ function AgentDetailPageContent() {
   if (!agent) {
     // A 404 is an expected outcome here — a stale bookmark, a deleted or renamed
     // agent — so it gets an explanation rather than an error banner. Also covers
-    // "kagent isn't installed on this installation", which answers 404 for the CRD.
+    // "no kagent API v2 on this installation": no kagent, or a kagent still on
+    // 0.10, answers 404 for the `agenttemplates` resource.
     if (errors.some(isNotFoundError)) {
       return (
         <Content>
@@ -255,7 +427,7 @@ function AgentDetailPageContent() {
             title="Agent not found"
             description={`No agent named "${name}" exists in namespace "${namespace}" on ${
               installation || 'that installation'
-            }. It may have been deleted or renamed, or kagent may not be installed there.`}
+            }. It may have been deleted or renamed, or that installation may not run kagent API v2.`}
             action={<BackToAgents>Back to agents</BackToAgents>}
           />
         </Content>
@@ -329,6 +501,12 @@ function AgentDetailPageContent() {
           {description && <Text variant="body-medium">{description}</Text>}
         </Flex>
 
+        <AgentCreationProgress
+          installation={installation}
+          namespace={namespace}
+          name={name}
+        />
+
         {/* A cheap pre-check only: no Flux or Helm marker at all means there is
             nothing to resolve, so skip the lookups entirely. Whether the agent is
             *actually* GitOps-managed is the card's own decision — it walks
@@ -376,7 +554,15 @@ function AgentDetailPageContent() {
 
         <AgentSystemPromptCard agent={agent} />
         <AgentToolsetCard agent={agent} />
-        <AgentSkillsCard agent={agent} />
+        <AgentSkillsCard
+          agent={agent}
+          onUpdateSkills={
+            agentManagerGate.presence === 'available' &&
+            !agentManagerGate.isUnavailable
+              ? openUpdateSkills
+              : undefined
+          }
+        />
         <AgentSessionsCard sessions={sessions} />
       </Flex>
 
@@ -392,6 +578,31 @@ function AgentDetailPageContent() {
         error={creation.error?.message}
         onStart={onStartSession}
       />
+
+      {/* The write dialogs, in the body for the same reason: their mutations
+          and dry runs are react-query, and the muster sign-in affordance they
+          may show needs the plugin's providers. */}
+      <AgentDeleteDialog
+        installation={installation}
+        displayName={agent.getDisplayName()}
+        isOpen={isDeleteOpen}
+        onOpenChange={setDeleteOpen}
+        deletion={deletion}
+        canCommit={canCommit}
+        onConfirm={confirmDelete}
+        onCommit={commitDelete}
+        commitResult={commitResult}
+      />
+      <AgentUpdateSkillsDialog
+        installation={installation}
+        namespace={namespace}
+        name={name}
+        displayName={agent.getDisplayName()}
+        isOpen={isUpdateSkillsOpen}
+        onOpenChange={setUpdateSkillsOpen}
+        updating={updating}
+        onUpdated={onSkillsUpdated}
+      />
     </Content>
   );
 }
@@ -399,9 +610,9 @@ function AgentDetailPageContent() {
 /**
  * One kagent agent: what it is, whether it works, and what it has been used for.
  *
- * The agent can be deleted from the header's actions menu. It cannot be edited:
- * an agent's settings are its Helm release's values, so changing one means
- * re-releasing the chart, which this plugin has no write path for yet.
+ * The agent can be edited, have its skills re-pinned and be deleted from the
+ * header's actions menu — every write through agent-manager over muster as the
+ * signed-in person, offered when the installation's muster lists agent-manager.
  *
  * What the APUI prototype shows and this deliberately does not, because there is
  * no data behind it: sessions all-time, sessions in the last 30 days, a success

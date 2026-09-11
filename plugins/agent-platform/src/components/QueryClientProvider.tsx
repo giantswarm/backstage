@@ -43,6 +43,20 @@ const PERSIST_THROTTLE_MS = 1000 * 30;
 export const AGENT_PLATFORM_PERSISTER_KEY = 'agent-platform-react-query-cache';
 
 /**
+ * The persisted cache's schema version: the kagent API the readers expect.
+ *
+ * `PersistQueryClientProvider` compares it with the `buster` stored in the
+ * blob on restore and discards the whole blob when they differ, so a release
+ * that changes the CR schema the readers understand — kagent 0.10's
+ * `v1alpha2 Agent` to API v2's `v1alpha3 AgentTemplate` — starts from an empty
+ * cache instead of rehydrating rows written by the previous portal. The query
+ * keys carry group, version and plural too, which keeps an old entry from ever
+ * being *read* as the new shape; the buster is what stops it being kept and
+ * rewritten for the rest of its `maxAge`. Bump it with the next schema change.
+ */
+export const AGENT_PLATFORM_CACHE_BUSTER = 'kagent.dev/v1alpha3';
+
+/**
  * Query keys whose data belongs to one *user* rather than to the fleet, and which
  * must therefore never be written to localStorage.
  *
@@ -163,6 +177,7 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
       persistOptions={{
         persister,
         maxAge,
+        buster: AGENT_PLATFORM_CACHE_BUSTER,
         // Two independent reasons to keep a query out of localStorage, both
         // applied. `shouldPersistQuery` carries the shared rules — the library's
         // "only persist successful queries" default plus the `meta`-based opt-out

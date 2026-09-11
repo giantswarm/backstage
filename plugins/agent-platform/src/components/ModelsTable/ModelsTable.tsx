@@ -98,7 +98,7 @@ export function toModelRow(
     model: modelConfig.getModel() ?? '',
     endpoint: modelConfig.getEndpoint() ?? '',
     readiness: modelConfig.getReadiness(),
-    readinessMessage: modelConfig.getAcceptedCondition()?.message,
+    readinessMessage: modelConfig.getReadinessMessage(),
     ...(servedBy ? { servedBy } : {}),
   };
 }

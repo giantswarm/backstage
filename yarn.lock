@@ -503,14 +503,14 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-devtools@npm:^1.0.0":
-  version: 1.2.15
-  resolution: "@assistant-ui/react-devtools@npm:1.2.15"
+  version: 1.2.17
+  resolution: "@assistant-ui/react-devtools@npm:1.2.17"
   dependencies:
     clsx: "npm:^2.1.1"
-    zod: "npm:^4.4.3"
+    zod: "npm:^4.5.4"
   peerDependencies:
     "@assistant-ui/react": ^0.15.0
-    "@assistant-ui/tap": ^0.9.0
+    "@assistant-ui/tap": ^0.9.16
     "@types/react": "*"
     "@types/react-dom": "*"
     react: ^18 || ^19
@@ -520,7 +520,7 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/67f35cc1c07bbd6b08efcb88eb1b053b4a7a6eee7ff851b753a1024f7db6684e16fe6008bc56a21e28cc3256f6ac224669d1c85c9590ae27716900148edc618e
+  checksum: 10c0/6b1e122766f48ead60f9672973b70148329206ec597a2b184ced7135af8b5fffac27c92ac89c4a69ab46c3f381b17c2440e7d6490d5ebfa0f455dd70741fdfb3
   languageName: node
   linkType: hard
 
@@ -6145,6 +6145,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@bufbuild/protobuf@npm:2.14.1":
+  version: 2.14.1
+  resolution: "@bufbuild/protobuf@npm:2.14.1"
+  checksum: 10c0/3f913aca03df8419c4b21d800ea54d7f6c836a5343e65d6f686279ec3566c4907729938ef2f94a5e27d92e8d3f4adcd6e027118ba29ba764d21e1c637cddc702
+  languageName: node
+  linkType: hard
+
 "@cfworker/json-schema@npm:^4.1.1":
   version: 4.1.1
   resolution: "@cfworker/json-schema@npm:4.1.1"
@@ -6516,6 +6523,25 @@ __metadata:
   peerDependencies:
     commander: ~13.1.0
   checksum: 10c0/ff799f0641f68855aa73c976912a607c25d564df34fd8e262927a80b19f6cccd882fe7ce098a0e072a497fd0020cbd19fd1e4d5cc98a461cd6623abf8ed5f4e7
+  languageName: node
+  linkType: hard
+
+"@connectrpc/connect-node@npm:2.2.0":
+  version: 2.2.0
+  resolution: "@connectrpc/connect-node@npm:2.2.0"
+  peerDependencies:
+    "@bufbuild/protobuf": ^2.7.0
+    "@connectrpc/connect": 2.2.0
+  checksum: 10c0/113a3c3ec49d8a9e1bb78f56b20918588fef5937ed30a8107dbfae78c0bfdd9ecac84a49a4a22db38e7ee9d4db58df612e8d9dcf1bd1967bc612b3f672703ead
+  languageName: node
+  linkType: hard
+
+"@connectrpc/connect@npm:2.2.0":
+  version: 2.2.0
+  resolution: "@connectrpc/connect@npm:2.2.0"
+  peerDependencies:
+    "@bufbuild/protobuf": ^2.7.0
+  checksum: 10c0/f03a5a8c74d74a9016027280173f44d983f69e9b999dcad47520c2dd474be2289bd33b22e1e374173dc919c6ffb1ab5886464d6c279bca26ff2432231bdf0915
   languageName: node
   linkType: hard
 
@@ -7465,6 +7491,9 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
     "@backstage/errors": "backstage:^"
+    "@bufbuild/protobuf": "npm:2.14.1"
+    "@connectrpc/connect": "npm:2.2.0"
+    "@connectrpc/connect-node": "npm:2.2.0"
     "@giantswarm/backstage-plugin-agent-platform-common": "workspace:^"
     "@giantswarm/backstage-plugin-gs-node": "workspace:^"
     "@types/express": "npm:^5.0.0"
@@ -7499,7 +7528,6 @@ __metadata:
     "@backstage/frontend-test-utils": "backstage:^"
     "@backstage/plugin-catalog-react": "backstage:^"
     "@backstage/plugin-kubernetes-react": "backstage:^"
-    "@backstage/plugin-scaffolder-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-agent-platform-common": "workspace:^"
@@ -7508,7 +7536,7 @@ __metadata:
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-muster": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
-    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.7.1"
+    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.8.0"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
     "@tanstack/react-query": "npm:^5.82.0"
@@ -7887,7 +7915,7 @@ __metadata:
     "@backstage/plugin-kubernetes-react": "backstage:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
-    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.7.1"
+    "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.8.0"
     "@material-ui/core": "npm:^4.9.13"
     "@material-ui/icons": "npm:^4.11.3"
     "@tanstack/query-async-storage-persister": "npm:^5.86.0"
@@ -8135,10 +8163,10 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@giantswarm/k8s-types@github:giantswarm/k8s-typescript-types#v0.7.1":
+"@giantswarm/k8s-types@github:giantswarm/k8s-typescript-types#v0.8.0":
   version: 0.1.0
-  resolution: "@giantswarm/k8s-types@https://github.com/giantswarm/k8s-typescript-types.git#commit=8946cc484f1db2f9dc765e11ccdb8f45ac05e4df"
-  checksum: 10c0/53cdbd6b6f011f782c9d07cb240f5e75f7bd53f1be528d804d2e9fd4c5a0437b5974d029ba007ed3a2c351637623a9df245124069574aca59e4b5f65c3eda66f
+  resolution: "@giantswarm/k8s-types@https://github.com/giantswarm/k8s-typescript-types.git#commit=82b50a03f4b8ca55944548993441f3dffc510fde"
+  checksum: 10c0/579bd6146f2546608d587ede935aa16a8768d571003933dedda504c11ea436732da2a340ef58d24a687e186e8b411b37fd26554c2b74d2f5df286d9e7dd2a04c
   languageName: node
   linkType: hard
 
@@ -42406,6 +42434,13 @@ __metadata:
   version: 4.4.3
   resolution: "zod@npm:4.4.3"
   checksum: 10c0/7ea31b558e88f9faf44f31dd185e2e1cbf51fed3081787fb96cc2534749b50c0acfc6da7f0922a7353ed092dd358c7d50c28ea96c94d04af64191bd33152eca3
+  languageName: node
+  linkType: hard
+
+"zod@npm:^4.5.4":
+  version: 4.6.0
+  resolution: "zod@npm:4.6.0"
+  checksum: 10c0/845b7f375010b57153e4602bf6fd3bb18cf86818fbcf738f7852c8a2dddebc6221f645ec01856ea9cb5b9904bca7a138a57c5c5ff9757217dcaab022dc837df2
   languageName: node
   linkType: hard
 

@@ -11,6 +11,8 @@
  */
 export * from './kagent/kagentSchema';
 export * from './kagent/kagentTaskSchema';
+export * from './kagent/kagentA2aV1';
+export * from './kagent/kagentAgentInstance';
 export * from './kagent/kagentMetadata';
 export * from './kagent/kagentParts';
 export * from './kagent/kagentSessions';

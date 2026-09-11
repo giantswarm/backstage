@@ -1,16 +1,76 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
+import { ConflictError, InputError } from '@backstage/errors';
+import { create, toJson, type JsonObject } from '@bufbuild/protobuf';
 import {
-  AuthenticationError,
-  ConflictError,
-  NotAllowedError,
-  NotFoundError,
-} from '@backstage/errors';
+  Code,
+  ConnectError,
+  createClient,
+  type Client,
+  type Transport,
+} from '@connectrpc/connect';
+import {
+  A2AService,
+  ListTasksResponseSchema,
+  Role,
+  SendMessageRequestSchema,
+  SendMessageResponseSchema,
+  StreamResponseSchema,
+  TaskSchema,
+  type Part,
+  type StreamResponse,
+  type Task,
+} from './kagent/gen/a2a_pb';
+import {
+  AgentInstanceService,
+  CreateAgentInstanceResponseSchema,
+  DeleteAgentInstanceResponseSchema,
+  GetAgentInstanceResponseSchema,
+  ListAgentInstancesResponseSchema,
+  UpdateAgentInstanceNameResponseSchema,
+  type AgentInstance,
+} from './kagent/gen/kagent/api/v1alpha1/agent_instances_pb';
+import {
+  AgentTemplateService,
+  type AgentTemplate,
+} from './kagent/gen/kagent/api/v1alpha1/agent_templates_pb';
+import { SystemService } from './kagent/gen/kagent/api/v1alpha1/system_pb';
+import {
+  ErrorContext,
+  isTransportFailure,
+  isTurnPendingError,
+  isUpstreamError,
+  mapConnectError,
+  turnPendingError,
+} from './kagent/errors';
+import {
+  A2A_EXTENSIONS_HEADER,
+  buildHitlResponse,
+  HITL_EXTENSION_URI,
+  readHitlRequest,
+  type HitlAnswer,
+} from './kagent/hitl';
+import {
+  createKagentTransport,
+  deriveKagentApiBaseUrl,
+  isAbsoluteHttpUrl,
+  type KagentInstallationConfig,
+} from './kagent/transport';
+
+export {
+  isTransportFailure,
+  isTurnPendingError,
+  TURN_PENDING_ERROR_NAME,
+} from './kagent/errors';
+export {
+  deriveKagentApiBaseUrl,
+  type KagentInstallationConfig,
+} from './kagent/transport';
 
 /**
  * Header the agent-platform frontend uses to forward the user's
  * per-installation Dex OIDC ID token, which this proxy sets as
- * `Authorization: Bearer` toward kagent.
+ * `authorization: Bearer` toward kagent.
  *
  * Mirrors muster's `backstage-muster-authorization`: kept off `Authorization`
  * because that header carries the Backstage identity on the inbound leg.
@@ -19,51 +79,38 @@ import {
  */
 export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 
-/** Default per-request timeout toward a kagent API. */
+/** Default per-request timeout toward a kagent controller. */
 export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
 
 /**
  * How long to wait for an A2A turn before answering "still running".
  *
- * `message/send` answers only once the agent has finished, so this is not "how
+ * `SendMessage` answers only once the agent has finished, so this is not "how
  * long a turn may take" — it is how long we are willing to hold a response open
- * before reporting the turn as dispatched. **The turn survives us stopping**
- * (verified on an internal installation: an agent answered a message whose request
- * had already died
- * with a 502), so waiting longer buys nothing except a held-open socket.
+ * before reporting the turn as dispatched. **The turn survives us stopping**, so
+ * waiting longer buys nothing except a held-open socket.
  *
  * **It must stay below the timeout of whatever fronts Backstage**, and that is the
- * whole reason it is short. The browser's request traverses its own door — an
- * nginx-ingress defaults to `proxy_read_timeout 60s`, and an Envoy Gateway route
- * inherits Envoy's route default unless a `BackendTrafficPolicy` says otherwise. If
- * that door fires first, the frontend gets a 502/504 that no amount of care *here*
- * can turn into "still running", because this process never got to answer. At 30 s
- * we always win that race against a 60 s door; a longer value would reintroduce, one
- * hop further out, exactly the failure {@link KagentClient.sendMessage} exists to
- * prevent.
- *
- * Short enough, too, that a genuine immediate rejection (a bad request, an
- * unresolvable agent, a JSON-RPC error) still surfaces inline rather than as a
- * pending turn that never appears.
- *
- * Exceeding it is not a failure: see {@link turnPendingError}.
+ * whole reason it is short: at 30 s we always win the race against a 60 s door,
+ * and a genuine immediate rejection still surfaces inline rather than as a pending
+ * turn that never appears. Exceeding it is not a failure: see
+ * {@link turnPendingError}.
  */
 export const DEFAULT_KAGENT_TURN_TIMEOUT_MS = 30_000;
 
 /**
  * Longest session name this proxy will store.
  *
- * kagent imposes no limit of its own — `session.name` is Postgres `TEXT`
- * (`go/core/pkg/migrations/core/000001_initial.up.sql`) and no handler validates
- * it — so this bound is ours, chosen to match the conversation titles in the
- * ai-chat plugin. Enforced here as well as in the dialog, because a client-side
- * `maxLength` is a nicety and not a guard.
- *
- * Reads stay unbounded: a longer name set by kagent's own UI must still render.
+ * The controller caps an AgentInstance name at 200 characters
+ * (`CreateAgentInstanceRequest.name` / `UpdateAgentInstanceNameRequest.name`,
+ * `max_len: 200`) and refuses control characters and surrounding whitespace.
+ * Enforced here as well as in the dialog, because a client-side `maxLength` is a
+ * nicety and not a guard. Reads stay unbounded: a longer name set by kagent's own
+ * UI must still render.
  *
  * Must match SESSION_NAME_MAX_LENGTH in plugins/agent-platform.
  */
-export const SESSION_NAME_MAX_LENGTH = 255;
+export const SESSION_NAME_MAX_LENGTH = 200;
 
 /**
  * Longest message this proxy will forward to an agent.
@@ -80,258 +127,69 @@ export const SESSION_NAME_MAX_LENGTH = 255;
  */
 export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
 
-/** One installation's kagent endpoint. */
-export interface KagentInstallationConfig {
-  /** Installation name, as in `gs.installations`. */
-  name: string;
-  /**
-   * kagent API base URL, no trailing slash — e.g.
-   * `https://kagent.<baseDomain>/api`.
-   */
-  apiBaseUrl: string;
-}
+/**
+ * Bounds of the controller's `request_id` (`CreateAgentInstanceRequest`,
+ * `min_len: 1, max_len: 128`), which the browser supplies so a retried create
+ * is idempotent. Checked here so a bad one is a 400 with our words rather than
+ * an `InvalidArgument` with the controller's.
+ */
+export const REQUEST_ID_MAX_LENGTH = 128;
 
+/** The gRPC metadata key that selects the AgentInstance an A2A call belongs to. */
+export const AGENT_INSTANCE_HEADER = 'x-kagent-agent-instance-id';
+
+/**
+ * Page size for the paged listings. The controller caps `ListTasks` at 100 and
+ * `ListAgentInstances` at 100; both are walked to the end below, so this only
+ * sets how many round trips a long list costs.
+ */
+const PAGE_SIZE = 100;
+
+/**
+ * How many pages a listing is followed for before it is cut. A thousand turns
+ * or two thousand instances is far beyond any conversation or account this
+ * plugin renders; the bound exists so a misbehaving `next_page_token` cannot
+ * loop forever.
+ */
+const MAX_TASK_PAGES = 10;
+const MAX_INSTANCE_PAGES = 20;
+
+/** Who a call is made as. */
 export interface KagentRequestOptions {
   /**
-   * The user's Dex ID token, forwarded as `Authorization: Bearer` toward
-   * kagent. Optional because `/version` and `/me` are useful even when no
-   * token could be minted; `/sessions` requires one.
+   * The user's Dex ID token, forwarded as `authorization: Bearer` toward the
+   * controller route. Optional because `GetCurrentUser` is useful even when no
+   * token could be minted — it then reports what the route makes of a missing
+   * one; everything touching an AgentInstance requires one.
    */
   userToken?: string;
 }
 
-/**
- * Per-endpoint wording for a 404, so the message a user reads matches what
- * actually went wrong.
- *
- * Without this every 404 reports "The kagent API is not available for
- * installation X", which is an outage claim — badly wrong for the common case of
- * a bookmarked link to a session that has since been deleted.
- */
-interface NotFoundContext {
+/** What one `ListTasks` read asks the controller to shape each task like. */
+export interface ListSessionTasksOptions {
   /**
-   * What a 404 means when **kagent's own handler** answered it: the endpoint
-   * exists, the resource does not.
+   * The session-state summary reads many of these in one pass and gives each a
+   * shorter leash than the client default, so one hung connection cannot spend
+   * the whole pass's budget.
    */
-  missingResource: string;
+  timeoutMs?: number;
   /**
-   * Short name of the endpoint, used when the **route itself** is absent — an
-   * older kagent that predates it.
+   * How many history entries per task. Absent means all of them; `0` means none
+   * — right for a caller that only reads `status`.
    */
-  endpoint: string;
-}
-
-/**
- * Derive the kagent API base URL for an installation from its base domain.
- *
- * The hostname pattern matches the `agent-platform-connectivity` chart's
- * `kagent.uiRoute.hostname` (`kagent.<codename>.<base>`), which is exactly
- * `kagent.<baseDomain>` — the same derivation `useAgentAvatarUrl` uses for
- * `avatars.<baseDomain>`. That host is fronted by oauth2-proxy, whose nginx
- * sidecar proxies `/api/` to `kagent-controller:8083`.
- *
- * Returns undefined when the installation has no `baseDomain`.
- */
-export function deriveKagentApiBaseUrl(
-  baseDomain: string | undefined,
-): string | undefined {
-  if (!baseDomain) {
-    return undefined;
-  }
-  return `https://kagent.${baseDomain}/api`;
-}
-
-/** Strip trailing slashes so URL joining stays predictable. */
-function stripTrailingSlash(url: string): string {
-  return url.replace(/\/+$/, '');
-}
-
-/**
- * kagent answered (or was reachable) and then failed: a 5xx, a 429, a timeout, or
- * a body that could not be read.
- *
- * Deliberately **not** the same error as "kagent is absent". That case is a 404
- * (see the catch block in `request`): silenced by the frontend, and below the
- * `>= 500` threshold at which `MiddlewareFactory.error()` logs to Sentry, which
- * matters because it is the expected outcome on most installations.
- *
- * This one surfaces as a 500, so the frontend reports it *and* it reaches Sentry —
- * both correct here. A deployed-but-degraded kagent is rare and genuinely
- * actionable, and its sessions silently vanishing from the fleet-merged list would
- * be the worse failure.
- */
-function upstreamError(message: string): Error {
-  const error = new Error(message);
-  error.name = 'UpstreamError';
-  return error;
-}
-
-/**
- * Name of the error thrown for a kagent 400, for the one caller that opts into
- * seeing them.
- *
- * Name-based rather than a subclass, matching {@link upstreamError} — nothing
- * crosses a package boundary with it, and `instanceof` buys nothing here.
- */
-const BAD_REQUEST_ERROR_NAME = 'KagentBadRequestError';
-
-/**
- * kagent rejected the request itself.
- *
- * Only thrown when a caller passes `badRequest: true`, because for every other
- * endpoint a 400 is a coding error on our side and belongs on the generic
- * upstream-failure path. Two methods opt in, and in both a 400 is *diagnostic*
- * rather than a fault: for {@link KagentClient.updateSessionName} it is how a
- * kagent too old to rename announces itself, and for
- * {@link KagentClient.createSession} it is how kagent reports an `agent_ref` it
- * cannot resolve. See those methods.
- */
-function badRequestError(message: string): Error {
-  const error = new Error(message);
-  error.name = BAD_REQUEST_ERROR_NAME;
-  return error;
-}
-
-function isBadRequestError(error: unknown): boolean {
-  return (error as Error | undefined)?.name === BAD_REQUEST_ERROR_NAME;
-}
-
-/** Name of the error thrown when an A2A turn outlives its timeout. */
-export const TURN_PENDING_ERROR_NAME = 'KagentTurnPendingError';
-
-/**
- * The turn was dispatched and is still running.
- *
- * Deliberately not an upstream failure. `message/send` holds the connection until
- * the agent finishes, so losing that connection — to our own timeout, or to the
- * gateway's 60 s one — says "nobody waited long enough", not "broken". The turn is
- * already recorded against the session, which is what
- * {@link KagentClient.sendMessage} confirms before reporting this, and the
- * conversation poll will show it progress and finish.
- *
- * The router turns this into a 202 rather than a 5xx, which
- * `MiddlewareFactory.error()` would forward to Sentry: one issue per long turn,
- * for the thing an agent is supposed to do.
- */
-function turnPendingError(message: string): Error {
-  const error = new Error(message);
-  error.name = TURN_PENDING_ERROR_NAME;
-  return error;
-}
-
-export function isTurnPendingError(error: unknown): boolean {
-  return (error as Error | undefined)?.name === TURN_PENDING_ERROR_NAME;
-}
-
-/**
- * Marks a `NotFoundError` that came from the **transport** rather than from
- * kagent.
- *
- * `request` reports an unreachable host as a 404 deliberately (see the catch
- * there): on a fleet where most installations run no kagent, that is the normal
- * outcome and must stay off the 5xx path. But the same branch also catches a socket
- * that died *mid-request* — an Envoy drain, a keepalive expiry, a TLS reset — which
- * for a send is a lost connection, not an absent kagent.
- *
- * Carried as a property rather than a distinct error name because the name is
- * load-bearing: the frontend keys "no kagent here, stay silent" off `NotFoundError`,
- * and renaming it would make every kagent-less installation noisy.
- */
-const TRANSPORT_FAILURE = Symbol.for('kagent.transportFailure');
-
-function transportFailure(message: string): Error {
-  const error = new NotFoundError(message);
-  (error as unknown as Record<symbol, boolean>)[TRANSPORT_FAILURE] = true;
-  return error;
-}
-
-export function isTransportFailure(error: unknown): boolean {
-  return Boolean(
-    (error as unknown as Record<symbol, boolean> | undefined)?.[
-      TRANSPORT_FAILURE
-    ],
-  );
-}
-
-function isUpstreamError(error: unknown): boolean {
-  return (error as Error | undefined)?.name === 'UpstreamError';
-}
-
-/**
- * The failure a JSON-RPC response reports **inside a 200**.
- *
- * A2A is JSON-RPC, so `POST /a2a/...` answers `{"jsonrpc":"2.0","error":{"code":
- * -32602,"message":"…"}}` with a 200 for an invalid parameter, an unsupported
- * operation, a task-store failure, or an agent whose A2A server is not ready. None
- * of that is visible in the HTTP status, and none of it is kagent's REST envelope
- * — whose `error` is the boolean `true` — so a check for that boolean lets every
- * one of these through as a successful send.
- *
- * Both shapes are read here, plus a bare string, because this one route is the only
- * place the two conventions meet and guessing wrong means a message that silently
- * never happened.
- *
- * Returns the message to report, or undefined when the response carries no error.
- */
-function readInBandError(payload: unknown): string | undefined {
-  if (typeof payload !== 'object' || payload === null) {
-    return undefined;
-  }
-  const error = (payload as { error?: unknown }).error;
-  if (!error) {
-    return undefined;
-  }
-  if (typeof error === 'string') {
-    return error;
-  }
-  if (typeof error === 'object') {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === 'string' && message) {
-      return message;
-    }
-  }
-  // `error: true`, or an object that named no message.
-  return 'the agent rejected the message without saying why';
-}
-
-/**
- * Whether any task in a `GET /sessions/<id>/tasks` payload holds this message.
- *
- * Walked defensively rather than parsed: the only question asked of it is
- * "is this id in there", and a payload shape we do not recognise should answer
- * "cannot tell" — i.e. false — not throw.
- */
-function payloadHasMessageId(payload: unknown, messageId: string): boolean {
-  const tasks = (payload as { data?: unknown })?.data ?? payload;
-  if (!Array.isArray(tasks)) {
-    return false;
-  }
-  return tasks.some(task => {
-    const history = (task as { history?: unknown })?.history;
-    if (!Array.isArray(history)) {
-      return false;
-    }
-    return history.some(
-      entry => (entry as { messageId?: unknown })?.messageId === messageId,
-    );
-  });
-}
-
-/** Whether a configured URL is absolute and http(s), so `fetch` can use it. */
-function isAbsoluteHttpUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
+  historyLength?: number;
+  /**
+   * Whether to include each task's artifacts — the agent's output on this line.
+   * Defaults to true; the state summary turns it off.
+   */
+  includeArtifacts?: boolean;
 }
 
 /**
  * Resolve the installations this proxy can target, keyed by name.
  *
  * `agentPlatform.kagent.installations`, when present, acts as the allowlist and
- * each entry's `apiBaseUrl` overrides the derived URL. When absent, every
+ * each entry's `apiBaseUrl` overrides the derived origin. When absent, every
  * `gs.installations` entry with a `baseDomain` is derived — kagent is only
  * deployed on some installations, and the ones without it simply fail per
  * request and are reported as "not installed".
@@ -374,7 +232,7 @@ export function readKagentInstallationsFromConfig(
 
     // Reject a non-absolute URL here rather than letting it fail per request:
     // an operator omitting the scheme would otherwise surface as an opaque
-    // fetch failure on every call instead of one clear message at startup.
+    // transport failure on every call instead of one clear message at startup.
     if (!isAbsoluteHttpUrl(apiBaseUrl)) {
       logger.warn(
         `Skipping kagent proxy for installation '${name}': apiBaseUrl must be an absolute http(s) URL.`,
@@ -385,432 +243,625 @@ export function readKagentInstallationsFromConfig(
 
     result.set(name, {
       name,
-      apiBaseUrl: stripTrailingSlash(apiBaseUrl),
+      apiBaseUrl: apiBaseUrl.replace(/\/+$/, ''),
     });
   }
 
   return result;
 }
 
+/** A `Part` as `create(SendMessageRequestSchema, …)` accepts it. */
+type PartInit = Pick<Part, 'content'>;
+
+/** A message as {@link KagentClient.dispatch} sends it. */
+type OutboundMessage = {
+  messageId: string;
+  parts: PartInit[];
+  /** Set means "resume this task"; empty means "start a new one". */
+  taskId?: string;
+  extensions?: string[];
+  metadata?: JsonObject;
+};
+
 /**
- * Thin HTTP client for one installation's kagent REST API.
+ * Client for one installation's kagent API v2 controller, over native gRPC.
  *
- * Deliberately a byte-for-byte proxy: it returns kagent's JSON verbatim,
- * without unwrapping the `{error, data, message}` envelope, stripping unknown
- * fields, or filtering anything. Schema tolerance lives in the frontend, so a
- * kagent schema change never requires a backend release. The split is:
- * backend = transport, frontend = schema.
+ * Speaks the control plane (`AgentInstanceService`, `AgentTemplateService`,
+ * `SystemService`) and the A2A v1 service (`A2AService`), and answers with the
+ * **proto3 JSON** of the controller's responses — `{agentInstances: […]}`,
+ * `{tasks: […]}`, a `Task`, a `StreamResponse` per SSE frame. Nothing is
+ * reshaped here: the split is the one it always was, backend = transport,
+ * frontend = schema, and the schema tolerance for these shapes lives in
+ * `agent-platform-common`.
+ *
+ * A "session" in the method names is an AgentInstance: one conversation of one
+ * person with one AgentTemplate on one Harness (plan decision D10). Its id is
+ * the instance id, and every A2A call names it in the
+ * `x-kagent-agent-instance-id` metadata — exactly once; the gateway refuses a
+ * missing or doubled header.
+ *
+ * **Identity is the bearer and nothing else.** Every call carries
+ * `authorization: Bearer <the person's Dex ID token>`; agentgateway validates
+ * it on the controller route and derives the caller from its `email` claim,
+ * dropping any inbound identity header. This client therefore never sends one
+ * — a test asserts it — because a header the gateway would drop is at best dead
+ * weight and, against a controller reached without the gateway, impersonation.
  */
 export class KagentClient {
+  private readonly transport: Transport;
+  private instances?: Client<typeof AgentInstanceService>;
+  private templates?: Client<typeof AgentTemplateService>;
+  private a2a?: Client<typeof A2AService>;
+  private system?: Client<typeof SystemService>;
+
   constructor(
     private readonly installation: KagentInstallationConfig,
     private readonly logger: LoggerService,
-    /** Overridable for tests; defaults to the global fetch. */
-    private readonly fetchFn: typeof fetch = fetch,
+    /** Overridable for tests (`createRouterTransport`); defaults to native gRPC toward `apiBaseUrl`. */
+    transport?: Transport,
     private readonly timeoutMs: number = DEFAULT_KAGENT_TIMEOUT_MS,
     /** Separate budget for {@link sendMessage}, which waits out a whole turn. */
     private readonly turnTimeoutMs: number = DEFAULT_KAGENT_TURN_TIMEOUT_MS,
-  ) {}
+  ) {
+    this.transport = transport ?? createKagentTransport(installation);
+  }
 
-  /** `GET <apiBaseUrl>/sessions` — the user's sessions, kagent's JSON verbatim. */
-  async listSessions(options: KagentRequestOptions): Promise<unknown> {
-    return this.request(`${this.installation.apiBaseUrl}/sessions`, options);
+  private get instanceService() {
+    this.instances ??= createClient(AgentInstanceService, this.transport);
+    return this.instances;
+  }
+
+  private get templateService() {
+    this.templates ??= createClient(AgentTemplateService, this.transport);
+    return this.templates;
+  }
+
+  private get a2aService() {
+    this.a2a ??= createClient(A2AService, this.transport);
+    return this.a2a;
+  }
+
+  private get systemService() {
+    this.system ??= createClient(SystemService, this.transport);
+    return this.system;
   }
 
   /**
-   * `POST <apiBaseUrl>/sessions` — start a session for one agent.
+   * `AgentInstanceService/ListAgentInstances` — the caller's instances, walked
+   * to the end of the listing, as `{agentInstances: […]}`.
    *
-   * `agent_ref` is the only field kagent requires; `name` is ours to supply
-   * because **the controller does not auto-title**. A create with no `name` comes
-   * back with no `name` field at all (verified against 0.9.9) — the short titles
-   * in kagent's own list are its *UI* deriving them from the first message, not
-   * something the API does. See "Starting a session" in docs/agent-platform.md.
+   * **For the caller only, never `all_creators`.** The controller scopes the
+   * list to the identity agentgateway derived from the bearer; the cross-user
+   * flag needs a separate authorization this plugin has no business asking for.
    *
-   * **The session id is kagent's to generate, and deliberately so.** The handler
-   * behind this route is an upsert on `(id, user_id)`
-   * (`go/core/database/queries/sessions.sql`), which is what
-   * {@link updateSessionName}'s v0.9.x fallback exploits — so a client-supplied
-   * `id` would silently overwrite whatever session already had it, including its
-   * agent. Omitting it is what makes this a create.
+   * `agentTemplate` narrows the listing to one agent's instances server-side —
+   * what an agent page's "Recent sessions" asks.
+   */
+  async listSessions(
+    options: KagentRequestOptions,
+    filter: { agentTemplate?: { namespace: string; name: string } } = {},
+  ): Promise<unknown> {
+    const context: ErrorContext = {
+      endpoint: 'instance list',
+      missingResource: `The kagent API for installation '${this.installation.name}' has no AgentInstances for this agent.`,
+    };
+    const instances: AgentInstance[] = [];
+    let pageToken = '';
+    for (let page = 0; page < MAX_INSTANCE_PAGES; page += 1) {
+      // A per-iteration copy: the RPC closure must not capture the variable
+      // the loop rewrites.
+      const token = pageToken;
+      const response = await this.call(
+        () =>
+          this.instanceService.listAgentInstances(
+            {
+              page: { limit: PAGE_SIZE, pageToken: token },
+              ...(filter.agentTemplate && {
+                agentTemplate: filter.agentTemplate,
+              }),
+            },
+            this.callOptions(options),
+          ),
+        context,
+      );
+      instances.push(...response.agentInstances);
+      pageToken = response.page?.nextPageToken ?? '';
+      if (!pageToken) {
+        break;
+      }
+    }
+    return toJson(
+      ListAgentInstancesResponseSchema,
+      create(ListAgentInstancesResponseSchema, { agentInstances: instances }),
+    );
+  }
+
+  /**
+   * `AgentInstanceService/CreateAgentInstance` — start a conversation with one
+   * agent: one AgentTemplate on one Harness.
    *
-   * `agent_ref` is built from the namespace and name the *caller* passed, never
-   * from decoding a session's `agent_id`: kagent's "python identifier" encoding
-   * replaces every `-` with `_`, so decoding is lossy and an agent whose name
-   * contains an underscore comes back wrong.
+   * The Harness is the platform's: the one whose `Ready` condition the
+   * template's `status.harnesses[]` reports `True`, read through
+   * `AgentTemplateService/GetAgentTemplate` (which also lists the harnesses
+   * that admit the template), so the backend depends on nothing the browser
+   * read. A template no Harness admits cannot be instantiated; that is a stale
+   * picker or a platform state, not a fault, so it is a 409 naming the agent.
    *
-   * Both opt-ins below keep an expected outcome off the >= 500 path that
-   * `MiddlewareFactory.error()` forwards to Sentry:
-   *
-   * - **400** is how kagent reports an `agent_ref` it cannot resolve — the agent
-   *   was deleted, or lives on another installation than the one we asked. That
-   *   is a stale picker, not a fault, so it becomes a 409 naming the agent.
-   * - **409** means a sandbox-workload agent already holds its one permitted
-   *   session. Passed through as itself.
+   * `requestId` is the browser's, one per submission and reused on a retry:
+   * the controller keys idempotency on `(creator, request_id)` and answers the
+   * existing instance for a repeat with the same parameters, `AlreadyExists`
+   * (409) for a repeat with different ones.
    */
   async createSession(
     agent: { namespace: string; name: string },
     name: string,
+    requestId: string,
     options: KagentRequestOptions,
   ): Promise<unknown> {
     const agentRef = `${agent.namespace}/${agent.name}`;
+    const harness = await this.pickHarness(agent, options);
 
-    try {
-      return await this.request(
-        `${this.installation.apiBaseUrl}/sessions`,
-        options,
-        {
-          method: 'POST',
-          body: { agent_ref: agentRef, name, source: 'user' },
-          badRequest: true,
-          conflict: true,
-          notFound: {
-            missingResource: `Installation '${this.installation.name}' cannot start a session: kagent does not know the agent '${agentRef}'.`,
-            endpoint: 'session create',
+    const response = await this.call(
+      () =>
+        this.instanceService.createAgentInstance(
+          {
+            harness: { namespace: agent.namespace, name: harness },
+            agentTemplate: { namespace: agent.namespace, name: agent.name },
+            requestId,
+            name,
           },
-        },
-      );
-    } catch (error) {
-      if (!isBadRequestError(error)) {
-        throw error;
-      }
-      throw new ConflictError(
-        `kagent on installation '${this.installation.name}' did not accept the agent '${agentRef}'. It may have been deleted, or it may not be deployed there.`,
-      );
-    }
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'instance create',
+        missingResource: `Installation '${this.installation.name}' cannot start a session: kagent does not know the agent '${agentRef}' on harness '${harness}'.`,
+        invalidArgument: reason =>
+          new InputError(
+            `kagent on installation '${this.installation.name}' did not accept the new session: ${reason}`,
+          ),
+      },
+    );
+    return toJson(CreateAgentInstanceResponseSchema, response);
   }
 
   /**
-   * `GET <apiBaseUrl>/sessions/<id>` — the session object.
+   * `AgentInstanceService/GetAgentInstance` — one session, as `{agentInstance}`.
    *
-   * kagent scopes this by the forwarded token's user id, so a session belonging
-   * to somebody else is indistinguishable from one that does not exist: both
-   * answer 404. That is an expected outcome for a stale or shared deep link, and
-   * `request` already maps it to `NotFoundError` (404) rather than a 5xx.
-   *
-   * The conversation comes from {@link listSessionTasks}, not from this response's
-   * `events` array — which is ignored entirely, hence the `limit=1` below.
+   * The controller scopes this by the caller, so a session belonging to
+   * somebody else is indistinguishable from one that does not exist: both
+   * answer `NotFound`. That is an expected outcome for a stale or shared deep
+   * link, mapped to a 404 rather than a 5xx.
    */
   async getSession(
     sessionId: string,
     options: KagentRequestOptions,
   ): Promise<unknown> {
-    return this.request(
-      // `limit=1` — **not** `limit=0`, which kagent reads as *unlimited*: its DB
-      // layer gates the LIMIT clause on `opts.Limit > 0`
-      // (`go/core/internal/database/client_postgres.go`), and an absent param
-      // leaves `Limit` at its zero value. So `1` is the smallest value that limits
-      // anything, and "ask for zero events, we don't read them" — the
-      // obvious-looking simplification — silently restores the full payload.
-      //
-      // The caller wants the session object and nothing else. kagent bundles the
-      // session's stored events into this response and they dominate it — on a real
-      // 4-turn session, 591 KB of events against 261 bytes of session metadata.
-      // They are not the conversation (that comes from `/tasks`) and, despite
-      // kagent's Go doc comment, not A2A messages either, so there is nothing in
-      // them we can use.
-      //
-      // Both v0.9.9 and v0.10 honour `limit` on this endpoint — v0.9.9 parses it
-      // inline in `HandleGetSession`, v0.10 in `eventQueryOptionsFromRequest`. A
-      // version that ignored it would simply return everything, which is exactly
-      // today's behaviour — so this can only help.
-      `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
-        sessionId,
-      )}?limit=1`,
-      options,
+    const response = await this.call(
+      () =>
+        this.instanceService.getAgentInstance(
+          { agentInstanceId: sessionId },
+          this.callOptions(options),
+        ),
       {
-        notFound: {
-          // The id is left out on purpose: it is opaque and high-cardinality, and
-          // the user already has it in the URL they followed.
-          missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
-          endpoint: 'session detail',
-        },
+        endpoint: 'instance detail',
+        // The id is left out on purpose: it is opaque and high-cardinality, and
+        // the user already has it in the URL they followed.
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        invalidArgument: () =>
+          new InputError('The session id is not an AgentInstance id.'),
       },
     );
+    return toJson(GetAgentInstanceResponseSchema, response);
   }
 
   /**
-   * `GET <apiBaseUrl>/sessions/<id>/tasks` — the session's A2A tasks, which
-   * carry the conversation (`history`), its state (`status.state`) and per-message
-   * token usage. This is the same endpoint kagent's own UI renders its chat from.
+   * `A2AService/ListTasks` for one instance — the conversation, its state and
+   * per-message token usage — walked to the end, as `{tasks: […], totalSize}`.
    *
-   * Deliberately sends no `A2A-Version` header: kagent's `NegotiateA2AWireVersion`
-   * treats a missing header as the legacy v0 wire on both v0.9.9 and v0.10, which
-   * is the shape kagent's UI consumes and therefore the best-tested one. Opting
-   * into the v1 wire is a future, deliberate migration.
+   * The instance is named by the `x-kagent-agent-instance-id` metadata; the
+   * gateway scopes the listing to that instance, so no `context_id` needs
+   * reading first (a `context_id` that does not match the instance's would
+   * answer an empty list, not an error). Tasks come back oldest first.
    */
   async listSessionTasks(
     sessionId: string,
     options: KagentRequestOptions,
-    // The session-state summary reads many of these in one pass and gives each a
-    // shorter leash than the client default, so one hung connection cannot spend
-    // the whole pass's budget.
-    extra: { timeoutMs?: number } = {},
+    extra: ListSessionTasksOptions = {},
   ): Promise<unknown> {
-    return this.request(
-      `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
-        sessionId,
-      )}/tasks`,
+    const { tasks, totalSize } = await this.readTasks(
+      sessionId,
       options,
-      {
-        ...(extra.timeoutMs === undefined
-          ? {}
-          : { timeoutMs: extra.timeoutMs }),
-        notFound: {
-          missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
-          endpoint: 'session tasks',
-        },
-      },
+      extra,
+    );
+    return toJson(
+      ListTasksResponseSchema,
+      create(ListTasksResponseSchema, { tasks, totalSize }),
     );
   }
 
+  /** `A2AService/GetTask` for one turn of an instance, as a `Task`. */
+  async getTask(
+    sessionId: string,
+    taskId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const task = await this.call(
+      () =>
+        this.a2aService.getTask(
+          { id: taskId },
+          {
+            headers: this.turnHeaders(sessionId, options),
+            timeoutMs: this.timeoutMs,
+          },
+        ),
+      {
+        endpoint: 'task detail',
+        missingResource: `That turn does not exist on installation '${this.installation.name}'.`,
+      },
+    );
+    return toJson(TaskSchema, task);
+  }
+
   /**
-   * Send one message to an agent, as a turn of an existing session.
+   * Send one message to an instance's agent, as a turn of the conversation, and
+   * wait for the turn — `A2AService/SendMessage` with the instance in metadata
+   * and the HITL extension requested, answering the `SendMessageResponse` as
+   * JSON (`{task}`; a bare `{message}` for an agent that answered without a
+   * task).
    *
-   * `POST <apiBaseUrl>/a2a/<namespace>/<name>`, A2A JSON-RPC `message/send`, with
-   * `contextId` set to the session id — which is the *only* thing tying the turn
-   * to the session. Sessions themselves hold history but cannot send anything, so
-   * this is a different endpoint family from every other method here.
+   * The agent's namespace and name are accepted for the route's sake, but the
+   * instance already binds the template, so they are not sent anywhere.
    *
-   * **The agent's namespace and name are passed in, never derived from the
-   * session's `agent_id`.** That id is kagent's "python identifier" encoding,
-   * which rewrites every `-` to `_`; decoding it cannot tell an original `_` from
-   * a rewritten `-`, so a name containing an underscore would resolve to an agent
-   * that does not exist. The caller knows the real names from the `Agent`
-   * resource and sends those.
-   *
-   * Two behaviours worth knowing, both observed against v0.9.9 on an internal
-   * installation:
-   *
-   * - **It answers with the finished task**, not an acknowledgement:
-   *   `result.kind === 'task'`, carrying `status.state` and the full `history`.
-   *   Waiting that out is usually impossible — see the gateway note below — so a
-   *   transport failure is verified against the session's history rather than
-   *   reported as a failed message.
-   * - **A failed turn is still a 200.** The JSON-RPC result carries
-   *   `status.state === 'failed'` and a readable reason on `status.message` (an
-   *   agent that cannot reach its MCP server reports it there). So the HTTP status
-   *   says only whether the turn was accepted; the caller reads the task for what
-   *   became of it.
-   *
-   * Sends no `A2A-Version` header, matching `listSessionTasks` deliberately — the
-   * write and the reads must agree on a wire version or the states will not line
-   * up. TODO(kagent-0.11): the legacy v0 wire is marked for removal there, at
-   * which point both need pinning together.
+   * **It answers with the finished task**, not an acknowledgement, and a failed
+   * turn is still a success at the transport: `status.state` carries the
+   * outcome. Waiting a turn out is usually impossible — see the gateway note on
+   * {@link DEFAULT_KAGENT_TURN_TIMEOUT_MS} — so a lost connection is verified
+   * against the instance's tasks rather than reported as a failed message.
    */
   async sendMessage(
     sessionId: string,
-    agent: { namespace: string; name: string },
+    _agent: { namespace: string; name: string },
     message: { messageId: string; text: string },
     options: KagentRequestOptions,
   ): Promise<unknown> {
     return this.dispatch(
       sessionId,
-      agent,
       {
         messageId: message.messageId,
-        parts: [{ kind: 'text', text: message.text }],
+        parts: [{ content: { case: 'text', value: message.text } }],
       },
       options,
     );
   }
 
   /**
-   * Send one message as a turn of an existing session, **streaming** the turn's
-   * events as kagent produces them.
+   * Send one message, **streaming** the turn's events as the agent produces
+   * them.
    *
-   * A2A JSON-RPC `message/stream` on the same endpoint {@link sendMessage} posts
-   * to; kagent answers with an SSE stream whose `data:` frames are JSON-RPC
-   * responses carrying the legacy-wire events (`task`, `status-update`,
-   * `artifact-update`, `message`) — the same stream its own UI renders from. The
-   * returned {@link Response} has been status- and content-type-checked; the
-   * caller relays its body and owns its lifetime through `signal`.
+   * `A2AService/SendStreamingMessage` (server-streaming gRPC) with the instance
+   * header and the HITL extension requested on every turn — a confirmation that
+   * arrives on this turn is then a typed request the answer panel can render.
+   * Each `StreamResponse` is relayed as one SSE `data:` frame carrying its JSON
+   * (`{task}`, `{message}`, `{statusUpdate}`, `{artifactUpdate}`), so the router
+   * relays bytes and the frontend interprets. The returned {@link Response} has
+   * been opened (its first event awaited under the ordinary request timeout, as
+   * the gateway answers a `task` snapshot the moment the turn is accepted) so a
+   * rejection before the turn starts surfaces as an error here rather than as an
+   * empty stream; the caller relays its body and owns its lifetime through
+   * `signal`.
    *
-   * This client deliberately does **not** parse the stream. The split is the same
-   * as everywhere else here — backend = transport, frontend = schema — and it is
-   * what lets a kagent event-shape change ship without a backend release.
-   *
-   * Three transport behaviours worth knowing:
-   *
-   * - **Headers arrive immediately.** kagent writes the SSE headers before the
-   *   agent has done anything (`sseWriter.WriteHeaders()` runs first in a2a-go's
-   *   `handleStreamingRequest`), so the connect phase is guarded by the ordinary
-   *   request timeout, not the turn timeout — a slow connect means kagent is
-   *   unwell, not that the agent is thinking.
-   * - **An early rejection can be a JSON body instead of a stream.** a2a-go
-   *   answers an invalid request or an unknown method with a plain JSON-RPC error
-   *   (`Content-Type: application/json`) before upgrading to SSE. That is a
-   *   decision, reported as an upstream failure with kagent's own message — never
-   *   something to relay as a broken stream.
-   * - **A rejection can also be the stream's first frame.** Once the headers are
-   *   out, a2a-go reports failures as `data: {"jsonrpc":…,"error":{…}}` frames.
-   *   Those pass through to the frontend verbatim, which is the right place for
-   *   them: it knows whether anything was dispatched before the error and can
-   *   verify against the session history — the same verify-not-report contract
-   *   {@link dispatch} implements for the non-streaming path.
-   *
-   * The turn survives the stream exactly as it survives a cut `message/send`
-   * (see {@link dispatch}): losing this connection — a gateway's 60 s door, a
-   * client that navigated away — does not stop the agent, and the conversation
-   * poll shows the turn finish.
+   * A stream that dies mid-turn — a gateway's request timeout, an Envoy drain —
+   * ends with one `{error}` frame and closes. The turn survives that as it
+   * survives a cut `SendMessage`: losing this connection does not stop the
+   * agent, and the conversation poll shows it finish.
    */
   async streamMessage(
     sessionId: string,
-    agent: { namespace: string; name: string },
+    _agent: { namespace: string; name: string },
     message: { messageId: string; text: string },
     options: KagentRequestOptions,
     /**
-     * Aborts the upstream request and, after the headers, its body — wired by
-     * the router to the client connection, so a browser that goes away stops
-     * the relay without stopping the turn.
+     * Aborts the upstream stream — wired by the router to the client connection,
+     * so a browser that goes away stops the relay without stopping the turn.
      */
     signal: AbortSignal,
   ): Promise<Response> {
-    const controller = new AbortController();
-    const abortUpstream = () => controller.abort();
-    if (signal.aborted) {
-      abortUpstream();
-    } else {
-      // Never removed on success, deliberately: the listener is what lets the
-      // caller's signal abort the *body* long after this method returned, and
-      // both signal and controller live exactly as long as the one request.
-      signal.addEventListener('abort', abortUpstream);
-    }
+    const request = create(SendMessageRequestSchema, {
+      message: {
+        messageId: message.messageId,
+        role: Role.USER,
+        parts: [{ content: { case: 'text', value: message.text } }],
+      },
+    });
+    const stream = this.a2aService
+      .sendStreamingMessage(request, {
+        headers: this.turnHeaders(sessionId, options),
+        signal,
+      })
+      [Symbol.asyncIterator]();
 
-    // Guards only the connect phase; cleared as soon as the headers are in. The
-    // stream itself is unbounded here — its lifetime belongs to the caller.
-    let connectTimedOut = false;
-    const connectTimer = setTimeout(() => {
-      connectTimedOut = true;
-      controller.abort();
-    }, this.timeoutMs);
-
-    let response: Response;
+    // The first event is awaited under the ordinary request timeout: a slow
+    // start means kagent is unwell, not that the agent is thinking.
+    let first: IteratorResult<StreamResponse>;
     try {
-      response = await this.fetchFn(
-        `${this.installation.apiBaseUrl}/a2a/${encodeURIComponent(
-          agent.namespace,
-        )}/${encodeURIComponent(agent.name)}`,
-        {
-          method: 'POST',
-          headers: {
-            Accept: 'text/event-stream, application/json',
-            'Content-Type': 'application/json',
-            ...(options.userToken && {
-              Authorization: `Bearer ${options.userToken}`,
-            }),
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: message.messageId,
-            method: 'message/stream',
-            params: {
-              message: {
-                kind: 'message',
-                messageId: message.messageId,
-                role: 'user',
-                parts: [{ kind: 'text', text: message.text }],
-                // The only thing tying this turn to the session — see
-                // `postMessage`. No `taskId`: a plain message opens a new task.
-                contextId: sessionId,
-              },
-            },
-          }),
-          redirect: 'manual',
-          signal: controller.signal,
-        },
-      );
+      first = await this.withTimeout(stream.next(), this.timeoutMs, signal);
     } catch (error) {
-      if (connectTimedOut) {
-        throw upstreamError(
-          `The kagent API for installation '${this.installation.name}' did not respond within ${this.timeoutMs}ms.`,
-        );
-      }
       if (signal.aborted) {
         // The caller hung up before kagent answered. Nothing to report to
         // anyone — rethrown for the router to swallow as a closed connection.
         throw error;
       }
-      this.logger.debug(
-        `kagent is not reachable for installation '${this.installation.name}'`,
-        { error: String(error) },
-      );
-      // Same mapping as `request`, for the same fleet reason — and marked
-      // transport-borne for the same one: the frontend verifies a send whose
-      // transport died rather than reporting it failed.
-      throw transportFailure(
-        `The kagent API is not available for installation '${this.installation.name}'.`,
-      );
-    } finally {
-      clearTimeout(connectTimer);
+      throw this.mapError(error, this.sendContext(true));
     }
 
-    this.throwForErrorStatus(response, {
-      notFound: {
-        missingResource: `Agent '${agent.namespace}/${agent.name}' does not exist on installation '${this.installation.name}'.`,
-        endpoint: 'agent messaging',
+    const encoder = new TextEncoder();
+    const frame = (payload: unknown) =>
+      encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+    const logger = this.logger;
+    const installationName = this.installation.name;
+
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          let next = first;
+          while (!next.done) {
+            controller.enqueue(frame(toJson(StreamResponseSchema, next.value)));
+            next = await stream.next();
+          }
+        } catch (error) {
+          // The stream died mid-turn (a gateway's request timeout, an Envoy
+          // drain, a runtime failure the gateway reports in-band). One error
+          // frame says so; the turn keeps running regardless, and an
+          // unterminated stream is the frontend's cue to fall back to the poll.
+          const connectError = ConnectError.from(error);
+          logger.debug(
+            `A kagent event stream for installation '${installationName}' ended before the turn did`,
+            { code: Code[connectError.code], error: connectError.rawMessage },
+          );
+          if (!signal.aborted) {
+            controller.enqueue(
+              frame({
+                error: {
+                  code: Code[connectError.code],
+                  message: connectError.rawMessage,
+                },
+              }),
+            );
+          }
+        } finally {
+          controller.close();
+        }
+      },
+      cancel() {
+        void stream.return?.(undefined);
       },
     });
 
-    const contentType = response.headers.get('content-type') ?? '';
-    if (contentType.includes('text/event-stream')) {
-      return response;
-    }
+    return new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+    });
+  }
 
-    // a2a-go rejected the request before starting the stream — an invalid
-    // envelope, an unknown method. Its message is worth carrying: unlike the
-    // REST envelope's, it never wraps database internals.
-    if (contentType.includes('application/json')) {
-      const body = await response.json().catch(() => undefined);
-      const inBandError = readInBandError(body);
-      throw upstreamError(
-        `The agent on installation '${this.installation.name}' did not accept the message: ${
-          inBandError ?? 'kagent answered without a stream'
-        }`,
+  /**
+   * Answer the confirmation or question an agent is suspended on, resuming **the
+   * same task**.
+   *
+   * A pending confirmation is not answerable with a plain message: a reply with
+   * no `task_id` starts a new task and strands the suspended one. Naming the task
+   * is what turns the reply into a resume. The decision travels as the HITL
+   * extension's typed response in the message's metadata — built from **the
+   * request the controller recorded** on the task (`GetTask`), never from
+   * anything the browser claims about it, because the controller validates a
+   * reply strictly (every requested tool decided exactly once, every question
+   * answered, the correlation id echoed). The browser only says approve/reject
+   * and the answers in the order asked; see `kagent/hitl.ts`.
+   *
+   * A text part carries the user's own words for the transcript — or, when
+   * none were given, a plain rendering of the decision, so the message is never
+   * empty.
+   */
+  async answerConfirmation(
+    sessionId: string,
+    _agent: { namespace: string; name: string },
+    answer: HitlAnswer & {
+      messageId: string;
+      taskId: string;
+      /** What to show in the transcript as the user's words. */
+      text?: string;
+    },
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const task = await this.call(
+      () =>
+        this.a2aService.getTask(
+          { id: answer.taskId, historyLength: 0 },
+          {
+            headers: this.turnHeaders(sessionId, options),
+            timeoutMs: this.timeoutMs,
+          },
+        ),
+      {
+        endpoint: 'task detail',
+        missingResource: `The turn this answer belongs to does not exist on installation '${this.installation.name}'.`,
+      },
+    );
+    const request = readHitlRequest(task);
+    if (!request) {
+      throw new ConflictError(
+        `The agent on installation '${this.installation.name}' is not waiting for a decision on this turn; it may already have been answered.`,
       );
     }
+    const payload = buildHitlResponse(request, answer);
 
-    // A 2xx that is neither a stream nor JSON is oauth2-proxy serving its
-    // sign-in page, exactly as on the JSON path.
-    throw new AuthenticationError(
-      `The kagent API for installation '${this.installation.name}' returned a non-stream response (content-type '${contentType}'), which usually means a sign-in page was served instead.`,
+    return this.dispatch(
+      sessionId,
+      {
+        messageId: answer.messageId,
+        parts: [
+          {
+            content: {
+              case: 'text',
+              value: answer.text ?? renderDecision(answer),
+            },
+          },
+        ],
+        taskId: answer.taskId,
+        extensions: [HITL_EXTENSION_URI],
+        metadata: { [HITL_EXTENSION_URI]: payload },
+      },
+      options,
     );
+  }
+
+  /**
+   * `A2AService/CancelTask` — stop the turn server-side. The gateway cancels
+   * the run at the harness and, when the runtime cannot, quiesces the actor and
+   * records the task canceled itself; either way the returned `Task` carries
+   * the terminal state. Canceling a turn that already ended answers the task as
+   * it is — not an error, and nothing to undo.
+   */
+  async cancelTask(
+    sessionId: string,
+    taskId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const task = await this.call(
+      () =>
+        this.a2aService.cancelTask(
+          { id: taskId },
+          {
+            headers: this.turnHeaders(sessionId, options),
+            // Cancelling waits for the ingester to drain and the actor to
+            // quiesce; give it the turn's budget rather than a read's.
+            timeoutMs: this.turnTimeoutMs,
+          },
+        ),
+      {
+        endpoint: 'task cancel',
+        missingResource: `That turn does not exist on installation '${this.installation.name}'.`,
+        invalidArgument: reason =>
+          new InputError(
+            `kagent on installation '${this.installation.name}' did not accept the cancel: ${reason}`,
+          ),
+      },
+    );
+    return toJson(TaskSchema, task);
+  }
+
+  /**
+   * `AgentInstanceService/DeleteAgentInstance` — scoped to the caller, like the
+   * reads. The controller answers the instance as it moves to `DELETING`, passed
+   * through as `{agentInstance}`.
+   */
+  async deleteSession(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const response = await this.call(
+      () =>
+        this.instanceService.deleteAgentInstance(
+          { agentInstanceId: sessionId },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'instance delete',
+        missingResource: `That session does not exist on installation '${this.installation.name}'.`,
+        invalidArgument: () =>
+          new InputError('The session id is not an AgentInstance id.'),
+      },
+    );
+    return toJson(DeleteAgentInstanceResponseSchema, response);
+  }
+
+  /**
+   * `AgentInstanceService/UpdateAgentInstanceName` — rename one session.
+   *
+   * The controller validates the name itself (200 characters, no control
+   * characters, no leading or trailing whitespace); a rejected name is the
+   * caller's mistake and answers 400.
+   */
+  async updateSessionName(
+    sessionId: string,
+    name: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const response = await this.call(
+      () =>
+        this.instanceService.updateAgentInstanceName(
+          { agentInstanceId: sessionId, name },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'instance rename',
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        invalidArgument: reason =>
+          new InputError(
+            `kagent on installation '${this.installation.name}' rejected the session name: ${reason}`,
+          ),
+      },
+    );
+    return toJson(UpdateAgentInstanceNameResponseSchema, response);
+  }
+
+  /**
+   * `SystemService/GetCurrentUser` — the claims the controller resolved for the
+   * call, as a plain object: `{sub: <the email agentgateway set>}` on the line
+   * as pinned, the token's full claims once the controller re-derives the
+   * identity itself. Either way `sub` is the caller, which is what the
+   * frontend's "is this list mine" probe keys on.
+   */
+  async getMe(options: KagentRequestOptions): Promise<unknown> {
+    const response = await this.call(
+      () => this.systemService.getCurrentUser({}, this.callOptions(options)),
+      { endpoint: 'current user', missingResource: 'current user' },
+    );
+    return response.claims ?? {};
   }
 
   /**
    * Post one A2A message and report honestly on what became of it.
    *
-   * Shared by {@link sendMessage} and {@link answerConfirmation} because the hard
-   * part is identical for both and must not drift: a turn outliving its transport,
-   * and a JSON-RPC failure arriving inside a 200. Only the parts differ.
+   * Shared by {@link sendMessage} and {@link answerConfirmation} because the
+   * hard part is identical for both and must not drift: a turn outliving its
+   * transport.
    */
   private async dispatch(
     sessionId: string,
-    agent: { namespace: string; name: string },
-    message: { messageId: string; parts: unknown[]; taskId?: string },
+    message: OutboundMessage,
     options: KagentRequestOptions,
   ): Promise<unknown> {
-    let result: unknown;
+    const request = create(SendMessageRequestSchema, {
+      message: {
+        messageId: message.messageId,
+        role: Role.USER,
+        parts: message.parts,
+        // Set means "resume this task"; empty means "start a new one". Naming a
+        // terminal task is rejected outright, so an ordinary message omits it.
+        ...(message.taskId && { taskId: message.taskId }),
+        ...(message.extensions && { extensions: message.extensions }),
+        ...(message.metadata && { metadata: message.metadata }),
+      },
+    });
+
+    let response;
     try {
-      result = await this.postMessage(sessionId, agent, message, options);
+      response = await this.call(
+        () =>
+          this.a2aService.sendMessage(request, {
+            headers: this.turnHeaders(sessionId, options),
+            timeoutMs: this.turnTimeoutMs,
+          }),
+        this.sendContext(false),
+      );
     } catch (error) {
-      // A lost connection is not a failed message. The gateway in front of kagent
-      // cuts the request off long before an agent is done — 60 s on an internal
-      // installation's `agent-platform-connectivity-ui` route, against turns that
-      // run minutes — and the turn keeps running regardless: verified on that
-      // installation, where the
-      // agent answered a message whose own request had already died with a 502.
-      //
-      // So the only honest way to report this is to go and look. If the message
-      // reached the session's history, it was dispatched and the conversation
-      // poll will show it finish; if it did not, the failure was real.
-      //
-      // Three ways the connection can be lost, and all three verify: an upstream
-      // status (502/504), our own turn timeout, and a socket that simply died
-      // mid-turn — an Envoy drain, a keepalive expiry, a TLS reset. That last one
-      // is reported as a `NotFoundError` by `request`, which is why it needs
-      // {@link isTransportFailure} to tell it from kagent's *own* JSON 404 for an
-      // agent that does not exist. That 404 is a decision, and decisions are not
-      // verified: neither is a 401, a 403, or a rejected request.
+      // A lost connection is not a failed message. The gateway in front of the
+      // controller cuts the request off long before an agent is done, and the
+      // turn keeps running regardless. So the only honest way to report this is
+      // to go and look: if the message reached the instance's tasks, it was
+      // dispatched and the conversation poll will show it finish; if it did
+      // not, the failure was real. A decision — a 401, a 403, a rejected
+      // request, an unknown instance — is not verified.
       if (
         !isUpstreamError(error) &&
         !isTurnPendingError(error) &&
@@ -818,13 +869,11 @@ export class KagentClient {
       ) {
         throw error;
       }
-
       if (
         !(await this.hasMessageLanded(sessionId, message.messageId, options))
       ) {
         throw error;
       }
-
       this.logger.debug(
         `A kagent turn outlived its transport on installation '${this.installation.name}'; the message was dispatched and is still running`,
       );
@@ -833,110 +882,36 @@ export class KagentClient {
       );
     }
 
-    // Outside the catch on purpose: a JSON-RPC failure arrives inside a 200, so the
-    // status has told us nothing — but it is a *decision*, not a lost connection,
-    // and must not be run through the verification above and reported as a turn
-    // still in flight.
-    //
-    // Left unchecked entirely, the caller clears its optimistic copy of the message
-    // and the invalidated read returns no new task: the message simply vanishes from
-    // the page, with the only record of why in a body nobody read.
-    const inBandError = readInBandError(result);
-    if (inBandError) {
-      this.logger.debug(
-        `The kagent A2A endpoint for installation '${this.installation.name}' rejected a message in-band`,
-      );
-      throw upstreamError(
-        `The agent on installation '${this.installation.name}' did not accept the message: ${inBandError}`,
-      );
-    }
-
-    return result;
+    return toJson(SendMessageResponseSchema, response);
   }
 
-  /**
-   * Answer the confirmation an agent is suspended on, resuming **the same task**.
-   *
-   * A pending confirmation is not answerable with a plain message, and this is the
-   * single most important thing about this method. ADK suspends the task on a
-   * long-running `adk_request_confirmation` call; a reply with no `taskId` starts a
-   * *new* task, so the agent reads the words but the original call never gets its
-   * function response — leaving the task `input-required` forever and the model
-   * history holding a `tool_use` with no `tool_result`. Naming the task is what
-   * turns the reply into a resume.
-   *
-   * What the wire needs, verified against kagent's source and against live traffic
-   * on an internal installation:
-   *
-   * - **`decision_type` is mandatory, including for a question.** Both the Go and
-   *   Python executors read it *before* they look at anything else and bail out of
-   *   the resume path entirely when it is absent (`BuildResumeHITLMessage` in
-   *   `go/adk/pkg/a2a/hitl.go`, `_process_hitl_decision` in the Python executor).
-   *   Answers without it are silently ignored.
-   * - **`ask_user_answers` is positional**, one entry per question in the order
-   *   asked, and each `answer` is an array even for a single-select — kagent's
-   *   `ask_user` tool indexes into it and treats a short array as "unanswered"
-   *   rather than an error.
-   * - An answer carries the **choice text verbatim**, not an index.
-   * - A `text` part is transcript-only. Both executors discard the whole inbound
-   *   message and substitute a synthesised function response, so nothing in it
-   *   reaches the model. It is sent so the conversation reads correctly.
-   * - A rejection's reason is a **flat** `rejection_reason` string. The per-call
-   *   `rejection_reasons` map belongs to `decision_type: 'batch'`, which we
-   *   deliberately do not send: a batch key that does not match an
-   *   `originalFunctionCall.id` **defaults to approve**, so a mistake there would
-   *   silently permit a side-effecting tool. One confirmation is open at a time, so
-   *   the uniform form is sufficient.
-   *
-   * The confirmation's own id is never echoed: kagent re-derives it from the stored
-   * task and fans the decision out over every pending call itself.
-   */
-  async answerConfirmation(
-    sessionId: string,
-    agent: { namespace: string; name: string },
-    answer: {
-      messageId: string;
-      taskId: string;
-      decision: 'approve' | 'reject';
-      /** Positional, one entry per question. Empty for an approval. */
-      answers?: string[][];
-      rejectionReason?: string;
-      /** What to show in the transcript as the user's words. */
-      text?: string;
-    },
-    options: KagentRequestOptions,
-  ): Promise<unknown> {
-    const data: Record<string, unknown> = {
-      decision_type: answer.decision,
+  /** How a send's failures read: the instance is gone, or busy, or refused it. */
+  private sendContext(pending: boolean): ErrorContext {
+    return {
+      endpoint: 'agent messaging',
+      missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+      timeoutIsPending: pending || undefined,
+      invalidArgument: reason =>
+        new InputError(
+          `The agent on installation '${this.installation.name}' did not accept the message: ${reason}`,
+        ),
+      // One active task per instance: a second message during a turn is not a
+      // queued reply but a competing one, and the gateway refuses it. A 409 the
+      // composer already explains ("the agent is working").
+      unsupportedOperation: reason =>
+        new ConflictError(
+          `The agent on installation '${this.installation.name}' is still working on the previous message: ${reason}`,
+        ),
     };
-    if (answer.answers && answer.answers.length > 0) {
-      data.ask_user_answers = answer.answers.map(values => ({
-        answer: values,
-      }));
-    }
-    if (answer.decision === 'reject' && answer.rejectionReason) {
-      data.rejection_reason = answer.rejectionReason;
-    }
-
-    const parts: unknown[] = [{ kind: 'data', data }];
-    if (answer.text) {
-      parts.push({ kind: 'text', text: answer.text });
-    }
-
-    return this.dispatch(
-      sessionId,
-      agent,
-      { messageId: answer.messageId, parts, taskId: answer.taskId },
-      options,
-    );
   }
 
   /**
-   * Whether a message we sent is in the session's history.
+   * Whether a message we sent is in the instance's tasks.
    *
    * Only asked after the send's transport failed, so there has been ample time
-   * for kagent to have written it — and a read failure here answers "cannot
-   * tell", which keeps the original error rather than inventing a second one.
+   * for the gateway to have written it — and a read failure here answers
+   * "cannot tell", which keeps the original error rather than inventing a
+   * second one.
    */
   private async hasMessageLanded(
     sessionId: string,
@@ -944,8 +919,12 @@ export class KagentClient {
     options: KagentRequestOptions,
   ): Promise<boolean> {
     try {
-      const payload = await this.listSessionTasks(sessionId, options);
-      return payloadHasMessageId(payload, messageId);
+      const { tasks } = await this.readTasks(sessionId, options, {
+        includeArtifacts: false,
+      });
+      return tasks.some(task =>
+        task.history.some(entry => entry.messageId === messageId),
+      );
     } catch (error) {
       this.logger.debug(
         `Could not confirm whether a message reached installation '${this.installation.name}'`,
@@ -955,549 +934,227 @@ export class KagentClient {
     }
   }
 
-  private async postMessage(
-    sessionId: string,
-    agent: { namespace: string; name: string },
-    message: { messageId: string; parts: unknown[]; taskId?: string },
-    options: KagentRequestOptions,
-  ): Promise<unknown> {
-    return this.request(
-      `${this.installation.apiBaseUrl}/a2a/${encodeURIComponent(
-        agent.namespace,
-      )}/${encodeURIComponent(agent.name)}`,
-      options,
-      {
-        method: 'POST',
-        body: {
-          jsonrpc: '2.0',
-          // The JSON-RPC correlation id. Reusing the message id keeps a single
-          // identifier across our logs, kagent's, and the stored history.
-          id: message.messageId,
-          method: 'message/send',
-          params: {
-            message: {
-              kind: 'message',
-              messageId: message.messageId,
-              role: 'user',
-              parts: message.parts,
-              contextId: sessionId,
-              // **On the message, never on `params`.** The A2A server picks the
-              // task from `params.message.taskId`
-              // (`internal/taskexec/local_manager.go`): empty means "start a new
-              // task", set means "resume this one". A `params.taskId` is not a
-              // field of `MessageSendParams` in any A2A version and is silently
-              // dropped by the v0 -> v1 conversion — which is exactly the bug that
-              // makes klaus-gateway's Slack answers open a new task and strand the
-              // suspended one forever.
-              //
-              // Omitted entirely for an ordinary message: a plain reply *should*
-              // open a new task, and naming a terminal one is rejected outright.
-              ...(message.taskId && { taskId: message.taskId }),
-            },
-          },
-        },
-        timeoutMs: this.turnTimeoutMs,
-        timeoutIsPending: true,
-        notFound: {
-          missingResource: `Agent '${agent.namespace}/${agent.name}' does not exist on installation '${this.installation.name}'.`,
-          endpoint: 'agent messaging',
-        },
-      },
-    );
-  }
-
-  /**
-   * `DELETE <apiBaseUrl>/sessions/<id>` — kagent's session delete.
-   *
-   * Scoped to the forwarded token's user, and **soft**: kagent sets `deleted_at`
-   * on the row (`UPDATE session SET deleted_at = NOW() WHERE id = $1 AND
-   * user_id = $2`) and every read filters `deleted_at IS NULL`, so the session and
-   * its events stay in the database while disappearing from the API.
-   *
-   * Identical on v0.9.9 and v0.10, including two things worth knowing:
-   *
-   * - **Deleting something that is not there succeeds.** The statement is an
-   *   `:exec`, so zero affected rows is not an error — a session that never
-   *   existed, was already deleted, or belongs to another user all answer 200.
-   *   There is no 404 to handle here, and no "already gone" case to special-case.
-   * - **The response is a 200 with kagent's usual JSON envelope**, not a 204.
-   *
-   * Returned verbatim like every other response: this client is transport only.
-   */
-  async deleteSession(
+  private async readTasks(
     sessionId: string,
     options: KagentRequestOptions,
-  ): Promise<unknown> {
-    return this.request(
-      `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
-        sessionId,
-      )}`,
-      options,
-      {
-        method: 'DELETE',
-        notFound: {
-          // Only reachable for a `text/plain` 404, i.e. no such route — kagent's
-          // own handler never 404s here (see above). The route has existed since
-          // v0.9.x, so this wording is purely defensive.
-          missingResource: `That session does not exist on installation '${this.installation.name}'.`,
-          endpoint: 'session delete',
-        },
-      },
-    );
-  }
-
-  /**
-   * Rename one session, across two incompatible kagent generations.
-   *
-   * The endpoint meant for this is `PUT <apiBaseUrl>/sessions/<id>` with
-   * `{name}`, and on **v0.10+** that is all this does.
-   *
-   * On **v0.9.x it cannot rename at all**, which is not obvious and is worth
-   * stating precisely, because the docs and the route table both suggest
-   * otherwise. `HandleUpdateSession` there
-   * (`go/core/internal/httpserver/handlers/sessions.go`):
-   *
-   * - requires `name` *and* `agent_ref`, rejecting either omission with a 400;
-   * - never reads the `{session_id}` path param — it looks the session up by
-   *   `*sessionRequest.Name`, i.e. it treats the new name as the id;
-   * - assigns only `session.AgentID`. `session.Name` is never written.
-   *
-   * So the fallback below goes through `POST <apiBaseUrl>/sessions` instead,
-   * whose `StoreSession` is an upsert on `(id, user_id)` that does write `name`.
-   * The SQL is identical in v0.9.9 and v0.10.0-rc1
-   * (`go/core/internal/database/queries/sessions.sql`), and echoing the
-   * session's own `agent_id` back as `agent_ref` round-trips exactly, because
-   * kagent's `ConvertToPythonIdentifier` only rewrites `-` and `/` — neither of
-   * which survives in an already-encoded id, making it idempotent.
-   *
-   * **Only a 400 enters the fallback**, and it means "this kagent predates the
-   * fix" — nothing more. It is tempting to read the PUT's status as also telling
-   * us whether the session exists; it does not. v0.9.x rejects the missing
-   * `agent_ref` *before* it looks anything up, so a live session and a deleted
-   * one both answer 400, and the 404 that would distinguish them is reachable
-   * only on v0.10+ — which is to say, never on today's fleet.
-   *
-   * **So the read-back below, not the status, is what enforces "never create".**
-   * The upsert inserts when nothing conflicts, so without that read a rename of
-   * an already-deleted session would resurrect it under its old id. See
-   * {@link getSessionRecord}.
-   *
-   * Every way the fallback can fail, it fails before writing, and each is a 4xx
-   * rather than an upstream failure: the session is gone (404), it has no agent
-   * (409), kagent cannot resolve that agent (409), or a sandbox-workload agent
-   * already holds a session (409). None of these are faults anyone can act on,
-   * and on a fleet where every installation takes this branch a 5xx would mean a
-   * standing Sentry issue for each.
-   *
-   * TODO(kagent-0.9): delete the fallback — the POST branch, the read-back, the
-   * `badRequest`/`conflict` opt-ins, and their tests — once no installation runs
-   * kagent v0.9.x. The PUT alone is then correct.
-   */
-  async updateSessionName(
-    sessionId: string,
-    name: string,
-    options: KagentRequestOptions,
-  ): Promise<unknown> {
-    const notFound: NotFoundContext = {
+    extra: ListSessionTasksOptions,
+  ): Promise<{ tasks: Task[]; totalSize: number }> {
+    const context: ErrorContext = {
+      endpoint: 'task list',
       missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
-      endpoint: 'session update',
     };
-
-    try {
-      return await this.request(
-        `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
-          sessionId,
-        )}`,
-        options,
-        { method: 'PUT', body: { name }, badRequest: true, notFound },
+    const tasks: Task[] = [];
+    let totalSize = 0;
+    let pageToken = '';
+    for (let page = 0; page < MAX_TASK_PAGES; page += 1) {
+      // A per-iteration copy, as in `listSessions`.
+      const token = pageToken;
+      const response = await this.call(
+        () =>
+          this.a2aService.listTasks(
+            {
+              pageSize: PAGE_SIZE,
+              pageToken: token,
+              includeArtifacts: extra.includeArtifacts ?? true,
+              ...(extra.historyLength !== undefined && {
+                historyLength: extra.historyLength,
+              }),
+            },
+            {
+              headers: this.turnHeaders(sessionId, options),
+              timeoutMs: extra.timeoutMs ?? this.timeoutMs,
+            },
+          ),
+        context,
       );
-    } catch (error) {
-      if (!isBadRequestError(error)) {
-        throw error;
+      tasks.push(...response.tasks);
+      totalSize = response.totalSize;
+      pageToken = response.nextPageToken;
+      if (!pageToken) {
+        break;
       }
     }
-
-    // TODO(kagent-0.9): remove from here to the end of the method.
-    this.logger.debug(
-      `kagent rejected the session rename on installation '${this.installation.name}'; retrying via the session upsert`,
-    );
-
-    // Read the session back before writing, and this is **not** an optimisation
-    // to skip.
-    //
-    // The PUT's 400 says nothing about whether the session exists. v0.9.x
-    // validates `agent_ref` before it looks anything up, so a request without one
-    // is rejected identically for a live session and a deleted one — there is no
-    // 404 to distinguish them on the only versions that ever reach this branch.
-    // Since the upsert below *inserts* when nothing conflicts, going straight to
-    // it would resurrect a session someone had just deleted, under its old id.
-    // This read is what actually enforces "never create", and the 404 handling on
-    // the PUT is only load-bearing on v0.10+.
-    //
-    // It also makes the echoed fields authoritative. `agent_id` and `source` are
-    // overwritten by the upsert from whatever we send, so they have to be the
-    // session's own — taking them from kagent here rather than from the browser
-    // means a stale, unparsed or simply absent client value cannot silently blank
-    // a column the user never asked to touch.
-    const existing = await this.getSessionRecord(sessionId, options, notFound);
-
-    const agentRef = existing.agent_id;
-    if (!agentRef) {
-      // Expected, not a fault: `agent_id` is nullable, and kagent needs an
-      // `agent_ref` to accept the upsert. A 409 keeps this off the >= 500 path
-      // that `MiddlewareFactory.error()` forwards to Sentry — on a fleet where
-      // every installation takes this branch, a 5xx here would be a recurring
-      // issue for something nobody can act on.
-      throw new ConflictError(
-        `This session cannot be renamed on installation '${this.installation.name}': its kagent version renames through the session record, which requires an agent, and this session has none.`,
-      );
-    }
-
-    try {
-      return await this.request(
-        `${this.installation.apiBaseUrl}/sessions`,
-        options,
-        {
-          method: 'POST',
-          body: {
-            id: sessionId,
-            name,
-            agent_ref: agentRef,
-            ...(existing.source && { source: existing.source }),
-          },
-          badRequest: true,
-          conflict: true,
-          notFound,
-        },
-      );
-    } catch (error) {
-      // Both are expected outcomes of the workaround rather than kagent being
-      // unwell: a 400 means kagent could not resolve the agent the session
-      // itself names, and a 409 means a sandbox-workload agent already holds a
-      // session. Neither is a 5xx, for the same Sentry reason as above.
-      if (isBadRequestError(error)) {
-        throw new ConflictError(
-          `This session cannot be renamed on installation '${this.installation.name}': kagent did not accept its own agent reference.`,
-        );
-      }
-      throw error;
-    }
+    return { tasks, totalSize: Math.max(totalSize, tasks.length) };
   }
 
   /**
-   * One session's record, for the rename workaround.
-   *
-   * Deliberately the only place this client looks inside kagent's envelope — it
-   * is transport everywhere else, and schema handling belongs in the frontend.
-   * The exception is contained: the fields are read to be handed straight back to
-   * kagent, never to the caller, and this goes away with the workaround.
-   *
-   * TODO(kagent-0.9): remove with {@link updateSessionName}'s fallback.
+   * The Harness a new instance of this template runs on: the first one whose
+   * `Ready` condition on the template is `True`, else the first that admits the
+   * template at all. None is a 409 — the template exists but nothing can run
+   * it, which is a platform state the user cannot fix from a session composer.
    */
-  private async getSessionRecord(
+  private async pickHarness(
+    agent: { namespace: string; name: string },
+    options: KagentRequestOptions,
+  ): Promise<string> {
+    const response = await this.call(
+      () =>
+        this.templateService.getAgentTemplate(
+          { ref: { namespace: agent.namespace, name: agent.name } },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'template detail',
+        missingResource: `Installation '${this.installation.name}' cannot start a session: kagent does not know the agent '${agent.namespace}/${agent.name}'.`,
+      },
+    );
+    const template = response.agentTemplate;
+    const harnesses = template ? harnessesOf(template) : [];
+    const pick = harnesses[0];
+    if (!pick) {
+      throw new ConflictError(
+        `No Harness admits the agent '${agent.namespace}/${agent.name}' on installation '${this.installation.name}', so no session can be started for it.`,
+      );
+    }
+    if (!pick.ready) {
+      this.logger.debug(
+        `No Harness reports the agent '${agent.namespace}/${agent.name}' Ready on installation '${this.installation.name}'; starting on '${pick.name}' anyway`,
+      );
+    }
+    return pick.name;
+  }
+
+  /**
+   * The metadata of a control-plane call: the bearer, and nothing else that
+   * identifies anyone — see the class note.
+   */
+  private callOptions(options: KagentRequestOptions) {
+    return {
+      headers: bearerHeaders(options),
+      timeoutMs: this.timeoutMs,
+    };
+  }
+
+  /**
+   * The metadata of an A2A call: the bearer, the instance the call belongs to
+   * (exactly once), and the HITL extension requested so a confirmation on this
+   * turn arrives typed.
+   */
+  private turnHeaders(
     sessionId: string,
     options: KagentRequestOptions,
-    notFound: NotFoundContext,
-  ): Promise<{ agent_id?: string; source?: string }> {
-    // `limit=1` for the same reason as `getSession`: the events dominate this
-    // payload and nothing here reads them. Not `limit=0`, which kagent treats as
-    // unlimited.
-    const body = await this.request(
-      `${this.installation.apiBaseUrl}/sessions/${encodeURIComponent(
-        sessionId,
-      )}?limit=1`,
-      options,
-      { notFound },
+  ): Record<string, string> {
+    return {
+      ...bearerHeaders(options),
+      [AGENT_INSTANCE_HEADER]: sessionId,
+      [A2A_EXTENSIONS_HEADER]: HITL_EXTENSION_URI,
+    };
+  }
+
+  /** Run one RPC and translate its failure into the error the caller should see. */
+  private async call<T>(
+    rpc: () => Promise<T>,
+    context: ErrorContext,
+  ): Promise<T> {
+    try {
+      return await rpc();
+    } catch (error) {
+      throw this.mapError(error, context);
+    }
+  }
+
+  private mapError(error: unknown, context: ErrorContext): Error {
+    return mapConnectError(
+      error,
+      context,
+      this.installation.name,
+      this.logger,
+      this.turnTimeoutMs,
     );
-
-    const session = (body as { data?: { session?: unknown } } | undefined)?.data
-      ?.session as { agent_id?: string; source?: string } | undefined;
-
-    // A readable 200 that carried no session is the same condition as a 404 —
-    // kagent scopes the lookup by user id, so a deleted session and someone
-    // else's are already indistinguishable. Must stay a throw: falling through
-    // would put us back to upserting a session that is not there.
-    if (!session) {
-      throw new NotFoundError(notFound.missingResource);
-    }
-
-    return session;
   }
 
-  // There is deliberately no version probe. kagent serves `/version` at the
-  // server root (`APIPathVersion`), not under `/api`, and neither door we
-  // support routes the root to the controller:
-  //
-  // - The derived door's nginx sidecar (`helm/kagent/files/nginx.conf`) proxies
-  //   only `location /api/` to `kagent-controller:8083`; `location /` goes to
-  //   the kagent UI, which answers with HTML — which our non-JSON guard would
-  //   then report as a sign-in page on a perfectly healthy installation.
-  // - The agentgateway override matches on the `/kagent` path prefix, so a
-  //   root-relative `/version` does not match its HTTPRoute at all.
-  //
-  // Nothing under `/api` exposes the controller version either (the `Version`
-  // fields in `/api/substrate/status` are per-actor, not the controller's), so
-  // there is nothing reachable to probe. Version *tolerance* does not depend on
-  // this — it lives in the frontend's permissive parsing. If a future feature
-  // needs version gating, probe by behaviour (call a version-specific endpoint
-  // and treat 404 as "absent") rather than by version string.
-
-  /**
-   * `GET <apiBaseUrl>/me` — the identity kagent resolved for the forwarded
-   * token. Used to detect the controller's auth mode: under `trusted-proxy` it
-   * reflects the caller's claims, while under `unsecure` kagent ignores the
-   * token and falls back to a shared default user.
-   */
-  async getMe(options: KagentRequestOptions): Promise<unknown> {
-    return this.request(`${this.installation.apiBaseUrl}/me`, options);
-  }
-
-  private async request(
-    url: string,
-    options: KagentRequestOptions,
-    extra: {
-      /** Defaults to GET; the reads leave it out. */
-      method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-      /** JSON request body. Adds the matching `Content-Type` when present. */
-      body?: unknown;
-      /**
-       * Surface a kagent 400 as {@link badRequestError} instead of folding it
-       * into the generic upstream failure. Opt-in, so no existing endpoint
-       * changes behaviour.
-       */
-      badRequest?: boolean;
-      /**
-       * Surface a kagent 409 as `ConflictError` rather than as an upstream
-       * failure. Opt-in, like {@link badRequest}.
-       */
-      conflict?: boolean;
-      /** Overrides the client's read timeout. Only {@link sendMessage} needs this. */
-      timeoutMs?: number;
-      /**
-       * Report a timeout as {@link turnPendingError} rather than an upstream
-       * failure, for a call whose work continues after we stop waiting.
-       */
-      timeoutIsPending?: boolean;
-      notFound?: NotFoundContext;
-    } = {},
-  ): Promise<unknown> {
-    const {
-      method = 'GET',
-      body,
-      badRequest,
-      conflict,
-      timeoutIsPending,
-      notFound,
-    } = extra;
-    const timeoutMs = extra.timeoutMs ?? this.timeoutMs;
-
-    let response: Response;
-    try {
-      response = await this.fetchFn(url, {
-        method,
-        headers: {
-          Accept: 'application/json',
-          ...(body !== undefined && { 'Content-Type': 'application/json' }),
-          ...(options.userToken && {
-            Authorization: `Bearer ${options.userToken}`,
-          }),
+  private withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    signal: AbortSignal,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(
+          new ConnectError('first event timed out', Code.DeadlineExceeded),
+        );
+      }, timeoutMs);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new ConnectError('aborted', Code.Canceled));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      promise.then(
+        value => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', onAbort);
+          resolve(value);
         },
-        ...(body !== undefined && { body: JSON.stringify(body) }),
-        // Do NOT follow oauth2-proxy's redirect into Dex: a 3xx here means the
-        // forwarded token was not accepted, and following it would yield an
-        // HTML sign-in page with a 200.
-        redirect: 'manual',
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (error) {
-      // A timeout means something *is* listening but did not answer in time —
-      // kagent is deployed and unwell, not absent. That must not be swallowed as
-      // "no kagent here", so it becomes an upstream failure the frontend
-      // surfaces. `AbortSignal.timeout` rejects with a TimeoutError.
-      if ((error as Error)?.name === 'TimeoutError') {
-        this.logger.debug(
-          `kagent request timed out for installation '${this.installation.name}'`,
-          { timeoutMs },
-        );
-        // A turn that outlasts its budget is still running upstream, so it is not
-        // reported as a failure. See `turnPendingError`.
-        if (timeoutIsPending) {
-          throw turnPendingError(
-            `The agent on installation '${this.installation.name}' has not finished within ${timeoutMs}ms; the turn is still running.`,
-          );
-        }
-        throw upstreamError(
-          `The kagent API for installation '${this.installation.name}' did not respond within ${timeoutMs}ms.`,
-        );
-      }
+        error => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', onAbort);
+          reject(error);
+        },
+      );
+    });
+  }
+}
 
-      // DNS failure, TLS error or connection refused: nothing is reachable at
-      // that host, i.e. kagent is not deployed on this installation. On a fleet
-      // where only a couple of installations run kagent, this is the *normal,
-      // expected* outcome for most of them on every page view.
-      //
-      // It must therefore be a 404 and not a 503. `MiddlewareFactory.error()`
-      // logs `logger.error` for any status >= 500, and the root logger forwards
-      // warn/error to Sentry — so a 503 here would raise one Sentry event per
-      // kagent-less installation per page view, per user, fanned out into a
-      // separate issue per installation name. Logging the cause at debug does
-      // not prevent that; only not throwing a 5xx does.
-      //
-      // 404 also matches what the frontend already does with kagent's own 404:
-      // treat it as "no kagent API here" and stay silent. The two cases carried
-      // no distinguishable meaning, so collapsing them loses nothing.
-      this.logger.debug(
-        `kagent is not reachable for installation '${this.installation.name}'`,
-        { error: String(error) },
-      );
-      // Marked as transport-borne, because this same branch catches a socket that
-      // died mid-request as well as a host that was never there. A send verifies the
-      // former rather than reporting it; see `sendMessage`.
-      throw transportFailure(
-        `The kagent API is not available for installation '${this.installation.name}'.`,
-      );
+/**
+ * The transcript's rendering of a decision the user gave no words for: the
+ * answers as given, else the verdict — so the reply message is never empty.
+ */
+function renderDecision(answer: HitlAnswer): string {
+  if (answer.answers && answer.answers.length > 0) {
+    return answer.answers.map(values => values.join(', ')).join('\n');
+  }
+  return answer.decision === 'approve' ? 'Approved.' : 'Rejected.';
+}
+
+/**
+ * `authorization: Bearer <token>` when a token is known, else nothing. The one
+ * place identity is put on the wire, so that "no identity header, ever" is a
+ * property of one function rather than of every call site.
+ */
+function bearerHeaders(options: KagentRequestOptions): Record<string, string> {
+  return options.userToken
+    ? { authorization: `Bearer ${options.userToken}` }
+    : {};
+}
+
+type HarnessStatus = {
+  harness?: string;
+  conditions?: Array<{ type?: string; status?: string }>;
+};
+
+/**
+ * The harnesses that admit a template, readiest first: the ones whose `Ready`
+ * condition is `True` lead, then the rest of `status.harnesses[]`, then anything
+ * the controller lists in `admitting_harnesses` that carries no status yet.
+ * Empty when nothing admits the template — a session cannot be started then.
+ *
+ * Read off the template's Kubernetes object, which the controller returns whole
+ * (`status.harnesses[]` included) under `resource.value`.
+ */
+export function harnessesOf(template: AgentTemplate): {
+  name: string;
+  ready: boolean;
+}[] {
+  const resource = template.resource?.value as
+    { status?: { harnesses?: HarnessStatus[] } } | undefined;
+  const seen = new Map<string, boolean>();
+  for (const entry of resource?.status?.harnesses ?? []) {
+    if (!entry?.harness) {
+      continue;
     }
-
-    this.throwForErrorStatus(response, { badRequest, conflict, notFound });
-
-    // `204 No Content` is a success with nothing to parse, and must be handled
-    // before the guards below: it carries no content-type, so the sign-in-page
-    // check would call it an authentication failure, and `response.json()` would
-    // throw on the empty body. Nothing kagent serves today answers 204 — its
-    // delete returns 200 with the usual envelope on both v0.9.9 and v0.10 — but
-    // getting this wrong is expensive in one specific direction: a future version
-    // that answered 204 to the DELETE would have *performed* the deletion while
-    // this told the user a sign-in page was served, and the frontend would leave
-    // the confirmation dialog open on an error for a session that is already gone.
-    if (response.status === 204) {
-      return undefined;
-    }
-
-    // A 2xx with a non-JSON body is oauth2-proxy serving its sign-in page
-    // rather than kagent answering.
-    const contentType = response.headers.get('content-type') ?? '';
-    if (!contentType.includes('application/json')) {
-      throw new AuthenticationError(
-        `The kagent API for installation '${this.installation.name}' returned a non-JSON response (content-type '${contentType}'), which usually means a sign-in page was served instead.`,
-      );
-    }
-
-    // Reading the body is a second chance to fail: the abort signal is still
-    // armed after the headers arrive, so a slow or large response can abort
-    // mid-stream, the connection can reset, or the body can be truncated /
-    // invalid JSON. kagent answered in all of those cases, so they are upstream
-    // failures worth surfacing — not "kagent isn't deployed here".
-    try {
-      return await response.json();
-    } catch (error) {
-      this.logger.debug(
-        `Failed to read the kagent API response body for installation '${this.installation.name}'`,
-        { error: String(error) },
-      );
-      throw upstreamError(
-        `Could not read the response from the kagent API for installation '${this.installation.name}'.`,
-      );
+    const ready =
+      entry.conditions?.some(
+        condition =>
+          condition?.type === 'Ready' && condition?.status === 'True',
+      ) ?? false;
+    seen.set(entry.harness, ready);
+  }
+  for (const name of template.admittingHarnesses) {
+    if (!seen.has(name)) {
+      seen.set(name, false);
     }
   }
-
-  /**
-   * Map an error status onto the error the caller should see. Shared by
-   * {@link request} and {@link streamMessage}, whose transports differ but whose
-   * reading of kagent's statuses must not.
-   */
-  private throwForErrorStatus(
-    response: Response,
-    extra: {
-      badRequest?: boolean;
-      conflict?: boolean;
-      notFound?: NotFoundContext;
-    },
-  ): void {
-    const { badRequest, conflict, notFound } = extra;
-
-    if (response.status >= 300 && response.status < 400) {
-      throw new AuthenticationError(
-        `The kagent API for installation '${this.installation.name}' redirected to a sign-in page; the forwarded token was not accepted.`,
-      );
-    }
-
-    if (response.status === 401) {
-      throw new AuthenticationError(
-        `Not authenticated against the kagent API for installation '${this.installation.name}'.`,
-      );
-    }
-
-    if (response.status === 403) {
-      throw new NotAllowedError(
-        `Not authorized to read the kagent API for installation '${this.installation.name}'.`,
-      );
-    }
-
-    // Only for the caller that asked. Deliberately above the 404 handling and
-    // the generic `!response.ok` branch, both of which would otherwise claim
-    // this one.
-    if (response.status === 400 && badRequest) {
-      throw badRequestError(
-        `The kagent API for installation '${this.installation.name}' rejected the request.`,
-      );
-    }
-
-    // Also above the generic `!response.ok` branch, so an expected conflict does
-    // not become a 5xx.
-    if (response.status === 409 && conflict) {
-      throw new ConflictError(
-        `The kagent API for installation '${this.installation.name}' reported a conflict.`,
-      );
-    }
-
-    if (response.status === 404) {
-      // Two very different things arrive here, and conflating them shows users a
-      // message about the wrong problem:
-      //
-      // - **kagent's handler said "no such resource".** Its error middleware
-      //   always answers `Content-Type: application/json`
-      //   (`go/core/internal/httpserver/middleware_error.go`), so a JSON 404 means
-      //   the endpoint exists and the thing we asked for does not — a deleted
-      //   session, or one belonging to another user.
-      // - **The route does not exist.** kagent registers no custom
-      //   `NotFoundHandler`, so an unrouted path falls through to net/http's
-      //   `http.NotFound`, which answers `text/plain`. That is what an
-      //   installation running a kagent older than an endpoint looks like.
-      //
-      // The second case matters most for the session routes: without the
-      // distinction, "this kagent is too old" would read as "session not found" on
-      // every session, on every page load, with no way to tell from the UI.
-      //
-      // kagent's own message is deliberately *not* forwarded: its middleware
-      // appends the underlying error, so a session 404 reads
-      // "Session not found: no rows in result set" — database internals are not
-      // something to put in front of a user.
-      const contentType = response.headers.get('content-type') ?? '';
-      const kagentAnswered = contentType.includes('application/json');
-
-      if (!kagentAnswered && notFound) {
-        throw new NotFoundError(
-          `The kagent API for installation '${this.installation.name}' has no ${notFound.endpoint} endpoint; it is probably running a version that predates it.`,
-        );
-      }
-      throw new NotFoundError(
-        notFound?.missingResource ??
-          `The kagent API is not available for installation '${this.installation.name}'.`,
-      );
-    }
-
-    if (!response.ok) {
-      // Anything else non-ok (5xx, 429, …) means kagent or its ingress answered
-      // and failed. It is deployed but unwell, so this must NOT share
-      // ServiceUnavailableError with "host unreachable" — the frontend silences
-      // that one, which would make a degraded kagent look like an empty account.
-      this.logger.debug(
-        `kagent API returned an error status for installation '${this.installation.name}'`,
-        { status: response.status },
-      );
-      throw upstreamError(
-        `The kagent API for installation '${this.installation.name}' returned status ${response.status}.`,
-      );
-    }
-  }
+  return [...seen.entries()]
+    .map(([name, ready]) => ({ name, ready }))
+    .sort((a, b) => Number(b.ready) - Number(a.ready));
 }

@@ -1,8 +1,8 @@
-import type { crds } from '@giantswarm/k8s-types';
 import type { Query } from '@tanstack/react-query';
 import {
   Agent,
   AgentReadiness,
+  AgentTemplateInterface,
   deriveAgentReadiness,
   getAgentStatusChangedAt,
   isAgentTransitional,
@@ -14,6 +14,12 @@ import {
   type ClientServingState,
   type ClientServingSummary,
 } from '../../lib/serving';
+import {
+  MUSTER_MCP_SERVER_NAME,
+  toolsetOfAgent,
+  type DeclaredToolset,
+  type ToolsetCarrier,
+} from '../../lib/toolset';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -26,7 +32,7 @@ import {
  * (kubectl, another tab, the scaffolder) — not to watch one converge, which is
  * what the transitional tier below is for.
  */
-const BASELINE_REFETCH_INTERVAL_MS = 60_000;
+export const BASELINE_REFETCH_INTERVAL_MS = 60_000;
 
 /**
  * Poll for an installation that has an agent still converging. Matches kagent's
@@ -55,10 +61,7 @@ const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
  * a *permanently* broken agent on the same terms — see
  * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists.
  */
-function isAgentConverging(
-  json: crds.kagent.v1alpha2.Agent,
-  now: number,
-): boolean {
+function isAgentConverging(json: AgentTemplateInterface, now: number): boolean {
   if (!isAgentTransitional(deriveAgentReadiness(json))) {
     return false;
   }
@@ -81,7 +84,7 @@ function isAgentConverging(
 export function getAgentRefetchInterval(
   query: Query<KubeObjectInterface>,
 ): number {
-  const json = query.state.data as crds.kagent.v1alpha2.Agent | undefined;
+  const json = query.state.data as AgentTemplateInterface | undefined;
   if (!json) {
     return BASELINE_REFETCH_INTERVAL_MS;
   }
@@ -124,9 +127,9 @@ export function getAgentsRefetchInterval(
 
   const now = Date.now();
 
-  // This query lists Agents, so its items are Agent JSON — narrow to read the
-  // status conditions the shared derivation expects.
-  const isConverging = (items as crds.kagent.v1alpha2.Agent[]).some(json =>
+  // This query lists AgentTemplates, so its items are template JSON — narrow
+  // to read the harness statuses the shared derivation expects.
+  const isConverging = (items as AgentTemplateInterface[]).some(json =>
     isAgentConverging(json, now),
   );
 
@@ -155,23 +158,34 @@ export type AgentRow = {
   description: string;
   /**
    * Human-readable model label resolved from the referenced ModelConfig, or
-   * `undefined` when the agent references no model (e.g. BYO agents).
+   * `undefined` when the template references no model.
    */
   model?: string;
   skillCount: number;
-  /** Readiness derived from the agent's status conditions. */
+  /** Readiness derived from the template's Harness entries. */
   readiness: AgentReadiness;
   /**
-   * Detail explaining a non-ready readiness (the reconcile error, or
-   * "N/M pods are ready"), for a tooltip. `undefined` when there is nothing to
-   * explain.
+   * The Harness whose verdict `readiness` is — the platform Harness named by the
+   * admission label when it reports. `undefined` while no Harness admits the
+   * template.
+   */
+  harness?: string;
+  /**
+   * Detail explaining a non-ready readiness (the Harness's reconcile error, the
+   * unresolved reference, or why no Harness admits the template), for a
+   * tooltip. `undefined` when there is nothing to explain.
    */
   readinessMessage?: string;
   /**
-   * Soft warning that the spec uses features the chosen runtime does not
-   * support. Independent of readiness — a ready agent can carry one.
+   * Compile downgrades the admitting Harnesses report — features they could not
+   * honour. Independent of readiness: a ready agent can carry them.
    */
-  unsupportedFeaturesWarning?: string;
+  warnings?: string[];
+  /**
+   * The toolset read off the agent's carrier `RemoteMCPServer`. Absent when
+   * the row was built without the namespace's servers in hand.
+   */
+  toolset?: DeclaredToolset;
   /**
    * What the serving layer says about the model behind the agent's
    * ModelConfig — the served model's readiness, or that nothing answers for
@@ -184,7 +198,7 @@ export type AgentRow = {
 };
 
 /**
- * The ModelConfig an agent's `spec.declarative.modelConfig` references, among
+ * The ModelConfig an agent's `spec.modelConfig` references, among
  * those on the same installation. ModelConfigs are namespaced and must live in
  * the agent's namespace, so both name and namespace are matched. `undefined`
  * when the agent references none, or it can't be found (unreadable, not yet
@@ -206,7 +220,7 @@ export function resolveModelConfig(
 }
 
 /**
- * Resolve an agent's `spec.declarative.modelConfig` reference to a
+ * Resolve an agent's `spec.modelConfig` reference to a
  * human-readable label by joining against the ModelConfigs on the same
  * installation ({@link resolveModelConfig}).
  *
@@ -233,14 +247,17 @@ export type ResolveModelServing = (
 ) => ClientServingState | undefined;
 
 /**
- * Flatten an `Agent` resource into a plain {@link AgentRow}. With a
+ * Flatten an `AgentTemplate` into a plain {@link AgentRow}. With a
  * `resolveServing`, the row also carries the serving state of the model behind
  * the agent's ModelConfig; without one (no serving layer in view) it does not.
+ * With `carriers` — the installation's `RemoteMCPServer`s — it carries the
+ * toolset read off the agent's own carrier; without them it does not.
  */
 export function toAgentRow(
   agent: Agent,
   modelConfigs: ModelConfig[],
   resolveServing?: ResolveModelServing,
+  carriers?: readonly ToolsetCarrier[],
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
@@ -248,6 +265,7 @@ export function toAgentRow(
   const modelConfig = resolveModelConfig(agent, modelConfigs);
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
+  const warnings = agent.getHarnessWarnings();
 
   return {
     id: `${installation}/${namespace}/${name}`,
@@ -259,9 +277,13 @@ export function toAgentRow(
     model: modelConfig?.getDisplayName() ?? agent.getModelConfigName(),
     skillCount: agent.getSkillCount(),
     readiness: agent.getReadiness(),
+    harness: agent.getDecidingHarness()?.name,
     readinessMessage: agent.getReadinessMessage(),
-    unsupportedFeaturesWarning: agent.getUnsupportedFeaturesWarning(),
+    ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
+    ...(carriers
+      ? { toolset: toolsetOfAgent(agent, MUSTER_MCP_SERVER_NAME, carriers) }
+      : {}),
   };
 }
 
@@ -284,14 +306,16 @@ export function sortAgentRows(rows: AgentRow[], home?: string): AgentRow[] {
 /**
  * Severity order for the readiness column: ascending sorts worst-first, so one
  * click puts the agents that need attention at the top. Alphabetical order on
- * the label would be meaningless ("Not accepted" < "Not ready" < "Pending" <
- * "Ready" only by accident).
+ * the label would be meaningless ("Not accepted" < "Not admitted" < "Not
+ * ready" < "Pending" < "Ready" only by accident). Not admitted sorts first: it
+ * never resolves on its own.
  */
 const READINESS_SEVERITY: Record<AgentReadiness, number> = {
-  notAccepted: 0,
-  notReady: 1,
-  pending: 2,
-  ready: 3,
+  notAdmitted: 0,
+  notAccepted: 1,
+  notReady: 2,
+  pending: 3,
+  ready: 4,
 };
 
 /**

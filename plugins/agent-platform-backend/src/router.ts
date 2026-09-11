@@ -5,6 +5,7 @@ import {
   InputError,
   ServiceUnavailableError,
 } from '@backstage/errors';
+import { randomUUID } from 'crypto';
 import express from 'express';
 import Router from 'express-promise-router';
 import {
@@ -20,8 +21,10 @@ import {
   KagentInstallationConfig,
   MESSAGE_TEXT_MAX_LENGTH,
   readKagentInstallationsFromConfig,
+  REQUEST_ID_MAX_LENGTH,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
+import { probeKagentGrpc } from './kagent/reachability';
 import { ModelManagerClient } from './ModelManagerClient';
 import { SessionStateReader } from './sessionStates';
 import { SessionUsageReader } from './sessionUsage';
@@ -43,14 +46,15 @@ export interface RouterOptions {
 }
 
 /**
- * The URL the reachability probe GETs for an installation: the sessions
- * route itself. It is what the proxy will call, and it sits behind kagent's
- * oauth2-proxy -- so an unauthenticated GET answers 401 or 403, which is a
- * perfectly good proof that the route exists from where the portal runs. The
- * probe carries no token and no user data; it never reads a session.
+ * The origin the reachability probe calls for an installation: the
+ * controller's gRPC origin itself, i.e. exactly what the client dials. The
+ * probe (`probeKagentGrpc`) makes one unauthenticated `SystemService/GetVersion`
+ * call there; behind agentgateway's JWT policy that answers `Unauthenticated`,
+ * which is a perfectly good proof that the route exists from where the portal
+ * runs. It carries no token and no user data, and never reads an instance.
  */
 export function kagentProbeUrl(installation: KagentInstallationConfig): string {
-  return `${installation.apiBaseUrl}/sessions`;
+  return installation.apiBaseUrl;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -99,6 +103,29 @@ function readSessionName(body: Record<string, unknown>): string {
     );
   }
   return name;
+}
+
+/**
+ * The idempotency key of a create, when the caller supplied one.
+ *
+ * The browser generates one per submission and reuses it on a retry, so a
+ * create whose answer was lost does not make a second instance: the controller
+ * keys idempotency on `(creator, request_id)`. A caller that sends none gets a
+ * fresh one, which makes *its* retry a second create — the honest behaviour
+ * for a caller that did not ask for idempotency, and what keeps the body an
+ * addition rather than a new requirement.
+ */
+function readRequestId(body: Record<string, unknown>): string {
+  if (body.requestId === undefined) {
+    return randomUUID();
+  }
+  const requestId = readRequiredString(body, 'requestId');
+  if (requestId.length > REQUEST_ID_MAX_LENGTH) {
+    throw new InputError(
+      `requestId must be at most ${REQUEST_ID_MAX_LENGTH} characters`,
+    );
+  }
+  return requestId;
 }
 
 /**
@@ -172,7 +199,7 @@ export async function createRouter(
     if (installations.size === 0) {
       installations.set('test', {
         name: 'test',
-        apiBaseUrl: 'https://kagent.test/api',
+        apiBaseUrl: 'https://kagent.test',
       });
     }
     for (const name of installations.keys()) {
@@ -182,10 +209,16 @@ export async function createRouter(
     for (const [name, installation] of installations) {
       clients.set(
         name,
-        new KagentClient(installation, logger, fetch, timeoutMs, turnTimeoutMs),
+        new KagentClient(
+          installation,
+          logger,
+          undefined,
+          timeoutMs,
+          turnTimeoutMs,
+        ),
       );
       logger.info(
-        `kagent proxy installation '${name}' pointed at ${installation.apiBaseUrl}`,
+        `kagent proxy installation '${name}' speaks gRPC to ${installation.apiBaseUrl}`,
       );
     }
   }
@@ -262,9 +295,9 @@ export async function createRouter(
     );
   }
 
-  // Whether each installation's kagent endpoint is reachable *from this
-  // portal*, learned without a user: an unauthenticated GET per endpoint,
-  // cached five minutes (see gs-node's probeEndpoint for the classification).
+  // Whether each installation's kagent controller is reachable *from this
+  // portal*, learned without a user: one unauthenticated gRPC call per origin,
+  // cached five minutes (see ./kagent/reachability for the classification).
   // The cache is lazy, so warm it now rather than on the first request: the
   // frontend caches the installation list for an hour, and a list answered
   // entirely with 'unknown' because the pod had just started would keep every
@@ -272,7 +305,8 @@ export async function createRouter(
   // usable immediately and the route answers 'unknown' until a probe settles.
   // Results are logged at INFO, one line per endpoint per state change.
   const reachability =
-    options.reachability ?? new ReachabilityCache({ logger });
+    options.reachability ??
+    new ReachabilityCache({ logger, probe: url => probeKagentGrpc(url) });
   for (const installation of installations.values()) {
     void reachability.refresh(kagentProbeUrl(installation));
   }
@@ -477,25 +511,23 @@ export async function createRouter(
   });
 
   /**
-   * Start a session for one agent.
+   * Start a session for one agent: create its AgentInstance.
    *
-   * The agent's real namespace and name come from the body rather than being
-   * decoded from anything: kagent's "python identifier" encoding of `agent_id`
-   * replaces every `-` with `_`, so decoding it is lossy. The caller picked the
-   * agent and knows both, so it says so.
-   *
-   * `name` is required here even though kagent's own API treats it as optional,
-   * because the controller does not auto-title — a session created without one
-   * has no title at all. The frontend derives it from the first prompt; see
-   * "Starting a session" in docs/agent-platform.md.
+   * The agent's namespace and name are the AgentTemplate's, as the caller read
+   * them from the resource; the platform Harness is picked in the client from
+   * the template's own status. `name` is required because the controller does
+   * not auto-title — an instance created without one has no title at all; the
+   * frontend derives it from the first prompt (see "Starting a session" in
+   * docs/agent-platform.md). `requestId` is the browser's idempotency key; see
+   * {@link readRequestId}.
    *
    * The token is **required**, for the same reason the other writes require it:
-   * kagent decides whose session this is from the token alone.
+   * the controller decides whose instance this is from the identity the gateway
+   * derived from the token alone.
    *
-   * Nothing expected reaches a 5xx. A malformed body is a 400, an agent kagent
-   * cannot resolve becomes a 409, and a sandbox agent that already holds its one
-   * permitted session stays a 409 — `MiddlewareFactory.error()` forwards anything
-   * `>= 500` to Sentry.
+   * Nothing expected reaches a 5xx. A malformed body is a 400, a template no
+   * Harness admits or a `request_id` reused with other parameters is a 409 —
+   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
    */
   router.post('/kagent/sessions', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -504,15 +536,17 @@ export async function createRouter(
     const agentNamespace = readRequiredString(body, 'agentNamespace');
     const agentName = readRequiredString(body, 'agentName');
     const name = readSessionName(body);
+    const requestId = readRequestId(body);
 
     const result = await client.createSession(
       { namespace: agentNamespace, name: agentName },
       name,
+      requestId,
       { userToken: readUserToken(req, { required: true }) },
     );
 
-    // 201, matching kagent's own answer to this route. The body is its envelope
-    // verbatim: the frontend needs the generated session id out of it, and this
+    // 201 for a create. The body is the controller's `CreateAgentInstanceResponse`
+    // as JSON: the frontend needs the generated instance id out of it, and this
     // proxy stays transport.
     res.status(201).json(result);
   });
@@ -612,23 +646,47 @@ export async function createRouter(
   });
 
   /**
+   * Stop the turn a session is running: cancel its task server-side.
+   *
+   * The Stop control in the composer. Cancelling is `A2AService/CancelTask` on
+   * the instance, which ends the run at the harness (or quiesces the actor when
+   * the runtime cannot) and records the task canceled — so a stopped turn stays
+   * stopped when the tab is closed, unlike cutting the stream, which the turn
+   * survives. Answers the task as the controller left it: `canceled`, or the
+   * terminal state a turn that finished first already had, which is not an
+   * error and nothing to undo.
+   *
+   * Task ids are opaque like session ids and pass through undecorated. The
+   * token is **required**: the controller decides whose instance this is from
+   * the identity the gateway derived.
+   */
+  router.post(
+    '/kagent/sessions/:sessionId/tasks/:taskId/cancel',
+    async (req, res) => {
+      const { client } = resolveInstallation(req);
+      const rawTaskId = req.params.taskId;
+      const result = await client.cancelTask(
+        readSessionId(req),
+        typeof rawTaskId === 'string' ? rawTaskId : '',
+        { userToken: readUserToken(req, { required: true }) },
+      );
+      res.json(result);
+    },
+  );
+
+  /**
    * Send a message to the session's agent — one turn of the conversation.
    *
-   * Session-shaped rather than agent-shaped (`/a2a/:ns/:name`) because the session
-   * is what the caller is looking at, and because `contextId` is the only thing
-   * binding a turn to a session. The A2A JSON-RPC envelope is built in the client,
-   * so the frontend never has to know A2A.
-   *
-   * **The agent's namespace and name come from the body, not from the session.**
-   * kagent's stored `agent_id` is an encoding that rewrites `-` to `_`, so
-   * decoding it cannot round-trip a name that legitimately contains `_`. The
-   * caller resolved the real names from the `Agent` resource; this trusts them and
-   * lets kagent 404 if they are wrong.
+   * Session-shaped because the session *is* the conversation: the AgentInstance
+   * binds the agent, and the A2A call names the instance in its metadata. The
+   * agent's namespace and name stay in the body for the contract's sake (the
+   * browser knows them from the resource) but nothing downstream needs them. The
+   * A2A request is built in the client, so the frontend never has to know A2A.
    *
    * Nothing expected here reaches a 5xx, which `MiddlewareFactory.error()` would
-   * forward to Sentry: a malformed body is a 400, an unknown agent a 404, a
-   * read-only session a 403, and a turn that outruns its timeout a **202** — it is
-   * still running, and the conversation poll will show it land.
+   * forward to Sentry: a malformed body is a 400, an unknown instance a 404, a
+   * second message during a turn a 409, and a turn that outruns its timeout a
+   * **202** — it is still running, and the conversation poll will show it land.
    */
   router.post('/kagent/sessions/:sessionId/messages', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -661,11 +719,10 @@ export async function createRouter(
    * Send a message to the session's agent, streaming the turn's events back.
    *
    * The streaming sibling of the messages route above: same body, same
-   * validation, same trust in the caller's agent names — but A2A `message/stream`
-   * instead of `message/send`, and kagent's SSE relayed byte-for-byte instead of
-   * a single JSON answer. The backend never parses the events; the frontend
-   * interprets them and reconciles with the conversation poll, which stays the
-   * source of truth.
+   * validation — but `SendStreamingMessage` instead of `SendMessage`, each event
+   * relayed as one SSE `data:` frame of its JSON instead of a single JSON
+   * answer. The backend never interprets the events; the frontend does, and
+   * reconciles with the conversation poll, which stays the source of truth.
    *
    * Failure semantics split at the headers, which is inherent to streaming:
    *
@@ -780,15 +837,18 @@ export async function createRouter(
     },
   );
 
-  // There is no version route. kagent serves `/version` at the server root, and
-  // neither supported door proxies the root to the controller — the derived
-  // door's nginx sends `/` to the kagent UI, and the agentgateway override only
-  // matches the `/kagent` prefix. See the comment in KagentClient for details.
+  // There is deliberately no version route. `SystemService/GetVersion` exists
+  // and the reachability probe calls it, but nothing in the frontend gates on a
+  // version string: tolerance lives in the permissive parsing in
+  // agent-platform-common, and a feature that needs gating probes by behaviour.
 
   /**
-   * Identity probe. Diagnoses the two ways a correct-looking sessions list can
-   * be wrong: a `sub` that differs from the one kagent recorded (empty list),
-   * and a controller running in `unsecure` mode (shared list).
+   * Identity probe: the claims the controller resolved for the call
+   * (`SystemService/GetCurrentUser`). Diagnoses the two ways a correct-looking
+   * sessions list can be wrong: a `sub` that differs from the one kagent
+   * recorded (empty list), and a controller that attributes every caller to its
+   * built-in default user because nothing in front of it derived an identity
+   * (shared list).
    */
   router.get('/kagent/me', async (req, res) => {
     const { client } = resolveInstallation(req);
