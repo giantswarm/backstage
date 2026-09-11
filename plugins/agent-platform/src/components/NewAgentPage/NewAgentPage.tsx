@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -23,7 +23,6 @@ import {
   newAgentSkillsRouteRef,
   newAgentToolsRouteRef,
 } from '../../routes';
-import { useAgentChart } from '../../hooks/useAgentChart';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
@@ -85,23 +84,6 @@ function NewAgentPageContent() {
   // Show validation feedback only once the user has tried to proceed, so the
   // form doesn't shout about empty fields before they've done anything.
   const [showValidation, setShowValidation] = useState(false);
-
-  // Seed the system prompt from the chart's default the first time it resolves,
-  // and only while the field is still untouched — a ref makes this a one-shot so
-  // it never fights the user's edits or loops.
-  const { defaultSystemMessage, isLoading: isChartLoading } = useAgentChart();
-  const seededPrompt = useRef(false);
-  useEffect(() => {
-    if (!seededPrompt.current && defaultSystemMessage) {
-      seededPrompt.current = true;
-      if (!state.systemMessage) {
-        setSystemMessage(defaultSystemMessage);
-      }
-    }
-    // Runs once when defaultSystemMessage first becomes available; the ref guards
-    // re-entry, so state.systemMessage is intentionally read but not a dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultSystemMessage]);
 
   // The submit button stays enabled: clicking it with an invalid form surfaces
   // what's wrong (below) rather than silently doing nothing.
@@ -235,12 +217,8 @@ function NewAgentPageContent() {
                   onChange={setSystemMessage}
                   rows={10}
                   mono
-                  placeholder={
-                    isChartLoading
-                      ? 'Loading the chart default…'
-                      : "Leave empty to use the chart's default prompt."
-                  }
-                  description="The agent's system message. Pre-filled from the chart's default — edit it to fit the role, or leave it empty to keep the default."
+                  placeholder="Leave empty to use the chart's default prompt."
+                  description="The agent's system message. Write one to fit the role, or leave it empty: agent-manager then keeps the chart's default prompt."
                 />
                 <ModelConfigPicker />
               </Flex>

@@ -133,3 +133,53 @@ export function musterToolsetResolutionQueryKey(
     selectors.join(','),
   ] as const;
 }
+
+/**
+ * The agent-manager reads the create flow makes through muster as the
+ * signed-in person: whether the installation's muster lists agent-manager at
+ * all, what that agent-manager composes (`get_info`), the dry run of the
+ * agent under review and the readiness of the one just created. All per
+ * person, all under the `muster` prefix for the same two reasons as above:
+ * they are never persisted, and the muster plugin's sign-in invalidation
+ * re-reads them once the person connects to agent-manager.
+ */
+export function musterServersQueryKey(installation: string) {
+  return ['muster', 'agent-platform', 'mcp-servers', installation] as const;
+}
+
+export function musterAgentManagerInfoQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-info',
+    installation,
+  ] as const;
+}
+
+export function musterValidateAgentQueryKey(
+  installation: string,
+  specSignature: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'validate-agent',
+    installation,
+    specSignature,
+  ] as const;
+}
+
+export function musterAgentStatusQueryKey(
+  installation: string,
+  namespace: string,
+  name: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-status',
+    installation,
+    namespace,
+    name,
+  ] as const;
+}

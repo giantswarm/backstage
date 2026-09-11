@@ -22,7 +22,10 @@ export type NewAgentFormState = {
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
   systemMessage: string;
-  /** Skills the user picked, in selection order. Optional — may be empty. */
+  /**
+   * Skills the user picked, in selection order, each with the commit the
+   * skills step showed — the pin agent-manager writes. Optional — may be empty.
+   */
   selectedSkills: DiscoveredSkill[];
   /**
    * The agent's toolset as selected: inline selectors (`preset:`, `server:`,
@@ -80,15 +83,15 @@ const initialState: NewAgentFormState = {
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
-  // Seeded from the chart's default at runtime by NewAgentPage; empty means
-  // "use the chart default" (composeManifests omits it).
+  // Empty means "use the chart default": the spec sent to agent-manager omits
+  // it (agentSpecOf), and agent-manager keeps the chart's default prompt.
   systemMessage: '',
   selectedSkills: [],
   toolset: [],
 };
 
-// RFC1123 DNS label: the slug becomes the Agent CR name and the
-// HelmRelease/OCIRepository release name, so it must be a valid k8s object name
+// RFC1123 DNS label: the slug becomes the AgentTemplate name and the
+// HelmRelease name, so it must be a valid k8s object name
 // (lowercase alphanumerics and hyphens, no leading/trailing hyphen, ≤63 chars).
 const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
@@ -108,7 +111,7 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
   const value = useMemo<NewAgentFormContextValue>(() => {
     // The system prompt is intentionally NOT validated: the chart ships a
     // default agent.systemMessage, so an empty field just means "use the chart
-    // default" (composeManifests omits it).
+    // default" (agentSpecOf omits it).
     const validationErrors: string[] = [];
     if (!state.name.trim()) {
       validationErrors.push('Name is required');
