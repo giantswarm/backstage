@@ -1,13 +1,17 @@
 export interface Config {
   agentPlatform?: {
     /**
-     * Access to the kagent REST API, used by the Agent Platform "Sessions"
-     * list. The backend proxies kagent per installation, forwarding the user's
-     * per-installation Dex ID token as `Authorization: Bearer`.
+     * Access to the kagent API v2 controller (gRPC), used by the Agent
+     * Platform Sessions list, the session detail and chat, and the Usage tab.
+     * The backend speaks native gRPC to each installation's controller route
+     * and forwards the user's per-installation Dex ID token as
+     * `authorization: Bearer` — and nothing else identifying: agentgateway
+     * validates the token on that route and derives the caller from it.
      *
      * The frontend never talks to kagent directly: the browser cannot reach
-     * `kagent.<baseDomain>` cross-origin, and the installation base domains are
-     * deliberately backend-only (they deanonymize customers).
+     * `kagent.<baseDomain>` cross-origin, gRPC over HTTP/2 needs a server-side
+     * client anyway, and the installation base domains are deliberately
+     * backend-only (they deanonymize customers).
      *
      * Every key here therefore keeps the default **backend** visibility — none
      * of it is served to the unauthenticated frontend config. `apiBaseUrl`
@@ -19,17 +23,18 @@ export interface Config {
      */
     kagent?: {
       /**
-       * Per-request timeout in milliseconds toward a kagent API. Bounds how
-       * long an installation whose `kagent.<baseDomain>` host does not resolve
-       * (i.e. kagent simply is not deployed there) can hold a request open.
-       * Defaults to 10000.
+       * Per-request timeout in milliseconds toward a kagent controller. Bounds
+       * how long an installation whose `kagent.<baseDomain>` host does not
+       * resolve (i.e. kagent simply is not deployed there) can hold a request
+       * open. Defaults to 10000.
        */
       timeoutMs?: number;
 
       /**
        * How long, in milliseconds, to wait for an agent to finish one turn before
-       * answering "still running". Separate from `timeoutMs` because kagent's
-       * `message/send` answers only once the agent is done.
+       * answering "still running". Separate from `timeoutMs` because the A2A
+       * `SendMessage` call answers only once the agent is done — and it is also
+       * the budget of a Stop (`CancelTask`), which waits for the run to drain.
        *
        * Not a limit on how long a turn may take: the turn continues regardless,
        * and the outcome arrives through the conversation poll. Exceeding this is
@@ -49,10 +54,12 @@ export interface Config {
        * Bounds on the derived session-state summary that backs the session
        * switcher rail (`GET /kagent/session-states`).
        *
-       * A kagent `Session` carries no state, so the only way to learn one is to
-       * read that session's whole conversation and look at its newest task. The
-       * route therefore fans out over task reads, and these are the levers on how
-       * much that may cost. They are config rather than constants because the one
+       * An AgentInstance reports whether it is ready, suspended or failed, but
+       * not whether its newest turn is working or waiting for input — that lives
+       * in the instance's tasks, so the route reads each candidate's task list
+       * (status only, no history) and these are the levers on how much that may
+       * cost. Instances whose own state already answers (failed, still being
+       * created, being deleted) are not read. They are config rather than constants because the one
        * thing we cannot predict is how this behaves against an account far larger
        * than any measured — that wants a knob, not a release.
        *
@@ -111,9 +118,9 @@ export interface Config {
        * (`GET /kagent/session-usage`).
        *
        * The same shape as `sessionStates` above, and for the same reason:
-       * kagent stores no usage summary either, so totalling a user's tokens
-       * means reading every session's whole conversation. These are the levers
-       * on how much that may cost.
+       * kagent stores no usage summary, so totalling a user's tokens means
+       * reading every instance's whole conversation (the usage metadata rides
+       * on the agent's output). These are the levers on how much that may cost.
        *
        * **The numbers differ from the `sessionStates` ones deliberately**, so
        * a near-identical block sitting above this one does not read as a
@@ -130,10 +137,10 @@ export interface Config {
          * Travels in the response, so shortening it re-labels the page rather
          * than making a heading lie.
          *
-         * **Check the deployed kagent's own session retention before raising
-         * it.** kagent 0.10 can prune sessions older than a configured number
-         * of days, deleting them outright — past that point the window is
-         * silently incomplete and no field in the response can say so.
+         * **Check the deployed kagent's own retention before raising it.**
+         * Instances and tasks the controller has pruned are gone outright — past
+         * that point the window is silently incomplete and no field in the
+         * response can say so.
          */
         windowDays?: number;
 
@@ -152,9 +159,9 @@ export interface Config {
          * milliseconds. Defaults to 2678400000 (31 days) — the window plus a
          * day of slack for clock skew and the UTC day boundary.
          *
-         * Safe because kagent bumps `session.updated_at` on every task write,
-         * so a session with no activity in 31 days holds no turn inside a
-         * 30-day window. Raise it with `windowDays`.
+         * Safe because the controller bumps an instance's `updated_at` on
+         * every turn, so an instance with no activity in 31 days holds no turn
+         * inside a 30-day window. Raise it with `windowDays`.
          */
         maxAgeMs?: number;
 
@@ -200,27 +207,32 @@ export interface Config {
       };
 
       /**
-       * Installations to proxy kagent for, keyed by installation name — the
+       * Installations to reach kagent on, keyed by installation name — the
        * same keys as `gs.installations`.
        *
        * When omitted, every entry in `gs.installations` that has a
-       * `baseDomain` is derived as `https://kagent.<baseDomain>/api`, and
-       * installations without kagent simply fail per request and are treated
-       * as "not installed". Set this to restrict the fan-out to the
-       * installations that actually run kagent, or to point one at a
-       * non-default URL. An entry with no fields (`{}`) means "enabled, use
-       * the derived URL".
+       * `baseDomain` is derived as `https://kagent.<baseDomain>` — the
+       * hostname on which the connectivity chart's `GRPCRoute` serves the
+       * controller — and installations without kagent simply fail per request
+       * and are treated as "not installed". Set this to restrict the fan-out to
+       * the installations that actually run kagent, or to point one at a
+       * non-default origin. An entry with no fields (`{}`) means "enabled, use
+       * the derived origin".
        */
       installations?: {
         [installationName: string]: {
           /**
-           * Full kagent API base URL for this installation, overriding the
-           * derived `https://kagent.<baseDomain>/api`. No trailing slash.
+           * The gRPC origin of this installation's kagent controller route,
+           * overriding the derived `https://kagent.<baseDomain>`:
+           * `https://<host>[:port]`, no path and no trailing slash — gRPC is
+           * matched by service, not by prefix. Must be a route that validates
+           * the forwarded token (the connectivity chart's controller route with
+           * its JWT policy): the controller behind it attributes every call to
+           * the identity that route derives, so an origin that bypasses it has
+           * no boundary.
            *
-           * Use this to point at a different ingress — for example the
-           * agentgateway door (`https://agentgateway.<baseDomain>/kagent/api`)
-           * on installations where the oauth2-proxy-fronted kagent hostname is
-           * not available.
+           * `http://` is plaintext HTTP/2 (h2c), which only an in-cluster
+           * Service URL should ever be — a development shape, never a fleet one.
            */
           apiBaseUrl?: string;
         };

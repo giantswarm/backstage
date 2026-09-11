@@ -5,6 +5,7 @@ import { kagentApiRef } from '../apis';
 import {
   KagentSessionDetail,
   SessionState,
+  findNewestStatefulTaskIndex,
   readNewestTaskState,
   isAgentWorking,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -34,6 +35,12 @@ export type SessionDetailView = {
   timeline: SessionTimeline;
   /** From the most recent task; undefined for a session that never ran. */
   state?: SessionState;
+  /**
+   * The id of the task {@link state} was read from — the turn a Stop would
+   * cancel. Undefined for a session that never ran, or whose newest task
+   * carries no id.
+   */
+  currentTaskId?: string;
   /**
    * Epoch ms {@link state} last moved, when anything in the conversation says.
    *
@@ -163,6 +170,16 @@ export function useSessionDetail(
     [tasks],
   );
   const state = newest?.state;
+  // The same task the state came from: `findNewestStatefulTaskIndex` is what
+  // `readNewestTaskState` walks, so a Stop names the turn the badge describes.
+  const currentTaskId = useMemo(() => {
+    if (!tasks) {
+      return undefined;
+    }
+    const index = findNewestStatefulTaskIndex(tasks);
+    const id = index === undefined ? undefined : tasks[index]?.id;
+    return typeof id === 'string' && id ? id : undefined;
+  }, [tasks]);
 
   // Judged as of the last successful read rather than `Date.now()`, which is both
   // more honest and what makes it expire at all: with `Date.now()` the answer would
@@ -225,6 +242,7 @@ export function useSessionDetail(
     detail,
     timeline,
     state,
+    currentTaskId,
     stateChangedAt: newest?.changedAt,
     isAgentWorking: agentWorking,
     pendingConfirmation,

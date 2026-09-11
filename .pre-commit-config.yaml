@@ -24,12 +24,15 @@ repos:
         # (redis-ha's restore.ssh.key example) that the hook cannot tell from
         # a key; gitleaks stays the scanner of record for the vendored subtree.
         exclude: "^helm/[^/]+/charts/.*"
+      # plugins/agent-platform-backend/src/kagent/gen is buf-generated (see its
+      # README): the whitespace fixers would rewrite it and the next regeneration
+      # would revert the fix, so it is committed exactly as the generator emits it.
       - id: end-of-file-fixer
-        exclude: "(.*testdata/.*|^\\.yarn/.*|^helm/[^/]+/charts/.*)"
+        exclude: "(.*testdata/.*|^\\.yarn/.*|^helm/[^/]+/charts/.*|^plugins/agent-platform-backend/src/kagent/gen/.*)"
       - id: mixed-line-ending
         exclude: "^helm/[^/]+/charts/.*"
       - id: trailing-whitespace
-        exclude: "(.*testdata/.*|^\\.yarn/.*|^helm/[^/]+/charts/.*)"
+        exclude: "(.*testdata/.*|^\\.yarn/.*|^helm/[^/]+/charts/.*|^plugins/agent-platform-backend/src/kagent/gen/.*)"
 
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0

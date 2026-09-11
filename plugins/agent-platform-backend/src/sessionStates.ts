@@ -1,6 +1,7 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import {
   isListableSession,
+  KagentSession,
   normalizeSessionList,
   normalizeTaskList,
   readNewestTaskState,
@@ -19,11 +20,10 @@ import {
 /**
  * How many of a user's sessions may be evaluated in one pass.
  *
- * A real account on an internal installation held 21 sessions whose task payloads
- * totalled 2.8 MB,
- * so 20 covers a whole history today. It is here for the account that is ten
- * times that: the reads are the expensive part and their cost is unbounded in the
- * session count alone.
+ * A real account on an internal installation held 21 sessions, so 20 covers a
+ * whole history today. It is here for the account that is ten times that: the
+ * reads are the expensive part and their cost is unbounded in the session count
+ * alone.
  */
 export const DEFAULT_MAX_SESSIONS = 20;
 
@@ -87,15 +87,19 @@ export type SessionStateOptions = {
  * Derived session-state summaries for one installation.
  *
  * This is the one place in the proxy that *interprets* kagent rather than
- * forwarding it, and the exception is deliberate: the rail needs one state string
- * per session, and the only way to learn it is to read each session's whole
- * conversation. On real data that is 2.8 MB to answer with about 700 bytes, which
- * belongs on this side of the wire. It stays honest by deriving through the very
- * same parser and state map the UI renders from, shared from
- * `agent-platform-common` so the two cannot disagree.
+ * forwarding it, and the exception is deliberate: the rail needs one state
+ * string per session. An AgentInstance says whether it is ready, suspended,
+ * failed or still being created — but not whether its newest turn is working,
+ * waiting for a human or finished, which is what the rail groups by and what
+ * lives in the instance's tasks. So each candidate's task list is read (status
+ * only: no history, no artifacts) and its newest task's state taken, through
+ * the very same parser and state map the UI renders from, shared from
+ * `agent-platform-common` so the two cannot disagree. Where the instance's own
+ * state already answers — it failed, it is still being created, it is being
+ * deleted — no task is read: that state is the session's.
  *
  * The bounding, pooling and caching are `./sessionFanOut`; what is here is the
- * reduction — one A2A state per session — and the numbers it is bounded by.
+ * reduction — one state per session — and the numbers it is bounded by.
  */
 export class SessionStateReader {
   private readonly cache: TokenKeyedCache<SessionStatesResponse>;
@@ -153,12 +157,25 @@ export class SessionStateReader {
     const { sessions } = normalizeSessionList(raw, this.installation);
 
     const listable = sessions.filter(isListableSession);
-    const { candidates, pastCap } = selectCandidates(listable, {
+    const { candidates: selected, pastCap } = selectCandidates(listable, {
       now: this.now(),
       maxAgeMs: this.maxAgeMs,
       maxSessions: this.maxSessions,
     });
     const states: SessionStateEntry[] = [];
+
+    // An instance whose own lifecycle state decides the answer costs no task
+    // read: nothing is running in a failed, still-creating or deleting
+    // instance, and the instance state is what the rail should show for it.
+    const candidates: KagentSession[] = [];
+    for (const session of selected) {
+      const settled = instanceDecidedState(session);
+      if (settled) {
+        states.push(settled);
+      } else {
+        candidates.push(session);
+      }
+    }
 
     const { unreadable, skipped, failures } = await readTasksInPool({
       candidates,
@@ -168,8 +185,14 @@ export class SessionStateReader {
         budgetMs: this.budgetMs,
       },
       now: this.now,
+      // Status only: the newest task's state and timestamp are all this reads,
+      // and a conversation's history and artifacts are the bulk of a task.
       read: (sessionId, timeoutMs) =>
-        this.client.listSessionTasks(sessionId, { userToken }, { timeoutMs }),
+        this.client.listSessionTasks(
+          sessionId,
+          { userToken },
+          { timeoutMs, historyLength: 0, includeArtifacts: false },
+        ),
       onPayload: (session, payload) => {
         const { tasks } = normalizeTaskList(payload);
         const newest = readNewestTaskState(tasks);
@@ -209,4 +232,31 @@ export class SessionStateReader {
       skipped: pastCap + skipped,
     };
   }
+}
+
+/**
+ * The instance states that *are* the session's state, with no turn to consult.
+ * A ready or suspended instance says nothing about its newest turn (a suspended
+ * actor may be waiting on a human or simply idle after a finished turn), so
+ * those still read their tasks.
+ */
+const INSTANCE_DECIDED_STATES = new Set(['failed', 'creating', 'deleting']);
+
+/**
+ * The state entry an instance's own lifecycle state decides, or undefined when
+ * its tasks have to be read. The instance's `updatedAt` is the age basis, as it
+ * moves with every lifecycle change.
+ */
+function instanceDecidedState(
+  session: KagentSession,
+): SessionStateEntry | undefined {
+  if (!session.state || !INSTANCE_DECIDED_STATES.has(session.state)) {
+    return undefined;
+  }
+  const changedAt = session.updatedAt ? Date.parse(session.updatedAt) : NaN;
+  return {
+    sessionId: session.sessionId,
+    state: session.state,
+    ...(Number.isNaN(changedAt) ? {} : { changedAt }),
+  };
 }

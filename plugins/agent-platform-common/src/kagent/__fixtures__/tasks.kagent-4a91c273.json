@@ -1,0 +1,79 @@
+{
+  "tasks": [
+    {
+      "id": "e7b1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+      "contextId": "5f3a6d2b-9c1e-4e7a-8b0d-3c2f1e4d5a6b",
+      "status": {
+        "state": "TASK_STATE_COMPLETED",
+        "timestamp": "2026-09-11T00:13:09.104118Z"
+      },
+      "artifacts": [
+        {
+          "artifactId": "f1e2d3c4-b5a6-4978-8a9b-0c1d2e3f4a5b",
+          "name": "response",
+          "parts": [
+            {
+              "text": "The lab cluster has these namespaces: agent-platform, ate-system, dex, kagent, kube-system."
+            }
+          ],
+          "metadata": {
+            "kagent_author": "muster_whole",
+            "kagent_usage_metadata": {
+              "promptTokenCount": 2311,
+              "candidatesTokenCount": 42,
+              "totalTokenCount": 2353
+            },
+            "kagent.dev/timeline-position": "2026-09-11T00:13:08.901Z"
+          }
+        }
+      ],
+      "history": [
+        {
+          "messageId": "0f2b1a3c-7d8e-4f90-a1b2-c3d4e5f60718",
+          "contextId": "5f3a6d2b-9c1e-4e7a-8b0d-3c2f1e4d5a6b",
+          "taskId": "e7b1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+          "role": "ROLE_USER",
+          "parts": [{ "text": "List the namespaces of the lab cluster." }],
+          "metadata": {
+            "kagent.dev/timeline-position": "2026-09-11T00:12:44.117Z"
+          }
+        },
+        {
+          "messageId": "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d",
+          "contextId": "5f3a6d2b-9c1e-4e7a-8b0d-3c2f1e4d5a6b",
+          "taskId": "e7b1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+          "role": "ROLE_AGENT",
+          "parts": [
+            {
+              "data": {
+                "id": "call_x1",
+                "name": "call_tool",
+                "args": {
+                  "name": "x_kubernetes_list",
+                  "arguments": { "resourceType": "namespaces" }
+                }
+              },
+              "metadata": { "kagent_type": "function_call" }
+            },
+            {
+              "data": {
+                "id": "call_x1",
+                "name": "call_tool",
+                "response": {
+                  "result": "agent-platform ate-system dex kagent kube-system"
+                }
+              },
+              "metadata": { "kagent_type": "function_response" }
+            }
+          ],
+          "metadata": {
+            "kagent_author": "muster_whole",
+            "kagent.dev/timeline-position": "2026-09-11T00:13:01.552Z"
+          }
+        }
+      ]
+    }
+  ],
+  "pageSize": 100,
+  "totalSize": 1
+}

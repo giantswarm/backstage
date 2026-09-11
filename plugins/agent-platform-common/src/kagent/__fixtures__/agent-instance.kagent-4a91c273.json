@@ -1,0 +1,15 @@
+{
+  "agentInstance": {
+    "id": "0199c8a8-4f7e-7d51-8a3b-2f6f0d9e1a11",
+    "creator": "admin@lab.local",
+    "harness": { "namespace": "kagent", "name": "kagent" },
+    "agentTemplate": { "namespace": "kagent", "name": "muster-whole" },
+    "preparedRevision": "muster-whole-7c9d4e2f",
+    "state": "AGENT_INSTANCE_STATE_CREATING",
+    "operation": "AGENT_INSTANCE_OPERATION_CREATE",
+    "createdAt": "2026-09-11T00:12:41.517932Z",
+    "updatedAt": "2026-09-11T00:12:41.517932Z",
+    "name": "List the namespaces of the lab cluster",
+    "contextId": "5f3a6d2b-9c1e-4e7a-8b0d-3c2f1e4d5a6b"
+  }
+}

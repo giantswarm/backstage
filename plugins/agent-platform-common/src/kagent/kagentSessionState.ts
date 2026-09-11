@@ -1,5 +1,6 @@
+import { normalizeA2aState } from './kagentA2aV1';
 import { A2aTaskWire } from './kagentTaskSchema';
-import { normalizeTimestamp } from './kagentSessions';
+import { normalizeTimestamp } from './kagentTimestamp';
 
 /** Tone for the status badge; maps onto whatever the UI layer uses. */
 export type SessionStateTone =
@@ -114,7 +115,10 @@ export function describeSessionState(
   // an undefined label and tone instead of rendering the state verbatim. This
   // module exists to tolerate whatever kagent puts on the wire, so it shouldn't
   // have a hole shaped like two specific strings.
-  const key = state.toLowerCase();
+  // Lower-cased, and an A2A v1 enum name (`TASK_STATE_INPUT_REQUIRED`) taken
+  // down to the same spelling — the v1 translation already does this, so it is
+  // belt and braces for a state that reaches here untranslated.
+  const key = normalizeA2aState(state) ?? state.toLowerCase();
   const known = Object.prototype.hasOwnProperty.call(KNOWN_STATES, key)
     ? KNOWN_STATES[key]
     : undefined;
