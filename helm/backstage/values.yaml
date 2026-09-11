@@ -266,6 +266,10 @@ database:
     # -- Suffix appended to the chart name to form the CNPG cluster resource name
     clusterNameSuffix: cnpg
 
+    # @schema type:integer;minimum:1
+    # -- Number of PostgreSQL instances in the CNPG cluster
+    instances: 2
+
     # @schema type:string
     # -- Persistent volume size for the PostgreSQL CNPG cluster
     storageSize: 5Gi
@@ -275,8 +279,16 @@ database:
     operatorNamespace: cnpg-system
 
     # @schema type:string
-    # -- PostgreSQL container image for the CNPG cluster (registry.domain is prepended)
-    image: giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716
+    # -- PostgreSQL container image for the CNPG cluster (registry.domain is prepended). The image is published for linux/amd64 and linux/arm64; the digest must name the index, not one architecture's manifest, or the kubelet pulls the wrong architecture and the container exits with `exec format error`.
+    image: giantswarm/postgresql-cnpg:18.0@sha256:424fc22287b7bf49e9eb87f6180e5489d0026014b1e610a4e429599d96cadb4d
+
+    # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/refs/heads/master/v1.35.1/_definitions.json#/definitions/io.k8s.api.core.v1.LocalObjectReference
+    # -- Pull secrets for the CNPG cluster images, as a list of `{name: <secret>}`. The bootstrap init container runs the operator image, so a private mirror needs an entry here.
+    imagePullSecrets: []
+
+    # @schema type:object;additionalProperties:true
+    # -- Placement for the CNPG instance pods. This is CloudNativePG's own `AffinityConfiguration`, not a core Kubernetes `Affinity`: the keys are `enablePodAntiAffinity`, `topologyKey`, `podAntiAffinityType`, `nodeSelector`, `tolerations`, `nodeAffinity`, `additionalPodAffinity` and `additionalPodAntiAffinity`.
+    affinity: {}
 
 # -- Custom branding/UI asset settings (logos and favicons served by the branding backend plugin)
 branding:

@@ -26,7 +26,15 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   imageName: {{ .Values.registry.domain }}/{{ .Values.database.postgresql.image }}
-  instances: 2
+  instances: {{ .Values.database.postgresql.instances }}
+  {{- with .Values.database.postgresql.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.database.postgresql.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   storage:
     size: {{ .Values.database.postgresql.storageSize }}
   resources:

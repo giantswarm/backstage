@@ -2649,13 +2649,30 @@
                     "description": "Settings for the PostgreSQL database (only used when engine is \"postgresql\")",
                     "additionalProperties": false,
                     "properties": {
+                        "affinity": {
+                            "type": "object",
+                            "description": "Placement for the CNPG instance pods. This is CloudNativePG's own `AffinityConfiguration`, not a core Kubernetes `Affinity`: the keys are `enablePodAntiAffinity`, `topologyKey`, `podAntiAffinityType`, `nodeSelector`, `tolerations`, `nodeAffinity`, `additionalPodAffinity` and `additionalPodAntiAffinity`.",
+                            "additionalProperties": true
+                        },
                         "clusterNameSuffix": {
                             "type": "string",
                             "description": "Suffix appended to the chart name to form the CNPG cluster resource name"
                         },
                         "image": {
                             "type": "string",
-                            "description": "PostgreSQL container image for the CNPG cluster (registry.domain is prepended)"
+                            "description": "PostgreSQL container image for the CNPG cluster (registry.domain is prepended). The image is published for linux/amd64 and linux/arm64; the digest must name the index, not one architecture's manifest, or the kubelet pulls the wrong architecture and the container exits with `exec format error`."
+                        },
+                        "imagePullSecrets": {
+                            "type": "array",
+                            "description": "Pull secrets for the CNPG cluster images, as a list of `{name: <secret>}`. The bootstrap init container runs the operator image, so a private mirror needs an entry here.",
+                            "items": {
+                                "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.LocalObjectReference"
+                            }
+                        },
+                        "instances": {
+                            "type": "integer",
+                            "description": "Number of PostgreSQL instances in the CNPG cluster",
+                            "minimum": 1
                         },
                         "operatorNamespace": {
                             "type": "string",

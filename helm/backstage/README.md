@@ -10,6 +10,24 @@ Backstage app provided by Giant Swarm
 |------------|------|---------|
 | oci://registry-1.docker.io/bitnamicharts | common | 2.41.0 |
 
+## Architecture support
+
+The `giantswarm/backstage` and `giantswarm/postgresql-cnpg` images are published
+for `linux/amd64` and `linux/arm64` as manifest lists, so the chart runs on a
+cluster with either architecture, or a mix of both.
+
+Pin an image by the digest of the manifest list, never by the digest of one
+architecture's manifest. A per-architecture digest defeats platform resolution:
+the kubelet pulls that architecture on every node and the container exits with
+`exec format error` on the others. Read the index digest with:
+
+```
+skopeo inspect --format '{{.Digest}}' docker://gsoci.azurecr.io/giantswarm/postgresql-cnpg:18.0
+```
+
+To steer placement, use `nodeSelector` for the Backstage pod and
+`database.postgresql.affinity` for the PostgreSQL instance pods.
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -95,13 +113,16 @@ Backstage app provided by Giant Swarm
 | networkPolicy | object | `{"enabled":true,"flavor":"cilium"}` | Network policy settings |
 | networkPolicy.enabled | bool | `true` | Render the network policies the chart ships. Turn this off on a cluster whose policy flavor the chart does not render. |
 | networkPolicy.flavor | string | `"cilium"` | Policy flavor to render. The `kubernetes` flavor is not an exact equivalent of the `cilium` one: it has no `world` or `kube-apiserver` entity, so the egress leg that carries object storage and Kubernetes API traffic is `0.0.0.0/0` on 443 and 6443. Widen that leg in the template if the cluster reaches an object store on another port. |
-| database | object | `{"engine":"sqlite","postgresql":{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","operatorNamespace":"cnpg-system","storageSize":"5Gi"}}` | Database configuration |
+| database | object | `{"engine":"sqlite","postgresql":{"affinity":{},"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:424fc22287b7bf49e9eb87f6180e5489d0026014b1e610a4e429599d96cadb4d","imagePullSecrets":[],"instances":2,"operatorNamespace":"cnpg-system","storageSize":"5Gi"}}` | Database configuration |
 | database.engine | string | `"sqlite"` | Database engine to use |
-| database.postgresql | object | `{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","operatorNamespace":"cnpg-system","storageSize":"5Gi"}` | Settings for the PostgreSQL database (only used when engine is "postgresql") |
+| database.postgresql | object | `{"affinity":{},"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:424fc22287b7bf49e9eb87f6180e5489d0026014b1e610a4e429599d96cadb4d","imagePullSecrets":[],"instances":2,"operatorNamespace":"cnpg-system","storageSize":"5Gi"}` | Settings for the PostgreSQL database (only used when engine is "postgresql") |
 | database.postgresql.clusterNameSuffix | string | `"cnpg"` | Suffix appended to the chart name to form the CNPG cluster resource name |
+| database.postgresql.instances | int | `2` | Number of PostgreSQL instances in the CNPG cluster |
 | database.postgresql.storageSize | string | `"5Gi"` | Persistent volume size for the PostgreSQL CNPG cluster |
 | database.postgresql.operatorNamespace | string | `"cnpg-system"` | Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation. |
-| database.postgresql.image | string | `"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716"` | PostgreSQL container image for the CNPG cluster (registry.domain is prepended) |
+| database.postgresql.image | string | `"giantswarm/postgresql-cnpg:18.0@sha256:424fc22287b7bf49e9eb87f6180e5489d0026014b1e610a4e429599d96cadb4d"` | PostgreSQL container image for the CNPG cluster (registry.domain is prepended). The image is published for linux/amd64 and linux/arm64; the digest must name the index, not one architecture's manifest, or the kubelet pulls the wrong architecture and the container exits with `exec format error`. |
+| database.postgresql.imagePullSecrets | list | `[]` | Pull secrets for the CNPG cluster images, as a list of `{name: <secret>}`. The bootstrap init container runs the operator image, so a private mirror needs an entry here. |
+| database.postgresql.affinity | object | `{}` | Placement for the CNPG instance pods. This is CloudNativePG's own `AffinityConfiguration`, not a core Kubernetes `Affinity`: the keys are `enablePodAntiAffinity`, `topologyKey`, `podAntiAffinityType`, `nodeSelector`, `tolerations`, `nodeAffinity`, `additionalPodAffinity` and `additionalPodAntiAffinity`. |
 | branding | object | `{"assetsPath":"/app/branding-assets","enabled":false,"volume":{"configMap":{}}}` | Custom branding/UI asset settings (logos and favicons served by the branding backend plugin) |
 | branding.enabled | bool | `false` | Enable serving custom branding assets (logos) from a mounted volume |
 | branding.assetsPath | string | `"/app/branding-assets"` | Filesystem path inside the container where branding assets are mounted |
