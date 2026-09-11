@@ -317,7 +317,17 @@ function EditAgentForm({
         </Button>
       </Flex>
     ),
-    [isBusy, canWrite, canCommit, detailHref, navigate, onCommit, onSave],
+    [
+      isBusy,
+      canWrite,
+      canCommit,
+      detailHref,
+      navigate,
+      onCommit,
+      onSave,
+      updating.isCommitting,
+      updating.isUpdating,
+    ],
   );
   useProvidePageHeaderActions(actions);
 

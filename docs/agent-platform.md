@@ -3262,8 +3262,11 @@ is composed in the portal.
 (`useUpdateAgent`), then returns to the detail page with a hand-off
 (`action: 'updated'`) so the same progress element as after a create polls
 `get_agent_status` until the platform Harness has compiled the new revision
-(`ready`) or failed. The HelmRelease's `managedFields` name the person: the
-write ran as them. A GitOps-owned or suspended agent's dry run already comes
+(`ready`) or failed. The write ran as the person: agent-manager stamps them into
+the HelmRelease's `requestedBy` annotation and the apiserver audit (and muster's
+log) attribute the write to them, never to a ServiceAccount — a Kubernetes field
+manager names the tool, so `managedFields` is not where to look. A GitOps-owned
+or suspended agent's dry run already comes
 back as agent-manager's `conflict:` refusal (verbatim, Save locked); a viewer's
 Save shows the apiserver's `forbidden:`. **Commit** (`update_agent` with
 `mode: commit`) sits behind the same capability gate as on delete.

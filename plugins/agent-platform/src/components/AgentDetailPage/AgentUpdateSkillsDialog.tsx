@@ -150,7 +150,7 @@ export function AgentUpdateSkillsDialog({
   );
   const dryRun = useValidateAgentUpdate(installation, refresh);
 
-  const current = agent?.skills ?? [];
+  const current = useMemo(() => agent?.skills ?? [], [agent]);
   const refreshed = dryRun.result?.manifests.values.skills as
     AgentSkillEntry[] | undefined;
   const plan = useMemo(
