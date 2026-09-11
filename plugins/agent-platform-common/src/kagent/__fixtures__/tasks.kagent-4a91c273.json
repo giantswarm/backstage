@@ -1,77 +1,328 @@
 {
   "tasks": [
     {
-      "id": "e7b1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
-      "contextId": "5f3a6d2b-9c1e-4e7a-8b0d-3c2f1e4d5a6b",
+      "id": "01a08e6b-1f6b-7005-b354-9a99c8447337",
+      "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
       "status": {
         "state": "TASK_STATE_COMPLETED",
-        "timestamp": "2026-09-11T00:13:09.104118Z"
+        "timestamp": "2026-09-11T03:03:07.173713538Z"
       },
       "artifacts": [
         {
-          "artifactId": "f1e2d3c4-b5a6-4978-8a9b-0c1d2e3f4a5b",
-          "name": "response",
+          "artifactId": "01a08e6b-2922-7b1f-b3dd-20d01657861f",
           "parts": [
             {
-              "text": "The lab cluster has these namespaces: agent-platform, ate-system, dex, kagent, kube-system."
+              "data": {
+                "id": "toolu_01AoKUFqCHiqmg3J4XvqZDPS",
+                "args": {
+                  "query": "list kubernetes namespaces"
+                },
+                "name": "filter_tools"
+              },
+              "metadata": {
+                "adk_is_long_running": false,
+                "adk_type": "function_call"
+              }
             }
           ],
           "metadata": {
-            "kagent_author": "muster_whole",
-            "kagent_usage_metadata": {
-              "promptTokenCount": 2311,
-              "candidatesTokenCount": 42,
-              "totalTokenCount": 2353
+            "adk_invocation_id": "e-8beb2cba-e41f-4196-8492-e8c0891a102e",
+            "adk_usage_metadata": {
+              "promptTokenCount": 2900,
+              "candidatesTokenCount": 58
             },
-            "kagent.dev/timeline-position": "2026-09-11T00:13:08.901Z"
+            "kagent.dev/timeline-position": "2026-09-11T03:03:02.686924Z",
+            "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+            "adk_user_id": "admin@kagent.dev",
+            "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+            "adk_author": "portal_proof_2344_b66d_kagent"
+          }
+        },
+        {
+          "artifactId": "01a08e6b-2926-751c-a116-e843d3f3defa",
+          "parts": [
+            {
+              "data": {
+                "id": "toolu_01AoKUFqCHiqmg3J4XvqZDPS",
+                "name": "filter_tools",
+                "response": {
+                  "error": "error tool \"filter_tools\" requires confirmation, please approve or reject"
+                }
+              },
+              "metadata": {
+                "adk_type": "function_response"
+              }
+            }
+          ],
+          "metadata": {
+            "adk_user_id": "admin@kagent.dev",
+            "adk_invocation_id": "e-8beb2cba-e41f-4196-8492-e8c0891a102e",
+            "adk_author": "portal_proof_2344_b66d_kagent",
+            "kagent.dev/timeline-position": "2026-09-11T03:03:02.690883Z",
+            "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+            "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent"
+          }
+        },
+        {
+          "artifactId": "01a08e6b-2b2d-7215-8d8d-180707b7dacb",
+          "parts": [
+            {
+              "data": {
+                "id": "toolu_01AoKUFqCHiqmg3J4XvqZDPS",
+                "name": "filter_tools",
+                "response": {
+                  "output": "{\n  \"filters\": {\n    \"query\": \"list kubernetes namespaces\",\n    \"case_sensitive\": false,\n    \"include_schema\": false,\n    \"limit\": 5,\n    \"offset\": 0\n  },\n  \"total_tools\": 82,\n  \"filtered_count\": 5,\n  \"total\": 27,\n  \"truncated\": true,\n  \"tools\": [\n    {\n      \"name\": \"x_mcp-kubernetes_list\",\n      \"summary\": \"List Kubernetes resources with optional filtering.\",\n      \"score\": 5.3347,\n      \"server\": \"mcp-kubernetes\",\n      \"kind\": \"tool\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": true,\n        \"idempotentHint\": false,\n        \"openWorldHint\": false\n      }\n    },\n    {\n      \"name\": \"workflow_lab-cluster-overview\",\n      \"summary\": \"Lab demo: list the namespaces in the kind cluster, then the pods in one of them. Exercises the whole Dex -\\u003e Backstage -\\u003e...\",\n      \"score\": 5.126,\n      \"kind\": \"workflow\",\n      \"annotations\": {\n        \"readOnlyHint\": true\n      }\n    },\n    {\n      \"name\": \"x_mcp-kubernetes_get\",\n      \"summary\": \"Get a specific Kubernetes resource by name.\",\n      \"score\": 4.6868,\n      \"server\": \"mcp-kubernetes\",\n      \"kind\": \"tool\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": true,\n        \"idempotentHint\": false,\n        \"openWorldHint\": false\n      }\n    },\n    {\n      \"name\": \"x_mcp-kubernetes_describe\",\n      \"summary\": \"Get detailed information about a Kubernetes resource including events.\",\n      \"score\": 4.6363,\n      \"server\": \"mcp-kubernetes\",\n      \"kind\": \"tool\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": true,\n        \"idempotentHint\": false,\n        \"openWorldHint\": false\n      }\n    },\n    {\n      \"name\": \"x_mcp-kubernetes_api_resources\",\n      \"summary\": \"List available API resources in the cluster\",\n      \"score\": 4.3345,\n      \"server\": \"mcp-kubernetes\",\n      \"kind\": \"tool\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": true,\n        \"idempotentHint\": false,\n        \"openWorldHint\": false\n      }\n    }\n  ]\n}"
+                }
+              },
+              "metadata": {
+                "adk_type": "function_response"
+              }
+            }
+          ],
+          "metadata": {
+            "adk_author": "portal_proof_2344_b66d_kagent",
+            "kagent.dev/timeline-position": "2026-09-11T03:03:03.208436Z",
+            "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+            "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+            "adk_user_id": "admin@kagent.dev",
+            "adk_invocation_id": "e-8beb2cba-e41f-4196-8492-e8c0891a102e"
+          }
+        },
+        {
+          "artifactId": "01a08e6b-32fd-7190-93b4-394b88500303",
+          "parts": [
+            {
+              "data": {
+                "args": {
+                  "name": "x_mcp-kubernetes_list",
+                  "arguments": {
+                    "resourceType": "namespace"
+                  }
+                },
+                "name": "call_tool",
+                "id": "toolu_01Hbncko9Bv78k4mviyJQ9z1"
+              },
+              "metadata": {
+                "adk_type": "function_call",
+                "adk_is_long_running": false
+              }
+            }
+          ],
+          "metadata": {
+            "adk_author": "portal_proof_2344_b66d_kagent",
+            "kagent.dev/timeline-position": "2026-09-11T03:03:05.201192Z",
+            "adk_usage_metadata": {
+              "promptTokenCount": 3802,
+              "candidatesTokenCount": 83
+            },
+            "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+            "adk_user_id": "admin@kagent.dev",
+            "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+            "adk_invocation_id": "e-8beb2cba-e41f-4196-8492-e8c0891a102e"
+          }
+        },
+        {
+          "artifactId": "01a08e6b-3300-7987-855c-6270923d8c4a",
+          "parts": [
+            {
+              "data": {
+                "id": "toolu_01Hbncko9Bv78k4mviyJQ9z1",
+                "name": "call_tool",
+                "response": {
+                  "error": "error tool \"call_tool\" requires confirmation, please approve or reject"
+                }
+              },
+              "metadata": {
+                "adk_type": "function_response"
+              }
+            }
+          ],
+          "metadata": {
+            "adk_user_id": "admin@kagent.dev",
+            "kagent.dev/timeline-position": "2026-09-11T03:03:05.213313Z",
+            "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+            "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+            "adk_invocation_id": "e-8beb2cba-e41f-4196-8492-e8c0891a102e",
+            "adk_author": "portal_proof_2344_b66d_kagent"
+          }
+        },
+        {
+          "artifactId": "01a08e6b-3535-7ece-a738-d83b19e91e89",
+          "parts": [
+            {
+              "data": {
+                "response": {
+                  "output": "{\"isError\":false,\"content\":[{\"text\":\"{\\n  \\\"kind\\\": \\\"NamespaceList\\\",\\n  \\\"items\\\": [\\n    {\\n      \\\"name\\\": \\\"agent-platform\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:19:24Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"ate-system\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:19:54Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"default\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:17:15Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"demo\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:17:46Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"dex\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:17:35Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"kagent\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:22:10Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"kube-node-lease\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:17:15Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"kube-public\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:17:15Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"kube-system\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:17:15Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"local-path-storage\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:17:19Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"monitoring\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:19:28Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    },\\n    {\\n      \\\"name\\\": \\\"podcertificate-controller-system\\\",\\n      \\\"kind\\\": \\\"Namespace\\\",\\n      \\\"apiVersion\\\": \\\"v1\\\",\\n      \\\"creationTimestamp\\\": \\\"2026-09-10T21:19:54Z\\\",\\n      \\\"age\\\": \\\"5h\\\"\\n    }\\n  ],\\n  \\\"resourceVersion\\\": \\\"89396\\\",\\n  \\\"totalItems\\\": 12\\n}\",\"type\":\"text\"}]}"
+                },
+                "id": "toolu_01Hbncko9Bv78k4mviyJQ9z1",
+                "name": "call_tool"
+              },
+              "metadata": {
+                "adk_type": "function_response"
+              }
+            }
+          ],
+          "metadata": {
+            "adk_invocation_id": "e-8beb2cba-e41f-4196-8492-e8c0891a102e",
+            "adk_author": "portal_proof_2344_b66d_kagent",
+            "kagent.dev/timeline-position": "2026-09-11T03:03:05.77727Z",
+            "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+            "adk_user_id": "admin@kagent.dev",
+            "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0"
+          }
+        },
+        {
+          "artifactId": "01a08e6b-3a3a-79f4-bd5b-bd3229a61b99",
+          "parts": [
+            {
+              "text": "12"
+            }
+          ],
+          "metadata": {
+            "adk_author": "portal_proof_2344_b66d_kagent",
+            "kagent.dev/timeline-position": "2026-09-11T03:03:07.160161Z",
+            "adk_usage_metadata": {
+              "promptTokenCount": 5358,
+              "candidatesTokenCount": 4
+            },
+            "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+            "adk_user_id": "admin@kagent.dev",
+            "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+            "adk_invocation_id": "e-8beb2cba-e41f-4196-8492-e8c0891a102e"
           }
         }
       ],
       "history": [
         {
-          "messageId": "0f2b1a3c-7d8e-4f90-a1b2-c3d4e5f60718",
-          "contextId": "5f3a6d2b-9c1e-4e7a-8b0d-3c2f1e4d5a6b",
-          "taskId": "e7b1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+          "messageId": "m-1789095780200",
+          "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "taskId": "01a08e6b-1f6b-7005-b354-9a99c8447337",
           "role": "ROLE_USER",
-          "parts": [{ "text": "List the namespaces of the lab cluster." }],
-          "metadata": {
-            "kagent.dev/timeline-position": "2026-09-11T00:12:44.117Z"
-          }
-        },
-        {
-          "messageId": "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d",
-          "contextId": "5f3a6d2b-9c1e-4e7a-8b0d-3c2f1e4d5a6b",
-          "taskId": "e7b1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
-          "role": "ROLE_AGENT",
           "parts": [
             {
-              "data": {
-                "id": "call_x1",
-                "name": "call_tool",
-                "args": {
-                  "name": "x_kubernetes_list",
-                  "arguments": { "resourceType": "namespaces" }
-                }
-              },
-              "metadata": { "kagent_type": "function_call" }
-            },
-            {
-              "data": {
-                "id": "call_x1",
-                "name": "call_tool",
-                "response": {
-                  "result": "agent-platform ate-system dex kagent kube-system"
-                }
-              },
-              "metadata": { "kagent_type": "function_response" }
+              "text": "How many namespaces does the management cluster have? Use your tools once and answer with the count."
             }
           ],
           "metadata": {
-            "kagent_author": "muster_whole",
-            "kagent.dev/timeline-position": "2026-09-11T00:13:01.552Z"
+            "kagent.dev/timeline-position": "2026-09-11T03:03:00.202996449Z"
           }
+        },
+        {
+          "messageId": "01a08e6b-2929-7a2a-8322-d64b468949d3",
+          "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "taskId": "01a08e6b-1f6b-7005-b354-9a99c8447337",
+          "role": "ROLE_AGENT",
+          "parts": [
+            {
+              "text": "Please approve or reject the tool call filter_tools() by responding with a FunctionResponse with an expected ToolConfirmation payload."
+            }
+          ],
+          "metadata": {
+            "kagent.dev/timeline-position": "2026-09-11T03:03:02.697554692Z",
+            "https://kagent.dev/extensions/hitl/v1": {
+              "tools": [
+                {
+                  "args": {
+                    "query": "list kubernetes namespaces"
+                  },
+                  "id": "adk-a00fe6b7-b842-4625-b4d2-56cd9c384874",
+                  "call_id": "toolu_01AoKUFqCHiqmg3J4XvqZDPS",
+                  "name": "filter_tools"
+                }
+              ],
+              "type": "tool_approval_request",
+              "hint": "Please approve or reject the tool call filter_tools() by responding with a FunctionResponse with an expected ToolConfirmation payload."
+            }
+          },
+          "extensions": ["https://kagent.dev/extensions/hitl/v1"]
+        },
+        {
+          "messageId": "m-1789095782862-1",
+          "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "taskId": "01a08e6b-1f6b-7005-b354-9a99c8447337",
+          "role": "ROLE_USER",
+          "parts": [
+            {
+              "text": "Approved."
+            }
+          ],
+          "metadata": {
+            "kagent.dev/timeline-position": "2026-09-11T03:03:02.868597399Z",
+            "https://kagent.dev/extensions/hitl/v1": {
+              "type": "tool_approval_response",
+              "approvals": [
+                {
+                  "approved": true,
+                  "id": "adk-a00fe6b7-b842-4625-b4d2-56cd9c384874"
+                }
+              ]
+            }
+          },
+          "extensions": ["https://kagent.dev/extensions/hitl/v1"]
+        },
+        {
+          "messageId": "01a08e6b-3303-7dc1-8cec-9a93a94b7444",
+          "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "taskId": "01a08e6b-1f6b-7005-b354-9a99c8447337",
+          "role": "ROLE_AGENT",
+          "parts": [
+            {
+              "text": "Please approve or reject the tool call call_tool() by responding with a FunctionResponse with an expected ToolConfirmation payload."
+            }
+          ],
+          "metadata": {
+            "kagent.dev/timeline-position": "2026-09-11T03:03:05.219829866Z",
+            "https://kagent.dev/extensions/hitl/v1": {
+              "tools": [
+                {
+                  "name": "call_tool",
+                  "args": {
+                    "name": "x_mcp-kubernetes_list",
+                    "arguments": {
+                      "resourceType": "namespace"
+                    }
+                  },
+                  "id": "adk-7f638365-4a7e-48e7-ba14-b90a275ef2cf",
+                  "call_id": "toolu_01Hbncko9Bv78k4mviyJQ9z1"
+                }
+              ],
+              "type": "tool_approval_request",
+              "hint": "Please approve or reject the tool call call_tool() by responding with a FunctionResponse with an expected ToolConfirmation payload."
+            }
+          },
+          "extensions": ["https://kagent.dev/extensions/hitl/v1"]
+        },
+        {
+          "messageId": "m-1789095785406-2",
+          "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "taskId": "01a08e6b-1f6b-7005-b354-9a99c8447337",
+          "role": "ROLE_USER",
+          "parts": [
+            {
+              "text": "Approved."
+            }
+          ],
+          "metadata": {
+            "kagent.dev/timeline-position": "2026-09-11T03:03:05.411878505Z",
+            "https://kagent.dev/extensions/hitl/v1": {
+              "approvals": [
+                {
+                  "approved": true,
+                  "id": "adk-7f638365-4a7e-48e7-ba14-b90a275ef2cf"
+                }
+              ],
+              "type": "tool_approval_response"
+            }
+          },
+          "extensions": ["https://kagent.dev/extensions/hitl/v1"]
         }
-      ]
+      ],
+      "metadata": {
+        "kagent.dev/task-created-at": "2026-09-11T03:03:00.202996449Z",
+        "adk_user_id": "admin@kagent.dev",
+        "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+        "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent"
+      }
     }
   ],
   "pageSize": 100,

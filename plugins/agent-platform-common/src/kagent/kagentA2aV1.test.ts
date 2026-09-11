@@ -136,16 +136,27 @@ describe('tasks recorded on kagent-4a91c273', () => {
     expect(task.status?.state).toBe('completed');
     expect(readNewestTaskState(normalized)?.state.key).toBe('completed');
 
-    // History is the user's message, the agent's tool-call message and the
-    // agent's output (an artifact on the wire), in timeline order.
-    const roles = (task.history as Wire[]).map(entry => entry.role);
-    expect(roles[0]).toBe('user');
-    expect(roles.slice(1).every(role => role === 'agent')).toBe(true);
-    const output = (task.history as Wire[]).at(-1)!;
-    expect((output.parts as Wire[])[0]).toEqual(
+    // The conversation opens with the person's question and closes with the
+    // agent's answer; the artifacts (tool calls, their results and the reply,
+    // and the human-in-the-loop approval exchanges) are merged into the history
+    // in timeline order between them. So the first message is the user's and
+    // the last is the agent's, but the middle carries both roles (the agent's
+    // tool work and the user's "Approved." replies) — not a user-then-all-agent
+    // shape.
+    const history = task.history as Wire[];
+    expect(history[0].role).toBe('user');
+    expect((history[0].parts as Wire[])[0]).toEqual(
       expect.objectContaining({
         kind: 'text',
         text: expect.stringContaining('namespaces'),
+      }),
+    );
+    const output = history.at(-1)!;
+    expect(output.role).toBe('agent');
+    expect((output.parts as Wire[]).at(-1)).toEqual(
+      expect.objectContaining({
+        kind: 'text',
+        text: expect.stringContaining('12'),
       }),
     );
     // The usage rides on the agent's output, under the prefix the readers know.
@@ -163,11 +174,17 @@ describe('tasks recorded on kagent-4a91c273', () => {
       .flatMap(entry => (entry.parts as unknown[]) ?? [])
       .map(parsePart)
       .filter(Boolean);
-    const call = parts.find(part => part && isFunctionCallPart(part))!;
-    const response = parts.find(part => part && isFunctionResponsePart(part))!;
-    expect(call).toBeDefined();
-    expect(response).toBeDefined();
-    expect(readFunctionCall(call).name).toBe('call_tool');
+    const calls = parts.filter(part => part && isFunctionCallPart(part));
+    const responses = parts.filter(
+      part => part && isFunctionResponsePart(part),
+    );
+    expect(calls.length).toBeGreaterThanOrEqual(1);
+    expect(responses.length).toBeGreaterThanOrEqual(1);
+    // The muster call_tool proxy is among the calls (filter_tools discovers the
+    // tool, call_tool invokes it) — read back by name.
+    expect(calls.map(call => readFunctionCall(call!).name)).toContain(
+      'call_tool',
+    );
   });
 
   it('sums usage over a v1 conversation exactly as over a 0.10 one', () => {
@@ -178,9 +195,12 @@ describe('tasks recorded on kagent-4a91c273', () => {
     });
     expect(usage.tally.turns).toBe(1);
     expect(usage.tally.inputTokens).toBeGreaterThan(0);
-    expect(usage.tally.toolCalls).toBe(1);
-    // The proxied call is attributed to its muster server.
-    expect([...usage.servers.keys()]).toEqual(['kubernetes']);
+    // filter_tools (discover) then call_tool (invoke) — two proxied tool calls.
+    expect(usage.tally.toolCalls).toBe(2);
+    // The kubernetes call is attributed to its muster server.
+    expect([...usage.servers.keys()]).toEqual(
+      expect.arrayContaining(['mcp-kubernetes']),
+    );
   });
 
   it('treats an instance without a turn as an empty list, not drift', () => {
@@ -370,13 +390,16 @@ describe('stream recorded on kagent-4a91c273', () => {
     expect(events[2]).toEqual(
       expect.objectContaining({
         taskId: expect.any(String),
-        append: true,
+        append: false,
         lastChunk: false,
         artifact: expect.objectContaining({
           parts: [expect.objectContaining({ kind: 'text' })],
         }),
       }),
     );
+    // The middle chunk appends to the growing artifact; the last one replaces
+    // it with the whole text and marks the artifact done.
+    expect(events[3]).toEqual(expect.objectContaining({ append: true }));
     expect(events[4]).toEqual(expect.objectContaining({ lastChunk: true }));
     expect(events[5]).toEqual(
       expect.objectContaining({

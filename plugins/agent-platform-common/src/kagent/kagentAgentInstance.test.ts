@@ -26,7 +26,7 @@ describe('AgentInstances as sessions (kagent API v2, recorded on kagent-4a91c273
     const { sessions, drift } = normalizeSessionList(agentInstances, 'lab');
 
     expect(drift).toBeUndefined();
-    expect(sessions).toHaveLength(3);
+    expect(sessions).toHaveLength(1);
     const [first] = sessions;
     expect(first).toEqual(
       expect.objectContaining({
@@ -36,22 +36,48 @@ describe('AgentInstances as sessions (kagent API v2, recorded on kagent-4a91c273
         agentTemplate: { namespace: 'kagent', name: expect.any(String) },
         agentId: encodeKagentAgentId('kagent', first.agentTemplate!.name),
         source: 'user',
-        state: 'suspended',
+        state: 'ready',
         contextId: expect.any(String),
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
       }),
     );
-    // The lifecycle states come through as words, the failure with its reason.
+    // Every instance the controller lists for a caller is theirs to see.
+    expect(sessions.every(isListableSession)).toBe(true);
+  });
+
+  it('renders each lifecycle state as a word and a failed instance with its reason', () => {
+    // The lab proof creates one READY instance; the other lifecycle states and
+    // the failure are exercised on top of the recorded wire shape so the
+    // normaliser is covered without hand-writing an instance from scratch.
+    const real = agentInstances.agentInstances[0];
+    const withState = (state: string, extra: Record<string, unknown> = {}) => ({
+      ...real,
+      id: `${real.id}-${state}`,
+      state,
+      ...extra,
+    });
+    const { sessions, drift } = normalizeSessionList(
+      {
+        agentInstances: [
+          withState('AGENT_INSTANCE_STATE_SUSPENDED'),
+          withState('AGENT_INSTANCE_STATE_READY'),
+          withState('AGENT_INSTANCE_STATE_FAILED', {
+            failure: { reason: 'no ready revision' },
+          }),
+        ],
+      },
+      'lab',
+    );
+    expect(drift).toBeUndefined();
     expect(sessions.map(s => s.state)).toEqual([
       'suspended',
       'ready',
       'failed',
     ]);
     expect(sessions[2].failure).toEqual(
-      expect.objectContaining({ reason: expect.any(String) }),
+      expect.objectContaining({ reason: 'no ready revision' }),
     );
-    // Every instance the controller lists for a caller is theirs to see.
     expect(sessions.every(isListableSession)).toBe(true);
   });
 
@@ -68,7 +94,7 @@ describe('AgentInstances as sessions (kagent API v2, recorded on kagent-4a91c273
 
     expect(drift).toBeUndefined();
     expect(detail?.session.sessionId).toBe(agentInstance.agentInstance.id);
-    expect(detail?.session.state).toBe('creating');
+    expect(detail?.session.state).toBe('ready');
     // Instances carry no read-only flag.
     expect(detail?.readOnly).toBeUndefined();
   });

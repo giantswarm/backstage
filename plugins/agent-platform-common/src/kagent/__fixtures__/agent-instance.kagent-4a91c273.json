@@ -1,15 +1,21 @@
 {
   "agentInstance": {
-    "id": "0199c8a8-4f7e-7d51-8a3b-2f6f0d9e1a11",
-    "creator": "admin@lab.local",
-    "harness": { "namespace": "kagent", "name": "kagent" },
-    "agentTemplate": { "namespace": "kagent", "name": "muster-whole" },
-    "preparedRevision": "muster-whole-7c9d4e2f",
-    "state": "AGENT_INSTANCE_STATE_CREATING",
-    "operation": "AGENT_INSTANCE_OPERATION_CREATE",
-    "createdAt": "2026-09-11T00:12:41.517932Z",
-    "updatedAt": "2026-09-11T00:12:41.517932Z",
-    "name": "List the namespaces of the lab cluster",
-    "contextId": "5f3a6d2b-9c1e-4e7a-8b0d-3c2f1e4d5a6b"
+    "id": "01a08e6b-11fd-7689-b9c3-0b5ed46d960a",
+    "creator": "admin@kagent.dev",
+    "harness": {
+      "namespace": "kagent",
+      "name": "kagent"
+    },
+    "agentTemplate": {
+      "namespace": "kagent",
+      "name": "portal-proof-2344-b66d"
+    },
+    "preparedRevision": "65cb80539353b81feedaadbad17b9e19c9aa0971b46566dcf21cbc623e3f32ec",
+    "a2aAuthority": "ai-01a08e6b-11fd-7689-b9c3-0b5ed46d960a.kagent.actors.resources.substrate.ate.dev",
+    "state": "AGENT_INSTANCE_STATE_READY",
+    "createdAt": "2026-09-11T03:02:56.766392Z",
+    "updatedAt": "2026-09-11T03:02:56.771845370Z",
+    "name": "Portal proof 2344",
+    "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0"
   }
 }
