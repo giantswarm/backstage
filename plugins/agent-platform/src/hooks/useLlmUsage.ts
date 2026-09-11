@@ -61,11 +61,25 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
 
   // Snapped to UTC midnight, so it is stable for the whole day and cannot
   // re-key the range queries on every render.
-  const { start, end, step } = dailyRangeWindow();
+  const range = dailyRangeWindow();
+  const { start, end, step } = range;
   // The charts render one bar per day of this window whether or not Mimir
   // answered for it, so the axis is the 30 days the page claims.
-  const days = dailyWindowDayKeys();
-  const today = todayDayKey();
+  //
+  // Memoised on `start`, which is already midnight-snapped and so a stable
+  // per-day key. Without this both are fresh values every render, and since
+  // they are dependencies of the `usage` memo below, that memo could never hit
+  // — re-running eleven vector reductions, two 30-day series and the agent
+  // join on every render, and re-keying every downstream memo with a new
+  // `usage` object.
+  const days = useMemo(
+    () => dailyWindowDayKeys({ start, end, step }),
+    [start, end, step],
+  );
+  const today = useMemo(
+    () => todayDayKey({ start, end, step }),
+    [start, end, step],
+  );
   // Today's bar comes from its own pair of instant queries, scoped to
   // elapsed-time-since-midnight: the range query above deliberately stops at
   // yesterday, because a point in the future makes `increase()` extrapolate a
@@ -203,9 +217,6 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     agentRows,
     installation,
     agentDetailRoute,
-    // Snapped to a midnight, so this is a new array with the same contents on
-    // every render — react-query's keys are unaffected, and rebuilding the
-    // rows once per render is cheaper than memoising 30 strings.
     days,
     today,
   ]);

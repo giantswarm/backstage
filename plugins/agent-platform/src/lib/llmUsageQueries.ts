@@ -103,18 +103,38 @@ export function dailyRangeWindow(now: number = Date.now()): RangeWindow {
   return { start: String(start), end: String(end), step: String(DAY_SECONDS) };
 }
 
+/** How coarsely {@link todayPartialRange} is snapped. See its docblock. */
+const PARTIAL_SNAP_SECONDS = 300;
+
 /**
  * How much of today has elapsed, as a PromQL duration, for the instant query
  * that supplies today's partial bar.
  *
  * `increase(...[<elapsed>])` evaluated now covers exactly midnight→now, so the
- * bar is today's real spend so far rather than a projection of it. Floored at
- * a minute because a zero-length range is not a legal PromQL duration, and
- * just after midnight there is nothing to show anyway.
+ * bar is today's real spend so far rather than a projection of it.
+ *
+ * **Snapped down to five minutes, and that is load-bearing.** This string goes
+ * into the query, and the query is part of `useMimirQuery`'s cache key — so a
+ * value that moved every second re-keyed on every render: response lands →
+ * re-render → new key → fresh fetch → `isLoading` true again, forever. Both
+ * gateway tabs sat on a permanent spinner while issuing a Mimir round trip per
+ * render. Any change here has to keep the value stable across a render.
+ *
+ * Five minutes rather than the hour: snapping *down* means today's bar omits
+ * whatever has happened since the last boundary, and an hour of a partial day
+ * is a visible hole right after an expensive agent run. Snapping *up* would
+ * instead pull the tail of yesterday into today's bar. Five minutes keeps the
+ * omission negligible on a daily bar and still re-keys only twelve times an
+ * hour, against a 30-second `staleTime`.
+ *
+ * Floored at a minute because a zero-length range is not a legal PromQL
+ * duration, and just after midnight there is nothing to show anyway.
  */
 export function todayPartialRange(now: number = Date.now()): string {
   const elapsed = Math.floor(now / 1000) - todayMidnight(now);
-  return `${Math.max(elapsed, 60)}s`;
+  const snapped =
+    Math.floor(elapsed / PARTIAL_SNAP_SECONDS) * PARTIAL_SNAP_SECONDS;
+  return `${Math.max(snapped, 60)}s`;
 }
 
 /**
@@ -126,21 +146,35 @@ export function todayPartialRange(now: number = Date.now()): string {
  * bar's width means the same thing on every installation. Without it a series
  * with one day of data drew one bar spanning the whole chart, which reads as
  * "one enormous day" rather than "we have a day of history".
+ *
+ * Derived from the **range**, not from a second `Date.now()`. Two reasons: the
+ * caller can then memoise on `range.start`, which is midnight-snapped and so a
+ * genuinely stable key rather than an unused dependency; and a hook that read
+ * the clock twice could straddle midnight and produce an axis that disagreed
+ * with the query that filled it.
  */
-export function dailyWindowDayKeys(now: number = Date.now()): string[] {
-  const { start, end } = dailyRangeWindow(now);
+export function dailyWindowDayKeys(range: RangeWindow): string[] {
   const keys: string[] = [];
   // A range point at `t` covers the day before it.
-  for (let at = Number(start); at <= Number(end); at += DAY_SECONDS) {
+  for (
+    let at = Number(range.start);
+    at <= Number(range.end);
+    at += DAY_SECONDS
+  ) {
     keys.push(dayKey(at - DAY_SECONDS));
   }
-  keys.push(dayKey(todayMidnight(now)));
+  // `end` is today's midnight, so today is the row past the last point.
+  keys.push(dayKey(Number(range.end)));
   return keys;
 }
 
-/** Today's key, for the row {@link todayPartialRange} fills. */
-export function todayDayKey(now: number = Date.now()): string {
-  return dayKey(todayMidnight(now));
+/**
+ * Today's key, for the row {@link todayPartialRange} fills.
+ *
+ * Also read off the range's `end`, so it cannot disagree with the axis.
+ */
+export function todayDayKey(range: RangeWindow): string {
+  return dayKey(Number(range.end));
 }
 
 function dayKey(epochSeconds: number): string {

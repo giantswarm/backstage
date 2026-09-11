@@ -1,6 +1,11 @@
 import { UsageDayEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
-import { fillMissingDays, hasAnyUsage, toByAgentRows } from './helpers';
+import {
+  fillMissingDays,
+  hasAnyUsage,
+  sortUsageRows,
+  toByAgentRows,
+} from './helpers';
 
 function agent(overrides: Partial<AgentRow> = {}): AgentRow {
   return {
@@ -127,5 +132,86 @@ describe('hasAnyUsage', () => {
 
   it('is true once a session had activity in the window', () => {
     expect(hasAnyUsage({ totals: { sessions: 1 } } as never)).toBe(true);
+  });
+});
+
+describe('sortUsageRows with a column that can be undefined', () => {
+  type Row = { name: string; cost: number | undefined };
+  const sortBy = (rows: Row[], direction: 'ascending' | 'descending') =>
+    sortUsageRows(rows, { column: 'cost', direction }, 'name').map(
+      row => row.name,
+    );
+
+  it('keeps the priced rows correctly ordered around an unpriced one', () => {
+    // The regression this exists for: returning 0 for the em dash made the
+    // comparator intransitive, so `Array#sort` was free to misorder the rows
+    // that *do* have values — landing the biggest spender last in a
+    // descending-by-cost table.
+    const rows: Row[] = [
+      { name: 'B', cost: 5 },
+      { name: 'A', cost: undefined },
+      { name: 'C', cost: 10 },
+    ];
+
+    expect(sortBy(rows, 'descending')).toEqual(['C', 'B', 'A']);
+    expect(sortBy(rows, 'ascending')).toEqual(['B', 'C', 'A']);
+  });
+
+  it('sinks the unknowns to the end in both directions', () => {
+    // Not "last when descending, first when ascending": an em dash is absence
+    // of a value, not a small one, so it never leads the table.
+    const rows: Row[] = [
+      { name: 'A', cost: undefined },
+      { name: 'B', cost: 1 },
+      { name: 'C', cost: undefined },
+      { name: 'D', cost: 2 },
+    ];
+
+    expect(sortBy(rows, 'ascending')).toEqual(['B', 'D', 'A', 'C']);
+    expect(sortBy(rows, 'descending')).toEqual(['D', 'B', 'A', 'C']);
+  });
+
+  it('orders unknowns among themselves by label, for a stable render', () => {
+    const rows: Row[] = [
+      { name: 'Z', cost: undefined },
+      { name: 'A', cost: undefined },
+    ];
+
+    expect(sortBy(rows, 'descending')).toEqual(['A', 'Z']);
+  });
+
+  it('is a total order, so sort cannot depend on the incoming order', () => {
+    // Every permutation of the same three rows must sort identically. An
+    // intransitive comparator fails this even when one arrangement happens to
+    // come out right.
+    const rows: Row[] = [
+      { name: 'B', cost: 5 },
+      { name: 'A', cost: undefined },
+      { name: 'C', cost: 10 },
+    ];
+    const permutations: Row[][] = [
+      [rows[0], rows[1], rows[2]],
+      [rows[0], rows[2], rows[1]],
+      [rows[1], rows[0], rows[2]],
+      [rows[1], rows[2], rows[0]],
+      [rows[2], rows[0], rows[1]],
+      [rows[2], rows[1], rows[0]],
+    ];
+
+    for (const permutation of permutations) {
+      expect(sortBy(permutation, 'descending')).toEqual(['C', 'B', 'A']);
+    }
+  });
+
+  it('still sorts an all-number column as before', () => {
+    const rows = [
+      { name: 'A', turns: 3 },
+      { name: 'B', turns: 1 },
+      { name: 'C', turns: 2 },
+    ];
+
+    expect(
+      sortUsageRows(rows, { column: 'turns', direction: 'descending' }, 'name'),
+    ).toEqual([rows[0], rows[2], rows[1]]);
   });
 });

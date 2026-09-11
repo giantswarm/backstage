@@ -16,8 +16,8 @@ export type CostBasis = {
  * The one line behind the session's estimated cost: what it was multiplied by,
  * or why there is nothing to show.
  *
- * Each branch names its tier, because the four differ by up to a factor of two
- * and the figure alone cannot tell them apart. The `none` branches carry the
+ * Each branch names its tier, because they differ by up to a factor of two and
+ * the figure alone cannot tell them apart. The `none` branches carry the
  * reason: an em dash with no explanation reads as a bug, and "the gateway has
  * never priced this model" is both actionable and not guessable.
  *
@@ -39,6 +39,10 @@ export function describeCostBasis(basis: CostBasis): string {
 
     case 'installation':
       return `Estimated: ${installation}'s observed cost per token over the last ${window}, ${applied} — a fleet-wide blend across every model.`;
+
+    case 'loading':
+      // Neither a figure nor a diagnosis: the queries have not landed.
+      return 'Working out the rate from this installation\u2019s gateway metrics\u2026';
 
     case 'none':
     default:

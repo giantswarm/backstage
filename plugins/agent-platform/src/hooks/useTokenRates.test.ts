@@ -164,6 +164,34 @@ describe('useTokenRates', () => {
     expect(result.current.window).toBe('7d');
   });
 
+  it('reports loading, not "none", while the queries are in flight', () => {
+    // The regression this exists for: before the answers land no tier derives
+    // a rate, so the chain fell through to `none` — and the session tooltip
+    // states that as a finding with a cause ("the gateway has never priced
+    // this model"). Asserting a diagnosis nothing has measured yet.
+    isLoading = true;
+    given(SONNET);
+
+    const { result } = renderHook(() =>
+      useTokenRates('gazelle', { model: 'claude-sonnet-4-6' }),
+    );
+
+    expect(result.current.tier).toBe('loading');
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.rates.blended).toBeUndefined();
+  });
+
+  it('resolves the real tier once they land', () => {
+    given(SONNET);
+
+    const { result } = renderHook(() =>
+      useTokenRates('gazelle', { model: 'claude-sonnet-4-6' }),
+    );
+
+    expect(result.current.tier).toBe('model');
+    expect(result.current.isLoading).toBe(false);
+  });
+
   it('passes the Mimir availability through, so callers can say why', () => {
     isAvailable = false;
 

@@ -50,10 +50,26 @@ describe('describeCostBasis', () => {
     expect(text).toContain('token counts are unaffected');
   });
 
+  it('states neither a figure nor a diagnosis while loading', () => {
+    // `none` names a cause the reader may act on; saying it before anything is
+    // measured is specific and wrong.
+    const text = describeCostBasis({ ...base, tier: 'loading' });
+
+    expect(text).not.toContain('No estimate');
+    expect(text).not.toContain('claude-opus-5');
+    expect(text).toMatch(/Working out the rate/);
+  });
+
   it('stays to one sentence per tier', () => {
     // The label's own "Est." prefix carries the not-a-bill caveat, so the
     // tooltip's job is only to name which rate was applied.
-    for (const tier of ['model', 'agent', 'installation', 'none'] as const) {
+    for (const tier of [
+      'model',
+      'agent',
+      'installation',
+      'loading',
+      'none',
+    ] as const) {
       const text = describeCostBasis({ ...base, tier });
       expect(text).not.toContain('Not a billed figure');
       expect(text.length).toBeLessThan(230);

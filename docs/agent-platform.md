@@ -3596,8 +3596,20 @@ caller that still hands it a sparse frame.
 
 Snapping every boundary to a midnight also keeps `start`/`end`/`step` stable
 for a whole day — which they must be, since they are part of
-`useMimirRangeQuery`'s query key and a moving key refetches forever. Today's
-instant query re-keys as the elapsed range grows, which is the point.
+`useMimirRangeQuery`'s query key and **a moving key refetches forever**. That
+is not hypothetical: today's instant query was first scoped to the raw elapsed
+seconds since midnight, which changes every second. The response landing
+re-rendered, the new value re-keyed the query, and both gateway tabs sat on a
+permanent spinner issuing a Mimir round trip per render. `todayPartialRange`
+now snaps down to five minutes — down rather than up, so the range can never
+reach back into yesterday, and five minutes rather than an hour so a partial
+day is not missing its most recent hour.
+
+For the same reason `dailyWindowDayKeys` and `todayDayKey` take the **range**
+rather than reading the clock themselves: the caller memoises them on
+`start`, which is a genuinely stable key, and a hook that read `Date.now()`
+twice could straddle midnight and draw an axis that disagreed with the query
+that filled it.
 
 **The cost metric carries no `gen_ai_token_type`.** Tokens are split four ways
 (`input`, `output`, `input_cache_read`, `input_cache_write`); spend is not

@@ -132,6 +132,10 @@ export function fillMissingDays(
  *
  * Always tie-breaks on the row's label, so equal counts render in a stable
  * order rather than however the backend's ranking happened to leave them.
+ *
+ * A column whose value is missing for some rows sorts those rows to the end
+ * whichever way the column is pointed — see the comment on that branch; it is
+ * a correctness requirement, not a display preference.
  */
 export function sortUsageRows<T extends Record<string, unknown>>(
   rows: T[],
@@ -147,13 +151,28 @@ export function sortUsageRows<T extends Record<string, unknown>>(
       return label(a).localeCompare(label(b)) * factor;
     }
 
-    const left = a[column];
-    const right = b[column];
-    if (typeof left !== 'number' || typeof right !== 'number') {
-      // An unsortable or unknown column: keep the incoming order rather than
-      // inventing one.
-      return 0;
+    const left =
+      typeof a[column] === 'number' ? (a[column] as number) : undefined;
+    const right =
+      typeof b[column] === 'number' ? (b[column] as number) : undefined;
+
+    // Unknowns sink to the end, in **both** directions.
+    //
+    // Returning 0 for them, which this used to do, is not a total order: with
+    // `[$5, —, $10]` the comparator calls the em dash equal to each number
+    // while ranking the two numbers against each other, and `Array#sort` is
+    // then free to misorder the rows that *do* have values — landing the
+    // biggest spender last in a descending-by-cost table. Harmless while every
+    // sortable column was a plain number; the gateway tables are the first
+    // with `number | undefined` columns, which `reduceByAgent` genuinely
+    // produces whenever nothing could be priced.
+    if (left === undefined || right === undefined) {
+      if (left === right) {
+        return label(a).localeCompare(label(b));
+      }
+      return left === undefined ? 1 : -1;
     }
+
     return left === right
       ? label(a).localeCompare(label(b))
       : (left - right) * factor;

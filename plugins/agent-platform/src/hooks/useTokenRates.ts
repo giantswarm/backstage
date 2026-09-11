@@ -15,6 +15,15 @@ export type TokenRateTier =
   | 'agent'
   /** The installation's blend across every model. */
   | 'installation'
+  /**
+   * The queries have not landed yet, so no tier is known.
+   *
+   * Distinct from `none` on purpose. Both render `—`, but `none` is a
+   * *finding* the UI states a cause for ("the gateway has never priced this
+   * model"), and stating it before anything has been measured is a specific,
+   * actionable, wrong claim.
+   */
+  | 'loading'
   /** No usable rate — render `—`, never a number. */
   | 'none';
 
@@ -63,6 +72,8 @@ const NO_RATES: TokenRates = {};
  *
  * So the chain is:
  *
+ * 0. **`loading`** — the queries are in flight. No tier is known yet, and
+ *    `none` must not stand in for that: it is a finding with a stated cause.
  * 1. **`model`** — the session's model has observed traffic. Use its rate.
  * 2. **`none`** — the model is known and has *no* observed traffic. Stop.
  * 3. **`agent`** — no model known, but this agent has traffic. Its blend is
@@ -93,6 +104,8 @@ export function useTokenRates(
   const name = scope?.name;
   const model = scope?.model;
 
+  const isLoading = cost.isLoading || tokens.isLoading;
+
   return useMemo(() => {
     const costSamples = cost.data?.data?.result;
     const tokenSamples = tokens.data?.data?.result;
@@ -104,6 +117,13 @@ export function useTokenRates(
       );
 
     const resolved = ((): { rates: TokenRates; tier: TokenRateTier } => {
+      // Before the answers arrive every tier derives no rate, so the chain
+      // would otherwise fall through to `none` and the caller would state that
+      // as a finding. Report the wait instead.
+      if (isLoading) {
+        return { rates: NO_RATES, tier: 'loading' };
+      }
+
       if (model) {
         const byModel = rateFor({ model });
         // Known model, no observed price: stop here. See the docblock.
@@ -128,16 +148,15 @@ export function useTokenRates(
     return {
       ...resolved,
       model,
-      isLoading: cost.isLoading || tokens.isLoading,
+      isLoading,
       isAvailable: cost.isAvailable,
       window: RATE_WINDOW,
     };
   }, [
     cost.data,
-    cost.isLoading,
     cost.isAvailable,
     tokens.data,
-    tokens.isLoading,
+    isLoading,
     namespace,
     name,
     model,
