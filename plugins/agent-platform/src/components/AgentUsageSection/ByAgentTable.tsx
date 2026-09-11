@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { makeStyles, Paper, Theme } from '@material-ui/core';
-import { Cell, CellText, Table, Text, useTable } from '@backstage/ui';
+import { Cell, CellText, Skeleton, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import { DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
@@ -38,6 +38,8 @@ export type ByAgentTableProps = {
   rateWindow?: string;
   /** Named in the caveat, so the blend's scope is not left to inference. */
   installation?: string;
+  /** The rate's two Mimir queries are still in flight. */
+  isRateLoading?: boolean;
 };
 
 /**
@@ -62,6 +64,7 @@ export function ByAgentTable({
   rates,
   rateWindow,
   installation,
+  isRateLoading,
 }: ByAgentTableProps) {
   const classes = useStyles();
   const colorFor = useMeasureColor();
@@ -161,8 +164,18 @@ export function ByAgentTable({
         const estimate = estimateCost(row.inputTokens, row.outputTokens, rates);
         return (
           <Cell>
+            {/* A skeleton in place of the figure while the rate is in
+                flight, for the reason `TotalsStrip` documents: an em dash here
+                is a finding, and "not yet" is not one. The bar stays empty
+                either way — `value` is undefined until there is a rate. */}
             <DataBar
-              label={formatUsd(estimate)}
+              label={
+                isRateLoading ? (
+                  <Skeleton width={52} height={16} rounded />
+                ) : (
+                  formatUsd(estimate)
+                )
+              }
               value={estimate}
               max={max.cost}
               color={colorFor('cost')}

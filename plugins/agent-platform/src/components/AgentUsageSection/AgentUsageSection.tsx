@@ -124,7 +124,18 @@ export function AgentUsageSection() {
   // Two queries, and they resolve independently of the session usage above —
   // so an installation without Mimir shows every count it always showed and an
   // em dash where the cost would be, rather than losing the section.
-  const { rates, window: rateWindow } = useTokenRates(installation);
+  //
+  // `isRateLoading` is threaded down so the cost cells can hold a skeleton
+  // while it settles. The counts arrive from kagent well before these two
+  // queries land, so without it the section rendered complete except for an em
+  // dash in the cost column — which reads as "no rate for this" rather than
+  // "not yet", and those are the two states this page works hardest to keep
+  // apart everywhere else.
+  const {
+    rates,
+    window: rateWindow,
+    isLoading: isRateLoading,
+  } = useTokenRates(installation);
 
   // Strictly `false`. `undefined` means the probe has not resolved, or kagent
   // reported no subject at all — which is reachable on a healthy deployment —
@@ -262,7 +273,11 @@ export function AgentUsageSection() {
   } else if (usage) {
     body = (
       <>
-        <TotalsStrip totals={usage.totals} rates={rates} />
+        <TotalsStrip
+          totals={usage.totals}
+          rates={rates}
+          isRateLoading={isRateLoading}
+        />
         <div className={classes.row}>
           <TokensPerDayCard
             title="Input tokens per day"
@@ -282,6 +297,7 @@ export function AgentUsageSection() {
           rates={rates}
           rateWindow={rateWindow}
           installation={installation}
+          isRateLoading={isRateLoading}
           emptyMessage="kagent recorded no agent for these sessions."
         />
         <div className={classes.row}>
