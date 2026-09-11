@@ -5,18 +5,6 @@ import {
 import { AgentRow } from '../AgentsDataProvider';
 import { buildAgentIndex, decodeAgentIdLabel } from '../SessionsDataProvider';
 
-export type ByModelRow = {
-  id: string;
-  /** The model label, or the caller's wording for "we cannot tell". */
-  model: string;
-  /** How many of the reader's agents ran on it in the window. */
-  agents: number;
-  sessions: number;
-  turns: number;
-  inputTokens: number;
-  outputTokens: number;
-};
-
 export type ByAgentRow = {
   id: string;
   /** Display name when the agent's CR matched, else the decoded id. */
@@ -134,34 +122,6 @@ export function fillMissingDays(
   return filled;
 }
 
-/** `2026-09-04` as `4 Sep`, matching muster's daily axis. */
-export function formatDayTick(day: string): string {
-  const at = Date.parse(`${day}T00:00:00Z`);
-  if (Number.isNaN(at)) {
-    return day;
-  }
-  return new Date(at).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-  });
-}
-
-/** `2026-09-04` as `Fri, 4 Sep 2026` for the tooltip heading. */
-export function formatDayTooltip(day: string): string {
-  const at = Date.parse(`${day}T00:00:00Z`);
-  if (Number.isNaN(at)) {
-    return day;
-  }
-  return new Date(at).toLocaleDateString(undefined, {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-}
-
 /**
  * Sort a usage breakdown for the bui table.
  *
@@ -172,6 +132,10 @@ export function formatDayTooltip(day: string): string {
  *
  * Always tie-breaks on the row's label, so equal counts render in a stable
  * order rather than however the backend's ranking happened to leave them.
+ *
+ * A column whose value is missing for some rows sorts those rows to the end
+ * whichever way the column is pointed — see the comment on that branch; it is
+ * a correctness requirement, not a display preference.
  */
 export function sortUsageRows<T extends Record<string, unknown>>(
   rows: T[],
@@ -187,78 +151,30 @@ export function sortUsageRows<T extends Record<string, unknown>>(
       return label(a).localeCompare(label(b)) * factor;
     }
 
-    const left = a[column];
-    const right = b[column];
-    if (typeof left !== 'number' || typeof right !== 'number') {
-      // An unsortable or unknown column: keep the incoming order rather than
-      // inventing one.
-      return 0;
+    const left =
+      typeof a[column] === 'number' ? (a[column] as number) : undefined;
+    const right =
+      typeof b[column] === 'number' ? (b[column] as number) : undefined;
+
+    // Unknowns sink to the end, in **both** directions.
+    //
+    // Returning 0 for them, which this used to do, is not a total order: with
+    // `[$5, —, $10]` the comparator calls the em dash equal to each number
+    // while ranking the two numbers against each other, and `Array#sort` is
+    // then free to misorder the rows that *do* have values — landing the
+    // biggest spender last in a descending-by-cost table. Harmless while every
+    // sortable column was a plain number; the gateway tables are the first
+    // with `number | undefined` columns, which `reduceByAgent` genuinely
+    // produces whenever nothing could be priced.
+    if (left === undefined || right === undefined) {
+      if (left === right) {
+        return label(a).localeCompare(label(b));
+      }
+      return left === undefined ? 1 : -1;
     }
+
     return left === right
       ? label(a).localeCompare(label(b))
       : (left - right) * factor;
   });
-}
-
-/**
- * Roll the per-agent totals up by the model each agent runs on.
- *
- * Purely a frontend join: kagent's usage carries no model, and its session
- * record carries none either — the model is read off the agent's `Agent` CR,
- * which `AgentsDataProvider` has already resolved through its ModelConfig.
- *
- * **This is the agent's model *now*, not the model each session actually ran
- * on.** kagent records no per-session model and does not pin an agent version
- * to a session (see the "agent version is not pinned" note in
- * `docs/agent-platform.md`), so if an agent's ModelConfig changed inside the
- * window, that agent's whole history is attributed to its current model. The
- * table says so rather than implying a historical breakdown.
- *
- * An agent whose CR is not in view — deleted since, or on another installation —
- * has no knowable model and lands under the caller's `unknownLabel`, together
- * with agents that genuinely reference none (BYO agents). Its spend is still
- * part of the totals above, so dropping it would make the table disagree with
- * them.
- */
-export function toByModelRows(
-  byAgent: SessionUsageResponse['byAgent'],
-  installation: string | undefined,
-  agents: AgentRow[],
-  unknownLabel: string,
-): ByModelRow[] {
-  const index = buildAgentIndex(agents);
-  const byModel = new Map<string | null, ByModelRow>();
-
-  for (const entry of byAgent) {
-    const matched =
-      entry.agentId === null || installation === undefined
-        ? undefined
-        : index.get(`${installation}|${entry.agentId}`);
-    const model = matched?.model ?? null;
-
-    const row =
-      byModel.get(model) ??
-      ({
-        id: model ?? 'unknown-model',
-        model: model ?? unknownLabel,
-        agents: 0,
-        sessions: 0,
-        turns: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-      } satisfies ByModelRow);
-
-    row.agents += 1;
-    row.sessions += entry.sessions;
-    row.turns += entry.turns;
-    row.inputTokens += entry.inputTokens;
-    row.outputTokens += entry.outputTokens;
-    byModel.set(model, row);
-  }
-
-  return [...byModel.values()].sort(
-    (a, b) =>
-      b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens) ||
-      a.model.localeCompare(b.model),
-  );
 }

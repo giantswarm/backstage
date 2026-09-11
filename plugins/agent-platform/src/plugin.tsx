@@ -111,8 +111,8 @@ const sessionsSubPage = SubPageBlueprint.make({
 // list/tree filter inputs — so muster can attach its section by node id
 // (`sub-page:agent-platform/usage`, input `sections`) without either plugin
 // depending on the other, exactly as it already attaches its "MCP Servers" tab
-// to `page:agent-platform`. An empty `sections` (muster not registered) renders
-// the personal section alone rather than a hole.
+// to `page:agent-platform`. An empty `sections` (muster not registered) hides
+// the "MCP tools" view's tab rather than leaving a hole.
 const usageSubPage = SubPageBlueprint.makeWithOverrides({
   name: 'usage',
   inputs: {
@@ -125,10 +125,13 @@ const usageSubPage = SubPageBlueprint.makeWithOverrides({
       routeRef: usageRouteRef,
       loader: async () => {
         const { UsageRouter } = await import('./components/UsageRouter');
+        // Passed as the array rather than wrapped in a fragment: the router
+        // has to know whether anything was contributed at all, so it can
+        // leave the "MCP tools" tab out of the strip when nothing was.
         const sections = inputs.sections.map(section =>
           section.get(coreExtensionData.reactElement),
         );
-        return <UsageRouter sections={<>{sections}</>} />;
+        return <UsageRouter sections={sections} />;
       },
     });
   },

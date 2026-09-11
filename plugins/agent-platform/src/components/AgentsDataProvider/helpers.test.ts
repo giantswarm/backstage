@@ -265,6 +265,10 @@ describe('toAgentRow', () => {
       technicalName: 'triager',
       description: 'Triages incidents',
       model: 'Claude Sonnet 4.6',
+      // The display label and the model string are deliberately different
+      // fields: only `modelName` matches what the gateway calls the model
+      // (`gen_ai_response_model`), so only it can price a session.
+      modelName: 'claude-sonnet-4-6',
       skillCount: 3,
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
@@ -682,5 +686,38 @@ describe('toAgentRow with a serving resolver', () => {
       ]),
     ).toBeUndefined();
     expect(resolveModelConfig(makeAgent({}), modelConfigs)).toBeUndefined();
+  });
+});
+
+describe('toAgentRow model fields', () => {
+  it('keeps the display label and the model string apart', () => {
+    // `model` is for a reader and falls back to the ModelConfig's own resource
+    // name; `modelName` is `spec.model` verbatim, because it has to match the
+    // gateway's `gen_ai_response_model` to price anything.
+    const row = toAgentRow(
+      makeAgent({ name: 'chef', modelConfig: 'anthropic-opus-5' }),
+      [
+        makeModelConfig({
+          name: 'anthropic-opus-5',
+          namespace: 'team-a',
+          model: 'claude-opus-5',
+        }),
+      ],
+    );
+
+    expect(row.model).toBe('anthropic-opus-5');
+    expect(row.modelName).toBe('claude-opus-5');
+  });
+
+  it('has no model string when the ModelConfig is not in view', () => {
+    // A rate must not be guessed from a name we cannot resolve, so this stays
+    // undefined and the session strip shows an em dash.
+    const row = toAgentRow(
+      makeAgent({ name: 'chef', modelConfig: 'somewhere-else' }),
+      [],
+    );
+
+    expect(row.model).toBe('somewhere-else');
+    expect(row.modelName).toBeUndefined();
   });
 });
