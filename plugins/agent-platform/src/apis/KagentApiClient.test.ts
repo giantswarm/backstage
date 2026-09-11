@@ -520,6 +520,7 @@ describe('KagentApiClient', () => {
         'gazelle',
         { namespace: 'kagent', name: 'sre-agent' },
         'Why is the ingress failing?',
+        'submission-1',
       );
 
       expect(result).toEqual({ sessionId: 'new-session-id' });
@@ -537,6 +538,9 @@ describe('KagentApiClient', () => {
         agentNamespace: 'kagent',
         agentName: 'sre-agent',
         name: 'Why is the ingress failing?',
+        // The idempotency key travels with the create, so the backend can hand
+        // it to the controller and a retried submission yields one instance.
+        requestId: 'submission-1',
       });
     });
 
@@ -554,6 +558,7 @@ describe('KagentApiClient', () => {
           'gazelle',
           { namespace: 'kagent', name: 'sre-agent' },
           ' ',
+          'submission-1',
         ),
       ).rejects.toMatchObject({
         name: 'Error',
@@ -571,6 +576,7 @@ describe('KagentApiClient', () => {
           'gazelle',
           { namespace: 'kagent', name: 'sre-agent' },
           'Title',
+          'submission-1',
         ),
       ).rejects.toMatchObject({
         name: 'UpstreamError',
@@ -588,6 +594,7 @@ describe('KagentApiClient', () => {
           'gazelle',
           { namespace: 'kagent', name: 'gone' },
           'Title',
+          'submission-1',
         ),
       ).rejects.toMatchObject({
         name: 'UpstreamError',
@@ -609,6 +616,7 @@ describe('KagentApiClient', () => {
           'gazelle',
           { namespace: 'kagent', name: 'sre-agent' },
           'Title',
+          'submission-1',
         ),
       ).rejects.toMatchObject({ name: 'UpstreamError' });
     });

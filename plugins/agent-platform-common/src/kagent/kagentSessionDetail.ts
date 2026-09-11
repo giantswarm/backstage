@@ -1,4 +1,15 @@
 import {
+  a2aV1TaskListWireSchema,
+  isA2aV1TaskList,
+  toWireTask,
+} from './kagentA2aV1';
+import {
+  agentInstanceEnvelopeWireSchema,
+  isAgentInstanceEnvelope,
+  normalizeAgentInstance,
+  parseAgentInstanceWire,
+} from './kagentAgentInstance';
+import {
   a2aTaskWireSchema,
   A2aTaskWire,
   kagentSessionDetailSchema,
@@ -38,7 +49,8 @@ export type NormalizedSessionDetail = {
 };
 
 /**
- * Parse a raw `GET /api/sessions/:id` body.
+ * Parse a raw session detail: a `GetAgentInstanceResponse` (`{agentInstance}`,
+ * the API v2 line) or a 0.10 `GET /api/sessions/:id` body.
  *
  * Never throws. `detail` is absent only when the body carried no usable session
  * at all, which callers treat as "not found" rather than as an error — the
@@ -48,6 +60,24 @@ export function normalizeSessionDetail(
   raw: unknown,
   installation: string,
 ): NormalizedSessionDetail {
+  if (isAgentInstanceEnvelope(raw)) {
+    const envelope = agentInstanceEnvelopeWireSchema.safeParse(raw);
+    const wire = envelope.success
+      ? parseAgentInstanceWire(envelope.data.agentInstance)
+      : undefined;
+    if (!wire?.id) {
+      return {
+        drift: {
+          kind: 'missing-payload',
+          message: 'the response carried no readable AgentInstance',
+        },
+      };
+    }
+    // Instances carry no read-only flag: sharing an instance is a separate
+    // grant the portal does not use, so its own sessions are never read-only.
+    return { detail: { session: normalizeAgentInstance(wire, installation) } };
+  }
+
   const parsed = kagentSessionDetailSchema.safeParse(raw);
   if (!parsed.success) {
     return {
@@ -95,16 +125,23 @@ export type NormalizedTaskList = {
 };
 
 /**
- * Parse a raw `GET /api/sessions/:id/tasks` body.
+ * Parse a raw task list: an A2A v1 `ListTasksResponse` (`{tasks: […]}`, the
+ * API v2 line) or a 0.10 `GET /api/sessions/:id/tasks` envelope.
  *
  * Tasks are kept in wire form rather than mapped to a domain type: the only
  * consumer is `buildTimeline`, which needs the full nested structure, so an
- * intermediate shape would be a second thing to keep in sync for no gain.
+ * intermediate shape would be a second thing to keep in sync for no gain. A v1
+ * task is translated into that wire form first (`toWireTask`), so there is one
+ * form.
  *
- * Order is preserved — kagent returns tasks `ORDER BY created_at ASC`, and the
+ * Order is preserved — both controllers return tasks oldest first, and the
  * timeline and the session's state both depend on that being chronological.
  */
 export function normalizeTaskList(raw: unknown): NormalizedTaskList {
+  if (isA2aV1TaskList(raw)) {
+    return normalizeA2aV1TaskList(raw);
+  }
+
   const parsed = kagentTaskListSchema.safeParse(raw);
   if (!parsed.success) {
     return {
@@ -166,5 +203,45 @@ export function normalizeTaskList(raw: unknown): NormalizedTaskList {
     };
   }
 
+  return { tasks };
+}
+
+/**
+ * The API v2 half of {@link normalizeTaskList}: each task translated then
+ * validated one at a time, so one malformed turn costs itself rather than the
+ * page. An absent `tasks` is an instance that has not run yet, never drift.
+ */
+function normalizeA2aV1TaskList(raw: unknown): NormalizedTaskList {
+  const parsed = a2aV1TaskListWireSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      tasks: [],
+      drift: { kind: 'unparseable-body', message: 'unparseable response body' },
+    };
+  }
+  const tasks: A2aTaskWire[] = [];
+  let skippedRows = 0;
+  for (const row of parsed.data.tasks ?? []) {
+    const translated = toWireTask(row);
+    const task = translated
+      ? a2aTaskWireSchema.safeParse(translated)
+      : undefined;
+    if (!task?.success) {
+      skippedRows += 1;
+      continue;
+    }
+    tasks.push(task.data);
+  }
+  if (skippedRows > 0) {
+    return {
+      tasks,
+      drift: {
+        kind: 'skipped-rows',
+        message: `skipped ${skippedRows} unreadable task ${
+          skippedRows === 1 ? 'row' : 'rows'
+        }`,
+      },
+    };
+  }
   return { tasks };
 }

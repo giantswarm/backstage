@@ -1,211 +1,165 @@
 # agent-platform-backend
 
-Backend for the `agent-platform` plugin. Today it is a thin REST proxy over the
-[kagent](https://github.com/kagent-dev/kagent) controller API, per installation,
-consumed by the Agent Platform **Sessions** list.
+Backend for the `agent-platform` plugin: the browser's door to the
+[kagent](https://github.com/kagent-dev/kagent) API v2 controller, per
+installation, and a pass-through to model-manager. It speaks **native gRPC** to
+the controller and hands the frontend **JSON and SSE**.
 
-## Why a proxy is needed
+## Why a backend is needed
 
-kagent sessions live in kagent's Postgres and are served over the controller's
-HTTP API — unlike agents and model configs, they are not Kubernetes resources,
-so the Kubernetes proxy the rest of the plugin uses cannot reach them.
+On the kagent API v2 line a chat session is an **`AgentInstance`** — one
+conversation of one person with one `AgentTemplate` on one `Harness` — held in
+the controller's database and served over gRPC (`kagent.api.v1alpha1.*`), with
+the turns on the A2A v1 service (`lf.a2a.v1.A2AService`). None of that is a
+Kubernetes resource, so the Kubernetes proxy the rest of the plugin uses cannot
+reach it, and:
 
-Two things then force a backend hop:
+- **gRPC wants a server.** HTTP/2 gRPC is not something a browser tab speaks,
+  and `kagent.<baseDomain>` is cross-origin anyway.
+- **Identity is the bearer.** agentgateway validates the person's
+  per-installation Dex ID token on the controller route and derives the caller
+  from its `email` claim, dropping any inbound identity header. On the inbound
+  leg to Backstage the `Authorization` header already carries the Backstage
+  identity, so the token travels in a separate `backstage-kagent-authorization`
+  header and becomes the `authorization` metadata of every gRPC call here.
+  **Nothing else identifying is ever sent** — a test asserts it.
 
-- **CORS/CSP.** The browser cannot call `kagent.<baseDomain>` directly.
-- **Header collision.** kagent runs with `controller.auth.mode: trusted-proxy`
-  and derives the user from the `sub` claim of an `Authorization: Bearer` JWT.
-  On the inbound leg that header already carries the Backstage identity, so the
-  user's Dex ID token is forwarded in a separate header and promoted to
-  `Authorization` here. Same approach as `muster-backend`.
+## What it speaks
+
+Generated Connect client (`src/kagent/gen`, protoc-gen-es from the line's protos,
+pinned by commit — see the README there) over connect-node's HTTP/2 gRPC
+transport, one transport per installation. The RPCs in use:
+
+| Service                | RPCs                                                                                                                                                  |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AgentInstanceService` | `ListAgentInstances` (caller only, never `all_creators`), `CreateAgentInstance`, `GetAgentInstance`, `UpdateAgentInstanceName`, `DeleteAgentInstance` |
+| `AgentTemplateService` | `GetAgentTemplate` — the Harness a create runs on, from the template's `status.harnesses[]`                                                           |
+| `SystemService`        | `GetCurrentUser` (the identity probe), `GetVersion` (the reachability probe)                                                                          |
+| `A2AService`           | `SendMessage`, `SendStreamingMessage`, `ListTasks`, `GetTask`, `CancelTask`                                                                           |
+
+Every A2A call carries exactly one `x-kagent-agent-instance-id` metadata entry —
+the gateway refuses a missing or doubled one — and requests the human-in-the-loop
+extension (`a2a-extensions: https://kagent.dev/extensions/hitl/v1`), so a
+confirmation that arrives on a turn is a typed request the panel can render.
 
 ## Endpoints
 
 All routes are under `/api/agent-platform` and require `?installation=<name>`.
 
-| Route                            | Token    | Purpose                                                    |
-| -------------------------------- | -------- | ---------------------------------------------------------- |
-| `GET /health`                    | —        | `{ status, configured }` — how many installations resolved |
-| `GET /kagent/installations`      | —        | Installations kagent can be proxied for, with reachability |
-| `GET /kagent/sessions`           | required | The user's sessions, kagent's JSON verbatim                |
-| `GET /kagent/sessions/:id`       | required | One session object (asks kagent for `limit=1`, see below)  |
-| `GET /kagent/sessions/:id/tasks` | required | The session's A2A tasks — conversation, state, token usage |
-| `GET /kagent/me`                 | optional | Identity probe (see Diagnosing below)                      |
+| Route                                            | Token    | RPC                                       | Purpose                                                            |
+| ------------------------------------------------ | -------- | ----------------------------------------- | ------------------------------------------------------------------ |
+| `GET /health`                                    | —        | —                                         | `{ status, configured }` — how many installations resolved         |
+| `GET /kagent/installations`                      | —        | `GetVersion` (unauthenticated)            | Installations kagent is configured for, with reachability          |
+| `GET /kagent/session-states`                     | required | `ListAgentInstances`, `ListTasks`         | Derived state per session for the switcher rail                    |
+| `GET /kagent/session-usage`                      | required | `ListAgentInstances`, `ListTasks`         | The caller's token/turn/tool usage for the Usage tab               |
+| `GET /kagent/sessions`                           | required | `ListAgentInstances`                      | The caller's instances, proto3 JSON (`{agentInstances: […]}`)      |
+| `POST /kagent/sessions`                          | required | `GetAgentTemplate`, `CreateAgentInstance` | Start a session: `{agentNamespace, agentName, name, requestId?}`   |
+| `GET /kagent/sessions/:id`                       | required | `GetAgentInstance`                        | One instance (`{agentInstance}`)                                   |
+| `PUT /kagent/sessions/:id`                       | required | `UpdateAgentInstanceName`                 | Rename (`{name}`, ≤ 200 characters)                                |
+| `DELETE /kagent/sessions/:id`                    | required | `DeleteAgentInstance`                     | Delete                                                             |
+| `GET /kagent/sessions/:id/tasks`                 | required | `ListTasks` (all pages)                   | The conversation, its state and token usage (`{tasks: […]}`)       |
+| `POST /kagent/sessions/:id/messages`             | required | `SendMessage`                             | One turn, waited out up to `turnTimeoutMs`; 202 when still running |
+| `POST /kagent/sessions/:id/messages/stream`      | required | `SendStreamingMessage`                    | One turn, relayed as SSE frames of `StreamResponse` JSON           |
+| `POST /kagent/sessions/:id/answer`               | required | `GetTask`, `SendMessage`                  | Answer the confirmation a task is suspended on, resuming it        |
+| `POST /kagent/sessions/:id/tasks/:taskId/cancel` | required | `CancelTask`                              | Stop the turn server-side                                          |
+| `GET /kagent/me`                                 | optional | `GetCurrentUser`                          | Identity probe: the claims the controller resolved                 |
 
 The user token is read from the `backstage-kagent-authorization` header, which
 must match `KAGENT_AUTH_HEADER` in `plugins/agent-platform`.
 
+### Responses are the controller's, as JSON
+
+The backend renders each response with protobuf-es `toJson` and passes it on:
+proto3 JSON, camelCase, enums as their names (`AGENT_INSTANCE_STATE_READY`,
+`TASK_STATE_WORKING`), timestamps as RFC 3339. Nothing is reshaped here; the
+schema tolerance for these shapes lives in `agent-platform-common`, which also
+still reads the 0.10 envelope. The split is **backend = transport, frontend =
+schema**, so a wire change on the line is a common-package change and never a
+backend release.
+
+### Creating a session is idempotent
+
+`POST /kagent/sessions` takes the browser's `requestId` (1–128 characters) and
+hands it to the controller as `request_id`, which keys creates on
+`(creator, request_id)`: a repeat with the same template and Harness answers the
+existing instance, a repeat with other parameters `AlreadyExists` (409). A body
+without one gets a fresh key, so the field is an addition rather than a new
+requirement. The Harness is the one whose `Ready` condition the template's
+`status.harnesses[]` reports `True` (falling back to any admitting one); a
+template nothing admits is a 409 naming the agent.
+
+### Answering a confirmation
+
+Human-in-the-loop is the negotiated extension above. The paused task's
+`status.message` carries a typed `tool_approval_request` or `ask_user_request`
+in its metadata; the reply is a `SendMessage` naming the task with the typed
+response in the same place. The controller validates that reply strictly (every
+requested tool decided exactly once, every question answered, the correlation
+id echoed), so the payload is built from the request the controller recorded
+(`GetTask`) and never from anything the browser claims — the browser only says
+approve/reject and the answers in the order asked. See `src/kagent/hitl.ts`.
+
+### Stop
+
+`CancelTask` on the instance ends the run at the harness — or, when the runtime
+cannot, the gateway quiesces the actor and records the task canceled itself —
+and answers the task as the controller left it. Cancelling a finished turn is
+not an error. Cutting the SSE relay, by contrast, stops nothing: the turn
+survives it and the poll shows it finish.
+
+### Reachability
+
 `GET /kagent/installations` answers `{ installations: [{ name, reachable,
 reason? }] }`. `reachable` is `true`, `false` or `'unknown'`: whether the
-installation's kagent endpoint can be reached _from this portal_, learned from
-an **unauthenticated** `GET <apiBaseUrl>/sessions` per installation — no
-token, no user data, nothing performed; any HTTP answer (a 401 or 403 from
-kagent's oauth2-proxy included) proves the route, while a DNS failure, a
-refused or reset connection, a TLS failure or no answer within 3 s means
-`false`, with `reason` naming the failure class (codes only, never the host).
-Answers are cached five minutes and refreshed in the background; the route
-never waits for a probe, so it says `'unknown'` until the first one settles.
-The frontend skips the per-user calls for an installation reported `false` and
-labels it "not reachable from this portal", which is what stops the 10 s
-timeout and the 500 per unreachable installation per page view. The probes
-are shared code in `plugins/gs-node` (`probeEndpoint`, `ReachabilityCache`)
-and log one INFO line per endpoint per state change.
-
-Every kagent-side path stays under `/api`, because that is the only prefix either
-door proxies to the controller.
-
-Session ids are **opaque**: real responses mix 64-character hex strings and
-UUIDs, so nothing validates a format — only that a path segment is present. They
-are URL-encoded before being interpolated into the kagent URL.
-
-### Why the session detail is two routes
-
-Two routes, two different jobs — **not** two views of the same data:
-
-| Route                  | What it is for                                                  |
-| ---------------------- | --------------------------------------------------------------- |
-| `…/sessions/:id`       | the session object: title, agent, timestamps, and does it exist |
-| `…/sessions/:id/tasks` | the conversation, its state (`status.state`) and token usage    |
-
-The conversation comes from `…/tasks`, which is what kagent's own UI renders from
-(`ui/src/components/chat/ChatInterface.tsx` → `extractMessagesFromTasks`). Its
-`history` is already structured as A2A messages and carries the per-message
-`{adk,kagent}_usage_metadata` the token totals are built from.
-
-**The `events` array on `…/sessions/:id` is ignored entirely,** and the request asks for
-`limit=1` to avoid transferring it. kagent's Go type calls each event's `data` a
-`JSON-serialized protocol.Message`, which suggested events could supply the per-message
-timestamps A2A messages lack. A real session on an internal installation disproved it:
-the decoded value is an **ADK event** (`author`, `content`, `invocation_id`, `partial`,
-`timestamp`, `usage_metadata`, …) with no `messageId` anywhere, so there is nothing to
-correlate with task history — 36 events, zero usable ids. Its `invocation_id` does
-correlate, but only per turn, which the task's own timestamp already provides.
-
-That matters for payload size: on that session the events were **591 KB against
-261 bytes** of session metadata. Timeline items therefore share one timestamp per
-turn, which the UI should present per turn rather than implying per-message
-precision.
-
-The limit must be **`1`, not `0`** — kagent's DB layer gates the LIMIT clause on
-`opts.Limit > 0`, so `limit=0` reads as _unlimited_ and would quietly restore the
-full payload. `1` is the smallest value that limits anything.
-
-If a finer timeline is ever wanted, events are where it would come from — but that
-means parsing ADK `Content`, whose function calls are shaped differently from A2A
-data parts, not reusing the task parsers.
-
-Neither route sends an `A2A-Version` header. kagent's `NegotiateA2AWireVersion`
-treats a missing header as the legacy v0 wire on both v0.9.9 and v0.10 — the
-shape its own UI consumes, and therefore the best-tested one. Opting into the v1
-wire would be a deliberate future migration.
-
-A session belonging to another user answers **404**, exactly as a deleted one
-does: kagent scopes the lookup by the token's user id. Both are expected outcomes
-for a stale deep link, which is why neither becomes a 5xx (see below).
-
-### Why there is no version endpoint
-
-kagent serves `/version` at its **server root**, not under `/api`, and neither
-door routes the root to the controller:
-
-- The derived door's nginx sidecar (`helm/kagent/files/nginx.conf`) proxies only
-  `location /api/` to `kagent-controller:8083`. `location /` goes to the kagent
-  UI, which answers with HTML — so a probe would surface as a sign-in page on a
-  perfectly healthy installation.
-- The agentgateway override matches on the `/kagent` path prefix, so a
-  root-relative `/version` never matches its HTTPRoute.
-
-Nothing under `/api` exposes the controller version either (the `Version` fields
-in `/api/substrate/status` are per-actor, not the controller's). Version
-_tolerance_ does not depend on this — it lives in the frontend's permissive
-parsing. If a future feature needs version gating, probe by behaviour (call a
-version-specific endpoint and treat a 404 as "absent") rather than by version
-string, or have the platform expose `/version` through the ingress.
-
-### Deliberately a verbatim proxy
-
-Responses are passed through untouched — the `{error, data, message}` envelope
-is not unwrapped, unknown fields are not stripped, and nothing is filtered.
-Schema tolerance lives in the frontend client, so a kagent schema change never
-needs a backend release. The split is **backend = transport, frontend = schema**.
-
-The one transport detail worth knowing: `redirect: 'manual'` is set so an
-oauth2-proxy redirect into Dex surfaces as a 401 instead of being followed into
-a 200 HTML sign-in page.
+installation's controller origin can be reached _from this portal_, learned from
+one **unauthenticated** `SystemService/GetVersion` per origin
+(`src/kagent/reachability.ts`) — no token, no user data, nothing performed. Behind
+the JWT policy that answers `Unauthenticated`, which proves the route exactly as
+a 401 did; any answer at all is the proof. A DNS failure, a refused or reset
+connection, a TLS failure or no answer within 3 s means `false`, with `reason`
+naming the failure class (codes only, never the host). Answers are cached five
+minutes in gs-node's `ReachabilityCache` and refreshed in the background; the
+route never waits for a probe.
 
 ### Error mapping: "absent" vs "unwell"
 
 The distinction matters because the frontend **silences** one and **surfaces** the
 other, and getting it wrong makes a broken kagent look like an empty account.
 
-| Upstream outcome                               | Error                 | HTTP | Frontend treats as             |
-| ---------------------------------------------- | --------------------- | ---- | ------------------------------ |
-| DNS failure, TLS error, connection refused     | `NotFoundError`       | 404  | not deployed here — **silent** |
-| kagent's own 404 (or unknown-installation 400) | `NotFoundError`       | 404  | not deployed here — **silent** |
-| 3xx, 401, or a 2xx non-JSON body               | `AuthenticationError` | 401  | read failure — reported        |
-| 403                                            | `NotAllowedError`     | 403  | read failure — reported        |
-| 5xx / 429, a timeout, or an unreadable body    | `UpstreamError`       | 500  | read failure — reported        |
+| Connect outcome                                                  | Error                 | HTTP | Frontend treats as             |
+| ---------------------------------------------------------------- | --------------------- | ---- | ------------------------------ |
+| socket-level cause: DNS, refused, reset, TLS                     | `NotFoundError`       | 404  | not deployed here — **silent** |
+| `NotFound` (gone, or somebody else's); `Unimplemented`           | `NotFoundError`       | 404  | not deployed here — **silent** |
+| `Unauthenticated`                                                | `AuthenticationError` | 401  | read failure — reported        |
+| `PermissionDenied`                                               | `NotAllowedError`     | 403  | read failure — reported        |
+| `InvalidArgument`                                                | `InputError`          | 400  | rejected request — reported    |
+| `AlreadyExists`, `FailedPrecondition`, `Aborted`, an active task | `ConflictError`       | 409  | conflict — reported            |
+| `DeadlineExceeded` on a send                                     | 202 `pending`         | 202  | still running — poll           |
+| `Unavailable` without a socket cause, `Internal`, `Unknown`      | `UpstreamError`       | 500  | read failure — reported        |
 
 Plus `ServiceUnavailableError` (503) when _no_ installation is configured at all —
-a real misconfiguration, unlike the per-installation cases above.
-
-Only the first two mean _nothing is there_. A timeout, a 500, or a truncated body
-all mean kagent answered and failed, so they must not share an error with
-"unreachable" — otherwise a degraded installation's sessions vanish from the
-fleet-merged list with no alert and nothing logged.
-
-#### Three things arrive as a 404
-
-The status is the same for all three; the **message** is what tells them apart,
-and the session routes need that because two of the three are routine there:
-
-| Actually happened                  | How we know                               | Message says                       |
-| ---------------------------------- | ----------------------------------------- | ---------------------------------- |
-| Nothing is listening at that host  | `fetch` rejected (DNS/TLS/refused)        | kagent is not available here       |
-| kagent answered "no such resource" | 404 with `Content-Type: application/json` | that session does not exist        |
-| The endpoint does not exist        | 404 with a non-JSON body                  | this kagent predates that endpoint |
-
-The content-type check works because kagent's error middleware always answers
-JSON (`go/core/internal/httpserver/middleware_error.go`), while an unrouted path
-falls through to net/http's `http.NotFound` — kagent registers no custom
-`NotFoundHandler` — which answers `text/plain`.
-
-Without the second and third being distinguished, an installation running a
-kagent that predates an endpoint would tell every user "session not found" for
-every session, on every page load, and with no version probe there would be
-nothing else to go on.
-
-kagent's own 404 message is deliberately **not** forwarded: its middleware appends
-the underlying error, so a session 404 reads `Session not found: no rows in result
-set`. Database internals do not belong in front of a user.
+a real misconfiguration, unlike the per-installation cases above. A send whose
+transport failed is **verified** against the instance's tasks before it is
+reported: if the message landed, the turn is running and the answer is a 202.
 
 ### Never return a 5xx for an expected outcome
 
-These status codes are not only about frontend classification — they decide what
-reaches Sentry. `MiddlewareFactory.error()` logs at `error` for any status `>= 500`,
-and the root logger forwards `warn`/`error` to Sentry
-(`packages/backend-common/src/rootLogger.ts`).
+These status codes decide what reaches Sentry: `MiddlewareFactory.error()` logs at
+`error` for any status `>= 500`, and the root logger forwards `warn`/`error` to
+Sentry. On a fleet where kagent runs on two of fifteen installations, the Sessions
+tab queries every reachable one and thirteen answer "no kagent here" — as a 5xx
+that would be a Sentry event per installation per page view per user. Hence 404
+for "absent", and 409/400/202 for the expected refusals. `UpstreamError` is
+deliberately a 500, because a deployed-but-degraded kagent is rare and genuinely
+worth an alert.
 
-On a fleet where kagent runs on two of fifteen installations, the Sessions tab
-queries every reachable one and thirteen answer "no kagent here" — twice over,
-counting the identity probe. As a 503 that would have raised ~26 Sentry events per
-page view per user, fanned out into a separate issue per installation name. Hence
-404: below the logging threshold, and semantically right.
+## Configuration
 
-Logging the cause at `debug` in the client does **not** avoid this — the throw is
-what gets logged, by the middleware, after the client is done. The only fix is not
-to raise a 5xx for something expected.
-
-The inverse holds too: `UpstreamError` is deliberately a 500, because a
-deployed-but-degraded kagent is rare and genuinely worth an alert.
-
-## URL resolution
-
-The base URL is **derived**, not configured per installation:
-`https://kagent.<baseDomain>/api`, where `baseDomain` comes from
-`gs.installations`. That matches the `agent-platform-connectivity` chart's
-`kagent.uiRoute.hostname` (`kagent.<codename>.<base>`), which is fronted by
-oauth2-proxy and whose nginx sidecar proxies `/api/` to `kagent-controller:8083`.
+The origin is **derived**, not configured per installation:
+`https://kagent.<baseDomain>`, where `baseDomain` comes from `gs.installations`.
+That is the hostname on which the `agent-platform-connectivity` chart's
+`GRPCRoute` serves the controller's services through agentgateway. No path: gRPC
+is matched by service, not by prefix.
 
 `agentPlatform.kagent.installations` overrides this. When present it also acts
 as the **allowlist**, which is worth setting since kagent is only deployed on
@@ -215,38 +169,45 @@ some installations:
 agentPlatform:
   kagent:
     timeoutMs: 10000
+    turnTimeoutMs: 30000
     installations:
-      lab: {} # enabled, use the derived URL
-      golem:
-        # Point at a different ingress, e.g. the agentgateway door.
-        apiBaseUrl: https://agentgateway.golem.example.io/kagent/api
+      lab: {} # enabled, use the derived origin
+      dev:
+        # An in-cluster controller for local development: plaintext h2c, no
+        # gateway and therefore no boundary — never a fleet shape.
+        apiBaseUrl: http://kagent-controller.kagent.svc.cluster.local:8083
 ```
 
-Installations that resolve to no URL are logged once at init and skipped.
+Installations that resolve to no URL are logged once at init and skipped. The
+`sessionStates` and `sessionUsage` blocks bound the two derived fan-outs; see
+`config.d.ts`.
 
 ### Visibility
 
 All `agentPlatform.kagent` keys keep the default **backend** visibility, so none
 of them reach the unauthenticated frontend config. `apiBaseUrl` embeds
 `baseDomain`, so exposing it would leak the installation topology to anyone
-loading the page — the same reason `gs.installations` is backend-only. Verify
-with:
-
-```bash
-yarn backstage-cli config:print --frontend --lax | grep -A5 agentPlatform
-```
-
-Only `skills.repositories` should appear. The frontend gets installation names
-from `GET /kagent/installations` after sign-in instead.
+loading the page — the same reason `gs.installations` is backend-only. The
+frontend gets installation names from `GET /kagent/installations` after sign-in
+instead.
 
 ## Diagnosing an empty or shared session list
 
-kagent lists sessions with `WHERE user_id = <sub>`, so two failure modes look
-like success. `GET /kagent/me` distinguishes them:
+The controller lists instances for the caller the gateway identified, so two
+failure modes look like success. `GET /kagent/me` distinguishes them:
 
-- **Empty list** — Dex issued a different `sub` for the Backstage client than
-  for the client the user's existing sessions were created under.
-- **Shared list** — the controller is running in `unsecure` mode, where the
-  forwarded token is ignored and identity falls back to a default user. The
-  frontend surfaces this as "not user-scoped" rather than implying the rows are
-  the signed-in user's.
+- **Empty list** — the route derived a different identity than the one the
+  person's instances were created under.
+- **Shared list** — the controller was reached without agentgateway in front of
+  it and attributes every caller to its built-in default user
+  (`admin@kagent.dev`). The frontend surfaces this as "not user-scoped" rather
+  than implying the rows are the signed-in user's.
+
+## Tests
+
+`KagentClient.test.ts` runs the client against a **fake controller**
+(`src/kagent/testing/fakeController.ts`) implementing the RPCs above in-process,
+over Connect's in-memory router transport; `KagentTransport.test.ts` puts the
+same fake behind a real HTTP/2 (h2c) server and drives it over the production
+gRPC transport, asserting the raw headers that cross the wire. `router.test.ts`
+pins the browser contract.

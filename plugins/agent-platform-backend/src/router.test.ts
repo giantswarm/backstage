@@ -7,7 +7,11 @@ import {
   EndpointProbeResult,
   ReachabilityCache,
 } from '@giantswarm/backstage-plugin-gs-node';
-import { KAGENT_AUTH_HEADER, KagentClient } from './KagentClient';
+import {
+  KAGENT_AUTH_HEADER,
+  KagentClient,
+  SESSION_NAME_MAX_LENGTH,
+} from './KagentClient';
 import { createRouter, kagentProbeUrl, RouterOptions } from './router';
 
 /**
@@ -42,6 +46,7 @@ describe('createRouter', () => {
   const streamMessage = jest.fn();
   const createSession = jest.fn();
   const answerConfirmation = jest.fn();
+  const cancelTask = jest.fn();
 
   const mockClient = {
     listSessions,
@@ -54,6 +59,7 @@ describe('createRouter', () => {
     streamMessage,
     createSession,
     answerConfirmation,
+    cancelTask,
   } as unknown as KagentClient;
 
   // Mirror the production setup: the backend's root HTTP router applies
@@ -91,6 +97,7 @@ describe('createRouter', () => {
     streamMessage.mockReset();
     createSession.mockReset();
     answerConfirmation.mockReset();
+    cancelTask.mockReset();
     app = await buildApp();
   });
 
@@ -142,7 +149,7 @@ describe('createRouter', () => {
       return { cache: new ReachabilityCache({ probe }), probe, pending };
     }
 
-    it('probes the sessions route of every installation once at startup, without a token', async () => {
+    it('probes the gRPC origin of every installation once at startup, without a token', async () => {
       const { probe } = controlledCache();
 
       await buildApp(twoInstallations, {
@@ -150,12 +157,8 @@ describe('createRouter', () => {
       });
 
       expect(probe).toHaveBeenCalledTimes(2);
-      expect(probe).toHaveBeenCalledWith(
-        'https://kagent.gazelle.example.io/api/sessions',
-      );
-      expect(probe).toHaveBeenCalledWith(
-        'https://kagent.golem.example.io/api/sessions',
-      );
+      expect(probe).toHaveBeenCalledWith('https://kagent.gazelle.example.io');
+      expect(probe).toHaveBeenCalledWith('https://kagent.golem.example.io');
       // The probe is handed a URL and nothing else: no header, no identity.
       for (const call of probe.mock.calls) {
         expect(call).toHaveLength(1);
@@ -183,11 +186,11 @@ describe('createRouter', () => {
       const { cache, pending } = controlledCache();
       const probing = await buildApp(twoInstallations, { reachability: cache });
 
-      pending.get('https://kagent.gazelle.example.io/api/sessions')!({
+      pending.get('https://kagent.gazelle.example.io')!({
         reachable: true,
         checkedAt: 1,
       });
-      pending.get('https://kagent.golem.example.io/api/sessions')!({
+      pending.get('https://kagent.golem.example.io')!({
         reachable: false,
         reason: 'DNS lookup failed (ENOTFOUND)',
         checkedAt: 1,
@@ -209,21 +212,21 @@ describe('createRouter', () => {
       expect(JSON.stringify(response.body)).not.toContain('example.io');
     });
 
-    it('derives the probe URL from the (possibly overridden) apiBaseUrl', () => {
+    it('probes the (possibly overridden) gRPC origin itself', () => {
       expect(
         kagentProbeUrl({
           name: 'gazelle',
-          apiBaseUrl: 'https://kagent.gazelle.example.io/api',
+          apiBaseUrl: 'https://kagent.gazelle.example.io',
         }),
-      ).toBe('https://kagent.gazelle.example.io/api/sessions');
-      // An installation whose kagent endpoint is an internal service URL is
-      // probed exactly where the proxy would call it.
+      ).toBe('https://kagent.gazelle.example.io');
+      // An installation whose controller is an in-cluster h2c origin is probed
+      // exactly where the client would dial it.
       expect(
         kagentProbeUrl({
           name: 'golem',
-          apiBaseUrl: 'https://kagent-golem.agent-platform.svc:8443/api',
+          apiBaseUrl: 'http://kagent-controller.kagent.svc:8083',
         }),
-      ).toBe('https://kagent-golem.agent-platform.svc:8443/api/sessions');
+      ).toBe('http://kagent-controller.kagent.svc:8083');
     });
   });
 
@@ -738,8 +741,44 @@ describe('createRouter', () => {
       expect(createSession).toHaveBeenCalledWith(
         { namespace: 'kagent', name: 'issue-tracker' },
         'Why is the ingress failing?',
+        // No requestId in the body: the route mints one, so the create is not
+        // silently non-idempotent but the body stays an addition.
+        expect.stringMatching(/^[0-9a-f-]{36}$/),
         { userToken: 'user-token' },
       );
+    });
+
+    it('forwards the caller’s requestId verbatim, so a retry is the same create', async () => {
+      createSession.mockResolvedValue(createdBody);
+
+      await post({ ...validBody, requestId: 'submission-7' });
+      await post({ ...validBody, requestId: 'submission-7' });
+
+      expect(createSession).toHaveBeenNthCalledWith(
+        1,
+        expect.anything(),
+        expect.anything(),
+        'submission-7',
+        expect.anything(),
+      );
+      expect(createSession).toHaveBeenNthCalledWith(
+        2,
+        expect.anything(),
+        expect.anything(),
+        'submission-7',
+        expect.anything(),
+      );
+    });
+
+    it.each([
+      ['an empty requestId', ''],
+      ['a requestId over the limit', 'x'.repeat(129)],
+      ['a requestId that is not a string', 42],
+    ])('rejects %s as a 400', async (_, requestId) => {
+      const response = await post({ ...validBody, requestId });
+
+      expect(response.status).toBe(400);
+      expect(createSession).not.toHaveBeenCalled();
     });
 
     it('does not shadow the sessions list route', async () => {
@@ -778,6 +817,7 @@ describe('createRouter', () => {
       expect(createSession).toHaveBeenCalledWith(
         expect.anything(),
         'Padded title',
+        expect.anything(),
         expect.anything(),
       );
     });
@@ -1188,7 +1228,7 @@ describe('createRouter', () => {
         .put('/kagent/sessions/abc')
         .query({ installation: 'gazelle' })
         .set(KAGENT_AUTH_HEADER, 'user-token')
-        .send({ name: 'x'.repeat(255) });
+        .send({ name: 'x'.repeat(SESSION_NAME_MAX_LENGTH) });
 
       expect(response.status).toBe(200);
     });
@@ -1361,6 +1401,88 @@ describe('createRouter', () => {
         .get('/kagent/sessions/abc/tasks')
         .query({ installation: 'gazelle' })
         .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('POST /kagent/sessions/:sessionId/tasks/:taskId/cancel', () => {
+    const canceled = {
+      id: 'task-1',
+      contextId: 'ctx-1',
+      status: {
+        state: 'TASK_STATE_CANCELED',
+        timestamp: '2026-09-11T00:00:00Z',
+      },
+    };
+
+    function post(
+      sessionId = 'abc',
+      taskId = 'task-1',
+      installation = 'gazelle',
+    ) {
+      return request(app)
+        .post(`/kagent/sessions/${sessionId}/tasks/${taskId}/cancel`)
+        .query({ installation })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+    }
+
+    it('cancels the task on the session and echoes the task the controller left', async () => {
+      cancelTask.mockResolvedValue(canceled);
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(canceled);
+      expect(cancelTask).toHaveBeenCalledWith('abc', 'task-1', {
+        userToken: 'user-token',
+      });
+    });
+
+    it('passes opaque session and task ids through undecorated', async () => {
+      cancelTask.mockResolvedValue(canceled);
+
+      await post('a%2Fb', '01a086cf-7f84-761d-980a-48f485eded5e');
+
+      expect(cancelTask).toHaveBeenCalledWith(
+        'a/b',
+        '01a086cf-7f84-761d-980a-48f485eded5e',
+        expect.anything(),
+      );
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/tasks/task-1/cancel')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(cancelTask).not.toHaveBeenCalled();
+    });
+
+    it('requires the installation query parameter', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/tasks/task-1/cancel')
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(400);
+      expect(cancelTask).not.toHaveBeenCalled();
+    });
+
+    it('does not answer a GET on the same path', async () => {
+      const response = await request(app)
+        .get('/kagent/sessions/abc/tasks/task-1/cancel')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
+      expect(cancelTask).not.toHaveBeenCalled();
+    });
+
+    it('reports a turn that is not there as a 404, not a 5xx', async () => {
+      cancelTask.mockRejectedValue(new NotFoundError('no such turn'));
+
+      const response = await post();
 
       expect(response.status).toBe(404);
     });

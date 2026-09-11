@@ -1,0 +1,132 @@
+[
+  {
+    "task": {
+      "id": "01a08e6b-122c-7f07-9986-04757ec3e601",
+      "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+      "status": {
+        "state": "TASK_STATE_SUBMITTED"
+      },
+      "history": [
+        {
+          "messageId": "m-1789095776809",
+          "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "taskId": "01a08e6b-122c-7f07-9986-04757ec3e601",
+          "role": "ROLE_USER",
+          "parts": [
+            {
+              "text": "Reply with exactly the word pong."
+            }
+          ],
+          "metadata": {
+            "kagent.dev/timeline-position": "2026-09-11T03:02:56.8129802Z"
+          }
+        }
+      ],
+      "metadata": {
+        "kagent.dev/task-created-at": "2026-09-11T03:02:56.8129802Z"
+      }
+    }
+  },
+  {
+    "statusUpdate": {
+      "taskId": "01a08e6b-122c-7f07-9986-04757ec3e601",
+      "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+      "status": {
+        "state": "TASK_STATE_WORKING",
+        "timestamp": "2026-09-11T03:02:57.080310595Z"
+      },
+      "metadata": {
+        "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+        "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+        "adk_user_id": "admin@kagent.dev"
+      }
+    }
+  },
+  {
+    "artifactUpdate": {
+      "taskId": "01a08e6b-122c-7f07-9986-04757ec3e601",
+      "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+      "artifact": {
+        "artifactId": "01a08e6b-1e60-7b48-9782-008788358c29",
+        "parts": [
+          {
+            "text": "p"
+          }
+        ],
+        "metadata": {
+          "kagent.dev/timeline-position": "2026-09-11T03:02:59.936665291Z",
+          "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+          "adk_user_id": "admin@kagent.dev",
+          "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "adk_invocation_id": "e-79dba281-0fd8-47b3-8113-13b53605e7c0",
+          "adk_author": "portal_proof_2344_b66d_kagent"
+        }
+      }
+    }
+  },
+  {
+    "artifactUpdate": {
+      "taskId": "01a08e6b-122c-7f07-9986-04757ec3e601",
+      "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+      "artifact": {
+        "artifactId": "01a08e6b-1e60-7b48-9782-008788358c29",
+        "parts": [
+          {
+            "text": "ong"
+          }
+        ],
+        "metadata": {
+          "adk_invocation_id": "e-79dba281-0fd8-47b3-8113-13b53605e7c0",
+          "adk_author": "portal_proof_2344_b66d_kagent",
+          "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "kagent.dev/timeline-position": "2026-09-11T03:02:59.971932856Z",
+          "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+          "adk_user_id": "admin@kagent.dev"
+        }
+      },
+      "append": true
+    }
+  },
+  {
+    "artifactUpdate": {
+      "taskId": "01a08e6b-122c-7f07-9986-04757ec3e601",
+      "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+      "artifact": {
+        "artifactId": "01a08e6b-1e60-7b48-9782-008788358c29",
+        "parts": [
+          {
+            "text": "pong"
+          }
+        ],
+        "metadata": {
+          "adk_user_id": "admin@kagent.dev",
+          "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+          "adk_author": "portal_proof_2344_b66d_kagent",
+          "adk_invocation_id": "e-79dba281-0fd8-47b3-8113-13b53605e7c0",
+          "adk_usage_metadata": {
+            "candidatesTokenCount": 5,
+            "promptTokenCount": 2875
+          },
+          "kagent.dev/timeline-position": "2026-09-11T03:02:59.98019Z",
+          "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent"
+        }
+      },
+      "lastChunk": true
+    }
+  },
+  {
+    "statusUpdate": {
+      "taskId": "01a08e6b-122c-7f07-9986-04757ec3e601",
+      "contextId": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+      "status": {
+        "state": "TASK_STATE_COMPLETED",
+        "timestamp": "2026-09-11T03:02:59.984602811Z"
+      },
+      "metadata": {
+        "adk_session_id": "3e878c9d-e9d8-494d-8081-cce681e03fe0",
+        "adk_app_name": "kagent__NS__portal_proof_2344_b66d_kagent",
+        "adk_user_id": "admin@kagent.dev"
+      }
+    }
+  }
+]

@@ -1,4 +1,7 @@
-import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  encodeKagentAgentId,
+  KagentSession,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
 
 /**
@@ -52,17 +55,16 @@ export type SessionRow = {
 };
 
 /**
- * Encode a namespace/name pair the way kagent does.
- *
- * kagent's `ConvertToPythonIdentifier` replaces every `-` with `_` and then `/`
- * with `__NS__` (`go/core/internal/utils/common.go`), so `kagent/k8s-agent`
+ * Encode a namespace/name pair the way kagent does — `kagent/k8s-agent`
  * becomes `kagent__NS__k8s_agent`.
  *
- * We match on this *encode* side rather than decoding kagent's `agent_id`,
- * because encoding is lossless and decoding is not.
+ * We match on this *encode* side rather than decoding an `agent_id`, because
+ * encoding is lossless and decoding is not. The one encoder is shared with
+ * `normalizeAgentInstance`, which derives a session's `agentId` from its
+ * template the same way, so the two sides of the join cannot drift.
  */
 export function toAgentIdentifier(namespace: string, name: string): string {
-  return `${namespace}/${name}`.replace(/-/g, '_').replace('/', '__NS__');
+  return encodeKagentAgentId(namespace, name);
 }
 
 /**

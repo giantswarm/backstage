@@ -27,6 +27,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useCancelTask } from '../../hooks/useCancelTask';
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
@@ -220,6 +221,7 @@ export function SessionDetailPage() {
     detail,
     timeline,
     state,
+    currentTaskId,
     stateChangedAt,
     isAgentWorking: agentIsWorking,
     pendingConfirmation,
@@ -231,6 +233,7 @@ export function SessionDetailPage() {
   } = useSessionDetail(installation, sessionId, {
     enabled: !deletion.isDeleting && !deletion.isDeleted,
   });
+  const cancellation = useCancelTask(installation, sessionId);
 
   // The same join the list uses, so a session's agent is named identically in both
   // places — and falls back to the same lossy decode when no Agent CR matched.
@@ -456,6 +459,24 @@ export function SessionDetailPage() {
   const showWorking = send.isSending || agentIsWorking;
 
   /**
+   * The turn a Stop would cancel: the one the stream named, else the newest
+   * task the poll knows. Undefined for the first beat of a send, before either
+   * has — Stop is then withheld rather than aimed at the previous turn.
+   */
+  const runningTaskId =
+    send.stream?.taskId ?? (agentIsWorking ? currentTaskId : undefined);
+  const { cancelTask } = cancellation;
+  const stopTurn = useMemo(() => {
+    if (!runningTaskId) {
+      return undefined;
+    }
+    return () => {
+      // Errors surface through the hook's `error`, shown beside the composer.
+      cancelTask(runningTaskId).catch(() => {});
+    };
+  }, [cancelTask, runningTaskId]);
+
+  /**
    * What the rail should believe about *this* session.
    *
    * The rail's own source is a summary the backend caches for 15 s, so it is
@@ -622,10 +643,12 @@ export function SessionDetailPage() {
               ? "Answer the agent's question above to carry on. A plain message would start a new turn instead of answering it."
               : undefined
           }
-          error={send.error?.message}
+          error={send.error?.message ?? cancellation.error?.message}
           // On failure the optimistic copy is dropped, so this is the only place the
           // user's text still exists.
           restore={send.failed}
+          onStop={isConfirming ? undefined : stopTurn}
+          isStopping={cancellation.isCancelling}
           // The user arrived here by starting the session — typing in a composer
           // one screen ago — and the navigation dropped the focus. Restoring it to
           // the box is continuity, the one case the a11y rule does not have in mind;

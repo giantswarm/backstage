@@ -121,7 +121,8 @@ function reportDrift(
 }
 
 /**
- * Client for the kagent REST API, via the agent-platform-backend proxy.
+ * Client for kagent, via the agent-platform-backend's JSON/SSE routes (the
+ * backend speaks gRPC to the controller; the browser never does).
  *
  * Two responsibilities beyond plain fetching:
  *
@@ -314,6 +315,7 @@ export class KagentApiClient implements KagentApi {
     installation: string,
     agent: { namespace: string; name: string },
     name: string,
+    requestId: string,
   ): Promise<{ sessionId: string }> {
     const { url, headers } = await this.prepare(
       '/kagent/sessions',
@@ -326,6 +328,7 @@ export class KagentApiClient implements KagentApi {
         agentNamespace: agent.namespace,
         agentName: agent.name,
         name,
+        requestId,
       }),
     });
 
@@ -335,8 +338,8 @@ export class KagentApiClient implements KagentApi {
     await this.throwIfNotOk(response, { badRequestIsMissing: false });
 
     // The one write whose body is **required**. The others tolerate an empty
-    // response because nothing in it is needed; here the generated session id is
-    // the entire point, and without it there is nowhere to navigate — so an
+    // response because nothing in it is needed; here the generated instance id
+    // is the entire point, and without it there is nowhere to navigate — so an
     // unreadable body has to fail rather than resolve into a broken link.
     const body = await response.json().catch(() => undefined);
     const sessionId = parseCreatedSessionId(body);
@@ -351,6 +354,31 @@ export class KagentApiClient implements KagentApi {
     }
 
     return { sessionId };
+  }
+
+  async cancelTask(
+    installation: string,
+    sessionId: string,
+    taskId: string,
+  ): Promise<void> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(
+        sessionId,
+      )}/tasks/${encodeURIComponent(taskId)}/cancel`,
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'POST',
+      headers,
+    });
+
+    // `badRequestIsMissing: false` for the same reason as the other writes: a
+    // 400 here is a rejected cancel, nothing like "kagent is absent".
+    await this.throwIfNotOk(response, { badRequestIsMissing: false });
+
+    // The body is the task as the controller left it — canceled, or already
+    // finished. Nothing here needs it: the caller refreshes the conversation,
+    // which is the honest record of what the turn became.
   }
 
   async renameSession(

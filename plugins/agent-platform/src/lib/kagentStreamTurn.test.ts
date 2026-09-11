@@ -83,6 +83,152 @@ describe('readStreamFrame', () => {
     expect(readStreamFrame('not json')).toEqual({ kind: 'unreadable' });
     expect(readStreamFrame('42')).toEqual({ kind: 'unreadable' });
   });
+
+  it('reads a bare A2A v1 StreamResponse frame as the event itself', () => {
+    // The relay of the API v2 backend: no JSON-RPC envelope, the oneof is the
+    // frame.
+    expect(
+      readStreamFrame(
+        '{"statusUpdate":{"taskId":"t1","status":{"state":"TASK_STATE_WORKING"}}}',
+      ),
+    ).toEqual({
+      kind: 'event',
+      result: {
+        statusUpdate: { taskId: 't1', status: { state: 'TASK_STATE_WORKING' } },
+      },
+    });
+  });
+
+  it('reads the relay’s error frame for a stream that broke', () => {
+    expect(
+      readStreamFrame(
+        '{"error":{"code":"Unavailable","message":"runtime gone"}}',
+      ),
+    ).toEqual({ kind: 'error', message: 'runtime gone' });
+  });
+});
+
+describe('applyStreamEvent on A2A v1 StreamResponse frames', () => {
+  const taskId = 'e7b1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e';
+
+  it('folds a Go-ADK-style v1 turn into the same preview as the legacy events', () => {
+    const turn = [
+      {
+        task: {
+          id: taskId,
+          contextId: 'c1',
+          status: { state: 'TASK_STATE_SUBMITTED' },
+          history: [
+            { messageId: 'sent-1', role: 'ROLE_USER', parts: [{ text: 'hi' }] },
+          ],
+        },
+      },
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'c1',
+          status: { state: 'TASK_STATE_WORKING' },
+        },
+      },
+      {
+        artifactUpdate: {
+          taskId,
+          contextId: 'c1',
+          artifact: {
+            artifactId: 'a1',
+            parts: [{ text: 'Hel' }],
+            metadata: { kagent_partial: true },
+          },
+          append: true,
+        },
+      },
+      {
+        artifactUpdate: {
+          taskId,
+          contextId: 'c1',
+          artifact: {
+            artifactId: 'a1',
+            parts: [{ text: 'lo' }],
+            metadata: { kagent_partial: true },
+          },
+          append: true,
+        },
+      },
+      {
+        artifactUpdate: {
+          taskId,
+          contextId: 'c1',
+          artifact: {
+            artifactId: 'a1',
+            parts: [{ text: 'Hello' }],
+            metadata: { kagent_partial: false, kagent_author: 'sre' },
+          },
+          lastChunk: true,
+        },
+      },
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'c1',
+          status: { state: 'TASK_STATE_COMPLETED' },
+        },
+      },
+    ].reduce<StreamTurn>(
+      (state, event) => applyStreamEvent(state, event),
+      createStreamTurn('sent-1'),
+    );
+
+    expect(turn.dispatched).toBe(true);
+    expect(turn.taskId).toBe(taskId);
+    expect(turn.stateKey).toBe('completed');
+    expect(turn.isFinal).toBe(true);
+    expect(turn.live).toBeUndefined();
+    expect(turn.items).toEqual([
+      expect.objectContaining({ kind: 'agent-message', text: 'Hello' }),
+    ]);
+  });
+
+  it('ends the live view on a v1 pause, whose status update carries no final flag', () => {
+    const turn = [
+      {
+        artifactUpdate: {
+          taskId,
+          contextId: 'c1',
+          artifact: {
+            artifactId: 'a1',
+            parts: [{ text: 'Let me check' }],
+            metadata: { kagent_partial: true },
+          },
+          append: true,
+        },
+      },
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'c1',
+          status: {
+            state: 'TASK_STATE_INPUT_REQUIRED',
+            message: {
+              messageId: 'q1',
+              role: 'ROLE_AGENT',
+              parts: [
+                {
+                  text: 'Human input is required before the agent can continue.',
+                },
+              ],
+            },
+          },
+        },
+      },
+    ].reduce<StreamTurn>(
+      (state, event) => applyStreamEvent(state, event),
+      createStreamTurn('sent-1'),
+    );
+
+    expect(turn.isFinal).toBe(true);
+    expect(turn.stateKey).toBe('input-required');
+    expect(turn.live).toBeUndefined();
+  });
 });
 
 describe('applyStreamEvent', () => {
