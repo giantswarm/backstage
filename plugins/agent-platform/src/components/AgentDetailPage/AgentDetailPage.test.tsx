@@ -8,6 +8,7 @@ import type {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { agentsRouteRef, modelsRouteRef } from '../../routes';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
+import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
 import { AgentDetailPage } from './AgentDetailPage';
 
@@ -85,6 +86,22 @@ jest.mock('../../hooks/useAgentManager', () => ({
     error: null,
   }),
 }));
+// agent-manager's `get_agent_status`, the page's word on whether an agent whose
+// template the apiserver does not know is being deployed (its HelmRelease exists)
+// or does not exist at all. The default is an installation without agent-manager:
+// nothing asked, nothing known.
+const mockUseAgentStatus = jest.fn<AgentStatusState, unknown[]>();
+const NO_STATUS: AgentStatusState = {
+  status: undefined,
+  isSettling: false,
+  isNotFound: false,
+  error: null,
+};
+
+jest.mock('../../hooks/useAgentStatus', () => ({
+  useAgentStatus: (...args: unknown[]) => mockUseAgentStatus(...args),
+}));
+
 jest.mock('./AgentUpdateSkillsDialog', () => ({
   AgentUpdateSkillsDialog: () => null,
 }));
@@ -387,6 +404,8 @@ describe('AgentDetailPage', () => {
     mockUseAgentSessions.mockReset();
     mockUseAgentSessions.mockReturnValue(NO_SESSIONS);
     mockServingStateFor.mockReset();
+    mockUseAgentStatus.mockReset();
+    mockUseAgentStatus.mockReturnValue(NO_STATUS);
   });
 
   it('renders every section for a ready agent', async () => {
@@ -1075,9 +1094,162 @@ describe('AgentDetailPage', () => {
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
     });
   });
+
+  // Right after Deploy: agent-manager's `create_agent` applied the HelmRelease
+  // and the create flow navigated here before helm-controller rendered the
+  // AgentTemplate, so the template read 404s. The page must tell that "not yet"
+  // from "not there" — by asking agent-manager, whose `get_agent_status` answers
+  // `not_found` only when neither the template nor the HelmRelease exists.
+  describe('deploying', () => {
+    const templateNotFound = () =>
+      stubResources({
+        error: new Error('not found'),
+        errors: [
+          {
+            type: 'error',
+            cluster: 'gazelle',
+            error: Object.assign(new Error('not found'), {
+              name: 'NotFoundError',
+            }),
+          },
+        ],
+      });
+
+    const releaseOnly = (
+      overrides: Partial<NonNullable<AgentStatusState['status']>> = {},
+    ): AgentStatusState => ({
+      status: {
+        name: mockParams.name,
+        namespace: mockParams.namespace,
+        verdict: 'progressing',
+        summary: 'HelmRelease created; Flux has not reconciled it yet',
+        template: { exists: false, harnesses: [] },
+        helmRelease: {
+          exists: true,
+          ready: null,
+          suspended: false,
+          gitOpsOwned: false,
+          deleting: false,
+        },
+        ...overrides,
+      },
+      isSettling: true,
+      isNotFound: false,
+      error: null,
+    });
+
+    /** The interval the page hands the template read, evaluated for "no data". */
+    const templatePollInterval = () => {
+      const call = mockUseResource.mock.calls.find(
+        ([, ResourceClass]) => ResourceClass === Agent,
+      );
+      const options = call?.[3] as {
+        refetchInterval: (query: { state: { data: undefined } }) => number;
+      };
+      return options.refetchInterval({ state: { data: undefined } });
+    };
+
+    it('shows an agent whose HelmRelease exists but whose template is not rendered yet as deploying', async () => {
+      templateNotFound();
+      mockUseAgentStatus.mockReturnValue(releaseOnly());
+
+      await renderPage();
+
+      expectHeaderReadiness('Deploying');
+      expect(screen.getAllByText(mockParams.name)).not.toHaveLength(0);
+      expect(
+        screen.getByText('HelmRelease created; Flux has not reconciled it yet'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Start a session' }),
+      ).not.toBeInTheDocument();
+
+      // Asked only because the template read came back empty …
+      expect(mockUseAgentStatus).toHaveBeenCalledWith(
+        mockParams.installation,
+        mockParams.namespace,
+        mockParams.name,
+        { enabled: true },
+      );
+      // … and while the release is there, the template is re-read at the fast
+      // tier, so the page switches to the rendered agent within one poll of it
+      // appearing — not after the 60 s "no data" baseline.
+      expect(templatePollInterval()).toBe(5_000);
+    });
+
+    it('carries agent-manager’s failure when the release itself does not become ready', async () => {
+      templateNotFound();
+      mockUseAgentStatus.mockReturnValue(
+        releaseOnly({
+          verdict: 'failed',
+          summary: 'HelmRelease is not ready: install retries exhausted',
+        }),
+      );
+
+      await renderPage();
+
+      expectHeaderReadiness('Deploying');
+      expect(
+        screen.getByText('The agent’s release did not become ready'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('HelmRelease is not ready: install retries exhausted'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
+    });
+
+    it('waits for agent-manager’s answer before choosing between deploying and not found', async () => {
+      templateNotFound();
+      mockUseAgentStatus.mockReturnValue({
+        status: undefined,
+        isSettling: true,
+        isNotFound: false,
+        error: null,
+      });
+
+      await renderPage();
+
+      expect(screen.getByTestId('progress')).toBeInTheDocument();
+      expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
+    });
+
+    it('still says "Agent not found" when neither the template nor the HelmRelease exists', async () => {
+      templateNotFound();
+      mockUseAgentStatus.mockReturnValue({
+        status: undefined,
+        isSettling: true,
+        isNotFound: true,
+        error: null,
+      });
+
+      await renderPage();
+
+      expect(screen.getByText('Agent not found')).toBeInTheDocument();
+      expect(screen.queryByTestId('agent-readiness')).not.toBeInTheDocument();
+      expect(templatePollInterval()).toBe(60_000);
+    });
+
+    it('does not ask agent-manager while the agent is in hand', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage();
+
+      expect(mockUseAgentStatus).toHaveBeenCalledWith(
+        mockParams.installation,
+        mockParams.namespace,
+        mockParams.name,
+        { enabled: false },
+      );
+    });
+  });
 });
 
 describe('AgentDetailPage: the model behind the agent', () => {
+  beforeEach(() => {
+    mockUseAgentStatus.mockReturnValue(NO_STATUS);
+  });
+
   // The Serving view lives under the Models tab; mount it too so the Not
   // serving label has somewhere to link.
   const renderPageWithModels = () =>
