@@ -25,9 +25,16 @@ import type { AgentRow } from '../AgentsDataProvider';
  * yet", not "broken". `notAdmitted` is negative: no Harness will ever run this
  * agent until its labels change, and the tooltip says which label is missing.
  */
+/** How one readiness is shown: its label, the label's intent and its icon. */
+export type ReadinessPresentation = {
+  label: string;
+  intent: StatusLabelIntent;
+  icon: typeof CheckCircleIcon;
+};
+
 export const READINESS_PRESENTATION: Record<
   AgentReadiness,
-  { label: string; intent: StatusLabelIntent; icon: typeof CheckCircleIcon }
+  ReadinessPresentation
 > = {
   ready: { label: 'Ready', intent: 'positive', icon: CheckCircleIcon },
   notReady: { label: 'Not ready', intent: 'warning', icon: ReportProblemIcon },
