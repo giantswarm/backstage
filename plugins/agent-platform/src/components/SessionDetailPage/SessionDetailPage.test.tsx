@@ -163,6 +163,7 @@ function idleConfirmation(
     answer: mockAnswer,
     isAnswering: false,
     pending: null,
+    stream: null,
     failed: null,
     error: null,
     reset: jest.fn(),
@@ -826,19 +827,226 @@ describe('SessionDetailPage', () => {
       expect(screen.queryByText('Working…')).not.toBeInTheDocument();
     });
 
-    it('stops claiming a stalled turn is working, and frees the composer', async () => {
-      // An agent that died mid-turn never writes a terminal state, so the session
-      // stays `working` forever. Once `isAgentWorking` expires, the page must stop
-      // promising progress — and must not hold the composer shut on a turn that is
-      // never going to end.
-      mockUseSessionDetail.mockReturnValue({
+    describe('a stalled turn', () => {
+      // A turn that outlived its transport and never landed: the task stays
+      // `submitted` with its timestamp at the send and no later event. kagent
+      // still holds it active and refuses a second message, so the page must
+      // neither promise progress nor drop to an idle composer the next send
+      // would fail from.
+      const since = Date.parse('2026-09-13T13:52:00Z');
+      const stalledView = {
         ...loadedView,
         isAgentWorking: false,
+        turnProgress: { kind: 'stalled' as const, since },
+        currentTaskId: 'task-9',
+      };
+      const clock = new Date(since).toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
       });
-      await render();
 
-      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled();
+      it('says the agent has stopped reporting progress, and since when', async () => {
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText(
+            `The agent has not reported progress since ${clock}.`,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      it('keeps Send withheld — the session is still busy — and says why', async () => {
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        await render();
+
+        expect(composer()).toBeEnabled();
+        expect(
+          screen.queryByRole('button', { name: 'Send' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/stopped reporting progress. Cancel the turn/),
+        ).toBeInTheDocument();
+      });
+
+      it('overrides an open but silent stream', async () => {
+        // A send whose stream is still open yet has delivered nothing for the
+        // whole bound is the same symptom the poll measured; "Working…" beside
+        // "no progress since" would contradict itself.
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      });
+
+      it('cancels the turn from the row, and puts the unanswered message back into the box', async () => {
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        await render();
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Cancel the turn' }),
+        );
+
+        expect(mockCancelTask).toHaveBeenCalledWith('task-9');
+        // The message the stalled turn never answered: "send again" should not
+        // mean typing it twice.
+        const lastUserMessage = [...timeline.items]
+          .reverse()
+          .find(item => item.kind === 'user-message');
+        expect(lastUserMessage).toBeDefined();
+        await waitFor(() =>
+          expect(composer()).toHaveValue(
+            (lastUserMessage as { text: string }).text,
+          ),
+        );
+      });
+
+      it('does not offer the cancel when the task is not known', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...stalledView,
+          currentTaskId: undefined,
+        });
+        await render();
+
+        expect(
+          screen.queryByRole('button', { name: 'Cancel the turn' }),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      });
+    });
+
+    describe('a send refused because the previous turn is still running', () => {
+      const conflict = new Error(
+        "The agent on installation 'gazelle' is still working on the previous message",
+      );
+      conflict.name = 'ConflictError';
+
+      it('explains the 409 and offers to cancel that turn', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          currentTaskId: 'task-9',
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            error: conflict,
+            failed: { messageId: 'm-refused', text: 'the refused message' },
+          }),
+        );
+        await render();
+
+        expect(
+          screen.getByText('This session is still working on the previous turn'),
+        ).toBeInTheDocument();
+        // Not doubled by the composer's generic failure notice.
+        expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+        // The refused text is back in the box, as after any failed send.
+        expect(composer()).toHaveValue('the refused message');
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Cancel the turn' }),
+        );
+        expect(mockCancelTask).toHaveBeenCalledWith('task-9');
+      });
+
+      it('still reports any other failure as a failed send', async () => {
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ error: new Error('kagent is unavailable') }),
+        );
+        await render();
+
+        expect(screen.getByText('Message not sent')).toBeInTheDocument();
+        expect(
+          screen.queryByText(/still working on the previous turn/),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    describe('an answer that streams the resumed turn', () => {
+      const awaiting = {
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        currentTaskId: 'task-1',
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input' as const,
+          toolName: 'ask_user',
+          questions: [{ question: 'Which cluster?', multiple: false }],
+        },
+      };
+
+      it('shows the panel as sending until kagent takes the answer', async () => {
+        mockUseSessionDetail.mockReturnValue(awaiting);
+        mockUseAnswerConfirmation.mockReturnValue(
+          idleConfirmation({
+            isAnswering: true,
+            stream: createStreamTurn('a1'),
+          }),
+        );
+        await render();
+
+        expect(
+          screen.getByRole('button', { name: 'Sending…' }),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+      });
+
+      it('replaces the panel with the working composer once the stream has its first event', async () => {
+        // The poll still says `input-required` for up to 10 s; the stream
+        // already knows the task is running again.
+        mockUseSessionDetail.mockReturnValue(awaiting);
+        mockUseAnswerConfirmation.mockReturnValue(
+          idleConfirmation({
+            isAnswering: true,
+            stream: {
+              ...createStreamTurn('a1'),
+              dispatched: true,
+              taskId: 'task-1',
+            },
+          }),
+        );
+        await render();
+
+        expect(
+          screen.queryByRole('button', { name: 'Send answer' }),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText('Working…')).toBeInTheDocument();
+        expect(composer()).toBeEnabled();
+
+        // Stop aims at the task the answer resumed.
+        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        expect(mockCancelTask).toHaveBeenCalledWith('task-1');
+      });
+
+      it('renders the resumed turn’s streamed reply like a sent message’s', async () => {
+        mockUseSessionDetail.mockReturnValue(awaiting);
+        mockUseAnswerConfirmation.mockReturnValue(
+          idleConfirmation({
+            isAnswering: true,
+            stream: {
+              ...createStreamTurn('a1'),
+              dispatched: true,
+              taskId: 'task-1',
+              items: [
+                {
+                  kind: 'agent-message',
+                  id: 'stream:0',
+                  taskIndex: 0,
+                  text: 'Done, after your decision.',
+                },
+              ],
+            },
+          }),
+        );
+        await render();
+
+        expect(
+          screen.getByText('Done, after your decision.'),
+        ).toBeInTheDocument();
+      });
     });
 
     it('stops saying so once the turn is finished', async () => {

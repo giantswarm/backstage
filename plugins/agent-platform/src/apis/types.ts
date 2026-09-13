@@ -18,6 +18,16 @@ export type { KagentInstallation } from '../lib/kagentInstallations';
  */
 export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 
+/** The answer to a confirmation, as the answer routes take it. */
+export type ConfirmationAnswerRequest = {
+  messageId: string;
+  taskId: string;
+  decision: 'approve' | 'reject';
+  answers?: string[][];
+  rejectionReason?: string;
+  text?: string;
+};
+
 /** Identity kagent resolved for a forwarded token. */
 export type KagentIdentity = {
   /** The `sub` kagent used to scope the session query, when it reported one. */
@@ -258,14 +268,26 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    answer: {
-      messageId: string;
-      taskId: string;
-      decision: 'approve' | 'reject';
-      answers?: string[][];
-      rejectionReason?: string;
-      text?: string;
-    },
+    answer: ConfirmationAnswerRequest,
+  ): Promise<void>;
+
+  /**
+   * {@link answerConfirmation} over A2A `message/stream`: the same resume of the
+   * same task, with the resumed turn's events handed to `onEvent` as kagent
+   * produces them — the contract of {@link streamMessage}, applied to an answer.
+   *
+   * Preferred over the unary answer: that one is held open for the backend's
+   * turn timeout and then answers 202, after which the page can only wait for
+   * the conversation poll — and a turn that never lands leaves it nothing to
+   * show. Over the stream the browser follows the turn, and a cut stream is
+   * visible as such.
+   */
+  streamAnswer(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    answer: ConfirmationAnswerRequest,
+    onEvent: (result: unknown) => void,
   ): Promise<void>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
