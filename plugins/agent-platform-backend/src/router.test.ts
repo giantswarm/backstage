@@ -369,9 +369,13 @@ describe('createRouter', () => {
     });
 
     it('answers with derived states and no-store', async () => {
+      // `a` is explicitly the newer session. The candidates are ordered newest
+      // first by `updated_at`, so two sessions stamped with their own
+      // `Date.now()` would swap places whenever the clock ticked between the
+      // two calls — an assertion on wire order has to fix the ages itself.
       listSessions.mockResolvedValue({
         error: false,
-        data: [sessionWire('a'), sessionWire('b')],
+        data: [sessionWire('a', minutesAgo(30)), sessionWire('b')],
       });
       // The pool reads concurrently and reports in completion order; `a`'s
       // read finishes last here, so the wire order is asserted, not assumed.
@@ -392,7 +396,7 @@ describe('createRouter', () => {
       expect(response.headers['cache-control']).toBe('no-store');
       expect(response.body).toEqual({
         evaluatedAt: expect.any(Number),
-        // Candidate order (as listed), not completion order.
+        // Candidate order (newest first), not completion order.
         states: [
           { sessionId: 'a', state: 'input-required' },
           { sessionId: 'b', state: 'completed' },
