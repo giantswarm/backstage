@@ -90,6 +90,7 @@ spec:
 {{- end }}
 {{- if and $route.backendTrafficPolicy $route.backendTrafficPolicy.enabled }}
 {{- $btp := $route.backendTrafficPolicy }}
+{{- $btpSpec := $btp.spec | default (include "route.backendTrafficPolicy.defaultSpec" $ | fromYaml) }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
@@ -111,8 +112,6 @@ spec:
     - group: gateway.networking.k8s.io
       kind: {{ $route.kind | default "HTTPRoute" }}
       name: {{ $route.name | default .Values.name }}
-  {{- with $btp.spec }}
-  {{- toYaml . | nindent 2 }}
-  {{- end }}
+  {{- toYaml $btpSpec | nindent 2 }}
 {{- end }}
 {{- end }}

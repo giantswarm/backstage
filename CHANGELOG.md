@@ -19,6 +19,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ### Changed
 
+- Chart: `route.enabled` now renders a `BackendTrafficPolicy` for the route by default (`route.backendTrafficPolicy.enabled: true`) with `timeout.http.requestTimeout: 0s`, `maxStreamDuration: 0s`, `connectionIdleTimeout: 1h`, `timeout.tcp.connectTimeout: 10s` and TCP keepalive (60 s idle, 30 s interval, 3 probes). Without a policy the route ran under Envoy Gateway's default 15 s route timeout, which spans the whole response, so the Agent Platform turn stream and the AI Chat stream were cut after 15 s. `route.backendTrafficPolicy.enabled: false` renders none, a user-supplied `route.backendTrafficPolicy.spec` still replaces the default wholesale, and `ingress` is unchanged (#2371).
 - Branding: the app now ships Giant Swarm's logo as its default identity — the horizontal lockup in the expanded sidebar and on the home page, and the ant mark in the collapsed rail, the favicons and the app icons. Deployments that mount their own branding assets are unaffected: custom assets still take precedence. The page description now comes from the new `app.description` config key instead of being hardcoded, and `manifest.json`'s PWA name is generic so no deployment ships another company's name (#2081).
 
 ### Fixed
