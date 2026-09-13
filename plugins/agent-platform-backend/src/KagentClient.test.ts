@@ -729,6 +729,98 @@ describe('KagentClient against a fake controller', () => {
       expect(send.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
     });
 
+    it('streams the resumed turn for an answer, routed and typed like the unary one', async () => {
+      // The answer path the page uses: the same task resumed with the same
+      // payload, but over SendStreamingMessage — so no deadline of ours ends the
+      // agent's turn, and the events arrive as they happen.
+      const { fake, client } = build({ turn: () => approval });
+      const id = await created(client);
+      const paused = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'delete it' },
+        USER,
+      )) as {
+        task: { id: string };
+      };
+
+      const response = await client.streamAnswer(
+        id,
+        AGENT,
+        { messageId: 'm2', taskId: paused.task.id, decision: 'approve' },
+        USER,
+        new AbortController().signal,
+      );
+
+      expect(response.headers.get('content-type')).toContain(
+        'text/event-stream',
+      );
+      const events = (await frames(response)) as Record<string, unknown>[];
+      expect(events).toEqual([
+        {
+          statusUpdate: expect.objectContaining({
+            taskId: paused.task.id,
+            status: expect.objectContaining({ state: 'TASK_STATE_WORKING' }),
+          }),
+        },
+        {
+          statusUpdate: expect.objectContaining({
+            taskId: paused.task.id,
+            status: expect.objectContaining({ state: 'TASK_STATE_COMPLETED' }),
+          }),
+        },
+      ]);
+
+      const stream = fake.calls
+        .filter(call => call.method === 'SendStreamingMessage')
+        .at(-1)!;
+      expect(stream.headers[AGENT_INSTANCE_HEADER]).toBe(id);
+      expect(stream.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
+
+      // The controller recorded the resume against the same task, with the
+      // typed approval it validates strictly.
+      const { tasks } = (await client.listSessionTasks(id, USER)) as {
+        tasks: {
+          id: string;
+          status: { state: string };
+          history: Record<string, unknown>[];
+        }[];
+      };
+      const resumed = tasks.find(task => task.id === paused.task.id)!;
+      expect(resumed.status.state).toBe('TASK_STATE_COMPLETED');
+      const reply = resumed.history.at(-1)!;
+      expect(reply.messageId).toBe('m2');
+      expect(reply.taskId).toBe(paused.task.id);
+      expect(
+        (reply.metadata as Record<string, unknown>)[HITL_EXTENSION_URI],
+      ).toEqual({
+        type: 'tool_approval_response',
+        approvals: [{ id: 'appr-1', approved: true }],
+      });
+    });
+
+    it('refuses to stream an answer to a task that is not waiting, as a 409', async () => {
+      const { client } = build();
+      const id = await created(client);
+      const done = (await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm1', text: 'x' },
+        USER,
+      )) as {
+        task: { id: string };
+      };
+      await expect(
+        client.streamAnswer(
+          id,
+          AGENT,
+          { messageId: 'm2', taskId: done.task.id, decision: 'approve' },
+          USER,
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({ name: 'ConflictError' });
+    });
+
     it('answers a question positionally and refuses a mismatched answer count', async () => {
       const { client } = build({ turn: () => question });
       const id = await created(client);

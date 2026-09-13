@@ -167,7 +167,89 @@ function readMessageBody(req: express.Request): {
 }
 
 /**
- * Upper bound on how long the streaming route holds its relay open.
+ * The body both answer routes take — the unary one and its streaming sibling —
+ * shared for the same reason as {@link readMessageBody}: one act over two
+ * transports must accept exactly the same input.
+ */
+function readAnswerBody(req: express.Request): {
+  agent: { namespace: string; name: string };
+  answer: {
+    messageId: string;
+    taskId: string;
+    decision: 'approve' | 'reject';
+    answers?: string[][];
+    rejectionReason?: string;
+    text?: string;
+  };
+} {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const agentNamespace = readRequiredString(body, 'agentNamespace');
+  const agentName = readRequiredString(body, 'agentName');
+  const messageId = readRequiredString(body, 'messageId');
+  const taskId = readRequiredString(body, 'taskId');
+
+  const rawDecision = body.decision;
+  if (rawDecision !== 'approve' && rawDecision !== 'reject') {
+    throw new InputError("decision must be 'approve' or 'reject'");
+  }
+
+  // Positional and nested, so it needs its own check rather than
+  // `readRequiredString`: a malformed answer would otherwise reach kagent as a
+  // decision with no answers, which it accepts — resuming the task with the
+  // question silently unanswered.
+  let answers: string[][] | undefined;
+  if (body.answers !== undefined) {
+    if (!Array.isArray(body.answers)) {
+      throw new InputError('answers must be an array');
+    }
+    answers = body.answers.map(entry => {
+      if (!Array.isArray(entry)) {
+        throw new InputError('each answer must be an array of strings');
+      }
+      return entry.map(value => {
+        if (typeof value !== 'string') {
+          throw new InputError('each answer must be an array of strings');
+        }
+        return value;
+      });
+    });
+  }
+
+  const readOptionalBounded = (field: string): string | undefined => {
+    const value = body[field];
+    if (value === undefined) {
+      return undefined;
+    }
+    if (typeof value !== 'string') {
+      throw new InputError(`${field} must be a string`);
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    if (trimmed.length > MESSAGE_TEXT_MAX_LENGTH) {
+      throw new InputError(
+        `${field} must be at most ${MESSAGE_TEXT_MAX_LENGTH} characters`,
+      );
+    }
+    return trimmed;
+  };
+
+  return {
+    agent: { namespace: agentNamespace, name: agentName },
+    answer: {
+      messageId,
+      taskId,
+      decision: rawDecision,
+      answers,
+      rejectionReason: readOptionalBounded('rejectionReason'),
+      text: readOptionalBounded('text'),
+    },
+  };
+}
+
+/**
+ * Upper bound on how long the streaming routes hold their relay open.
  *
  * Not a turn timeout — cutting the stream does not stop the turn, and the
  * frontend reconciles through the poll exactly as if a gateway had cut it. This
@@ -177,6 +259,116 @@ function readMessageBody(req: express.Request): {
  * and every gateway we know of gives up long before this does.
  */
 const STREAM_MAX_DURATION_MS = 30 * 60_000;
+
+/**
+ * Relay one upstream event stream to the browser as SSE.
+ *
+ * Shared by the streaming routes (a message, an answer): `open` opens the
+ * upstream stream under the relay's abort signal, and everything after the
+ * headers is the same for both. Failure semantics split at the headers, which
+ * is inherent to streaming:
+ *
+ * - **Before the upstream stream opens**, errors propagate to the error
+ *   middleware exactly as on the non-streaming routes — a malformed body is a
+ *   400, an unknown agent a 404, a rejected token a 401, a session that is
+ *   still working on the previous turn a 409. Nothing has been dispatched, and
+ *   the caller hears so.
+ * - **After it opens**, the route has already answered 200 and can only relay
+ *   or stop. A relay that ends without a terminal event — kagent cut off by a
+ *   gateway, this response cut off by the browser's own door, the duration
+ *   bound — is not reported as anything, because the turn survives it: the
+ *   frontend treats an unterminated stream as "still running" and follows the
+ *   poll, the same contract as the unary routes' 202.
+ *
+ * The relay is flush-wrapped because Backstage's root router applies
+ * `compression()` globally, which buffers `res.write()` until `res.end()` —
+ * every event would arrive at once, after the turn. Same trap and same fix as
+ * `ai-chat-backend`'s chat route.
+ */
+async function relayEventStream(
+  res: express.Response,
+  logger: LoggerService,
+  open: (signal: AbortSignal) => Promise<Response>,
+): Promise<void> {
+  // One signal governs the whole relay: the browser going away and the
+  // duration bound both abort the upstream read. Neither stops the turn.
+  const upstreamControl = new AbortController();
+  const stopRelay = () => upstreamControl.abort();
+  res.on('close', stopRelay);
+  const maxDurationTimer = setTimeout(stopRelay, STREAM_MAX_DURATION_MS);
+
+  let upstream: Response;
+  try {
+    upstream = await open(upstreamControl.signal);
+  } catch (error) {
+    clearTimeout(maxDurationTimer);
+    // The browser hung up while we were still connecting: there is nobody
+    // to answer, and the error middleware writing to a closed response
+    // would only log noise about it.
+    if (res.writableEnded || upstreamControl.signal.aborted) {
+      return;
+    }
+    throw error;
+  }
+
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  // Backstage's root HTTP router applies compression() middleware globally,
+  // which buffers res.write() calls — for SSE that means every event is held
+  // until res.end(), defeating the point of this route. Wrap res.write to
+  // flush after each write so events reach the browser as kagent produces
+  // them. Same fix as ai-chat-backend's chat route.
+  const originalWrite = res.write;
+  res.write = function flushingWrite(
+    ...args: Parameters<typeof originalWrite>
+  ) {
+    const ret = originalWrite.apply(res, args);
+    const flush = (res as { flush?: () => void }).flush;
+    if (typeof flush === 'function') {
+      flush.call(res);
+    }
+    return ret;
+  } as typeof originalWrite;
+
+  res.flushHeaders();
+
+  const body = upstream.body;
+  if (!body) {
+    // Cannot happen for a 200 SSE response from a real kagent, but the type
+    // allows it, and ending an empty stream is the honest degradation: the
+    // frontend verifies and falls back to the poll.
+    clearTimeout(maxDurationTimer);
+    res.end();
+    return;
+  }
+
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      res.write(value);
+    }
+  } catch (error) {
+    // The upstream connection died mid-turn (a gateway's request timeout,
+    // an Envoy drain) or the relay was aborted. Either way there is nothing
+    // more to relay and nothing to report: an unterminated stream is the
+    // frontend's cue to fall back to the poll, and the turn keeps running
+    // regardless.
+    logger.debug(
+      'A kagent event stream ended before the turn did; the client falls back to polling',
+      { error: String(error) },
+    );
+  } finally {
+    clearTimeout(maxDurationTimer);
+    res.end();
+  }
+}
 
 export async function createRouter(
   options: RouterOptions,
@@ -723,23 +915,7 @@ export async function createRouter(
    * relayed as one SSE `data:` frame of its JSON instead of a single JSON
    * answer. The backend never interprets the events; the frontend does, and
    * reconciles with the conversation poll, which stays the source of truth.
-   *
-   * Failure semantics split at the headers, which is inherent to streaming:
-   *
-   * - **Before the upstream stream opens**, errors surface exactly as on the
-   *   non-streaming route — a malformed body is a 400, an unknown agent a 404, a
-   *   rejected token a 401. Nothing has been dispatched, and the caller hears so.
-   * - **After it opens**, this route has already answered 200 and can only relay
-   *   or stop. A relay that ends without a terminal event — kagent cut off by a
-   *   gateway, this response cut off by the browser's own door, the duration
-   *   bound below — is not reported as anything, because the turn survives it:
-   *   the frontend treats an unterminated stream as "still running" and follows
-   *   the poll, the same contract as the 202 above.
-   *
-   * The relay is flush-wrapped because Backstage's root router applies
-   * `compression()` globally, which buffers `res.write()` until `res.end()` —
-   * every event would arrive at once, after the turn. Same trap and same fix as
-   * `ai-chat-backend`'s chat route.
+   * The relay and its failure semantics are {@link relayEventStream}'s.
    */
   router.post(
     '/kagent/sessions/:sessionId/messages/stream',
@@ -750,90 +926,15 @@ export async function createRouter(
         readMessageBody(req);
       const userToken = readUserToken(req, { required: true });
 
-      // One signal governs the whole relay: the browser going away and the
-      // duration bound both abort the upstream read. Neither stops the turn.
-      const upstreamControl = new AbortController();
-      const stopRelay = () => upstreamControl.abort();
-      res.on('close', stopRelay);
-      const maxDurationTimer = setTimeout(stopRelay, STREAM_MAX_DURATION_MS);
-
-      let upstream: Response;
-      try {
-        upstream = await client.streamMessage(
+      await relayEventStream(res, logger, signal =>
+        client.streamMessage(
           readSessionId(req),
           { namespace: agentNamespace, name: agentName },
           { messageId, text },
           { userToken },
-          upstreamControl.signal,
-        );
-      } catch (error) {
-        clearTimeout(maxDurationTimer);
-        // The browser hung up while we were still connecting: there is nobody
-        // to answer, and the error middleware writing to a closed response
-        // would only log noise about it.
-        if (res.writableEnded || upstreamControl.signal.aborted) {
-          return;
-        }
-        throw error;
-      }
-
-      res.status(200);
-      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-
-      // Backstage's root HTTP router applies compression() middleware globally,
-      // which buffers res.write() calls — for SSE that means every event is held
-      // until res.end(), defeating the point of this route. Wrap res.write to
-      // flush after each write so events reach the browser as kagent produces
-      // them. Same fix as ai-chat-backend's chat route.
-      const originalWrite = res.write;
-      res.write = function flushingWrite(
-        ...args: Parameters<typeof originalWrite>
-      ) {
-        const ret = originalWrite.apply(res, args);
-        const flush = (res as { flush?: () => void }).flush;
-        if (typeof flush === 'function') {
-          flush.call(res);
-        }
-        return ret;
-      } as typeof originalWrite;
-
-      res.flushHeaders();
-
-      const body = upstream.body;
-      if (!body) {
-        // Cannot happen for a 200 SSE response from a real kagent, but the type
-        // allows it, and ending an empty stream is the honest degradation: the
-        // frontend verifies and falls back to the poll.
-        clearTimeout(maxDurationTimer);
-        res.end();
-        return;
-      }
-
-      const reader = body.getReader();
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-          res.write(value);
-        }
-      } catch (error) {
-        // The upstream connection died mid-turn (a gateway's request timeout,
-        // an Envoy drain) or the relay was aborted. Either way there is nothing
-        // more to relay and nothing to report: an unterminated stream is the
-        // frontend's cue to fall back to the poll, and the turn keeps running
-        // regardless.
-        logger.debug(
-          'A kagent event stream ended before the turn did; the client falls back to polling',
-          { error: String(error) },
-        );
-      } finally {
-        clearTimeout(maxDurationTimer);
-        res.end();
-      }
+          signal,
+        ),
+      );
     },
   );
 
@@ -880,72 +981,13 @@ export async function createRouter(
    */
   router.post('/kagent/sessions/:sessionId/answer', async (req, res) => {
     const { client } = resolveInstallation(req);
-
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const agentNamespace = readRequiredString(body, 'agentNamespace');
-    const agentName = readRequiredString(body, 'agentName');
-    const messageId = readRequiredString(body, 'messageId');
-    const taskId = readRequiredString(body, 'taskId');
-
-    const rawDecision = body.decision;
-    if (rawDecision !== 'approve' && rawDecision !== 'reject') {
-      throw new InputError("decision must be 'approve' or 'reject'");
-    }
-
-    // Positional and nested, so it needs its own check rather than
-    // `readRequiredString`: a malformed answer would otherwise reach kagent as a
-    // decision with no answers, which it accepts — resuming the task with the
-    // question silently unanswered.
-    let answers: string[][] | undefined;
-    if (body.answers !== undefined) {
-      if (!Array.isArray(body.answers)) {
-        throw new InputError('answers must be an array');
-      }
-      answers = body.answers.map(entry => {
-        if (!Array.isArray(entry)) {
-          throw new InputError('each answer must be an array of strings');
-        }
-        return entry.map(value => {
-          if (typeof value !== 'string') {
-            throw new InputError('each answer must be an array of strings');
-          }
-          return value;
-        });
-      });
-    }
-
-    const readOptionalBounded = (field: string): string | undefined => {
-      const value = body[field];
-      if (value === undefined) {
-        return undefined;
-      }
-      if (typeof value !== 'string') {
-        throw new InputError(`${field} must be a string`);
-      }
-      const trimmed = value.trim();
-      if (!trimmed) {
-        return undefined;
-      }
-      if (trimmed.length > MESSAGE_TEXT_MAX_LENGTH) {
-        throw new InputError(
-          `${field} must be at most ${MESSAGE_TEXT_MAX_LENGTH} characters`,
-        );
-      }
-      return trimmed;
-    };
+    const { agent, answer } = readAnswerBody(req);
 
     try {
       const result = await client.answerConfirmation(
         readSessionId(req),
-        { namespace: agentNamespace, name: agentName },
-        {
-          messageId,
-          taskId,
-          decision: rawDecision,
-          answers,
-          rejectionReason: readOptionalBounded('rejectionReason'),
-          text: readOptionalBounded('text'),
-        },
+        agent,
+        answer,
         { userToken: readUserToken(req, { required: true }) },
       );
       res.json(result);
@@ -958,6 +1000,34 @@ export async function createRouter(
       }
       res.status(202).json({ status: 'pending' });
     }
+  });
+
+  /**
+   * Answer the confirmation a session is suspended on, streaming the resumed
+   * turn's events back.
+   *
+   * The streaming sibling of the answer route above, and the one the frontend
+   * uses: same body, same validation, but `SendStreamingMessage` relayed as SSE
+   * exactly like the messages route's streaming sibling. What it fixes is the
+   * unary route's blind spot: that one is held for the turn timeout and then
+   * answers 202, after which only the conversation poll can tell what became of
+   * the turn — and if the turn never lands, the page has nothing to show. Over a
+   * stream the events arrive as they happen and a cut stream is visible as such.
+   */
+  router.post('/kagent/sessions/:sessionId/answer/stream', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const { agent, answer } = readAnswerBody(req);
+    const userToken = readUserToken(req, { required: true });
+
+    await relayEventStream(res, logger, signal =>
+      client.streamAnswer(
+        readSessionId(req),
+        agent,
+        answer,
+        { userToken },
+        signal,
+      ),
+    );
   });
 
   // The model-manager pass-through (`/model-manager/...`) lives beside the

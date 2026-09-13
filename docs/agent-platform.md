@@ -918,6 +918,18 @@ loop, this one tracks an agent _turn_, which routinely runs minutes when there a
 many tool calls. A 3-minute bound would back off in the middle of exactly the run
 the page was opened to watch.
 
+**Past the bound the turn is stalled, not idle.** `readTurnProgress`
+(`agent-platform-common`) classifies the newest task as `working` while its
+timestamp moved inside the bound and as `stalled` — since that timestamp — once
+it has not; a terminal task, one waiting on a human, or a session that never ran
+is neither. The page renders the second state as its own row (see "Stopping a
+turn") rather than as the absence of "Working…", because kagent still holds the
+task active and refuses a second message while it stands: an idle composer there
+is a promise the next send would break. The 2026-09-13 incident on the first 4.x
+installation was exactly this — an answer's turn cancelled at the caller's 30 s
+deadline left the task `submitted` with no later event, and the page showed an
+enabled composer over a session that would 409 anything typed into it.
+
 The bound is also what handles `input-required` and `auth-required`. Those states
 are active — the session may still produce output — but they wait on a human, and
 this page offers no way to reply. They start on the fast tier, relax once nobody has
@@ -1628,9 +1640,19 @@ goes over A2A `message/stream` on the same endpoint, relayed by
 `POST /kagent/sessions/:sessionId/messages/stream`, so the reply appears as the
 agent produces it: text token by token, tool calls as they happen. See "Streaming
 the turn" below for the design and its failure semantics. Everything above about
-`message/send` still holds — it remains the transport for answering a
-confirmation, and its verify-not-report contract is exactly what the stream
-degrades to when something cuts it.
+`message/send` still holds — the unary routes stay for callers that want one
+answer, and their verify-not-report contract is exactly what the stream degrades
+to when something cuts it. The page itself sends nothing unary any more: a
+message goes over `…/messages/stream`, an answer over `…/answer/stream`.
+
+**A send refused with a 409 is explained.** kagent holds one active task per
+session, so a message sent while the previous turn still stands is not queued
+but refused — the backend maps the gateway's refusal to a 409, the client names
+it `ConflictError`, and the page renders "This session is still working on the
+previous turn" with a _Cancel the turn_ action aimed at the poll's newest task,
+instead of the composer's generic "Message not sent". The refused text comes
+back into the box as after any failed send, and a successful cancel clears the
+notice.
 
 ### Streaming the turn
 
@@ -1675,6 +1697,22 @@ nothing to undo. `useCancelTask` invalidates the conversation on the way back so
 the badge, the working indicator and the composer follow at once. Stop is
 withheld while a confirmation is open: waiting on a human is the opposite of
 running, and there is nothing to cancel.
+
+**A stalled turn keeps the slot and changes what it says.** Once the newest
+active task's timestamp has not advanced for the 5-minute age bound (see
+"Refreshing"), the "Working…" row becomes "The agent has not reported progress
+since HH:MM" with a _Cancel the turn_ button, and the composer's caption stops
+promising a reply — Send stays withheld, because kagent still refuses a second
+message while the task stands, and Stop stays in its slot aimed at that task.
+Cancelling from either place ends the turn server-side and, because the message
+that turn never answered is the natural thing to send next, puts it back into
+the box as a draft (the composer's `restore` path, the same one a failed send
+uses). The page never drops to an empty idle composer while the newest task is
+active: that was the observed failure on the first 4.x installation, where a
+turn cancelled at the caller's deadline sat `submitted` forever and the page
+showed nothing at all. A stall overrides an open stream too — a send whose
+stream has been open and silent for the whole bound is the same symptom the
+poll measured.
 
 **The frontend folds events into a live overlay** (`lib/kagentStreamTurn.ts`,
 rendered by the session detail page after the polled timeline): completed items
@@ -1876,8 +1914,18 @@ extension URI (with the URI in `message.extensions`) — a `tool_approval_reques
 `ask_user_request` (`id`, `questions[]` with `question`, `choices`, `multiple`).
 Without the negotiation the pause carries a bare hint and nothing to answer.
 
-The reply is `SendMessage` **naming the task** (`taskId`), with the typed response
-in the same place:
+The reply is a send **naming the task** (`taskId`), with the typed response in
+the same place — over `SendStreamingMessage` from the page
+(`POST /kagent/sessions/:sessionId/answer/stream`, `useAnswerConfirmation` →
+`useStreamedTurn`, the same relay and the same live preview as a message), with
+the unary `SendMessage` (`…/answer`) kept beside it. The streaming call is the
+one to prefer: a unary answer is held for the backend's 30 s turn timeout and
+then reported `202 pending`, after which only the conversation poll can show
+what became of the turn — and on the kagent API v2 line that deadline reached
+the runtime and cancelled the turn the answer had set off, leaving a task that
+never landed. Over the stream the browser follows the resumed turn's events as
+they happen, the answer panel gives way to the working composer on the first
+event rather than on the next poll, and a cut stream is visible as such.
 
 ```json
 {

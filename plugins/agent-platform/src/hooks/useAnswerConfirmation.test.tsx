@@ -10,9 +10,10 @@ import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
 import { useAnswerConfirmation } from './useAnswerConfirmation';
 
-const answerConfirmation = jest.fn();
+const streamAnswer = jest.fn();
+const listSessionTasks = jest.fn();
 
-const kagentApi = { answerConfirmation } as unknown as KagentApi;
+const kagentApi = { streamAnswer, listSessionTasks } as unknown as KagentApi;
 
 const SESSION_KEY = ['agent-platform', 'kagent', 'session', 'gazelle', 'abc'];
 const TASKS_KEY = [
@@ -62,13 +63,25 @@ function invalidationFor(
   )?.[0];
 }
 
+/** An error carrying the name the client uses for transport failures. */
+function transportError(message: string): Error {
+  const error = new Error(message);
+  error.name = 'StreamTransportError';
+  return error;
+}
+
 beforeEach(() => {
-  answerConfirmation.mockReset();
-  answerConfirmation.mockResolvedValue(undefined);
+  streamAnswer.mockReset();
+  streamAnswer.mockResolvedValue(undefined);
+  listSessionTasks.mockReset();
+  listSessionTasks.mockResolvedValue([]);
 });
 
 describe('useAnswerConfirmation', () => {
-  it('forwards the answer with a generated message id', async () => {
+  it('streams the answer with a generated message id', async () => {
+    // The streaming route, not the unary one: a unary answer is held for the
+    // backend's turn timeout and then reported pending, after which a turn that
+    // never lands leaves the page nothing to show.
     const { result } = renderWith(agent);
 
     await act(async () => {
@@ -80,13 +93,19 @@ describe('useAnswerConfirmation', () => {
       });
     });
 
-    expect(answerConfirmation).toHaveBeenCalledWith('gazelle', 'abc', agent, {
-      messageId: expect.any(String),
-      taskId: 'task-1',
-      decision: 'approve',
-      answers: [['A rideable bike']],
-      text: 'A rideable bike',
-    });
+    expect(streamAnswer).toHaveBeenCalledWith(
+      'gazelle',
+      'abc',
+      agent,
+      {
+        messageId: expect.any(String),
+        taskId: 'task-1',
+        decision: 'approve',
+        answers: [['A rideable bike']],
+        text: 'A rideable bike',
+      },
+      expect.any(Function),
+    );
   });
 
   it('refuses to answer when the session’s agent is unknown', async () => {
@@ -100,7 +119,7 @@ describe('useAnswerConfirmation', () => {
       ).rejects.toThrow(/agent for this session is unknown/);
     });
 
-    expect(answerConfirmation).not.toHaveBeenCalled();
+    expect(streamAnswer).not.toHaveBeenCalled();
   });
 
   it('refreshes the conversation, so the resumed turn shows up', async () => {
@@ -116,7 +135,7 @@ describe('useAnswerConfirmation', () => {
 
   it('holds the answer as pending until it lands', async () => {
     let release: () => void = () => {};
-    answerConfirmation.mockImplementation(
+    streamAnswer.mockImplementation(
       () =>
         new Promise<void>(resolve => {
           release = resolve;
@@ -144,7 +163,7 @@ describe('useAnswerConfirmation', () => {
   });
 
   it('hands a failed answer back rather than losing the choices', async () => {
-    answerConfirmation.mockRejectedValue(new Error('kagent said no'));
+    streamAnswer.mockRejectedValue(new Error('kagent said no'));
     const { result } = renderWith(agent);
 
     await act(async () => {
@@ -161,6 +180,127 @@ describe('useAnswerConfirmation', () => {
       expect(result.current.failed?.answers).toEqual([['A rideable bike']]);
       expect(result.current.pending).toBeNull();
       expect(result.current.error?.message).toBe('kagent said no');
+    });
+  });
+
+  describe('the resumed turn, streamed', () => {
+    it('exposes the turn’s events while it runs, and drops the preview once reconciled', async () => {
+      let release: () => void = () => {};
+      let emit: (event: unknown) => void = () => {};
+      streamAnswer.mockImplementation(
+        (_i, _s, _a, _answer, onEvent: (event: unknown) => void) =>
+          new Promise<void>(resolve => {
+            emit = onEvent;
+            release = resolve;
+          }),
+      );
+
+      const { result } = renderWith(agent);
+
+      act(() => {
+        void result.current.answer({ taskId: 'task-1', decision: 'approve' });
+      });
+      await waitFor(() => expect(result.current.isAnswering).toBe(true));
+
+      // kagent's first event on a resumed task names it and says it is working
+      // again — what lets the page retire the answer panel before the poll does.
+      act(() =>
+        emit({ kind: 'task', id: 'task-1', status: { state: 'working' } }),
+      );
+      await waitFor(() =>
+        expect(result.current.stream).toMatchObject({
+          dispatched: true,
+          taskId: 'task-1',
+          stateKey: 'working',
+        }),
+      );
+
+      act(() =>
+        emit({
+          kind: 'status-update',
+          final: true,
+          status: {
+            state: 'completed',
+            message: {
+              kind: 'message',
+              messageId: 'reply-1',
+              role: 'agent',
+              parts: [{ kind: 'text', text: 'Done, after your decision.' }],
+            },
+          },
+        }),
+      );
+      await waitFor(() =>
+        expect(result.current.stream?.items).toEqual([
+          expect.objectContaining({
+            kind: 'agent-message',
+            text: 'Done, after your decision.',
+          }),
+        ]),
+      );
+
+      await act(async () => {
+        release();
+      });
+
+      await waitFor(() => expect(result.current.stream).toBeNull());
+      expect(result.current.isAnswering).toBe(false);
+    });
+
+    it('resolves a stream cut after events, and leaves the turn to the poll', async () => {
+      // The whole point of streaming the answer: a cut connection is not a
+      // failed answer, and nothing here waits on a deadline of ours.
+      streamAnswer.mockImplementation(
+        async (_i, _s, _a, _answer, onEvent: (event: unknown) => void) => {
+          onEvent({ kind: 'task', id: 'task-1' });
+          throw transportError('the stream died');
+        },
+      );
+
+      const { result, invalidateQueries } = renderWith(agent);
+
+      await act(async () => {
+        await result.current.answer({ taskId: 'task-1', decision: 'approve' });
+      });
+
+      expect(result.current.error).toBeNull();
+      expect(invalidationFor(invalidateQueries, TASKS_KEY)).toBeDefined();
+      expect(listSessionTasks).not.toHaveBeenCalled();
+    });
+
+    it('verifies a transport failure before any event against the history', async () => {
+      streamAnswer.mockRejectedValue(transportError('connection reset'));
+      listSessionTasks.mockImplementation(async () => [
+        { history: [{ messageId: streamAnswer.mock.calls[0][3].messageId }] },
+      ]);
+
+      const { result } = renderWith(agent);
+
+      await act(async () => {
+        await result.current.answer({ taskId: 'task-1', decision: 'approve' });
+      });
+
+      expect(result.current.error).toBeNull();
+      expect(result.current.failed).toBeNull();
+    });
+
+    it('reports a decision as made, without a verification read', async () => {
+      // A task that is no longer waiting is a 409 the backend decided; going to
+      // look would only delay saying so.
+      const refused = new Error('not waiting for a decision on this turn');
+      refused.name = 'ConflictError';
+      streamAnswer.mockRejectedValue(refused);
+
+      const { result } = renderWith(agent);
+
+      await act(async () => {
+        await expect(
+          result.current.answer({ taskId: 'task-1', decision: 'approve' }),
+        ).rejects.toThrow(/not waiting/);
+      });
+
+      expect(listSessionTasks).not.toHaveBeenCalled();
+      expect(result.current.stream).toBeNull();
     });
   });
 

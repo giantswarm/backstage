@@ -5,9 +5,10 @@ import { kagentApiRef } from '../apis';
 import {
   KagentSessionDetail,
   SessionState,
+  TurnProgress,
   findNewestStatefulTaskIndex,
   readNewestTaskState,
-  isAgentWorking,
+  readTurnProgress,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   PendingConfirmation,
@@ -53,9 +54,17 @@ export type SessionDetailView = {
    * Whether the agent is working on a reply, as of the last successful read.
    *
    * Narrower than `state.isActive`: it excludes waiting on a human, and expires
-   * once the state has not moved for `ACTIVE_MAX_AGE_MS`. See `isAgentWorking`.
+   * once the state has not moved for `ACTIVE_MAX_AGE_MS` — at which point
+   * {@link turnProgress} says `stalled` rather than nothing.
    */
   isAgentWorking: boolean;
+  /**
+   * What the newest turn is doing — working, or stalled since when — as of the
+   * last successful read. Undefined when there is no turn to report on: a
+   * finished session, one waiting on a human, one that never ran. See
+   * `readTurnProgress`.
+   */
+  turnProgress?: TurnProgress;
   /**
    * The confirmation the agent is suspended on, when it is.
    *
@@ -189,8 +198,8 @@ export function useSessionDetail(
   // `dataUpdatedAt` re-evaluates it on every poll, and never asserts progress at a
   // moment we have no data for.
   const tasksUpdatedAt = tasksQuery.dataUpdatedAt;
-  const agentWorking = useMemo(
-    () => (tasks ? isAgentWorking(tasks, tasksUpdatedAt) : false),
+  const turnProgress = useMemo(
+    () => (tasks ? readTurnProgress(tasks, tasksUpdatedAt) : undefined),
     [tasks, tasksUpdatedAt],
   );
 
@@ -244,7 +253,8 @@ export function useSessionDetail(
     state,
     currentTaskId,
     stateChangedAt: newest?.changedAt,
-    isAgentWorking: agentWorking,
+    isAgentWorking: turnProgress?.kind === 'working',
+    turnProgress,
     pendingConfirmation,
     taskCount: tasks?.length ?? 0,
     hasConversation: tasks !== undefined,

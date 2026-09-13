@@ -163,6 +163,9 @@ describe('KagentApiClient', () => {
       [401, 'UnauthorizedError'],
       [403, 'ForbiddenError'],
       [404, 'NotFoundError'],
+      // A send refused because the session is still working on the previous
+      // turn; the page explains it and offers to cancel that turn.
+      [409, 'ConflictError'],
       [503, 'ServiceUnavailableError'],
     ])('maps status %s to %s', async (status, expectedName) => {
       fetchMock.mockResolvedValue(jsonResponse({}, status));
@@ -943,6 +946,116 @@ describe('KagentApiClient', () => {
         name: 'UpstreamError',
         message: 'task already finished',
       });
+    });
+  });
+
+  describe('streamAnswer', () => {
+    const answer = {
+      messageId: 'msg-1',
+      taskId: 'task-1',
+      decision: 'approve' as const,
+      answers: [['A rideable bike']],
+      text: 'A rideable bike',
+    };
+
+    /** A streaming response whose body yields the given SSE frames. */
+    function sseResponse(frames: string[], status = 200) {
+      const chunks = frames.map(frame => Uint8Array.from(Buffer.from(frame)));
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: {
+          getReader: () => ({
+            read: async () => {
+              const value = chunks.shift();
+              return value ? { done: false, value } : { done: true };
+            },
+          }),
+        },
+        json: async () => ({}),
+      } as unknown as Response;
+    }
+
+    it('POSTs the same body as the unary answer to the streaming route, and relays the events', async () => {
+      fetchMock.mockResolvedValue(
+        sseResponse([
+          'data: {"task":{"id":"task-1","status":{"state":"TASK_STATE_WORKING"}}}\n\n',
+          'data: {"statusUpdate":{"taskId":"task-1","status":{"state":"TASK_STATE_COMPLETED"}}}\n\n',
+        ]),
+      );
+      const events: unknown[] = [];
+
+      await buildClient().streamAnswer(
+        'gazelle',
+        'abc123',
+        { namespace: 'kagent', name: 'grill-master' },
+        answer,
+        event => events.push(event),
+      );
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc123/answer/stream?installation=gazelle',
+      );
+      expect(init.method).toBe('POST');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      expect(JSON.parse(init.body)).toEqual({
+        agentNamespace: 'kagent',
+        agentName: 'grill-master',
+        messageId: 'msg-1',
+        taskId: 'task-1',
+        decision: 'approve',
+        answers: [['A rideable bike']],
+        text: 'A rideable bike',
+      });
+      expect(events).toEqual([
+        { task: { id: 'task-1', status: { state: 'TASK_STATE_WORKING' } } },
+        {
+          statusUpdate: {
+            taskId: 'task-1',
+            status: { state: 'TASK_STATE_COMPLETED' },
+          },
+        },
+      ]);
+    });
+
+    it('reports a 409 as a decision, not as a transport failure to verify', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          { error: { message: 'still working on the previous message' } },
+          409,
+        ),
+      );
+
+      await expect(
+        buildClient().streamAnswer(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          answer,
+          () => {},
+        ),
+      ).rejects.toMatchObject({
+        name: 'ConflictError',
+        message: 'still working on the previous message',
+      });
+    });
+
+    it('reports a 5xx before the stream opens as a transport failure', async () => {
+      // A gateway cut firing before the stream opens looks like this; whether
+      // the answer was dispatched is unknowable here, so the caller verifies.
+      fetchMock.mockResolvedValue(jsonResponse({}, 502));
+
+      await expect(
+        buildClient().streamAnswer(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          answer,
+          () => {},
+        ),
+      ).rejects.toMatchObject({ name: 'StreamTransportError' });
     });
   });
 

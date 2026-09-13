@@ -394,6 +394,72 @@ describe('SessionTimeline', () => {
     ]);
   });
 
+  describe('a stalled turn', () => {
+    const since = Date.parse('2026-09-13T13:52:00Z');
+    const clock = new Date(since).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    it('replaces the working row with when progress last came, and a cancel', async () => {
+      const onCancelTurn = jest.fn();
+      await renderInTestApp(
+        <SessionTimeline
+          timeline={timelineFor(tasksV099)}
+          agentName="Issue tracker"
+          // The page never passes both; if it did, the stall must win — a
+          // spinner next to "no progress" contradicts itself.
+          isAgentWorking
+          stalledSince={since}
+          onCancelTurn={onCancelTurn}
+        />,
+      );
+
+      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+      expect(
+        screen.getByText(`The agent has not reported progress since ${clock}.`),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Cancel the turn' }),
+      );
+      expect(onCancelTurn).toHaveBeenCalledTimes(1);
+    });
+
+    it('states the stall without a cancel when the turn is not known', async () => {
+      await renderInTestApp(
+        <SessionTimeline
+          timeline={timelineFor(tasksV099)}
+          agentName="Issue tracker"
+          stalledSince={since}
+        />,
+      );
+
+      expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Cancel the turn' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows the stall on a session whose only message is the stalled one', async () => {
+      // The reply to a session's first message has an empty conversation to
+      // appear into — the stall row must not be lost with the empty state.
+      await renderInTestApp(
+        <SessionTimeline
+          timeline={timelineFor(tasksEmpty)}
+          agentName="Issue tracker"
+          stalledSince={since}
+          onCancelTurn={jest.fn()}
+        />,
+      );
+
+      expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Cancel the turn' }),
+      ).toBeInTheDocument();
+    });
+  });
+
   it('renders an empty state for a session that never ran', async () => {
     await render(tasksEmpty);
 

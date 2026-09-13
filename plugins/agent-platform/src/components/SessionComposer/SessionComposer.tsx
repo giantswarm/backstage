@@ -107,6 +107,13 @@ export type SessionComposerProps = {
    */
   isAgentWorking: boolean;
   /**
+   * The turn being waited on has stopped reporting progress. Sending stays
+   * withheld — kagent still holds the task active and would refuse a second
+   * message — but the caption stops promising a reply and points at the cancel
+   * instead. Only read while {@link isAgentWorking}.
+   */
+  isStalled?: boolean;
+  /**
    * Focus the box on mount.
    *
    * For the page a just-started session lands on: the user was typing into the
@@ -184,6 +191,7 @@ export type SessionComposerProps = {
  */
 export function SessionComposer({
   isAgentWorking,
+  isStalled = false,
   isFinished,
   disabledReason,
   error,
@@ -275,6 +283,10 @@ export function SessionComposer({
     caption = disabledReason;
   } else if (isStopping) {
     caption = 'Stopping the agent…';
+  } else if (isAgentWorking && isStalled) {
+    caption = showStop
+      ? 'The agent has stopped reporting progress. Cancel the turn to send again.'
+      : 'The agent has stopped reporting progress. You can reply once this turn ends.';
   } else if (isAgentWorking) {
     caption = showStop
       ? 'The agent is working. Stop it, or reply once this turn finishes.'

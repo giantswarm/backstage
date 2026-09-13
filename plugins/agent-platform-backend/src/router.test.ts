@@ -1,6 +1,6 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
-import { NotFoundError } from '@backstage/errors';
+import { ConflictError, NotFoundError } from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
 import {
@@ -46,6 +46,7 @@ describe('createRouter', () => {
   const streamMessage = jest.fn();
   const createSession = jest.fn();
   const answerConfirmation = jest.fn();
+  const streamAnswer = jest.fn();
   const cancelTask = jest.fn();
 
   const mockClient = {
@@ -59,6 +60,7 @@ describe('createRouter', () => {
     streamMessage,
     createSession,
     answerConfirmation,
+    streamAnswer,
     cancelTask,
   } as unknown as KagentClient;
 
@@ -97,6 +99,7 @@ describe('createRouter', () => {
     streamMessage.mockReset();
     createSession.mockReset();
     answerConfirmation.mockReset();
+    streamAnswer.mockReset();
     cancelTask.mockReset();
     app = await buildApp();
   });
@@ -1902,6 +1905,108 @@ describe('createRouter', () => {
       });
 
       expect(answerConfirmation.mock.calls[0][2].answers).toBeUndefined();
+    });
+  });
+
+  describe('POST /kagent/sessions/:sessionId/answer/stream', () => {
+    const validBody = {
+      agentNamespace: 'kagent',
+      agentName: 'grill-master',
+      messageId: 'msg-1',
+      taskId: 'task-1',
+      decision: 'approve',
+      answers: [['Rideable proof-of-concept']],
+      text: 'Rideable proof-of-concept',
+    };
+
+    function sseUpstream(frames: string[]) {
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) {
+            controller.enqueue(encoder.encode(frame));
+          }
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+
+    function post(body: unknown = validBody, installation = 'gazelle') {
+      return request(app)
+        .post('/kagent/sessions/abc/answer/stream')
+        .query({ installation })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    it('relays the resumed turn’s events, forwarding the same answer the unary route would', async () => {
+      const frames = [
+        'data: {"statusUpdate":{"taskId":"task-1","status":{"state":"TASK_STATE_WORKING"}}}\n\n',
+        'data: {"statusUpdate":{"taskId":"task-1","status":{"state":"TASK_STATE_COMPLETED"}}}\n\n',
+      ];
+      streamAnswer.mockResolvedValue(sseUpstream(frames));
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/event-stream');
+      expect(response.text).toBe(frames.join(''));
+      expect(streamAnswer).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'grill-master' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          answers: [['Rideable proof-of-concept']],
+          rejectionReason: undefined,
+          text: 'Rideable proof-of-concept',
+        },
+        { userToken: 'user-token' },
+        expect.any(AbortSignal),
+      );
+      // Never the unary call: that one is held for the turn timeout and then
+      // answers 202, which is the blind spot this route exists to close.
+      expect(answerConfirmation).not.toHaveBeenCalled();
+    });
+
+    it('validates the body exactly as the unary answer route does', async () => {
+      for (const body of [
+        { ...validBody, taskId: undefined },
+        { ...validBody, decision: 'maybe' },
+        { ...validBody, answers: ['yes'] },
+        { ...validBody, text: 'x'.repeat(32_001) },
+      ]) {
+        const response = await post(body);
+        expect(response.status).toBe(400);
+      }
+      expect(streamAnswer).not.toHaveBeenCalled();
+    });
+
+    it('requires the forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/answer/stream')
+        .query({ installation: 'gazelle' })
+        .send(validBody);
+
+      expect(response.status).toBe(401);
+      expect(streamAnswer).not.toHaveBeenCalled();
+    });
+
+    it('maps a refusal before the stream opens through the error middleware', async () => {
+      // The task is no longer waiting: a decision, and a 409 the page explains.
+      streamAnswer.mockRejectedValue(
+        new ConflictError('not waiting for a decision on this turn'),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toContain('not waiting');
     });
   });
 

@@ -566,13 +566,58 @@ export class KagentClient {
      */
     signal: AbortSignal,
   ): Promise<Response> {
-    const request = create(SendMessageRequestSchema, {
-      message: {
+    return this.openStream(
+      sessionId,
+      {
         messageId: message.messageId,
-        role: Role.USER,
         parts: [{ content: { case: 'text', value: message.text } }],
       },
-    });
+      options,
+      signal,
+    );
+  }
+
+  /**
+   * {@link answerConfirmation} over `SendStreamingMessage`: the same resume of
+   * the same task, with the turn's events relayed as {@link streamMessage}
+   * relays them.
+   *
+   * The streaming call is what the answer path should prefer. A unary
+   * `SendMessage` is held open only until {@link DEFAULT_KAGENT_TURN_TIMEOUT_MS}
+   * and then reported pending — and on the kagent API v2 line the caller's
+   * deadline reached the runtime, so the turn set off by the answer was
+   * cancelled at 30 s and the task left `submitted` with nothing to poll for.
+   * Over a stream the browser follows the turn's events as they happen, a cut
+   * stream is visible as such, and no deadline of ours bounds the agent's work.
+   */
+  async streamAnswer(
+    sessionId: string,
+    _agent: { namespace: string; name: string },
+    answer: HitlAnswer & {
+      messageId: string;
+      taskId: string;
+      text?: string;
+    },
+    options: KagentRequestOptions,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const message = await this.buildAnswerMessage(sessionId, answer, options);
+    return this.openStream(sessionId, message, options, signal);
+  }
+
+  /**
+   * Open a `SendStreamingMessage` for one outbound message and answer it as an
+   * SSE {@link Response} — the shared half of {@link streamMessage} and
+   * {@link streamAnswer}, so the two cannot drift in how a turn's stream is
+   * opened, bounded and ended.
+   */
+  private async openStream(
+    sessionId: string,
+    message: OutboundMessage,
+    options: KagentRequestOptions,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const request = this.buildRequest(message);
     const stream = this.a2aService
       .sendStreamingMessage(request, {
         headers: this.turnHeaders(sessionId, options),
@@ -672,6 +717,25 @@ export class KagentClient {
     },
     options: KagentRequestOptions,
   ): Promise<unknown> {
+    const message = await this.buildAnswerMessage(sessionId, answer, options);
+    return this.dispatch(sessionId, message, options);
+  }
+
+  /**
+   * The message that answers a confirmation: the typed HITL response built from
+   * the request the controller recorded on the task, addressed to that task.
+   * Shared by the unary and the streaming answer so both resume the same task
+   * with the same payload.
+   */
+  private async buildAnswerMessage(
+    sessionId: string,
+    answer: HitlAnswer & {
+      messageId: string;
+      taskId: string;
+      text?: string;
+    },
+    options: KagentRequestOptions,
+  ): Promise<OutboundMessage> {
     const task = await this.call(
       () =>
         this.a2aService.getTask(
@@ -694,24 +758,20 @@ export class KagentClient {
     }
     const payload = buildHitlResponse(request, answer);
 
-    return this.dispatch(
-      sessionId,
-      {
-        messageId: answer.messageId,
-        parts: [
-          {
-            content: {
-              case: 'text',
-              value: answer.text ?? renderDecision(answer),
-            },
+    return {
+      messageId: answer.messageId,
+      parts: [
+        {
+          content: {
+            case: 'text',
+            value: answer.text ?? renderDecision(answer),
           },
-        ],
-        taskId: answer.taskId,
-        extensions: [HITL_EXTENSION_URI],
-        metadata: { [HITL_EXTENSION_URI]: payload },
-      },
-      options,
-    );
+        },
+      ],
+      taskId: answer.taskId,
+      extensions: [HITL_EXTENSION_URI],
+      metadata: { [HITL_EXTENSION_URI]: payload },
+    };
   }
 
   /**
@@ -831,18 +891,7 @@ export class KagentClient {
     message: OutboundMessage,
     options: KagentRequestOptions,
   ): Promise<unknown> {
-    const request = create(SendMessageRequestSchema, {
-      message: {
-        messageId: message.messageId,
-        role: Role.USER,
-        parts: message.parts,
-        // Set means "resume this task"; empty means "start a new one". Naming a
-        // terminal task is rejected outright, so an ordinary message omits it.
-        ...(message.taskId && { taskId: message.taskId }),
-        ...(message.extensions && { extensions: message.extensions }),
-        ...(message.metadata && { metadata: message.metadata }),
-      },
-    });
+    const request = this.buildRequest(message);
 
     let response;
     try {
@@ -883,6 +932,25 @@ export class KagentClient {
     }
 
     return toJson(SendMessageResponseSchema, response);
+  }
+
+  /**
+   * The `SendMessageRequest` for one outbound message — the same request
+   * whether it goes out unary or streaming.
+   */
+  private buildRequest(message: OutboundMessage) {
+    return create(SendMessageRequestSchema, {
+      message: {
+        messageId: message.messageId,
+        role: Role.USER,
+        parts: message.parts,
+        // Set means "resume this task"; empty means "start a new one". Naming a
+        // terminal task is rejected outright, so an ordinary message omits it.
+        ...(message.taskId && { taskId: message.taskId }),
+        ...(message.extensions && { extensions: message.extensions }),
+        ...(message.metadata && { metadata: message.metadata }),
+      },
+    });
   }
 
   /** How a send's failures read: the instance is gone, or busy, or refused it. */
