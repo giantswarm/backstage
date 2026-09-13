@@ -18,7 +18,7 @@ export type MusterInstallationSource = NonNullable<
 /**
  * The muster aggregator endpoint for an installation, from its base domain:
  * `https://muster.<baseDomain>/mcp` (the same derivation the kagent proxy uses
- * for `https://kagent.<baseDomain>/api`). Undefined without a base domain.
+ * for `https://agentgateway.<baseDomain>`). Undefined without a base domain.
  */
 export function deriveMusterUrl(
   baseDomain: string | undefined,

@@ -79,9 +79,9 @@ async function frames(response: Response): Promise<unknown[]> {
 }
 
 describe('deriveKagentApiBaseUrl', () => {
-  it('derives the gRPC origin on the kagent hostname, with no path', () => {
+  it('derives the gRPC origin on the controller route hostname, with no path', () => {
     expect(deriveKagentApiBaseUrl('gazelle.example.io')).toBe(
-      'https://kagent.gazelle.example.io',
+      'https://agentgateway.gazelle.example.io',
     );
     expect(deriveKagentApiBaseUrl(undefined)).toBeUndefined();
   });
@@ -99,7 +99,10 @@ describe('readKagentInstallationsFromConfig', () => {
     });
     const result = readKagentInstallationsFromConfig(config, logger);
     expect([...result.values()]).toEqual([
-      { name: 'gazelle', apiBaseUrl: 'https://kagent.gazelle.example.io' },
+      {
+        name: 'gazelle',
+        apiBaseUrl: 'https://agentgateway.gazelle.example.io',
+      },
     ]);
   });
 

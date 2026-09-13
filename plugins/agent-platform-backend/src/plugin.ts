@@ -12,7 +12,7 @@ import { createRouter } from './router';
  * controller (`AgentInstanceService`, `AgentTemplateService`, `SystemService`
  * and the A2A v1 `A2AService`), plus the model-manager pass-through.
  *
- * It exists because the browser cannot reach `kagent.<baseDomain>`
+ * It exists because the browser cannot reach `agentgateway.<baseDomain>`
  * cross-origin, because gRPC over HTTP/2 wants a server-side client, and
  * because the user's per-installation Dex ID token has to *become* the
  * `authorization` metadata toward kagent (on the inbound leg that header

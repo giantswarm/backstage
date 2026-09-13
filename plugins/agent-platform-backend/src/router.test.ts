@@ -157,8 +157,12 @@ describe('createRouter', () => {
       });
 
       expect(probe).toHaveBeenCalledTimes(2);
-      expect(probe).toHaveBeenCalledWith('https://kagent.gazelle.example.io');
-      expect(probe).toHaveBeenCalledWith('https://kagent.golem.example.io');
+      expect(probe).toHaveBeenCalledWith(
+        'https://agentgateway.gazelle.example.io',
+      );
+      expect(probe).toHaveBeenCalledWith(
+        'https://agentgateway.golem.example.io',
+      );
       // The probe is handed a URL and nothing else: no header, no identity.
       for (const call of probe.mock.calls) {
         expect(call).toHaveLength(1);
@@ -186,11 +190,11 @@ describe('createRouter', () => {
       const { cache, pending } = controlledCache();
       const probing = await buildApp(twoInstallations, { reachability: cache });
 
-      pending.get('https://kagent.gazelle.example.io')!({
+      pending.get('https://agentgateway.gazelle.example.io')!({
         reachable: true,
         checkedAt: 1,
       });
-      pending.get('https://kagent.golem.example.io')!({
+      pending.get('https://agentgateway.golem.example.io')!({
         reachable: false,
         reason: 'DNS lookup failed (ENOTFOUND)',
         checkedAt: 1,
@@ -216,9 +220,9 @@ describe('createRouter', () => {
       expect(
         kagentProbeUrl({
           name: 'gazelle',
-          apiBaseUrl: 'https://kagent.gazelle.example.io',
+          apiBaseUrl: 'https://agentgateway.gazelle.example.io',
         }),
-      ).toBe('https://kagent.gazelle.example.io');
+      ).toBe('https://agentgateway.gazelle.example.io');
       // An installation whose controller is an in-cluster h2c origin is probed
       // exactly where the client would dial it.
       expect(
@@ -366,9 +370,15 @@ describe('createRouter', () => {
         error: false,
         data: [sessionWire('a'), sessionWire('b')],
       });
-      listSessionTasks.mockImplementation(async (id: string) =>
-        tasksWire(id === 'a' ? 'input-required' : 'completed'),
-      );
+      // The pool reads concurrently and reports in completion order; `a`'s
+      // read finishes last here, so the wire order is asserted, not assumed.
+      listSessionTasks.mockImplementation(async (id: string) => {
+        if (id === 'a') {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          return tasksWire('input-required');
+        }
+        return tasksWire('completed');
+      });
 
       const response = await request(app)
         .get('/kagent/session-states')
@@ -379,6 +389,7 @@ describe('createRouter', () => {
       expect(response.headers['cache-control']).toBe('no-store');
       expect(response.body).toEqual({
         evaluatedAt: expect.any(Number),
+        // Candidate order (as listed), not completion order.
         states: [
           { sessionId: 'a', state: 'input-required' },
           { sessionId: 'b', state: 'completed' },
