@@ -105,6 +105,7 @@ describe('useAnswerConfirmation', () => {
         text: 'A rideable bike',
       },
       expect.any(Function),
+      expect.any(AbortSignal),
     );
   });
 
@@ -184,6 +185,25 @@ describe('useAnswerConfirmation', () => {
   });
 
   describe('the resumed turn, streamed', () => {
+    it('reports the stream lost when it ends before the resumed turn does', async () => {
+      // The same classification as a sent message's stream, through the same
+      // hook: the page says so in place of "Working…" while the poll takes over.
+      streamAnswer.mockImplementation(
+        async (_i, _s, _a, _answer, onEvent: (event: unknown) => void) => {
+          onEvent({ kind: 'task', id: 'task-1', status: { state: 'working' } });
+        },
+      );
+      const { result } = renderWith(agent);
+      expect(result.current.isStreamLost).toBe(false);
+
+      await act(async () => {
+        await result.current.answer({ taskId: 'task-1', decision: 'approve' });
+      });
+
+      expect(result.current.isStreamLost).toBe(true);
+      expect(result.current.error).toBeNull();
+    });
+
     it('exposes the turn’s events while it runs, and drops the preview once reconciled', async () => {
       let release: () => void = () => {};
       let emit: (event: unknown) => void = () => {};

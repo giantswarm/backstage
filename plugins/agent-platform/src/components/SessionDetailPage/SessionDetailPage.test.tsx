@@ -164,6 +164,7 @@ function idleConfirmation(
     isAnswering: false,
     pending: null,
     stream: null,
+    isStreamLost: false,
     failed: null,
     error: null,
     reset: jest.fn(),
@@ -189,6 +190,7 @@ function idleSend(
     isSending: false,
     pending: null,
     stream: null,
+    isStreamLost: false,
     failed: null,
     error: null,
     reset: jest.fn(),
@@ -825,6 +827,103 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    });
+
+    describe('a lost stream', () => {
+      // The gateway closed the turn's stream mid-reply (Envoy Gateway's default
+      // 15 s route timeout, seen on a customer portal) while the task ran on and
+      // finished. The page must neither stay on "Working…" for good nor claim
+      // the turn finished before the poll says so. `settledView` is the
+      // enclosing describe's: the poll's copy of the previous, finished turn.
+      const cutStream = {
+        ...createStreamTurn('m1'),
+        dispatched: true,
+        taskId: 'task-new',
+      };
+
+      it('says the result is being checked while the send re-reads the conversation', async () => {
+        // The stream is gone and the send is awaiting the conversation; the
+        // poll's copy still shows the previous, finished turn.
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, isStreamLost: true, stream: cutStream }),
+        );
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText('The live stream was lost. Checking the result…'),
+        ).toBeInTheDocument();
+      });
+
+      it('keeps Stop aimed at the streamed task while the result is checked', async () => {
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, isStreamLost: true, stream: cutStream }),
+        );
+        await render();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+
+        expect(mockCancelTask).toHaveBeenCalledWith('task-new');
+      });
+
+      it('says the turn is being followed once the poll shows it still working', async () => {
+        // The re-read came back: the task is still running, the preview is
+        // gone for good, and the reply arrives through the poll.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          isAgentWorking: true,
+          currentTaskId: 'task-9',
+        });
+        mockUseSendMessage.mockReturnValue(idleSend({ isStreamLost: true }));
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/The live stream was lost. Still working/),
+        ).toBeInTheDocument();
+        // Still a running turn: the composer withholds Send and offers Stop.
+        expect(
+          screen.queryByRole('button', { name: 'Send' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Stop' }),
+        ).toBeInTheDocument();
+      });
+
+      it('shows the turn as finished, with the composer free, once the poll says so', async () => {
+        // What a reload used to be needed for: the poll reports the task
+        // completed with the full answer, and the page follows it.
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(idleSend({ isStreamLost: true }));
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.queryByText(/live stream was lost/),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText('Completed')).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Send' }),
+        ).toBeInTheDocument();
+      });
+
+      it('says the same for the stream of an answer', async () => {
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseAnswerConfirmation.mockReturnValue(
+          idleConfirmation({
+            isAnswering: true,
+            isStreamLost: true,
+            stream: cutStream,
+          }),
+        );
+        await render();
+
+        expect(
+          screen.getByText('The live stream was lost. Checking the result…'),
+        ).toBeInTheDocument();
+      });
     });
 
     describe('a stalled turn', () => {

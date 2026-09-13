@@ -29,7 +29,9 @@ export type PendingMessage = {
  * the need to watch.
  *
  * How a lost stream is classified — verified against the history, or reported
- * as a decision — is `useStreamedTurn`'s, shared with the answer path.
+ * as a decision — is `useStreamedTurn`'s, shared with the answer path. So is
+ * noticing that the stream ended before the turn did (`isStreamLost`), which the
+ * page says in place of "Working…" while the poll takes over.
  *
  * Shaped like `useRenameSession` beyond that — the mutation does its own
  * invalidation so `isPending` covers it — with the message the user just sent
@@ -70,13 +72,14 @@ export function useSendMessage(
           'Cannot send a message: the agent for this session is unknown.',
         );
       }
-      await run(message.messageId, onEvent =>
+      await run(message.messageId, (onEvent, signal) =>
         kagentApi.streamMessage(
           installation,
           sessionId,
           agent,
           message,
           onEvent,
+          signal,
         ),
       );
     },
@@ -114,7 +117,7 @@ export function useSendMessage(
     [mutateAsync],
   );
 
-  const stream = turn.stream;
+  const { stream, isStreamLost } = turn;
   return useMemo(
     () => ({
       sendMessage,
@@ -126,6 +129,11 @@ export function useSendMessage(
        * still being produced. Null outside a send and after reconciliation.
        */
       stream,
+      /**
+       * The stream ended before the turn did, and the poll has not yet shown
+       * that turn over. What the page says instead of "Working…" meanwhile.
+       */
+      isStreamLost,
       /**
        * The last message that failed to send, so its text can be given back to
        * the composer. Distinct `messageId` per attempt, which is what lets the
@@ -140,6 +148,7 @@ export function useSendMessage(
       mutation.isPending,
       pending,
       stream,
+      isStreamLost,
       failed,
       mutation.error,
       reset,

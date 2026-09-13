@@ -589,3 +589,68 @@ describe('SessionTimeline', () => {
     });
   });
 });
+
+describe('a lost stream', () => {
+  it('says the result is being checked, in place of Working…', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        isAgentWorking
+        streamLost="checking"
+      />,
+    );
+
+    expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('The live stream was lost. Checking the result…'),
+    ).toBeInTheDocument();
+  });
+
+  it('says the turn is followed without its preview', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        isAgentWorking
+        streamLost="following"
+      />,
+    );
+
+    expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/The live stream was lost. Still working/),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing about the stream when the agent is not working', async () => {
+    // The row exists to describe a turn in progress; a finished turn has no
+    // row, whatever became of its stream.
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        streamLost="following"
+      />,
+    );
+
+    expect(screen.queryByText(/live stream was lost/)).not.toBeInTheDocument();
+  });
+
+  it('yields to a stall', async () => {
+    // The page passes at most one of the two; if both arrive the stall wins,
+    // as it does over the plain working row.
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        isAgentWorking
+        streamLost="following"
+        stalledSince={Date.parse('2026-09-13T13:52:00Z')}
+      />,
+    );
+
+    expect(screen.queryByText(/live stream was lost/)).not.toBeInTheDocument();
+    expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+  });
+});
