@@ -71,7 +71,13 @@ export function useSendMessage(
         );
       }
       await run(message.messageId, onEvent =>
-        kagentApi.streamMessage(installation, sessionId, agent, message, onEvent),
+        kagentApi.streamMessage(
+          installation,
+          sessionId,
+          agent,
+          message,
+          onEvent,
+        ),
       );
     },
     onSuccess: () => {

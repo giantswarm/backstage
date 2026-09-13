@@ -879,7 +879,9 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+        expect(
+          screen.getByText(/has not reported progress/),
+        ).toBeInTheDocument();
       });
 
       it('cancels the turn from the row, and puts the unanswered message back into the box', async () => {
@@ -914,7 +916,9 @@ describe('SessionDetailPage', () => {
         expect(
           screen.queryByRole('button', { name: 'Cancel the turn' }),
         ).not.toBeInTheDocument();
-        expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+        expect(
+          screen.getByText(/has not reported progress/),
+        ).toBeInTheDocument();
       });
     });
 
@@ -938,7 +942,9 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(
-          screen.getByText('This session is still working on the previous turn'),
+          screen.getByText(
+            'This session is still working on the previous turn',
+          ),
         ).toBeInTheDocument();
         // Not doubled by the composer's generic failure notice.
         expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();

@@ -14,15 +14,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Alert,
-  Avatar,
-  Badge,
-  Box,
-  Button,
-  Flex,
-  Text,
-} from '@backstage/ui';
+import { Alert, Avatar, Badge, Box, Button, Flex, Text } from '@backstage/ui';
 import {
   makeStyles,
   Tooltip,
@@ -748,7 +740,8 @@ export function SessionDetailPage() {
     // has taken the answer and the task is no longer waiting, whatever the poll
     // — up to 10 s behind — still says. Until the next poll the composer below
     // stands in with "working", which is what the stream says is happening.
-    const isConfirming = Boolean(pendingConfirmation && agent) && !answerDispatched;
+    const isConfirming =
+      Boolean(pendingConfirmation && agent) && !answerDispatched;
     bottomControl = (
       <div className={isConfirming ? classes.bottomStack : classes.bottomDock}>
         {isConflict && (

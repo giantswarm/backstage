@@ -1014,24 +1014,21 @@ export async function createRouter(
    * the turn — and if the turn never lands, the page has nothing to show. Over a
    * stream the events arrive as they happen and a cut stream is visible as such.
    */
-  router.post(
-    '/kagent/sessions/:sessionId/answer/stream',
-    async (req, res) => {
-      const { client } = resolveInstallation(req);
-      const { agent, answer } = readAnswerBody(req);
-      const userToken = readUserToken(req, { required: true });
+  router.post('/kagent/sessions/:sessionId/answer/stream', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const { agent, answer } = readAnswerBody(req);
+    const userToken = readUserToken(req, { required: true });
 
-      await relayEventStream(res, logger, signal =>
-        client.streamAnswer(
-          readSessionId(req),
-          agent,
-          answer,
-          { userToken },
-          signal,
-        ),
-      );
-    },
-  );
+    await relayEventStream(res, logger, signal =>
+      client.streamAnswer(
+        readSessionId(req),
+        agent,
+        answer,
+        { userToken },
+        signal,
+      ),
+    );
+  });
 
   // The model-manager pass-through (`/model-manager/...`) lives beside the
   // kagent routes: same plugin, same per-installation token forwarding, its

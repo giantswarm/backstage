@@ -232,14 +232,18 @@ describe('readTurnProgress', () => {
   });
 
   it('reports nothing for a terminal turn, whatever its age', () => {
-    expect(progress([task('completed', ACTIVE_MAX_AGE_MS * 10)])).toBeUndefined();
+    expect(
+      progress([task('completed', ACTIVE_MAX_AGE_MS * 10)]),
+    ).toBeUndefined();
     expect(progress([task('canceled')])).toBeUndefined();
   });
 
   it('reports nothing while the agent waits on a human', () => {
     // Waiting is not stalling: nothing is supposed to move until someone answers,
     // and the answer panel is the display for it.
-    expect(progress([task('input-required', ACTIVE_MAX_AGE_MS * 2)])).toBeUndefined();
+    expect(
+      progress([task('input-required', ACTIVE_MAX_AGE_MS * 2)]),
+    ).toBeUndefined();
   });
 
   it('keeps calling an unmeasurable turn working rather than stalled', () => {
