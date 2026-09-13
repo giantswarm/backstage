@@ -833,18 +833,8 @@ describe('SessionDetailPage', () => {
       // The gateway closed the turn's stream mid-reply (Envoy Gateway's default
       // 15 s route timeout, seen on a customer portal) while the task ran on and
       // finished. The page must neither stay on "Working…" for good nor claim
-      // the turn finished before the poll says so.
-      const settledView = {
-        ...loadedView,
-        isAgentWorking: false,
-        state: {
-          raw: 'completed',
-          key: 'completed',
-          label: 'Completed',
-          tone: 'success' as const,
-          isActive: false,
-        },
-      };
+      // the turn finished before the poll says so. `settledView` is the
+      // enclosing describe's: the poll's copy of the previous, finished turn.
       const cutStream = {
         ...createStreamTurn('m1'),
         dispatched: true,
