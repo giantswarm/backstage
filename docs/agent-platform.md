@@ -1696,7 +1696,11 @@ controller left it; cancelling a turn that finished first is not an error and
 nothing to undo. `useCancelTask` invalidates the conversation on the way back so
 the badge, the working indicator and the composer follow at once. Stop is
 withheld while a confirmation is open: waiting on a human is the opposite of
-running, and there is nothing to cancel.
+running, and there is nothing to cancel. A Stop that fails is reported as
+**Stop failed** with the backend's message — its own notice, never "Message not
+sent", because the turn it aimed at is still running. A 401 (the tab's token no
+longer verifies, seen when the Backstage pod rolled while the page stayed open)
+adds that reloading the page signs the tab back in, after which Stop works.
 
 **A stalled turn keeps the slot and changes what it says.** Once the newest
 active task's timestamp has not advanced for the 5-minute age bound (see

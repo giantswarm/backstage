@@ -117,6 +117,18 @@ export function isConflictError(error: unknown): boolean {
 }
 
 /**
+ * A request the backend refused because the tab's Backstage token no longer
+ * verifies: its 401, as {@link KagentApiClient.throwIfNotOk} names it. Seen
+ * when the Backstage pod rolled while the page stayed open; a reload signs the
+ * tab back in.
+ */
+export const UNAUTHORIZED_ERROR_NAME = 'UnauthorizedError';
+
+export function isUnauthorizedError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === UNAUTHORIZED_ERROR_NAME;
+}
+
+/**
  * The body both answer routes take, with the optional fields omitted rather
  * than sent as `undefined` — one shape whether the answer goes unary or
  * streaming.
@@ -806,7 +818,7 @@ export class KagentApiClient implements KagentApi {
         error.name = 'NotFoundError';
       }
       if (response.status === 401) {
-        error.name = 'UnauthorizedError';
+        error.name = UNAUTHORIZED_ERROR_NAME;
       }
       if (response.status === 403) {
         error.name = 'ForbiddenError';
@@ -819,7 +831,7 @@ export class KagentApiClient implements KagentApi {
       // explain it and offer to cancel that turn, rather than showing a generic
       // failure over a composer the next attempt will fail from again.
       if (response.status === 409) {
-        error.name = 'ConflictError';
+        error.name = CONFLICT_ERROR_NAME;
       }
       if (response.status === 503) {
         error.name = 'ServiceUnavailableError';
