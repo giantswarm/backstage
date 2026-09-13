@@ -60,8 +60,15 @@ export function useAnswerConfirmation(
           'Cannot answer: the agent for this session is unknown.',
         );
       }
-      await run(answer.messageId, onEvent =>
-        kagentApi.streamAnswer(installation, sessionId, agent, answer, onEvent),
+      await run(answer.messageId, (onEvent, signal) =>
+        kagentApi.streamAnswer(
+          installation,
+          sessionId,
+          agent,
+          answer,
+          onEvent,
+          signal,
+        ),
       );
     },
     onSuccess: () => {
@@ -91,7 +98,7 @@ export function useAnswerConfirmation(
     [mutateAsync],
   );
 
-  const stream = turn.stream;
+  const { stream, isStreamLost } = turn;
   return useMemo(
     () => ({
       answer,
@@ -105,6 +112,8 @@ export function useAnswerConfirmation(
        * page renders both previews through one path.
        */
       stream,
+      /** The stream ended before the resumed turn did — see `useSendMessage`. */
+      isStreamLost,
       failed,
       error: mutation.error as Error | null,
       reset,
@@ -114,6 +123,7 @@ export function useAnswerConfirmation(
       mutation.isPending,
       pending,
       stream,
+      isStreamLost,
       failed,
       mutation.error,
       reset,

@@ -3,6 +3,7 @@ import {
   a2aMessageWireSchema,
   a2aStreamEventWireSchema,
   CONFIRMATION_TOOL_NAME,
+  describeSessionState,
   normalizeStreamEvent,
   FAILED_STATES,
   isAgentToolName,
@@ -127,6 +128,26 @@ export function createStreamTurn(sentMessageId: string): StreamTurn {
     openCalls: [],
     nextItemId: 0,
   };
+}
+
+/**
+ * Whether the stream has delivered the end of the turn.
+ *
+ * Both executors close a turn with a terminal `status-update` (`final: true`),
+ * which is {@link StreamTurn.isFinal}; a `task` snapshot already in a terminal
+ * state counts too, for a stream opened onto a turn that had finished. A stream
+ * that ends — cleanly or not — before this says true has been **lost**: the turn
+ * goes on without its preview, and the poll is the only record of how it ends.
+ */
+export function isStreamTurnOver(turn: StreamTurn): boolean {
+  if (turn.isFinal) {
+    return true;
+  }
+  if (turn.stateKey === undefined) {
+    return false;
+  }
+  const state = describeSessionState(turn.stateKey);
+  return state !== undefined && !state.isActive;
 }
 
 /**

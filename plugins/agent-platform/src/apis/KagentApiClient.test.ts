@@ -1059,6 +1059,106 @@ describe('KagentApiClient', () => {
     });
   });
 
+  describe('aborting a stream', () => {
+    const agent = { namespace: 'kagent', name: 'a' };
+    const message = { messageId: 'msg-1', text: 'hi' };
+
+    /**
+     * A streaming response that yields the given frames and then hangs — the
+     * shape of a stream nothing ends — until the request's signal aborts it,
+     * which rejects the pending read the way a real fetch body does.
+     */
+    function hangingSseResponse(frames: string[], signal: AbortSignal) {
+      const chunks = frames.map(frame => Uint8Array.from(Buffer.from(frame)));
+      const abortError = () =>
+        Object.assign(new Error('The operation was aborted.'), {
+          name: 'AbortError',
+        });
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: {
+          getReader: () => ({
+            read: () => {
+              if (signal.aborted) {
+                return Promise.reject(abortError());
+              }
+              const value = chunks.shift();
+              if (value) {
+                return Promise.resolve({ done: false, value });
+              }
+              return new Promise((_, reject) =>
+                signal.addEventListener('abort', () => reject(abortError())),
+              );
+            },
+          }),
+        },
+        json: async () => ({}),
+      } as unknown as Response;
+    }
+
+    /** Let the client consume whatever the body has yielded so far. */
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    it('hands the signal to the request, and resolves a stream aborted after events', async () => {
+      // The caller aborts when the poll shows the turn over while the stream
+      // still hangs: events were seen, so the turn exists and the poll is its
+      // record — no error, nothing to verify.
+      const control = new AbortController();
+      fetchMock.mockImplementation(async (_url: string, init: RequestInit) =>
+        hangingSseResponse(
+          [
+            'data: {"task":{"id":"task-1","status":{"state":"TASK_STATE_WORKING"}}}\n\n',
+          ],
+          init.signal!,
+        ),
+      );
+      const events: unknown[] = [];
+
+      const streaming = buildClient().streamMessage(
+        'gazelle',
+        'abc123',
+        agent,
+        message,
+        event => events.push(event),
+        control.signal,
+      );
+      await settle();
+      expect(events).toHaveLength(1);
+      expect(fetchMock.mock.calls[0][1].signal).toBe(control.signal);
+
+      control.abort();
+
+      await expect(streaming).resolves.toBeUndefined();
+    });
+
+    it('reports an abort before any event as a transport failure to verify', async () => {
+      // Nothing said the turn exists, so whether the message was dispatched is
+      // for the caller to check against the history.
+      const control = new AbortController();
+      fetchMock.mockImplementation(async (_url: string, init: RequestInit) =>
+        hangingSseResponse([], init.signal!),
+      );
+
+      const streaming = buildClient().streamMessage(
+        'gazelle',
+        'abc123',
+        agent,
+        message,
+        () => {},
+        control.signal,
+      );
+      await settle();
+
+      control.abort();
+
+      await expect(streaming).rejects.toMatchObject({
+        name: 'StreamTransportError',
+      });
+    });
+  });
+
   describe('getIdentity', () => {
     it('reads the subject kagent resolved', async () => {
       fetchMock.mockResolvedValue(

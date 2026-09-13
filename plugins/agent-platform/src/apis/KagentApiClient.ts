@@ -514,6 +514,7 @@ export class KagentApiClient implements KagentApi {
     agent: { namespace: string; name: string },
     message: { messageId: string; text: string },
     onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<void> {
     await this.relayStream(
       installation,
@@ -525,6 +526,7 @@ export class KagentApiClient implements KagentApi {
         text: message.text,
       },
       onEvent,
+      signal,
     );
   }
 
@@ -534,12 +536,14 @@ export class KagentApiClient implements KagentApi {
     agent: { namespace: string; name: string },
     answer: ConfirmationAnswerRequest,
     onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<void> {
     await this.relayStream(
       installation,
       `/kagent/sessions/${encodeURIComponent(sessionId)}/answer/stream`,
       answerBody(agent, answer),
       onEvent,
+      signal,
     );
   }
 
@@ -548,12 +552,17 @@ export class KagentApiClient implements KagentApi {
    * frame to `onEvent` — the shared half of {@link streamMessage} and
    * {@link streamAnswer}, so a message and an answer classify a broken stream
    * identically. See {@link KagentApi.streamMessage} for the contract.
+   *
+   * `signal` reaches the fetch, so an abort ends the body read as well as a
+   * request still waiting for its headers; both land in the same classification
+   * below as any other cut.
    */
   private async relayStream(
     installation: string,
     path: string,
     body: unknown,
     onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<void> {
     const { url, headers } = await this.prepare(path, installation);
 
@@ -563,6 +572,7 @@ export class KagentApiClient implements KagentApi {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal,
       });
     } catch (error) {
       // The request never got an answer — a dropped connection, a door that

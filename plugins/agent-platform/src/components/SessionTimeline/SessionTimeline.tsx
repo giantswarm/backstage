@@ -86,7 +86,30 @@ const useStyles = makeStyles(theme => ({
     fontSize: '0.8125rem',
     color: theme.palette.warning.dark,
   },
+  // Plain, not the shimmer: the row says what is being done about a stream that
+  // went away, and a sheen across a sentence reads as decoration.
+  streamLostText: {
+    fontSize: '0.8125rem',
+    color: theme.palette.text.secondary,
+  },
 }));
+
+/**
+ * How a turn is being followed once its live stream ended before the turn did.
+ *
+ * - `checking`: the stream is gone and the conversation is being re-read to
+ *   find out how far the turn got — the moment the streamed text stopped
+ *   mid-sentence, before anything says whether the turn finished.
+ * - `following`: that read came back and the turn is still running. Its preview
+ *   is gone for good; the poll delivers the reply when the turn ends.
+ */
+export type StreamLossPhase = 'checking' | 'following';
+
+const STREAM_LOST_LABELS: Record<StreamLossPhase, string> = {
+  checking: 'The live stream was lost. Checking the result…',
+  following:
+    'The live stream was lost. Still working; the reply appears when the turn finishes.',
+};
 
 /** `HH:MM` in the reader's locale — the resolution a stall is worth stating at. */
 function formatClockTime(epochMs: number): string {
@@ -140,6 +163,14 @@ export type SessionTimelineProps = {
    */
   isAgentWorking?: boolean;
   /**
+   * The turn's live stream ended before the turn did, and this is how the turn
+   * is being followed instead. Read only while {@link isAgentWorking}: the
+   * "Working…" row says so in place of its label, because a spinner alone over a
+   * sentence that stopped half-way promises a continuation that is not coming
+   * through the stream.
+   */
+  streamLost?: StreamLossPhase;
+  /**
    * The newest turn is still active but has reported nothing since this
    * instant (epoch ms). The "Working…" row gives way to one saying so, with
    * {@link onCancelTurn} beside it — the honest display for a turn that
@@ -167,6 +198,7 @@ export function SessionTimeline({
   agentName,
   agentAvatarUrl,
   isAgentWorking = false,
+  streamLost,
   stalledSince,
   onCancelTurn,
   isCancellingTurn = false,
@@ -241,7 +273,13 @@ export function SessionTimeline({
     workingRow = (
       <div className={classes.working} aria-live="polite">
         <CircularProgress size={14} aria-hidden />
-        <span className={classes.workingText}>Working…</span>
+        {streamLost ? (
+          <span className={classes.streamLostText}>
+            {STREAM_LOST_LABELS[streamLost]}
+          </span>
+        ) : (
+          <span className={classes.workingText}>Working…</span>
+        )}
       </div>
     );
   }

@@ -236,6 +236,11 @@ export interface KagentApi {
    * session history rather than report a failure that may not have happened. A
    * stream that ends with an `{error}` frame after events have flowed is neither:
    * the turn exists, and the poll is its record.
+   *
+   * `signal` aborts the stream — the request and its body. The caller pulls it
+   * when the conversation poll shows the turn over while the stream is still
+   * open, which is how a stream that hangs without ending is recognised; the
+   * abort then surfaces exactly like any other cut.
    */
   streamMessage(
     installation: string,
@@ -243,6 +248,7 @@ export interface KagentApi {
     agent: { namespace: string; name: string },
     message: { messageId: string; text: string },
     onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<void>;
 
   /**
@@ -288,6 +294,7 @@ export interface KagentApi {
     agent: { namespace: string; name: string },
     answer: ConfirmationAnswerRequest,
     onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<void>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */
