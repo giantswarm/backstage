@@ -138,7 +138,15 @@ export type SessionComposerProps = {
    * it.
    */
   disabledReason?: string;
+  /** Why the last send failed, shown as "Message not sent". */
   error?: string;
+  /**
+   * Why the last Stop failed, shown as "Stop failed" — its own notice, because
+   * a Stop is not a send and the words "Message not sent" over a turn that is
+   * still running say the opposite of what happened. The caller words it: the
+   * backend's message, with what to do about it where that is known.
+   */
+  stopError?: string;
   /**
    * A message whose send failed, whose text is put back into the box.
    *
@@ -195,6 +203,7 @@ export function SessionComposer({
   isFinished,
   disabledReason,
   error,
+  stopError,
   restore,
   autoFocus = false,
   onSubmit,
@@ -303,6 +312,9 @@ export function SessionComposer({
       <Flex direction="column" gap="2">
         {error && (
           <Alert status="danger" title="Message not sent" description={error} />
+        )}
+        {stopError && (
+          <Alert status="danger" title="Stop failed" description={stopError} />
         )}
 
         <div
