@@ -27,7 +27,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { isConflictError } from '../../apis';
+import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
@@ -191,6 +191,25 @@ function Shell({
       <div className={classes.main}>{children}</div>
     </Content>
   );
+}
+
+/**
+ * Why a Stop failed, for the person who pressed it.
+ *
+ * The backend's message, which names the refusal, plus what to do about it
+ * where that is known. A 401 is the observed case: the Backstage pod rolled
+ * while the tab stayed open and the tab's token no longer verifies — nothing is
+ * wrong with the turn, and reloading signs the tab back in silently, after
+ * which Stop works. Left as "Failed user token verification" that is a riddle.
+ */
+function describeStopFailure(error: Error | null): string | undefined {
+  if (!error) {
+    return undefined;
+  }
+  if (isUnauthorizedError(error)) {
+    return `${error.message}. Your sign-in expired while this page was open — reload the page and stop the turn again.`;
+  }
+  return error.message;
 }
 
 /**
@@ -792,10 +811,10 @@ export function SessionDetailPage() {
           }
           // A conflict has its own notice above; the composer must not also
           // report it as a generic failure.
-          error={
-            (isConflict ? undefined : send.error?.message) ??
-            cancellation.error?.message
-          }
+          error={isConflict ? undefined : send.error?.message}
+          // A failed Stop is reported as one, not as a message that was not
+          // sent — the turn it aimed at is still running.
+          stopError={describeStopFailure(cancellation.error)}
           // On failure the optimistic copy is dropped, so this is the only place the
           // user's text still exists. After a stalled turn was cancelled, the
           // message it never answered comes back the same way.

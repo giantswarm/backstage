@@ -1,7 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { sessionsRouteRef } from '../../routes';
 import type { AgentsContextValue } from '../AgentsDataProvider';
@@ -919,6 +919,127 @@ describe('SessionDetailPage', () => {
         expect(
           screen.getByText(/has not reported progress/),
         ).toBeInTheDocument();
+      });
+    });
+
+    describe('Stop for a task that stopped moving (#2364)', () => {
+      // The observed failure on the first 4.x installation: a turn's model
+      // stream was cut by a gateway pod eviction, the task stayed `working` on
+      // the server for ten minutes, the header said Working — and after a
+      // reload the composer offered Send only, its caption promising that a
+      // reply would be added, because Stop needed `isAgentWorking`, which the
+      // age bound had turned off. The task that stopped moving is exactly the
+      // one that needs Stop.
+      const since = Date.parse('2026-09-13T13:53:00Z');
+      const workingView = {
+        ...loadedView,
+        isAgentWorking: true,
+        turnProgress: { kind: 'working' as const },
+        currentTaskId: 'task-stuck',
+      };
+      const staleView = {
+        ...loadedView,
+        isAgentWorking: false,
+        turnProgress: { kind: 'stalled' as const, since },
+        currentTaskId: 'task-stuck',
+      };
+
+      it('offers Stop after a reload, past the age bound, and cancels that task', async () => {
+        // A fresh page over a stale task: no stream, no send in flight, only
+        // the poll's verdict that the newest task is active and has not moved.
+        mockUseSessionDetail.mockReturnValue(staleView);
+        await render();
+
+        expect(
+          screen.queryByRole('button', { name: 'Send' }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText(/reply is added/)).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/stopped reporting progress. Cancel the turn/),
+        ).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+
+        expect(mockCancelTask).toHaveBeenCalledWith('task-stuck');
+      });
+
+      it('keeps Stop when the working turn goes stale under the open page', async () => {
+        // The same page instance, not a remount: the poll's judgement flips
+        // from working to stalled while the person watches. Stop must survive
+        // the flip — it used to vanish at exactly this moment.
+        mockUseSessionDetail.mockReturnValue(workingView);
+        function Harness() {
+          const [, setTick] = useState(0);
+          return (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  mockUseSessionDetail.mockReturnValue(staleView);
+                  setTick(tick => tick + 1);
+                }}
+              >
+                age the task
+              </button>
+              <SessionDetailPage />
+            </>
+          );
+        }
+        await renderInTestApp(<Harness />, {
+          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        });
+
+        expect(
+          screen.getByRole('button', { name: 'Stop' }),
+        ).toBeInTheDocument();
+        expect(screen.getByText('Working…')).toBeInTheDocument();
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'age the task' }),
+        );
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/has not reported progress/),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Send' }),
+        ).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+
+        expect(mockCancelTask).toHaveBeenCalledWith('task-stuck');
+      });
+
+      it('reports a failed Stop as "Stop failed" with the backend’s message', async () => {
+        mockUseSessionDetail.mockReturnValue(workingView);
+        mockUseCancelTask.mockReturnValue(
+          idleCancel({ error: new Error('kagent is unavailable') }),
+        );
+        await render();
+
+        expect(screen.getByText('Stop failed')).toBeInTheDocument();
+        expect(screen.getByText('kagent is unavailable')).toBeInTheDocument();
+        expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+        // Nothing was sent, so nothing is put back into the box.
+        expect(composer()).toHaveValue('');
+      });
+
+      it('tells a Stop refused with a 401 to reload the page', async () => {
+        // The Backstage pod rolled while the tab stayed open and the tab's
+        // token no longer verifies; a reload signs it back in silently.
+        const unauthorized = new Error('Failed user token verification');
+        unauthorized.name = 'UnauthorizedError';
+        mockUseSessionDetail.mockReturnValue(staleView);
+        mockUseCancelTask.mockReturnValue(idleCancel({ error: unauthorized }));
+        await render();
+
+        expect(screen.getByText('Stop failed')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            /Failed user token verification\. Your sign-in expired while this page was open — reload the page and stop the turn again\./,
+          ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
       });
     });
 

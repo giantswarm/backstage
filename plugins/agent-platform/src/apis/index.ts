@@ -3,8 +3,10 @@ export {
   kagentApiRef,
   isConflictError,
   isStreamTransportError,
+  isUnauthorizedError,
   CONFLICT_ERROR_NAME,
   STREAM_TRANSPORT_ERROR_NAME,
+  UNAUTHORIZED_ERROR_NAME,
 } from './KagentApiClient';
 export { KAGENT_AUTH_HEADER } from './types';
 export type {
