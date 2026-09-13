@@ -15,3 +15,7 @@ stream without sending trailers", so a fleet instance without an explicit
 `agentPlatform.kagent.installations.<name>.apiBaseUrl` could not reach any
 installation's controller. The per-installation `apiBaseUrl` override is
 unchanged.
+
+Also: `GET /kagent/session-states` answers in candidate order (the newest
+session first) rather than in the order the concurrent task reads happened to
+finish, so two evaluations of the same account answer alike.

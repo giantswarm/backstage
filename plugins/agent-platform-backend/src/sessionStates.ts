@@ -206,6 +206,16 @@ export class SessionStateReader {
       },
     });
 
+    // The pool reports in *completion* order, which varies with what each read
+    // took; the wire keeps the candidate order (the newest session first) so
+    // two evaluations of the same account answer alike.
+    const position = new Map(
+      selected.map((session, i) => [session.sessionId, i]),
+    );
+    states.sort(
+      (a, b) => position.get(a.sessionId)! - position.get(b.sessionId)!,
+    );
+
     if (failures > 0) {
       // `debug`, and a count rather than ids: the root logger forwards warn and
       // error to Sentry, and a partial read is the expected outcome this route is

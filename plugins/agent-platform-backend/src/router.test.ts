@@ -370,9 +370,15 @@ describe('createRouter', () => {
         error: false,
         data: [sessionWire('a'), sessionWire('b')],
       });
-      listSessionTasks.mockImplementation(async (id: string) =>
-        tasksWire(id === 'a' ? 'input-required' : 'completed'),
-      );
+      // The pool reads concurrently and reports in completion order; `a`'s
+      // read finishes last here, so the wire order is asserted, not assumed.
+      listSessionTasks.mockImplementation(async (id: string) => {
+        if (id === 'a') {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          return tasksWire('input-required');
+        }
+        return tasksWire('completed');
+      });
 
       const response = await request(app)
         .get('/kagent/session-states')
@@ -383,6 +389,7 @@ describe('createRouter', () => {
       expect(response.headers['cache-control']).toBe('no-store');
       expect(response.body).toEqual({
         evaluatedAt: expect.any(Number),
+        // Candidate order (as listed), not completion order.
         states: [
           { sessionId: 'a', state: 'input-required' },
           { sessionId: 'b', state: 'completed' },
