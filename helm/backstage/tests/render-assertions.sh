@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Assert the legs of the CNPG network policy survive an edit of the chart.
+# Assert on rendered manifests where a regression fails no render, lint or
+# schema check but does fail at runtime, silently:
 #
-# A missing leg does not fail a render, a lint or a schema check: it fails at
-# runtime on a default-deny cluster, silently. So assert on the rendered policy.
+# * the legs of the CNPG network policy, which a default-deny cluster drops
+#   without an event;
+# * the BackendTrafficPolicy on the Gateway API route, without which Envoy
+#   Gateway's default 15 s route timeout cuts every streamed response.
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -81,6 +84,36 @@ echo "--> sqlite engine: no policy of either kind"
 render sqlite
 refute sqlite 'kind: CiliumNetworkPolicy'
 refute sqlite 'kind: NetworkPolicy'
+
+echo "--> route.enabled=true: the streaming-safe BackendTrafficPolicy renders by default"
+render route --set route.enabled=true
+expect route 'kind: HTTPRoute'
+expect route 'kind: BackendTrafficPolicy'
+expect route 'requestTimeout: 0s'
+expect route 'maxStreamDuration: 0s'
+expect route 'connectionIdleTimeout: 1h'
+expect route 'connectTimeout: 10s'
+expect route 'idleTime: 60s'
+expect route 'interval: 30s'
+expect route 'probes: 3'
+
+echo "--> route.backendTrafficPolicy.enabled=false: the route renders, the policy does not"
+render route-no-policy --set route.enabled=true --set route.backendTrafficPolicy.enabled=false
+expect route-no-policy 'kind: HTTPRoute'
+refute route-no-policy 'kind: BackendTrafficPolicy'
+
+echo "--> route.backendTrafficPolicy.spec set: the user's spec replaces the default wholesale"
+render route-user-spec --set route.enabled=true --set route.backendTrafficPolicy.spec.timeout.http.requestTimeout=10m
+expect route-user-spec 'kind: BackendTrafficPolicy'
+expect route-user-spec 'requestTimeout: 10m'
+refute route-user-spec 'requestTimeout: 0s'
+refute route-user-spec 'maxStreamDuration'
+refute route-user-spec 'tcpKeepalive'
+
+echo "--> route.enabled=false: no route, no policy"
+render route-disabled
+refute route-disabled 'kind: HTTPRoute'
+refute route-disabled 'kind: BackendTrafficPolicy'
 
 if [ "${failed}" -ne 0 ]; then
   exit 1
