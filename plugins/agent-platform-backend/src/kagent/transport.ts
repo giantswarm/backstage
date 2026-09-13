@@ -16,10 +16,18 @@ export interface KagentInstallationConfig {
 /**
  * Derive the controller's gRPC origin for an installation from its base domain.
  *
- * The hostname matches the `agent-platform-connectivity` chart's kagent
- * hostname (`kagent.<codename>.<base>`, exactly `kagent.<baseDomain>`), on
+ * The hostname matches the `agent-platform-connectivity` chart's controller
+ * route hostname (`agent-platform.kagent.controllerHostname`, which defaults to
+ * `agentgateway.<codename>.<base>`, exactly `agentgateway.<baseDomain>`), on
  * which the chart's `GRPCRoute` serves the controller's services through
- * agentgateway. No path: gRPC is matched by service, not by prefix.
+ * agentgateway. It is the same origin the chart writes into the Backstage
+ * app-config as `apiBaseUrl` when it renders that file itself. No path: gRPC is
+ * matched by service, not by prefix.
+ *
+ * `kagent.<baseDomain>` is a different route: the kagent UI's `HTTPRoute`
+ * behind oauth2-proxy (`kagent.uiRoute.hostname`), which does not carry gRPC
+ * — a gRPC call there ends with "server closed the stream without sending
+ * trailers".
  *
  * Returns undefined when the installation has no `baseDomain`.
  */
@@ -29,7 +37,7 @@ export function deriveKagentApiBaseUrl(
   if (!baseDomain) {
     return undefined;
   }
-  return `https://kagent.${baseDomain}`;
+  return `https://agentgateway.${baseDomain}`;
 }
 
 /** Whether a configured URL is absolute and http(s), so a transport can use it. */

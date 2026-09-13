@@ -611,7 +611,7 @@ the instances themselves, the A2A v1 `A2AService` for the turns, `SystemService`
 for the caller's identity, `AgentTemplateService` for what a create needs. The
 Kubernetes proxy the rest of the plugin uses cannot reach any of that, and
 neither can the browser: gRPC over HTTP/2 wants a server-side client, and
-`kagent.<baseDomain>` is cross-origin anyway.
+`agentgateway.<baseDomain>` is cross-origin anyway.
 
 `agent-platform-backend` is that client. It speaks native gRPC (connect-node,
 HTTP/2) to each installation's controller route and hands the browser JSON and
@@ -625,17 +625,24 @@ inbound identity header (plan decision D4) — so a header from here would be de
 weight at best and, against a controller reached without the gateway,
 impersonation.
 
-The origin is derived per installation as `https://kagent.<baseDomain>` — the
-hostname on which the connectivity chart's `GRPCRoute` serves the controller's
-services — with no path (gRPC is matched by service, not by prefix), overridable
-via `agentPlatform.kagent.installations`. An `http://` origin is plaintext h2c,
-which only an in-cluster Service URL should ever be.
+The origin is derived per installation as `https://agentgateway.<baseDomain>` —
+the connectivity chart's controller route hostname
+(`kagent.controllerRoute.hostname`, default `agentgateway.<domain>`), on which
+its `GRPCRoute` serves the controller's services, and the origin the chart
+itself writes as `apiBaseUrl` when it renders the Backstage app-config — with no
+path (gRPC is matched by service, not by prefix), overridable via
+`agentPlatform.kagent.installations`. `kagent.<baseDomain>` is a different
+route: the kagent UI's `HTTPRoute` behind oauth2-proxy, which carries no gRPC.
+An `http://` origin is plaintext h2c, which only an in-cluster Service URL
+should ever be.
 
 ### Prerequisite: the connectivity chart's controller route
 
 The backend requires a **kagent API v2 controller behind agentgateway's
 gRPC-capable controller route** with its JWT policy on (agent-platform 4.0's
-connectivity chart). That route is the whole authentication story for
+connectivity chart, `kagent.controllerRoute.enabled`, served on
+`agentgateway.<domain>` unless `kagent.controllerRoute.hostname` says
+otherwise — the host the backend derives). That route is the whole authentication story for
 everything below: a token the policy refuses answers 401 on every read, and an
 `apiBaseUrl` that bypasses the route has no boundary — the controller then
 attributes every call to its built-in default user, which the identity probe
@@ -3877,7 +3884,7 @@ All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
 | `kagent.turnTimeoutMs`       | How long a unary send (and a Stop) waits for the agent before answering "still running" (default 30000). Backend-only.                                                                                                                         |
 | `kagent.sessionStates.*`     | Bounds on the derived session-state summary behind the session switcher rail: `maxSessions`, `maxAgeMs`, `concurrency`, `taskTimeoutMs`, `budgetMs`, `cacheTtlMs`. Sized to the frontend's 10s poll. Backend-only.                             |
 | `kagent.sessionUsage.*`      | Bounds on the usage summary behind the Usage tab: `windowDays` plus the same six levers. Numbers differ from `sessionStates` on purpose — read on a tab visit, reporting on days. Backend-only.                                                |
-| `kagent.installations`       | Which installations to reach kagent on, keyed by name; also the allowlist. `apiBaseUrl` is the **gRPC origin** of the controller route (`https://<host>[:port]`, no path), overriding the derived `https://kagent.<baseDomain>`. Backend-only. |
+| `kagent.installations`       | Which installations to reach kagent on, keyed by name; also the allowlist. `apiBaseUrl` is the **gRPC origin** of the controller route (`https://<host>[:port]`, no path), overriding the derived `https://agentgateway.<baseDomain>`. Backend-only. |
 | `modelManager.installations` | Installations that run model-manager, keyed by name, each with the required `apiBaseUrl` (`https://agentgateway.<baseDomain>/model-manager` through the gateway). Nothing is derived. Backend-only.                                            |
 | `modelManager.timeoutMs`     | Per-request timeout toward a model-manager API (default 10000). Backend-only.                                                                                                                                                                  |
 | `modelManager.loadTimeoutMs` | Timeout for `POST /api/v1/models/load`, which blocks until the model is in memory (default 120000). Backend-only.                                                                                                                              |

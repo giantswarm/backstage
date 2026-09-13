@@ -16,7 +16,8 @@ JSON/SSE contract.
 agentgateway's gRPC-capable controller route (agent-platform 4.0's connectivity
 chart). `agentPlatform.kagent.installations.<name>.apiBaseUrl` is now the
 **gRPC origin** of that route (`https://<host>[:port]`, no path); the derived
-default is `https://kagent.<baseDomain>`. The kagent 0.10 REST door
+default is `https://agentgateway.<baseDomain>`, the connectivity chart's
+controller route hostname. The kagent 0.10 REST door
 (`/api/sessions`, JSON-RPC A2A) is no longer spoken, and conversations from
 before an installation's migration are not available — the Sessions tab says so.
 
