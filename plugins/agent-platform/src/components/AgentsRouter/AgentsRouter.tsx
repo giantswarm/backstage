@@ -30,11 +30,15 @@ function ScrollToTop() {
 // This router is mounted as the tab's content (a descendant `<Routes>`), so the
 // paths here are relative — no leading slash — matching muster's WorkflowsRouter.
 //
-// The detail route is listed last, but order does not decide the match: react-
-// router ranks static segments above dynamic ones and matches on segment count,
-// so `new`/`new/skills`/`new/tools`/`new/review` (one and two segments) can
-// never be swallowed by the three-segment detail path, nor the four-segment
-// edit path by it.
+// Order does not decide the match: react-router ranks static segments above
+// dynamic ones and matches on segment count, so `new`/`new/skills`/`new/tools`/
+// `new/review` (one and two segments) can never be swallowed by the detail path.
+//
+// The detail route is a splat because the detail page is tabbed (Overview,
+// Tools, Skills, Sessions) and hosts a descendant `<Routes>` of its own. The
+// edit route survives beside it: react-router scores a static segment above a
+// splat, so `…/:name/edit` matches the edit page and never falls into the
+// detail page's tabs. AgentsRouter.test.tsx holds that ranking still.
 export const AgentsRouter = () => {
   return (
     <QueryClientProvider>
@@ -47,7 +51,7 @@ export const AgentsRouter = () => {
           <Route path="new/tools" element={<NewAgentToolsPage />} />
           <Route path="new/review" element={<NewAgentReviewPage />} />
           <Route
-            path=":installation/:namespace/:name"
+            path=":installation/:namespace/:name/*"
             element={<AgentDetailPage />}
           />
           <Route

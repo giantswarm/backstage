@@ -47,10 +47,10 @@ export function describeToolScope(
   const tools = binding.tools ?? [];
   if (isGateway) {
     return tools.length === 0
-      ? 'The gateway; which of its tools the agent can use is its toolset — see Toolset below'
+      ? 'The gateway; which of its tools the agent can use is its toolset — see the Tools tab'
       : `The gateway, with ${tools.length} meta-tool${
           tools.length === 1 ? '' : 's'
-        } (${tools.join(', ')}); which tools the agent can use is its toolset — see Toolset below`;
+        } (${tools.join(', ')}); which tools the agent can use is its toolset — see the Tools tab`;
   }
   if (tools.length === 0) {
     return 'All tools from this server';

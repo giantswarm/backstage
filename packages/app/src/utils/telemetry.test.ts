@@ -313,8 +313,22 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
-  // The agent-detail pattern matches exactly three segments under `agents/`, so
-  // the create flow must keep reporting through the generic agent-platform case.
+  it.each(['tools', 'skills', 'sessions'])(
+    "should name the agent detail page's %s tab without naming the agent",
+    tab => {
+      const pathname = `/agent-platform/agents/gazelle/agent-platform/pr-reviewer/${tab}`;
+      // The tab is a fixed, public name, so it is safe to report as a `view`
+      // where the installation and agent segments are not.
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Agent detail',
+        view: tab,
+        path: pathname,
+      });
+    },
+  );
+
+  // The create flow and the edit page both sit under `agents/` too; neither is
+  // an agent detail view, and the edit page keeps reporting as it did before.
   it('should not treat the create flow as an agent detail page', () => {
     expect(
       getTelemetryPageViewPayload('/agent-platform/agents/new/review'),
@@ -431,6 +445,9 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/new/skills',
       '/agent-platform/agents/new/review',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/tools',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/skills',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/sessions',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
       '/agent-platform/usage',
