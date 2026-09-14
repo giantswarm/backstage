@@ -314,9 +314,11 @@ describe('getTelemetryPageViewPayload', () => {
   });
 
   // The edit form used to fall through to the generic agent-platform case,
-  // which echoes the rest of the path into `view` — so every visit recorded the
-  // installation, namespace and agent name it was opened for.
-  it('names the agent edit page without naming the agent', () => {
+  // which echoes the rest of the path into `view` — one signal name per agent,
+  // in the dimension TelemetryDeck aggregates on. `path` still carries the
+  // whole pathname here, as it does for every page; what this pins is that the
+  // agent does not reach `page` or `view`.
+  it('counts the agent edit page as one page, not one per agent', () => {
     const pathname =
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit';
 
