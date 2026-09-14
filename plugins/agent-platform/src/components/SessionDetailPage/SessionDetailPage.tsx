@@ -14,7 +14,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Avatar, Badge, Box, Flex, Text } from '@backstage/ui';
+import { Alert, Avatar, Badge, Box, Button, Flex, Text } from '@backstage/ui';
 import {
   makeStyles,
   Tooltip,
@@ -27,6 +27,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
@@ -57,6 +58,7 @@ import {
   formatDuration,
   formatTokens,
   SessionTimeline,
+  StreamLossPhase,
 } from '../SessionTimeline';
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
@@ -193,6 +195,25 @@ function Shell({
 }
 
 /**
+ * Why a Stop failed, for the person who pressed it.
+ *
+ * The backend's message, which names the refusal, plus what to do about it
+ * where that is known. A 401 is the observed case: the Backstage pod rolled
+ * while the tab stayed open and the tab's token no longer verifies — nothing is
+ * wrong with the turn, and reloading signs the tab back in silently, after
+ * which Stop works. Left as "Failed user token verification" that is a riddle.
+ */
+function describeStopFailure(error: Error | null): string | undefined {
+  if (!error) {
+    return undefined;
+  }
+  if (isUnauthorizedError(error)) {
+    return `${error.message}. Your sign-in expired while this page was open — reload the page and stop the turn again.`;
+  }
+  return error.message;
+}
+
+/**
  * One kagent session: what it was, how it ended, and what the agent did.
  *
  * The session can be **continued** through the composer at the bottom (see
@@ -228,6 +249,7 @@ export function SessionDetailPage() {
     currentTaskId,
     stateChangedAt,
     isAgentWorking: agentIsWorking,
+    turnProgress,
     pendingConfirmation,
     taskCount,
     hasConversation,
@@ -344,9 +366,15 @@ export function SessionDetailPage() {
   // has already delivered is dropped by recognition — exactly like the stand-in —
   // and the whole preview is discarded once the send's awaited invalidation has
   // put the canonical history on screen (`useSendMessage` clears `stream` then).
+  //
+  // An answer to a confirmation streams the resumed turn the same way, through
+  // the same reducer, so its preview merges through this one path. At most one
+  // of the two is in flight: the answer panel replaces the composer while a
+  // question is open.
+  const answerStream = confirmation.stream;
   const timelineWithLive = useMemo(() => {
     const pending = send.pending;
-    const stream = send.stream;
+    const stream = send.stream ?? answerStream;
 
     const pendingVisible =
       pending &&
@@ -412,7 +440,7 @@ export function SessionDetailPage() {
     }
 
     return { ...timeline, items };
-  }, [timeline, send.pending, send.stream]);
+  }, [timeline, send.pending, send.stream, answerStream]);
 
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
@@ -460,7 +488,7 @@ export function SessionDetailPage() {
   // The turn's own event counter, not a size derived from its content: closing
   // a text run moves length out of `live` into `items`, which can leave any such
   // size unchanged across a real update and skip the follow for it.
-  const streamTick = send.stream?.revision ?? 0;
+  const streamTick = (send.stream ?? answerStream)?.revision ?? 0;
   useEffect(() => {
     if (streamTick === 0) {
       return;
@@ -473,36 +501,141 @@ export function SessionDetailPage() {
   }, [streamTick]);
 
   /**
+   * The newest turn is active but has reported nothing for the age bound: the
+   * observed failure of a turn that outlived its transport and never landed.
+   * Not idle — kagent still holds the task and refuses a second message — so
+   * the page keeps saying so and offers the cancel, rather than dropping to an
+   * empty composer the next send would fail from.
+   */
+  const stalledSince =
+    turnProgress?.kind === 'stalled' ? turnProgress.since : undefined;
+  const isStalled = stalledSince !== undefined;
+
+  /**
    * Whether to say the agent is working.
    *
-   * Two signals, because neither covers a whole turn on its own:
+   * Three signals, because none covers a whole turn on its own:
    *
    * - the conversation's own verdict (`isAgentWorking` — active, not waiting on a
    *   human, and moved recently), which only arrives once a poll has seen the new
    *   task, up to 10 s after sending;
    * - the in-flight send, which covers exactly that gap and cannot carry the rest:
    *   the gateway cuts the request off well before a long turn ends (60 s on a
-   *   stock route), so it goes false mid-turn while the agent works on.
+   *   stock route), so it goes false mid-turn while the agent works on;
+   * - the in-flight answer, for the same gap on the turn an answer resumes —
+   *   but only once its stream has an event. Until then the answer panel is
+   *   still up saying "Sending…", and a "Working…" row under it would report
+   *   the same moment twice.
+   *
+   * A stalled turn overrides all three: a stream that has been open and silent
+   * for the whole bound is the same symptom the poll measured, and "Working…"
+   * next to "no progress since" would contradict itself.
    */
-  const showWorking = send.isSending || agentIsWorking;
+  const answerDispatched = Boolean(answerStream?.dispatched);
+  const showWorking =
+    !isStalled &&
+    (send.isSending ||
+      (confirmation.isAnswering && answerDispatched) ||
+      agentIsWorking);
 
   /**
-   * The turn a Stop would cancel: the one the stream named, else the newest
-   * task the poll knows. Undefined for the first beat of a send, before either
-   * has — Stop is then withheld rather than aimed at the previous turn.
+   * How the turn is being followed once its live stream ended before it did.
+   *
+   * A gateway's request timeout closes the stream mid-reply while the turn runs
+   * on; "Working…" over text that stopped half-way promises a continuation that
+   * is not coming through the stream. Instead the row says what is happening:
+   * `checking` while the send is still re-reading the conversation, `following`
+   * once that read has come back with the task still working — the preview is
+   * gone for good and the poll delivers the reply. Nothing once the poll shows
+   * the turn over (the stream hooks retire the loss themselves), so a finished
+   * turn reads as finished with no reload. A stall keeps its own row.
+   */
+  const isStreamLost = send.isStreamLost || confirmation.isStreamLost;
+  let streamLost: StreamLossPhase | undefined;
+  if (isStreamLost && !isStalled) {
+    if (send.isSending || confirmation.isAnswering) {
+      streamLost = 'checking';
+    } else if (agentIsWorking) {
+      streamLost = 'following';
+    }
+  }
+
+  /**
+   * The turn a Stop or a Cancel would end: the one the stream named, else the
+   * newest task the poll knows while it is still active. Undefined for the
+   * first beat of a send, before either has — Stop is then withheld rather than
+   * aimed at the previous turn.
    */
   const runningTaskId =
-    send.stream?.taskId ?? (agentIsWorking ? currentTaskId : undefined);
+    send.stream?.taskId ??
+    answerStream?.taskId ??
+    (state?.isActive && (agentIsWorking || isStalled)
+      ? currentTaskId
+      : undefined);
+
+  // The last message the user sent, put back into the composer after a stalled
+  // turn is cancelled: that message was never processed, so "send again" is the
+  // natural next step and the words should not have to be typed twice. Keyed on
+  // the cancelled task so the composer restores it once per cancel, and cleared
+  // when the composer takes it (see `SessionComposer`'s `restore`).
+  const [redraft, setRedraft] = useState<{
+    messageId: string;
+    text: string;
+  } | null>(null);
+  const lastUserMessageText = useMemo(() => {
+    for (let index = timeline.items.length - 1; index >= 0; index -= 1) {
+      const item = timeline.items[index];
+      if (item.kind === 'user-message') {
+        return item.text;
+      }
+    }
+    return undefined;
+  }, [timeline.items]);
+
   const { cancelTask } = cancellation;
+  const { reset: resetSend } = send;
+  /**
+   * Cancel a turn server-side. With `redraftLast`, the last message returns to
+   * the composer once the cancel is through — for a stalled turn, whose message
+   * never got an answer. A send refused with a 409 is also cleared: the turn it
+   * conflicted with is gone.
+   */
+  const cancelTurn = useCallback(
+    (taskId: string, redraftLast: boolean) => {
+      const draft = lastUserMessageText;
+      cancelTask(taskId)
+        .then(() => {
+          resetSend();
+          if (redraftLast && draft) {
+            setRedraft({ messageId: `redraft:${taskId}`, text: draft });
+          }
+        })
+        // Errors surface through the hook's `error`, shown beside the composer.
+        .catch(() => {});
+    },
+    [cancelTask, lastUserMessageText, resetSend],
+  );
   const stopTurn = useMemo(() => {
     if (!runningTaskId) {
       return undefined;
     }
-    return () => {
-      // Errors surface through the hook's `error`, shown beside the composer.
-      cancelTask(runningTaskId).catch(() => {});
-    };
-  }, [cancelTask, runningTaskId]);
+    return () => cancelTurn(runningTaskId, isStalled);
+  }, [cancelTurn, runningTaskId, isStalled]);
+
+  /**
+   * A send kagent refused because the session is still working on the previous
+   * turn (409). Rendered as its own explanation with the cancel beside it,
+   * rather than as "Message not sent" over a composer the next attempt would
+   * fail from just the same.
+   */
+  const isConflict = isConflictError(send.error);
+  const cancelConflictingTurn = useMemo(() => {
+    const taskId = state?.isActive ? currentTaskId : undefined;
+    if (!taskId) {
+      return undefined;
+    }
+    return () => cancelTurn(taskId, false);
+  }, [cancelTurn, currentTaskId, state?.isActive]);
 
   /**
    * What the rail should believe about *this* session.
@@ -644,9 +777,34 @@ export function SessionDetailPage() {
     // answered question. The wrapper's class still differs — the panel can be
     // tall, and pinning it would cover the very conversation it asks about — but
     // a class is not an identity.
-    const isConfirming = Boolean(pendingConfirmation && agent);
+    //
+    // The panel goes as soon as the answer's stream has its first event: kagent
+    // has taken the answer and the task is no longer waiting, whatever the poll
+    // — up to 10 s behind — still says. Until the next poll the composer below
+    // stands in with "working", which is what the stream says is happening.
+    const isConfirming =
+      Boolean(pendingConfirmation && agent) && !answerDispatched;
     bottomControl = (
       <div className={isConfirming ? classes.bottomStack : classes.bottomDock}>
+        {isConflict && (
+          <Alert
+            status="warning"
+            title="This session is still working on the previous turn"
+            description="kagent takes one message per session at a time. Wait for that turn to finish, or cancel it and send your message again."
+            customActions={
+              cancelConflictingTurn ? (
+                <Button
+                  size="small"
+                  variant="secondary"
+                  isPending={cancellation.isCancelling}
+                  onPress={cancelConflictingTurn}
+                >
+                  Cancel the turn
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
         {isConfirming && (
           <PendingConfirmationPanel
             pending={pendingConfirmation!}
@@ -663,18 +821,27 @@ export function SessionDetailPage() {
         )}
         <SessionComposer
           // Waiting on an answer is the opposite of busy; the caption is the
-          // reason below either way.
-          isAgentWorking={isConfirming ? false : showWorking}
+          // reason below either way. A stalled turn still withholds Send —
+          // kagent would refuse the message — but says so instead of promising
+          // a reply.
+          isAgentWorking={isConfirming ? false : showWorking || isStalled}
+          isStalled={isStalled}
           isFinished={Boolean(state && !state.isActive)}
           disabledReason={
             isConfirming
               ? "Answer the agent's question above to carry on. A plain message would start a new turn instead of answering it."
               : undefined
           }
-          error={send.error?.message ?? cancellation.error?.message}
+          // A conflict has its own notice above; the composer must not also
+          // report it as a generic failure.
+          error={isConflict ? undefined : send.error?.message}
+          // A failed Stop is reported as one, not as a message that was not
+          // sent — the turn it aimed at is still running.
+          stopError={describeStopFailure(cancellation.error)}
           // On failure the optimistic copy is dropped, so this is the only place the
-          // user's text still exists.
-          restore={send.failed}
+          // user's text still exists. After a stalled turn was cancelled, the
+          // message it never answered comes back the same way.
+          restore={send.failed ?? redraft}
           onStop={isConfirming ? undefined : stopTurn}
           isStopping={cancellation.isCancelling}
           // The user arrived here by starting the session — typing in a composer
@@ -840,6 +1007,10 @@ export function SessionDetailPage() {
           agentName={row.agentName}
           agentAvatarUrl={avatarUrl}
           isAgentWorking={showWorking}
+          streamLost={streamLost}
+          stalledSince={stalledSince}
+          onCancelTurn={isStalled ? stopTurn : undefined}
+          isCancellingTurn={cancellation.isCancelling}
         />
 
         {bottomControl}

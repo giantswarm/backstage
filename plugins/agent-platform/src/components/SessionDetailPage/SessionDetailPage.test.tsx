@@ -1,7 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { sessionsRouteRef } from '../../routes';
 import type { AgentsContextValue } from '../AgentsDataProvider';
@@ -163,6 +163,8 @@ function idleConfirmation(
     answer: mockAnswer,
     isAnswering: false,
     pending: null,
+    stream: null,
+    isStreamLost: false,
     failed: null,
     error: null,
     reset: jest.fn(),
@@ -188,6 +190,7 @@ function idleSend(
     isSending: false,
     pending: null,
     stream: null,
+    isStreamLost: false,
     failed: null,
     error: null,
     reset: jest.fn(),
@@ -826,19 +829,450 @@ describe('SessionDetailPage', () => {
       expect(screen.queryByText('Working…')).not.toBeInTheDocument();
     });
 
-    it('stops claiming a stalled turn is working, and frees the composer', async () => {
-      // An agent that died mid-turn never writes a terminal state, so the session
-      // stays `working` forever. Once `isAgentWorking` expires, the page must stop
-      // promising progress — and must not hold the composer shut on a turn that is
-      // never going to end.
-      mockUseSessionDetail.mockReturnValue({
+    describe('a lost stream', () => {
+      // The gateway closed the turn's stream mid-reply (Envoy Gateway's default
+      // 15 s route timeout, seen on a customer portal) while the task ran on and
+      // finished. The page must neither stay on "Working…" for good nor claim
+      // the turn finished before the poll says so. `settledView` is the
+      // enclosing describe's: the poll's copy of the previous, finished turn.
+      const cutStream = {
+        ...createStreamTurn('m1'),
+        dispatched: true,
+        taskId: 'task-new',
+      };
+
+      it('says the result is being checked while the send re-reads the conversation', async () => {
+        // The stream is gone and the send is awaiting the conversation; the
+        // poll's copy still shows the previous, finished turn.
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, isStreamLost: true, stream: cutStream }),
+        );
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText('The live stream was lost. Checking the result…'),
+        ).toBeInTheDocument();
+      });
+
+      it('keeps Stop aimed at the streamed task while the result is checked', async () => {
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, isStreamLost: true, stream: cutStream }),
+        );
+        await render();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+
+        expect(mockCancelTask).toHaveBeenCalledWith('task-new');
+      });
+
+      it('says the turn is being followed once the poll shows it still working', async () => {
+        // The re-read came back: the task is still running, the preview is
+        // gone for good, and the reply arrives through the poll.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          isAgentWorking: true,
+          currentTaskId: 'task-9',
+        });
+        mockUseSendMessage.mockReturnValue(idleSend({ isStreamLost: true }));
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/The live stream was lost. Still working/),
+        ).toBeInTheDocument();
+        // Still a running turn: the composer withholds Send and offers Stop.
+        expect(
+          screen.queryByRole('button', { name: 'Send' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Stop' }),
+        ).toBeInTheDocument();
+      });
+
+      it('shows the turn as finished, with the composer free, once the poll says so', async () => {
+        // What a reload used to be needed for: the poll reports the task
+        // completed with the full answer, and the page follows it.
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseSendMessage.mockReturnValue(idleSend({ isStreamLost: true }));
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.queryByText(/live stream was lost/),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText('Completed')).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Send' }),
+        ).toBeInTheDocument();
+      });
+
+      it('says the same for the stream of an answer', async () => {
+        mockUseSessionDetail.mockReturnValue(settledView);
+        mockUseAnswerConfirmation.mockReturnValue(
+          idleConfirmation({
+            isAnswering: true,
+            isStreamLost: true,
+            stream: cutStream,
+          }),
+        );
+        await render();
+
+        expect(
+          screen.getByText('The live stream was lost. Checking the result…'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    describe('a stalled turn', () => {
+      // A turn that outlived its transport and never landed: the task stays
+      // `submitted` with its timestamp at the send and no later event. kagent
+      // still holds it active and refuses a second message, so the page must
+      // neither promise progress nor drop to an idle composer the next send
+      // would fail from.
+      const since = Date.parse('2026-09-13T13:52:00Z');
+      const stalledView = {
         ...loadedView,
         isAgentWorking: false,
+        turnProgress: { kind: 'stalled' as const, since },
+        currentTaskId: 'task-9',
+      };
+      const clock = new Date(since).toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
       });
-      await render();
 
-      expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled();
+      it('says the agent has stopped reporting progress, and since when', async () => {
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText(
+            `The agent has not reported progress since ${clock}.`,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      it('keeps Send withheld — the session is still busy — and says why', async () => {
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        await render();
+
+        expect(composer()).toBeEnabled();
+        expect(
+          screen.queryByRole('button', { name: 'Send' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/stopped reporting progress. Cancel the turn/),
+        ).toBeInTheDocument();
+      });
+
+      it('overrides an open but silent stream', async () => {
+        // A send whose stream is still open yet has delivered nothing for the
+        // whole bound is the same symptom the poll measured; "Working…" beside
+        // "no progress since" would contradict itself.
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+        await render();
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/has not reported progress/),
+        ).toBeInTheDocument();
+      });
+
+      it('cancels the turn from the row, and puts the unanswered message back into the box', async () => {
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        await render();
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Cancel the turn' }),
+        );
+
+        expect(mockCancelTask).toHaveBeenCalledWith('task-9');
+        // The message the stalled turn never answered: "send again" should not
+        // mean typing it twice.
+        const lastUserMessage = [...timeline.items]
+          .reverse()
+          .find(item => item.kind === 'user-message');
+        expect(lastUserMessage).toBeDefined();
+        await waitFor(() =>
+          expect(composer()).toHaveValue(
+            (lastUserMessage as { text: string }).text,
+          ),
+        );
+      });
+
+      it('does not offer the cancel when the task is not known', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...stalledView,
+          currentTaskId: undefined,
+        });
+        await render();
+
+        expect(
+          screen.queryByRole('button', { name: 'Cancel the turn' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/has not reported progress/),
+        ).toBeInTheDocument();
+      });
+    });
+
+    describe('Stop for a task that stopped moving (#2364)', () => {
+      // The observed failure on the first 4.x installation: a turn's model
+      // stream was cut by a gateway pod eviction, the task stayed `working` on
+      // the server for ten minutes, the header said Working — and after a
+      // reload the composer offered Send only, its caption promising that a
+      // reply would be added, because Stop needed `isAgentWorking`, which the
+      // age bound had turned off. The task that stopped moving is exactly the
+      // one that needs Stop.
+      const since = Date.parse('2026-09-13T13:53:00Z');
+      const workingView = {
+        ...loadedView,
+        isAgentWorking: true,
+        turnProgress: { kind: 'working' as const },
+        currentTaskId: 'task-stuck',
+      };
+      const staleView = {
+        ...loadedView,
+        isAgentWorking: false,
+        turnProgress: { kind: 'stalled' as const, since },
+        currentTaskId: 'task-stuck',
+      };
+
+      it('offers Stop after a reload, past the age bound, and cancels that task', async () => {
+        // A fresh page over a stale task: no stream, no send in flight, only
+        // the poll's verdict that the newest task is active and has not moved.
+        mockUseSessionDetail.mockReturnValue(staleView);
+        await render();
+
+        expect(
+          screen.queryByRole('button', { name: 'Send' }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText(/reply is added/)).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/stopped reporting progress. Cancel the turn/),
+        ).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+
+        expect(mockCancelTask).toHaveBeenCalledWith('task-stuck');
+      });
+
+      it('keeps Stop when the working turn goes stale under the open page', async () => {
+        // The same page instance, not a remount: the poll's judgement flips
+        // from working to stalled while the person watches. Stop must survive
+        // the flip — it used to vanish at exactly this moment.
+        mockUseSessionDetail.mockReturnValue(workingView);
+        function Harness() {
+          const [, setTick] = useState(0);
+          return (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  mockUseSessionDetail.mockReturnValue(staleView);
+                  setTick(tick => tick + 1);
+                }}
+              >
+                age the task
+              </button>
+              <SessionDetailPage />
+            </>
+          );
+        }
+        await renderInTestApp(<Harness />, {
+          mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        });
+
+        expect(
+          screen.getByRole('button', { name: 'Stop' }),
+        ).toBeInTheDocument();
+        expect(screen.getByText('Working…')).toBeInTheDocument();
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'age the task' }),
+        );
+
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+        expect(
+          screen.getByText(/has not reported progress/),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Send' }),
+        ).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+
+        expect(mockCancelTask).toHaveBeenCalledWith('task-stuck');
+      });
+
+      it('reports a failed Stop as "Stop failed" with the backend’s message', async () => {
+        mockUseSessionDetail.mockReturnValue(workingView);
+        mockUseCancelTask.mockReturnValue(
+          idleCancel({ error: new Error('kagent is unavailable') }),
+        );
+        await render();
+
+        expect(screen.getByText('Stop failed')).toBeInTheDocument();
+        expect(screen.getByText('kagent is unavailable')).toBeInTheDocument();
+        expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+        // Nothing was sent, so nothing is put back into the box.
+        expect(composer()).toHaveValue('');
+      });
+
+      it('tells a Stop refused with a 401 to reload the page', async () => {
+        // The Backstage pod rolled while the tab stayed open and the tab's
+        // token no longer verifies; a reload signs it back in silently.
+        const unauthorized = new Error('Failed user token verification');
+        unauthorized.name = 'UnauthorizedError';
+        mockUseSessionDetail.mockReturnValue(staleView);
+        mockUseCancelTask.mockReturnValue(idleCancel({ error: unauthorized }));
+        await render();
+
+        expect(screen.getByText('Stop failed')).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            /Failed user token verification\. Your sign-in expired while this page was open — reload the page and stop the turn again\./,
+          ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('a send refused because the previous turn is still running', () => {
+      const conflict = new Error(
+        "The agent on installation 'gazelle' is still working on the previous message",
+      );
+      conflict.name = 'ConflictError';
+
+      it('explains the 409 and offers to cancel that turn', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          currentTaskId: 'task-9',
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            error: conflict,
+            failed: { messageId: 'm-refused', text: 'the refused message' },
+          }),
+        );
+        await render();
+
+        expect(
+          screen.getByText(
+            'This session is still working on the previous turn',
+          ),
+        ).toBeInTheDocument();
+        // Not doubled by the composer's generic failure notice.
+        expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+        // The refused text is back in the box, as after any failed send.
+        expect(composer()).toHaveValue('the refused message');
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Cancel the turn' }),
+        );
+        expect(mockCancelTask).toHaveBeenCalledWith('task-9');
+      });
+
+      it('still reports any other failure as a failed send', async () => {
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ error: new Error('kagent is unavailable') }),
+        );
+        await render();
+
+        expect(screen.getByText('Message not sent')).toBeInTheDocument();
+        expect(
+          screen.queryByText(/still working on the previous turn/),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    describe('an answer that streams the resumed turn', () => {
+      const awaiting = {
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        currentTaskId: 'task-1',
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input' as const,
+          toolName: 'ask_user',
+          questions: [{ question: 'Which cluster?', multiple: false }],
+        },
+      };
+
+      it('shows the panel as sending until kagent takes the answer', async () => {
+        mockUseSessionDetail.mockReturnValue(awaiting);
+        mockUseAnswerConfirmation.mockReturnValue(
+          idleConfirmation({
+            isAnswering: true,
+            stream: createStreamTurn('a1'),
+          }),
+        );
+        await render();
+
+        expect(
+          screen.getByRole('button', { name: 'Sending…' }),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Working…')).not.toBeInTheDocument();
+      });
+
+      it('replaces the panel with the working composer once the stream has its first event', async () => {
+        // The poll still says `input-required` for up to 10 s; the stream
+        // already knows the task is running again.
+        mockUseSessionDetail.mockReturnValue(awaiting);
+        mockUseAnswerConfirmation.mockReturnValue(
+          idleConfirmation({
+            isAnswering: true,
+            stream: {
+              ...createStreamTurn('a1'),
+              dispatched: true,
+              taskId: 'task-1',
+            },
+          }),
+        );
+        await render();
+
+        expect(
+          screen.queryByRole('button', { name: 'Send answer' }),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText('Working…')).toBeInTheDocument();
+        expect(composer()).toBeEnabled();
+
+        // Stop aims at the task the answer resumed.
+        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        expect(mockCancelTask).toHaveBeenCalledWith('task-1');
+      });
+
+      it('renders the resumed turn’s streamed reply like a sent message’s', async () => {
+        mockUseSessionDetail.mockReturnValue(awaiting);
+        mockUseAnswerConfirmation.mockReturnValue(
+          idleConfirmation({
+            isAnswering: true,
+            stream: {
+              ...createStreamTurn('a1'),
+              dispatched: true,
+              taskId: 'task-1',
+              items: [
+                {
+                  kind: 'agent-message',
+                  id: 'stream:0',
+                  taskIndex: 0,
+                  text: 'Done, after your decision.',
+                },
+              ],
+            },
+          }),
+        );
+        await render();
+
+        expect(
+          screen.getByText('Done, after your decision.'),
+        ).toBeInTheDocument();
+      });
     });
 
     it('stops saying so once the turn is finished', async () => {

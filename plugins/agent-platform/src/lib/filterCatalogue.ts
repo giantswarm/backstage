@@ -1,7 +1,7 @@
 import { matchesQuery } from '@giantswarm/backstage-plugin-ui-react';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
-import type { CatalogueGroup } from '../../lib/toolset';
+import { hasEntries, type CatalogueGroup } from './toolset';
 
 function toolMatches(query: string, tool: ToolSummary): boolean {
   return matchesQuery(
@@ -52,10 +52,5 @@ export function filterCatalogue(
         workflows: group.workflows.filter(tool => toolMatches(query, tool)),
       };
     })
-    .filter(
-      group =>
-        group.servers.length > 0 ||
-        group.platformAdministration.length > 0 ||
-        group.workflows.length > 0,
-    );
+    .filter(hasEntries);
 }

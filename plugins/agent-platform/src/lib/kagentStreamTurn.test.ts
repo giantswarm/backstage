@@ -2,6 +2,7 @@ import {
   applyStreamEvent,
   createSseDataDecoder,
   createStreamTurn,
+  isStreamTurnOver,
   readStreamFrame,
   StreamTurn,
 } from './kagentStreamTurn';
@@ -909,5 +910,83 @@ describe('applyStreamEvent', () => {
     );
 
     expect(JSON.parse(JSON.stringify(before))).toEqual(snapshot);
+  });
+});
+
+describe('isStreamTurnOver', () => {
+  const fold = (...events: unknown[]) =>
+    events.reduce<StreamTurn>(applyStreamEvent, createStreamTurn('m1'));
+
+  it('is false for a turn whose stream has said nothing yet', () => {
+    expect(isStreamTurnOver(createStreamTurn('m1'))).toBe(false);
+  });
+
+  it('is false while the stream reports the task working', () => {
+    expect(
+      isStreamTurnOver(
+        fold({ kind: 'task', id: 't1', status: { state: 'working' } }),
+      ),
+    ).toBe(false);
+  });
+
+  it('is false for a stream cut after part of the reply', () => {
+    // The gateway's request timeout: text arrived, nothing said the turn ended.
+    expect(
+      isStreamTurnOver(
+        fold(
+          { kind: 'task', id: 't1', status: { state: 'working' } },
+          {
+            kind: 'status-update',
+            final: false,
+            status: {
+              state: 'working',
+              message: {
+                kind: 'message',
+                messageId: 'r1',
+                role: 'agent',
+                parts: [{ kind: 'text', text: 'Half a' }],
+              },
+            },
+          },
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it('is true after the terminal status update', () => {
+    expect(
+      isStreamTurnOver(
+        fold(
+          { kind: 'task', id: 't1', status: { state: 'working' } },
+          {
+            kind: 'status-update',
+            final: true,
+            status: { state: 'completed' },
+          },
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('is true when the turn ended waiting on a human', () => {
+    // `input-required` is active, but the stream has delivered everything it
+    // will: the answer panel takes over, not a lost-stream notice.
+    expect(
+      isStreamTurnOver(
+        fold({
+          kind: 'status-update',
+          final: true,
+          status: { state: 'input-required' },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('is true for a snapshot of a task that had already finished', () => {
+    expect(
+      isStreamTurnOver(
+        fold({ kind: 'task', id: 't1', status: { state: 'completed' } }),
+      ),
+    ).toBe(true);
   });
 });

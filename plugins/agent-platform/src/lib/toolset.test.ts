@@ -632,6 +632,32 @@ describe('groupWorkflows', () => {
   });
 });
 
+describe('groupWorkflows key collisions', () => {
+  it('keeps the singleton bucket distinct from a real "other" prefix', () => {
+    // Two groups sharing a key are one React key and one accordion id: the
+    // pair then opens and closes together. A leading segment never contains a
+    // hyphen, which is what keeps OTHER_WORKFLOWS_KEY out of their space.
+    const workflows = [
+      ...['other-alpha', 'other-beta'].map(name => ({
+        name: `workflow_${name}`,
+        kind: 'workflow' as const,
+      })),
+      ...Array.from({ length: 12 }, (_, index) => ({
+        name: `workflow_lonely${index}-thing`,
+        kind: 'workflow' as const,
+      })),
+    ];
+
+    const groups = groupWorkflows(workflows);
+
+    expect(groups).toBeDefined();
+    const keys = groups!.map(group => group.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toContain('other');
+    expect(keys).toContain(OTHER_WORKFLOWS_KEY);
+  });
+});
+
 describe('catalogueInventory', () => {
   it('counts servers, their tools, core tools and workflows across the groups', () => {
     const groups = buildCatalogue(

@@ -1,6 +1,6 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
-import { NotFoundError } from '@backstage/errors';
+import { ConflictError, NotFoundError } from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
 import {
@@ -46,6 +46,7 @@ describe('createRouter', () => {
   const streamMessage = jest.fn();
   const createSession = jest.fn();
   const answerConfirmation = jest.fn();
+  const streamAnswer = jest.fn();
   const cancelTask = jest.fn();
 
   const mockClient = {
@@ -59,6 +60,7 @@ describe('createRouter', () => {
     streamMessage,
     createSession,
     answerConfirmation,
+    streamAnswer,
     cancelTask,
   } as unknown as KagentClient;
 
@@ -97,6 +99,7 @@ describe('createRouter', () => {
     streamMessage.mockReset();
     createSession.mockReset();
     answerConfirmation.mockReset();
+    streamAnswer.mockReset();
     cancelTask.mockReset();
     app = await buildApp();
   });
@@ -157,8 +160,12 @@ describe('createRouter', () => {
       });
 
       expect(probe).toHaveBeenCalledTimes(2);
-      expect(probe).toHaveBeenCalledWith('https://kagent.gazelle.example.io');
-      expect(probe).toHaveBeenCalledWith('https://kagent.golem.example.io');
+      expect(probe).toHaveBeenCalledWith(
+        'https://agentgateway.gazelle.example.io',
+      );
+      expect(probe).toHaveBeenCalledWith(
+        'https://agentgateway.golem.example.io',
+      );
       // The probe is handed a URL and nothing else: no header, no identity.
       for (const call of probe.mock.calls) {
         expect(call).toHaveLength(1);
@@ -186,11 +193,11 @@ describe('createRouter', () => {
       const { cache, pending } = controlledCache();
       const probing = await buildApp(twoInstallations, { reachability: cache });
 
-      pending.get('https://kagent.gazelle.example.io')!({
+      pending.get('https://agentgateway.gazelle.example.io')!({
         reachable: true,
         checkedAt: 1,
       });
-      pending.get('https://kagent.golem.example.io')!({
+      pending.get('https://agentgateway.golem.example.io')!({
         reachable: false,
         reason: 'DNS lookup failed (ENOTFOUND)',
         checkedAt: 1,
@@ -216,9 +223,9 @@ describe('createRouter', () => {
       expect(
         kagentProbeUrl({
           name: 'gazelle',
-          apiBaseUrl: 'https://kagent.gazelle.example.io',
+          apiBaseUrl: 'https://agentgateway.gazelle.example.io',
         }),
-      ).toBe('https://kagent.gazelle.example.io');
+      ).toBe('https://agentgateway.gazelle.example.io');
       // An installation whose controller is an in-cluster h2c origin is probed
       // exactly where the client would dial it.
       expect(
@@ -362,13 +369,23 @@ describe('createRouter', () => {
     });
 
     it('answers with derived states and no-store', async () => {
+      // `a` is explicitly the newer session. The candidates are ordered newest
+      // first by `updated_at`, so two sessions stamped with their own
+      // `Date.now()` would swap places whenever the clock ticked between the
+      // two calls — an assertion on wire order has to fix the ages itself.
       listSessions.mockResolvedValue({
         error: false,
-        data: [sessionWire('a'), sessionWire('b')],
+        data: [sessionWire('a', minutesAgo(30)), sessionWire('b')],
       });
-      listSessionTasks.mockImplementation(async (id: string) =>
-        tasksWire(id === 'a' ? 'input-required' : 'completed'),
-      );
+      // The pool reads concurrently and reports in completion order; `a`'s
+      // read finishes last here, so the wire order is asserted, not assumed.
+      listSessionTasks.mockImplementation(async (id: string) => {
+        if (id === 'a') {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          return tasksWire('input-required');
+        }
+        return tasksWire('completed');
+      });
 
       const response = await request(app)
         .get('/kagent/session-states')
@@ -379,6 +396,7 @@ describe('createRouter', () => {
       expect(response.headers['cache-control']).toBe('no-store');
       expect(response.body).toEqual({
         evaluatedAt: expect.any(Number),
+        // Candidate order (newest first), not completion order.
         states: [
           { sessionId: 'a', state: 'input-required' },
           { sessionId: 'b', state: 'completed' },
@@ -1891,6 +1909,108 @@ describe('createRouter', () => {
       });
 
       expect(answerConfirmation.mock.calls[0][2].answers).toBeUndefined();
+    });
+  });
+
+  describe('POST /kagent/sessions/:sessionId/answer/stream', () => {
+    const validBody = {
+      agentNamespace: 'kagent',
+      agentName: 'grill-master',
+      messageId: 'msg-1',
+      taskId: 'task-1',
+      decision: 'approve',
+      answers: [['Rideable proof-of-concept']],
+      text: 'Rideable proof-of-concept',
+    };
+
+    function sseUpstream(frames: string[]) {
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const frame of frames) {
+            controller.enqueue(encoder.encode(frame));
+          }
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+
+    function post(body: unknown = validBody, installation = 'gazelle') {
+      return request(app)
+        .post('/kagent/sessions/abc/answer/stream')
+        .query({ installation })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body as object);
+    }
+
+    it('relays the resumed turn’s events, forwarding the same answer the unary route would', async () => {
+      const frames = [
+        'data: {"statusUpdate":{"taskId":"task-1","status":{"state":"TASK_STATE_WORKING"}}}\n\n',
+        'data: {"statusUpdate":{"taskId":"task-1","status":{"state":"TASK_STATE_COMPLETED"}}}\n\n',
+      ];
+      streamAnswer.mockResolvedValue(sseUpstream(frames));
+
+      const response = await post();
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/event-stream');
+      expect(response.text).toBe(frames.join(''));
+      expect(streamAnswer).toHaveBeenCalledWith(
+        'abc',
+        { namespace: 'kagent', name: 'grill-master' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          answers: [['Rideable proof-of-concept']],
+          rejectionReason: undefined,
+          text: 'Rideable proof-of-concept',
+        },
+        { userToken: 'user-token' },
+        expect.any(AbortSignal),
+      );
+      // Never the unary call: that one is held for the turn timeout and then
+      // answers 202, which is the blind spot this route exists to close.
+      expect(answerConfirmation).not.toHaveBeenCalled();
+    });
+
+    it('validates the body exactly as the unary answer route does', async () => {
+      for (const body of [
+        { ...validBody, taskId: undefined },
+        { ...validBody, decision: 'maybe' },
+        { ...validBody, answers: ['yes'] },
+        { ...validBody, text: 'x'.repeat(32_001) },
+      ]) {
+        const response = await post(body);
+        expect(response.status).toBe(400);
+      }
+      expect(streamAnswer).not.toHaveBeenCalled();
+    });
+
+    it('requires the forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/answer/stream')
+        .query({ installation: 'gazelle' })
+        .send(validBody);
+
+      expect(response.status).toBe(401);
+      expect(streamAnswer).not.toHaveBeenCalled();
+    });
+
+    it('maps a refusal before the stream opens through the error middleware', async () => {
+      // The task is no longer waiting: a decision, and a 409 the page explains.
+      streamAnswer.mockRejectedValue(
+        new ConflictError('not waiting for a decision on this turn'),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toContain('not waiting');
     });
   });
 

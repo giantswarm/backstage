@@ -88,6 +88,14 @@ export function parseToolGroup(
   return DECLARED_TOOL_GROUPS.find(group => group === value);
 }
 
+/**
+ * How every surface names a server with `spec.suspended: true` -- the
+ * dashboard's inventory count, the list rows, the detail blocks. "Deactivated"
+ * rather than "suspended" because it pairs with the Activate / Deactivate
+ * lifecycle buttons that flip the flag ({@link MCPServer.getSuspended}).
+ */
+export const DEACTIVATED_LABEL = 'Deactivated';
+
 /** Infrastructure state reported in `.status.state` (mirrors muster CRD enum). */
 export type MCPServerState =
   | 'Running'

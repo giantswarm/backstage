@@ -220,6 +220,26 @@ export function SessionsTable({
     );
   }, [buildAvatarUrl, hrefFor, hiddenKey]);
 
+  // Name only the axes the caller still shows. `sessionSearchFn` matches the
+  // agent and the installation whatever is hidden, which is harmless — it finds
+  // more than the placeholder promises — but on a list scoped to one agent on
+  // one installation, offering them as ways to search is an empty offer.
+  const searchPlaceholder = useMemo(() => {
+    const hidden = new Set<string>(hiddenKey ? hiddenKey.split(',') : []);
+    const axes = [
+      'session',
+      ...(hidden.has('agentName') ? [] : ['agent']),
+      ...(hidden.has('installation') ? [] : ['installation']),
+    ];
+    const last = axes.pop();
+    if (axes.length === 0) {
+      return `Search by ${last}`;
+    }
+    // Two axes read "a or b"; three keep the serial comma of the original copy.
+    const rest = axes.length === 1 ? axes[0] : `${axes.join(', ')},`;
+    return `Search by ${rest} or ${last}`;
+  }, [hiddenKey]);
+
   const { tableProps, search } = useTable<SessionRow>({
     mode: 'complete',
     // `undefined` rather than `[]` while loading: an empty array renders the
@@ -240,7 +260,7 @@ export function SessionsTable({
       {showSearch && (
         <SearchField
           aria-label="Search sessions"
-          placeholder="Search by session, agent, or installation"
+          placeholder={searchPlaceholder}
           value={search.value}
           onChange={search.onChange}
         />

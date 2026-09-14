@@ -163,6 +163,9 @@ describe('KagentApiClient', () => {
       [401, 'UnauthorizedError'],
       [403, 'ForbiddenError'],
       [404, 'NotFoundError'],
+      // A send refused because the session is still working on the previous
+      // turn; the page explains it and offers to cancel that turn.
+      [409, 'ConflictError'],
       [503, 'ServiceUnavailableError'],
     ])('maps status %s to %s', async (status, expectedName) => {
       fetchMock.mockResolvedValue(jsonResponse({}, status));
@@ -942,6 +945,216 @@ describe('KagentApiClient', () => {
       ).rejects.toMatchObject({
         name: 'UpstreamError',
         message: 'task already finished',
+      });
+    });
+  });
+
+  describe('streamAnswer', () => {
+    const answer = {
+      messageId: 'msg-1',
+      taskId: 'task-1',
+      decision: 'approve' as const,
+      answers: [['A rideable bike']],
+      text: 'A rideable bike',
+    };
+
+    /** A streaming response whose body yields the given SSE frames. */
+    function sseResponse(frames: string[], status = 200) {
+      const chunks = frames.map(frame => Uint8Array.from(Buffer.from(frame)));
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: {
+          getReader: () => ({
+            read: async () => {
+              const value = chunks.shift();
+              return value ? { done: false, value } : { done: true };
+            },
+          }),
+        },
+        json: async () => ({}),
+      } as unknown as Response;
+    }
+
+    it('POSTs the same body as the unary answer to the streaming route, and relays the events', async () => {
+      fetchMock.mockResolvedValue(
+        sseResponse([
+          'data: {"task":{"id":"task-1","status":{"state":"TASK_STATE_WORKING"}}}\n\n',
+          'data: {"statusUpdate":{"taskId":"task-1","status":{"state":"TASK_STATE_COMPLETED"}}}\n\n',
+        ]),
+      );
+      const events: unknown[] = [];
+
+      await buildClient().streamAnswer(
+        'gazelle',
+        'abc123',
+        { namespace: 'kagent', name: 'grill-master' },
+        answer,
+        event => events.push(event),
+      );
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'http://backend/api/agent-platform/kagent/sessions/abc123/answer/stream?installation=gazelle',
+      );
+      expect(init.method).toBe('POST');
+      expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
+      expect(JSON.parse(init.body)).toEqual({
+        agentNamespace: 'kagent',
+        agentName: 'grill-master',
+        messageId: 'msg-1',
+        taskId: 'task-1',
+        decision: 'approve',
+        answers: [['A rideable bike']],
+        text: 'A rideable bike',
+      });
+      expect(events).toEqual([
+        { task: { id: 'task-1', status: { state: 'TASK_STATE_WORKING' } } },
+        {
+          statusUpdate: {
+            taskId: 'task-1',
+            status: { state: 'TASK_STATE_COMPLETED' },
+          },
+        },
+      ]);
+    });
+
+    it('reports a 409 as a decision, not as a transport failure to verify', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          { error: { message: 'still working on the previous message' } },
+          409,
+        ),
+      );
+
+      await expect(
+        buildClient().streamAnswer(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          answer,
+          () => {},
+        ),
+      ).rejects.toMatchObject({
+        name: 'ConflictError',
+        message: 'still working on the previous message',
+      });
+    });
+
+    it('reports a 5xx before the stream opens as a transport failure', async () => {
+      // A gateway cut firing before the stream opens looks like this; whether
+      // the answer was dispatched is unknowable here, so the caller verifies.
+      fetchMock.mockResolvedValue(jsonResponse({}, 502));
+
+      await expect(
+        buildClient().streamAnswer(
+          'gazelle',
+          'abc123',
+          { namespace: 'kagent', name: 'a' },
+          answer,
+          () => {},
+        ),
+      ).rejects.toMatchObject({ name: 'StreamTransportError' });
+    });
+  });
+
+  describe('aborting a stream', () => {
+    const agent = { namespace: 'kagent', name: 'a' };
+    const message = { messageId: 'msg-1', text: 'hi' };
+
+    /**
+     * A streaming response that yields the given frames and then hangs — the
+     * shape of a stream nothing ends — until the request's signal aborts it,
+     * which rejects the pending read the way a real fetch body does.
+     */
+    function hangingSseResponse(frames: string[], signal: AbortSignal) {
+      const chunks = frames.map(frame => Uint8Array.from(Buffer.from(frame)));
+      const abortError = () =>
+        Object.assign(new Error('The operation was aborted.'), {
+          name: 'AbortError',
+        });
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: {
+          getReader: () => ({
+            read: () => {
+              if (signal.aborted) {
+                return Promise.reject(abortError());
+              }
+              const value = chunks.shift();
+              if (value) {
+                return Promise.resolve({ done: false, value });
+              }
+              return new Promise((_, reject) =>
+                signal.addEventListener('abort', () => reject(abortError())),
+              );
+            },
+          }),
+        },
+        json: async () => ({}),
+      } as unknown as Response;
+    }
+
+    /** Let the client consume whatever the body has yielded so far. */
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    it('hands the signal to the request, and resolves a stream aborted after events', async () => {
+      // The caller aborts when the poll shows the turn over while the stream
+      // still hangs: events were seen, so the turn exists and the poll is its
+      // record — no error, nothing to verify.
+      const control = new AbortController();
+      fetchMock.mockImplementation(async (_url: string, init: RequestInit) =>
+        hangingSseResponse(
+          [
+            'data: {"task":{"id":"task-1","status":{"state":"TASK_STATE_WORKING"}}}\n\n',
+          ],
+          init.signal!,
+        ),
+      );
+      const events: unknown[] = [];
+
+      const streaming = buildClient().streamMessage(
+        'gazelle',
+        'abc123',
+        agent,
+        message,
+        event => events.push(event),
+        control.signal,
+      );
+      await settle();
+      expect(events).toHaveLength(1);
+      expect(fetchMock.mock.calls[0][1].signal).toBe(control.signal);
+
+      control.abort();
+
+      await expect(streaming).resolves.toBeUndefined();
+    });
+
+    it('reports an abort before any event as a transport failure to verify', async () => {
+      // Nothing said the turn exists, so whether the message was dispatched is
+      // for the caller to check against the history.
+      const control = new AbortController();
+      fetchMock.mockImplementation(async (_url: string, init: RequestInit) =>
+        hangingSseResponse([], init.signal!),
+      );
+
+      const streaming = buildClient().streamMessage(
+        'gazelle',
+        'abc123',
+        agent,
+        message,
+        () => {},
+        control.signal,
+      );
+      await settle();
+
+      control.abort();
+
+      await expect(streaming).rejects.toMatchObject({
+        name: 'StreamTransportError',
       });
     });
   });

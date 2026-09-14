@@ -20,6 +20,14 @@ export type AgentStatusState = {
   status: AgentStatus | undefined;
   /** True until the verdict is `ready` or `failed`. */
   isSettling: boolean;
+  /**
+   * agent-manager answered `not_found`: by its contract, neither an
+   * AgentTemplate nor a HelmRelease of that name exists. Right after a create
+   * this is transient and polled through (see {@link isSettling}); on a page
+   * reached any other way it is the difference between "not yet" and "not
+   * there".
+   */
+  isNotFound: boolean;
   error: Error | null;
 };
 
@@ -71,6 +79,7 @@ export function useAgentStatus(
 
   return {
     status: data,
+    isNotFound: notFoundYet,
     isSettling:
       enabled &&
       (notFoundYet || !data || !isSettledVerdict(data.verdict)) &&

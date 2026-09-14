@@ -416,6 +416,15 @@ const toolsetCard = () =>
 const summaryBar = () =>
   screen.getByRole('region', { name: 'Selected so far' });
 
+/**
+ * The Catalogue card. Its groups carry the same names as the resolved list's
+ * — both are the gateway's catalogue, one to pick from and one to read back —
+ * so anything opened by group name has to say which of the two it means.
+ */
+const catalogueCard = () =>
+  screen.getByRole('heading', { name: 'Catalogue' }).parentElement!
+    .parentElement as HTMLElement;
+
 /** The catalogue is behind a toggle; every group inside it is collapsed. */
 async function browseCatalogue(user: UserEvent) {
   await user.click(
@@ -423,7 +432,9 @@ async function browseCatalogue(user: UserEvent) {
   );
 }
 async function open(user: UserEvent, name: RegExp) {
-  await user.click(await screen.findByRole('button', { name }));
+  await user.click(
+    await within(catalogueCard()).findByRole('button', { name }),
+  );
 }
 
 describe('NewAgentToolsPage', () => {
@@ -760,7 +771,7 @@ describe('NewAgentToolsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the first 20 rows of a long list and the rest on request', async () => {
+  it('shows the first 20 rows of a long list and the rest a page at a time', async () => {
     const { api } = makeMusterApi({
       signedIn: false,
       evaluatesToolsets: true,
@@ -776,19 +787,35 @@ describe('NewAgentToolsPage', () => {
     );
     await open(user, /^github — 25 tools/);
 
+    // Scoped to the catalogue: the resolved list carries the same row and
+    // footer text once a toolset is selected, and only happens to be absent
+    // here because nothing is.
+    const catalogue = within(catalogueCard());
+
     expect(
-      screen.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
+      catalogue.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
     ).toHaveLength(20);
-    expect(screen.getByText('20 tools shown, 5 more')).toBeInTheDocument();
+    expect(catalogue.getByText('20 tools shown, 5 more')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Show all 25 tools' }));
+    // A page at a time, and the last page asks for exactly what is left.
+    await user.click(
+      catalogue.getByRole('button', { name: 'Show 5 more tools' }),
+    );
 
     expect(
-      screen.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
+      catalogue.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
     ).toHaveLength(25);
     expect(
-      screen.queryByRole('button', { name: /^Show all/ }),
+      catalogue.queryByRole('button', { name: /^Show \d+ more/ }),
     ).not.toBeInTheDocument();
+    expect(catalogue.getByText('25 tools shown')).toBeInTheDocument();
+
+    // And back to the first page, so a list opened by mistake can be shut.
+    await user.click(catalogue.getByRole('button', { name: 'Show fewer' }));
+
+    expect(
+      catalogue.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
+    ).toHaveLength(20);
   });
 
   it('groups many workflows by their name prefix, each collapsed with its count, singletons gathered', async () => {

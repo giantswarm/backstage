@@ -48,7 +48,7 @@ per-user auth does not.
 The installations the proxy can target are **derived from the fleet
 configuration**: every `gs.installations` entry with a `baseDomain` yields a
 muster endpoint at `https://muster.<baseDomain>/mcp` (the same derivation the
-kagent proxy uses for `https://kagent.<baseDomain>/api`). Nothing has to be
+kagent proxy uses for `https://agentgateway.<baseDomain>`). Nothing has to be
 listed for an installation that adopts muster; whether it actually runs muster
 is the frontend's question (the installation inventory reads the
 `muster.giantswarm.io` API group), and whether the endpoint is reachable from

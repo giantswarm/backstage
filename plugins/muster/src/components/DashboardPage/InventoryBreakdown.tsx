@@ -1,5 +1,5 @@
 import { Box, Paper, Typography, makeStyles, Theme } from '@material-ui/core';
-import { MCPServer, MusterWorkflow } from '../../lib/k8s';
+import { DEACTIVATED_LABEL, MCPServer, MusterWorkflow } from '../../lib/k8s';
 import {
   authPosture,
   serverProvenance,
@@ -111,7 +111,7 @@ export function InventoryBreakdown({
           entries={[
             { label: 'GitOps-managed', value: provenance.gitops },
             { label: 'Registered live', value: provenance.adHoc },
-            { label: 'Deactivated', value: provenance.suspended },
+            { label: DEACTIVATED_LABEL, value: provenance.suspended },
           ]}
         />
         <Column

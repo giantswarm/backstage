@@ -4,6 +4,7 @@ import {
   describeSessionState,
   isAgentWorking,
   readNewestTaskState,
+  readTurnProgress,
 } from './kagentSessionState';
 import { normalizeTaskList } from './kagentSessionDetail';
 
@@ -184,6 +185,81 @@ describe('isAgentWorking', () => {
 
   it('is false for a session with no tasks', () => {
     expect(working([])).toBe(false);
+  });
+});
+
+describe('readTurnProgress', () => {
+  const NOW = Date.parse('2026-09-13T13:52:00Z');
+
+  function task(state: string, ageMs = 0) {
+    return {
+      status: { state, timestamp: new Date(NOW - ageMs).toISOString() },
+    };
+  }
+
+  function progress(tasks: unknown[]) {
+    return readTurnProgress(normalizeTaskList({ data: tasks }).tasks, NOW);
+  }
+
+  it('reports a moving active task as working', () => {
+    expect(progress([task('submitted')])).toEqual({ kind: 'working' });
+    expect(progress([task('working', ACTIVE_MAX_AGE_MS - 1_000)])).toEqual({
+      kind: 'working',
+    });
+  });
+
+  it('reports an active task whose timestamp stopped advancing as stalled, not idle', () => {
+    // The observed failure: a turn cancelled at the caller's deadline leaves the
+    // task `submitted` with its timestamp at the send and no later event. kagent
+    // still refuses a second message while it stands, so "nothing is happening"
+    // must not read as "nothing is running".
+    const since = NOW - ACTIVE_MAX_AGE_MS - 60_000;
+    expect(progress([task('submitted', ACTIVE_MAX_AGE_MS + 60_000)])).toEqual({
+      kind: 'stalled',
+      since,
+    });
+    expect(progress([task('working', ACTIVE_MAX_AGE_MS + 60_000)])).toEqual({
+      kind: 'stalled',
+      since,
+    });
+  });
+
+  it('switches exactly at the bound', () => {
+    expect(progress([task('working', ACTIVE_MAX_AGE_MS)])).toEqual({
+      kind: 'stalled',
+      since: NOW - ACTIVE_MAX_AGE_MS,
+    });
+  });
+
+  it('reports nothing for a terminal turn, whatever its age', () => {
+    expect(
+      progress([task('completed', ACTIVE_MAX_AGE_MS * 10)]),
+    ).toBeUndefined();
+    expect(progress([task('canceled')])).toBeUndefined();
+  });
+
+  it('reports nothing while the agent waits on a human', () => {
+    // Waiting is not stalling: nothing is supposed to move until someone answers,
+    // and the answer panel is the display for it.
+    expect(
+      progress([task('input-required', ACTIVE_MAX_AGE_MS * 2)]),
+    ).toBeUndefined();
+  });
+
+  it('keeps calling an unmeasurable turn working rather than stalled', () => {
+    // No timestamp anywhere: there is nothing to measure a stall against, and a
+    // false stall would offer to cancel a turn that may be fine.
+    expect(progress([{ status: { state: 'working' } }])).toEqual({
+      kind: 'working',
+    });
+  });
+
+  it('measures the stall from the conversation’s newest time when the newest task has none', () => {
+    const stale = task('completed', ACTIVE_MAX_AGE_MS + 1_000);
+    expect(progress([stale, { status: { state: 'working' } }])).toEqual({
+      kind: 'stalled',
+      since: NOW - ACTIVE_MAX_AGE_MS - 1_000,
+    });
   });
 });
 

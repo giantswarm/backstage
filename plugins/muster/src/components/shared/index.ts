@@ -21,7 +21,11 @@ export { FreshnessIndicator } from './FreshnessIndicator';
 export type { FreshnessIndicatorProps } from './FreshnessIndicator';
 export { InstallationHealthPill } from './InstallationHealthPill';
 export type { InstallationHealthPillProps } from './InstallationHealthPill';
-export { ServerAuthActions, ServerSignIn } from './ServerSignIn';
+export {
+  DEACTIVATED_SIGN_IN_GATE,
+  ServerAuthActions,
+  ServerSignIn,
+} from './ServerSignIn';
 export type { ServerAuthActionsProps, ServerSignInProps } from './ServerSignIn';
 export { useServerSignIn } from './useServerSignIn';
 export type { ServerSignInState } from './useServerSignIn';

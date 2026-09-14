@@ -8,6 +8,7 @@ import type {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { agentsRouteRef, modelsRouteRef } from '../../routes';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
+import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
 import { AgentDetailPage } from './AgentDetailPage';
 
@@ -85,6 +86,22 @@ jest.mock('../../hooks/useAgentManager', () => ({
     error: null,
   }),
 }));
+// agent-manager's `get_agent_status`, the page's word on whether an agent whose
+// template the apiserver does not know is being deployed (its HelmRelease exists)
+// or does not exist at all. The default is an installation without agent-manager:
+// nothing asked, nothing known.
+const mockUseAgentStatus = jest.fn<AgentStatusState, unknown[]>();
+const NO_STATUS: AgentStatusState = {
+  status: undefined,
+  isSettling: false,
+  isNotFound: false,
+  error: null,
+};
+
+jest.mock('../../hooks/useAgentStatus', () => ({
+  useAgentStatus: (...args: unknown[]) => mockUseAgentStatus(...args),
+}));
+
 jest.mock('./AgentUpdateSkillsDialog', () => ({
   AgentUpdateSkillsDialog: () => null,
 }));
@@ -124,6 +141,11 @@ jest.mock('../ServingProvider', () => ({
   }),
 }));
 
+/**
+ * The agent in the URL. Not a mock: the page is mounted at the real splat route
+ * AgentsRouter uses, so these arrive through react-router — which is also what
+ * lets the tab strip resolve its base path.
+ */
 const mockParams: {
   installation: string;
   namespace: string;
@@ -133,11 +155,6 @@ const mockParams: {
   namespace: 'agent-platform',
   name: 'pr-reviewer',
 };
-
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useParams: () => mockParams,
-}));
 
 const { Agent, GitRepository, HelmRelease, Kustomization, ModelConfig } =
   jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react');
@@ -360,11 +377,22 @@ function makeGitRepository() {
   );
 }
 
-// Only the parent RouteRef is mountable — `mountedRoutes` rejects a SubRouteRef —
-// and the detail sub-route resolves relative to it.
-const renderPage = () =>
+/**
+ * Render the page at one of its tabs — no argument for Overview, which is the
+ * index route.
+ *
+ * Only the parent RouteRef is mountable — `mountedRoutes` rejects a SubRouteRef
+ * — and the detail sub-route resolves relative to it. `mountPath` is the splat
+ * AgentsRouter mounts this page at, so the page's own `<Routes>` sees the tab
+ * segment and `useSplatBasePath` can strip it back off.
+ */
+const AGENT_PATH = `/agent-platform/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
+
+const renderPage = (tab: 'tools' | 'skills' | 'sessions' | '' = '') =>
   renderInTestApp(<AgentDetailPage />, {
     mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+    initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
   });
 
 /**
@@ -387,6 +415,8 @@ describe('AgentDetailPage', () => {
     mockUseAgentSessions.mockReset();
     mockUseAgentSessions.mockReturnValue(NO_SESSIONS);
     mockServingStateFor.mockReset();
+    mockUseAgentStatus.mockReset();
+    mockUseAgentStatus.mockReturnValue(NO_STATUS);
   });
 
   it('renders every section for a ready agent', async () => {
@@ -401,12 +431,13 @@ describe('AgentDetailPage', () => {
       screen.getByText('Reviews pull requests in depth.'),
     ).toBeInTheDocument();
 
-    // Sections
+    // The Overview tab's sections. Tools, Skills and Sessions have tabs of
+    // their own and are asserted there.
     expect(sectionTitle('Status')).toBeInTheDocument();
     expect(sectionTitle('Configuration')).toBeInTheDocument();
     expect(sectionTitle('System prompt')).toBeInTheDocument();
-    expect(sectionTitle('Skills (1)')).toBeInTheDocument();
-    expect(sectionTitle('Recent sessions')).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-toolset-card')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Skills/ })).toBeNull();
 
     // Resolved model, from the targeted ModelConfig read
     expect(screen.getByText('Claude Opus 4.7')).toBeInTheDocument();
@@ -414,24 +445,120 @@ describe('AgentDetailPage', () => {
 
     expect(screen.getByText('You review pull requests.')).toBeInTheDocument();
 
-    // One skill card: the label, its repo as a link, and the commit it is
-    // pinned to — short on the card, full in the tooltip.
-    expect(screen.getByText('PR review conventions')).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'giantswarm/skills' }),
-    ).toHaveAttribute('href', 'https://github.com/giantswarm/skills');
-    expect(screen.getByText(COMMIT.slice(0, 12))).toHaveAttribute(
-      'title',
-      COMMIT,
-    );
-    // Read-only: the picker's checkbox affordance must not come along.
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-
     // The admitting Harness, in the configuration and in the status.
     expect(screen.getByText(/From the label/)).toHaveTextContent(HARNESS_LABEL);
     expect(
       screen.getByRole('list', { name: 'Admitting Harnesses' }),
     ).toHaveTextContent(/kagent.*Ready.*sessions run here/);
+  });
+
+  describe('tabs', () => {
+    it('offers the four tabs, each at its own URL', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage();
+
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs.map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Tools',
+        'Skills',
+        'Sessions',
+      ]);
+      expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
+        AGENT_PATH,
+        `${AGENT_PATH}/tools`,
+        `${AGENT_PATH}/skills`,
+        `${AGENT_PATH}/sessions`,
+      ]);
+    });
+
+    // `aria-selected` alone is not the affordance: bui draws the active
+    // underline from the selected key, and skips it entirely for an empty one
+    // (TabsIndicators guards on `selectedKey !== ''`), so a tab whose id came
+    // from its path would be selected and yet visibly unmarked on Overview.
+    it.each([
+      ['', 'Overview'],
+      ['tools', 'Tools'],
+    ] as const)(
+      'marks the open tab with the active indicator (%s)',
+      async (tab, _label) => {
+        stubResources({ resource: makeAgent() });
+
+        const { container } = await renderPage(tab);
+
+        const strip = container.querySelector('.bui-Tabs');
+        expect(strip).toHaveStyle({ '--active-tab-opacity': '1' });
+      },
+    );
+
+    // Overview's href is a prefix of every other tab's, so a 'prefix' match
+    // strategy would leave it selected on all four.
+    it('selects only the open tab', async () => {
+      stubResources({ resource: makeAgent() });
+
+      const { unmount } = await renderPage();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+      unmount();
+
+      stubResources({ resource: makeAgent() });
+      await renderPage('tools');
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Tools',
+      );
+    });
+
+    it('renders the toolset on the Tools tab', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('tools');
+
+      expect(screen.getByTestId('agent-toolset-card')).toBeInTheDocument();
+      // The configuration card is Overview's, and does not follow along.
+      expect(
+        screen.queryByRole('heading', { name: 'Configuration' }),
+      ).toBeNull();
+    });
+
+    // A retired or mistyped tab is not a missing agent.
+    it('sends an unknown sub-path back to Overview', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderInTestApp(<AgentDetailPage />, {
+        mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+        mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+        initialRouteEntries: [`${AGENT_PATH}/gitops`],
+      });
+
+      expect(sectionTitle('Configuration')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+    });
+  });
+
+  describe('skills', () => {
+    it('shows each mounted skill as a card', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(sectionTitle('Skills (1)')).toBeInTheDocument();
+      // One skill card: the label, its repo as a link, and the commit it is
+      // pinned to — short on the card, full in the tooltip.
+      expect(screen.getByText('PR review conventions')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'giantswarm/skills' }),
+      ).toHaveAttribute('href', 'https://github.com/giantswarm/skills');
+      expect(screen.getByText(COMMIT.slice(0, 12))).toHaveAttribute(
+        'title',
+        COMMIT,
+      );
+      // Read-only: the picker's checkbox affordance must not come along.
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
   });
 
   it('shows an OCI skill by its reference and digest', async () => {
@@ -450,7 +577,7 @@ describe('AgentDetailPage', () => {
       } as Partial<AgentInterface>),
     });
 
-    await renderPage();
+    await renderPage('skills');
 
     expect(screen.getByText('runbooks')).toBeInTheDocument();
     expect(
@@ -700,10 +827,10 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByText('RemoteMCPServer pr-reviewer'),
       ).toBeInTheDocument();
-      // The gateway row defers to the toolset card rather than claiming "all
-      // tools": which of the gateway's tools the agent can use is its toolset.
-      expect(screen.getByText(/see Toolset below/)).toBeInTheDocument();
-      expect(screen.getByTestId('agent-toolset-card')).toBeInTheDocument();
+      // The gateway row defers to the toolset rather than claiming "all tools":
+      // which of the gateway's tools the agent can use is its toolset, which
+      // lives on the Tools tab ('tabs' above asserts it renders there).
+      expect(screen.getByText(/see the Tools tab/)).toBeInTheDocument();
     });
 
     it('describes a restricted server by its allowlist', async () => {
@@ -931,7 +1058,7 @@ describe('AgentDetailPage', () => {
     it('describes the list as the user’s own', async () => {
       stubResources({ resource: makeAgent() });
 
-      await renderPage();
+      await renderPage('sessions');
 
       expect(
         screen.getByText(/Your own sessions with this agent/),
@@ -947,7 +1074,7 @@ describe('AgentDetailPage', () => {
         isNotUserScoped: true,
       });
 
-      await renderPage();
+      await renderPage('sessions');
 
       expect(
         screen.getByText(/does not scope sessions to a user/),
@@ -961,7 +1088,7 @@ describe('AgentDetailPage', () => {
         isUnavailable: true,
       });
 
-      await renderPage();
+      await renderPage('sessions');
 
       expect(
         screen.getByText('Sessions could not be read from this installation.'),
@@ -1075,9 +1202,162 @@ describe('AgentDetailPage', () => {
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
     });
   });
+
+  // Right after Deploy: agent-manager's `create_agent` applied the HelmRelease
+  // and the create flow navigated here before helm-controller rendered the
+  // AgentTemplate, so the template read 404s. The page must tell that "not yet"
+  // from "not there" — by asking agent-manager, whose `get_agent_status` answers
+  // `not_found` only when neither the template nor the HelmRelease exists.
+  describe('deploying', () => {
+    const templateNotFound = () =>
+      stubResources({
+        error: new Error('not found'),
+        errors: [
+          {
+            type: 'error',
+            cluster: 'gazelle',
+            error: Object.assign(new Error('not found'), {
+              name: 'NotFoundError',
+            }),
+          },
+        ],
+      });
+
+    const releaseOnly = (
+      overrides: Partial<NonNullable<AgentStatusState['status']>> = {},
+    ): AgentStatusState => ({
+      status: {
+        name: mockParams.name,
+        namespace: mockParams.namespace,
+        verdict: 'progressing',
+        summary: 'HelmRelease created; Flux has not reconciled it yet',
+        template: { exists: false, harnesses: [] },
+        helmRelease: {
+          exists: true,
+          ready: null,
+          suspended: false,
+          gitOpsOwned: false,
+          deleting: false,
+        },
+        ...overrides,
+      },
+      isSettling: true,
+      isNotFound: false,
+      error: null,
+    });
+
+    /** The interval the page hands the template read, evaluated for "no data". */
+    const templatePollInterval = () => {
+      const call = mockUseResource.mock.calls.find(
+        ([, ResourceClass]) => ResourceClass === Agent,
+      );
+      const options = call?.[3] as {
+        refetchInterval: (query: { state: { data: undefined } }) => number;
+      };
+      return options.refetchInterval({ state: { data: undefined } });
+    };
+
+    it('shows an agent whose HelmRelease exists but whose template is not rendered yet as deploying', async () => {
+      templateNotFound();
+      mockUseAgentStatus.mockReturnValue(releaseOnly());
+
+      await renderPage();
+
+      expectHeaderReadiness('Deploying');
+      expect(screen.getAllByText(mockParams.name)).not.toHaveLength(0);
+      expect(
+        screen.getByText('HelmRelease created; Flux has not reconciled it yet'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Start a session' }),
+      ).not.toBeInTheDocument();
+
+      // Asked only because the template read came back empty …
+      expect(mockUseAgentStatus).toHaveBeenCalledWith(
+        mockParams.installation,
+        mockParams.namespace,
+        mockParams.name,
+        { enabled: true },
+      );
+      // … and while the release is there, the template is re-read at the fast
+      // tier, so the page switches to the rendered agent within one poll of it
+      // appearing — not after the 60 s "no data" baseline.
+      expect(templatePollInterval()).toBe(5_000);
+    });
+
+    it('carries agent-manager’s failure when the release itself does not become ready', async () => {
+      templateNotFound();
+      mockUseAgentStatus.mockReturnValue(
+        releaseOnly({
+          verdict: 'failed',
+          summary: 'HelmRelease is not ready: install retries exhausted',
+        }),
+      );
+
+      await renderPage();
+
+      expectHeaderReadiness('Deploying');
+      expect(
+        screen.getByText('The agent’s release did not become ready'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('HelmRelease is not ready: install retries exhausted'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
+    });
+
+    it('waits for agent-manager’s answer before choosing between deploying and not found', async () => {
+      templateNotFound();
+      mockUseAgentStatus.mockReturnValue({
+        status: undefined,
+        isSettling: true,
+        isNotFound: false,
+        error: null,
+      });
+
+      await renderPage();
+
+      expect(screen.getByTestId('progress')).toBeInTheDocument();
+      expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
+    });
+
+    it('still says "Agent not found" when neither the template nor the HelmRelease exists', async () => {
+      templateNotFound();
+      mockUseAgentStatus.mockReturnValue({
+        status: undefined,
+        isSettling: true,
+        isNotFound: true,
+        error: null,
+      });
+
+      await renderPage();
+
+      expect(screen.getByText('Agent not found')).toBeInTheDocument();
+      expect(screen.queryByTestId('agent-readiness')).not.toBeInTheDocument();
+      expect(templatePollInterval()).toBe(60_000);
+    });
+
+    it('does not ask agent-manager while the agent is in hand', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage();
+
+      expect(mockUseAgentStatus).toHaveBeenCalledWith(
+        mockParams.installation,
+        mockParams.namespace,
+        mockParams.name,
+        { enabled: false },
+      );
+    });
+  });
 });
 
 describe('AgentDetailPage: the model behind the agent', () => {
+  beforeEach(() => {
+    mockUseAgentStatus.mockReturnValue(NO_STATUS);
+  });
+
   // The Serving view lives under the Models tab; mount it too so the Not
   // serving label has somewhere to link.
   const renderPageWithModels = () =>
@@ -1086,6 +1366,8 @@ describe('AgentDetailPage: the model behind the agent', () => {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,
       },
+      mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+      initialRouteEntries: [AGENT_PATH],
     });
 
   beforeEach(() => {

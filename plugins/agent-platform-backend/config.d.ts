@@ -9,7 +9,7 @@ export interface Config {
      * validates the token on that route and derives the caller from it.
      *
      * The frontend never talks to kagent directly: the browser cannot reach
-     * `kagent.<baseDomain>` cross-origin, gRPC over HTTP/2 needs a server-side
+     * `agentgateway.<baseDomain>` cross-origin, gRPC over HTTP/2 needs a server-side
      * client anyway, and the installation base domains are deliberately
      * backend-only (they deanonymize customers).
      *
@@ -24,7 +24,7 @@ export interface Config {
     kagent?: {
       /**
        * Per-request timeout in milliseconds toward a kagent controller. Bounds
-       * how long an installation whose `kagent.<baseDomain>` host does not
+       * how long an installation whose `agentgateway.<baseDomain>` host does not
        * resolve (i.e. kagent simply is not deployed there) can hold a request
        * open. Defaults to 10000.
        */
@@ -211,9 +211,12 @@ export interface Config {
        * same keys as `gs.installations`.
        *
        * When omitted, every entry in `gs.installations` that has a
-       * `baseDomain` is derived as `https://kagent.<baseDomain>` — the
-       * hostname on which the connectivity chart's `GRPCRoute` serves the
-       * controller — and installations without kagent simply fail per request
+       * `baseDomain` is derived as `https://agentgateway.<baseDomain>` — the
+       * connectivity chart's controller route hostname
+       * (`kagent.controllerRoute.hostname`, default `agentgateway.<domain>`),
+       * on which its `GRPCRoute` serves the controller; `kagent.<baseDomain>`
+       * is the kagent UI behind oauth2-proxy and carries no gRPC — and
+       * installations without kagent simply fail per request
        * and are treated as "not installed". Set this to restrict the fan-out to
        * the installations that actually run kagent, or to point one at a
        * non-default origin. An entry with no fields (`{}`) means "enabled, use
@@ -223,7 +226,7 @@ export interface Config {
         [installationName: string]: {
           /**
            * The gRPC origin of this installation's kagent controller route,
-           * overriding the derived `https://kagent.<baseDomain>`:
+           * overriding the derived `https://agentgateway.<baseDomain>`:
            * `https://<host>[:port]`, no path and no trailing slash — gRPC is
            * matched by service, not by prefix. Must be a route that validates
            * the forwarded token (the connectivity chart's controller route with

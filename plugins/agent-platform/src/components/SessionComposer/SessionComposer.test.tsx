@@ -426,3 +426,66 @@ describe('SessionComposer — Stop', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
   });
 });
+
+describe('SessionComposer — a stalled turn and a failed Stop', () => {
+  it('offers Stop for a turn that has stopped reporting progress, and says so', async () => {
+    // The task is still active on the server; the caption stops promising a
+    // reply and points at the cancel, and Stop stays in Send's slot.
+    const onStop = jest.fn();
+    renderComposer({ isAgentWorking: true, isStalled: true, onStop });
+
+    expect(
+      screen.getByText(
+        'The agent has stopped reporting progress. Cancel the turn to send again.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Send' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/reply is added/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('says a stalled turn ends on its own when its task is not known', () => {
+    renderComposer({ isAgentWorking: true, isStalled: true });
+
+    expect(
+      screen.getByText(
+        'The agent has stopped reporting progress. You can reply once this turn ends.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Stop' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('reports a failed Stop as one, not as a message that was not sent', () => {
+    renderComposer({
+      isAgentWorking: true,
+      onStop: jest.fn(),
+      stopError: 'Failed user token verification',
+    });
+
+    expect(screen.getByText('Stop failed')).toBeInTheDocument();
+    expect(
+      screen.getByText('Failed user token verification'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+    // The turn is still running: Stop stays offered for another try.
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+  });
+
+  it('keeps a failed send and a failed Stop apart', () => {
+    renderComposer({
+      error: 'kagent said no',
+      stopError: 'the cancel was refused',
+    });
+
+    expect(screen.getByText('Message not sent')).toBeInTheDocument();
+    expect(screen.getByText('kagent said no')).toBeInTheDocument();
+    expect(screen.getByText('Stop failed')).toBeInTheDocument();
+    expect(screen.getByText('the cancel was refused')).toBeInTheDocument();
+  });
+});

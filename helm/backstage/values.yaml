@@ -430,11 +430,11 @@ route:
     # @schema type:object;additionalProperties:true
     # -- Authorization rules for request-level access control
     authorization: {}
-  # -- Envoy Gateway BackendTrafficPolicy configuration (gateway.envoyproxy.io/v1alpha1)
+  # -- Envoy Gateway BackendTrafficPolicy configuration (gateway.envoyproxy.io/v1alpha1). Rendered with the route by default: Envoy Gateway's default 15 s route timeout spans the whole response, streaming included, and the Agent Platform turn stream and the AI Chat stream need the request timeout off
   backendTrafficPolicy:
     # @schema type:boolean
-    # -- Enable the BackendTrafficPolicy resource
-    enabled: false
+    # -- Render the BackendTrafficPolicy resource alongside the route. Set to false only if another policy already targets the route; without one, streamed responses are cut after 15 s
+    enabled: true
     # @schema additionalProperties:{"type":"string"}
     # -- Labels applied to the BackendTrafficPolicy resource
     labels: {}
@@ -442,7 +442,8 @@ route:
     # -- Annotations applied to the BackendTrafficPolicy resource
     annotations: {}
     # @schema type:object;additionalProperties:true
-    # -- BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically
+    # -- BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically. Empty, the chart renders `timeout.http` `{requestTimeout: 0s, maxStreamDuration: 0s, connectionIdleTimeout: 1h}`, `timeout.tcp.connectTimeout: 10s` and `tcpKeepalive` `{idleTime: 60s, interval: 30s, probes: 3}`. A spec set here replaces that default wholesale, so carry the timeouts over if the portal streams
+    # @default -- `{}`, rendered as the streaming-safe timeouts above
     spec: {}
 
 # @schema additionalProperties:{"type":"object","properties":{"username":{"type":"string"},"password":{"type":"string"}},"required":["username","password"]}

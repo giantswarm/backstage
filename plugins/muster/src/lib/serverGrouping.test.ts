@@ -24,6 +24,8 @@ function makeServer(opts: {
   state?: string;
   /** The tool-group label value; `undefined` leaves the CR unlabelled. */
   toolGroup?: ToolGroup | string;
+  /** `spec.suspended`: the server is deactivated. */
+  suspended?: boolean;
 }): MCPServer {
   return new MCPServer(
     {
@@ -36,7 +38,10 @@ function makeServer(opts: {
           ...(opts.toolGroup ? { [TOOL_GROUP_LABEL]: opts.toolGroup } : {}),
         },
       },
-      spec: opts.family ? { family: { name: opts.family } } : {},
+      spec: {
+        ...(opts.family ? { family: { name: opts.family } } : {}),
+        ...(opts.suspended ? { suspended: true } : {}),
+      },
       status: opts.state ? { state: opts.state } : {},
     } as never,
     opts.mc ?? 'gazelle',
@@ -312,6 +317,21 @@ describe('presenceByMc', () => {
       makeServer({ name: 'k8s', mc: 'alpha', state: 'Auth Required' }),
     ]);
     expect(presence[0].severity).toBe('ok');
+  });
+
+  it('names a deactivated instance rather than its Disconnected symptom', () => {
+    // The pill still counts as degraded (the cluster's tools are unavailable),
+    // but the text says why, so nobody goes looking for an outage.
+    const presence = presenceByMc([
+      makeServer({
+        name: 'k8s',
+        mc: 'alpha',
+        state: 'Disconnected',
+        suspended: true,
+      }),
+    ]);
+    expect(presence[0].severity).toBe('warning');
+    expect(presence[0].state).toBe('Deactivated');
   });
 });
 

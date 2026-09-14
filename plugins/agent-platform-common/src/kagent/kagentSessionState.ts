@@ -149,8 +149,9 @@ export function deriveSessionState(
 }
 
 /**
- * How long a session's newest task may sit in an active state before we stop
- * treating it as live.
+ * How long a session's newest task may sit in an active state without its
+ * timestamp advancing before we stop treating it as live and report it
+ * **stalled** instead.
  *
  * Without a bound, an agent that died mid-turn without writing a terminal state
  * would look busy for as long as anyone leaves the tab open. Same purpose as
@@ -159,9 +160,14 @@ export function deriveSessionState(
  * which routinely runs minutes when there are many tool calls. A 3-minute bound
  * would give up in the middle of exactly the run the page was opened to watch.
  *
+ * Past the bound the turn is not idle — the task is still active on the wire,
+ * and kagent refuses a second message while it is — so the page must not fall
+ * back to an empty composer. It reports the turn as stalled and offers to cancel
+ * it; see {@link readTurnProgress}.
+ *
  * Two things measure against it, and it lives here so they cannot drift apart:
  * the conversation's poll tier (`getSessionTasksRefetchInterval`) and the
- * "Working…" indicator ({@link isAgentWorking}).
+ * turn's progress row ({@link readTurnProgress}, {@link isAgentWorking}).
  */
 export const ACTIVE_MAX_AGE_MS = 5 * 60_000;
 
@@ -258,7 +264,31 @@ export function findNewestStatefulTaskIndex(
 }
 
 /**
- * Whether the agent is working on a reply *right now*.
+ * What the newest turn is doing, as far as the conversation can tell.
+ *
+ * - `working`: the agent is on a reply right now — the row that says so
+ *   promises progress.
+ * - `stalled`: the task is still active but its timestamp has not advanced for
+ *   {@link ACTIVE_MAX_AGE_MS}. Nothing arrives on its own any more, yet the
+ *   session is not free either: kagent holds one active task per session and
+ *   refuses a second message while this one stands. The honest display is
+ *   "no progress since `since`", with the offer to cancel the turn.
+ *
+ * `undefined` when there is no turn to report on: no tasks, a terminal newest
+ * task, or one waiting on a human ({@link AWAITING_INPUT_STATES}) — the answer
+ * panel covers that case, and a spinner or a stall warning there would both
+ * describe an agent that is doing nothing wrong.
+ */
+export type TurnProgress =
+  | { kind: 'working' }
+  | {
+      kind: 'stalled';
+      /** Epoch ms the task last reported anything. */
+      since: number;
+    };
+
+/**
+ * Classify the newest turn as working, stalled, or nothing to report.
  *
  * Three conditions, each excluding a different way "unfinished" fails to mean
  * "working":
@@ -266,8 +296,8 @@ export function findNewestStatefulTaskIndex(
  * - the newest task is in an active state — it might still produce output;
  * - that state is not one of {@link AWAITING_INPUT_STATES}, where the agent is
  *   blocked on a human and no progress can arrive on its own;
- * - the state has moved inside {@link ACTIVE_MAX_AGE_MS}, so a turn that died
- *   without writing a terminal state stops being reported as live.
+ * - the state has moved inside {@link ACTIVE_MAX_AGE_MS}; past that the turn is
+ *   **stalled**, not finished and not idle.
  *
  * A state with no usable timestamp anywhere counts as working: there is nothing to
  * measure, and the alternative — never showing progress for a kagent that omits the
@@ -276,16 +306,29 @@ export function findNewestStatefulTaskIndex(
  * `now` is passed in rather than read here so callers can tie the judgement to the
  * freshness of the data it is made from.
  */
-export function isAgentWorking(tasks: A2aTaskWire[], now: number): boolean {
+export function readTurnProgress(
+  tasks: A2aTaskWire[],
+  now: number,
+): TurnProgress | undefined {
   const newest = readNewestTaskState(tasks);
   if (!newest?.state.isActive) {
-    return false;
+    return undefined;
   }
   if (AWAITING_INPUT_STATES.has(newest.state.key)) {
-    return false;
+    return undefined;
   }
   if (newest.changedAt === undefined) {
-    return true;
+    return { kind: 'working' };
   }
-  return now - newest.changedAt < ACTIVE_MAX_AGE_MS;
+  return now - newest.changedAt < ACTIVE_MAX_AGE_MS
+    ? { kind: 'working' }
+    : { kind: 'stalled', since: newest.changedAt };
+}
+
+/**
+ * Whether the agent is working on a reply *right now* — {@link readTurnProgress}
+ * for the callers that only need the yes/no.
+ */
+export function isAgentWorking(tasks: A2aTaskWire[], now: number): boolean {
+  return readTurnProgress(tasks, now)?.kind === 'working';
 }

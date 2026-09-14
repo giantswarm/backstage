@@ -107,6 +107,13 @@ export type SessionComposerProps = {
    */
   isAgentWorking: boolean;
   /**
+   * The turn being waited on has stopped reporting progress. Sending stays
+   * withheld — kagent still holds the task active and would refuse a second
+   * message — but the caption stops promising a reply and points at the cancel
+   * instead. Only read while {@link isAgentWorking}.
+   */
+  isStalled?: boolean;
+  /**
    * Focus the box on mount.
    *
    * For the page a just-started session lands on: the user was typing into the
@@ -131,7 +138,15 @@ export type SessionComposerProps = {
    * it.
    */
   disabledReason?: string;
+  /** Why the last send failed, shown as "Message not sent". */
   error?: string;
+  /**
+   * Why the last Stop failed, shown as "Stop failed" — its own notice, because
+   * a Stop is not a send and the words "Message not sent" over a turn that is
+   * still running say the opposite of what happened. The caller words it: the
+   * backend's message, with what to do about it where that is known.
+   */
+  stopError?: string;
   /**
    * A message whose send failed, whose text is put back into the box.
    *
@@ -184,9 +199,11 @@ export type SessionComposerProps = {
  */
 export function SessionComposer({
   isAgentWorking,
+  isStalled = false,
   isFinished,
   disabledReason,
   error,
+  stopError,
   restore,
   autoFocus = false,
   onSubmit,
@@ -275,6 +292,10 @@ export function SessionComposer({
     caption = disabledReason;
   } else if (isStopping) {
     caption = 'Stopping the agent…';
+  } else if (isAgentWorking && isStalled) {
+    caption = showStop
+      ? 'The agent has stopped reporting progress. Cancel the turn to send again.'
+      : 'The agent has stopped reporting progress. You can reply once this turn ends.';
   } else if (isAgentWorking) {
     caption = showStop
       ? 'The agent is working. Stop it, or reply once this turn finishes.'
@@ -291,6 +312,9 @@ export function SessionComposer({
       <Flex direction="column" gap="2">
         {error && (
           <Alert status="danger" title="Message not sent" description={error} />
+        )}
+        {stopError && (
+          <Alert status="danger" title="Stop failed" description={stopError} />
         )}
 
         <div

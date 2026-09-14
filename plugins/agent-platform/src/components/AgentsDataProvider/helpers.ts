@@ -38,7 +38,7 @@ export const BASELINE_REFETCH_INTERVAL_MS = 60_000;
  * Poll for an installation that has an agent still converging. Matches kagent's
  * own UI, and roughly the controller's reconcile cadence.
  */
-const TRANSITIONAL_REFETCH_INTERVAL_MS = 5_000;
+export const TRANSITIONAL_REFETCH_INTERVAL_MS = 5_000;
 
 /**
  * How long an agent may sit in a non-ready state before we stop treating it as

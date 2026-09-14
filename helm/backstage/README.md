@@ -144,7 +144,7 @@ To steer placement, use `nodeSelector` for the Backstage pod and
 | ingress.className | string | `"nginx"` | Ingress class name |
 | ingress.annotations | object | `{"cert-manager.io/cluster-issuer":"letsencrypt-giantswarm","kubernetes.io/tls-acme":"true","nginx.ingress.kubernetes.io/force-ssl-redirect":"true"}` | Annotations applied to the Ingress resource |
 | ingress.hostnames | list | `["default-hostname"]` | Hostnames for the Ingress rules and TLS configuration |
-| route | object | `{"additionalRules":[],"annotations":{},"backendTrafficPolicy":{"annotations":{},"enabled":false,"labels":{},"spec":{}},"enabled":false,"filters":[],"hostnames":[],"kind":"HTTPRoute","labels":{},"matches":[{"path":{"type":"PathPrefix","value":"/"}}],"name":"","parentRefs":[],"securityPolicy":{"annotations":{},"authorization":{},"basicAuth":{},"cors":{},"enabled":false,"extAuth":{},"jwt":{},"labels":{},"oidc":{}}}` | Gateway API route configuration |
+| route | object | `{"additionalRules":[],"annotations":{},"backendTrafficPolicy":{"annotations":{},"enabled":true,"labels":{},"spec":{}},"enabled":false,"filters":[],"hostnames":[],"kind":"HTTPRoute","labels":{},"matches":[{"path":{"type":"PathPrefix","value":"/"}}],"name":"","parentRefs":[],"securityPolicy":{"annotations":{},"authorization":{},"basicAuth":{},"cors":{},"enabled":false,"extAuth":{},"jwt":{},"labels":{},"oidc":{}}}` | Gateway API route configuration |
 | route.enabled | bool | `false` | Enable the Gateway API HTTPRoute resource |
 | route.kind | string | `"HTTPRoute"` | Route resource kind |
 | route.name | string | `""` | Route name (defaults to .Values.name) |
@@ -165,10 +165,10 @@ To steer placement, use `nodeSelector` for the Backstage pod and
 | route.securityPolicy.oidc | object | `{}` | OIDC authentication provider configuration |
 | route.securityPolicy.extAuth | object | `{}` | External authorization service configuration |
 | route.securityPolicy.authorization | object | `{}` | Authorization rules for request-level access control |
-| route.backendTrafficPolicy | object | `{"annotations":{},"enabled":false,"labels":{},"spec":{}}` | Envoy Gateway BackendTrafficPolicy configuration (gateway.envoyproxy.io/v1alpha1) |
-| route.backendTrafficPolicy.enabled | bool | `false` | Enable the BackendTrafficPolicy resource |
+| route.backendTrafficPolicy | object | `{"annotations":{},"enabled":true,"labels":{},"spec":{}}` | Envoy Gateway BackendTrafficPolicy configuration (gateway.envoyproxy.io/v1alpha1). Rendered with the route by default: Envoy Gateway's default 15 s route timeout spans the whole response, streaming included, and the Agent Platform turn stream and the AI Chat stream need the request timeout off |
+| route.backendTrafficPolicy.enabled | bool | `true` | Render the BackendTrafficPolicy resource alongside the route. Set to false only if another policy already targets the route; without one, streamed responses are cut after 15 s |
 | route.backendTrafficPolicy.labels | object | `{}` | Labels applied to the BackendTrafficPolicy resource |
 | route.backendTrafficPolicy.annotations | object | `{}` | Annotations applied to the BackendTrafficPolicy resource |
-| route.backendTrafficPolicy.spec | object | `{}` | BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically |
+| route.backendTrafficPolicy.spec | object | `{}`, rendered as the streaming-safe timeouts above | BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically. Empty, the chart renders `timeout.http` `{requestTimeout: 0s, maxStreamDuration: 0s, connectionIdleTimeout: 1h}`, `timeout.tcp.connectTimeout: 10s` and `tcpKeepalive` `{idleTime: 60s, interval: 30s, probes: 3}`. A spec set here replaces that default wholesale, so carry the timeouts over if the portal streams |
 | ociRegistryCredentials | object | `{}` | Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig |
 | pluginKeys | list | `[]` | Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/ |

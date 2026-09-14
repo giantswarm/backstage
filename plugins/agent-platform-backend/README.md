@@ -15,7 +15,7 @@ Kubernetes resource, so the Kubernetes proxy the rest of the plugin uses cannot
 reach it, and:
 
 - **gRPC wants a server.** HTTP/2 gRPC is not something a browser tab speaks,
-  and `kagent.<baseDomain>` is cross-origin anyway.
+  and `agentgateway.<baseDomain>` is cross-origin anyway.
 - **Identity is the bearer.** agentgateway validates the person's
   per-installation Dex ID token on the controller route and derives the caller
   from its `email` claim, dropping any inbound identity header. On the inbound
@@ -156,10 +156,14 @@ worth an alert.
 ## Configuration
 
 The origin is **derived**, not configured per installation:
-`https://kagent.<baseDomain>`, where `baseDomain` comes from `gs.installations`.
-That is the hostname on which the `agent-platform-connectivity` chart's
-`GRPCRoute` serves the controller's services through agentgateway. No path: gRPC
-is matched by service, not by prefix.
+`https://agentgateway.<baseDomain>`, where `baseDomain` comes from
+`gs.installations`. That is the `agent-platform-connectivity` chart's controller
+route hostname (`kagent.controllerRoute.hostname`, default
+`agentgateway.<domain>`), on which its `GRPCRoute` serves the controller's
+services through agentgateway — and the origin the chart itself writes as
+`apiBaseUrl` when it renders the Backstage app-config. `kagent.<baseDomain>` is
+the kagent UI behind oauth2-proxy and carries no gRPC. No path: gRPC is matched
+by service, not by prefix.
 
 `agentPlatform.kagent.installations` overrides this. When present it also acts
 as the **allowlist**, which is worth setting since kagent is only deployed on

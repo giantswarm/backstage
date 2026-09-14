@@ -2,6 +2,7 @@ import { ReactNode, useMemo, useState } from 'react';
 import {
   Alert,
   Avatar,
+  Button,
   Flex,
   Text,
   ToggleButton,
@@ -71,7 +72,52 @@ const useStyles = makeStyles(theme => ({
     '0%': { backgroundPosition: '200% 0' },
     '100%': { backgroundPosition: '-200% 0' },
   },
+  // Where "Working…" was: the same slot, the same size, so the row turning from
+  // progress into a warning reads as one thing changing state rather than a new
+  // element arriving.
+  stalled: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1.5),
+    paddingTop: theme.spacing(1),
+  },
+  stalledText: {
+    fontSize: '0.8125rem',
+    color: theme.palette.warning.dark,
+  },
+  // Plain, not the shimmer: the row says what is being done about a stream that
+  // went away, and a sheen across a sentence reads as decoration.
+  streamLostText: {
+    fontSize: '0.8125rem',
+    color: theme.palette.text.secondary,
+  },
 }));
+
+/**
+ * How a turn is being followed once its live stream ended before the turn did.
+ *
+ * - `checking`: the stream is gone and the conversation is being re-read to
+ *   find out how far the turn got — the moment the streamed text stopped
+ *   mid-sentence, before anything says whether the turn finished.
+ * - `following`: that read came back and the turn is still running. Its preview
+ *   is gone for good; the poll delivers the reply when the turn ends.
+ */
+export type StreamLossPhase = 'checking' | 'following';
+
+const STREAM_LOST_LABELS: Record<StreamLossPhase, string> = {
+  checking: 'The live stream was lost. Checking the result…',
+  following:
+    'The live stream was lost. Still working; the reply appears when the turn finishes.',
+};
+
+/** `HH:MM` in the reader's locale — the resolution a stall is worth stating at. */
+function formatClockTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 /**
  * Who is speaking, at the start of the agent's side of a turn.
@@ -116,6 +162,26 @@ export type SessionTimelineProps = {
    * progress that will never come on its own. The page derives this.
    */
   isAgentWorking?: boolean;
+  /**
+   * The turn's live stream ended before the turn did, and this is how the turn
+   * is being followed instead. Read only while {@link isAgentWorking}: the
+   * "Working…" row says so in place of its label, because a spinner alone over a
+   * sentence that stopped half-way promises a continuation that is not coming
+   * through the stream.
+   */
+  streamLost?: StreamLossPhase;
+  /**
+   * The newest turn is still active but has reported nothing since this
+   * instant (epoch ms). The "Working…" row gives way to one saying so, with
+   * {@link onCancelTurn} beside it — the honest display for a turn that
+   * outlived its transport and never landed, where the alternative was an
+   * empty composer over a session kagent still considers busy.
+   */
+  stalledSince?: number;
+  /** Cancel the stalled turn server-side. Absent means the task is not known. */
+  onCancelTurn?: () => void;
+  /** A cancel has been asked for and the server has not answered yet. */
+  isCancellingTurn?: boolean;
 };
 
 /**
@@ -132,6 +198,10 @@ export function SessionTimeline({
   agentName,
   agentAvatarUrl,
   isAgentWorking = false,
+  streamLost,
+  stalledSince,
+  onCancelTurn,
+  isCancellingTurn = false,
 }: SessionTimelineProps) {
   const classes = useStyles();
   // Collapsed by default: the agent's working is why this screen is worth opening,
@@ -176,12 +246,43 @@ export function SessionTimeline({
   // Rendered in both branches: the reply to a session's *first* message has an
   // empty conversation to appear into, which is exactly when the user has least
   // other evidence that anything is happening.
-  const workingRow = isAgentWorking && (
-    <div className={classes.working} aria-live="polite">
-      <CircularProgress size={14} aria-hidden />
-      <span className={classes.workingText}>Working…</span>
-    </div>
-  );
+  //
+  // A stalled turn takes the same slot. Never both: the page hands over one or
+  // the other, and a spinner next to "no progress" would contradict itself.
+  let workingRow: ReactNode = null;
+  if (stalledSince !== undefined) {
+    workingRow = (
+      <div className={classes.stalled} role="status">
+        <span className={classes.stalledText}>
+          The agent has not reported progress since{' '}
+          {formatClockTime(stalledSince)}.
+        </span>
+        {onCancelTurn && (
+          <Button
+            size="small"
+            variant="secondary"
+            isPending={isCancellingTurn}
+            onPress={onCancelTurn}
+          >
+            Cancel the turn
+          </Button>
+        )}
+      </div>
+    );
+  } else if (isAgentWorking) {
+    workingRow = (
+      <div className={classes.working} aria-live="polite">
+        <CircularProgress size={14} aria-hidden />
+        {streamLost ? (
+          <span className={classes.streamLostText}>
+            {STREAM_LOST_LABELS[streamLost]}
+          </span>
+        ) : (
+          <span className={classes.workingText}>Working…</span>
+        )}
+      </div>
+    );
+  }
 
   if (timeline.items.length === 0) {
     return (

@@ -574,6 +574,22 @@ export interface CatalogueGroup {
 }
 
 /**
+ * Whether a group still holds anything worth a row. Three call sites arrive at
+ * an empty group by different routes — the catalogue's own assembly, a search
+ * that matched nothing in it, and a resolution dropping the servers with
+ * nothing matched — and an empty one must reach neither picker nor resolved
+ * list, where it renders as a disclosure with an empty summary over an empty
+ * panel.
+ */
+export function hasEntries(group: CatalogueGroup): boolean {
+  return (
+    group.servers.length > 0 ||
+    group.platformAdministration.length > 0 ||
+    group.workflows.length > 0
+  );
+}
+
+/**
  * Arranges the catalogue the way the platform thinks about it: the three
  * server groups from the tool-group label, plus Workflows. Every CR the
  * installation has is listed — as an empty, sign-in-gated bucket when the
@@ -699,10 +715,7 @@ export function buildCatalogue(
 
   return PICKER_GROUP_ORDER.map(key => groups.get(key)).filter(
     (entry): entry is CatalogueGroup =>
-      entry !== undefined &&
-      (entry.servers.length > 0 ||
-        entry.platformAdministration.length > 0 ||
-        entry.workflows.length > 0),
+      entry !== undefined && hasEntries(entry),
   );
 }
 
@@ -782,8 +795,17 @@ export const INITIAL_ROWS = 20;
  */
 export const WORKFLOW_GROUPING_MIN = 12;
 
-/** The key of the group gathering workflows whose name prefix nothing else shares. */
-export const OTHER_WORKFLOWS_KEY = 'other';
+/**
+ * The key of the group gathering workflows whose name prefix nothing else
+ * shares.
+ *
+ * Every other group is keyed by its leading name segment, and {@link
+ * nameSegments} splits on `-` and `_` — so a leading segment never contains a
+ * hyphen and this hyphenated key cannot collide with one. It has to be
+ * collision-proof: two groups sharing a key are one React key and one
+ * accordion id, which makes them open and close together.
+ */
+export const OTHER_WORKFLOWS_KEY = 'other-workflows';
 
 /** A run of workflows that share a name prefix, for the picker and the resolved list. */
 export interface WorkflowGroup {
