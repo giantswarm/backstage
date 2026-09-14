@@ -108,10 +108,16 @@ export type AgentUpdateSkillsDialogProps = {
   onOpenChange: (isOpen: boolean) => void;
   /** The page's `useUpdateAgent`, shared with the edit flow's Save. */
   updating: UpdateAgentState;
-  /** Called with agent-manager's result after the write landed. */
+  /**
+   * Called with agent-manager's result after the write landed. `fromGeneration`
+   * is the template generation from before it, which the page hands to the
+   * progress so it waits for this write's revision rather than reporting the
+   * one that was already there.
+   */
   onUpdated: (
     skills: AgentSkillEntry[] | undefined,
     requestedBy?: string,
+    fromGeneration?: number,
   ) => void;
 };
 
@@ -185,7 +191,7 @@ export function AgentUpdateSkillsDialog({
       return;
     }
     onOpenChange(false);
-    onUpdated(result.agent.skills, result.requestedBy);
+    onUpdated(result.agent.skills, result.requestedBy, result.fromGeneration);
   };
 
   return (

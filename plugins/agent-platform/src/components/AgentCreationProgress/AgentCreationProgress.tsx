@@ -54,11 +54,16 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     name,
     requestedBy,
     action = 'created',
+    fromGeneration,
   } = handoff;
+  // Scoped to the write: the verdict counts once the template's generation has
+  // moved past what it was before it, so an agent that was already `ready` is
+  // not reported as done before the Harness has compiled anything.
   const { status, isSettling, error } = useAgentStatus(
     installation,
     namespace,
     name,
+    { fromGeneration },
   );
 
   const wording = WORDING[action];

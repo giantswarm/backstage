@@ -1,7 +1,9 @@
+import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import {
   AgentManagerError,
+  hasReachedWrittenRevision,
   isSettledVerdict,
   type AgentStatus,
 } from '../lib/agentManager';
@@ -15,6 +17,21 @@ import { useAgentManagerClient } from './useAgentManager';
  * watching the page notices without hammering agent-manager.
  */
 export const AGENT_STATUS_POLL_INTERVAL_MS = 3_000;
+
+/**
+ * How long to wait for a write's revision to appear before taking the verdict
+ * as it stands.
+ *
+ * Waiting on the generation is what stops a pre-write `ready` being reported as
+ * success, but it must not wait for ever: an update that changes nothing the
+ * chart renders leaves the template's generation where it was, and a person
+ * watching a spinner that never resolves is worse off than one told the current
+ * verdict. A minute is comfortably past the seconds helm-controller and the
+ * Harness normally take, and also covers the case where the release cannot be
+ * reconciled at all (suspended, or failing), where the generation would never
+ * move.
+ */
+export const MAX_REVISION_WAIT_MS = 60_000;
 
 export type AgentStatusState = {
   status: AgentStatus | undefined;
@@ -43,19 +60,41 @@ export function useAgentStatus(
   installation: string | undefined,
   namespace: string,
   name: string,
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; fromGeneration?: number } = {},
 ): AgentStatusState {
   const client = useAgentManagerClient(installation);
   const enabled = (options.enabled ?? true) && Boolean(client) && Boolean(name);
+  const { fromGeneration } = options;
+
+  // When this watch started, so waiting on the write's revision is bounded.
+  // Read on render and inside `refetchInterval`, which both happen once per
+  // poll, so the two agree on when the wait is over.
+  const startedAt = useRef(Date.now());
+  const givenUpWaiting = () =>
+    Date.now() - startedAt.current >= MAX_REVISION_WAIT_MS;
 
   const { data, error } = useQuery({
-    queryKey: musterAgentStatusQueryKey(installation ?? '', namespace, name),
+    queryKey: musterAgentStatusQueryKey(
+      installation ?? '',
+      namespace,
+      name,
+      fromGeneration,
+    ),
     enabled,
     queryFn: () => client!.getAgentStatus(namespace, name),
     refetchInterval: query => {
       const verdict = query.state.data?.verdict;
       if (verdict && isSettledVerdict(verdict)) {
-        return false;
+        // A settled verdict for the revision that was there before the write is
+        // not this write's answer; keep polling until the new one shows up, or
+        // until the wait has gone on long enough to be the wrong thing to do.
+        if (
+          hasReachedWrittenRevision(query.state.data, fromGeneration) ||
+          givenUpWaiting()
+        ) {
+          return false;
+        }
+        return AGENT_STATUS_POLL_INTERVAL_MS;
       }
       const lastError = query.state.error;
       if (
@@ -82,7 +121,11 @@ export function useAgentStatus(
     isNotFound: notFoundYet,
     isSettling:
       enabled &&
-      (notFoundYet || !data || !isSettledVerdict(data.verdict)) &&
+      (notFoundYet ||
+        !data ||
+        !isSettledVerdict(data.verdict) ||
+        (!hasReachedWrittenRevision(data, fromGeneration) &&
+          !givenUpWaiting())) &&
       (!error || notFoundYet),
     error: error && !notFoundYet ? (error as Error) : null,
   };

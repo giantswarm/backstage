@@ -117,6 +117,111 @@ describe('AgentCreationProgress', () => {
     ).toBeInTheDocument();
   }, 10_000);
 
+  // The defect this guards: agent-manager writes the HelmRelease and returns,
+  // helm-controller re-renders the template seconds later, so the first status
+  // read after saving an agent that was already `ready` answers `ready` — for
+  // the revision before the write. Reported as success, that is a green alert
+  // for something the Harness has not compiled.
+  describe('a write on an agent that was already ready', () => {
+    const UPDATED = {
+      ...HANDOFF,
+      action: 'updated',
+      fromGeneration: 4,
+    };
+
+    /** The pre-write revision: settled, and at the generation of the baseline. */
+    const beforeTheWrite = status('ready', {
+      template: {
+        exists: true,
+        generation: 4,
+        observedGeneration: 4,
+        harnesses: [{ harness: 'kagent' }],
+      },
+    });
+
+    /** The write's own revision, compiled by the Harness. */
+    const afterTheWrite = status('ready', {
+      template: {
+        exists: true,
+        generation: 5,
+        observedGeneration: 5,
+        harnesses: [{ harness: 'kagent' }],
+      },
+    });
+
+    it('keeps waiting while the status still describes the revision before it', async () => {
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
+      callTool.mockResolvedValue(beforeTheWrite);
+
+      await render();
+
+      // The status has been read and carries a `ready` verdict — the summary in
+      // the description is how we know this frame is not the initial loading
+      // one — and the alert is still the waiting one, because that verdict
+      // belongs to generation 4, the one the write started from.
+      expect(
+        await screen.findByText('The template is ready.'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Saving…')).toBeInTheDocument();
+      expect(screen.queryByText('Ready')).not.toBeInTheDocument();
+    });
+
+    it('reports the write once the new generation is compiled', async () => {
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
+      callTool
+        .mockResolvedValueOnce(beforeTheWrite)
+        .mockResolvedValue(afterTheWrite);
+
+      await render();
+
+      await waitFor(
+        () => expect(screen.getByText('Ready')).toBeInTheDocument(),
+        { timeout: 6_000 },
+      );
+      expect(
+        screen.getByText(/\(saved as admin@lab\.local\)/),
+      ).toBeInTheDocument();
+      // It took a second read to get there: the first answered for the old
+      // revision, and settling on that is the bug.
+      expect(callTool.mock.calls.length).toBeGreaterThan(1);
+    }, 10_000);
+
+    // Not every installation sets `observedGeneration`, the same caveat the
+    // Agent readiness derivation makes; a generation past the baseline is then
+    // the whole signal.
+    it('takes a bumped generation alone when observedGeneration is absent', async () => {
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
+      callTool.mockResolvedValue(
+        status('ready', {
+          template: {
+            exists: true,
+            generation: 5,
+            harnesses: [{ harness: 'kagent' }],
+          },
+        }),
+      );
+
+      await render();
+
+      expect(await screen.findByText('Ready')).toBeInTheDocument();
+    });
+
+    // A create has no earlier generation to compare against, so the verdict
+    // stands on its own — as it always did.
+    it('does not wait for a generation the create flow cannot have', async () => {
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
+      callTool.mockResolvedValue(
+        status('ready', {
+          template: { exists: true, harnesses: [{ harness: 'kagent' }] },
+        }),
+      );
+
+      await render();
+
+      expect(await screen.findByText('Ready')).toBeInTheDocument();
+    });
+  });
+
   it("shows agent-manager's reason when the template fails", async () => {
     mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
     callTool.mockResolvedValue({

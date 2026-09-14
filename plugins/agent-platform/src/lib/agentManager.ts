@@ -203,6 +203,42 @@ export function isSettledVerdict(verdict: AgentStatusVerdict): boolean {
 }
 
 /**
+ * Whether a status describes the revision a write produced, rather than the one
+ * that was already there.
+ *
+ * A verdict alone cannot say: agent-manager writes the **HelmRelease**, and
+ * helm-controller re-renders the AgentTemplate a few seconds later, so the
+ * first `get_agent_status` after an `update_agent` on an agent that was already
+ * `ready` answers `ready` — for the revision before the write. Comparing
+ * against the generation read immediately before the write is what tells them
+ * apart: the template's generation has to have moved past it, and the
+ * controller has to have caught up with the new one.
+ *
+ * `observedGeneration` is optional in the status (the same caveat the Agent
+ * readiness derivation makes: not every installation sets it), so its absence
+ * is not read as "behind" — a generation past the baseline is then the whole
+ * signal.
+ *
+ * With no baseline — the create flow, where there is no earlier generation, and
+ * every read not made on behalf of a write — there is nothing to compare and
+ * the verdict stands on its own.
+ */
+export function hasReachedWrittenRevision(
+  status: AgentStatus | undefined,
+  fromGeneration: number | undefined,
+): boolean {
+  if (fromGeneration === undefined) {
+    return true;
+  }
+  const generation = status?.template?.generation;
+  if (typeof generation !== 'number' || generation <= fromGeneration) {
+    return false;
+  }
+  const observed = status?.template?.observedGeneration;
+  return typeof observed !== 'number' || observed >= generation;
+}
+
+/**
  * agent-manager's error codes, as its MCP tools prefix them
  * (`<code>: <message>`). `forbidden` is the apiserver's refusal for the person
  * (a viewer's Deploy), `conflict` an existing name or a GitOps-owned or

@@ -409,7 +409,7 @@ function AgentDetailPageContent() {
   // After Update skills the page watches the new revision converge exactly as
   // it does after a create — through the same handoff, on the same URL.
   const onSkillsUpdated = useCallback(
-    (_skills: unknown, requestedBy?: string) => {
+    (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
       toastApi.post({
         title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
         description: `agent-manager re-pinned the git skills${
@@ -429,6 +429,7 @@ function AgentDetailPageContent() {
               name,
               requestedBy,
               action: 'skills-updated',
+              fromGeneration,
             },
           },
         },
