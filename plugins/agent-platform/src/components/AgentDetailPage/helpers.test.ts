@@ -71,11 +71,11 @@ describe('describeToolScope', () => {
   // card — so the row says so instead of claiming "all tools".
   it('points the gateway entry at the toolset card', () => {
     expect(describeToolScope(binding('pr-reviewer'), true)).toMatch(
-      /^The gateway; which of its tools .* see Toolset below$/,
+      /^The gateway; which of its tools .* see the Tools tab$/,
     );
     expect(
       describeToolScope(binding('pr-reviewer', ['list_tools']), true),
-    ).toMatch(/1 meta-tool \(list_tools\).*see Toolset below/);
+    ).toMatch(/1 meta-tool \(list_tools\).*see the Tools tab/);
   });
 
   it('lists an allowlist and counts it', () => {

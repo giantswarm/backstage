@@ -141,6 +141,11 @@ jest.mock('../ServingProvider', () => ({
   }),
 }));
 
+/**
+ * The agent in the URL. Not a mock: the page is mounted at the real splat route
+ * AgentsRouter uses, so these arrive through react-router — which is also what
+ * lets the tab strip resolve its base path.
+ */
 const mockParams: {
   installation: string;
   namespace: string;
@@ -150,11 +155,6 @@ const mockParams: {
   namespace: 'agent-platform',
   name: 'pr-reviewer',
 };
-
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useParams: () => mockParams,
-}));
 
 const { Agent, GitRepository, HelmRelease, Kustomization, ModelConfig } =
   jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react');
@@ -377,11 +377,22 @@ function makeGitRepository() {
   );
 }
 
-// Only the parent RouteRef is mountable — `mountedRoutes` rejects a SubRouteRef —
-// and the detail sub-route resolves relative to it.
-const renderPage = () =>
+/**
+ * Render the page at one of its tabs — no argument for Overview, which is the
+ * index route.
+ *
+ * Only the parent RouteRef is mountable — `mountedRoutes` rejects a SubRouteRef
+ * — and the detail sub-route resolves relative to it. `mountPath` is the splat
+ * AgentsRouter mounts this page at, so the page's own `<Routes>` sees the tab
+ * segment and `useSplatBasePath` can strip it back off.
+ */
+const AGENT_PATH = `/agent-platform/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
+
+const renderPage = (tab: 'tools' | 'skills' | 'sessions' | '' = '') =>
   renderInTestApp(<AgentDetailPage />, {
     mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+    initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
   });
 
 /**
@@ -420,12 +431,13 @@ describe('AgentDetailPage', () => {
       screen.getByText('Reviews pull requests in depth.'),
     ).toBeInTheDocument();
 
-    // Sections
+    // The Overview tab's sections. Tools, Skills and Sessions have tabs of
+    // their own and are asserted there.
     expect(sectionTitle('Status')).toBeInTheDocument();
     expect(sectionTitle('Configuration')).toBeInTheDocument();
     expect(sectionTitle('System prompt')).toBeInTheDocument();
-    expect(sectionTitle('Skills (1)')).toBeInTheDocument();
-    expect(sectionTitle('Recent sessions')).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-toolset-card')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Skills/ })).toBeNull();
 
     // Resolved model, from the targeted ModelConfig read
     expect(screen.getByText('Claude Opus 4.7')).toBeInTheDocument();
@@ -433,24 +445,101 @@ describe('AgentDetailPage', () => {
 
     expect(screen.getByText('You review pull requests.')).toBeInTheDocument();
 
-    // One skill card: the label, its repo as a link, and the commit it is
-    // pinned to — short on the card, full in the tooltip.
-    expect(screen.getByText('PR review conventions')).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'giantswarm/skills' }),
-    ).toHaveAttribute('href', 'https://github.com/giantswarm/skills');
-    expect(screen.getByText(COMMIT.slice(0, 12))).toHaveAttribute(
-      'title',
-      COMMIT,
-    );
-    // Read-only: the picker's checkbox affordance must not come along.
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-
     // The admitting Harness, in the configuration and in the status.
     expect(screen.getByText(/From the label/)).toHaveTextContent(HARNESS_LABEL);
     expect(
       screen.getByRole('list', { name: 'Admitting Harnesses' }),
     ).toHaveTextContent(/kagent.*Ready.*sessions run here/);
+  });
+
+  describe('tabs', () => {
+    it('offers the four tabs, each at its own URL', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage();
+
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs.map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Tools',
+        'Skills',
+        'Sessions',
+      ]);
+      expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
+        AGENT_PATH,
+        `${AGENT_PATH}/tools`,
+        `${AGENT_PATH}/skills`,
+        `${AGENT_PATH}/sessions`,
+      ]);
+    });
+
+    // Overview's href is a prefix of every other tab's, so a 'prefix' match
+    // strategy would leave it selected on all four.
+    it('selects only the open tab', async () => {
+      stubResources({ resource: makeAgent() });
+
+      const { unmount } = await renderPage();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+      unmount();
+
+      stubResources({ resource: makeAgent() });
+      await renderPage('tools');
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Tools',
+      );
+    });
+
+    it('renders the toolset on the Tools tab', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('tools');
+
+      expect(screen.getByTestId('agent-toolset-card')).toBeInTheDocument();
+      // The configuration card is Overview's, and does not follow along.
+      expect(
+        screen.queryByRole('heading', { name: 'Configuration' }),
+      ).toBeNull();
+    });
+
+    // A retired or mistyped tab is not a missing agent.
+    it('sends an unknown sub-path back to Overview', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderInTestApp(<AgentDetailPage />, {
+        mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+        mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+        initialRouteEntries: [`${AGENT_PATH}/gitops`],
+      });
+
+      expect(sectionTitle('Configuration')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+    });
+  });
+
+  describe('skills', () => {
+    it('shows each mounted skill as a card', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(sectionTitle('Skills (1)')).toBeInTheDocument();
+      // One skill card: the label, its repo as a link, and the commit it is
+      // pinned to — short on the card, full in the tooltip.
+      expect(screen.getByText('PR review conventions')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'giantswarm/skills' }),
+      ).toHaveAttribute('href', 'https://github.com/giantswarm/skills');
+      expect(screen.getByText(COMMIT.slice(0, 12))).toHaveAttribute(
+        'title',
+        COMMIT,
+      );
+      // Read-only: the picker's checkbox affordance must not come along.
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
   });
 
   it('shows an OCI skill by its reference and digest', async () => {
@@ -469,7 +558,7 @@ describe('AgentDetailPage', () => {
       } as Partial<AgentInterface>),
     });
 
-    await renderPage();
+    await renderPage('skills');
 
     expect(screen.getByText('runbooks')).toBeInTheDocument();
     expect(
@@ -719,10 +808,10 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByText('RemoteMCPServer pr-reviewer'),
       ).toBeInTheDocument();
-      // The gateway row defers to the toolset card rather than claiming "all
-      // tools": which of the gateway's tools the agent can use is its toolset.
-      expect(screen.getByText(/see Toolset below/)).toBeInTheDocument();
-      expect(screen.getByTestId('agent-toolset-card')).toBeInTheDocument();
+      // The gateway row defers to the toolset rather than claiming "all tools":
+      // which of the gateway's tools the agent can use is its toolset, which
+      // lives on the Tools tab ('tabs' above asserts it renders there).
+      expect(screen.getByText(/see the Tools tab/)).toBeInTheDocument();
     });
 
     it('describes a restricted server by its allowlist', async () => {
@@ -950,7 +1039,7 @@ describe('AgentDetailPage', () => {
     it('describes the list as the user’s own', async () => {
       stubResources({ resource: makeAgent() });
 
-      await renderPage();
+      await renderPage('sessions');
 
       expect(
         screen.getByText(/Your own sessions with this agent/),
@@ -966,7 +1055,7 @@ describe('AgentDetailPage', () => {
         isNotUserScoped: true,
       });
 
-      await renderPage();
+      await renderPage('sessions');
 
       expect(
         screen.getByText(/does not scope sessions to a user/),
@@ -980,7 +1069,7 @@ describe('AgentDetailPage', () => {
         isUnavailable: true,
       });
 
-      await renderPage();
+      await renderPage('sessions');
 
       expect(
         screen.getByText('Sessions could not be read from this installation.'),
@@ -1258,6 +1347,8 @@ describe('AgentDetailPage: the model behind the agent', () => {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,
       },
+      mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+      initialRouteEntries: [AGENT_PATH],
     });
 
   beforeEach(() => {

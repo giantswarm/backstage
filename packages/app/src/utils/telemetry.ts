@@ -154,17 +154,35 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Session detail' };
       break;
 
-    // One agent: `/agent-platform/agents/<installation>/<namespace>/<name>`.
-    // Deliberately carries no `view`, for the same reason as Session detail: those
-    // segments name an installation and an agent, so including them would emit a
-    // distinct page name per agent and record which installations a user reads.
+    // One agent: `/agent-platform/agents/<installation>/<namespace>/<name>`,
+    // optionally followed by one of its tabs. The three identifying segments are
+    // deliberately left out of the payload, for the same reason as Session
+    // detail: they name an installation and an agent, so including them would
+    // emit a distinct page name per agent and record which installations a user
+    // reads.
     //
-    // Matched on exactly three segments so it cannot swallow the create flow's
-    // `agents/new`, `agents/new/skills` or `agents/new/review`, which keep
-    // reporting through the generic case below.
-    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
-      payload = { page: 'Agent detail' };
+    // The tab, by contrast, is safe to report: `tools`/`skills`/`sessions` is a
+    // fixed, public set that identifies a view rather than a customer's
+    // installation — the same argument the Usage views case makes. Overview is
+    // the index and keeps carrying no `view`, so the existing `Agent detail`
+    // numbers stay continuous across this split.
+    //
+    // The tab names are spelled out rather than matched as `[^/]+` so this cannot
+    // swallow `…/<name>/edit`, and the three identifying segments are still
+    // required so it cannot swallow the create flow's `agents/new`,
+    // `agents/new/skills` or `agents/new/review` — all of which keep reporting
+    // through the generic case below.
+    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+(\/(tools|skills|sessions))?$/.test(
+      pathname,
+    ): {
+      // Absent for Overview, and left out of the payload entirely rather than
+      // sent as an undefined attribute.
+      const tab = pathname.split('/')[6];
+      payload = tab
+        ? { page: 'Agent detail', view: tab }
+        : { page: 'Agent detail' };
       break;
+    }
 
     // Must stay above the generic '/agent-platform' cases below, like the
     // Sessions cases: `switch (true)` takes the first match, and without this

@@ -2275,6 +2275,27 @@ agent in the list. All three segments are in the path because all three are part
 the agent's identity — an `Agent` name is only unique within a namespace on one
 installation.
 
+The page is **tabbed**, and each tab is its own URL, so a deep link or a reload
+lands on the section it names:
+
+| Tab      | Path                 | What it holds                                    |
+| -------- | -------------------- | ------------------------------------------------ |
+| Overview | the agent URL itself | GitOps provenance, configuration, status, prompt |
+| Tools    | `…/<name>/tools`     | the toolset and what it resolves to for you      |
+| Skills   | `…/<name>/skills`    | the skills mounted into the agent                |
+| Sessions | `…/<name>/sessions`  | your sessions with this agent                    |
+
+**Overview is the index**, not a `/overview` sub-path that the bare URL redirects
+to — unlike the Models and Usage tabs, which do redirect. Every link in the portal
+already points at the three-segment URL, and one of them carries router state: the
+create flow and `Update skills` hand the write over in `location.state` for
+`AgentCreationProgress` to consume. A redirect is one more navigation to carry that
+through, for a URL nothing would gain from.
+
+`AgentsRouter` therefore mounts the page at `:installation/:namespace/:name/*`, and
+`…/<name>/edit` stays a route of its own beside it — react-router scores a static
+segment above a splat, which `AgentsRouter.test.tsx` holds still.
+
 An agent can be **edited**, have its **skills updated** and be **deleted** from the
 kebab menu — every write through agent-manager's tools over muster as the
 signed-in person (see "Editing an agent", "Updating an agent's skills" and
@@ -2290,15 +2311,24 @@ session detail page follows the same policy with different constants, and
 
 ### Layout
 
-Two columns from `lg` (1024px) up, one below. The **status card takes a third of
-the width, beside the configuration**; everything under that row spans the full
-width.
+The **header and the creation progress sit above the tab strip**: which agent this
+is, whether it is ready, and whether a write just made to it has converged are all
+true whichever tab is open, so neither belongs to one of them.
+
+On Overview, two columns from `lg` (1024px) up, one below: the **status card takes
+a third of the width, beside the configuration**, with the system prompt under
+them at full width.
 
 Status is the one section that does not want the whole page. A controller message
 is prose — a rejected spec carries several hundred words of admission-webhook
 output — and across a full-width card it runs to line lengths nobody can follow. A
-narrower column is the fix. The sections below it genuinely use the width: the
-skills grid fits three cards per row, and the sessions table has four columns.
+narrower column is the fix. The other tabs genuinely use the width: the skills grid
+fits three cards per row, and the sessions table has four columns.
+
+The reads all stay in the page component, which the router never unmounts, so
+switching tabs neither refetches the agent nor re-registers the header actions. The
+**toolset's muster queries are the deliberate exception**: they live in the Tools
+tab, and now run only when someone opens it rather than on every visit to the page.
 
 ### Sections
 
@@ -2352,7 +2382,7 @@ durable view of the same verdict.
   announced as operable and invites a click with no effect. Every skill is pinned on
   API v2; moving one forward is an explicit act (agent-manager's `refreshSkills`),
   which is why the pin gets a line of its own.
-- **Recent sessions** — see below.
+- **Sessions** — see below.
 
 ### Deleting an agent
 
@@ -2546,12 +2576,15 @@ there is nothing to resolve, so the lookups are skipped entirely. The gs cluster
 deployment pages gate on `isManagedByFlux` and therefore always have a Kustomization
 already, so their behaviour is unchanged.
 
-### Recent sessions are yours, not a usage metric
+### Sessions are yours, not a usage metric
 
-The section reuses `SessionsTable` (with the agent and installation columns hidden
-— the page already fixes both) over a **single-installation** query that shares the
+The tab reuses `SessionsTable` (with the agent and installation columns hidden —
+the page already fixes both) over a **single-installation** query that shares the
 Sessions tab's cache key, so no fleet fan-out happens and arriving from that tab
-renders instantly.
+renders instantly. It lists them all, searchable and paged: while this was one
+section of a scrolling page it showed the five most recent, but that was a teaser
+for a per-agent page that does not exist — the section's own tab is it. The link to
+the section-level Sessions tab stays for the cross-agent view it does offer.
 
 kagent scopes its session list to the caller, so this can only ever show your own
 conversations with the agent, and the copy says so. On an installation running
