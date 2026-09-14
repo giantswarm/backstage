@@ -1,5 +1,12 @@
-import { LEGACY_SHARED_PERSISTER_KEY } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { QueryClient } from '@tanstack/react-query';
+import { persistQueryClientRestore } from '@tanstack/react-query-persist-client';
 import {
+  createPluginQueryPersister,
+  LEGACY_SHARED_PERSISTER_KEY,
+  type PersistedQueryClient,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  AGENT_PLATFORM_CACHE_BUSTER,
   AGENT_PLATFORM_PERSISTER_KEY,
   shouldDehydrateAgentPlatformQuery,
 } from './QueryClientProvider';
@@ -65,11 +72,29 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
     ],
     [
       'fleet agents',
-      ['cluster', 'gazelle', 'list', 'kagent.dev', 'v1alpha2', 'agents'],
+      [
+        'cluster',
+        'gazelle',
+        'list',
+        'kagent.dev',
+        'v1alpha3',
+        'agenttemplates',
+      ],
+    ],
+    [
+      'fleet toolset carriers',
+      [
+        'cluster',
+        'gazelle',
+        'list',
+        'kagent.dev',
+        'v1alpha3',
+        'remotemcpservers',
+      ],
     ],
     [
       'fleet model configs',
-      ['cluster', 'gazelle', 'list', 'kagent.dev', 'v1alpha2', 'modelconfigs'],
+      ['cluster', 'gazelle', 'list', 'kagent.dev', 'v1alpha3', 'modelconfigs'],
     ],
     [
       // The gs hook's key (`installationInventoryQueryKey`): which platform
@@ -99,5 +124,98 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
   it('tolerates short and empty keys', () => {
     expect(shouldDehydrateAgentPlatformQuery([])).toBe(true);
     expect(shouldDehydrateAgentPlatformQuery(['agent-platform'])).toBe(true);
+  });
+});
+
+describe('AGENT_PLATFORM_CACHE_BUSTER', () => {
+  class MemoryStorage {
+    readonly map = new Map<string, string>();
+    getItem(key: string) {
+      return this.map.get(key) ?? null;
+    }
+    setItem(key: string, value: string) {
+      this.map.set(key, value);
+    }
+    removeItem(key: string) {
+      this.map.delete(key);
+    }
+  }
+
+  /** A blob a previous release wrote: one fleet list of kagent 0.10 Agents. */
+  function previousReleaseBlob(buster: string): PersistedQueryClient {
+    const queryKey = [
+      'cluster',
+      'gazelle',
+      'list',
+      'kagent.dev',
+      'v1alpha2',
+      'agents',
+    ];
+    return {
+      timestamp: Date.now(),
+      buster,
+      clientState: {
+        mutations: [],
+        queries: [
+          {
+            queryKey,
+            queryHash: JSON.stringify(queryKey),
+            state: {
+              data: [{ kind: 'Agent', metadata: { name: 'stale' } }],
+              dataUpdatedAt: Date.now(),
+              dataUpdateCount: 1,
+              error: null,
+              errorUpdatedAt: 0,
+              errorUpdateCount: 0,
+              fetchFailureCount: 0,
+              fetchFailureReason: null,
+              fetchMeta: null,
+              isInvalidated: false,
+              status: 'success',
+              fetchStatus: 'idle',
+            },
+          },
+        ],
+      },
+    } as PersistedQueryClient;
+  }
+
+  async function restore(storedBuster: string) {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      AGENT_PLATFORM_PERSISTER_KEY,
+      JSON.stringify(previousReleaseBlob(storedBuster)),
+    );
+    const queryClient = new QueryClient();
+    await persistQueryClientRestore({
+      queryClient,
+      persister: createPluginQueryPersister({
+        key: AGENT_PLATFORM_PERSISTER_KEY,
+        storage,
+      }),
+      buster: AGENT_PLATFORM_CACHE_BUSTER,
+      maxAge: 1000 * 60 * 60,
+    });
+    return { queryClient, storage };
+  }
+
+  it('names the API version the readers expect', () => {
+    expect(AGENT_PLATFORM_CACHE_BUSTER).toBe('kagent.dev/v1alpha3');
+  });
+
+  // The upgrade case: a browser holding the previous release's blob. Its rows
+  // are kagent 0.10 Agents; none of them may reach the v1alpha3 readers, and
+  // the blob must not be kept and rewritten for the rest of its maxAge.
+  it('discards a blob a portal on another API version wrote', async () => {
+    const { queryClient, storage } = await restore('');
+
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(storage.getItem(AGENT_PLATFORM_PERSISTER_KEY)).toBeNull();
+  });
+
+  it('restores a blob written under the current version', async () => {
+    const { queryClient } = await restore(AGENT_PLATFORM_CACHE_BUSTER);
+
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(1);
   });
 });

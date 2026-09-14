@@ -4,6 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -45,6 +46,33 @@ export interface StackedBarChartProps<T extends object> {
   formatYAxisTick?: (value: number) => string;
   /** Width reserved for the y-axis, in pixels. Defaults to 40. */
   yAxisWidth?: number;
+  /**
+   * Cap on a single bar's width, in pixels. Defaults to 48.
+   *
+   * recharts divides the plot area by the row count, so a series with two or
+   * three rows draws bars a third of the chart wide — which reads as a
+   * different kind of chart, and at one row as one enormous value. A dense
+   * series (a row per day of the window, zeros included) is the real fix; this
+   * is the floor under it, and it only ever narrows a bar.
+   */
+  maxBarWidth?: number;
+  /**
+   * Show a legend under the chart. Defaults to `false`.
+   *
+   * **Switch it on for any chart with more than one series.** Without it the
+   * only thing telling two segments apart is their fill, which is exactly what
+   * a colour-blind reader cannot use — and what the tooltip only reveals on
+   * hover, so never on a printout or a screenshot. Off by default solely
+   * because the existing single-series charts have no use for one.
+   */
+  showLegend?: boolean;
+  /**
+   * Allow fractional y-axis ticks. Defaults to `false`.
+   *
+   * Counts want whole ticks; money does not — a cost series topping out at
+   * $0.40 collapses to a single `0` tick without this.
+   */
+  allowDecimalTicks?: boolean;
   /**
    * Format a value in the tooltip (thousands separators, or the same compact
    * form as the axis). Unformatted, a seven-digit integer reads as a run of
@@ -153,6 +181,9 @@ export function StackedBarChart<T extends object>({
   formatTooltipLabel,
   formatYAxisTick,
   yAxisWidth = 40,
+  maxBarWidth = 48,
+  showLegend = false,
+  allowDecimalTicks = false,
   formatValue,
 }: StackedBarChartProps<T>) {
   const theme = useTheme();
@@ -160,6 +191,7 @@ export function StackedBarChart<T extends object>({
   const axisColor = theme.palette.text.secondary;
   const gridColor = theme.palette.divider;
   const tickStyle = { fill: axisColor, fontSize: 11 };
+  const surface = theme.palette.background.paper;
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -183,7 +215,7 @@ export function StackedBarChart<T extends object>({
           interval="preserveStartEnd"
         />
         <YAxis
-          allowDecimals={false}
+          allowDecimals={allowDecimalTicks}
           tick={tickStyle}
           tickFormatter={formatYAxisTick}
           stroke={gridColor}
@@ -202,6 +234,20 @@ export function StackedBarChart<T extends object>({
             />
           }
         />
+        {showLegend && (
+          <Legend
+            verticalAlign="bottom"
+            height={28}
+            iconType="circle"
+            iconSize={8}
+            // Legend text wears an ink token, never the series colour: the
+            // swatch beside it already carries the identity, and coloured
+            // label text is what pushes a low-contrast hue onto type.
+            formatter={value => (
+              <span style={{ color: axisColor, fontSize: 11 }}>{value}</span>
+            )}
+          />
+        )}
         {series.map(s => (
           <Bar
             key={s.dataKey}
@@ -209,6 +255,13 @@ export function StackedBarChart<T extends object>({
             name={s.name}
             stackId="stack"
             fill={s.color}
+            // A hairline of the surface colour between stacked segments, so
+            // two adjacent fills read as two even where their hues are close.
+            // Painted rather than spaced because recharts stacks segments
+            // flush; a single series draws no seam and so takes none.
+            stroke={series.length > 1 ? surface : undefined}
+            strokeWidth={series.length > 1 ? 1 : 0}
+            maxBarSize={maxBarWidth}
           />
         ))}
       </BarChart>

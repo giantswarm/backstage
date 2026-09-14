@@ -5,6 +5,7 @@ import {
   InputError,
   ServiceUnavailableError,
 } from '@backstage/errors';
+import { randomUUID } from 'crypto';
 import express from 'express';
 import Router from 'express-promise-router';
 import {
@@ -20,8 +21,10 @@ import {
   KagentInstallationConfig,
   MESSAGE_TEXT_MAX_LENGTH,
   readKagentInstallationsFromConfig,
+  REQUEST_ID_MAX_LENGTH,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
+import { probeKagentGrpc } from './kagent/reachability';
 import { ModelManagerClient } from './ModelManagerClient';
 import { SessionStateReader } from './sessionStates';
 import { SessionUsageReader } from './sessionUsage';
@@ -43,14 +46,15 @@ export interface RouterOptions {
 }
 
 /**
- * The URL the reachability probe GETs for an installation: the sessions
- * route itself. It is what the proxy will call, and it sits behind kagent's
- * oauth2-proxy -- so an unauthenticated GET answers 401 or 403, which is a
- * perfectly good proof that the route exists from where the portal runs. The
- * probe carries no token and no user data; it never reads a session.
+ * The origin the reachability probe calls for an installation: the
+ * controller's gRPC origin itself, i.e. exactly what the client dials. The
+ * probe (`probeKagentGrpc`) makes one unauthenticated `SystemService/GetVersion`
+ * call there; behind agentgateway's JWT policy that answers `Unauthenticated`,
+ * which is a perfectly good proof that the route exists from where the portal
+ * runs. It carries no token and no user data, and never reads an instance.
  */
 export function kagentProbeUrl(installation: KagentInstallationConfig): string {
-  return `${installation.apiBaseUrl}/sessions`;
+  return installation.apiBaseUrl;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -102,6 +106,29 @@ function readSessionName(body: Record<string, unknown>): string {
 }
 
 /**
+ * The idempotency key of a create, when the caller supplied one.
+ *
+ * The browser generates one per submission and reuses it on a retry, so a
+ * create whose answer was lost does not make a second instance: the controller
+ * keys idempotency on `(creator, request_id)`. A caller that sends none gets a
+ * fresh one, which makes *its* retry a second create — the honest behaviour
+ * for a caller that did not ask for idempotency, and what keeps the body an
+ * addition rather than a new requirement.
+ */
+function readRequestId(body: Record<string, unknown>): string {
+  if (body.requestId === undefined) {
+    return randomUUID();
+  }
+  const requestId = readRequiredString(body, 'requestId');
+  if (requestId.length > REQUEST_ID_MAX_LENGTH) {
+    throw new InputError(
+      `requestId must be at most ${REQUEST_ID_MAX_LENGTH} characters`,
+    );
+  }
+  return requestId;
+}
+
+/**
  * The body both send routes take. Shared so the streaming route cannot accept a
  * message its non-streaming sibling would refuse, or vice versa — the two are
  * one act over two transports.
@@ -140,7 +167,89 @@ function readMessageBody(req: express.Request): {
 }
 
 /**
- * Upper bound on how long the streaming route holds its relay open.
+ * The body both answer routes take — the unary one and its streaming sibling —
+ * shared for the same reason as {@link readMessageBody}: one act over two
+ * transports must accept exactly the same input.
+ */
+function readAnswerBody(req: express.Request): {
+  agent: { namespace: string; name: string };
+  answer: {
+    messageId: string;
+    taskId: string;
+    decision: 'approve' | 'reject';
+    answers?: string[][];
+    rejectionReason?: string;
+    text?: string;
+  };
+} {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const agentNamespace = readRequiredString(body, 'agentNamespace');
+  const agentName = readRequiredString(body, 'agentName');
+  const messageId = readRequiredString(body, 'messageId');
+  const taskId = readRequiredString(body, 'taskId');
+
+  const rawDecision = body.decision;
+  if (rawDecision !== 'approve' && rawDecision !== 'reject') {
+    throw new InputError("decision must be 'approve' or 'reject'");
+  }
+
+  // Positional and nested, so it needs its own check rather than
+  // `readRequiredString`: a malformed answer would otherwise reach kagent as a
+  // decision with no answers, which it accepts — resuming the task with the
+  // question silently unanswered.
+  let answers: string[][] | undefined;
+  if (body.answers !== undefined) {
+    if (!Array.isArray(body.answers)) {
+      throw new InputError('answers must be an array');
+    }
+    answers = body.answers.map(entry => {
+      if (!Array.isArray(entry)) {
+        throw new InputError('each answer must be an array of strings');
+      }
+      return entry.map(value => {
+        if (typeof value !== 'string') {
+          throw new InputError('each answer must be an array of strings');
+        }
+        return value;
+      });
+    });
+  }
+
+  const readOptionalBounded = (field: string): string | undefined => {
+    const value = body[field];
+    if (value === undefined) {
+      return undefined;
+    }
+    if (typeof value !== 'string') {
+      throw new InputError(`${field} must be a string`);
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    if (trimmed.length > MESSAGE_TEXT_MAX_LENGTH) {
+      throw new InputError(
+        `${field} must be at most ${MESSAGE_TEXT_MAX_LENGTH} characters`,
+      );
+    }
+    return trimmed;
+  };
+
+  return {
+    agent: { namespace: agentNamespace, name: agentName },
+    answer: {
+      messageId,
+      taskId,
+      decision: rawDecision,
+      answers,
+      rejectionReason: readOptionalBounded('rejectionReason'),
+      text: readOptionalBounded('text'),
+    },
+  };
+}
+
+/**
+ * Upper bound on how long the streaming routes hold their relay open.
  *
  * Not a turn timeout — cutting the stream does not stop the turn, and the
  * frontend reconciles through the poll exactly as if a gateway had cut it. This
@@ -150,6 +259,116 @@ function readMessageBody(req: express.Request): {
  * and every gateway we know of gives up long before this does.
  */
 const STREAM_MAX_DURATION_MS = 30 * 60_000;
+
+/**
+ * Relay one upstream event stream to the browser as SSE.
+ *
+ * Shared by the streaming routes (a message, an answer): `open` opens the
+ * upstream stream under the relay's abort signal, and everything after the
+ * headers is the same for both. Failure semantics split at the headers, which
+ * is inherent to streaming:
+ *
+ * - **Before the upstream stream opens**, errors propagate to the error
+ *   middleware exactly as on the non-streaming routes — a malformed body is a
+ *   400, an unknown agent a 404, a rejected token a 401, a session that is
+ *   still working on the previous turn a 409. Nothing has been dispatched, and
+ *   the caller hears so.
+ * - **After it opens**, the route has already answered 200 and can only relay
+ *   or stop. A relay that ends without a terminal event — kagent cut off by a
+ *   gateway, this response cut off by the browser's own door, the duration
+ *   bound — is not reported as anything, because the turn survives it: the
+ *   frontend treats an unterminated stream as "still running" and follows the
+ *   poll, the same contract as the unary routes' 202.
+ *
+ * The relay is flush-wrapped because Backstage's root router applies
+ * `compression()` globally, which buffers `res.write()` until `res.end()` —
+ * every event would arrive at once, after the turn. Same trap and same fix as
+ * `ai-chat-backend`'s chat route.
+ */
+async function relayEventStream(
+  res: express.Response,
+  logger: LoggerService,
+  open: (signal: AbortSignal) => Promise<Response>,
+): Promise<void> {
+  // One signal governs the whole relay: the browser going away and the
+  // duration bound both abort the upstream read. Neither stops the turn.
+  const upstreamControl = new AbortController();
+  const stopRelay = () => upstreamControl.abort();
+  res.on('close', stopRelay);
+  const maxDurationTimer = setTimeout(stopRelay, STREAM_MAX_DURATION_MS);
+
+  let upstream: Response;
+  try {
+    upstream = await open(upstreamControl.signal);
+  } catch (error) {
+    clearTimeout(maxDurationTimer);
+    // The browser hung up while we were still connecting: there is nobody
+    // to answer, and the error middleware writing to a closed response
+    // would only log noise about it.
+    if (res.writableEnded || upstreamControl.signal.aborted) {
+      return;
+    }
+    throw error;
+  }
+
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  // Backstage's root HTTP router applies compression() middleware globally,
+  // which buffers res.write() calls — for SSE that means every event is held
+  // until res.end(), defeating the point of this route. Wrap res.write to
+  // flush after each write so events reach the browser as kagent produces
+  // them. Same fix as ai-chat-backend's chat route.
+  const originalWrite = res.write;
+  res.write = function flushingWrite(
+    ...args: Parameters<typeof originalWrite>
+  ) {
+    const ret = originalWrite.apply(res, args);
+    const flush = (res as { flush?: () => void }).flush;
+    if (typeof flush === 'function') {
+      flush.call(res);
+    }
+    return ret;
+  } as typeof originalWrite;
+
+  res.flushHeaders();
+
+  const body = upstream.body;
+  if (!body) {
+    // Cannot happen for a 200 SSE response from a real kagent, but the type
+    // allows it, and ending an empty stream is the honest degradation: the
+    // frontend verifies and falls back to the poll.
+    clearTimeout(maxDurationTimer);
+    res.end();
+    return;
+  }
+
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      res.write(value);
+    }
+  } catch (error) {
+    // The upstream connection died mid-turn (a gateway's request timeout,
+    // an Envoy drain) or the relay was aborted. Either way there is nothing
+    // more to relay and nothing to report: an unterminated stream is the
+    // frontend's cue to fall back to the poll, and the turn keeps running
+    // regardless.
+    logger.debug(
+      'A kagent event stream ended before the turn did; the client falls back to polling',
+      { error: String(error) },
+    );
+  } finally {
+    clearTimeout(maxDurationTimer);
+    res.end();
+  }
+}
 
 export async function createRouter(
   options: RouterOptions,
@@ -172,7 +391,7 @@ export async function createRouter(
     if (installations.size === 0) {
       installations.set('test', {
         name: 'test',
-        apiBaseUrl: 'https://kagent.test/api',
+        apiBaseUrl: 'https://kagent.test',
       });
     }
     for (const name of installations.keys()) {
@@ -182,10 +401,16 @@ export async function createRouter(
     for (const [name, installation] of installations) {
       clients.set(
         name,
-        new KagentClient(installation, logger, fetch, timeoutMs, turnTimeoutMs),
+        new KagentClient(
+          installation,
+          logger,
+          undefined,
+          timeoutMs,
+          turnTimeoutMs,
+        ),
       );
       logger.info(
-        `kagent proxy installation '${name}' pointed at ${installation.apiBaseUrl}`,
+        `kagent proxy installation '${name}' speaks gRPC to ${installation.apiBaseUrl}`,
       );
     }
   }
@@ -262,9 +487,9 @@ export async function createRouter(
     );
   }
 
-  // Whether each installation's kagent endpoint is reachable *from this
-  // portal*, learned without a user: an unauthenticated GET per endpoint,
-  // cached five minutes (see gs-node's probeEndpoint for the classification).
+  // Whether each installation's kagent controller is reachable *from this
+  // portal*, learned without a user: one unauthenticated gRPC call per origin,
+  // cached five minutes (see ./kagent/reachability for the classification).
   // The cache is lazy, so warm it now rather than on the first request: the
   // frontend caches the installation list for an hour, and a list answered
   // entirely with 'unknown' because the pod had just started would keep every
@@ -272,7 +497,8 @@ export async function createRouter(
   // usable immediately and the route answers 'unknown' until a probe settles.
   // Results are logged at INFO, one line per endpoint per state change.
   const reachability =
-    options.reachability ?? new ReachabilityCache({ logger });
+    options.reachability ??
+    new ReachabilityCache({ logger, probe: url => probeKagentGrpc(url) });
   for (const installation of installations.values()) {
     void reachability.refresh(kagentProbeUrl(installation));
   }
@@ -477,25 +703,23 @@ export async function createRouter(
   });
 
   /**
-   * Start a session for one agent.
+   * Start a session for one agent: create its AgentInstance.
    *
-   * The agent's real namespace and name come from the body rather than being
-   * decoded from anything: kagent's "python identifier" encoding of `agent_id`
-   * replaces every `-` with `_`, so decoding it is lossy. The caller picked the
-   * agent and knows both, so it says so.
-   *
-   * `name` is required here even though kagent's own API treats it as optional,
-   * because the controller does not auto-title — a session created without one
-   * has no title at all. The frontend derives it from the first prompt; see
-   * "Starting a session" in docs/agent-platform.md.
+   * The agent's namespace and name are the AgentTemplate's, as the caller read
+   * them from the resource; the platform Harness is picked in the client from
+   * the template's own status. `name` is required because the controller does
+   * not auto-title — an instance created without one has no title at all; the
+   * frontend derives it from the first prompt (see "Starting a session" in
+   * docs/agent-platform.md). `requestId` is the browser's idempotency key; see
+   * {@link readRequestId}.
    *
    * The token is **required**, for the same reason the other writes require it:
-   * kagent decides whose session this is from the token alone.
+   * the controller decides whose instance this is from the identity the gateway
+   * derived from the token alone.
    *
-   * Nothing expected reaches a 5xx. A malformed body is a 400, an agent kagent
-   * cannot resolve becomes a 409, and a sandbox agent that already holds its one
-   * permitted session stays a 409 — `MiddlewareFactory.error()` forwards anything
-   * `>= 500` to Sentry.
+   * Nothing expected reaches a 5xx. A malformed body is a 400, a template no
+   * Harness admits or a `request_id` reused with other parameters is a 409 —
+   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
    */
   router.post('/kagent/sessions', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -504,15 +728,17 @@ export async function createRouter(
     const agentNamespace = readRequiredString(body, 'agentNamespace');
     const agentName = readRequiredString(body, 'agentName');
     const name = readSessionName(body);
+    const requestId = readRequestId(body);
 
     const result = await client.createSession(
       { namespace: agentNamespace, name: agentName },
       name,
+      requestId,
       { userToken: readUserToken(req, { required: true }) },
     );
 
-    // 201, matching kagent's own answer to this route. The body is its envelope
-    // verbatim: the frontend needs the generated session id out of it, and this
+    // 201 for a create. The body is the controller's `CreateAgentInstanceResponse`
+    // as JSON: the frontend needs the generated instance id out of it, and this
     // proxy stays transport.
     res.status(201).json(result);
   });
@@ -612,23 +838,47 @@ export async function createRouter(
   });
 
   /**
+   * Stop the turn a session is running: cancel its task server-side.
+   *
+   * The Stop control in the composer. Cancelling is `A2AService/CancelTask` on
+   * the instance, which ends the run at the harness (or quiesces the actor when
+   * the runtime cannot) and records the task canceled — so a stopped turn stays
+   * stopped when the tab is closed, unlike cutting the stream, which the turn
+   * survives. Answers the task as the controller left it: `canceled`, or the
+   * terminal state a turn that finished first already had, which is not an
+   * error and nothing to undo.
+   *
+   * Task ids are opaque like session ids and pass through undecorated. The
+   * token is **required**: the controller decides whose instance this is from
+   * the identity the gateway derived.
+   */
+  router.post(
+    '/kagent/sessions/:sessionId/tasks/:taskId/cancel',
+    async (req, res) => {
+      const { client } = resolveInstallation(req);
+      const rawTaskId = req.params.taskId;
+      const result = await client.cancelTask(
+        readSessionId(req),
+        typeof rawTaskId === 'string' ? rawTaskId : '',
+        { userToken: readUserToken(req, { required: true }) },
+      );
+      res.json(result);
+    },
+  );
+
+  /**
    * Send a message to the session's agent — one turn of the conversation.
    *
-   * Session-shaped rather than agent-shaped (`/a2a/:ns/:name`) because the session
-   * is what the caller is looking at, and because `contextId` is the only thing
-   * binding a turn to a session. The A2A JSON-RPC envelope is built in the client,
-   * so the frontend never has to know A2A.
-   *
-   * **The agent's namespace and name come from the body, not from the session.**
-   * kagent's stored `agent_id` is an encoding that rewrites `-` to `_`, so
-   * decoding it cannot round-trip a name that legitimately contains `_`. The
-   * caller resolved the real names from the `Agent` resource; this trusts them and
-   * lets kagent 404 if they are wrong.
+   * Session-shaped because the session *is* the conversation: the AgentInstance
+   * binds the agent, and the A2A call names the instance in its metadata. The
+   * agent's namespace and name stay in the body for the contract's sake (the
+   * browser knows them from the resource) but nothing downstream needs them. The
+   * A2A request is built in the client, so the frontend never has to know A2A.
    *
    * Nothing expected here reaches a 5xx, which `MiddlewareFactory.error()` would
-   * forward to Sentry: a malformed body is a 400, an unknown agent a 404, a
-   * read-only session a 403, and a turn that outruns its timeout a **202** — it is
-   * still running, and the conversation poll will show it land.
+   * forward to Sentry: a malformed body is a 400, an unknown instance a 404, a
+   * second message during a turn a 409, and a turn that outruns its timeout a
+   * **202** — it is still running, and the conversation poll will show it land.
    */
   router.post('/kagent/sessions/:sessionId/messages', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -661,28 +911,11 @@ export async function createRouter(
    * Send a message to the session's agent, streaming the turn's events back.
    *
    * The streaming sibling of the messages route above: same body, same
-   * validation, same trust in the caller's agent names — but A2A `message/stream`
-   * instead of `message/send`, and kagent's SSE relayed byte-for-byte instead of
-   * a single JSON answer. The backend never parses the events; the frontend
-   * interprets them and reconciles with the conversation poll, which stays the
-   * source of truth.
-   *
-   * Failure semantics split at the headers, which is inherent to streaming:
-   *
-   * - **Before the upstream stream opens**, errors surface exactly as on the
-   *   non-streaming route — a malformed body is a 400, an unknown agent a 404, a
-   *   rejected token a 401. Nothing has been dispatched, and the caller hears so.
-   * - **After it opens**, this route has already answered 200 and can only relay
-   *   or stop. A relay that ends without a terminal event — kagent cut off by a
-   *   gateway, this response cut off by the browser's own door, the duration
-   *   bound below — is not reported as anything, because the turn survives it:
-   *   the frontend treats an unterminated stream as "still running" and follows
-   *   the poll, the same contract as the 202 above.
-   *
-   * The relay is flush-wrapped because Backstage's root router applies
-   * `compression()` globally, which buffers `res.write()` until `res.end()` —
-   * every event would arrive at once, after the turn. Same trap and same fix as
-   * `ai-chat-backend`'s chat route.
+   * validation — but `SendStreamingMessage` instead of `SendMessage`, each event
+   * relayed as one SSE `data:` frame of its JSON instead of a single JSON
+   * answer. The backend never interprets the events; the frontend does, and
+   * reconciles with the conversation poll, which stays the source of truth.
+   * The relay and its failure semantics are {@link relayEventStream}'s.
    */
   router.post(
     '/kagent/sessions/:sessionId/messages/stream',
@@ -693,102 +926,30 @@ export async function createRouter(
         readMessageBody(req);
       const userToken = readUserToken(req, { required: true });
 
-      // One signal governs the whole relay: the browser going away and the
-      // duration bound both abort the upstream read. Neither stops the turn.
-      const upstreamControl = new AbortController();
-      const stopRelay = () => upstreamControl.abort();
-      res.on('close', stopRelay);
-      const maxDurationTimer = setTimeout(stopRelay, STREAM_MAX_DURATION_MS);
-
-      let upstream: Response;
-      try {
-        upstream = await client.streamMessage(
+      await relayEventStream(res, logger, signal =>
+        client.streamMessage(
           readSessionId(req),
           { namespace: agentNamespace, name: agentName },
           { messageId, text },
           { userToken },
-          upstreamControl.signal,
-        );
-      } catch (error) {
-        clearTimeout(maxDurationTimer);
-        // The browser hung up while we were still connecting: there is nobody
-        // to answer, and the error middleware writing to a closed response
-        // would only log noise about it.
-        if (res.writableEnded || upstreamControl.signal.aborted) {
-          return;
-        }
-        throw error;
-      }
-
-      res.status(200);
-      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-
-      // Backstage's root HTTP router applies compression() middleware globally,
-      // which buffers res.write() calls — for SSE that means every event is held
-      // until res.end(), defeating the point of this route. Wrap res.write to
-      // flush after each write so events reach the browser as kagent produces
-      // them. Same fix as ai-chat-backend's chat route.
-      const originalWrite = res.write;
-      res.write = function flushingWrite(
-        ...args: Parameters<typeof originalWrite>
-      ) {
-        const ret = originalWrite.apply(res, args);
-        const flush = (res as { flush?: () => void }).flush;
-        if (typeof flush === 'function') {
-          flush.call(res);
-        }
-        return ret;
-      } as typeof originalWrite;
-
-      res.flushHeaders();
-
-      const body = upstream.body;
-      if (!body) {
-        // Cannot happen for a 200 SSE response from a real kagent, but the type
-        // allows it, and ending an empty stream is the honest degradation: the
-        // frontend verifies and falls back to the poll.
-        clearTimeout(maxDurationTimer);
-        res.end();
-        return;
-      }
-
-      const reader = body.getReader();
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-          res.write(value);
-        }
-      } catch (error) {
-        // The upstream connection died mid-turn (a gateway's request timeout,
-        // an Envoy drain) or the relay was aborted. Either way there is nothing
-        // more to relay and nothing to report: an unterminated stream is the
-        // frontend's cue to fall back to the poll, and the turn keeps running
-        // regardless.
-        logger.debug(
-          'A kagent event stream ended before the turn did; the client falls back to polling',
-          { error: String(error) },
-        );
-      } finally {
-        clearTimeout(maxDurationTimer);
-        res.end();
-      }
+          signal,
+        ),
+      );
     },
   );
 
-  // There is no version route. kagent serves `/version` at the server root, and
-  // neither supported door proxies the root to the controller — the derived
-  // door's nginx sends `/` to the kagent UI, and the agentgateway override only
-  // matches the `/kagent` prefix. See the comment in KagentClient for details.
+  // There is deliberately no version route. `SystemService/GetVersion` exists
+  // and the reachability probe calls it, but nothing in the frontend gates on a
+  // version string: tolerance lives in the permissive parsing in
+  // agent-platform-common, and a feature that needs gating probes by behaviour.
 
   /**
-   * Identity probe. Diagnoses the two ways a correct-looking sessions list can
-   * be wrong: a `sub` that differs from the one kagent recorded (empty list),
-   * and a controller running in `unsecure` mode (shared list).
+   * Identity probe: the claims the controller resolved for the call
+   * (`SystemService/GetCurrentUser`). Diagnoses the two ways a correct-looking
+   * sessions list can be wrong: a `sub` that differs from the one kagent
+   * recorded (empty list), and a controller that attributes every caller to its
+   * built-in default user because nothing in front of it derived an identity
+   * (shared list).
    */
   router.get('/kagent/me', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -820,72 +981,13 @@ export async function createRouter(
    */
   router.post('/kagent/sessions/:sessionId/answer', async (req, res) => {
     const { client } = resolveInstallation(req);
-
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const agentNamespace = readRequiredString(body, 'agentNamespace');
-    const agentName = readRequiredString(body, 'agentName');
-    const messageId = readRequiredString(body, 'messageId');
-    const taskId = readRequiredString(body, 'taskId');
-
-    const rawDecision = body.decision;
-    if (rawDecision !== 'approve' && rawDecision !== 'reject') {
-      throw new InputError("decision must be 'approve' or 'reject'");
-    }
-
-    // Positional and nested, so it needs its own check rather than
-    // `readRequiredString`: a malformed answer would otherwise reach kagent as a
-    // decision with no answers, which it accepts — resuming the task with the
-    // question silently unanswered.
-    let answers: string[][] | undefined;
-    if (body.answers !== undefined) {
-      if (!Array.isArray(body.answers)) {
-        throw new InputError('answers must be an array');
-      }
-      answers = body.answers.map(entry => {
-        if (!Array.isArray(entry)) {
-          throw new InputError('each answer must be an array of strings');
-        }
-        return entry.map(value => {
-          if (typeof value !== 'string') {
-            throw new InputError('each answer must be an array of strings');
-          }
-          return value;
-        });
-      });
-    }
-
-    const readOptionalBounded = (field: string): string | undefined => {
-      const value = body[field];
-      if (value === undefined) {
-        return undefined;
-      }
-      if (typeof value !== 'string') {
-        throw new InputError(`${field} must be a string`);
-      }
-      const trimmed = value.trim();
-      if (!trimmed) {
-        return undefined;
-      }
-      if (trimmed.length > MESSAGE_TEXT_MAX_LENGTH) {
-        throw new InputError(
-          `${field} must be at most ${MESSAGE_TEXT_MAX_LENGTH} characters`,
-        );
-      }
-      return trimmed;
-    };
+    const { agent, answer } = readAnswerBody(req);
 
     try {
       const result = await client.answerConfirmation(
         readSessionId(req),
-        { namespace: agentNamespace, name: agentName },
-        {
-          messageId,
-          taskId,
-          decision: rawDecision,
-          answers,
-          rejectionReason: readOptionalBounded('rejectionReason'),
-          text: readOptionalBounded('text'),
-        },
+        agent,
+        answer,
         { userToken: readUserToken(req, { required: true }) },
       );
       res.json(result);
@@ -898,6 +1000,34 @@ export async function createRouter(
       }
       res.status(202).json({ status: 'pending' });
     }
+  });
+
+  /**
+   * Answer the confirmation a session is suspended on, streaming the resumed
+   * turn's events back.
+   *
+   * The streaming sibling of the answer route above, and the one the frontend
+   * uses: same body, same validation, but `SendStreamingMessage` relayed as SSE
+   * exactly like the messages route's streaming sibling. What it fixes is the
+   * unary route's blind spot: that one is held for the turn timeout and then
+   * answers 202, after which only the conversation poll can tell what became of
+   * the turn — and if the turn never lands, the page has nothing to show. Over a
+   * stream the events arrive as they happen and a cut stream is visible as such.
+   */
+  router.post('/kagent/sessions/:sessionId/answer/stream', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const { agent, answer } = readAnswerBody(req);
+    const userToken = readUserToken(req, { required: true });
+
+    await relayEventStream(res, logger, signal =>
+      client.streamAnswer(
+        readSessionId(req),
+        agent,
+        answer,
+        { userToken },
+        signal,
+      ),
+    );
   });
 
   // The model-manager pass-through (`/model-manager/...`) lives beside the

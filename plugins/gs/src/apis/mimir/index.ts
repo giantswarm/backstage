@@ -5,6 +5,9 @@ export type {
   MimirQueryData,
   MimirQueryResponse,
   MimirMetricSample,
+  MimirMatrixSample,
+  MimirRangeQueryData,
+  MimirRangeQueryResponse,
 } from './types';
 export {
   ContainerCpuUsageSecondsTotal,

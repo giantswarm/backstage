@@ -25,6 +25,7 @@ import {
   sessionSearchFn,
   useSessions,
 } from '../SessionsDataProvider';
+import { SessionsMigrationNotice } from '../SessionsMigrationNotice';
 import { SessionsTable } from '../SessionsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
@@ -291,6 +292,13 @@ function SessionsIndexPageContent() {
               : 'Your agent chat sessions across the management clusters. kagent scopes sessions to the signed-in user, so only your own are listed.'}
           </Text>
         )}
+
+        {/* Conversations from before the move to kagent API v2 are not here
+            (plan decision D9). Said before the list, so an empty or short one
+            is explained rather than puzzled over; dismissible, because it is
+            true forever and interesting once. Withheld while loading, like the
+            composer, so the tab does not flash it over a spinner. */}
+        {!isLoading && <SessionsMigrationNotice />}
 
         {/* Withheld until the list settles, so `firstRun` is known before the
             composer mounts -- see the latch above. */}

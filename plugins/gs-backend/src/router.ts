@@ -138,6 +138,56 @@ export async function createRouter({
   });
 
   /**
+   * GET /mimir/query_range
+   *
+   * Proxies a range PromQL query to the Mimir observability endpoint for the
+   * given installation, for a series over time rather than one value.
+   *
+   * Query parameters:
+   * - query: PromQL expression
+   * - installationName: GS installation name
+   * - start, end: Unix seconds
+   * - step: resolution, a Prometheus duration (`1d`) or seconds
+   *
+   * Headers:
+   * - X-Mimir-Token: OIDC token for the installation (required)
+   */
+  router.get('/mimir/query_range', async (req, res) => {
+    const schema = z.object({
+      query: z.string().min(1),
+      installationName: z.string().min(1),
+      // Validated as non-empty strings and passed through verbatim: Mimir owns
+      // what a legal timestamp and step are, and duplicating its grammar here
+      // would only reject ranges it accepts.
+      start: z.string().min(1),
+      end: z.string().min(1),
+      step: z.string().min(1),
+    });
+    const parsed = schema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new InputError(parsed.error.toString());
+    }
+
+    const oidcToken = req.headers['x-mimir-token'];
+    if (!oidcToken || typeof oidcToken !== 'string') {
+      throw new InputError('Missing required header: X-Mimir-Token');
+    }
+
+    const { query, installationName, start, end, step } = parsed.data;
+
+    res.json(
+      await mimir.queryRange({
+        query,
+        installationName,
+        start,
+        end,
+        step,
+        oidcToken,
+      }),
+    );
+  });
+
+  /**
    * GET /github/raw-content
    *
    * Proxies a fetch to a raw.githubusercontent.com URL, adding GitHub
@@ -185,16 +235,18 @@ export async function createRouter({
   /**
    * GET /agent-skills
    *
-   * Discovers kagent agent skills in a GitHub repository by finding every
-   * `SKILL.md` file and reading its `name`/`description` frontmatter. Each
-   * skill maps to a `spec.skills.gitRefs` entry (repo url + subdirectory path).
+   * Discovers agent skills in a GitHub repository by finding every `SKILL.md`
+   * file and reading its `name`/`description` frontmatter, at the head commit
+   * of the ref. Each skill maps to a chart `skills[]` entry pinned to that
+   * commit (`{ name, path, git: { url, commit } }`).
    *
    * Query parameters:
    * - repoUrl: The github.com repository URL (https://github.com/<owner>/<repo>)
    * - ref: Optional git ref (branch/tag/SHA); defaults to the default branch
    *
    * Returns:
-   * - skills: Array of { name, description, repoUrl, path, ref }
+   * - skills: Array of { name, description, repoUrl, path, ref, commit }
+   * - ref, commit: the ref read and the commit it resolved to
    * - truncated: true when some skills may be missing (repo too large / a read
    *   failed)
    */

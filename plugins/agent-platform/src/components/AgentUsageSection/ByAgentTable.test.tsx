@@ -66,6 +66,35 @@ describe('ByAgentTable', () => {
     expect(renderedOrder()).toEqual(['Almost idle', 'Big spender', 'Chatty']);
   });
 
+  it('holds a skeleton, not an em dash, while the rate is in flight', () => {
+    // The counts come from kagent and land well before the two Mimir rate
+    // queries, so an em dash here read as "nothing could be priced" — a
+    // finding — when the truth was only "not yet". This page works hard to
+    // keep those two apart everywhere else.
+    const { container } = render(
+      <ByAgentTable rows={ROWS} emptyMessage="none" isRateLoading />,
+    );
+
+    expect(screen.queryByText('—')).toBeNull();
+    expect(container.querySelectorAll('.bui-Skeleton').length).toBe(
+      ROWS.length,
+    );
+  });
+
+  it('shows the figure once the rate lands', () => {
+    const { container } = render(
+      <ByAgentTable
+        rows={ROWS}
+        emptyMessage="none"
+        rates={{ blended: 3 / 1_000_000 }}
+      />,
+    );
+
+    expect(container.querySelectorAll('.bui-Skeleton').length).toBe(0);
+    // 7.5M input + 28.8k output at $3/1M.
+    expect(screen.getByText('$22.59')).toBeInTheDocument();
+  });
+
   it('renders the empty message with no rows', () => {
     render(<ByAgentTable rows={[]} emptyMessage="kagent recorded no agent." />);
 

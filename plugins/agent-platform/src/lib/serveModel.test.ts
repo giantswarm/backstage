@@ -556,7 +556,7 @@ describe('buildAutoWireManifests', () => {
       stringData: { OPENAI_API_KEY: 'giantswarm-backstage-placeholder' },
     });
     expect(modelConfig).toEqual({
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: {
         name: 'qwen3-8-27b',

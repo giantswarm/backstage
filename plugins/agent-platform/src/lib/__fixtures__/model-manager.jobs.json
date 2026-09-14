@@ -16,7 +16,7 @@
       "result": {
         "name": "qwen2-5-0-5b",
         "namespace": "kagent",
-        "apiVersion": "kagent.dev/v1alpha2",
+        "apiVersion": "kagent.dev/v1alpha3",
         "provider": "Ollama",
         "model": "qwen2.5:0.5b",
         "ready": false,
@@ -39,7 +39,7 @@
       "result": {
         "name": "smollm2-135m",
         "namespace": "kagent",
-        "apiVersion": "kagent.dev/v1alpha2",
+        "apiVersion": "kagent.dev/v1alpha3",
         "provider": "Ollama",
         "model": "smollm2:135m",
         "ready": false,

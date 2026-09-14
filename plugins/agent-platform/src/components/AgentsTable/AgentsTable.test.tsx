@@ -42,18 +42,26 @@ const rows: AgentRow[] = [
     model: 'Claude Sonnet 4.6',
     skillCount: 3,
     readiness: 'ready',
+    harness: 'kagent',
+    toolset: {
+      state: 'declared',
+      selectors: ['preset:read-only', 'workflow:incident-triage'],
+      carrier: 'incident-triager',
+    },
   },
   {
-    id: 'inst-1/dev/byo',
+    id: 'inst-1/dev/chat-only',
     installation: 'inst-1',
     namespace: 'dev',
-    name: 'BYO agent',
-    technicalName: 'byo-agent',
+    name: 'Chat-only agent',
+    technicalName: 'chat-only-agent',
     description: '',
     model: undefined,
     skillCount: 0,
     readiness: 'notReady',
-    readinessMessage: 'Deployment is not ready, 0/1 pods are ready',
+    harness: 'kagent',
+    readinessMessage: 'Compiling revision rev-2',
+    toolset: { state: 'no-gateway' },
   },
 ];
 
@@ -69,6 +77,7 @@ describe('AgentsTable', () => {
     expect(screen.getByText('Installation')).toBeInTheDocument();
     expect(screen.getByText('Namespace')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
+    expect(screen.getByText('Toolset')).toBeInTheDocument();
     expect(screen.getByText('Skills')).toBeInTheDocument();
     expect(screen.getByText('Status')).toBeInTheDocument();
   });
@@ -78,9 +87,66 @@ describe('AgentsTable', () => {
 
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.getByText('Not ready')).toBeInTheDocument();
+    expect(screen.getByTitle('Compiling revision rev-2')).toBeInTheDocument();
+  });
+
+  // The Harness whose verdict the readiness is — where the agent's sessions run.
+  it('names the admitting Harness under the readiness', async () => {
+    await renderTable(<AgentsTable rows={rows} />);
+
+    expect(screen.getAllByText('on kagent')).toHaveLength(2);
+  });
+
+  it('labels a template no Harness admits distinctly, with the reason on hover', async () => {
+    await renderTable(
+      <AgentsTable
+        rows={[
+          {
+            ...rows[0],
+            readiness: 'notAdmitted',
+            harness: undefined,
+            readinessMessage:
+              'No Harness admits this agent: it carries no agent-platform.giantswarm.io/harness label.',
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Not admitted')).toBeInTheDocument();
+    expect(screen.getByTitle(/carries no .*harness label/)).toBeInTheDocument();
+    expect(screen.queryByText(/^on /)).not.toBeInTheDocument();
+  });
+
+  it('shows the declared toolset, and the two loud states, in the Toolset column', async () => {
+    await renderTable(
+      <AgentsTable
+        rows={[
+          ...rows,
+          {
+            ...rows[0],
+            id: 'inst-1/dev/wide-open',
+            name: 'Wide open',
+            technicalName: 'wide-open',
+            toolset: { state: 'implicit-full', carrier: 'wide-open' },
+          },
+          {
+            ...rows[0],
+            id: 'inst-1/dev/unread',
+            name: 'Unread',
+            technicalName: 'unread',
+            toolset: { state: 'unresolved', carrier: 'unread' },
+          },
+        ]}
+      />,
+    );
+
     expect(
-      screen.getByTitle('Deployment is not ready, 0/1 pods are ready'),
+      screen.getByText('preset:read-only, workflow:incident-triage'),
     ).toBeInTheDocument();
+    expect(screen.getByText('No tools')).toBeInTheDocument();
+    expect(screen.getByText('Full gateway access')).toBeInTheDocument();
+    expect(screen.getByText('no toolset declared')).toBeInTheDocument();
+    expect(screen.getByText('unread not readable')).toBeInTheDocument();
   });
 
   it('labels a rejected agent distinctly from a not-ready one', async () => {
@@ -120,7 +186,7 @@ describe('AgentsTable', () => {
   it('shows a dash for agents without a resolved model', async () => {
     await renderTable(<AgentsTable rows={rows} />);
 
-    expect(screen.getByText('BYO agent')).toBeInTheDocument();
+    expect(screen.getByText('Chat-only agent')).toBeInTheDocument();
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
@@ -141,9 +207,11 @@ describe('AgentsTable', () => {
       'href',
       '/agent-platform/agents/inst-1/sre-team/incident-triager',
     );
-    expect(screen.getByRole('link', { name: 'BYO agent' })).toHaveAttribute(
+    expect(
+      screen.getByRole('link', { name: 'Chat-only agent' }),
+    ).toHaveAttribute(
       'href',
-      '/agent-platform/agents/inst-1/dev/byo-agent',
+      '/agent-platform/agents/inst-1/dev/chat-only-agent',
     );
   });
 
@@ -195,9 +263,11 @@ describe('AgentsTable', () => {
         size: 96,
       },
     );
-    expect(mockBuildAvatarUrl).toHaveBeenCalledWith('inst-1', 'byo-agent', {
-      size: 96,
-    });
+    expect(mockBuildAvatarUrl).toHaveBeenCalledWith(
+      'inst-1',
+      'chat-only-agent',
+      { size: 96 },
+    );
   });
 });
 

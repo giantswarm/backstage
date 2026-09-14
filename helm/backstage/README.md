@@ -10,6 +10,24 @@ Backstage app provided by Giant Swarm
 |------------|------|---------|
 | oci://registry-1.docker.io/bitnamicharts | common | 2.41.0 |
 
+## Architecture support
+
+The `giantswarm/backstage` and `giantswarm/postgresql-cnpg` images are published
+for `linux/amd64` and `linux/arm64` as manifest lists, so the chart runs on a
+cluster with either architecture, or a mix of both.
+
+Pin an image by the digest of the manifest list, never by the digest of one
+architecture's manifest. A per-architecture digest defeats platform resolution:
+the kubelet pulls that architecture on every node and the container exits with
+`exec format error` on the others. Read the index digest with:
+
+```
+skopeo inspect --format '{{.Digest}}' docker://gsoci.azurecr.io/giantswarm/postgresql-cnpg:18.0
+```
+
+To steer placement, use `nodeSelector` for the Backstage pod and
+`database.postgresql.affinity` for the PostgreSQL instance pods.
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -92,12 +110,19 @@ Backstage app provided by Giant Swarm
 | sharedConfig | object | `{}` | Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword |
 | nodeSelector | object | `{}` | Node selector labels to constrain pod scheduling to specific nodes |
 | strategy | object | `{}` | Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume. |
-| database | object | `{"engine":"sqlite","postgresql":{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","storageSize":"5Gi"}}` | Database configuration |
+| networkPolicy | object | `{"enabled":true,"flavor":"cilium"}` | Network policy settings |
+| networkPolicy.enabled | bool | `true` | Render the network policies the chart ships. Turn this off on a cluster whose policy flavor the chart does not render. |
+| networkPolicy.flavor | string | `"cilium"` | Policy flavor to render. The `kubernetes` flavor is not an exact equivalent of the `cilium` one: it has no `world` or `kube-apiserver` entity, so the egress leg that carries object storage and Kubernetes API traffic is `0.0.0.0/0` on 443 and 6443. Widen that leg in the template if the cluster reaches an object store on another port. |
+| database | object | `{"engine":"sqlite","postgresql":{"affinity":{},"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:424fc22287b7bf49e9eb87f6180e5489d0026014b1e610a4e429599d96cadb4d","imagePullSecrets":[],"instances":2,"operatorNamespace":"cnpg-system","storageSize":"5Gi"}}` | Database configuration |
 | database.engine | string | `"sqlite"` | Database engine to use |
-| database.postgresql | object | `{"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716","storageSize":"5Gi"}` | Settings for the PostgreSQL database (only used when engine is "postgresql") |
+| database.postgresql | object | `{"affinity":{},"clusterNameSuffix":"cnpg","image":"giantswarm/postgresql-cnpg:18.0@sha256:424fc22287b7bf49e9eb87f6180e5489d0026014b1e610a4e429599d96cadb4d","imagePullSecrets":[],"instances":2,"operatorNamespace":"cnpg-system","storageSize":"5Gi"}` | Settings for the PostgreSQL database (only used when engine is "postgresql") |
 | database.postgresql.clusterNameSuffix | string | `"cnpg"` | Suffix appended to the chart name to form the CNPG cluster resource name |
+| database.postgresql.instances | int | `2` | Number of PostgreSQL instances in the CNPG cluster |
 | database.postgresql.storageSize | string | `"5Gi"` | Persistent volume size for the PostgreSQL CNPG cluster |
-| database.postgresql.image | string | `"giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716"` | PostgreSQL container image for the CNPG cluster (registry.domain is prepended) |
+| database.postgresql.operatorNamespace | string | `"cnpg-system"` | Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation. |
+| database.postgresql.image | string | `"giantswarm/postgresql-cnpg:18.0@sha256:424fc22287b7bf49e9eb87f6180e5489d0026014b1e610a4e429599d96cadb4d"` | PostgreSQL container image for the CNPG cluster (registry.domain is prepended). The image is published for linux/amd64 and linux/arm64; the digest must name the index, not one architecture's manifest, or the kubelet pulls the wrong architecture and the container exits with `exec format error`. |
+| database.postgresql.imagePullSecrets | list | `[]` | Pull secrets for the CNPG cluster images, as a list of `{name: <secret>}`. The bootstrap init container runs the operator image, so a private mirror needs an entry here. |
+| database.postgresql.affinity | object | `{}` | Placement for the CNPG instance pods. This is CloudNativePG's own `AffinityConfiguration`, not a core Kubernetes `Affinity`: the keys are `enablePodAntiAffinity`, `topologyKey`, `podAntiAffinityType`, `nodeSelector`, `tolerations`, `nodeAffinity`, `additionalPodAffinity` and `additionalPodAntiAffinity`. |
 | branding | object | `{"assetsPath":"/app/branding-assets","enabled":false,"volume":{"configMap":{}}}` | Custom branding/UI asset settings (logos and favicons served by the branding backend plugin) |
 | branding.enabled | bool | `false` | Enable serving custom branding assets (logos) from a mounted volume |
 | branding.assetsPath | string | `"/app/branding-assets"` | Filesystem path inside the container where branding assets are mounted |
@@ -119,7 +144,7 @@ Backstage app provided by Giant Swarm
 | ingress.className | string | `"nginx"` | Ingress class name |
 | ingress.annotations | object | `{"cert-manager.io/cluster-issuer":"letsencrypt-giantswarm","kubernetes.io/tls-acme":"true","nginx.ingress.kubernetes.io/force-ssl-redirect":"true"}` | Annotations applied to the Ingress resource |
 | ingress.hostnames | list | `["default-hostname"]` | Hostnames for the Ingress rules and TLS configuration |
-| route | object | `{"additionalRules":[],"annotations":{},"backendTrafficPolicy":{"annotations":{},"enabled":false,"labels":{},"spec":{}},"enabled":false,"filters":[],"hostnames":[],"kind":"HTTPRoute","labels":{},"matches":[{"path":{"type":"PathPrefix","value":"/"}}],"name":"","parentRefs":[],"securityPolicy":{"annotations":{},"authorization":{},"basicAuth":{},"cors":{},"enabled":false,"extAuth":{},"jwt":{},"labels":{},"oidc":{}}}` | Gateway API route configuration |
+| route | object | `{"additionalRules":[],"annotations":{},"backendTrafficPolicy":{"annotations":{},"enabled":true,"labels":{},"spec":{}},"enabled":false,"filters":[],"hostnames":[],"kind":"HTTPRoute","labels":{},"matches":[{"path":{"type":"PathPrefix","value":"/"}}],"name":"","parentRefs":[],"securityPolicy":{"annotations":{},"authorization":{},"basicAuth":{},"cors":{},"enabled":false,"extAuth":{},"jwt":{},"labels":{},"oidc":{}}}` | Gateway API route configuration |
 | route.enabled | bool | `false` | Enable the Gateway API HTTPRoute resource |
 | route.kind | string | `"HTTPRoute"` | Route resource kind |
 | route.name | string | `""` | Route name (defaults to .Values.name) |
@@ -140,10 +165,10 @@ Backstage app provided by Giant Swarm
 | route.securityPolicy.oidc | object | `{}` | OIDC authentication provider configuration |
 | route.securityPolicy.extAuth | object | `{}` | External authorization service configuration |
 | route.securityPolicy.authorization | object | `{}` | Authorization rules for request-level access control |
-| route.backendTrafficPolicy | object | `{"annotations":{},"enabled":false,"labels":{},"spec":{}}` | Envoy Gateway BackendTrafficPolicy configuration (gateway.envoyproxy.io/v1alpha1) |
-| route.backendTrafficPolicy.enabled | bool | `false` | Enable the BackendTrafficPolicy resource |
+| route.backendTrafficPolicy | object | `{"annotations":{},"enabled":true,"labels":{},"spec":{}}` | Envoy Gateway BackendTrafficPolicy configuration (gateway.envoyproxy.io/v1alpha1). Rendered with the route by default: Envoy Gateway's default 15 s route timeout spans the whole response, streaming included, and the Agent Platform turn stream and the AI Chat stream need the request timeout off |
+| route.backendTrafficPolicy.enabled | bool | `true` | Render the BackendTrafficPolicy resource alongside the route. Set to false only if another policy already targets the route; without one, streamed responses are cut after 15 s |
 | route.backendTrafficPolicy.labels | object | `{}` | Labels applied to the BackendTrafficPolicy resource |
 | route.backendTrafficPolicy.annotations | object | `{}` | Annotations applied to the BackendTrafficPolicy resource |
-| route.backendTrafficPolicy.spec | object | `{}` | BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically |
+| route.backendTrafficPolicy.spec | object | `{}`, rendered as the streaming-safe timeouts above | BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically. Empty, the chart renders `timeout.http` `{requestTimeout: 0s, maxStreamDuration: 0s, connectionIdleTimeout: 1h}`, `timeout.tcp.connectTimeout: 10s` and `tcpKeepalive` `{idleTime: 60s, interval: 30s, probes: 3}`. A spec set here replaces that default wholesale, so carry the timeouts over if the portal streams |
 | ociRegistryCredentials | object | `{}` | Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig |
 | pluginKeys | list | `[]` | Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/ |

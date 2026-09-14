@@ -22,7 +22,7 @@ import { DIALOG_FORM_STYLE } from '../dialogForm';
  *
  * Must match SESSION_NAME_MAX_LENGTH in plugins/agent-platform-backend.
  */
-export const SESSION_NAME_MAX_LENGTH = 255;
+export const SESSION_NAME_MAX_LENGTH = 200;
 
 export type SessionRenameDialogProps = {
   /** The session's current title, used to seed the field each time it opens. */

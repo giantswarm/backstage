@@ -327,6 +327,35 @@ describe('useSessionDetail', () => {
       expect(result.current.state).toMatchObject({ raw: 'working' });
     });
 
+    it('reports the turn as stalled, since its last timestamp, once the bound has passed', async () => {
+      // The observed failure: a task left `submitted` at the send, with no later
+      // event. Not idle — kagent still refuses a second message — so the page
+      // needs "stalled, since when" rather than the absence of "working".
+      const task = taskAged('submitted', ACTIVE_MAX_AGE_MS + 60_000);
+      getSessionDetail.mockResolvedValue(SESSION);
+      listSessionTasks.mockResolvedValue([task]);
+
+      const { result } = renderWith();
+
+      await waitFor(() => expect(result.current.hasConversation).toBe(true));
+      expect(result.current.turnProgress).toEqual({
+        kind: 'stalled',
+        since: Date.parse(task.status.timestamp),
+      });
+      expect(result.current.currentTaskId).toBe('task-1');
+    });
+
+    it('reports a moving turn as working', async () => {
+      getSessionDetail.mockResolvedValue(SESSION);
+      listSessionTasks.mockResolvedValue([taskAged('working', 1_000)]);
+
+      const { result } = renderWith();
+
+      await waitFor(() =>
+        expect(result.current.turnProgress).toEqual({ kind: 'working' }),
+      );
+    });
+
     it('is false before the conversation has been read', async () => {
       getSessionDetail.mockResolvedValue(SESSION);
       listSessionTasks.mockImplementation(neverSettles);

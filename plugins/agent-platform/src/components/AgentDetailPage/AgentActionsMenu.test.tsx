@@ -1,79 +1,55 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { crds } from '@giantswarm/k8s-types';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  AgentTemplateInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { agentsRouteRef } from '../../routes';
-import type { UseDeleteAgentResult } from '../../hooks/useDeleteAgent';
-import { AgentActionsMenu } from './AgentActionsMenu';
+import { AgentActionsMenu, type AgentManagerGate } from './AgentActionsMenu';
 
-type AgentInterface = crds.kagent.v1alpha2.Agent;
+type AgentInterface = AgentTemplateInterface;
 
-// The delete state arrives as a prop — the menu renders in the shared plugin
-// header, outside the plugin's QueryClientProvider, so it cannot call the hook
-// itself. This test is therefore about what the menu offers and what it does with
-// the outcome; the checks behind `isDeletable` are covered by
-// useDeleteAgent.test.tsx.
-const mockNavigate = jest.fn();
-
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useNavigate: () => mockNavigate,
-}));
-
-const mockToastPost = jest.fn();
-
-// Only the toast API is swapped out — everything else the test app looks up
-// (themes, route resolution) has to keep working.
-jest.mock('@backstage/frontend-plugin-api', () => {
-  const actual = jest.requireActual('@backstage/frontend-plugin-api');
-
-  return {
-    ...actual,
-    useApi: (ref: unknown) =>
-      ref === actual.toastApiRef ? { post: mockToastPost } : actual.useApi(ref),
-  };
-});
-
+// The menu renders in the shared plugin header, outside the plugin's
+// QueryClientProvider, so it calls no react-query hook itself: whether the write
+// actions are offered arrives as a prop (feature detection from the MCPServer
+// presence, read by the page), and the actions only ask the page to open the
+// dialogs it renders in its body. This test is therefore about what the menu
+// offers and says; the dialogs and hooks have their own tests.
 function makeAgent(): Agent {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: {
         name: 'pr-reviewer',
         namespace: 'agent-platform',
         managedFields: [{ manager: 'helm-controller', operation: 'Apply' }],
       },
-      spec: {
-        type: 'Declarative',
-        declarative: { modelConfig: 'opus-4-7' },
-      },
+      spec: { modelConfig: { name: 'opus-4-7' } },
     } as AgentInterface,
     'gazelle',
   );
 }
 
-const deleteAgent = jest.fn();
-const reset = jest.fn();
+const onEdit = jest.fn();
+const onUpdateSkills = jest.fn();
+const onDelete = jest.fn();
 
-let deletion: UseDeleteAgentResult;
+const AVAILABLE: AgentManagerGate = {
+  presence: 'available',
+  isUnavailable: false,
+};
 
-function setDeleteState(overrides: Partial<UseDeleteAgentResult> = {}) {
-  deletion = {
-    isDeletable: true,
-    isCheckingDeletable: false,
-    deleteAgent,
-    isDeleting: false,
-    error: null,
-    reset,
-    ...overrides,
-  } as UseDeleteAgentResult;
-}
-
-const renderMenu = () =>
+const renderMenu = (agentManager: AgentManagerGate = AVAILABLE) =>
   renderInTestApp(
-    <AgentActionsMenu agent={makeAgent()} deletion={deletion} />,
+    <AgentActionsMenu
+      agent={makeAgent()}
+      agentManager={agentManager}
+      onEdit={onEdit}
+      onUpdateSkills={onUpdateSkills}
+      onDelete={onDelete}
+    />,
     { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
   );
 
@@ -82,21 +58,18 @@ async function openMenu() {
 }
 
 beforeEach(() => {
-  mockNavigate.mockReset();
-  mockToastPost.mockReset();
-  deleteAgent.mockReset();
-  deleteAgent.mockResolvedValue(undefined);
-  reset.mockReset();
-  setDeleteState();
+  onEdit.mockReset();
+  onUpdateSkills.mockReset();
+  onDelete.mockReset();
 });
 
 describe('AgentActionsMenu', () => {
   it('renders without a QueryClient in scope', async () => {
-    // The regression this file exists to prevent. The menu is rendered into the
-    // shared plugin header, which is outside the plugin's QueryClientProvider, so
-    // a react-query hook called here throws "No QueryClient set" and takes the
-    // whole page down with it — the delete state has to arrive as a prop.
-    // `renderInTestApp` deliberately provides no client, so this asserts it.
+    // The regression this file exists to prevent: the menu is rendered into the
+    // shared plugin header, outside the plugin's QueryClientProvider, so a
+    // react-query hook called here throws "No QueryClient set" and takes the
+    // whole page down with it. `renderInTestApp` deliberately provides no
+    // client, so this asserts it.
     await renderMenu();
 
     expect(
@@ -107,7 +80,6 @@ describe('AgentActionsMenu', () => {
   it('opens the manifest dialog from the kebab menu', async () => {
     await renderMenu();
 
-    // Nothing is shown until asked for — this is the rarely-needed escape hatch.
     expect(screen.queryByText('Agent manifest')).not.toBeInTheDocument();
 
     await openMenu();
@@ -119,120 +91,72 @@ describe('AgentActionsMenu', () => {
       expect(screen.getByText('Agent manifest')).toBeInTheDocument();
     });
     expect(screen.getByText('pr-reviewer.yaml')).toBeInTheDocument();
-    // Names the installation and namespace, so a manifest copied out of here can
-    // be traced back to where it came from.
-    expect(screen.getByText('gazelle · agent-platform')).toBeInTheDocument();
   });
 
-  it('hides the deletion from someone who may not perform it', async () => {
-    setDeleteState({ isDeletable: false });
+  it('offers Edit, Update skills and Delete when the installation has agent-manager, and asks the page to open them', async () => {
     await renderMenu();
+    await openMenu();
+
+    await userEvent.click(screen.getByRole('menuitem', { name: /Edit agent/ }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+
+    await openMenu();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /Update skills/ }),
+    );
+    expect(onUpdateSkills).toHaveBeenCalledTimes(1);
+
+    await openMenu();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /Delete agent/ }),
+    );
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers none of the three and says why when muster lists no agent-manager', async () => {
+    await renderMenu({ presence: 'missing', isUnavailable: false });
     await openMenu();
 
     expect(
       screen.queryByRole('menuitem', { name: /Delete agent/ }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: /Edit agent/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: /Update skills/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', {
+        name: /muster on gazelle lists no agent-manager/,
+      }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    // The read-only escape hatch stays.
     expect(
       screen.getByRole('menuitem', { name: 'View manifest' }),
     ).toBeInTheDocument();
   });
 
-  it('withholds the deletion while the checks are still running', async () => {
-    // Rather than offering it and taking it away again once the access review
-    // comes back.
-    setDeleteState({ isDeletable: true, isCheckingDeletable: true });
-    await renderMenu();
+  it('says the muster plugin is missing when the portal has none', async () => {
+    await renderMenu({ presence: 'unknown', isUnavailable: true });
     await openMenu();
 
+    expect(
+      screen.getByRole('menuitem', { name: /no muster plugin/ }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('menuitem', { name: /Delete agent/ }),
     ).not.toBeInTheDocument();
   });
 
-  it('warns about invisible sessions before deleting', async () => {
-    await renderMenu();
+  it('withholds the actions while the server list is still being read, without a reason', async () => {
+    // Rather than offering them and taking them away again once muster answers.
+    await renderMenu({ presence: 'unknown', isUnavailable: false });
     await openMenu();
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: /Delete agent/ }),
-    );
 
-    await waitFor(() => {
-      expect(
-        screen.getByText('Delete agent "pr-reviewer"?'),
-      ).toBeInTheDocument();
-    });
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(
-      screen.getByText(/including sessions started by other people/),
+      screen.getByRole('menuitem', { name: 'View manifest' }),
     ).toBeInTheDocument();
-    // Opening the dialog does not delete anything.
-    expect(deleteAgent).not.toHaveBeenCalled();
-  });
-
-  it('confirms, reports and returns to the list on success', async () => {
-    await renderMenu();
-    await openMenu();
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: /Delete agent/ }),
-    );
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Delete agent' }),
-    );
-
-    await waitFor(() => {
-      expect(deleteAgent).toHaveBeenCalledTimes(1);
-    });
-
-    expect(mockToastPost).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: 'success',
-        // Permanent unless a timeout is given, and this is an acknowledgement.
-        timeout: expect.any(Number),
-      }),
-    );
-    // Not "deleted": the release has a finalizer, so the agent can still be in
-    // the list for a few seconds.
-    expect(mockToastPost.mock.calls[0][0].title).toMatch(
-      /Deleting agent "pr-reviewer"/,
-    );
-    expect(mockNavigate).toHaveBeenCalledWith('/agent-platform/agents');
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText('Delete agent "pr-reviewer"?'),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it('keeps the dialog open and says nothing succeeded when the delete fails', async () => {
-    deleteAgent.mockRejectedValue(new Error('helmreleases is forbidden'));
-    setDeleteState({ error: new Error('helmreleases is forbidden') });
-
-    await renderMenu();
-    await openMenu();
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: /Delete agent/ }),
-    );
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Delete agent' }),
-    );
-
-    await waitFor(() => {
-      expect(deleteAgent).toHaveBeenCalledTimes(1);
-    });
-
-    expect(screen.getByText('Delete agent "pr-reviewer"?')).toBeInTheDocument();
-    expect(screen.getByText('helmreleases is forbidden')).toBeInTheDocument();
-    expect(mockToastPost).not.toHaveBeenCalled();
-    expect(mockNavigate).not.toHaveBeenCalled();
-  });
-
-  it('clears a previous failure when the dialog is reopened', async () => {
-    await renderMenu();
-    await openMenu();
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: /Delete agent/ }),
-    );
-
-    expect(reset).toHaveBeenCalled();
   });
 });

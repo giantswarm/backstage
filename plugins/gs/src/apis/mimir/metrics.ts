@@ -287,6 +287,61 @@ export const KarpenterNodePoolsAllowedDisruptions = {
 } as const satisfies PrometheusMetric;
 
 /**
+ * agentgateway's LLM metrics. Emitted only for calls that go through the
+ * gateway's inference listener, so an agent that calls a provider directly is
+ * invisible in all of them — the caveat every consumer has to state.
+ *
+ * Registered as histogram/summary *families* under their base name; queries
+ * interpolate the suffix (`${Metric.name}_sum`, `_count`, `_bucket`).
+ *
+ * Labels shared across the gen_ai metrics: `gateway`, `agent_namespace` and
+ * `agent` (the calling pod's namespace and ServiceAccount, `unknown` when the
+ * caller IP matched no known Pod), `gen_ai_request_model`,
+ * `gen_ai_response_model` (what the provider answered with) and
+ * `gen_ai_token_type`. Deliberately **no user and no session label** — these
+ * cannot answer "who spent this" or "what did that conversation cost".
+ */
+export const AgentgatewayGenAiClientTokenUsage = {
+  name: 'agentgateway_gen_ai_client_token_usage',
+  description:
+    'Tokens the gateway proxied. `_sum` is the token count and `_count` the number of usage records. Split by `gen_ai_token_type` into `input`, `output`, `input_cache_read` and `input_cache_write` — Anthropic counts the three input types separately, so `input` excludes cache traffic and a high cache-read share is prompt caching paying off. Needs no price catalogue, so it is the figure to trust when pricing is incomplete.',
+  type: 'histogram',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayGenAiClientCostUsdTotal = {
+  name: 'agentgateway_gen_ai_client_cost_usd_total',
+  description:
+    "Estimated spend in USD, priced from the gateway's model catalogue. An unpriced model contributes nothing, so zero here can mean 'free' or 'not priced' — always read it next to `agentgateway_cost_catalog_lookups_total`, which is the only thing that distinguishes the two.",
+  type: 'counter',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayGenAiServerRequestDuration = {
+  name: 'agentgateway_gen_ai_server_request_duration',
+  description:
+    'Whole model call, first byte of the request to last byte of the response. `_count` doubles as the number of model calls. Streamed completions run long by design. (The gateway also exports `_time_to_first_token` and `_time_per_output_token`, deliberately not registered: both are streaming-only and a kagent agent turn asks for a whole completion, so they are permanently empty for this platform.)',
+  type: 'histogram',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayRequestsTotal = {
+  name: 'agentgateway_requests_total',
+  description:
+    "The data plane's HTTP request counter, by `listener` and `status`. Must be filtered to the inference listener (`llm` in the platform chart) — every other listener carries MCP and UI traffic, and folding those in misreports the model-call error rate. Provider errors and rate limits appear as non-2xx.",
+  type: 'counter',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayCostCatalogLookupsTotal = {
+  name: 'agentgateway_cost_catalog_lookups_total',
+  description:
+    'Price-catalogue lookups by `status`: `Exact` (the model is priced), `Unpriced` (in the catalogue with no rate for a token type), `Missing` (not in the catalogue) and `NoCatalog` (none configured). Anything but `Exact` means the cost figures understate spend; the fix is `llmRouting.modelCatalog` in the platform values.',
+  type: 'counter',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+/**
  * All registered metrics. Use this to enumerate or inspect the full set
  * of metrics the application relies on.
  */
@@ -326,4 +381,9 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   KarpenterNodePoolsLimit,
   KarpenterNodePoolsUsage,
   KarpenterNodePoolsAllowedDisruptions,
+  AgentgatewayGenAiClientTokenUsage,
+  AgentgatewayGenAiClientCostUsdTotal,
+  AgentgatewayGenAiServerRequestDuration,
+  AgentgatewayRequestsTotal,
+  AgentgatewayCostCatalogLookupsTotal,
 ];

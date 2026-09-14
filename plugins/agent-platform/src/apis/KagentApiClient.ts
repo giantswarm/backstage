@@ -28,7 +28,12 @@ import {
   parseCreatedSessionId,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { createSseDataDecoder, readStreamFrame } from '../lib/kagentStreamTurn';
-import { KAGENT_AUTH_HEADER, KagentApi, KagentIdentity } from './types';
+import {
+  ConfirmationAnswerRequest,
+  KAGENT_AUTH_HEADER,
+  KagentApi,
+  KagentIdentity,
+} from './types';
 
 export const kagentApiRef = createApiRef<KagentApi>({
   id: 'plugin.agent-platform.kagent',
@@ -101,6 +106,51 @@ function isErrorEnvelope(body: unknown): body is Record<string, unknown> {
   return (body as { error?: unknown }).error === true;
 }
 
+/**
+ * A send refused because the session is still working on the previous turn:
+ * the backend's 409, as {@link KagentApiClient.throwIfNotOk} names it.
+ */
+export const CONFLICT_ERROR_NAME = 'ConflictError';
+
+export function isConflictError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === CONFLICT_ERROR_NAME;
+}
+
+/**
+ * A request the backend refused because the tab's Backstage token no longer
+ * verifies: its 401, as {@link KagentApiClient.throwIfNotOk} names it. Seen
+ * when the Backstage pod rolled while the page stayed open; a reload signs the
+ * tab back in.
+ */
+export const UNAUTHORIZED_ERROR_NAME = 'UnauthorizedError';
+
+export function isUnauthorizedError(error: unknown): boolean {
+  return (error as Error | undefined)?.name === UNAUTHORIZED_ERROR_NAME;
+}
+
+/**
+ * The body both answer routes take, with the optional fields omitted rather
+ * than sent as `undefined` — one shape whether the answer goes unary or
+ * streaming.
+ */
+function answerBody(
+  agent: { namespace: string; name: string },
+  answer: ConfirmationAnswerRequest,
+) {
+  return {
+    agentNamespace: agent.namespace,
+    agentName: agent.name,
+    messageId: answer.messageId,
+    taskId: answer.taskId,
+    decision: answer.decision,
+    ...(answer.answers && { answers: answer.answers }),
+    ...(answer.rejectionReason && {
+      rejectionReason: answer.rejectionReason,
+    }),
+    ...(answer.text && { text: answer.text }),
+  };
+}
+
 /** Which read produced the drift — part of the dedupe key and of the message. */
 type DriftSource = 'sessions' | 'session' | 'session tasks';
 
@@ -121,7 +171,8 @@ function reportDrift(
 }
 
 /**
- * Client for the kagent REST API, via the agent-platform-backend proxy.
+ * Client for kagent, via the agent-platform-backend's JSON/SSE routes (the
+ * backend speaks gRPC to the controller; the browser never does).
  *
  * Two responsibilities beyond plain fetching:
  *
@@ -314,6 +365,7 @@ export class KagentApiClient implements KagentApi {
     installation: string,
     agent: { namespace: string; name: string },
     name: string,
+    requestId: string,
   ): Promise<{ sessionId: string }> {
     const { url, headers } = await this.prepare(
       '/kagent/sessions',
@@ -326,6 +378,7 @@ export class KagentApiClient implements KagentApi {
         agentNamespace: agent.namespace,
         agentName: agent.name,
         name,
+        requestId,
       }),
     });
 
@@ -335,8 +388,8 @@ export class KagentApiClient implements KagentApi {
     await this.throwIfNotOk(response, { badRequestIsMissing: false });
 
     // The one write whose body is **required**. The others tolerate an empty
-    // response because nothing in it is needed; here the generated session id is
-    // the entire point, and without it there is nowhere to navigate — so an
+    // response because nothing in it is needed; here the generated instance id
+    // is the entire point, and without it there is nowhere to navigate — so an
     // unreadable body has to fail rather than resolve into a broken link.
     const body = await response.json().catch(() => undefined);
     const sessionId = parseCreatedSessionId(body);
@@ -351,6 +404,31 @@ export class KagentApiClient implements KagentApi {
     }
 
     return { sessionId };
+  }
+
+  async cancelTask(
+    installation: string,
+    sessionId: string,
+    taskId: string,
+  ): Promise<void> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(
+        sessionId,
+      )}/tasks/${encodeURIComponent(taskId)}/cancel`,
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'POST',
+      headers,
+    });
+
+    // `badRequestIsMissing: false` for the same reason as the other writes: a
+    // 400 here is a rejected cancel, nothing like "kagent is absent".
+    await this.throwIfNotOk(response, { badRequestIsMissing: false });
+
+    // The body is the task as the controller left it — canceled, or already
+    // finished. Nothing here needs it: the caller refreshes the conversation,
+    // which is the honest record of what the turn became.
   }
 
   async renameSession(
@@ -436,23 +514,65 @@ export class KagentApiClient implements KagentApi {
     agent: { namespace: string; name: string },
     message: { messageId: string; text: string },
     onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<void> {
-    const { url, headers } = await this.prepare(
-      `/kagent/sessions/${encodeURIComponent(sessionId)}/messages/stream`,
+    await this.relayStream(
       installation,
+      `/kagent/sessions/${encodeURIComponent(sessionId)}/messages/stream`,
+      {
+        agentNamespace: agent.namespace,
+        agentName: agent.name,
+        messageId: message.messageId,
+        text: message.text,
+      },
+      onEvent,
+      signal,
     );
+  }
+
+  async streamAnswer(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    answer: ConfirmationAnswerRequest,
+    onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.relayStream(
+      installation,
+      `/kagent/sessions/${encodeURIComponent(sessionId)}/answer/stream`,
+      answerBody(agent, answer),
+      onEvent,
+      signal,
+    );
+  }
+
+  /**
+   * POST a body to one of the backend's streaming routes and hand every event
+   * frame to `onEvent` — the shared half of {@link streamMessage} and
+   * {@link streamAnswer}, so a message and an answer classify a broken stream
+   * identically. See {@link KagentApi.streamMessage} for the contract.
+   *
+   * `signal` reaches the fetch, so an abort ends the body read as well as a
+   * request still waiting for its headers; both land in the same classification
+   * below as any other cut.
+   */
+  private async relayStream(
+    installation: string,
+    path: string,
+    body: unknown,
+    onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const { url, headers } = await this.prepare(path, installation);
 
     let response: Response;
     try {
       response = await this.fetchApi.fetch(url, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentNamespace: agent.namespace,
-          agentName: agent.name,
-          messageId: message.messageId,
-          text: message.text,
-        }),
+        body: JSON.stringify(body),
+        signal,
       });
     } catch (error) {
       // The request never got an answer — a dropped connection, a door that
@@ -549,14 +669,7 @@ export class KagentApiClient implements KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    answer: {
-      messageId: string;
-      taskId: string;
-      decision: 'approve' | 'reject';
-      answers?: string[][];
-      rejectionReason?: string;
-      text?: string;
-    },
+    answer: ConfirmationAnswerRequest,
   ): Promise<void> {
     const { url, headers } = await this.prepare(
       `/kagent/sessions/${encodeURIComponent(sessionId)}/answer`,
@@ -565,18 +678,7 @@ export class KagentApiClient implements KagentApi {
     const response = await this.fetchApi.fetch(url, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agentNamespace: agent.namespace,
-        agentName: agent.name,
-        messageId: answer.messageId,
-        taskId: answer.taskId,
-        decision: answer.decision,
-        ...(answer.answers && { answers: answer.answers }),
-        ...(answer.rejectionReason && {
-          rejectionReason: answer.rejectionReason,
-        }),
-        ...(answer.text && { text: answer.text }),
-      }),
+      body: JSON.stringify(answerBody(agent, answer)),
     });
 
     // `badRequestIsMissing: false` for the same reason as the other writes: this
@@ -726,13 +828,20 @@ export class KagentApiClient implements KagentApi {
         error.name = 'NotFoundError';
       }
       if (response.status === 401) {
-        error.name = 'UnauthorizedError';
+        error.name = UNAUTHORIZED_ERROR_NAME;
       }
       if (response.status === 403) {
         error.name = 'ForbiddenError';
       }
       if (response.status === 404) {
         error.name = 'NotFoundError';
+      }
+      // A send refused because the session is still working on the previous
+      // turn — kagent holds one active task per session. Named so the page can
+      // explain it and offer to cancel that turn, rather than showing a generic
+      // failure over a composer the next attempt will fail from again.
+      if (response.status === 409) {
+        error.name = CONFLICT_ERROR_NAME;
       }
       if (response.status === 503) {
         error.name = 'ServiceUnavailableError';

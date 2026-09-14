@@ -1,7 +1,9 @@
 import { makeStyles, Theme } from '@material-ui/core';
+import { Skeleton } from '@backstage/ui';
 import { Stat } from '@giantswarm/backstage-plugin-ui-react';
 import { SessionUsageTotals } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { formatCount, formatTokens } from '../../lib/formatNumbers';
+import { estimateCost, type TokenRates } from '../../lib/costEstimate';
+import { formatCount, formatTokens, formatUsd } from '../../lib/formatNumbers';
 
 const useStyles = makeStyles((theme: Theme) => ({
   strip: {
@@ -24,8 +26,24 @@ const useStyles = makeStyles((theme: Theme) => ({
  * "(billed)" for the same reason the session detail strip does: every model
  * call re-sends the whole context, so the raw figure is startling and reads as
  * a bug unlabelled.
+ *
+ * The cost is the one figure here that is not counted but *derived*: the
+ * installation's observed $/token applied to the token totals beside it. It
+ * reads `—` rather than `$0.00` when no rate could be derived, because
+ * "nothing was priced" and "nothing was spent" are different facts — and a
+ * skeleton rather than either while the rate is still being fetched, because
+ * "not yet" is a third thing again.
  */
-export function TotalsStrip({ totals }: { totals: SessionUsageTotals }) {
+export function TotalsStrip({
+  totals,
+  rates,
+  isRateLoading,
+}: {
+  totals: SessionUsageTotals;
+  rates?: TokenRates;
+  /** The rate's two Mimir queries are still in flight. */
+  isRateLoading?: boolean;
+}) {
   const classes = useStyles();
   return (
     <div className={classes.strip}>
@@ -37,6 +55,23 @@ export function TotalsStrip({ totals }: { totals: SessionUsageTotals }) {
       />
       <Stat label="Output tokens" value={formatTokens(totals.outputTokens)} />
       <Stat label="Tool calls" value={formatCount(totals.toolCalls)} />
+      {/* A skeleton, not an em dash, while the rate is in flight. The counts
+          beside it come from kagent and land first, so an em dash here reads
+          as "nothing could be priced" — a finding — when the truth is only
+          "not yet". Sized to the value type so the strip does not reflow when
+          the figure arrives. */}
+      <Stat
+        label="Est. cost"
+        value={
+          isRateLoading ? (
+            <Skeleton width={56} height={22} rounded />
+          ) : (
+            formatUsd(
+              estimateCost(totals.inputTokens, totals.outputTokens, rates),
+            )
+          )
+        }
+      />
     </div>
   );
 }

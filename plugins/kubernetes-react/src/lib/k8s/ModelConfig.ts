@@ -1,31 +1,40 @@
 import { crds } from '@giantswarm/k8s-types';
 import { KubeObject } from './KubeObject';
 
-type ModelConfigInterface = crds.kagent.v1alpha2.ModelConfig;
+type ModelConfigInterface = crds.kagent.v1alpha3.ModelConfig;
 
 /** A `status.conditions` entry as the kagent controller writes it. */
-type ModelConfigCondition = NonNullable<
+export type ModelConfigCondition = NonNullable<
   NonNullable<ModelConfigInterface['status']>['conditions']
 >[number];
 
 /**
- * Condition types the kagent controller sets on a ModelConfig. `Accepted`
- * reports whether the provider/model/secret combination reconciled into
- * something the runtime can mount — there is no separate `Ready`, since a
- * ModelConfig has no workload of its own.
+ * Condition types the kagent controller sets on a ModelConfig, written
+ * separately: `Accepted` reports whether the spec itself is valid for the
+ * provider, `ResolvedRefs` whether what it references (the key Secret, a
+ * provider config) resolves. There is no `Ready`, since a ModelConfig has no
+ * workload of its own.
  */
 export const ModelConfigConditionType = {
   Accepted: 'Accepted',
+  ResolvedRefs: 'ResolvedRefs',
 } as const;
+
+const READINESS_CONDITIONS = [
+  ModelConfigConditionType.Accepted,
+  ModelConfigConditionType.ResolvedRefs,
+];
 
 /**
  * Readiness of a ModelConfig, derived from its status conditions.
  *
- * - `accepted` — the controller resolved the spec (including the referenced
- *   key secret).
- * - `notAccepted` — the controller rejected it, e.g. a missing secret.
- * - `pending` — not reconciled yet, or reconciled against an older generation.
- *   Distinct from `notAccepted`: it means "not known yet", not "broken".
+ * - `accepted` — both `Accepted` and `ResolvedRefs` are `True`: the runtime can
+ *   mount it.
+ * - `notAccepted` — the controller rejected it: either condition is `False`
+ *   (a malformed spec, a missing key Secret).
+ * - `pending` — not reconciled yet, reconciled against an older generation, or a
+ *   verdict still `Unknown`. Distinct from `notAccepted`: it means "not known
+ *   yet", not "broken".
  */
 export type ModelConfigReadiness = 'accepted' | 'notAccepted' | 'pending';
 
@@ -64,10 +73,13 @@ export function deriveModelConfigReadiness(
     return 'pending';
   }
 
-  return findCondition(json, ModelConfigConditionType.Accepted)?.status ===
-    'True'
-    ? 'accepted'
-    : 'notAccepted';
+  const statuses = READINESS_CONDITIONS.map(
+    type => findCondition(json, type)?.status,
+  );
+  if (statuses.some(status => status === 'False')) {
+    return 'notAccepted';
+  }
+  return statuses.every(status => status === 'True') ? 'accepted' : 'pending';
 }
 
 /**
@@ -76,7 +88,7 @@ export function deriveModelConfigReadiness(
  * Agent Platform section's Models tab lists and manages them.
  */
 export class ModelConfig extends KubeObject<ModelConfigInterface> {
-  static readonly supportedVersions = ['v1alpha2'] as const;
+  static readonly supportedVersions = ['v1alpha3'] as const;
   static readonly group = 'kagent.dev';
   static readonly kind = 'ModelConfig' as const;
   static readonly plural = 'modelconfigs';
@@ -145,11 +157,20 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
     return deriveModelConfigReadiness(this.jsonData);
   }
 
+  getCondition(type: string): ModelConfigCondition | undefined {
+    return findCondition(this.jsonData, type);
+  }
+
   /**
-   * The controller's `Accepted` condition, for surfacing its `message` (e.g.
-   * which Secret could not be found) next to a `notAccepted` readiness.
+   * The controller's explanation for a `notAccepted` readiness: the message of
+   * the first condition that is not `True` (e.g. which Secret could not be
+   * found). `undefined` when nothing is failing.
    */
-  getAcceptedCondition() {
-    return findCondition(this.jsonData, ModelConfigConditionType.Accepted);
+  getReadinessMessage(): string | undefined {
+    return (
+      READINESS_CONDITIONS.map(type => this.getCondition(type)).find(
+        condition => condition && condition.status !== 'True',
+      )?.message || undefined
+    );
   }
 }

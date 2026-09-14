@@ -481,7 +481,7 @@ describe('toModelRow', () => {
     const row = toModelRow(
       new ModelConfig(
         {
-          apiVersion: 'kagent.dev/v1alpha2',
+          apiVersion: 'kagent.dev/v1alpha3',
           kind: 'ModelConfig',
           metadata: {
             name: 'qwen3',
@@ -506,7 +506,7 @@ describe('toModelRow', () => {
               },
             ],
           },
-        } as crds.kagent.v1alpha2.ModelConfig,
+        } as crds.kagent.v1alpha3.ModelConfig,
         'inst-1',
       ),
     );
@@ -529,11 +529,11 @@ describe('toModelRow', () => {
     const row = toModelRow(
       new ModelConfig(
         {
-          apiVersion: 'kagent.dev/v1alpha2',
+          apiVersion: 'kagent.dev/v1alpha3',
           kind: 'ModelConfig',
           metadata: { name: 'qwen3', namespace: 'kagent' },
           spec: { provider: 'OpenAI', model: 'qwen3-8-27b' },
-        } as crds.kagent.v1alpha2.ModelConfig,
+        } as crds.kagent.v1alpha3.ModelConfig,
         'inst-1',
       ),
       {

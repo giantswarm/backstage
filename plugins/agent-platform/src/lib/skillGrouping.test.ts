@@ -12,6 +12,7 @@ function skill(overrides: Partial<DiscoveredSkill>): DiscoveredSkill {
     repoUrl: 'https://github.com/giantswarm/agent-skills',
     path: 'demo',
     ref: 'main',
+    commit: 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1',
     ...overrides,
   };
 }

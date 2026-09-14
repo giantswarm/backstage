@@ -416,13 +416,15 @@ agentPlatform:
     # becomes a kagent spec.skills.gitRefs entry.
     repositories:
       - https://github.com/giantswarm/agent-skills
-  # kagent REST API access, used by the Sessions list. The backend proxies
-  # kagent per installation and forwards the user's Dex ID token.
+  # kagent API v2 access (gRPC), used by the Sessions list, the session chat
+  # and the Usage tab. The backend speaks gRPC to each installation's
+  # controller route and forwards the user's Dex ID token.
   #
   # By default every `gs.installations` entry with a `baseDomain` is derived as
-  # `https://kagent.<baseDomain>/api` — installations that don't run kagent
-  # simply report as "not installed". Set `installations` to restrict the
-  # fan-out to the ones that do, or to point one at a different ingress.
+  # `https://agentgateway.<baseDomain>` — the connectivity chart's controller
+  # route hostname — and installations that don't run kagent simply report as
+  # "not installed". Set `installations` to restrict the fan-out to the ones
+  # that do, or to point one at a different origin.
   # Base domains stay out of this file: they are backend-only config.
   # kagent:
   #   timeoutMs: 10000

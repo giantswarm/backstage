@@ -27,7 +27,7 @@
       "modelConfig": {
         "name": "qwen3-14b",
         "namespace": "kagent",
-        "apiVersion": "kagent.dev/v1alpha2",
+        "apiVersion": "kagent.dev/v1alpha3",
         "provider": "OpenAI",
         "model": "Qwen/Qwen3-14B",
         "providerModel": "qwen3-14b",

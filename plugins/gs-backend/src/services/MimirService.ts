@@ -32,6 +32,27 @@ export interface MimirQueryResponse {
   error?: string;
 }
 
+/**
+ * One series of a range query: the same labels as an instant sample, but many
+ * `[timestamp, value]` pairs instead of one.
+ */
+export interface MimirMatrixSample {
+  metric: Record<string, string>;
+  values: [number, string][];
+}
+
+export interface MimirRangeQueryData {
+  resultType: string;
+  result: MimirMatrixSample[];
+}
+
+export interface MimirRangeQueryResponse {
+  status: string;
+  data: MimirRangeQueryData;
+  errorType?: string;
+  error?: string;
+}
+
 export class MimirService {
   static create(options: {
     config: RootConfigService;
@@ -51,6 +72,58 @@ export class MimirService {
     oidcToken: string;
   }): Promise<MimirQueryResponse> {
     const { installationName, query, oidcToken } = options;
+
+    return this.fetchPrometheus<MimirQueryResponse>({
+      installationName,
+      path: 'query',
+      params: { query },
+      oidcToken,
+    });
+  }
+
+  /**
+   * A PromQL query evaluated at every `step` across `[start, end]`, for a
+   * series over time rather than one value.
+   *
+   * `start` and `end` are Unix seconds and `step` is a Prometheus duration
+   * (`60s`, `1d`) or a number of seconds — both are passed through to Mimir
+   * verbatim, so the caller owns the alignment. Mimir refuses a range that
+   * would exceed its point limit (11k per series by default), which surfaces
+   * here as `ServiceUnavailableError` carrying its message.
+   */
+  async queryRange(options: {
+    installationName: string;
+    query: string;
+    start: string;
+    end: string;
+    step: string;
+    oidcToken: string;
+  }): Promise<MimirRangeQueryResponse> {
+    const { installationName, query, start, end, step, oidcToken } = options;
+
+    return this.fetchPrometheus<MimirRangeQueryResponse>({
+      installationName,
+      path: 'query_range',
+      params: { query, start, end, step },
+      oidcToken,
+    });
+  }
+
+  /**
+   * The shared leg of both queries: resolve the installation's Mimir, call it
+   * with the user's OIDC token, and turn every failure into the error class
+   * that describes it.
+   *
+   * Both endpoints have identical auth, tenancy and failure behaviour, so this
+   * is the one place either can be got wrong.
+   */
+  private async fetchPrometheus<T>(options: {
+    installationName: string;
+    path: 'query' | 'query_range';
+    params: Record<string, string>;
+    oidcToken: string;
+  }): Promise<T> {
+    const { installationName, path, params, oidcToken } = options;
 
     // `mimirEnabled: false` opts an installation out of the observability
     // integration entirely (standalone installations have no Mimir at
@@ -76,12 +149,14 @@ export class MimirService {
     }
 
     const url = new URL(
-      `https://observability.${baseDomain}/prometheus/api/v1/query`,
+      `https://observability.${baseDomain}/prometheus/api/v1/${path}`,
     );
-    url.searchParams.set('query', query);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
 
     this.logger.debug(
-      `Proxying Mimir query for installation "${installationName}": ${query}`,
+      `Proxying Mimir ${path} for installation "${installationName}": ${params.query}`,
     );
 
     const controller = new AbortController();
@@ -132,7 +207,7 @@ export class MimirService {
       );
     }
 
-    return response.json() as Promise<MimirQueryResponse>;
+    return response.json() as Promise<T>;
   }
 }
 

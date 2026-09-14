@@ -4,7 +4,7 @@ import { createResource } from './createResource';
 
 const gvk: CustomResourceMatcher = {
   group: 'kagent.dev',
-  apiVersion: 'v1alpha2',
+  apiVersion: 'v1alpha3',
   plural: 'modelconfigs',
   isCore: false,
 };
@@ -32,7 +32,7 @@ describe('createResource', () => {
   it('POSTs the manifest to the namespaced collection path', async () => {
     const { api, proxy } = createKubernetesApi({ ok: true, status: 201 });
     const manifest = {
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name: 'qwen3', namespace: 'kagent' },
       spec: { model: 'qwen3-8-27b' },
@@ -51,7 +51,7 @@ describe('createResource', () => {
       clusterName: 'test-installation',
       // No trailing slash: `k8sUrl.create` appends one, which we do not want to
       // rely on the apiserver tolerating for a mutating verb.
-      path: '/apis/kagent.dev/v1alpha2/namespaces/kagent/modelconfigs?fieldManager=giantswarm-backstage',
+      path: '/apis/kagent.dev/v1alpha3/namespaces/kagent/modelconfigs?fieldManager=giantswarm-backstage',
       init: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -72,7 +72,7 @@ export function ModelDetailPage() {
   } = useResource(
     installation,
     ModelConfig,
-    // We type against a single version (v1alpha2), so skip API discovery —
+    // We type against a single version (v1alpha3), so skip API discovery —
     // same reasoning as ModelConfigsProvider.
     { name, namespace, enableDiscovery: false },
   );

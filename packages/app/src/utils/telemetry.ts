@@ -176,6 +176,24 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Usage' };
       break;
 
+    // The Usage tab's second-level views (`overview`, `cost`, `conversations`,
+    // `mcp`), reported the same way the Muster section's are. The bare path
+    // above keeps its existing name rather than becoming 'Usage index': it now
+    // only ever redirects here, and renaming it would break continuity in
+    // TelemetryDeck for nothing.
+    //
+    // `view` is safe to include where a session or agent path's segments were
+    // not: these four are a fixed, public set, so they identify a view rather
+    // than a customer's installation or an agent's name.
+    case pathname.startsWith('/agent-platform/usage/'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Usage',
+        view: parts[3],
+      };
+      break;
+    }
+
     case pathname === '/agent-platform':
       payload = { page: 'Agents index' };
       break;

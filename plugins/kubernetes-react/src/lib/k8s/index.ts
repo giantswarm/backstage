@@ -9,17 +9,31 @@ export * from './errorMessages';
 export {
   Agent,
   AgentConditionType,
+  decidingHarnessStatus,
   deriveAgentReadiness,
+  deriveHarnessReadiness,
   getAgentStatusChangedAt,
+  HARNESS_LABEL,
   isAgentStatusStale,
   isAgentTransitional,
 } from './Agent';
 export type {
-  AgentMcpServerRef,
+  AgentHarness,
+  AgentHarnessCondition,
+  AgentHarnessStatus,
+  AgentMcpBinding,
   AgentReadiness,
-  AgentTool,
+  AgentSkill,
+  AgentTemplateInterface,
   AgentToolAgentRef,
+  AgentToolBinding,
+  HarnessReadiness,
 } from './Agent';
+export { RemoteMCPServer } from './RemoteMCPServer';
+export type {
+  RemoteMCPServerHeader,
+  RemoteMCPServerInterface,
+} from './RemoteMCPServer';
 export { App } from './App';
 export { ClusterSecretStore } from './ClusterSecretStore';
 export { ConfigMap } from './ConfigMap';
@@ -58,7 +72,7 @@ export {
   ModelConfig,
   ModelConfigConditionType,
 } from './ModelConfig';
-export type { ModelConfigReadiness } from './ModelConfig';
+export type { ModelConfigCondition, ModelConfigReadiness } from './ModelConfig';
 export { OCIRepository } from './OCIRepository';
 export { Organization } from './Organization';
 export { ProviderConfig } from './ProviderConfig';

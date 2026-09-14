@@ -59,7 +59,7 @@ export function AgentSessionsCard({
             hideColumns={['agentName', 'installation']}
             showSearch={false}
             showPagination={false}
-            emptyMessage="No sessions with this agent yet."
+            emptyMessage="No sessions with this agent yet. Conversations from before the move to kagent API v2 are not available."
           />
         )}
 

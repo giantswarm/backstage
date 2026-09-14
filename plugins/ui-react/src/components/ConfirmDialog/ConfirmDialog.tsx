@@ -27,6 +27,12 @@ export type ConfirmDialogProps = {
   destructive?: boolean;
   /** The confirmed action is in flight: both buttons lock and the dialog stays put. */
   isBusy?: boolean;
+  /**
+   * Nothing to confirm right now — the caller's own precondition is not met (a
+   * dry run still running, a refusal, nothing that would change). Only the
+   * confirm button locks; the dialog stays dismissable.
+   */
+  isConfirmDisabled?: boolean;
   /** Shown as a danger alert above the buttons. Typically a failed attempt's message. */
   error?: ReactNode;
   onConfirm: () => void;
@@ -59,6 +65,7 @@ export function ConfirmDialog({
   busyLabel,
   destructive,
   isBusy = false,
+  isConfirmDisabled = false,
   error,
   onConfirm,
   width = 'min(90vw, 520px)',
@@ -90,6 +97,7 @@ export function ConfirmDialog({
           variant="primary"
           destructive={destructive}
           isPending={isBusy}
+          isDisabled={isConfirmDisabled}
           onClick={onConfirm}
         >
           {isBusy ? (busyLabel ?? confirmLabel) : confirmLabel}

@@ -3,6 +3,8 @@ import {
   a2aMessageWireSchema,
   a2aStreamEventWireSchema,
   CONFIRMATION_TOOL_NAME,
+  describeSessionState,
+  normalizeStreamEvent,
   FAILED_STATES,
   isAgentToolName,
   isFunctionCallPart,
@@ -129,12 +131,36 @@ export function createStreamTurn(sentMessageId: string): StreamTurn {
 }
 
 /**
+ * Whether the stream has delivered the end of the turn.
+ *
+ * Both executors close a turn with a terminal `status-update` (`final: true`),
+ * which is {@link StreamTurn.isFinal}; a `task` snapshot already in a terminal
+ * state counts too, for a stream opened onto a turn that had finished. A stream
+ * that ends — cleanly or not — before this says true has been **lost**: the turn
+ * goes on without its preview, and the poll is the only record of how it ends.
+ */
+export function isStreamTurnOver(turn: StreamTurn): boolean {
+  if (turn.isFinal) {
+    return true;
+  }
+  if (turn.stateKey === undefined) {
+    return false;
+  }
+  const state = describeSessionState(turn.stateKey);
+  return state !== undefined && !state.isActive;
+}
+
+/**
  * Fold one stream event into the turn. Pure: returns a new state, never throws
  * — an unreadable event returns the previous state with only `dispatched` set,
  * because even an event we cannot parse proves kagent is running the turn.
+ *
+ * Takes the event as the backend relayed it: an A2A v1 `StreamResponse` is
+ * translated into the `kind`-discriminated shape first (`normalizeStreamEvent`
+ * in agent-platform-common); a legacy event passes through.
  */
 export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
-  const parsed = a2aStreamEventWireSchema.safeParse(data);
+  const parsed = a2aStreamEventWireSchema.safeParse(normalizeStreamEvent(data));
   if (!parsed.success) {
     return turn.dispatched ? turn : { ...turn, dispatched: true };
   }
@@ -726,12 +752,16 @@ export type StreamFrame =
   | { kind: 'unreadable' };
 
 /**
- * Read one frame's JSON-RPC envelope.
+ * Read one frame.
  *
- * A2A reports failures **in-band**: a frame carrying `error` instead of
- * `result` is how a2a-go says the turn could not run (unresolvable agent,
- * invalid params, an executor that panicked). Distinguished here so the caller
- * can treat it as a decision rather than a broken pipe.
+ * Failures arrive **in-band**: a frame carrying `error` is how the relay says
+ * the turn could not run or its stream broke (the backend writes one for a
+ * gRPC failure mid-stream, with the code and the controller's message).
+ * Distinguished here so the caller can treat it as a decision rather than a
+ * broken pipe.
+ *
+ * An event frame is the A2A v1 `StreamResponse` itself; a legacy JSON-RPC
+ * envelope (`{result}`) is unwrapped, so either relay reads the same.
  */
 export function readStreamFrame(data: string): StreamFrame {
   let envelope: unknown;
@@ -754,5 +784,8 @@ export function readStreamFrame(data: string): StreamFrame {
           : 'the agent rejected the message without saying why',
     };
   }
-  return { kind: 'event', result: (envelope as { result?: unknown }).result };
+  if ('result' in envelope) {
+    return { kind: 'event', result: (envelope as { result?: unknown }).result };
+  }
+  return { kind: 'event', result: envelope };
 }

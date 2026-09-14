@@ -4,8 +4,9 @@ import { parseFrontmatter } from './frontmatter';
 
 /**
  * A skill discovered in a GitHub repository. Each `SKILL.md` file defines one
- * skill; its containing directory is the skill root, referenced by kagent as a
- * `spec.skills.gitRefs` entry (`{ url, path, ref }`).
+ * skill; its containing directory is the skill root. An agent mounts it as a
+ * chart `skills[]` entry pinned to a commit (`{ name, path, git: { url,
+ * commit } }`), so every skill is read — and reported — at one commit.
  */
 export interface DiscoveredSkill {
   /** Frontmatter `name`, falling back to the directory (or repo) basename. */
@@ -18,12 +19,23 @@ export interface DiscoveredSkill {
   path: string;
   /** Git ref (branch) the skill was discovered on. */
   ref: string;
+  /**
+   * The full commit id `ref` pointed at when the tree was read — the pin an
+   * agent carries. The tree and every `SKILL.md` are read at this commit, so
+   * the skill shown is the skill pinned.
+   */
+  commit: string;
 }
 
-/** Result of a discovery run. `truncated` is true when GitHub capped the git
- * tree and some skills may be missing from `skills`. */
+/**
+ * Result of a discovery run. `commit` is the head of `ref` the whole listing
+ * was read at; `truncated` is true when GitHub capped the git tree and some
+ * skills may be missing from `skills`.
+ */
 export interface DiscoverAgentSkillsResult {
   skills: DiscoveredSkill[];
+  ref: string;
+  commit: string;
   truncated: boolean;
 }
 
@@ -126,6 +138,34 @@ async function resolveDefaultBranch(
   return data.default_branch || 'main';
 }
 
+/**
+ * The full commit id a ref points at right now. `GET /repos/{o}/{r}/commits/{ref}`
+ * with the `sha` media type answers a bare SHA for a branch, a tag or a commit
+ * alike, so the caller's `ref` needs no classification.
+ */
+async function resolveHeadCommit(
+  owner: string,
+  repo: string,
+  ref: string,
+  token: string | undefined,
+): Promise<string> {
+  const response = await githubApiFetch(
+    `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(
+      ref,
+    )}`,
+    token,
+    'application/vnd.github.sha',
+  );
+  const sha = (await response.text()).trim();
+  if (!/^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(sha)) {
+    throw new GitHubApiError(
+      502,
+      `GitHub did not answer a commit id for ${owner}/${repo}@${ref}: ${sha}`,
+    );
+  }
+  return sha;
+}
+
 async function fetchRawContent(
   owner: string,
   repo: string,
@@ -146,9 +186,12 @@ async function fetchRawContent(
 
 /**
  * Discovers agent skills in a GitHub repository by finding every `SKILL.md`
- * file (at any depth) and reading its frontmatter. Authentication is added when
- * a GitHub integration provides credentials for the repo; public repos work
- * unauthenticated (subject to GitHub's lower anonymous rate limit).
+ * file (at any depth) and reading its frontmatter. The ref is resolved to its
+ * head commit first and the tree and every file are read at that commit, so
+ * the listing is one consistent snapshot and each skill carries the commit an
+ * agent pins it to. Authentication is added when a GitHub integration provides
+ * credentials for the repo; public repos work unauthenticated (subject to
+ * GitHub's lower anonymous rate limit).
  */
 export async function discoverAgentSkills(options: {
   repoUrl: string;
@@ -170,11 +213,10 @@ export async function discoverAgentSkills(options: {
   }
 
   const branch = ref ?? (await resolveDefaultBranch(owner, repo, token));
+  const commit = await resolveHeadCommit(owner, repo, branch, token);
 
   const treeResponse = await githubApiFetch(
-    `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(
-      branch,
-    )}?recursive=1`,
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${commit}?recursive=1`,
     token,
   );
   const tree = (await treeResponse.json()) as {
@@ -198,7 +240,7 @@ export async function discoverAgentSkills(options: {
         owner,
         repo,
         file.path,
-        branch,
+        commit,
         token,
       );
       const { name, description } = parseFrontmatter(content);
@@ -208,6 +250,7 @@ export async function discoverAgentSkills(options: {
         repoUrl: canonicalRepoUrl,
         path: dir,
         ref: branch,
+        commit,
       };
     },
   );
@@ -225,6 +268,8 @@ export async function discoverAgentSkills(options: {
 
   return {
     skills,
+    ref: branch,
+    commit,
     // GitHub caps the recursive tree (~100k entries / 7MB); past that some
     // SKILL.md files are missing, or a content read failed above.
     truncated:

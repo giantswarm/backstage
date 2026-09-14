@@ -11,10 +11,10 @@ import type { ModelRow } from './ModelsTable';
 
 /**
  * How each readiness state presents. A ModelConfig has no workload, so there
- * is only the controller's `Accepted` verdict: `accepted` reads as positive,
- * `notAccepted` as negative (typically a missing or malformed key Secret,
- * which the tooltip explains), and `pending` as neutral "not known yet" —
- * same reasoning as the agents' readiness cell.
+ * are only the controller's `Accepted` and `ResolvedRefs` verdicts: `accepted`
+ * (both true) reads as positive, `notAccepted` as negative (typically a
+ * missing or malformed key Secret, which the tooltip explains), and `pending`
+ * as neutral "not known yet" — same reasoning as the agents' readiness cell.
  */
 export const MODEL_READINESS_PRESENTATION: Record<
   ModelConfigReadiness,

@@ -1,7 +1,13 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { Alert, Flex } from '@backstage/ui';
-import { IconButton, InputBase, makeStyles } from '@material-ui/core';
+import {
+  CircularProgress,
+  IconButton,
+  InputBase,
+  makeStyles,
+} from '@material-ui/core';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
+import StopIcon from '@material-ui/icons/Stop';
 import { isSendKey } from '../../lib/sendKey';
 
 /**
@@ -68,6 +74,23 @@ const useStyles = makeStyles(theme => ({
       backgroundColor: theme.palette.action.disabledBackground,
     },
   },
+  // Same footprint as Send, so the control does not jump when the turn ends;
+  // a neutral fill rather than the primary one, because stopping is not the
+  // action this box invites.
+  stop: {
+    flexShrink: 0,
+    width: 32,
+    height: 32,
+    color: theme.palette.text.primary,
+    backgroundColor: theme.palette.action.selected,
+    '&:hover': {
+      backgroundColor: theme.palette.action.focus,
+    },
+    '&.Mui-disabled': {
+      color: theme.palette.action.disabled,
+      backgroundColor: theme.palette.action.disabledBackground,
+    },
+  },
 }));
 
 export type SessionComposerProps = {
@@ -83,6 +106,13 @@ export type SessionComposerProps = {
    * is what used to make every send end with a click back into the box.
    */
   isAgentWorking: boolean;
+  /**
+   * The turn being waited on has stopped reporting progress. Sending stays
+   * withheld — kagent still holds the task active and would refuse a second
+   * message — but the caption stops promising a reply and points at the cancel
+   * instead. Only read while {@link isAgentWorking}.
+   */
+  isStalled?: boolean;
   /**
    * Focus the box on mount.
    *
@@ -108,7 +138,15 @@ export type SessionComposerProps = {
    * it.
    */
   disabledReason?: string;
+  /** Why the last send failed, shown as "Message not sent". */
   error?: string;
+  /**
+   * Why the last Stop failed, shown as "Stop failed" — its own notice, because
+   * a Stop is not a send and the words "Message not sent" over a turn that is
+   * still running say the opposite of what happened. The caller words it: the
+   * backend's message, with what to do about it where that is known.
+   */
+  stopError?: string;
   /**
    * A message whose send failed, whose text is put back into the box.
    *
@@ -120,6 +158,18 @@ export type SessionComposerProps = {
   restore?: { messageId: string; text: string } | null;
   /** Receives the trimmed text. Failure is reported through `error`. */
   onSubmit: (text: string) => void;
+  /**
+   * Stop the turn in progress, when one can be stopped.
+   *
+   * Offered in place of Send while `isAgentWorking` — the one moment Send is
+   * withheld anyway, so the slot is free and the two cannot be confused. Absent
+   * means there is nothing to cancel yet: the page does not know the running
+   * turn's task, which is the case for the first beat of a send before the
+   * stream or the poll has named it.
+   */
+  onStop?: () => void;
+  /** A Stop has been asked for and the server has not answered yet. */
+  isStopping?: boolean;
 };
 
 /**
@@ -149,12 +199,16 @@ export type SessionComposerProps = {
  */
 export function SessionComposer({
   isAgentWorking,
+  isStalled = false,
   isFinished,
   disabledReason,
   error,
+  stopError,
   restore,
   autoFocus = false,
   onSubmit,
+  onStop,
+  isStopping = false,
 }: SessionComposerProps) {
   const classes = useStyles();
   const [value, setValue] = useState('');
@@ -228,11 +282,24 @@ export function SessionComposer({
     }
   };
 
+  // Stop takes Send's slot while the agent works and the running turn is
+  // known. Not while a confirmation is open (`disabledReason` set): waiting on
+  // a human is the opposite of running, and there is nothing to cancel.
+  const showStop = isAgentWorking && !isDisabled && Boolean(onStop);
+
   let caption: string;
   if (disabledReason) {
     caption = disabledReason;
+  } else if (isStopping) {
+    caption = 'Stopping the agent…';
+  } else if (isAgentWorking && isStalled) {
+    caption = showStop
+      ? 'The agent has stopped reporting progress. Cancel the turn to send again.'
+      : 'The agent has stopped reporting progress. You can reply once this turn ends.';
   } else if (isAgentWorking) {
-    caption = 'The agent is working. You can reply once this turn finishes.';
+    caption = showStop
+      ? 'The agent is working. Stop it, or reply once this turn finishes.'
+      : 'The agent is working. You can reply once this turn finishes.';
   } else if (isFinished) {
     caption = 'Sending a message resumes this finished session.';
   } else {
@@ -245,6 +312,9 @@ export function SessionComposer({
       <Flex direction="column" gap="2">
         {error && (
           <Alert status="danger" title="Message not sent" description={error} />
+        )}
+        {stopError && (
+          <Alert status="danger" title="Stop failed" description={stopError} />
         )}
 
         <div
@@ -276,14 +346,30 @@ export function SessionComposer({
                 ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
                 : caption}
             </span>
-            <IconButton
-              type="submit"
-              aria-label="Send"
-              className={classes.send}
-              disabled={!canSubmit}
-            >
-              <ArrowUpwardIcon fontSize="small" />
-            </IconButton>
+            {showStop ? (
+              <IconButton
+                type="button"
+                aria-label="Stop"
+                className={classes.stop}
+                disabled={isStopping}
+                onClick={onStop}
+              >
+                {isStopping ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : (
+                  <StopIcon fontSize="small" />
+                )}
+              </IconButton>
+            ) : (
+              <IconButton
+                type="submit"
+                aria-label="Send"
+                className={classes.send}
+                disabled={!canSubmit}
+              >
+                <ArrowUpwardIcon fontSize="small" />
+              </IconButton>
+            )}
           </div>
         </div>
       </Flex>

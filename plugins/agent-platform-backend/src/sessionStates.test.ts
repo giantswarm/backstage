@@ -202,7 +202,8 @@ describe('SessionStateReader', () => {
     expect(listSessionTasks).toHaveBeenCalledWith(
       'a',
       { userToken: 'tok' },
-      { timeoutMs: 1234 },
+      // Status only: the newest task's state is all the rail needs.
+      { timeoutMs: 1234, historyLength: 0, includeArtifacts: false },
     );
   });
 
@@ -321,9 +322,11 @@ describe('SessionStateReader — bounds that must hold', () => {
     ).read('tok');
 
     // 2s of budget remained, so the read may not be given the 5s default.
-    expect(listSessionTasks).toHaveBeenCalledWith('a', expect.anything(), {
-      timeoutMs: 2_000,
-    });
+    expect(listSessionTasks).toHaveBeenCalledWith(
+      'a',
+      expect.anything(),
+      expect.objectContaining({ timeoutMs: 2_000 }),
+    );
   });
 
   it('keeps the flat timeout while there is budget to spare', async () => {
@@ -332,9 +335,11 @@ describe('SessionStateReader — bounds that must hold', () => {
 
     await reader({ budgetMs: 8_000, taskTimeoutMs: 5_000 }).read('tok');
 
-    expect(listSessionTasks).toHaveBeenCalledWith('a', expect.anything(), {
-      timeoutMs: 5_000,
-    });
+    expect(listSessionTasks).toHaveBeenCalledWith(
+      'a',
+      expect.anything(),
+      expect.objectContaining({ timeoutMs: 5_000 }),
+    );
   });
 
   it('a slow failing pass does not evict the healthy entry that replaced it', async () => {
@@ -500,5 +505,102 @@ describe('SessionStateReader — what counts as a shortfall', () => {
     expect(result.states).toHaveLength(1);
     expect(result.unreadable).toEqual([]);
     expect(result.skipped).toBe(1);
+  });
+
+  describe('on the kagent API v2 line', () => {
+    /** An AgentInstance as `ListAgentInstances` answers it. */
+    function instance(id: string, overrides: Record<string, unknown> = {}) {
+      return {
+        id,
+        creator: 'dev@lab.local',
+        harness: { namespace: 'kagent', name: 'kagent' },
+        agentTemplate: { namespace: 'kagent', name: 'sre-agent' },
+        state: 'AGENT_INSTANCE_STATE_SUSPENDED',
+        createdAt: '2026-09-11T00:00:00Z',
+        updatedAt: '2026-09-11T01:00:00Z',
+        name: `instance ${id}`,
+        contextId: `ctx-${id}`,
+        ...overrides,
+      };
+    }
+
+    /** A `ListTasksResponse` whose single task reports `state`. */
+    function tasks(state: string, timestamp: string) {
+      return {
+        tasks: [{ id: 't1', contextId: 'c1', status: { state, timestamp } }],
+        totalSize: 1,
+      };
+    }
+
+    it('reads the newest task state of a ready or suspended instance', async () => {
+      listSessions.mockResolvedValue({
+        agentInstances: [
+          instance('a'),
+          instance('b', { state: 'AGENT_INSTANCE_STATE_READY' }),
+        ],
+      });
+      listSessionTasks.mockImplementation(async (id: string) =>
+        id === 'a'
+          ? tasks('TASK_STATE_INPUT_REQUIRED', '2026-09-11T01:00:00Z')
+          : tasks('TASK_STATE_WORKING', '2026-09-11T01:30:00Z'),
+      );
+
+      const result = await reader().read('tok');
+
+      expect(result.states).toEqual([
+        {
+          sessionId: 'a',
+          state: 'input-required',
+          changedAt: Date.parse('2026-09-11T01:00:00Z'),
+        },
+        {
+          sessionId: 'b',
+          state: 'working',
+          changedAt: Date.parse('2026-09-11T01:30:00Z'),
+        },
+      ]);
+      expect(listSessionTasks).toHaveBeenCalledTimes(2);
+    });
+
+    it('takes a failed, creating or deleting instance’s own state without a task read', async () => {
+      listSessions.mockResolvedValue({
+        agentInstances: [
+          instance('failed', {
+            state: 'AGENT_INSTANCE_STATE_FAILED',
+            failure: { reason: 'ActorFailed', message: 'no worker' },
+          }),
+          instance('creating', { state: 'AGENT_INSTANCE_STATE_CREATING' }),
+          instance('ok'),
+        ],
+      });
+      listSessionTasks.mockResolvedValue(
+        tasks('TASK_STATE_COMPLETED', '2026-09-11T01:00:00Z'),
+      );
+
+      const result = await reader().read('tok');
+
+      expect(listSessionTasks).toHaveBeenCalledTimes(1);
+      expect(listSessionTasks).toHaveBeenCalledWith(
+        'ok',
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(result.states).toEqual(
+        expect.arrayContaining([
+          {
+            sessionId: 'failed',
+            state: 'failed',
+            changedAt: Date.parse('2026-09-11T01:00:00Z'),
+          },
+          {
+            sessionId: 'creating',
+            state: 'creating',
+            changedAt: Date.parse('2026-09-11T01:00:00Z'),
+          },
+          expect.objectContaining({ sessionId: 'ok', state: 'completed' }),
+        ]),
+      );
+      expect(result.skipped).toBe(0);
+    });
   });
 });

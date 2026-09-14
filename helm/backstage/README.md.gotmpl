@@ -11,4 +11,22 @@
 
 {{ template "chart.requirementsSection" . }}
 
+## Architecture support
+
+The `giantswarm/backstage` and `giantswarm/postgresql-cnpg` images are published
+for `linux/amd64` and `linux/arm64` as manifest lists, so the chart runs on a
+cluster with either architecture, or a mix of both.
+
+Pin an image by the digest of the manifest list, never by the digest of one
+architecture's manifest. A per-architecture digest defeats platform resolution:
+the kubelet pulls that architecture on every node and the container exits with
+`exec format error` on the others. Read the index digest with:
+
+```
+skopeo inspect --format '{{ "{{" }}.Digest{{ "}}" }}' docker://gsoci.azurecr.io/giantswarm/postgresql-cnpg:18.0
+```
+
+To steer placement, use `nodeSelector` for the Backstage pod and
+`database.postgresql.affinity` for the PostgreSQL instance pods.
+
 {{ template "chart.valuesSection" . }}

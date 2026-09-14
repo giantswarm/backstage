@@ -39,7 +39,7 @@ const ready: AutoWireCandidate = {
 function modelConfig(name: string, baseUrl: string): ModelConfig {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
+      apiVersion: 'kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name, namespace: 'kagent' },
       spec: { provider: 'OpenAI', model: name, openAI: { baseUrl } },

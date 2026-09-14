@@ -102,3 +102,25 @@ export { useDisabledInstallations } from './components/hooks/useDisabledInstalla
 // annotation), reused by the agent-platform create flow.
 export { useHelmChartTags } from './components/hooks/useHelmChartTags';
 export { useHelmChartValuesYaml } from './components/hooks/useHelmChartValuesYaml';
+// The Mimir/PromQL query layer, reused by the agent-platform plugin's LLM
+// usage views. The hooks own the `mimirEnabled` gate and the per-installation
+// OIDC token, so a consumer only supplies an installation and a query; the
+// metric constants come with them because the central registry
+// (`apis/mimir/metrics.ts`) is where a queried metric must be declared.
+export { useMimirQuery } from './components/hooks/useMimirQuery';
+export { useMimirRangeQuery } from './components/hooks/useMimirRangeQuery';
+export { useMimirAvailable } from './components/hooks/useMimirAvailable';
+export { sanitizePromQLValue } from './components/hooks/promql';
+export {
+  AgentgatewayGenAiClientTokenUsage,
+  AgentgatewayGenAiClientCostUsdTotal,
+  AgentgatewayGenAiServerRequestDuration,
+  AgentgatewayRequestsTotal,
+  AgentgatewayCostCatalogLookupsTotal,
+} from './apis/mimir/metrics';
+export type {
+  MimirMetricSample,
+  MimirMatrixSample,
+  MimirQueryResponse,
+  MimirRangeQueryResponse,
+} from './apis/mimir/types';

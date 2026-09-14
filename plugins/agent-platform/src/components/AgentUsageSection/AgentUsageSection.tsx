@@ -6,6 +6,7 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { agentDetailRouteRef } from '../../routes';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
+import { useTokenRates } from '../../hooks/useTokenRates';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useAgents } from '../AgentsDataProvider';
@@ -13,7 +14,6 @@ import { InstallationScopeNote } from '../InstallationGroups';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { ByAgentTable } from './ByAgentTable';
-import { ByModelTable } from './ByModelTable';
 import { CoverageNote } from './CoverageNote';
 import { TokensPerDayCard } from './TokensPerDayCard';
 import { TopCallsTable } from './TopCallsTable';
@@ -23,7 +23,6 @@ import {
   fillMissingDays,
   hasAnyUsage,
   toByAgentRows,
-  toByModelRows,
 } from './helpers';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -42,11 +41,11 @@ const FALLBACK_WINDOW_DAYS = 30;
 
 /** Copy that has to stop claiming ownership on an unsecure-mode installation. */
 const PERSONAL_COPY = {
-  title: 'Your agent usage',
+  title: 'Your sessions',
   description: (days: number, installation: string) =>
-    `Your own agent sessions on ${installation} over the last ${days} days, derived from kagent's stored conversations — including sessions you started from Slack.`,
+    `Your own agent sessions on ${installation} over the last ${days} days, derived from kagent's stored conversations — including sessions you started from Slack. The Overview and Cost tabs cover every user's model calls; these are yours.`,
   descriptionWithoutInstallation: (days: number) =>
-    `Your own agent sessions over the last ${days} days, derived from kagent's stored conversations — including sessions you started from Slack.`,
+    `Your own agent sessions over the last ${days} days, derived from kagent's stored conversations — including sessions you started from Slack. The Overview and Cost tabs cover every user's model calls; these are yours.`,
   topTools: 'Your top tools',
   topServers: 'Your top MCP servers',
   empty: (days: number, installation: string) =>
@@ -56,7 +55,7 @@ const PERSONAL_COPY = {
 };
 
 const SHARED_COPY = {
-  title: 'Agent usage',
+  title: 'Agent sessions',
   description: (days: number, installation: string) =>
     `Every user's agent sessions on ${installation} over the last ${days} days, derived from kagent's stored conversations.`,
   descriptionWithoutInstallation: (days: number) =>
@@ -70,7 +69,13 @@ const SHARED_COPY = {
 };
 
 /**
- * The personal half of the Usage tab, and every state it can be in.
+ * The "Your sessions" view of the Usage tab, and every state it can be in.
+ *
+ * Its session-level counts are the ones no gateway metric can give — kagent is
+ * the only thing that knows what a session or a turn is — and its costs are the
+ * ones no gateway metric can give *exactly*, because those metrics carry no
+ * session label. So the estimated cost here is this installation's observed
+ * $/token applied to kagent's token counts, and every place it appears says so.
  *
  * The one state worth reading carefully is `unsecure` mode: kagent there
  * resolves every caller to a shared built-in user, so its session list is
@@ -115,6 +120,28 @@ export function AgentUsageSection() {
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
 
+  // The $/token this installation actually achieved, from the gateway metrics.
+  // Two queries, and they resolve independently of the session usage above —
+  // so an installation without Mimir shows every count it always showed and an
+  // em dash where the cost would be, rather than losing the section.
+  //
+  // `isRateLoading` is threaded down so the cost cells can hold a skeleton
+  // while it settles. The counts arrive from kagent well before these two
+  // queries land, so without it the section rendered complete except for an em
+  // dash in the cost column — which reads as "no rate for this" rather than
+  // "not yet", and those are the two states this page works hardest to keep
+  // apart everywhere else.
+  const {
+    rates,
+    window: rateWindow,
+    isLoading: isRateLoading,
+    tier: rateTier,
+  } = useTokenRates(installation);
+  // Only `installation` is a rate this table can claim was applied. Every
+  // other tier here means no cost cell has a figure, and the note below has to
+  // stop describing one.
+  const hasRate = rateTier === 'installation';
+
   // Strictly `false`. `undefined` means the probe has not resolved, or kagent
   // reported no subject at all — which is reachable on a healthy deployment —
   // and treating either as "shared" would show a working installation a claim
@@ -148,20 +175,6 @@ export function AgentUsageSection() {
       ),
     [usage?.byAgent, installation, agentRows, agentDetailRoute],
   );
-  const byModelRows = useMemo(
-    () =>
-      toByModelRows(
-        usage?.byAgent ?? [],
-        installation,
-        agentRows,
-        // Covers both "the CR is not in view" and "this agent references no
-        // model" (a BYO agent) — neither is knowable from here, and the spend
-        // still belongs in the totals above.
-        'Unknown model',
-      ),
-    [usage?.byAgent, installation, agentRows],
-  );
-
   const header = (
     <SectionHeader
       // `h3`, under the page's own `h2`. Without that level this heading was the
@@ -265,7 +278,11 @@ export function AgentUsageSection() {
   } else if (usage) {
     body = (
       <>
-        <TotalsStrip totals={usage.totals} />
+        <TotalsStrip
+          totals={usage.totals}
+          rates={rates}
+          isRateLoading={isRateLoading}
+        />
         <div className={classes.row}>
           <TokensPerDayCard
             title="Input tokens per day"
@@ -282,11 +299,12 @@ export function AgentUsageSection() {
         </div>
         <ByAgentTable
           rows={byAgentRows}
+          rates={rates}
+          rateWindow={rateWindow}
+          installation={installation}
+          isRateLoading={isRateLoading}
+          hasRate={hasRate}
           emptyMessage="kagent recorded no agent for these sessions."
-        />
-        <ByModelTable
-          rows={byModelRows}
-          emptyMessage="No model could be resolved for these sessions."
         />
         <div className={classes.row}>
           <TopCallsTable

@@ -42,7 +42,39 @@ function renderWithAgent(
   return {
     ...renderHook(() => useSendMessage('gazelle', 'abc', agent), { wrapper }),
     invalidateQueries,
+    queryClient,
   };
+}
+
+const TASKS_KEY = [
+  'agent-platform',
+  'kagent',
+  'session-tasks',
+  'gazelle',
+  'abc',
+];
+
+/** The task a sent message opened, as the conversation poll would list it. */
+function taskHolding(messageId: string, state: string) {
+  return {
+    id: 'task-1',
+    contextId: 'abc',
+    kind: 'task',
+    status: { state, timestamp: new Date().toISOString() },
+    history: [
+      {
+        kind: 'message',
+        role: 'user',
+        messageId,
+        parts: [{ kind: 'text', text: 'hello' }],
+      },
+    ],
+  };
+}
+
+/** The id the hook generated for the one message sent so far. */
+function sentMessageId(): string {
+  return streamMessage.mock.calls[0][3].messageId;
 }
 
 /** The filters a given call to `invalidateQueries` was made with. */
@@ -102,6 +134,7 @@ describe('useSendMessage', () => {
       AGENT,
       expect.objectContaining({ text: 'why is the ingress failing?' }),
       expect.any(Function),
+      expect.any(AbortSignal),
     );
   });
 
@@ -434,6 +467,234 @@ describe('useSendMessage', () => {
       });
 
       expect(listSessionTasks).not.toHaveBeenCalled();
+    });
+
+    it('does not report a stream that delivered the end of the turn as lost', async () => {
+      streamMessage.mockImplementation(
+        async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+          onEvent(finalReplyEvent('All of the reply.'));
+        },
+      );
+      const { result } = renderWith();
+
+      await act(async () => {
+        await result.current.sendMessage('hello');
+      });
+
+      expect(result.current.isStreamLost).toBe(false);
+    });
+
+    it('reports the stream lost when it ends before the turn does', async () => {
+      // The gateway closed the response mid-reply: the stream is over, the
+      // turn is not. Not an error — the poll follows the turn — but not
+      // "working" as if nothing happened either.
+      streamMessage.mockImplementation(
+        async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+          onEvent({ kind: 'task', id: 'task-1', status: { state: 'working' } });
+        },
+      );
+      const { result } = renderWith();
+
+      await act(async () => {
+        await result.current.sendMessage('long turn');
+      });
+
+      expect(result.current.isStreamLost).toBe(true);
+      expect(result.current.error).toBeNull();
+    });
+
+    it('reports a stream that died after events as lost', async () => {
+      streamMessage.mockImplementation(
+        async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+          onEvent({ kind: 'task', id: 'task-1', status: { state: 'working' } });
+          throw transportError('the stream died');
+        },
+      );
+      const { result } = renderWith();
+
+      await act(async () => {
+        await result.current.sendMessage('long turn');
+      });
+
+      expect(result.current.isStreamLost).toBe(true);
+    });
+
+    it('keeps the loss while the poll still shows the turn working', async () => {
+      streamMessage.mockImplementation(
+        async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+          onEvent({ kind: 'task', id: 'task-1', status: { state: 'working' } });
+        },
+      );
+      const { result, queryClient } = renderWith();
+      await act(async () => {
+        await result.current.sendMessage('long turn');
+      });
+
+      act(() => {
+        queryClient.setQueryData(TASKS_KEY, [
+          taskHolding(sentMessageId(), 'working'),
+        ]);
+      });
+
+      expect(result.current.isStreamLost).toBe(true);
+    });
+
+    it('forgets the loss once the poll shows the turn over', async () => {
+      // The finished reply arrived through the poll: the page shows it as
+      // completed, and nothing is lost any more.
+      streamMessage.mockImplementation(
+        async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+          onEvent({ kind: 'task', id: 'task-1', status: { state: 'working' } });
+        },
+      );
+      const { result, queryClient } = renderWith();
+      await act(async () => {
+        await result.current.sendMessage('long turn');
+      });
+      expect(result.current.isStreamLost).toBe(true);
+
+      act(() => {
+        queryClient.setQueryData(TASKS_KEY, [
+          taskHolding(sentMessageId(), 'completed'),
+        ]);
+      });
+
+      await waitFor(() => expect(result.current.isStreamLost).toBe(false));
+    });
+
+    it('forgets the loss once the poll shows the turn waiting on a human', async () => {
+      // `input-required` is active, but the answer panel is the display for
+      // it — not a notice about a stream that has nothing left to preview.
+      streamMessage.mockImplementation(
+        async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+          onEvent({ kind: 'task', id: 'task-1', status: { state: 'working' } });
+        },
+      );
+      const { result, queryClient } = renderWith();
+      await act(async () => {
+        await result.current.sendMessage('long turn');
+      });
+
+      act(() => {
+        queryClient.setQueryData(TASKS_KEY, [
+          taskHolding(sentMessageId(), 'input-required'),
+        ]);
+      });
+
+      await waitFor(() => expect(result.current.isStreamLost).toBe(false));
+    });
+
+    it('starts the next send with nothing lost', async () => {
+      streamMessage.mockImplementationOnce(
+        async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+          onEvent({ kind: 'task', id: 'task-1', status: { state: 'working' } });
+        },
+      );
+      const { result } = renderWith();
+      await act(async () => {
+        await result.current.sendMessage('first');
+      });
+      expect(result.current.isStreamLost).toBe(true);
+
+      streamMessage.mockImplementationOnce(
+        async (_i, _s, _a, _m, onEvent: (event: unknown) => void) => {
+          onEvent(finalReplyEvent('done', 'reply-2'));
+        },
+      );
+      await act(async () => {
+        await result.current.sendMessage('second');
+      });
+
+      expect(result.current.isStreamLost).toBe(false);
+    });
+
+    it('aborts a stream still open once the poll shows its turn over', async () => {
+      // A stream that hangs after the turn finished would otherwise keep the
+      // send pending — and the page on "Working…" — for as long as the tab lives.
+      let signal: AbortSignal | undefined;
+      let emit: (event: unknown) => void = () => {};
+      streamMessage.mockImplementation(
+        (
+          _i,
+          _s,
+          _a,
+          _m,
+          onEvent: (event: unknown) => void,
+          streamSignal: AbortSignal,
+        ) =>
+          new Promise<void>((_, reject) => {
+            signal = streamSignal;
+            emit = onEvent;
+            streamSignal.addEventListener('abort', () =>
+              reject(transportError('aborted')),
+            );
+          }),
+      );
+      const { result, queryClient } = renderWith();
+
+      act(() => {
+        void result.current.sendMessage('hangs');
+      });
+      await waitFor(() => expect(signal).toBeDefined());
+      act(() =>
+        emit({ kind: 'task', id: 'task-1', status: { state: 'working' } }),
+      );
+
+      act(() => {
+        queryClient.setQueryData(TASKS_KEY, [
+          taskHolding(sentMessageId(), 'completed'),
+        ]);
+      });
+
+      await waitFor(() => expect(signal?.aborted).toBe(true));
+      // Resolved like any stream cut after events: no error, the poll's record
+      // is the answer — and it already has the answer, so nothing is lost.
+      await waitFor(() => expect(result.current.isSending).toBe(false));
+      expect(result.current.error).toBeNull();
+      expect(result.current.isStreamLost).toBe(false);
+    });
+
+    it('leaves a stream alone while the poll shows its turn working', async () => {
+      let signal: AbortSignal | undefined;
+      let emit: (event: unknown) => void = () => {};
+      let release: () => void = () => {};
+      streamMessage.mockImplementation(
+        (
+          _i,
+          _s,
+          _a,
+          _m,
+          onEvent: (event: unknown) => void,
+          streamSignal: AbortSignal,
+        ) =>
+          new Promise<void>(resolve => {
+            signal = streamSignal;
+            emit = onEvent;
+            release = resolve;
+          }),
+      );
+      const { result, queryClient } = renderWith();
+
+      act(() => {
+        void result.current.sendMessage('long turn');
+      });
+      await waitFor(() => expect(signal).toBeDefined());
+      act(() =>
+        emit({ kind: 'task', id: 'task-1', status: { state: 'working' } }),
+      );
+
+      act(() => {
+        queryClient.setQueryData(TASKS_KEY, [
+          taskHolding(sentMessageId(), 'working'),
+        ]);
+      });
+
+      expect(signal?.aborted).toBe(false);
+      expect(result.current.isSending).toBe(true);
+
+      await act(async () => {
+        release();
+      });
     });
 
     it('drops the preview when the send fails', async () => {

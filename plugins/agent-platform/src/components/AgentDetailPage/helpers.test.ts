@@ -1,20 +1,23 @@
-import { crds } from '@giantswarm/k8s-types';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Agent,
+  AgentTemplateInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   describeToolScope,
-  isMusterServerRef,
-  mcpServerRefId,
+  isGatewayServerBinding,
+  mcpBindingId,
+  shortPin,
   skillLabel,
   toAgentManifestYaml,
 } from './helpers';
 
-type AgentInterface = crds.kagent.v1alpha2.Agent;
+type AgentInterface = AgentTemplateInterface;
 
 function makeAgent(overrides: Partial<AgentInterface> = {}): Agent {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha2',
-      kind: 'Agent',
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'AgentTemplate',
       metadata: { name: 'pr-reviewer', namespace: 'agent-platform' },
       ...overrides,
     } as AgentInterface,
@@ -22,29 +25,32 @@ function makeAgent(overrides: Partial<AgentInterface> = {}): Agent {
   );
 }
 
-describe('isMusterServerRef', () => {
-  // Matched on the name alone: the namespace is a chart value, so an installation
-  // may place the gateway somewhere other than agent-platform.
-  it('recognises the muster gateway in any namespace', () => {
-    expect(isMusterServerRef({ name: 'muster' })).toBe(true);
-    expect(isMusterServerRef({ name: 'muster', namespace: 'mcp' })).toBe(true);
+const binding = (name: string, tools?: string[]) => ({
+  server: { kind: 'RemoteMCPServer', name },
+  ...(tools ? { tools } : {}),
+});
+
+describe('isGatewayServerBinding', () => {
+  const agent = makeAgent();
+
+  // The Generic chart renders the gateway into a RemoteMCPServer named after the
+  // agent — that is the carrier; a shared gateway server keeps its name.
+  it('recognises the agent’s own carrier and the shared gateway', () => {
+    expect(isGatewayServerBinding(agent, binding('pr-reviewer'))).toBe(true);
+    expect(isGatewayServerBinding(agent, binding('muster'))).toBe(true);
   });
 
-  it('does not claim any other server is muster', () => {
-    expect(isMusterServerRef({ name: 'grafana' })).toBe(false);
-    expect(isMusterServerRef({ name: 'muster-staging' })).toBe(false);
+  it('does not claim any other server is the gateway', () => {
+    expect(isGatewayServerBinding(agent, binding('grafana'))).toBe(false);
+    expect(isGatewayServerBinding(agent, binding('muster-staging'))).toBe(
+      false,
+    );
   });
 });
 
-describe('mcpServerRefId', () => {
-  it('qualifies the name with the namespace when there is one', () => {
-    expect(
-      mcpServerRefId({ name: 'muster', namespace: 'agent-platform' }),
-    ).toBe('agent-platform/muster');
-  });
-
-  it('falls back to the bare name', () => {
-    expect(mcpServerRefId({ name: 'muster' })).toBe('muster');
+describe('mcpBindingId', () => {
+  it('names the kind and the server', () => {
+    expect(mcpBindingId(binding('grafana'))).toBe('RemoteMCPServer grafana');
   });
 });
 
@@ -52,10 +58,10 @@ describe('describeToolScope', () => {
   // An absent allowlist means "everything", which is worth stating rather than
   // leaving to be inferred from a missing value.
   it('says all tools when no allowlist is set', () => {
-    expect(describeToolScope({ name: 'grafana' })).toBe(
+    expect(describeToolScope(binding('grafana'), false)).toBe(
       'All tools from this server',
     );
-    expect(describeToolScope({ name: 'grafana', toolNames: [] })).toBe(
+    expect(describeToolScope(binding('grafana', []), false)).toBe(
       'All tools from this server',
     );
   });
@@ -64,25 +70,22 @@ describe('describeToolScope', () => {
   // narrows nothing; the agent's tool access is its toolset, shown in its own
   // card — so the row says so instead of claiming "all tools".
   it('points the gateway entry at the toolset card', () => {
-    expect(describeToolScope({ name: 'muster' })).toMatch(
+    expect(describeToolScope(binding('pr-reviewer'), true)).toMatch(
       /^The gateway; which of its tools .* see Toolset below$/,
     );
     expect(
-      describeToolScope({ name: 'muster', toolNames: ['list_tools'] }),
+      describeToolScope(binding('pr-reviewer', ['list_tools']), true),
     ).toMatch(/1 meta-tool \(list_tools\).*see Toolset below/);
   });
 
   it('lists an allowlist and counts it', () => {
     expect(
-      describeToolScope({
-        name: 'grafana',
-        toolNames: ['query', 'dashboards'],
-      }),
+      describeToolScope(binding('grafana', ['query', 'dashboards']), false),
     ).toBe('2 tools: query, dashboards');
   });
 
   it('keeps the count singular for one tool', () => {
-    expect(describeToolScope({ name: 'grafana', toolNames: ['query'] })).toBe(
+    expect(describeToolScope(binding('grafana', ['query']), false)).toBe(
       '1 tool: query',
     );
   });
@@ -120,32 +123,58 @@ describe('skillLabel', () => {
   });
 });
 
+describe('shortPin', () => {
+  it('shortens a git commit the way git log --oneline does', () => {
+    expect(shortPin('0123456789abcdef0123456789abcdef01234567')).toBe(
+      '0123456789ab',
+    );
+  });
+
+  it('keeps the algorithm prefix of a digest', () => {
+    expect(shortPin(`sha256:${'f'.repeat(64)}`)).toBe(
+      `sha256:${'f'.repeat(12)}`,
+    );
+  });
+
+  it('leaves anything else alone', () => {
+    expect(shortPin('v-42')).toBe('v-42');
+  });
+});
+
 describe('toAgentManifestYaml', () => {
   it('renders the resource as YAML, status included', () => {
     const yaml = toAgentManifestYaml(
       makeAgent({
-        spec: { type: 'Declarative', declarative: { modelConfig: 'opus' } },
+        spec: { modelConfig: { name: 'opus' } },
         status: {
           observedGeneration: 1,
-          conditions: [
+          harnesses: [
             {
-              type: 'Ready',
-              status: 'True',
-              reason: 'DeploymentReady',
-              message: 'Deployment is ready',
-              lastTransitionTime: '2026-07-31T10:00:00Z',
+              harness: 'kagent',
+              desiredRevision: 'rev-1',
+              latestSuccessfulRevision: 'rev-1',
+              conditions: [
+                {
+                  type: 'Ready',
+                  status: 'True',
+                  reason: 'RevisionReady',
+                  message: 'Revision rev-1 is ready',
+                  lastTransitionTime: '2026-07-31T10:00:00Z',
+                },
+              ],
             },
           ],
         },
       } as Partial<AgentInterface>),
     );
 
-    expect(yaml).toContain('kind: Agent');
-    expect(yaml).toContain('apiVersion: kagent.dev/v1alpha2');
+    expect(yaml).toContain('kind: AgentTemplate');
+    expect(yaml).toContain('apiVersion: kagent.dev/v1alpha3');
     expect(yaml).toContain('name: pr-reviewer');
-    expect(yaml).toContain('modelConfig: opus');
+    expect(yaml).toContain('name: opus');
     // The point of this view is to see what the page does not surface.
     expect(yaml).toContain('observedGeneration: 1');
+    expect(yaml).toContain('harness: kagent');
   });
 
   // The view exists to be compared against `kubectl get -o yaml`, so it prints the
@@ -153,8 +182,8 @@ describe('toAgentManifestYaml', () => {
   it('orders keys apiVersion, kind, metadata, spec, status', () => {
     const yaml = toAgentManifestYaml(
       makeAgent({
-        spec: { type: 'Declarative' },
-        status: { observedGeneration: 1, conditions: [] },
+        spec: { modelConfig: { name: 'opus' } },
+        status: { observedGeneration: 1, harnesses: [] },
       } as Partial<AgentInterface>),
     );
 
@@ -172,8 +201,8 @@ describe('toAgentManifestYaml', () => {
     ]);
   });
 
-  // Server-side-apply bookkeeping is the bulk of a reconciled Agent and pushes
-  // the spec off the screen; kubectl hides it too.
+  // Server-side-apply bookkeeping is the bulk of a reconciled template and
+  // pushes the spec off the screen; kubectl hides it too.
   it('drops managedFields', () => {
     const yaml = toAgentManifestYaml(
       makeAgent({
@@ -184,7 +213,7 @@ describe('toAgentManifestYaml', () => {
             {
               manager: 'helm-controller',
               operation: 'Apply',
-              apiVersion: 'kagent.dev/v1alpha2',
+              apiVersion: 'kagent.dev/v1alpha3',
             },
           ],
         },
@@ -203,7 +232,8 @@ describe('toAgentManifestYaml', () => {
           name: 'pr-reviewer',
           namespace: 'agent-platform',
           annotations: {
-            'kubectl.kubernetes.io/last-applied-configuration': '{"a":1}',
+            'kubectl.kubernetes.io/last-applied-configuration':
+              '{"apiVersion":"kagent.dev/v1alpha3","kind":"AgentTemplate"}',
             'ui.giantswarm.io/display-name': 'PR reviewer',
           },
         },
@@ -211,17 +241,17 @@ describe('toAgentManifestYaml', () => {
     );
 
     expect(yaml).not.toContain('last-applied-configuration');
-    expect(yaml).toContain('ui.giantswarm.io/display-name');
+    expect(yaml).toContain('ui.giantswarm.io/display-name: PR reviewer');
   });
 
-  it('omits the annotations key entirely when nothing is left', () => {
+  it('omits the annotations key entirely when only the dropped one was set', () => {
     const yaml = toAgentManifestYaml(
       makeAgent({
         metadata: {
           name: 'pr-reviewer',
           namespace: 'agent-platform',
           annotations: {
-            'kubectl.kubernetes.io/last-applied-configuration': '{"a":1}',
+            'kubectl.kubernetes.io/last-applied-configuration': '{}',
           },
         },
       } as Partial<AgentInterface>),
@@ -230,16 +260,15 @@ describe('toAgentManifestYaml', () => {
     expect(yaml).not.toContain('annotations');
   });
 
-  // A long system message is a common reason to open this view, so it must not be
-  // folded across lines.
-  it('does not wrap long values', () => {
-    const systemMessage = 'You review pull requests. '.repeat(20).trim();
+  // Long prompts and controller messages are the reason to open this view.
+  it('does not fold long strings', () => {
+    const longPrompt = 'word '.repeat(60).trim();
     const yaml = toAgentManifestYaml(
       makeAgent({
-        spec: { declarative: { systemMessage } },
+        spec: { systemPrompt: longPrompt },
       } as Partial<AgentInterface>),
     );
 
-    expect(yaml).toContain(systemMessage);
+    expect(yaml).toContain(longPrompt);
   });
 });

@@ -1160,7 +1160,7 @@ describe('clientLookupOf', () => {
   it('reads the endpoint, model and identity off a ModelConfig', () => {
     const modelConfig = new ModelConfig(
       {
-        apiVersion: 'kagent.dev/v1alpha2',
+        apiVersion: 'kagent.dev/v1alpha3',
         kind: 'ModelConfig',
         metadata: { name: 'qwen3-0-6b', namespace: 'kagent' },
         spec: {
@@ -1168,7 +1168,7 @@ describe('clientLookupOf', () => {
           model: 'qwen3:0.6b',
           ollama: { host: 'http://172.21.0.1:11434' },
         },
-      } as crds.kagent.v1alpha2.ModelConfig,
+      } as crds.kagent.v1alpha3.ModelConfig,
       'lab',
     );
     expect(clientLookupOf(modelConfig)).toEqual({

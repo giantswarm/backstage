@@ -5,7 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { UsageDayEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { formatCount, formatTokens } from '../../lib/formatNumbers';
-import { formatDayTick, formatDayTooltip } from './helpers';
+import { formatDayTick, formatDayTooltip } from '../../lib/formatDay';
 
 const useStyles = makeStyles((theme: Theme) => ({
   card: {

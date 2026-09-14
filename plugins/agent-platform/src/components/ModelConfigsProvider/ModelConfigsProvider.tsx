@@ -102,7 +102,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
     ? scopedInstallations
     : scopedInstallations.filter(installation => installation === home);
 
-  // We type against a single ModelConfig version (v1alpha2), so skip API
+  // We type against a single ModelConfig version (v1alpha3), so skip API
   // version discovery: it adds two round-trips per cluster plus its own retry
   // storm for no benefit here.
   const { resources, clustersData, isLoading, errors } = useResources(

@@ -5,8 +5,10 @@ import { kagentApiRef } from '../apis';
 import {
   KagentSessionDetail,
   SessionState,
+  TurnProgress,
+  findNewestStatefulTaskIndex,
   readNewestTaskState,
-  isAgentWorking,
+  readTurnProgress,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   PendingConfirmation,
@@ -35,6 +37,12 @@ export type SessionDetailView = {
   /** From the most recent task; undefined for a session that never ran. */
   state?: SessionState;
   /**
+   * The id of the task {@link state} was read from — the turn a Stop would
+   * cancel. Undefined for a session that never ran, or whose newest task
+   * carries no id.
+   */
+  currentTaskId?: string;
+  /**
    * Epoch ms {@link state} last moved, when anything in the conversation says.
    *
    * Exposed so the switcher rail can prefer this page's reading of its *own*
@@ -46,9 +54,17 @@ export type SessionDetailView = {
    * Whether the agent is working on a reply, as of the last successful read.
    *
    * Narrower than `state.isActive`: it excludes waiting on a human, and expires
-   * once the state has not moved for `ACTIVE_MAX_AGE_MS`. See `isAgentWorking`.
+   * once the state has not moved for `ACTIVE_MAX_AGE_MS` — at which point
+   * {@link turnProgress} says `stalled` rather than nothing.
    */
   isAgentWorking: boolean;
+  /**
+   * What the newest turn is doing — working, or stalled since when — as of the
+   * last successful read. Undefined when there is no turn to report on: a
+   * finished session, one waiting on a human, one that never ran. See
+   * `readTurnProgress`.
+   */
+  turnProgress?: TurnProgress;
   /**
    * The confirmation the agent is suspended on, when it is.
    *
@@ -163,6 +179,16 @@ export function useSessionDetail(
     [tasks],
   );
   const state = newest?.state;
+  // The same task the state came from: `findNewestStatefulTaskIndex` is what
+  // `readNewestTaskState` walks, so a Stop names the turn the badge describes.
+  const currentTaskId = useMemo(() => {
+    if (!tasks) {
+      return undefined;
+    }
+    const index = findNewestStatefulTaskIndex(tasks);
+    const id = index === undefined ? undefined : tasks[index]?.id;
+    return typeof id === 'string' && id ? id : undefined;
+  }, [tasks]);
 
   // Judged as of the last successful read rather than `Date.now()`, which is both
   // more honest and what makes it expire at all: with `Date.now()` the answer would
@@ -172,8 +198,8 @@ export function useSessionDetail(
   // `dataUpdatedAt` re-evaluates it on every poll, and never asserts progress at a
   // moment we have no data for.
   const tasksUpdatedAt = tasksQuery.dataUpdatedAt;
-  const agentWorking = useMemo(
-    () => (tasks ? isAgentWorking(tasks, tasksUpdatedAt) : false),
+  const turnProgress = useMemo(
+    () => (tasks ? readTurnProgress(tasks, tasksUpdatedAt) : undefined),
     [tasks, tasksUpdatedAt],
   );
 
@@ -225,8 +251,10 @@ export function useSessionDetail(
     detail,
     timeline,
     state,
+    currentTaskId,
     stateChangedAt: newest?.changedAt,
-    isAgentWorking: agentWorking,
+    isAgentWorking: turnProgress?.kind === 'working',
+    turnProgress,
     pendingConfirmation,
     taskCount: tasks?.length ?? 0,
     hasConversation: tasks !== undefined,

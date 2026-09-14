@@ -2,15 +2,16 @@ import { useMemo } from 'react';
 import { Text } from '@backstage/ui';
 import {
   Agent,
+  RemoteMCPServer,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import {
   declaredToolset,
-  gatewayEntry,
+  MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
+  type ToolsetCarrier,
 } from '../../lib/toolset';
-import { MUSTER_MCP_SERVER_NAME } from '../AgentDetailPage/helpers';
 import {
   SelectableCard,
   SelectableCardGrid,
@@ -24,14 +25,18 @@ export type AgentToolsetSource = {
   selectors: string[];
 };
 
-/** The agents on an installation that declare a toolset, as copy sources. */
-export function agentToolsetSources(agents: Agent[]): AgentToolsetSource[] {
+/**
+ * The agents on an installation that declare a toolset, as copy sources. The
+ * declaration lives on each agent's carrier `RemoteMCPServer`, so the
+ * installation's servers come along.
+ */
+export function agentToolsetSources(
+  agents: Agent[],
+  carriers: readonly ToolsetCarrier[],
+): AgentToolsetSource[] {
   return agents
     .map(agent => {
-      const declared = toolsetOfAgent(
-        agent,
-        gatewayEntry(MUSTER_MCP_SERVER_NAME),
-      );
+      const declared = toolsetOfAgent(agent, MUSTER_MCP_SERVER_NAME, carriers);
       if (declared.state !== 'declared' || declared.selectors.length === 0) {
         return undefined;
       }
@@ -49,9 +54,9 @@ export function agentToolsetSources(agents: Agent[]): AgentToolsetSource[] {
 /**
  * *Start from an existing agent's toolset*: copies another agent's selector
  * list into the step (D4 — reuse is a copy in the wizard; shared toolsets are
- * the follow-up). Reads the installation's Agent CRs the way the agents list
- * does; only agents with a declared toolset are offered, since an agent with
- * implicit full access has nothing to copy.
+ * the follow-up). Reads the installation's AgentTemplates and RemoteMCPServers
+ * the way the agents list does; only agents with a declared toolset are
+ * offered, since an agent with implicit full access has nothing to copy.
  */
 export function CopyFromAgent({
   installation,
@@ -64,17 +69,30 @@ export function CopyFromAgent({
   onCopy: (selectors: string[]) => void;
 }) {
   const classes = useSelectableCardStyles();
+  const clusters = installation ? [installation] : [];
   const { resources, isLoading } = useResources(
-    installation ? [installation] : [],
+    clusters,
     Agent,
     {},
-    { enabled: Boolean(installation) },
+    {
+      enabled: Boolean(installation),
+      enableDiscovery: false,
+    },
   );
-  const sources = useMemo(() => agentToolsetSources(resources), [resources]);
+  const { resources: carriers, isLoading: isLoadingCarriers } = useResources(
+    clusters,
+    RemoteMCPServer,
+    {},
+    { enabled: Boolean(installation), enableDiscovery: false },
+  );
+  const sources = useMemo(
+    () => agentToolsetSources(resources, carriers),
+    [resources, carriers],
+  );
   // Compared as declared, so an agent without tools matches the empty selection.
   const currentKey = declaredToolset(current).join(',');
 
-  if (isLoading && sources.length === 0) {
+  if ((isLoading || isLoadingCarriers) && sources.length === 0) {
     return <Text color="secondary">Reading the installation's agents…</Text>;
   }
   if (sources.length === 0) {

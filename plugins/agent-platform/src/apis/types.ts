@@ -18,6 +18,16 @@ export type { KagentInstallation } from '../lib/kagentInstallations';
  */
 export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 
+/** The answer to a confirmation, as the answer routes take it. */
+export type ConfirmationAnswerRequest = {
+  messageId: string;
+  taskId: string;
+  decision: 'approve' | 'reject';
+  answers?: string[][];
+  rejectionReason?: string;
+  text?: string;
+};
+
 /** Identity kagent resolved for a forwarded token. */
 export type KagentIdentity = {
   /** The `sub` kagent used to scope the session query, when it reported one. */
@@ -98,29 +108,49 @@ export interface KagentApi {
   getSessionUsage(installation: string): Promise<SessionUsageResponse>;
 
   /**
-   * Start a session with one agent, and return its id.
+   * Start a session with one agent — create its AgentInstance — and return
+   * its id.
    *
-   * A session is only a shell: creating one does not say anything to the agent.
-   * Talking happens through {@link sendMessage} with the returned id, which is
-   * the A2A `contextId` — the only link between the two.
+   * Creating the instance says nothing to the agent yet. Talking happens
+   * through {@link sendMessage} / {@link streamMessage} with the returned id,
+   * which every turn is routed by.
    *
-   * `name` is required even though kagent treats it as optional, because the
-   * controller does not auto-title: a session created without one has no title at
-   * all. Derive it with `deriveSessionTitle`.
+   * `name` is required even though the controller treats it as optional,
+   * because it does not auto-title: an instance created without one has no
+   * title at all. Derive it with `deriveSessionTitle`.
+   *
+   * `requestId` is this submission's idempotency key: the controller keys
+   * creates on it, so a retry with the same id yields the same instance rather
+   * than a second one. One per submission, reused across its retries.
    *
    * The agent's namespace and name are its **real** ones, as read from its
-   * `Agent` CR — never decoded from a session's `agent_id`, whose encoding is
-   * lossy.
+   * `AgentTemplate` — never decoded from a session's `agent_id`, whose encoding
+   * is lossy.
    *
    * As with {@link renameSession}, a 400 here does **not** mean "kagent isn't
-   * available on this installation": it is how kagent reports an agent it cannot
-   * resolve, which the backend turns into a 409.
+   * available on this installation": it is how the backend reports a rejected
+   * body; an agent no Harness admits is a 409.
    */
   createSession(
     installation: string,
     agent: { namespace: string; name: string },
     name: string,
+    requestId: string,
   ): Promise<{ sessionId: string }>;
+
+  /**
+   * Stop the turn a session is running: cancel its task on the server.
+   *
+   * Cutting the stream does not stop a turn — the agent keeps working and the
+   * poll shows it finish. This does: the controller cancels the run and records
+   * the task canceled, so the turn stays stopped. Resolves once the controller
+   * has answered, whether it canceled the task or found it already finished.
+   */
+  cancelTask(
+    installation: string,
+    sessionId: string,
+    taskId: string,
+  ): Promise<void>;
 
   /**
    * Delete one session.
@@ -186,11 +216,12 @@ export interface KagentApi {
    * events are handed to `onEvent` as kagent produces them, so the caller can
    * show the reply while it is being written.
    *
-   * `onEvent` receives each JSON-RPC frame's `result` verbatim — a legacy-wire
-   * `task` / `status-update` / `artifact-update` / `message` event; interpret it
-   * with `applyStreamEvent`. The stream is a preview only: everything it carries
-   * is also written to the task history the poll reads, which stays the source
-   * of truth.
+   * `onEvent` receives each SSE frame's payload verbatim — an A2A v1
+   * `StreamResponse` (`{task}` / `{statusUpdate}` / `{artifactUpdate}` /
+   * `{message}`) as the backend relays it; interpret it with
+   * `applyStreamEvent`, which also reads the legacy `kind`-discriminated
+   * events. The stream is a preview only: everything it carries is also written
+   * to the task history the poll reads, which stays the source of truth.
    *
    * Resolving means the stream ended — **not** that the turn did. Gateways cut
    * long-lived responses (60 s on a stock route) and the turn survives the cut,
@@ -198,11 +229,18 @@ export interface KagentApi {
    * poll", the exact contract of {@link sendMessage}'s 202.
    *
    * Rejections split the same way the backend splits them: a **decision** (a
-   * rejected request, an unknown agent, an in-band A2A error) throws its mapped
-   * error, while a **transport** failure — the connection died, an unexpected
-   * response shape — throws an error named `StreamTransportError`, which is the
-   * caller's cue to verify against the session history rather than report a
-   * failure that may not have happened.
+   * rejected request, an unknown instance, a second message during a turn)
+   * throws its mapped error, while a **transport** failure — the connection
+   * died, an unexpected response shape — throws an error named
+   * `StreamTransportError`, which is the caller's cue to verify against the
+   * session history rather than report a failure that may not have happened. A
+   * stream that ends with an `{error}` frame after events have flowed is neither:
+   * the turn exists, and the poll is its record.
+   *
+   * `signal` aborts the stream — the request and its body. The caller pulls it
+   * when the conversation poll shows the turn over while the stream is still
+   * open, which is how a stream that hangs without ending is recognised; the
+   * abort then surfaces exactly like any other cut.
    */
   streamMessage(
     installation: string,
@@ -210,6 +248,7 @@ export interface KagentApi {
     agent: { namespace: string; name: string },
     message: { messageId: string; text: string },
     onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<void>;
 
   /**
@@ -235,14 +274,27 @@ export interface KagentApi {
     installation: string,
     sessionId: string,
     agent: { namespace: string; name: string },
-    answer: {
-      messageId: string;
-      taskId: string;
-      decision: 'approve' | 'reject';
-      answers?: string[][];
-      rejectionReason?: string;
-      text?: string;
-    },
+    answer: ConfirmationAnswerRequest,
+  ): Promise<void>;
+
+  /**
+   * {@link answerConfirmation} over A2A `message/stream`: the same resume of the
+   * same task, with the resumed turn's events handed to `onEvent` as kagent
+   * produces them — the contract of {@link streamMessage}, applied to an answer.
+   *
+   * Preferred over the unary answer: that one is held open for the backend's
+   * turn timeout and then answers 202, after which the page can only wait for
+   * the conversation poll — and a turn that never lands leaves it nothing to
+   * show. Over the stream the browser follows the turn, and a cut stream is
+   * visible as such.
+   */
+  streamAnswer(
+    installation: string,
+    sessionId: string,
+    agent: { namespace: string; name: string },
+    answer: ConfirmationAnswerRequest,
+    onEvent: (result: unknown) => void,
+    signal?: AbortSignal,
   ): Promise<void>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */

@@ -3,8 +3,8 @@ import { AgentRow } from '../AgentsDataProvider';
 import {
   fillMissingDays,
   hasAnyUsage,
+  sortUsageRows,
   toByAgentRows,
-  toByModelRows,
 } from './helpers';
 
 function agent(overrides: Partial<AgentRow> = {}): AgentRow {
@@ -135,121 +135,83 @@ describe('hasAnyUsage', () => {
   });
 });
 
-describe('toByModelRows', () => {
-  const sre = {
-    agentId: 'kagent__NS__sre_agent',
-    sessions: 2,
-    turns: 5,
-    inputTokens: 100,
-    outputTokens: 10,
-  };
-  const reviewer = {
-    agentId: 'kagent__NS__reviewer',
-    sessions: 1,
-    turns: 3,
-    inputTokens: 50,
-    outputTokens: 5,
-  };
-
-  it('aggregates two agents that share a model into one row', () => {
-    const rows = toByModelRows(
-      [sre, reviewer],
-      'gazelle',
-      [
-        agent({ technicalName: 'sre-agent', model: 'GPT-4o' }),
-        agent({
-          id: 'gazelle/kagent/reviewer',
-          technicalName: 'reviewer',
-          name: 'Reviewer',
-          model: 'GPT-4o',
-        }),
-      ],
-      'Unknown model',
+describe('sortUsageRows with a column that can be undefined', () => {
+  type Row = { name: string; cost: number | undefined };
+  const sortBy = (rows: Row[], direction: 'ascending' | 'descending') =>
+    sortUsageRows(rows, { column: 'cost', direction }, 'name').map(
+      row => row.name,
     );
 
-    expect(rows).toEqual([
-      {
-        id: 'GPT-4o',
-        model: 'GPT-4o',
-        agents: 2,
-        sessions: 3,
-        turns: 8,
-        inputTokens: 150,
-        outputTokens: 15,
-      },
-    ]);
+  it('keeps the priced rows correctly ordered around an unpriced one', () => {
+    // The regression this exists for: returning 0 for the em dash made the
+    // comparator intransitive, so `Array#sort` was free to misorder the rows
+    // that *do* have values — landing the biggest spender last in a
+    // descending-by-cost table.
+    const rows: Row[] = [
+      { name: 'B', cost: 5 },
+      { name: 'A', cost: undefined },
+      { name: 'C', cost: 10 },
+    ];
+
+    expect(sortBy(rows, 'descending')).toEqual(['C', 'B', 'A']);
+    expect(sortBy(rows, 'ascending')).toEqual(['B', 'C', 'A']);
   });
 
-  it('keeps different models apart, biggest spend first', () => {
-    const rows = toByModelRows(
-      [sre, reviewer],
-      'gazelle',
-      [
-        agent({ technicalName: 'sre-agent', model: 'Claude' }),
-        agent({
-          id: 'gazelle/kagent/reviewer',
-          technicalName: 'reviewer',
-          name: 'Reviewer',
-          model: 'GPT-4o',
-        }),
-      ],
-      'Unknown model',
-    );
+  it('sinks the unknowns to the end in both directions', () => {
+    // Not "last when descending, first when ascending": an em dash is absence
+    // of a value, not a small one, so it never leads the table.
+    const rows: Row[] = [
+      { name: 'A', cost: undefined },
+      { name: 'B', cost: 1 },
+      { name: 'C', cost: undefined },
+      { name: 'D', cost: 2 },
+    ];
 
-    expect(rows.map(r => [r.model, r.inputTokens])).toEqual([
-      ['Claude', 100],
-      ['GPT-4o', 50],
-    ]);
+    expect(sortBy(rows, 'ascending')).toEqual(['B', 'D', 'A', 'C']);
+    expect(sortBy(rows, 'descending')).toEqual(['D', 'B', 'A', 'C']);
   });
 
-  it('groups an agent with no resolvable model under the caller’s label', () => {
-    // Both cases land here: the CR is not in view (deleted, or another
-    // installation), and an agent that genuinely references no model. Its spend
-    // still belongs in the totals above, so it must not be dropped.
-    const rows = toByModelRows(
-      [sre, reviewer],
-      'gazelle',
-      [agent({ technicalName: 'sre-agent', model: undefined })],
-      'Unknown model',
-    );
+  it('orders unknowns among themselves by label, for a stable render', () => {
+    const rows: Row[] = [
+      { name: 'Z', cost: undefined },
+      { name: 'A', cost: undefined },
+    ];
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      model: 'Unknown model',
-      agents: 2,
-      inputTokens: 150,
-    });
+    expect(sortBy(rows, 'descending')).toEqual(['A', 'Z']);
   });
 
-  it('groups a null agent under the same label', () => {
-    const rows = toByModelRows(
-      [{ ...sre, agentId: null }],
-      'gazelle',
-      [],
-      'Unknown model',
-    );
+  it('is a total order, so sort cannot depend on the incoming order', () => {
+    // Every permutation of the same three rows must sort identically. An
+    // intransitive comparator fails this even when one arrangement happens to
+    // come out right.
+    const rows: Row[] = [
+      { name: 'B', cost: 5 },
+      { name: 'A', cost: undefined },
+      { name: 'C', cost: 10 },
+    ];
+    const permutations: Row[][] = [
+      [rows[0], rows[1], rows[2]],
+      [rows[0], rows[2], rows[1]],
+      [rows[1], rows[0], rows[2]],
+      [rows[1], rows[2], rows[0]],
+      [rows[2], rows[0], rows[1]],
+      [rows[2], rows[1], rows[0]],
+    ];
 
-    expect(rows[0]).toMatchObject({ model: 'Unknown model', agents: 1 });
+    for (const permutation of permutations) {
+      expect(sortBy(permutation, 'descending')).toEqual(['C', 'B', 'A']);
+    }
   });
 
-  it('does not resolve a model from another installation', () => {
-    const rows = toByModelRows(
-      [sre],
-      'gazelle',
-      [
-        agent({
-          installation: 'golem',
-          technicalName: 'sre-agent',
-          model: 'GPT-4o',
-        }),
-      ],
-      'Unknown model',
-    );
+  it('still sorts an all-number column as before', () => {
+    const rows = [
+      { name: 'A', turns: 3 },
+      { name: 'B', turns: 1 },
+      { name: 'C', turns: 2 },
+    ];
 
-    expect(rows[0].model).toBe('Unknown model');
-  });
-
-  it('returns nothing for no agents', () => {
-    expect(toByModelRows([], 'gazelle', [], 'Unknown model')).toEqual([]);
+    expect(
+      sortUsageRows(rows, { column: 'turns', direction: 'descending' }, 'name'),
+    ).toEqual([rows[0], rows[2], rows[1]]);
   });
 });

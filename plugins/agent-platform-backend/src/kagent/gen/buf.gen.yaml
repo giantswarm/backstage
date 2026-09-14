@@ -1,0 +1,10 @@
+# Regenerates the TypeScript for the kagent API v2 control-plane services and
+# the A2A v1 service this plugin speaks over gRPC. See README.md next to this
+# file for the pinned source commit and the command.
+version: v2
+plugins:
+  - remote: buf.build/bufbuild/es:v2.13.0
+    out: .
+    opt:
+      - target=ts
+    include_imports: true

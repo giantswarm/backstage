@@ -1,17 +1,33 @@
 import {
+  agentInstanceEnvelopeWireSchema,
+  agentInstanceListWireSchema,
+  isAgentInstanceEnvelope,
+  isAgentInstanceList,
+  normalizeAgentInstance,
+  parseAgentInstanceWire,
+} from './kagentAgentInstance';
+import {
   KagentSessionWire,
   kagentCreatedSessionSchema,
   kagentSessionListSchema,
   kagentSessionWireSchema,
 } from './kagentSchema';
+import { normalizeTimestamp } from './kagentTimestamp';
+
+export { normalizeTimestamp } from './kagentTimestamp';
 
 /**
  * Stable, UI-facing session shape.
  *
  * Deliberately decoupled from the wire: a kagent schema change is absorbed in
- * `normalizeSession` rather than rippling through every component. kagent ships
- * no OpenAPI spec and the fleet can run mixed versions, so this boundary is the
- * only thing keeping version drift out of the UI.
+ * `normalizeSession` / `normalizeAgentInstance` rather than rippling through
+ * every component. kagent ships no OpenAPI spec and the fleet can run mixed
+ * versions, so this boundary is the only thing keeping version drift out of
+ * the UI.
+ *
+ * On the kagent API v2 line a session **is** an AgentInstance; the fields
+ * below `updatedAt` are what an instance says about itself and a 0.10 session
+ * never did.
  */
 export type KagentSession = {
   /** `${installation}/${sessionId}` — unique fleet-wide; the table row key. */
@@ -24,42 +40,31 @@ export type KagentSession = {
   installation: string;
   /** Session title; undefined when kagent has none (the UI falls back). */
   title?: string;
-  /** Raw kagent `agent_id` python identifier (`ns__NS__agent_name`). */
+  /**
+   * The agent, encoded as kagent's python identifier (`ns__NS__agent_name`) —
+   * verbatim from a 0.10 session, derived from an instance's template. What the
+   * frontend joins agents on, because encoding is lossless and decoding is not.
+   */
   agentId?: string;
   /** 'user' | 'agent' | any future value, verbatim; undefined when absent. */
   source?: string;
   /** RFC3339, guaranteed parseable and not Go zero time; undefined otherwise. */
   createdAt?: string;
   updatedAt?: string;
+  /** The AgentTemplate an instance runs — the agent's real namespace and name. */
+  agentTemplate?: { namespace: string; name: string };
+  /**
+   * An instance's lifecycle state as one lower-case word (`ready`,
+   * `suspended`, `creating`, `failed`, `deleting`), for what the instance says
+   * about itself. Not a turn state: a suspended instance may be idle after a
+   * finished turn or waiting on a human, and only its tasks can tell.
+   */
+  state?: string;
+  /** The A2A context every turn of the instance shares. */
+  contextId?: string;
+  /** Why a `failed` instance failed, in the controller's words. */
+  failure?: { reason?: string; message?: string };
 };
-
-/**
- * Earliest plausible timestamp. Anything older is a zero value in some
- * encoding, not real data.
- */
-const EARLIEST_PLAUSIBLE_YEAR = 1971;
-
-/**
- * kagent serializes `created_at`/`updated_at` as non-pointer `time.Time`, so an
- * unset value arrives as Go zero time (`0001-01-01T00:00:00Z`) — which browsers
- * cheerfully render as "Dec 31, 0000". Reject that, anything unparseable, and
- * anything implausibly old, so callers can render a dash instead.
- */
-export function normalizeTimestamp(
-  value: string | undefined,
-): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
-    return undefined;
-  }
-  if (new Date(parsed).getUTCFullYear() < EARLIEST_PLAUSIBLE_YEAR) {
-    return undefined;
-  }
-  return value;
-}
 
 /** Map one parsed wire session onto the domain type. */
 export function normalizeSession(
@@ -111,7 +116,9 @@ export type NormalizedSessionList = {
 };
 
 /**
- * Parse and normalize a raw `GET /api/sessions` body.
+ * Parse and normalize a raw session list: a `ListAgentInstancesResponse`
+ * (`{agentInstances: […]}`, the API v2 line) or a 0.10 `GET /api/sessions`
+ * envelope.
  *
  * Never throws: the worst case is an empty list plus a `drift` note. That
  * matters because this runs against whatever kagent version an installation
@@ -121,6 +128,10 @@ export function normalizeSessionList(
   raw: unknown,
   installation: string,
 ): NormalizedSessionList {
+  if (isAgentInstanceList(raw)) {
+    return normalizeAgentInstanceList(raw, installation);
+  }
+
   const parsed = kagentSessionListSchema.safeParse(raw);
   if (!parsed.success) {
     return {
@@ -192,6 +203,47 @@ export function normalizeSessionList(
   return { sessions };
 }
 
+/**
+ * The API v2 half of {@link normalizeSessionList}: one row per instance,
+ * validated one at a time so a malformed row is skipped rather than costing the
+ * list. An absent `agentInstances` is an empty result (proto3 JSON omits an
+ * empty repeated field), never drift.
+ */
+function normalizeAgentInstanceList(
+  raw: unknown,
+  installation: string,
+): NormalizedSessionList {
+  const parsed = agentInstanceListWireSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      sessions: [],
+      drift: { kind: 'unparseable-body', message: 'unparseable response body' },
+    };
+  }
+  const sessions: KagentSession[] = [];
+  let skippedRows = 0;
+  for (const row of parsed.data.agentInstances ?? []) {
+    const wire = parseAgentInstanceWire(row);
+    if (!wire || !wire.id) {
+      skippedRows += 1;
+      continue;
+    }
+    sessions.push(normalizeAgentInstance(wire, installation));
+  }
+  if (skippedRows > 0) {
+    return {
+      sessions,
+      drift: {
+        kind: 'skipped-rows',
+        message: `skipped ${skippedRows} unreadable session ${
+          skippedRows === 1 ? 'row' : 'rows'
+        }`,
+      },
+    };
+  }
+  return { sessions };
+}
+
 /** Parse a single wire session, for callers that already have one. */
 export function parseSessionWire(raw: unknown): KagentSessionWire | undefined {
   const parsed = kagentSessionWireSchema.safeParse(raw);
@@ -211,6 +263,13 @@ export function parseSessionWire(raw: unknown): KagentSessionWire | undefined {
  * status code alone would let through.
  */
 export function parseCreatedSessionId(raw: unknown): string | undefined {
+  if (isAgentInstanceEnvelope(raw)) {
+    const parsed = agentInstanceEnvelopeWireSchema.safeParse(raw);
+    return parsed.success
+      ? parseAgentInstanceWire(parsed.data.agentInstance)?.id
+      : undefined;
+  }
+
   const parsed = kagentCreatedSessionSchema.safeParse(raw);
   if (!parsed.success || parsed.data.isError) {
     return undefined;

@@ -434,6 +434,10 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
       '/agent-platform/usage',
+      '/agent-platform/usage/overview',
+      '/agent-platform/usage/cost',
+      '/agent-platform/usage/conversations',
+      '/agent-platform/usage/mcp',
       // Pre-existing gaps in this list, closed while adding the one above.
       '/agent-platform/models',
       '/agent-platform/models/serving',
@@ -450,5 +454,36 @@ describe('getTelemetryPageViewPayload', () => {
         'Unknown page',
       );
     });
+  });
+});
+
+describe('Usage sub-tabs', () => {
+  it('reports the bare Usage path unchanged, for continuity', () => {
+    expect(getTelemetryPageViewPayload('/agent-platform/usage')).toEqual({
+      page: 'Usage',
+      path: '/agent-platform/usage',
+    });
+  });
+
+  it.each([
+    ['overview', '/agent-platform/usage/overview'],
+    ['cost', '/agent-platform/usage/cost'],
+    ['conversations', '/agent-platform/usage/conversations'],
+    ['mcp', '/agent-platform/usage/mcp'],
+  ])('reports the %s view under page Usage', (view, path) => {
+    expect(getTelemetryPageViewPayload(path)).toEqual({
+      page: 'Usage',
+      view,
+      path,
+    });
+  });
+
+  it('does not let a Usage view fall through to the generic Agents case', () => {
+    // Without the prefix case above the generic '/agent-platform' one, every
+    // Usage view would report as `page: 'Agents', view: 'usage/cost'` —
+    // merging the tab's numbers into the Agents page's.
+    expect(
+      getTelemetryPageViewPayload('/agent-platform/usage/cost'),
+    ).not.toMatchObject({ page: 'Agents' });
   });
 });
