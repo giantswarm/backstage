@@ -139,6 +139,39 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // Must stay above the generic '/agent-platform' cases below, for the reason
+    // the Sessions and Usage cases give: without these the Models tab reports as
+    // `page: 'Agents'`, merging its numbers into the Agents page's.
+    case pathname === '/agent-platform/models':
+      payload = { page: 'Models index' };
+      break;
+
+    // One model: `…/models/configs/<installation>/<namespace>/<name>`. No
+    // `view`, for the same reason as Session detail and Agent detail: `page`
+    // and `view` are the dimensions TelemetryDeck aggregates on, and putting
+    // path segments there yields a distinct signal name per model rather than a
+    // countable page. (It is not a privacy measure — every payload below
+    // carries `path: pathname` verbatim.) Placed above the views case so the
+    // three identifying segments cannot reach a `view`.
+    case /^\/agent-platform\/models\/configs\/[^/]+\/[^/]+\/[^/]+$/.test(
+      pathname,
+    ):
+      payload = { page: 'Model detail' };
+      break;
+
+    // The Models tab's views (`configs`, `serving`, `capacity`). Only the view
+    // segment, as the Muster case does, so anything deeper — `configs/new`, and
+    // any view that grows sub-paths later — collapses to the view it belongs to
+    // instead of opening the dimension up.
+    case pathname.startsWith('/agent-platform/models'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Models',
+        view: parts[3],
+      };
+      break;
+    }
+
     // Must stay above the generic '/agent-platform' cases below: `switch (true)`
     // takes the first match, so after them this would be dead and the Sessions
     // tab would report as `page: 'Agents', view: 'sessions'`.
