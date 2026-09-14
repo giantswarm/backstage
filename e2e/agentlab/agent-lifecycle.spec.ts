@@ -10,9 +10,9 @@ import { lab } from './lab';
  * agent-manager's dry run, Deploy its `create_agent`, both through muster as
  * the person; the turn streams from kagent.
  *
- * Slow by nature — a golden boot takes minutes — so it runs alone at the end
- * of a `yarn test:e2e:agentlab`, and can be skipped with
- * `--grep-invert lifecycle` when only the pages are in question.
+ * Seconds on a warm lab (the Go ADK boots an agent in about twenty), minutes
+ * on a cold worker — the waits allow for the latter. `--grep-invert lifecycle`
+ * leaves it out when only the pages are in question.
  */
 
 test.describe.configure({ mode: 'serial' });
@@ -106,9 +106,14 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
   try {
     // The Status card's verdict — the page's own derivation from the
     // template's harness status, `Pending` until the golden boot is done.
-    const statusCard = admin.getByRole('article').filter({
-      has: admin.getByRole('heading', { level: 3, name: 'Status' }),
-    });
+    // `.last()`: the page's own article wraps the cards, so the filter also
+    // matches it — the card is the innermost match.
+    const statusCard = admin
+      .getByRole('article')
+      .filter({
+        has: admin.getByRole('heading', { level: 3, name: 'Status' }),
+      })
+      .last();
     await expect(statusCard).toBeVisible();
     await expect(
       statusCard.getByText('Ready', { exact: true }).first(),
@@ -120,7 +125,8 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
     const promptBox = admin.getByRole('textbox', { name: 'Prompt' });
     await expect(promptBox).toBeVisible();
     await promptBox.fill(prompt);
-    await admin.getByRole('button', { name: 'Start' }).click();
+    // Exact: the page header's "Start a session" is a button too.
+    await admin.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(admin).toHaveURL(
       new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`),
       { timeout: 60_000 },
@@ -148,10 +154,11 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
     if (failure === undefined) {
       throw cleanupError;
     }
-    test.info().annotations.push({
-      type: 'cleanup',
-      description: `deleting ${agentSlug} failed too: ${String(cleanupError)}`,
-    });
+    if (failure instanceof Error) {
+      failure.message += `\n\n[cleanup] deleting ${agentSlug} through the portal failed too — remove it by hand (\`kubectl -n kagent delete helmrelease ${agentSlug}\`): ${String(
+        cleanupError,
+      )}`;
+    }
   }
   if (failure !== undefined) {
     throw failure;
