@@ -1,3 +1,4 @@
+import type { Locator, Page } from '@playwright/test';
 import { completeDexLogin, expect, open, test } from './fixtures';
 import { lab } from './lab';
 
@@ -12,9 +13,9 @@ import { lab } from './lab';
 
 const serversPath = `/agent-platform/muster/servers?installation=${lab.installation}`;
 
-/** A server's row: the disclosure button whose name starts with the server's name. */
-function serverRow(page: import('@playwright/test').Page, name: string) {
-  return page.getByRole('button', { name: new RegExp(`^${name} `) });
+/** A server's row within `scope` (the page or a group's region): the disclosure button named after the server. */
+function serverRow(scope: Page | Locator, name: string) {
+  return scope.getByRole('button', { name: new RegExp(`^${name} `) });
 }
 
 test('groups the installation servers into Agent Platform, Infrastructure and Registered servers', async ({
@@ -72,7 +73,7 @@ test("a row's disclosure shows the server's configuration and token chain", asyn
  * the moment the probe says authenticated, so a click can land on an element
  * that just left the DOM: click while it is there, judge by its absence.
  */
-async function connectToMuster(page: import('@playwright/test').Page) {
+async function connectToMuster(page: Page) {
   const gate = page.getByRole('button', { name: 'Connect to muster' });
   const groups = page.getByRole('region', { name: 'Agent Platform' });
   await expect(gate.or(groups).first()).toBeVisible();
@@ -104,6 +105,13 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
 
   const registered = admin.getByRole('region', { name: 'Registered servers' });
   const row = serverRow(registered, 'lab-oauth-fixture');
+  // For about a minute after a muster pod roll the fixture's CR reads Failed
+  // (muster dials itself before its own listener is up) and offers no sign-in;
+  // it settles back to Auth Required on its own.
+  await expect(
+    row,
+    'the fixture CR has settled (Auth Required, or Connected from an earlier sign-in)',
+  ).toContainText(/Auth Required|Connected/, { timeout: 120_000 });
   await row.click();
   const detail = admin.getByRole('group', { name: /^lab-oauth-fixture / });
   await expect(detail.getByText(/Lab fixture/)).toBeVisible();

@@ -85,17 +85,35 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
   );
   const detailURL = admin.url();
 
+  // Deletes the agent through its actions menu — the portal's own path.
+  const deleteAgent = async () => {
+    await open(admin, new URL(detailURL).pathname);
+    await admin.getByRole('button', { name: 'Agent actions' }).click();
+    await admin.getByRole('menuitem', { name: /Delete agent/ }).click();
+    const dialog = admin.getByRole('dialog', { name: /Delete agent/ });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Delete agent' }).click();
+    await expect(admin).toHaveURL(/\/agent-platform\/agents$/, {
+      timeout: 60_000,
+    });
+    await expect(
+      admin.getByRole('link', { name: agentSlug }),
+      'the roster no longer lists the agent',
+    ).toBeHidden({ timeout: 60_000 });
+  };
+
+  let failure: unknown;
   try {
+    // The Status card's verdict — the page's own derivation from the
+    // template's harness status, `Pending` until the golden boot is done.
+    const statusCard = admin.getByRole('article').filter({
+      has: admin.getByRole('heading', { level: 3, name: 'Status' }),
+    });
+    await expect(statusCard).toBeVisible();
     await expect(
-      admin
-        .getByRole('alert')
-        .filter({ hasText: /^Ready/ })
-        .first(),
-      'the agent becomes ready on the platform Harness (golden boot)',
+      statusCard.getByText('Ready', { exact: true }).first(),
+      'the agent becomes ready on the platform Harness (golden boot) — a Pending that never ends means the lab Harness is not admitting: `kubectl -n kagent get harness,workerpools` and the kagent-controller log',
     ).toBeVisible({ timeout: 6 * 60_000 });
-    await expect(
-      admin.getByRole('heading', { level: 3, name: 'Status' }),
-    ).toBeVisible();
 
     // --- Start a session from the agent's page and get an answer -----------
     await admin.getByRole('button', { name: 'Start a session' }).click();
@@ -119,20 +137,23 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
       admin.getByRole('button', { name: 'Send' }),
       'the composer offers Send again once the turn is over',
     ).toBeVisible({ timeout: 60_000 });
-  } finally {
-    // --- Delete the agent through its actions menu ---------------------------
-    await open(admin, new URL(detailURL).pathname);
-    await admin.getByRole('button', { name: 'Agent actions' }).click();
-    await admin.getByRole('menuitem', { name: /Delete agent/ }).click();
-    const dialog = admin.getByRole('dialog', { name: /Delete agent/ });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'Delete agent' }).click();
-    await expect(admin).toHaveURL(/\/agent-platform\/agents$/, {
-      timeout: 60_000,
+  } catch (error) {
+    failure = error;
+  }
+
+  // --- Delete the agent, and report the journey's own failure first ---------
+  try {
+    await deleteAgent();
+  } catch (cleanupError) {
+    if (failure === undefined) {
+      throw cleanupError;
+    }
+    test.info().annotations.push({
+      type: 'cleanup',
+      description: `deleting ${agentSlug} failed too: ${String(cleanupError)}`,
     });
-    await expect(
-      admin.getByRole('link', { name: agentSlug }),
-      'the roster no longer lists the agent',
-    ).toBeHidden({ timeout: 60_000 });
+  }
+  if (failure !== undefined) {
+    throw failure;
   }
 });
