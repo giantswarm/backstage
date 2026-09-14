@@ -280,7 +280,7 @@ database:
 
     # @schema type:string
     # -- PostgreSQL container image for the CNPG cluster (registry.domain is prepended). The image is published for linux/amd64 and linux/arm64; the digest must name the index, not one architecture's manifest, or the kubelet pulls the wrong architecture and the container exits with `exec format error`.
-    image: giantswarm/postgresql-cnpg:18.0@sha256:424fc22287b7bf49e9eb87f6180e5489d0026014b1e610a4e429599d96cadb4d
+    image: giantswarm/postgresql-cnpg:18.0@sha256:7c998e8352408ff5dbb74bcd945c3ef6578b7185c97aca9b89e4cc9fcbdf4716
 
     # @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/refs/heads/master/v1.35.1/_definitions.json#/definitions/io.k8s.api.core.v1.LocalObjectReference
     # -- Pull secrets for the CNPG cluster images, as a list of `{name: <secret>}`. The bootstrap init container runs the operator image, so a private mirror needs an entry here.
