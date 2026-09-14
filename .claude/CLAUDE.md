@@ -44,9 +44,26 @@ yarn test:all
 # Interactive watch mode (humans, TDD) — does NOT exit
 yarn test:watch plugins/my-plugin
 
-# Run Playwright E2E tests
+# Run Playwright E2E tests against the local dev server
 yarn test:e2e
+
+# Run the browser suite against a running agentlab (the local agent platform
+# with this Backstage in it) — see e2e/agentlab/README.md
+yarn test:e2e:agentlab
 ```
+
+#### Verifying a change in agentlab
+
+A change to a page is verified in a real browser against
+[agentlab](https://github.com/giantswarm/agentlab) before the PR merges:
+build the image (`yarn ci:build`, `docker build -f packages/backend/Dockerfile`),
+swap it into the lab (`platform.devImages.backstage` in the lab's
+`agentlab.yaml`, `agentlab platform`), run `agentlab backstage-test` and
+`yarn test:e2e:agentlab`, and extend the suite for the page you changed. The
+lab users (`admin@lab.local` and friends, password `password` in the lab's
+`agentlab.yaml`) are test fixtures on a throwaway kind cluster — signing in as
+them, in the Dex popup too, is part of the verification. Only real people's
+accounts and real installations are off-limits.
 
 ### Code Quality
 
