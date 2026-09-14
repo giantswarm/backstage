@@ -5,7 +5,7 @@
 Saving an agent no longer reports success before the change has been compiled.
 
 After Save, the detail page showed a green "Ready … (saved as you)" almost
-immediately — for the revision that was there *before* the write. agent-manager
+immediately — for the revision that was there _before_ the write. agent-manager
 writes the agent's HelmRelease and returns; helm-controller re-renders the
 AgentTemplate seconds later, so the first status read after saving an agent that
 was already ready answers `ready` about the old revision. Worse, the page then
