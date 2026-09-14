@@ -15,7 +15,11 @@ emptied the whole section with nothing on the page saying why.
 An installation pinned in the selector and then switched off falls back to
 "All installations" rather than leaving every tab blank; the pin is cleared
 from the URL and from local storage too. Switching an installation back on
-restores it without re-probing, from the cached answer.
+brings it straight back, from the cached answer, while a background read
+confirms what it runs.
+
+Switching every installation off now reports an empty scope instead of leaving
+the tabs loading indefinitely.
 
 The Clusters page no longer records cluster-access status for a switched-off
 installation. A cluster list already in flight when the switch was flipped used

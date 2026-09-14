@@ -43,8 +43,10 @@ export type InstallationInventoryEntry = {
   accessState: ClusterAccessState | 'unknown';
   /**
    * Switched off in the sidebar Cluster access widget. It is not probed and no
-   * tab queries it, but a cached answer under `components` is kept, so
-   * switching it back on costs nothing.
+   * tab queries it. A cached answer under `components` is kept rather than
+   * discarded, so switching it back on shows the installation again at once;
+   * the answer is then re-read in the background, since the installation may
+   * have changed while it was off.
    */
   muted: boolean;
   /** One `GET /apis` per installation. */

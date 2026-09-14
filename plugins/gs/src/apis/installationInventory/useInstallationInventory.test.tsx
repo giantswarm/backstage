@@ -613,37 +613,70 @@ describe('useInstallationInventory and the Cluster access widget', () => {
       entry => entry.installation === 'snail',
     )!;
     expect(snail.muted).toBe(true);
-    // The cached answer is kept rather than discarded -- that is what makes
-    // switching it back on instant -- so `muted` is the only thing saying it is
-    // out of scope.
+    // The cached answer is kept rather than discarded, so switching it back on
+    // shows the installation again at once -- `muted` is the only thing saying
+    // it is out of scope.
     expect(snail.probe).toBe('answered');
     expect(snail.components.kagent).toBe(true);
     expect(result.current.installationsWith('kagent')).not.toContain('snail');
   });
 
-  it('brings an installation back without re-probing when it is switched on again', async () => {
-    const { result, mutedApi, proxy } = setup({
+  it('brings an installation back, and re-reads it, when it is switched on again', async () => {
+    const { result, statusApi, mutedApi, proxy } = setup({
       states: allHealthy,
-      muted: ['snail'],
     });
+    const snailProbes = () =>
+      proxy.mock.calls.filter(([{ clusterName }]) => clusterName === 'snail')
+        .length;
 
-    await waitFor(() => expect(probesOf(result).golem).toBe('answered'));
-    expect(result.current.installationsWith('kagent')).toEqual(['golem']);
+    await waitFor(() =>
+      expect(result.current.installationsWith('kagent')).toContain('snail'),
+    );
+    expect(snailProbes()).toBe(1);
+
+    // Both halves of what `ClusterAccessConnector` does on a toggle: it stops
+    // probing the installation *and* removes it from the status set. Muting
+    // alone would leave it healthy there, which is a state the app never
+    // reaches -- and the re-read below would then not happen.
+    await act(async () => {
+      mutedApi.setMuted('snail', true);
+      statusApi.remove('snail');
+      await Promise.resolve();
+    });
+    await settle();
+    expect(result.current.installationsWith('kagent')).not.toContain('snail');
 
     await act(async () => {
       mutedApi.setMuted('snail', false);
+      statusApi.recordHealthy('snail');
       await Promise.resolve();
     });
 
     await waitFor(() =>
-      expect(result.current.installationsWith('kagent')).toEqual([
-        'golem',
-        'snail',
-      ]),
+      expect(result.current.installationsWith('kagent')).toContain('snail'),
     );
-    expect(
-      proxy.mock.calls.filter(([{ clusterName }]) => clusterName === 'snail'),
-    ).toHaveLength(1);
+    // Healthy again after dropping out of the status set, so the inventory is
+    // re-read: the installation may have changed while it was switched off. The
+    // cached answer stands in meanwhile, so the row never blanks.
+    await waitFor(() => expect(snailProbes()).toBe(2));
+  });
+
+  it('answers, rather than loading forever, when every installation is switched off', async () => {
+    // The connector removes each muted installation from the status set and
+    // then has nothing left to seed, so the set stays empty -- which used to
+    // read as "no probe has reported yet" and left every tab spinning.
+    const { result } = setup({
+      states: {},
+      muted: ['golem', 'wombat', 'snail'],
+    });
+
+    await settle();
+    await settle();
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isProbing).toBe(false);
+    expect(result.current.installationsWith('kagent')).toEqual([]);
+    expect(result.current.entries).toHaveLength(3);
   });
 
   it('does not wait on a switched-off installation that is still connecting', async () => {

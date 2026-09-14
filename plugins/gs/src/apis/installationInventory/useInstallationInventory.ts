@@ -284,7 +284,10 @@ export function useInstallationInventory(): InstallationInventory {
     // Until the status set has any entry at all (the cluster-access connector
     // seeds it right after the auth providers initialise, but a page can mount
     // first), nothing is known yet: report loading rather than an empty fleet.
-    const nothingKnownYet = entries.length > 0 && !statusKnown;
+    // Switching every installation off empties that set for good, though -- the
+    // connector removes each muted one and then has nothing left to seed -- and
+    // an empty scope is an answer, not a pending one.
+    const nothingKnownYet = entries.some(entry => !entry.muted) && !statusKnown;
 
     const installationsWith = (component: PlatformComponent) =>
       entries
