@@ -155,17 +155,18 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // One agent: `/agent-platform/agents/<installation>/<namespace>/<name>`,
-    // optionally followed by one of its tabs. The three identifying segments are
-    // deliberately left out of the payload, for the same reason as Session
-    // detail: they name an installation and an agent, so including them would
-    // emit a distinct page name per agent and record which installations a user
-    // reads.
+    // optionally followed by one of its tabs. The three identifying segments
+    // are kept out of `page` and `view`, for the same reason as Session detail:
+    // those are the dimensions TelemetryDeck aggregates on, so a path-shaped
+    // value there is a distinct signal name per agent rather than a countable
+    // page. It is not a privacy property — every payload below carries
+    // `path: pathname` verbatim, so the names are transmitted for this page as
+    // for every other one; it is about keeping the dimension bounded.
     //
-    // The tab, by contrast, is safe to report: `tools`/`skills`/`sessions` is a
-    // fixed, public set that identifies a view rather than a customer's
-    // installation — the same argument the Usage views case makes. Overview is
-    // the index and keeps carrying no `view`, so the existing `Agent detail`
-    // numbers stay continuous across this split.
+    // The tab, by contrast, belongs in `view`: `tools`/`skills`/`sessions` is a
+    // fixed, public set, so it stays bounded — the same argument the Usage
+    // views case makes. Overview is the index and keeps carrying no `view`, so
+    // the existing `Agent detail` numbers stay continuous across this split.
     //
     // The tab names are spelled out rather than matched as `[^/]+` so this cannot
     // swallow `…/<name>/edit`, and the three identifying segments are still
