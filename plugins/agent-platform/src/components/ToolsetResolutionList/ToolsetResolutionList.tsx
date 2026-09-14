@@ -1,19 +1,31 @@
-import { Fragment } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from '@backstage/core-components';
-import { Alert, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Flex, SearchField, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
 import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
+import { filterCatalogue } from '../../lib/filterCatalogue';
 import {
   buildCatalogue,
   CatalogueGroup,
+  catalogueInventory,
+  countNoun,
   groupWorkflows,
+  hasEntries,
   isDestructive,
   isReadOnly,
   ServerInfo,
 } from '../../lib/toolset';
+import { Disclosures, type DisclosureEntry } from '../Disclosures';
 import { ShowMore } from '../ShowMore';
+
+/**
+ * Up to this many resolved tools the list opens itself: collapsing a handful
+ * of rows would hide what already fits on the screen. Above it every section
+ * starts shut, and the search — not a scroll — is how one tool is found.
+ */
+export const AUTO_EXPAND_MAX = 20;
 
 const useStyles = makeStyles(theme => ({
   list: {
@@ -41,13 +53,6 @@ const useStyles = makeStyles(theme => ({
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-  },
-  groupTitle: {
-    marginTop: theme.spacing(1),
-  },
-  serverTitle: {
-    marginTop: theme.spacing(0.5),
-    marginBottom: theme.spacing(0.5),
   },
   marker: {
     fontSize: 11,
@@ -89,7 +94,7 @@ export function ToolMarkers({ tool }: { tool: ToolSummary }) {
   );
 }
 
-/** The rows of one section — the first page at once, the rest behind *Show all*. */
+/** The rows of one section — a page at a time, the rest on request. */
 function ToolRows({
   tools,
   toolHref,
@@ -142,41 +147,139 @@ function ToolRows({
 /**
  * The resolved workflows, grouped by name prefix like the catalogue when there
  * are enough to need it, so a preset that resolves to hundreds of workflows
- * reads as a handful of headed sections rather than one wall of rows.
+ * reads as a handful of collapsed sections rather than one wall of rows.
  */
-function WorkflowRows({
+function Workflows({
   workflows,
+  query,
+  defaultExpanded,
   toolHref,
 }: {
   workflows: ToolSummary[];
+  query: string;
+  defaultExpanded: boolean;
   toolHref?: (name: string) => string | undefined;
 }) {
-  const classes = useStyles();
   const groups = groupWorkflows(workflows);
   if (!groups) {
     return <ToolRows tools={workflows} toolHref={toolHref} noun="workflow" />;
   }
   return (
-    <>
-      {groups.map(group => (
-        <div key={group.key}>
-          <Text
-            as="h5"
-            variant="body-small"
-            color="secondary"
-            className={classes.serverTitle}
-          >
-            {group.label} · {group.workflows.length}
-          </Text>
+    <Disclosures
+      nested
+      query={query}
+      defaultExpanded={defaultExpanded}
+      entries={groups.map(group => ({
+        key: `workflows/${group.key}`,
+        trigger: `${group.label} — ${countNoun(
+          group.workflows.length,
+          'workflow',
+        )}`,
+        panel: () => (
           <ToolRows
             tools={group.workflows}
             toolHref={toolHref}
             noun="workflow"
           />
-        </div>
-      ))}
-    </>
+        ),
+      }))}
+    />
   );
+}
+
+/** The trigger line of a group: what it resolved to, in counts. */
+function groupSummary(group: CatalogueGroup): string {
+  const parts: string[] = [];
+  if (group.servers.length > 0) {
+    parts.push(countNoun(group.servers.length, 'server'));
+    parts.push(
+      countNoun(
+        group.servers.reduce((sum, bucket) => sum + bucket.tools.length, 0),
+        'tool',
+      ),
+    );
+  }
+  if (group.platformAdministration.length > 0) {
+    parts.push(
+      countNoun(
+        group.platformAdministration.length,
+        'platform administration tool',
+      ),
+    );
+  }
+  if (group.workflows.length > 0) {
+    parts.push(countNoun(group.workflows.length, 'workflow'));
+  }
+  return parts.join(' · ');
+}
+
+function groupEntries(
+  groups: CatalogueGroup[],
+  query: string,
+  defaultExpanded: boolean,
+  toolHref?: (name: string) => string | undefined,
+): DisclosureEntry[] {
+  return groups.map(group => ({
+    key: group.key,
+    trigger: `${group.title} — ${groupSummary(group)}`,
+    panel: () => (
+      <>
+        {group.servers.length > 0 && (
+          <Disclosures
+            nested
+            query={query}
+            defaultExpanded={defaultExpanded}
+            entries={group.servers.map(bucket => ({
+              key: `${group.key}/${bucket.name}`,
+              trigger: `${bucket.name}${
+                bucket.isFamily ? ' (family)' : ''
+              } — ${countNoun(bucket.tools.length, 'tool')}`,
+              panel: () => (
+                <ToolRows tools={bucket.tools} toolHref={toolHref} />
+              ),
+            }))}
+          />
+        )}
+        {group.platformAdministration.length > 0 && (
+          <Disclosures
+            nested
+            query={query}
+            defaultExpanded={defaultExpanded}
+            entries={[
+              {
+                key: `${group.key}/platform-administration`,
+                trigger: `Platform administration — ${countNoun(
+                  group.platformAdministration.length,
+                  'tool',
+                )} of muster itself`,
+                panel: () => (
+                  <>
+                    <Alert
+                      status="warning"
+                      title="Platform administration tools"
+                      description="muster's own core tools manage the platform itself — its servers, workflows and configuration."
+                    />
+                    <ToolRows
+                      tools={group.platformAdministration}
+                      toolHref={toolHref}
+                    />
+                  </>
+                ),
+              },
+            ]}
+          />
+        )}
+        {group.workflows.length > 0 && (
+          <Workflows
+            workflows={group.workflows}
+            query={query}
+            defaultExpanded={defaultExpanded}
+            toolHref={toolHref}
+          />
+        )}
+      </>
+    ),
+  }));
 }
 
 export type ToolsetResolutionListProps = {
@@ -193,6 +296,14 @@ export type ToolsetResolutionListProps = {
  * The tools a toolset resolves to for the caller, grouped the way the platform
  * groups its servers (Infrastructure / Agent Platform / Registered servers /
  * Workflows), with muster's core tools set apart as *Platform administration*.
+ *
+ * A preset resolves to hundreds of tools on a real installation, so the list
+ * opens as its counts: every section collapsed behind a one-line inventory,
+ * the same disclosure structure the Tools step's catalogue uses, and a search
+ * that opens the sections its matches are in. A resolution small enough to fit
+ * on the screen ({@link AUTO_EXPAND_MAX}) skips all of that and simply shows
+ * itself.
+ *
  * Renders the resolution's other outcomes — an unknown preset, an aggregator
  * that predates toolsets, a failed read — as the messages they deserve rather
  * than as an empty list, which would read as "no tools".
@@ -203,7 +314,54 @@ export function ToolsetResolutionList({
   toolHref,
   emptyText = 'This toolset resolves to no tools for you right now.',
 }: ToolsetResolutionListProps) {
-  const classes = useStyles();
+  const [query, setQuery] = useState('');
+  const trimmed = query.trim();
+
+  // Only a resolution has tools; the other outcomes render as their own
+  // message below. Memoised so the grouping is not redone on every keystroke.
+  const tools = useMemo(
+    () => (resolution.status === 'resolved' ? resolution.tools : []),
+    [resolution.status, resolution.tools],
+  );
+
+  // Short enough to read at a glance: no search field, nothing collapsed.
+  const isShort = tools.length <= AUTO_EXPAND_MAX;
+  // The selection can shrink the resolution under the threshold while a query
+  // is still typed, and the field goes away with it. Two things follow, and
+  // both are needed: the query must stop filtering on the very render that
+  // hides the field (or the card flashes "Nothing matches" with nothing left
+  // to clear it), and it must not survive to be reapplied if the resolution
+  // grows back — the author would meet a pre-filtered list they never typed.
+  const activeQuery = isShort ? '' : trimmed;
+  useEffect(() => {
+    if (isShort) {
+      setQuery('');
+    }
+  }, [isShort]);
+
+  const groups: CatalogueGroup[] = useMemo(
+    () =>
+      buildCatalogue(tools, servers, [])
+        .map(group => ({
+          ...group,
+          // A resolution lists what matched; a server with nothing matched is
+          // not a row here (the sign-in affordance lives with the selectors).
+          servers: group.servers.filter(bucket => bucket.tools.length > 0),
+        }))
+        // Dropping those servers can empty a group that `buildCatalogue` kept,
+        // and an empty group is a disclosure with no summary over no panel.
+        .filter(hasEntries),
+    [tools, servers],
+  );
+  const visibleGroups = useMemo(
+    () => filterCatalogue(groups, activeQuery),
+    [groups, activeQuery],
+  );
+  const inventory = useMemo(() => catalogueInventory(groups), [groups]);
+  const matches = useMemo(
+    () => catalogueInventory(visibleGroups),
+    [visibleGroups],
+  );
 
   switch (resolution.status) {
     case 'idle':
@@ -246,16 +404,17 @@ export function ToolsetResolutionList({
       break;
   }
 
-  const groups: CatalogueGroup[] = buildCatalogue(
-    resolution.tools,
-    servers,
-    [],
-  ).map(group => ({
-    ...group,
-    // A resolution lists what matched; a server with nothing matched is not a
-    // row here (the sign-in affordance lives with the selectors, not the list).
-    servers: group.servers.filter(bucket => bucket.tools.length > 0),
-  }));
+  const inventoryLine =
+    activeQuery === ''
+      ? [
+          countNoun(inventory.servers, 'server'),
+          countNoun(inventory.tools + inventory.platformAdministration, 'tool'),
+          countNoun(inventory.workflows, 'workflow'),
+        ].join(' · ')
+      : `${countNoun(
+          matches.tools + matches.platformAdministration,
+          'tool',
+        )} and ${countNoun(matches.workflows, 'workflow')} match`;
 
   return (
     <Flex direction="column" gap="3">
@@ -275,60 +434,52 @@ export function ToolsetResolutionList({
           description="The toolset resolves to more tools than fit in one page; only the first are listed."
         />
       )}
-      {resolution.tools.length === 0 ? (
+      {tools.length === 0 ? (
         <Text color="secondary">{emptyText}</Text>
       ) : (
-        groups.map(group => (
-          <Fragment key={group.key}>
-            <Text
-              as="h4"
-              variant="body-medium"
-              weight="bold"
-              className={classes.groupTitle}
-            >
-              {group.title}
+        <>
+          {!isShort && (
+            <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+              <Flex grow basis="240px" direction="column">
+                <SearchField
+                  aria-label="Search the resolved tools"
+                  placeholder="Search the resolved tools…"
+                  value={query}
+                  onChange={setQuery}
+                />
+              </Flex>
+              {activeQuery !== '' && (
+                <Button
+                  variant="tertiary"
+                  size="small"
+                  onPress={() => setQuery('')}
+                >
+                  Clear the search
+                </Button>
+              )}
+              <Text variant="body-small" color="secondary">
+                {inventoryLine}
+              </Text>
+            </Flex>
+          )}
+          {visibleGroups.length === 0 ? (
+            <Text color="secondary">
+              Nothing matches &quot;{activeQuery}&quot;.
             </Text>
-            {group.servers.map(bucket => (
-              <div key={bucket.name}>
-                <Text
-                  as="h5"
-                  variant="body-small"
-                  color="secondary"
-                  className={classes.serverTitle}
-                >
-                  {bucket.name}
-                  {bucket.isFamily ? ' (family)' : ''} · {bucket.tools.length}
-                </Text>
-                <ToolRows tools={bucket.tools} toolHref={toolHref} />
-              </div>
-            ))}
-            {group.platformAdministration.length > 0 && (
-              <div>
-                <Text
-                  as="h5"
-                  variant="body-small"
-                  color="secondary"
-                  className={classes.serverTitle}
-                >
-                  Platform administration ·{' '}
-                  {group.platformAdministration.length}
-                </Text>
-                <Alert
-                  status="warning"
-                  title="Platform administration tools"
-                  description="muster's own core tools manage the platform itself — its servers, workflows and configuration."
-                />
-                <ToolRows
-                  tools={group.platformAdministration}
-                  toolHref={toolHref}
-                />
-              </div>
-            )}
-            {group.workflows.length > 0 && (
-              <WorkflowRows workflows={group.workflows} toolHref={toolHref} />
-            )}
-          </Fragment>
-        ))
+          ) : (
+            <Disclosures
+              query={activeQuery}
+              ariaLabel="Resolved toolset"
+              defaultExpanded={isShort}
+              entries={groupEntries(
+                visibleGroups,
+                activeQuery,
+                isShort,
+                toolHref,
+              )}
+            />
+          )}
+        </>
       )}
     </Flex>
   );

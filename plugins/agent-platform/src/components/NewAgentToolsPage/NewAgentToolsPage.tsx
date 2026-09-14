@@ -21,6 +21,7 @@ import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetPresets } from '../../hooks/useToolsetPresets';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
+import { filterCatalogue } from '../../lib/filterCatalogue';
 import {
   buildCatalogue,
   catalogueInventory,
@@ -40,7 +41,6 @@ import {
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { CopyFromAgent } from './CopyFromAgent';
-import { filterCatalogue } from './filterCatalogue';
 import { PresetCards } from './PresetCards';
 import { ToolCatalogue } from './ToolCatalogue';
 import { ToolsetSummaryBar } from './ToolsetSummaryBar';
