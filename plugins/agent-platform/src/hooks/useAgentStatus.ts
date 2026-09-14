@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -66,12 +66,28 @@ export function useAgentStatus(
   const enabled = (options.enabled ?? true) && Boolean(client) && Boolean(name);
   const { fromGeneration } = options;
 
-  // When this watch started, so waiting on the write's revision is bounded.
-  // Read on render and inside `refetchInterval`, which both happen once per
-  // poll, so the two agree on when the wait is over.
-  const startedAt = useRef(Date.now());
-  const givenUpWaiting = () =>
-    Date.now() - startedAt.current >= MAX_REVISION_WAIT_MS;
+  // The deadline has to schedule its own render, not be a clock read taken
+  // whenever one happens anyway. This query is destructured to `{ data, error }`,
+  // so react-query tracks those two props, and an unchanged status is
+  // structurally shared — a poll that answers byte-identically keeps `data`'s
+  // reference and notifies nobody. In exactly the case the bound exists for (a
+  // release that cannot reconcile, so the generation never moves and every
+  // answer is identical) the component would render once and never again, and
+  // comparing `Date.now()` on that one render would leave the waiting alert up
+  // for good.
+  const [givenUpWaiting, setGivenUpWaiting] = useState(false);
+  useEffect(() => {
+    if (fromGeneration === undefined) {
+      // No revision to wait for, so nothing to give up on.
+      return undefined;
+    }
+    setGivenUpWaiting(false);
+    const timer = setTimeout(
+      () => setGivenUpWaiting(true),
+      MAX_REVISION_WAIT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [fromGeneration, installation, namespace, name]);
 
   const { data, error } = useQuery({
     queryKey: musterAgentStatusQueryKey(
@@ -90,7 +106,7 @@ export function useAgentStatus(
         // until the wait has gone on long enough to be the wrong thing to do.
         if (
           hasReachedWrittenRevision(query.state.data, fromGeneration) ||
-          givenUpWaiting()
+          givenUpWaiting
         ) {
           return false;
         }
@@ -125,7 +141,7 @@ export function useAgentStatus(
         !data ||
         !isSettledVerdict(data.verdict) ||
         (!hasReachedWrittenRevision(data, fromGeneration) &&
-          !givenUpWaiting())) &&
+          !givenUpWaiting)) &&
       (!error || notFoundYet),
     error: error && !notFoundYet ? (error as Error) : null,
   };
