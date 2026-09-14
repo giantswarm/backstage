@@ -9,6 +9,7 @@ import {
 import { useApi } from '@backstage/core-plugin-api';
 import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
 import { clusterAccessStatusApiRef } from '../../../apis/clusterAccessStatus';
+import { useMutedInstallations } from '../../../apis/mutedInstallations';
 import {
   useControlPlanesForClusters,
   useProviderClustersForClusters,
@@ -25,7 +26,11 @@ import {
   ReleaseVersionFilter,
   StatusFilter,
 } from '../ClustersPage/filters/filters';
-import { ClusterData, collectClusterData } from './utils';
+import {
+  ClusterData,
+  collectClusterAccessUpdates,
+  collectClusterData,
+} from './utils';
 import { ClusterColumns } from '../ClustersTable/columns';
 import {
   AWSClusterRoleIdentity,
@@ -35,20 +40,6 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { findResourceByRef } from '../../utils/findResourceByRef';
-
-/** Turns a per-cluster list/discovery error into a short status reason. */
-function describeClusterError(error: Error): string {
-  if (/timed out/i.test(error.message)) {
-    return 'API unreachable (timeout)';
-  }
-  if (error.name === 'ForbiddenError') {
-    return 'Access forbidden';
-  }
-  if (error.name === 'NotFoundError') {
-    return 'API not found';
-  }
-  return error.message || 'API request failed';
-}
 
 export type DefaultClusterFilters = {
   kind?: KindFilter;
@@ -98,6 +89,7 @@ export const ClustersDataProvider = ({
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
   const clusterAccessStatusApi = useApi(clusterAccessStatusApiRef);
+  const muted = useMutedInstallations();
 
   const {
     resources: clusterResources,
@@ -194,29 +186,21 @@ export const ClustersDataProvider = ({
   // degraded with a reason. This surfaces "MC X isn't working" for non-auth
   // failures too (e.g. a DNS-broken MC), not just broker/auth errors.
   useEffect(() => {
-    for (const { cluster } of clusterListResults) {
-      clusterAccessStatusApi.recordHealthy(cluster);
+    for (const update of collectClusterAccessUpdates(
+      clusterListResults,
+      clusterErrors,
+      muted,
+    )) {
+      if (update.state === 'healthy') {
+        clusterAccessStatusApi.recordHealthy(update.installation);
+      } else {
+        clusterAccessStatusApi.recordDegraded(
+          update.installation,
+          update.reason,
+        );
+      }
     }
-    for (const errorInfo of clusterErrors) {
-      if (errorInfo.type === 'incompatibility') {
-        continue;
-      }
-      if (errorInfo.error.name === 'RejectedError') {
-        continue;
-      }
-      // A 404 means the apiserver answered authoritatively — access to the
-      // installation works, it just doesn't serve Cluster API. Healthy, not
-      // degraded.
-      if (isNotFoundError(errorInfo)) {
-        clusterAccessStatusApi.recordHealthy(errorInfo.cluster);
-        continue;
-      }
-      clusterAccessStatusApi.recordDegraded(
-        errorInfo.cluster,
-        describeClusterError(errorInfo.error),
-      );
-    }
-  }, [clusterListResults, clusterErrors, clusterAccessStatusApi]);
+  }, [clusterListResults, clusterErrors, clusterAccessStatusApi, muted]);
 
   const clustersData = useMemo(() => {
     return clusterResources.map(cluster => {

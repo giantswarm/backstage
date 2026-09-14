@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import type { InstallationInventoryEntry } from '../installationInventory/types';
 import { useInstallationInventory } from '../installationInventory/useInstallationInventory';
 import { useInstallations } from '../installations/useInstallations';
+import { useMutedInstallations } from '../mutedInstallations';
 import {
   ALL_INSTALLATIONS,
   getInstallationScopeSnapshot,
@@ -43,10 +44,13 @@ export type UseInstallationScopeResult = {
  * present (a deep link narrows the very first render, before anything else
  * has run), otherwise the module store (`installationScopeStore`) -- what the
  * person pinned, kept across tab links that carry no query string and, via
- * localStorage, across visits. The store is what the agent-platform providers
- * and the muster section -- different plugins, different React providers, one
- * page -- share without a common context. `useInstallationScopeUrlSync`,
- * mounted once by the section's selector, keeps the two sources in step.
+ * localStorage, across visits. Either way, a pin naming an installation
+ * switched off in the sidebar Cluster access widget reads as `'all'` and is
+ * forgotten, since the selector no longer offers it. The store is what the
+ * agent-platform providers and the muster section -- different plugins,
+ * different React providers, one page -- share without a common context.
+ * `useInstallationScopeUrlSync`, mounted once by the section's selector, keeps
+ * the two sources in step.
  *
  * Runs under whichever react-query client is in context, for the inventory.
  */
@@ -61,6 +65,8 @@ export function useInstallationScope(): UseInstallationScopeResult {
   const { isLoading } = useInstallations();
   const inventory = useInstallationInventory();
   const { home, entries } = inventory;
+  const muted = useMutedInstallations();
+  const mutedSet = useMemo(() => new Set(muted), [muted]);
 
   // A value restored from localStorage is confirmed once the installations
   // config is known -- unless it names the home installation: that is the
@@ -82,7 +88,12 @@ export function useInstallationScope(): UseInstallationScopeResult {
     setInstallationScope(live.scope === home ? ALL_INSTALLATIONS : live.scope);
   }, [pendingRestore, home]);
   const storedScope = restoredHome ? ALL_INSTALLATIONS : state.scope;
-  const scope = urlScope ?? storedScope;
+  const pinned = urlScope ?? storedScope;
+
+  // Masked here rather than left to the effect below, which lands a commit
+  // later: for that commit the pin would still be the section's scope.
+  const isMutedPin = pinned !== ALL_INSTALLATIONS && mutedSet.has(pinned);
+  const scope = isMutedPin ? ALL_INSTALLATIONS : pinned;
 
   // One call, three places: the store (every consumer, at once), localStorage
   // (the next visit) and the URL (this page's deep link). Written here rather
@@ -107,6 +118,17 @@ export function useInstallationScope(): UseInstallationScopeResult {
     },
     [setSearchParams],
   );
+
+  // Forget the pin for real -- store, localStorage and the URL alike -- so a
+  // reload and the next visit agree with what is already rendered. Several
+  // consumers of the same page run this hook, so this may fire more than once
+  // for one pin; the repeats are no-ops, and the next render clears the flag.
+  useEffect(() => {
+    if (!isMutedPin) {
+      return;
+    }
+    setScope(ALL_INSTALLATIONS);
+  }, [isMutedPin, setScope]);
 
   const installations = useMemo(
     () => selectPlatformInstallations(entries, scope),

@@ -25,6 +25,7 @@ function entry(input: EntryInput): InstallationInventoryEntry {
   return {
     home: false,
     accessState: 'healthy',
+    muted: false,
     probe: 'answered',
     components: { kagent: false, muster: false, kserve: false, capi: false },
     ...input,
@@ -50,6 +51,7 @@ function inventory(
       entries
         .filter(
           e =>
+            !e.muted &&
             e.probe === 'answered' &&
             e.components[component] &&
             e.accessState === 'healthy',
@@ -119,6 +121,29 @@ describe('selectMusterInstallations', () => {
     const inv = inventory([], undefined);
 
     expect(selectMusterInstallations(BACKEND, inv, null)).toEqual(BACKEND);
+  });
+
+  it('drops an installation switched off in the Cluster access widget', () => {
+    const inv = inventory([
+      withMuster({ installation: 'gazelle', home: true }),
+      { ...withMuster({ installation: 'golem' }), muted: true },
+    ]);
+
+    expect(names(selectMusterInstallations(BACKEND, inv, null))).toEqual([
+      'gazelle',
+    ]);
+  });
+
+  it('does not read "everything switched off" as "no inventory at all"', () => {
+    // The legacy fallback keys on an *empty* inventory. Switching every
+    // installation off must narrow the list to nothing, not widen it back to
+    // every installation the backend could target.
+    const inv = inventory([
+      { ...withMuster({ installation: 'gazelle', home: true }), muted: true },
+      { ...withMuster({ installation: 'golem' }), muted: true },
+    ]);
+
+    expect(selectMusterInstallations(BACKEND, inv, null)).toEqual([]);
   });
 
   describe("the person's explicit choice while its probe is pending", () => {

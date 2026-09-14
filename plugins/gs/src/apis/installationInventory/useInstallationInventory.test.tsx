@@ -13,6 +13,10 @@ import {
   __resetInstallationsConfigForTests,
   setInstallationsConfig,
 } from '../installations';
+import {
+  mutedInstallationsApiRef,
+  MutedInstallationsStore,
+} from '../mutedInstallations';
 import { INVENTORY_PROBE_PATH } from './probeInstallationInventory';
 import { installationInventoryQueryKey } from './queryKey';
 import {
@@ -79,6 +83,8 @@ type SetupOptions = {
   mainProvider?: string;
   /** Access states recorded before the hook mounts. */
   states?: Record<string, 'healthy' | 'degraded' | 'connecting'>;
+  /** Installations switched off in the sidebar Cluster access widget. */
+  muted?: string[];
   queryClient?: QueryClient;
 };
 
@@ -111,6 +117,7 @@ function setup({
   },
   mainProvider = 'oidc-golem',
   states,
+  muted = [],
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   }),
@@ -126,6 +133,10 @@ function setup({
   for (const [installation, state] of Object.entries(states ?? {})) {
     record(statusApi, installation, state);
   }
+  const mutedApi = MutedInstallationsStore.create();
+  for (const installation of muted) {
+    mutedApi.setMuted(installation, true);
+  }
   const kubernetesApi = fakeKubernetesApi(answers);
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
@@ -136,6 +147,7 @@ function setup({
         ],
         [kubernetesApiRef, kubernetesApi],
         [clusterAccessStatusApiRef, statusApi],
+        [mutedInstallationsApiRef, mutedApi],
       ]}
     >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -143,6 +155,7 @@ function setup({
   );
   return {
     statusApi,
+    mutedApi,
     proxy: kubernetesApi.proxy,
     queryClient,
     ...renderHook(() => useInstallationInventory(), { wrapper }),
@@ -198,7 +211,10 @@ describe('orderInstallations', () => {
 });
 
 describe('useInstallationInventory', () => {
-  beforeEach(() => __resetInstallationsConfigForTests());
+  beforeEach(() => {
+    __resetInstallationsConfigForTests();
+    window.localStorage.clear();
+  });
   afterEach(() => __resetInstallationsConfigForTests());
 
   it('flags the home installation (oidcTokenProvider = gs.authProvider) and lists it first', async () => {
@@ -553,8 +569,103 @@ describe('useInstallationInventory', () => {
   });
 });
 
+describe('useInstallationInventory and the Cluster access widget', () => {
+  beforeEach(() => {
+    __resetInstallationsConfigForTests();
+    window.localStorage.clear();
+  });
+  afterEach(() => __resetInstallationsConfigForTests());
+
+  it('never probes an installation that is switched off, even when it is healthy', async () => {
+    // `ClusterAccessConnector` normally removes a muted installation from the
+    // status set; here it is recorded healthy anyway, standing in for a writer
+    // that does not know about muting (ClustersDataProvider used to be one).
+    const { result, proxy } = setup({ states: allHealthy, muted: ['snail'] });
+
+    await waitFor(() => expect(probesOf(result).golem).toBe('answered'));
+    await settle();
+
+    expect(
+      proxy.mock.calls.map(([{ clusterName }]) => clusterName),
+    ).not.toContain('snail');
+    expect(result.current.installationsWith('kagent')).toEqual(['golem']);
+  });
+
+  it('keeps a switched-off installation listed, flagged, with its cached answer', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(installationInventoryQueryKey('snail'), {
+      kagent: true,
+      muster: false,
+      kserve: false,
+      capi: false,
+    });
+    const { result } = setup({
+      queryClient,
+      states: allHealthy,
+      muted: ['snail'],
+    });
+
+    await waitFor(() => expect(probesOf(result).golem).toBe('answered'));
+
+    const snail = result.current.entries.find(
+      entry => entry.installation === 'snail',
+    )!;
+    expect(snail.muted).toBe(true);
+    // The cached answer is kept rather than discarded -- that is what makes
+    // switching it back on instant -- so `muted` is the only thing saying it is
+    // out of scope.
+    expect(snail.probe).toBe('answered');
+    expect(snail.components.kagent).toBe(true);
+    expect(result.current.installationsWith('kagent')).not.toContain('snail');
+  });
+
+  it('brings an installation back without re-probing when it is switched on again', async () => {
+    const { result, mutedApi, proxy } = setup({
+      states: allHealthy,
+      muted: ['snail'],
+    });
+
+    await waitFor(() => expect(probesOf(result).golem).toBe('answered'));
+    expect(result.current.installationsWith('kagent')).toEqual(['golem']);
+
+    await act(async () => {
+      mutedApi.setMuted('snail', false);
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(result.current.installationsWith('kagent')).toEqual([
+        'golem',
+        'snail',
+      ]),
+    );
+    expect(
+      proxy.mock.calls.filter(([{ clusterName }]) => clusterName === 'snail'),
+    ).toHaveLength(1);
+  });
+
+  it('does not wait on a switched-off installation that is still connecting', async () => {
+    const { result } = setup({
+      states: { golem: 'healthy', wombat: 'healthy', snail: 'connecting' },
+      muted: ['snail'],
+    });
+
+    await waitFor(() => expect(probesOf(result).golem).toBe('answered'));
+    await settle();
+
+    // Without the muted guard, snail's stale `connecting` would keep every tab
+    // on this page waiting for a probe that can no longer run.
+    expect(result.current.isProbing).toBe(false);
+  });
+});
+
 describe('useInstallationInventory while access probes settle', () => {
-  beforeEach(() => __resetInstallationsConfigForTests());
+  beforeEach(() => {
+    __resetInstallationsConfigForTests();
+    window.localStorage.clear();
+  });
   afterEach(() => __resetInstallationsConfigForTests());
 
   it('keeps probing while an installation with a cached answer is still connecting', async () => {

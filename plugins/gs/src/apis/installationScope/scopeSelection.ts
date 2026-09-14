@@ -31,11 +31,17 @@ export const PLATFORM_COMPONENT_LABELS: Record<PlatformComponent, string> = {
  * Whether the inventory says the installation runs any Agent Platform
  * component. Only an answered probe can say so; an installation that was never
  * asked (not signed in, never healthy) is unknown, not a platform installation.
+ *
+ * An installation switched off in the sidebar Cluster access widget is not one
+ * either, however well the inventory knows it: the cached answer outlives the
+ * switch (that is what makes switching it back on instant), so the muted flag
+ * is what has to say so.
  */
 export function isPlatformInstallation(
   entry: InstallationInventoryEntry,
 ): boolean {
   return (
+    !entry.muted &&
     entry.probe === 'answered' &&
     PLATFORM_SCOPE_COMPONENTS.some(component => entry.components[component])
   );
@@ -60,7 +66,8 @@ export function selectPlatformInstallations(
     return platform;
   }
   const pinned = entries.find(
-    entry => entry.installation === scope && entry.probe === 'pending',
+    entry =>
+      entry.installation === scope && !entry.muted && entry.probe === 'pending',
   );
   return pinned ? [...platform, pinned] : platform;
 }

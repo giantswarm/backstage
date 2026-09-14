@@ -12,6 +12,7 @@ import {
   clusterAccessStatusApiRef,
 } from '../clusterAccessStatus';
 import { useInstallations } from '../installations';
+import { useMutedInstallations } from '../mutedInstallations';
 import {
   isPlatformComponents,
   NO_PLATFORM_COMPONENTS,
@@ -103,7 +104,8 @@ export function orderInstallations(
  * - The home installation is probed first, as a foreground request, the moment
  *   its access state is `healthy`; every other installation as a background
  *   request (behind foreground page reads) as its own state turns `healthy`.
- *   An installation that is not `healthy` is never asked.
+ *   An installation that is not `healthy` is never asked, and neither is one
+ *   switched off in the sidebar Cluster access widget.
  * - Answers are cached for an hour under `installationInventoryQueryKey` and,
  *   under the agent-platform QueryClientProvider, persisted to localStorage.
  *   A persisted entry of another shape reads as "not answered yet" and is
@@ -124,6 +126,13 @@ export function useInstallationInventory(): InstallationInventory {
     useInstallations();
   const mainProvider = configApi.getOptionalString('gs.authProvider');
   const home = findHomeInstallation(installations, mainProvider)?.name;
+
+  // The installations switched off in the sidebar Cluster access widget. The
+  // connector already drops them from the status set, so the queries below
+  // would skip them anyway -- but only while no other writer records a state
+  // for them. Reading the set here makes it this hook's own invariant.
+  const muted = useMutedInstallations();
+  const mutedSet = useMemo(() => new Set(muted), [muted]);
 
   const [statusEntries, setStatusEntries] = useState<
     ClusterAccessStatusEntry[]
@@ -212,7 +221,9 @@ export function useInstallationInventory(): InstallationInventory {
         probeInstallationInventory(kubernetesApi, installation, {
           background: installation !== home,
         }),
-      enabled: accessStates.get(installation) === 'healthy',
+      enabled:
+        accessStates.get(installation) === 'healthy' &&
+        !mutedSet.has(installation),
       // A rehydrated entry of another shape is stale at once, so it is fetched
       // again instead of read; a real answer is kept for an hour.
       staleTime: (query: { state: { data: unknown } }) =>
@@ -245,6 +256,7 @@ export function useInstallationInventory(): InstallationInventory {
           home: installation === home,
           pipeline: configByName.get(installation)?.pipeline,
           accessState: accessStates.get(installation) ?? 'unknown',
+          muted: mutedSet.has(installation),
           probe: state,
           components: answered
             ? (probe.data as PlatformComponents)
@@ -255,15 +267,19 @@ export function useInstallationInventory(): InstallationInventory {
     );
 
     const canStillAnswer = (entry: InstallationInventoryEntry) =>
-      entry.probe === 'pending' && CAN_STILL_ANSWER.has(entry.accessState);
+      !entry.muted &&
+      entry.probe === 'pending' &&
+      CAN_STILL_ANSWER.has(entry.accessState);
     // An installation whose access probe has not settled is not listed by
     // `installationsWith` yet (it is not `healthy`), even when its inventory
     // answer is already in the cache from an earlier visit -- so a tab has
     // nothing to query for it *for now*, not for good. It counts as still
     // settling, or a pinned installation would read as "no agents here" for
     // the seconds until its `/version` probe answers.
+    // Never asked, so never settling: a `connecting` left behind for one would
+    // otherwise keep `isProbing` true for good.
     const accessSettling = (entry: InstallationInventoryEntry) =>
-      entry.accessState === 'connecting';
+      !entry.muted && entry.accessState === 'connecting';
     const homeEntry = entries.find(entry => entry.home);
     // Until the status set has any entry at all (the cluster-access connector
     // seeds it right after the auth providers initialise, but a page can mount
@@ -274,6 +290,7 @@ export function useInstallationInventory(): InstallationInventory {
       entries
         .filter(
           entry =>
+            !entry.muted &&
             entry.probe === 'answered' &&
             entry.components[component] &&
             entry.accessState === 'healthy',
@@ -306,6 +323,7 @@ export function useInstallationInventory(): InstallationInventory {
     ordered,
     probes,
     accessStates,
+    mutedSet,
     statusKnown,
     home,
     installations,
