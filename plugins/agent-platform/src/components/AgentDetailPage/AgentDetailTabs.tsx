@@ -8,10 +8,10 @@ import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
  * rendering the agent without a redirect.
  */
 const TABS = [
-  { path: '', title: 'Overview' },
-  { path: 'tools', title: 'Tools' },
-  { path: 'skills', title: 'Skills' },
-  { path: 'sessions', title: 'Sessions' },
+  { id: 'overview', path: '', title: 'Overview' },
+  { id: 'tools', path: 'tools', title: 'Tools' },
+  { id: 'skills', path: 'skills', title: 'Skills' },
+  { id: 'sessions', path: 'sessions', title: 'Sessions' },
 ] as const;
 
 /**
@@ -30,8 +30,12 @@ export function AgentDetailTabs() {
       <TabList>
         {TABS.map(tab => (
           <Tab
-            key={tab.path}
-            id={tab.path}
+            key={tab.id}
+            // Not the path: Overview's is empty, and bui draws no active
+            // underline for an empty selected key — it reads one as "nothing
+            // selected" (TabsIndicators guards on `selectedKey !== ''`). The
+            // tab would be `aria-selected` and unmarked.
+            id={tab.id}
             // Absolute: a relative bui href inside a splat route resolves against
             // the whole pathname and appends, so from `/…/name/tools` a relative
             // "skills" would land on `/…/name/tools/skills`.

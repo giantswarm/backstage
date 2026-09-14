@@ -473,6 +473,25 @@ describe('AgentDetailPage', () => {
       ]);
     });
 
+    // `aria-selected` alone is not the affordance: bui draws the active
+    // underline from the selected key, and skips it entirely for an empty one
+    // (TabsIndicators guards on `selectedKey !== ''`), so a tab whose id came
+    // from its path would be selected and yet visibly unmarked on Overview.
+    it.each([
+      ['', 'Overview'],
+      ['tools', 'Tools'],
+    ] as const)(
+      'marks the open tab with the active indicator (%s)',
+      async (tab, _label) => {
+        stubResources({ resource: makeAgent() });
+
+        const { container } = await renderPage(tab);
+
+        const strip = container.querySelector('.bui-Tabs');
+        expect(strip).toHaveStyle({ '--active-tab-opacity': '1' });
+      },
+    );
+
     // Overview's href is a prefix of every other tab's, so a 'prefix' match
     // strategy would leave it selected on all four.
     it('selects only the open tab', async () => {
