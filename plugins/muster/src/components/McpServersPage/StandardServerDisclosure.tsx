@@ -1,6 +1,7 @@
 import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
 import { MCPServer } from '../../lib/k8s';
 import {
+  DEACTIVATED_SIGN_IN_GATE,
   DisclosureAccordion,
   Gate,
   InstallationHealthPill,
@@ -317,6 +318,9 @@ export function StandardServerDisclosure({
                 installation={instance.cluster}
                 showName
                 oauthConfigured={instance.getAuth()?.type === 'oauth'}
+                signInGate={
+                  instance.getSuspended() ? DEACTIVATED_SIGN_IN_GATE : undefined
+                }
               />
             ))}
         </Box>

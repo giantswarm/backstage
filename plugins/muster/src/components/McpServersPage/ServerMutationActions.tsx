@@ -32,7 +32,11 @@ import {
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
-import { ServerAuthActions, StateBadge } from '../shared';
+import {
+  DEACTIVATED_SIGN_IN_GATE,
+  ServerAuthActions,
+  StateBadge,
+} from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
   actions: {
@@ -484,7 +488,8 @@ function LifecycleButton({
  * the session (fresh tool discovery). Activate/Deactivate are two directions
  * of one switch, so exactly one of them is shown, keyed on `spec.suspended`.
  * Reconnect only renders for an active server — muster refuses it while
- * suspended.
+ * suspended. Sign in is gated while suspended as well: muster's reconciler
+ * undoes any connection the flow would make, so the row must not offer it.
  */
 export function ServerMutationActions({
   server,
@@ -502,6 +507,7 @@ export function ServerMutationActions({
         serverName={server.getName()}
         installation={server.cluster}
         oauthConfigured={server.getAuth()?.type === 'oauth'}
+        signInGate={suspended ? DEACTIVATED_SIGN_IN_GATE : undefined}
       />
     ) : null;
 

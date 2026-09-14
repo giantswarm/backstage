@@ -5,8 +5,16 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
-import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
-import { readProvenance, provenanceReleaseId } from '../../lib/gitops';
+import {
+  DEACTIVATED_LABEL,
+  MCPServer,
+  mcpServerStateSeverity,
+} from '../../lib/k8s';
+import {
+  isGitOpsManaged,
+  readProvenance,
+  provenanceReleaseId,
+} from '../../lib/gitops';
 import { decodeDexSubject } from '../../lib/dexSubject';
 import {
   formatRelativeTime,
@@ -38,6 +46,13 @@ const useStyles = makeStyles((theme: Theme) => ({
     wordBreak: 'break-all',
   },
   note: {
+    color: theme.palette.text.secondary,
+  },
+  // A caption spanning both columns of the definition grid, for a remark that
+  // belongs to the rows that follow it rather than to one key.
+  gridNote: {
+    gridColumn: '1 / -1',
+    marginTop: theme.spacing(1),
     color: theme.palette.text.secondary,
   },
   block: {
@@ -112,12 +127,32 @@ export function DetailBlock({
   );
 }
 
+/**
+ * Where a deactivated server is activated again, as a sentence to append. The
+ * lifecycle buttons render for an ad-hoc server only (ServerMutationActions);
+ * a GitOps-managed one has no Activate on this page, so pointing at "the
+ * actions below" would send the reader to a button that is not there.
+ */
+function activateHint(server: MCPServer): string {
+  return isGitOpsManaged(server) ? '' : ' Use “Activate” in the actions below.';
+}
+
 /** CRD-sourced configuration (always available, no muster session needed). */
 export function ServerConfig({ server }: { server: MCPServer }) {
   const classes = useStyles();
   const metaEntries = Object.entries(server.getMeta() ?? {});
   return (
     <Box className={classes.grid}>
+      {/* The durable switch behind a `Disconnected` live state. Only rendered
+          when set: a "Deactivated: no" row on every healthy server would be
+          noise, while on a deactivated one this row is the reason the page
+          exists. */}
+      {server.getSuspended() && (
+        <DefRow label={DEACTIVATED_LABEL}>
+          yes — muster keeps it disconnected until it is activated.
+          {activateHint(server)}
+        </DefRow>
+      )}
       <DefRow label="Type">{server.getType() ?? '-'}</DefRow>
       <DefRow label="Family">{server.getFamily() ?? '-'}</DefRow>
       {server.getManagementCluster() && (
@@ -345,6 +380,19 @@ export function RuntimeState({ server }: { server: MCPServer }) {
     );
   }
 
+  // The session rows describe this user's session, not the server: on a
+  // deactivated server they can still read "connected / 58 tools" from a
+  // sign-in the reconciler has since undone, which next to `Disconnected`
+  // looks like a working server with an empty Tools block. Said once, above
+  // the rows, rather than suffixed onto each of them.
+  const sessionRows =
+    runtime.sessionStatus !== undefined ||
+    runtime.sessionAuth !== undefined ||
+    runtime.toolsCount !== undefined ||
+    runtime.resourcesCount !== undefined ||
+    runtime.promptsCount !== undefined;
+  const staleSessionNote = server.getSuspended() && sessionRows;
+
   return (
     <Box className={classes.grid}>
       <DefRow label="Live state">
@@ -359,6 +407,12 @@ export function RuntimeState({ server }: { server: MCPServer }) {
       </DefRow>
       {runtime.statusMessage && (
         <DefRow label="Status">{runtime.statusMessage}</DefRow>
+      )}
+      {staleSessionNote && (
+        <Typography variant="caption" className={classes.gridNote}>
+          {DEACTIVATED_LABEL} — the session rows below are your session's last
+          connection to this server, not a working server.
+        </Typography>
       )}
       {runtime.sessionStatus && (
         <DefRow label="Session">{runtime.sessionStatus}</DefRow>
@@ -406,6 +460,30 @@ export function RuntimeState({ server }: { server: MCPServer }) {
       )}
     </Box>
   );
+}
+
+/**
+ * Why a server's tool list is empty, most deliberate cause first.
+ *
+ * Deactivated wins over everything: muster keeps the server disconnected on
+ * purpose, so neither "down" nor "sign in" is the remedy. `Auth Required` is a
+ * session state, not a degraded one (ADR D3): the server exposes no tools
+ * because this user's session lacks the audience, not because it "may be
+ * down" -- and only where a sign-in exists to point at: a sigv4 server signs
+ * as muster itself, so "sign in" would be advice nobody can act on.
+ */
+function noToolsExplanation(server: MCPServer): string {
+  if (server.getSuspended()) {
+    return `No tools exposed — this server is deactivated.${activateHint(
+      server,
+    )}`;
+  }
+  const authGated =
+    server.getState() === 'Auth Required' &&
+    server.canAuthenticateInteractively();
+  return authGated
+    ? 'No tools exposed — your muster session is not authenticated to this server. Use “Sign in” in the actions below.'
+    : 'No tools exposed (the server may be down or unreachable).';
 }
 
 /**
@@ -460,19 +538,9 @@ export function ServerTools({
 
   const tools = data?.tools ?? [];
   if (tools.length === 0) {
-    // `Auth Required` is a session state, not a degraded one (ADR D3): the
-    // server exposes no tools because this user's session lacks the audience,
-    // not because it "may be down".
-    // ...and only where a sign-in exists to point at: a sigv4 server signs as
-    // muster itself, so "sign in" would be advice nobody can act on.
-    const authGated =
-      server.getState() === 'Auth Required' &&
-      server.canAuthenticateInteractively();
     return (
       <Typography variant="body2" className={classes.note}>
-        {authGated
-          ? 'No tools exposed — your muster session is not authenticated to this server. Use “Sign in” in the actions below.'
-          : 'No tools exposed (the server may be down or unreachable).'}
+        {noToolsExplanation(server)}
       </Typography>
     );
   }

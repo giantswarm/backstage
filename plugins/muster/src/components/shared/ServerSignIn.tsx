@@ -1,6 +1,15 @@
-import { makeStyles, Theme } from '@material-ui/core';
+import { Tooltip, makeStyles, Theme } from '@material-ui/core';
 import { Button, ButtonLink, Text } from '@backstage/ui';
 import { ServerSignInState, useServerSignIn } from './useServerSignIn';
+
+/**
+ * The gate reason for a deactivated server (`spec.suspended`): muster keeps it
+ * disconnected, so a sign-in could at best produce a session that looks
+ * connected on a server that is not. The portal withholds the button on its own
+ * knowledge of the CR rather than relying on muster's refusal text.
+ */
+export const DEACTIVATED_SIGN_IN_GATE =
+  'Deactivated servers cannot be signed in to; activate the server first.';
 
 const useStyles = makeStyles((theme: Theme) => ({
   root: {
@@ -235,6 +244,25 @@ function SignInFlow({
   );
 }
 
+/**
+ * The sign-in affordance disabled with the reason, for a server the portal
+ * knows a sign-in cannot help right now. Kept in place rather than dropped so
+ * the row still says where the sign-in went -- the same shape as the gated
+ * Reconnect in the lifecycle row.
+ */
+function GatedSignIn({ reason }: { reason: string }) {
+  return (
+    <Tooltip title={reason}>
+      {/* span wrapper so the tooltip still fires over the disabled button */}
+      <span>
+        <Button variant="primary" size="small" isDisabled>
+          Sign in
+        </Button>
+      </span>
+    </Tooltip>
+  );
+}
+
 export interface ServerSignInProps {
   /** The muster server name, as reported by `list_tools` / `auth://status`. */
   serverName: string;
@@ -296,6 +324,13 @@ export interface ServerAuthActionsProps {
    * can be undone -- this is the extra signal that gates "Sign out".
    */
   oauthConfigured?: boolean;
+  /**
+   * Why the sign-in is withheld right now, when it is. With a reason set, a
+   * server muster reports as needing a sign-in gets a disabled "Sign in" that
+   * explains itself instead of the live flow; "Sign out" is unaffected, since
+   * revoking a stale grant is exactly what a gated server may still need.
+   */
+  signInGate?: string;
 }
 
 /**
@@ -313,6 +348,7 @@ export function ServerAuthActions({
   installation,
   showName,
   oauthConfigured,
+  signInGate,
 }: ServerAuthActionsProps) {
   const classes = useStyles();
   const state = useServerSignIn(serverName, installation);
@@ -348,7 +384,11 @@ export function ServerAuthActions({
     return (
       <div className={classes.inActionRow}>
         {showName ? <code className={classes.name}>{serverName}</code> : null}
-        <SignInFlow state={state} prominent />
+        {signInGate ? (
+          <GatedSignIn reason={signInGate} />
+        ) : (
+          <SignInFlow state={state} prominent />
+        )}
         <Messages state={state} />
       </div>
     );
