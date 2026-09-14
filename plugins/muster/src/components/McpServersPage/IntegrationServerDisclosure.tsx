@@ -1,5 +1,9 @@
 import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
-import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
+import {
+  DEACTIVATED_LABEL,
+  MCPServer,
+  mcpServerStateSeverity,
+} from '../../lib/k8s';
 import { DisclosureAccordion, Gate, StateBadge, severityTone } from '../shared';
 import {
   AuthChain,
@@ -72,6 +76,12 @@ export function IntegrationServerDisclosure({
         <code className={classes.endpoint}>{server.getUrl()}</code>
       )}
       <Box className={classes.right}>
+        {/* The durable switch ahead of the transient state: a deactivated
+            server is `Disconnected` by design, and the live state alone reads
+            as an outage with the Activate button as its only explanation. */}
+        {server.getSuspended() && (
+          <StateBadge tone="neutral" label={DEACTIVATED_LABEL} />
+        )}
         <StateBadge tone={severityTone(severity)} label={state} />
       </Box>
     </Box>
