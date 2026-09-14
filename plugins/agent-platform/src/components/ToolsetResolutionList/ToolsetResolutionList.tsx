@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from '@backstage/core-components';
 import { Alert, Button, Flex, SearchField, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { LinearProgress, makeStyles } from '@material-ui/core';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
 import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
@@ -367,7 +367,19 @@ export function ToolsetResolutionList({
     case 'idle':
       return null;
     case 'loading':
-      return <Text color="secondary">Resolving the toolset…</Text>;
+      // The sentence says what is being waited on, the bar that it is still
+      // being waited on: `filter_tools` against a large catalogue takes a few
+      // seconds, and a static line gives no sign of progress. Same pairing as
+      // InstallationGroups, which labels a section and puts an indeterminate
+      // bar under it. A skeleton is the other house pattern (muster's Tool
+      // Explorer) but it can only imply the shape of what is coming, not name
+      // it — and here the name is the useful half.
+      return (
+        <Flex direction="column" gap="2">
+          <Text color="secondary">Resolving the toolset…</Text>
+          <LinearProgress aria-label="Resolving the toolset" />
+        </Flex>
+      );
     case 'unavailable':
       return (
         <Alert
