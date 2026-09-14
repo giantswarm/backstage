@@ -42,8 +42,14 @@ const FALLBACK_WINDOW_DAYS = 30;
 /** Copy that has to stop claiming ownership on an unsecure-mode installation. */
 const PERSONAL_COPY = {
   title: 'Your sessions',
-  description: (days: number, installation: string) =>
-    `Your own agent sessions on ${installation} over the last ${days} days, derived from kagent's stored conversations — including sessions you started from Slack. The Overview and Cost tabs cover every user's model calls; these are yours.`,
+  description: (days: number, installation: string) => (
+    <>
+      Your own agent sessions on <strong>{installation}</strong> over the last{' '}
+      {days} days, derived from kagent's stored conversations — including
+      sessions you started from Slack. The Overview and Cost tabs cover every
+      user's model calls; these are yours.
+    </>
+  ),
   descriptionWithoutInstallation: (days: number) =>
     `Your own agent sessions over the last ${days} days, derived from kagent's stored conversations — including sessions you started from Slack. The Overview and Cost tabs cover every user's model calls; these are yours.`,
   topTools: 'Your top tools',
@@ -56,8 +62,12 @@ const PERSONAL_COPY = {
 
 const SHARED_COPY = {
   title: 'Agent sessions',
-  description: (days: number, installation: string) =>
-    `Every user's agent sessions on ${installation} over the last ${days} days, derived from kagent's stored conversations.`,
+  description: (days: number, installation: string) => (
+    <>
+      Every user's agent sessions on <strong>{installation}</strong> over the
+      last {days} days, derived from kagent's stored conversations.
+    </>
+  ),
   descriptionWithoutInstallation: (days: number) =>
     `Agent sessions over the last ${days} days, derived from kagent's stored conversations.`,
   topTools: 'Top tools',

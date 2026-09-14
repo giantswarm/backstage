@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 
@@ -13,7 +14,12 @@ const useStyles = makeStyles(theme => ({
 
 export type SectionHeaderProps = {
   title: string;
-  description: string;
+  /**
+   * Prose, or prose with inline markup -- `<strong>` around the one word the
+   * sentence is about, say. It is rendered inside the description's own `<p>`,
+   * so block elements do not belong here.
+   */
+  description: ReactNode;
   /**
    * Heading level. Defaults to `h3`.
    *

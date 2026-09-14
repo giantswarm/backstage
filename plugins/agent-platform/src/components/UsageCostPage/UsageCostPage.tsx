@@ -35,9 +35,15 @@ export function UsageCostPage() {
           variant="title-medium"
           title="Cost"
           description={
-            installation
-              ? `Spend on ${installation} over the last ${WINDOW_DAYS} days, for every user, priced per call from the gateway's own model catalogue.`
-              : `Spend over the last ${WINDOW_DAYS} days, for every user, priced per call from the gateway's own model catalogue.`
+            installation ? (
+              <>
+                Spend on <strong>{installation}</strong> over the last{' '}
+                {WINDOW_DAYS} days, for every user, priced per call from the
+                gateway's own model catalogue.
+              </>
+            ) : (
+              `Spend over the last ${WINDOW_DAYS} days, for every user, priced per call from the gateway's own model catalogue.`
+            )
           }
         />
 
