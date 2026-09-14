@@ -34,6 +34,13 @@ export interface Config {
        * a cross-client `audience:server:client_id:<client>` scope for every
        * client whose audience a forwarded token must satisfy. Keycloak and
        * Entra ID reject both, and need no extra scope at all.
+       *
+       * Widening this list (or `scopes`) on a running instance signs everyone
+       * in again: an existing session was granted the previous set, a token
+       * refresh cannot add a scope to that grant, and the login provider
+       * refuses to refresh a session with fewer scopes than the configuration
+       * now requests. The next page load starts a fresh sign-in (a popup) that
+       * asks for the new set; no manual sign-out is needed.
        */
       extraScopes?: string[];
     };

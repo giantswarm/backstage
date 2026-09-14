@@ -36,8 +36,66 @@ describe('gsOidcAuthenticator', () => {
     expect(gsOidcAuthenticator.authenticate).toBe(
       oidcAuthenticator.authenticate,
     );
-    expect(gsOidcAuthenticator.refresh).toBe(oidcAuthenticator.refresh);
     expect(gsOidcAuthenticator.logout).toBe(oidcAuthenticator.logout);
+  });
+
+  describe('refresh', () => {
+    const mockRefresh = oidcAuthenticator.refresh as jest.Mock;
+    const ctx = initializeResult(
+      Promise.resolve({ helper: 'helper' }),
+    ) as unknown as Parameters<typeof gsOidcAuthenticator.refresh>[1];
+    // What the OAuth adapter hands over: the scope set it will report as
+    // granted (the request merged with the granted-scope cookie) and whether
+    // the sign-in's grant already covers it (`scopes.persist` is on for the
+    // upstream oidc authenticator, so the flag is always set).
+    const refreshInput = (scopeAlreadyGranted: boolean | undefined) =>
+      ({
+        req: {},
+        refreshToken: 'refresh-token',
+        scope:
+          'openid profile email groups offline_access federated:id audience:server:client_id:dex-k8s-authenticator',
+        scopeAlreadyGranted,
+      }) as Parameters<typeof oidcAuthenticator.refresh>[0];
+    const refreshed = {
+      fullProfile: {},
+      session: { accessToken: 'a', tokenType: 'bearer', scope: '' },
+    };
+
+    it('refreshes a session whose grant covers the requested scopes', async () => {
+      mockRefresh.mockResolvedValue(refreshed);
+
+      await expect(
+        gsOidcAuthenticator.refresh(refreshInput(true), ctx),
+      ).resolves.toBe(refreshed);
+
+      expect(mockRefresh).toHaveBeenCalledWith(refreshInput(true), ctx);
+    });
+
+    it('refuses to refresh a session whose grant is a strict subset of the requested scopes', async () => {
+      // The sign-in happened while `gs.auth.extraScopes` was unset; the
+      // configuration has since gained `federated:id` and the apiserver
+      // audience, so the frontend refreshes with the wider set. Dex would
+      // answer with a token carrying the old scopes only; instead of passing
+      // that off as the requested set, the refresh fails and the frontend
+      // signs in afresh.
+      await expect(
+        gsOidcAuthenticator.refresh(refreshInput(false), ctx),
+      ).rejects.toThrow(
+        /signed in with fewer scopes than this refresh asks for/,
+      );
+
+      expect(mockRefresh).not.toHaveBeenCalled();
+    });
+
+    it('cannot tell without persisted scopes and refreshes as upstream does', async () => {
+      mockRefresh.mockResolvedValue(refreshed);
+
+      await expect(
+        gsOidcAuthenticator.refresh(refreshInput(undefined), ctx),
+      ).resolves.toBe(refreshed);
+
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('start', () => {
