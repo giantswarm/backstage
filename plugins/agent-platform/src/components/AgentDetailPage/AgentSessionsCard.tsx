@@ -1,10 +1,7 @@
 import { Flex, Text } from '@backstage/ui';
-import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
-import { sessionsRouteRef } from '../../routes';
 import { SessionsTable } from '../SessionsTable';
 
 /**
@@ -17,24 +14,18 @@ import { SessionsTable } from '../SessionsTable';
  *
  * The whole list, searchable and paged: this is a tab of its own, and the five
  * rows it showed while it was one section of a scrolling page were a teaser for
- * a page that does not exist — the Sessions tab lists every agent's, not this
- * agent's. The link to it stays for the cross-agent view it does offer.
+ * a page that does not exist — the section's Sessions tab lists every agent's,
+ * not this agent's, so it is not the "rest" of this list and is not linked here.
  */
 export function AgentSessionsCard({
   sessions,
 }: {
   sessions: AgentSessionsView;
 }) {
-  const sessionsRoute = useRouteRef(sessionsRouteRef);
   const { rows, isLoading, isNotUserScoped, isUnavailable } = sessions;
 
   return (
-    <InfoCard
-      title="Sessions"
-      headerActions={
-        sessionsRoute && <Link to={sessionsRoute()}>View all sessions</Link>
-      }
-    >
+    <InfoCard title="Sessions">
       <Flex direction="column" gap="3">
         <Text variant="body-small" color="secondary">
           {isNotUserScoped

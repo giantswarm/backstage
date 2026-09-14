@@ -203,6 +203,29 @@ describe('SessionsTable', () => {
   });
 
   describe('search', () => {
+    // The search itself still matches a hidden column's value — it finds more
+    // than it offers, which is harmless — but a list scoped to one agent on one
+    // installation must not advertise those as ways to search it.
+    it.each([
+      [undefined, 'Search by session, agent, or installation'],
+      [['agentName'] as const, 'Search by session or installation'],
+      [['agentName', 'installation'] as const, 'Search by session'],
+    ])(
+      'names only the visible axes (hiding %s)',
+      async (hidden, placeholder) => {
+        await renderInTestApp(
+          <SessionsTable rows={rows} hideColumns={hidden} />,
+          {
+            mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+          },
+        );
+
+        expect(
+          screen.getByRole('searchbox', { name: 'Search sessions' }),
+        ).toHaveAttribute('placeholder', placeholder);
+      },
+    );
+
     it('filters by session title', async () => {
       await renderInTestApp(
         <SessionsTable rows={rows} searchDebounceMs={0} />,

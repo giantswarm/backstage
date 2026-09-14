@@ -2583,8 +2583,9 @@ the page already fixes both) over a **single-installation** query that shares th
 Sessions tab's cache key, so no fleet fan-out happens and arriving from that tab
 renders instantly. It lists them all, searchable and paged: while this was one
 section of a scrolling page it showed the five most recent, but that was a teaser
-for a per-agent page that does not exist — the section's own tab is it. The link to
-the section-level Sessions tab stays for the cross-agent view it does offer.
+for a per-agent page that does not exist — the tab is it. There is no "View all
+sessions" link: the section-level Sessions tab lists _every_ agent's sessions, so
+it is a different list, not the rest of this one.
 
 kagent scopes its session list to the caller, so this can only ever show your own
 conversations with the agent, and the copy says so. On an installation running
