@@ -2288,18 +2288,14 @@ lands on the section it names:
 **Overview is the index**, not a `/overview` sub-path that the bare URL redirects
 to — unlike the Models and Usage tabs, which do redirect. Every link in the portal
 already points at the three-segment URL, and one of them carries router state: the
-create flow hands its write over in `location.state` for `AgentCreationProgress`
-to consume. A redirect is one more navigation to carry that through, for a URL
-nothing would gain from.
+create flow and `Update skills` hand the write over in `location.state` for
+`AgentCreationProgress` to consume. A redirect is one more navigation to carry
+that through, for a URL nothing would gain from.
 
-`Update skills` writes the same router state, but the progress does **not**
-currently appear for it: `useAgentCreatedHandoff` reads `location.state` once, in
-a `useState` initializer, and that write navigates to the same route element — so
-nothing remounts and the initializer never runs again. The state is then never
-cleared either (the clearing effect is gated on a handoff having been read), so a
-later reload of the URL surfaces it, stale. The create flow escapes this only
-because the page renders its `isDeploying` branch first, and `AgentCreationProgress`
-genuinely mounts later.
+`Update skills` is the case that needs the handoff to be read more than once:
+unlike the create flow it runs from the page the progress renders on, and
+navigates to the URL it is already on, so nothing unmounts. `useAgentCreatedHandoff`
+picks a handoff up whenever it appears in the location, not only at mount.
 
 `AgentsRouter` therefore mounts the page at `:installation/:namespace/:name/*`, and
 `…/<name>/edit` stays a route of its own beside it — react-router scores a static
