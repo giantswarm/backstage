@@ -313,6 +313,19 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  // The edit form used to fall through to the generic agent-platform case,
+  // which echoes the rest of the path into `view` — so every visit recorded the
+  // installation, namespace and agent name it was opened for.
+  it('names the agent edit page without naming the agent', () => {
+    const pathname =
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit';
+
+    expect(getTelemetryPageViewPayload(pathname)).toEqual({
+      page: 'Agent edit',
+      path: pathname,
+    });
+  });
+
   // The agent-detail pattern matches exactly three segments under `agents/`, so
   // the create flow must keep reporting through the generic agent-platform case.
   it('should not treat the create flow as an agent detail page', () => {
@@ -431,6 +444,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/new/skills',
       '/agent-platform/agents/new/review',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
       '/agent-platform/usage',

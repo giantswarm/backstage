@@ -166,6 +166,17 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Agent detail' };
       break;
 
+    // The edit form for one agent: `…/<installation>/<namespace>/<name>/edit`.
+    // A page of its own rather than a view of the detail page — it is a
+    // different form with its own funnel — and, like the detail case, it
+    // carries no `view`: the three segments before `edit` name an installation
+    // and an agent. Without this case it fell through to the generic
+    // '/agent-platform' case below, which echoes the whole remainder of the
+    // path into `view` and so recorded exactly those names.
+    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+\/edit$/.test(pathname):
+      payload = { page: 'Agent edit' };
+      break;
+
     // Must stay above the generic '/agent-platform' cases below, like the
     // Sessions cases: `switch (true)` takes the first match, and without this
     // the Usage tab would report as `page: 'Agents', view: 'usage'` — merging
