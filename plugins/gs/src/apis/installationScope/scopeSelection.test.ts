@@ -15,6 +15,7 @@ function entry(
     installation,
     home: false,
     accessState: 'healthy',
+    muted: false,
     probe: 'answered',
     components: { kagent: false, muster: false, kserve: false, capi: true },
     ...overrides,
@@ -33,6 +34,13 @@ const pending = entry('slug', {
   probe: 'pending',
   accessState: 'connecting',
 });
+// Switched off in the sidebar Cluster access widget. Its cached answer outlives
+// the switch, so it still looks like a full-blown platform installation.
+const switchedOff = entry('yak', {
+  muted: true,
+  accessState: 'unknown',
+  components: { kagent: true, muster: true, kserve: false, capi: true },
+});
 
 describe('isPlatformInstallation', () => {
   it('is any answered installation with kagent, muster or KServe', () => {
@@ -50,6 +58,10 @@ describe('isPlatformInstallation', () => {
         }),
       ),
     ).toBe(true);
+  });
+
+  it('is not an installation switched off in the Cluster access widget', () => {
+    expect(isPlatformInstallation(switchedOff)).toBe(false);
   });
 
   it('is not a CAPI-only cluster, nor an unanswered one', () => {
@@ -89,6 +101,22 @@ describe('selectPlatformInstallations', () => {
   it('does not add a pinned installation the portal does not know', () => {
     expect(
       selectPlatformInstallations(entries, 'nowhere').map(e => e.installation),
+    ).toEqual(['golem', 'wombat']);
+  });
+
+  it('omits an installation switched off in the Cluster access widget', () => {
+    const withSwitchedOff = [...entries, switchedOff];
+    expect(
+      selectPlatformInstallations(withSwitchedOff, ALL_INSTALLATIONS).map(
+        e => e.installation,
+      ),
+    ).toEqual(['golem', 'wombat']);
+    // Not even as the pinned exception: `useInstallationScope` unpins a
+    // switched-off installation, so nothing should offer it back.
+    expect(
+      selectPlatformInstallations(withSwitchedOff, 'yak').map(
+        e => e.installation,
+      ),
     ).toEqual(['golem', 'wombat']);
   });
 });

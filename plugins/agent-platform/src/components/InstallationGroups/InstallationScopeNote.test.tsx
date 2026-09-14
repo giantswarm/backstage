@@ -24,6 +24,7 @@ function entry(
     installation,
     home: false,
     accessState: 'healthy',
+    muted: false,
     probe: 'answered',
     components: { kagent: true, muster: false, kserve: false, capi: true },
     ...overrides,

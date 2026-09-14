@@ -51,6 +51,7 @@ function entry(installation: string): InstallationInventoryEntry {
     installation,
     home: false,
     accessState: 'healthy',
+    muted: false,
     probe: 'answered',
     components: { kagent: true, muster: true, kserve: false, capi: true },
   };

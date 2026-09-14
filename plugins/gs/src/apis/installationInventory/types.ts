@@ -41,6 +41,14 @@ export type InstallationInventoryEntry = {
   pipeline?: string;
   /** The cluster-access state; `unknown` while absent from the status set. */
   accessState: ClusterAccessState | 'unknown';
+  /**
+   * Switched off in the sidebar Cluster access widget. It is not probed and no
+   * tab queries it. A cached answer under `components` is kept rather than
+   * discarded, so switching it back on shows the installation again at once;
+   * the answer is then re-read in the background, since the installation may
+   * have changed while it was off.
+   */
+  muted: boolean;
   /** One `GET /apis` per installation. */
   probe: InstallationProbeState;
   /** All false until `probe === 'answered'`. */
@@ -60,8 +68,8 @@ export type InstallationInventory = {
   /** Some entry that can still answer has not. */
   isProbing: boolean;
   /**
-   * Installations that answered, run the component and are `healthy` --
-   * home first. What a tab may query for that component.
+   * Installations that answered, run the component, are `healthy` and are not
+   * muted -- home first. What a tab may query for that component.
    */
   installationsWith: (component: PlatformComponent) => string[];
   /** Drops every cached answer and re-probes the healthy installations. */

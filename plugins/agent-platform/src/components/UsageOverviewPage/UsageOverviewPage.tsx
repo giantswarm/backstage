@@ -65,9 +65,15 @@ export function UsageOverviewPage() {
           variant="title-medium"
           title="Overview"
           description={
-            installation
-              ? `Every user's model calls on ${installation} over the last ${WINDOW_DAYS} days, as seen by the agentgateway LLM listener.`
-              : `Model usage across the platform, as seen by the agentgateway LLM listener.`
+            installation ? (
+              <>
+                Every user's model calls on <strong>{installation}</strong> over
+                the last {WINDOW_DAYS} days, as seen by the agentgateway LLM
+                listener.
+              </>
+            ) : (
+              `Model usage across the platform, as seen by the agentgateway LLM listener.`
+            )
           }
         />
 

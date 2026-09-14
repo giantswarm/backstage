@@ -33,6 +33,15 @@ jest.mock('../installationInventory/useInstallationInventory', () => ({
   }),
 }));
 
+// The installations switched off in the sidebar Cluster access widget. The real
+// hook reads a Backstage API and returns a contents-stable array; here the test
+// sets the array, and keeps its identity stable within a test the same way.
+let mockMuted: string[] = [];
+
+jest.mock('../mutedInstallations', () => ({
+  useMutedInstallations: () => mockMuted,
+}));
+
 function entry(
   installation: string,
   overrides: Partial<InstallationInventoryEntry> = {},
@@ -41,6 +50,7 @@ function entry(
     installation,
     home: false,
     accessState: 'healthy',
+    muted: false,
     probe: 'answered',
     components: { kagent: true, muster: false, kserve: false, capi: true },
     ...overrides,
@@ -74,6 +84,7 @@ describe('useInstallationScope', () => {
     window.localStorage.clear();
     __resetInstallationScopeForTests();
     __resetInstallationsConfigForTests();
+    mockMuted = [];
     mockInventory = {
       entries: [golem, wombat, snail],
       home: 'golem',
@@ -197,5 +208,115 @@ describe('useInstallationScope', () => {
     expect(result.current.scope.installations.map(e => e.installation)).toEqual(
       ['golem'],
     );
+  });
+
+  describe('and the Cluster access widget', () => {
+    // The widget switches installations off app-wide; the inventory marks them
+    // and this hook must neither offer nor stay pinned to one.
+    const switchedOffWombat = entry('wombat', {
+      muted: true,
+      accessState: 'unknown',
+    });
+
+    it('does not offer an installation that is switched off', () => {
+      configure(['golem', 'wombat', 'snail']);
+      mockMuted = ['wombat'];
+      mockInventory = {
+        entries: [golem, switchedOffWombat, snail],
+        home: 'golem',
+        isLoading: false,
+      };
+
+      const { result } = renderScope();
+
+      expect(
+        result.current.scope.installations.map(e => e.installation),
+      ).toEqual(['golem']);
+    });
+
+    it('unpins a stored installation that is switched off, clearing the store', () => {
+      configure(['golem', 'wombat', 'snail']);
+      window.localStorage.setItem(INSTALLATION_SCOPE_STORAGE_KEY, 'wombat');
+      mockMuted = ['wombat'];
+      mockInventory = {
+        entries: [golem, switchedOffWombat, snail],
+        home: 'golem',
+        isLoading: false,
+      };
+
+      const { result } = renderScope();
+
+      // Reported as "all" on the very first render, not a commit later: the
+      // selector would otherwise show the pinned name as "not found" and every
+      // provider would query an installation the person switched off.
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(
+        window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
+      ).toBeNull();
+      expect(getInstallationScopeSnapshot().scope).toBe(ALL_INSTALLATIONS);
+    });
+
+    it('unpins a deep link to an installation that is switched off, clearing the URL', () => {
+      configure(['golem', 'wombat', 'snail']);
+      mockMuted = ['wombat'];
+      mockInventory = {
+        entries: [golem, switchedOffWombat, snail],
+        home: 'golem',
+        isLoading: false,
+      };
+
+      const { result } = renderScope(
+        '/agent-platform/agents?installation=wombat',
+      );
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(result.current.search).toBe('');
+    });
+
+    it('falls back to all when the pinned installation is switched off mid-session', () => {
+      configure(['golem', 'wombat', 'snail']);
+      const { result, rerender } = renderScope();
+
+      act(() => result.current.scope.setScope('wombat'));
+      expect(result.current.scope.scope).toBe('wombat');
+
+      mockMuted = ['wombat'];
+      mockInventory = {
+        entries: [golem, switchedOffWombat, snail],
+        home: 'golem',
+        isLoading: false,
+      };
+      act(() => rerender());
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(result.current.search).toBe('');
+      expect(
+        window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
+      ).toBeNull();
+    });
+
+    it('keeps the selector on a portal whose installations are all but one switched off', () => {
+      // Switching everything off must not look like a single-installation
+      // portal: the selector is the only control that says why the section is
+      // narrow, so it has to stay.
+      configure(['golem', 'wombat', 'snail']);
+      mockMuted = ['wombat', 'snail'];
+      mockInventory = {
+        entries: [
+          golem,
+          switchedOffWombat,
+          entry('snail', { muted: true, accessState: 'unknown' }),
+        ],
+        home: 'golem',
+        isLoading: false,
+      };
+
+      const { result } = renderScope();
+
+      expect(result.current.scope.isSingleInstallation).toBe(false);
+      expect(
+        result.current.scope.installations.map(e => e.installation),
+      ).toEqual(['golem']);
+    });
   });
 });

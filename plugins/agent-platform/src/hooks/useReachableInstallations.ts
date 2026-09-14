@@ -56,9 +56,11 @@ export function homeFirst(
  * out to be down (each otherwise hangs for the full proxy timeout and retries,
  * dominating the tail) and stops the list churning wide-then-narrow as probes
  * settle. The sidebar Cluster-access widget owns surfacing degraded/unreachable
- * clusters, so these pages don't re-discover it. Installations the user has muted
- * app-wide are also excluded here for free: they are never probed, so they never
- * become `healthy`.
+ * clusters, so these pages don't re-discover it. Installations the user has
+ * switched off app-wide are excluded too: they are never probed, so they never
+ * become `healthy`. That holds because every writer of the status set skips them
+ * -- the gs installation inventory filters on the muted set directly rather than
+ * trusting this one.
  *
  * Tradeoff: on a cold, direct page load we wait for the first access probe
  * (~one probe) instead of querying optimistically. In practice the probe runs on

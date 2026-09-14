@@ -60,6 +60,7 @@ function entry(
     installation,
     home: installation === 'gazelle',
     accessState: 'healthy',
+    muted: false,
     probe: 'answered',
     components: MUSTER,
     ...overrides,

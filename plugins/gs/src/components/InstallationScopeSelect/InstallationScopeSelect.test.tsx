@@ -30,6 +30,13 @@ jest.mock('../../apis/installationInventory/useInstallationInventory', () => ({
   }),
 }));
 
+/** The installations switched off in the sidebar Cluster access widget. */
+let mockMuted: string[] = [];
+
+jest.mock('../../apis/mutedInstallations', () => ({
+  useMutedInstallations: () => mockMuted,
+}));
+
 function entry(
   installation: string,
   overrides: Partial<InstallationInventoryEntry> = {},
@@ -38,6 +45,7 @@ function entry(
     installation,
     home: false,
     accessState: 'healthy',
+    muted: false,
     probe: 'answered',
     components: { kagent: true, muster: true, kserve: false, capi: true },
     ...overrides,
@@ -73,6 +81,7 @@ describe('InstallationScopeSelect', () => {
     window.localStorage.clear();
     __resetInstallationScopeForTests();
     __resetInstallationsConfigForTests();
+    mockMuted = [];
     mockInventory = {
       entries: [golem, wombat, snail],
       home: 'golem',
@@ -159,5 +168,40 @@ describe('InstallationScopeSelect', () => {
     renderSelect();
 
     expect(trigger()).toHaveTextContent('nowhere');
+  });
+
+  it('does not offer an installation switched off in the Cluster access widget', async () => {
+    mockMuted = ['wombat'];
+    mockInventory = {
+      entries: [golem, entry('wombat', { muted: true }), snail],
+      home: 'golem',
+      isLoading: false,
+    };
+
+    renderSelect({ component: 'kagent' });
+    await userEvent.click(trigger());
+
+    // snail stays: signed out is a state the selector reports, not a reason to
+    // withhold the installation. Only the switched-off one is gone.
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual(['All installations', 'golem', 'snailsigned out']);
+  });
+
+  it('falls back to all installations when the pinned one is switched off', () => {
+    setInstallationScope('wombat');
+    mockMuted = ['wombat'];
+    mockInventory = {
+      entries: [golem, entry('wombat', { muted: true }), snail],
+      home: 'golem',
+      isLoading: false,
+    };
+
+    renderSelect();
+
+    // Never the 'not found' fallback: the person switched it off deliberately,
+    // and the section shows every other installation instead of nothing.
+    expect(trigger()).toHaveTextContent('All installations');
+    expect(getInstallationScopeSnapshot().scope).toBe('all');
   });
 });
