@@ -1,4 +1,5 @@
 import {
+  DEACTIVATED_LABEL,
   MCPServer,
   MCPServerSeverity,
   TOOL_GROUP_ORDER,
@@ -193,8 +194,10 @@ export type McPresence = {
 /**
  * Collapse a family's federated instances into one health entry per management
  * cluster: the worst severity in that cluster and the worst-state server as the
- * representative for its diagnostics. Alphabetical by cluster; callers that
- * want the clusters needing a look first apply
+ * representative for its diagnostics. A deactivated representative reads
+ * `Deactivated` rather than the `Disconnected` its status carries, so the pill
+ * names the reason and not just the symptom. Alphabetical by cluster; callers
+ * that want the clusters needing a look first apply
  * {@link orderPresenceDegradedFirst}.
  */
 export function presenceByMc(servers: MCPServer[]): McPresence[] {
@@ -215,7 +218,9 @@ export function presenceByMc(servers: MCPServer[]): McPresence[] {
       return {
         mc,
         severity,
-        state: worst.getState() ?? 'unknown',
+        state: worst.getSuspended()
+          ? DEACTIVATED_LABEL
+          : (worst.getState() ?? 'unknown'),
         server: worst,
       };
     })

@@ -8,6 +8,7 @@ import {
   MusterInstance,
   MusterInstanceContext,
 } from '../MusterInstanceProvider';
+import { DEACTIVATED_SIGN_IN_GATE } from '../shared';
 import {
   OAUTH_SIGN_IN_GATE,
   ServerMutationActions,
@@ -266,6 +267,41 @@ describe('ServerMutationActions session auth affordances', () => {
       await screen.findByRole('button', { name: 'Sign in' }),
     ).toBeInTheDocument();
     expect(screen.getByText('GitOps-managed (read-only)')).toBeInTheDocument();
+  });
+
+  it('gates Sign in for a deactivated server and says why', async () => {
+    // muster keeps a suspended server disconnected, so a sign-in could at
+    // best leave a session that reads "connected" on a server that is not.
+    // The gate is the portal's own (spec.suspended), not muster's refusal.
+    await renderActions(
+      makeServer({ state: 'Disconnected', suspended: true, authType: 'oauth' }),
+      { authenticated: true, authStatus: AUTH_REQUIRED },
+    );
+
+    const signIn = await screen.findByRole('button', { name: 'Sign in' });
+    expect(signIn).toBeDisabled();
+    await userEvent.hover(signIn.parentElement as Element);
+    expect(
+      await screen.findByText(DEACTIVATED_SIGN_IN_GATE),
+    ).toBeInTheDocument();
+    // The way out stays live next to it.
+    expect(screen.getByRole('button', { name: 'Activate' })).toBeEnabled();
+  });
+
+  it('keeps Sign out for a deactivated OAuth server whose session is still signed in', async () => {
+    // A grant made before (or despite) the deactivation is exactly what a
+    // person may want to revoke; only the sign-in is pointless while suspended.
+    await renderActions(
+      makeServer({ state: 'Disconnected', suspended: true, authType: 'oauth' }),
+      { authenticated: true, authStatus: CONNECTED },
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Sign out' }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
   });
 
   it('offers no auth actions for a sigv4 server', async () => {
