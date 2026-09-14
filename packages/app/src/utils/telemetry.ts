@@ -139,6 +139,39 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // Must stay above the generic '/agent-platform' cases below, for the reason
+    // the Sessions and Usage cases give: without these the Models tab reports as
+    // `page: 'Agents'`, merging its numbers into the Agents page's.
+    case pathname === '/agent-platform/models':
+      payload = { page: 'Models index' };
+      break;
+
+    // One model: `…/models/configs/<installation>/<namespace>/<name>`. No
+    // `view`, for the same reason as Session detail and Agent detail: `page`
+    // and `view` are the dimensions TelemetryDeck aggregates on, and putting
+    // path segments there yields a distinct signal name per model rather than a
+    // countable page. (It is not a privacy measure — every payload below
+    // carries `path: pathname` verbatim.) Placed above the views case so the
+    // three identifying segments cannot reach a `view`.
+    case /^\/agent-platform\/models\/configs\/[^/]+\/[^/]+\/[^/]+$/.test(
+      pathname,
+    ):
+      payload = { page: 'Model detail' };
+      break;
+
+    // The Models tab's views (`configs`, `serving`, `capacity`). Only the view
+    // segment, as the Muster case does, so anything deeper — `configs/new`, and
+    // any view that grows sub-paths later — collapses to the view it belongs to
+    // instead of opening the dimension up.
+    case pathname.startsWith('/agent-platform/models'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Models',
+        view: parts[3],
+      };
+      break;
+    }
+
     // Must stay above the generic '/agent-platform' cases below: `switch (true)`
     // takes the first match, so after them this would be dead and the Sessions
     // tab would report as `page: 'Agents', view: 'sessions'`.
@@ -154,17 +187,36 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Session detail' };
       break;
 
-    // One agent: `/agent-platform/agents/<installation>/<namespace>/<name>`.
-    // Deliberately carries no `view`, for the same reason as Session detail: those
-    // segments name an installation and an agent, so including them would emit a
-    // distinct page name per agent and record which installations a user reads.
+    // One agent: `/agent-platform/agents/<installation>/<namespace>/<name>`,
+    // optionally followed by one of its tabs. The three identifying segments
+    // are kept out of `page` and `view`, for the same reason as Session detail:
+    // those are the dimensions TelemetryDeck aggregates on, so a path-shaped
+    // value there is a distinct signal name per agent rather than a countable
+    // page. It is not a privacy property — every payload below carries
+    // `path: pathname` verbatim, so the names are transmitted for this page as
+    // for every other one; it is about keeping the dimension bounded.
     //
-    // Matched on exactly three segments so it cannot swallow the create flow's
-    // `agents/new`, `agents/new/skills` or `agents/new/review`, which keep
-    // reporting through the generic case below.
-    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
-      payload = { page: 'Agent detail' };
+    // The tab, by contrast, belongs in `view`: `tools`/`skills`/`sessions` is a
+    // fixed, public set, so it stays bounded — the same argument the Usage
+    // views case makes. Overview is the index and keeps carrying no `view`, so
+    // the existing `Agent detail` numbers stay continuous across this split.
+    //
+    // The tab names are spelled out rather than matched as `[^/]+` so this cannot
+    // swallow `…/<name>/edit`, and the three identifying segments are still
+    // required so it cannot swallow the create flow's `agents/new`,
+    // `agents/new/skills` or `agents/new/review` — all of which keep reporting
+    // through the generic case below.
+    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+(\/(tools|skills|sessions))?$/.test(
+      pathname,
+    ): {
+      // Absent for Overview, and left out of the payload entirely rather than
+      // sent as an undefined attribute.
+      const tab = pathname.split('/')[6];
+      payload = tab
+        ? { page: 'Agent detail', view: tab }
+        : { page: 'Agent detail' };
       break;
+    }
 
     // The edit form for one agent: `…/<installation>/<namespace>/<name>/edit`.
     // A page of its own rather than a view of the detail page — it is a

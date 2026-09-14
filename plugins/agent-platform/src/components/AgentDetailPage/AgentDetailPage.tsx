@@ -1,5 +1,12 @@
 import { ReactNode, useCallback, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import {
   Content,
   EmptyState,
@@ -11,21 +18,20 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Avatar, Button, Flex, Grid, Text } from '@backstage/ui';
+import { Alert, Avatar, Button, Flex, Text } from '@backstage/ui';
 import {
   Agent,
   ErrorsProvider,
-  isGitOpsManaged,
   isNotFoundError,
   ModelConfig,
   useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { GitOpsCard } from '@giantswarm/backstage-plugin-flux-react';
 import {
   DateComponent,
   StatusLabel,
   useProvidePageHeaderActions,
+  useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -65,12 +71,11 @@ import { NewSessionDialog } from '../NewSessionDialog';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { AgentCreationProgress } from '../AgentCreationProgress';
 import { AgentActionsMenu } from './AgentActionsMenu';
-import { AgentConfigurationCard } from './AgentConfigurationCard';
 import { AgentDeleteDialog } from './AgentDeleteDialog';
+import { AgentDetailTabs } from './AgentDetailTabs';
+import { AgentOverviewTab } from './AgentOverviewTab';
 import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentSkillsCard } from './AgentSkillsCard';
-import { AgentStatusCard } from './AgentStatusCard';
-import { AgentSystemPromptCard } from './AgentSystemPromptCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
 
@@ -344,6 +349,10 @@ function AgentDetailPageContent() {
 
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
+  // This page is mounted at `…/:name/*`, so the base path is its own URL with
+  // the tab segment removed — what the tab strip builds its hrefs from and
+  // where an unknown sub-path is sent.
+  const basePath = useSplatBasePath();
 
   const openEdit = useCallback(() => {
     const href = agentEditRoute?.({ installation, namespace, name });
@@ -637,63 +646,55 @@ function AgentDetailPageContent() {
           name={name}
         />
 
-        {/* A cheap pre-check only: no Flux or Helm marker at all means there is
-            nothing to resolve, so skip the lookups entirely. Whether the agent is
-            *actually* GitOps-managed is the card's own decision — it walks
-            Agent → HelmRelease → Kustomization → GitRepository and renders nothing
-            unless that ends in Git. An agent created by this plugin's own flow is
-            reconciled by a HelmRelease the scaffolder applied, which is not in Git,
-            so it correctly shows no card; the "Deployed by" row above is the whole
-            truth about where it came from. */}
-        {isGitOpsManaged(agent) && (
-          <GitOpsCard resource={agent} installationName={installation} />
-        )}
+        <AgentDetailTabs />
 
-        {/* Status sits in a third of the width, beside the configuration. A
-            controller message is prose — a rejected spec can carry several
-            hundred words of admission-webhook output — and across the full page
-            it runs to line lengths nobody can follow. A narrower column is the
-            fix, so the status card is the one thing that does not want the whole
-            width.
+        {/* The tabs are routed, so each is its own URL and a deep link or a
+            reload lands on the section it names. Overview is the index: the
+            three-segment URL every link in the portal already points at keeps
+            rendering the agent, with no redirect to flash through.
 
-            The sections below it do, and take it: a skills grid fits three cards
-            per row, and the sessions table has four columns to place. One column
-            below `lg`, where there is no width to divide. */}
-        {/* Document order is the layout order — no `colStart`. Grid's sparse
-            auto-placement moves the cursor to the next row whenever an item's
-            definite column-start is before the cursor's current column, so
-            placing the status in column 3 first and then pinning the
-            configuration to column 1 drops the configuration to a second row and
-            leaves the top-left of the page empty.
-
-            The consequence is that stacking below `lg` puts the configuration
-            above the status. Acceptable: the readiness label is already in the
-            page header, so the state is visible before either card. */}
-        <Grid.Root columns={{ initial: '1', lg: '3' }} gap="4">
-          <Grid.Item colSpan={{ initial: '1', lg: '2' }}>
-            <AgentConfigurationCard
-              agent={agent}
-              modelConfig={modelConfig}
-              modelServing={agentRow?.modelServing}
-            />
-          </Grid.Item>
-          <Grid.Item colSpan="1">
-            <AgentStatusCard agent={agent} />
-          </Grid.Item>
-        </Grid.Root>
-
-        <AgentSystemPromptCard agent={agent} />
-        <AgentToolsetCard agent={agent} />
-        <AgentSkillsCard
-          agent={agent}
-          onUpdateSkills={
-            agentManagerGate.presence === 'available' &&
-            !agentManagerGate.isUnavailable
-              ? openUpdateSkills
-              : undefined
-          }
-        />
-        <AgentSessionsCard sessions={sessions} />
+            The reads above stay in this component, which the router never
+            unmounts — switching tabs neither refetches the agent nor
+            re-registers the header actions. The toolset's muster queries are the
+            deliberate exception: they live in the Tools tab and now run only
+            when someone opens it, rather than on every visit to the page. */}
+        <Routes>
+          <Route
+            index
+            element={
+              <AgentOverviewTab
+                agent={agent}
+                installation={installation}
+                modelConfig={modelConfig}
+                modelServing={agentRow?.modelServing}
+              />
+            }
+          />
+          <Route path="tools" element={<AgentToolsetCard agent={agent} />} />
+          <Route
+            path="skills"
+            element={
+              <AgentSkillsCard
+                agent={agent}
+                onUpdateSkills={
+                  agentManagerGate.presence === 'available' &&
+                  !agentManagerGate.isUnavailable
+                    ? openUpdateSkills
+                    : undefined
+                }
+              />
+            }
+          />
+          <Route
+            path="sessions"
+            element={<AgentSessionsCard sessions={sessions} />}
+          />
+          {/* A mistyped or retired tab is not a missing agent: send it to
+              Overview rather than render an empty page under a header that
+              says the agent is fine. `edit` never arrives here — AgentsRouter
+              matches its static segment ahead of this splat. */}
+          <Route path="*" element={<Navigate to={basePath} replace />} />
+        </Routes>
       </Flex>
 
       {/* In the body rather than beside the header button that opens it: the
@@ -739,6 +740,12 @@ function AgentDetailPageContent() {
 
 /**
  * One kagent agent: what it is, whether it works, and what it has been used for.
+ *
+ * Four routed tabs under the agent's own header — Overview, Tools, Skills,
+ * Sessions — with Overview as the index, so the three-segment URL the rest of
+ * the portal links to still opens the agent. The header and the creation
+ * progress sit above the tab strip: which agent this is, and whether a write
+ * just made to it has converged, are true on every tab.
  *
  * The agent can be edited, have its skills re-pinned and be deleted from the
  * header's actions menu — every write through agent-manager over muster as the

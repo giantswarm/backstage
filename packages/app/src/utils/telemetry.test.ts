@@ -300,6 +300,43 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  describe('the Models tab', () => {
+    // Without cases of its own the whole tab fell through to the generic
+    // agent-platform branch as `page: 'Agents'`, merging its numbers into the
+    // Agents page's — and the detail path put an installation, a namespace and
+    // a model name into `view`, one signal name per model.
+    it('names the tab index', () => {
+      expect(getTelemetryPageViewPayload('/agent-platform/models')).toEqual({
+        page: 'Models index',
+        path: '/agent-platform/models',
+      });
+    });
+
+    it.each([
+      ['/agent-platform/models/configs', 'configs'],
+      ['/agent-platform/models/serving', 'serving'],
+      ['/agent-platform/models/capacity', 'capacity'],
+      // Deeper than a view, and still reported as the view it belongs to.
+      ['/agent-platform/models/configs/new', 'configs'],
+    ])('reports %s as its view', (pathname, view) => {
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Models',
+        view,
+        path: pathname,
+      });
+    });
+
+    it('names one model without naming it in page or view', () => {
+      const pathname =
+        '/agent-platform/models/configs/gazelle/agent-platform/gpt-4o';
+
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Model detail',
+        path: pathname,
+      });
+    });
+  });
+
   it('should return correct payload for one agent', () => {
     // No `view`: the path names an installation, a namespace and an agent, so
     // echoing them would emit a page name per agent — and record which
@@ -312,6 +349,20 @@ describe('getTelemetryPageViewPayload', () => {
       path: '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
     });
   });
+
+  it.each(['tools', 'skills', 'sessions'])(
+    "should name the agent detail page's %s tab without naming the agent",
+    tab => {
+      const pathname = `/agent-platform/agents/gazelle/agent-platform/pr-reviewer/${tab}`;
+      // The tab is a fixed, public name, so it is safe to report as a `view`
+      // where the installation and agent segments are not.
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Agent detail',
+        view: tab,
+        path: pathname,
+      });
+    },
+  );
 
   // The edit form used to fall through to the generic agent-platform case,
   // which echoes the rest of the path into `view` — one signal name per agent,
@@ -328,8 +379,9 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
-  // The agent-detail pattern matches exactly three segments under `agents/`, so
-  // the create flow must keep reporting through the generic agent-platform case.
+  // The create flow sits under `agents/` too and is not an agent detail view:
+  // `agents/new`, `agents/new/skills` and `agents/new/review` keep reporting
+  // through the generic agent-platform case.
   it('should not treat the create flow as an agent detail page', () => {
     expect(
       getTelemetryPageViewPayload('/agent-platform/agents/new/review'),
@@ -446,6 +498,9 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/new/skills',
       '/agent-platform/agents/new/review',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/tools',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/skills',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/sessions',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
@@ -457,6 +512,10 @@ describe('getTelemetryPageViewPayload', () => {
       // Pre-existing gaps in this list, closed while adding the one above.
       '/agent-platform/models',
       '/agent-platform/models/serving',
+      '/agent-platform/models/configs',
+      '/agent-platform/models/configs/new',
+      '/agent-platform/models/configs/gazelle/agent-platform/gpt-4o',
+      '/agent-platform/models/capacity',
       '/plans',
       '/plans/pr/22',
       '/roadmap',

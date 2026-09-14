@@ -240,6 +240,30 @@ environment variables set.)
 - `yarn start backend` to start the backend
 - `yarn start app` to start the frontend
 
+## End-to-end tests in a browser, against agentlab
+
+`e2e/agentlab/` is a Playwright suite that drives the portal the way a person
+does — the Dex sign-in popup, the Agent Platform tabs, the MCP servers page,
+the New agent wizard, a chat turn — against a running
+[agentlab](https://github.com/giantswarm/agentlab), the local kind cluster
+that runs the whole agent platform with this Backstage in it. It is the
+browser-level complement of `agentlab backstage-test`, which proves the same
+portal's routes and tokens headlessly and renders no page.
+
+```bash
+yarn playwright install chromium          # once
+yarn test:e2e:agentlab                    # against https://backstage.127.0.0.1.nip.io
+yarn test:e2e:agentlab --grep-invert lifecycle   # the pages only, ~1 min
+```
+
+The lab users (`admin@lab.local`, `dev@lab.local`, `viewer@lab.local`,
+password `password`) are the lab's throwaway fixtures, and the suite signs in
+as them. To test an unreleased build, put its image into the lab
+(`platform.devImages.backstage` in the lab's `agentlab.yaml`, then
+`agentlab platform`) and run the suite against it. A change to a page ships
+with the spec that proves it. Variables, coverage and the lab conditions that
+look like failures are in [`e2e/agentlab/README.md`](../e2e/agentlab/README.md).
+
 ## Running app locally with HTTPS
 
 To use HTTPS with your local development site and access https://localhost,

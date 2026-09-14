@@ -358,6 +358,23 @@ describe('ToolsetResolutionList', () => {
     ).toBeInTheDocument();
   });
 
+  // The sentence alone left the section looking stalled while `filter_tools`
+  // worked through a large catalogue.
+  it('says what it is waiting for and shows that it still is', async () => {
+    await renderList({
+      tools: [],
+      unmatched: [],
+      truncated: false,
+      isLoading: true,
+      status: 'loading',
+    });
+
+    expect(screen.getByText('Resolving the toolset…')).toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: 'Resolving the toolset' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders the non-resolution outcomes as their messages, never as an empty list', async () => {
     await renderList({
       tools: [],
