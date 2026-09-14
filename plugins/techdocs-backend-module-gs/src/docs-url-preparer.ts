@@ -45,6 +45,19 @@ function getNavigationItems(mdFiles: string[], docsComponentName?: string) {
 }
 
 /**
+ * Returns true if the directory tree contains at least one Markdown file
+ */
+function containsMarkdownFiles(dir: string): boolean {
+  return fs.readdirSync(dir, { withFileTypes: true }).some(entry => {
+    if (entry.isDirectory()) {
+      return containsMarkdownFiles(path.join(dir, entry.name));
+    }
+
+    return entry.name.endsWith('.md');
+  });
+}
+
+/**
  * Returns branch name from the techdocs-ref URL
  */
 function getBranchNameFromTechDocsRef(url: string) {
@@ -105,36 +118,51 @@ export class DocsUrlPreparer implements PreparerBase {
        * processed by mkdocs-monorepo-plugin.
        */
       let docsComponentName;
+      let assetsPath;
       if (fs.existsSync(`${root}/docs`)) {
-        docsComponentName = 'docs-component';
-        const docsComponentPath = `${root}/${docsComponentName}`;
-        fse.moveSync(`${root}/docs`, `${docsComponentPath}/docs`);
-        options?.logger?.info(
-          `Moved ${root}/docs into ${docsComponentPath}/docs`,
-        );
-        if (fs.existsSync(`${root}/mkdocs.yaml`)) {
-          fse.moveSync(
-            `${root}/mkdocs.yaml`,
-            `${docsComponentPath}/mkdocs.yaml`,
-          );
+        if (containsMarkdownFiles(`${root}/docs`)) {
+          docsComponentName = 'docs-component';
+          const docsComponentPath = `${root}/${docsComponentName}`;
+          fse.moveSync(`${root}/docs`, `${docsComponentPath}/docs`);
           options?.logger?.info(
-            `Moved ${root}/mkdocs.yaml into ${docsComponentPath}/mkdocs.yaml`,
+            `Moved ${root}/docs into ${docsComponentPath}/docs`,
           );
-        } else if (fs.existsSync(`${root}/mkdocs.yml`)) {
-          fse.moveSync(
-            `${root}/mkdocs.yml`,
-            `${docsComponentPath}/mkdocs.yaml`,
-          );
-          options?.logger?.info(
-            `Moved ${root}/mkdocs.yml into ${docsComponentPath}/mkdocs.yaml`,
-          );
+          if (fs.existsSync(`${root}/mkdocs.yaml`)) {
+            fse.moveSync(
+              `${root}/mkdocs.yaml`,
+              `${docsComponentPath}/mkdocs.yaml`,
+            );
+            options?.logger?.info(
+              `Moved ${root}/mkdocs.yaml into ${docsComponentPath}/mkdocs.yaml`,
+            );
+          } else if (fs.existsSync(`${root}/mkdocs.yml`)) {
+            fse.moveSync(
+              `${root}/mkdocs.yml`,
+              `${docsComponentPath}/mkdocs.yaml`,
+            );
+            options?.logger?.info(
+              `Moved ${root}/mkdocs.yml into ${docsComponentPath}/mkdocs.yaml`,
+            );
+          } else {
+            fs.writeFileSync(
+              `${docsComponentPath}/mkdocs.yaml`,
+              dump({ site_name: 'docs' }),
+            );
+            options?.logger?.info(
+              `Wrote standard mkdocs.yaml into ${docsComponentPath}/mkdocs.yaml`,
+            );
+          }
         } else {
-          fs.writeFileSync(
-            `${docsComponentPath}/mkdocs.yaml`,
-            dump({ site_name: 'docs' }),
-          );
+          /**
+           * mkdocs-monorepo-plugin cannot generate a nav from a folder without
+           * Markdown files. Such a folder holds assets only, so it belongs inside
+           * the generated docs folder, where relative links from the repository
+           * root still resolve.
+           */
+          assetsPath = `${root}/.docs-assets`;
+          fse.moveSync(`${root}/docs`, assetsPath);
           options?.logger?.info(
-            `Wrote standard mkdocs.yaml into ${docsComponentPath}/mkdocs.yaml`,
+            `Found no Markdown files in ${root}/docs, moved it into ${assetsPath}`,
           );
         }
       }
@@ -144,6 +172,11 @@ export class DocsUrlPreparer implements PreparerBase {
        */
       fs.mkdirSync(`${root}/docs`);
       options?.logger?.info(`Created docs folder`);
+
+      if (assetsPath) {
+        fse.moveSync(assetsPath, `${root}/docs/docs`);
+        options?.logger?.info(`Moved ${assetsPath} into ${root}/docs/docs`);
+      }
 
       const files = fs.readdirSync(root);
       const mdFiles: string[] = [];
