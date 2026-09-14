@@ -25254,9 +25254,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"fast-xml-parser@npm:5.11.0":
-  version: 5.11.0
-  resolution: "fast-xml-parser@npm:5.11.0"
+"fast-xml-parser@npm:5.11.1":
+  version: 5.11.1
+  resolution: "fast-xml-parser@npm:5.11.1"
   dependencies:
     "@nodable/entities": "npm:^3.0.0"
     fast-xml-builder: "npm:^1.2.0"
@@ -25266,7 +25266,7 @@ __metadata:
     xml-naming: "npm:^0.3.0"
   bin:
     fxparser: src/cli/cli.js
-  checksum: 10c0/bf3821c123f057283dd413f79c043af830e8b3bff3c0a6d02f97a8c5677c205379c156b735620c981ebe504d4992e9cf7f435512d2e77d845ac25f8045c53c5f
+  checksum: 10c0/04a1cf600130c4fc146e9f5bcb0a0e88354c5b9725debfa849f9028afd90b77a3e4c9339a3a7f5d22d749b74ac78567428eb1385679319fabf4d6f03065248d6
   languageName: node
   linkType: hard
 
