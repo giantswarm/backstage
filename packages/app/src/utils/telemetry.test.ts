@@ -364,8 +364,24 @@ describe('getTelemetryPageViewPayload', () => {
     },
   );
 
-  // The create flow and the edit page both sit under `agents/` too; neither is
-  // an agent detail view, and the edit page keeps reporting as it did before.
+  // The edit form used to fall through to the generic agent-platform case,
+  // which echoes the rest of the path into `view` — one signal name per agent,
+  // in the dimension TelemetryDeck aggregates on. `path` still carries the
+  // whole pathname here, as it does for every page; what this pins is that the
+  // agent does not reach `page` or `view`.
+  it('counts the agent edit page as one page, not one per agent', () => {
+    const pathname =
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit';
+
+    expect(getTelemetryPageViewPayload(pathname)).toEqual({
+      page: 'Agent edit',
+      path: pathname,
+    });
+  });
+
+  // The create flow sits under `agents/` too and is not an agent detail view:
+  // `agents/new`, `agents/new/skills` and `agents/new/review` keep reporting
+  // through the generic agent-platform case.
   it('should not treat the create flow as an agent detail page', () => {
     expect(
       getTelemetryPageViewPayload('/agent-platform/agents/new/review'),
@@ -485,6 +501,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/tools',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/skills',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/sessions',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
       '/agent-platform/usage',

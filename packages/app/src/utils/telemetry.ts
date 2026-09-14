@@ -218,6 +218,24 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // The edit form for one agent: `…/<installation>/<namespace>/<name>/edit`.
+    // A page of its own rather than a view of the detail page — it is a
+    // different form with its own funnel — and, like the detail case, it
+    // carries no `view`.
+    //
+    // What that buys is a bounded dimension, not privacy. Every payload this
+    // function returns carries `path: pathname` verbatim, so the installation,
+    // namespace and agent name are transmitted for this page as they are for
+    // every other one. `page` and `view` are what TelemetryDeck aggregates on,
+    // and a path-shaped value there is a distinct signal name per agent —
+    // which is what the generic '/agent-platform' case below produces, by
+    // echoing the whole remainder of the path into `view`. This case exists so
+    // the edit form counts as one page instead of one per agent; it does not
+    // make the identifiers any less sent.
+    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+\/edit$/.test(pathname):
+      payload = { page: 'Agent edit' };
+      break;
+
     // Must stay above the generic '/agent-platform' cases below, like the
     // Sessions cases: `switch (true)` takes the first match, and without this
     // the Usage tab would report as `page: 'Agents', view: 'usage'` — merging
