@@ -103,11 +103,76 @@ describe('useUpdateAgent', () => {
       });
     });
 
-    expect(callTool.mock.calls[0][1]).toEqual({
+    // The write is preceded by a `get_agent_status`, which is where the
+    // pre-write template generation comes from; the update itself carries
+    // nothing but the refresh.
+    expect(callTool.mock.calls[0][0]).toBe('x_agent-manager_get_agent_status');
+    expect(callTool.mock.calls[1][0]).toBe('x_agent-manager_update_agent');
+    expect(callTool.mock.calls[1][1]).toEqual({
       namespace: 'kagent',
       name: 'pr-reviewer',
       refreshSkills: true,
     });
+  });
+
+  it('reads the template generation before writing, and hands it back', async () => {
+    // The progress on the detail page needs it to tell this write's verdict
+    // from the one that was already there.
+    callTool
+      .mockResolvedValueOnce({
+        name: 'pr-reviewer',
+        namespace: 'kagent',
+        verdict: 'ready',
+        summary: 'Ready.',
+        template: { exists: true, generation: 7, observedGeneration: 7 },
+      })
+      .mockResolvedValue({
+        agent: { name: 'pr-reviewer', namespace: 'kagent' },
+        before: {},
+        after: {},
+        changed: ['skills'],
+        manifests: { ociRepository: '', helmRelease: '', values: {} },
+      });
+    const { result } = renderWith();
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.update({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        refreshSkills: true,
+      });
+    });
+
+    expect(outcome).toEqual(expect.objectContaining({ fromGeneration: 7 }));
+  });
+
+  it('still writes when the generation cannot be read', async () => {
+    // Best effort: an installation that cannot answer the status read still
+    // gets its write, and the progress then falls back to the verdict alone.
+    callTool
+      .mockRejectedValueOnce(new Error('forbidden: not your namespace'))
+      .mockResolvedValue({
+        agent: { name: 'pr-reviewer', namespace: 'kagent' },
+        before: {},
+        after: {},
+        changed: ['skills'],
+        manifests: { ociRepository: '', helmRelease: '', values: {} },
+      });
+    const { result } = renderWith();
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.update({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        refreshSkills: true,
+      });
+    });
+
+    expect(outcome).toEqual(
+      expect.objectContaining({ fromGeneration: undefined }),
+    );
   });
 
   it("surfaces agent-manager's refusal for a suspended release verbatim", async () => {

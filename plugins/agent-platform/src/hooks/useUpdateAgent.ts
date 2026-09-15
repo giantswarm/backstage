@@ -17,13 +17,30 @@ import {
 /** Why a write did not land, in agent-manager's words — the same three kinds as a create. */
 export type AgentWriteFailure = CreateAgentFailure;
 
+/**
+ * What `update_agent` returned, plus the template generation as it stood
+ * immediately *before* the write.
+ *
+ * The detail page's progress needs that baseline to tell this write's verdict
+ * from the one that was already there: agent-manager writes the HelmRelease and
+ * returns, and helm-controller re-renders the AgentTemplate seconds later, so
+ * the first status read after saving an agent that was already `ready` answers
+ * `ready` for the revision before the write. Nothing in agent-manager's own
+ * response carries it — it writes the release, not the template, so it cannot
+ * know the generation the template will land on — which is why it is read here
+ * rather than taken from the result.
+ */
+export type AgentUpdateOutcome = UpdateAgentResult & {
+  fromGeneration?: number;
+};
+
 export type UpdateAgentState = {
   /**
    * `update_agent` as the person: merges `update` into the release's values,
    * validates against the chart schema and writes. With `refreshSkills`, every
    * git skill is re-pinned to its default-branch head and nothing else moves.
    */
-  update: (update: AgentUpdate) => Promise<UpdateAgentResult>;
+  update: (update: AgentUpdate) => Promise<AgentUpdateOutcome>;
   isUpdating: boolean;
   /**
    * `update_agent` with `mode: commit` (giantswarm/agent-manager#24): a pull
@@ -83,7 +100,25 @@ export function useUpdateAgent(
   );
 
   const mutation = useMutation({
-    mutationFn: (update: AgentUpdate) => requireClient().updateAgent(update),
+    mutationFn: async (update: AgentUpdate): Promise<AgentUpdateOutcome> => {
+      const agentManager = requireClient();
+      // Strictly before the write, so a generation past it can only be one the
+      // write caused. Best effort: an installation that cannot answer this
+      // still gets its write, and the progress then behaves as it did before —
+      // the verdict on its own.
+      let fromGeneration: number | undefined;
+      try {
+        const before = await agentManager.getAgentStatus(
+          update.namespace,
+          update.name,
+        );
+        fromGeneration = before.template?.generation;
+      } catch {
+        fromGeneration = undefined;
+      }
+      const result = await agentManager.updateAgent(update);
+      return { ...result, fromGeneration };
+    },
     onSuccess: (_result, update) => invalidateReads(update),
   });
   const commitMutation = useMutation({

@@ -21,6 +21,14 @@ export type AgentCreatedHandoff = {
    * the same way, with the platform Harness compiling a new revision.
    */
   action?: AgentWriteAction;
+  /**
+   * The template's generation immediately before the write, when it could be
+   * read. The progress treats a verdict as this write's answer only once the
+   * generation has moved past it — without that, an agent that was already
+   * `ready` reports success before the Harness has compiled anything. Absent
+   * for a create, which has no earlier generation.
+   */
+  fromGeneration?: number;
 };
 
 /** The writes after which the detail page shows the template converging. */
@@ -57,7 +65,7 @@ function readHandoff(state: unknown): AgentCreatedHandoff | undefined {
   ) {
     return undefined;
   }
-  const { action } = candidate as Record<string, unknown>;
+  const { action, fromGeneration } = candidate as Record<string, unknown>;
   return {
     installation,
     namespace,
@@ -66,6 +74,8 @@ function readHandoff(state: unknown): AgentCreatedHandoff | undefined {
     action: WRITE_ACTIONS.includes(action as AgentWriteAction)
       ? (action as AgentWriteAction)
       : 'created',
+    fromGeneration:
+      typeof fromGeneration === 'number' ? fromGeneration : undefined,
   };
 }
 

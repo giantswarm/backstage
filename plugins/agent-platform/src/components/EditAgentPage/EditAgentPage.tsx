@@ -269,6 +269,7 @@ function EditAgentForm({
             name: agent.name,
             requestedBy: result.requestedBy,
             action: 'updated',
+            fromGeneration: result.fromGeneration,
           },
         },
       });

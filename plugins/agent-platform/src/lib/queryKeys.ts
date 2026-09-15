@@ -169,10 +169,27 @@ export function musterValidateAgentQueryKey(
   ] as const;
 }
 
+/**
+ * `get_agent_status` for one agent, optionally scoped to the write that is
+ * being watched.
+ *
+ * `fromGeneration` is the template generation read immediately *before* a
+ * write, and it is part of the key on purpose: a verdict is only about the
+ * revision that write produced, so two watches waiting on different
+ * transitions must not share a cache entry. Without it, an `Update skills` on
+ * an agent that was already `ready` inherits the previous watch's settled
+ * entry — and its terminal `refetchInterval` — and reports success for a
+ * revision the Harness has not compiled.
+ *
+ * A read with no write behind it (the detail page asking whether an agent
+ * exists at all, and the create flow, which has no earlier generation) passes
+ * nothing and keeps the plain key, so those still share one entry.
+ */
 export function musterAgentStatusQueryKey(
   installation: string,
   namespace: string,
   name: string,
+  fromGeneration?: number,
 ) {
   return [
     'muster',
@@ -181,6 +198,7 @@ export function musterAgentStatusQueryKey(
     installation,
     namespace,
     name,
+    ...(fromGeneration === undefined ? [] : [`from:${fromGeneration}`]),
   ] as const;
 }
 

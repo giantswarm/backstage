@@ -6,6 +6,7 @@ import {
   type AgentWriteAction,
 } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
+import { hasReachedWrittenRevision } from '../../lib/agentManager';
 import type { AgentStatus } from '../../lib/agentManager';
 
 /** The admitting Harness's entry, when the template has one. */
@@ -54,11 +55,16 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     name,
     requestedBy,
     action = 'created',
+    fromGeneration,
   } = handoff;
+  // Scoped to the write: the verdict counts once the template's generation has
+  // moved past what it was before it, so an agent that was already `ready` is
+  // not reported as done before the Harness has compiled anything.
   const { status, isSettling, error } = useAgentStatus(
     installation,
     namespace,
     name,
+    { fromGeneration },
   );
 
   const wording = WORDING[action];
@@ -75,12 +81,22 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
   }
 
   if (isSettling) {
+    // Only the summary of the revision being waited on is worth showing. While
+    // the status still describes the one before the write, its summary is about
+    // something else: "The template is ready" under a "Saving…" title is the
+    // very message this is meant not to show yet, and a previous revision that
+    // failed would put an unrelated failure reason under it for as long as the
+    // new one takes to compile.
+    const describesThisWrite = hasReachedWrittenRevision(
+      status,
+      fromGeneration,
+    );
     return (
       <Alert
         status="info"
         title={wording.doing}
         description={
-          status?.summary ??
+          (describesThisWrite ? status?.summary : undefined) ??
           `agent-manager ${wording.wrote}${as}; waiting for the platform Harness to compile the template.`
         }
       />

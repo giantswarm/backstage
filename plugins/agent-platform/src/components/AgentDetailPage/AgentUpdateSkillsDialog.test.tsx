@@ -171,6 +171,10 @@ describe('AgentUpdateSkillsDialog', () => {
           expect.objectContaining({ name: 'pr-review' }),
         ]),
         'admin@lab.local',
+        // The pre-write generation, which the page hands to the progress. This
+        // suite stubs no template generation, so there is none to pass on;
+        // useUpdateAgent's own tests cover it being read and handed back.
+        undefined,
       );
     });
     const write = callTool.mock.calls.find(
