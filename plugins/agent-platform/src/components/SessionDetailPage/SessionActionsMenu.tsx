@@ -10,9 +10,13 @@ import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 
+import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
 import { sessionsRouteRef } from '../../routes';
-import { SessionDeleteDialog } from './SessionDeleteDialog';
+import {
+  describeSessionDeleteFailure,
+  SessionDeleteDialog,
+} from './SessionDeleteDialog';
 
 /** Long enough to read one line, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -60,6 +64,7 @@ export function SessionActionsMenu({
   deletion,
   onRename,
   isUserScoped,
+  runtimeLoss,
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
@@ -67,6 +72,11 @@ export function SessionActionsMenu({
   /** Opens the page's rename dialog. */
   onRename: () => void;
   isUserScoped?: boolean;
+  /**
+   * The session's runtime is lost, as the page reads it. Only the wording of
+   * a *failed* delete depends on it — see `describeSessionDeleteFailure`.
+   */
+  runtimeLoss?: RuntimeLoss;
 }) {
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const toastApi = useApi(toastApiRef);
@@ -138,7 +148,9 @@ export function SessionActionsMenu({
         isOpen={isDeleteOpen}
         onOpenChange={setDeleteOpen}
         isDeleting={isDeleting}
-        error={error?.message}
+        error={
+          error ? describeSessionDeleteFailure(error, runtimeLoss) : undefined
+        }
         onConfirm={confirmDelete}
         isUserScoped={isUserScoped}
       />

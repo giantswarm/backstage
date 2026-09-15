@@ -285,3 +285,38 @@ describe('sessionSearchFn', () => {
     expect(sessionSearchFn(rows, '   ')).toHaveLength(2);
   });
 });
+
+describe('toSessionRow — the runtime kagent reports lost', () => {
+  const lostSession = {
+    id: 'gazelle/lost-1',
+    sessionId: 'lost-1',
+    installation: 'gazelle',
+    title: 'Plan a barbecue',
+    agentId: 'kagent__NS__grill_master',
+  };
+
+  it('marks a row whose instance carries kagent’s RUNTIME_LOST failure', () => {
+    expect(
+      toSessionRow(
+        {
+          ...lostSession,
+          failure: {
+            reason: 'RUNTIME_LOST',
+            message: 'runtime lost: node gone',
+          },
+        },
+        new Map(),
+      ).runtimeLost,
+    ).toBe(true);
+  });
+
+  it('leaves every other row unmarked — another failure reason included', () => {
+    expect(toSessionRow(lostSession, new Map()).runtimeLost).toBe(false);
+    expect(
+      toSessionRow(
+        { ...lostSession, failure: { reason: 'no ready revision' } },
+        new Map(),
+      ).runtimeLost,
+    ).toBe(false);
+  });
+});

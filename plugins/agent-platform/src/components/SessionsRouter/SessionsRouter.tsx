@@ -5,7 +5,7 @@ import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider } from '../AgentsDataProvider';
 import { ServingProvider } from '../ServingProvider';
 import { SessionsIndexPage } from '../SessionsIndexPage';
-import { SessionDetailPage } from '../SessionDetailPage';
+import { SessionDetailRoute } from './SessionDetailRoute';
 
 /**
  * Content of the "Sessions" tab: the fleet-wide list, and one session's detail.
@@ -34,10 +34,11 @@ export const SessionsRouter = () => {
             <Routes>
               <Route index element={<SessionsIndexPage />} />
               {/* Both parameters are needed to resolve a session: kagent ids are
-                  only unique within an installation. */}
+                  only unique within an installation. One page instance per
+                  session, see `SessionDetailRoute`. */}
               <Route
                 path=":installation/:sessionId"
-                element={<SessionDetailPage />}
+                element={<SessionDetailRoute />}
               />
             </Routes>
           </AgentsDataProvider>

@@ -251,3 +251,54 @@ describe('SessionActionsMenu', () => {
     ]);
   });
 });
+
+describe('SessionActionsMenu — deleting a session whose runtime is lost', () => {
+  const unavailable = new Error(
+    "The kagent API for installation 'gazelle' is unavailable: Failed to delete AgentInstance",
+  );
+
+  it('says why the delete failed and what fixes it, keeping the backend’s words', async () => {
+    // kagent suspends the runtime before removing the instance, and that suspend
+    // dials a node that no longer exists — the backend's `Failed to delete
+    // AgentInstance` says none of that.
+    setDeleteState({ error: unavailable });
+    await renderInTestApp(
+      <SessionActionsMenu
+        title="Plan a barbecue"
+        deletion={deletion}
+        onRename={onRename}
+        runtimeLoss={{
+          reported: false,
+          cause: 'request timed out',
+          attempts: 2,
+        }}
+      />,
+      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    );
+    await openDeleteDialog();
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent(
+      /suspends a session’s runtime before removing it, and this runtime cannot be reached/,
+    );
+    expect(dialog).toHaveTextContent(/A kagent update that skips that step/);
+    expect(dialog).toHaveTextContent(unavailable.message);
+  });
+
+  it('leaves any other failed delete with the backend’s message alone', async () => {
+    setDeleteState({ error: unavailable });
+    await renderInTestApp(
+      <SessionActionsMenu
+        title="Plan a barbecue"
+        deletion={deletion}
+        onRename={onRename}
+      />,
+      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    );
+    await openDeleteDialog();
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent(unavailable.message);
+    expect(dialog).not.toHaveTextContent(/suspends a session’s runtime/);
+  });
+});

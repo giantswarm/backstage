@@ -1654,6 +1654,82 @@ instead of the composer's generic "Message not sent". The refused text comes
 back into the box as after any failed send, and a successful cancel clears the
 notice.
 
+### A session whose runtime is lost
+
+A session that ends a turn by asking the person something — a confirmation, an
+`ask_user` question, an auth request — is **paused**, not suspended: kagent's
+gateway has Substrate checkpoint the actor on the worker's _node_, and that
+node holds the only copy of the agent's working state (the harness process, its
+conversation memory, its scratch disk) until the person answers. The transcript
+is elsewhere, in kagent's database, and survives anything. When the node goes —
+a spot interruption, a consolidation, a node roll — the snapshot goes with it,
+and the next message cannot be delivered: kagent asks Substrate to resume an
+actor whose only copy is gone, the resume fails after the runtime's budget, and
+the gateway records the turn **failed** with the runtime's words as its reason
+(`actor "ai-…" request timed out`, or `failed to connect to AgentInstance
+runtime`) before it ends the stream. Every retry does the same. This is what a
+person met on gazelle on 2026-09-15 (giantswarm/giantswarm#37795): sixty seconds,
+an actor name and "timed out", and the same retry forever.
+
+**The page reads that failure and says what it is.** The reading lives in
+`agent-platform-common` (`readRuntimeLoss` and its readers), so every surface
+agrees:
+
+- **Reported.** kagent marks the `AgentInstance` with a `Failure` whose reason is
+  `RUNTIME_LOST` once it knows the runtime is gone (and ends such a turn at once
+  with an A2A error starting `runtime lost: <cause>`). Feature-detected off the
+  field: a kagent from before the reason existed marks nothing, and the interim
+  reading takes over.
+- **Suspected** — the interim shape. The newest turn (and any run of turns before
+  it) failed with one of the runtime's texts, or the send's own error carries
+  one. Nothing structured says so, so this is a text match — deliberately narrow,
+  so a model provider's `404 model_not_found` or a tool's refusal keeps rendering
+  as the turn's own failure. `attempts` counts the consecutive failures, which is
+  what tells "the runtime did not come back once" from "three tries".
+
+What the person sees, in both cases: a notice under the conversation
+(`RuntimeLostNotice`) that says in the portal's words that the runtime could not
+be brought back and why that happens, that the conversation above is complete
+and stays readable, and where to go from here; the runtime's own text beneath it
+as **evidence**, never as the explanation. The failed-turn entry in the timeline
+says the same thing at its own place — "The agent's runtime could not be
+reached", with the runtime's words as what it said — rather than the bare
+reason. No surface shows `actor "ai-…" request timed out` as the whole of
+anything.
+
+**The way out is a new session with the same agent, from the composer.** The
+composer's `newSession` prop renders **Start a new session with &lt;agent&gt;**:
+_beside_ Send while the loss is only suspected — a cold worker can time out once,
+and sending again is the honest retry — and _in Send's place_ once kagent has
+reported it, when Enter starts the new session too and the answer panel yields
+to the composer (an answer would run into the same lost runtime). The action
+takes the box's text, else the message the failed send handed back, else the
+last message the person sent into this session — the one the runtime never
+read — and follows the order every entry point keeps: create the instance,
+navigate, let the new page dispatch the text from the router state (see
+"Starting a session"). That navigation is from one session's page to another's,
+which the route element would otherwise survive with its state intact — the
+first-message latch, a redraft, an open dialog — so `SessionDetailRoute` keys
+the page on the session and the new one mounts fresh.
+
+**Once kagent reports the loss, the session is marked** wherever it is listed:
+a `Runtime lost` badge in the page header, beside the title in the Sessions
+table, and on the switcher rail's card. Only kagent's word earns the mark; the
+interim reading is the notice's alone, because a list has no conversation to
+read it from.
+
+**Deleting.** kagent's delete suspends the instance's runtime before removing it,
+and on a lost runtime that suspend dials a node that no longer exists — the
+delete fails as `Unavailable: Failed to delete AgentInstance`, which says none of
+that. On a session the page reads as lost, the dialog words the failure
+(`describeSessionDeleteFailure`): why, and that a kagent update skipping the
+suspend for a lost runtime is what fixes it. Once that update lands, the delete
+goes through and the wording is never reached.
+
+Proven in the browser by `e2e/agentlab/session-runtime-lost.spec.ts`, which
+stubs kagent's answers for one session at the browser in the shapes above and
+lets everything else — the session's creation, the new session — run for real.
+
 ### Streaming the turn
 
 `SendStreamingMessage` is a server-streaming gRPC call answering one

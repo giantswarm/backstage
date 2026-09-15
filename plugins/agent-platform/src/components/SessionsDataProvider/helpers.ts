@@ -1,6 +1,7 @@
 import {
   encodeKagentAgentId,
   KagentSession,
+  readReportedRuntimeLoss,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
 
@@ -65,6 +66,16 @@ export type SessionRow = {
   agentModel?: string;
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * kagent reported this session's runtime lost: the agent's working state
+   * went with the platform node it was paused on, and no message can reach it
+   * any more. The transcript is intact and the session can be deleted; a new
+   * session with the same agent is the way on. Marked in the list and the rail
+   * so a person finds out before they open it and type. Only the *reported*
+   * loss is a row's property — the interim reading needs the conversation,
+   * which a list does not have.
+   */
+  runtimeLost?: boolean;
 };
 
 /**
@@ -149,6 +160,7 @@ export function toSessionRow(
     agentModel: match?.modelName,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
+    runtimeLost: readReportedRuntimeLoss(session) !== undefined,
   };
 }
 

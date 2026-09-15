@@ -8,6 +8,7 @@ import type { AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionDetailView } from '../../hooks/useSessionDetail';
 import type { UseAnswerConfirmationResult } from '../../hooks/useAnswerConfirmation';
 import type { UseCancelTaskResult } from '../../hooks/useCancelTask';
+import type { UseCreateSessionResult } from '../../hooks/useCreateSession';
 import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline } from '../../lib/kagentTimeline';
@@ -24,10 +25,14 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 
 // The route params the page reads. Driven directly rather than through a router so
-// each state can be rendered in isolation.
+// each state can be rendered in isolation. The navigation is the page's own only
+// on the way out of a lost runtime (to the new session), which is what the mock
+// observes.
+const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useParams: () => ({ installation: 'gazelle', sessionId: 'abc' }),
+  useNavigate: () => mockNavigate,
 }));
 
 const mockUseSessionDetail = jest.fn<SessionDetailView, []>();
@@ -155,6 +160,27 @@ function idleCancel(
   };
 }
 
+// Stubbed like the other write hooks: it reads `kagentApiRef` and mutates
+// through react-query, and this test mounts neither. The page calls it for the
+// way out of a lost runtime — a new session with the same agent.
+const mockCreateSession = jest.fn();
+const mockUseCreateSession = jest.fn<UseCreateSessionResult, []>();
+jest.mock('../../hooks/useCreateSession', () => ({
+  useCreateSession: () => mockUseCreateSession(),
+}));
+
+function idleCreation(
+  overrides: Partial<UseCreateSessionResult> = {},
+): UseCreateSessionResult {
+  return {
+    createSession: mockCreateSession,
+    isCreating: false,
+    error: null,
+    reset: jest.fn(),
+    ...overrides,
+  };
+}
+
 /** The hook's idle state, which most tests want. */
 function idleConfirmation(
   overrides: Partial<UseAnswerConfirmationResult> = {},
@@ -265,6 +291,10 @@ describe('SessionDetailPage', () => {
     mockCancelTask.mockReset();
     mockCancelTask.mockResolvedValue(undefined);
     mockUseCancelTask.mockReturnValue(idleCancel());
+    mockCreateSession.mockReset();
+    mockCreateSession.mockResolvedValue('new-1');
+    mockUseCreateSession.mockReturnValue(idleCreation());
+    mockNavigate.mockReset();
     mockUseSessionDetail.mockReturnValue(loadedView);
     mockUseAgents.mockReturnValue({
       rows: [
@@ -1416,6 +1446,244 @@ describe('SessionDetailPage', () => {
       expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue(
         'why is the ingress failing?',
       );
+    });
+  });
+
+  describe('a session whose runtime kagent cannot bring back (#2388)', () => {
+    const ATENET =
+      'actor "ai-01a09e86-0da0-764b-87b1-ac52875d1e74" request timed out';
+    const failedState = {
+      raw: 'failed',
+      key: 'failed',
+      label: 'Failed',
+      tone: 'danger' as const,
+      isActive: false,
+    };
+    /** The interim shape: the newest turn failed with the runtime's words. */
+    const suspectedView: SessionDetailView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: failedState,
+      runtimeLoss: { reported: false, cause: ATENET, attempts: 1 },
+    };
+    /** kagent has marked the instance. */
+    const reportedView: SessionDetailView = {
+      ...suspectedView,
+      runtimeLoss: {
+        reported: true,
+        cause: 'local snapshot on node ip-10-0-159-226 is gone',
+        attempts: 1,
+      },
+    };
+    const composer = () => screen.getByRole('textbox', { name: 'Message' });
+    const startButton = () =>
+      screen.getByRole('button', {
+        name: 'Start a new session with Issue tracker',
+      });
+    /** The message that never got its answer — the last one the person sent. */
+    const lastUserMessage = [...timeline.items]
+      .reverse()
+      .find(item => item.kind === 'user-message')!.text;
+    const handoffTo = (text: string) => ({
+      state: {
+        newSession: {
+          text,
+          agentNamespace: 'kagent',
+          agentName: 'issue-tracker',
+        },
+      },
+    });
+
+    it('explains the failed turn in the portal’s words and offers the new session beside Send', async () => {
+      mockUseSessionDetail.mockReturnValue(suspectedView);
+      await render();
+
+      expect(
+        screen.getByText('The agent’s runtime could not be brought back'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/nothing is missing from the transcript/),
+      ).toBeInTheDocument();
+      // The runtime's words are the evidence under the explanation — and
+      // nowhere the whole text of anything.
+      expect(screen.getByText(/kagent reported:/)).toHaveTextContent(ATENET);
+      expect(screen.queryByText(ATENET)).not.toBeInTheDocument();
+      // Suspected, not reported: the retry stays, and no mark yet.
+      expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+      expect(startButton()).toBeEnabled();
+      expect(screen.queryByText('Runtime lost')).not.toBeInTheDocument();
+    });
+
+    it('reads the loss off the send’s own error too, and keeps the text', async () => {
+      // A failure kagent reported in-band before any event carries the same
+      // words; it is the runtime's failure, not a message that was not sent.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: { ...failedState, key: 'completed', raw: 'completed' },
+      });
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          error: new Error(
+            `The agent on installation 'gazelle' did not accept the message: ${ATENET}`,
+          ),
+          failed: { messageId: 'm-1', text: 'Six of them are vegetarian.' },
+        }),
+      );
+      await render();
+
+      expect(
+        screen.getByText('The agent’s runtime could not be brought back'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+      expect(composer()).toHaveValue('Six of them are vegetarian.');
+    });
+
+    it('starts a new session with the box’s text and hands the message over', async () => {
+      // Create, navigate, then send — the order every entry point keeps; the
+      // new page dispatches the text it finds in the router state.
+      mockUseSessionDetail.mockReturnValue(suspectedView);
+      await render();
+
+      await userEvent.type(composer(), 'Six of them are vegetarian.');
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalledWith({
+          agent: expect.objectContaining({
+            installation: 'gazelle',
+            namespace: 'kagent',
+            technicalName: 'issue-tracker',
+          }),
+          prompt: 'Six of them are vegetarian.',
+        });
+      });
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith(
+          '/agent-platform/sessions/gazelle/new-1',
+          handoffTo('Six of them are vegetarian.'),
+        );
+      });
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('carries the message that never got its answer when the box is empty', async () => {
+      mockUseSessionDetail.mockReturnValue(suspectedView);
+      await render();
+
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalledWith(
+          expect.objectContaining({ prompt: lastUserMessage }),
+        );
+      });
+      expect(mockNavigate).toHaveBeenCalledWith(
+        '/agent-platform/sessions/gazelle/new-1',
+        handoffTo(lastUserMessage),
+      );
+    });
+
+    it('prefers the message the failed send handed back', async () => {
+      mockUseSessionDetail.mockReturnValue(suspectedView);
+      mockUseSendMessage.mockReturnValue(
+        idleSend({
+          error: new Error(ATENET),
+          failed: { messageId: 'm-1', text: 'the message that failed' },
+        }),
+      );
+      await render();
+
+      // The composer restored it into the box, so the box's text and the
+      // handed-back text agree; either way the new session opens on it.
+      await userEvent.click(startButton());
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalledWith(
+          expect.objectContaining({ prompt: 'the message that failed' }),
+        );
+      });
+    });
+
+    it('marks the session and lets the new session take Send’s place once kagent reports the loss', async () => {
+      mockUseSessionDetail.mockReturnValue(reportedView);
+      await render();
+
+      expect(screen.getByText('Runtime lost')).toBeInTheDocument();
+      expect(
+        screen.getByText('This session cannot continue'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Send' }),
+      ).not.toBeInTheDocument();
+      expect(startButton()).toBeInTheDocument();
+
+      // Enter does the one thing that works.
+      await userEvent.type(composer(), 'Six of them are vegetarian.{Enter}');
+
+      await waitFor(() => {
+        expect(mockCreateSession).toHaveBeenCalledWith(
+          expect.objectContaining({ prompt: 'Six of them are vegetarian.' }),
+        );
+      });
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('lets the way out take the answer panel’s place', async () => {
+      // An answer would run into the same lost runtime; the question stays in
+      // the transcript and the box below offers the new session instead.
+      mockUseSessionDetail.mockReturnValue({
+        ...reportedView,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-2',
+          asks: 'input',
+          questions: [
+            { question: 'How many are vegetarian?', multiple: false },
+          ],
+        },
+      });
+      await render();
+
+      expect(
+        screen.queryByText('How many are vegetarian?'),
+      ).not.toBeInTheDocument();
+      expect(composer()).toBeEnabled();
+      expect(startButton()).toBeInTheDocument();
+    });
+
+    it('reports a failed start in the notice', async () => {
+      mockUseSessionDetail.mockReturnValue(suspectedView);
+      mockUseCreateSession.mockReturnValue(
+        idleCreation({ error: new Error('kagent does not know the agent') }),
+      );
+      await render();
+
+      expect(
+        screen.getByText(
+          /The new session could not be started: kagent does not know the agent/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('hands the loss to the actions menu, so a failed delete is worded', async () => {
+      mockUseSessionDetail.mockReturnValue(suspectedView);
+      await render();
+
+      expect(lastProvidedActions().props.runtimeLoss).toEqual(
+        suspectedView.runtimeLoss,
+      );
+    });
+
+    it('says nothing of the sort on a healthy session', async () => {
+      await render();
+
+      expect(
+        screen.queryByText(/runtime could not be brought back/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Start a new session/ }),
+      ).not.toBeInTheDocument();
     });
   });
 

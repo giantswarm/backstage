@@ -1,12 +1,13 @@
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Avatar, Text } from '@backstage/ui';
+import { Avatar, Badge, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { formatCompactAge } from '../../lib/duration';
 import { sessionDetailRouteRef } from '../../routes';
 import { SESSION_TITLE_FALLBACK } from '../SessionsDataProvider/helpers';
+import { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE } from '../SessionsTable';
 import { RailSession } from './helpers';
 
 /** Requested at 2× the ~24px render, matching the list and detail page. */
@@ -60,6 +61,10 @@ const useStyles = makeStyles(theme => ({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+  },
+  mark: {
+    display: 'block',
+    marginTop: theme.spacing(0.5),
   },
 }));
 
@@ -148,6 +153,15 @@ export function SessionSwitcherCard({
           >
             {row.agentName}
           </Text>
+        </span>
+      )}
+      {/* The one mark a card carries: its group heading says what state the
+          session is in, but not that no message can reach it any more. */}
+      {row.runtimeLost && (
+        <span className={classes.mark}>
+          <Badge size="small" title={RUNTIME_LOST_TITLE}>
+            {RUNTIME_LOST_LABEL}
+          </Badge>
         </span>
       )}
     </>

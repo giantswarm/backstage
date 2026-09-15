@@ -366,3 +366,79 @@ describe('useSessionDetail', () => {
     });
   });
 });
+
+describe('useSessionDetail — the runtime kagent cannot bring back', () => {
+  const ATENET =
+    'actor "ai-01a09e86-0da0-764b-87b1-ac52875d1e74" request timed out';
+
+  /** A turn that failed with the runtime's words, the shape the gateway records. */
+  function runtimeFailedTask(id: string) {
+    return {
+      id,
+      contextId: 'abc',
+      kind: 'task',
+      status: {
+        state: 'failed',
+        timestamp: new Date().toISOString(),
+        message: {
+          kind: 'message',
+          messageId: `${id}-failure`,
+          role: 'agent',
+          parts: [{ kind: 'text', text: ATENET }],
+        },
+      },
+      history: [
+        {
+          kind: 'message',
+          messageId: `${id}-user`,
+          role: 'user',
+          parts: [{ kind: 'text', text: 'six of them are vegetarian' }],
+        },
+      ],
+    };
+  }
+
+  it('reads a suspected loss off a newest turn that failed with the runtime’s words', async () => {
+    getSessionDetail.mockResolvedValue(SESSION);
+    listSessionTasks.mockResolvedValue([
+      workingTask(),
+      runtimeFailedTask('task-2'),
+      runtimeFailedTask('task-3'),
+    ]);
+    const { result } = renderWith();
+
+    await waitFor(() => expect(result.current.hasConversation).toBe(true));
+    expect(result.current.runtimeLoss).toEqual({
+      reported: false,
+      cause: ATENET,
+      attempts: 2,
+    });
+  });
+
+  it('reads a reported loss off the instance, before any turn failed', async () => {
+    getSessionDetail.mockResolvedValue({
+      session: {
+        ...SESSION.session,
+        failure: { reason: 'RUNTIME_LOST', message: 'runtime lost: node gone' },
+      },
+    });
+    listSessionTasks.mockResolvedValue([workingTask()]);
+    const { result } = renderWith();
+
+    await waitFor(() => expect(result.current.detail).toBeDefined());
+    expect(result.current.runtimeLoss).toEqual({
+      reported: true,
+      cause: 'node gone',
+      attempts: 0,
+    });
+  });
+
+  it('reads nothing off a healthy session', async () => {
+    getSessionDetail.mockResolvedValue(SESSION);
+    listSessionTasks.mockResolvedValue([workingTask()]);
+    const { result } = renderWith();
+
+    await waitFor(() => expect(result.current.hasConversation).toBe(true));
+    expect(result.current.runtimeLoss).toBeUndefined();
+  });
+});

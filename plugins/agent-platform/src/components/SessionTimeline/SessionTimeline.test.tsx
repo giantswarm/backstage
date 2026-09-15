@@ -12,6 +12,7 @@ import {
   tasksAskUserPending,
   tasksEmptyNoData as tasksEmpty,
   tasksFailed,
+  tasksRuntimeLost,
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 
@@ -652,5 +653,46 @@ describe('a lost stream', () => {
 
     expect(screen.queryByText(/live stream was lost/)).not.toBeInTheDocument();
     expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+  });
+});
+
+describe('SessionTimeline — a turn the runtime failed', () => {
+  it('says the runtime could not be reached, in the portal’s words', async () => {
+    // On gazelle the person read `actor "ai-…" request timed out` and nothing
+    // else — an actor name and "timed out". The entry now says whose failure it
+    // is and keeps the runtime's words as the evidence.
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksRuntimeLost)}
+        agentName="Grill master"
+      />,
+    );
+
+    expect(
+      screen.getAllByText('The agent’s runtime could not be reached'),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByText(
+        /could not bring the agent’s runtime back to answer this message/,
+      ),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByText(/The runtime said: actor "ai-01a09e86/),
+    ).toHaveLength(2);
+    expect(screen.queryByText('This turn failed')).not.toBeInTheDocument();
+    for (const entry of screen.getAllByTestId('timeline-turn-failed')) {
+      expect(entry).toHaveAttribute('data-runtime-lost', 'true');
+    }
+  });
+
+  it('leaves the agent’s own failure worded as before', async () => {
+    await renderInTestApp(
+      <SessionTimeline timeline={timelineFor(tasksFailed)} agentName="gpt6" />,
+    );
+
+    expect(screen.getAllByText('This turn failed')).toHaveLength(2);
+    for (const entry of screen.getAllByTestId('timeline-turn-failed')) {
+      expect(entry).not.toHaveAttribute('data-runtime-lost');
+    }
   });
 });

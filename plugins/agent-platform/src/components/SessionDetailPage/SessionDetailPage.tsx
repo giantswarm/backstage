@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Content,
   EmptyState,
@@ -29,10 +29,14 @@ import {
 
 import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
+import { useCreateSession } from '../../hooks/useCreateSession';
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { useAnswerConfirmation } from '../../hooks/useAnswerConfirmation';
-import { useNewSessionHandoff } from '../../hooks/useNewSessionHandoff';
+import {
+  NEW_SESSION_STATE_KEY,
+  useNewSessionHandoff,
+} from '../../hooks/useNewSessionHandoff';
 import { useRenameSession } from '../../hooks/useRenameSession';
 import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
@@ -41,13 +45,17 @@ import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { AvatarSize } from '../../lib/agentAvatar';
 import {
   AWAITING_INPUT_STATES,
+  isRuntimeLostFailureText,
+  RuntimeLoss,
   SessionStateEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { sessionsRouteRef } from '../../routes';
+import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { InstallationChip } from '../InstallationChip';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
 import { SessionSwitcherRail } from '../SessionSwitcherRail';
+import { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE } from '../SessionsTable';
+import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
@@ -251,6 +259,7 @@ export function SessionDetailPage() {
     isAgentWorking: agentIsWorking,
     turnProgress,
     pendingConfirmation,
+    runtimeLoss: conversationRuntimeLoss,
     taskCount,
     hasConversation,
     isLoading,
@@ -302,6 +311,40 @@ export function SessionDetailPage() {
   }, [row?.agentNamespace, row?.agentTechnicalName, handoff]);
   const send = useSendMessage(installation, sessionId, agent);
   const confirmation = useAnswerConfirmation(installation, sessionId, agent);
+
+  /**
+   * The runtime kagent cannot bring back, from every place it can show.
+   *
+   * The conversation's reading (`useSessionDetail`) covers the common path: the
+   * gateway records the failed turn with the runtime's words *before* it ends
+   * the stream, so the poll shows a failed turn and the hook reads it. The
+   * send's and the answer's own errors cover the other: a failure kagent
+   * reported in-band before any event, or one the transport mapped, whose
+   * message carries the same words. Either way the words are the runtime's
+   * and are shown as the evidence, never as the explanation.
+   */
+  const runtimeLoss = useMemo<RuntimeLoss | undefined>(() => {
+    if (conversationRuntimeLoss) {
+      return conversationRuntimeLoss;
+    }
+    const cause = [send.error?.message, confirmation.error?.message].find(
+      isRuntimeLostFailureText,
+    );
+    return cause ? { reported: false, cause, attempts: 1 } : undefined;
+  }, [conversationRuntimeLoss, send.error, confirmation.error]);
+
+  /**
+   * The agent, as a row the create path takes — the same join the composer
+   * that starts sessions from the list makes, so the new session is created
+   * against the agent's real namespace and technical name.
+   */
+  const agentRow = useMemo(
+    () =>
+      detail?.session.agentId
+        ? agentIndex.get(`${installation}|${detail.session.agentId}`)
+        : undefined,
+    [agentIndex, installation, detail?.session.agentId],
+  );
 
   // The $/token to price this session's tokens at, and which observation it
   // came from. The **model** is what matters: pricing an Opus session at the
@@ -468,9 +511,10 @@ export function SessionDetailPage() {
           deletion={deletion}
           onRename={openRename}
           isUserScoped={isUserScoped}
+          runtimeLoss={runtimeLoss}
         />
       ) : null,
-    [row, sessionTitle, deletion, openRename, isUserScoped],
+    [row, sessionTitle, deletion, openRename, isUserScoped, runtimeLoss],
   );
   useProvidePageHeaderActions(actions);
 
@@ -591,6 +635,57 @@ export function SessionDetailPage() {
     }
     return undefined;
   }, [timeline.items]);
+
+  /**
+   * The way out of a lost runtime: a new session with the same agent, opened
+   * on the message that never got its answer.
+   *
+   * Create, navigate, then send — the order every entry point keeps, see
+   * "Starting a session" in docs/agent-platform.md. The text is what the box
+   * holds, else the message that failed (handed back by the send), else the
+   * last message the person sent into this session: the one the runtime never
+   * read. Carried through the router state exactly as the list's composer
+   * carries a first message, so the new page dispatches it on arrival — a
+   * different page instance, since `SessionDetailRoute` keys the page on the
+   * session.
+   */
+  const creation = useCreateSession();
+  const navigate = useNavigate();
+  const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
+  const { createSession } = creation;
+  const unansweredText = send.failed?.text ?? lastUserMessageText;
+  const startNewSession = useCallback(
+    async (draft: string) => {
+      const text = draft.trim() || unansweredText;
+      if (!agentRow || !text) {
+        return;
+      }
+      let newSessionId: string;
+      try {
+        newSessionId = await createSession({ agent: agentRow, prompt: text });
+      } catch {
+        // Left to the notice, which renders the hook's `error`.
+        return;
+      }
+      const href = sessionDetailRoute?.({
+        installation: agentRow.installation,
+        sessionId: newSessionId,
+      });
+      if (!href) {
+        return;
+      }
+      navigate(href, {
+        state: {
+          [NEW_SESSION_STATE_KEY]: {
+            text,
+            agentNamespace: agentRow.namespace,
+            agentName: agentRow.technicalName,
+          },
+        },
+      });
+    },
+    [agentRow, createSession, navigate, sessionDetailRoute, unansweredText],
+  );
 
   const { cancelTask } = cancellation;
   const { reset: resetSend } = send;
@@ -732,7 +827,11 @@ export function SessionDetailPage() {
     composerWithheldReason = row.agentName
       ? `The agent “${row.agentName}” could not be found on ${installation}, so there is nowhere to send a message. It may have been deleted.`
       : 'This session records no agent, so there is nowhere to send a message.';
-  } else if (state && AWAITING_INPUT_STATES.has(state.key)) {
+  } else if (
+    state &&
+    AWAITING_INPUT_STATES.has(state.key) &&
+    !runtimeLoss?.reported
+  ) {
     // Withheld deliberately, and it is the opposite of "busy": the agent asked
     // something and nothing moves until it is answered. A plain message here does
     // not answer it — kagent opens a *new* task and leaves the question pending
@@ -782,10 +881,28 @@ export function SessionDetailPage() {
     // has taken the answer and the task is no longer waiting, whatever the poll
     // — up to 10 s behind — still says. Until the next poll the composer below
     // stands in with "working", which is what the stream says is happening.
+    //
+    // Not while kagent has reported the runtime lost: an answer would run into
+    // the same lost runtime, so the question is left where it is and the way
+    // out takes the panel's place.
     const isConfirming =
-      Boolean(pendingConfirmation && agent) && !answerDispatched;
+      Boolean(pendingConfirmation && agent) &&
+      !answerDispatched &&
+      !runtimeLoss?.reported;
+    // The way out, offered from the box: beside Send while the loss is only
+    // suspected, in Send's place once kagent has reported it. Needs the agent
+    // as a row to create against; without one the notice says where else to go.
+    const offersNewSession = Boolean(runtimeLoss && agentRow && !isConfirming);
     bottomControl = (
       <div className={isConfirming ? classes.bottomStack : classes.bottomDock}>
+        {runtimeLoss && (
+          <RuntimeLostNotice
+            loss={runtimeLoss}
+            agentName={row.agentName || undefined}
+            offersNewSession={offersNewSession}
+            startError={creation.error?.message}
+          />
+        )}
         {isConflict && (
           <Alert
             status="warning"
@@ -833,8 +950,9 @@ export function SessionDetailPage() {
               : undefined
           }
           // A conflict has its own notice above; the composer must not also
-          // report it as a generic failure.
-          error={isConflict ? undefined : send.error?.message}
+          // report it as a generic failure. Nor must a lost runtime: the
+          // notice carries the runtime's words as its evidence.
+          error={isConflict || runtimeLoss ? undefined : send.error?.message}
           // A failed Stop is reported as one, not as a message that was not
           // sent — the turn it aimed at is still running.
           stopError={describeStopFailure(cancellation.error)}
@@ -844,6 +962,23 @@ export function SessionDetailPage() {
           restore={send.failed ?? redraft}
           onStop={isConfirming ? undefined : stopTurn}
           isStopping={cancellation.isCancelling}
+          newSession={
+            offersNewSession
+              ? {
+                  label: `Start a new session with ${row.agentName || 'this agent'}`,
+                  onStart: draft => {
+                    // Errors surface through the create hook's `error`, which
+                    // the notice renders.
+                    startNewSession(draft).catch(() => {});
+                  },
+                  isStarting: creation.isCreating,
+                  replacesSend: runtimeLoss!.reported,
+                  caption: runtimeLoss!.reported
+                    ? 'This session cannot continue. Your message starts a new session with the same agent. Enter starts it, Shift+Enter for a new line.'
+                    : 'Sending again retries the runtime. If it fails the same way, start a new session with the same agent — your message goes with it.',
+                }
+              : undefined
+          }
           // The user arrived here by starting the session — typing in a composer
           // one screen ago — and the navigation dropped the focus. Restoring it to
           // the box is continuity, the one case the a11y rule does not have in mind;
@@ -919,6 +1054,14 @@ export function SessionDetailPage() {
                 recognise, so a future kagent state shows as itself. */}
             {state && <Badge size="small">{state.label}</Badge>}
             {!state && <Badge size="small">no activity</Badge>}
+            {/* The same mark the list and the rail carry, so the session reads
+                the same on the way in as on the page. Only kagent's own word
+                earns it; the interim reading is the notice's. */}
+            {runtimeLoss?.reported && (
+              <Badge size="small" title={RUNTIME_LOST_TITLE}>
+                {RUNTIME_LOST_LABEL}
+              </Badge>
+            )}
           </Flex>
 
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
