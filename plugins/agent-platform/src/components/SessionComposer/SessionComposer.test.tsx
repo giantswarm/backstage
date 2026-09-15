@@ -489,3 +489,100 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
     expect(screen.getByText('the cancel was refused')).toBeInTheDocument();
   });
 });
+
+describe('SessionComposer — the way out of a lost runtime', () => {
+  const onStart = jest.fn();
+  const newSession = {
+    label: 'Start a new session with Grill master',
+    onStart,
+    caption: 'Sending again retries the runtime.',
+  };
+  const startButton = () =>
+    screen.getByRole('button', {
+      name: 'Start a new session with Grill master',
+    });
+
+  beforeEach(() => {
+    onStart.mockReset();
+  });
+
+  it('offers the new session beside Send while the loss is only suspected', async () => {
+    // A cold worker can time out once, so sending again stays the honest retry
+    // and the way out stands next to it.
+    renderComposer({ newSession, isFinished: true });
+
+    expect(sendButton()).toBeInTheDocument();
+    expect(startButton()).toBeEnabled();
+    expect(
+      screen.getByText('Sending again retries the runtime.'),
+    ).toBeInTheDocument();
+  });
+
+  it('hands the box’s text to the new session and keeps it in the box', async () => {
+    renderComposer({ newSession, isFinished: true });
+
+    await userEvent.type(field(), '  six of them are vegetarian  ');
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian');
+    // Not cleared: the create can fail, and the box is where the words are.
+    expect(field()).toHaveValue('  six of them are vegetarian  ');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('starts with an empty box too — the caller carries the unanswered message', async () => {
+    renderComposer({ newSession, isFinished: true });
+
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith('');
+  });
+
+  it('keeps Enter sending while Send is still offered', async () => {
+    renderComposer({ newSession, isFinished: true });
+
+    await userEvent.type(field(), 'try once more{Enter}');
+
+    expect(onSubmit).toHaveBeenCalledWith('try once more');
+    expect(onStart).not.toHaveBeenCalled();
+  });
+
+  it('takes Send’s place, and Enter, once the loss is reported', async () => {
+    // A send then fails the same way every time; the one thing that works is
+    // what the primary control and Enter should do.
+    renderComposer({
+      newSession: { ...newSession, replacesSend: true },
+      isFinished: true,
+    });
+
+    expect(
+      screen.queryByRole('button', { name: 'Send' }),
+    ).not.toBeInTheDocument();
+    expect(field()).toHaveAttribute(
+      'placeholder',
+      'Start a new session with this message…',
+    );
+
+    await userEvent.type(field(), 'six of them are vegetarian{Enter}');
+
+    expect(onStart).toHaveBeenCalledWith('six of them are vegetarian');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('withholds the action while the new session is being created', () => {
+    renderComposer({
+      newSession: { ...newSession, isStarting: true },
+      isFinished: true,
+    });
+
+    expect(startButton()).toBeDisabled();
+  });
+
+  it('is not offered at all without the prop', () => {
+    renderComposer();
+
+    expect(
+      screen.queryByRole('button', { name: /Start a new session/ }),
+    ).not.toBeInTheDocument();
+  });
+});

@@ -1,0 +1,97 @@
+{
+  "comment": "The interim shape of a session whose runtime kagent could not bring back (giantswarm/backstage#2388): the first turn ended input-required (the agent asked something, the actor was paused to a node-local snapshot), the node went away, and the person's answer a day later ran the same task into FAILED after kagent's 60 s — status.message carries atenet's words verbatim, the history holds the person's messages. A retry opened task-3 and failed the same way. Shapes taken from a gazelle session on 2026-09-15 (ids and wording of the question replaced).",
+  "error": false,
+  "data": [
+    {
+      "id": "task-1",
+      "contextId": "ctx-1",
+      "kind": "task",
+      "status": {
+        "state": "completed",
+        "timestamp": "2026-09-14T06:06:20.000Z"
+      },
+      "history": [
+        {
+          "kind": "message",
+          "messageId": "m-user-1",
+          "role": "user",
+          "parts": [{ "kind": "text", "text": "Plan a barbecue for twelve." }]
+        },
+        {
+          "kind": "message",
+          "messageId": "m-agent-1",
+          "role": "agent",
+          "metadata": { "adk_author": "grill_master" },
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Happy to. Before I plan the menu I need to know one thing."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "comment": "The person's answer to the question the agent asked ran into the lost runtime: the reply message is in history, the task is FAILED and status.message is the runtime's timeout, verbatim.",
+      "id": "task-2",
+      "contextId": "ctx-1",
+      "kind": "task",
+      "status": {
+        "state": "failed",
+        "timestamp": "2026-09-15T08:31:37.000Z",
+        "message": {
+          "kind": "message",
+          "messageId": "m-failure-2",
+          "role": "agent",
+          "contextId": "ctx-1",
+          "taskId": "task-2",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "actor \"ai-01a09e86-0da0-764b-87b1-ac52875d1e74\" request timed out"
+            }
+          ]
+        }
+      },
+      "history": [
+        {
+          "kind": "message",
+          "messageId": "m-user-2",
+          "role": "user",
+          "parts": [{ "kind": "text", "text": "Six of them are vegetarian." }]
+        }
+      ]
+    },
+    {
+      "comment": "The retry the page offered, a minute later: a new task, the same 60 s, the same words.",
+      "id": "task-3",
+      "contextId": "ctx-1",
+      "kind": "task",
+      "status": {
+        "state": "failed",
+        "timestamp": "2026-09-15T08:33:02.000Z",
+        "message": {
+          "kind": "message",
+          "messageId": "m-failure-3",
+          "role": "agent",
+          "contextId": "ctx-1",
+          "taskId": "task-3",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "actor \"ai-01a09e86-0da0-764b-87b1-ac52875d1e74\" request timed out"
+            }
+          ]
+        }
+      },
+      "history": [
+        {
+          "kind": "message",
+          "messageId": "m-user-3",
+          "role": "user",
+          "parts": [{ "kind": "text", "text": "Six of them are vegetarian." }]
+        }
+      ]
+    }
+  ]
+}

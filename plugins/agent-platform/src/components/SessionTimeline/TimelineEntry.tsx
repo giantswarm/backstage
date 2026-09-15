@@ -1,7 +1,9 @@
+import { ReactNode } from 'react';
 import { Alert, Badge } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import LoopIcon from '@material-ui/icons/Loop';
 
+import { isRuntimeLostFailureText } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { ActivityRow, InertActivityRow } from './ActivityRow';
 import { MessageMarkdown } from './MessageMarkdown';
@@ -339,24 +341,38 @@ export function TimelineEntry({
   // the "Failed" badge in the header being the only sign — and on a session whose
   // model the provider refuses, every message sent appeared to do nothing.
   if (item.kind === 'turn-failed') {
+    // A turn the *runtime* failed — kagent could not bring the agent's process
+    // back to read the message — is not the agent's failure, and the runtime's
+    // words alone (`actor "ai-…" request timed out`) explained nothing to the
+    // person who read them on gazelle. Said in the portal's words, with the
+    // runtime's kept as the evidence; the page's notice below the conversation
+    // carries the way out.
+    const runtimeLost = isRuntimeLostFailureText(item.reason);
+    let title = 'This turn failed';
+    if (runtimeLost) {
+      title = 'The agent’s runtime could not be reached';
+    } else if (item.state === 'rejected') {
+      title = 'This turn was rejected';
+    }
+    let description: ReactNode = 'kagent recorded no reason.';
+    if (runtimeLost) {
+      description = (
+        <span className={classes.failureReason}>
+          kagent could not bring the agent’s runtime back to answer this
+          message. The runtime said: {item.reason}
+        </span>
+      );
+    } else if (item.reason) {
+      description = (
+        <span className={classes.failureReason}>{item.reason}</span>
+      );
+    }
     return (
-      <div data-testid="timeline-turn-failed">
-        <Alert
-          status="danger"
-          icon
-          title={
-            item.state === 'rejected'
-              ? 'This turn was rejected'
-              : 'This turn failed'
-          }
-          description={
-            item.reason ? (
-              <span className={classes.failureReason}>{item.reason}</span>
-            ) : (
-              'kagent recorded no reason.'
-            )
-          }
-        />
+      <div
+        data-testid="timeline-turn-failed"
+        data-runtime-lost={runtimeLost ? 'true' : undefined}
+      >
+        <Alert status="danger" icon title={title} description={description} />
       </div>
     );
   }

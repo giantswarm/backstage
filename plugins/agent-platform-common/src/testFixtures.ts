@@ -76,6 +76,8 @@ import tasksDataNotArrayJson from './kagent/__fixtures__/tasks.data-not-array.js
 import tasksEmptyNoDataJson from './kagent/__fixtures__/tasks.empty-no-data.json';
 import tasksErrorEnvelopeJson from './kagent/__fixtures__/tasks.error-envelope.json';
 import tasksFailedJson from './kagent/__fixtures__/tasks.failed.json';
+import tasksRuntimeLostJson from './kagent/__fixtures__/tasks.runtime-lost.json';
+import agentInstanceRuntimeLostJson from './kagent/__fixtures__/agent-instance.runtime-lost.json';
 import tasksMalformedJson from './kagent/__fixtures__/tasks.malformed.json';
 import tasksUnknownStateJson from './kagent/__fixtures__/tasks.unknown-state.json';
 import tasksV099Json from './kagent/__fixtures__/tasks.v0-9-9.json';
@@ -117,6 +119,11 @@ export const tasksErrorEnvelope: unknown = tasksErrorEnvelopeJson as unknown;
 export const tasksFailed: TaskEnvelopeFixture =
   tasksFailedJson as TaskEnvelopeFixture;
 export const tasksMalformed: unknown = tasksMalformedJson as unknown;
+export const tasksRuntimeLost: TaskEnvelopeFixture =
+  tasksRuntimeLostJson as TaskEnvelopeFixture;
+/** `GetAgentInstanceResponse` of a session whose runtime kagent reports lost. */
+export const agentInstanceRuntimeLost: unknown =
+  agentInstanceRuntimeLostJson as unknown;
 export const tasksUnknownState: TaskEnvelopeFixture =
   tasksUnknownStateJson as TaskEnvelopeFixture;
 export const tasksV099: TaskEnvelopeFixture =

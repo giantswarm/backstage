@@ -413,3 +413,46 @@ describe('SessionSwitcherRail — the collapsed strip', () => {
     expect(screen.getByText('1')).toBeInTheDocument();
   });
 });
+
+describe('SessionSwitcherRail — a session whose runtime kagent reports lost', () => {
+  beforeEach(() => {
+    // Expanded: a previous test may have left the rail collapsed.
+    window.localStorage.clear();
+  });
+
+  it('marks its card, whatever group it is filed under', async () => {
+    // The group heading says the state; only the mark says that no message can
+    // reach the session any more.
+    const lostRow = row('lost', { runtimeLost: true });
+    const groups = groupActiveSessions(
+      [lostRow, row('running-one')],
+      new Map([
+        [
+          'lost',
+          { sessionId: 'lost', state: 'failed', changedAt: NOW - MINUTE },
+        ],
+        [
+          'running-one',
+          {
+            sessionId: 'running-one',
+            state: 'working',
+            changedAt: NOW - MINUTE,
+          },
+        ],
+      ]),
+      NOW,
+    );
+    mockUseSessionSwitcher.mockReturnValue(view({ groups, activeCount: 1 }));
+
+    await renderRail();
+
+    const marks = screen.getAllByText('Runtime lost');
+    expect(marks).toHaveLength(1);
+    expect(
+      screen.getByRole('link', { name: /Session lost/ }),
+    ).toHaveTextContent('Runtime lost');
+    expect(
+      screen.getByRole('link', { name: /Session running-one/ }),
+    ).not.toHaveTextContent('Runtime lost');
+  });
+});

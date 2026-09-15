@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import {
   Avatar,
+  Badge,
   Cell,
   CellText,
   ColumnConfig,
@@ -26,6 +27,15 @@ import {
 
 /** The avatar is one line of text tall; request 2× for hi-dpi crispness. */
 const ROW_AVATAR_SIZE: AvatarSize = 48;
+
+/**
+ * The mark on a session whose runtime kagent reports lost — the same two words
+ * on the list, the rail and the page's header, so one session reads the same
+ * everywhere.
+ */
+export const RUNTIME_LOST_LABEL = 'Runtime lost';
+export const RUNTIME_LOST_TITLE =
+  'kagent cannot bring this session’s agent back; the transcript stays readable. Start a new session to carry on.';
 
 /** Dash shown where a value is genuinely unknown. */
 function Unknown() {
@@ -63,18 +73,28 @@ function getColumnConfig(
         // {@link stopRowPress}.
         return (
           <Cell>
-            {href ? (
-              <Link
-                to={href}
-                onPointerDown={stopRowPress}
-                onPointerUp={stopRowPress}
-                onClick={stopRowPress}
-              >
-                {row.title}
-              </Link>
-            ) : (
-              <Text variant="body-medium">{row.title}</Text>
-            )}
+            <Flex align="center" gap="2">
+              {href ? (
+                <Link
+                  to={href}
+                  onPointerDown={stopRowPress}
+                  onPointerUp={stopRowPress}
+                  onClick={stopRowPress}
+                >
+                  {row.title}
+                </Link>
+              ) : (
+                <Text variant="body-medium">{row.title}</Text>
+              )}
+              {/* Said in the list, before the person opens it and types: a
+                  session kagent reports lost takes no message any more. The
+                  page explains and offers the way on. */}
+              {row.runtimeLost && (
+                <Badge size="small" title={RUNTIME_LOST_TITLE}>
+                  {RUNTIME_LOST_LABEL}
+                </Badge>
+              )}
+            </Flex>
           </Cell>
         );
       },

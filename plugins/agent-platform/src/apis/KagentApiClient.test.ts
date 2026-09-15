@@ -1270,3 +1270,147 @@ describe('KagentApiClient', () => {
     });
   });
 });
+
+describe('KagentApiClient — streamMessage on a lost runtime', () => {
+  const fetchMock = jest.fn();
+  const discoveryApi: DiscoveryApi = {
+    getBaseUrl: async () => 'http://backend/api/agent-platform',
+  };
+  const kubernetesApi = {
+    getCluster: async () => ({
+      authProvider: 'oidc',
+      oidcTokenProvider: 'oidc-gazelle',
+    }),
+  } as unknown as KubernetesApi;
+  const kubernetesAuthProvidersApi = {
+    getCredentials: async () => ({ token: 'dex-token' }),
+  } as unknown as KubernetesAuthProvidersApi;
+  const client = () =>
+    new KagentApiClient({
+      discoveryApi,
+      fetchApi: { fetch: fetchMock } as unknown as FetchApi,
+      kubernetesApi,
+      kubernetesAuthProvidersApi,
+    });
+
+  const AGENT = { namespace: 'kagent', name: 'grill-master' };
+  const MESSAGE = { messageId: 'msg-1', text: 'Six of them are vegetarian.' };
+  const ATENET =
+    'actor "ai-01a09e86-0da0-764b-87b1-ac52875d1e74" request timed out';
+
+  /**
+   * The backend's relay of one turn: SSE `data:` frames, delivered in one
+   * read. ASCII only, so the bytes need no encoder — jsdom has none.
+   */
+  function sseResponse(frames: unknown[]): Response {
+    const text = frames.map(f => `data: ${JSON.stringify(f)}\n\n`).join('');
+    const bytes = Uint8Array.from(text, c => c.charCodeAt(0));
+    let delivered = false;
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === 'content-type'
+            ? 'text/event-stream; charset=utf-8'
+            : null,
+      },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            if (delivered) {
+              return { done: true, value: undefined };
+            }
+            delivered = true;
+            return { done: false, value: bytes };
+          },
+        }),
+      },
+    } as unknown as Response;
+  }
+
+  const submitted = {
+    task: {
+      id: 't-1',
+      contextId: 'ctx-1',
+      status: { state: 'TASK_STATE_SUBMITTED' },
+    },
+  };
+  /** The failed status the gateway records with the runtime's words before it ends the stream. */
+  const runtimeFailed = {
+    statusUpdate: {
+      taskId: 't-1',
+      contextId: 'ctx-1',
+      status: {
+        state: 'TASK_STATE_FAILED',
+        message: {
+          messageId: 'm-failure',
+          role: 'ROLE_AGENT',
+          parts: [{ text: ATENET }],
+        },
+      },
+    },
+  };
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+  });
+
+  it("surfaces the runtime's words when kagent refuses before any event — the interim shape", async () => {
+    fetchMock.mockResolvedValue(
+      sseResponse([{ error: { code: 'Internal', message: ATENET } }]),
+    );
+
+    await expect(
+      client().streamMessage('gazelle', 'abc123', AGENT, MESSAGE, jest.fn()),
+    ).rejects.toMatchObject({
+      name: 'UpstreamError',
+      message: expect.stringContaining(ATENET),
+    });
+  });
+
+  it("surfaces kagent's `runtime lost: <cause>` the same way", async () => {
+    // The shape kagent moves to once it names the cause itself.
+    fetchMock.mockResolvedValue(
+      sseResponse([
+        {
+          error: {
+            code: 'Internal',
+            message:
+              'runtime lost: local snapshot on node ip-10-0-159-226 is gone',
+          },
+        },
+      ]),
+    );
+
+    await expect(
+      client().streamMessage('gazelle', 'abc123', AGENT, MESSAGE, jest.fn()),
+    ).rejects.toMatchObject({
+      name: 'UpstreamError',
+      message: expect.stringContaining(
+        'runtime lost: local snapshot on node ip-10-0-159-226 is gone',
+      ),
+    });
+  });
+
+  it('hands the recorded failure through and resolves when the turn exists — the poll is its record', async () => {
+    // What gazelle actually produced: the submitted task, the failed status
+    // carrying the runtime's words, then the error. The turn was recorded, so
+    // the caller reconciles through the poll; the failed status it received
+    // is what the page renders meanwhile.
+    const onEvent = jest.fn();
+    fetchMock.mockResolvedValue(
+      sseResponse([
+        submitted,
+        runtimeFailed,
+        { error: { code: 'Internal', message: ATENET } },
+      ]),
+    );
+
+    await expect(
+      client().streamMessage('gazelle', 'abc123', AGENT, MESSAGE, onEvent),
+    ).resolves.toBeUndefined();
+    expect(onEvent).toHaveBeenCalledTimes(2);
+    expect(onEvent).toHaveBeenLastCalledWith(runtimeFailed);
+  });
+});

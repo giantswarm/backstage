@@ -1,5 +1,5 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Alert, Flex } from '@backstage/ui';
+import { Alert, Button, Flex } from '@backstage/ui';
 import {
   CircularProgress,
   IconButton,
@@ -51,6 +51,13 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: theme.spacing(2),
+  },
+  // Send (or Stop) and, when the runtime is lost, the way out beside it.
+  actions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    flexShrink: 0,
   },
   caption: {
     fontSize: '0.75rem',
@@ -170,6 +177,29 @@ export type SessionComposerProps = {
   onStop?: () => void;
   /** A Stop has been asked for and the server has not answered yet. */
   isStopping?: boolean;
+  /**
+   * The way out of a session whose runtime kagent cannot bring back: start a
+   * new session with the same agent, taking the box's text along.
+   *
+   * Offered **beside** Send while the loss is only suspected — a cold worker can
+   * time out once, and sending again is the honest retry — and **in place of**
+   * Send once kagent has reported the runtime lost (`replacesSend`), because a
+   * send then fails the same way every time and Enter should do the one thing
+   * that works. The action receives whatever is in the box; the caller decides
+   * what to carry when it is empty (the message that never got its answer).
+   */
+  newSession?: {
+    /** The button's text — names the agent, so it says where the person lands. */
+    label: string;
+    /** Receives the trimmed text of the box, which may be empty. */
+    onStart: (draft: string) => void;
+    /** The new session is being created. */
+    isStarting?: boolean;
+    /** Send is withheld and this takes its slot; Enter starts the session. */
+    replacesSend?: boolean;
+    /** What the caption says while this is offered. */
+    caption: string;
+  };
 };
 
 /**
@@ -209,6 +239,7 @@ export function SessionComposer({
   onSubmit,
   onStop,
   isStopping = false,
+  newSession,
 }: SessionComposerProps) {
   const classes = useStyles();
   const [value, setValue] = useState('');
@@ -232,8 +263,17 @@ export function SessionComposer({
   const text = value.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
   const isDisabled = Boolean(disabledReason);
+  // Once kagent has said the runtime is lost, Send has nothing left to do and
+  // the new session takes its slot — and Enter.
+  const newSessionReplacesSend = Boolean(newSession?.replacesSend);
   const canSubmit =
-    Boolean(text) && !isTooLong && !isDisabled && !isAgentWorking;
+    Boolean(text) &&
+    !isTooLong &&
+    !isDisabled &&
+    !isAgentWorking &&
+    !newSessionReplacesSend;
+  const canStartNewSession =
+    Boolean(newSession) && !isTooLong && !isDisabled && !newSession?.isStarting;
 
   useEffect(() => {
     if (autoFocus) {
@@ -262,7 +302,21 @@ export function SessionComposer({
     }
   }, [isDisabled]);
 
+  const startNewSession = () => {
+    if (!newSession || !canStartNewSession) {
+      return;
+    }
+    // Not cleared: the create can fail, and the box is where the words still
+    // are. The caller unmounts this composer by navigating once the session
+    // exists.
+    newSession.onStart(text);
+  };
+
   const submit = () => {
+    if (newSessionReplacesSend) {
+      startNewSession();
+      return;
+    }
     if (!canSubmit) {
       return;
     }
@@ -290,6 +344,8 @@ export function SessionComposer({
   let caption: string;
   if (disabledReason) {
     caption = disabledReason;
+  } else if (newSession) {
+    caption = newSession.caption;
   } else if (isStopping) {
     caption = 'Stopping the agent…';
   } else if (isAgentWorking && isStalled) {
@@ -327,9 +383,11 @@ export function SessionComposer({
             minRows={2}
             maxRows={12}
             placeholder={
-              isFinished
-                ? 'Send a message to resume this session…'
-                : 'Send a message to this session…'
+              newSessionReplacesSend
+                ? 'Start a new session with this message…'
+                : isFinished
+                  ? 'Send a message to resume this session…'
+                  : 'Send a message to this session…'
             }
             value={value}
             onChange={event => setValue(event.target.value)}
@@ -346,30 +404,50 @@ export function SessionComposer({
                 ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
                 : caption}
             </span>
-            {showStop ? (
-              <IconButton
-                type="button"
-                aria-label="Stop"
-                className={classes.stop}
-                disabled={isStopping}
-                onClick={onStop}
-              >
-                {isStopping ? (
-                  <CircularProgress size={16} color="inherit" />
-                ) : (
-                  <StopIcon fontSize="small" />
-                )}
-              </IconButton>
-            ) : (
-              <IconButton
-                type="submit"
-                aria-label="Send"
-                className={classes.send}
-                disabled={!canSubmit}
-              >
-                <ArrowUpwardIcon fontSize="small" />
-              </IconButton>
-            )}
+            <div className={classes.actions}>
+              {newSession && (
+                // A real button beside (or instead of) Send, worded — an icon
+                // could not say where the person lands. `type="button"`: only
+                // the primary control submits the form, and while this merely
+                // stands beside Send, Enter must keep sending.
+                <Button
+                  type={newSessionReplacesSend ? 'submit' : 'button'}
+                  size="small"
+                  variant={newSessionReplacesSend ? 'primary' : 'secondary'}
+                  isDisabled={!canStartNewSession}
+                  isPending={newSession.isStarting}
+                  onPress={newSessionReplacesSend ? undefined : startNewSession}
+                >
+                  {newSession.label}
+                </Button>
+              )}
+              {showStop ? (
+                <IconButton
+                  type="button"
+                  aria-label="Stop"
+                  className={classes.stop}
+                  disabled={isStopping}
+                  onClick={onStop}
+                >
+                  {isStopping ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : (
+                    <StopIcon fontSize="small" />
+                  )}
+                </IconButton>
+              ) : (
+                !newSessionReplacesSend && (
+                  <IconButton
+                    type="submit"
+                    aria-label="Send"
+                    className={classes.send}
+                    disabled={!canSubmit}
+                  >
+                    <ArrowUpwardIcon fontSize="small" />
+                  </IconButton>
+                )
+              )}
+            </div>
           </div>
         </div>
       </Flex>

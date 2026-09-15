@@ -1,0 +1,26 @@
+{
+  "comment": "GetAgentInstanceResponse for a session whose runtime kagent reports lost (the contract with kagent for giantswarm/giantswarm#37795: a Failure with reason RUNTIME_LOST on list and get; the message names the cause). Built on the recorded READY instance beside it; the state stays READY because the instance itself is intact — only its runtime is gone.",
+  "agentInstance": {
+    "id": "01a09e86-0da0-764b-87b1-ac52875d1e74",
+    "creator": "admin@kagent.dev",
+    "harness": {
+      "namespace": "kagent",
+      "name": "kagent"
+    },
+    "agentTemplate": {
+      "namespace": "kagent",
+      "name": "grill-master"
+    },
+    "preparedRevision": "b92482b2c3d6f4e9a1b0c7d8e5f6a3b4c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6",
+    "a2aAuthority": "ai-01a09e86-0da0-764b-87b1-ac52875d1e74.kagent.actors.resources.substrate.ate.dev",
+    "state": "AGENT_INSTANCE_STATE_READY",
+    "failure": {
+      "reason": "RUNTIME_LOST",
+      "message": "runtime lost: local snapshot 586930a4-7261-4ced-b30a-3959f392b2ca on node ip-10-0-159-226.eu-central-1.compute.internal is gone"
+    },
+    "createdAt": "2026-09-14T06:06:20.766392Z",
+    "updatedAt": "2026-09-15T08:31:37.771845370Z",
+    "name": "Plan a barbecue for t",
+    "contextId": "ctx-1"
+  }
+}

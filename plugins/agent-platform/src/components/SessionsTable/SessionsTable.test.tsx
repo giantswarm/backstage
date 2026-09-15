@@ -283,3 +283,28 @@ describe('SessionsTable', () => {
     });
   });
 });
+
+describe('SessionsTable — a session whose runtime kagent reports lost', () => {
+  it('marks the row, so the person knows before they open it and type', async () => {
+    await renderInTestApp(
+      <SessionsTable
+        rows={[
+          { ...rows[0], runtimeLost: true },
+          { ...rows[1], id: 'golem/ghi', sessionId: 'ghi' },
+        ]}
+      />,
+      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    );
+
+    const marks = screen.getAllByText('Runtime lost');
+    expect(marks).toHaveLength(1);
+    expect(marks[0]).toHaveAttribute(
+      'title',
+      expect.stringContaining('Start a new session'),
+    );
+    // Beside the title of the row it belongs to.
+    expect(
+      screen.getByRole('rowheader', { name: /What issues are assi/ }),
+    ).toHaveTextContent('Runtime lost');
+  });
+});

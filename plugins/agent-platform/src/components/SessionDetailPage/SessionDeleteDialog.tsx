@@ -1,5 +1,29 @@
 import { Text } from '@backstage/ui';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
+
+/**
+ * Why a delete failed, for the person who pressed it.
+ *
+ * On a session whose runtime is lost the backend's message is a riddle: kagent
+ * answers `Unavailable: Failed to delete AgentInstance`, because its delete
+ * suspends the instance's runtime before removing it and that suspend dials a
+ * node that no longer exists. Nothing the person did, nothing they can do from
+ * here — so the words say what fixes it. Once kagent skips the suspend for an
+ * instance it has marked lost, the delete goes through and this is not
+ * reached; before that, the reported loss and the suspected one word the
+ * failure the same way, since the cause is the same. Every other failure keeps
+ * the backend's message.
+ */
+export function describeSessionDeleteFailure(
+  error: Error,
+  loss: RuntimeLoss | undefined,
+): string {
+  if (!loss) {
+    return error.message;
+  }
+  return `kagent could not delete this session because it suspends a session’s runtime before removing it, and this runtime cannot be reached — it was lost with the platform node it lived on. A kagent update that skips that step for a lost runtime is on its way; until it lands the session stays listed. Nothing else is affected. (${error.message})`;
+}
 
 export type SessionDeleteDialogProps = {
   /** Shown in the title; falls back to the list's placeholder when unnamed. */

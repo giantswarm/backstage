@@ -4,10 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import {
   KagentSessionDetail,
+  RuntimeLoss,
   SessionState,
   TurnProgress,
   findNewestStatefulTaskIndex,
   readNewestTaskState,
+  readRuntimeLoss,
   readTurnProgress,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
@@ -74,6 +76,14 @@ export type SessionDetailView = {
    * a payload we cannot read — in which case no answer must be offered.
    */
   pendingConfirmation?: PendingConfirmation;
+  /**
+   * The runtime kagent cannot bring back, when the session or its conversation
+   * say so — reported by kagent on the instance, or read off a newest turn
+   * that failed with the runtime's words. Undefined for a session whose
+   * runtime is fine, or whose loss nothing in hand shows yet. See
+   * `readRuntimeLoss`.
+   */
+  runtimeLoss?: RuntimeLoss;
   /** Number of A2A tasks — the session's turn count. */
   taskCount: number;
   /**
@@ -208,6 +218,10 @@ export function useSessionDetail(
     [tasks],
   );
 
+  // Computed below `detail`, which it reads; declared here so the hook order
+  // stays fixed. The instance's mark and the conversation's newest turn are
+  // read together, the mark winning — see `readRuntimeLoss`.
+
   // The last session we read successfully. `getSessionDetail` resolves `undefined`
   // for any 200 whose body does not parse — an expired oauth2-proxy answering with
   // an HTML sign-in page is the realistic case — and react-query stores that
@@ -247,6 +261,12 @@ export function useSessionDetail(
     ? undefined
     : (sessionError ?? (tasksQuery.error as Error | null) ?? unreadableSession);
 
+  const session = detail?.session;
+  const runtimeLoss = useMemo(
+    () => readRuntimeLoss(session, tasks),
+    [session, tasks],
+  );
+
   return {
     detail,
     timeline,
@@ -256,6 +276,7 @@ export function useSessionDetail(
     isAgentWorking: turnProgress?.kind === 'working',
     turnProgress,
     pendingConfirmation,
+    runtimeLoss,
     taskCount: tasks?.length ?? 0,
     hasConversation: tasks !== undefined,
     // `isNotFound` short-circuits loading, because it is decided by the session
