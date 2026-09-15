@@ -46,16 +46,18 @@ test('an agent in the roster opens its detail page', async ({ admin }) => {
   await agents.first().click();
   await expect(admin).toHaveURL(new RegExp(`${href}$`));
   await expect(admin.getByRole('link', { name: '← Agents' })).toBeVisible();
-  for (const heading of [
-    'Configuration',
-    'Status',
-    'System prompt',
-    'Toolset',
-  ]) {
+  // The Overview tab's cards; the toolset has its own tab since the page was
+  // split into Overview, Tools, Skills and Sessions.
+  for (const heading of ['Configuration', 'Status', 'System prompt']) {
     await expect(
       admin.getByRole('heading', { level: 3, name: heading }),
     ).toBeVisible();
   }
+  await admin.getByRole('tab', { name: 'Tools' }).click();
+  await expect(admin).toHaveURL(new RegExp(`${href}/tools$`));
+  await expect(
+    admin.getByRole('heading', { level: 3, name: 'Toolset' }),
+  ).toBeVisible();
   await expect(
     admin.getByRole('button', { name: 'Start a session' }),
   ).toBeVisible();
