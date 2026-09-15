@@ -21,8 +21,10 @@ type CatalogErrorsPayload = {
  * nothing for anyone to act on, and at `warn` those bury the errors that do
  * need attention, like a 401 or a file that is really gone.
  *
- * So transient failures are logged at `debug` and everything else stays at
- * `warn`, with the message and metadata unchanged from upstream.
+ * So transient failures drop to `info` — below the Sentry transport's `warn`
+ * threshold, but still at the default log level, so an upstream outage staling
+ * half the catalog stays greppable. Everything else stays at `warn`, with the
+ * message and metadata unchanged from upstream.
  */
 export async function subscribeToCatalogErrors(options: {
   events: EventsService;
@@ -43,7 +45,7 @@ export async function subscribeToCatalogErrors(options: {
         const meta = { entity, location };
 
         if (isTransientError(error)) {
-          logger.debug(logMessage, meta);
+          logger.info(logMessage, meta);
         } else {
           logger.warn(logMessage, meta);
         }

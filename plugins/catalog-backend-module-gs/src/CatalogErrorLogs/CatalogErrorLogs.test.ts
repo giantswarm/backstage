@@ -44,7 +44,7 @@ describe('subscribeToCatalogErrors', () => {
     );
 
     expect(logger.warn).not.toHaveBeenCalled();
-    expect(logger.debug).toHaveBeenCalledWith(
+    expect(logger.info).toHaveBeenCalledWith(
       expect.stringContaining('504 Gateway Timeout'),
       { entity: ENTITY, location: LOCATION },
     );
@@ -62,7 +62,7 @@ describe('subscribeToCatalogErrors', () => {
       logger,
     );
 
-    expect(logger.debug).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith('No such file', {
       entity: ENTITY,
       location: LOCATION,
@@ -84,7 +84,7 @@ describe('subscribeToCatalogErrors', () => {
     );
 
     expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.debug).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to a fixed message for an error that lost its message in transit', async () => {
@@ -104,6 +104,24 @@ describe('subscribeToCatalogErrors', () => {
     await publish({ entity: ENTITY }, logger);
 
     expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  it('keeps transient failures out of Sentry but in the logs', async () => {
+    const logger = mockServices.logger.mock();
+
+    await publish(
+      { entity: ENTITY, errors: [new Error('socket hang up')] },
+      logger,
+    );
+
+    // The Sentry transport listens from `warn` up; `info` is the default log
+    // level, so the outage is still greppable.
+    expect(logger.warn).not.toHaveBeenCalled();
     expect(logger.debug).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith('socket hang up', {
+      entity: ENTITY,
+      location: undefined,
+    });
   });
 });

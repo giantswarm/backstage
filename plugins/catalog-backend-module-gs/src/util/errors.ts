@@ -22,10 +22,20 @@ const TRANSIENT_MESSAGE_PATTERNS = [
 type ErrorInfo = {
   name: string | undefined;
   message: string;
+  statusCode: number | undefined;
 };
 
+function readStatusCode(error: object): number | undefined {
+  const { statusCode, status } = error as {
+    statusCode?: unknown;
+    status?: unknown;
+  };
+  const value = typeof statusCode === 'number' ? statusCode : status;
+  return typeof value === 'number' ? value : undefined;
+}
+
 /**
- * Reads the name and message off a thrown value.
+ * Reads the name, message and any HTTP status off a thrown value.
  *
  * Errors do not survive `JSON.stringify`, so one that reached this instance
  * over the events bus rather than from its own process arrives as a plain
@@ -33,16 +43,21 @@ type ErrorInfo = {
  */
 export function readErrorInfo(error: unknown): ErrorInfo {
   if (error instanceof Error) {
-    return { name: error.name, message: error.message };
+    return {
+      name: error.name,
+      message: error.message,
+      statusCode: readStatusCode(error),
+    };
   }
   if (error && typeof error === 'object') {
     const { name, message } = error as { name?: unknown; message?: unknown };
     return {
       name: typeof name === 'string' ? name : undefined,
       message: typeof message === 'string' ? message : '',
+      statusCode: readStatusCode(error),
     };
   }
-  return { name: undefined, message: String(error) };
+  return { name: undefined, message: String(error), statusCode: undefined };
 }
 
 /**
@@ -54,7 +69,13 @@ export function readErrorInfo(error: unknown): ErrorInfo {
  * unreachable and recovered by itself.
  */
 export function isTransientError(error: unknown): boolean {
-  const { name, message } = readErrorInfo(error);
+  const { name, message, statusCode } = readErrorInfo(error);
+  // Errors that carry the status as a field rather than in their text, such as
+  // the registry clients' `RegistryError`, whose 429 reads "Rate limit
+  // exceeded" with no status token to match on.
+  if (statusCode !== undefined && (statusCode === 429 || statusCode >= 500)) {
+    return true;
+  }
   if (name && TRANSIENT_ERROR_NAMES.has(name)) {
     return true;
   }

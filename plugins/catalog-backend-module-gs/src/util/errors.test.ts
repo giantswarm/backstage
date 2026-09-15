@@ -34,10 +34,36 @@ describe('isTransientError', () => {
     expect(isTransientError(undefined)).toBe(false);
   });
 
+  it('treats a status code as transient without a matching message', () => {
+    // RegistryError's 429 reads "Rate limit exceeded" — no status in the text.
+    const rateLimited = Object.assign(
+      new Error(
+        'Failed to fetch tags from ACR API for r/c: Rate limit exceeded',
+      ),
+      { name: 'RegistryError', statusCode: 429 },
+    );
+    const serverError = Object.assign(new Error('Failed to fetch tags'), {
+      name: 'RegistryError',
+      statusCode: 503,
+    });
+    const forbidden = Object.assign(new Error('Failed to fetch tags'), {
+      name: 'RegistryError',
+      statusCode: 403,
+    });
+
+    expect(isTransientError(rateLimited)).toBe(true);
+    expect(isTransientError(serverError)).toBe(true);
+    expect(isTransientError(forbidden)).toBe(false);
+  });
+
   it('reads errors that lost their prototype in transit', () => {
     expect(isTransientError({ name: 'ServiceUnavailableError' })).toBe(true);
     expect(isTransientError({ message: '504 Gateway Timeout' })).toBe(true);
     expect(isTransientError({})).toBe(false);
-    expect(readErrorInfo({})).toEqual({ name: undefined, message: '' });
+    expect(readErrorInfo({})).toEqual({
+      name: undefined,
+      message: '',
+      statusCode: undefined,
+    });
   });
 });
