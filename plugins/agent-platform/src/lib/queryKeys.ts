@@ -173,13 +173,18 @@ export function musterValidateAgentQueryKey(
  * `get_agent_status` for one agent, optionally scoped to the write that is
  * being watched.
  *
- * `fromGeneration` is the template generation read immediately *before* a
- * write, and it is part of the key on purpose: a verdict is only about the
- * revision that write produced, so two watches waiting on different
- * transitions must not share a cache entry. Without it, an `Update skills` on
- * an agent that was already `ready` inherits the previous watch's settled
- * entry — and its terminal `refetchInterval` — and reports success for a
- * revision the Harness has not compiled.
+ * `watch` identifies the write being followed, and it is part of the key on
+ * purpose: a verdict is only about the revision that write produced, so two
+ * watches must not share a cache entry. Without it, an `Update skills` on an
+ * agent that was already `ready` inherits the previous watch's settled entry —
+ * and its terminal `refetchInterval` — and reports success for a revision the
+ * Harness has not compiled.
+ *
+ * It is unique per write rather than derived from the generation being waited
+ * for. Two writes can start from the same generation — press `Update skills`
+ * twice on an agent whose release cannot reconcile, so the template never moves
+ * — and keying on the generation would serve the second one the first's
+ * settled, timed-out entry, skipping the waiting alert entirely.
  *
  * A read with no write behind it (the detail page asking whether an agent
  * exists at all, and the create flow, which has no earlier generation) passes
@@ -189,7 +194,7 @@ export function musterAgentStatusQueryKey(
   installation: string,
   namespace: string,
   name: string,
-  fromGeneration?: number,
+  watch?: string,
 ) {
   return [
     'muster',
@@ -198,7 +203,7 @@ export function musterAgentStatusQueryKey(
     installation,
     namespace,
     name,
-    ...(fromGeneration === undefined ? [] : [`from:${fromGeneration}`]),
+    ...(watch === undefined ? [] : [watch]),
   ] as const;
 }
 

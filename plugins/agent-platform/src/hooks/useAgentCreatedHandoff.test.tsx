@@ -99,6 +99,46 @@ describe('useAgentCreatedHandoff', () => {
     });
   });
 
+  // Everything downstream — the status query key and the give-up timer — hangs
+  // off what the adoption carries. Two writes can start from the same
+  // generation (press Update skills twice on an agent whose release cannot
+  // reconcile, so the template never moves), and keying on that alone would
+  // serve the second write the first's settled, timed-out result: no waiting
+  // alert, the previous verdict instantly, as if it had already converged.
+  it('watches each write separately, even when both start from the same generation', async () => {
+    const write = { ...created, action: 'updated' as const, fromGeneration: 4 };
+    const { result } = renderAt({ [AGENT_CREATED_STATE_KEY]: write });
+
+    const first = result.current.handoff?.watchId;
+    expect(first).toBeDefined();
+
+    await waitFor(() => {
+      expect(result.current.locationState).toBeNull();
+    });
+
+    act(() => {
+      result.current.navigate(
+        { pathname: AGENT_URL },
+        { replace: true, state: { [AGENT_CREATED_STATE_KEY]: write } },
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.handoff?.watchId).not.toBe(first);
+    });
+    // Still the same write, still the same baseline — only the watch is new.
+    expect(result.current.handoff?.fromGeneration).toBe(4);
+  });
+
+  // A create has no revision to wait for, so it shares the plain watch rather
+  // than taking a key of its own — which is what keeps it sharing one poll with
+  // the detail page's own existence check.
+  it('leaves a create without a watch of its own', () => {
+    const { result } = renderAt({ [AGENT_CREATED_STATE_KEY]: created });
+
+    expect(result.current.handoff?.watchId).toBeUndefined();
+  });
+
   it('replaces the first handoff when a second write arrives', async () => {
     const { result } = renderAt({ [AGENT_CREATED_STATE_KEY]: created });
 

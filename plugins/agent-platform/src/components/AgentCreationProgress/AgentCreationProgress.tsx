@@ -56,6 +56,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     requestedBy,
     action = 'created',
     fromGeneration,
+    watchId,
   } = handoff;
   // Scoped to the write: the verdict counts once the template's generation has
   // moved past what it was before it, so an agent that was already `ready` is
@@ -64,7 +65,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     installation,
     namespace,
     name,
-    { fromGeneration },
+    { fromGeneration, watchId },
   );
 
   const wording = WORDING[action];

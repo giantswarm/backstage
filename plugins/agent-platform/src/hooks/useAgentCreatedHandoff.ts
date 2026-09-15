@@ -29,7 +29,31 @@ export type AgentCreatedHandoff = {
    * for a create, which has no earlier generation.
    */
   fromGeneration?: number;
+  /**
+   * Identifies this adoption of the handoff, so the progress watches each write
+   * separately. Assigned when the handoff is picked up, never carried in the
+   * router state: two writes can start from the same generation — pressing
+   * `Update skills` twice on an agent whose release cannot reconcile — and
+   * everything downstream keyed on the generation alone would serve the second
+   * the first's settled result. Only set where there is a revision to wait for;
+   * a create shares the plain watch, as it has nothing to be confused with.
+   */
+  watchId?: string;
 };
+
+/** Monotonic within the page session, which is as long as the cache lives. */
+let adoptions = 0;
+
+/** Stamp a handoff as it is taken up, so its watch is its own. */
+function adopt(
+  handoff: AgentCreatedHandoff | undefined,
+): AgentCreatedHandoff | undefined {
+  if (!handoff || handoff.fromGeneration === undefined) {
+    return handoff;
+  }
+  adoptions += 1;
+  return { ...handoff, watchId: `write:${adoptions}` };
+}
 
 /** The writes after which the detail page shows the template converging. */
 export type AgentWriteAction = 'created' | 'updated' | 'skills-updated';
@@ -97,7 +121,9 @@ function readHandoff(state: unknown): AgentCreatedHandoff | undefined {
 export function useAgentCreatedHandoff(): AgentCreatedHandoff | undefined {
   const location = useLocation();
   const navigate = useNavigate();
-  const [handoff, setHandoff] = useState(() => readHandoff(location.state));
+  const [handoff, setHandoff] = useState(() =>
+    adopt(readHandoff(location.state)),
+  );
   // The history entry the initializer above already took its value from.
   // Re-adopting it would re-render for an equal value; a *later* write to the
   // same URL arrives as a different object, and that is the one to catch.
@@ -111,7 +137,7 @@ export function useAgentCreatedHandoff(): AgentCreatedHandoff | undefined {
 
     if (location.state !== consumed.current) {
       consumed.current = location.state;
-      setHandoff(arriving);
+      setHandoff(adopt(arriving));
     }
 
     // Take it out of the history entry either way. That is also what ends this
