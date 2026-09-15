@@ -94,7 +94,6 @@ export function groupRowsByInstallation<Row extends { installation: string }>(
 /** What the rows are called in a group's status line. */
 export type GroupNoun = { one: string; many: string };
 
-export const SESSIONS_NOUN: GroupNoun = { one: 'session', many: 'sessions' };
 export const MODELS_NOUN: GroupNoun = { one: 'model', many: 'models' };
 
 /** The status line under a group's name. */

@@ -2,7 +2,6 @@ import {
   describeInstallationGroup,
   groupRowsByInstallation,
   MODELS_NOUN,
-  SESSIONS_NOUN,
 } from './installationGroups';
 
 const row = (installation: string, id: string) => ({ installation, id });
@@ -85,9 +84,9 @@ describe('describeInstallationGroup', () => {
     expect(
       describeInstallationGroup(
         { status: 'ready', rows: [1, 2, 3] },
-        SESSIONS_NOUN,
+        MODELS_NOUN,
       ),
-    ).toBe('3 sessions');
+    ).toBe('3 models');
   });
 
   it('words every other state', () => {
@@ -106,7 +105,7 @@ describe('describeInstallationGroup', () => {
     expect(
       describeInstallationGroup(
         { status: 'not-reachable', rows: [] },
-        SESSIONS_NOUN,
+        MODELS_NOUN,
       ),
     ).toBe('not reachable from this portal');
   });

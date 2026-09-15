@@ -1,30 +1,21 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Box, Flex, SearchField, Text } from '@backstage/ui';
+import { Alert, Box, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
-import { SESSIONS_NOUN } from '../../lib/installationGroups';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
-import {
-  InstallationGroups,
-  InstallationScopeNote,
-  useGroupedByInstallation,
-} from '../InstallationGroups';
+import { InstallationScopeNote } from '../InstallationGroups';
 import { isStartableAgent, NewSessionComposer } from '../NewSessionComposer';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
-import {
-  SessionsDataProvider,
-  sessionSearchFn,
-  useSessions,
-} from '../SessionsDataProvider';
+import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsMigrationNotice } from '../SessionsMigrationNotice';
 import { SessionsTable } from '../SessionsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -194,7 +185,6 @@ function StartNewSession({ firstRun }: { firstRun: boolean }) {
 function SessionsIndexPageContent() {
   const {
     rows,
-    groups,
     installations,
     isLoading,
     isLoadingMore,
@@ -206,23 +196,9 @@ function SessionsIndexPageContent() {
   // The agents fan-out is a second, independent load: the sessions can settle
   // long before it, and on first run the composer is all there is to show.
   const { isLoading: isLoadingAgents } = useAgents();
-  // Under "All installations" on a multi-installation portal the rows render
-  // as one group per installation, home first, and the search field moves up
-  // here so one search covers every group; a pinned scope and a
-  // single-installation portal keep the flat table with its own search.
-  const grouped = useGroupedByInstallation();
-  const [search, setSearch] = useState('');
   // Which container the composer mounts in, decided once — see the latch below.
   // Declared up here because the `hasInstallations` guard returns early.
   const firstRunRef = useRef<boolean | undefined>(undefined);
-  const searchedGroups = useMemo(
-    () =>
-      groups.map(group => ({
-        ...group,
-        rows: sessionSearchFn(group.rows, search),
-      })),
-    [groups, search],
-  );
 
   if (!isLoading && !hasInstallations) {
     return (
@@ -314,9 +290,8 @@ function SessionsIndexPageContent() {
           <Progress aria-label="Loading sessions" />
         )}
 
-        {/* An empty fleet gets no list at all, rather than an empty table (or,
-            under "All installations", a stack of headings each saying "no
-            sessions here") beneath the invitation above. */}
+        {/* An empty fleet gets no list at all, rather than an empty table
+            beneath the invitation above. */}
         {!isLoading && !isEmpty && (
           <>
             {/* Rows are in, but more installations are still resolving. */}
@@ -324,27 +299,14 @@ function SessionsIndexPageContent() {
               <LinearProgress aria-label="Loading more sessions" />
             )}
 
+            {/* One flat table under every scope. Under "All installations" the
+                Installation column tells the rows apart; the table's initial
+                sort is last activity, newest first, which is the order to read
+                one's own sessions in whatever installation they ran on. An
+                installation without sessions simply has no row, and one that
+                could not be read is called out below. */}
             <Box>
-              {grouped ? (
-                <Flex direction="column" gap="3">
-                  <SearchField
-                    aria-label="Search sessions"
-                    placeholder="Search by session, agent, or installation"
-                    value={search}
-                    onChange={setSearch}
-                  />
-                  <InstallationGroups
-                    groups={searchedGroups}
-                    noun={SESSIONS_NOUN}
-                    renderRows={groupRows => (
-                      <SessionsTable rows={groupRows} showSearch={false} />
-                    )}
-                    fallback={<SessionsTable rows={[]} showSearch={false} />}
-                  />
-                </Flex>
-              ) : (
-                <SessionsTable rows={rows} />
-              )}
+              <SessionsTable rows={rows} />
             </Box>
           </>
         )}

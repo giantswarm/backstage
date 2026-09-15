@@ -35,13 +35,10 @@ jest.mock('../SessionsTable', () => ({
   ),
 }));
 
-// Whether the list renders as one group per installation is the section
-// scope's decision (gs); here it is whatever the test says. The group
-// components themselves are real.
-let mockGrouped = false;
+// The scope note reads the section scope from gs; none of the page's branches
+// depend on it, so it renders nothing here.
 jest.mock('../InstallationGroups', () => ({
   ...jest.requireActual('../InstallationGroups'),
-  useGroupedByInstallation: () => mockGrouped,
   InstallationScopeNote: () => null,
 }));
 
@@ -92,7 +89,6 @@ const session = {
 
 const loadedSessions: SessionsContextValue = {
   rows: [],
-  groups: [],
   scope: 'all',
   // The scoped kagent installations. At least one of them has to have actually
   // been queried before the page claims the user has never had a session.
@@ -317,15 +313,10 @@ describe('SessionsIndexPage', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('shows no group headings under "All installations" either', async () => {
-      mockGrouped = true;
+    it('says nothing per installation under "All installations" either', async () => {
       mockUseSessions.mockReturnValue({
         ...loadedSessions,
         installations: ['gazelle', 'golem'],
-        groups: [
-          { installation: 'gazelle', home: true, rows: [], status: 'empty' },
-          { installation: 'golem', home: false, rows: [], status: 'empty' },
-        ],
       });
 
       await render();
@@ -334,7 +325,6 @@ describe('SessionsIndexPage', () => {
         screen.queryByRole('heading', { level: 3 }),
       ).not.toBeInTheDocument();
       expect(screen.queryByText('no sessions here')).not.toBeInTheDocument();
-      mockGrouped = false;
     });
 
     it('invites creating an agent when the fleet holds none', async () => {
@@ -596,64 +586,34 @@ describe('SessionsIndexPage under "All installations" on a multi-installation po
   };
 
   beforeEach(() => {
-    mockGrouped = true;
     mockUseSessions.mockReturnValue({
       ...loadedSessions,
       rows: [gazelleSession, golemSession],
       installations: ['gazelle', 'golem', 'wombat'],
-      groups: [
-        {
-          installation: 'gazelle',
-          home: true,
-          pipeline: 'testing',
-          rows: [gazelleSession],
-          status: 'ready',
-        },
-        {
-          installation: 'golem',
-          home: false,
-          rows: [golemSession],
-          status: 'ready',
-        },
-        {
-          installation: 'wombat',
-          home: false,
-          rows: [],
-          status: 'not-reachable',
-        },
-      ],
     });
   });
 
-  afterEach(() => {
-    mockGrouped = false;
-  });
-
-  it('renders one group per installation, home first, with a status line each', async () => {
+  it('renders every installation in one table, with no section of its own', async () => {
     await render();
 
-    expect(
-      screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent),
-    ).toEqual(['gazelle', 'golem', 'wombat']);
-    expect(screen.getAllByText('1 session')).toHaveLength(2);
-    expect(
-      screen.getByText('not reachable from this portal'),
-    ).toBeInTheDocument();
-    // One table per group with rows; none for the unreachable one.
-    expect(screen.getAllByTestId('sessions-table')).toHaveLength(2);
-  });
-
-  it('searches across every group from one field', async () => {
-    await render();
-
-    await userEvent.type(
-      screen.getByRole('searchbox', { name: 'Search sessions' }),
-      'release',
-    );
-
-    // gazelle's group keeps its header but its table has no matching row left;
-    // golem's still has one.
+    // One table holding both installations' rows: the Installation column tells
+    // them apart. An installation with no sessions (wombat) gets no heading and
+    // no placeholder — if it could not be read, the warning card below says so.
     const tables = screen.getAllByTestId('sessions-table');
-    expect(tables.map(table => table.textContent)).toEqual(['0', '1']);
+    expect(tables).toHaveLength(1);
+    expect(tables[0]).toHaveTextContent('2');
+    expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument();
+    expect(screen.queryByText('not reachable from this portal')).toBeNull();
+  });
+
+  it('leaves searching to the table', async () => {
+    // The page carried a field of its own only to search across the groups at
+    // once. With one table, search belongs to the table (stubbed here), and a
+    // second field above it would be two places to type the same thing.
+    await render();
+
+    expect(
+      screen.queryByRole('searchbox', { name: 'Search sessions' }),
+    ).not.toBeInTheDocument();
   });
 });
