@@ -16,6 +16,7 @@ import {
   containerRegistryServiceRef,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
+import { isTransientError } from '../util/errors';
 
 const HELMCHARTS_ANNOTATION = 'giantswarm.io/helmcharts';
 const LATEST_RELEASE_TAG_ANNOTATION = 'giantswarm.io/latest-release-tag';
@@ -102,13 +103,21 @@ export class LatestOciReleaseProcessor implements CatalogProcessor {
           const entry = await this.getCacheEntry(ref);
           return entry.winner;
         } catch (error) {
+          const chart = `${ref.registry}/${ref.repository}`;
           if (error instanceof NotFoundError) {
             this.logger.debug(
-              `LatestOciReleaseProcessor: chart ${ref.registry}/${ref.repository} not found, skipping`,
+              `LatestOciReleaseProcessor: chart ${chart} not found, skipping`,
+            );
+          } else if (isTransientError(error)) {
+            // The registry was briefly unreachable; the next processing round
+            // picks the chart up again, so there is nothing to act on.
+            this.logger.debug(
+              `LatestOciReleaseProcessor: transient failure fetching tags for ${chart}: ${error}`,
             );
           } else {
             this.logger.warn(
-              `LatestOciReleaseProcessor: failed to fetch tags for ${ref.registry}/${ref.repository}: ${error}`,
+              'LatestOciReleaseProcessor: failed to fetch tags',
+              { chart, error: String(error) },
             );
           }
           return undefined;
