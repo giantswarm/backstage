@@ -4410,17 +4410,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/plugin-catalog-backend-module-logs@backstage:^::backstage=1.53.0&npm=0.1.24, @backstage/plugin-catalog-backend-module-logs@npm:^0.1.24":
-  version: 0.1.24
-  resolution: "@backstage/plugin-catalog-backend-module-logs@npm:0.1.24"
-  dependencies:
-    "@backstage/backend-plugin-api": "npm:^1.9.3"
-    "@backstage/plugin-catalog-backend": "npm:^3.8.1"
-    "@backstage/plugin-events-node": "npm:^0.4.24"
-  checksum: 10c0/256289c0f3069a3795a01722c1b468a568110f6068d701b026c09895f32efd1f42190e289630dd493652ebb901f93fcbffe515f42a89843c2153578e77bf0dc8
-  languageName: node
-  linkType: hard
-
 "@backstage/plugin-catalog-backend-module-scaffolder-entity-model@backstage:^::backstage=1.53.0&npm=0.2.22, @backstage/plugin-catalog-backend-module-scaffolder-entity-model@npm:^0.2.22":
   version: 0.2.22
   resolution: "@backstage/plugin-catalog-backend-module-scaffolder-entity-model@npm:0.2.22"
@@ -4762,7 +4751,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/plugin-events-node@npm:^0.4.24":
+"@backstage/plugin-events-node@backstage:^::backstage=1.53.0&npm=0.4.24, @backstage/plugin-events-node@npm:^0.4.24":
   version: 0.4.24
   resolution: "@backstage/plugin-events-node@npm:0.4.24"
   dependencies:
@@ -7686,8 +7675,10 @@ __metadata:
     "@backstage/config": "backstage:^"
     "@backstage/errors": "backstage:^"
     "@backstage/integration": "backstage:^"
+    "@backstage/plugin-catalog-backend": "backstage:^"
     "@backstage/plugin-catalog-common": "backstage:^"
     "@backstage/plugin-catalog-node": "backstage:^"
+    "@backstage/plugin-events-node": "backstage:^"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.21.1"
     "@giantswarm/backstage-plugin-gs-node": "npm:^0.3.0"
     "@types/semver": "npm:^7"
@@ -20207,7 +20198,6 @@ __metadata:
     "@backstage/plugin-catalog-backend": "backstage:^"
     "@backstage/plugin-catalog-backend-module-aws": "backstage:^"
     "@backstage/plugin-catalog-backend-module-github": "backstage:^"
-    "@backstage/plugin-catalog-backend-module-logs": "backstage:^"
     "@backstage/plugin-catalog-backend-module-scaffolder-entity-model": "backstage:^"
     "@backstage/plugin-events-backend": "backstage:^"
     "@backstage/plugin-kubernetes-backend": "backstage:^"

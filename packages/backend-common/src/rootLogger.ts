@@ -6,6 +6,7 @@ import { format, transports } from 'winston';
 import Sentry from 'winston-sentry-log';
 import { WinstonLogger } from '@backstage/backend-defaults/rootLogger';
 import { createConfigSecretEnumerator } from '@backstage/backend-defaults/rootConfig';
+import { normalizeSentryEvent } from './normalizeSentryEvent';
 
 export const rootLogger = createServiceFactory({
   service: coreServices.rootLogger,
@@ -35,6 +36,7 @@ export const rootLogger = createServiceFactory({
               // throws when resolving the API base URL. See giantswarm/giantswarm#37085.
               /^No PagerDuty accounts configuration found in config file\. Reverting to legacy configuration\.$/,
             ],
+            beforeSend: normalizeSentryEvent,
           },
           level: 'warn',
         }),

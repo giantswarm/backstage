@@ -26,7 +26,6 @@
     "@backstage/plugin-catalog-backend": "backstage:^",
     "@backstage/plugin-catalog-backend-module-aws": "backstage:^",
     "@backstage/plugin-catalog-backend-module-github": "backstage:^",
-    "@backstage/plugin-catalog-backend-module-logs": "backstage:^",
     "@backstage/plugin-catalog-backend-module-scaffolder-entity-model": "backstage:^",
     "@backstage/plugin-events-backend": "backstage:^",
     "@backstage/plugin-kubernetes-backend": "backstage:^",

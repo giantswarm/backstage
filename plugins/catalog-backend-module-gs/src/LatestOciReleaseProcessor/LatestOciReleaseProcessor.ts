@@ -16,6 +16,7 @@ import {
   containerRegistryServiceRef,
 } from '@giantswarm/backstage-plugin-gs-node';
 import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
+import { isTransientError, readErrorInfo } from '../util/errors';
 
 const HELMCHARTS_ANNOTATION = 'giantswarm.io/helmcharts';
 const LATEST_RELEASE_TAG_ANNOTATION = 'giantswarm.io/latest-release-tag';
@@ -102,13 +103,28 @@ export class LatestOciReleaseProcessor implements CatalogProcessor {
           const entry = await this.getCacheEntry(ref);
           return entry.winner;
         } catch (error) {
+          const chart = `${ref.registry}/${ref.repository}`;
           if (error instanceof NotFoundError) {
             this.logger.debug(
-              `LatestOciReleaseProcessor: chart ${ref.registry}/${ref.repository} not found, skipping`,
+              `LatestOciReleaseProcessor: chart ${chart} not found, skipping`,
+            );
+          } else if (isTransientError(error)) {
+            // The registry was briefly unreachable; the next processing round
+            // picks the chart up again, so there is nothing to act on. Kept at
+            // `info` so an outage is still greppable — the Sentry transport
+            // only listens from `warn` up.
+            this.logger.info(
+              `LatestOciReleaseProcessor: transient failure fetching tags for ${chart}: ${error}`,
             );
           } else {
+            // The error class stays in the message so that an expired
+            // credential does not just keep ticking the existing issue, but
+            // the chart does not, or Sentry gets one issue per chart.
             this.logger.warn(
-              `LatestOciReleaseProcessor: failed to fetch tags for ${ref.registry}/${ref.repository}: ${error}`,
+              `LatestOciReleaseProcessor: failed to fetch tags (${
+                readErrorInfo(error).name ?? 'Error'
+              })`,
+              { chart, error: String(error) },
             );
           }
           return undefined;

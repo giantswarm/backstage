@@ -6,7 +6,9 @@ import {
   catalogProcessingExtensionPoint,
   catalogServiceRef,
 } from '@backstage/plugin-catalog-node';
+import { eventsServiceRef } from '@backstage/plugin-events-node';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
+import { subscribeToCatalogErrors } from './CatalogErrorLogs';
 import { GiantSwarmLocationProcessor } from './GiantSwarmLocationProcessor';
 import { KlausProvider } from './KlausProvider';
 import { LatestOciReleaseProcessor } from './LatestOciReleaseProcessor';
@@ -30,6 +32,7 @@ export const catalogModuleGS = createBackendModule({
         scheduler: coreServices.scheduler,
         auth: coreServices.auth,
         containerRegistry: containerRegistryServiceRef,
+        events: eventsServiceRef,
       },
       async init({
         catalog,
@@ -41,7 +44,10 @@ export const catalogModuleGS = createBackendModule({
         scheduler,
         auth,
         containerRegistry,
+        events,
       }) {
+        await subscribeToCatalogErrors({ events, logger });
+
         catalog.addProcessor(new GiantSwarmLocationProcessor(urlReader));
 
         const sbomEnabled = config.getOptionalBoolean(
