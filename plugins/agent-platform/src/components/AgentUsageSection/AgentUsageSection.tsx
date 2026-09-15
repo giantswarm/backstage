@@ -10,7 +10,7 @@ import { useTokenRates } from '../../hooks/useTokenRates';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useAgents } from '../AgentsDataProvider';
-import { InstallationScopeNote } from '../InstallationGroups';
+import { InstallationScopeNote } from '../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { ByAgentTable } from './ByAgentTable';

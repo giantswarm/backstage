@@ -12,7 +12,7 @@ import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
-import { InstallationScopeNote } from '../InstallationGroups';
+import { InstallationScopeNote } from '../InstallationScopeNote';
 import { isStartableAgent, NewSessionComposer } from '../NewSessionComposer';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';

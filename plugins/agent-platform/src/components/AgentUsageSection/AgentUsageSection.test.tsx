@@ -69,7 +69,7 @@ jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({ rows: [] }),
 }));
 
-jest.mock('../InstallationGroups', () => ({
+jest.mock('../InstallationScopeNote', () => ({
   InstallationScopeNote: () => null,
 }));
 

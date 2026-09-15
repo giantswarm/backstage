@@ -2,7 +2,7 @@ import { Progress } from '@backstage/core-components';
 import { Text } from '@backstage/ui';
 import type { LlmUsageViewModel } from '../../../hooks/useLlmUsageView';
 import { WINDOW_DAYS } from '../../../lib/llmUsageQueries';
-import { InstallationScopeNote } from '../../InstallationGroups';
+import { InstallationScopeNote } from '../../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../../NotReachableInstallationsNote';
 import { UnreachableInstallationsAlert } from '../../UnreachableInstallationsAlert';
 

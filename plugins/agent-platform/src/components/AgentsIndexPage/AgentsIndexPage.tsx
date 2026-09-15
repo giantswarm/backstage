@@ -12,7 +12,7 @@ import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { AgentsTable } from '../AgentsTable';
 import { FirstAgentCard } from '../FirstAgentCard';
-import { InstallationScopeNote } from '../InstallationGroups';
+import { InstallationScopeNote } from '../InstallationScopeNote';
 import { ServingProvider } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 

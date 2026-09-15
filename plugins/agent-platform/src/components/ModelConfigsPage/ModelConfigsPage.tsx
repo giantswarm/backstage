@@ -8,7 +8,7 @@ import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-rea
 
 import { newModelRouteRef } from '../../routes';
 import { useModelConfigs } from '../ModelConfigsProvider';
-import { InstallationScopeNote } from '../InstallationGroups';
+import { InstallationScopeNote } from '../InstallationScopeNote';
 import {
   ModelsTable,
   ModelRow,

@@ -30,8 +30,7 @@ jest.mock('../ServingProvider', () => ({
 
 // The scope note reads the section scope from gs; none of the page's branches
 // depend on it, so it renders nothing here.
-jest.mock('../InstallationGroups', () => ({
-  ...jest.requireActual('../InstallationGroups'),
+jest.mock('../InstallationScopeNote', () => ({
   InstallationScopeNote: () => null,
 }));
 
