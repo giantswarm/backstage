@@ -72,7 +72,7 @@ export const sessionDetailRouteRef = createSubRouteRef({
 });
 
 // The "Usage" tab (`/agent-platform/usage`). Last of this plugin's own tabs —
-// `plugin.tsx` declares it after `modelsSubPage`, giving Agents · Sessions ·
+// `plugin.tsx` declares it after `modelsSubPage`, giving Sessions · Agents ·
 // Models · Usage, then muster's MCP Servers. Tab order lives there, not here.
 //
 // Like the Models tab, this one carries a **second-level tab row**, one

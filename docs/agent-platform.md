@@ -472,7 +472,7 @@ unused and its removal is that repository's follow-up.
 
 ## The installation scope
 
-The five tabs of the section — Agents, Sessions, Models, Usage and the muster
+The five tabs of the section — Sessions, Agents, Models, Usage and the muster
 plugin's MCP Servers — share **one installation scope**: `'all'` (the default) or
 one pinned installation. It lives in the `gs` plugin (`useInstallationScope`,
 `plugins/gs/src/apis/installationScope/`) as a module store read through

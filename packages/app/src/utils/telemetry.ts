@@ -264,8 +264,11 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // The section root renders its first tab, which is Sessions — so this is the
+    // same page as '/agent-platform/sessions' above and carries the same name.
+    // It moves with the tab order in `agent-platform`'s `plugin.tsx`.
     case pathname === '/agent-platform':
-      payload = { page: 'Agents index' };
+      payload = { page: 'Sessions index' };
       break;
 
     case pathname.startsWith('/agent-platform'): {
