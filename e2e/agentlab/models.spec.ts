@@ -10,11 +10,24 @@ test('Model configs lists the lab default ModelConfig and offers Add model', asy
   admin,
 }) => {
   await open(admin, '/agent-platform/models');
-  await expect(admin).toHaveURL(/\/agent-platform\/models\/configs$/);
+  // The list is the tab's own page, so the location is left where it is.
+  await expect(admin).toHaveURL(/\/agent-platform\/models$/);
   await expect(admin.getByRole('button', { name: 'Add model' })).toBeVisible();
   await expect(
     admin.getByText('default-model-config').first(),
     'the ModelConfig the lab provisions is listed',
+  ).toBeVisible();
+});
+
+test('the old Model configs path still resolves', async ({ admin }) => {
+  // The list used to live at `/models/configs`, with the create and detail
+  // flows beneath it. Bookmarks and links from an older release carry those
+  // paths, so they redirect rather than 404.
+  await open(admin, '/agent-platform/models/configs');
+  await expect(admin).toHaveURL(/\/agent-platform\/models$/);
+  await expect(
+    admin.getByText('default-model-config').first(),
+    'the redirect lands on the list, not an empty page',
   ).toBeVisible();
 });
 

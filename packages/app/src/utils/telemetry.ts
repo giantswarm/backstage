@@ -146,23 +146,21 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Models index' };
       break;
 
-    // One model: `…/models/configs/<installation>/<namespace>/<name>`. No
-    // `view`, for the same reason as Session detail and Agent detail: `page`
-    // and `view` are the dimensions TelemetryDeck aggregates on, and putting
-    // path segments there yields a distinct signal name per model rather than a
-    // countable page. (It is not a privacy measure — every payload below
-    // carries `path: pathname` verbatim.) Placed above the views case so the
-    // three identifying segments cannot reach a `view`.
-    case /^\/agent-platform\/models\/configs\/[^/]+\/[^/]+\/[^/]+$/.test(
-      pathname,
-    ):
+    // One model: `…/models/<installation>/<namespace>/<name>`. No `view`, for
+    // the same reason as Session detail and Agent detail: `page` and `view` are
+    // the dimensions TelemetryDeck aggregates on, and putting path segments
+    // there yields a distinct signal name per model rather than a countable
+    // page. (It is not a privacy measure — every payload below carries
+    // `path: pathname` verbatim.) Placed above the views case so the three
+    // identifying segments cannot reach a `view`.
+    case /^\/agent-platform\/models\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
       payload = { page: 'Model detail' };
       break;
 
-    // The Models tab's views (`configs`, `serving`, `capacity`). Only the view
-    // segment, as the Muster case does, so anything deeper — `configs/new`, and
-    // any view that grows sub-paths later — collapses to the view it belongs to
-    // instead of opening the dimension up.
+    // What hangs off the Models tab: the serving views (`serving`, `capacity`),
+    // `new`, and the `configs` paths an older release's links still carry. Only
+    // the first segment, as the Muster case does, so anything deeper collapses
+    // to what it belongs to instead of opening the dimension up.
     case pathname.startsWith('/agent-platform/models'): {
       const parts = pathname.split('/');
       payload = {
@@ -264,8 +262,11 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // The section root renders its first tab, which is Sessions — so this is the
+    // same page as '/agent-platform/sessions' above and carries the same name.
+    // It moves with the tab order in `agent-platform`'s `plugin.tsx`.
     case pathname === '/agent-platform':
-      payload = { page: 'Agents index' };
+      payload = { page: 'Sessions index' };
       break;
 
     case pathname.startsWith('/agent-platform'): {

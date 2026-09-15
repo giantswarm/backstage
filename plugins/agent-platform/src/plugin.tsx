@@ -26,7 +26,6 @@ import {
   agentsRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
-  modelConfigsRouteRef,
   modelDetailRouteRef,
   modelsRouteRef,
   musterToolExplorerExternalRouteRef,
@@ -81,7 +80,12 @@ const agentsSubPage = SubPageBlueprint.make({
 
 // The "Sessions" tab. Read-only list of the signed-in user's kagent chat
 // sessions across the fleet, via the agent-platform-backend kagent proxy.
-// Declared after the Agents tab because tab order follows the `extensions` array.
+//
+// First of this plugin's tabs, because tab order follows the `extensions` array
+// and the first tab is what a bare `/agent-platform` lands on: the section is
+// opened to pick a conversation back up far more often than to look at the
+// fleet's agents. Moving it also moves that landing page, so
+// `getTelemetryPageViewPayload` names the bare path "Sessions index".
 const sessionsSubPage = SubPageBlueprint.make({
   name: 'sessions',
   params: {
@@ -215,8 +219,8 @@ export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
   extensions: [
     agentPlatformPage,
-    agentsSubPage,
     sessionsSubPage,
+    agentsSubPage,
     modelsSubPage,
     usageSubPage,
     installationScopeHeaderAction,
@@ -235,7 +239,6 @@ export const agentPlatformPlugin = createFrontendPlugin({
     sessionDetail: sessionDetailRouteRef,
     usage: usageRouteRef,
     models: modelsRouteRef,
-    modelConfigs: modelConfigsRouteRef,
     modelDetail: modelDetailRouteRef,
     newModel: newModelRouteRef,
     serving: servingRouteRef,

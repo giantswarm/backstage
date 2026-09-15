@@ -546,10 +546,6 @@ describe('SessionsDataProvider installation scope', () => {
     // Nothing leaves for the other installation before the home has answered.
     expect(listSessions).not.toHaveBeenCalledWith('golem');
     expect(result.current.isLoading).toBe(true);
-    expect(result.current.groups.map(group => group.status)).toEqual([
-      'loading',
-      'loading',
-    ]);
 
     answerHome([session()]);
 
@@ -560,16 +556,7 @@ describe('SessionsDataProvider installation scope', () => {
         'golem',
       ]),
     );
-    expect(
-      result.current.groups.map(group => [
-        group.installation,
-        group.home,
-        group.status,
-      ]),
-    ).toEqual([
-      ['gazelle', true, 'ready'],
-      ['golem', false, 'ready'],
-    ]);
+    expect(result.current.isLoading).toBe(false);
   });
 
   it('narrows the reads to a pinned installation', async () => {
@@ -587,7 +574,7 @@ describe('SessionsDataProvider installation scope', () => {
     expect(result.current.installations).toEqual(['golem']);
   });
 
-  it('lists an installation the portal cannot reach as a group of its own', async () => {
+  it('counts an installation the portal cannot reach, without querying it', async () => {
     listInstallations.mockResolvedValue([
       proxied('gazelle'),
       proxied('golem', false, 'no answer within 3000 ms'),
@@ -597,12 +584,10 @@ describe('SessionsDataProvider installation scope', () => {
     const { result } = renderProvider();
 
     await waitFor(() => expect(result.current.rows).toHaveLength(1));
-    expect(
-      result.current.groups.map(group => [group.installation, group.status]),
-    ).toEqual([
-      ['gazelle', 'ready'],
-      ['golem', 'not-reachable'],
-    ]);
+    // In `installations` — the scope's kagent installations — but never asked,
+    // so it contributes no rows and lands in `notReachableInstallations`.
     expect(result.current.installations).toEqual(['gazelle', 'golem']);
+    expect(result.current.notReachableInstallations).toEqual(['golem']);
+    expect(listSessions).not.toHaveBeenCalledWith('golem');
   });
 });

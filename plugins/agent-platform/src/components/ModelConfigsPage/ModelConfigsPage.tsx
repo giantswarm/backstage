@@ -1,23 +1,14 @@
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { Button, Flex, Text } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
-import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 
 import { newModelRouteRef } from '../../routes';
-import {
-  groupRowsByInstallation,
-  MODELS_NOUN,
-} from '../../lib/installationGroups';
 import { useModelConfigs } from '../ModelConfigsProvider';
-import {
-  InstallationGroups,
-  InstallationScopeNote,
-  useGroupedByInstallation,
-} from '../InstallationGroups';
+import { InstallationScopeNote } from '../InstallationScopeNote';
 import {
   ModelsTable,
   ModelRow,
@@ -38,21 +29,14 @@ import { clientLookupOf } from '../../lib/serving';
 export function ModelConfigsPage() {
   const navigate = useNavigate();
   const newModelLink = useRouteRef(newModelRouteRef);
-  const { installations: configuredInstallations } = useInstallations();
   const {
     isLoading,
     hasInstallations,
-    home,
     installations: kagentInstallations,
-    pendingInstallations,
     modelConfigsFor,
     unreachableInstallations,
   } = useModelConfigs();
   const { servingStateFor, capabilitiesFor, backends } = useServing();
-  // Under "All installations" on a multi-installation portal the rows render
-  // as one group per installation, home first; a pinned scope and a
-  // single-installation portal keep the flat table.
-  const grouped = useGroupedByInstallation();
 
   // Unlike the agent create flow, the list iterates every installation in
   // scope that runs kagent (the provider's, home first), not just the ones
@@ -87,31 +71,6 @@ export function ModelConfigsPage() {
       servingStateFor,
       capabilitiesFor,
       backends,
-    ],
-  );
-
-  const pipelineFor = useCallback(
-    (installation: string) =>
-      configuredInstallations.find(candidate => candidate.name === installation)
-        ?.pipeline,
-    [configuredInstallations],
-  );
-  const groups = useMemo(
-    () =>
-      groupRowsByInstallation(rows, {
-        installations: kagentInstallations,
-        home,
-        pending: pendingInstallations,
-        unreachable: unreachableInstallations,
-        pipelineFor,
-      }),
-    [
-      rows,
-      kagentInstallations,
-      home,
-      pendingInstallations,
-      unreachableInstallations,
-      pipelineFor,
     ],
   );
 
@@ -155,17 +114,11 @@ export function ModelConfigsPage() {
         {isLoading && rows.length === 0 && (
           <Progress aria-label="Loading models" />
         )}
-        {!(isLoading && rows.length === 0) && grouped && (
-          <InstallationGroups
-            groups={groups}
-            noun={MODELS_NOUN}
-            renderRows={groupRows => <ModelsTable rows={groupRows} />}
-            fallback={<ModelsTable rows={[]} />}
-          />
-        )}
-        {!(isLoading && rows.length === 0) && !grouped && (
-          <ModelsTable rows={rows} />
-        )}
+        {/* One flat table under every scope. Under "All installations" the
+            Installation column — the table's initial sort — tells the rows
+            apart; an installation with no ModelConfig simply has no row, and
+            one that could not be read is called out below. */}
+        {!(isLoading && rows.length === 0) && <ModelsTable rows={rows} />}
 
         {/* Rendered regardless of the loading branch so a fleet where every
             reachable installation errors still surfaces the failure instead of

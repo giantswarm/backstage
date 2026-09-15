@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  type ReactNode,
-} from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,10 +11,6 @@ import {
 import { isListableSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../../apis';
 import { sessionsQueryKey } from '../../lib/queryKeys';
-import {
-  groupRowsByInstallation,
-  type InstallationGroup,
-} from '../../lib/installationGroups';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
@@ -32,18 +22,12 @@ export type SessionsContextValue = {
    * the others'; most recent activity first within that.
    */
   rows: SessionRow[];
-  /**
-   * The same rows as one group per installation in scope, home first, each
-   * with its own status (loading, rows, empty, could not be read, not
-   * reachable from this portal). See `groupRowsByInstallation`.
-   */
-  groups: InstallationGroup<SessionRow>[];
   /** The section's installation scope the rows are narrowed to. */
   scope: InstallationScope;
   /**
    * The installations in scope that run kagent and that the backend knows a
-   * kagent endpoint for, home first -- the groups' order. Includes the ones the
-   * backend reports as not reachable, which are listed but never queried.
+   * kagent endpoint for, home first. Includes the ones the backend reports as
+   * not reachable, which are counted but never queried.
    */
   installations: string[];
   /**
@@ -224,17 +208,9 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     })
     .join('|');
 
-  const pipelineFor = useCallback(
-    (installation: string) =>
-      installations.find(candidate => candidate.name === installation)
-        ?.pipeline,
-    [installations],
-  );
-
   const value = useMemo<SessionsContextValue>(() => {
     const rows: SessionRow[] = [];
     const unreachable: string[] = [];
-    const pending: string[] = [];
 
     targets.forEach((installation, index) => {
       const query = sessionQueries[index];
@@ -253,7 +229,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
 
       if (query.status !== 'error') {
         // No answer yet -- in flight, or not asked until the home has answered.
-        pending.push(installation);
+        // `isLoading`/`isLoadingMore` below is what reports that.
         return;
       }
 
@@ -305,29 +281,19 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
 
     const sortedRows = sortSessionRows(rows, home);
 
-    // The groups: every kagent installation in scope that the backend knows an
-    // endpoint for -- queried, or listed as not reachable. One the backend does
-    // not proxy at all (outside its allowlist) is not a group, as it was not a
-    // row before.
-    const groupInstallations = kagentInstallations.filter(
+    // Every kagent installation in scope that the backend knows an endpoint for
+    // -- queried, or listed as not reachable. One the backend does not proxy at
+    // all (outside its allowlist) is not counted, as it was not a row before.
+    const scopedInstallations = kagentInstallations.filter(
       installation =>
         targets.includes(installation) ||
         notReachableInstallations.includes(installation),
     );
-    const groups = groupRowsByInstallation(sortedRows, {
-      installations: groupInstallations,
-      home,
-      pending,
-      unreachable,
-      notReachable: notReachableInstallations,
-      pipelineFor,
-    });
 
     return {
       rows: sortedRows,
-      groups,
       scope,
-      installations: groupInstallations,
+      installations: scopedInstallations,
       isLoading: isBusy && rows.length === 0,
       isLoadingMore: isBusy && rows.length > 0,
       hasInstallations,
@@ -346,7 +312,6 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
     home,
     scope,
     kagentKey,
-    pipelineFor,
     allInstallations.length,
     notReachableInstallations,
   ]);

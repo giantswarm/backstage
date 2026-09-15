@@ -369,11 +369,10 @@ export function ToolsetResolutionList({
     case 'loading':
       // The sentence says what is being waited on, the bar that it is still
       // being waited on: `filter_tools` against a large catalogue takes a few
-      // seconds, and a static line gives no sign of progress. Same pairing as
-      // InstallationGroups, which labels a section and puts an indeterminate
-      // bar under it. A skeleton is the other house pattern (muster's Tool
-      // Explorer) but it can only imply the shape of what is coming, not name
-      // it — and here the name is the useful half.
+      // seconds, and a static line gives no sign of progress. A skeleton is the
+      // other house pattern (muster's Tool Explorer) but it can only imply the
+      // shape of what is coming, not name it — and here the name is the useful
+      // half.
       return (
         <Flex direction="column" gap="2">
           <Text color="secondary">Resolving the toolset…</Text>

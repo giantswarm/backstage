@@ -88,25 +88,27 @@ describe('ModelsRouter', () => {
     mockUseServing.mockReturnValue(noServingLayer);
   });
 
-  it('redirects the tab index to the Model configs view, keeping the query string', async () => {
+  it('renders the ModelConfigs list at the tab root, with no redirect', async () => {
     renderTab('/agent-platform/models?installation=alpha');
 
     expect(await screen.findByText('configs-view')).toBeInTheDocument();
+    // The list is the tab's own page now, so the location is left alone —
+    // query string included.
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/models/configs?installation=alpha',
+        '/agent-platform/models?installation=alpha',
       );
     });
   });
 
   it('links the second-level tabs to absolute view paths', async () => {
     mockUseServing.mockReturnValue(withServingLayer);
-    renderTab('/agent-platform/models/configs');
+    renderTab('/agent-platform/models');
 
     expect(await screen.findByText('configs-view')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Model configs' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/configs',
+      '/agent-platform/models',
     );
     expect(screen.getByRole('tab', { name: 'Serving' })).toHaveAttribute(
       'href',
@@ -118,19 +120,40 @@ describe('ModelsRouter', () => {
     );
   });
 
-  it('offers only the Model configs tab while no installation has a serving layer', async () => {
-    renderTab('/agent-platform/models/configs');
+  it('keeps the right tab selected, though they all hang off the same root', async () => {
+    // The Model configs tab's href *is* the root the other two hang off, so it
+    // matches their paths too. bui resolves that by most segments matched, and
+    // this is the assertion that says so: break it and Serving would open with
+    // Model configs highlighted.
+    mockUseServing.mockReturnValue(withServingLayer);
+    const first = renderTab('/agent-platform/models/serving');
+    expect(await screen.findByText('serving-view')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Serving' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('tab', { name: 'Model configs' })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+    first.unmount();
+
+    // And the create page is the list's own sub-route, so its tab stays lit.
+    renderTab('/agent-platform/models/new');
+    expect(await screen.findByText('new-model-view')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Model configs' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('renders no tab strip on the list while no installation has a serving layer', async () => {
+    // There is one view, so there is nothing to switch between: a lone tab
+    // would only lead back to the page it is on.
+    renderTab('/agent-platform/models');
 
     expect(await screen.findByText('configs-view')).toBeInTheDocument();
-    expect(
-      screen.getByRole('tab', { name: 'Model configs' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: 'Serving' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: 'GPU capacity' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
   });
 
   it('offers the serving tabs when an installation with a serving layer could not be read', async () => {
@@ -138,7 +161,7 @@ describe('ModelsRouter', () => {
       ...noServingLayer,
       unreachableInstallations: ['inst-3'],
     });
-    renderTab('/agent-platform/models/configs');
+    renderTab('/agent-platform/models');
 
     expect(await screen.findByText('configs-view')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Serving' })).toBeInTheDocument();
@@ -154,42 +177,70 @@ describe('ModelsRouter', () => {
     expect(await screen.findByText('capacity-view')).toBeInTheDocument();
   });
 
-  it('still renders a deep-linked Serving view on a fleet without a serving layer', async () => {
+  it('keeps a way back on a deep-linked Serving view without a serving layer', async () => {
+    // The route stays mounted, so the page renders its own empty state — and
+    // there would be nothing on it leading anywhere. The Model configs tab is
+    // the way out, so the strip is kept here even though it holds one tab.
     renderTab('/agent-platform/models/serving');
 
     expect(await screen.findByText('serving-view')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Model configs' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models',
+    );
+    // The view exists nowhere on this fleet, so it is still not offered.
     expect(
       screen.queryByRole('tab', { name: 'Serving' }),
     ).not.toBeInTheDocument();
   });
 
-  it('routes the create and detail flows under the Model configs view', async () => {
-    const first = renderTab('/agent-platform/models/configs/new');
+  it('keeps a way back from the create page without a serving layer', async () => {
+    renderTab('/agent-platform/models/new');
+
+    expect(await screen.findByText('new-model-view')).toBeInTheDocument();
+    expect(
+      screen.getByRole('tab', { name: 'Model configs' }),
+    ).toBeInTheDocument();
+  });
+
+  it('routes the create and detail flows directly under the tab', async () => {
+    const first = renderTab('/agent-platform/models/new');
     expect(await screen.findByText('new-model-view')).toBeInTheDocument();
     first.unmount();
 
-    renderTab('/agent-platform/models/configs/inst-1/kagent/qwen3');
+    renderTab('/agent-platform/models/inst-1/kagent/qwen3');
     expect(await screen.findByText('model-detail-view')).toBeInTheDocument();
   });
 
-  it('redirects the legacy create deep link, keeping the query string', async () => {
-    renderTab('/agent-platform/models/new?installation=alpha');
+  it('redirects the legacy configs view to the tab root, keeping the query string', async () => {
+    renderTab('/agent-platform/models/configs?installation=alpha');
 
-    expect(await screen.findByText('new-model-view')).toBeInTheDocument();
+    expect(await screen.findByText('configs-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/models/configs/new?installation=alpha',
+        '/agent-platform/models?installation=alpha',
       );
     });
   });
 
-  it('redirects a legacy model deep link to the detail under Model configs', async () => {
-    renderTab('/agent-platform/models/inst-1/kagent/qwen3');
+  it('redirects the legacy create deep link, keeping the query string', async () => {
+    renderTab('/agent-platform/models/configs/new?installation=alpha');
+
+    expect(await screen.findByText('new-model-view')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/models/new?installation=alpha',
+      );
+    });
+  });
+
+  it('redirects a legacy model deep link to the detail under the tab', async () => {
+    renderTab('/agent-platform/models/configs/inst-1/kagent/qwen3');
 
     expect(await screen.findByText('model-detail-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/models/configs/inst-1/kagent/qwen3',
+        '/agent-platform/models/inst-1/kagent/qwen3',
       );
     });
   });

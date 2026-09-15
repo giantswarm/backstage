@@ -472,7 +472,7 @@ unused and its removal is that repository's follow-up.
 
 ## The installation scope
 
-The five tabs of the section — Agents, Sessions, Models, Usage and the muster
+The five tabs of the section — Sessions, Agents, Models, Usage and the muster
 plugin's MCP Servers — share **one installation scope**: `'all'` (the default) or
 one pinned installation. It lives in the `gs` plugin (`useInstallationScope`,
 `plugins/gs/src/apis/installationScope/`) as a module store read through
@@ -510,15 +510,12 @@ a context could not cross the boundary. The store is the contract.
   alone and the others only once it has answered (rows, an empty list, or a
   failure), so the person's own rows are on screen before any other
   installation — or its token — is asked for. On a repeat visit the home's
-  answer comes from the persisted cache and the others follow at once. The
-  Sessions and Models rows render as one group per installation
-  (`groupRowsByInstallation`, `InstallationGroups`), each headed by the
-  installation's name, pipeline and a status line: loading, N items, none
-  here, could not be read, not reachable from this portal. A pinned scope and
-  a single-installation portal keep the flat table (`useGroupedByInstallation`).
-  The Agents tab is one flat table under every scope: its Installation column,
-  the table's initial sort, tells the rows apart. `sortAgentRows` /
-  `sortSessionRows` put the home installation's rows first in the flat lists.
+  answer comes from the persisted cache and the others follow at once. Every
+  list is one flat table under every scope — Agents, Sessions and Models
+  alike: the Installation column tells the rows apart, an installation with
+  nothing to show simply has no row, and one that could not be read is named
+  in the warning card below the table. `sortAgentRows` / `sortSessionRows`
+  put the home installation's rows first in the flat lists.
 - **Pinning** narrows every tab (`applyInstallationScope` over the inventory's
   installations in each provider, `ServingProvider` included). Under `'all'`
   the MCP Servers tab shows the home muster — one muster is one aggregator —
