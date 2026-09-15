@@ -60,11 +60,23 @@ export function useAgentStatus(
   installation: string | undefined,
   namespace: string,
   name: string,
-  options: { enabled?: boolean; fromGeneration?: number } = {},
+  options: {
+    enabled?: boolean;
+    fromGeneration?: number;
+    /**
+     * Identifies the write being followed, so each one gets a watch of its own.
+     * Without it two writes that start from the same generation share a cache
+     * entry, and the second is served the first's settled result.
+     */
+    watchId?: string;
+  } = {},
 ): AgentStatusState {
   const client = useAgentManagerClient(installation);
   const enabled = (options.enabled ?? true) && Boolean(client) && Boolean(name);
-  const { fromGeneration } = options;
+  // A read with no write behind it passes no `watchId` and keeps the plain key,
+  // so the detail page's own existence check and the create flow's progress
+  // still share one entry.
+  const { fromGeneration, watchId } = options;
 
   // The deadline has to schedule its own render, not be a clock read taken
   // whenever one happens anyway. This query is destructured to `{ data, error }`,
@@ -87,14 +99,14 @@ export function useAgentStatus(
       MAX_REVISION_WAIT_MS,
     );
     return () => clearTimeout(timer);
-  }, [fromGeneration, installation, namespace, name]);
+  }, [fromGeneration, watchId, installation, namespace, name]);
 
   const { data, error } = useQuery({
     queryKey: musterAgentStatusQueryKey(
       installation ?? '',
       namespace,
       name,
-      fromGeneration,
+      watchId,
     ),
     enabled,
     queryFn: () => client!.getAgentStatus(namespace, name),

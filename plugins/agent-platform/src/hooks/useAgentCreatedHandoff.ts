@@ -29,7 +29,31 @@ export type AgentCreatedHandoff = {
    * for a create, which has no earlier generation.
    */
   fromGeneration?: number;
+  /**
+   * Identifies this adoption of the handoff, so the progress watches each write
+   * separately. Assigned when the handoff is picked up, never carried in the
+   * router state: two writes can start from the same generation — pressing
+   * `Update skills` twice on an agent whose release cannot reconcile — and
+   * everything downstream keyed on the generation alone would serve the second
+   * the first's settled result. Only set where there is a revision to wait for;
+   * a create shares the plain watch, as it has nothing to be confused with.
+   */
+  watchId?: string;
 };
+
+/** Monotonic within the page session, which is as long as the cache lives. */
+let adoptions = 0;
+
+/** Stamp a handoff as it is taken up, so its watch is its own. */
+function adopt(
+  handoff: AgentCreatedHandoff | undefined,
+): AgentCreatedHandoff | undefined {
+  if (!handoff || handoff.fromGeneration === undefined) {
+    return handoff;
+  }
+  adoptions += 1;
+  return { ...handoff, watchId: `write:${adoptions}` };
+}
 
 /** The writes after which the detail page shows the template converging. */
 export type AgentWriteAction = 'created' | 'updated' | 'skills-updated';
@@ -86,24 +110,46 @@ function readHandoff(state: unknown): AgentCreatedHandoff | undefined {
  * replacing navigation as soon as it is read keeps the progress element from
  * reappearing on every later visit to the page. The value is held in local
  * state so it outlives that clearing for the life of the mounted page.
+ *
+ * The handoff is picked up whenever it appears in the location, not only at
+ * mount. A write made from the page the progress renders on — `Update skills`
+ * from the kebab, which navigates to the URL it is already on — replaces
+ * `location.state` without unmounting anything, so a mount-time-only read never
+ * saw it: the progress stayed absent, and because nothing was read nothing was
+ * cleared either, so the next reload of that URL replayed it out of nowhere.
  */
 export function useAgentCreatedHandoff(): AgentCreatedHandoff | undefined {
   const location = useLocation();
   const navigate = useNavigate();
-  const [handoff] = useState(() => readHandoff(location.state));
-  const cleared = useRef(false);
+  const [handoff, setHandoff] = useState(() =>
+    adopt(readHandoff(location.state)),
+  );
+  // The history entry the initializer above already took its value from.
+  // Re-adopting it would re-render for an equal value; a *later* write to the
+  // same URL arrives as a different object, and that is the one to catch.
+  const consumed = useRef(location.state);
 
   useEffect(() => {
-    if (handoff && !cleared.current) {
-      cleared.current = true;
-      const { [AGENT_CREATED_STATE_KEY]: _consumed, ...rest } =
-        (location.state ?? {}) as Record<string, unknown>;
-      navigate(
-        { pathname: location.pathname, search: location.search },
-        { replace: true, state: Object.keys(rest).length ? rest : undefined },
-      );
+    const arriving = readHandoff(location.state);
+    if (!arriving) {
+      return;
     }
-  }, [handoff, location.pathname, location.search, location.state, navigate]);
+
+    if (location.state !== consumed.current) {
+      consumed.current = location.state;
+      setHandoff(adopt(arriving));
+    }
+
+    // Take it out of the history entry either way. That is also what ends this
+    // effect: the replacing navigation leaves a state with no handoff in it, so
+    // the next run reads nothing and stops.
+    const { [AGENT_CREATED_STATE_KEY]: _consumed, ...rest } = (location.state ??
+      {}) as Record<string, unknown>;
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: Object.keys(rest).length ? rest : undefined },
+    );
+  }, [location.pathname, location.search, location.state, navigate]);
 
   return handoff;
 }

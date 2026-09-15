@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type {
   AgentHarnessCondition,
   AgentHarnessStatus,
@@ -102,8 +103,26 @@ jest.mock('../../hooks/useAgentStatus', () => ({
   useAgentStatus: (...args: unknown[]) => mockUseAgentStatus(...args),
 }));
 
+// Stubbed down to the one thing the page owns: what it does once the write has
+// landed. The dialog's own behaviour is covered by AgentUpdateSkillsDialog.test.
+const UPDATED_FROM_GENERATION = 4;
 jest.mock('./AgentUpdateSkillsDialog', () => ({
-  AgentUpdateSkillsDialog: () => null,
+  AgentUpdateSkillsDialog: ({
+    onUpdated,
+  }: {
+    onUpdated: (
+      skills: unknown,
+      requestedBy?: string,
+      fromGeneration?: number,
+    ) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() => onUpdated(undefined, 'marian', UPDATED_FROM_GENERATION)}
+    >
+      stub: Update skills landed
+    </button>
+  ),
 }));
 
 // Stubbed for the same reason: it reads `kagentApiRef`, and this page's APIs and
@@ -450,6 +469,60 @@ describe('AgentDetailPage', () => {
     expect(
       screen.getByRole('list', { name: 'Admitting Harnesses' }),
     ).toHaveTextContent(/kagent.*Ready.*sessions run here/);
+  });
+
+  // Update skills runs from this page and navigates to the URL it is already
+  // on, so nothing unmounts. The handoff has to be picked up from the new
+  // location rather than only at mount, or the write lands with a toast and no
+  // sign of it on the page — and the state stays in the history entry for a
+  // later reload to replay.
+  describe('after Update skills', () => {
+    it('follows the new revision converging, on the same URL', async () => {
+      stubResources({ resource: makeAgent() });
+      mockUseAgentStatus.mockReturnValue({
+        status: undefined,
+        isSettling: true,
+        isNotFound: false,
+        error: null,
+      });
+
+      await renderPage();
+
+      // Nothing to follow before the write.
+      expect(screen.queryByText('Updating skills…')).not.toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'stub: Update skills landed' }),
+      );
+
+      expect(await screen.findByText('Updating skills…')).toBeInTheDocument();
+    });
+
+    // The baseline the write captured has to reach the status watch, or it
+    // settles on the verdict of the revision that was already there.
+    it('watches the revision the write produced, not the one before it', async () => {
+      stubResources({ resource: makeAgent() });
+      mockUseAgentStatus.mockReturnValue({
+        status: undefined,
+        isSettling: true,
+        isNotFound: false,
+        error: null,
+      });
+
+      await renderPage();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'stub: Update skills landed' }),
+      );
+
+      await waitFor(() =>
+        expect(mockUseAgentStatus).toHaveBeenCalledWith(
+          mockParams.installation,
+          mockParams.namespace,
+          mockParams.name,
+          expect.objectContaining({ fromGeneration: UPDATED_FROM_GENERATION }),
+        ),
+      );
+    });
   });
 
   describe('tabs', () => {
