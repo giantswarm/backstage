@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
 
-import { sessionsRouteRef } from '../../routes';
+import { agentsRouteRef, sessionsRouteRef } from '../../routes';
 import type { AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionDetailView } from '../../hooks/useSessionDetail';
 import type { UseAnswerConfirmationResult } from '../../hooks/useAnswerConfirmation';
@@ -267,7 +267,13 @@ const emptyTimeline = {
 
 async function render() {
   await renderInTestApp(<SessionDetailPage />, {
-    mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    // `agentsRouteRef` is here for the link on the agent's name, which resolves
+    // through `agentDetailRouteRef` — a SubRouteRef, which `mountedRoutes` does not
+    // take, so its parent is what gets mounted.
+    mountedRoutes: {
+      '/agent-platform/sessions': sessionsRouteRef,
+      '/agent-platform/agents': agentsRouteRef,
+    },
   });
 }
 
@@ -326,6 +332,33 @@ describe('SessionDetailPage', () => {
     expect(screen.getByTestId('installation-chip')).toHaveTextContent(
       'gazelle',
     );
+  });
+
+  it('links the agent name to the agent, so a session is a way in to it', async () => {
+    await render();
+
+    // By role, because the name also appears as the author of every message the
+    // agent sent — as text, so only the header one is a link.
+    expect(screen.getByRole('link', { name: 'Issue tracker' })).toHaveAttribute(
+      'href',
+      '/agent-platform/agents/gazelle/kagent/issue-tracker',
+    );
+  });
+
+  it('leaves the agent name as text when no Agent matched the session', async () => {
+    // Without the CR there is no namespace and no real name, so there is no agent
+    // page to point at — the header falls back to the lossy decode of the
+    // session's `agent_id`, which must not look clickable.
+    mockUseAgents.mockReturnValue({
+      rows: [],
+      isLoading: false,
+      isLoadingMore: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    } as unknown as AgentsContextValue);
+    await render();
+
+    expect(screen.queryByRole('link', { name: /issue.tracker/i })).toBeNull();
   });
 
   it('offers the actions menu once the session is loaded', async () => {

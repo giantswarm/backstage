@@ -49,7 +49,11 @@ import {
   RuntimeLoss,
   SessionStateEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
+import {
+  agentDetailRouteRef,
+  sessionDetailRouteRef,
+  sessionsRouteRef,
+} from '../../routes';
 import { InstallationChip } from '../InstallationChip';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
@@ -309,6 +313,9 @@ export function SessionDetailPage() {
       ? { namespace: handoff.agentNamespace, name: handoff.agentName }
       : undefined;
   }, [row?.agentNamespace, row?.agentTechnicalName, handoff]);
+  // The agent's own page, for the link on its name in the header below.
+  const agentDetailRoute = useRouteRef(agentDetailRouteRef);
+
   const send = useSendMessage(installation, sessionId, agent);
   const confirmation = useAnswerConfirmation(installation, sessionId, agent);
 
@@ -1003,6 +1010,18 @@ export function SessionDetailPage() {
       })
     : undefined;
 
+  // Undefined when no `Agent` CR matched the session — `row.agentName` is then a
+  // lossy decode of the encoded `agent_id` and names nothing that can be looked
+  // up — or when the route is not bound. The name stays plain text in both cases.
+  const agentHref =
+    agent && agentDetailRoute
+      ? agentDetailRoute({
+          installation: row.installation,
+          namespace: agent.namespace,
+          name: agent.name,
+        })
+      : undefined;
+
   return (
     <Shell
       installation={installation}
@@ -1073,7 +1092,25 @@ export function SessionDetailPage() {
                   name={row.agentName}
                   src={avatarUrl ?? ''}
                 />
-                <Text variant="body-medium">{row.agentName}</Text>
+                {/* core-components' `Link`, which routes client-side — a bui
+                    link would reload the page. */}
+                {agentHref ? (
+                  <Link to={agentHref}>
+                    {/* bui `Text` sets its own colour, which would leave a
+                        link that doesn't look like one; `inherit` hands it back
+                        to the anchor. `as="span"`: Text renders a <p> by
+                        default. */}
+                    <Text
+                      as="span"
+                      variant="body-medium"
+                      style={{ color: 'inherit' }}
+                    >
+                      {row.agentName}
+                    </Text>
+                  </Link>
+                ) : (
+                  <Text variant="body-medium">{row.agentName}</Text>
+                )}
               </Flex>
             )}
             <Flex align="center" gap="1">
