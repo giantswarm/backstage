@@ -147,7 +147,7 @@ describe('ModelsRouter', () => {
     );
   });
 
-  it('renders no tab strip at all while no installation has a serving layer', async () => {
+  it('renders no tab strip on the list while no installation has a serving layer', async () => {
     // There is one view, so there is nothing to switch between: a lone tab
     // would only lead back to the page it is on.
     renderTab('/agent-platform/models');
@@ -177,11 +177,30 @@ describe('ModelsRouter', () => {
     expect(await screen.findByText('capacity-view')).toBeInTheDocument();
   });
 
-  it('still renders a deep-linked Serving view on a fleet without a serving layer', async () => {
+  it('keeps a way back on a deep-linked Serving view without a serving layer', async () => {
+    // The route stays mounted, so the page renders its own empty state — and
+    // there would be nothing on it leading anywhere. The Model configs tab is
+    // the way out, so the strip is kept here even though it holds one tab.
     renderTab('/agent-platform/models/serving');
 
     expect(await screen.findByText('serving-view')).toBeInTheDocument();
-    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    expect(screen.getByRole('tab', { name: 'Model configs' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models',
+    );
+    // The view exists nowhere on this fleet, so it is still not offered.
+    expect(
+      screen.queryByRole('tab', { name: 'Serving' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps a way back from the create page without a serving layer', async () => {
+    renderTab('/agent-platform/models/new');
+
+    expect(await screen.findByText('new-model-view')).toBeInTheDocument();
+    expect(
+      screen.getByRole('tab', { name: 'Model configs' }),
+    ).toBeInTheDocument();
   });
 
   it('routes the create and detail flows directly under the tab', async () => {

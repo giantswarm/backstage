@@ -61,18 +61,26 @@ const LegacyDetailRedirect = () => {
   );
 };
 
-// The routed view, and the tab strip above it when there is more than one view
-// to switch between. The two serving views only exist once a reachable
-// installation has a serving layer this portal can see (or could not be asked)
-// -- a portal without one is the ModelConfigs list and nothing else, so it gets
-// no strip at all rather than a lone tab that leads back to the page it is on.
-// Their routes stay mounted regardless, so a deep link renders the view's own
-// empty state.
+// The routed view, and the tab strip above it.
+//
+// The two serving views only exist once a reachable installation has a serving
+// layer this portal can see (or could not be asked). Their routes stay mounted
+// regardless, so a deep link renders the view's own empty state.
+//
+// The strip is dropped in exactly one case: the list, on a portal with no
+// serving layer. That is the only place a lone "Model configs" tab would lead
+// back to the page it is already on. It is kept everywhere else, including a
+// deep-linked Serving page on such a portal -- that tab is then the only way
+// back to the list, and hiding it would strand the reader on a page whose own
+// empty state tells them nothing is served here.
 const ModelsViews = () => {
   const basePath = useSplatBasePath();
+  const { pathname } = useLocation();
   const { installations, unreachableInstallations } = useServing();
   const hasServingLayer =
     installations.length > 0 || unreachableInstallations.length > 0;
+  const onList = pathname.replace(/\/$/, '') === basePath;
+  const showTabs = hasServingLayer || !onList;
 
   return (
     <>
@@ -81,7 +89,7 @@ const ModelsViews = () => {
           horizontal padding the bui PluginHeader / Content apply (bui space-5 =
           20px), the same value MusterSection uses; if bui ever changes that
           gutter both have to follow. */}
-      {hasServingLayer && (
+      {showTabs && (
         <Box px="5">
           <Tabs>
             <TabList>
@@ -93,16 +101,17 @@ const ModelsViews = () => {
               <Tab id="configs" href={basePath} matchStrategy="prefix">
                 Model configs
               </Tab>
-              {SERVING_VIEWS.map(view => (
-                <Tab
-                  key={view.path}
-                  id={view.path}
-                  href={`${basePath}/${view.path}`}
-                  matchStrategy="prefix"
-                >
-                  {view.title}
-                </Tab>
-              ))}
+              {hasServingLayer &&
+                SERVING_VIEWS.map(view => (
+                  <Tab
+                    key={view.path}
+                    id={view.path}
+                    href={`${basePath}/${view.path}`}
+                    matchStrategy="prefix"
+                  >
+                    {view.title}
+                  </Tab>
+                ))}
             </TabList>
           </Tabs>
         </Box>
