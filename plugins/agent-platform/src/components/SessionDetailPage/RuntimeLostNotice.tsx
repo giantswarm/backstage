@@ -68,11 +68,12 @@ export function RuntimeLostNotice({
       ? ` It has failed ${loss.attempts} times in a row.`
       : '';
 
-  const wayOut = offersNewSession
-    ? loss.reported
-      ? `To carry on, start a new session with ${agent} from the box below — your message goes with it.`
-      : `You can send again to retry. If it fails the same way, start a new session with ${agent} from the box below — your message goes with it.`
-    : `The conversation can be continued in a new session with ${agent} from the Sessions list.`;
+  let wayOut = `The conversation can be continued in a new session with ${agent} from the Sessions list.`;
+  if (offersNewSession && loss.reported) {
+    wayOut = `To carry on, start a new session with ${agent} from the box below — your message goes with it.`;
+  } else if (offersNewSession) {
+    wayOut = `You can send again to retry. If it fails the same way, start a new session with ${agent} from the box below — your message goes with it.`;
+  }
 
   return (
     <Alert

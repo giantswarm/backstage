@@ -287,7 +287,7 @@ describe('sessionSearchFn', () => {
 });
 
 describe('toSessionRow — the runtime kagent reports lost', () => {
-  const session = {
+  const lostSession = {
     id: 'gazelle/lost-1',
     sessionId: 'lost-1',
     installation: 'gazelle',
@@ -299,7 +299,7 @@ describe('toSessionRow — the runtime kagent reports lost', () => {
     expect(
       toSessionRow(
         {
-          ...session,
+          ...lostSession,
           failure: {
             reason: 'RUNTIME_LOST',
             message: 'runtime lost: node gone',
@@ -311,10 +311,10 @@ describe('toSessionRow — the runtime kagent reports lost', () => {
   });
 
   it('leaves every other row unmarked — another failure reason included', () => {
-    expect(toSessionRow(session, new Map()).runtimeLost).toBe(false);
+    expect(toSessionRow(lostSession, new Map()).runtimeLost).toBe(false);
     expect(
       toSessionRow(
-        { ...session, failure: { reason: 'no ready revision' } },
+        { ...lostSession, failure: { reason: 'no ready revision' } },
         new Map(),
       ).runtimeLost,
     ).toBe(false);

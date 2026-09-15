@@ -341,6 +341,13 @@ export function SessionComposer({
   // a human is the opposite of running, and there is nothing to cancel.
   const showStop = isAgentWorking && !isDisabled && Boolean(onStop);
 
+  let placeholder = 'Send a message to this session…';
+  if (newSessionReplacesSend) {
+    placeholder = 'Start a new session with this message…';
+  } else if (isFinished) {
+    placeholder = 'Send a message to resume this session…';
+  }
+
   let caption: string;
   if (disabledReason) {
     caption = disabledReason;
@@ -382,13 +389,7 @@ export function SessionComposer({
             multiline
             minRows={2}
             maxRows={12}
-            placeholder={
-              newSessionReplacesSend
-                ? 'Start a new session with this message…'
-                : isFinished
-                  ? 'Send a message to resume this session…'
-                  : 'Send a message to this session…'
-            }
+            placeholder={placeholder}
             value={value}
             onChange={event => setValue(event.target.value)}
             onKeyDown={handleKeyDown}
