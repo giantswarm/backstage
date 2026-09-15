@@ -145,8 +145,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
 /** The Agent Platform section's top-level tabs, in the order the portal shows them. */
 export const agentPlatformTabs = [
-  'Agents',
   'Sessions',
+  'Agents',
   'Models',
   'Usage',
   'MCP Servers',

@@ -21,8 +21,9 @@ test('the sidebar links to every enabled page', async ({ admin }) => {
   ] as const) {
     await expect(nav.getByRole('link', { name })).toHaveAttribute('href', href);
   }
-  // The lab's app-config sends the root to the Agent Platform section.
-  await expect(admin).toHaveURL(/\/agent-platform\/agents$/);
+  // The lab's app-config sends the root to the Agent Platform section, which
+  // opens on its first tab.
+  await expect(admin).toHaveURL(/\/agent-platform\/sessions$/);
 });
 
 test('the Agent Platform section shows its tabs and selects each on click', async ({
