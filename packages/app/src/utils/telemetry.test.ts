@@ -313,10 +313,13 @@ describe('getTelemetryPageViewPayload', () => {
     });
 
     it.each([
-      ['/agent-platform/models/configs', 'configs'],
       ['/agent-platform/models/serving', 'serving'],
       ['/agent-platform/models/capacity', 'capacity'],
-      // Deeper than a view, and still reported as the view it belongs to.
+      ['/agent-platform/models/new', 'new'],
+      // The paths an older release's links still carry, before the redirect to
+      // the tab root lands.
+      ['/agent-platform/models/configs', 'configs'],
+      // Deeper than a view, and still reported as what it belongs to.
       ['/agent-platform/models/configs/new', 'configs'],
     ])('reports %s as its view', (pathname, view) => {
       expect(getTelemetryPageViewPayload(pathname)).toEqual({
@@ -327,8 +330,7 @@ describe('getTelemetryPageViewPayload', () => {
     });
 
     it('names one model without naming it in page or view', () => {
-      const pathname =
-        '/agent-platform/models/configs/gazelle/agent-platform/gpt-4o';
+      const pathname = '/agent-platform/models/gazelle/agent-platform/gpt-4o';
 
       expect(getTelemetryPageViewPayload(pathname)).toEqual({
         page: 'Model detail',
@@ -512,9 +514,8 @@ describe('getTelemetryPageViewPayload', () => {
       // Pre-existing gaps in this list, closed while adding the one above.
       '/agent-platform/models',
       '/agent-platform/models/serving',
-      '/agent-platform/models/configs',
-      '/agent-platform/models/configs/new',
-      '/agent-platform/models/configs/gazelle/agent-platform/gpt-4o',
+      '/agent-platform/models/new',
+      '/agent-platform/models/gazelle/agent-platform/gpt-4o',
       '/agent-platform/models/capacity',
       '/plans',
       '/plans/pr/22',

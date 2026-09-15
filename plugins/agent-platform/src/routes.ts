@@ -94,31 +94,25 @@ export const usageCostRouteRef = createSubRouteRef({
   parent: usageRouteRef,
 });
 
-// The "Models" tab (`/agent-platform/models`): the kagent ModelConfigs agents
-// run on, the serving layer beneath them, and the platform-admin flows that
-// manage both. Like the muster section, the tab carries a second-level tab row
-// — one sub-route per view — and its index redirects to the first view.
+// The "Models" tab (`/agent-platform/models`): the ModelConfigs list itself,
+// plus the create and detail flows beneath it. The serving layer's two views
+// hang off the same tab as a second-level tab row, but only where a portal has
+// a serving layer to show -- so the list is the tab's own page rather than the
+// first of a row, and there is no index redirect.
 export const modelsRouteRef = createRouteRef();
 
-// The "Model configs" view (`/agent-platform/models/configs`): the ModelConfigs
-// list. The create and detail flows live underneath it, so the view's tab stays
-// active while a model is being added or edited.
-export const modelConfigsRouteRef = createSubRouteRef({
-  path: '/configs',
-  parent: modelsRouteRef,
-});
-
 export const newModelRouteRef = createSubRouteRef({
-  path: '/configs/new',
+  path: '/new',
   parent: modelsRouteRef,
 });
 
-// One model (`/agent-platform/models/configs/<installation>/<namespace>/<name>`),
-// as an editable form (read-only when a tool owns the CR). Three segments for
-// the same reason as `agentDetailRouteRef`: all three are part of the identity,
-// and the segment count keeps it clear of `/configs/new`.
+// One model (`/agent-platform/models/<installation>/<namespace>/<name>`), as an
+// editable form (read-only when a tool owns the CR). Three segments for the same
+// reason as `agentDetailRouteRef`: all three are part of the identity, and the
+// segment count keeps it clear of the one-segment `/new`, `/serving` and
+// `/capacity`.
 export const modelDetailRouteRef = createSubRouteRef({
-  path: '/configs/:installation/:namespace/:name',
+  path: '/:installation/:namespace/:name',
   parent: modelsRouteRef,
 });
 

@@ -27,7 +27,7 @@ import {
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 
-import { modelConfigsRouteRef } from '../../routes';
+import { modelsRouteRef } from '../../routes';
 import {
   INITIAL_MODEL_CONFIG_FORM,
   MODEL_CONFIG_NAMESPACE,
@@ -57,7 +57,7 @@ export function NewModelPage() {
   const classes = useStyles();
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
-  const modelsLink = useRouteRef(modelConfigsRouteRef);
+  const modelsLink = useRouteRef(modelsRouteRef);
 
   // Every reachable installation that runs kagent is offered, home first (the
   // gs installation inventory) — deliberately not just the ones that already
