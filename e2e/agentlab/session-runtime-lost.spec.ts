@@ -31,6 +31,19 @@ const ATENET = 'actor "ai-e2e-runtime-lost" request timed out';
 const now = () => new Date().toISOString();
 
 /**
+ * Full-page screenshots of the states this spec reaches, when a directory is
+ * given (`AGENTLAB_E2E_SCREENSHOTS=<dir>`): what the PR shows a reviewer. Off
+ * by default — the suite's own screenshots are its failure evidence.
+ */
+async function snapshot(page: Page, name: string): Promise<void> {
+  const dir = process.env.AGENTLAB_E2E_SCREENSHOTS;
+  if (!dir) {
+    return;
+  }
+  await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
+}
+
+/**
  * Stubs of kagent's answers for one session, armed on the page and scoped to
  * the session whose first stream this test sees — every other session (the
  * new one the page opens) goes to the real kagent.
@@ -247,14 +260,24 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
     created.push(lostUrl.pathname);
 
     // --- The interim shape: explained, retry kept, the way out beside it --
+    // The bubble, not the title: the session's title is derived from the same
+    // prompt, so a bare text match finds both.
+    const bubble = () =>
+      admin.getByTestId('timeline-user-message').filter({ hasText: prompt });
     await expect(
-      admin.getByText(prompt),
+      bubble(),
       "the person's message is on the timeline",
     ).toBeVisible();
     await expect(
       admin.getByText('The agent’s runtime could not be reached'),
       'the failed turn says whose failure it is',
     ).toBeVisible({ timeout: 60_000 });
+    await expect(
+      admin.getByTestId('timeline-turn-failed'),
+      'and what the runtime said, as the evidence',
+    ).toContainText(
+      `kagent could not bring the agent’s runtime back to answer this message. The runtime said: ${ATENET}`,
+    );
     await expect(
       admin.getByText('The agent’s runtime could not be brought back'),
       'the notice explains in the portal’s words',
@@ -278,6 +301,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       name: `Start a new session with ${agentName}`,
     });
     await expect(startNew, 'the way out stands beside it').toBeEnabled();
+    await snapshot(admin, 'runtime-lost-suspected');
 
     // --- kagent's mark: the header, the composer, the list ----------------
     stubs.reported = true;
@@ -286,12 +310,15 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       admin.getByText('Runtime lost', { exact: true }).first(),
       'the header carries kagent’s mark',
     ).toBeVisible({ timeout: 60_000 });
-    await expect(admin.getByText('This session cannot continue')).toBeVisible();
+    await expect(
+      admin.getByText('This session cannot continue', { exact: true }),
+    ).toBeVisible();
     await expect(
       admin.getByRole('button', { name: 'Send' }),
       'Send yields to the new session',
     ).toHaveCount(0);
     await expect(startNew).toBeVisible();
+    await snapshot(admin, 'runtime-lost-reported');
 
     await open(admin, '/agent-platform/sessions');
     const lostRow = admin
@@ -301,6 +328,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       lostRow.first(),
       'the Sessions list marks the row',
     ).toBeVisible({ timeout: 60_000 });
+    await snapshot(admin, 'runtime-lost-sessions-list');
 
     // --- The way out: a new session with the same agent, message carried --
     await open(admin, lostUrl.pathname);
@@ -315,13 +343,14 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
     );
     created.push(new URL(admin.url()).pathname);
     await expect(
-      admin.getByText(prompt),
+      bubble(),
       'the message that never got its answer opens the new session',
     ).toBeVisible({ timeout: 30_000 });
     await expect(
       admin.getByText('The agent’s runtime could not be brought back'),
       'a fresh session, with nothing lost about it',
     ).toHaveCount(0);
+    await snapshot(admin, 'runtime-lost-new-session');
   } catch (error) {
     failure = error;
   }
