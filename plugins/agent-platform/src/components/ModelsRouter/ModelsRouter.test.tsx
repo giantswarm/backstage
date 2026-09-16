@@ -167,6 +167,23 @@ describe('ModelsRouter', () => {
     expect(screen.getByRole('tab', { name: 'Serving' })).toBeInTheDocument();
   });
 
+  it('offers the serving tabs for a model-manager that runs no backend yet', async () => {
+    // model-manager ships with zero backends; registering one happens on the
+    // Serving view, so the views are offered as soon as it answers.
+    mockUseServing.mockReturnValue({
+      ...withServingLayer,
+      backends: {},
+      sourceBackends: { 'inst-1': [] },
+    });
+    renderTab('/agent-platform/models');
+
+    expect(await screen.findByText('configs-view')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Serving' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('tab', { name: 'GPU capacity' }),
+    ).toBeInTheDocument();
+  });
+
   it('routes the Serving and GPU capacity views', async () => {
     mockUseServing.mockReturnValue(withServingLayer);
     const first = renderTab('/agent-platform/models/serving');

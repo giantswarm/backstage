@@ -22,7 +22,7 @@ for (const user of Object.values(lab.users)) {
     await open(page, '/settings');
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: user.name }),
+      page.getByRole('heading', { name: user.name, exact: true }),
       'the Profile card names the signed-in user',
     ).toBeVisible();
     await expect(page.getByText(`User Entity: ${user.name}`)).toBeVisible();

@@ -42,7 +42,10 @@ const IMPLIED_MODEL_CAPABILITIES = new Set(['completion']);
  * warning) rather than mislabelled.
  */
 export function toServingBackend(name: string): ServingBackend | undefined {
-  return name === 'kserve' || name === 'ollama' || name === 'lemonade'
+  return name === 'kserve' ||
+    name === 'ollama' ||
+    name === 'lmstudio' ||
+    name === 'lemonade'
     ? name
     : undefined;
 }
@@ -52,6 +55,8 @@ export function backendServerName(backend: ServingBackend): string {
   switch (backend) {
     case 'ollama':
       return 'Ollama';
+    case 'lmstudio':
+      return 'LM Studio';
     case 'lemonade':
       return 'Lemonade';
     default:

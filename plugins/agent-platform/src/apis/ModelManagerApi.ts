@@ -59,8 +59,8 @@ export interface ModelManagerApi {
   /**
    * `GET /api/v1/backends` — every backend the installation's model-manager
    * runs, in order (the first is the default backend), each with its own
-   * flags. On a model-manager before 0.17 (no such route) the one descriptor
-   * of `GET /api/v1/backend`.
+   * flags; empty when none is registered yet. On a model-manager before 0.17
+   * (no such route) the one descriptor of `GET /api/v1/backend`.
    */
   listBackends(installation: string): Promise<ModelManagerBackend[]>;
 

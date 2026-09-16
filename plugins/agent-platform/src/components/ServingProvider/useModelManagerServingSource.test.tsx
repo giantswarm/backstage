@@ -16,6 +16,7 @@ import {
   modelManagerNodeSchema,
   parseModelManagerList,
 } from '../../lib/modelManager';
+import { NO_SERVING_CAPABILITIES } from '../../lib/serving';
 import { useModelManagerServingSource } from './useModelManagerServingSource';
 import {
   modelManagerBackendQueryKey,
@@ -304,6 +305,31 @@ describe('useModelManagerServingSource', () => {
     expect(result.current.unreachableInstallations).toEqual([]);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("'triton'"));
     warn.mockRestore();
+  });
+
+  it('lists an installation whose model-manager runs no backend yet as a serving layer with nothing registered', async () => {
+    // model-manager ships with zero backends (and the last registered one
+    // may just have been removed): the list is empty, the inventory is not
+    // read, and the installation is in view — unlabelled, without
+    // capabilities, never unreachable — so a backend can be registered on
+    // its Serving page.
+    listBackends.mockImplementation(async (installation: string) =>
+      installation === 'lab' ? [] : [kserve],
+    );
+
+    const { result } = renderSource();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.installations).toEqual(['lab', 'gpu']);
+    expect(result.current.unreachableInstallations).toEqual([]);
+    expect(result.current.backends).toEqual({ gpu: 'kserve' });
+    expect(result.current.sourceBackends?.lab).toEqual([]);
+    expect(result.current.capabilities?.lab).toEqual(NO_SERVING_CAPABILITIES);
+    expect(result.current.loading?.lab).toBeUndefined();
+    expect(
+      result.current.servedModels.map(model => model.installation),
+    ).not.toContain('lab');
+    expect(listModels.mock.calls.map(call => call[0])).not.toContain('lab');
   });
 
   it('is loading until the configured list, descriptors and inventories answered', async () => {

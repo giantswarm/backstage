@@ -38,6 +38,18 @@ jest.mock('../GpuNodePools', () => ({
   }),
 }));
 
+jest.mock('../ModelBackends', () => ({
+  // No model-manager the person can write to on these fleets: the controls
+  // render nothing.
+  useModelBackendControls: () => ({
+    available: false,
+    addButton: undefined,
+    dialogs: null,
+    renderGroupActions: () => null,
+    renderBackendsWithoutModels: () => null,
+  }),
+}));
+
 jest.mock('../ServingProvider', () => ({
   useServing: () => mockUseServing(),
 }));
@@ -239,7 +251,7 @@ const baseServing: ServingContextValue = {
   backends: { 'inst-1': 'kserve' },
   capabilities: { 'inst-1': KSERVE_CR_CAPABILITIES },
   unreachableInstallations: [],
-  reachableInstallations: [],
+  reachableInstallations: ['inst-1'],
   servedModels: [qwen],
   gpuNodes: [
     {
@@ -782,6 +794,31 @@ describe('ServingPage', () => {
     expect(container.querySelector('table')).toBeNull();
     // Nothing to offer, so nothing goes to the header.
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('offers the registration when the model-manager in view runs no backend yet', async () => {
+    // model-manager ships with zero backends: the installation is a serving
+    // layer (the tabs exist), and this page is where a backend is registered.
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      installations: ['inst-1'],
+      backends: {},
+      sourceBackends: { 'inst-1': [] },
+      capabilities: {},
+      servedModels: [],
+      gpuNodes: [],
+    });
+
+    const { container } = await renderSection();
+
+    expect(screen.getByText('No model backend yet')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /model-manager on inst-1 is running with no backend registered/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
+    expect(container.querySelector('table')).toBeNull();
   });
 
   it('shows progress, not the empty state, while probing a fleet that has shown no backend yet', async () => {

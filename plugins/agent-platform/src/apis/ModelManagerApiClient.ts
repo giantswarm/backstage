@@ -129,17 +129,12 @@ export class ModelManagerApiClient implements ModelManagerApi {
       }
       throw error;
     }
-    const backends = parseModelManagerList(
-      body,
-      'backends',
-      modelManagerBackendSchema,
-    );
-    if (backends.length === 0) {
-      throw upstreamError(
-        `model-manager on ${installation} lists no backend this portal can read.`,
-      );
-    }
-    return backends;
+    // An empty list is an answer, not a failure: a model-manager whose
+    // backends are all registered at runtime has none until someone adds
+    // one (and none again once the last is removed). Throwing here would
+    // leave the readers on their last successful answer — the removed
+    // backend — until the read errors out.
+    return parseModelManagerList(body, 'backends', modelManagerBackendSchema);
   }
 
   async listModels(

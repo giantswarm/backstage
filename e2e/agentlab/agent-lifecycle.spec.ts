@@ -121,7 +121,15 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
     ).toBeVisible({ timeout: 6 * 60_000 });
 
     // --- Start a session from the agent's page and get an answer -----------
-    await admin.getByRole('button', { name: 'Start a session' }).click();
+    // The button follows the roster's own read of the agent (`readiness`),
+    // polled apart from the Status card's harness status above, so it can
+    // trail the card's Ready by more than an action timeout.
+    const startSession = admin.getByRole('button', { name: 'Start a session' });
+    await expect(
+      startSession,
+      'the page offers a session once the roster reads the agent ready',
+    ).toBeVisible({ timeout: 60_000 });
+    await startSession.click();
     const promptBox = admin.getByRole('textbox', { name: 'Prompt' });
     await expect(promptBox).toBeVisible();
     await promptBox.fill(prompt);
@@ -132,7 +140,7 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
       { timeout: 60_000 },
     );
     await expect(
-      admin.getByText(prompt),
+      admin.getByTestId('timeline-user-message').getByText(prompt),
       "the person's message is on the timeline",
     ).toBeVisible();
     await expect(

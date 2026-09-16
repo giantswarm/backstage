@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
@@ -20,6 +20,7 @@ import {
 } from '../../hooks/useStopServedModel';
 import {
   NO_SERVING_CAPABILITIES,
+  backendsOn,
   type ServedModel,
   type ServingCapabilities,
   type ServingBackend,
@@ -34,6 +35,7 @@ import {
   type PullTarget,
 } from '../ModelManagerControls';
 import { useGpuNodePoolControls } from '../GpuNodePools';
+import { useModelBackendControls } from '../ModelBackends';
 import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -102,6 +104,7 @@ export function ServingPage() {
   const serving = useServing();
   const { servedModels, installations } = serving;
   const { rows: servedRows } = useServedModelRows();
+  const backends = useModelBackendControls();
   const pools = useGpuNodePoolControls(
     serving.reachableInstallations,
     servedModels,
@@ -437,8 +440,13 @@ export function ServingPage() {
   // offered changes; `null` clears the slot when nothing is.
   const headerActions = useMemo(
     () =>
-      canServe || canPull || canImport || pools.available ? (
+      canServe ||
+      canPull ||
+      canImport ||
+      backends.available ||
+      pools.available ? (
         <Flex gap="2">
+          {backends.addButton}
           {pools.addButton}
           {canPull && (
             <Button
@@ -469,28 +477,72 @@ export function ServingPage() {
           )}
         </Flex>
       ) : null,
-    [canServe, canPull, canImport, openServe, pools.addButton, pools.available],
+    [
+      canServe,
+      canPull,
+      canImport,
+      openServe,
+      backends.addButton,
+      backends.available,
+      pools.addButton,
+      pools.available,
+    ],
   );
   useProvidePageHeaderActions(headerActions);
 
-  if (
-    installations.length === 0 &&
-    serving.unreachableInstallations.length === 0
-  ) {
-    return (
-      <Content>
-        {serving.isLoading ? (
-          <Progress aria-label="Looking for a serving layer" />
-        ) : (
-          <EmptyState
-            missing="data"
-            title="No serving layer"
-            description="None of the reachable installations has a serving layer this portal can see — KServe InferenceServices, or a model-manager (Ollama, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
-            action={pools.addButton}
-          />
-        )}
-        {pools.dialogs}
-      </Content>
+  // A backend registered with a model-manager but serving nothing yet has no
+  // group in the table; it gets a row of its own so it can be removed.
+  const backendsWithoutModels = backends.renderBackendsWithoutModels(rows);
+
+  // The controls that bring a backend or a serving layer to an installation,
+  // side by side wherever the page has nothing to show yet.
+  const addActions =
+    backends.addButton || pools.addButton ? (
+      <Flex gap="2">
+        {backends.addButton}
+        {pools.addButton}
+      </Flex>
+    ) : undefined;
+
+  // No serving layer anywhere: the empty state (or the registered backends
+  // that serve nothing yet). Rendered under the same <Content> as the table,
+  // with the dialogs as its sibling in both cases, so Deploy turning the
+  // first backend into a group does not remount the dialog mid-flow.
+  const noServingLayer =
+    installations.length === 0 && serving.unreachableInstallations.length === 0;
+  // A serving layer with nothing registered yet: every model-manager in view
+  // answers, none runs a backend (model-manager ships that way) and nothing
+  // is served. Registering one is this page's job, so its empty state
+  // carries the control.
+  const noBackendYet =
+    !noServingLayer &&
+    !serving.isLoading &&
+    rows.length === 0 &&
+    !backendsWithoutModels &&
+    serving.unreachableInstallations.length === 0 &&
+    installations.every(name => backendsOn(serving, name).length === 0);
+  let emptyBody: ReactNode;
+  if (noServingLayer && serving.isLoading) {
+    emptyBody = <Progress aria-label="Looking for a serving layer" />;
+  } else if (noServingLayer) {
+    emptyBody = backendsWithoutModels ?? (
+      <EmptyState
+        missing="data"
+        title="No serving layer"
+        description="None of the reachable installations has a serving layer this portal can see — KServe InferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
+        action={addActions}
+      />
+    );
+  } else if (noBackendYet) {
+    emptyBody = (
+      <EmptyState
+        missing="data"
+        title="No model backend yet"
+        description={`model-manager on ${installations.join(
+          ', ',
+        )} is running with no backend registered, so nothing is served here yet. Register a backend you already run — Ollama, LM Studio, Lemonade or KServe — and its models appear on this page; a GPU node pool brings model serving to a cluster along with the capacity for it.`}
+        action={addActions}
+      />
     );
   }
 
@@ -504,7 +556,7 @@ export function ServingPage() {
       : undefined);
 
   let description =
-    'Models served on the installations that have a serving layer — KServe InferenceServices read from the cluster, or the inventory of a model-manager (Ollama, KServe). The model configs are how agents reach them.';
+    'Models served on the installations that have a serving layer — KServe InferenceServices read from the cluster, or the inventory of a model-manager (Ollama, LM Studio, Lemonade, KServe). The model configs are how agents reach them.';
   if (canServe || canPull || canImport) {
     description = `${description} ${[
       canServe && 'Serve a model from a curated preset or stop one',
@@ -520,123 +572,132 @@ export function ServingPage() {
 
   return (
     <Content>
-      <Flex direction="column" gap="3">
-        <Text color="secondary">{description}</Text>
+      {emptyBody ?? (
+        <Flex direction="column" gap="3">
+          <Text color="secondary">{description}</Text>
 
-        {serving.isLoading && rows.length === 0 ? (
-          <Progress aria-label="Loading served models" />
-        ) : (
-          <ServedModelsTable
-            rows={rows}
-            renderActions={hasActions ? renderActions : undefined}
-          />
-        )}
-
-        <UnreachableInstallationsAlert
-          installations={serving.unreachableInstallations}
-          resourceName="served models"
-        />
-
-        {presets.problems.length > 0 && (
-          <Alert
-            status="warning"
-            title="Serving presets could not be read"
-            description={presets.problems
-              .map(problem => `${problem.installation}: ${problem.message}`)
-              .join(' ')}
-          />
-        )}
-        {presets.invalidPresets.length > 0 && (
-          <Alert
-            status="warning"
-            title={`${presets.invalidPresets.length} serving preset${
-              presets.invalidPresets.length === 1 ? ' is' : 's are'
-            } unusable`}
-            description={presets.invalidPresets
-              .map(
-                invalid =>
-                  `${invalid.name} (${invalid.installation}): ${invalid.error}`,
-              )
-              .join(' ')}
-          />
-        )}
-
-        {downloadRows.errors.length > 0 && (
-          <Alert
-            status="warning"
-            title="Downloads could not be read"
-            description={downloadRows.errors
-              .map(
-                problem => `${problem.installation}: ${problem.error.message}`,
-              )
-              .join(' ')}
-          />
-        )}
-
-        {canPull && (
-          <PullModelDialog
-            isOpen={isPullOpen}
-            onOpenChange={setPullOpen}
-            targets={pullTargets}
-          />
-        )}
-
-        {canImport && (
-          <ImportModelDialog
-            isOpen={isImportOpen}
-            onOpenChange={setImportOpen}
-            targets={importTargets}
-          />
-        )}
-
-        {canServe && (
-          <ServeModelDialog
-            isOpen={isServeOpen}
-            onOpenChange={setServeOpen}
-            installations={servableInstallations}
-            installation={installation}
-            onInstallationChange={setServeInstallation}
-            presets={installation ? presets.presetsFor(installation) : []}
-            config={config}
-            gpuNodes={serving.gpuNodes.filter(
-              node => node.installation === installation,
-            )}
-            existingNames={servedModels
-              .filter(
-                model =>
-                  model.installation === installation &&
-                  model.namespace === config?.namespace,
-              )
-              .map(model => model.name)}
-            downloads={downloads}
-            seed={serveSeed}
-            permission={{
-              allowed: servePermission.allowed,
-              isLoading: servePermission.isLoading,
-            }}
-            isServing={isServing}
-            error={serveError?.message}
-            onConfirm={confirmServe}
-          />
-        )}
-
-        {pools.dialogs}
-        {stopping && (
-          <StopServedModelDialog
-            model={stopping}
-            isOpen
-            onOpenChange={open => {
-              if (!open) {
-                setStopping(undefined);
+          {serving.isLoading && rows.length === 0 ? (
+            <Progress aria-label="Loading served models" />
+          ) : (
+            <ServedModelsTable
+              rows={rows}
+              renderActions={hasActions ? renderActions : undefined}
+              renderGroupActions={
+                backends.available ? backends.renderGroupActions : undefined
               }
-            }}
-            isStopping={isStopping}
-            error={stopDialogError}
-            via={stoppingVia}
-            onConfirm={confirmStop}
+            />
+          )}
+
+          {backendsWithoutModels}
+
+          <UnreachableInstallationsAlert
+            installations={serving.unreachableInstallations}
+            resourceName="served models"
           />
-        )}
-      </Flex>
+
+          {presets.problems.length > 0 && (
+            <Alert
+              status="warning"
+              title="Serving presets could not be read"
+              description={presets.problems
+                .map(problem => `${problem.installation}: ${problem.message}`)
+                .join(' ')}
+            />
+          )}
+          {presets.invalidPresets.length > 0 && (
+            <Alert
+              status="warning"
+              title={`${presets.invalidPresets.length} serving preset${
+                presets.invalidPresets.length === 1 ? ' is' : 's are'
+              } unusable`}
+              description={presets.invalidPresets
+                .map(
+                  invalid =>
+                    `${invalid.name} (${invalid.installation}): ${invalid.error}`,
+                )
+                .join(' ')}
+            />
+          )}
+
+          {downloadRows.errors.length > 0 && (
+            <Alert
+              status="warning"
+              title="Downloads could not be read"
+              description={downloadRows.errors
+                .map(
+                  problem =>
+                    `${problem.installation}: ${problem.error.message}`,
+                )
+                .join(' ')}
+            />
+          )}
+
+          {canPull && (
+            <PullModelDialog
+              isOpen={isPullOpen}
+              onOpenChange={setPullOpen}
+              targets={pullTargets}
+            />
+          )}
+
+          {canImport && (
+            <ImportModelDialog
+              isOpen={isImportOpen}
+              onOpenChange={setImportOpen}
+              targets={importTargets}
+            />
+          )}
+
+          {canServe && (
+            <ServeModelDialog
+              isOpen={isServeOpen}
+              onOpenChange={setServeOpen}
+              installations={servableInstallations}
+              installation={installation}
+              onInstallationChange={setServeInstallation}
+              presets={installation ? presets.presetsFor(installation) : []}
+              config={config}
+              gpuNodes={serving.gpuNodes.filter(
+                node => node.installation === installation,
+              )}
+              existingNames={servedModels
+                .filter(
+                  model =>
+                    model.installation === installation &&
+                    model.namespace === config?.namespace,
+                )
+                .map(model => model.name)}
+              downloads={downloads}
+              seed={serveSeed}
+              permission={{
+                allowed: servePermission.allowed,
+                isLoading: servePermission.isLoading,
+              }}
+              isServing={isServing}
+              error={serveError?.message}
+              onConfirm={confirmServe}
+            />
+          )}
+
+          {stopping && (
+            <StopServedModelDialog
+              model={stopping}
+              isOpen
+              onOpenChange={open => {
+                if (!open) {
+                  setStopping(undefined);
+                }
+              }}
+              isStopping={isStopping}
+              error={stopDialogError}
+              via={stoppingVia}
+              onConfirm={confirmStop}
+            />
+          )}
+        </Flex>
+      )}
+      {backends.dialogs}
+      {pools.dialogs}
     </Content>
   );
 }

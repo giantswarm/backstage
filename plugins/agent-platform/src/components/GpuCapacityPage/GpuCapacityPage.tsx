@@ -3,7 +3,7 @@ import { Content, EmptyState } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { NO_SERVING_CAPABILITIES } from '../../lib/serving';
+import { NO_SERVING_CAPABILITIES, backendsOn } from '../../lib/serving';
 import { useGpuNodePoolControls } from '../GpuNodePools';
 import { useServing } from '../ServingProvider';
 import { GpuCapacityPanel } from './GpuCapacityPanel';
@@ -19,6 +19,24 @@ import { GpuCapacityPanel } from './GpuCapacityPanel';
  * older one reports no nodes and shows up only in the empty state's
  * explanation). Must be mounted inside a ServingProvider.
  */
+// Why there is no inventory: no serving layer at all, one that runs no
+// backend yet (model-manager ships that way), or layers that do not report
+// their nodes.
+function emptyStateDescription(
+  installations: string[],
+  noBackendYet: boolean,
+): string {
+  if (installations.length === 0) {
+    return 'No reachable installation has a serving layer this portal can see. GPU capacity is read per node from installations whose serving layer reports one.';
+  }
+  if (noBackendYet) {
+    return `model-manager on ${installations.join(
+      ', ',
+    )} is running with no backend registered: no GPU node pool serves models there yet, and no host reports its nodes. Add a GPU node pool, or register a backend that reports its nodes on the Serving view.`;
+  }
+  return 'The serving layers this portal can see do not report their nodes. GPU capacity is read per node from installations whose serving layer reports one: the nodes of a KServe-backed serving layer, or the host an Ollama-backed model-manager proxies (from model-manager 0.7 on — an older one reports no nodes).';
+}
+
 export function GpuCapacityPage() {
   const serving = useServing();
   const pools = useGpuNodePoolControls(
@@ -36,6 +54,11 @@ export function GpuCapacityPage() {
       ),
     [serving.installations, serving.capabilities],
   );
+  const noBackendYet =
+    serving.installations.length > 0 &&
+    serving.installations.every(
+      installation => backendsOn(serving, installation).length === 0,
+    );
 
   if (!serving.isLoading && nodeInventoryInstallations.length === 0) {
     return (
@@ -44,12 +67,11 @@ export function GpuCapacityPage() {
         {pools.panel}
         <EmptyState
           missing="data"
-          title="No GPU inventory"
-          description={
-            serving.installations.length > 0
-              ? 'The serving layers this portal can see do not report their nodes. GPU capacity is read per node from installations whose serving layer reports one: the nodes of a KServe-backed serving layer, or the host an Ollama-backed model-manager proxies (from model-manager 0.7 on — an older one reports no nodes).'
-              : 'No reachable installation has a serving layer this portal can see. GPU capacity is read per node from installations whose serving layer reports one.'
-          }
+          title={noBackendYet ? 'No GPU node pools yet' : 'No GPU inventory'}
+          description={emptyStateDescription(
+            serving.installations,
+            noBackendYet,
+          )}
           action={pools.addButton}
         />
       </Content>

@@ -26,6 +26,13 @@ export const lab = {
    * name of the platform chart in the lab, not the kind cluster's name.
    */
   installation: process.env.AGENTLAB_INSTALLATION ?? 'agent-platform',
+  /**
+   * The lab's Ollama as model-manager reaches it from the kind node: the
+   * host on the kind docker network (`docker network inspect kind`, the
+   * IPAM gateway), where agentlab points the platform's Ollama backend.
+   */
+  ollamaEndpoint:
+    process.env.AGENTLAB_OLLAMA_ENDPOINT ?? 'http://172.21.0.1:11434',
   users: {
     /** `platform-admins` + `developers`: may create agents and read kagent. */
     admin: { email: 'admin@lab.local', name: 'Lab Admin' },

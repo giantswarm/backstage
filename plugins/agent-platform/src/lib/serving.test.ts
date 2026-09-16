@@ -11,6 +11,7 @@ import {
   isAcceleratorCapacityRow,
   isSameServedModel,
   isServingFailure,
+  backendsOn,
   mergeServingSnapshots,
   NO_SERVING_CAPABILITIES,
   notLoadedReadiness,
@@ -412,6 +413,29 @@ describe('mergeServingSnapshots', () => {
     expect(merged.gpuNodes).toHaveLength(1);
     expect(merged.gpuCapacityUnavailable).toEqual({ beta: 'forbidden' });
     expect(merged.isLoading).toBe(true);
+  });
+
+  it('keeps an installation whose serving layer runs no backend yet', () => {
+    // A model-manager that answered with an empty backends list: nothing to
+    // label the installation with, but a serving layer to register one on.
+    const bare: ServingSourceSnapshot = {
+      isLoading: false,
+      installations: ['lab'],
+      backends: {},
+      sourceBackends: { lab: [] },
+      unreachableInstallations: [],
+      servedModels: [],
+      gpuNodes: [],
+      gpuCapacityUnavailable: {},
+    };
+
+    const merged = mergeServingSnapshots([kserve, bare]);
+
+    expect(merged.installations).toEqual(['alpha', 'lab']);
+    expect(merged.backends).toEqual({ alpha: 'kserve' });
+    expect(backendsOn(merged, 'lab')).toEqual([]);
+    expect(backendsOn(merged, 'alpha')).toEqual(['kserve']);
+    expect(backendsOn({ backends: {} }, 'alpha')).toEqual([]);
   });
 
   it('lets a later source override an installation an earlier one claimed', () => {
