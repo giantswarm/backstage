@@ -9,7 +9,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(0.5),
   },
   marker: {
-    fontSize: 11,
+    // A step below the row's text: set in caps, a marker reads larger than its
+    // size, and it is an aside to the tool name rather than a peer of it.
+    fontSize: 10,
     lineHeight: 1.4,
     // Set in caps, which needs the extra letter-spacing to stay legible at
     // this size — uppercase without it reads as a solid block.
