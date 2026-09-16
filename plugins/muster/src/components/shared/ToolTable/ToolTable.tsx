@@ -71,9 +71,11 @@ const useStyles = makeStyles((theme: Theme) => ({
     minWidth: 0,
     outline: 'none',
   },
+  // Standard type, not monospace: a tool name is read as a name here, not
+  // quoted as code. It shares the description's type scale so the two columns
+  // sit on one baseline, and is told apart by colour — primary against the
+  // description's secondary — rather than by face or size.
   name: {
-    fontFamily: 'monospace',
-    fontSize: 13,
     minWidth: 0,
     overflowWrap: 'anywhere',
   },
@@ -129,7 +131,7 @@ export type ToolRowMode =
 export interface ToolTableItem {
   /** React key, and the row's identity for the caller's selection state. */
   key: string;
-  /** Column 1, monospace. A node so a caller can decorate the name. */
+  /** Column 1, in standard type. A node so a caller can decorate the name. */
   name: ReactNode;
   /** Column 2. The markers are derived from these; absent means no markers. */
   annotations?: ToolAnnotations;
@@ -235,13 +237,13 @@ function ToolTableRow({
         ) : (
           <span aria-hidden />
         ))}
-      <span className={classes.name}>
+      <Text as="span" variant="body-small" className={classes.name}>
         {mode.kind === 'link' ? (
           <Link to={mode.href}>{item.name}</Link>
         ) : (
           item.name
         )}
-      </span>
+      </Text>
       {showMarkers && (
         <span>
           <ToolMarkers annotations={item.annotations} />
