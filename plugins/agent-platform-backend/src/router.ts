@@ -1,4 +1,7 @@
-import { LoggerService } from '@backstage/backend-plugin-api';
+import {
+  LoggerService,
+  RootLifecycleService,
+} from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import {
   AuthenticationError,
@@ -40,9 +43,18 @@ export interface RouterOptions {
   /**
    * The cache of unauthenticated reachability probes behind
    * `/kagent/installations`. Overridable for tests; defaults to one that
-   * probes for real with a 3 s budget and a 5 min TTL.
+   * probes for real with a 3 s budget and a 5 min TTL (30 s for a negative
+   * answer).
    */
   reachability?: ReachabilityCache;
+  /**
+   * When given, the reachability cache is warmed from its startup hook --
+   * once every plugin has initialised -- rather than while they all are. The
+   * probes measure the network with a wall-clock budget, and a backend
+   * initialising under a CPU quota is exactly the process too busy to notice
+   * an answer in time. Tests leave it out and get an immediate warm-up.
+   */
+  lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
 }
 
 /**
@@ -490,17 +502,26 @@ export async function createRouter(
   // Whether each installation's kagent controller is reachable *from this
   // portal*, learned without a user: one unauthenticated gRPC call per origin,
   // cached five minutes (see ./kagent/reachability for the classification).
-  // The cache is lazy, so warm it now rather than on the first request: the
-  // frontend caches the installation list for an hour, and a list answered
-  // entirely with 'unknown' because the pod had just started would keep every
-  // doomed per-user request alive for that hour. Not awaited -- the router is
-  // usable immediately and the route answers 'unknown' until a probe settles.
+  // The cache is lazy, so warm it rather than wait for the first request: the
+  // frontend re-reads the installation list every few seconds only while an
+  // entry is 'unknown', then caches it for an hour. Warmed once the backend
+  // has started (the startup hook) rather than here, in the middle of every
+  // plugin's initialisation, when the event loop is too saturated to notice a
+  // probe's answer within its budget. Not awaited -- the router is usable
+  // immediately and the route answers 'unknown' until a probe settles.
   // Results are logged at INFO, one line per endpoint per state change.
   const reachability =
     options.reachability ??
     new ReachabilityCache({ logger, probe: url => probeKagentGrpc(url) });
-  for (const installation of installations.values()) {
-    void reachability.refresh(kagentProbeUrl(installation));
+  const warmReachability = () => {
+    for (const installation of installations.values()) {
+      void reachability.refresh(kagentProbeUrl(installation));
+    }
+  };
+  if (options.lifecycle) {
+    options.lifecycle.addStartupHook(warmReachability);
+  } else {
+    warmReachability();
   }
 
   const router = Router();

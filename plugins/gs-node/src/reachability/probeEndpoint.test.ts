@@ -1,8 +1,11 @@
 import {
   classifyProbeFailure,
   errorCode,
+  isProbeTimeout,
   isTlsErrorCode,
   probeEndpoint,
+  STARVED_LOOP_UTILIZATION,
+  timedOutResult,
 } from './probeEndpoint';
 
 // The hostname every fixture uses: the reason must never echo it (see the
@@ -27,6 +30,27 @@ function failingWith(error: unknown): typeof fetch {
     throw error;
   });
 }
+
+/**
+ * A fetch that only ever settles when its signal aborts, as a black-holed
+ * host would behave.
+ */
+function blackHoled(): typeof fetch {
+  return (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () =>
+        reject(
+          Object.assign(new Error('This operation was aborted'), {
+            name: 'AbortError',
+          }),
+        ),
+      );
+    });
+}
+
+/** Meters reporting an event loop that mostly waited, and one that never did. */
+const idleLoop = () => () => 0.05;
+const starvedLoop = () => () => 0.97;
 
 describe('probeEndpoint', () => {
   const now = () => 1_700_000_000_000;
@@ -131,23 +155,11 @@ describe('probeEndpoint', () => {
   });
 
   it('gives up after the timeout and says so', async () => {
-    // A fetch that only ever settles when its signal aborts, as a black-holed
-    // host would behave.
-    const fetchFn: typeof fetch = (_url, init) =>
-      new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () =>
-          reject(
-            Object.assign(new Error('This operation was aborted'), {
-              name: 'AbortError',
-            }),
-          ),
-        );
-      });
-
     const result = await probeEndpoint(URL_UNDER_TEST, {
-      fetchFn,
+      fetchFn: blackHoled(),
       timeoutMs: 20,
       now,
+      loopMeter: idleLoop,
     });
 
     expect(result).toEqual({
@@ -155,6 +167,49 @@ describe('probeEndpoint', () => {
       reason: 'no answer within 20 ms',
       checkedAt: now(),
     });
+  });
+
+  it('reports a timeout as inconclusive when this process was too busy to notice an answer', async () => {
+    const result = await probeEndpoint(URL_UNDER_TEST, {
+      fetchFn: blackHoled(),
+      timeoutMs: 20,
+      now,
+      loopMeter: starvedLoop,
+    });
+
+    expect(result).toEqual({
+      reachable: false,
+      reason:
+        'no answer within 20 ms while this process was busy (event loop 97% utilised)',
+      checkedAt: now(),
+      inconclusive: true,
+    });
+  });
+
+  it('measures the event loop over the probe alone', async () => {
+    // The meter is started when the request goes out and read when the
+    // timeout fires -- not at module load, not once per process.
+    const read = jest.fn(() => 0.5);
+    const loopMeter = jest.fn(() => read);
+
+    await probeEndpoint(URL_UNDER_TEST, {
+      fetchFn: blackHoled(),
+      timeoutMs: 20,
+      loopMeter,
+    });
+    await probeEndpoint(URL_UNDER_TEST, {
+      fetchFn: answering(401),
+      loopMeter,
+    });
+    await probeEndpoint(URL_UNDER_TEST, {
+      fetchFn: failingWith(fetchFailed('ECONNREFUSED', 'refused')),
+      loopMeter,
+    });
+
+    expect(loopMeter).toHaveBeenCalledTimes(3);
+    // Only a timeout asks how busy the loop was; an answer or a socket error
+    // is conclusive either way.
+    expect(read).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an unparseable URL without touching the network', async () => {
@@ -229,6 +284,49 @@ describe('errorCode', () => {
     });
 
     expect(errorCode(outer)).toBe('OUTER');
+  });
+});
+
+describe('timedOutResult', () => {
+  it('is not reachable when the loop had time to notice an answer', () => {
+    expect(timedOutResult(3000, 0.3, 7)).toEqual({
+      reachable: false,
+      reason: 'no answer within 3000 ms',
+      checkedAt: 7,
+    });
+  });
+
+  it('is inconclusive from the starvation threshold on, saying how busy the loop was', () => {
+    expect(timedOutResult(3000, STARVED_LOOP_UTILIZATION, 7)).toEqual({
+      reachable: false,
+      reason:
+        'no answer within 3000 ms while this process was busy (event loop 80% utilised)',
+      checkedAt: 7,
+      inconclusive: true,
+    });
+    expect(timedOutResult(3000, 0.999, 7).inconclusive).toBe(true);
+    expect(
+      timedOutResult(3000, STARVED_LOOP_UTILIZATION - 0.01, 7).inconclusive,
+    ).toBeUndefined();
+  });
+});
+
+describe('isProbeTimeout', () => {
+  it('recognises an aborted fetch and a timed-out signal, nothing else', () => {
+    expect(
+      isProbeTimeout(
+        Object.assign(new Error('aborted'), { name: 'AbortError' }),
+      ),
+    ).toBe(true);
+    expect(
+      isProbeTimeout(
+        Object.assign(new Error('timed out'), { name: 'TimeoutError' }),
+      ),
+    ).toBe(true);
+    expect(isProbeTimeout(fetchFailed('ETIMEDOUT', 'connect ETIMEDOUT'))).toBe(
+      false,
+    );
+    expect(isProbeTimeout(undefined)).toBe(false);
   });
 });
 

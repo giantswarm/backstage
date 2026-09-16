@@ -15,6 +15,10 @@
  * - a DNS failure, a refused or reset connection, a TLS handshake or trust
  *   failure, or no answer within the timeout means the portal cannot reach it:
  *   `reachable: false` with a one-line `reason` naming the failure class.
+ * - no answer within the timeout while this process was too busy to have
+ *   noticed one is `reachable: false` **and `inconclusive`**: the timeout
+ *   measured the process, not the endpoint (see
+ *   {@link STARVED_LOOP_UTILIZATION}), and a cache records nothing for it.
  *
  * The reason is built from error *codes* only, never from error messages:
  * Node's messages embed the hostname (`getaddrinfo ENOTFOUND <host>`), and the
@@ -23,7 +27,28 @@
  * frontend.
  */
 
+import { performance } from 'node:perf_hooks';
+
 export const DEFAULT_PROBE_TIMEOUT_MS = 3_000;
+
+/**
+ * Share of a probe's window during which this process's event loop was busy
+ * above which a timeout is attributed to the process rather than the endpoint.
+ *
+ * The abort timer and the answer's I/O callback both wait for a turn of the
+ * event loop, and timers are served before I/O. When the loop has been
+ * saturated for most of the budget -- a pod starting up under a CPU quota,
+ * every plugin initialising at once and the process throttled half the time --
+ * the timer's turn comes first even though the answer arrived; the same
+ * endpoint answers the same process in well under a second once it is idle.
+ * Such a timeout says nothing about the endpoint, so it is reported
+ * inconclusive instead of as "not reachable" (which a cache would then serve
+ * for minutes and a browser for an hour). An idle answer takes a fraction of
+ * the budget, so for it to be missed the loop must have been unavailable for
+ * most of the window; 80 % leaves room for a merely busy backend to still
+ * conclude.
+ */
+export const STARVED_LOOP_UTILIZATION = 0.8;
 
 export type EndpointProbeResult = {
   reachable: boolean;
@@ -34,6 +59,32 @@ export type EndpointProbeResult = {
   reason?: string;
   /** Epoch milliseconds at which the probe settled. */
   checkedAt: number;
+  /**
+   * The probe ran out of budget while this process's event loop was busy for
+   * at least {@link STARVED_LOOP_UTILIZATION} of the window, so the timeout
+   * says more about the process than about the endpoint. Only ever set
+   * together with `reachable: false`. A cache records nothing for such an
+   * answer and probes again on the next ask.
+   */
+  inconclusive?: true;
+};
+
+/**
+ * Measures how busy this process's event loop is over a probe's window:
+ * calling the meter starts a measurement, calling the function it returns
+ * answers with the utilization since then (0 idle .. 1 fully busy).
+ */
+export type LoopUtilizationMeter = () => () => number;
+
+/**
+ * The default meter: Node's own event-loop utilization, the share of wall
+ * time the loop spent running callbacks rather than waiting for events. Time
+ * the kernel withholds from a throttled process inside a callback counts as
+ * busy, which is exactly the starvation the meter is there to notice.
+ */
+export const eventLoopUtilizationMeter: LoopUtilizationMeter = () => {
+  const since = performance.eventLoopUtilization();
+  return () => performance.eventLoopUtilization(since).utilization;
 };
 
 export type ProbeEndpointOptions = {
@@ -43,6 +94,8 @@ export type ProbeEndpointOptions = {
   fetchFn?: typeof fetch;
   /** Overridable clock for tests. */
   now?: () => number;
+  /** Overridable for tests; defaults to {@link eventLoopUtilizationMeter}. */
+  loopMeter?: LoopUtilizationMeter;
 };
 
 /** Node error codes that mean the name could not be resolved. */
@@ -83,6 +136,40 @@ export function errorCode(error: unknown): string | undefined {
 }
 
 /**
+ * Whether an error is the probe's own deadline firing: the abort of a fetch
+ * (`AbortError`) or of an `AbortSignal.timeout` (`TimeoutError`).
+ */
+export function isProbeTimeout(error: unknown): boolean {
+  const name = (error as { name?: unknown } | null | undefined)?.name;
+  return name === 'AbortError' || name === 'TimeoutError';
+}
+
+/**
+ * The result of a probe that ran out of budget: not reachable -- unless this
+ * process's event loop was busy for {@link STARVED_LOOP_UTILIZATION} of the
+ * window, in which case the answer is inconclusive and the reason says so.
+ * `loopUtilization` is what the probe's meter measured; it is rounded to a
+ * percentage in the reason, and nothing in the reason names the endpoint.
+ */
+export function timedOutResult(
+  timeoutMs: number,
+  loopUtilization: number,
+  checkedAt: number,
+): EndpointProbeResult {
+  const reason = `no answer within ${timeoutMs} ms`;
+  if (loopUtilization >= STARVED_LOOP_UTILIZATION) {
+    const percent = Math.round(loopUtilization * 100);
+    return {
+      reachable: false,
+      reason: `${reason} while this process was busy (event loop ${percent}% utilised)`,
+      checkedAt,
+      inconclusive: true,
+    };
+  }
+  return { reachable: false, reason, checkedAt };
+}
+
+/**
  * One line naming why a probe failed. Codes only -- see the module note on why
  * messages are never quoted.
  */
@@ -90,8 +177,7 @@ export function classifyProbeFailure(
   error: unknown,
   timeoutMs: number,
 ): string {
-  const name = (error as { name?: unknown } | null | undefined)?.name;
-  if (name === 'AbortError' || name === 'TimeoutError') {
+  if (isProbeTimeout(error)) {
     return `no answer within ${timeoutMs} ms`;
   }
 
@@ -136,6 +222,7 @@ export async function probeEndpoint(
     timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
     fetchFn = fetch,
     now = Date.now,
+    loopMeter = eventLoopUtilizationMeter,
   } = options;
 
   try {
@@ -151,6 +238,7 @@ export async function probeEndpoint(
     };
   }
 
+  const loopBusy = loopMeter();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -167,6 +255,9 @@ export async function probeEndpoint(
     await response.body?.cancel().catch(() => undefined);
     return { reachable: true, checkedAt: now() };
   } catch (error) {
+    if (isProbeTimeout(error)) {
+      return timedOutResult(timeoutMs, loopBusy(), now());
+    }
     return {
       reachable: false,
       reason: classifyProbeFailure(error, timeoutMs),

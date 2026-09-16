@@ -1,6 +1,7 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import type { EndpointProbeResult } from './probeEndpoint';
 import {
+  DEFAULT_NEGATIVE_REACHABILITY_TTL_MS,
   DEFAULT_REACHABILITY_TTL_MS,
   ReachabilityCache,
   reachabilityFields,
@@ -126,6 +127,60 @@ describe('ReachabilityCache', () => {
     expect(probe).toHaveBeenCalledTimes(2);
   });
 
+  it('re-probes a negative answer after the shorter negative TTL, a positive one only after the full TTL', async () => {
+    const answers: EndpointProbeResult[] = [
+      {
+        reachable: false,
+        reason: 'connection refused (ECONNREFUSED)',
+        checkedAt: 0,
+      },
+      { reachable: true, checkedAt: 0 },
+      { reachable: true, checkedAt: 0 },
+    ];
+    const probe = jest.fn(async () => ({
+      ...answers.shift()!,
+      checkedAt: now(),
+    }));
+    const cache = new ReachabilityCache({ probe, now });
+
+    await cache.refresh(URL_A);
+    clock += DEFAULT_NEGATIVE_REACHABILITY_TTL_MS - 1;
+    cache.get(URL_A);
+    expect(probe).toHaveBeenCalledTimes(1);
+
+    clock += 1;
+    // Stale: the negative answer is still served while the re-probe runs.
+    expect(cache.get(URL_A).reachable).toBe(false);
+    expect(probe).toHaveBeenCalledTimes(2);
+    await settle();
+    expect(cache.get(URL_A).reachable).toBe(true);
+
+    // A positive answer keeps the full TTL.
+    clock += DEFAULT_NEGATIVE_REACHABILITY_TTL_MS;
+    cache.get(URL_A);
+    expect(probe).toHaveBeenCalledTimes(2);
+    clock += DEFAULT_REACHABILITY_TTL_MS;
+    cache.get(URL_A);
+    expect(probe).toHaveBeenCalledTimes(3);
+  });
+
+  it('honours a custom negative TTL', async () => {
+    const probe = jest.fn(async () => ({
+      reachable: false,
+      reason: 'no answer within 3000 ms',
+      checkedAt: now(),
+    }));
+    const cache = new ReachabilityCache({ probe, now, negativeTtlMs: 10 });
+
+    await cache.refresh(URL_A);
+    clock += 9;
+    cache.get(URL_A);
+    expect(probe).toHaveBeenCalledTimes(1);
+    clock += 1;
+    cache.get(URL_A);
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
   it('deduplicates concurrent probes of the same URL', async () => {
     const { probe, pending } = controlledProbe();
     const cache = new ReachabilityCache({ probe, now });
@@ -199,6 +254,75 @@ describe('ReachabilityCache', () => {
       reachable: false,
       reason: 'probe failed',
       checkedAt: now(),
+    });
+  });
+
+  describe('an inconclusive answer', () => {
+    const REASON =
+      'no answer within 3000 ms while this process was busy (event loop 97% utilised)';
+    const inconclusive = (checkedAt: number): EndpointProbeResult => ({
+      reachable: false,
+      reason: REASON,
+      checkedAt,
+      inconclusive: true,
+    });
+
+    it("is not recorded: 'unknown' stays, the next ask probes again, one line is logged", async () => {
+      const logger = mockServices.logger.mock();
+      const { probe, pending } = controlledProbe();
+      const cache = new ReachabilityCache({ probe, now, logger });
+
+      cache.get(URL_A);
+      pending[0].resolve(inconclusive(now()));
+      await settle();
+
+      expect(cache.get(URL_A)).toEqual({ reachable: 'unknown' });
+      // That ask started another probe, because nothing was cached.
+      expect(probe).toHaveBeenCalledTimes(2);
+      expect(logger.info).toHaveBeenCalledTimes(1);
+      expect(logger.info).toHaveBeenCalledWith(
+        `Endpoint probe inconclusive: ${URL_A} (${REASON}); probing again on the next request`,
+      );
+
+      pending[1].resolve({ reachable: true, checkedAt: now() });
+      await settle();
+
+      expect(cache.get(URL_A)).toEqual({ reachable: true, checkedAt: now() });
+      expect(logger.info).toHaveBeenLastCalledWith(
+        `Endpoint reachable: ${URL_A}`,
+      );
+    });
+
+    it('keeps serving the previous answer, which stays stale so the next ask probes again', async () => {
+      const { probe, pending } = controlledProbe();
+      const cache = new ReachabilityCache({ probe, now });
+
+      const first = cache.refresh(URL_A);
+      pending[0].resolve({ reachable: true, checkedAt: now() });
+      await first;
+      const firstCheckedAt = now();
+
+      clock += DEFAULT_REACHABILITY_TTL_MS;
+      expect(cache.get(URL_A)).toEqual({
+        reachable: true,
+        checkedAt: firstCheckedAt,
+      });
+      pending[1].resolve(inconclusive(now()));
+      await settle();
+
+      expect(cache.get(URL_A)).toEqual({
+        reachable: true,
+        checkedAt: firstCheckedAt,
+      });
+      expect(probe).toHaveBeenCalledTimes(3);
+    });
+
+    it('is handed to a caller awaiting the refresh', async () => {
+      const probe = jest.fn(async () => inconclusive(now()));
+      const cache = new ReachabilityCache({ probe, now });
+
+      await expect(cache.refresh(URL_A)).resolves.toEqual(inconclusive(now()));
+      expect(cache.get(URL_A).reachable).toBe('unknown');
     });
   });
 

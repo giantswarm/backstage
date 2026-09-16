@@ -21,12 +21,14 @@ export const musterPlugin = createBackendPlugin({
         httpRouter: coreServices.httpRouter,
         logger: coreServices.logger,
         config: coreServices.rootConfig,
+        lifecycle: coreServices.rootLifecycle,
       },
-      async init({ httpRouter, logger, config }) {
+      async init({ httpRouter, logger, config, lifecycle }) {
         httpRouter.use(
           await createRouter({
             logger,
             config,
+            lifecycle,
           }),
         );
       },

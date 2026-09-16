@@ -172,6 +172,26 @@ describe('createRouter', () => {
       }
     });
 
+    it('defers the warm-up to the startup hook when given the lifecycle', async () => {
+      const { probe } = controlledCache();
+      const hooks: Array<() => void | Promise<void>> = [];
+
+      await buildApp(twoInstallations, {
+        reachability: new ReachabilityCache({ probe }),
+        lifecycle: {
+          addStartupHook: hook => {
+            hooks.push(hook);
+          },
+        },
+      });
+
+      // Nothing probed while the other plugins may still be initialising.
+      expect(probe).not.toHaveBeenCalled();
+      expect(hooks).toHaveLength(1);
+      await hooks[0]();
+      expect(probe).toHaveBeenCalledTimes(2);
+    });
+
     it("answers 'unknown' while the first probe is in flight, never waiting for it", async () => {
       const { cache, pending } = controlledCache();
       const probing = await buildApp(twoInstallations, { reachability: cache });

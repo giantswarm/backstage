@@ -150,4 +150,65 @@ describe('KagentClient over native gRPC (h2c)', () => {
     expect(result.reason).toBe('connection refused (ECONNREFUSED)');
     expect(result.reason).not.toContain('127.0.0.1');
   });
+
+  it("closes the probe's HTTP/2 session once it has settled", async () => {
+    // The installations' transports keep a session alive between calls; a
+    // probe must not leave one idling for connect-node's 15-minute default.
+    const closed = new Promise<void>(resolve =>
+      server.once('session', session => session.once('close', resolve)),
+    );
+
+    await probeKagentGrpc(origin, { timeoutMs: 2_000 });
+
+    await expect(closed).resolves.toBeUndefined();
+  });
+
+  describe('a probe that runs out of budget', () => {
+    // Accepts every stream and never answers, as a black-holed route behaves.
+    let stalling: http2.Http2Server;
+    let stallingOrigin: string;
+    const sessions: http2.ServerHttp2Session[] = [];
+
+    beforeAll(async () => {
+      stalling = http2.createServer(() => undefined);
+      stalling.on('session', session => sessions.push(session));
+      await new Promise<void>(resolve =>
+        stalling.listen(0, '127.0.0.1', resolve),
+      );
+      stallingOrigin = `http://127.0.0.1:${(stalling.address() as AddressInfo).port}`;
+    });
+
+    afterAll(async () => {
+      sessions.forEach(session => session.destroy());
+      await new Promise<void>(resolve => stalling.close(() => resolve()));
+    });
+
+    it('is not reachable when the event loop had time to notice an answer', async () => {
+      const result = await probeKagentGrpc(stallingOrigin, {
+        timeoutMs: 50,
+        loopMeter: () => () => 0.05,
+      });
+
+      expect(result).toEqual({
+        reachable: false,
+        reason: 'no answer within 50 ms',
+        checkedAt: expect.any(Number),
+      });
+    });
+
+    it('is inconclusive when this process was too busy to have noticed one', async () => {
+      const result = await probeKagentGrpc(stallingOrigin, {
+        timeoutMs: 50,
+        loopMeter: () => () => 0.97,
+      });
+
+      expect(result).toEqual({
+        reachable: false,
+        reason:
+          'no answer within 50 ms while this process was busy (event loop 97% utilised)',
+        checkedAt: expect.any(Number),
+        inconclusive: true,
+      });
+    });
+  });
 });
