@@ -392,6 +392,12 @@ export function ToolTable({
  * from the wire type lives in one place. `overrides` carries the parts only
  * the caller knows — the mode, and a display name that is not the tool's own
  * (a workflow shown without its `workflow_` prefix, say).
+ *
+ * Takes the full `description` in preference to muster's shortened `summary`:
+ * the row truncates to its column with an ellipsis and carries the whole text
+ * as its tooltip, so handing it an already-shortened string would cut the
+ * description twice and leave the tooltip with nothing more to show. `summary`
+ * remains the fallback for a tool that reports only that.
  */
 export function toolTableItem(
   tool: ToolSummary,
@@ -401,7 +407,7 @@ export function toolTableItem(
     key: tool.name,
     name: tool.name,
     annotations: tool.annotations,
-    description: tool.summary ?? tool.description,
+    description: tool.description ?? tool.summary,
     ...overrides,
   };
 }

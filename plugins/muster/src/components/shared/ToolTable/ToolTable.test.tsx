@@ -201,7 +201,10 @@ describe('ToolTable', () => {
 });
 
 describe('toolTableItem', () => {
-  it('prefers the summary over the description', () => {
+  // The row truncates to its column and carries the whole text as its tooltip,
+  // so it wants the long form; handing it muster's shortened `summary` would
+  // cut the description twice.
+  it('prefers the description over the summary', () => {
     const item = toolTableItem(
       { name: 'core_ping', summary: 'Short.', description: 'Long.' },
       { mode: { kind: 'static' } },
@@ -210,17 +213,17 @@ describe('toolTableItem', () => {
     expect(item).toMatchObject({
       key: 'core_ping',
       name: 'core_ping',
-      description: 'Short.',
+      description: 'Long.',
     });
   });
 
-  it('falls back to the description', () => {
+  it('falls back to the summary', () => {
     const item = toolTableItem(
-      { name: 'core_ping', description: 'Long.' },
+      { name: 'core_ping', summary: 'Short.' },
       { mode: { kind: 'static' } },
     );
 
-    expect(item.description).toBe('Long.');
+    expect(item.description).toBe('Short.');
   });
 
   it('lets a caller override the displayed name', () => {
