@@ -11,8 +11,6 @@ export { Stat } from '@giantswarm/backstage-plugin-ui-react';
 export type { StatProps } from '@giantswarm/backstage-plugin-ui-react';
 export { DisclosureAccordion } from './DisclosureAccordion';
 export type { DisclosureAccordionProps } from './DisclosureAccordion';
-export { ToolList } from './ToolList';
-export type { ToolListItem, ToolListProps } from './ToolList';
 export { ToolTable, toolTableItem, ToolMarkers, hasMarkers } from './ToolTable';
 export type {
   ToolTableProps,
