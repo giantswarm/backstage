@@ -298,7 +298,10 @@ function ToolTableRow({
       // holds a button; inside a `group`/`radiogroup` the button itself is the
       // control, so the row around it stays generic.
       role={containerRole === 'list' ? 'listitem' : undefined}
-      title={item.description}
+      // The truncated description in full, on hover. It belongs to the control
+      // when the row has one -- there it is also the control's accessible
+      // description, which a title on the wrapper would not be.
+      title={interactive ? undefined : item.description}
     >
       {interactive ? (
         <button
@@ -308,6 +311,7 @@ function ToolTableRow({
           role={mode.kind === 'select' ? mode.role : undefined}
           aria-checked={mode.kind === 'select' ? mode.checked : undefined}
           aria-label={ariaLabel}
+          title={item.description}
           onClick={mode.kind === 'select' ? mode.onToggle : mode.onSelect}
         >
           {cells}

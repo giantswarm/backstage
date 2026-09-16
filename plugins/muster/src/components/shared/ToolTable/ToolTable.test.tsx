@@ -119,6 +119,42 @@ describe('ToolTable', () => {
     expect(screen.getByRole('group')).toBeInTheDocument();
   });
 
+  // The full description is the row's tooltip, and on an interactive row it
+  // also has to be the control's accessible description -- a title on the
+  // wrapper would show on hover but say nothing to a screen reader.
+  it('puts the description on the control when the row has one', () => {
+    renderTable(
+      [
+        staticItem('core_ping', {
+          description: 'Check that the aggregator answers.',
+          mode: {
+            kind: 'select',
+            role: 'checkbox',
+            checked: false,
+            onToggle: jest.fn(),
+          },
+        }),
+      ],
+      { role: 'group' },
+    );
+
+    expect(screen.getByRole('checkbox', { name: 'core_ping' })).toHaveAttribute(
+      'title',
+      'Check that the aggregator answers.',
+    );
+  });
+
+  it('puts the description on the row when there is no control', () => {
+    const { container } = renderTable([
+      staticItem('core_ping', { description: 'Check it answers.' }),
+    ]);
+
+    expect(container.querySelector('[role="listitem"]')).toHaveAttribute(
+      'title',
+      'Check it answers.',
+    );
+  });
+
   it('links the name in link mode', () => {
     renderTable([
       staticItem('core_ping', {
