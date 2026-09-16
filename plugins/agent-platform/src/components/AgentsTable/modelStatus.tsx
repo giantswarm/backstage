@@ -1,12 +1,10 @@
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Cell, CellText, Text } from '@backstage/ui';
-import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
 
 import { stopRowPress } from '../../lib/rowPress';
-import { SERVED_MODEL_READINESS } from '../../lib/serving';
 import { servingRouteRef } from '../../routes';
-import { SERVED_READINESS_ICON, servingTitle } from '../ModelServingStatus';
+import { ServedReadinessLabel, servingTitle } from '../ModelServingStatus';
 import type { AgentRow } from '../AgentsDataProvider';
 
 /**
@@ -36,13 +34,11 @@ export function AgentModelCell({ row }: { row: AgentRow }) {
     return <CellText title={row.model ?? '—'} />;
   }
 
-  const { label, intent } = SERVED_MODEL_READINESS[serving.readiness];
   const title = servingTitle(serving);
   const status = (
-    <StatusLabel
-      label={label}
-      intent={intent}
-      icon={SERVED_READINESS_ICON[serving.readiness]}
+    <ServedReadinessLabel
+      readiness={serving.readiness}
+      reason={serving.reason}
       title={title}
     />
   );

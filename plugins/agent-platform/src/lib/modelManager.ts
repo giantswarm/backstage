@@ -215,12 +215,33 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   /** Inference URL (KServe). */
   endpoint: wireString,
   node: wireString,
-  /** Ollama `loaded`; KServe InferenceService readiness `Ready`, `NotReady`, `Pending` or `Terminating`. */
+  /**
+   * Ollama `loaded`; KServe — the serving object's state: `Ready`,
+   * `NotReady` (a condition says so), `Pending` (no verdict yet, or — from
+   * model-manager 0.23.4 — the predictor pod waits for a node or an image,
+   * whatever the conditions say) or `Terminating` (being deleted).
+   */
   status: wireString,
-  /** KServe — why the model is not ready. */
+  /**
+   * KServe — why the model is not ready: the reason and the condition's (or
+   * the pod's) text as one line, `Unschedulable 0/3 nodes are available…`.
+   */
   message: wireString,
-  /** KServe — the InferenceService name (also the served model name). */
+  /**
+   * KServe — the short word for a non-Ready `status` (model-manager 0.23.4
+   * on): the Ready condition's reason (`HTTPRoutesNotReady`), a failed
+   * load's, or the predictor pod's while it waits (`Unschedulable`,
+   * `ImagePullBackOff`). `message` then starts with it.
+   */
+  reason: wireString,
+  /** KServe — the serving object's name (also the served model name). */
   resource: wireString,
+  /**
+   * KServe — the serving object's kind behind `resource`: `InferenceService`
+   * or `LLMInferenceService` (model-manager 0.23.4 on; absent before, when
+   * every object was an InferenceService).
+   */
+  kind: wireString,
   /** KServe — the preset the InferenceService was created from. */
   preset: wireString,
   /** KServe — accelerators the predictor requests. */

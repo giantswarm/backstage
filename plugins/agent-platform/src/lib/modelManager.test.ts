@@ -170,6 +170,41 @@ describe('modelManagerModelSchema', () => {
   });
 });
 
+describe('modelManagerModelSchema: the reason behind a state (model-manager 0.23.4)', () => {
+  it('reads reason and kind on the running entry, and leaves them unset before', () => {
+    const pending = modelManagerModelSchema.parse({
+      name: 'Qwen/Qwen3-4B-Instruct-2507',
+      loaded: true,
+      running: {
+        name: 'Qwen/Qwen3-4B-Instruct-2507',
+        sizeBytes: 8_000_000_000,
+        status: 'Pending',
+        reason: 'Unschedulable',
+        message:
+          'Unschedulable 0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+        resource: 'qwen3-4b-instruct',
+        kind: 'LLMInferenceService',
+      },
+    });
+    const older = modelManagerModelSchema.parse(modelsKserve.models[0]);
+
+    expect(pending.running).toMatchObject({
+      status: 'Pending',
+      reason: 'Unschedulable',
+      kind: 'LLMInferenceService',
+    });
+    expect(older.running?.reason).toBeUndefined();
+    expect(older.running?.kind).toBeUndefined();
+    // An empty reason is no reason.
+    expect(
+      modelManagerModelSchema.parse({
+        name: 'x',
+        running: { name: 'x', status: 'NotReady', reason: '' },
+      }).running?.reason,
+    ).toBeUndefined();
+  });
+});
+
 describe('modelManagerJobSchema', () => {
   it('reads finished pull jobs with their wired ModelConfig', () => {
     const parsed = parseModelManagerList(jobs, 'jobs', modelManagerJobSchema);

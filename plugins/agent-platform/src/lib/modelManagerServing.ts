@@ -14,6 +14,7 @@ import type {
 } from './modelManager';
 import {
   endpointAuthority,
+  explanationWithoutReason,
   notLoadedReadiness,
   type GpuNode,
   type ServedModel,
@@ -156,9 +157,11 @@ export function namespaceOfPredictorUrl(
  * backend that loads on demand (Ollama), `notServing` on one that does not
  * when a ModelConfig points at the model, `available` otherwise or when the
  * block is absent. On KServe the inventory is the per-node download cache plus
- * the InferenceServices: a served model (`running`) takes the
- * InferenceService's own readiness as model-manager reads it from the CR and
- * is named after the InferenceService — the name agents address it by and the
+ * the InferenceServices: a served model (`running`) takes the serving
+ * object's own state as model-manager reads it from the CR and its predictor
+ * pod — with the backend's reason (`Unschedulable`) as the row's word and the
+ * rest of the message as the explanation — and is named after the
+ * InferenceService — the name agents address it by and the
  * ModelConfig's `spec.model` — so that `findServedModel` and the CR source
  * agree on it; a cached model nobody serves sits on its node ("downloaded on
  * …") and is named after its repository. Every model is `notReady` while the
@@ -184,28 +187,45 @@ export function toServedModelFromManager(
 
   let readiness: ServedModel['readiness'];
   let readinessMessage: string | undefined;
+  let readinessReason: string | undefined;
   if (!backend.healthy) {
     readiness = 'notReady';
     readinessMessage =
       backend.message ??
       `The ${backend.backend} backend is not healthy; its inventory may be stale.`;
   } else if (kserve && running) {
-    // The InferenceService's readiness, as model-manager reads the CR.
+    // The serving object's state as model-manager reads it from the CR and
+    // its predictor pod (0.23.4 on: a waiting pod makes the object Pending,
+    // with the pod's reason). `message` is the reason and the text on one
+    // line: the reason becomes the row's own word, the text the explanation.
     const status = running.status ?? 'Pending';
-    const what = `InferenceService ${resource ?? model.name}`;
+    const what = `${running.kind ?? 'InferenceService'} ${resource ?? model.name}`;
     if (status === 'Ready') {
       readiness = 'ready';
       readinessMessage = `${what} is ready.`;
-    } else if (status === 'Pending') {
-      readiness = 'pending';
-      readinessMessage = running.message ?? `${what} has not reported yet.`;
+    } else if (status === 'Terminating') {
+      // The deletion is the state; a reason left from before says nothing.
+      readiness = 'terminating';
+      readinessMessage = `${what} is being deleted.`;
     } else {
-      readiness = 'notReady';
-      readinessMessage =
-        running.message ??
-        (status === 'Terminating'
-          ? `${what} is being deleted.`
-          : `${what} is not ready.`);
+      readiness = status === 'Pending' ? 'pending' : 'notReady';
+      readinessReason = running.reason;
+      const explanation = explanationWithoutReason(
+        running.message,
+        running.reason,
+      );
+      if (explanation) {
+        readinessMessage = explanation;
+      } else if (running.reason) {
+        readinessMessage = `${what} is ${
+          readiness === 'pending' ? 'pending' : 'not ready'
+        }: ${running.reason}.`;
+      } else {
+        readinessMessage =
+          readiness === 'pending'
+            ? `${what} has not reported yet.`
+            : `${what} is not ready.`;
+      }
     }
   } else if (model.loaded) {
     readiness = 'ready';
@@ -298,6 +318,7 @@ export function toServedModelFromManager(
     pinned: running?.pinned,
     readiness,
     readinessMessage,
+    readinessReason,
     node: running?.node ?? model.node,
     nodeSource: kserve && running?.node ? 'pod' : undefined,
     gpuCount: running?.gpus,

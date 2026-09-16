@@ -5,7 +5,6 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { Link } from '@backstage/core-components';
 import { Button, Flex, Text } from '@backstage/ui';
-import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
 
 import { usePullModel } from '../../hooks/usePullJobs';
 import { useServedModelAction } from '../../hooks/useServedModelAction';
@@ -17,7 +16,7 @@ import {
   type ServingShortcut,
 } from '../../lib/serving';
 import { servingRouteRef } from '../../routes';
-import { SERVED_READINESS_ICON } from './readinessIcon';
+import { ServedReadinessLabel } from './ServedReadinessLabel';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -41,11 +40,14 @@ export function describeServedBy(serving: ClientServingSummary): string {
     : `Served by ${what}`;
 }
 
-/** The tooltip: what it is, the state in a sentence, and why. */
+/**
+ * The tooltip: what it is, the state in a sentence — with the backend's word
+ * for it where it has one — and why.
+ */
 export function servingTitle(serving: ClientServingSummary): string {
   return `${describeServedModel(serving)} is ${
     SERVED_MODEL_READINESS[serving.readiness].phrase
-  } — ${serving.message}`;
+  }${serving.reason ? ` (${serving.reason})` : ''} — ${serving.message}`;
 }
 
 export type ModelServingStatusProps = {
@@ -76,7 +78,6 @@ export function ModelServingStatus({
   variant = 'cell',
 }: ModelServingStatusProps) {
   const servingRoute = useRouteRef(servingRouteRef);
-  const { label, intent } = SERVED_MODEL_READINESS[serving.readiness];
   const title = servingTitle(serving);
   const notServing = serving.readiness === 'notServing';
 
@@ -93,10 +94,9 @@ export function ModelServingStatus({
       {/* Tagged so a test (and a screen reader) can tell the model's state
           apart from the ModelConfig's own Accepted / agent's Ready label. */}
       <span data-testid="model-serving-readiness">
-        <StatusLabel
-          label={label}
-          intent={intent}
-          icon={SERVED_READINESS_ICON[serving.readiness]}
+        <ServedReadinessLabel
+          readiness={serving.readiness}
+          reason={serving.reason}
           title={title}
         />
       </span>

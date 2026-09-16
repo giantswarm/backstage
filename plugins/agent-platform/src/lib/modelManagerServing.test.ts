@@ -236,10 +236,14 @@ describe('toServedModelFromManager', () => {
 
     expect(pending.readiness).toBe('pending');
     expect(pending.readinessMessage).toMatch(/has not reported yet/);
+    expect(pending.readinessReason).toBeUndefined();
     expect(failing.readiness).toBe('notReady');
     expect(failing.readinessMessage).toBe('predictor pod is crash-looping');
-    expect(terminating.readiness).toBe('notReady');
-    expect(terminating.readinessMessage).toMatch(/being deleted/);
+    expect(failing.readinessReason).toBeUndefined();
+    expect(terminating.readiness).toBe('terminating');
+    expect(terminating.readinessMessage).toBe(
+      'InferenceService qwen3-14b is being deleted.',
+    );
   });
 
   it('maps a node of the kserve inventory with its budget and cache', () => {
@@ -818,5 +822,114 @@ describe('several backends behind one model-manager', () => {
     expect(toGpuNodeFromManager('gpu', kserveNodes[0], 'kserve').id).toBe(
       `gpu/${kserveNodes[0].name}`,
     );
+  });
+});
+
+describe('toServedModelFromManager · the reason behind a state (model-manager 0.23.4)', () => {
+  const base = kserveModels[0];
+  const running = base.running!;
+
+  it('reads a waiting predictor pod as Pending with the scheduler’s word and its text as the explanation', () => {
+    const served = toServedModelFromManager('gpu', kserve, {
+      ...base,
+      running: {
+        ...running,
+        status: 'Pending',
+        reason: 'Unschedulable',
+        message:
+          'Unschedulable 0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+        kind: 'LLMInferenceService',
+        node: undefined,
+      },
+    });
+
+    expect(served.readiness).toBe('pending');
+    expect(served.readinessReason).toBe('Unschedulable');
+    // Said once: the label carries the reason, the line the rest.
+    expect(served.readinessMessage).toBe(
+      '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+    );
+    expect(served.node).toBe('gpu-node-1');
+  });
+
+  it('carries a condition’s reason next to Not ready, and falls back to its own sentence when the message is the reason alone', () => {
+    const explained = toServedModelFromManager('gpu', kserve, {
+      ...base,
+      running: {
+        ...running,
+        status: 'NotReady',
+        reason: 'PredictorNotReady',
+        message:
+          'PredictorNotReady Deployment does not have minimum availability.',
+      },
+    });
+    const bare = toServedModelFromManager('gpu', kserve, {
+      ...base,
+      running: {
+        ...running,
+        status: 'NotReady',
+        reason: 'HTTPRoutesNotReady',
+        message: 'HTTPRoutesNotReady',
+        kind: 'LLMInferenceService',
+      },
+    });
+    const pendingBare = toServedModelFromManager('gpu', kserve, {
+      ...base,
+      running: {
+        ...running,
+        status: 'Pending',
+        reason: 'ContainerCreating',
+        message: 'ContainerCreating',
+      },
+    });
+
+    expect(explained).toMatchObject({
+      readiness: 'notReady',
+      readinessReason: 'PredictorNotReady',
+      readinessMessage: 'Deployment does not have minimum availability.',
+    });
+    expect(bare).toMatchObject({
+      readiness: 'notReady',
+      readinessReason: 'HTTPRoutesNotReady',
+      readinessMessage:
+        'LLMInferenceService qwen3-14b is not ready: HTTPRoutesNotReady.',
+    });
+    expect(pendingBare).toMatchObject({
+      readiness: 'pending',
+      readinessReason: 'ContainerCreating',
+      readinessMessage:
+        'InferenceService qwen3-14b is pending: ContainerCreating.',
+    });
+  });
+
+  it('reads Terminating as Stopping and lets a stale reason go', () => {
+    const served = toServedModelFromManager('gpu', kserve, {
+      ...base,
+      running: {
+        ...running,
+        status: 'Terminating',
+        reason: 'PredictorNotReady',
+        message:
+          'PredictorNotReady Deployment does not have minimum availability.',
+      },
+    });
+
+    expect(served.readiness).toBe('terminating');
+    expect(served.readinessReason).toBeUndefined();
+    expect(served.readinessMessage).toBe(
+      'InferenceService qwen3-14b is being deleted.',
+    );
+  });
+
+  it('names no reason on a ready model, nor on backends without the field', () => {
+    const ready = toServedModelFromManager('gpu', kserve, {
+      ...base,
+      running: { ...running, reason: 'Stale' },
+    });
+    const loaded = toServedModelFromManager('lab', ollama, ollamaModels[0]);
+
+    expect(ready.readiness).toBe('ready');
+    expect(ready.readinessReason).toBeUndefined();
+    expect(loaded.readinessReason).toBeUndefined();
   });
 });

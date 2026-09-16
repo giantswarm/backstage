@@ -13,7 +13,6 @@ import { LinearProgress } from '@material-ui/core';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
 
 import { modelDetailRouteRef } from '../../routes';
 import { stopRowPress } from '../../lib/rowPress';
@@ -26,10 +25,14 @@ import {
   isServedInferenceService,
   lacksToolCalling,
 } from '../../lib/modelManagerServing';
-import type { ServedModel, ServingBackend } from '../../lib/serving';
+import type {
+  ServedModel,
+  ServedModelReadiness,
+  ServingBackend,
+} from '../../lib/serving';
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
 import type { WiringState } from '../../hooks/useAutoWireServedModels';
-import { SERVED_READINESS_PRESENTATION } from './servedReadinessStatus';
+import { ServedReadinessLabel } from '../ModelServingStatus';
 import {
   CopyEndpointButton,
   ServedModelsGroupHeader,
@@ -425,16 +428,50 @@ export function downloadLine(download: ServedModelDownload): string {
 /**
  * The lines under the readiness label of {@link ServedModelStatusCell}, each
  * from the row's fields only — no capabilities, no installation lookups — so
- * a row says the same thing wherever it renders. One line at most: a download
- * row's progress ({@link downloadLine}), a served model's memory state
- * ({@link memoryLine}, the GPU share included).
+ * a row says the same thing wherever it renders: a download row's progress
+ * ({@link downloadLine}); else the backend's explanation where it named a
+ * reason (the label says the word, this line says why — the scheduler's
+ * text, the kubelet's — under it, not only on hover), then a served model's
+ * memory state ({@link memoryLine}, the GPU share included) — for a model
+ * that runs or could: a serving object that is pending, failed or being
+ * deleted has no footprint to report, whatever its inventory entry says
+ * (KServe lists the preset's weights as the size of a model it has not
+ * started).
  */
 export function servedModelStatusLines(row: ServedModelRow): string[] {
   if (isDownloadRow(row)) {
     return [downloadLine(row.download)];
   }
-  const memory = memoryLine(row);
-  return memory ? [memory] : [];
+  const lines: string[] = [];
+  const explanation = explanationLine(row);
+  if (explanation) {
+    lines.push(explanation);
+  }
+  const memory = hasFootprint(row.readiness) ? memoryLine(row) : undefined;
+  if (memory) {
+    lines.push(memory);
+  }
+  return lines;
+}
+
+/** Whether a row in this state can have memory figures worth a line. */
+function hasFootprint(readiness: ServedModelReadiness): boolean {
+  return (
+    readiness !== 'pending' &&
+    readiness !== 'notReady' &&
+    readiness !== 'terminating'
+  );
+}
+
+/**
+ * The backend's explanation as a line of its own — only where the backend
+ * also named a reason; a row without one keeps its explanation on hover, as
+ * before.
+ */
+function explanationLine(
+  row: Pick<ServedModelRow, 'readinessReason' | 'readinessMessage'>,
+): string | undefined {
+  return row.readinessReason ? row.readinessMessage : undefined;
 }
 
 export type ServedModelStatusCellProps = {
@@ -442,31 +479,31 @@ export type ServedModelStatusCellProps = {
 };
 
 /**
- * The one status cell of a served model: the readiness label (vocabulary,
- * intent and icon from `servedReadinessStatus`, the backend's explanation as
- * the tooltip) with the memory state under it — `Ready` / `6.6 GiB in memory
- * · 100 % GPU · evicts 13:05`, `Available` / `Not loaded` — from
- * {@link servedModelStatusLines}, the memory line explained on hover
- * ({@link memoryLineTitle}). What used to be the Memory column, told where
- * the status is. On a download row the line is the pull's progress
- * (`Downloading` / `pulling 6f7f… · 31 % · 114 MiB / 381 MiB`) with a
- * progress bar under it while the pull runs, and the failure in red once it
- * has failed (`Not ready` / `Download failed: …`).
+ * The one status cell of a served model: the readiness label
+ * ({@link ServedReadinessLabel} — the vocabulary's word and glyph, the
+ * backend's reason after it, the explanation as the tooltip) with the lines
+ * of {@link servedModelStatusLines} under it — `Pending · Unschedulable` /
+ * `0/3 nodes are available: 3 Insufficient nvidia.com/gpu.`, `Ready` /
+ * `6.6 GiB in memory · 100 % GPU · evicts 13:05`, `Available` / `Not
+ * loaded` — the memory line explained on hover ({@link memoryLineTitle}).
+ * What used to be the Memory column, told where the status is. On a download
+ * row the line is the pull's progress (`Downloading` / `pulling 6f7f… · 31 %
+ * · 114 MiB / 381 MiB`) with a progress bar under it while the pull runs,
+ * and the failure in red once it has failed (`Not ready` / `Download
+ * failed: …`).
  */
 export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
-  const { label, intent, icon } = SERVED_READINESS_PRESENTATION[row.readiness];
   const lines = servedModelStatusLines(row);
-  const memory = memoryLine(row);
+  const memory = hasFootprint(row.readiness) ? memoryLine(row) : undefined;
   const memoryTitle = memoryLineTitle(row);
   const download = isDownloadRow(row) ? row.download : undefined;
   const percent = download ? downloadPercent(download) : undefined;
   return (
     <Cell>
       <Flex direction="column" gap="1">
-        <StatusLabel
-          label={label}
-          intent={intent}
-          icon={icon}
+        <ServedReadinessLabel
+          readiness={row.readiness}
+          reason={row.readinessReason}
           title={row.readinessMessage}
         />
         {lines.map(line => (

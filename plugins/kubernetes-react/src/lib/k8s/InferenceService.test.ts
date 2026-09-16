@@ -195,6 +195,77 @@ describe('InferenceService', () => {
         }).getReadinessMessage(),
       ).toBe('Deployment does not have minimum availability.');
     });
+
+    it('names the reason for a non-ready state the way it finds the explanation', () => {
+      expect(
+        makeInferenceService({
+          status: {
+            observedGeneration: 2,
+            conditions: [
+              {
+                type: 'Ready',
+                status: 'False',
+                reason: 'RevisionFailed',
+                message: 'Revision failed: OOMKilled',
+              },
+            ],
+          },
+        }).getReadinessReason(),
+      ).toBe('RevisionFailed');
+
+      expect(
+        makeInferenceService({
+          status: {
+            conditions: [{ type: 'Ready', status: 'False' }],
+            modelStatus: {
+              lastFailureInfo: {
+                reason: 'ModelLoadFailed',
+                message: 'CUDA out of memory',
+              },
+            },
+          },
+        }).getReadinessReason(),
+      ).toBe('ModelLoadFailed');
+
+      expect(
+        makeInferenceService({
+          status: {
+            conditions: [
+              { type: 'Ready', status: 'Unknown' },
+              {
+                type: 'PredictorReady',
+                status: 'False',
+                reason: 'PredictorNotReady',
+              },
+            ],
+          },
+        }).getReadinessReason(),
+      ).toBe('PredictorNotReady');
+    });
+
+    it('names no reason while ready, or when nothing carries one', () => {
+      expect(
+        makeInferenceService({ status: readyStatus }).getReadinessReason(),
+      ).toBeUndefined();
+      expect(
+        makeInferenceService({
+          status: {
+            conditions: [{ type: 'Ready', status: 'True', reason: 'Stale' }],
+          },
+        }).getReadinessReason(),
+      ).toBeUndefined();
+      expect(makeInferenceService().getReadinessReason()).toBeUndefined();
+      expect(
+        makeInferenceService({
+          metadata: {
+            name: 'qwen3-14b',
+            namespace: 'kserve',
+            deletionTimestamp: '2026-09-16T16:11:33Z',
+          },
+        }).getDeletionTimestamp(),
+      ).toBe('2026-09-16T16:11:33Z');
+      expect(makeInferenceService().getDeletionTimestamp()).toBeUndefined();
+    });
   });
 
   describe('endpoints', () => {

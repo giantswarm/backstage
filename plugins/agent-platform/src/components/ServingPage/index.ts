@@ -57,7 +57,3 @@ export {
   StopServedModelDialog,
   type StopServedModelDialogProps,
 } from './StopServedModelDialog';
-export {
-  SERVED_READINESS_PRESENTATION,
-  ServedReadinessCell,
-} from './servedReadinessStatus';
