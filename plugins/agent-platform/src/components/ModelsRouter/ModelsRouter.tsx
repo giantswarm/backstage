@@ -64,8 +64,10 @@ const LegacyDetailRedirect = () => {
 // The routed view, and the tab strip above it.
 //
 // The two serving views only exist once a reachable installation has a serving
-// layer this portal can see (or could not be asked). Their routes stay mounted
-// regardless, so a deep link renders the view's own empty state.
+// layer this portal can see (or could not be asked). A model-manager that
+// answers counts, backends or not: it ships with none, and the Serving view is
+// where one is registered. Their routes stay mounted regardless, so a deep
+// link renders the view's own empty state.
 //
 // The strip is dropped in exactly one case: the list, on a portal with no
 // serving layer. That is the only place a lone "Model configs" tab would lead

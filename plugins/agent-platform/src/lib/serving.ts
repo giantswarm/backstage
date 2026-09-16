@@ -533,9 +533,15 @@ export type GpuCapacityUnavailableReason = 'forbidden' | 'error';
 export type ServingSourceSnapshot = {
   /** Discovery or reads still in flight (more may appear). */
   isLoading: boolean;
-  /** Installations where this source found a serving backend. */
+  /**
+   * Installations where this source found a serving layer: a serving
+   * backend, or a model-manager that answers but runs no backend yet.
+   */
   installations: string[];
-  /** The backend per installation in `installations`. */
+  /**
+   * The (default) backend per installation in `installations` — absent for
+   * one whose model-manager has no backend registered yet.
+   */
   backends: Record<string, ServingBackend>;
   /**
    * Every backend any source reports for an installation. Filled by the
@@ -872,6 +878,23 @@ export function overlayServedModel(
 }
 
 /**
+ * Every backend the snapshot reports for an installation: the merge's list
+ * where it has one, else the installation's label alone. Empty for an
+ * installation whose model-manager runs no backend yet.
+ */
+export function backendsOn(
+  snapshot: Pick<ServingSourceSnapshot, 'backends' | 'sourceBackends'>,
+  installation: string,
+): ServingBackend[] {
+  const listed = snapshot.sourceBackends?.[installation];
+  if (listed) {
+    return listed;
+  }
+  const label = snapshot.backends[installation];
+  return label ? [label] : [];
+}
+
+/**
  * Merge per-source snapshots. Later sources win the `backends` label for an
  * installation both claim; capabilities are OR-ed per flag, so an
  * installation offers what any of its sources can do — the CR source's GPU
@@ -909,7 +932,12 @@ export function mergeServingSnapshots(
   const unreachable = new Set<string>();
   const servedModels: ServedModel[] = [];
   const gpuNodes = new Map<string, GpuNode>();
+  // Every installation any source lists, in source order — not the keys of
+  // the label map: a model-manager with no backend yet has no label and is a
+  // serving layer all the same.
+  const installations = new Set<string>();
   for (const snapshot of snapshots) {
+    snapshot.installations.forEach(name => installations.add(name));
     Object.assign(backends, snapshot.backends);
     for (const [installation, backend] of Object.entries(snapshot.backends)) {
       const known = sourceBackends[installation] ?? [];
@@ -1012,7 +1040,7 @@ export function mergeServingSnapshots(
   }
   return {
     isLoading: snapshots.some(snapshot => snapshot.isLoading),
-    installations: Object.keys(backends),
+    installations: Array.from(installations),
     backends,
     sourceBackends,
     capabilities,

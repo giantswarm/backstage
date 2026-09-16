@@ -89,6 +89,27 @@ describe('GpuCapacityPage', () => {
     expect(screen.getByText(/do not report their nodes/)).toBeInTheDocument();
   });
 
+  it('says no GPU node pool exists yet when the model-manager in view runs no backend', async () => {
+    mockUseServing.mockReturnValue({
+      ...kserveServing,
+      installations: ['inst-2'],
+      backends: {},
+      sourceBackends: { 'inst-2': [] },
+      capabilities: {},
+      gpuNodes: [],
+    });
+
+    await renderInTestApp(<GpuCapacityPage />);
+
+    expect(screen.getByText('No GPU node pools yet')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /model-manager on inst-2 is running with no backend registered/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No GPU inventory')).not.toBeInTheDocument();
+  });
+
   it('holds the empty state back while the serving layer is still being discovered', async () => {
     mockUseServing.mockReturnValue({
       ...kserveServing,

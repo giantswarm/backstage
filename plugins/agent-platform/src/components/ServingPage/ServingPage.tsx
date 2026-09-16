@@ -520,9 +520,7 @@ export function ServingPage() {
     rows.length === 0 &&
     !backendsWithoutModels &&
     serving.unreachableInstallations.length === 0 &&
-    installations.every(
-      installation => backendsOn(serving, installation).length === 0,
-    );
+    installations.every(name => backendsOn(serving, name).length === 0);
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
     emptyBody = <Progress aria-label="Looking for a serving layer" />;

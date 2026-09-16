@@ -97,6 +97,13 @@ export function descriptorFor(
  *    footprint and the ModelConfig model-manager created for it.
  *    (`/api/v1/loaded` says nothing more, so it is not read here.)
  *
+ * A model-manager that answers with **no backend** is a serving layer all the
+ * same: it ships that way (bumblebee-plans#46, D5), and the Serving view is
+ * where a backend gets registered. The installation is listed with an empty
+ * inventory, no backend label and no capabilities — never as "no serving
+ * layer", which is reserved for an installation without a model-manager to
+ * proxy at all.
+ *
  * Degradation: an installation whose descriptors or inventory cannot be read
  * (the gateway rejected the token, model-manager is down, the user is not
  * signed in there) is surfaced as unreachable — never dropped silently, since
@@ -162,7 +169,10 @@ export function useModelManagerServingSource(
         }
         known.push({ ...descriptor, backend });
       }
-      if (known.length > 0) {
+      // Zero backends is an answer, not "not answered yet": model-manager is
+      // reachable and runs none. Only a list made up entirely of backends
+      // this portal does not know is left out (warned about above).
+      if (known.length > 0 || descriptors.length === 0) {
         result[installation] = known;
       }
     });
@@ -243,9 +253,13 @@ export function useModelManagerServingSource(
       }
 
       active.push(installation);
-      // The installation's label is its default backend; every backend has
-      // a say, its own flags and its own loading semantics.
-      backendByInstallation[installation] = descriptors[0].backend;
+      // The installation's label is its default backend (none while no
+      // backend is registered yet); every backend has a say, its own flags
+      // and its own loading semantics.
+      const [defaultBackend] = descriptors;
+      if (defaultBackend) {
+        backendByInstallation[installation] = defaultBackend.backend;
+      }
       sourceBackends[installation] = descriptors.map(
         descriptor => descriptor.backend,
       );
@@ -268,7 +282,9 @@ export function useModelManagerServingSource(
       }
       capabilities[installation] = merged;
       backendCapabilities[installation] = perBackendCapabilities;
-      const defaultLoading = perBackendLoading[descriptors[0].backend];
+      const defaultLoading = defaultBackend
+        ? perBackendLoading[defaultBackend.backend]
+        : undefined;
       if (defaultLoading) {
         loading[installation] = defaultLoading;
       }
