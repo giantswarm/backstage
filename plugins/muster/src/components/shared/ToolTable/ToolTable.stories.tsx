@@ -57,6 +57,14 @@ const meta = {
   tags: ['autodocs'],
   parameters: {
     docs: {
+      // Show the story's own source, never a serialisation of what it
+      // rendered. `items` carries React elements (a `ButtonIcon` in
+      // `trailing`, a `Badge` in `meta`) and Storybook's dynamic "Show code"
+      // serialiser walks those element trees recursively — on this file it
+      // allocated ~3.5 GB and died with "Invalid string length" (V8's maximum
+      // string), taking the whole docs page with it. The CSF source is also
+      // simply the more useful thing to read: it is what a caller would copy.
+      source: { type: 'code' },
       description: {
         component: [
           'The house list of tools: a borderless table of name, markers and description, without a header row.',
@@ -306,7 +314,11 @@ export const Radios: Story = {
 
     return <ToolTable {...args} items={items} role="radiogroup" />;
   },
-  args: { items: [], ariaLabel: 'Pick a preset' },
+  args: {
+    items: [],
+    ariaLabel: 'Pick a preset',
+    role: 'group',
+  },
 };
 
 /**
