@@ -12,7 +12,11 @@ import {
   Pod,
   type InferenceServiceInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import type { GpuNode, ServedModel } from './serving';
+import {
+  explanationWithoutReason,
+  type GpuNode,
+  type ServedModel,
+} from './serving';
 import { AGENT_PLATFORM_PRESET_LABEL } from './servingPresets';
 
 /**
@@ -157,7 +161,17 @@ export function findPredictorPod(
   return candidates.find(pod => pod.getPhase() === 'Running') ?? candidates[0];
 }
 
-/** One InferenceService as a backend-agnostic served model. */
+/**
+ * One InferenceService as a backend-agnostic served model.
+ *
+ * The state is the CR's conditions — unless the object is being deleted
+ * (`terminating`), or its predictor pod waits for a node or an image, which
+ * says more than the conditions do: the row is then `pending` with the pod's
+ * reason (`Unschedulable`, `ImagePullBackOff`) and message. The same rule
+ * model-manager applies from 0.23.4 on, so the two sources agree on a folded
+ * row. A non-ready condition's reason becomes `readinessReason` and leaves
+ * the explanation, so the row does not say it twice.
+ */
 export function toServedModel(
   inferenceService: InferenceService,
   pods: Pod[] = [],
@@ -168,6 +182,25 @@ export function toServedModel(
   const pod = findPredictorPod(inferenceService, pods);
   const podNode = pod?.getNodeName();
   const pinnedNode = inferenceService.getPinnedNode();
+
+  let readiness: ServedModel['readiness'] = inferenceService.getReadiness();
+  let readinessReason: string | undefined;
+  let readinessMessage = inferenceService.getReadinessMessage();
+  const waiting = pod?.getPendingState();
+  if (inferenceService.getDeletionTimestamp()) {
+    readiness = 'terminating';
+    readinessMessage = `InferenceService ${inferenceService.getName()} is being deleted.`;
+  } else if (readiness !== 'ready' && waiting) {
+    readiness = 'pending';
+    readinessReason = waiting.reason;
+    readinessMessage = waiting.message ?? readinessMessage;
+  } else if (readiness !== 'ready') {
+    readinessReason = inferenceService.getReadinessReason();
+    readinessMessage = explanationWithoutReason(
+      readinessMessage,
+      readinessReason,
+    );
+  }
 
   let node: string | undefined;
   let nodeSource: ServedModel['nodeSource'];
@@ -187,8 +220,9 @@ export function toServedModel(
     namespace,
     modelSource: inferenceService.getStorageUri(),
     runtime: inferenceService.getRuntime() ?? inferenceService.getModelFormat(),
-    readiness: inferenceService.getReadiness(),
-    readinessMessage: inferenceService.getReadinessMessage(),
+    readiness,
+    readinessMessage,
+    readinessReason,
     node,
     nodeSource,
     gpuCount: inferenceService.getGpuRequest(),

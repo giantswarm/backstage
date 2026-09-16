@@ -354,7 +354,7 @@ export function NewSessionComposer({
             status="warning"
             title={`${selectedAgent.name}'s model is ${
               SERVED_MODEL_READINESS[modelWarning.readiness].phrase
-            }`}
+            }${modelWarning.reason ? ` (${modelWarning.reason})` : ''}`}
             description={`${SERVING_BACKEND_LABEL[modelWarning.backend]} ${
               modelWarning.namespace ? `${modelWarning.namespace}/` : ''
             }${modelWarning.name}: ${

@@ -300,6 +300,30 @@ export class InferenceService extends KubeObject<InferenceServiceInterface> {
     )?.message;
   }
 
+  /**
+   * The short word for a non-ready state, found the way
+   * {@link getReadinessMessage} finds the explanation: the `Ready`
+   * condition's reason (`PredictorNotReady`, `RevisionFailed`), else the last
+   * model-load failure's, else the reason of the first failing component
+   * condition. `undefined` while ready, and when nothing names one.
+   */
+  getReadinessReason(): string | undefined {
+    const ready = this.getReadyCondition();
+    if (ready?.status === 'True') {
+      return undefined;
+    }
+    if (ready?.reason) {
+      return ready.reason;
+    }
+    const failure = this.jsonData.status?.modelStatus?.lastFailureInfo;
+    if (failure?.reason) {
+      return failure.reason;
+    }
+    return this.getConditions()?.find(
+      condition => condition.status !== 'True' && condition.reason,
+    )?.reason;
+  }
+
   /** The external (ingress) URL, when the deployment mode publishes one. */
   getUrl() {
     return this.jsonData.status?.url;

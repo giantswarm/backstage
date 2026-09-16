@@ -164,6 +164,14 @@ export class KubeObject<T extends KubeObjectInterface = any> {
     return this.jsonData.metadata.creationTimestamp;
   }
 
+  /**
+   * When the object's deletion was requested (`metadata.deletionTimestamp`):
+   * set while finalizers still hold the object, absent otherwise.
+   */
+  getDeletionTimestamp() {
+    return this.jsonData.metadata.deletionTimestamp;
+  }
+
   findLabel(label: string) {
     return this.jsonData.metadata.labels?.[label];
   }

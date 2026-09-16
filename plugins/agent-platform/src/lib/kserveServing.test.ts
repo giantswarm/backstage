@@ -166,6 +166,136 @@ describe('toServedModel', () => {
     expect(served.readinessMessage).toBe(
       'Deployment does not have minimum availability.',
     );
+    // The condition's reason is the row's word for it.
+    expect(served.readinessReason).toBe('RevisionFailed');
+  });
+
+  it('says the reason once: a failure info that starts with it leaves the text as the explanation', () => {
+    const served = toServedModel(
+      isvc({
+        status: {
+          observedGeneration: 1,
+          conditions: [{ type: 'Ready', status: 'False' }],
+          modelStatus: {
+            lastFailureInfo: {
+              reason: 'ModelLoadFailed',
+              message: 'CUDA out of memory',
+            },
+          },
+        },
+      }),
+    );
+
+    expect(served.readiness).toBe('notReady');
+    expect(served.readinessReason).toBe('ModelLoadFailed');
+    expect(served.readinessMessage).toBe('CUDA out of memory');
+  });
+
+  it('reads a waiting predictor pod as Pending with the pod’s reason, whatever the conditions say', () => {
+    const notReady = isvc({
+      status: {
+        observedGeneration: 1,
+        conditions: [
+          {
+            type: 'Ready',
+            status: 'False',
+            reason: 'PredictorNotReady',
+            message: 'Deployment does not have minimum availability.',
+          },
+        ],
+      },
+    });
+    const unschedulable = pod({
+      spec: { nodeName: undefined, containers: [] },
+      status: {
+        phase: 'Pending',
+        conditions: [
+          {
+            type: 'PodScheduled',
+            status: 'False',
+            reason: 'Unschedulable',
+            message: '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+          },
+        ],
+      },
+    });
+    const pulling = pod({
+      status: {
+        phase: 'Pending',
+        conditions: [{ type: 'PodScheduled', status: 'True' }],
+        containerStatuses: [
+          {
+            name: 'kserve-container',
+            state: {
+              waiting: {
+                reason: 'ImagePullBackOff',
+                message: 'Back-off pulling image "vllm/vllm-openai:v0.11"',
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(toServedModel(notReady, [unschedulable])).toMatchObject({
+      readiness: 'pending',
+      readinessReason: 'Unschedulable',
+      readinessMessage:
+        '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+      // No pod on a node yet: the declared pin is the placement.
+      node: 'gpu-node-1',
+      nodeSource: 'spec',
+    });
+    expect(toServedModel(notReady, [pulling])).toMatchObject({
+      readiness: 'pending',
+      readinessReason: 'ImagePullBackOff',
+      readinessMessage: 'Back-off pulling image "vllm/vllm-openai:v0.11"',
+      node: 'gpu-node-2',
+      nodeSource: 'pod',
+    });
+    // A Running pod says the model is somewhere: the conditions stand.
+    expect(toServedModel(notReady, [pod()])).toMatchObject({
+      readiness: 'notReady',
+      readinessReason: 'PredictorNotReady',
+      readinessMessage: 'Deployment does not have minimum availability.',
+    });
+    // A ready object with a pending sibling (a rollout) stays ready.
+    expect(
+      toServedModel(
+        isvc({
+          status: {
+            observedGeneration: 1,
+            conditions: [{ type: 'Ready', status: 'True' }],
+          },
+        }),
+        [unschedulable],
+      ),
+    ).toMatchObject({ readiness: 'ready' });
+  });
+
+  it('reads an InferenceService being deleted as Stopping', () => {
+    const served = toServedModel(
+      isvc({
+        metadata: {
+          name: 'qwen3-14b',
+          namespace: 'kserve',
+          generation: 1,
+          deletionTimestamp: '2026-09-16T16:11:33Z',
+        },
+        status: {
+          observedGeneration: 1,
+          conditions: [
+            { type: 'Ready', status: 'False', reason: 'PredictorNotReady' },
+          ],
+        },
+      }),
+    );
+
+    expect(served.readiness).toBe('terminating');
+    expect(served.readinessReason).toBeUndefined();
+    expect(served.readinessMessage).toBe(
+      'InferenceService qwen3-14b is being deleted.',
+    );
   });
 
   it('falls back to the model format when no runtime is named', () => {

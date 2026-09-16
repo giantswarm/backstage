@@ -3,6 +3,7 @@ import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   clientLookupOf,
   endpointAuthority,
+  explanationWithoutReason,
   findServedModel,
   findServedModelForEndpoint,
   gpuFree,
@@ -489,7 +490,9 @@ describe('mergeServingSnapshots', () => {
       name: 'qwen3-14b',
       namespace: 'kserve',
       readiness: 'pending',
-      readinessMessage: 'InferenceService qwen3-14b has not reported yet.',
+      readinessMessage:
+        '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+      readinessReason: 'Unschedulable',
       endpointHosts: ['qwen3-14b-predictor.kserve.svc.cluster.local'],
       managerRef: 'Qwen/Qwen3-14B',
       sizeBytes: 29_540_000_000,
@@ -543,8 +546,10 @@ describe('mergeServingSnapshots', () => {
         modelConfig: { name: 'qwen3-14b', namespace: 'kagent', managed: false },
         operable: true,
       });
-      // The explanation belongs to the status: the CR's (none) stays.
+      // The explanation and the reason belong to the status: the CR's (none)
+      // stay, not the manager's word for a state the CR does not report.
       expect(merged.readinessMessage).toBeUndefined();
+      expect(merged.readinessReason).toBeUndefined();
       expect(merged.endpointHosts).toEqual(
         expect.arrayContaining([
           ...qwen.endpointHosts,
@@ -746,6 +751,7 @@ const EVERY_READINESS: ServedModelReadiness[] = [
   'downloading',
   'notReady',
   'pending',
+  'terminating',
 ];
 
 describe('SERVED_MODEL_READINESS', () => {
@@ -783,11 +789,63 @@ describe('SERVED_MODEL_READINESS', () => {
     expect(sorted[sorted.length - 1]).toBe('ready');
   });
 
-  it('counts only Not serving and Not ready as failures an agent would hit', () => {
+  it('counts Not serving, Not ready and Stopping as failures an agent would hit', () => {
     expect(EVERY_READINESS.filter(isServingFailure)).toEqual([
       'notServing',
       'notReady',
+      'terminating',
     ]);
+  });
+
+  it('reads a model being deleted as Stopping — neutral, not a fault', () => {
+    expect(SERVED_MODEL_READINESS.terminating).toMatchObject({
+      label: 'Stopping',
+      intent: 'neutral',
+    });
+    expect(SERVED_MODEL_READINESS_SEVERITY.terminating).toBeGreaterThan(
+      SERVED_MODEL_READINESS_SEVERITY.pending,
+    );
+    expect(SERVED_MODEL_READINESS_SEVERITY.terminating).toBeLessThan(
+      SERVED_MODEL_READINESS_SEVERITY.downloading,
+    );
+  });
+});
+
+describe('explanationWithoutReason', () => {
+  it('drops the reason a one-line message starts with, whichever separator follows it', () => {
+    expect(
+      explanationWithoutReason(
+        'Unschedulable 0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+        'Unschedulable',
+      ),
+    ).toBe('0/3 nodes are available: 3 Insufficient nvidia.com/gpu.');
+    expect(
+      explanationWithoutReason(
+        'ModelLoadFailed: CUDA out of memory',
+        'ModelLoadFailed',
+      ),
+    ).toBe('CUDA out of memory');
+  });
+
+  it('leaves nothing of a message that is the reason alone', () => {
+    expect(
+      explanationWithoutReason('HTTPRoutesNotReady', 'HTTPRoutesNotReady'),
+    ).toBeUndefined();
+    expect(explanationWithoutReason('', 'X')).toBeUndefined();
+    expect(explanationWithoutReason(undefined, 'X')).toBeUndefined();
+  });
+
+  it('keeps a message that does not start with the reason, or only shares its letters', () => {
+    expect(
+      explanationWithoutReason(
+        'predictor pod is crash-looping',
+        'RevisionFailed',
+      ),
+    ).toBe('predictor pod is crash-looping');
+    expect(
+      explanationWithoutReason('PendingUpdate of the route', 'Pending'),
+    ).toBe('PendingUpdate of the route');
+    expect(explanationWithoutReason('some text', undefined)).toBe('some text');
   });
 });
 
@@ -915,6 +973,26 @@ describe('resolveClientServing', () => {
         lab,
       )?.message,
     ).toBe(SERVED_MODEL_READINESS.ready.description);
+  });
+
+  it('carries the backend’s word for the state along with its explanation', () => {
+    const stuck: ServedModel = {
+      ...qwenSmall,
+      readiness: 'notReady',
+      readinessReason: 'Faulted',
+      readinessMessage: 'The server answered 500.',
+    };
+
+    expect(
+      resolveClientServing(
+        { endpoint: 'http://172.21.0.1:11434', model: 'qwen3:0.6b' },
+        { ...lab, candidates: [stuck, qwenBig] },
+      ),
+    ).toMatchObject({
+      readiness: 'notReady',
+      reason: 'Faulted',
+      message: 'The server answered 500.',
+    });
   });
 
   it('reports a model gone from a shared host as Not serving, named after what the client asks for', () => {

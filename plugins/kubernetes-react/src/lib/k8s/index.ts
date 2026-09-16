@@ -59,7 +59,7 @@ export { Namespace } from './Namespace';
 export { Node } from './Node';
 export type { NodeInterface } from './Node';
 export { Pod } from './Pod';
-export type { PodInterface } from './Pod';
+export type { PodContainerStatus, PodInterface, PodPendingState } from './Pod';
 export { HelmRelease } from './HelmRelease';
 export { HelmRepository } from './HelmRepository';
 export { GitRepository } from './GitRepository';

@@ -386,6 +386,91 @@ describe('ServedModelStatusCell · GPU share', () => {
   });
 });
 
+describe('ServedModelStatusCell · the reason behind a state', () => {
+  /** model-manager 0.23.4's view of a served model whose predictor pod waits for a GPU node. */
+  const stuck: ServedModelRow = {
+    ...rows[1],
+    id: 'inst-1/kserve/model-serving/qwen3-4b-instruct',
+    name: 'qwen3-4b-instruct',
+    namespace: 'model-serving',
+    readiness: 'pending',
+    readinessReason: 'Unschedulable',
+    readinessMessage: '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+    node: undefined,
+    nodeSource: undefined,
+  };
+
+  it('lists the explanation under the label only where the backend named a reason', () => {
+    expect(servedModelStatusLines(stuck)).toEqual([
+      '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+    ]);
+    expect(
+      servedModelStatusLines({
+        ...stuck,
+        readinessReason: undefined,
+      }),
+    ).toEqual([]);
+    // Before the memory line, when both exist.
+    expect(
+      servedModelStatusLines({
+        ...ollamaRows[1],
+        readiness: 'notReady',
+        readinessReason: 'Faulted',
+        readinessMessage: 'The server answered 500.',
+      }),
+    ).toEqual(['The server answered 500.', 'Not loaded']);
+  });
+
+  it('reads Pending · Unschedulable with the scheduler’s text under it and on hover', async () => {
+    await renderTable(<ServedModelsTable rows={[stuck]} />);
+
+    expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(screen.getByTestId('served-readiness-reason')).toHaveTextContent(
+      '· Unschedulable',
+    );
+    expect(
+      screen.getByText(
+        '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Pending').closest('[title]')).toHaveAttribute(
+      'title',
+      '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+    );
+  });
+
+  it('keeps a row without a reason as it was: the label, the explanation on hover only', async () => {
+    await renderTable(<ServedModelsTable rows={[rows[1]]} />);
+
+    expect(screen.getByText('Not ready')).toBeInTheDocument();
+    expect(screen.queryByTestId('served-readiness-reason')).toBeNull();
+    expect(
+      screen.queryByText('Deployment does not have minimum availability.'),
+    ).toBeNull();
+    expect(screen.getByText('Not ready').closest('[title]')).toHaveAttribute(
+      'title',
+      'Deployment does not have minimum availability.',
+    );
+  });
+
+  it('reads a model being deleted as Stopping', async () => {
+    await renderTable(
+      <ServedModelsTable
+        rows={[
+          {
+            ...rows[1],
+            readiness: 'terminating',
+            readinessMessage: 'InferenceService devstral is being deleted.',
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Stopping')).toBeInTheDocument();
+    expect(screen.queryByText('Not ready')).toBeNull();
+  });
+});
+
 describe('downloadLine, downloadPercent and servedModelStatusLines on a download row', () => {
   it('tells the progress from the job alone: message, percentage, bytes', () => {
     expect(downloadLine(downloading.download)).toBe(

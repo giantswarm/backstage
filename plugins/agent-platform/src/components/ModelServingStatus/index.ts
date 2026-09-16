@@ -7,3 +7,7 @@ export {
   type ModelServingStatusProps,
 } from './ModelServingStatus';
 export { SERVED_READINESS_ICON } from './readinessIcon';
+export {
+  ServedReadinessLabel,
+  type ServedReadinessLabelProps,
+} from './ServedReadinessLabel';

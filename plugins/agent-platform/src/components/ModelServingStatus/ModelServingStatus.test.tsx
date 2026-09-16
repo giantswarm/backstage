@@ -52,6 +52,17 @@ const goneKserve: ClientServingSummary = {
   message: 'InferenceService model-serving/lab-echo is not serving.',
 };
 
+/** model-manager 0.23.4's word for a predictor pod that waits for a GPU node. */
+const stuckKserve: ClientServingSummary = {
+  installation: 'gpu',
+  backend: 'kserve',
+  readiness: 'pending',
+  reason: 'Unschedulable',
+  name: 'qwen3-4b-instruct',
+  namespace: 'model-serving',
+  message: '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+};
+
 // Only the parent RouteRef is mountable; the Serving sub-route resolves
 // relative to it.
 const render = (element: React.ReactElement) => {
@@ -103,6 +114,10 @@ describe('describeServedModel / describeServedBy / servingTitle', () => {
     expect(servingTitle(goneKserve)).toBe(
       'InferenceService model-serving/lab-echo is not serving — InferenceService model-serving/lab-echo is not serving.',
     );
+    // The backend's word for the state, where it has one.
+    expect(servingTitle(stuckKserve)).toBe(
+      'InferenceService model-serving/qwen3-4b-instruct is pending (Unschedulable) — 0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+    );
   });
 });
 
@@ -117,6 +132,21 @@ describe('ModelServingStatus', () => {
       'href',
       '/agent-platform/models/serving',
     );
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('shows the backend’s reason after the label, with the explanation on hover', async () => {
+    await render(<ModelServingStatus serving={stuckKserve} />);
+
+    const status = screen.getByTestId('model-serving-readiness');
+    expect(status).toHaveTextContent('Pending');
+    expect(status).toHaveTextContent('· Unschedulable');
+    expect(screen.getByTestId('served-readiness-reason')).toHaveAttribute(
+      'title',
+      servingTitle(stuckKserve),
+    );
+    // Pending needs no hand: no link, no button.
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 

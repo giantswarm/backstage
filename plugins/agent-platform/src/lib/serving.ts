@@ -71,8 +71,13 @@ export function servingGroupKey(
  * - `downloading` — a pull in progress; the row becomes `available` or `idle`
  *   when it completes.
  * - `notReady` — exists but not serving: rolling out, failed to load, or the
- *   backend is unhealthy; `readinessMessage` says which.
- * - `pending` — no verdict yet ("not known", not "broken").
+ *   backend is unhealthy; `readinessMessage` says which, and
+ *   `readinessReason` gives the backend's word for it.
+ * - `pending` — no verdict yet ("not known", not "broken"), or the predictor
+ *   pod waits for a node or an image (`readinessReason`: `Unschedulable`,
+ *   `ImagePullBackOff`).
+ * - `terminating` — being deleted: a Stop serving in progress, or a deletion
+ *   from elsewhere; the row leaves the list once it completes.
  */
 export type ServedModelReadiness =
   | 'ready'
@@ -81,7 +86,8 @@ export type ServedModelReadiness =
   | 'available'
   | 'downloading'
   | 'notReady'
-  | 'pending';
+  | 'pending'
+  | 'terminating';
 
 export type ServedModelReadinessPresentation = {
   /** The status label. */
@@ -148,6 +154,13 @@ export const SERVED_MODEL_READINESS: Record<
     phrase: 'pending',
     description: 'No verdict from the backend yet.',
   },
+  terminating: {
+    label: 'Stopping',
+    intent: 'neutral',
+    phrase: 'being stopped',
+    description:
+      'Being deleted. The row leaves the list once the serving object is gone.',
+  },
 };
 
 /**
@@ -161,20 +174,52 @@ export const SERVED_MODEL_READINESS_SEVERITY: Record<
   notServing: 0,
   notReady: 1,
   pending: 2,
-  downloading: 3,
-  available: 4,
-  idle: 5,
-  ready: 6,
+  terminating: 3,
+  downloading: 4,
+  available: 5,
+  idle: 6,
+  ready: 7,
 };
 
 /**
  * Whether a client (an agent) pointing at a model in this state fails at its
  * first request — what the session composer warns about. `idle` is not a
  * failure (the request loads the model), nor is `available` (no claim is made
- * about what a request does when the semantics are unknown).
+ * about what a request does when the semantics are unknown); `terminating`
+ * is one — the model is going away.
  */
 export function isServingFailure(readiness: ServedModelReadiness): boolean {
-  return readiness === 'notServing' || readiness === 'notReady';
+  return (
+    readiness === 'notServing' ||
+    readiness === 'notReady' ||
+    readiness === 'terminating'
+  );
+}
+
+/**
+ * A backend's explanation without the reason it starts with. model-manager
+ * (and KServe's failure info) put the reason and the text on one line —
+ * `Unschedulable 0/3 nodes are available…`, `ModelLoadFailed: CUDA out of
+ * memory` — and once the reason is a label of its own, the line would say it
+ * twice. A message that is the reason alone leaves nothing: `undefined`, for
+ * the caller's own sentence. A message that merely begins with the reason's
+ * letters (`Pending` in `PendingUpdate…`) is left alone.
+ */
+export function explanationWithoutReason(
+  message: string | undefined,
+  reason: string | undefined,
+): string | undefined {
+  if (!message) {
+    return undefined;
+  }
+  if (!reason || !message.startsWith(reason)) {
+    return message;
+  }
+  const rest = message.slice(reason.length);
+  if (rest && !/^[\s:]/.test(rest)) {
+    return message;
+  }
+  return rest.replace(/^[\s:]+/, '').trim() || undefined;
 }
 
 /**
@@ -254,6 +299,14 @@ export type ServedModel = {
   readiness: ServedModelReadiness;
   /** The backend's own explanation of a non-ready state, for the tooltip. */
   readinessMessage?: string;
+  /**
+   * The backend's short word for a non-ready state, shown next to the label:
+   * the Ready condition's reason (`HTTPRoutesNotReady`), a failed load's, or
+   * the predictor pod's while it waits (`Unschedulable`, `ImagePullBackOff`).
+   * `readinessMessage` is then the explanation without it. Absent on a ready
+   * row, and on backends that name none.
+   */
+  readinessReason?: string;
   /** Node the workload runs on or is pinned to; `undefined` when unknown. */
   node?: string;
   /** Whether `node` is where the pod actually is, or only the declared pin. */
@@ -855,12 +908,14 @@ export function overlayServedModel(
 ): ServedModel {
   const merged: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(overlay)) {
-    // The status and its explanation come from one source: the base's.
+    // The status, its reason and its explanation come from one source: the
+    // base's.
     if (
       value === undefined ||
       key === 'endpointHosts' ||
       key === 'operable' ||
-      key === 'readinessMessage'
+      key === 'readinessMessage' ||
+      key === 'readinessReason'
     ) {
       continue;
     }
@@ -1084,6 +1139,8 @@ export type ClientServingState = {
   installation: string;
   backend: ServingBackend;
   readiness: ServedModelReadiness;
+  /** The backend's word for a non-ready state (`ServedModel.readinessReason`). */
+  reason?: string;
   /**
    * Backend-native name of the model the client asks for: an Ollama tag, an
    * InferenceService name.
@@ -1152,6 +1209,7 @@ export function resolveClientServing(
       installation,
       backend: served.backend,
       readiness: served.readiness,
+      reason: served.readinessReason,
       name: served.name,
       namespace: served.namespace,
       message:
