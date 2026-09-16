@@ -3074,7 +3074,7 @@
                         },
                         "memory": {
                             "type": "string",
-                            "description": "Memory resource limit for the Backstage container"
+                            "description": "Memory resource limit for the Backstage container. Node sizes the V8 heap from this limit (about 55 %: a 560 MiB heap under 1Gi, 348 MiB under the former 600Mi) and the rest is the backend's native memory (about 250-300 MiB). Under the portal's browser e2e suite the container peaks at about 660 MiB with a 1Gi limit; at 600Mi the main thread was OOM-killed. Keep any override at 1Gi or above (see \"Memory\" in the README)"
                         }
                     }
                 },
@@ -3089,7 +3089,7 @@
                         },
                         "memory": {
                             "type": "string",
-                            "description": "Memory resource request for the Backstage container"
+                            "description": "Memory resource request for the Backstage container. Sized to the backend's steady state: it idles at about 500 MiB RSS under the default limit, because Node sizes its heap from the container's memory limit (see `resources.limits.memory`) and V8 uses that room"
                         }
                     }
                 },

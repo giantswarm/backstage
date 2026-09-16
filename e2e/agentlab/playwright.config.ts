@@ -19,10 +19,11 @@ export default defineConfig({
     timeout: 30_000,
   },
 
-  // One worker: the lab's Backstage runs in 600Mi and every worker would sign
-  // in as the same admin, whose muster session the backend keeps server-side —
-  // parallel workers would see each other's Connect to muster. The worker
-  // signs in once and keeps that page (see fixtures.ts).
+  // One worker: the lab's Backstage runs at the chart's default memory limit
+  // and every worker would sign in as the same admin, whose muster session
+  // the backend keeps server-side — parallel workers would see each other's
+  // Connect to muster. The worker signs in once and keeps that page (see
+  // fixtures.ts).
   workers: process.env.AGENTLAB_E2E_WORKERS
     ? Number(process.env.AGENTLAB_E2E_WORKERS)
     : 1,

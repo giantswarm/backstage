@@ -28,6 +28,29 @@ skopeo inspect --format '{{.Digest}}' docker://gsoci.azurecr.io/giantswarm/postg
 To steer placement, use `nodeSelector` for the Backstage pod and
 `database.postgresql.affinity` for the PostgreSQL instance pods.
 
+## Memory
+
+The default memory limit is `1Gi` with a `512Mi` request. Node sizes the V8 heap
+from the container's cgroup limit — about 55 % of it — and the rest of the
+container's memory is the backend's native footprint (loaded modules, buffers,
+the database driver), which is about 250-300 MiB regardless of the limit.
+Measured on the 2.8.1 image under the portal's browser e2e suite
+(`yarn test:e2e:agentlab`, cgroup `memory.peak` of the container):
+
+| Limit   | V8 heap ceiling | Idle RSS (fresh pod) | Peak under the suite | Outcome                                |
+| ------- | --------------- | -------------------- | -------------------- | -------------------------------------- |
+| `600Mi` | 348 MiB         | ~450 MiB             | hits the limit       | main thread OOM-killed, pod restarts   |
+| `1Gi`   | 560 MiB         | ~520 MiB             | 656 MiB              | 0 restarts, 368 MiB headroom           |
+| `8Gi`   | 2240 MiB        | ~1000 MiB            | 1171 MiB             | V8 grows into the room; not a need     |
+
+An unlimited container is not a measurement of what the backend needs: V8
+grows the heap lazily into whatever the cgroup allows. Keep an override of
+`resources.limits.memory` at `1Gi` or above; a lower limit shrinks the heap
+but not the native footprint, and the sum is what the kernel enforces. Setting
+`NODE_OPTIONS=--max-old-space-size` is not needed for the default, because the
+heap already follows the limit; it would also have to repeat the image's
+`--no-node-snapshot`, which the scaffolder needs.
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -56,15 +79,15 @@ To steer placement, use `nodeSelector` for the Backstage pod and
 | probes.readiness.failureThreshold | int | `3` | Consecutive failures required to mark the container NotReady |
 | registry | object | `{"domain":"gsoci.azurecr.io"}` | Container image registry settings |
 | registry.domain | string | `"gsoci.azurecr.io"` | Container image registry domain prepended to image.repository |
-| resources | object | `{"limits":{"cpu":"500m","memory":"600Mi"},"requests":{"cpu":"20m","memory":"250Mi"},"verticalPodAutoscaler":{"enabled":true}}` | Resource requests, limits, and autoscaler settings for the Backstage container |
+| resources | object | `{"limits":{"cpu":"500m","memory":"1Gi"},"requests":{"cpu":"20m","memory":"512Mi"},"verticalPodAutoscaler":{"enabled":true}}` | Resource requests, limits, and autoscaler settings for the Backstage container |
 | resources.verticalPodAutoscaler | object | `{"enabled":true}` | Vertical Pod Autoscaler settings |
 | resources.verticalPodAutoscaler.enabled | bool | `true` | Enable the VerticalPodAutoscaler resource for automatic resource adjustment |
-| resources.requests | object | `{"cpu":"20m","memory":"250Mi"}` | CPU and memory resource requests |
+| resources.requests | object | `{"cpu":"20m","memory":"512Mi"}` | CPU and memory resource requests |
 | resources.requests.cpu | string | `"20m"` | CPU resource request for the Backstage container |
-| resources.requests.memory | string | `"250Mi"` | Memory resource request for the Backstage container |
-| resources.limits | object | `{"cpu":"500m","memory":"600Mi"}` | CPU and memory resource limits |
+| resources.requests.memory | string | `"512Mi"` | Memory resource request for the Backstage container. Sized to the backend's steady state: it idles at about 500 MiB RSS under the default limit, because Node sizes its heap from the container's memory limit (see `resources.limits.memory`) and V8 uses that room |
+| resources.limits | object | `{"cpu":"500m","memory":"1Gi"}` | CPU and memory resource limits |
 | resources.limits.cpu | string | `"500m"` | CPU resource limit for the Backstage container |
-| resources.limits.memory | string | `"600Mi"` | Memory resource limit for the Backstage container |
+| resources.limits.memory | string | `"1Gi"` | Memory resource limit for the Backstage container. Node sizes the V8 heap from this limit (about 55 %: a 560 MiB heap under 1Gi, 348 MiB under the former 600Mi) and the rest is the backend's native memory (about 250-300 MiB). Under the portal's browser e2e suite the container peaks at about 660 MiB with a 1Gi limit; at 600Mi the main thread was OOM-killed. Keep any override at 1Gi or above (see "Memory" in the README) |
 | authSessionSecret | string | `""` | Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var) |
 | circleci | object | `{"apiToken":""}` | CircleCI integration settings |
 | circleci.apiToken | string | `""` | CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var) |

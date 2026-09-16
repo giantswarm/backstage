@@ -87,16 +87,16 @@ resources:
     # -- CPU resource request for the Backstage container
     cpu: 20m
     # @schema type:string
-    # -- Memory resource request for the Backstage container
-    memory: 250Mi
+    # -- Memory resource request for the Backstage container. Sized to the backend's steady state: it idles at about 500 MiB RSS under the default limit, because Node sizes its heap from the container's memory limit (see `resources.limits.memory`) and V8 uses that room
+    memory: 512Mi
   # -- CPU and memory resource limits
   limits:
     # @schema type:string
     # -- CPU resource limit for the Backstage container
     cpu: 500m
     # @schema type:string
-    # -- Memory resource limit for the Backstage container
-    memory: 600Mi
+    # -- Memory resource limit for the Backstage container. Node sizes the V8 heap from this limit (about 55 %: a 560 MiB heap under 1Gi, 348 MiB under the former 600Mi) and the rest is the backend's native memory (about 250-300 MiB). Under the portal's browser e2e suite the container peaks at about 660 MiB with a 1Gi limit; at 600Mi the main thread was OOM-killed. Keep any override at 1Gi or above (see "Memory" in the README)
+    memory: 1Gi
 
 # @schema type:string
 # -- Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var)

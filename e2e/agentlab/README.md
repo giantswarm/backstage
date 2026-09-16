@@ -28,7 +28,7 @@ yarn playwright show-report e2e-test-report/agentlab
 | `AGENTLAB_BACKSTAGE_URL` | `https://backstage.127.0.0.1.nip.io` | the lab portal (another lab, another port) |
 | `AGENTLAB_PASSWORD`      | `password`                           | the lab users' fixture password            |
 | `AGENTLAB_INSTALLATION`  | `agent-platform`                     | the platform's Helm release name           |
-| `AGENTLAB_E2E_WORKERS`   | `2`                                  | parallel workers, each with one sign-in    |
+| `AGENTLAB_E2E_WORKERS`   | `1`                                  | parallel workers, each with one sign-in    |
 
 The lab's certificates are signed by the lab CA; the suite ignores TLS errors
 so no `agentlab trust` is needed.
