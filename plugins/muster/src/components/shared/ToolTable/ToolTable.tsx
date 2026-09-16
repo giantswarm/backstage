@@ -89,6 +89,15 @@ const useStyles = makeStyles((theme: Theme) => ({
     minWidth: 0,
     overflowWrap: 'anywhere',
   },
+  // Holds the markers and whatever `meta` a caller adds beside them (the Tool
+  // Explorer's search score). The gap only materialises between things that
+  // are actually there, so a row with markers and no meta is unaffected.
+  markerCell: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    minWidth: 0,
+  },
   description: {
     minWidth: 0,
     whiteSpace: 'nowrap',
@@ -255,7 +264,7 @@ function ToolTableRow({
         )}
       </Text>
       {showMarkers && (
-        <span>
+        <span className={classes.markerCell}>
           <ToolMarkers annotations={item.annotations} />
           {item.meta}
         </span>

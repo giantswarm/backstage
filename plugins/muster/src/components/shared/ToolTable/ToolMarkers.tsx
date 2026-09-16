@@ -11,9 +11,16 @@ const useStyles = makeStyles((theme: Theme) => ({
   marker: {
     fontSize: 11,
     lineHeight: 1.4,
-    padding: theme.spacing(0, 0.75),
+    // Set in caps, which needs the extra letter-spacing to stay legible at
+    // this size — uppercase without it reads as a solid block.
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    padding: theme.spacing(0, 1.25),
     borderRadius: 999,
     border: `1px solid ${theme.palette.divider}`,
+    // Its own ground rather than the row's: the marker then stays legible on a
+    // hovered or selected row, which tints the row behind it.
+    backgroundColor: theme.palette.background.paper,
     color: theme.palette.text.secondary,
     whiteSpace: 'nowrap',
   },
