@@ -27,6 +27,11 @@ import { useModelManagerServingSource } from './useModelManagerServingSource';
 
 export type ServingContextValue = ServingSourceSnapshot & {
   /**
+   * Every reachable installation in scope, with or without a serving layer —
+   * what a control that adds one (Add GPU node pool) is offered for.
+   */
+  reachableInstallations: string[];
+  /**
    * The served model a client on `installation` points at — how a kagent
    * ModelConfig is linked to the InferenceService, Ollama model or other
    * backend fronting it (see `findServedModel` for the rules, applied with
@@ -198,6 +203,7 @@ export function ServingProvider({ children }: { children: ReactNode }) {
     };
     return {
       ...snapshot,
+      reachableInstallations,
       servedModelFor,
       servedModelForEndpoint: (installation, endpoint) =>
         servedModelFor(installation, { endpoint }),
@@ -213,7 +219,7 @@ export function ServingProvider({ children }: { children: ReactNode }) {
           ? snapshot.backendLoading?.[installation]?.[backend]
           : undefined) ?? snapshot.loading?.[installation],
     };
-  }, [kserve, modelManager]);
+  }, [kserve, modelManager, reachableInstallations]);
 
   return (
     <ServingContext.Provider value={value}>{children}</ServingContext.Provider>

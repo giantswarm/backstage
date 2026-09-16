@@ -27,6 +27,17 @@ import { ServingPage } from './ServingPage';
 const mockUseServing = jest.fn<ServingContextValue, []>();
 const mockUseModelConfigs = jest.fn<ModelConfigsContextValue, []>();
 
+jest.mock('../GpuNodePools', () => ({
+  // cluster-manager is absent on these fleets: the controls render nothing.
+  useGpuNodePoolControls: () => ({
+    available: false,
+    isLoading: false,
+    addButton: undefined,
+    dialogs: undefined,
+    panel: undefined,
+  }),
+}));
+
 jest.mock('../ServingProvider', () => ({
   useServing: () => mockUseServing(),
 }));
@@ -228,6 +239,7 @@ const baseServing: ServingContextValue = {
   backends: { 'inst-1': 'kserve' },
   capabilities: { 'inst-1': KSERVE_CR_CAPABILITIES },
   unreachableInstallations: [],
+  reachableInstallations: [],
   servedModels: [qwen],
   gpuNodes: [
     {

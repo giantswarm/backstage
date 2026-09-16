@@ -13,28 +13,28 @@ export function ConnectAgentManagerAlert({
   installation,
   message,
   action = 'Agents are changed',
+  server = AGENT_MANAGER_SERVER,
 }: {
   installation: string;
   /** muster's answer, verbatim. */
   message: string;
   /** What the person was about to do, as the sentence's subject. */
   action?: string;
+  /** The muster server to connect to; agent-manager unless said otherwise. */
+  server?: string;
 }) {
   return (
     <Alert
       status="warning"
-      title="Connect to agent-manager"
+      title={`Connect to ${server}`}
       description={
         <Flex direction="column" gap="2">
           <Text variant="body-small">
-            {action} through agent-manager, reached through muster as you. Your
+            {action} through {server}, reached through muster as you. Your
             muster session on {installation} is not connected to it yet:{' '}
             {message}
           </Text>
-          <ServerSignIn
-            serverName={AGENT_MANAGER_SERVER}
-            installation={installation}
-          />
+          <ServerSignIn serverName={server} installation={installation} />
         </Flex>
       }
     />

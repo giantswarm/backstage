@@ -5,6 +5,17 @@ import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSourc
 import { GpuCapacityPage } from './GpuCapacityPage';
 
 const mockUseServing = jest.fn<Partial<ServingContextValue>, []>();
+jest.mock('../GpuNodePools', () => ({
+  // cluster-manager is absent on these fleets: the controls render nothing.
+  useGpuNodePoolControls: () => ({
+    available: false,
+    isLoading: false,
+    addButton: undefined,
+    dialogs: undefined,
+    panel: undefined,
+  }),
+}));
+
 jest.mock('../ServingProvider', () => ({
   useServing: () => mockUseServing(),
 }));
