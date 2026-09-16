@@ -236,13 +236,10 @@ export function AddGpuNodePoolDialog({
                 <Select
                   label="Cluster"
                   isRequired
-                  placeholder={
-                    clustersLoading
-                      ? 'Reading clusters…'
-                      : clusters.length === 0
-                        ? 'No clusters'
-                        : 'Pick a cluster'
-                  }
+                  placeholder={clusterPlaceholder(
+                    clustersLoading,
+                    clusters.length,
+                  )}
                   options={clusters.map(candidate => ({
                     id: candidate.name,
                     label: `${candidate.name} (${candidate.organization}${
@@ -464,6 +461,14 @@ export function AddGpuNodePoolDialog({
       </form>
     </Dialog>
   );
+}
+
+/** The cluster picker's placeholder: reading, nothing to pick, or pick one. */
+function clusterPlaceholder(loading: boolean, count: number): string {
+  if (loading) {
+    return 'Reading clusters…';
+  }
+  return count === 0 ? 'No clusters' : 'Pick a cluster';
 }
 
 function downloadText(filename: string, content: string) {
