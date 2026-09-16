@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from '@backstage/core-components';
 import { Alert, Button, Flex, SearchField, Text } from '@backstage/ui';
-import { LinearProgress, makeStyles } from '@material-ui/core';
+import { LinearProgress } from '@material-ui/core';
 import {
-  ToolMarkers,
+  ToolTable,
+  toolTableItem,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
 
@@ -28,35 +28,6 @@ import { ShowMore } from '../ShowMore';
  */
 export const AUTO_EXPAND_MAX = 20;
 
-const useStyles = makeStyles(theme => ({
-  list: {
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius,
-    overflow: 'hidden',
-  },
-  row: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'baseline',
-    gap: theme.spacing(1.5),
-    padding: theme.spacing(0.75, 1.5),
-    '&:not(:last-child)': {
-      borderBottom: `1px solid ${theme.palette.divider}`,
-    },
-  },
-  name: {
-    fontFamily: 'monospace',
-    fontSize: 13,
-  },
-  summary: {
-    flex: '1 1 220px',
-    minWidth: 0,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-}));
-
 /** The rows of one section — a page at a time, the rest on request. */
 function ToolRows({
   tools,
@@ -67,41 +38,20 @@ function ToolRows({
   toolHref?: (name: string) => string | undefined;
   noun?: 'tool' | 'workflow';
 }) {
-  const classes = useStyles();
   return (
     <ShowMore items={tools} noun={noun}>
       {visible => (
-        <div className={classes.list} role="list">
-          {visible.map(tool => {
+        <ToolTable
+          ariaLabel={noun === 'workflow' ? 'Workflows' : 'Tools'}
+          items={visible.map(tool => {
+            // A tool only links where the muster plugin's routes are bound; in
+            // a portal without them the name is shown, not linked.
             const href = toolHref?.(tool.name);
-            return (
-              <div
-                key={tool.name}
-                className={classes.row}
-                role="listitem"
-                title={tool.summary ?? tool.description}
-              >
-                {href ? (
-                  <Link to={href} className={classes.name}>
-                    {tool.name}
-                  </Link>
-                ) : (
-                  <span className={classes.name}>{tool.name}</span>
-                )}
-                <ToolMarkers annotations={tool.annotations} />
-                {(tool.summary || tool.description) && (
-                  <Text
-                    variant="body-x-small"
-                    color="secondary"
-                    className={classes.summary}
-                  >
-                    {tool.summary ?? tool.description}
-                  </Text>
-                )}
-              </div>
-            );
+            return toolTableItem(tool, {
+              mode: href ? { kind: 'link', href } : { kind: 'static' },
+            });
           })}
-        </div>
+        />
       )}
     </ShowMore>
   );
