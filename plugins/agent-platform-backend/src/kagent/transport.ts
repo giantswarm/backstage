@@ -1,5 +1,8 @@
 import type { Transport } from '@connectrpc/connect';
-import { createGrpcTransport } from '@connectrpc/connect-node';
+import {
+  createGrpcTransport,
+  type Http2SessionManager,
+} from '@connectrpc/connect-node';
 
 /** One installation's kagent controller. */
 export interface KagentInstallationConfig {
@@ -62,12 +65,18 @@ export function isAbsoluteHttpUrl(url: string): boolean {
  * plaintext h2c, which only an in-cluster Service URL should ever be.
  *
  * One transport per installation, shared by every call: connect-node keeps the
- * HTTP/2 session alive between calls and reopens it when it drops.
+ * HTTP/2 session alive between calls and reopens it when it drops. A caller
+ * that wants to close the session itself (the reachability probe, one call
+ * every few minutes) passes its own `sessionManager` and aborts it afterwards.
  */
 export function createKagentTransport(
   installation: KagentInstallationConfig,
+  options: { sessionManager?: Http2SessionManager } = {},
 ): Transport {
   // connect-node's gRPC transport is HTTP/2 only — gRPC has no HTTP/1.1 form —
   // so nothing here can fall back to gRPC-Web.
-  return createGrpcTransport({ baseUrl: installation.apiBaseUrl });
+  return createGrpcTransport({
+    baseUrl: installation.apiBaseUrl,
+    ...(options.sessionManager && { sessionManager: options.sessionManager }),
+  });
 }

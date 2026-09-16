@@ -5,6 +5,15 @@ import { EndpointProbeResult, probeEndpoint } from './probeEndpoint';
 export const DEFAULT_REACHABILITY_TTL_MS = 5 * 60_000;
 
 /**
+ * How long a *negative* answer is served before the endpoint is probed again.
+ * Shorter than a positive one's: "not reachable" takes an installation's live
+ * pages away, and the causes that pass on their own -- an edge restarting, a
+ * route that is being created -- are worth re-checking within a minute, at
+ * the cost of one unauthenticated request per ask after that.
+ */
+export const DEFAULT_NEGATIVE_REACHABILITY_TTL_MS = 30_000;
+
+/**
  * `'unknown'` until the first probe of the endpoint has settled; a boolean
  * afterwards. Routes report it verbatim so a frontend can tell "not probed
  * yet" from "probed and unreachable" -- only the latter is acted on.
@@ -35,14 +44,18 @@ export function reachabilityFields(state: ReachabilityState): {
 }
 
 export type ReachabilityCacheOptions = {
-  /** Answer lifetime before a background re-probe. Default 5 min. */
+  /** Lifetime of a reachable answer before a background re-probe. Default 5 min. */
   ttlMs?: number;
+  /** Lifetime of an unreachable answer before a background re-probe. Default 30 s. */
+  negativeTtlMs?: number;
   /** The probe; overridable for tests. Defaults to {@link probeEndpoint}. */
   probe?: (url: string) => Promise<EndpointProbeResult>;
   /**
    * Receives one INFO line per endpoint whenever its reachability *changes*
-   * (including the first answer). Nothing is logged per request or per
-   * unchanged re-probe, so a pod's log carries exactly the state transitions.
+   * (including the first answer), and one per probe that could not tell.
+   * Nothing is logged per request or per unchanged re-probe, so a pod's log
+   * carries exactly the state transitions and the moments it was too busy to
+   * measure one.
    */
   logger?: LoggerService;
   /** Overridable clock for tests. */
@@ -54,10 +67,16 @@ export type ReachabilityCacheOptions = {
  *
  * Lazy and never blocking: {@link get} is synchronous and answers from the
  * cache, kicking off the first probe (or a background refresh once the answer
- * is older than the TTL) as a side effect. A request therefore never waits on
+ * is older than its TTL) as a side effect. A request therefore never waits on
  * a probe -- it sees `'unknown'` until the first answer lands, and the previous
  * answer while a refresh is in flight. Concurrent callers share one in-flight
  * probe per URL.
+ *
+ * Only conclusive answers are recorded. A probe that ran out of budget while
+ * the process was too busy to notice an answer (`inconclusive`, see
+ * `EndpointProbeResult`) changes nothing: `'unknown'` stays `'unknown'`, a
+ * previous answer keeps being served, and the next ask probes again. That is
+ * what keeps a pod's saturated start-up from being cached as "not reachable".
  *
  * No timers of its own: a probe only ever runs because something asked (or
  * because {@link refresh} was called to warm the cache), so an idle process
@@ -67,12 +86,15 @@ export class ReachabilityCache {
   private readonly entries = new Map<string, EndpointProbeResult>();
   private readonly inFlight = new Map<string, Promise<EndpointProbeResult>>();
   private readonly ttlMs: number;
+  private readonly negativeTtlMs: number;
   private readonly probe: (url: string) => Promise<EndpointProbeResult>;
   private readonly logger: LoggerService | undefined;
   private readonly now: () => number;
 
   constructor(options: ReachabilityCacheOptions = {}) {
     this.ttlMs = options.ttlMs ?? DEFAULT_REACHABILITY_TTL_MS;
+    this.negativeTtlMs =
+      options.negativeTtlMs ?? DEFAULT_NEGATIVE_REACHABILITY_TTL_MS;
     this.probe = options.probe ?? (url => probeEndpoint(url));
     this.logger = options.logger;
     this.now = options.now ?? Date.now;
@@ -81,7 +103,8 @@ export class ReachabilityCache {
   /**
    * The cached answer for `url`, without waiting for anything. Starts the
    * first probe when there is no answer yet, and a background refresh when
-   * the answer is stale; the stale answer is still served meanwhile.
+   * the answer is older than its TTL (the shorter one for a negative answer);
+   * the stale answer is still served meanwhile.
    */
   get(url: string): ReachabilityState {
     const entry = this.entries.get(url);
@@ -89,7 +112,8 @@ export class ReachabilityCache {
       void this.refresh(url);
       return { reachable: 'unknown' };
     }
-    if (this.now() - entry.checkedAt >= this.ttlMs) {
+    const ttlMs = entry.reachable ? this.ttlMs : this.negativeTtlMs;
+    if (this.now() - entry.checkedAt >= ttlMs) {
       void this.refresh(url);
     }
     return {
@@ -103,7 +127,8 @@ export class ReachabilityCache {
    * Probe `url` now and cache the answer. Deduplicated: while a probe of the
    * same URL is in flight every caller gets that probe's promise. The probe
    * function is expected to resolve for every outcome; should it throw, the
-   * endpoint is recorded as unreachable rather than left unknown forever.
+   * endpoint is recorded as unreachable rather than left unknown forever. An
+   * inconclusive answer is returned but not recorded.
    */
   refresh(url: string): Promise<EndpointProbeResult> {
     const pending = this.inFlight.get(url);
@@ -127,6 +152,14 @@ export class ReachabilityCache {
                 reason: 'probe failed',
                 checkedAt: this.now(),
               };
+        if (settled.inconclusive) {
+          // Every such line is a moment the process was too busy to measure
+          // anything -- worth seeing in a pod's log, and bounded by the asks.
+          this.logger?.info(
+            `Endpoint probe inconclusive: ${url} (${settled.reason}); probing again on the next request`,
+          );
+          return settled;
+        }
         this.record(url, settled);
         return settled;
       })

@@ -1,4 +1,7 @@
-import { LoggerService } from '@backstage/backend-plugin-api';
+import {
+  LoggerService,
+  RootLifecycleService,
+} from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import {
   AuthenticationError,
@@ -43,9 +46,17 @@ export interface RouterOptions {
   /**
    * The cache of unauthenticated reachability probes behind `/installations`.
    * Overridable for tests; defaults to one that probes for real with a 3 s
-   * budget and a 5 min TTL.
+   * budget and a 5 min TTL (30 s for a negative answer).
    */
   reachability?: ReachabilityCache;
+  /**
+   * When given, the reachability cache is warmed from its startup hook --
+   * once every plugin has initialised -- rather than while they all are. The
+   * probes measure the network with a wall-clock budget, and a backend
+   * initialising under a CPU quota is exactly the process too busy to notice
+   * an answer in time. Tests leave it out and get an immediate warm-up.
+   */
+  lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
 }
 
 /**
@@ -162,14 +173,24 @@ export async function createRouter(
   // Whether each installation's muster is reachable *from this portal*,
   // learned without a user: an unauthenticated GET of its RFC 9728 metadata,
   // cached five minutes (see gs-node's probeEndpoint for the classification).
-  // Warmed here rather than on the first request so the first `/installations`
-  // answer after a pod start already carries the state; not awaited, the
-  // route answers 'unknown' until a probe settles. Results are logged at INFO,
-  // one line per endpoint per state change.
+  // Warmed rather than left to the first request so an `/installations`
+  // answer soon after a pod start already carries the state -- but once the
+  // backend has started (the startup hook), not here in the middle of every
+  // plugin's initialisation, when the event loop is too saturated to notice a
+  // probe's answer within its budget. Not awaited; the route answers 'unknown'
+  // until a probe settles. Results are logged at INFO, one line per endpoint
+  // per state change.
   const reachability =
     options.reachability ?? new ReachabilityCache({ logger });
-  for (const installation of installations.values()) {
-    void reachability.refresh(musterProbeUrl(installation.url));
+  const warmReachability = () => {
+    for (const installation of installations.values()) {
+      void reachability.refresh(musterProbeUrl(installation.url));
+    }
+  };
+  if (options.lifecycle) {
+    options.lifecycle.addStartupHook(warmReachability);
+  } else {
+    warmReachability();
   }
 
   const router = Router();
