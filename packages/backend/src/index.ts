@@ -95,6 +95,9 @@ backend.add(import('@giantswarm/backstage-plugin-plans-backend'));
 // roadmap plugin (GitHub Projects roadmap board)
 backend.add(import('@giantswarm/backstage-plugin-roadmap-backend'));
 
+// repositories plugin (the org's repository inventory via giantswarm-repo-manager)
+backend.add(import('@giantswarm/backstage-plugin-repositories-backend'));
+
 // mcp actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 

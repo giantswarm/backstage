@@ -62,6 +62,7 @@
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
     "@giantswarm/backstage-plugin-muster": "workspace:^",
     "@giantswarm/backstage-plugin-plans": "workspace:^",
+    "@giantswarm/backstage-plugin-repositories": "workspace:^",
     "@giantswarm/backstage-plugin-roadmap": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
     "@material-ui/core": "^4.12.2",

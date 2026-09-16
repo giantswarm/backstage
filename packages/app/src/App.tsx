@@ -14,9 +14,11 @@ import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { musterPluginOverrides } from './modules/muster';
 import { plansPluginOverrides } from './modules/plans';
 import { roadmapPluginOverrides } from './modules/roadmap';
+import { repositoriesPluginOverrides } from './modules/repositories';
 import agentPlatformPlugin from '@giantswarm/backstage-plugin-agent-platform';
 import plansPlugin from '@giantswarm/backstage-plugin-plans';
 import roadmapPlugin from '@giantswarm/backstage-plugin-roadmap';
+import repositoriesPlugin from '@giantswarm/backstage-plugin-repositories';
 
 // Upstream NFS plugins:
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
@@ -70,8 +72,10 @@ const app = createApp({
     musterPluginOverrides,
     plansPluginOverrides,
     roadmapPluginOverrides,
+    repositoriesPluginOverrides,
     plansPlugin,
     roadmapPlugin,
+    repositoriesPlugin,
 
     // Upstream NFS plugins:
     catalogPlugin,

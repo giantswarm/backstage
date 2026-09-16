@@ -93,6 +93,7 @@ export const SidebarContent = NavContentBlueprint.make({
         nav.take('page:agent-platform'),
         nav.take('page:plans'),
         nav.take('page:roadmap'),
+        nav.take('page:repositories'),
       ].filter(Boolean);
 
       const group3 = [

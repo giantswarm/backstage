@@ -1,0 +1,334 @@
+import { InventoryRecord, RepositoryListing, RepositoryRow } from '../apis';
+
+/**
+ * Inventory records in the shape giantswarm-repo-manager stores them
+ * (`docs/inventory-record.md`): a declared repository whose set-up converged,
+ * one being created whose set-up has not, and an undeclared one. The tests
+ * render the page over these; the Playwright spec stages the same rows.
+ */
+
+export const presentService: InventoryRecord = {
+  repository: 'giantswarm/present-service',
+  name: 'present-service',
+  declaration: {
+    team: 'team-bumblebee',
+    file: 'repositories/team-bumblebee.yaml',
+    componentType: 'service',
+    language: 'go',
+    flavours: ['app'],
+    entry: '- name: present-service\n  componentType: service\n',
+    accepted: true,
+  },
+  reality: {
+    url: 'https://github.com/giantswarm/present-service',
+    description: 'Serves the present',
+    visibility: 'public',
+    defaultBranch: 'main',
+    isArchived: false,
+    isFork: false,
+    isTemplate: false,
+    isEmpty: false,
+    createdAt: '2024-01-10T09:00:00Z',
+    pushedAt: '2026-09-15T08:00:00Z',
+    language: 'Go',
+    lastCommit: {
+      date: '2026-09-15T08:00:00Z',
+      author: 'renovate',
+      message: 'chore(deps): update module',
+    },
+    lastPersonCommit: {
+      date: '2026-09-12T10:30:00Z',
+      author: 'alice',
+      message: 'Serve the present',
+    },
+    historySampled: 30,
+    botCommits: 12,
+    openPullRequests: { total: 2, people: 1, bots: 1, renovate: 1 },
+    openIssues: 1,
+    latestRelease: { tag: 'v1.0.0', publishedAt: '2026-09-01T12:00:00Z' },
+    codeownersTeams: ['team-bumblebee'],
+    has: {
+      renovate: true,
+      dependabot: false,
+      circleci: true,
+      workflows: true,
+      dockerfile: true,
+      helm: true,
+      readme: true,
+      codeowners: true,
+    },
+  },
+  circleci: {
+    followed: true,
+    setupWorkflows: true,
+    lastPipeline: {
+      number: 42,
+      state: 'created',
+      createdAt: '2026-09-15T08:01:00Z',
+      ref: 'main',
+    },
+  },
+  renovate: {
+    configured: true,
+    path: 'renovate.json5',
+    enabled: true,
+    preset: true,
+    dashboardIssue: { number: 3, title: 'Dependency Dashboard' },
+    lastPullRequest: {
+      number: 10,
+      title: 'chore(deps): update module',
+      author: 'renovate',
+      createdAt: '2026-09-15T07:00:00Z',
+    },
+  },
+  catalog: { present: true },
+  mapping: { present: true, team: 'bumblebee' },
+  setup: {
+    checks: {
+      repository: 'giantswarm/present-service',
+      declared: 'present-service',
+      team: 'team-bumblebee',
+      mode: 'check',
+      added: false,
+      startedAt: '2026-09-16T22:00:00Z',
+      finishedAt: '2026-09-16T22:00:04Z',
+      steps: [
+        { step: 'settings', verdict: 'ok', summary: 'settings match' },
+        { step: 'permissions', verdict: 'ok' },
+        { step: 'protection', verdict: 'ok', summary: 'main protected' },
+        { step: 'circleci', verdict: 'ok', summary: 'followed' },
+        { step: 'renovate', verdict: 'ok' },
+        { step: 'codeowners', verdict: 'ok' },
+        {
+          step: 'metadata',
+          verdict: 'reported',
+          summary: 'default icon',
+          findings: [
+            {
+              kind: 'default-icon',
+              message: 'the repository uses the default icon',
+              fix: 'upload an icon in the repository settings',
+            },
+          ],
+        },
+        { step: 'lifecycle', verdict: 'skipped', summary: 'no lifecycle set' },
+        { step: 'catalog', verdict: 'ok' },
+        { step: 'release', verdict: 'ok', summary: 'v1.0.0 green' },
+      ],
+      converged: true,
+    },
+    checkedAt: '2026-09-16T22:00:04Z',
+    lastRun: {
+      result: {
+        repository: 'giantswarm/present-service',
+        declared: 'present-service',
+        team: 'team-bumblebee',
+        mode: 'repair',
+        added: false,
+        startedAt: '2026-09-10T22:00:00Z',
+        finishedAt: '2026-09-10T22:00:09Z',
+        steps: [{ step: 'settings', verdict: 'repaired' }],
+        converged: true,
+      },
+      runUrl: 'https://github.com/giantswarm/github/actions/runs/123',
+      timestamp: '2026-09-10T22:00:09Z',
+    },
+  },
+  orphan: { score: 0, reasons: [], stalePeriod: '4320h0m0s' },
+  findings: [
+    {
+      kind: 'default-icon',
+      message: 'the repository uses the default icon',
+      fix: 'upload an icon in the repository settings',
+      source: 'engine',
+    },
+  ],
+  refreshedAt: '2026-09-16T22:00:04Z',
+  source: 'sweep',
+  age: '5m3s',
+};
+
+/** A repository declared minutes ago: created, the rest of the set-up pending. */
+export const newService: InventoryRecord = {
+  repository: 'giantswarm/new-service',
+  name: 'new-service',
+  declaration: {
+    team: 'team-bumblebee',
+    file: 'repositories/team-bumblebee.yaml',
+    componentType: 'service',
+    language: 'go',
+    entry: '- name: new-service\n',
+    accepted: true,
+  },
+  reality: {
+    url: 'https://github.com/giantswarm/new-service',
+    visibility: 'private',
+    isArchived: false,
+    isFork: false,
+    isTemplate: false,
+    isEmpty: true,
+    createdAt: '2026-09-16T21:58:00Z',
+    historySampled: 0,
+    botCommits: 0,
+    openPullRequests: { total: 0, people: 0, bots: 0, renovate: 0 },
+    openIssues: 0,
+    has: {},
+  },
+  renovate: { configured: false, enabled: false, preset: false },
+  catalog: { present: false },
+  mapping: { present: false },
+  setup: {
+    checks: {
+      repository: 'giantswarm/new-service',
+      declared: 'new-service',
+      team: 'team-bumblebee',
+      mode: 'check',
+      added: true,
+      startedAt: '2026-09-16T22:00:00Z',
+      finishedAt: '2026-09-16T22:00:02Z',
+      steps: [
+        { step: 'create', verdict: 'ok', summary: 'created' },
+        { step: 'scaffold', verdict: 'drift', summary: 'template not applied' },
+        { step: 'settings', verdict: 'drift' },
+        { step: 'circleci', verdict: 'drift', changes: ['follow project'] },
+        {
+          step: 'renovate',
+          verdict: 'reported',
+          findings: [
+            {
+              kind: 'renovate-missing',
+              message: 'no renovate.json5',
+              fix: 'the scaffold adds one; wait for the reconciler',
+            },
+          ],
+        },
+      ],
+      converged: false,
+    },
+    checkedAt: '2026-09-16T22:00:02Z',
+  },
+  orphan: {
+    score: 50,
+    reasons: [
+      'empty repository',
+      'Renovate not configured',
+      'no release',
+      'no CI',
+    ],
+    stalePeriod: '4320h0m0s',
+  },
+  findings: [
+    {
+      kind: 'renovate-missing',
+      message: 'no renovate.json5',
+      fix: 'the scaffold adds one; wait for the reconciler',
+      source: 'engine',
+    },
+  ],
+  refreshedAt: '2026-09-16T22:00:02Z',
+  source: 'refresh',
+  age: '12s',
+};
+
+/** On GitHub, declared by nobody. */
+export const strayTool: InventoryRecord = {
+  repository: 'giantswarm/stray-tool',
+  name: 'stray-tool',
+  declaration: null,
+  reality: {
+    url: 'https://github.com/giantswarm/stray-tool',
+    visibility: 'public',
+    isArchived: false,
+    isFork: true,
+    isTemplate: false,
+    isEmpty: false,
+    createdAt: '2021-03-01T00:00:00Z',
+    historySampled: 30,
+    botCommits: 0,
+    lastPersonCommit: {
+      date: '2023-05-01T00:00:00Z',
+      author: 'bob',
+      message: 'initial',
+    },
+    openPullRequests: { total: 0, people: 0, bots: 0, renovate: 0 },
+    openIssues: 0,
+    has: { readme: true },
+  },
+  renovate: { configured: false, enabled: false, preset: false },
+  catalog: { present: false },
+  mapping: { present: false },
+  setup: { checkError: 'no declaration: the set-up checks need a team' },
+  orphan: {
+    score: 100,
+    reasons: [
+      'no declaration',
+      'no commit by a person within the stale period',
+      'Renovate not configured',
+      'no release',
+      'no CI',
+    ],
+    stalePeriod: '4320h0m0s',
+  },
+  findings: [
+    {
+      kind: 'undeclared-on-github',
+      message: 'on GitHub without a declaration',
+      fix: 'declare it in a team file or archive it',
+      source: 'inventory',
+    },
+  ],
+  refreshedAt: '2026-09-16T21:00:00Z',
+  source: 'sweep',
+  age: '1h5m3s',
+};
+
+export const records: Record<string, InventoryRecord> = {
+  'giantswarm/present-service': presentService,
+  'giantswarm/new-service': newService,
+  'giantswarm/stray-tool': strayTool,
+};
+
+/** The `list_repositories` row of a record, as the manager derives it. */
+export function rowOf(record: InventoryRecord): RepositoryRow {
+  return {
+    repository: record.repository,
+    team: record.declaration?.team,
+    lifecycle: record.declaration?.lifecycle,
+    visibility: record.reality?.visibility,
+    archived: record.reality?.isArchived ?? false,
+    gone: record.reality === null || undefined,
+    lastPersonCommit: record.reality?.lastPersonCommit?.date,
+    orphan: record.orphan,
+    findings: record.findings.map(finding => finding.kind),
+    setup: {
+      converged: record.setup.checks?.converged,
+      checkedAt: record.setup.checkedAt,
+      lastRun: record.setup.lastRun?.timestamp,
+      error: record.setup.checkError,
+    },
+    decision: record.decision?.verdict,
+    age: record.age ?? '',
+  };
+}
+
+export function listingOf(rows: RepositoryRow[]): RepositoryListing {
+  return {
+    sweep: {
+      startedAt: '2026-09-16T21:00:00Z',
+      finishedAt: '2026-09-16T21:04:00Z',
+      duration: '4m0s',
+      repositories: 3,
+      declared: 2,
+      undeclared: 1,
+      gone: 0,
+      archived: 0,
+      engineChecks: 2,
+      removed: 0,
+    },
+    sweepRunning: false,
+    total: 3,
+    matched: rows.length,
+    shown: rows.length,
+    repositories: rows,
+  };
+}
