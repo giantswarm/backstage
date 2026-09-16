@@ -1,20 +1,34 @@
 import type { StorybookConfig } from '@storybook/react-vite';
 
 /**
- * Single, root-level Storybook configuration for the Giant Swarm shared UI
- * library (`@giantswarm/backstage-plugin-ui-react`).
+ * Single, root-level Storybook configuration for the Giant Swarm frontend.
+ *
+ * Covers the shared UI library (`@giantswarm/backstage-plugin-ui-react`) and
+ * the presentational components of individual plugins, currently `muster`.
  *
  * Stories and the intro page are discovered by glob, so adding a new component
  * with a `*.stories.tsx` next to it needs no change here. The coverage gate
  * (see `scripts/check-story-coverage.mts`) fails CI when an exported `ui-react`
- * component has no story, keeping this library fully documented over time.
+ * component has no story, keeping that library fully documented over time; the
+ * gate does not (yet) cover plugin stories, which are opt-in per component.
+ *
+ * A plugin story must import the component by its own path
+ * (`from './ToolTable'`), never through the plugin's barrel
+ * (`@giantswarm/backstage-plugin-muster`): the barrel pulls the whole plugin
+ * graph — including the 500-file `gs` plugin — through Vite for what is meant
+ * to be a single-component page.
  */
 const config: StorybookConfig = {
   stories: [
-    // Intro/overview MDX first, then every ui-react story (discovered by glob,
-    // so adding a component with a story needs no change here).
+    // Intro/overview MDX first, then every story (discovered by glob, so adding
+    // a component with a story needs no change here).
     '../.storybook/*.mdx',
     '../plugins/ui-react/src/**/*.stories.@(ts|tsx)',
+    // Plugin components that render from props alone. The global decorator
+    // supplies the theme, router and a minimal API surface — a component
+    // needing `musterApiRef` or react-query needs a decorator of its own
+    // before it can be storied here.
+    '../plugins/muster/src/**/*.stories.@(ts|tsx)',
   ],
   // Storybook 9/10 fold controls, actions, viewport, etc. into core; only the
   // docs addon (autodocs + MDX) needs to be listed.

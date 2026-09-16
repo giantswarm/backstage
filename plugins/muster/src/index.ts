@@ -38,6 +38,7 @@ export type {
   WorkflowArgDefinition,
   WorkflowStep,
 } from './lib/k8s';
+export { isReadOnly, isDestructive } from './lib/toolAnnotations';
 export {
   MusterInstanceProvider,
   useMusterInstance,
@@ -53,6 +54,10 @@ export {
   Stat,
   DisclosureAccordion,
   ToolList,
+  ToolTable,
+  toolTableItem,
+  ToolMarkers,
+  hasMarkers,
   ServerSignIn,
   useServerSignIn,
   toneColors,
@@ -66,6 +71,10 @@ export type {
   DisclosureAccordionProps,
   ToolListItem,
   ToolListProps,
+  ToolTableProps,
+  ToolTableItem,
+  ToolRowMode,
+  ToolMarkersProps,
   ServerSignInProps,
   ServerSignInState,
   Tone,

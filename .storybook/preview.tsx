@@ -13,9 +13,11 @@ const preview: Preview = {
       },
     },
     options: {
-      // Intro first, then components A→Z.
+      // Intro first, then the shared library A→Z, then each plugin's own
+      // components under its own section. A plugin not listed here still
+      // renders — it just sorts after the ones that are.
       storySort: {
-        order: ['Introduction', 'Components', '*'],
+        order: ['Introduction', 'Components', 'Muster', '*'],
       },
     },
   },

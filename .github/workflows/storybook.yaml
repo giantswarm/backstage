@@ -1,18 +1,26 @@
-# Builds the ui-react Storybook (docs for @giantswarm/backstage-plugin-ui-react)
-# and enforces the story coverage gate on every PR; publishes the static site to
+# Builds the frontend Storybook (docs for @giantswarm/backstage-plugin-ui-react
+# plus the storied presentational components of individual plugins) and enforces
+# the ui-react story coverage gate on every PR; publishes the static site to
 # GitHub Pages on merge to main.
 #
 # Hand-authored (not devctl-generated), so it is safe to edit here.
 name: Storybook
 
-# Only the ui-react library, the Storybook config/tooling, and dependency
-# manifests affect this site — so scope the PR/push triggers to those paths and
-# don't make unrelated (e.g. backend-only) PRs pay for a full install + build.
+# Only the storied code, the Storybook config/tooling, and dependency manifests
+# affect this site — so scope the PR/push triggers to those paths and don't make
+# unrelated (e.g. backend-only) PRs pay for a full install + build.
 # merge_group is left unscoped so the merge queue always gets a green signal.
+#
+# muster is an actively developed plugin, so it is scoped to the one directory
+# whose components are storied (`components/shared`) rather than the whole
+# plugin — otherwise every muster PR would pay for this build. Widen this path
+# in lock-step if stories are added elsewhere in the plugin, or the new stories
+# will not be built in CI.
 on:
   pull_request:
     paths:
       - 'plugins/ui-react/**'
+      - 'plugins/muster/src/components/shared/**'
       - '.storybook/**'
       - 'scripts/check-story-coverage.mts'
       - 'tsconfig.storybook.json'
@@ -25,6 +33,7 @@ on:
       - main
     paths:
       - 'plugins/ui-react/**'
+      - 'plugins/muster/src/components/shared/**'
       - '.storybook/**'
       - 'scripts/check-story-coverage.mts'
       - 'tsconfig.storybook.json'
