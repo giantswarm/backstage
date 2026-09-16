@@ -29,4 +29,27 @@ skopeo inspect --format '{{ "{{" }}.Digest{{ "}}" }}' docker://gsoci.azurecr.io/
 To steer placement, use `nodeSelector` for the Backstage pod and
 `database.postgresql.affinity` for the PostgreSQL instance pods.
 
+## Memory
+
+The default memory limit is `1Gi` with a `512Mi` request. Node sizes the V8 heap
+from the container's cgroup limit — about 55 % of it — and the rest of the
+container's memory is the backend's native footprint (loaded modules, buffers,
+the database driver), which is about 250-300 MiB regardless of the limit.
+Measured on the 2.8.1 image under the portal's browser e2e suite
+(`yarn test:e2e:agentlab`, cgroup `memory.peak` of the container):
+
+| Limit   | V8 heap ceiling | Idle RSS (fresh pod) | Peak under the suite | Outcome                                |
+| ------- | --------------- | -------------------- | -------------------- | -------------------------------------- |
+| `600Mi` | 348 MiB         | ~450 MiB             | hits the limit       | main thread OOM-killed, pod restarts   |
+| `1Gi`   | 560 MiB         | ~520 MiB             | 656 MiB              | 0 restarts, 368 MiB headroom           |
+| `8Gi`   | 2240 MiB        | ~1000 MiB            | 1171 MiB             | V8 grows into the room; not a need     |
+
+An unlimited container is not a measurement of what the backend needs: V8
+grows the heap lazily into whatever the cgroup allows. Keep an override of
+`resources.limits.memory` at `1Gi` or above; a lower limit shrinks the heap
+but not the native footprint, and the sum is what the kernel enforces. Setting
+`NODE_OPTIONS=--max-old-space-size` is not needed for the default, because the
+heap already follows the limit; it would also have to repeat the image's
+`--no-node-snapshot`, which the scaffolder needs.
+
 {{ template "chart.valuesSection" . }}
