@@ -1,6 +1,7 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
   ServerSignIn,
+  ToolMarkers,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
 
@@ -20,7 +21,6 @@ import {
   useSelectableCardStyles,
 } from '../SelectableCard';
 import { ShowMore } from '../ShowMore';
-import { ToolMarkers } from '../ToolsetResolutionList';
 
 function ToolRow({
   tool,
@@ -41,7 +41,7 @@ function ToolRow({
       onSelect={onSelect}
       title={title}
       code
-      meta={<ToolMarkers tool={tool} />}
+      meta={<ToolMarkers annotations={tool.annotations} />}
       summary={tool.summary ?? tool.description}
     />
   );

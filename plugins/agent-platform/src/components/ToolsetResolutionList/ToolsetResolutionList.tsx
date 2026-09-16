@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from '@backstage/core-components';
 import { Alert, Button, Flex, SearchField, Text } from '@backstage/ui';
 import { LinearProgress, makeStyles } from '@material-ui/core';
-import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
+import {
+  ToolMarkers,
+  type ToolSummary,
+} from '@giantswarm/backstage-plugin-muster';
 
 import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
 import { filterCatalogue } from '../../lib/filterCatalogue';
@@ -13,8 +16,6 @@ import {
   countNoun,
   groupWorkflows,
   hasEntries,
-  isDestructive,
-  isReadOnly,
   ServerInfo,
 } from '../../lib/toolset';
 import { Disclosures, type DisclosureEntry } from '../Disclosures';
@@ -54,45 +55,7 @@ const useStyles = makeStyles(theme => ({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
-  marker: {
-    fontSize: 11,
-    lineHeight: 1.4,
-    padding: theme.spacing(0, 0.75),
-    borderRadius: 999,
-    border: `1px solid ${theme.palette.divider}`,
-    color: theme.palette.text.secondary,
-    whiteSpace: 'nowrap',
-  },
-  markerDestructive: {
-    borderColor: theme.palette.error.main,
-    color: theme.palette.error.main,
-  },
 }));
-
-/**
- * The read-only / destructive markers a server puts on its tool (MCP tool
- * annotations, forwarded by muster), so an author picks with understanding and
- * a viewer sees what an agent's tools can do. Nothing is shown for a tool whose
- * server declares neither.
- */
-export function ToolMarkers({ tool }: { tool: ToolSummary }) {
-  const classes = useStyles();
-  const readOnly = isReadOnly(tool);
-  const destructive = isDestructive(tool);
-  if (!readOnly && !destructive) {
-    return null;
-  }
-  return (
-    <>
-      {readOnly && <span className={classes.marker}>read-only</span>}
-      {destructive && (
-        <span className={`${classes.marker} ${classes.markerDestructive}`}>
-          destructive
-        </span>
-      )}
-    </>
-  );
-}
 
 /** The rows of one section — a page at a time, the rest on request. */
 function ToolRows({
@@ -125,7 +88,7 @@ function ToolRows({
                 ) : (
                   <span className={classes.name}>{tool.name}</span>
                 )}
-                <ToolMarkers tool={tool} />
+                <ToolMarkers annotations={tool.annotations} />
                 {(tool.summary || tool.description) && (
                   <Text
                     variant="body-x-small"
