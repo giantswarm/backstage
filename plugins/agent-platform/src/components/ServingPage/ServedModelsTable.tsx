@@ -25,7 +25,11 @@ import {
   isServedInferenceService,
   lacksToolCalling,
 } from '../../lib/modelManagerServing';
-import type { ServedModel, ServingBackend } from '../../lib/serving';
+import type {
+  ServedModel,
+  ServedModelReadiness,
+  ServingBackend,
+} from '../../lib/serving';
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
 import type { WiringState } from '../../hooks/useAutoWireServedModels';
 import { ServedReadinessLabel } from '../ModelServingStatus';
@@ -428,7 +432,11 @@ export function downloadLine(download: ServedModelDownload): string {
  * ({@link downloadLine}); else the backend's explanation where it named a
  * reason (the label says the word, this line says why — the scheduler's
  * text, the kubelet's — under it, not only on hover), then a served model's
- * memory state ({@link memoryLine}, the GPU share included).
+ * memory state ({@link memoryLine}, the GPU share included) — for a model
+ * that runs or could: a serving object that is pending, failed or being
+ * deleted has no footprint to report, whatever its inventory entry says
+ * (KServe lists the preset's weights as the size of a model it has not
+ * started).
  */
 export function servedModelStatusLines(row: ServedModelRow): string[] {
   if (isDownloadRow(row)) {
@@ -439,11 +447,20 @@ export function servedModelStatusLines(row: ServedModelRow): string[] {
   if (explanation) {
     lines.push(explanation);
   }
-  const memory = memoryLine(row);
+  const memory = hasFootprint(row.readiness) ? memoryLine(row) : undefined;
   if (memory) {
     lines.push(memory);
   }
   return lines;
+}
+
+/** Whether a row in this state can have memory figures worth a line. */
+function hasFootprint(readiness: ServedModelReadiness): boolean {
+  return (
+    readiness !== 'pending' &&
+    readiness !== 'notReady' &&
+    readiness !== 'terminating'
+  );
 }
 
 /**
@@ -477,7 +494,7 @@ export type ServedModelStatusCellProps = {
  */
 export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
   const lines = servedModelStatusLines(row);
-  const memory = memoryLine(row);
+  const memory = hasFootprint(row.readiness) ? memoryLine(row) : undefined;
   const memoryTitle = memoryLineTitle(row);
   const download = isDownloadRow(row) ? row.download : undefined;
   const percent = download ? downloadPercent(download) : undefined;

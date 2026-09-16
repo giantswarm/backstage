@@ -39,6 +39,27 @@ async function snapshot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
 }
 
+/**
+ * The plugin persists its react-query cache in localStorage
+ * (`AGENT_PLATFORM_PERSISTER_KEY` in its `QueryClientProvider`) and reads the
+ * backends at most once a minute, so a page load within that minute takes the
+ * lab's real backends from the cache and never asks the stub — the staged
+ * model then renders in the wrong backend's vocabulary. A one-shot init
+ * script drops the persisted cache on the next navigation, before the app
+ * runs: armed for the staged page load, and again afterwards so the staged
+ * answer does not outlive the test. Writes to that cache are throttled, so
+ * clearing it from the running page would race a pending write.
+ */
+const PERSISTER_KEY = 'agent-platform-react-query-cache';
+const DROP_FLAG = 'e2e-drop-persisted-queries';
+
+async function dropPersistedQueriesOnNextLoad(page: Page): Promise<void> {
+  await page.evaluate(
+    flag => window.sessionStorage.setItem(flag, '1'),
+    DROP_FLAG,
+  );
+}
+
 /** model-manager 0.23.4's `GET /api/v1/backends` for a kserve backend a GPU pool registered. */
 const backends = {
   backends: [
@@ -106,6 +127,15 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable wi
 }) => {
   const ofThisInstallation = (url: URL) =>
     url.searchParams.get('installation') === lab.installation;
+  await admin.addInitScript(
+    ([key, flag]) => {
+      if (window.sessionStorage.getItem(flag)) {
+        window.sessionStorage.removeItem(flag);
+        window.localStorage.removeItem(key);
+      }
+    },
+    [PERSISTER_KEY, DROP_FLAG] as const,
+  );
   await admin.route(
     url =>
       url.pathname.endsWith('/model-manager/backends') &&
@@ -119,6 +149,7 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable wi
   );
 
   try {
+    await dropPersistedQueriesOnNextLoad(admin);
     await open(admin, '/agent-platform/models/serving');
 
     const row = admin.getByRole('row', { name: /qwen3-4b-instruct/ });
@@ -147,5 +178,8 @@ test('a served model whose predictor pod waits reads Pending · Unschedulable wi
       url.pathname.endsWith('/model-manager/backends'),
     );
     await admin.unroute(url => url.pathname.endsWith('/model-manager/models'));
+    // Leave the page on the lab's real serving layer, the staged answer gone.
+    await dropPersistedQueriesOnNextLoad(admin);
+    await admin.goto('/agent-platform/models/serving');
   }
 });

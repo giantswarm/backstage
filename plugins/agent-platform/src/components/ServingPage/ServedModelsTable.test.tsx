@@ -410,7 +410,16 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
         readinessReason: undefined,
       }),
     ).toEqual([]);
-    // Before the memory line, when both exist.
+    // A model that is not running has no footprint to report, whatever its
+    // inventory entry says: KServe lists the preset's weights as the size of a
+    // model it has not started.
+    expect(
+      servedModelStatusLines({
+        ...stuck,
+        loaded: true,
+        memoryBytes: 8_050_000_000,
+      }),
+    ).toEqual(['0/3 nodes are available: 3 Insufficient nvidia.com/gpu.']);
     expect(
       servedModelStatusLines({
         ...ollamaRows[1],
@@ -418,7 +427,10 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
         readinessReason: 'Faulted',
         readinessMessage: 'The server answered 500.',
       }),
-    ).toEqual(['The server answered 500.', 'Not loaded']);
+    ).toEqual(['The server answered 500.']);
+    expect(
+      servedModelStatusLines({ ...ollamaRows[0], readiness: 'terminating' }),
+    ).toEqual([]);
   });
 
   it('reads Pending · Unschedulable with the scheduler’s text under it and on hover', async () => {
