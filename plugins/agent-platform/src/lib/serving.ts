@@ -24,12 +24,13 @@ import type { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
  * several backends at once — rows, capabilities and loading semantics are
  * kept per (installation, backend), see {@link servingGroupKey}.
  */
-export type ServingBackend = 'kserve' | 'ollama' | 'lemonade';
+export type ServingBackend = 'kserve' | 'ollama' | 'lmstudio' | 'lemonade';
 
 /** How each backend is named in prose ("Served by Ollama model …"). */
 export const SERVING_BACKEND_LABEL: Record<ServingBackend, string> = {
   kserve: 'InferenceService',
   ollama: 'Ollama model',
+  lmstudio: 'LM Studio model',
   lemonade: 'Lemonade model',
 };
 

@@ -332,6 +332,11 @@ describe('ModelManagerApiClient · several backends', () => {
     );
   });
 
+  it('answers an empty list for a model-manager with no backend registered yet', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ backends: [] }));
+    await expect(client.listBackends('lab')).resolves.toEqual([]);
+  });
+
   it('falls back to the one descriptor of /backend on a model-manager without /backends', async () => {
     fetchMock
       .mockResolvedValueOnce(

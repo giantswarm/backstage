@@ -132,7 +132,7 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
       { timeout: 60_000 },
     );
     await expect(
-      admin.getByText(prompt),
+      admin.getByTestId('timeline-user-message').getByText(prompt),
       "the person's message is on the timeline",
     ).toBeVisible();
     await expect(

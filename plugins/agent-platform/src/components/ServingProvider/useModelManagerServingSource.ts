@@ -174,10 +174,12 @@ export function useModelManagerServingSource(
     queries: installations.map(installation => ({
       queryKey: modelManagerModelsQueryKey(installation),
       queryFn: () => modelManagerApi.listModels(installation),
-      // Only once the backends answered: without a descriptor there is no
-      // vocabulary to render the models in, and a failing descriptor read
-      // already marks the installation unreachable.
-      enabled: Boolean(backends[installation]),
+      // Only once the backends answered with at least one: without a
+      // descriptor there is no vocabulary to render the models in, a failing
+      // descriptor read already marks the installation unreachable, and a
+      // model-manager with no backend yet answers `no_backend` to this read
+      // — an empty inventory, not an unreadable installation.
+      enabled: (backends[installation]?.length ?? 0) > 0,
       staleTime: 10_000,
       refetchInterval: MODELS_REFETCH_MS,
     })),

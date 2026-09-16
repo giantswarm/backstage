@@ -306,6 +306,25 @@ describe('useModelManagerServingSource', () => {
     warn.mockRestore();
   });
 
+  it('contributes nothing, unflagged, for an installation whose model-manager runs no backend yet', async () => {
+    // The last runtime-registered backend was just removed: the list is
+    // empty, the inventory is not read, and the installation is neither
+    // served nor unreachable — the page shows its empty state.
+    listBackends.mockImplementation(async (installation: string) =>
+      installation === 'lab' ? [] : [kserve],
+    );
+
+    const { result } = renderSource();
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.installations).toEqual(['gpu']);
+    expect(result.current.unreachableInstallations).toEqual([]);
+    expect(
+      result.current.servedModels.map(model => model.installation),
+    ).not.toContain('lab');
+    expect(listModels.mock.calls.map(call => call[0])).not.toContain('lab');
+  });
+
   it('is loading until the configured list, descriptors and inventories answered', async () => {
     const { result } = renderSource();
 

@@ -949,6 +949,11 @@ export type ServedModelsTableProps = {
    * write access to the serving layer).
    */
   renderActions?: (row: ServedModelRow) => ReactNode;
+  /**
+   * What trails a group's header — the backend's source and Remove backend
+   * for a backend registered with a model-manager. Absent = plain headers.
+   */
+  renderGroupActions?: (group: ServedModelGroup) => ReactNode;
 };
 
 /**
@@ -968,6 +973,7 @@ export type ServedModelsTableProps = {
 export function ServedModelsTable({
   rows,
   renderActions,
+  renderGroupActions,
 }: ServedModelsTableProps) {
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
 
@@ -999,6 +1005,7 @@ export function ServedModelsTable({
           <ServedModelsGroupHeader
             group={group}
             showInstallation={installations > 1}
+            actions={renderGroupActions?.(group)}
           />
           <ServedModelsGroupTable
             group={group}

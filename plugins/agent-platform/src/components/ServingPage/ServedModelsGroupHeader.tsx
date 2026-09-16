@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { ButtonIcon, Flex, Text } from '@backstage/ui';
 import CheckIcon from '@material-ui/icons/Check';
 import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
@@ -10,6 +16,7 @@ import type { ServedModelGroup } from './ServedModelsTable';
 export const BACKEND_LABEL: Record<ServingBackend, string> = {
   kserve: 'KServe',
   ollama: 'Ollama',
+  lmstudio: 'LM Studio',
   lemonade: 'Lemonade',
 };
 
@@ -83,6 +90,12 @@ export type ServedModelsGroupHeaderProps = {
    * lists more than one; with a single installation the backend leads.
    */
   showInstallation: boolean;
+  /**
+   * What trails the header: the backend's source and its own actions
+   * (Remove backend) where the group is a backend registered with a
+   * model-manager. Rendered after the endpoint, pushed to the end.
+   */
+  actions?: ReactNode;
 };
 
 /**
@@ -91,11 +104,12 @@ export type ServedModelsGroupHeaderProps = {
  * than one), the backend with its runtime version, and the endpoint they all
  * answer on — an Ollama host — with a copy action. A group whose rows have
  * their own endpoints (InferenceServices) shows none here; each row carries
- * its own copy action instead.
+ * its own copy action instead. `actions` trails it all.
  */
 export function ServedModelsGroupHeader({
   group,
   showInstallation,
+  actions,
 }: ServedModelsGroupHeaderProps) {
   const description = describeGroup(group);
   return (
@@ -122,6 +136,7 @@ export function ServedModelsGroupHeader({
           <CopyEndpointButton url={group.endpoint} />
         </Flex>
       )}
+      {actions && <span style={{ marginLeft: 'auto' }}>{actions}</span>}
     </Flex>
   );
 }

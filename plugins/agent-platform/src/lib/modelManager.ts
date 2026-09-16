@@ -136,6 +136,12 @@ export const modelManagerBackendSchema = z.looseObject({
   agentEndpoint: wireString,
   healthy: wireBoolean(false),
   message: wireString,
+  /**
+   * Who registered the backend (model-manager 0.22 on): `static` — the chart's
+   * values, `person` — `add_backend` from the portal or an agent,
+   * `cluster-manager` — written with a GPU node pool. Absent before.
+   */
+  source: wireString,
   capabilities: modelManagerCapabilitiesSchema
     .optional()
     .transform(value => value ?? modelManagerCapabilitiesSchema.parse({})),
