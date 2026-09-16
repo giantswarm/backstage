@@ -82,6 +82,7 @@ export function useGpuNodePoolControls(
       <GpuNodePoolsPanel
         rows={pools.rows}
         isLoading={pools.isLoading}
+        notes={pools.notes}
         errors={pools.errors}
         onRemove={onRemove}
       />

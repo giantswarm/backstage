@@ -87,7 +87,19 @@ const DRY_RUN: NodePoolWriteResult = {
   gpuOperator: { status: 'absent' },
 };
 
-type Scenario = { commit?: boolean; createError?: Error };
+type Scenario = {
+  commit?: boolean;
+  createError?: Error;
+  /** The installation does not serve the Cluster API (cluster-manager 0.4.1+). */
+  noClusterApi?: boolean;
+};
+
+const NO_CLUSTER_API = {
+  group: 'cluster.x-k8s.io',
+  version: 'v1beta1',
+  state: 'absent',
+  note: 'the Cluster API (cluster.x-k8s.io) is not served on this installation',
+};
 
 function makeMusterApi(scenario: Scenario = {}) {
   const callTool = jest.fn(
@@ -100,7 +112,9 @@ function makeMusterApi(scenario: Scenario = {}) {
             tools: [],
           };
         case 'x_cluster-manager_list_clusters':
-          return { clusters: [WC1] };
+          return scenario.noClusterApi
+            ? { clusters: [], clusterApi: NO_CLUSTER_API }
+            : { clusters: [WC1] };
         case 'x_cluster-manager_create_node_pool':
           if (scenario.createError) {
             throw scenario.createError;
@@ -248,6 +262,17 @@ describe('AddGpuNodePoolDialog', () => {
     expect(
       await screen.findByText('Connect to cluster-manager'),
     ).toBeInTheDocument();
+  });
+
+  it("shows the tool's note, not an error, where the Cluster API is not served", async () => {
+    await renderDialog({ noClusterApi: true });
+    const note = await screen.findByTestId('cluster-api-note');
+    expect(note).toHaveTextContent(NO_CLUSTER_API.note);
+    expect(screen.queryByText('Clusters could not be read')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /^No clusters/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review' })).toBeDisabled();
   });
 
   it('shows a refusal verbatim', async () => {

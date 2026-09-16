@@ -5,6 +5,7 @@ import { ClusterManagerClient } from '../apis/ClusterManagerClient';
 import {
   CLUSTER_MANAGER_SERVER,
   ClusterManagerNotConnectedError,
+  clusterApiNote,
   isManagedPool,
   parseReplicasGuard,
   poolNameOf,
@@ -77,7 +78,11 @@ export function useClusterManagerInfo(
   };
 }
 
-/** `list_clusters` on one installation, with the marks the tool reports. */
+/**
+ * `list_clusters` on one installation, with the marks the tool reports —
+ * and, where the installation does not serve the Cluster API, the tool's note
+ * saying so (the list is empty then, not failed).
+ */
 export function useManagedClusters(installation: string | undefined) {
   const client = useClusterManagerClient(installation);
   const { data, isLoading, error, refetch } = useQuery({
@@ -88,7 +93,8 @@ export function useManagedClusters(installation: string | undefined) {
     retry: false,
   });
   return {
-    clusters: data ?? [],
+    clusters: data?.clusters ?? [],
+    clusterApiNote: clusterApiNote(data?.clusterApi),
     isLoading: Boolean(client) && isLoading,
     error: (error as Error) ?? null,
     refetch,
@@ -119,10 +125,18 @@ export type GpuNodePoolRow = {
   pool: NodePool;
 };
 
+/** What one installation's `list_clusters` → `list_node_pools` fan-out yields. */
+type GpuNodePoolsOfInstallation = {
+  rows: GpuNodePoolRow[];
+  /** The tool's note where the installation does not serve the Cluster API. */
+  note?: string;
+};
+
 /**
  * Every GPU node pool cluster-manager owns across the installations that have
  * it: `list_clusters`, then `list_node_pools` for each cluster with a pool
- * release. One query per installation, all through the person's session.
+ * release. One query per installation, all through the person's session. An
+ * installation without the Cluster API contributes no rows and its note.
  */
 export function useGpuNodePools(installations: string[]) {
   const musterApi = useMusterPluginApi();
@@ -130,9 +144,9 @@ export function useGpuNodePools(installations: string[]) {
     queries: installations.map(installation => ({
       queryKey: [...musterClustersQueryKey(installation), 'pools'] as const,
       enabled: Boolean(musterApi),
-      queryFn: async (): Promise<GpuNodePoolRow[]> => {
+      queryFn: async (): Promise<GpuNodePoolsOfInstallation> => {
         const client = new ClusterManagerClient(musterApi!, installation);
-        const clusters = await client.listClusters();
+        const { clusters, clusterApi } = await client.listClusters();
         const withPools = clusters.filter(
           cluster => cluster.poolReleases.length > 0,
         );
@@ -141,7 +155,7 @@ export function useGpuNodePools(installations: string[]) {
             client.listNodePools(cluster.name, cluster.namespace),
           ),
         );
-        return results.flatMap((result, index) => {
+        const rows = results.flatMap((result, index) => {
           const cluster = withPools[index];
           return result.nodePools.filter(isManagedPool).map(pool => ({
             id: `${installation}/${cluster.name}/${pool.name}`,
@@ -151,6 +165,7 @@ export function useGpuNodePools(installations: string[]) {
             pool,
           }));
         });
+        return { rows, note: clusterApiNote(clusterApi) };
       },
       staleTime: 30_000,
       retry: false,
@@ -158,10 +173,17 @@ export function useGpuNodePools(installations: string[]) {
   });
 
   const rows = useMemo(
-    () => queries.flatMap(query => query.data ?? []),
+    () => queries.flatMap(query => query.data?.rows ?? []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [queries.map(query => query.dataUpdatedAt).join('|')],
   );
+  const notes = queries
+    .map((query, index) =>
+      query.data?.note
+        ? { installation: installations[index], note: query.data.note }
+        : undefined,
+    )
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   const errors = queries
     .map((query, index) =>
       query.error
@@ -172,6 +194,7 @@ export function useGpuNodePools(installations: string[]) {
 
   return {
     rows,
+    notes,
     errors,
     isLoading: Boolean(musterApi) && queries.some(query => query.isLoading),
   };

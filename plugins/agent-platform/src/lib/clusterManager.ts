@@ -38,11 +38,43 @@ export function clusterManagerToolName(tool: ClusterManagerTool): string {
 /** A write's mode: land the objects live, or open a pull request. */
 export type WriteMode = 'apply' | 'commit';
 
+/**
+ * Whether the installation serves the Cluster API (`cluster.x-k8s.io`), as
+ * `get_info` and `list_clusters` report it from cluster-manager 0.4.1 on. On
+ * an installation without it `list_clusters` answers no clusters and `note`
+ * says why; the writes refuse naming the cluster and the group.
+ */
+export type ClusterApiStatus = {
+  group: string;
+  version: string;
+  state: 'served' | 'absent' | 'unknown' | '';
+  note?: string;
+};
+
+/**
+ * The line to show where the Cluster API is not served — the tool's own note,
+ * or one naming the group when the tool reports the state without it.
+ * `undefined` where it is served, or for a cluster-manager that predates the
+ * report.
+ */
+export function clusterApiNote(
+  status: ClusterApiStatus | undefined,
+): string | undefined {
+  if (!status || status.state === 'served' || status.state === '') {
+    return undefined;
+  }
+  return (
+    status.note ||
+    `the Cluster API (${status.group}) is not served on this installation`
+  );
+}
+
 /** `get_info`: the version, the write modes offered and the tool names. */
 export type ClusterManagerInfo = {
   version: string;
   modes: { apply: boolean; commit: boolean };
   tools: string[];
+  clusterApi?: ClusterApiStatus;
 };
 
 /**
@@ -90,6 +122,12 @@ export type ManagedCluster = {
   poolReleases: PoolRelease[];
   /** Null when no git repository owns the cluster. */
   commitTarget: CommitTarget | null;
+};
+
+/** `list_clusters`: the installation's clusters, and whether the Cluster API is served. */
+export type ManagedClustersResult = {
+  clusters: ManagedCluster[];
+  clusterApi?: ClusterApiStatus;
 };
 
 /** `list_node_pools`: one MachinePool of a cluster. */

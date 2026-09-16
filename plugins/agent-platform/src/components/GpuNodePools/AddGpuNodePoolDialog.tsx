@@ -105,6 +105,7 @@ export function AddGpuNodePoolDialog({
 
   const {
     clusters,
+    clusterApiNote: noClusterApi,
     isLoading: clustersLoading,
     error: clustersError,
   } = useManagedClusters(installation);
@@ -236,7 +237,11 @@ export function AddGpuNodePoolDialog({
                   label="Cluster"
                   isRequired
                   placeholder={
-                    clustersLoading ? 'Reading clusters…' : 'Pick a cluster'
+                    clustersLoading
+                      ? 'Reading clusters…'
+                      : clusters.length === 0
+                        ? 'No clusters'
+                        : 'Pick a cluster'
                   }
                   options={clusters.map(candidate => ({
                     id: candidate.name,
@@ -257,6 +262,14 @@ export function AddGpuNodePoolDialog({
                       </Text>
                     ))}
                   </Flex>
+                )}
+                {!clustersLoading && clusters.length === 0 && noClusterApi && (
+                  <Alert
+                    status="info"
+                    title="No clusters on this installation"
+                    description={noClusterApi}
+                    data-testid="cluster-api-note"
+                  />
                 )}
                 {clustersError && (
                   <Alert

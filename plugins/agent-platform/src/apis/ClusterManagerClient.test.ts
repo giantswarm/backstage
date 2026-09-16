@@ -89,7 +89,10 @@ describe('ClusterManagerClient', () => {
   it('unwraps list_clusters and tolerates a null list', async () => {
     const { api } = makeMusterApi({ clusters: null });
     const client = new ClusterManagerClient(api, 'inst-1');
-    await expect(client.listClusters()).resolves.toEqual([]);
+    await expect(client.listClusters()).resolves.toEqual({
+      clusters: [],
+      clusterApi: undefined,
+    });
   });
 
   it("classifies muster's tool-not-found as not connected", async () => {

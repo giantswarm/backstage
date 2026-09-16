@@ -9,7 +9,9 @@ import {
   type ClusterManagerTool,
   type CreateNodePoolInput,
   type DeleteNodePoolInput,
+  type ClusterApiStatus,
   type ManagedCluster,
+  type ManagedClustersResult,
   type NodePoolWriteResult,
   type NodePoolsResult,
   type WriteMode,
@@ -67,13 +69,16 @@ export class ClusterManagerClient {
     return this.call<ClusterManagerInfo>(CLUSTER_MANAGER_TOOLS.getInfo, {});
   }
 
-  /** The installation's clusters with the marks the tool reports. */
-  async listClusters(): Promise<ManagedCluster[]> {
-    const result = await this.call<{ clusters?: ManagedCluster[] | null }>(
-      CLUSTER_MANAGER_TOOLS.listClusters,
-      {},
-    );
-    return result.clusters ?? [];
+  /**
+   * The installation's clusters with the marks the tool reports, and whether
+   * the Cluster API is served at all (none listed where it is not).
+   */
+  async listClusters(): Promise<ManagedClustersResult> {
+    const result = await this.call<{
+      clusters?: ManagedCluster[] | null;
+      clusterApi?: ClusterApiStatus;
+    }>(CLUSTER_MANAGER_TOOLS.listClusters, {});
+    return { clusters: result.clusters ?? [], clusterApi: result.clusterApi };
   }
 
   /** The MachinePools of one cluster, with both Kubernetes versions. */
