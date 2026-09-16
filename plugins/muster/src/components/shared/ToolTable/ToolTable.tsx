@@ -26,7 +26,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'grid',
     gridTemplateColumns: 'subgrid',
     gridColumn: '1 / -1',
-    alignItems: 'baseline',
+    // Centred, not baseline-aligned: an icon-only control in the trailing
+    // column (the Tool Explorer's favourite star) synthesises its baseline at
+    // its bottom edge, so baseline alignment drags every text cell in the row
+    // down with it. The description never wraps, so there is no second line
+    // for a baseline to serve.
+    alignItems: 'center',
     columnGap: theme.spacing(1.5),
     padding: theme.spacing(0.75, 1.5),
     minWidth: 0,
@@ -57,7 +62,12 @@ const useStyles = makeStyles((theme: Theme) => ({
   trigger: {
     display: 'grid',
     gridTemplateColumns: 'subgrid',
-    alignItems: 'baseline',
+    alignItems: 'center',
+    // The row centres its cells, which would size this button to its text and
+    // leave dead strips above and below it. A row that selects a tool has to
+    // be clickable over its whole height, so the button stretches and centres
+    // its own contents instead.
+    alignSelf: 'stretch',
     columnGap: theme.spacing(1.5),
     appearance: 'none',
     background: 'none',
