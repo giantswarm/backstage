@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import { Content, EmptyState } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
+import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { NO_SERVING_CAPABILITIES } from '../../lib/serving';
+import { useGpuNodePoolControls } from '../GpuNodePools';
 import { useServing } from '../ServingProvider';
 import { GpuCapacityPanel } from './GpuCapacityPanel';
 
@@ -19,6 +21,11 @@ import { GpuCapacityPanel } from './GpuCapacityPanel';
  */
 export function GpuCapacityPage() {
   const serving = useServing();
+  const pools = useGpuNodePoolControls(
+    serving.reachableInstallations,
+    serving.servedModels,
+  );
+  useProvidePageHeaderActions(pools.addButton);
 
   const nodeInventoryInstallations = useMemo(
     () =>
@@ -33,6 +40,8 @@ export function GpuCapacityPage() {
   if (!serving.isLoading && nodeInventoryInstallations.length === 0) {
     return (
       <Content>
+        {pools.dialogs}
+        {pools.panel}
         <EmptyState
           missing="data"
           title="No GPU inventory"
@@ -41,6 +50,7 @@ export function GpuCapacityPage() {
               ? 'The serving layers this portal can see do not report their nodes. GPU capacity is read per node from installations whose serving layer reports one: the nodes of a KServe-backed serving layer, or the host an Ollama-backed model-manager proxies (from model-manager 0.7 on — an older one reports no nodes).'
               : 'No reachable installation has a serving layer this portal can see. GPU capacity is read per node from installations whose serving layer reports one.'
           }
+          action={pools.addButton}
         />
       </Content>
     );
@@ -49,6 +59,8 @@ export function GpuCapacityPage() {
   return (
     <Content>
       <Flex direction="column" gap="3">
+        {pools.dialogs}
+        {pools.panel}
         <Text color="secondary">
           The nodes the served models run on, per installation: for a cluster
           node the product and memory from the node labels, what the device

@@ -1,0 +1,5 @@
+---
+'@giantswarm/backstage-plugin-agent-platform': minor
+---
+
+Models pages: **Add GPU node pool** on the GPU capacity page and on Serving, where an installation's muster lists cluster-manager. The dialog picks a cluster from `list_clusters` with the marks the tool reports (own cluster, GPU operator and serving with their providers, commit target), a pool name, accelerator, size and Teleport, calls `create_node_pool` with `dryRun` through muster as the signed-in person and shows the composed releases as manifests in one review with copy and download; **Deploy** applies as the person (`mode: apply`), **Commit** is disabled with "not available yet" until cluster-manager offers it. The GPU capacity page lists the pools from `list_node_pools` with the pool's Kubernetes version and the control plane's as two cells; **Remove pool** is a name-typing confirm that names the models served on that cluster, shows `delete_node_pool`'s replicas guard with the nodes it names and offers `force` only after it; any other refusal is shown verbatim. No proxy route: every cluster-manager call goes through muster.

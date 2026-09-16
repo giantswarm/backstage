@@ -33,6 +33,7 @@ import {
   type ImportTarget,
   type PullTarget,
 } from '../ModelManagerControls';
+import { useGpuNodePoolControls } from '../GpuNodePools';
 import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -101,6 +102,10 @@ export function ServingPage() {
   const serving = useServing();
   const { servedModels, installations } = serving;
   const { rows: servedRows } = useServedModelRows();
+  const pools = useGpuNodePoolControls(
+    serving.reachableInstallations,
+    servedModels,
+  );
   const toastApi = useApi(toastApiRef);
   const [isPullOpen, setPullOpen] = useState(false);
   const [isImportOpen, setImportOpen] = useState(false);
@@ -432,8 +437,9 @@ export function ServingPage() {
   // offered changes; `null` clears the slot when nothing is.
   const headerActions = useMemo(
     () =>
-      canServe || canPull || canImport ? (
+      canServe || canPull || canImport || pools.available ? (
         <Flex gap="2">
+          {pools.addButton}
           {canPull && (
             <Button
               variant="secondary"
@@ -463,7 +469,7 @@ export function ServingPage() {
           )}
         </Flex>
       ) : null,
-    [canServe, canPull, canImport, openServe],
+    [canServe, canPull, canImport, openServe, pools.addButton, pools.available],
   );
   useProvidePageHeaderActions(headerActions);
 
@@ -479,9 +485,11 @@ export function ServingPage() {
           <EmptyState
             missing="data"
             title="No serving layer"
-            description="None of the reachable installations has a serving layer this portal can see — KServe InferenceServices, or a model-manager (Ollama, KServe). Model configs pointing at external endpoints work without one."
+            description="None of the reachable installations has a serving layer this portal can see — KServe InferenceServices, or a model-manager (Ollama, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
+            action={pools.addButton}
           />
         )}
+        {pools.dialogs}
       </Content>
     );
   }
@@ -612,6 +620,7 @@ export function ServingPage() {
           />
         )}
 
+        {pools.dialogs}
         {stopping && (
           <StopServedModelDialog
             model={stopping}
