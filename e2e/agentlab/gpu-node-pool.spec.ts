@@ -126,7 +126,9 @@ test.describe('models: GPU node pools', () => {
       timeout: 60_000,
     });
     await expect(
-      dialog.getByText(`cluster nosuchcluster not found: ${CLUSTER_API_NOTE}`),
+      dialog.getByText(
+        `cluster org-lab/nosuchcluster not found: ${CLUSTER_API_NOTE}`,
+      ),
     ).toBeVisible();
     await expect(dialog.getByTestId('node-pool-review')).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: /Commit/ })).toHaveCount(0);
