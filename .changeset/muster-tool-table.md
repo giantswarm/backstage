@@ -25,9 +25,14 @@ The `isReadOnly` / `isDestructive` annotation predicates moved to the muster
 plugin, where `ToolTable` needs them too; `agent-platform`'s `lib/toolset`
 re-exports them unchanged, so its callers are unaffected.
 
-First call site: the servers page's muster row (its core tool families), which
-replaces `ToolList` — now deleted, along with its export. Those families show
-read-only and destructive markers for the first time; `ToolList` never had them.
-The remaining lists migrate separately. The servers page's inline chips are a
-different affordance (a dense jump-off surface, not a read-and-compare list) and
-are deliberately out of scope.
+Every one of those lists now renders through it: the servers page's core tool
+families (`ToolList`, deleted), the resolved toolset behind the agent detail
+page, the Tools step, the review page and the edit page, the Tools step's
+catalogue, and the Tool Explorer's browse, search and quick-access lists. The
+Tool Explorer and the core families show read-only and destructive markers for
+the first time — the surface that actually runs a tool was not telling anyone
+which tools destroy things.
+
+The servers page's inline chips stay as they are: a dense jump-off surface, not
+a read-and-compare list, and a different affordance rather than a different
+styling of the same one.

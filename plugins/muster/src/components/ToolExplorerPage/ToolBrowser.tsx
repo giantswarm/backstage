@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { makeStyles, Theme } from '@material-ui/core';
+import { makeStyles } from '@material-ui/core';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
@@ -15,6 +15,7 @@ import {
   SearchField,
   Text,
 } from '@backstage/ui';
+import { ToolTable, toolTableItem, type ToolTableItem } from '../shared';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef, ToolSummary } from '../../apis';
@@ -33,36 +34,7 @@ const BROWSE_LIMIT = 2000;
 /** Page size for ranked search results. */
 const SEARCH_LIMIT = 50;
 
-const useStyles = makeStyles((theme: Theme) => ({
-  // The clickable tool row: a reset <button> so the whole row selects the tool
-  // while the favourite star stays a separate, non-nested button.
-  row: {
-    flexGrow: 1,
-    minWidth: 0,
-    appearance: 'none',
-    background: 'none',
-    border: 'none',
-    textAlign: 'left',
-    cursor: 'pointer',
-    padding: theme.spacing(0.75, 1),
-    borderRadius: theme.shape.borderRadius,
-    '&:hover': { backgroundColor: theme.palette.action.hover },
-  },
-  rowContainer: {
-    borderBottom: `1px solid ${theme.palette.divider}`,
-  },
-  selected: {
-    backgroundColor: theme.palette.action.selected,
-  },
-  active: {
-    outline: `2px solid ${theme.palette.primary.main}`,
-    outlineOffset: -2,
-    borderRadius: theme.shape.borderRadius,
-  },
-  toolName: {
-    fontFamily: 'monospace',
-    fontSize: '0.8rem',
-  },
+const useStyles = makeStyles(() => ({
   panel: {
     maxHeight: 360,
     overflow: 'auto',
@@ -72,59 +44,39 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-function ToolRow({
-  tool,
-  selected,
-  active,
-  favourite,
-  onSelect,
-  onToggleFavourite,
-}: {
-  tool: ToolSummary;
-  selected: boolean;
-  active?: boolean;
-  favourite: boolean;
-  onSelect: (name: string) => void;
-  onToggleFavourite: (name: string) => void;
-}) {
-  const classes = useStyles();
-  const subtitle = tool.summary ?? tool.description;
-  return (
-    <Flex
-      align="center"
-      gap="1"
-      px="1"
-      className={`${classes.rowContainer} ${selected ? classes.selected : ''} ${
-        active ? classes.active : ''
-      }`}
-    >
-      <button
-        type="button"
-        className={classes.row}
-        onClick={() => onSelect(tool.name)}
-      >
-        {/* Children are phrasing content (spans) so nothing block-level nests
-            inside the native <button>. */}
-        <span
-          style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}
-        >
-          <span className={classes.toolName}>{tool.name}</span>
-          {tool.score !== undefined && (
-            <Badge size="small">score {tool.score}</Badge>
-          )}
-        </span>
-        {subtitle && (
-          <Text
-            as="span"
-            variant="body-small"
-            color="secondary"
-            truncate
-            style={{ display: 'block' }}
-          >
-            {subtitle}
-          </Text>
-        )}
-      </button>
+/**
+ * One browse or search result: the whole row opens the tool, the favourite star
+ * stays a control of its own at the trailing edge (a button cannot nest inside
+ * a button), and a query-ranked result carries its score beside the markers.
+ */
+function browserItem(
+  tool: ToolSummary,
+  {
+    selected,
+    active,
+    favourite,
+    onSelect,
+    onToggleFavourite,
+  }: {
+    selected: boolean;
+    active?: boolean;
+    favourite: boolean;
+    onSelect: (name: string) => void;
+    onToggleFavourite: (name: string) => void;
+  },
+): ToolTableItem {
+  return toolTableItem(tool, {
+    mode: {
+      kind: 'action',
+      onSelect: () => onSelect(tool.name),
+      selected,
+      active,
+    },
+    meta:
+      tool.score !== undefined ? (
+        <Badge size="small">score {tool.score}</Badge>
+      ) : undefined,
+    trailing: (
       <ButtonIcon
         variant="tertiary"
         size="small"
@@ -138,8 +90,8 @@ function ToolRow({
         }
         onClick={() => onToggleFavourite(tool.name)}
       />
-    </Flex>
-  );
+    ),
+  });
 }
 
 export interface ToolBrowserProps {
@@ -366,29 +318,31 @@ function QuickAccess({
   prefs: ToolPrefs;
   onSelect: (name: string) => void;
 }) {
-  const renderList = (tools: ToolSummary[]) =>
-    tools.map(tool => (
-      <ToolRow
-        key={tool.name}
-        tool={tool}
-        selected={tool.name === selected}
-        favourite={prefs.isFavourite(tool.name)}
-        onSelect={onSelect}
-        onToggleFavourite={prefs.toggleFavourite}
-      />
-    ));
+  const renderList = (tools: ToolSummary[], ariaLabel: string) => (
+    <ToolTable
+      ariaLabel={ariaLabel}
+      items={tools.map(tool =>
+        browserItem(tool, {
+          selected: tool.name === selected,
+          favourite: prefs.isFavourite(tool.name),
+          onSelect,
+          onToggleFavourite: prefs.toggleFavourite,
+        }),
+      )}
+    />
+  );
   return (
     <Box>
       {favourites.length > 0 && (
         <>
           <QuickHeader>Favourites ({favourites.length})</QuickHeader>
-          {renderList(favourites)}
+          {renderList(favourites, 'Favourite tools')}
         </>
       )}
       {recents.length > 0 && (
         <>
           <QuickHeader>Recent ({recents.length})</QuickHeader>
-          {renderList(recents)}
+          {renderList(recents, 'Recent tools')}
         </>
       )}
     </Box>
@@ -443,16 +397,17 @@ function BrowseGroups({
           </AccordionTrigger>
           <AccordionPanel>
             <Box className={classes.panel}>
-              {group.tools.map(tool => (
-                <ToolRow
-                  key={tool.name}
-                  tool={tool}
-                  selected={tool.name === selected}
-                  favourite={prefs.isFavourite(tool.name)}
-                  onSelect={onSelect}
-                  onToggleFavourite={prefs.toggleFavourite}
-                />
-              ))}
+              <ToolTable
+                ariaLabel={`${group.key} tools`}
+                items={group.tools.map(tool =>
+                  browserItem(tool, {
+                    selected: tool.name === selected,
+                    favourite: prefs.isFavourite(tool.name),
+                    onSelect,
+                    onToggleFavourite: prefs.toggleFavourite,
+                  }),
+                )}
+              />
             </Box>
           </AccordionPanel>
         </Accordion>
@@ -509,17 +464,18 @@ function SearchResults({
           ↑↓ navigate · ↵ open
         </Text>
       </Flex>
-      {tools.map((tool, index) => (
-        <ToolRow
-          key={tool.name}
-          tool={tool}
-          selected={tool.name === selected}
-          active={index === activeIndex}
-          favourite={prefs.isFavourite(tool.name)}
-          onSelect={onSelect}
-          onToggleFavourite={prefs.toggleFavourite}
-        />
-      ))}
+      <ToolTable
+        ariaLabel="Search results"
+        items={tools.map((tool, index) =>
+          browserItem(tool, {
+            selected: tool.name === selected,
+            active: index === activeIndex,
+            favourite: prefs.isFavourite(tool.name),
+            onSelect,
+            onToggleFavourite: prefs.toggleFavourite,
+          }),
+        )}
+      />
     </>
   );
 }
