@@ -35,6 +35,14 @@ opt-in via `yarn test:watch`.
 # Run tests for a specific plugin (preferred) — single run, exits
 yarn test plugins/my-plugin
 
+# Narrower: any number of path patterns (Jest testPathPattern regexes, so a
+# directory prefix is enough). Prefer this while iterating — a plugin-wide run
+# for a one-file change costs minutes for the same signal.
+yarn test plugins/muster/src/components/shared/ToolTable plugins/agent-platform/src/components/ToolsetResolutionList
+
+# Narrowest: one test by name (substring of its `it(...)` title)
+yarn test plugins/my-plugin/src/components/MyComponent -t "does the thing"
+
 # Run a single package's tests — single run, exits
 yarn workspace @giantswarm/backstage-plugin-muster test
 
@@ -51,6 +59,10 @@ yarn test:e2e
 # with this Backstage in it) — see e2e/agentlab/README.md
 yarn test:e2e:agentlab
 ```
+
+Save the plugin-wide (or two-plugin) run for a change to something shared — a
+component or helper with call sites beyond the file you edited. Then it is worth
+the minutes; otherwise the path patterns above are the same signal in seconds.
 
 #### Verifying a change in agentlab
 
