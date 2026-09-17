@@ -67,6 +67,14 @@ export type FitVerdict = {
 };
 
 /** `check_fit`'s answer as the dialog shows it before the Serve button. */
+/** Where a fitting model runs: the instance type the node comes as, else the node it is on. */
+function describeWhere(fit: ModelManagerFitResult): string | undefined {
+  if (fit.instanceType) {
+    return `the node comes as ${fit.instanceType}`;
+  }
+  return fit.node ? `on ${fit.node}` : undefined;
+}
+
 export function describeFitVerdict(fit: ModelManagerFitResult): FitVerdict {
   const sizes = describeFit(fit);
   if (!fit.fits) {
@@ -76,11 +84,7 @@ export function describeFitVerdict(fit: ModelManagerFitResult): FitVerdict {
       details: sizes ? [sizes] : [],
     };
   }
-  const where = fit.instanceType
-    ? `the node comes as ${fit.instanceType}`
-    : fit.node
-      ? `on ${fit.node}`
-      : undefined;
+  const where = describeWhere(fit);
   return {
     fits: true,
     summary: where ? `Fits — ${where}` : 'Fits',

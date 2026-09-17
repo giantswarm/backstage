@@ -107,6 +107,23 @@ function cachedModelChoice(model: ServedModel): Choice {
   };
 }
 
+/** The choice field's placeholder while the presets load or when nothing can be chosen. */
+function choicePlaceholder(
+  usesPresets: boolean,
+  presetsPending: boolean,
+  noChoice: boolean,
+): string | undefined {
+  if (usesPresets && presetsPending) {
+    return 'Reading the presets…';
+  }
+  if (!noChoice) {
+    return undefined;
+  }
+  return usesPresets
+    ? 'No preset is published for this cluster'
+    : 'No cached model waits to be served';
+}
+
 function targetForSeed(
   targets: LoadTarget[],
   seed: LoadModelSeed | undefined,
@@ -336,15 +353,11 @@ export function LoadModelDialog({
               label={usesPresets ? 'Preset' : 'Model'}
               isRequired
               isDisabled={isBusy || choices.length === 0}
-              placeholder={
-                usesPresets && presets.isPending
-                  ? 'Reading the presets…'
-                  : choices.length === 0
-                    ? usesPresets
-                      ? 'No preset is published for this cluster'
-                      : 'No cached model waits to be served'
-                    : undefined
-              }
+              placeholder={choicePlaceholder(
+                usesPresets,
+                presets.isPending,
+                choices.length === 0,
+              )}
               options={choices}
               selectedKey={model}
               onSelectionChange={key => {
