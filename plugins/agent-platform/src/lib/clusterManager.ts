@@ -103,6 +103,89 @@ export type PoolRelease = {
   ready: boolean | null;
 };
 
+/** A step's state in the managers' vocabulary (`list_node_pools` `steps[]`). */
+export type LifecycleStepState = 'pending' | 'inProgress' | 'done' | 'failed';
+
+/** `list_node_pools` `steps[]`: `release`, `machinePool`, `nodes`. */
+export type PoolLifecycleStep = {
+  name: string;
+  state: LifecycleStepState;
+  /** RFC3339: the condition's lastTransitionTime or the object's creation. */
+  since?: string;
+  finishedAt?: string;
+  message?: string;
+};
+
+/** `list_node_pools` `phase`. */
+export type PoolPhase =
+  'creating' | 'ready' | 'scaling' | 'removing' | 'failed';
+
+/** A HelmRelease's Ready condition as `list_clusters` `readiness` reports it. */
+export type ReleaseReadiness = {
+  name: string;
+  namespace?: string;
+  ready: boolean;
+  reason?: string;
+  message?: string;
+  since?: string;
+  deletedAt?: string;
+};
+
+/** `list_clusters` `gpuOperator.readiness` (cluster-manager 0.8+). */
+export type GpuOperatorReadiness = {
+  release: ReleaseReadiness | null;
+  clusterPolicy: { name: string; state: string } | null;
+  operands: {
+    name: string;
+    namespace: string;
+    desired: number;
+    ready: number;
+  }[];
+  /** Why `operands` is empty although a ClusterPolicy exists (scale-to-zero). */
+  operandsMessage?: string;
+  operandsError?: string;
+};
+
+/**
+ * `list_clusters` `serving.readiness` (cluster-manager 0.8+). `backend.registered`
+ * is `true` or `false` when the ConfigMap was read and absent, with `error`,
+ * when it could not be read — never a bare `false` for a failed read.
+ */
+export type ServingReadiness = {
+  release: ReleaseReadiness | null;
+  children: ReleaseReadiness[];
+  controllers: {
+    name: string;
+    namespace?: string;
+    available: number;
+    replicas: number;
+  }[];
+  configs: { count: number } | null;
+  backend: {
+    registered?: boolean;
+    namespace?: string;
+    name?: string;
+    error?: string;
+  };
+  presets: { count: number } | null;
+  modelsGateway: {
+    name: string;
+    namespace?: string;
+    ready: boolean;
+    reason?: string;
+  } | null;
+};
+
+/** The GPU operator on a cluster; `readiness` from cluster-manager 0.8 on. */
+export type GpuOperatorComponent = ClusterComponent & {
+  readiness?: GpuOperatorReadiness;
+};
+
+/** The serving layer on a cluster; `readiness` from cluster-manager 0.8 on. */
+export type ServingComponent = ClusterComponent & {
+  readiness?: ServingReadiness;
+};
+
 /** The git repository and path owning a cluster (Flux provenance). */
 export type CommitTarget = {
   repository: string;
@@ -117,8 +200,8 @@ export type ManagedCluster = {
   releaseVersion: string;
   /** The installation's own cluster (its management cluster). */
   ownCluster: boolean;
-  gpuOperator: ClusterComponent;
-  serving: ClusterComponent;
+  gpuOperator: GpuOperatorComponent;
+  serving: ServingComponent;
   poolReleases: PoolRelease[];
   /** Null when no git repository owns the cluster. */
   commitTarget: CommitTarget | null;
@@ -144,6 +227,12 @@ export type NodePool = {
   accelerator?: string;
   /** The HelmRelease owning the pool; null for a pool created by other means. */
   ownerRelease: { name: string; namespace: string } | null;
+  /** The pool's lifecycle (cluster-manager 0.8+); absent on an older one. */
+  phase?: PoolPhase;
+  steps?: PoolLifecycleStep[];
+  /** `delete_node_pool` is under way: the teardown's objects still present. */
+  deleting?: boolean | null;
+  pending?: ObjectAction[];
 };
 
 export type NodePoolsResult = {

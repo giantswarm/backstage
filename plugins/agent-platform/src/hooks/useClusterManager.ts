@@ -18,6 +18,7 @@ import {
   type ReplicasGuard,
   type WriteMode,
 } from '../lib/clusterManager';
+import { gpuNodePoolsRefetchInterval } from '../lib/poolLifecycle';
 import {
   musterAcceleratorsQueryKey,
   musterClusterManagerInfoQueryKey,
@@ -168,6 +169,8 @@ export function useGpuNodePools(installations: string[]) {
         return { rows, note: clusterApiNote(clusterApi) };
       },
       staleTime: 30_000,
+      // 10 s while a pool of the installation is unsettled, 60 s otherwise.
+      refetchInterval: gpuNodePoolsRefetchInterval,
       retry: false,
     })),
   });

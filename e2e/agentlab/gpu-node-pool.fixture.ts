@@ -324,10 +324,238 @@ export function applyAnswer(pool: string, partial: boolean) {
   };
 }
 
+/** `phases`: cluster-manager 0.8's `phase`/`steps`/`readiness`; `legacy`: an older one without them. */
+export type LifecycleMode = 'phases' | 'legacy';
+
 export type StubOptions = DryRunOptions & {
   /** How many applies answer `partial` before one completes. */
   partialApplies?: number;
+  /** How the lists answer once a pool is applied (default `phases`). */
+  lifecycle?: LifecycleMode;
 };
+
+/** Reads after a complete apply that still answer `creating`; the next one is `ready`. */
+export const CREATING_READS = 2;
+/** The read from which every readiness block of the cluster is Ready. */
+export const SETTLED_READ = 4;
+
+const iso = (at: number, plusSeconds: number) =>
+  new Date(at + plusSeconds * 1000).toISOString();
+
+const SCALE_TO_ZERO =
+  '0 nodes: scale-to-zero, a node launches with the first predictor';
+
+/**
+ * `list_node_pools` for the applied pool at read `n` (1-based) — the shapes of
+ * cluster-manager 0.8.1's live check on gazelle (creating at T+2 s: release
+ * reconciling, no MachinePool; ready 0/0 at T+31 s).
+ */
+export function poolAnswer(
+  pool: string,
+  at: number,
+  n: number,
+  mode: LifecycleMode,
+) {
+  const name = `${CLUSTER.name}-${pool}`;
+  const ready = n > CREATING_READS;
+  const base = {
+    name,
+    namespace: CLUSTER.namespace,
+    version: ready ? 'v1.31.4' : '',
+    controlPlaneVersion: 'v1.31.4',
+    replicas: 0,
+    readyReplicas: 0,
+    instanceTypes: ready ? ['g6.xlarge'] : [],
+    accelerator: 'nvidia-l4',
+    ownerRelease: { name, namespace: CLUSTER.namespace },
+  };
+  if (mode === 'legacy') {
+    return base;
+  }
+  const release =
+    n <= 1
+      ? {
+          name: 'release',
+          state: 'inProgress',
+          since: iso(at, 1),
+          message: `HelmRelease ${CLUSTER.namespace}/${name} reports no Ready condition yet`,
+        }
+      : {
+          name: 'release',
+          state: 'done',
+          since: iso(at, 3),
+          finishedAt: iso(at, 3),
+          message: 'Helm install succeeded for release gpu-node-pool@0.3.1',
+        };
+  if (!ready) {
+    return {
+      ...base,
+      phase: 'creating',
+      steps: [
+        release,
+        n <= 1
+          ? {
+              name: 'machinePool',
+              state: 'pending',
+              message: 'MachinePool not created yet',
+            }
+          : {
+              name: 'machinePool',
+              state: 'inProgress',
+              since: iso(at, 8),
+              message: 'MachinePool not ready yet',
+            },
+        { name: 'nodes', state: 'pending' },
+      ],
+    };
+  }
+  return {
+    ...base,
+    phase: 'ready',
+    steps: [
+      release,
+      {
+        name: 'machinePool',
+        state: 'done',
+        since: iso(at, 14),
+        finishedAt: iso(at, 14),
+      },
+      {
+        name: 'nodes',
+        state: 'done',
+        since: iso(at, 14),
+        finishedAt: iso(at, 14),
+        message: SCALE_TO_ZERO,
+      },
+    ],
+  };
+}
+
+/**
+ * `list_clusters` for wc1 at read `n`: the pool release, then the readiness
+ * blocks filling in the order gazelle showed (operator Ready at +44 s, the
+ * connectivity child last, backend registered, the models Gateway Programmed).
+ */
+export function clusterAnswer(
+  pool: string,
+  at: number,
+  n: number,
+  mode: LifecycleMode,
+) {
+  const name = `${CLUSTER.name}-${pool}`;
+  const poolReleases = [
+    { name, namespace: CLUSTER.namespace, chartVersion: '0.3.1', ready: n > 1 },
+  ];
+  const operatorReady = n >= 3;
+  const servingReady = n >= SETTLED_READ;
+  if (mode === 'legacy') {
+    return {
+      ...CLUSTER,
+      poolReleases,
+      gpuOperator: operatorReady
+        ? { status: 'present', provider: 'cluster-manager' }
+        : { status: 'absent' },
+      serving: servingReady
+        ? { status: 'present', provider: 'cluster-manager' }
+        : { status: 'absent' },
+    };
+  }
+  const child = (
+    childName: string,
+    childReady: boolean,
+    plusSeconds: number,
+  ) => ({
+    name: childName,
+    namespace: CLUSTER.namespace,
+    ready: childReady,
+    reason: childReady ? 'InstallSucceeded' : 'Progressing',
+    since: iso(at, plusSeconds),
+  });
+  return {
+    ...CLUSTER,
+    poolReleases,
+    gpuOperator: {
+      status: operatorReady ? 'present' : 'absent',
+      provider: 'cluster-manager',
+      readiness: {
+        release:
+          n >= 2
+            ? {
+                name: `${CLUSTER.name}-gpu-operator`,
+                namespace: CLUSTER.namespace,
+                ready: operatorReady,
+                reason: operatorReady ? 'InstallSucceeded' : 'Progressing',
+                since: iso(at, operatorReady ? 44 : 2),
+              }
+            : null,
+        clusterPolicy: operatorReady
+          ? { name: 'cluster-policy', state: 'ready' }
+          : null,
+        operands: [],
+        ...(operatorReady
+          ? {
+              operandsMessage:
+                'no operand DaemonSet: the GPU operator creates the device plugin and GPU feature discovery DaemonSets once a GPU node joins (none at scale-to-zero)',
+            }
+          : {}),
+      },
+    },
+    serving: {
+      status: 'present',
+      provider: 'cluster-manager',
+      readiness: {
+        release: {
+          name: `${CLUSTER.name}-agent-platform`,
+          namespace: CLUSTER.namespace,
+          ready: true,
+          reason: 'InstallSucceeded',
+          since: iso(at, 3),
+        },
+        children: [
+          child(
+            'agent-platform-connectivity',
+            servingReady,
+            servingReady ? 110 : 3,
+          ),
+          child('kserve-crd', true, 11),
+          child('kserve-resources', operatorReady, operatorReady ? 69 : 11),
+        ],
+        controllers: [
+          {
+            name: 'kserve-controller-manager',
+            namespace: CLUSTER.namespace,
+            available: operatorReady ? 1 : 0,
+            replicas: 1,
+          },
+          {
+            name: 'llmisvc-controller-manager',
+            namespace: CLUSTER.namespace,
+            available: servingReady ? 1 : 0,
+            replicas: 1,
+          },
+        ],
+        configs: operatorReady ? { count: 10 } : null,
+        backend:
+          n >= 2
+            ? {
+                registered: true,
+                namespace: 'agent-platform',
+                name: 'model-backend-kserve',
+              }
+            : { registered: false },
+        presets: operatorReady ? { count: 9 } : null,
+        modelsGateway: servingReady
+          ? {
+              name: 'models',
+              namespace: CLUSTER.namespace,
+              ready: true,
+              reason: 'Programmed',
+            }
+          : null,
+      },
+    },
+  };
+}
 
 export type RecordedCall = { name: string; arguments: Record<string, unknown> };
 
@@ -342,6 +570,11 @@ export async function stubClusterManager(
 ): Promise<RecordedCall[]> {
   const calls: RecordedCall[] = [];
   let applies = 0;
+  // The pool a complete apply created, and the list reads since: the lists
+  // move it through the phases read by read (see poolAnswer/clusterAnswer).
+  let created: { pool: string; at: number } | undefined;
+  let reads = 0;
+  const mode: LifecycleMode = options.lifecycle ?? 'phases';
 
   // The page offers the dialog where the installation's muster lists
   // cluster-manager (`GET /api/muster/servers`, muster's core_mcpserver_list):
@@ -383,8 +616,18 @@ export async function stubClusterManager(
         await route.fulfill({ json: INFO });
         return;
       case 'list_clusters':
+        if (created) {
+          reads += 1;
+        }
         await route.fulfill({
-          json: { clusters: [CLUSTER], clusterApi: CLUSTER_API },
+          json: {
+            clusters: [
+              created
+                ? clusterAnswer(created.pool, created.at, reads, mode)
+                : CLUSTER,
+            ],
+            clusterApi: CLUSTER_API,
+          },
         });
         return;
       case 'list_node_pools':
@@ -393,7 +636,9 @@ export async function stubClusterManager(
             cluster: CLUSTER.name,
             namespace: CLUSTER.namespace,
             controlPlaneVersion: 'v1.31.4',
-            nodePools: [],
+            nodePools: created
+              ? [poolAnswer(created.pool, created.at, reads, mode)]
+              : [],
           },
         });
         return;
@@ -408,11 +653,13 @@ export async function stubClusterManager(
           });
         } else {
           applies += 1;
+          const partial = applies <= (options.partialApplies ?? 0);
+          if (!partial) {
+            created = { pool: String(args.name), at: Date.now() };
+            reads = 0;
+          }
           await route.fulfill({
-            json: applyAnswer(
-              String(args.name),
-              applies <= (options.partialApplies ?? 0),
-            ),
+            json: applyAnswer(String(args.name), partial),
           });
         }
         return;

@@ -9,9 +9,11 @@ import {
   useNodePoolWrite,
   type GpuNodePoolRow,
 } from '../../hooks/useClusterManager';
+import type { NodePoolWriteResult } from '../../lib/clusterManager';
 import type { ServedModel } from '../../lib/serving';
 import { AddGpuNodePoolDialog } from './AddGpuNodePoolDialog';
 import { GpuNodePoolsPanel } from './GpuNodePoolsPanel';
+import type { OpenedPool } from './PoolLifecyclePanel';
 import { RemoveGpuNodePoolDialog } from './RemoveGpuNodePoolDialog';
 
 export type GpuNodePoolControls = {
@@ -26,10 +28,25 @@ export type GpuNodePoolControls = {
   panel: JSX.Element | undefined;
 };
 
+/** The row id `useGpuNodePools` gives the pool Deploy just applied. */
+export function openedPoolOf(
+  installation: string,
+  result: NodePoolWriteResult,
+): OpenedPool {
+  return {
+    id: `${installation}/${result.cluster}/${result.cluster}-${result.pool}`,
+    installation,
+    cluster: result.cluster,
+    poolName: result.pool,
+    applied: result,
+  };
+}
+
 /**
  * The GPU node pool controls the Models pages share (GPU capacity, Serving):
  * feature-detected per installation through the person's muster session —
  * where no reachable installation lists cluster-manager, nothing is offered.
+ * Deploy closes into the pool's lifecycle panel; a row's chevron opens it later.
  */
 export function useGpuNodePoolControls(
   installations: string[],
@@ -39,10 +56,34 @@ export function useGpuNodePoolControls(
   const pools = useGpuNodePools(availability.available);
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState<GpuNodePoolRow>();
+  const [opened, setOpened] = useState<OpenedPool>();
   const write = useNodePoolWrite(removing?.installation);
   const { info } = useClusterManagerInfo(removing?.installation);
 
   const onRemove = useCallback((row: GpuNodePoolRow) => setRemoving(row), []);
+  // Deploy closes into the lifecycle panel of the pool it applied.
+  const onDeployed = useCallback(
+    (result: NodePoolWriteResult, installation: string) => {
+      setOpened(openedPoolOf(installation, result));
+      setAddOpen(false);
+    },
+    [],
+  );
+  const onToggleLifecycle = useCallback(
+    (row: GpuNodePoolRow) =>
+      setOpened(current =>
+        current?.id === row.id
+          ? undefined
+          : {
+              id: row.id,
+              installation: row.installation,
+              cluster: row.cluster.name,
+              poolName: row.poolName,
+            },
+      ),
+    [],
+  );
+  const onCloseLifecycle = useCallback(() => setOpened(undefined), []);
   const available = availability.available.length > 0;
 
   return {
@@ -63,6 +104,7 @@ export function useGpuNodePoolControls(
           installations={availability.available}
           isOpen={addOpen}
           onOpenChange={setAddOpen}
+          onDeployed={onDeployed}
         />
         <RemoveGpuNodePoolDialog
           row={removing}
@@ -85,6 +127,9 @@ export function useGpuNodePoolControls(
         notes={pools.notes}
         errors={pools.errors}
         onRemove={onRemove}
+        opened={opened}
+        onToggleLifecycle={onToggleLifecycle}
+        onCloseLifecycle={onCloseLifecycle}
       />
     ) : undefined,
   };
