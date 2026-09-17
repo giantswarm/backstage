@@ -239,9 +239,10 @@ describe('selectModel core/provider spec-version compatibility', () => {
       },
     },
     {
-      // Not just symmetry: the Vertex-Anthropic provider bundles its own copy of
-      // `@ai-sdk/anthropic`, so a dependency bump can split its spec version
-      // from the one the direct Anthropic branch resolves.
+      // Not just symmetry: `@ai-sdk/google-vertex` pins `@ai-sdk/anthropic` to
+      // an exact version, so bumping one and not the other resolves a second,
+      // nested copy whose spec version can diverge from the one the direct
+      // Anthropic branch uses.
       name: 'google-vertex-anthropic',
       options: {
         modelName: 'claude-sonnet-5',
@@ -295,6 +296,28 @@ describe('selectModel core/provider spec-version compatibility', () => {
     expect(error).toBeDefined();
     expect(isUnsupportedModelVersionError(error)).toBe(true);
   });
+});
+
+describe('selectModel Vertex Anthropic configuration', () => {
+  // The provider resolves project and location as optional settings, so an
+  // incomplete config would otherwise be a DNS failure per request rather than
+  // a legible one naming the missing key.
+  it.each([
+    { missing: 'project', google: { location: 'europe-west1' } },
+    { missing: 'location', google: { project: 'p' } },
+  ])(
+    'fails with the missing key when google.$missing is unset',
+    ({ google }) => {
+      expect(() =>
+        selectModel({
+          ...baseOptions(),
+          modelName: 'claude-sonnet-5',
+          anthropic: { provider: 'vertex' },
+          google,
+        }),
+      ).toThrow(/aiChat.google.project and\/or aiChat.google.location/);
+    },
+  );
 });
 
 describe('selectModel Vertex Anthropic requests', () => {
