@@ -44,7 +44,10 @@ export function usesAdaptiveThinking(modelName: string): boolean {
 // Value passed under `providerOptions.anthropic`. Both shapes are JSON-safe so
 // the result is assignable to the AI SDK's `providerOptions`.
 export type AnthropicProviderOptions =
-  | { thinking: { type: 'adaptive' }; effort: string }
+  | {
+      thinking: { type: 'adaptive'; display: 'summarized' };
+      effort: string;
+    }
   | { thinking: { type: 'enabled'; budgetTokens: number } };
 
 /**
@@ -55,6 +58,12 @@ export type AnthropicProviderOptions =
  *   `effort` (`output_config.effort`), defaulting to `high`.
  * - Older Claude models: the legacy fixed thinking budget; `effort` is omitted
  *   because those models reject it.
+ *
+ * `display` is set explicitly because its default is not stable across model
+ * generations: Opus 4.6 and Sonnet 4.6 default to `summarized`, while Opus
+ * 4.7+ and the Claude 5 family default to `omitted`, which returns thinking
+ * blocks with empty text and leaves the reasoning pane blank. Thinking is
+ * billed the same either way, so asking for the summary costs nothing.
  */
 export function buildAnthropicProviderOptions(opts: {
   modelName: string;
@@ -72,7 +81,7 @@ export function buildAnthropicProviderOptions(opts: {
   }
 
   if (usesAdaptiveThinking(modelName)) {
-    return { thinking: { type: 'adaptive' }, effort };
+    return { thinking: { type: 'adaptive', display: 'summarized' }, effort };
   }
 
   return {
