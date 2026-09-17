@@ -24,8 +24,6 @@ import {
 import {
   agentDetailRouteRef,
   agentsRouteRef,
-  margeRouteRef,
-  margeTeamRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
   modelDetailRouteRef,
@@ -160,24 +158,6 @@ const modelsSubPage = SubPageBlueprint.make({
   },
 });
 
-// The "marge" tab: a team's open bot PRs as marge classifies them, read and
-// swept through marge's MCP tools over muster as the signed-in person, with no
-// agent in the path. Declared after Usage, so it is the last of this plugin's
-// own tabs; the muster plugin's "MCP Servers" tab still lands after it, for
-// the reason the Usage tab gives.
-const margeSubPage = SubPageBlueprint.make({
-  name: 'marge',
-  params: {
-    path: 'marge',
-    title: 'marge',
-    routeRef: margeRouteRef,
-    loader: async () => {
-      const { MargeRouter } = await import('./components/MargeRouter');
-      return <MargeRouter />;
-    },
-  },
-});
-
 // The section's installation scope selector, in the page header next to the
 // tabs' own actions: "All installations" (home first) or
 // one pinned installation, for the three tabs above and the muster plugin's
@@ -243,7 +223,6 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentsSubPage,
     modelsSubPage,
     usageSubPage,
-    margeSubPage,
     installationScopeHeaderAction,
     kagentApi,
     modelManagerApi,
@@ -264,8 +243,6 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newModel: newModelRouteRef,
     serving: servingRouteRef,
     gpuCapacity: gpuCapacityRouteRef,
-    marge: margeRouteRef,
-    margeTeam: margeTeamRouteRef,
   },
   // Both carry a `defaultTarget`, so they resolve without an app-config binding
   // and are simply unbound when the target plugin is disabled. Every call site

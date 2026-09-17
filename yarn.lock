@@ -7660,6 +7660,34 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-bot-prs@workspace:^, @giantswarm/backstage-plugin-bot-prs@workspace:plugins/bot-prs":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-bot-prs@workspace:plugins/bot-prs"
+  dependencies:
+    "@backstage/cli": "backstage:^"
+    "@backstage/core-components": "backstage:^"
+    "@backstage/core-plugin-api": "backstage:^"
+    "@backstage/frontend-plugin-api": "backstage:^"
+    "@backstage/frontend-test-utils": "backstage:^"
+    "@backstage/plugin-catalog-react": "backstage:^"
+    "@backstage/test-utils": "backstage:^"
+    "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-gs": "workspace:^"
+    "@giantswarm/backstage-plugin-muster": "workspace:^"
+    "@giantswarm/backstage-plugin-ui-react": "workspace:^"
+    "@material-ui/core": "npm:^4.12.4"
+    "@material-ui/icons": "npm:^4.11.3"
+    "@tanstack/react-query": "npm:^5.82.0"
+    "@testing-library/jest-dom": "npm:^7.0.0"
+    "@testing-library/react": "npm:^16.0.0"
+    "@testing-library/user-event": "npm:^14.0.0"
+    react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+  peerDependencies:
+    react: ^16.13.1 || ^17.0.0 || ^18.0.0
+    react-router-dom: "*"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-catalog-backend-module-gs@npm:^0.6.1, @giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-catalog-backend-module-gs@workspace:plugins/catalog-backend-module-gs"
@@ -19541,6 +19569,7 @@ __metadata:
     "@giantswarm/backstage-plugin-agent-platform": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
+    "@giantswarm/backstage-plugin-bot-prs": "workspace:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
     "@giantswarm/backstage-plugin-flux-react": "workspace:^"

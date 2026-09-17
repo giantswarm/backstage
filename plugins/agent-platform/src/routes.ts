@@ -130,17 +130,6 @@ export const gpuCapacityRouteRef = createSubRouteRef({
   parent: modelsRouteRef,
 });
 
-// The "marge" tab (`/agent-platform/marge`): a team's open bot PRs as
-// marge classifies them, and the sweep's own steps behind a preview. The team
-// is a path segment so one team's queue is one link; the index redirects to
-// the person's own team.
-export const margeRouteRef = createRouteRef();
-
-export const margeTeamRouteRef = createSubRouteRef({
-  path: '/:team',
-  parent: margeRouteRef,
-});
-
 /**
  * muster's Tool Explorer, where an agent's Muster-provided tools can actually be
  * inspected and tried.
