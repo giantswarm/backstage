@@ -71,10 +71,15 @@ const mockToastPost = jest.fn();
 // hook's work (useDownloadRows), including a dismissal.
 const mockUsePullJobs = jest.fn<PullJobs, [string[]]>();
 const mockCancelDownload = jest.fn();
+const mockUseMusterPluginApi = jest.fn();
 
 jest.mock('../../hooks/useServingPresets', () => ({
   useServingPresets: (installations: string[]) =>
     mockUseServingPresets(installations),
+}));
+
+jest.mock('../../hooks/useMusterPluginApi', () => ({
+  useMusterPluginApi: () => mockUseMusterPluginApi(),
 }));
 
 jest.mock('../../hooks/useServeModel', () => ({
@@ -175,6 +180,19 @@ const withPresets: ServingPresets = {
 jest.mock('../ModelManagerControls', () => ({
   hasRowActions: jest.requireActual('../ModelManagerControls').hasRowActions,
   PullModelDialog: () => null,
+  LoadModelDialog: ({
+    isOpen,
+    targets,
+  }: {
+    isOpen: boolean;
+    targets: { name: string }[];
+  }) =>
+    isOpen ? (
+      <div data-testid="load-dialog">
+        {targets.map(target => target.name).join(',')}
+      </div>
+    ) : null,
+  describeLoadTarget: (target: { name: string }) => target.name,
   ImportModelDialog: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div data-testid="import-dialog" /> : null,
   DownloadRowActions: ({
@@ -370,6 +388,8 @@ describe('ServingPage', () => {
     mockUseSelfSubjectAccessReview.mockReset();
     mockUsePullJobs.mockReset();
     mockCancelDownload.mockReset();
+    mockUseMusterPluginApi.mockReset();
+    mockUseMusterPluginApi.mockReturnValue(undefined);
     window.sessionStorage.clear();
     mockUsePullJobs.mockReturnValue(noJobs);
     mockUseServing.mockReturnValue(baseServing);
@@ -411,6 +431,33 @@ describe('ServingPage', () => {
     expect(
       screen.getByRole('button', { name: /Serve model/ }),
     ).toBeInTheDocument();
+  });
+
+  it('serves through model-manager as the person where a backend can load and muster is connected — not the client-side InferenceService', async () => {
+    mockUseMusterPluginApi.mockReturnValue({});
+    mockUseServingPresets.mockReturnValue(withPresets);
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      capabilities: {
+        'inst-1': {
+          ...KSERVE_CR_CAPABILITIES,
+          load: true,
+          presets: true,
+          fitCheck: true,
+        },
+      },
+    });
+
+    await renderSection();
+    await userEvent.click(screen.getByRole('button', { name: /Serve model/ }));
+
+    expect(screen.getByTestId('load-dialog')).toHaveTextContent('inst-1');
+    expect(screen.queryByText('Serve a model')).not.toBeInTheDocument();
+    expect(mockUseSelfSubjectAccessReview).not.toHaveBeenCalledWith(
+      'inst-1',
+      expect.objectContaining({ verb: 'create' }),
+      expect.objectContaining({ enabled: true }),
+    );
   });
 
   it("opens the serve dialog seeded with the installation's presets and creates the composed InferenceService", async () => {

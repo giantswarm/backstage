@@ -23,10 +23,8 @@ import LockIcon from '@material-ui/icons/Lock';
 
 import { modelManagerApiRef } from '../../apis';
 import { usePullModel } from '../../hooks/usePullJobs';
-import type {
-  ModelManagerFitResult,
-  ModelManagerSearchResult,
-} from '../../lib/modelManager';
+import type { ModelManagerSearchResult } from '../../lib/modelManager';
+import { describeFit } from '../../lib/modelManagerServe';
 import { formatBytes } from '../../lib/modelManagerServing';
 import type { GpuNode, ServingBackend } from '../../lib/serving';
 import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
@@ -89,35 +87,6 @@ export function describeSearchResult(result: ModelManagerSearchResult): string {
     );
   }
   return parts.join(' · ');
-}
-
-/** The numbers of a fit verdict in one line: what is fetched, what is needed, what the node has. */
-export function describeFit(fit: ModelManagerFitResult): string {
-  const parts: string[] = [];
-  if (fit.downloadBytes !== undefined) {
-    parts.push(`Download ${formatBytes(fit.downloadBytes)}`);
-  }
-  if (fit.requiredBytes !== undefined) {
-    const breakdown =
-      fit.weightsBytes !== undefined && fit.overheadBytes !== undefined
-        ? ` (${formatBytes(fit.weightsBytes)} of weights${
-            fit.weightsSource ? ` per ${fit.weightsSource}` : ''
-          } + ${formatBytes(fit.overheadBytes)} of serving headroom)`
-        : '';
-    parts.push(`needs ${formatBytes(fit.requiredBytes)}${breakdown}`);
-  }
-  if (fit.node && fit.budgetBytes !== undefined) {
-    const free =
-      fit.freeBytes !== undefined
-        ? `${formatBytes(fit.freeBytes)} free of `
-        : '';
-    parts.push(
-      `${fit.node} has ${free}${formatBytes(fit.budgetBytes)}${
-        fit.budgetSource ? ` (${fit.budgetSource})` : ''
-      }`,
-    );
-  }
-  return parts.join('; ');
 }
 
 /**

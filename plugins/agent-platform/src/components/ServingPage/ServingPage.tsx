@@ -1,4 +1,11 @@
-import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
@@ -12,12 +19,19 @@ import {
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
+import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useServeModel } from '../../hooks/useServeModel';
 import { useServingPresets } from '../../hooks/useServingPresets';
 import {
   useStopServedModel,
   type StopServedModelVia,
 } from '../../hooks/useStopServedModel';
+import type { ModelManagerLoadAnswer } from '../../lib/modelManager';
+import {
+  describeLoadAnswer,
+  parseServeRoute,
+  withoutServeRoute,
+} from '../../lib/modelManagerServe';
 import {
   NO_SERVING_CAPABILITIES,
   backendsOn,
@@ -26,12 +40,16 @@ import {
   type ServingBackend,
 } from '../../lib/serving';
 import {
+  describeLoadTarget,
   DownloadRowActions,
   hasRowActions,
   ImportModelDialog,
+  LoadModelDialog,
   PullModelDialog,
   ServedModelActions,
   type ImportTarget,
+  type LoadModelSeed,
+  type LoadTarget,
   type PullTarget,
 } from '../ModelManagerControls';
 import { useGpuNodePoolControls } from '../GpuNodePools';
@@ -222,7 +240,59 @@ export function ServingPage() {
     [servedRows, downloadRows.rows],
   );
 
-  // --- Serve ---------------------------------------------------------------
+  // --- Serve through model-manager, as the person ----------------------------
+  // Every backend that can load — on a GPU pool the kserve backend the pool
+  // registered: presets, `check_fit` and `load_model` over muster. It is the
+  // Serve of every installation that has one; the client-side InferenceService
+  // below stays only for installations without model-manager.
+  const musterApi = useMusterPluginApi();
+  const loadTargets = useMemo<LoadTarget[]>(
+    () =>
+      musterApi
+        ? installations.flatMap(installation =>
+            backendTargetsOf(installation)
+              .filter(({ capabilities }) => capabilities.load)
+              .map(({ backend, capabilities }) => ({
+                name: installation,
+                ...(backend ? { backend } : {}),
+                capabilities,
+              })),
+          )
+        : [],
+    [musterApi, installations, backendTargetsOf],
+  );
+  const canLoad = loadTargets.length > 0;
+  const [isLoadOpen, setLoadOpen] = useState(false);
+  const [loadSeed, setLoadSeed] = useState<LoadModelSeed>();
+
+  // The pool panel's link: `?serve=1&installation=…&cluster=…&pool=…` opens
+  // the dialog on that pool, then leaves the URL, so a reload does not reopen it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const route = parseServeRoute(searchParams);
+    if (!route) {
+      return;
+    }
+    setLoadSeed(route);
+    setLoadOpen(true);
+    setSearchParams(withoutServeRoute(searchParams), { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const onServed = useCallback(
+    (target: LoadTarget, answer: ModelManagerLoadAnswer) => {
+      toastApi.post({
+        title: `Serving "${answer.name}" on ${describeLoadTarget(target)}`,
+        description:
+          describeLoadAnswer(answer) ||
+          'model-manager is starting it — the status column follows the served model.',
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+    },
+    [toastApi],
+  );
+
+  // --- Serve (client-side InferenceService, installations without model-manager)
   const [isServeOpen, setServeOpen] = useState(false);
   const [serveInstallation, setServeInstallation] = useState<string>();
   const [serveSeed, setServeSeed] = useState<ServeModelSeed>();
@@ -236,14 +306,28 @@ export function ServingPage() {
   } = useServeModel();
 
   const openServe = useCallback(() => {
+    if (canLoad) {
+      setLoadSeed(undefined);
+      setLoadOpen(true);
+      return;
+    }
     resetServe();
     setServeSeed(undefined);
     setServeOpen(true);
-  }, [resetServe]);
+  }, [canLoad, resetServe]);
 
   /** "Serve…" on a cached download: the dialog starts from that model, on its node. */
   const openServeFor = useCallback(
     (row: ServedModel) => {
+      if (loadTargets.some(target => target.name === row.installation)) {
+        setLoadSeed({
+          installation: row.installation,
+          backend: row.backend,
+          model: row.preset ?? row.name,
+        });
+        setLoadOpen(true);
+        return;
+      }
       resetServe();
       setServeInstallation(row.installation);
       setServeSeed({
@@ -252,7 +336,7 @@ export function ServingPage() {
       });
       setServeOpen(true);
     },
-    [resetServe],
+    [loadTargets, resetServe],
   );
 
   // The cached downloads of the installation the dialog serves on, offered
@@ -304,13 +388,14 @@ export function ServingPage() {
   const offersFor = useCallback(
     (row: ServedModelRow) => ({
       onServe:
-        servableInstallations.includes(row.installation) &&
+        (loadTargets.some(target => target.name === row.installation) ||
+          servableInstallations.includes(row.installation)) &&
         isServableDownload(row)
           ? openServeFor
           : undefined,
       onStop: isStoppable(row) ? openStop : undefined,
     }),
-    [servableInstallations, openServeFor, openStop],
+    [loadTargets, servableInstallations, openServeFor, openStop],
   );
 
   const hasActions = rows.some(
@@ -431,7 +516,7 @@ export function ServingPage() {
     });
   }, [stop, stopVia, stopping, toastApi]);
 
-  const canServe = servableInstallations.length > 0;
+  const canServe = !canLoad && servableInstallations.length > 0;
   const canPull = pullTargets.length > 0;
   const canImport = importTargets.length > 0;
 
@@ -440,6 +525,7 @@ export function ServingPage() {
   // offered changes; `null` clears the slot when nothing is.
   const headerActions = useMemo(
     () =>
+      canLoad ||
       canServe ||
       canPull ||
       canImport ||
@@ -466,7 +552,7 @@ export function ServingPage() {
               Import from Hugging Face
             </Button>
           )}
-          {canServe && (
+          {(canLoad || canServe) && (
             <Button
               variant="primary"
               iconStart={<PlayArrowIcon />}
@@ -478,6 +564,7 @@ export function ServingPage() {
         </Flex>
       ) : null,
     [
+      canLoad,
       canServe,
       canPull,
       canImport,
@@ -557,9 +644,10 @@ export function ServingPage() {
 
   let description =
     'Models served on the installations that have a serving layer — KServe InferenceServices read from the cluster, or the inventory of a model-manager (Ollama, LM Studio, Lemonade, KServe). The model configs are how agents reach them.';
-  if (canServe || canPull || canImport) {
+  if (canLoad || canServe || canPull || canImport) {
     description = `${description} ${[
-      canServe && 'Serve a model from a curated preset or stop one',
+      (canLoad || canServe) &&
+        'Serve a model from a curated preset or stop one',
       canImport &&
         "import a model from Hugging Face into a node's cache after a size and fit check",
       canPull && 'pull a model onto a backend, load, unload or delete it',
@@ -645,6 +733,17 @@ export function ServingPage() {
               isOpen={isImportOpen}
               onOpenChange={setImportOpen}
               targets={importTargets}
+            />
+          )}
+
+          {(canLoad || isLoadOpen) && (
+            <LoadModelDialog
+              isOpen={isLoadOpen}
+              onOpenChange={setLoadOpen}
+              targets={loadTargets}
+              models={servedModels}
+              seed={loadSeed}
+              onServed={onServed}
             />
           )}
 

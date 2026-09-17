@@ -23,6 +23,8 @@ export const MODEL_MANAGER_SERVER = 'model-manager';
 export const MODEL_MANAGER_TOOLS = {
   addBackend: 'add_backend',
   removeBackend: 'remove_backend',
+  checkFit: 'check_fit',
+  loadModel: 'load_model',
 } as const;
 
 export type ModelManagerTool =
