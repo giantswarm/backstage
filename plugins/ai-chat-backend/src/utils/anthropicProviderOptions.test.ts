@@ -11,6 +11,10 @@ describe('usesAdaptiveThinking', () => {
     'claude-opus-4-7',
     'claude-opus-4-8',
     'claude-sonnet-4-6',
+    'claude-sonnet-5',
+    'claude-opus-5',
+    'claude-fable-5',
+    'claude-fable-5-1',
   ])('returns true for adaptive-thinking model %s', model => {
     expect(usesAdaptiveThinking(model)).toBe(true);
   });
@@ -59,18 +63,33 @@ describe('buildAnthropicProviderOptions', () => {
     ).toEqual({ thinking: { type: 'adaptive' }, effort: 'max' });
   });
 
-  it.each(['claude-opus-4-5', 'claude-sonnet-4-6'])(
-    'uses adaptive thinking for %s',
-    model => {
-      expect(
-        buildAnthropicProviderOptions({
-          modelName: model,
-          isAnthropicModel: true,
-        }),
-      ).toEqual({ thinking: { type: 'adaptive' }, effort: 'high' });
-    },
-  );
+  it.each([
+    'claude-opus-4-5',
+    'claude-sonnet-4-6',
+    'claude-sonnet-5',
+    'claude-opus-5',
+    'claude-fable-5-1',
+  ])('uses adaptive thinking for %s', model => {
+    expect(
+      buildAnthropicProviderOptions({
+        modelName: model,
+        isAnthropicModel: true,
+      }),
+    ).toEqual({ thinking: { type: 'adaptive' }, effort: 'high' });
+  });
 
+  it('never sends a thinking budget for Sonnet 5, which rejects it with a 400', () => {
+    const options = buildAnthropicProviderOptions({
+      modelName: 'claude-sonnet-5',
+      isAnthropicModel: true,
+    });
+
+    expect(options).toEqual({ thinking: { type: 'adaptive' }, effort: 'high' });
+    expect(options).not.toHaveProperty('thinking.budgetTokens');
+  });
+
+  // `claude-sonnet-4-5` ends in -5 but is not a Claude 5 model: it must keep
+  // the legacy budget shape.
   it.each([
     'claude-sonnet-4-5',
     'claude-haiku-4-5',
