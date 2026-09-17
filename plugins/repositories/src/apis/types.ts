@@ -448,7 +448,7 @@ export interface Created extends Committed {
   firstRelease: string;
 }
 
-/** `reconcile_repository`'s answer: the workflow dispatch, planned or done. */
+/** A workflow dispatch as the person, planned or done. */
 export interface Dispatch {
   workflow: string;
   inputs: Record<string, unknown>;
@@ -459,6 +459,32 @@ export interface Dispatch {
   /** What follows: the completion message in the team's channel. */
   then: string;
   findings?: Finding[];
+}
+
+/** The changes one set-up step would apply, as the last check planned them. */
+export interface PlannedStep {
+  step: string;
+  changes: string[];
+}
+
+/**
+ * `align_repository`'s answer: the dispatch of the set-up workflow, plus
+ * what the run does to the repository -- the manager's warning, whether the
+ * owning team has opted in (`mode: align` applies the planned changes;
+ * `mode: check` reports them) and the changes the last check planned.
+ */
+export interface Alignment extends Dispatch {
+  /** The owning team, when known. */
+  team?: string;
+  /** The team has opted in: the run applies the planned changes. */
+  optedIn: boolean;
+  mode: 'align' | 'check';
+  /** Per step, the changes the last check planned; absent when no check has run. */
+  planned?: PlannedStep[];
+  /** When the planned changes were checked. */
+  checkedAt?: string;
+  /** What an alignment changes on GitHub and CircleCI, in the manager's words. */
+  warning: string;
 }
 
 /**
@@ -519,10 +545,13 @@ export interface RepositoriesApi {
     args: { lifecycle: 'deprecated' | 'archived'; reason?: string },
     options: O,
   ): Promise<WriteResult<O, Plan, Committed>>;
-  /** Runs the reconciler for one repository now (a workflow dispatch as the person). */
-  reconcileRepository(
+  /**
+   * Aligns one repository with its declared set-up now (the set-up workflow
+   * dispatched as the person); the dry run says what the run would change.
+   */
+  alignRepository(
     name: string,
     args: { team?: string },
     options: WriteOptions,
-  ): Promise<Dispatch>;
+  ): Promise<Alignment>;
 }

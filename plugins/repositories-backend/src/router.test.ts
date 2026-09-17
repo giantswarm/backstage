@@ -304,7 +304,7 @@ describe('createRouter', () => {
       ['update', 'update_repository', { entry, reason: 'more flavours' }],
       ['transfer', 'transfer_repository', { toTeam: 'team-planeteers' }],
       ['lifecycle', 'set_lifecycle', { lifecycle: 'archived', reason: 'done' }],
-      ['reconcile', 'reconcile_repository', { team: 'team-bumblebee' }],
+      ['align', 'align_repository', { team: 'team-bumblebee' }],
     ])(
       'POST /repositories/:name/%s calls %s for the repository',
       async (path, tool, body) => {
@@ -348,7 +348,7 @@ describe('createRouter', () => {
       // undici reports a connection failure as a TypeError.
       manager.failNextCallWith = new TypeError('fetch failed');
       const res = await request(app)
-        .post('/repositories/muster/reconcile')
+        .post('/repositories/muster/align')
         .send({ mode: 'commit' });
       expect(res.status).toBe(500);
     });

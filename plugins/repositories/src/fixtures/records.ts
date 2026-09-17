@@ -1,7 +1,7 @@
 import {
+  Alignment,
   Committed,
   Created,
-  Dispatch,
   InventoryRecord,
   Plan,
   PullRequest,
@@ -530,7 +530,7 @@ export function listingOf(
 /**
  * The write tools' answers for the fixtures, in the shapes the manager
  * returns them: the dry run of a declaration (`validate_repository`), a
- * write's plan and its committed outcome, a reconcile dispatch.
+ * write's plan and its committed outcome, an alignment's dispatch.
  */
 
 export const acceptedValidation: Validation = {
@@ -764,7 +764,16 @@ export function committedOf(overrides: Partial<Committed> = {}): Committed {
   };
 }
 
-export function dispatchOf(dispatched: boolean): Dispatch {
+/**
+ * `align_repository`'s answer for present-service: the dispatch, planned or
+ * done, with the manager's warning, the team's opt-in and the changes the
+ * last check planned. `overrides` turn it into the other cases: a team that
+ * has not opted in (`mode: check`), no check yet, nothing to change.
+ */
+export function alignmentOf(
+  dispatched: boolean,
+  overrides: Partial<Alignment> = {},
+): Alignment {
   return {
     workflow: 'reconcile-repositories.yaml',
     inputs: { repository: 'present-service', team: 'team-bumblebee' },
@@ -773,5 +782,22 @@ export function dispatchOf(dispatched: boolean): Dispatch {
     runsUrl:
       'https://github.com/giantswarm/github/actions/workflows/reconcile-repositories.yaml',
     then: "the completion message follows in team-bumblebee's channel",
+    team: 'team-bumblebee',
+    optedIn: true,
+    mode: 'align',
+    planned: [
+      {
+        step: 'protection',
+        changes: [
+          'main: require the ci/circleci: build status check',
+          'main: enforce for administrators',
+        ],
+      },
+      { step: 'circleci', changes: ['follow the project'] },
+    ],
+    checkedAt: '2026-09-17T21:00:00Z',
+    warning:
+      "Aligning changes the repository's settings, permissions, branch protection and CircleCI project on GitHub and CircleCI to its declared set-up and the company baseline.",
+    ...overrides,
   };
 }

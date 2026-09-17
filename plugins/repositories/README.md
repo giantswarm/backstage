@@ -53,7 +53,13 @@ repository is what `devctl repo status` prints for it, from the same record.
   the whole entry as it should read), _Transfer_ (`transfer_repository`, the
   receiving team approves, the giving team is told), _Deprecate_ and
   _Archive_ (`set_lifecycle`, the team's review asked in its channel),
-  _Reconcile now_ (`reconcile_repository`, a workflow dispatch as the person).
+  _Align now_ (`align_repository`, the set-up workflow dispatched as the
+  person: the dialog says that the run changes the repository on GitHub and
+  CircleCI to its declared set-up and the company baseline, and its dry run
+  shows the manager's warning, the changes the last check planned per step
+  and whether the owning team has opted in -- opted in, the changes are
+  applied and the button reads _Align now_; not opted in, the run only checks
+  and the button reads _Check now_).
 - A write the manager refuses shows the manager's reason verbatim; the page
   offers no override -- `commit` is the only mode and the manager owns it.
 

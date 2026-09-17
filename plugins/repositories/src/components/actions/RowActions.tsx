@@ -2,20 +2,20 @@ import { useState } from 'react';
 import { Button, ButtonGroup } from '@material-ui/core';
 import { InventoryRecord } from '../../apis';
 import {
+  AlignDialog,
   ConfigureDialog,
   LifecycleDialog,
-  ReconcileDialog,
   RowDialogProps,
   TransferDialog,
 } from './dialogs';
 
-type Action = 'configure' | 'transfer' | 'deprecate' | 'archive' | 'reconcile';
+type Action = 'configure' | 'transfer' | 'deprecate' | 'archive' | 'align';
 
 /**
  * The actions of one repository's row, each one tool call as the signed-in
  * person: Configure, Transfer, Deprecate and Archive (team-file pull
- * requests) and Reconcile now (a workflow dispatch). The team-file writes
- * need a declaration; an undeclared repository offers Reconcile now (with
+ * requests) and Align now (the set-up workflow dispatched). The team-file
+ * writes need a declaration; an undeclared repository offers Align now (with
  * the team).
  */
 export function RowActions({
@@ -69,7 +69,7 @@ export function RowActions({
         >
           Archive
         </Button>
-        <Button onClick={() => setOpen('reconcile')}>Reconcile now</Button>
+        <Button onClick={() => setOpen('align')}>Align now</Button>
       </ButtonGroup>
       {open === 'configure' && <ConfigureDialog {...dialog} />}
       {open === 'transfer' && <TransferDialog {...dialog} />}
@@ -79,7 +79,7 @@ export function RowActions({
       {open === 'archive' && (
         <LifecycleDialog lifecycle="archived" {...dialog} />
       )}
-      {open === 'reconcile' && <ReconcileDialog {...dialog} />}
+      {open === 'align' && <AlignDialog {...dialog} />}
     </div>
   );
 }
