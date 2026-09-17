@@ -17,6 +17,7 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  LoadingIndicator,
   matchesQuery,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -350,7 +351,7 @@ export function NewAgentSkillsPage() {
             <CardBody>
               <Flex direction="column" gap="3">
                 {isLoading && skills.length === 0 && (
-                  <Text color="secondary">Discovering skills…</Text>
+                  <LoadingIndicator label="Discovering skills…" />
                 )}
 
                 {error && skills.length === 0 && (

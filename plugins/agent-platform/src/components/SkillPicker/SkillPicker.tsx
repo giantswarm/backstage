@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  LoadingIndicator,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import type { AgentSkillEntry } from '../../lib/agentManager';
@@ -230,7 +233,7 @@ export function SkillPicker({
         </Text>
       )}
       {catalog.isLoading && catalog.skills.length === 0 && (
-        <Text color="secondary">Discovering skills…</Text>
+        <LoadingIndicator label="Discovering skills…" />
       )}
       {catalog.failedRepositories.length > 0 && (
         <Alert

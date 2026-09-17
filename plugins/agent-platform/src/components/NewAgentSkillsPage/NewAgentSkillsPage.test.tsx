@@ -37,16 +37,26 @@ const SKILLS: DiscoveredSkill[] = [
   },
 ];
 
+const RESOLVED = {
+  skills: SKILLS,
+  isLoading: false,
+  error: null,
+  hasRepositories: true,
+  failedRepositories: [],
+  truncated: false,
+};
+
+// Mutable so a test can flip it to loading. The `mock` prefix is what lets
+// jest.mock's factory reference it.
+const mockCatalog = { ...RESOLVED };
+
 jest.mock('../../hooks/useSkillCatalog', () => ({
-  useSkillCatalog: () => ({
-    skills: SKILLS,
-    isLoading: false,
-    error: null,
-    hasRepositories: true,
-    failedRepositories: [],
-    truncated: false,
-  }),
+  useSkillCatalog: () => mockCatalog,
 }));
+
+beforeEach(() => {
+  Object.assign(mockCatalog, RESOLVED);
+});
 
 /** Fills the step-1 fields the skills step requires, then renders its child. */
 function Seed({ children }: { children: ReactNode }) {
@@ -115,6 +125,15 @@ describe('NewAgentSkillsPage', () => {
     // A branch name is never what is selected.
     expect(screen.getByTestId('selection')).not.toHaveTextContent('main');
     expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+
+  it('shows a progress bar while the catalogue is being discovered', async () => {
+    Object.assign(mockCatalog, { skills: [], isLoading: true });
+    await renderStep();
+
+    expect(await screen.findByText('Discovering skills…')).toBeInTheDocument();
+    expect(screen.getByTestId('progress')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
   it('says that skills stay on their pinned commit', async () => {
