@@ -167,8 +167,54 @@ export type ObjectAction = {
     | 'updated'
     | 'deleted'
     | 'unchanged'
+    | typeof PENDING_ACTION
     | string;
   changes?: string[];
+};
+
+/** The action of an object a partial apply did not reach (cluster-manager 0.7.4+). */
+export const PENDING_ACTION = 'pending';
+
+/**
+ * One instance size of the pool as composed: the node as the cloud lists it
+ * and what it leaves a predictor after the kubelet's reservations and the
+ * fleet's daemonsets (cluster-manager 0.6.0+, giantswarm/agent-platform#502).
+ */
+export type InstanceShape = {
+  /** `<family>.<size>` (g6.xlarge). */
+  instanceType: string;
+  /** The size within the family (xlarge). */
+  size: string;
+  vcpu: number;
+  memoryGiB: number;
+  gpus: number;
+  /** The memory of one GPU. */
+  gpuMemoryGiB: number;
+  usableVcpu: number;
+  usableMemoryGiB: number;
+};
+
+/** One serving preset placed against the pool's sizes. */
+export type PresetSizeFit = {
+  preset: string;
+  /** The predictor's requests as the preset writes them (`unset` for none). */
+  cpu: string;
+  memory: string;
+  gpus: number;
+  /** Weights plus overhead. */
+  gpuMemoryGiB: number;
+  /** The smallest of the pool's sizes that hosts the preset; empty with `reason` when none does. */
+  size?: string;
+  reason?: string;
+};
+
+/** The serving presets published on the cluster, judged against the pool's sizes. */
+export type PresetFit = {
+  /** Where the presets were read (`3 preset ConfigMap(s) in model-serving on wc1`). */
+  source?: string;
+  /** Why nothing was judged: no presets published yet, or not readable as the person. */
+  note?: string;
+  presets?: PresetSizeFit[];
 };
 
 /** A rendered Kubernetes object, as cluster-manager returns it. */
@@ -206,6 +252,19 @@ export type NodePoolWriteResult = {
   backend?: BackendRegistration;
   /** A delete that takes the cluster's operator release and backend with it. */
   lastPool?: boolean;
+  /** The pool's sizes as composed (a create), smallest first. */
+  sizes?: InstanceShape[];
+  /** The cluster's serving presets against the sizes. */
+  presetFit?: PresetFit;
+  /** Presets the accelerator could serve but no size of the pool hosts, naming the size that would. */
+  warnings?: string[];
+  /**
+   * An apply that stopped writing to answer within the caller's deadline: the
+   * objects it did not reach carry action `pending`; `nextStep` says to re-run
+   * with the same arguments, the pending objects are written first.
+   */
+  partial?: boolean;
+  nextStep?: string;
 } & CommitAgentResult;
 
 /** What the dialog sends to `create_node_pool`; the tool fills every default. */
@@ -415,4 +474,88 @@ export function describeComponent(
     ? (PROVIDER_LABEL[component.provider] ?? component.provider)
     : 'present';
   return `${label}: ${provider}`;
+}
+
+/** The objects a partial apply left for the re-run. */
+export function pendingObjects(
+  result: Pick<NodePoolWriteResult, 'objects'>,
+): ObjectAction[] {
+  return result.objects.filter(object => object.action === PENDING_ACTION);
+}
+
+/** `3 vCPU / 11.9 GiB usable` — what a predictor may request on a node of this size. */
+export function describeUsable(shape: InstanceShape): string {
+  return `${trimNumber(shape.usableVcpu)} vCPU / ${trimNumber(
+    shape.usableMemoryGiB,
+  )} GiB usable`;
+}
+
+/** `1 × 24 GiB GPU`, `4 × 24 GiB GPUs`. */
+export function describeGpus(
+  shape: Pick<InstanceShape, 'gpus' | 'gpuMemoryGiB'>,
+): string {
+  return `${shape.gpus} × ${shape.gpuMemoryGiB} GiB GPU${shape.gpus === 1 ? '' : 's'}`;
+}
+
+/** `4 vCPU / 12Gi, 1 GPU, 9.6 GiB of GPU memory` — what the preset's predictor asks for. */
+export function describePresetNeeds(fit: PresetSizeFit): string {
+  const gpus = `${fit.gpus} GPU${fit.gpus === 1 ? '' : 's'}`;
+  return `${fit.cpu} vCPU / ${fit.memory}, ${gpus}, ${trimNumber(
+    fit.gpuMemoryGiB,
+  )} GiB of GPU memory`;
+}
+
+/** The fit of one preset by name. */
+export function presetFitOf(
+  fit: PresetFit | undefined,
+  preset: string | undefined,
+): PresetSizeFit | undefined {
+  return preset
+    ? fit?.presets?.find(candidate => candidate.preset === preset)
+    : undefined;
+}
+
+/**
+ * The sizes that host a preset: cluster-manager names the smallest, and the
+ * sizes are listed smallest first, so every size from that one on hosts it.
+ */
+export function sizesHosting(
+  shapes: InstanceShape[],
+  fit: PresetSizeFit | undefined,
+): string[] {
+  const smallest = shapes.findIndex(shape => shape.size === fit?.size);
+  return smallest < 0 ? [] : shapes.slice(smallest).map(shape => shape.size);
+}
+
+/**
+ * The size cluster-manager says would host a preset none of the pool's sizes
+ * does — `… — 2xlarge (8 vCPU / 32 GiB) would host it` at the end of a reason
+ * or a warning.
+ */
+export function sizeThatWouldHost(
+  text: string | undefined,
+): string | undefined {
+  return text?.match(/ — (\S+) \([^)]*\) would host it/)?.[1];
+}
+
+/** Whether a warning line is about the preset (`serving preset <name> fits no size …`). */
+export function isWarningFor(warning: string, preset: string): boolean {
+  return warning.startsWith(`serving preset ${preset} `);
+}
+
+/**
+ * Why Deploy is blocked: the preset the person wants to serve fits no size of
+ * the pool as reviewed. Any other preset's warning stands out but does not
+ * block.
+ */
+export function deployBlocker(
+  review: Pick<NodePoolWriteResult, 'presetFit'> | undefined,
+  preset: string | undefined,
+): PresetSizeFit | undefined {
+  const fit = presetFitOf(review?.presetFit, preset);
+  return fit && !fit.size ? fit : undefined;
+}
+
+function trimNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }

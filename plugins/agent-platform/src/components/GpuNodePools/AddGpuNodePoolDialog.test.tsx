@@ -9,6 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import type {
+  InstanceShape,
   ManagedCluster,
   NodePoolWriteResult,
 } from '../../lib/clusterManager';
@@ -92,7 +93,107 @@ type Scenario = {
   createError?: Error;
   /** The installation does not serve the Cluster API (cluster-manager 0.4.1+). */
   noClusterApi?: boolean;
+  /** The cluster publishes no serving presets: `presetFit.note` instead of a table. */
+  noPresets?: boolean;
+  /** The first apply is cut short (`partial`); the re-run completes. */
+  partial?: boolean;
 };
+
+/** The g6 shapes of the chart's default sizes the fixture knows (giantswarm/backstage#2413). */
+const SHAPES: InstanceShape[] = [
+  {
+    instanceType: 'g6.xlarge',
+    size: 'xlarge',
+    vcpu: 4,
+    memoryGiB: 16,
+    gpus: 1,
+    gpuMemoryGiB: 24,
+    usableVcpu: 3,
+    usableMemoryGiB: 11.9,
+  },
+  {
+    instanceType: 'g6.2xlarge',
+    size: '2xlarge',
+    vcpu: 8,
+    memoryGiB: 32,
+    gpus: 1,
+    gpuMemoryGiB: 24,
+    usableVcpu: 6.5,
+    usableMemoryGiB: 26.9,
+  },
+];
+
+const SMALL_PRESET = {
+  preset: 'qwen3-4b-instruct',
+  cpu: '4',
+  memory: '12Gi',
+  gpus: 1,
+  gpuMemoryGiB: 9.6,
+};
+const BIG_PRESET = {
+  preset: 'qwen3-coder-next',
+  cpu: '8',
+  memory: '64Gi',
+  gpus: 1,
+  gpuMemoryGiB: 96,
+};
+const TOO_SMALL =
+  "requests 4 vCPU / 12Gi; xlarge leaves a predictor 3 vCPU / 11.9 GiB after the node's kubelet reservations and daemonsets — 2xlarge (8 vCPU / 32 GiB) would host it";
+const GPU_MEMORY =
+  'needs 96 GiB of GPU memory across 1 GPU(s); a g6 GPU has 24 GiB';
+
+/** cluster-manager's fit for the chosen sizes (the defaults when none). */
+function withFit(
+  sizes: string[] | undefined,
+  scenario: Scenario,
+): NodePoolWriteResult {
+  const chosen = sizes
+    ? SHAPES.filter(shape => sizes.includes(shape.size))
+    : SHAPES;
+  const hosts2xlarge = chosen.some(shape => shape.size === '2xlarge');
+  const small = hosts2xlarge
+    ? { ...SMALL_PRESET, size: '2xlarge' }
+    : { ...SMALL_PRESET, reason: TOO_SMALL };
+  return {
+    ...DRY_RUN,
+    sizes: chosen,
+    presetFit: scenario.noPresets
+      ? { note: 'no serving preset is published on wc1 yet' }
+      : {
+          source: '2 preset ConfigMap(s) in model-serving on wc1',
+          presets: [small, { ...BIG_PRESET, reason: GPU_MEMORY }],
+        },
+    ...(hosts2xlarge || scenario.noPresets
+      ? {}
+      : {
+          warnings: [
+            `serving preset qwen3-4b-instruct fits no size of pool gpu-l4: ${TOO_SMALL} — a predictor composed from it would sit Pending while Karpenter refuses every size (giantswarm/agent-platform#502); add the size to sizes or serve a smaller preset`,
+          ],
+        }),
+  };
+}
+
+/** The apply: complete, or cut short with the operator's two objects pending. */
+function applied(mode: unknown, partial: boolean): NodePoolWriteResult {
+  const objects = DRY_RUN.objects.map((object, index) => ({
+    ...object,
+    action:
+      partial && index >= DRY_RUN.objects.length - 2 ? 'pending' : 'created',
+  }));
+  return {
+    ...DRY_RUN,
+    dryRun: false,
+    mode: mode as NodePoolWriteResult['mode'],
+    objects,
+    ...(partial
+      ? {
+          partial: true,
+          nextStep:
+            "2 of 3 object(s) are pending: the answer went out within the caller's deadline instead of starting them — re-run with the same arguments, the pending objects are written first",
+        }
+      : {}),
+  };
+}
 
 const NO_CLUSTER_API = {
   group: 'cluster.x-k8s.io',
@@ -102,6 +203,7 @@ const NO_CLUSTER_API = {
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
+  let applies = 0;
   const callTool = jest.fn(
     async (name: string, args: Record<string, unknown>) => {
       switch (name) {
@@ -119,17 +221,11 @@ function makeMusterApi(scenario: Scenario = {}) {
           if (scenario.createError) {
             throw scenario.createError;
           }
-          return args.dryRun
-            ? DRY_RUN
-            : {
-                ...DRY_RUN,
-                dryRun: false,
-                mode: args.mode,
-                objects: DRY_RUN.objects.map(o => ({
-                  ...o,
-                  action: 'created',
-                })),
-              };
+          if (args.dryRun) {
+            return withFit(args.sizes as string[] | undefined, scenario);
+          }
+          applies += 1;
+          return applied(args.mode, Boolean(scenario.partial) && applies === 1);
         default:
           throw new Error(`unexpected tool ${name}`);
       }
@@ -139,7 +235,10 @@ function makeMusterApi(scenario: Scenario = {}) {
   return { api: { callTool, describeTool } as unknown as MusterApi, callTool };
 }
 
-async function renderDialog(scenario: Scenario = {}) {
+async function renderDialog(
+  scenario: Scenario = {},
+  onDeployed?: (result: NodePoolWriteResult) => void,
+) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -151,6 +250,7 @@ async function renderDialog(scenario: Scenario = {}) {
           installations={['inst-1']}
           isOpen
           onOpenChange={() => {}}
+          onDeployed={onDeployed}
         />
       </QueryClientProvider>
     </TestApiProvider>,
@@ -309,5 +409,166 @@ describe('clusterMarks', () => {
     expect(
       clusterMarks({ ...WC1, ownCluster: true, commitTarget: null })[0],
     ).toBe("The installation's own cluster");
+  });
+});
+
+describe('AddGpuNodePoolDialog: what this pool can serve', () => {
+  const dryRunsOf = (callTool: jest.Mock) =>
+    callTool.mock.calls.filter(
+      call =>
+        call[0] === 'x_cluster-manager_create_node_pool' &&
+        (call[1] as Record<string, unknown>).dryRun,
+    );
+  const appliesOf = (callTool: jest.Mock) =>
+    callTool.mock.calls.filter(
+      call =>
+        call[0] === 'x_cluster-manager_create_node_pool' &&
+        !(call[1] as Record<string, unknown>).dryRun,
+    );
+
+  it('shows the shapes and the presets each size hosts, and re-judges the dry run when a size is unchecked', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderDialog();
+    await fillAndReview(user);
+
+    expect(screen.getByText('What this pool can serve')).toBeInTheDocument();
+    const picker = screen.getByTestId('sizes-picker');
+    expect(picker).toHaveTextContent(
+      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU',
+    );
+    const fit = screen.getByTestId('preset-fit');
+    expect(fit).toHaveTextContent('✔ 2xlarge');
+    expect(fit).toHaveTextContent(`✘ ${GPU_MEMORY}`);
+    expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument();
+    // The first dry run sends no sizes: the chart's defaults.
+    expect(dryRunsOf(callTool)[0][1]).not.toHaveProperty('sizes');
+
+    await user.click(
+      within(picker).getByRole('checkbox', { name: /g6\.2xlarge/ }),
+    );
+    const warnings = await screen.findByTestId('fit-warnings');
+    expect(dryRunsOf(callTool).at(-1)?.[1]).toMatchObject({
+      sizes: ['xlarge'],
+    });
+    expect(warnings).toHaveTextContent(
+      '1 preset fits no size of this pool — Deploy is not blocked',
+    );
+    expect(warnings).toHaveTextContent(TOO_SMALL);
+    expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
+
+    // The warning's own fix puts the size back, and Deploy sends the sizes as reviewed.
+    await user.click(
+      within(warnings).getByRole('button', { name: 'Add 2xlarge' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole('button', { name: 'Deploy' }));
+    await screen.findByText(/Pool wc1-gpu-l4 applied as you/);
+    expect(appliesOf(callTool)[0][1]).toMatchObject({
+      mode: 'apply',
+      sizes: ['xlarge', '2xlarge'],
+    });
+  });
+
+  it('the preset the person wants to serve blocks Deploy when no size hosts it', async () => {
+    const user = userEvent.setup();
+    await renderDialog();
+    await fillAndReview(user);
+    const picker = screen.getByTestId('sizes-picker');
+    await user.click(
+      within(picker).getByRole('checkbox', { name: /g6\.2xlarge/ }),
+    );
+    await screen.findByTestId('fit-warnings');
+
+    await user.click(screen.getByRole('button', { name: /I want to serve/ }));
+    await user.click(
+      await screen.findByRole('option', { name: 'qwen3-4b-instruct' }),
+    );
+
+    const blocked = await screen.findByTestId('deploy-blocked');
+    expect(blocked).toHaveTextContent(
+      'Deploy is blocked: qwen3-4b-instruct fits no size of this pool',
+    );
+    expect(blocked).toHaveTextContent(TOO_SMALL);
+    expect(
+      screen.getByRole('button', { name: /^Deploy \(blocked/ }),
+    ).toBeDisabled();
+    // The chosen preset's warning is the blocker, not repeated among the others.
+    expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument();
+    expect(
+      within(picker).getByRole('checkbox', {
+        name: /g6\.2xlarge.*hosts qwen3-4b-instruct/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(picker).getByRole('checkbox', {
+        name: /g6\.xlarge.*does not host qwen3-4b-instruct/,
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(blocked).getByRole('button', { name: 'Add 2xlarge' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('deploy-blocked')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
+
+    // A preset the accelerator cannot serve at all: the GPU-memory reason, no size to add.
+    await user.click(screen.getByRole('button', { name: /I want to serve/ }));
+    await user.click(
+      await screen.findByRole('option', { name: 'qwen3-coder-next' }),
+    );
+    const gpu = await screen.findByTestId('deploy-blocked');
+    expect(gpu).toHaveTextContent(GPU_MEMORY);
+    expect(
+      within(gpu).queryByRole('button', { name: /^Add/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /^Deploy \(blocked/ }),
+    ).toBeDisabled();
+  });
+
+  it('a cluster without presets shows the note instead of an empty table', async () => {
+    const user = userEvent.setup();
+    await renderDialog({ noPresets: true });
+    await fillAndReview(user);
+    expect(screen.getByTestId('preset-fit-note')).toHaveTextContent(
+      'no serving preset is published on wc1 yet',
+    );
+    expect(screen.queryByTestId('preset-fit')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /I want to serve/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
+  });
+
+  it('a Deploy cut short lists the pending objects and Continue re-runs the same call', async () => {
+    const user = userEvent.setup();
+    const onDeployed = jest.fn();
+    const { callTool } = await renderDialog({ partial: true }, onDeployed);
+    await fillAndReview(user);
+    await user.click(screen.getByRole('button', { name: 'Deploy' }));
+
+    const partial = await screen.findByTestId('partial-write');
+    expect(partial).toHaveTextContent(
+      'Deploy was cut short: 2 of 3 objects are pending',
+    );
+    expect(partial).toHaveTextContent('re-run with the same arguments');
+    expect(screen.getByTestId('pending-objects')).toHaveTextContent(
+      'HelmRelease org-acme/wc1-gpu-operator: pending',
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Deploy' }),
+    ).not.toBeInTheDocument();
+    expect(onDeployed).not.toHaveBeenCalled();
+
+    await user.click(within(partial).getByRole('button', { name: 'Continue' }));
+    await screen.findByText(/Pool wc1-gpu-l4 applied as you/);
+    const [first, second] = appliesOf(callTool);
+    expect(second[1]).toEqual(first[1]);
+    expect(onDeployed).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('partial-write')).not.toBeInTheDocument();
   });
 });

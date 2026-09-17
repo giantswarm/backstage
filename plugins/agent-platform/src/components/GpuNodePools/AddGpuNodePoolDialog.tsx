@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -23,6 +23,7 @@ import {
 import {
   CLUSTER_MANAGER_SERVER,
   DEFAULT_ACCELERATORS,
+  deployBlocker,
   describeComponent,
   describeReleaseGroup,
   groupManifestsByRelease,
@@ -36,6 +37,8 @@ import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
+import { PartialWriteOutcome } from './PartialWriteOutcome';
+import { PoolFitReview } from './PoolFitReview';
 
 export type AddGpuNodePoolDialogProps = {
   /** The installations whose muster lists cluster-manager. */
@@ -99,7 +102,17 @@ export function AddGpuNodePoolDialog({
   );
   const [maxGpus, setMaxGpus] = useState(4);
   const [teleport, setTeleport] = useState<TeleportChoice>('default');
+  /** The latest dry run: what Deploy would write, judged against `sizes`. */
   const [review, setReview] = useState<NodePoolWriteResult>();
+  /** The first dry run with the defaults: every shape to pick from, every preset. */
+  const [shapes, setShapes] = useState<NodePoolWriteResult>();
+  /** The chosen sizes; `undefined` until the first dry run says which exist. */
+  const [sizes, setSizes] = useState<string[]>();
+  const [preset, setPreset] = useState<string>();
+  /** The dry run in flight; an older answer arriving later is dropped. */
+  const rerun = useRef(0);
+  /** A sizes change being judged — the footer's Deploy is not what is busy. */
+  const [judging, setJudging] = useState(false);
   const [applied, setApplied] = useState<NodePoolWriteResult>();
   const [committed, setCommitted] = useState<NodePoolWriteResult>();
 
@@ -119,9 +132,18 @@ export function AddGpuNodePoolDialog({
     }
   }, [installation, installations]);
 
+  /** Back to the form: the review, its shapes and the choices made on it go. */
+  const leaveReview = () => {
+    rerun.current += 1;
+    setReview(undefined);
+    setShapes(undefined);
+    setSizes(undefined);
+    setPreset(undefined);
+  };
+
   useEffect(() => {
     if (!isOpen) {
-      setReview(undefined);
+      leaveReview();
       setApplied(undefined);
       setCommitted(undefined);
       write.reset();
@@ -135,7 +157,8 @@ export function AddGpuNodePoolDialog({
     [clusters, clusterName],
   );
 
-  const input: CreateNodePoolInput | undefined = useMemo(() => {
+  /** The form's input; without `sizes` cluster-manager composes the chart's defaults. */
+  const formInput: CreateNodePoolInput | undefined = useMemo(() => {
     if (!cluster || !isValidPoolName(name)) {
       return undefined;
     }
@@ -149,23 +172,61 @@ export function AddGpuNodePoolDialog({
     };
   }, [cluster, name, accelerator, maxGpus, teleport]);
 
+  /** What Deploy and Commit send: the form's input with the sizes as reviewed. */
+  const input = useMemo(
+    () => (formInput && sizes ? { ...formInput, sizes } : formInput),
+    [formInput, sizes],
+  );
+
   const canCommit = info?.modes.commit === true;
   const notConnected = write.failure?.kind === 'not-connected';
   const isBusy = write.isBusy;
   const done = Boolean(applied || committed?.pullRequestUrl);
+  const blocker = deployBlocker(review, preset);
+  const canWrite = Boolean(input) && !isBusy && !blocker && sizes?.length !== 0;
 
   const onReview = async (event: FormEvent) => {
     event.preventDefault();
-    if (!input) {
+    if (!formInput) {
       return;
     }
+    const seq = ++rerun.current;
     try {
-      setReview(await write.dryRun(input));
+      const result = await write.dryRun(formInput);
+      if (seq !== rerun.current) {
+        return;
+      }
+      setShapes(result);
+      setSizes(result.sizes?.map(shape => shape.size));
+      setReview(result);
     } catch {
       // Shown from `write.failure`.
     }
   };
 
+  /** A size checked or unchecked: the dry run is judged again against the new set. */
+  const onSizesChange = async (next: string[]) => {
+    setSizes(next);
+    if (!formInput || next.length === 0) {
+      return;
+    }
+    const seq = ++rerun.current;
+    setJudging(true);
+    try {
+      const result = await write.dryRun({ ...formInput, sizes: next });
+      if (seq === rerun.current) {
+        setReview(result);
+      }
+    } catch {
+      // Shown from `write.failure`; the last review stands.
+    } finally {
+      if (seq === rerun.current) {
+        setJudging(false);
+      }
+    }
+  };
+
+  /** Deploy, and Continue after a partial Deploy: the same call, the same arguments. */
   const onDeploy = async () => {
     if (!input) {
       return;
@@ -173,7 +234,9 @@ export function AddGpuNodePoolDialog({
     try {
       const result = await write.create(input, 'apply');
       setApplied(result);
-      onDeployed?.(result);
+      if (!result.partial) {
+        onDeployed?.(result);
+      }
     } catch {
       // Shown from `write.failure`.
     }
@@ -333,6 +396,18 @@ export function AddGpuNodePoolDialog({
                     {review.backend.name} → {review.backend.target}
                   </Text>
                 )}
+                {shapes?.sizes && shapes.sizes.length > 0 && sizes && (
+                  <PoolFitReview
+                    shapes={shapes.sizes}
+                    presets={shapes.presetFit?.presets ?? []}
+                    review={review}
+                    sizes={sizes}
+                    onSizesChange={onSizesChange}
+                    preset={preset}
+                    onPresetChange={setPreset}
+                    isBusy={isBusy}
+                  />
+                )}
                 {groups.map(group => (
                   <Flex key={group.name} direction="column" gap="2">
                     <Text variant="body-medium">
@@ -396,7 +471,15 @@ export function AddGpuNodePoolDialog({
                 server={CLUSTER_MANAGER_SERVER}
               />
             )}
-            {applied && (
+            {applied && applied.partial && (
+              <PartialWriteOutcome
+                result={applied}
+                action="Deploy"
+                onContinue={onDeploy}
+                isBusy={isBusy}
+              />
+            )}
+            {applied && !applied.partial && (
               <Alert
                 status="success"
                 title={`Pool ${applied.cluster}-${applied.pool} applied as you`}
@@ -432,7 +515,7 @@ export function AddGpuNodePoolDialog({
               <>
                 <Button
                   variant="secondary"
-                  onPress={() => setReview(undefined)}
+                  onPress={leaveReview}
                   isDisabled={isBusy}
                 >
                   Back
@@ -440,7 +523,7 @@ export function AddGpuNodePoolDialog({
                 <Button
                   variant="secondary"
                   onPress={onCommit}
-                  isDisabled={!canCommit || isBusy}
+                  isDisabled={!canCommit || !canWrite}
                   aria-label={
                     canCommit ? 'Commit' : 'Commit (not available yet)'
                   }
@@ -450,9 +533,14 @@ export function AddGpuNodePoolDialog({
                 <Button
                   variant="primary"
                   onPress={onDeploy}
-                  isDisabled={isBusy}
+                  isDisabled={!canWrite}
+                  aria-label={
+                    blocker
+                      ? `Deploy (blocked: ${blocker.preset} fits no size of this pool)`
+                      : 'Deploy'
+                  }
                 >
-                  {isBusy ? 'Deploying…' : 'Deploy'}
+                  {isBusy && !judging ? 'Deploying…' : 'Deploy'}
                 </Button>
               </>
             )}
