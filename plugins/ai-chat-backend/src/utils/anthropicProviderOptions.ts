@@ -3,8 +3,9 @@
 // models the enabled+budgetTokens shape returns a 400:
 //   "thinking.type.enabled is not supported for this model. Use
 //    thinking.type.adaptive and output_config.effort to control thinking."
-// Opus 4.5+ and Sonnet 4.6 introduced adaptive thinking and `effort`; older
-// Claude models (Sonnet 4.5, Haiku 4.5, Opus 4.1, Claude 3.x) still require
+// Opus 4.5+ and Sonnet 4.6 introduced adaptive thinking and `effort`, and on
+// the Claude 5 family budgetTokens is removed outright; older Claude models
+// (Sonnet 4.5, Haiku 4.5, Opus 4.1, Claude 3.x) still require
 // enabled+budgetTokens and reject `effort`. Adaptive-thinking models also
 // reject temperature/top_p/top_k. Extend this list as new effort-generation
 // models ship (keep roughly in sync with ContextUsageDisplay.tsx).
@@ -14,6 +15,10 @@ export const ADAPTIVE_THINKING_MODEL_PREFIXES = [
   'claude-opus-4-7',
   'claude-opus-4-8',
   'claude-sonnet-4-6',
+  'claude-sonnet-5',
+  'claude-opus-5',
+  // Also matches claude-fable-5-1.
+  'claude-fable-5',
 ];
 
 // Thinking budget for legacy (pre-effort) Claude models.

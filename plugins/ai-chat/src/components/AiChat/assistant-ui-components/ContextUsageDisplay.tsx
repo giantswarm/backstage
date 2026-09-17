@@ -81,6 +81,9 @@ function formatCost(cost: number): string {
 // Known context window sizes by model prefix
 // More specific prefixes must come before less specific ones (startsWith matching)
 const CONTEXT_WINDOWS: Record<string, number> = {
+  'claude-fable-5': 1_000_000,
+  'claude-opus-5': 1_000_000,
+  'claude-sonnet-5': 1_000_000,
   'claude-opus-4-6': 1_000_000,
   'claude-opus-4-7': 1_000_000,
   'claude-opus-4-8': 1_000_000,
@@ -105,7 +108,9 @@ function getContextWindow(modelName: string): number | null {
   return null;
 }
 
-// Per-token pricing in USD (price per million tokens)
+// Per-token pricing in USD (price per million tokens). These are Anthropic's
+// first-party rates; Claude served through Google Vertex AI is priced by the
+// partner, so the estimate is indicative there.
 // Source: https://platform.claude.com/docs/en/about-claude/pricing
 interface TokenPricing {
   inputPerMTok: number;
@@ -113,6 +118,11 @@ interface TokenPricing {
 }
 
 const TOKEN_PRICING: Record<string, TokenPricing> = {
+  'claude-fable-5': { inputPerMTok: 10, outputPerMTok: 50 },
+  'claude-opus-5': { inputPerMTok: 5, outputPerMTok: 25 },
+  'claude-sonnet-5': { inputPerMTok: 2, outputPerMTok: 10 },
+  'claude-opus-4-8': { inputPerMTok: 5, outputPerMTok: 25 },
+  'claude-opus-4-7': { inputPerMTok: 5, outputPerMTok: 25 },
   'claude-opus-4-6': { inputPerMTok: 5, outputPerMTok: 25 },
   'claude-opus-4-5': { inputPerMTok: 5, outputPerMTok: 25 },
   'claude-opus-4-1': { inputPerMTok: 15, outputPerMTok: 75 },
