@@ -1,5 +1,6 @@
 import {
   Committed,
+  Created,
   Dispatch,
   InventoryRecord,
   Plan,
@@ -552,6 +553,87 @@ export const acceptedValidation: Validation = {
   authorTeams: ['team-bumblebee'],
   teamsSource: 'github',
   machineApproved: true,
+  creation: {
+    repositories: [
+      {
+        name: 'shiny-service',
+        steps: [
+          {
+            step: 'create',
+            verdict: 'drift',
+            changes: ['create giantswarm/shiny-service (private)'],
+          },
+          {
+            step: 'scaffold',
+            verdict: 'drift',
+            changes: [
+              'render the scaffold and push it as the first commit on main',
+            ],
+          },
+        ],
+      },
+    ],
+    pullRequest: {
+      repository: 'giantswarm/github',
+      branch: 'reposetup/create-shiny-service',
+      title: 'feat(repositories): declare shiny-service for team-bumblebee',
+      files: ['repositories/team-bumblebee.yaml'],
+      body: '## Problem\n\n…',
+      as: 'alice',
+    },
+  },
+};
+
+/**
+ * A configuration repository with the CircleCI generator on: the creation
+ * rules refuse `gen.ci.generate` (nothing to build) and say what to set.
+ */
+export const ciRefusedValidation: Validation = {
+  ...acceptedValidation,
+  entries: [
+    {
+      name: 'shiny-config',
+      rendered:
+        '- name: shiny-config\n  componentType: configuration\n  gen:\n    language: generic\n    flavours:\n      - generic\n    ci:\n      generate: true\n',
+      template: 'minimal',
+      nameCheck: { verdict: 'free' },
+      problems: [
+        {
+          field: 'gen.ci.generate',
+          message:
+            'no CircleCI job for language generic without the app flavour or gen.ci.image.dockerfile; set it to false',
+        },
+      ],
+      accepted: false,
+    },
+  ],
+  accepted: false,
+  machineApproved: false,
+  creation: undefined,
+  findings: [
+    {
+      kind: 'gen-circleci-refused',
+      message:
+        'gen.ci.generate: no CircleCI job for language generic without the app flavour or gen.ci.image.dockerfile; set it to false',
+      fix: 'edit gen.ci.generate of the entry "shiny-config" in repositories/team-bumblebee.yaml: no CircleCI job for language generic without the app flavour or gen.ci.image.dockerfile; set it to false',
+    },
+  ],
+};
+
+/** The same configuration repository with the generator off: accepted. */
+export const configurationValidation: Validation = {
+  ...acceptedValidation,
+  entries: [
+    {
+      name: 'shiny-config',
+      rendered:
+        '- name: shiny-config\n  componentType: configuration\n  gen:\n    language: generic\n    flavours:\n      - generic\n    ci:\n      generate: false\n',
+      template: 'minimal',
+      nameCheck: { verdict: 'free' },
+      accepted: true,
+    },
+  ],
+  creation: undefined,
 };
 
 /** The same declaration by a person outside the team: the team-review notice stands. */
@@ -611,7 +693,30 @@ export const openedPullRequest: PullRequest = {
   author: 'alice',
 };
 
-export const committedCreate: Committed = { pullRequest: openedPullRequest };
+/**
+ * `create_repository` in `mode: commit`: the repository and its scaffold as
+ * the person, then the declaration pull request.
+ */
+export const createdRepository: Created = {
+  repositories: [
+    {
+      name: 'shiny-service',
+      repository: 'https://github.com/giantswarm/shiny-service',
+      created: true,
+      scaffoldCommit: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+      steps: [
+        { step: 'create', verdict: 'repaired', summary: 'created (private)' },
+        {
+          step: 'scaffold',
+          verdict: 'repaired',
+          summary: 'pushed as the first commit on main',
+        },
+      ],
+    },
+  ],
+  pullRequest: openedPullRequest,
+  firstRelease: "v0.1.0 follows from the scaffold's auto-release",
+};
 
 /** The plan of a write on present-service, filled in per action by the tests. */
 export function planOf(overrides: Partial<Plan> = {}): Plan {
