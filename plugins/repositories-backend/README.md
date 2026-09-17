@@ -17,7 +17,7 @@ team-file pull request under that person's name.
 | `POST /repositories/:name/update`    | `update_repository`                                  |
 | `POST /repositories/:name/transfer`  | `transfer_repository`                                |
 | `POST /repositories/:name/lifecycle` | `set_lifecycle`                                      |
-| `POST /repositories/:name/reconcile` | `reconcile_repository`                               |
+| `POST /repositories/:name/align`     | `align_repository`                                   |
 
 The filters are the tool's own arguments (`scope`, `search`, `renovate`,
 `team`, `visibility`, `fork`, `lifecycle`, `archived`, `inactiveDays`,

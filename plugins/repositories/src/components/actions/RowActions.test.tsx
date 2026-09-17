@@ -8,8 +8,8 @@ import {
 } from '../../apis';
 import { unusedWrites } from '../../fixtures/fakeApi';
 import {
+  alignmentOf,
   committedOf,
-  dispatchOf,
   planOf,
   presentService,
   strayTool,
@@ -26,10 +26,7 @@ const APPLY_REFUSAL =
 
 type Writes = Pick<
   RepositoriesApi,
-  | 'updateRepository'
-  | 'transferRepository'
-  | 'setLifecycle'
-  | 'reconcileRepository'
+  'updateRepository' | 'transferRepository' | 'setLifecycle' | 'alignRepository'
 >;
 
 function renderActions(
@@ -71,12 +68,12 @@ describe('parseEntry', () => {
 });
 
 describe('RowActions', () => {
-  it('offers only Reconcile now for an undeclared repository', () => {
+  it('offers only Align now for an undeclared repository', () => {
     renderActions({}, strayTool);
     for (const name of ['Configure', 'Transfer', 'Deprecate', 'Archive']) {
       expect(button(name)).toBeDisabled();
     }
-    expect(button('Reconcile now')).toBeEnabled();
+    expect(button('Align now')).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Keep' })).toBeNull();
   });
 
@@ -293,32 +290,56 @@ describe('RowActions', () => {
     expect(screen.queryByTestId('plan')).toBeNull();
   });
 
-  it('Reconcile now: the planned dispatch, then the dispatch as the person with the runs link', async () => {
-    const reconcileRepository = jest
+  it('Align now, team opted in: what it changes, the warning, the planned changes per step, Align now, then the dispatch', async () => {
+    const alignRepository = jest
       .fn()
-      .mockResolvedValueOnce(dispatchOf(false))
-      .mockResolvedValueOnce(dispatchOf(true));
-    const { onChanged } = renderActions({ reconcileRepository });
-    await userEvent.click(button('Reconcile now'));
-    expect(dialog(/^Reconcile present-service now/)).toHaveTextContent(
-      'Declared by team-bumblebee.',
+      .mockResolvedValueOnce(alignmentOf(false))
+      .mockResolvedValueOnce(alignmentOf(true));
+    const { onChanged } = renderActions({ alignRepository });
+    await userEvent.click(button('Align now'));
+    const form = dialog(/^Align present-service now/);
+    expect(form).toHaveTextContent(
+      'Changes giantswarm/present-service on GitHub and CircleCI to its declared set-up and the company baseline',
     );
+    expect(form).toHaveTextContent(
+      'as you, by dispatching the set-up workflow',
+    );
+    expect(form).toHaveTextContent('Declared by team-bumblebee.');
     await userEvent.click(button('Review'));
-    expect(reconcileRepository).toHaveBeenCalledWith(
+    expect(alignRepository).toHaveBeenCalledWith(
       'giantswarm/present-service',
       { team: undefined },
       { dryRun: true },
     );
+
+    const alignment = await screen.findByTestId('alignment');
     expect(
-      await screen.findByText(
-        'Would dispatch reconcile-repositories.yaml as alice',
-      ),
+      within(alignment).getByTestId('alignment-warning'),
+    ).toHaveTextContent(alignmentOf(false).warning);
+    expect(within(alignment).getByTestId('opt-in')).toHaveTextContent(
+      'team-bumblebee has opted in: the changes below are applied.',
+    );
+    const planned = within(alignment).getByTestId('planned');
+    expect(planned).toHaveTextContent(
+      'Planned changes. Checked at 2026-09-17T21:00:00Z.',
+    );
+    expect(planned).toHaveTextContent('protection');
+    expect(planned).toHaveTextContent(
+      'main: require the ci/circleci: build status check',
+    );
+    expect(planned).toHaveTextContent('main: enforce for administrators');
+    expect(planned).toHaveTextContent('circleci');
+    expect(planned).toHaveTextContent('follow the project');
+    expect(
+      screen.getByText('Would dispatch reconcile-repositories.yaml as alice'),
     ).toBeInTheDocument();
     expect(screen.getByTestId('dispatch')).toHaveTextContent(
       'Inputs: repository=present-service, team=team-bumblebee',
     );
-    await userEvent.click(button('Reconcile now'));
-    expect(reconcileRepository).toHaveBeenLastCalledWith(
+    expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
+
+    await userEvent.click(button('Align now'));
+    expect(alignRepository).toHaveBeenLastCalledWith(
       'giantswarm/present-service',
       { team: undefined },
       { mode: 'commit' },
@@ -328,24 +349,95 @@ describe('RowActions', () => {
         'Dispatched reconcile-repositories.yaml as alice',
       ),
     ).toBeInTheDocument();
+    // Done: the opt-in line stays, the warning and the plan are behind the run.
+    expect(screen.getByTestId('opt-in')).toHaveTextContent('has opted in');
+    expect(screen.queryByTestId('alignment-warning')).toBeNull();
+    expect(screen.queryByTestId('planned')).toBeNull();
     expect(screen.getByRole('link', { name: /Workflow runs/ })).toHaveAttribute(
       'href',
-      dispatchOf(true).runsUrl,
+      alignmentOf(true).runsUrl,
     );
     expect(onChanged).toHaveBeenCalled();
   });
 
-  it('Reconcile now on an undeclared repository needs the team', async () => {
-    const reconcileRepository = jest.fn().mockResolvedValue(dispatchOf(false));
-    renderActions({ reconcileRepository }, strayTool);
-    await userEvent.click(button('Reconcile now'));
+  it('Align now, team not opted in: the warning and the planned changes, the run checks and changes nothing, Check now', async () => {
+    const alignRepository = jest
+      .fn()
+      .mockResolvedValueOnce(
+        alignmentOf(false, { optedIn: false, mode: 'check' }),
+      )
+      .mockResolvedValueOnce(
+        alignmentOf(true, { optedIn: false, mode: 'check' }),
+      );
+    renderActions({ alignRepository });
+    await userEvent.click(button('Align now'));
+    await userEvent.click(button('Review'));
+
+    const alignment = await screen.findByTestId('alignment');
+    expect(
+      within(alignment).getByTestId('alignment-warning'),
+    ).toHaveTextContent(alignmentOf(false).warning);
+    expect(within(alignment).getByTestId('opt-in')).toHaveTextContent(
+      'team-bumblebee has not opted in: this run checks and changes nothing.',
+    );
+    expect(within(alignment).getByTestId('planned')).toHaveTextContent(
+      'main: require the ci/circleci: build status check',
+    );
+    expect(screen.queryByRole('button', { name: 'Align now' })).toBeNull();
+
+    await userEvent.click(button('Check now'));
+    expect(alignRepository).toHaveBeenLastCalledWith(
+      'giantswarm/present-service',
+      { team: undefined },
+      { mode: 'commit' },
+    );
+    expect(
+      await screen.findByText(
+        'Dispatched reconcile-repositories.yaml as alice',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('opt-in')).toHaveTextContent(
+      'has not opted in: this run checks and changes nothing',
+    );
+  });
+
+  it('Align now: names no check yet, and nothing to change with when it was checked', async () => {
+    const alignRepository = jest
+      .fn()
+      .mockResolvedValueOnce(
+        alignmentOf(false, { planned: undefined, checkedAt: undefined }),
+      );
+    renderActions({ alignRepository });
+    await userEvent.click(button('Align now'));
+    await userEvent.click(button('Review'));
+    expect(await screen.findByTestId('planned')).toHaveTextContent(
+      "No check yet: the run's own check plans the changes.",
+    );
+
+    await userEvent.click(button('Back'));
+    alignRepository.mockResolvedValueOnce(
+      alignmentOf(false, {
+        planned: [{ step: 'settings', changes: [] }],
+        checkedAt: '2026-09-17T22:00:00Z',
+      }),
+    );
+    await userEvent.click(button('Review'));
+    expect(await screen.findByTestId('planned')).toHaveTextContent(
+      'Nothing to change. Checked at 2026-09-17T22:00:00Z.',
+    );
+  });
+
+  it('Align now on an undeclared repository needs the team', async () => {
+    const alignRepository = jest.fn().mockResolvedValue(alignmentOf(false));
+    renderActions({ alignRepository }, strayTool);
+    await userEvent.click(button('Align now'));
     expect(button('Review')).toBeDisabled();
     await userEvent.type(
-      within(dialog(/^Reconcile stray-tool now/)).getByLabelText(/^Team/),
+      within(dialog(/^Align stray-tool now/)).getByLabelText(/^Team/),
       'team-planeteers',
     );
     await userEvent.click(button('Review'));
-    expect(reconcileRepository).toHaveBeenCalledWith(
+    expect(alignRepository).toHaveBeenCalledWith(
       'giantswarm/stray-tool',
       { team: 'team-planeteers' },
       { dryRun: true },

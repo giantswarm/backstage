@@ -37,7 +37,8 @@ export interface ActionDialogProps<TPlan, TDone> {
   /** The write (`mode: commit`). */
   commit: () => Promise<TDone>;
   renderDone: (done: TDone) => ReactNode;
-  commitLabel: string;
+  /** The commit button's label; a function reads it off the plan (`Align now` or `Check now`). */
+  commitLabel: string | ((plan: TPlan | undefined) => string);
   onDone?: (done: TDone) => void;
 }
 
@@ -83,6 +84,8 @@ export function ActionDialog<TPlan, TDone>({
   });
   const busy = review.isPending || write.isPending;
   const failure = (write.error ?? review.error) as Error | null;
+  const commitText =
+    typeof commitLabel === 'function' ? commitLabel(plan) : commitLabel;
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -154,7 +157,7 @@ export function ActionDialog<TPlan, TDone>({
                 variant="primary"
                 isDisabled={!ready || busy}
               >
-                {write.isPending ? 'Working…' : commitLabel}
+                {write.isPending ? 'Working…' : commitText}
               </Button>
             )}
           </Flex>
