@@ -61,15 +61,13 @@ export function sessionUsageQueryKey(installation: string) {
 }
 
 /**
- * The model-manager reads, per installation. Prefixed `model-manager` (not
- * `kagent`) so `components/QueryClientProvider`'s user-scoped filter leaves
- * them alone: an installation's inventory, backend descriptor and pull jobs
- * are the same for every user, and safe to persist.
+ * The model-manager reads, per installation — through muster as the person,
+ * but about the installation: its inventory, backend descriptors and pull
+ * jobs are the same for every user, so they are prefixed `model-manager` (not
+ * `kagent`, not `muster`) and `components/QueryClientProvider` persists them.
+ * Whether an installation has a model-manager at all is the `muster` question
+ * (`musterServersQueryKey` below).
  */
-export function modelManagerInstallationsQueryKey() {
-  return ['agent-platform', 'model-manager', 'installations'] as const;
-}
-
 export function modelManagerBackendQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'backend', installation] as const;
 }

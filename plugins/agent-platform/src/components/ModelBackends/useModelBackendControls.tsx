@@ -60,13 +60,13 @@ export type ModelBackendControls = {
 
 /**
  * Add model backend and Remove backend for the Serving page, over every
- * reachable installation in scope whose backend proxies a model-manager
- * (`useModelManagerInstallations`, the serving source's own gate — so a portal
- * without one never offers the dialog, and an installation whose
- * model-manager has no backend yet is offered although it has no group) and
- * the muster plugin, which is how the tools are reached as the person. Reads
- * the registered backends once for the source labels, the kinds still free
- * and the Remove confirm.
+ * reachable installation in scope whose muster lists model-manager
+ * (`useModelManagerInstallations`, the serving source's own gate — so an
+ * installation without one never offers the dialog, and one whose
+ * model-manager has no backend yet is offered although it has no group);
+ * the muster plugin is how the tools are reached as the person. Reads the
+ * registered backends once for the source labels, the kinds still free and
+ * the Remove confirm.
  */
 export function useModelBackendControls(): ModelBackendControls {
   const musterApi = useMusterPluginApi();

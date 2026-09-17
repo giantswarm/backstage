@@ -11,6 +11,14 @@ import {
   type StubOptions,
 } from './gpu-node-pool.fixture';
 import { lab } from './lab';
+import {
+  dropPersistedQueriesOnNextLoad,
+  installPersistedQueryDrop,
+  KSERVE_POOL_BACKEND,
+  L4_POOL_PRESETS,
+  poolFitAnswer,
+  stubModelManagerTools,
+} from './model-manager.fixture';
 
 /**
  * GPU node pools on the Models pages, against a lab whose agent-platform chart
@@ -37,7 +45,7 @@ async function offerAbsentCluster(page: Page, name: string): Promise<void> {
   await page.route('**/api/muster/call**', async route => {
     const body = route.request().postDataJSON() as { name?: string };
     if (body?.name !== 'x_cluster-manager_list_clusters') {
-      await route.continue();
+      await route.fallback();
       return;
     }
     await route.fulfill({
@@ -159,29 +167,15 @@ test.describe('models: GPU node pools', () => {
  * calls are answered in cluster-manager's shapes. Everything else — the
  * sign-in, the page, the muster session — is real; nothing is written.
  */
-const PERSISTER_KEY = 'agent-platform-react-query-cache';
-const DROP_FLAG = 'e2e-drop-persisted-queries';
-
 /**
  * A page load within the plugin's cache window would take the lab's real
  * MCPServer list and clusters from the persisted react-query cache and never
  * ask the stub: arm a one-shot drop of that cache for the next navigation
- * (the pattern of serving-state.spec.ts).
+ * (`model-manager.fixture.ts`).
  */
-async function dropPersistedQueriesOnNextLoad(page: Page): Promise<void> {
-  await page.addInitScript(
-    ([key, flag]) => {
-      if (window.sessionStorage.getItem(flag)) {
-        window.sessionStorage.removeItem(flag);
-        window.localStorage.removeItem(key);
-      }
-    },
-    [PERSISTER_KEY, DROP_FLAG] as const,
-  );
-  await page.evaluate(
-    flag => window.sessionStorage.setItem(flag, '1'),
-    DROP_FLAG,
-  );
+async function dropPersistedQueries(page: Page): Promise<void> {
+  await installPersistedQueryDrop(page);
+  await dropPersistedQueriesOnNextLoad(page);
 }
 
 /** Full-page screenshots when `AGENTLAB_E2E_SCREENSHOTS=<dir>` is set — the PR's evidence. */
@@ -207,7 +201,7 @@ async function toggleSize(picker: Locator, size: RegExp): Promise<void> {
  */
 async function reachForm(page: Page, options: StubOptions = {}) {
   await signIn(page, lab.users.admin);
-  await dropPersistedQueriesOnNextLoad(page);
+  await dropPersistedQueries(page);
   const calls = await stubClusterManager(page, options);
   await open(page, '/agent-platform/models/capacity');
 
@@ -567,9 +561,19 @@ const listReads = (calls: RecordedCall[]) =>
   calls.filter(call => call.name === 'x_cluster-manager_list_clusters').length;
 
 test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stubbed)', () => {
-  test('Deploy closes into the lifecycle panel: the row reads creating, then ready · 0 nodes; the steps turn done and end in Serve your first model', async ({
+  test('Deploy closes into the lifecycle panel: the row reads creating, then ready · 0 nodes; the steps turn done and end in Serve your first model, whose link opens the Serve dialog on the pool with model-manager’s presets and fit verdict', async ({
     page,
   }) => {
+    // The backend the pool registers with model-manager, as the lab lacks it:
+    // the kserve backend, its presets and the fit verdict, over muster like
+    // everything else the Serve dialog asks — so the hand-off lands on a
+    // dialog that can serve, not on "no serving backend can load a model".
+    const modelManager = await stubModelManagerTools(page, {
+      list_backends: { backends: [KSERVE_POOL_BACKEND] },
+      list_presets: { presets: L4_POOL_PRESETS },
+      list_models: { models: [] },
+      check_fit: poolFitAnswer,
+    });
     const { dialog, calls } = await reachReview(page);
     await dialog.getByRole('button', { name: /^Deploy/ }).click();
     await expect(dialog).toBeHidden({ timeout: 30_000 });
@@ -639,6 +643,38 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
     await expect(page.getByTestId('pool-lifecycle')).toContainText(
       'ready · 0 nodes',
     );
+
+    // The hand-off: Serve your first model opens the Serving page's dialog on
+    // this pool, the presets model-manager publishes for the cluster offered
+    // and check_fit's verdict before the button — all through muster as the
+    // person, nothing composed in the browser.
+    await page
+      .getByTestId('pool-lifecycle')
+      .getByRole('link', { name: 'Serve your first model' })
+      .click();
+    await expect(page).toHaveURL(/\/agent-platform\/models\/serving/);
+    const serveDialog = page.getByRole('dialog', { name: 'Serve model' });
+    await expect(serveDialog).toBeVisible({ timeout: 30_000 });
+    await expect(serveDialog.getByTestId('serve-target')).toHaveText(
+      `On GPU pool gpu-e2e of cluster wc1 (${lab.installation})`,
+    );
+    await expect(
+      serveDialog.getByRole('button', { name: /Preset/ }),
+      'the first preset model-manager publishes is chosen',
+    ).toHaveText(/Qwen3 4B Instruct/);
+    await expect(
+      serveDialog.getByTestId('serve-fit-verdict'),
+      'check_fit judged the preset against the pool',
+    ).toContainText('Fits — the node comes as g6.xlarge');
+    expect(modelManager.callsOf('check_fit')).toEqual([
+      {
+        name: 'x_model-manager_check_fit',
+        arguments: { model: 'qwen3-4b-instruct' },
+      },
+    ]);
+    await snapshot(page, 'gpu-pool-serve-first-model');
+    await serveDialog.getByRole('button', { name: 'Cancel' }).click();
+    await modelManager.unroute();
   });
 
   test('an installation on an older cluster-manager gets the panel with fewer steps from poolReleases and the components status, never an error', async ({
@@ -667,7 +703,7 @@ const deletes = (calls: RecordedCall[]) =>
 /** Sign in, stub cluster-manager with `gpu-e2e` settled on wc1, open the page and the Remove confirm with the name typed. */
 async function reachRemove(page: Page, options: StubOptions = {}) {
   await signIn(page, lab.users.admin);
-  await dropPersistedQueriesOnNextLoad(page);
+  await dropPersistedQueries(page);
   const calls = await stubClusterManager(page, {
     existingPool: 'gpu-e2e',
     ...options,

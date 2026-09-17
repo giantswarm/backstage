@@ -154,12 +154,13 @@ backend-agnostic seam: `ServedModel`, `ServingCapabilities`,
   predictor pods read with the user's own RBAC on installations that serve the
   InferenceService CRD. Read-only, plus the GPU capacity panel.
 - **model-manager** (`useModelManagerServingSource`): the inventory of the
-  installations the backend proxies a
-  [model-manager](https://github.com/giantswarm/model-manager) for, read
-  through `agent-platform-backend`'s `/model-manager/...` pass-through.
+  installations whose muster lists
+  [model-manager](https://github.com/giantswarm/model-manager) as an
+  MCPServer, read through its `x_model-manager_*` tools over that muster as the
+  signed-in person (`ModelManagerApiClient`, the same hop agents take).
   model-manager fronts a _serving backend_ — Ollama on a laptop agentlab
   install, KServe on a GPU install — and reports it together with **capability
-  flags** (`GET /api/v1/backend`).
+  flags** (`list_backends`).
 
 **Everything beyond the table renders per capability flag, never per backend
 name.** `pull` puts a _Pull model_ button and the downloads list on the
@@ -198,13 +199,13 @@ row** (`mergeServingSnapshots`, by predictor hostname) so one row carries the
 CR's status and placement and model-manager's size, cache and controls. The
 GPU panel gains each node's memory budget (what the fit check compares
 against, less what the models served there reserve) and its model cache
-(`GET /api/v1/nodes`), laid over the CR source's device-plugin figures.
+(`list_nodes`), laid over the CR source's device-plugin figures.
 
 **Import from Hugging Face** (`search` + `pull`; `ImportModelDialog`): search
-the hub (`GET /api/v1/search`), pick a hit, choose the serving preset the
+the hub (`search_models`), pick a hit, choose the serving preset the
 download is for and the node whose cache receives it, and read model-manager's
 own size and fit verdict for exactly that combination
-(`POST /api/v1/models/fit-check`: weights from the hub's file tree plus the
+(`check_fit`: weights from the hub's file tree plus the
 preset's overhead against the node's memory budget). A model that does not fit
 cannot be submitted, a gated one needs the installation's hub token; the
 download is a pre-warm `pull` with `preset` and `node`, followed in the
@@ -222,8 +223,8 @@ Ollama loads it on the first request anyway), `notReady`, `pending`. A model's
 **features** (`tools`, `vision`, `thinking`, …) are shown, with a warning where
 `tools` is missing: agents cannot use such a model.
 
-**Pulling** starts a job (`POST /api/v1/models/pull` answers 202 with it) that
-the downloads panel polls every 2 s while running (`GET /api/v1/jobs`), showing
+**Pulling** starts a job (`pull_model` answers with it) that
+the downloads panel polls every 2 s while running (`list_jobs`), showing
 bytes and percent, then the outcome — including the kagent ModelConfig the job
 wired, linked to its detail page. Jobs are model-manager's in-memory list. A
 pull of a reference already downloading is joined, not duplicated.
@@ -246,30 +247,37 @@ later (model-manager) source decides the installation's backend label. In
 agentlab, where the KServe CRDs are installed next to a model-manager, that is
 exactly the state.
 
-**Trust model of the model-manager routes.** The backend
-(`plugins/agent-platform-backend/src/modelManagerRouter.ts`,
-`ModelManagerClient.ts`) exposes `GET /model-manager/installations` (names
-only) and a thin, authenticated pass-through of the model-manager REST under
-`/model-manager/{backend,models,models/*name,loaded,models/{pull,load,unload,wire,unwire,fit-check},jobs,jobs/:id,presets,search,nodes}`
-per `?installation=` (`pull` and `load` forward the kserve fields `preset` and
-`node`; `load` and `fit-check` accept a preset without a model). Every data route **requires** the user's
-per-installation Dex ID token in the `backstage-model-manager-authorization`
-header (a sibling of `backstage-kagent-authorization`: one header per
-upstream), which becomes `Authorization: Bearer` toward model-manager.
-model-manager itself checks no identity: the agentgateway `/model-manager`
-route in front of it — an `AgentgatewayPolicy` with JWT validation, the same
-shape as the kagent controller route — is the boundary that rejects a missing
-or invalid token, and the proxy decides nothing from it. An `apiBaseUrl` that
-bypasses the gateway (an in-cluster Service URL, the lab shortcut) therefore
-has no boundary: every signed-in portal user can then manage models. Errors
-map `{ error: { code } }` onto `@backstage/errors` (`invalid_request` → 400,
-`not_found` → 404, `conflict` → 409, `does_not_fit` → 412
-`PreconditionFailedError` with model-manager's numbers in the message — a
-refused fit is a verdict on the request, not a fault — `unsupported` → 403
-"capability not supported", `backend_error` and an unreachable model-manager →
-503).
-`POST /api/v1/models/load` has its own, longer timeout: on Ollama it blocks
-until several GiB of weights are in memory.
+**How the portal reaches model-manager.** There is no model-manager URL, REST
+client or proxy route in the portal. Every call — the inventory reads, the
+presets, `check_fit`, `load_model`, `unload_model`, the pull jobs, wiring and
+deletion — is one `x_model-manager_<tool>` call through the muster plugin's
+client (`musterApi.callTool()`), which mints the person's token for the
+installation's muster; muster runs the tool with the person's own grant for
+model-manager (model-manager forwards the Dex token), so a write lands as the
+person and a refusal is model-manager's own. Whether an installation has a
+model-manager at all is the presence of the `model-manager` MCPServer in its
+muster (`core_mcpserver_list`, `useModelManagerInstallations`) — no portal
+configuration says where model-manager is, and an installation whose muster
+lists none shows what it shows without one (the KServe CR view, or nothing).
+Where muster does list model-manager, serving is its `load_model` as the
+person (the fit check against the pool's sizes included); the browser-composed
+InferenceService of the CR view is offered only where muster has answered
+without model-manager. model-manager's refusals arrive as `"<code>: <message>"`
+and keep their meaning (`lib/modelManagerBackends.ts`: `not_found` →
+`NotFoundError`, `unsupported` → `ForbiddenError` — the capability was never
+offered, `conflict` → `ConflictError` — name the backend, `does_not_fit` →
+`PreconditionFailedError` — a verdict on the request, not a fault,
+`backend_error` → `ServiceUnavailableError`); muster's "not connected" answers
+are `ModelManagerNotConnectedError`, an error to show, not a connect flow.
+
+The one model-related call the portal's backend carries out itself is **Try
+it** on a served model (`POST /served-models/try`, `tryRouter.ts`): two chat
+completions against the served model's endpoint as model-manager reports it,
+without a token and with the person's installation token
+(`backstage-served-model-authorization`), because the browser cannot post to
+the models Gateway cross-origin. The route holds the endpoint to the
+installation's own base domain (`gs.installations.<name>.baseDomain`) and
+posts a person's token nowhere else.
 
 ### Skill discovery
 
@@ -3118,24 +3126,23 @@ halves are worth keeping side by side.
 All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
 `plugins/agent-platform-backend/config.d.ts`):
 
-| Key                          | Purpose                                                                                                                                                                                                                                              |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill, pinned to the repository's head commit at discovery).                                                                                                                          |
-| `kagent.timeoutMs`           | Per-request timeout toward a kagent controller (default 10000). Backend-only.                                                                                                                                                                        |
-| `kagent.turnTimeoutMs`       | How long a unary send (and a Stop) waits for the agent before answering "still running" (default 30000). Backend-only.                                                                                                                               |
-| `kagent.sessionStates.*`     | Bounds on the derived session-state summary behind the session switcher rail: `maxSessions`, `maxAgeMs`, `concurrency`, `taskTimeoutMs`, `budgetMs`, `cacheTtlMs`. Sized to the frontend's 10s poll. Backend-only.                                   |
-| `kagent.sessionUsage.*`      | Bounds on the usage summary behind the Usage tab: `windowDays` plus the same six levers. Numbers differ from `sessionStates` on purpose — read on a tab visit, reporting on days. Backend-only.                                                      |
-| `kagent.installations`       | Which installations to reach kagent on, keyed by name; also the allowlist. `apiBaseUrl` is the **gRPC origin** of the controller route (`https://<host>[:port]`, no path), overriding the derived `https://agentgateway.<baseDomain>`. Backend-only. |
-| `modelManager.installations` | Installations that run model-manager, keyed by name, each with the required `apiBaseUrl` (`https://agentgateway.<baseDomain>/model-manager` through the gateway). Nothing is derived. Backend-only.                                                  |
-| `modelManager.timeoutMs`     | Per-request timeout toward a model-manager API (default 10000). Backend-only.                                                                                                                                                                        |
-| `modelManager.loadTimeoutMs` | Timeout for `POST /api/v1/models/load`, which blocks until the model is in memory (default 120000). Backend-only.                                                                                                                                    |
+| Key                      | Purpose                                                                                                                                                                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skills.repositories`    | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill, pinned to the repository's head commit at discovery).                                                                                                                          |
+| `kagent.timeoutMs`       | Per-request timeout toward a kagent controller (default 10000). Backend-only.                                                                                                                                                                        |
+| `kagent.turnTimeoutMs`   | How long a unary send (and a Stop) waits for the agent before answering "still running" (default 30000). Backend-only.                                                                                                                               |
+| `kagent.sessionStates.*` | Bounds on the derived session-state summary behind the session switcher rail: `maxSessions`, `maxAgeMs`, `concurrency`, `taskTimeoutMs`, `budgetMs`, `cacheTtlMs`. Sized to the frontend's 10s poll. Backend-only.                                   |
+| `kagent.sessionUsage.*`  | Bounds on the usage summary behind the Usage tab: `windowDays` plus the same six levers. Numbers differ from `sessionStates` on purpose — read on a tab visit, reporting on days. Backend-only.                                                      |
+| `kagent.installations`   | Which installations to reach kagent on, keyed by name; also the allowlist. `apiBaseUrl` is the **gRPC origin** of the controller route (`https://<host>[:port]`, no path), overriding the derived `https://agentgateway.<baseDomain>`. Backend-only. |
 
-The `kagent` and `modelManager` keys keep the default **backend** visibility and
+There is no model-manager configuration: the portal reaches model-manager
+through the installation's muster, where it is registered as an MCPServer.
+
+The `kagent` keys keep the default **backend** visibility and
 are never served to the frontend: `apiBaseUrl` embeds `baseDomain` (or the
 installation's gateway hostname), which deanonymises customers (the same reason
 `gs.installations` is backend-only). The frontend learns installation _names_
-from the authenticated `GET /kagent/installations` and
-`GET /model-manager/installations` instead.
+from the authenticated `GET /kagent/installations` instead.
 
 The plugin's page and nav item are enabled via `app.extensions` in
 `app-config.yaml`.

@@ -28,18 +28,15 @@ import {
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
 import { probeKagentGrpc } from './kagent/reachability';
-import { ModelManagerClient } from './ModelManagerClient';
 import { SessionStateReader } from './sessionStates';
 import { SessionUsageReader } from './sessionUsage';
-import { createModelManagerRouter } from './modelManagerRouter';
+import { createTryRouter } from './tryRouter';
 
 export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   /** Overridable for tests; used as the client for every installation. */
   client?: KagentClient;
-  /** Same, for the model-manager routes (see modelManagerRouter). */
-  modelManagerClient?: ModelManagerClient;
   /**
    * The cache of unauthenticated reachability probes behind
    * `/kagent/installations`. Overridable for tests; defaults to one that
@@ -1051,16 +1048,10 @@ export async function createRouter(
     );
   });
 
-  // The model-manager pass-through (`/model-manager/...`) lives beside the
-  // kagent routes: same plugin, same per-installation token forwarding, its
-  // own upstream and its own header. See modelManagerRouter.ts.
-  router.use(
-    createModelManagerRouter({
-      logger,
-      config,
-      client: options.modelManagerClient,
-    }),
-  );
+  // The one served-model call the browser cannot make itself: a try of a
+  // served model against the installation's models Gateway (tryRouter.ts).
+  // Everything else about models goes through muster as the person.
+  router.use(createTryRouter({ config }));
 
   return router;
 }
