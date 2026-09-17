@@ -201,7 +201,7 @@ externalAccess:
 # -- Anthropic AI provider settings
 anthropic:
   # @schema type:string
-  # -- Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var)
+  # -- Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var). Not needed when aiChat.anthropic.provider is vertex, where the Google service account is the credential instead
   apiKey: ''
 
 # -- OpenAI provider settings
@@ -210,7 +210,7 @@ openai:
   # -- OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var)
   apiKey: ''
 
-# -- Google Vertex AI provider settings for AI chat (used when aiChat.model is a gemini-* model)
+# -- Google Vertex AI provider settings for AI chat (used by gemini-* models, and by claude-* models when aiChat.anthropic.provider is vertex)
 google:
   # @schema type:string
   # -- GCP project ID for Vertex AI (exposed as GOOGLE_CLOUD_PROJECT env var)

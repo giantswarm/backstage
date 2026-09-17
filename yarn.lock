@@ -96,7 +96,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ai-sdk/google-vertex@npm:^5.0.21":
+"@ai-sdk/google-vertex@npm:^5.0.73":
   version: 5.0.84
   resolution: "@ai-sdk/google-vertex@npm:5.0.84"
   dependencies:
@@ -7549,7 +7549,7 @@ __metadata:
   dependencies:
     "@ai-sdk/anthropic": "npm:^4.0.15"
     "@ai-sdk/azure": "npm:^4.0.16"
-    "@ai-sdk/google-vertex": "npm:^5.0.21"
+    "@ai-sdk/google-vertex": "npm:^5.0.73"
     "@ai-sdk/mcp": "npm:^2.0.14"
     "@ai-sdk/openai": "npm:^4.0.15"
     "@ai-sdk/openai-compatible": "npm:^3.0.11"
