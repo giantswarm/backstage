@@ -40,6 +40,10 @@ export type {
 } from './lib/k8s';
 export { isReadOnly, isDestructive } from './lib/toolAnnotations';
 export {
+  installationErrorLine,
+  isMcpTransportText,
+} from './lib/installationError';
+export {
   MusterInstanceProvider,
   useMusterInstance,
   useMusterInstallations,

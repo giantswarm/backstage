@@ -10,6 +10,7 @@ import {
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
 import { useServeModel } from '../../hooks/useServeModel';
@@ -600,7 +601,9 @@ export function ServingPage() {
               status="warning"
               title="Serving presets could not be read"
               description={presets.problems
-                .map(problem => `${problem.installation}: ${problem.message}`)
+                .map(problem =>
+                  installationErrorLine(problem.installation, problem.message),
+                )
                 .join(' ')}
             />
           )}
@@ -624,9 +627,8 @@ export function ServingPage() {
               status="warning"
               title="Downloads could not be read"
               description={downloadRows.errors
-                .map(
-                  problem =>
-                    `${problem.installation}: ${problem.error.message}`,
+                .map(problem =>
+                  installationErrorLine(problem.installation, problem.error),
                 )
                 .join(' ')}
             />
