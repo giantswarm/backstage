@@ -1,61 +1,46 @@
-import { useMemo } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
-import { useQuery } from '@tanstack/react-query';
-import { modelManagerApiRef } from '../apis';
-import { modelManagerInstallationsQueryKey } from '../lib/queryKeys';
-
-/**
- * The configured set changes on a Backstage redeploy, not on navigation, so
- * keep it warm.
- */
-const STALE_TIME = 5 * 60 * 1000;
+import { MODEL_MANAGER_SERVER } from '../lib/modelManagerBackends';
+import {
+  useMusterServerAvailability,
+  type MusterServerPresence,
+} from './useMusterServerAvailability';
 
 export type ModelManagerInstallations = {
   /**
-   * Installations (in input order) that are both reachable and have a
-   * model-manager configured for the backend proxy.
+   * Installations (in input order) that are reachable and whose muster lists
+   * model-manager — where its tools can be called as the signed-in person.
    */
   installations: string[];
-  /** The configured list has not answered yet (the set may still grow). */
+  /** Some installation's server list has not answered yet (the set may still grow). */
   isLoading: boolean;
   /**
-   * The configured list could not be read at all — an older backend without
-   * the route, or the backend being down. Nothing is model-manager-backed then;
-   * exposed so a caller can say so rather than silently showing nothing.
+   * What the installation's muster said about model-manager: `available`,
+   * `missing` (muster answered without it), `unknown` (not answered, failed,
+   * or no muster plugin). Only `missing` is a verdict.
    */
-  error?: Error;
+  presenceOf: (installation: string) => MusterServerPresence;
+  /** The muster plugin is not installed: model-manager is reachable nowhere. */
+  isUnavailable: boolean;
 };
 
 /**
- * Narrows installations to those the backend proxies model-manager for — the
- * gate for the model-manager serving source, so portals whose configuration
- * names no model-manager never probe one, and installations without it show
- * nothing (as they do without KServe).
+ * Narrows installations to those that have a model-manager: the ones whose
+ * muster registers it as an MCPServer (`core_mcpserver_list`, read through the
+ * person's own muster session — the hop every model-manager call takes). The
+ * gate for the model-manager serving source and the backend controls, so an
+ * installation without one shows what it shows without model-manager and is
+ * never asked, and no portal configuration says where model-manager is.
  */
 export function useModelManagerInstallations(
   reachableInstallations: string[],
 ): ModelManagerInstallations {
-  const modelManagerApi = useApi(modelManagerApiRef);
-
-  const query = useQuery({
-    queryKey: modelManagerInstallationsQueryKey(),
-    queryFn: () => modelManagerApi.listInstallations(),
-    staleTime: STALE_TIME,
-  });
-
-  const configured = query.data;
-  const reachableKey = reachableInstallations.join(',');
-  return useMemo(
-    () => ({
-      installations: configured
-        ? reachableInstallations.filter(name => configured.includes(name))
-        : [],
-      isLoading: query.isLoading,
-      error: query.error ?? undefined,
-    }),
-    // `reachableInstallations` is derived fresh each render; key on its
-    // contents.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [configured, reachableKey, query.isLoading, query.error],
+  const availability = useMusterServerAvailability(
+    MODEL_MANAGER_SERVER,
+    reachableInstallations,
   );
+  return {
+    installations: availability.available,
+    isLoading: availability.isLoading,
+    presenceOf: availability.presenceOf,
+    isUnavailable: availability.isUnavailable,
+  };
 }

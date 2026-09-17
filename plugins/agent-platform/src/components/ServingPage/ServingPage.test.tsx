@@ -72,6 +72,20 @@ const mockToastPost = jest.fn();
 const mockUsePullJobs = jest.fn<PullJobs, [string[]]>();
 const mockCancelDownload = jest.fn();
 const mockUseMusterPluginApi = jest.fn();
+// Which installations' muster lists model-manager: the gate that keeps the
+// client-side InferenceService serve to installations without one.
+const mockPresenceOf = jest.fn<'available' | 'missing' | 'unknown', [string]>();
+
+jest.mock('../../hooks/useModelManagerInstallations', () => ({
+  useModelManagerInstallations: (installations: string[]) => ({
+    installations: installations.filter(
+      name => mockPresenceOf(name) === 'available',
+    ),
+    isLoading: false,
+    presenceOf: (name: string) => mockPresenceOf(name),
+    isUnavailable: false,
+  }),
+}));
 
 jest.mock('../../hooks/useServingPresets', () => ({
   useServingPresets: (installations: string[]) =>
@@ -390,6 +404,8 @@ describe('ServingPage', () => {
     mockCancelDownload.mockReset();
     mockUseMusterPluginApi.mockReset();
     mockUseMusterPluginApi.mockReturnValue(undefined);
+    mockPresenceOf.mockReset();
+    mockPresenceOf.mockReturnValue('missing');
     window.sessionStorage.clear();
     mockUsePullJobs.mockReturnValue(noJobs);
     mockUseServing.mockReturnValue(baseServing);
@@ -459,6 +475,25 @@ describe('ServingPage', () => {
       expect.objectContaining({ enabled: true }),
     );
   });
+
+  it.each(['available', 'unknown'] as const)(
+    'withholds the client-side InferenceService serve where muster lists model-manager (presence %s), even with presets published',
+    async presence => {
+      // Serving there is model-manager's (fit check included): until the
+      // installation's muster has answered *without* model-manager, the
+      // browser composes nothing — not while the list is in flight, not
+      // while model-manager reports no backend yet.
+      mockPresenceOf.mockReturnValue(presence);
+      mockUseServingPresets.mockReturnValue(withPresets);
+
+      await renderSection();
+
+      expect(
+        screen.queryByRole('button', { name: /Serve model/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Serve a model')).not.toBeInTheDocument();
+    },
+  );
 
   it("opens the serve dialog seeded with the installation's presets and creates the composed InferenceService", async () => {
     mockUseServingPresets.mockReturnValue(withPresets);

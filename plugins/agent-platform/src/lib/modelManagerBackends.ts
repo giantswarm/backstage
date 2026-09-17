@@ -1,6 +1,6 @@
 /**
- * model-manager's backend-registration tools, as the portal calls them
- * through muster.
+ * model-manager's tools, as the portal calls them through muster as the
+ * signed-in person.
  *
  * model-manager ships with every installation and starts with no backend
  * (bumblebee-plans#46, D5). A backend — Ollama, LM Studio, Lemonade or a
@@ -11,7 +11,9 @@
  * (`mode: apply`) as the signed-in person, reached through the installation's
  * muster where the tools appear as `x_model-manager_<tool>`; `remove_backend`
  * unwires the ModelConfigs of the backend and deletes the document. The
- * inventory reads stay on the REST seam (`ModelManagerApiClient`).
+ * inventory reads and the per-model operations go the same way
+ * (`ModelManagerApiClient`): the portal knows model-manager only as the
+ * MCPServer its muster registers, never as a URL.
  */
 
 import { looksNotConnected, type CommitAgentResult } from './agentManager';
@@ -19,12 +21,31 @@ import { looksNotConnected, type CommitAgentResult } from './agentManager';
 /** The MCPServer name muster registers model-manager under. */
 export const MODEL_MANAGER_SERVER = 'model-manager';
 
-/** The tools this plugin calls, by their model-manager name. */
+/**
+ * The tools this plugin calls, by their model-manager name (`internal/api/mcp.go`
+ * of giantswarm/model-manager; every tool answers the JSON its REST route does).
+ */
 export const MODEL_MANAGER_TOOLS = {
+  getBackend: 'get_backend',
+  listBackends: 'list_backends',
+  listModels: 'list_models',
+  getModel: 'get_model',
+  listLoadedModels: 'list_loaded_models',
+  pullModel: 'pull_model',
+  loadModel: 'load_model',
+  unloadModel: 'unload_model',
+  deleteModel: 'delete_model',
+  wireModel: 'wire_model',
+  unwireModel: 'unwire_model',
+  listJobs: 'list_jobs',
+  getJob: 'get_job',
+  cancelJob: 'cancel_job',
+  listPresets: 'list_presets',
+  searchModels: 'search_models',
+  checkFit: 'check_fit',
+  listNodes: 'list_nodes',
   addBackend: 'add_backend',
   removeBackend: 'remove_backend',
-  checkFit: 'check_fit',
-  loadModel: 'load_model',
 } as const;
 
 export type ModelManagerTool =
@@ -224,17 +245,37 @@ export function isValidEndpoint(value: string): boolean {
 }
 
 /**
+ * The error name a refusal carries, by model-manager's status word — the names
+ * `@backstage/errors` gives the same HTTP statuses, which is what the plugin's
+ * reads and mutations key on: the QueryClientProvider does not retry them, the
+ * serving source reads them as "unreachable", `useStopServedModel` falls back
+ * to the CR delete on `NotFoundError`, and a `PreconditionFailedError` is the
+ * fit check's verdict rather than a fault. A word this table does not know
+ * (and an answer without one) keeps the class name.
+ */
+export const MODEL_MANAGER_ERROR_NAMES: Readonly<Record<string, string>> = {
+  not_found: 'NotFoundError',
+  unsupported: 'ForbiddenError',
+  conflict: 'ConflictError',
+  does_not_fit: 'PreconditionFailedError',
+  backend_error: 'ServiceUnavailableError',
+  invalid_request: 'InputError',
+};
+
+/**
  * A refusal model-manager answered, in its own words. `code` is the status
  * word the tool prefixes (`conflict`, `not_found`, `invalid_request`,
- * `unsupported`, …); the message keeps the whole answer verbatim.
+ * `unsupported`, …); the message keeps the whole answer verbatim, and `name`
+ * is the error name that word maps to ({@link MODEL_MANAGER_ERROR_NAMES}).
  */
 export class ModelManagerToolError extends Error {
-  readonly name = 'ModelManagerToolError';
-  constructor(
-    message: string,
-    readonly code?: string,
-  ) {
+  readonly code?: string;
+  constructor(message: string, code?: string) {
     super(message);
+    this.code = code;
+    this.name =
+      (code !== undefined ? MODEL_MANAGER_ERROR_NAMES[code] : undefined) ??
+      'ModelManagerToolError';
   }
 }
 

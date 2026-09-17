@@ -20,6 +20,7 @@ import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-rea
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
+import { useModelManagerInstallations } from '../../hooks/useModelManagerInstallations';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useServeModel } from '../../hooks/useServeModel';
 import { useServingPresets } from '../../hooks/useServingPresets';
@@ -115,11 +116,15 @@ const TOAST_TIMEOUT_MS = 6000;
  *   its rows, per installation (ServedModelsTable): Node and GPUs appear on
  *   the rows that carry a node, never from a capability flag, so a backend
  *   that merely knows its nodes does not get placement columns.
- * - **Preset-driven** (the KServe CR source): on installations that publish
- *   serving presets, serve a model from a preset — or from a download already
- *   in a node's cache ("Serve…" on that row) — and stop one; once a model the
- *   portal served reports ready, its kagent ModelConfig is created too (see
- *   ServedModelRowsProvider).
+ - **Preset-driven** (the KServe CR source): on installations that publish
+ *   serving presets and whose muster lists **no** model-manager, serve a
+ *   model from a preset — or from a download already in a node's cache
+ *   ("Serve…" on that row) — by composing the InferenceService in the browser,
+ *   and stop one; once a model the portal served reports ready, its kagent
+ *   ModelConfig is created too (see ServedModelRowsProvider). Where the
+ *   installation has a model-manager, serving is its `load_model` as the
+ *   person (the fit check included) and this path is never offered — not
+ *   even while model-manager reports no backend yet or cannot be read.
  *
  * On a KServe installation with a model-manager, the provider has already
  * folded the two views of an InferenceService into one row: its menu offers
@@ -192,8 +197,18 @@ export function ServingPage() {
     [installations, serving.backends, serving.sourceBackends],
   );
   const presets = useServingPresets(kserveInstallations);
+  // The client-side serve is for installations without a model-manager only:
+  // where muster lists one, serving is its job (fit check included), so the
+  // path stays closed until muster has answered *without* model-manager —
+  // or there is no muster plugin to ask.
+  const modelManager = useModelManagerInstallations(
+    serving.reachableInstallations,
+  );
   const servableInstallations = presets.installations.filter(
-    installation => presets.presetsFor(installation).length > 0,
+    installation =>
+      presets.presetsFor(installation).length > 0 &&
+      (modelManager.isUnavailable ||
+        modelManager.presenceOf(installation) === 'missing'),
   );
 
   // --- Capability-driven controls (model-manager) ---------------------------

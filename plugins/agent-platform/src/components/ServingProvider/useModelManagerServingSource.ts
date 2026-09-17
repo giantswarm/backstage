@@ -83,41 +83,40 @@ export function descriptorFor(
 }
 
 /**
- * The model-manager serving source: the inventory of the installations the
- * backend proxies a model-manager for, read through the model-manager REST
- * API with the user's own installation token.
+ * The model-manager serving source: the inventory of the installations whose
+ * muster lists model-manager, read through its tools over that muster as the
+ * signed-in person (`ModelManagerApiClient`).
  *
  * Per installation with a model-manager (nothing at all is read elsewhere):
- * 1. `GET /api/v1/backends` — every backend the installation's model-manager
- *    runs (Ollama, KServe, Lemonade — one, or several at once since
- *    model-manager 0.17), whether each is healthy, and the capability flags
- *    that decide which controls render for its rows; on an older
- *    model-manager the one descriptor of `GET /api/v1/backend`;
- * 2. `GET /api/v1/models` — the downloaded models of every backend, each
- *    naming its backend and already carrying its loaded state, memory
- *    footprint and the ModelConfig model-manager created for it.
- *    (`/api/v1/loaded` says nothing more, so it is not read here.)
+ * 1. `list_backends` — every backend the installation's model-manager runs
+ *    (Ollama, KServe, Lemonade — one, or several at once), whether each is
+ *    healthy, and the capability flags that decide which controls render for
+ *    its rows;
+ * 2. `list_models` — the downloaded models of every backend, each naming its
+ *    backend and already carrying its loaded state, memory footprint and the
+ *    ModelConfig model-manager created for it. (`list_loaded_models` says
+ *    nothing more, so it is not read here.)
  *
  * A model-manager that answers with **no backend** is a serving layer all the
  * same: it ships that way (bumblebee-plans#46, D5), and the Serving view is
  * where a backend gets registered. The installation is listed with an empty
  * inventory, no backend label and no capabilities — never as "no serving
- * layer", which is reserved for an installation without a model-manager to
- * proxy at all.
+ * layer", which is reserved for an installation whose muster lists no
+ * model-manager at all.
  *
  * Degradation: an installation whose descriptors or inventory cannot be read
- * (the gateway rejected the token, model-manager is down, the user is not
- * signed in there) is surfaced as unreachable — never dropped silently, since
- * the operator configured a model-manager there. A backend of a name this
- * portal has no vocabulary for is skipped with a console warning; a backend
- * whose host server is down is listed unhealthy (its rows say so), and the
- * inventory of the others still renders — model-manager reports such a
- * backend under `errors` rather than failing the read.
+ * (muster refused the person, the person is not connected to model-manager
+ * there, model-manager is down) is surfaced as unreachable — never dropped
+ * silently, since its muster registers a model-manager. A backend of a name
+ * this portal has no vocabulary for is skipped with a console warning; a
+ * backend whose host server is down is listed unhealthy (its rows say so),
+ * and the inventory of the others still renders — model-manager reports such
+ * a backend under `errors` rather than failing the read.
  *
- * Contributes GPU nodes where a backend reports `nodeInventory`: `GET
- * /api/v1/nodes` — each node's memory budget for fit checks, what the models
- * served there reserve of it, and the download cache on it; a backend host
- * (Ollama, Lemonade) is one row per backend. On an installation whose
+ * Contributes GPU nodes where a backend reports `nodeInventory`: `list_nodes`
+ * — each node's memory budget for fit checks, what the models served there
+ * reserve of it, and the download cache on it; a backend host (Ollama,
+ * Lemonade) is one row per backend. On an installation whose
  * InferenceServices are also read as CRs the provider lays these rows over
  * the CR source's (device-plugin capacity, pod requests), so the GPU panel
  * has one row per node.

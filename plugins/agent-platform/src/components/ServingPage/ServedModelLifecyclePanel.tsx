@@ -108,8 +108,9 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
       : undefined);
   const attempt = useMutation({
     mutationFn: () =>
-      modelManagerApi.tryModel(row.installation, row.name, {
-        backend: row.backend,
+      modelManagerApi.tryModel(row.installation, {
+        model: row.name,
+        url: endpoint!,
       }),
   });
   const tried = attempt.data ? describeTry(attempt.data) : undefined;

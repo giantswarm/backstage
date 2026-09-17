@@ -2,6 +2,10 @@ import { PropsWithChildren } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 import { modelManagerApiRef } from '../../apis';
 import type { ModelManagerApi } from '../../apis/ModelManagerApi';
 import backendOllama from '../../lib/__fixtures__/model-manager.backend.ollama.json';
@@ -23,17 +27,27 @@ import {
   modelManagerBackendsQueryKey,
 } from '../../lib/queryKeys';
 
-const listInstallations = jest.fn();
 const listBackends = jest.fn();
 const listModels = jest.fn();
 const listNodes = jest.fn();
+/** muster's `core_mcpserver_list` per installation: which musters register model-manager. */
+const listServers = jest.fn();
 
 const modelManagerApi = {
-  listInstallations,
   listBackends,
   listModels,
   listNodes,
 } as unknown as ModelManagerApi;
+const musterApi = { listServers } as unknown as MusterApi;
+
+/** The installations whose muster lists model-manager, as `listServers` answers it. */
+function modelManagerOn(installations: string[]) {
+  listServers.mockImplementation(async (installation: string) => ({
+    mcpServers: installations.includes(installation)
+      ? [{ name: 'mcp-kubernetes' }, { name: 'model-manager' }]
+      : [{ name: 'mcp-kubernetes' }],
+  }));
+}
 
 const ollama = modelManagerBackendSchema.parse(backendOllama);
 const kserve = modelManagerBackendSchema.parse(backendKserve);
@@ -69,7 +83,12 @@ function renderSource(
   });
   seed?.(queryClient);
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[modelManagerApiRef, modelManagerApi]]}>
+    <TestApiProvider
+      apis={[
+        [modelManagerApiRef, modelManagerApi],
+        [musterApiRef, musterApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -79,12 +98,12 @@ function renderSource(
 }
 
 beforeEach(() => {
-  listInstallations.mockReset();
+  listServers.mockReset();
   listBackends.mockReset();
   listModels.mockReset();
   listNodes.mockReset();
   listNodes.mockResolvedValue(kserveNodes);
-  listInstallations.mockResolvedValue(['lab', 'gpu']);
+  modelManagerOn(['lab', 'gpu']);
   // One backend per installation, as a model-manager before 0.17 (or one
   // running a single backend) reports it.
   listBackends.mockImplementation(async (installation: string) => [
@@ -96,11 +115,13 @@ beforeEach(() => {
 });
 
 describe('useModelManagerServingSource', () => {
-  it('reads only the reachable installations the backend proxies a model-manager for', async () => {
+  it('reads only the reachable installations whose muster lists model-manager', async () => {
     const { result } = renderSource(['lab', 'plain']);
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
+    expect(listServers).toHaveBeenCalledWith('lab');
+    expect(listServers).toHaveBeenCalledWith('plain');
     expect(listBackends).toHaveBeenCalledTimes(1);
     expect(listBackends).toHaveBeenCalledWith('lab');
     expect(listModels).toHaveBeenCalledWith('lab');
@@ -108,7 +129,7 @@ describe('useModelManagerServingSource', () => {
   });
 
   it('contributes nothing when no installation has a model-manager', async () => {
-    listInstallations.mockResolvedValue([]);
+    modelManagerOn([]);
 
     const { result } = renderSource();
 
@@ -172,14 +193,17 @@ describe('useModelManagerServingSource', () => {
     );
   });
 
-  it('stays silent when the configured list itself cannot be read (older backend)', async () => {
-    listInstallations.mockRejectedValue(namedError('NotFoundError'));
+  it("stays silent when an installation's muster server list cannot be read", async () => {
+    // Whether the installation has a model-manager is unknown then — not
+    // "no", not "unreachable": nothing of model-manager's is read or shown.
+    listServers.mockRejectedValue(namedError('ServiceUnavailableError'));
 
     const { result } = renderSource();
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.installations).toEqual([]);
     expect(result.current.unreachableInstallations).toEqual([]);
+    expect(listBackends).not.toHaveBeenCalled();
   });
 
   it('maps each installation to its backend, capabilities and served models', async () => {
@@ -458,7 +482,7 @@ describe('useModelManagerServingSource · several backends on one installation',
   });
 
   it('files every backend, its flags and its rows under the one installation', async () => {
-    listInstallations.mockResolvedValue(['lab']);
+    modelManagerOn(['lab']);
     listBackends.mockResolvedValue([ollamaWithHost, lemonade]);
     listModels.mockResolvedValue([
       ...ollamaModels.map(model => ({ ...model, backend: 'ollama' })),
@@ -538,7 +562,7 @@ describe('useModelManagerServingSource · several backends on one installation',
 
 describe('useModelManagerServingSource · the persisted cache of an older portal', () => {
   beforeEach(() => {
-    listInstallations.mockResolvedValue(['lab']);
+    modelManagerOn(['lab']);
     listBackends.mockResolvedValue([ollama]);
     listModels.mockResolvedValue(ollamaModels);
     listNodes.mockResolvedValue([]);
