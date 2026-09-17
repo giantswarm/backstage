@@ -35,6 +35,7 @@ import {
   type ManagedCluster,
   type NodePoolWriteResult,
 } from '../../lib/clusterManager';
+import type { ServeChoice } from '../../lib/serveIntent';
 import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
@@ -48,8 +49,16 @@ export type AddGpuNodePoolDialogProps = {
   installations: string[];
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  /** After a complete Deploy: the pool was applied as the person on `installation`. */
-  onDeployed?: (result: NodePoolWriteResult, installation: string) => void;
+  /**
+   * After a complete Deploy: the pool was applied as the person on
+   * `installation` — with the preset chosen under **I want to serve**, the
+   * pool's serve intent (giantswarm/backstage#2437), when one was.
+   */
+  onDeployed?: (
+    result: NodePoolWriteResult,
+    installation: string,
+    serve?: ServeChoice,
+  ) => void;
 };
 
 type TeleportChoice = 'default' | 'on' | 'off';
@@ -309,6 +318,15 @@ export function AddGpuNodePoolDialog({
     }
   };
 
+  /** The preset chosen to serve, as Deploy hands it on: its display name and model from the dry run's fit. */
+  const serveChoice = (): ServeChoice | undefined => {
+    if (!preset) {
+      return undefined;
+    }
+    const fit = presetFitOf(shapes?.presetFit, preset);
+    return { preset, displayName: fit?.displayName, model: fit?.model };
+  };
+
   /** Deploy, and Continue after a partial Deploy: the same call, the same arguments. */
   const onDeploy = async () => {
     if (!input) {
@@ -318,7 +336,7 @@ export function AddGpuNodePoolDialog({
       const result = await write.create(input, 'apply');
       setApplied(result);
       if (!result.partial && installation) {
-        onDeployed?.(result, installation);
+        onDeployed?.(result, installation, serveChoice());
       }
     } catch {
       // Shown from `write.failure`.

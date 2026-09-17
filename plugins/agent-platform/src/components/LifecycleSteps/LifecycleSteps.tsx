@@ -59,8 +59,9 @@ const STATE_WORD: Record<LifecycleStepState, string> = {
  * The steps of a long-running action, each with its state, when it began or
  * how long it took, what it usually takes, and the manager's message; a step
  * with an `action` is the next thing to do, offered as a link once it is
- * `done`. Shared by the GPU node pools page and the Serving page; knows
- * nothing about pools or models.
+ * `done` (or `failed`: the way out); a step with `steps` of its own — a pool's
+ * step serving a model — lists them beneath it. Shared by the GPU node pools
+ * page and the Serving page; knows nothing about pools or models.
  */
 export function LifecycleSteps({
   steps,
@@ -82,6 +83,10 @@ export function LifecycleSteps({
       {steps.map(step => {
         const timing = stepTiming(step, now);
         const muted = step.state === 'pending';
+        const linked =
+          step.action && (step.state === 'done' || step.state === 'failed')
+            ? step.action
+            : undefined;
         return (
           <li
             key={step.id}
@@ -104,10 +109,10 @@ export function LifecycleSteps({
             </span>
             <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
               <Flex gap="2" align="baseline" style={{ flexWrap: 'wrap' }}>
-                {step.action && step.state === 'done' ? (
-                  <Link to={step.action.to}>
+                {linked && step.state === 'done' ? (
+                  <Link to={linked.to}>
                     <Text as="span" variant="body-medium" weight="bold">
-                      {step.action.label}
+                      {linked.label}
                     </Text>
                   </Link>
                 ) : (
@@ -130,6 +135,21 @@ export function LifecycleSteps({
                 >
                   {step.message}
                 </Text>
+              )}
+              {linked && step.state === 'failed' && (
+                <Link to={linked.to}>
+                  <Text as="span" variant="body-small" weight="bold">
+                    {linked.label}
+                  </Text>
+                </Link>
+              )}
+              {step.steps && step.steps.length > 0 && (
+                <div style={{ marginTop: 'var(--bui-space-1)' }}>
+                  <LifecycleSteps
+                    steps={step.steps}
+                    aria-label={`Steps of ${step.title}`}
+                  />
+                </div>
               )}
             </Flex>
           </li>

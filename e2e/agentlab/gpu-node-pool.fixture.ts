@@ -438,6 +438,13 @@ export type StubOptions = DryRunOptions & {
   refusals?: { count: number; shape: 'structured' | 'text' };
   /** Deletes cut short (`partial: true`) before one completes. */
   partialDeletes?: number;
+  /**
+   * More servers the lab's muster should appear to list beside cluster-manager
+   * — `model-manager`, on a lab that runs none — so the Models pages take the
+   * path they take on an installation with a GPU pool; their tools are stubbed
+   * beside this one (`stubModelManagerTools`).
+   */
+  servers?: string[];
 };
 
 /** Reads after a complete apply that still answer `creating`; the next one is `ready`. */
@@ -697,21 +704,19 @@ export async function stubClusterManager(
     const body = (await response.json()) as {
       mcpServers?: { name: string }[] | null;
     };
+    const listed = body.mcpServers ?? [];
+    const added = ['cluster-manager', ...(options.servers ?? [])]
+      .filter(name => !listed.some(server => server.name === name))
+      .map(name => ({
+        name,
+        type: 'streamable-http',
+        state: 'ready',
+        sessionStatus: 'authenticated',
+        toolsCount: name === 'cluster-manager' ? INFO.tools.length : 20,
+      }));
     await route.fulfill({
       response,
-      json: {
-        ...body,
-        mcpServers: [
-          ...(body.mcpServers ?? []),
-          {
-            name: 'cluster-manager',
-            type: 'streamable-http',
-            state: 'ready',
-            sessionStatus: 'authenticated',
-            toolsCount: INFO.tools.length,
-          },
-        ],
-      },
+      json: { ...body, mcpServers: [...listed, ...added] },
     });
   });
 
