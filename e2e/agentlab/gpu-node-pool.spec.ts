@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import { expect, open, signIn, test } from './fixtures';
 import {
@@ -185,6 +185,18 @@ async function snapshot(page: Page, name: string): Promise<void> {
   }
 }
 
+/** Toggle a size in the picker: the react-aria input is visually hidden, the label is what a person clicks. */
+async function toggleSize(picker: Locator, size: RegExp): Promise<void> {
+  const checkbox = picker.getByRole('checkbox', { name: size });
+  const before = await checkbox.isChecked();
+  await picker.getByText(size).click();
+  await expect(checkbox).toBeChecked({ checked: !before });
+}
+
+/** The footer's Close (the success alert's close icon is named Close too). */
+const footerClose = (dialog: Locator) =>
+  dialog.getByRole('button', { name: 'Close' }).filter({ hasText: 'Close' });
+
 /** Sign in, stub cluster-manager, open the dialog and reach the review of `gpu-e2e` on wc1. */
 async function reachReview(page: Page, options: StubOptions = {}) {
   await signIn(page, lab.users.admin);
@@ -250,8 +262,8 @@ test.describe('models: Add GPU node pool review — what the pool can serve (clu
     await snapshot(page, 'gpu-pool-fit-review-defaults');
 
     // Sizes [xlarge]: the two L4 presets fit no size — the warnings name 2xlarge.
-    await picker.getByRole('checkbox', { name: /g6\.4xlarge/ }).uncheck();
-    await picker.getByRole('checkbox', { name: /g6\.2xlarge/ }).uncheck();
+    await toggleSize(picker, /g6\.4xlarge/);
+    await toggleSize(picker, /g6\.2xlarge/);
     const warnings = dialog.getByTestId('fit-warnings');
     await expect(warnings).toBeVisible({ timeout: 30_000 });
     await expect(warnings).toContainText(
@@ -279,7 +291,7 @@ test.describe('models: Add GPU node pool review — what the pool can serve (clu
     ).toBeChecked();
 
     // Sizes [2xlarge]: both L4 presets ✔ g6.2xlarge.
-    await picker.getByRole('checkbox', { name: /g6\.xlarge/ }).uncheck();
+    await toggleSize(picker, /g6\.xlarge/);
     await expect
       .poll(() => dryRuns(calls).at(-1)?.arguments.sizes)
       .toEqual(['2xlarge']);
@@ -299,7 +311,7 @@ test.describe('models: Add GPU node pool review — what the pool can serve (clu
       sizes: ['2xlarge'],
       mode: 'apply',
     });
-    await dialog.getByRole('button', { name: 'Close' }).click();
+    await footerClose(dialog).click();
   });
 
   test('the preset the person wants to serve blocks Deploy when no size hosts it; Add the size unblocks', async ({
@@ -307,8 +319,8 @@ test.describe('models: Add GPU node pool review — what the pool can serve (clu
   }) => {
     const { dialog } = await reachReview(page);
     const picker = dialog.getByTestId('sizes-picker');
-    await picker.getByRole('checkbox', { name: /g6\.4xlarge/ }).uncheck();
-    await picker.getByRole('checkbox', { name: /g6\.2xlarge/ }).uncheck();
+    await toggleSize(picker, /g6\.4xlarge/);
+    await toggleSize(picker, /g6\.2xlarge/);
     await expect(dialog.getByTestId('fit-warnings')).toBeVisible({
       timeout: 30_000,
     });
@@ -415,6 +427,6 @@ test.describe('models: Add GPU node pool review — what the pool can serve (clu
     const [first, second] = applies(calls);
     expect(second.arguments).toEqual(first.arguments);
     expect(first.arguments).toMatchObject({ mode: 'apply', name: 'gpu-e2e' });
-    await dialog.getByRole('button', { name: 'Close' }).click();
+    await footerClose(dialog).click();
   });
 });

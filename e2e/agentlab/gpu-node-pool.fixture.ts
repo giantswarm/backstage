@@ -4,8 +4,8 @@ import type { Page } from '@playwright/test';
  * cluster-manager 0.7.7's answers for the Add GPU node pool dialog, stubbed at
  * the browser: the lab has no cluster-manager (no Cluster API on a kind
  * cluster), so the muster calls the dialog makes are answered here in the
- * shapes `internal/tools/nodepool_write.go` produces, and the lab's MCPServer
- * list gains a `cluster-manager` entry so the page offers the dialog.
+ * shapes `internal/tools/nodepool_write.go` produces, and the lab's muster
+ * server list gains a `cluster-manager` entry so the page offers the dialog.
  *
  * The `sizes[]` shape of g6.xlarge and the "no serving preset is published"
  * note are a real dry run on gazelle (2026-09-17, `create_node_pool
@@ -343,31 +343,30 @@ export async function stubClusterManager(
   const calls: RecordedCall[] = [];
   let applies = 0;
 
-  await page.route('**/api/kubernetes/proxy/**', async route => {
-    const url = route.request().url();
-    if (!url.includes('muster.giantswarm.io') || !url.includes('mcpservers')) {
-      await route.continue();
-      return;
-    }
+  // The page offers the dialog where the installation's muster lists
+  // cluster-manager (`GET /api/muster/servers`, muster's core_mcpserver_list):
+  // the lab's real list, plus that one entry.
+  await page.route('**/api/muster/servers**', async route => {
     const response = await route.fetch();
     const body = (await response.json()) as {
-      items?: { metadata?: { namespace?: string } }[];
+      mcpServers?: { name: string }[] | null;
     };
-    const items = body.items ?? [];
-    items.push({
-      apiVersion: 'muster.giantswarm.io/v1alpha1',
-      kind: 'MCPServer',
-      metadata: {
-        name: 'cluster-manager',
-        namespace: items[0]?.metadata?.namespace ?? 'muster',
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        mcpServers: [
+          ...(body.mcpServers ?? []),
+          {
+            name: 'cluster-manager',
+            type: 'streamable-http',
+            state: 'ready',
+            sessionStatus: 'authenticated',
+            toolsCount: INFO.tools.length,
+          },
+        ],
       },
-      spec: {
-        type: 'streamable-http',
-        url: 'http://cluster-manager.agent-platform.svc:8080/mcp',
-      },
-      status: { state: 'ready' },
-    } as never);
-    await route.fulfill({ response, json: { ...body, items } });
+    });
   });
 
   await page.route('**/api/muster/call**', async route => {
