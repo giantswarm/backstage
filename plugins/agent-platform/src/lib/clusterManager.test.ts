@@ -1,14 +1,18 @@
 import {
   ClusterManagerError,
   ClusterManagerNotConnectedError,
+  cheapestPriced,
   classifyClusterManagerError,
   clusterManagerToolName,
   describeComponent,
+  describePrice,
+  describePriceSources,
   groupManifestsByRelease,
   isValidPoolName,
   manifestFilename,
   parseDeleteRefusal,
   poolNameOf,
+  presetLabel,
 } from './clusterManager';
 
 describe('clusterManagerToolName', () => {
@@ -156,5 +160,74 @@ describe('describeComponent', () => {
     expect(
       describeComponent({ status: 'unknown', reason: 'forbidden' }, 'Serving'),
     ).toBe('Serving: unknown (forbidden)');
+  });
+});
+
+describe('prices and preset names (giantswarm/cluster-manager#44)', () => {
+  const xlarge = {
+    instanceType: 'g6.xlarge',
+    size: 'xlarge',
+    vcpu: 4,
+    memoryGiB: 16,
+    gpus: 1,
+    gpuMemoryGiB: 24,
+    usableVcpu: 3,
+    usableMemoryGiB: 11.9,
+    pricePerHourUSD: 1.0064,
+    priceSource:
+      'AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1)',
+    priceAsOf: '2026-09-17',
+  };
+  const twoXlarge = {
+    ...xlarge,
+    instanceType: 'g6.2xlarge',
+    size: '2xlarge',
+    pricePerHourUSD: 1.22249,
+  };
+  const unpriced = {
+    ...xlarge,
+    instanceType: 'g6.4xlarge',
+    size: '4xlarge',
+    pricePerHourUSD: undefined,
+    priceSource: undefined,
+    priceAsOf: undefined,
+    priceNote: 'no on-demand price: the size is not offered there',
+  };
+
+  it('formats the price to two decimals per hour, and nothing without one', () => {
+    expect(describePrice(xlarge)).toBe('$1.01/h');
+    expect(describePrice(twoXlarge)).toBe('$1.22/h');
+    expect(describePrice({ pricePerHourUSD: 2 })).toBe('$2.00/h');
+    expect(describePrice(unpriced)).toBeUndefined();
+  });
+
+  it('names the cheapest of the chosen sizes that carries a price', () => {
+    const shapes = [xlarge, twoXlarge, unpriced];
+    expect(cheapestPriced(shapes, ['xlarge', '2xlarge'])?.size).toBe('xlarge');
+    expect(cheapestPriced(shapes, ['2xlarge', '4xlarge'])?.size).toBe(
+      '2xlarge',
+    );
+    expect(cheapestPriced(shapes, ['4xlarge'])).toBeUndefined();
+    expect(cheapestPriced(shapes, [])).toBeUndefined();
+  });
+
+  it('lists every distinct price source once, with its date', () => {
+    expect(describePriceSources([xlarge, twoXlarge, unpriced])).toEqual([
+      'AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1), as of 2026-09-17',
+    ]);
+    expect(describePriceSources([{ ...xlarge, priceAsOf: undefined }])).toEqual(
+      ['AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1)'],
+    );
+    expect(describePriceSources([unpriced])).toEqual([]);
+  });
+
+  it('labels a preset by its display name, or its id from an older cluster-manager', () => {
+    expect(
+      presetLabel({ preset: 'qwen3-8b-fp8', displayName: 'Qwen3 8B FP8' }),
+    ).toBe('Qwen3 8B FP8');
+    expect(presetLabel({ preset: 'qwen3-8b-fp8' })).toBe('qwen3-8b-fp8');
+    expect(presetLabel({ preset: 'qwen3-8b-fp8', displayName: '' })).toBe(
+      'qwen3-8b-fp8',
+    );
   });
 });

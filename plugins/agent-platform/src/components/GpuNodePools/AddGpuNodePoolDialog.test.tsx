@@ -12,6 +12,8 @@ import type {
   InstanceShape,
   ManagedCluster,
   NodePoolWriteResult,
+  PresetFit,
+  PresetSizeFit,
 } from '../../lib/clusterManager';
 import { AddGpuNodePoolDialog, clusterMarks } from './AddGpuNodePoolDialog';
 
@@ -93,13 +95,24 @@ type Scenario = {
   createError?: Error;
   /** The installation does not serve the Cluster API (cluster-manager 0.4.1+). */
   noClusterApi?: boolean;
-  /** The cluster publishes no serving presets: `presetFit.note` instead of a table. */
+  /** Nothing could be judged: `presetFit.note` alone, no presets. */
   noPresets?: boolean;
+  /** No serving slice on the cluster yet: the presets the chart ships (`origin: chart`). */
+  chartPresets?: boolean;
+  /** The largest size is not offered in the region: `priceNote` instead of a price. */
+  unpriced?: boolean;
+  /** An older cluster-manager: no prices, no display names, no origin. */
+  legacy?: boolean;
   /** The first apply is cut short (`partial`); the re-run completes. */
   partial?: boolean;
 };
 
-/** The g6 shapes of the chart's default sizes the fixture knows (giantswarm/backstage#2413). */
+const PRICE_SOURCE =
+  'AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1)';
+const PRICE_NOTE =
+  'no on-demand price: AWS lists no on-demand g6.2xlarge in EU (Ireland) (eu-west-1) — the size is not offered there';
+
+/** The g6 shapes of the chart's default sizes, priced as cluster-manager lists them. */
 const SHAPES: InstanceShape[] = [
   {
     instanceType: 'g6.xlarge',
@@ -110,6 +123,9 @@ const SHAPES: InstanceShape[] = [
     gpuMemoryGiB: 24,
     usableVcpu: 3,
     usableMemoryGiB: 11.9,
+    pricePerHourUSD: 1.0064,
+    priceSource: PRICE_SOURCE,
+    priceAsOf: '2026-09-17',
   },
   {
     instanceType: 'g6.2xlarge',
@@ -120,18 +136,25 @@ const SHAPES: InstanceShape[] = [
     gpuMemoryGiB: 24,
     usableVcpu: 6.5,
     usableMemoryGiB: 26.9,
+    pricePerHourUSD: 1.22249,
+    priceSource: PRICE_SOURCE,
+    priceAsOf: '2026-09-17',
   },
 ];
 
-const SMALL_PRESET = {
+const SMALL_PRESET: PresetSizeFit = {
   preset: 'qwen3-4b-instruct',
+  displayName: 'Qwen3 4B Instruct',
+  model: 'Qwen/Qwen3-4B-Instruct-2507',
   cpu: '4',
   memory: '12Gi',
   gpus: 1,
   gpuMemoryGiB: 9.6,
 };
-const BIG_PRESET = {
+const BIG_PRESET: PresetSizeFit = {
   preset: 'qwen3-coder-next',
+  displayName: 'Qwen3 Coder Next',
+  model: 'Qwen/Qwen3-Coder-Next-FP8',
   cpu: '8',
   memory: '64Gi',
   gpus: 1,
@@ -141,28 +164,61 @@ const TOO_SMALL =
   "requests 4 vCPU / 12Gi; xlarge leaves a predictor 3 vCPU / 11.9 GiB after the node's kubelet reservations and daemonsets — 2xlarge (8 vCPU / 32 GiB) would host it";
 const GPU_MEMORY =
   'needs 96 GiB of GPU memory across 1 GPU(s); a g6 GPU has 24 GiB';
+const CHART_SOURCE =
+  '2 preset(s) shipped by agent-platform-connectivity 4.30.0, the chart the slice would resolve — the slice publishes them once it is ready';
+
+/** The shapes as the scenario's cluster-manager lists them. */
+function shapesOf(scenario: Scenario): InstanceShape[] {
+  return SHAPES.map(shape => {
+    if (scenario.legacy) {
+      const { pricePerHourUSD, priceSource, priceAsOf, ...bare } = shape;
+      return bare;
+    }
+    if (scenario.unpriced && shape.size === '2xlarge') {
+      const { pricePerHourUSD, priceSource, priceAsOf, ...bare } = shape;
+      return { ...bare, priceNote: PRICE_NOTE };
+    }
+    return shape;
+  });
+}
 
 /** cluster-manager's fit for the chosen sizes (the defaults when none). */
 function withFit(
   sizes: string[] | undefined,
   scenario: Scenario,
 ): NodePoolWriteResult {
+  const shapes = shapesOf(scenario);
   const chosen = sizes
-    ? SHAPES.filter(shape => sizes.includes(shape.size))
-    : SHAPES;
+    ? shapes.filter(shape => sizes.includes(shape.size))
+    : shapes;
   const hosts2xlarge = chosen.some(shape => shape.size === '2xlarge');
+  const bare = (fit: PresetSizeFit): PresetSizeFit =>
+    scenario.legacy ? (({ displayName, model, ...rest }) => rest)(fit) : fit;
   const small = hosts2xlarge
-    ? { ...SMALL_PRESET, size: '2xlarge' }
-    : { ...SMALL_PRESET, reason: TOO_SMALL };
+    ? { ...bare(SMALL_PRESET), size: '2xlarge' }
+    : { ...bare(SMALL_PRESET), reason: TOO_SMALL };
+  const presets = [small, { ...bare(BIG_PRESET), reason: GPU_MEMORY }];
+  let presetFit: PresetFit;
+  if (scenario.noPresets) {
+    presetFit = { note: 'no serving preset is published on wc1 yet' };
+  } else if (scenario.chartPresets) {
+    presetFit = { origin: 'chart', source: CHART_SOURCE, presets };
+  } else if (scenario.legacy) {
+    presetFit = {
+      source: '2 preset ConfigMap(s) in model-serving on wc1',
+      presets,
+    };
+  } else {
+    presetFit = {
+      origin: 'published',
+      source: '2 preset ConfigMap(s) in model-serving on wc1',
+      presets,
+    };
+  }
   return {
     ...DRY_RUN,
     sizes: chosen,
-    presetFit: scenario.noPresets
-      ? { note: 'no serving preset is published on wc1 yet' }
-      : {
-          source: '2 preset ConfigMap(s) in model-serving on wc1',
-          presets: [small, { ...BIG_PRESET, reason: GPU_MEMORY }],
-        },
+    presetFit,
     ...(hosts2xlarge || scenario.noPresets
       ? {}
       : {
@@ -258,16 +314,55 @@ async function renderDialog(
   return { callTool };
 }
 
-async function fillAndReview(user: ReturnType<typeof userEvent.setup>) {
+/** The form waits after the last keystroke before it asks cluster-manager. */
+const AFTER_DEBOUNCE = { timeout: 3000 };
+
+/** Pick wc1 and name the pool: the form's dry run answers with the sizes. */
+async function fillForm(user: ReturnType<typeof userEvent.setup>) {
   const clusterSelect = await screen.findByRole('button', {
     name: /^Pick a cluster/,
   });
   await user.click(clusterSelect);
   await user.click(await screen.findByRole('option', { name: /wc1/ }));
   await user.type(screen.getByLabelText(/pool name/i), 'gpu-l4');
-  await user.click(screen.getByRole('button', { name: 'Review' }));
+}
+
+/** Review, once the form's dry run has answered. */
+async function review(user: ReturnType<typeof userEvent.setup>) {
+  const button = await screen.findByRole(
+    'button',
+    { name: 'Review' },
+    AFTER_DEBOUNCE,
+  );
+  await waitFor(() => expect(button).toBeEnabled());
+  await user.click(button);
   await screen.findByTestId('node-pool-review');
 }
+
+async function fillAndReview(user: ReturnType<typeof userEvent.setup>) {
+  await fillForm(user);
+  await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+  await review(user);
+}
+
+const dryRunsOf = (callTool: jest.Mock) =>
+  callTool.mock.calls.filter(
+    call =>
+      call[0] === 'x_cluster-manager_create_node_pool' &&
+      (call[1] as Record<string, unknown>).dryRun,
+  );
+const appliesOf = (callTool: jest.Mock) =>
+  callTool.mock.calls.filter(
+    call =>
+      call[0] === 'x_cluster-manager_create_node_pool' &&
+      !(call[1] as Record<string, unknown>).dryRun,
+  );
+
+/** The picker's checkbox for a size, by the instance type its label starts with. */
+const sizeBox = (instanceType: string) =>
+  within(screen.getByTestId('sizes-picker')).getByRole('checkbox', {
+    name: new RegExp(`^${instanceType.replace('.', '\\.')} `),
+  });
 
 describe('AddGpuNodePoolDialog', () => {
   it('shows the marks of the picked cluster and renders the dry run as manifests', async () => {
@@ -352,16 +447,12 @@ describe('AddGpuNodePoolDialog', () => {
         'tool not found: x_cluster-manager_create_node_pool',
       ),
     });
-    const clusterSelect = await screen.findByRole('button', {
-      name: /^Pick a cluster/,
-    });
-    await user.click(clusterSelect);
-    await user.click(await screen.findByRole('option', { name: /wc1/ }));
-    await user.type(screen.getByLabelText(/pool name/i), 'gpu-l4');
-    await user.click(screen.getByRole('button', { name: 'Review' }));
+    await fillForm(user);
+    // The form's own dry run meets the answer; no Review needed.
     expect(
-      await screen.findByText('Connect to cluster-manager'),
+      await screen.findByText('Connect to cluster-manager', {}, AFTER_DEBOUNCE),
     ).toBeInTheDocument();
+    expect(screen.queryByTestId('node-size-picker')).not.toBeInTheDocument();
   });
 
   it("shows the tool's note, not an error, where the Cluster API is not served", async () => {
@@ -373,28 +464,37 @@ describe('AddGpuNodePoolDialog', () => {
       screen.getByRole('button', { name: /^No clusters/ }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Review' })).toBeDisabled();
+    expect(screen.getByTestId('sizes-pending')).toHaveTextContent(
+      'pick a cluster and name the pool',
+    );
   });
 
-  it('shows a refusal verbatim', async () => {
+  it('shows a refusal verbatim on the form, and Review tries once more', async () => {
     const user = userEvent.setup();
-    await renderDialog({
+    const { callTool } = await renderDialog({
       createError: new Error(
         'pool gpu-l4 would run Kubernetes 1.32 ahead of the control plane 1.31',
       ),
     });
-    const clusterSelect = await screen.findByRole('button', {
-      name: /^Pick a cluster/,
-    });
-    await user.click(clusterSelect);
-    await user.click(await screen.findByRole('option', { name: /wc1/ }));
-    await user.type(screen.getByLabelText(/pool name/i), 'gpu-l4');
-    await user.click(screen.getByRole('button', { name: 'Review' }));
-    const alert = await screen.findByText('cluster-manager refused');
+    await fillForm(user);
+    const alert = await screen.findByText(
+      'cluster-manager refused',
+      {},
+      AFTER_DEBOUNCE,
+    );
     expect(
       within(alert.closest('[role="alert"]') ?? alert.parentElement!).getByText(
         /ahead of the control plane/,
       ),
     ).toBeInTheDocument();
+    const before = dryRunsOf(callTool).length;
+    const reviewButton = screen.getByRole('button', { name: 'Review' });
+    await waitFor(() => expect(reviewButton).toBeEnabled());
+    await user.click(reviewButton);
+    await waitFor(() =>
+      expect(dryRunsOf(callTool).length).toBeGreaterThan(before),
+    );
+    expect(screen.queryByTestId('node-pool-review')).not.toBeInTheDocument();
   });
 });
 
@@ -412,40 +512,80 @@ describe('clusterMarks', () => {
   });
 });
 
-describe('AddGpuNodePoolDialog: what this pool can serve', () => {
-  const dryRunsOf = (callTool: jest.Mock) =>
-    callTool.mock.calls.filter(
-      call =>
-        call[0] === 'x_cluster-manager_create_node_pool' &&
-        (call[1] as Record<string, unknown>).dryRun,
-    );
-  const appliesOf = (callTool: jest.Mock) =>
-    callTool.mock.calls.filter(
-      call =>
-        call[0] === 'x_cluster-manager_create_node_pool' &&
-        !(call[1] as Record<string, unknown>).dryRun,
-    );
-
-  it('shows the shapes and the presets each size hosts, and re-judges the dry run when a size is unchecked', async () => {
+describe('AddGpuNodePoolDialog: node size and price on the form', () => {
+  it('offers the sizes with usable resources, GPU memory and price as soon as cluster and name are set, the cheapest as the from price', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderDialog();
-    await fillAndReview(user);
+    await fillForm(user);
 
-    expect(screen.getByText('What this pool can serve')).toBeInTheDocument();
-    const picker = screen.getByTestId('sizes-picker');
+    const picker = await screen.findByTestId(
+      'node-size-picker',
+      {},
+      AFTER_DEBOUNCE,
+    );
+    // The first dry run sends no sizes: the chart's defaults, every one preselected.
+    expect(dryRunsOf(callTool)[0][1]).not.toHaveProperty('sizes');
+    expect(dryRunsOf(callTool)[0][1]).toMatchObject({
+      accelerator: 'nvidia-l4',
+    });
     expect(picker).toHaveTextContent(
-      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU',
+      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
+    );
+    expect(picker).toHaveTextContent(
+      'g6.2xlarge — 6.5 vCPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
+    );
+    expect(sizeBox('g6.xlarge')).toBeChecked();
+    expect(sizeBox('g6.2xlarge')).toBeChecked();
+    expect(screen.getByTestId('price-summary')).toHaveTextContent(
+      'from $1.01/h per node (g6.xlarge) — the pool scales to zero',
+    );
+    expect(picker).toHaveTextContent(
+      `Prices: ${PRICE_SOURCE}, as of 2026-09-17.`,
+    );
+    expect(screen.queryByTestId('node-pool-review')).not.toBeInTheDocument();
+
+    // Unchecking the cheapest moves the from price; the dry run is re-judged against the choice.
+    await user.click(sizeBox('g6.xlarge'));
+    await waitFor(() =>
+      expect(dryRunsOf(callTool).at(-1)?.[1]).toMatchObject({
+        sizes: ['2xlarge'],
+      }),
+    );
+    expect(screen.getByTestId('price-summary')).toHaveTextContent(
+      'from $1.22/h per node (g6.2xlarge)',
+    );
+
+    // Review shows the same choice and Deploy sends it.
+    await review(user);
+    const chosen = screen.getByTestId('chosen-sizes');
+    expect(chosen).toHaveTextContent('g6.2xlarge — 6.5 vCPU / 26.9 GiB usable');
+    expect(chosen).not.toHaveTextContent('g6.xlarge —');
+    expect(chosen).toHaveTextContent('from $1.22/h per node (g6.2xlarge)');
+    expect(chosen).toHaveTextContent(
+      'I want to serve: any preset — no preference',
     );
     const fit = screen.getByTestId('preset-fit');
+    expect(fit).toHaveTextContent('Qwen3 4B Instruct');
+    expect(fit).toHaveTextContent('Qwen/Qwen3-4B-Instruct-2507');
     expect(fit).toHaveTextContent('✔ 2xlarge');
+    expect(fit).toHaveTextContent('g6.2xlarge — $1.22/h');
     expect(fit).toHaveTextContent(`✘ ${GPU_MEMORY}`);
-    expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument();
-    // The first dry run sends no sizes: the chart's defaults.
-    expect(dryRunsOf(callTool)[0][1]).not.toHaveProperty('sizes');
+    expect(screen.queryByTestId('sizes-picker')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Deploy' }));
+    await screen.findByText(/Pool wc1-gpu-l4 applied as you/);
+    expect(appliesOf(callTool)[0][1]).toMatchObject({
+      mode: 'apply',
+      sizes: ['2xlarge'],
+    });
+  });
 
-    await user.click(
-      within(picker).getByRole('checkbox', { name: /g6\.2xlarge/ }),
-    );
+  it('warns on the form when a chosen set hosts a preset no more; Add puts the size back; Back keeps the choice', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderDialog();
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+
+    await user.click(sizeBox('g6.2xlarge'));
     const warnings = await screen.findByTestId('fit-warnings');
     expect(dryRunsOf(callTool).at(-1)?.[1]).toMatchObject({
       sizes: ['xlarge'],
@@ -454,94 +594,173 @@ describe('AddGpuNodePoolDialog: what this pool can serve', () => {
       '1 preset fits no size of this pool — Deploy is not blocked',
     );
     expect(warnings).toHaveTextContent(TOO_SMALL);
-    expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
 
-    // The warning's own fix puts the size back, and Deploy sends the sizes as reviewed.
     await user.click(
       within(warnings).getByRole('button', { name: 'Add 2xlarge' }),
     );
     await waitFor(() =>
       expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument(),
     );
-    await user.click(screen.getByRole('button', { name: 'Deploy' }));
-    await screen.findByText(/Pool wc1-gpu-l4 applied as you/);
-    expect(appliesOf(callTool)[0][1]).toMatchObject({
-      mode: 'apply',
-      sizes: ['xlarge', '2xlarge'],
-    });
+    expect(sizeBox('g6.2xlarge')).toBeChecked();
+
+    await user.click(sizeBox('g6.xlarge'));
+    await waitFor(() =>
+      expect(dryRunsOf(callTool).at(-1)?.[1]).toMatchObject({
+        sizes: ['2xlarge'],
+      }),
+    );
+    await review(user);
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await screen.findByTestId('node-size-picker');
+    expect(sizeBox('g6.xlarge')).not.toBeChecked();
+    expect(sizeBox('g6.2xlarge')).toBeChecked();
+    // No new dry run for coming back: the choice did not change.
+    const runs = dryRunsOf(callTool).length;
+    await review(user);
+    expect(dryRunsOf(callTool).length).toBe(runs);
+    expect(appliesOf(callTool)).toHaveLength(0);
   });
 
-  it('the preset the person wants to serve blocks Deploy when no size hosts it', async () => {
+  it('choosing a preset preselects the smallest size hosting it with its price and marks the others; an unhosted preset blocks Deploy with the reason', async () => {
     const user = userEvent.setup();
-    await renderDialog();
-    await fillAndReview(user);
-    const picker = screen.getByTestId('sizes-picker');
-    await user.click(
-      within(picker).getByRole('checkbox', { name: /g6\.2xlarge/ }),
-    );
-    await screen.findByTestId('fit-warnings');
+    const { callTool } = await renderDialog();
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
 
     await user.click(screen.getByRole('button', { name: /I want to serve/ }));
-    await user.click(
-      await screen.findByRole('option', { name: 'qwen3-4b-instruct' }),
-    );
+    const option = await screen.findByRole('option', {
+      name: /Qwen3 4B Instruct/,
+    });
+    expect(option).toHaveTextContent('Qwen/Qwen3-4B-Instruct-2507');
+    await user.click(option);
 
+    await waitFor(() =>
+      expect(dryRunsOf(callTool).at(-1)?.[1]).toMatchObject({
+        sizes: ['2xlarge'],
+      }),
+    );
+    expect(sizeBox('g6.2xlarge')).toBeChecked();
+    expect(sizeBox('g6.xlarge')).not.toBeChecked();
+    expect(sizeBox('g6.2xlarge')).toHaveAccessibleName(
+      /hosts Qwen3 4B Instruct/,
+    );
+    expect(sizeBox('g6.xlarge')).toHaveAccessibleName(
+      /does not host Qwen3 4B Instruct/,
+    );
+    expect(screen.getByTestId('price-summary')).toHaveTextContent(
+      'from $1.22/h per node (g6.2xlarge)',
+    );
+    expect(screen.queryByTestId('deploy-blocked')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument();
+
+    // Unchecking the hosting size blocks with the reason; the reason's size unblocks.
+    await user.click(sizeBox('g6.2xlarge'));
+    await user.click(sizeBox('g6.xlarge'));
     const blocked = await screen.findByTestId('deploy-blocked');
     expect(blocked).toHaveTextContent(
-      'Deploy is blocked: qwen3-4b-instruct fits no size of this pool',
+      'Deploy is blocked: Qwen3 4B Instruct fits no size of this pool',
     );
     expect(blocked).toHaveTextContent(TOO_SMALL);
-    expect(
-      screen.getByRole('button', { name: /^Deploy \(blocked/ }),
-    ).toBeDisabled();
-    // The chosen preset's warning is the blocker, not repeated among the others.
     expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument();
-    expect(
-      within(picker).getByRole('checkbox', {
-        name: /g6\.2xlarge.*hosts qwen3-4b-instruct/,
-      }),
-    ).toBeInTheDocument();
-    expect(
-      within(picker).getByRole('checkbox', {
-        name: /g6\.xlarge.*does not host qwen3-4b-instruct/,
-      }),
-    ).toBeInTheDocument();
-
     await user.click(
       within(blocked).getByRole('button', { name: 'Add 2xlarge' }),
     );
     await waitFor(() =>
       expect(screen.queryByTestId('deploy-blocked')).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
 
-    // A preset the accelerator cannot serve at all: the GPU-memory reason, no size to add.
+    // A preset the accelerator cannot serve at all: the GPU-memory reason, no size to add, Deploy blocked on the review.
     await user.click(screen.getByRole('button', { name: /I want to serve/ }));
     await user.click(
-      await screen.findByRole('option', { name: 'qwen3-coder-next' }),
+      await screen.findByRole('option', { name: /Qwen3 Coder Next/ }),
     );
     const gpu = await screen.findByTestId('deploy-blocked');
     expect(gpu).toHaveTextContent(GPU_MEMORY);
     expect(
       within(gpu).queryByRole('button', { name: /^Add/ }),
     ).not.toBeInTheDocument();
+    await review(user);
+    expect(screen.getByTestId('chosen-sizes')).toHaveTextContent(
+      'I want to serve: Qwen3 Coder Next (Qwen/Qwen3-Coder-Next-FP8)',
+    );
+    expect(screen.getByTestId('deploy-blocked')).toHaveTextContent(GPU_MEMORY);
     expect(
       screen.getByRole('button', { name: /^Deploy \(blocked/ }),
     ).toBeDisabled();
   });
 
-  it('a cluster without presets shows the note instead of an empty table', async () => {
+  it('offers the presets the chart ships on a cluster without a serving slice', async () => {
+    const user = userEvent.setup();
+    await renderDialog({ chartPresets: true });
+    await fillForm(user);
+    const picker = await screen.findByTestId(
+      'node-size-picker',
+      {},
+      AFTER_DEBOUNCE,
+    );
+    expect(
+      screen.getByRole('button', { name: /I want to serve/ }),
+    ).toBeInTheDocument();
+    expect(picker).toHaveTextContent(`Presets: ${CHART_SOURCE}.`);
+    expect(screen.queryByTestId('preset-fit-note')).not.toBeInTheDocument();
+  });
+
+  it('shows the note instead of a picker where nothing could be judged', async () => {
     const user = userEvent.setup();
     await renderDialog({ noPresets: true });
-    await fillAndReview(user);
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
     expect(screen.getByTestId('preset-fit-note')).toHaveTextContent(
       'no serving preset is published on wc1 yet',
     );
-    expect(screen.queryByTestId('preset-fit')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /I want to serve/ }),
     ).not.toBeInTheDocument();
+    await review(user);
+    expect(screen.queryByTestId('preset-fit')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
+  });
+
+  it('shows the price note where a size has no price, and prices nothing from an older cluster-manager', async () => {
+    const user = userEvent.setup();
+    await renderDialog({ unpriced: true });
+    await fillForm(user);
+    const picker = await screen.findByTestId(
+      'node-size-picker',
+      {},
+      AFTER_DEBOUNCE,
+    );
+    expect(picker).toHaveTextContent(`1 × 24 GiB GPU — ${PRICE_NOTE}`);
+    expect(screen.getByTestId('price-summary')).toHaveTextContent(
+      'from $1.01/h per node (g6.xlarge)',
+    );
+  });
+
+  it('works without prices, display names and origin from an older cluster-manager', async () => {
+    const user = userEvent.setup();
+    await renderDialog({ legacy: true });
+    await fillForm(user);
+    const picker = await screen.findByTestId(
+      'node-size-picker',
+      {},
+      AFTER_DEBOUNCE,
+    );
+    expect(sizeBox('g6.xlarge')).toHaveAccessibleName(
+      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU',
+    );
+    expect(screen.queryByTestId('price-summary')).not.toBeInTheDocument();
+    expect(picker).not.toHaveTextContent('Prices:');
+    await user.click(screen.getByRole('button', { name: /I want to serve/ }));
+    await user.click(
+      await screen.findByRole('option', { name: 'qwen3-4b-instruct' }),
+    );
+    expect(sizeBox('g6.2xlarge')).toHaveAccessibleName(
+      /hosts qwen3-4b-instruct/,
+    );
+    await review(user);
+    expect(screen.getByTestId('preset-fit')).toHaveTextContent(
+      'qwen3-coder-next',
+    );
   });
 
   it('a Deploy cut short lists the pending objects and Continue re-runs the same call', async () => {
@@ -568,6 +787,7 @@ describe('AddGpuNodePoolDialog: what this pool can serve', () => {
     await screen.findByText(/Pool wc1-gpu-l4 applied as you/);
     const [first, second] = appliesOf(callTool);
     expect(second[1]).toEqual(first[1]);
+    expect(first[1]).toMatchObject({ sizes: ['xlarge', '2xlarge'] });
     expect(onDeployed).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('partial-write')).not.toBeInTheDocument();
   });

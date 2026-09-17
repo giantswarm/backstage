@@ -29,6 +29,8 @@ import {
   groupManifestsByRelease,
   isValidPoolName,
   manifestFilename,
+  presetFitOf,
+  presetLabel,
   type CreateNodePoolInput,
   type ManagedCluster,
   type NodePoolWriteResult,
@@ -37,6 +39,7 @@ import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
+import { NodeSizePicker } from './NodeSizePicker';
 import { PartialWriteOutcome } from './PartialWriteOutcome';
 import { PoolFitReview } from './PoolFitReview';
 
@@ -60,6 +63,9 @@ const TELEPORT_OPTIONS: { id: TeleportChoice; label: string }[] = [
   { id: 'off', label: 'Do not join Teleport' },
 ];
 
+/** How long the form waits after the last change before it asks cluster-manager. */
+export const DRY_RUN_DEBOUNCE_MS = 400;
+
 /** The marks `list_clusters` reports for one cluster, as one line each. */
 export function clusterMarks(cluster: ManagedCluster): string[] {
   const marks = [
@@ -80,11 +86,17 @@ export function clusterMarks(cluster: ManagedCluster): string[] {
 
 /**
  * Add GPU node pool — from the Models pages, the agent-creation pattern:
- * a form, then `create_node_pool` with `dryRun` through muster as the
- * signed-in person, the composed releases as manifests in one review, and
- * **Deploy** (`mode: apply`) or **Commit** (`mode: commit`, once
- * cluster-manager offers it). The portal composes nothing: what the review
- * shows is exactly what cluster-manager would write.
+ * a form, `create_node_pool` with `dryRun` through muster as the signed-in
+ * person, the composed releases as manifests in one review, and **Deploy**
+ * (`mode: apply`) or **Commit** (`mode: commit`, once cluster-manager offers
+ * it). The decision that sets the pool's price and the models it can serve —
+ * the **node size** — is made on the form: as soon as the cluster, the pool
+ * name and the accelerator are set, the form runs the dry run with the
+ * chart's defaults and offers the sizes cluster-manager composed with their
+ * prices and the presets each hosts; every change re-runs it. The review
+ * shows the same choice and the manifests; Deploy sends the sizes as chosen.
+ * The portal composes nothing: what the review shows is exactly what
+ * cluster-manager would write.
  */
 export function AddGpuNodePoolDialog({
   installations,
@@ -102,16 +114,16 @@ export function AddGpuNodePoolDialog({
   );
   const [maxGpus, setMaxGpus] = useState(4);
   const [teleport, setTeleport] = useState<TeleportChoice>('default');
-  /** The latest dry run: what Deploy would write, judged against `sizes`. */
-  const [review, setReview] = useState<NodePoolWriteResult>();
-  /** The first dry run with the defaults: every shape to pick from, every preset. */
+  const [step, setStep] = useState<'form' | 'review'>('form');
+  /** The first dry run with the chart's defaults: every size to pick from, every preset. */
   const [shapes, setShapes] = useState<NodePoolWriteResult>();
-  /** The chosen sizes; `undefined` until the first dry run says which exist. */
+  /** The sizes chosen on the form; `undefined` for the chart's defaults (every shape). */
   const [sizes, setSizes] = useState<string[]>();
   const [preset, setPreset] = useState<string>();
-  /** The dry run in flight; an older answer arriving later is dropped. */
+  /** The latest dry run for the form as it stands: what Deploy would write. */
+  const [review, setReview] = useState<NodePoolWriteResult>();
+  /** The dry run scheduled or in flight; an older answer arriving later is dropped. */
   const rerun = useRef(0);
-  /** A sizes change being judged — the footer's Deploy is not what is busy. */
   const [judging, setJudging] = useState(false);
   const [applied, setApplied] = useState<NodePoolWriteResult>();
   const [committed, setCommitted] = useState<NodePoolWriteResult>();
@@ -125,6 +137,7 @@ export function AddGpuNodePoolDialog({
   const { info } = useClusterManagerInfo(installation);
   const accelerators = useAccelerators(installation) ?? DEFAULT_ACCELERATORS;
   const write = useNodePoolWrite(installation);
+  const { dryRun } = write;
 
   useEffect(() => {
     if (!installation && installations.length > 0) {
@@ -132,10 +145,8 @@ export function AddGpuNodePoolDialog({
     }
   }, [installation, installations]);
 
-  /** Back to the form: the review, its shapes and the choices made on it go. */
-  const leaveReview = () => {
-    rerun.current += 1;
-    setReview(undefined);
+  /** Another cluster or accelerator: its sizes and presets are read anew. */
+  const resetChoice = () => {
     setShapes(undefined);
     setSizes(undefined);
     setPreset(undefined);
@@ -143,7 +154,11 @@ export function AddGpuNodePoolDialog({
 
   useEffect(() => {
     if (!isOpen) {
-      leaveReview();
+      rerun.current += 1;
+      setStep('form');
+      resetChoice();
+      setReview(undefined);
+      setJudging(false);
       setApplied(undefined);
       setCommitted(undefined);
       write.reset();
@@ -172,57 +187,102 @@ export function AddGpuNodePoolDialog({
     };
   }, [cluster, name, accelerator, maxGpus, teleport]);
 
-  /** What Deploy and Commit send: the form's input with the sizes as reviewed. */
-  const input = useMemo(
-    () => (formInput && sizes ? { ...formInput, sizes } : formInput),
-    [formInput, sizes],
+  /** The sizes as chosen: the person's, or every size of the chart's defaults. */
+  const chosen = useMemo(
+    () => sizes ?? shapes?.sizes?.map(shape => shape.size),
+    [sizes, shapes],
   );
 
-  const canCommit = info?.modes.commit === true;
-  const notConnected = write.failure?.kind === 'not-connected';
-  const isBusy = write.isBusy;
-  const done = Boolean(applied || committed?.pullRequestUrl);
-  const blocker = deployBlocker(review, preset);
-  const canWrite = Boolean(input) && !isBusy && !blocker && sizes?.length !== 0;
+  /** What Deploy and Commit send: the form's input with the sizes as chosen. */
+  const input = useMemo(
+    () => (formInput && chosen ? { ...formInput, sizes: chosen } : formInput),
+    [formInput, chosen],
+  );
 
-  const onReview = async (event: FormEvent) => {
-    event.preventDefault();
+  /**
+   * The dry run for the form as it stands; without a choice of sizes it asks
+   * for the chart's defaults and its answer is the set to pick from.
+   */
+  const judge = async (
+    seq: number,
+  ): Promise<NodePoolWriteResult | undefined> => {
     if (!formInput) {
-      return;
+      return undefined;
     }
-    const seq = ++rerun.current;
-    try {
-      const result = await write.dryRun(formInput);
-      if (seq !== rerun.current) {
-        return;
-      }
-      setShapes(result);
-      setSizes(result.sizes?.map(shape => shape.size));
-      setReview(result);
-    } catch {
-      // Shown from `write.failure`.
-    }
-  };
-
-  /** A size checked or unchecked: the dry run is judged again against the new set. */
-  const onSizesChange = async (next: string[]) => {
-    setSizes(next);
-    if (!formInput || next.length === 0) {
-      return;
-    }
-    const seq = ++rerun.current;
     setJudging(true);
     try {
-      const result = await write.dryRun({ ...formInput, sizes: next });
-      if (seq === rerun.current) {
-        setReview(result);
+      const result = await dryRun(sizes ? { ...formInput, sizes } : formInput);
+      if (seq !== rerun.current) {
+        return undefined;
       }
+      if (!sizes) {
+        setShapes(result);
+      }
+      setReview(result);
+      return result;
     } catch {
-      // Shown from `write.failure`; the last review stands.
+      // Shown from `write.failure`; the sizes read before stand.
+      return undefined;
     } finally {
       if (seq === rerun.current) {
         setJudging(false);
       }
+    }
+  };
+
+  // The form asks cluster-manager as soon as it can and after every change,
+  // debounced: the answer is the review, kept current while the person types.
+  useEffect(() => {
+    rerun.current += 1;
+    if (!isOpen || !formInput) {
+      setReview(undefined);
+      setJudging(false);
+      return undefined;
+    }
+    const seq = rerun.current;
+    setJudging(true);
+    const timer = setTimeout(() => judge(seq), DRY_RUN_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // `judge` closes over the same inputs; `dryRun` follows the installation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, formInput, sizes, dryRun]);
+
+  const canCommit = info?.modes.commit === true;
+  const notConnected = write.failure?.kind === 'not-connected';
+  const isBusy = write.isBusy && !judging;
+  const done = Boolean(applied || committed?.pullRequestUrl);
+  const blocker = deployBlocker(review, preset);
+  const canReview = Boolean(formInput) && !isBusy && !judging;
+  const canWrite =
+    Boolean(input) &&
+    Boolean(review) &&
+    !isBusy &&
+    !judging &&
+    !blocker &&
+    chosen?.length !== 0;
+
+  /** Review: the current dry run's manifests, or one more try where the last was refused. */
+  const onReview = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!canReview) {
+      return;
+    }
+    if (review) {
+      setStep('review');
+      return;
+    }
+    const seq = ++rerun.current;
+    if (await judge(seq)) {
+      setStep('review');
+    }
+  };
+
+  /** The preset to serve: the smallest size hosting it is the choice, the rest is marked. */
+  const onPresetChange = (next: string | undefined) => {
+    setPreset(next);
+    const fit = presetFitOf(shapes?.presetFit, next);
+    if (fit?.size) {
+      setSizes([fit.size]);
     }
   };
 
@@ -259,7 +319,10 @@ export function AddGpuNodePoolDialog({
     }
   };
 
+  const onForm = step === 'form';
   const groups = review ? groupManifestsByRelease(review) : [];
+  const shapeList = shapes?.sizes ?? [];
+  const hasShapes = shapeList.length > 0;
 
   return (
     <Dialog
@@ -280,7 +343,7 @@ export function AddGpuNodePoolDialog({
               you.
             </Text>
 
-            {!review && (
+            {onForm && (
               <Flex direction="column" gap="3">
                 {installations.length > 1 && (
                   <Select
@@ -292,6 +355,7 @@ export function AddGpuNodePoolDialog({
                       if (key) {
                         setInstallation(String(key));
                         setClusterName(undefined);
+                        resetChoice();
                       }
                     }}
                   />
@@ -310,9 +374,10 @@ export function AddGpuNodePoolDialog({
                     })`,
                   }))}
                   selectedKey={clusterName ?? null}
-                  onSelectionChange={key =>
-                    setClusterName(key ? String(key) : undefined)
-                  }
+                  onSelectionChange={key => {
+                    setClusterName(key ? String(key) : undefined);
+                    resetChoice();
+                  }}
                 />
                 {cluster && (
                   <Flex direction="column" gap="1" data-testid="cluster-marks">
@@ -351,8 +416,47 @@ export function AddGpuNodePoolDialog({
                   isRequired
                   options={accelerators.map(id => ({ id, label: id }))}
                   selectedKey={accelerator}
-                  onSelectionChange={key => key && setAccelerator(String(key))}
+                  onSelectionChange={key => {
+                    if (key) {
+                      setAccelerator(String(key));
+                      resetChoice();
+                    }
+                  }}
                 />
+                {!hasShapes && !formInput && (
+                  <Text
+                    variant="body-small"
+                    color="secondary"
+                    data-testid="sizes-pending"
+                  >
+                    Node size: pick a cluster and name the pool — the sizes for
+                    the accelerator, their prices and the presets each hosts are
+                    read from cluster-manager's dry run of this pool.
+                  </Text>
+                )}
+                {!hasShapes && formInput && judging && (
+                  <Text
+                    variant="body-small"
+                    color="secondary"
+                    data-testid="sizes-loading"
+                  >
+                    Node size: reading the sizes for {accelerator} from
+                    cluster-manager…
+                  </Text>
+                )}
+                {hasShapes && (
+                  <NodeSizePicker
+                    shapes={shapeList}
+                    presetFit={shapes?.presetFit}
+                    review={review}
+                    sizes={chosen ?? []}
+                    onSizesChange={setSizes}
+                    preset={preset}
+                    onPresetChange={onPresetChange}
+                    isBusy={isBusy}
+                    judging={judging}
+                  />
+                )}
                 <NumberField
                   label="Maximum GPUs"
                   description="Across all nodes of the pool; the pool scales to zero."
@@ -373,7 +477,7 @@ export function AddGpuNodePoolDialog({
               </Flex>
             )}
 
-            {review && (
+            {!onForm && review && (
               <Flex direction="column" gap="3" data-testid="node-pool-review">
                 <Text variant="body-medium">
                   {review.cluster}-{review.pool}: gpu-node-pool chart{' '}
@@ -396,16 +500,13 @@ export function AddGpuNodePoolDialog({
                     {review.backend.name} → {review.backend.target}
                   </Text>
                 )}
-                {shapes?.sizes && shapes.sizes.length > 0 && sizes && (
+                {hasShapes && chosen && (
                   <PoolFitReview
-                    shapes={shapes.sizes}
-                    presets={shapes.presetFit?.presets ?? []}
+                    shapes={shapeList}
+                    presetFit={shapes?.presetFit}
                     review={review}
-                    sizes={sizes}
-                    onSizesChange={onSizesChange}
+                    sizes={chosen}
                     preset={preset}
-                    onPresetChange={setPreset}
-                    isBusy={isBusy}
                   />
                 )}
                 {groups.map(group => (
@@ -502,20 +603,16 @@ export function AddGpuNodePoolDialog({
             >
               {done ? 'Close' : 'Cancel'}
             </Button>
-            {!review && (
-              <Button
-                type="submit"
-                variant="primary"
-                isDisabled={!input || isBusy}
-              >
-                {isBusy ? 'Rendering…' : 'Review'}
+            {onForm && (
+              <Button type="submit" variant="primary" isDisabled={!canReview}>
+                {judging ? 'Judging…' : 'Review'}
               </Button>
             )}
-            {review && !done && (
+            {!onForm && !done && (
               <>
                 <Button
                   variant="secondary"
-                  onPress={leaveReview}
+                  onPress={() => setStep('form')}
                   isDisabled={isBusy}
                 >
                   Back
@@ -536,11 +633,11 @@ export function AddGpuNodePoolDialog({
                   isDisabled={!canWrite}
                   aria-label={
                     blocker
-                      ? `Deploy (blocked: ${blocker.preset} fits no size of this pool)`
+                      ? `Deploy (blocked: ${presetLabel(blocker)} fits no size of this pool)`
                       : 'Deploy'
                   }
                 >
-                  {isBusy && !judging ? 'Deploying…' : 'Deploy'}
+                  {isBusy ? 'Deploying…' : 'Deploy'}
                 </Button>
               </>
             )}

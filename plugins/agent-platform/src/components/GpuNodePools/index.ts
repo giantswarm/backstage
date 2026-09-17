@@ -4,6 +4,12 @@ export {
   PartialWriteOutcome,
   type PartialWriteOutcomeProps,
 } from './PartialWriteOutcome';
+export {
+  NodeSizePicker,
+  SIZES_PICKER_ID,
+  describeShape,
+  type NodeSizePickerProps,
+} from './NodeSizePicker';
 export { PoolFitReview, type PoolFitReviewProps } from './PoolFitReview';
 export {
   PoolLifecyclePanel,
