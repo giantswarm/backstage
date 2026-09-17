@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Content, Progress } from '@backstage/core-components';
-import { Box, Button, Tab, Tabs, Tooltip, Typography } from '@material-ui/core';
+import {
+  Box,
+  Button,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@material-ui/core';
 import { Alert } from '@backstage/ui';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
@@ -31,6 +39,64 @@ import { FilterBar } from '../FilterBar';
 import { MarkBlockedDialog } from '../MarkBlockedDialog';
 import { SweepDialog } from '../SweepDialog';
 import { Tiles } from '../Tiles';
+
+/**
+ * The way in when the scope holds no team: the catalog places the person in
+ * none, or it names no `team-*` group at all. marge reads a team by name, so
+ * a name typed here is as good as one the catalog knows, and the queue says
+ * whether marge has a team file for it.
+ */
+function OpenTeam({
+  scope,
+  hasTeams,
+  onOpen,
+}: {
+  scope: Scope;
+  hasTeams: boolean;
+  onOpen: (team: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const title =
+    scope === 'mine' && hasTeams
+      ? 'The catalog places you in no team'
+      : 'The catalog names no team';
+  const description =
+    scope === 'mine' && hasTeams
+      ? 'Your groups carry no team, so this scope is empty. Open All teams, or read one team by name.'
+      : 'No group of the catalog is named team-<name>, so there is no team to offer. Read one by name: marge answers for the team file it finds.';
+
+  return (
+    <Box maxWidth={560}>
+      <Typography variant="h6" gutterBottom>
+        {title}
+      </Typography>
+      <Typography variant="body2" color="textSecondary" paragraph>
+        {description}
+      </Typography>
+      <Box display="flex" alignItems="flex-end" gridGap={8}>
+        <TextField
+          label="Team"
+          placeholder="bumblebee"
+          value={name}
+          onChange={event => setName(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter' && name.trim()) {
+              onOpen(name.trim());
+            }
+          }}
+        />
+        <Button
+          variant="contained"
+          color="primary"
+          disabled={!name.trim()}
+          onClick={() => onOpen(name.trim())}
+        >
+          Open
+        </Button>
+      </Box>
+    </Box>
+  );
+}
 
 const SCOPES: { id: Scope; label: string }[] = [
   { id: 'mine', label: 'My team' },
@@ -336,11 +402,11 @@ export function BotPrsPage() {
     );
   } else if (inScope.length === 0) {
     body = (
-      <Typography variant="body2" color="textSecondary">
-        {scope === 'mine'
-          ? 'The catalogue places you in no team. All teams lists every team it names.'
-          : 'The catalogue names no team group. A team named in the URL, ?team=<name>, is read all the same.'}
-      </Typography>
+      <OpenTeam
+        scope={scope}
+        hasTeams={teams.teams.length > 0}
+        onOpen={team => setFilter('team', team)}
+      />
     );
   } else {
     body = (

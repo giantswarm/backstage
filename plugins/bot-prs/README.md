@@ -12,8 +12,8 @@ a PR is what `marge list` and `marge sweep --dry-run` print for it.
 
 ## Features
 
-- **Scopes**: _My team_ (the person's `team-*` catalogue groups, the default
-  when they have one) and _All teams_ (every `team-*` group the catalogue
+- **Scopes**: _My team_ (the person's `team-*` catalog groups, the default
+  when they have one) and _All teams_ (every `team-*` group the catalog
   names), kept in the URL as `?scope=`. marge answers one team per call, so a
   scope is one `x_marge_list` per team.
 - **Tiles**: counts per classification as the engine names it, per bot kind

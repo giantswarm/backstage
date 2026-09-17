@@ -24,7 +24,7 @@ test('the page offers the two scopes and lands on All teams for a lab user', asy
     'true',
   );
   await expect(
-    admin.getByText(/The catalogue names no team group/),
+    admin.getByText(/The catalog lists no team/),
   ).toBeVisible();
 });
 
