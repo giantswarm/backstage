@@ -16,7 +16,6 @@ export const unusedWrites: Pick<
   | 'transferRepository'
   | 'setLifecycle'
   | 'reconcileRepository'
-  | 'decideRepository'
 > = {
   validateRepository: unused('validate_repository'),
   createRepository: unused('create_repository'),
@@ -24,5 +23,4 @@ export const unusedWrites: Pick<
   transferRepository: unused('transfer_repository'),
   setLifecycle: unused('set_lifecycle'),
   reconcileRepository: unused('reconcile_repository'),
-  decideRepository: unused('decide_repository'),
 };
