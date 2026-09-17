@@ -51,7 +51,7 @@ test('a person without a GitHub grant is guided to sign in, one with a grant see
 
   // The queue: the stored classification, said so in words; the live
   // classification and the sweep preview are buttons, never automatic.
-  await expect(summary).toContainText(/open bot PRs? .* across 1 team/);
+  await expect(summary).toContainText(/open bot PRs?.* across 1 team/);
   await expect(
     admin.getByRole('button', { name: 'Refresh classification' }),
   ).toBeEnabled();
