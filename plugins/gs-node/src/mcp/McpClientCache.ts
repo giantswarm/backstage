@@ -4,43 +4,51 @@ import { MCPClient } from '@ai-sdk/mcp';
 
 interface CacheEntry {
   clientPromise: Promise<MCPClient>;
+  // The resolved client, once the factory settled. Lets `markDead` tell the
+  // client a caller failed on from a fresh one that has replaced it since.
+  client?: MCPClient;
   createdAt: number;
-  // Set to false when the underlying MCP transport invokes its `onclose`
-  // hook. The cache uses this to evict dead entries on the next access
-  // instead of handing the LLM a closed client (which would surface as
-  // `MCPClientError: Attempted to send a request from a closed client` on
-  // every subsequent tool call until the entry expires).
+  // Refreshed on every getOrCreate hit. A stateful MCP server (agentgateway's
+  // MCP proxy in front of muster) forgets a session that has been idle for
+  // its own idle TTL, so an entry nobody used for long is dead on arrival.
+  lastUsedAt: number;
+  // Set to false when the underlying MCP transport reports it is done with
+  // this session: its `onclose` hook (connection torn down), or its
+  // `onSessionExpired` hook (the server answered 404 for the session id; the
+  // SDK clears the id and, without this, every later request would go out
+  // without one). The cache evicts dead entries on the next access instead
+  // of handing out a client whose every call would fail until the TTL sweep.
   alive: boolean;
 }
 
 const DEFAULT_TTL_MS = 30 * 60 * 1000; // 30 minutes
+// Well below agentgateway's default MCP session idle TTL (30 minutes), so a
+// client is recreated before the gateway has forgotten its session. The retry
+// in MusterMcpClient is what makes a lost session harmless; this only spares
+// the person the extra round trip.
+const DEFAULT_IDLE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000; // 60 seconds
 
-// Match @ai-sdk/mcp's `MCPClientError({ message: 'Attempted to send a
-// request from a closed client' })` thrown from `request()` when
-// `isClosed` is set. The string is stable across versions of the SDK
-// since it's part of the public error surface used by docs / blog
-// posts; if it ever changes we'd just stop self-healing on this signal,
-// not crash.
-const CLOSED_CLIENT_ERROR_FRAGMENT =
-  'Attempted to send a request from a closed client';
-
-export function isClosedClientError(error: unknown): boolean {
-  if (!error) return false;
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  return message.includes(CLOSED_CLIENT_ERROR_FRAGMENT);
-}
+// The hooks the SDK's transports expose for "this session is over". Both are
+// public options of the http transport, installed here after construction
+// (the same way the SDK itself installs `onclose`) so every factory gets them.
+type TransportHook = 'onclose' | 'onSessionExpired';
+type HookableTransport = Partial<
+  Record<TransportHook, (...args: unknown[]) => void>
+>;
 
 export class McpClientCache {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly ttlMs: number;
+  private readonly idleTtlMs: number;
   private readonly sweepTimer: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly logger: LoggerService,
-    options?: { ttlMs?: number; sweepIntervalMs?: number },
+    options?: { ttlMs?: number; idleTtlMs?: number; sweepIntervalMs?: number },
   ) {
     this.ttlMs = options?.ttlMs ?? DEFAULT_TTL_MS;
+    this.idleTtlMs = options?.idleTtlMs ?? DEFAULT_IDLE_TTL_MS;
     const sweepIntervalMs =
       options?.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
 
@@ -60,73 +68,44 @@ export class McpClientCache {
     key: string,
     factory: () => Promise<MCPClient>,
   ): Promise<MCPClient> {
+    const now = Date.now();
     const existing = this.cache.get(key);
     if (existing) {
-      if (existing.alive) {
+      const reason = this.staleReason(existing, now);
+      if (!reason) {
+        existing.lastUsedAt = now;
         return existing.clientPromise;
       }
-      // The transport's onclose fired since we last handed this entry
-      // out. Evict it so we recreate cleanly below; do NOT await
-      // invalidate's client.close() because the underlying transport
-      // is already gone.
+      // Evict so we recreate cleanly below. A closed entry's transport is
+      // already gone, so do NOT await invalidate's client.close() for it;
+      // an expired one is closed in the background.
       this.logger.debug(
-        `McpClientCache: cached entry '${key}' is closed; recreating`,
+        `McpClientCache: cached entry '${key}' is ${reason}; recreating`,
       );
-      this.cache.delete(key);
+      if (reason === 'closed') {
+        this.cache.delete(key);
+      } else {
+        this.invalidate(key).catch(() => {});
+      }
     }
 
     const entry: CacheEntry = {
       // Filled in below once factory resolves.
       clientPromise: undefined as unknown as Promise<MCPClient>,
-      createdAt: Date.now(),
+      createdAt: now,
+      lastUsedAt: now,
       alive: true,
     };
 
     entry.clientPromise = factory()
       .then(client => {
-        // Chain into the transport's onclose handler so we learn when
-        // the connection has been torn down (idle timeout from the
-        // server, network drop, server-side reset, ...). The MCPClient
-        // installs its own onclose during construction; we wrap it so
-        // both run, leaving the SDK's bookkeeping intact.
-        try {
-          // `transport` is private on MCPClient, but the chain hook is
-          // the only practical way to detect closure without polling.
-          // Cast through `unknown` to avoid lint complaints; runtime
-          // shape is stable across the @ai-sdk/mcp 1.x/2.x line.
-          const transport = (
-            client as unknown as {
-              transport?: { onclose?: (...args: unknown[]) => void };
-            }
-          ).transport;
-          if (transport) {
-            const previous = transport.onclose;
-            transport.onclose = (...args: unknown[]) => {
-              entry.alive = false;
-              try {
-                previous?.(...args);
-              } catch (closeErr) {
-                // Don't let chaining surface as an unhandled rejection.
-                this.logger.debug(
-                  `McpClientCache: chained onclose for '${key}' threw: ${
-                    closeErr instanceof Error
-                      ? closeErr.message
-                      : String(closeErr)
-                  }`,
-                );
-              }
-            };
-          }
-        } catch (hookErr) {
-          // If the SDK shape changed and we can't install the hook,
-          // continue without close-detection rather than failing the
-          // whole request. The 30-minute TTL still bounds staleness.
-          this.logger.debug(
-            `McpClientCache: failed to install onclose hook for '${key}': ${
-              hookErr instanceof Error ? hookErr.message : String(hookErr)
-            }`,
-          );
-        }
+        entry.client = client;
+        // Chain into the transport's hooks so we learn when the session is
+        // over (idle timeout from the server, network drop, server-side
+        // reset, a 404 for the session id, ...). The MCPClient installs its
+        // own onclose during construction; we wrap whatever is there so both
+        // run, leaving the SDK's bookkeeping intact.
+        this.installTransportHooks(key, entry, client);
         return client;
       })
       .catch(err => {
@@ -139,16 +118,17 @@ export class McpClientCache {
   }
 
   /**
-   * Mark a cached entry dead without awaiting client.close(). Use this
-   * from a tool-execution catch block when the SDK reports the client
-   * is closed, so the very next chat request creates a fresh client
-   * instead of waiting for the TTL to evict the dead entry.
+   * Mark a cached entry dead without awaiting client.close(), so the very
+   * next getOrCreate creates a fresh client instead of waiting for the TTL
+   * sweep. With `client` given, only when the entry still holds that client:
+   * a caller that failed on a session another caller has already replaced
+   * must not kill the replacement.
    */
-  markDead(key: string): void {
+  markDead(key: string, client?: MCPClient): void {
     const entry = this.cache.get(key);
-    if (entry) {
-      entry.alive = false;
-    }
+    if (!entry) return;
+    if (client && entry.client && entry.client !== client) return;
+    entry.alive = false;
   }
 
   async invalidate(key: string): Promise<void> {
@@ -170,15 +150,63 @@ export class McpClientCache {
     await Promise.all(keys.map(key => this.invalidate(key)));
   }
 
+  private staleReason(
+    entry: CacheEntry,
+    now: number,
+  ): 'closed' | 'expired' | 'idle' | undefined {
+    if (!entry.alive) return 'closed';
+    if (now - entry.createdAt > this.ttlMs) return 'expired';
+    if (now - entry.lastUsedAt > this.idleTtlMs) return 'idle';
+    return undefined;
+  }
+
+  private installTransportHooks(
+    key: string,
+    entry: CacheEntry,
+    client: MCPClient,
+  ): void {
+    try {
+      // `transport` is private on MCPClient, but the chain hook is the only
+      // practical way to detect closure without polling. Cast through
+      // `unknown` to avoid lint complaints; runtime shape is stable across
+      // the @ai-sdk/mcp 1.x/2.x line.
+      const transport = (client as unknown as { transport?: HookableTransport })
+        .transport;
+      if (!transport) return;
+      for (const hook of ['onclose', 'onSessionExpired'] as TransportHook[]) {
+        const previous = transport[hook];
+        transport[hook] = (...args: unknown[]) => {
+          entry.alive = false;
+          try {
+            previous?.(...args);
+          } catch (hookErr) {
+            // Don't let chaining surface as an unhandled rejection.
+            this.logger.debug(
+              `McpClientCache: chained ${hook} for '${key}' threw: ${
+                hookErr instanceof Error ? hookErr.message : String(hookErr)
+              }`,
+            );
+          }
+        };
+      }
+    } catch (hookErr) {
+      // If the SDK shape changed and we can't install the hooks, continue
+      // without close-detection rather than failing the whole request. The
+      // TTLs still bound staleness.
+      this.logger.debug(
+        `McpClientCache: failed to install transport hooks for '${key}': ${
+          hookErr instanceof Error ? hookErr.message : String(hookErr)
+        }`,
+      );
+    }
+  }
+
   private sweep(): void {
     const now = Date.now();
     for (const [key, entry] of this.cache) {
-      if (!entry.alive || now - entry.createdAt > this.ttlMs) {
-        this.logger.debug(
-          `McpClientCache: evicting ${
-            entry.alive ? 'expired' : 'closed'
-          } entry '${key}'`,
-        );
+      const reason = this.staleReason(entry, now);
+      if (reason) {
+        this.logger.debug(`McpClientCache: evicting ${reason} entry '${key}'`);
         this.invalidate(key).catch(() => {});
       }
     }
