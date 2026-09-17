@@ -1,11 +1,15 @@
-import { ListFilters, Scope } from '../apis';
+import { LIFECYCLES, ListFilters, Scope } from '../apis';
 
 const SCOPES: Scope[] = ['mine', 'team', 'unassigned', 'all'];
 
 /**
  * The page's filters live in the URL (`?scope=mine&renovate=missing…`), so a
  * view is shareable and survives a reload; the names are `list_repositories`'
- * arguments.
+ * arguments, with one page knob of its own: `archived=true` in the URL is the
+ * person's *Show archived* choice, which makes the request drop `archived`
+ * (every repository) instead of the default `archived=false` (the archived
+ * ones hidden). `lifecycle=archived` asks for them explicitly and drops it
+ * too.
  */
 export function filtersFromParams(params: URLSearchParams): ListFilters {
   const text = (name: string) => params.get(name) || undefined;
@@ -22,6 +26,7 @@ export function filtersFromParams(params: URLSearchParams): ListFilters {
     }
     return undefined;
   };
+  const lifecycle = text('lifecycle');
   return {
     scope: scope && SCOPES.includes(scope) ? scope : undefined,
     search: text('search'),
@@ -29,12 +34,19 @@ export function filtersFromParams(params: URLSearchParams): ListFilters {
     team: text('team'),
     visibility: text('visibility') as ListFilters['visibility'],
     fork: flag('fork'),
-    lifecycle: text('lifecycle'),
+    lifecycle,
+    archived: showsArchived(params) ? undefined : false,
     inactiveDays: num('inactiveDays'),
-    minOrphanScore: num('minOrphanScore'),
-    decision: text('decision'),
     finding: text('finding'),
   };
+}
+
+/** Whether the URL asks for the archived repositories: the switch, or the lifecycle. */
+export function showsArchived(params: URLSearchParams): boolean {
+  return (
+    params.get('archived') === 'true' ||
+    params.get('lifecycle') === LIFECYCLES[2]
+  );
 }
 
 /** Writes one filter into the params; an empty value removes it. */
@@ -52,14 +64,14 @@ export function withFilter(
   return next;
 }
 
-/** The arguments that are not filters: the scope and the page's own knobs. */
-const NOT_A_FILTER: (keyof ListFilters)[] = [
-  'scope',
-  'limit',
-  'stalePeriodDays',
-];
+/**
+ * The arguments that are not filters: the scope, the row limit and the
+ * archived default -- hiding the archived repositories is the page's view,
+ * not a narrowing the person asked for.
+ */
+const NOT_A_FILTER: (keyof ListFilters)[] = ['scope', 'limit', 'archived'];
 
-/** Whether any filter is set (the scope and the row limit are none). */
+/** Whether any filter is set. */
 export function hasFilters(filters: ListFilters): boolean {
   return Object.entries(filters).some(
     ([name, value]) =>

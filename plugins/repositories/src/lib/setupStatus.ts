@@ -1,3 +1,4 @@
+import { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
 import { SetupResult, SetupStep } from '../apis';
 
 /**
@@ -36,6 +37,24 @@ export function stepDetail(step: SetupStep): string {
 /** Every step's findings, in step order (the CLI's Findings section). */
 export function resultFindings(result: SetupResult) {
   return result.steps.flatMap(step => step.findings ?? []);
+}
+
+/**
+ * What a step's verdict means, for the status icon next to the word: `ok`
+ * and `repaired` are good, `drift` wants the reconciler, `reported` left a
+ * finding for a person, `skipped` did not apply, `failed` could not run.
+ */
+export const VERDICT_INTENT: Record<string, StatusLabelIntent> = {
+  ok: 'positive',
+  repaired: 'positive',
+  drift: 'warning',
+  reported: 'info',
+  skipped: 'neutral',
+  failed: 'negative',
+};
+
+export function verdictIntent(verdict: string): StatusLabelIntent {
+  return VERDICT_INTENT[verdict] ?? 'neutral';
 }
 
 /** The steps still pending in a set-up that has not converged. */

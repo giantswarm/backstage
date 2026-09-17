@@ -8,32 +8,43 @@
 /** `list_repositories` scope: whose repositories. */
 export type Scope = 'mine' | 'team' | 'unassigned' | 'all';
 
+/** The lifecycles `list_repositories` filters by, as the team files declare them. */
+export const LIFECYCLES = ['active', 'deprecated', 'archived'] as const;
+
+export type Lifecycle = (typeof LIFECYCLES)[number];
+
 /** The filters of `list_repositories`, as the page offers them. */
 export interface ListFilters {
   scope?: Scope;
   search?: string;
+  /** `active` and `inactive` are judged against the manager's Renovate activity period. */
   renovate?: 'configured' | 'missing' | 'active' | 'inactive';
-  /** A team slug, or `none` for undeclared repositories. */
+  /**
+   * A team slug, or `none` for undeclared repositories. Applies in every
+   * scope where it can: under `mine` it narrows to that team when it is one
+   * of the caller's; under `unassigned` no row has a team.
+   */
   team?: string;
   visibility?: 'public' | 'private';
+  /** `true`: forks only; `false`: no forks. */
   fork?: boolean;
-  /** `deprecated`, `archived`, … or `none`. */
+  /**
+   * `active`: no lifecycle declared and not archived on GitHub;
+   * `archived`: declared archived or archived on GitHub; `deprecated`:
+   * declared so. Any other value the team-file schema allows is matched
+   * against the declared lifecycle.
+   */
   lifecycle?: string;
+  /**
+   * `false` drops every repository that is declared archived or archived on
+   * GitHub; `true` keeps only those. Independent of `lifecycle`.
+   */
+  archived?: boolean;
+  /** No commit by a person within this many days, or none at all. */
   inactiveDays?: number;
-  minOrphanScore?: number;
-  /** `keep`, or `none`. */
-  decision?: string;
+  /** A finding kind. */
   finding?: string;
   limit?: number;
-  stalePeriodDays?: number;
-}
-
-export interface OrphanScore {
-  /** 0-100. */
-  score: number;
-  reasons: string[];
-  /** The stale period the score was judged against (a Go duration). */
-  stalePeriod?: string;
 }
 
 /** A row's set-up state: the engine's checks and the last reconciler run. */
@@ -53,12 +64,12 @@ export interface RepositoryRow {
   visibility?: string;
   archived: boolean;
   gone?: boolean;
+  fork?: boolean;
+  renovate?: boolean;
   lastPersonCommit?: string;
-  orphan: OrphanScore;
   /** Finding kinds. */
   findings?: string[];
   setup: RepositoryRowSetup;
-  decision?: string;
   age: string;
 }
 
@@ -84,6 +95,8 @@ export interface RepositoryListing {
   matched: number;
   shown: number;
   repositories: RepositoryRow[];
+  /** The manager's remark on the answer: a `team` under `mine` that is not one of the caller's, say. */
+  note?: string;
 }
 
 /** A finding of the engine or the inventory, with its fix text. */
@@ -209,9 +222,7 @@ export interface InventoryRecord {
     checkError?: string;
     lastRun?: { result: SetupResult; runUrl: string; timestamp: string };
   };
-  orphan: OrphanScore;
   findings: Finding[];
-  decision?: { verdict: string; note?: string; by: string; at: string };
   refreshedAt: string;
   /** `sweep` | `refresh` | `reconciler`. */
   source: string;
@@ -425,10 +436,7 @@ export interface RepositoriesApi {
   getConnection(): Promise<RepositoriesConnectionResponse>;
   getInfo(): Promise<ManagerInfo>;
   listRepositories(filters: ListFilters): Promise<RepositoryListing>;
-  getRepository(
-    name: string,
-    stalePeriodDays?: number,
-  ): Promise<InventoryRecord>;
+  getRepository(name: string): Promise<InventoryRecord>;
   refreshRepository(name: string): Promise<InventoryRecord>;
 
   /** The dry run of declaring new repositories (`validate_repository`). Writes nothing. */
@@ -462,9 +470,4 @@ export interface RepositoriesApi {
     args: { team?: string },
     options: WriteOptions,
   ): Promise<Dispatch>;
-  /** Leaves a decision note (verdict keep) on the inventory record. */
-  decideRepository(
-    name: string,
-    args: { verdict: 'keep'; note?: string },
-  ): Promise<InventoryRecord>;
 }

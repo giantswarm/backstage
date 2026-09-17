@@ -221,8 +221,10 @@ describe('CreateRepositoryPage', () => {
       'not converged',
     );
     expect(
-      within(live).getByRole('table', { name: 'Set-up' }),
-    ).toBeInTheDocument();
+      within(within(live).getByTestId('setup-steps')).getByRole('row', {
+        name: /scaffold/,
+      }),
+    ).toHaveTextContent('drift');
   });
 
   it("shows the manager's refusal of the write verbatim and offers no override", async () => {

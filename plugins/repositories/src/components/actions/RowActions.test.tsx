@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TestApiProvider } from '@backstage/test-utils';
 import {
@@ -30,7 +30,6 @@ type Writes = Pick<
   | 'transferRepository'
   | 'setLifecycle'
   | 'reconcileRepository'
-  | 'decideRepository'
 >;
 
 function renderActions(
@@ -72,13 +71,13 @@ describe('parseEntry', () => {
 });
 
 describe('RowActions', () => {
-  it('offers only Reconcile now and Keep for an undeclared repository', () => {
+  it('offers only Reconcile now for an undeclared repository', () => {
     renderActions({}, strayTool);
     for (const name of ['Configure', 'Transfer', 'Deprecate', 'Archive']) {
       expect(button(name)).toBeDisabled();
     }
     expect(button('Reconcile now')).toBeEnabled();
-    expect(button('Keep')).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Keep' })).toBeNull();
   });
 
   it('Archive: shows what it does and the review notice, the plan with its ask, then the pull request', async () => {
@@ -351,36 +350,5 @@ describe('RowActions', () => {
       { team: 'team-planeteers' },
       { dryRun: true },
     );
-  });
-
-  it('Keep: records the decision with the note, no dry run', async () => {
-    const decideRepository = jest.fn().mockResolvedValue({
-      ...strayTool,
-      decision: {
-        verdict: 'keep',
-        note: 'still used by support',
-        by: 'alice',
-        at: '2026-09-17T10:00:00Z',
-      },
-    });
-    const { onChanged } = renderActions({ decideRepository }, strayTool);
-    await userEvent.click(button('Keep'));
-    expect(screen.queryByRole('button', { name: 'Review' })).toBeNull();
-    await userEvent.type(
-      within(dialog(/^Keep stray-tool/)).getByLabelText(/^Note/),
-      'still used by support',
-    );
-    await userEvent.click(button('Keep'));
-    expect(decideRepository).toHaveBeenCalledWith('giantswarm/stray-tool', {
-      verdict: 'keep',
-      note: 'still used by support',
-    });
-    expect(
-      await screen.findByText('Decision recorded: keep'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('By alice — still used by support.'),
-    ).toBeInTheDocument();
-    await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 });

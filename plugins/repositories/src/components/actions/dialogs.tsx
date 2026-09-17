@@ -24,7 +24,7 @@ export interface RowDialogProps {
   record: InventoryRecord;
   isOpen: boolean;
   onClose: () => void;
-  /** The write landed (a pull request, a dispatch, a decision). */
+  /** The write landed (a pull request, a dispatch). */
   onDone: () => void;
 }
 
@@ -285,50 +285,6 @@ export function ReconcileDialog({
       }
       renderDone={dispatch => <DispatchView dispatch={dispatch} />}
       commitLabel="Reconcile now"
-      onDone={onDone}
-    />
-  );
-}
-
-/** Keep: a decision note on the record, for the clean-up; nothing on GitHub. */
-export function KeepDialog({
-  record,
-  isOpen,
-  onClose,
-  onDone,
-}: RowDialogProps) {
-  const api = useApi(repositoriesApiRef);
-  const [note, setNote] = useState('');
-  return (
-    <ActionDialog<never, InventoryRecord>
-      title={`Keep ${record.name}`}
-      intro={`Leaves the decision "keep" with your note on the inventory record of ${record.repository}; it survives every refresh and marks the repository for the clean-up as wanted. An annotation of the inventory, not a change on GitHub.`}
-      isOpen={isOpen}
-      onClose={onClose}
-      ready
-      fields={
-        <TextAreaField
-          label="Note"
-          description="Why the repository stays."
-          value={note}
-          onChange={setNote}
-          rows={3}
-        />
-      }
-      commit={() =>
-        api.decideRepository(record.repository, {
-          verdict: 'keep',
-          note: note || undefined,
-        })
-      }
-      renderDone={updated => (
-        <Alert
-          status="success"
-          title={`Decision recorded: ${updated.decision?.verdict ?? 'keep'}`}
-          description={`By ${updated.decision?.by ?? 'you'}${updated.decision?.note ? ` — ${updated.decision.note}` : ''}.`}
-        />
-      )}
-      commitLabel="Keep"
       onDone={onDone}
     />
   );

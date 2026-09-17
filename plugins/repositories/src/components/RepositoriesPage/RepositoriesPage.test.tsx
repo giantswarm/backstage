@@ -2,25 +2,16 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TestApiProvider } from '@backstage/test-utils';
+import { useLocation } from 'react-router-dom';
 import {
-  InventoryRecord,
-  ListFilters,
-  ManagerInfo,
   MusterServerNotConnectedError,
   RepositoriesApi,
   repositoriesApiRef,
-  RepositoryRow,
 } from '../../apis';
-import { unusedWrites } from '../../fixtures/fakeApi';
 import {
-  listingOf,
-  newService,
-  presentService,
-  records,
-  rowOf,
-  strayTool,
-} from '../../fixtures/records';
-import { useLocation } from 'react-router-dom';
+  createInMemoryApi,
+  InMemoryRepositoriesApi,
+} from '../../fixtures/inMemoryApi';
 import {
   RepositoriesProviders,
   repositoriesQueryClient,
@@ -40,68 +31,20 @@ function LocationProbe() {
   return <div data-testid="location">{location.search}</div>;
 }
 
-const info = (groups: string[]): ManagerInfo => ({
-  version: 'v0.3.0',
-  toolPrefix: 'giantswarm-repo-manager',
-  caller: { email: 'alice@example.com', groups },
-  github: {
-    apiUrl: '',
-    grant: { obtained: true, login: 'alice' },
-    circleciConfigured: false,
-  },
-  inventory: { connected: true, records: 3 },
-});
+/** Activity is judged against this moment: the fixtures' dates stand still. */
+const NOW = new Date('2026-09-17T00:00:00Z');
+const LIMIT = 2000;
 
-const declared = [presentService, newService].map(rowOf);
-const unassigned = [rowOf(strayTool)];
-const everything = [...declared, ...unassigned];
-
-/**
- * The manager's two read tools over the fixture records: the listing
- * answers by scope the way `list_repositories` does for a Bumblebee member,
- * a filter narrows it, `get_repository` returns the record.
- */
-function fakeApi(overrides: Partial<RepositoriesApi> = {}): RepositoriesApi & {
-  lists: ListFilters[];
-  refreshes: string[];
-} {
-  const lists: ListFilters[] = [];
-  const refreshes: string[] = [];
-  return {
-    lists,
-    refreshes,
-    getConnection: async () => ({ connected: true }),
-    getInfo: async () => info(['giantswarm-github:giantswarm:team-bumblebee']),
-    listRepositories: async filters => {
-      lists.push(filters);
-      const byScope: Record<string, RepositoryRow[]> = {
-        unassigned,
-        all: everything,
-      };
-      let rows = byScope[filters.scope ?? 'mine'] ?? declared;
-      if (filters.search) {
-        rows = rows.filter(row => row.repository.includes(filters.search!));
-      }
-      if (filters.renovate === 'missing') {
-        rows = rows.filter(row => row.findings?.includes('renovate-missing'));
-      }
-      return listingOf(rows);
-    },
-    getRepository: async name => records[name],
-    refreshRepository: async name => {
-      refreshes.push(name);
-      return {
-        ...records[name],
-        source: 'refresh',
-        age: '0s',
-      } as InventoryRecord;
-    },
-    ...unusedWrites,
-    ...overrides,
-  };
+/** The manager's read tools over the fixtures, for a Bumblebee member. */
+function fakeApi(
+  overrides: Partial<RepositoriesApi> = {},
+  teams = ['team-bumblebee'],
+): InMemoryRepositoriesApi {
+  return { ...createInMemoryApi({ teams, now: NOW }), ...overrides };
 }
 
-async function renderPage(api: RepositoriesApi) {
+/** Renders the page, at the URL given (a shared or reloaded view). */
+async function renderPage(api: RepositoriesApi, url = '/') {
   return renderInTestApp(
     <TestApiProvider apis={[[repositoriesApiRef, api]]}>
       <RepositoriesProviders>
@@ -109,19 +52,50 @@ async function renderPage(api: RepositoriesApi) {
         <LocationProbe />
       </RepositoriesProviders>
     </TestApiProvider>,
+    { initialRouteEntries: [url] },
   );
 }
 
 const urlSearch = () => screen.getByTestId('location').textContent;
 
+/** The row of a repository; the cell names it without the org. */
+const findRow = (name: string) =>
+  screen.findByRole('row', { name: new RegExp(`\\b${name}\\b`) });
+
+/** The listed repositories, in table order (the Repository cell of every row). */
+const listed = () =>
+  screen
+    .getAllByRole('row')
+    .map(tr => tr.querySelectorAll('td')[1]?.textContent ?? '')
+    .filter(name => name !== '');
+
+/** A ui-react Autocomplete's input, through the label wrapping the control. */
+const combobox = (label: string) =>
+  screen.getByLabelText(new RegExp(`^${label}`));
+
+const group = (label: string) => screen.getByRole('group', { name: label });
+
 async function openAll(api: RepositoriesApi) {
   await renderPage(api);
-  await screen.findByTestId('row-present-service');
+  await findRow('present-service');
   await userEvent.click(screen.getByRole('tab', { name: 'All repositories' }));
-  await screen.findByTestId('row-stray-tool');
+  await findRow('stray-tool');
 }
 
-const table = () => screen.getByRole('table', { name: 'Repositories' });
+/** Picks one option of a ui-react Autocomplete. */
+async function pick(label: string, option: string) {
+  await userEvent.click(combobox(label));
+  await userEvent.click(await screen.findByRole('option', { name: option }));
+}
+
+async function expand(name: string) {
+  await userEvent.click(
+    within(await findRow(name)).getByRole('button', {
+      name: 'Detail panel visiblity toggle',
+    }),
+  );
+  return screen.findByTestId(`record-${name}`);
+}
 
 describe('RepositoriesPage', () => {
   beforeEach(() => {
@@ -130,170 +104,397 @@ describe('RepositoriesPage', () => {
     jest.mocked(bounceToConnect).mockClear();
   });
 
-  it('opens on My team and lists the team repositories with the tiles', async () => {
+  it('opens on My team, hides the archived repositories and lists by name', async () => {
     const api = fakeApi();
     await renderPage(api);
 
-    expect(
-      await screen.findByTestId('row-present-service'),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('row-new-service')).toBeInTheDocument();
-    expect(screen.queryByTestId('row-stray-tool')).not.toBeInTheDocument();
-    expect(api.lists[0].scope).toBe('mine');
+    await findRow('present-service');
+    expect(listed()).toEqual(['new-service', 'present-service']);
+    expect(api.lists).toContainEqual({
+      scope: 'mine',
+      limit: LIMIT,
+      archived: false,
+    });
     expect(
       screen.getByRole('tab', { name: 'My team', selected: true }),
     ).toBeInTheDocument();
-
-    const setup = screen.getByTestId('tile-set-up-state');
-    expect(within(setup).getByTestId('count-converged')).toHaveTextContent('1');
-    expect(within(setup).getByTestId('count-not converged')).toHaveTextContent(
-      '1',
-    );
-    expect(within(setup).getByTestId('count-unchecked')).toHaveTextContent('0');
-    const score = screen.getByTestId('tile-orphan-score');
-    expect(within(score).getByTestId('count-healthy (< 30)')).toHaveTextContent(
-      '1',
-    );
-    expect(within(score).getByTestId('count-watch (30–59)')).toHaveTextContent(
-      '1',
+    expect(screen.getByTestId('listing-summary')).toHaveTextContent(
+      '2 of 2 matching repositories, 6 in the inventory; archived hidden; last sweep 2026-09-16 21:04Z',
     );
     expect(
-      within(screen.getByTestId('tile-lifecycle')).getByTestId('count-active'),
-    ).toHaveTextContent('2');
-    expect(screen.getByTestId('listing-summary')).toHaveTextContent(
-      '2 of 2 matching repositories, 3 in the inventory',
-    );
+      screen.getByRole('checkbox', { name: 'Show archived' }),
+    ).not.toBeChecked();
   });
 
-  it('opens on Unassigned for a Planeteer', async () => {
-    const api = fakeApi({
-      getInfo: async () =>
-        info(['giantswarm-github:giantswarm:team-planeteers']),
-    });
+  it('opens on Unassigned for a Planeteer, without a Team filter', async () => {
+    const api = fakeApi({}, ['team-planeteers']);
     await renderPage(api);
-    expect(await screen.findByTestId('row-stray-tool')).toBeInTheDocument();
+    await findRow('stray-tool');
     expect(api.lists[0].scope).toBe('unassigned');
+    // The archived, undeclared fork stays hidden here too.
+    expect(listed()).toEqual(['stray-tool']);
+    expect(screen.queryByLabelText(/^Team/)).not.toBeInTheDocument();
+    expect(combobox('Finding')).toBeInTheDocument();
   });
 
   it('switches scope through the tabs and keeps it in the URL', async () => {
     const api = fakeApi();
-    await renderPage(api);
-    await screen.findByTestId('row-present-service');
-
-    await userEvent.click(
-      screen.getByRole('tab', { name: 'All repositories' }),
-    );
-    expect(await screen.findByTestId('row-stray-tool')).toBeInTheDocument();
-    expect(api.lists.at(-1)?.scope).toBe('all');
+    await openAll(api);
+    expect(listed()).toEqual([
+      'legacy-tool',
+      'new-service',
+      'present-service',
+      'stray-tool',
+    ]);
+    expect(api.lists).toContainEqual({
+      scope: 'all',
+      limit: LIMIT,
+      archived: false,
+    });
     expect(urlSearch()).toContain('scope=all');
-    expect(screen.getByTestId('listing-summary')).toHaveTextContent('3 of 3');
+    expect(screen.getByTestId('listing-summary')).toHaveTextContent('4 of 4');
   });
 
-  it('passes a filter to list_repositories and marks the listing filtered', async () => {
+  it('Show archived lists every repository and keeps the choice in the URL', async () => {
     const api = fakeApi();
     await openAll(api);
 
-    await userEvent.selectOptions(screen.getByLabelText('Renovate'), 'missing');
-    await waitFor(() => expect(api.lists.at(-1)?.renovate).toBe('missing'));
-    expect(await screen.findByTestId('row-new-service')).toBeInTheDocument();
-    expect(screen.queryByTestId('row-present-service')).not.toBeInTheDocument();
-    expect(screen.getByTestId('listing-summary')).toHaveTextContent(
-      '(filtered)',
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Show archived' }),
     );
-    expect(urlSearch()).toContain('renovate=missing');
-    expect(urlSearch()).toContain('scope=all');
+    await findRow('old-operator');
+    expect(listed()).toContain('forgotten-fork');
+    // No call carried archived=true: the listing without the flag is the
+    // scope's inventory query itself, served from the cache.
+    expect(api.lists.every(call => call.archived !== true)).toBe(true);
+    expect(urlSearch()).toContain('archived=true');
+    expect(screen.getByTestId('listing-summary')).not.toHaveTextContent(
+      'archived hidden',
+    );
+
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Show archived' }),
+    );
+    await waitFor(() => expect(listed()).not.toContain('old-operator'));
+    expect(urlSearch()).not.toContain('archived');
+    expect(screen.getByTestId('listing-summary')).toHaveTextContent(
+      'archived hidden',
+    );
+  });
+
+  describe('filters, each the argument list_repositories receives', () => {
+    it('Lifecycle: archived asks for the archived repositories themselves', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.click(
+        within(group('Lifecycle')).getByRole('radio', { name: 'Archived' }),
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          lifecycle: 'archived',
+        }),
+      );
+      await findRow('old-operator');
+      expect(listed()).toEqual(['forgotten-fork', 'old-operator']);
+      expect(urlSearch()).toContain('lifecycle=archived');
+      expect(screen.getByTestId('listing-summary')).toHaveTextContent(
+        '(filtered)',
+      );
+    });
+
+    it('Lifecycle: deprecated', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.click(
+        within(group('Lifecycle')).getByRole('radio', { name: 'Deprecated' }),
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          lifecycle: 'deprecated',
+        }),
+      );
+      await waitFor(() => expect(listed()).toEqual(['legacy-tool']));
+
+      await userEvent.click(
+        within(group('Lifecycle')).getByRole('radio', { name: 'Any' }),
+      );
+      await waitFor(() => expect(listed()).toHaveLength(4));
+      expect(urlSearch()).not.toContain('lifecycle');
+    });
+
+    it('Team: the options are the scope’s whole inventory, not the filtered rows', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      // Narrow the rows to Bumblebee's first…
+      await userEvent.click(
+        within(group('Renovate')).getByRole('radio', { name: 'Missing' }),
+      );
+      await waitFor(() =>
+        expect(listed()).toEqual(['new-service', 'stray-tool']),
+      );
+      // …and the other team is still on offer.
+      await userEvent.click(combobox('Team'));
+      const options = (await screen.findAllByRole('option')).map(
+        option => option.textContent,
+      );
+      expect(options).toEqual(['No team', 'team-bumblebee', 'team-planeteers']);
+      await userEvent.click(
+        screen.getByRole('option', { name: 'team-planeteers' }),
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          renovate: 'missing',
+          team: 'team-planeteers',
+        }),
+      );
+      expect(urlSearch()).toContain('team=team-planeteers');
+    });
+
+    it('Team: under My team the team goes to the manager as well', async () => {
+      const api = fakeApi();
+      await renderPage(api);
+      await findRow('present-service');
+      await pick('Team', 'team-bumblebee');
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'mine',
+          limit: LIMIT,
+          archived: false,
+          team: 'team-bumblebee',
+        }),
+      );
+    });
+
+    it("Team: a team that is not the caller's, asked for in the URL under My team, shows the manager's note", async () => {
+      // Under My team the options are the caller's teams; another team can
+      // only arrive through a shared URL. The manager answers no rows and
+      // says why; the page shows both.
+      const api = fakeApi();
+      await renderPage(api, '/?scope=mine&team=team-planeteers');
+      await waitFor(() =>
+        expect(api.lists).toContainEqual({
+          scope: 'mine',
+          limit: LIMIT,
+          archived: false,
+          team: 'team-planeteers',
+        }),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('listing-summary')).toHaveTextContent(
+          '0 of 0 matching repositories (filtered), 6 in the inventory; archived hidden; last sweep 2026-09-16 21:04Z. team-planeteers is not one of your teams',
+        ),
+      );
+      expect(listed()).toEqual([]);
+      // The URL's team is offered so the person can clear it.
+      expect(combobox('Team')).toHaveValue('team-planeteers');
+    });
+
+    it('Renovate', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.click(
+        within(group('Renovate')).getByRole('radio', { name: 'Inactive' }),
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          renovate: 'inactive',
+        }),
+      );
+      await waitFor(() => expect(listed()).toEqual(['legacy-tool']));
+      expect(urlSearch()).toContain('renovate=inactive');
+    });
+
+    it('Visibility', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.click(
+        within(group('Visibility')).getByRole('radio', { name: 'Private' }),
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          visibility: 'private',
+        }),
+      );
+      await waitFor(() => expect(listed()).toEqual(['new-service']));
+    });
+
+    it('Fork sends a boolean', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.click(
+        within(group('Fork')).getByRole('radio', { name: 'Forks only' }),
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          fork: true,
+        }),
+      );
+      await waitFor(() => expect(listed()).toEqual(['stray-tool']));
+      await userEvent.click(
+        within(group('Fork')).getByRole('radio', { name: 'No forks' }),
+      );
+      await waitFor(() => expect(api.lists.at(-1)?.fork).toBe(false));
+      expect(urlSearch()).toContain('fork=false');
+    });
+
+    it('Inactive for (days) sends a number', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.type(screen.getByLabelText('Inactive for (days)'), '365');
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          inactiveDays: 365,
+        }),
+      );
+      await waitFor(() =>
+        expect(listed()).toEqual(['new-service', 'stray-tool']),
+      );
+    });
+
+    it('Finding: the kinds come from the scope’s inventory', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await pick('Finding', 'renovate-inactive');
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          finding: 'renovate-inactive',
+        }),
+      );
+      await waitFor(() => expect(listed()).toEqual(['legacy-tool']));
+    });
+
+    it('Search goes to the manager once the person pauses', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: 'Search' }),
+        'present',
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          search: 'present',
+        }),
+      );
+      await waitFor(() =>
+        expect(listed()).toEqual(['legacy-tool', 'present-service']),
+      );
+      expect(urlSearch()).toContain('search=present');
+    });
   });
 
   it('sorts the table by a column', async () => {
     await openAll(fakeApi());
-
-    const names = () =>
-      within(table())
-        .getAllByTestId(/^row-/)
-        .map(row => row.querySelector('th')?.textContent);
-    // The manager's order: by orphan score, highest first.
-    expect(names()).toEqual([
-      'giantswarm/stray-tool',
-      'giantswarm/new-service',
-      'giantswarm/present-service',
+    await userEvent.click(screen.getByRole('button', { name: 'Team' }));
+    expect(listed()).toEqual([
+      'stray-tool',
+      'new-service',
+      'present-service',
+      'legacy-tool',
     ]);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Repository' }));
-    expect(names()).toEqual([
-      'giantswarm/new-service',
-      'giantswarm/present-service',
-      'giantswarm/stray-tool',
-    ]);
-    await userEvent.click(screen.getByRole('button', { name: 'Repository' }));
-    expect(names()[0]).toBe('giantswarm/stray-tool');
+    await userEvent.click(screen.getByRole('button', { name: 'Team' }));
+    expect(listed()[0]).toBe('legacy-tool');
   });
 
-  it('expands a row to the record with its findings, links and set-up steps', async () => {
+  it('expands a row to the record: header, grouped facts, findings and set-up steps', async () => {
     await renderPage(fakeApi());
-    await userEvent.click(
-      await screen.findByRole('button', {
-        name: 'Expand giantswarm/present-service',
-      }),
-    );
+    const record = await expand('present-service');
 
-    const record = await screen.findByTestId('record-present-service');
     expect(
-      within(record).getByRole('link', { name: /^Repository/ }),
+      within(record).getByRole('link', {
+        name: /^giantswarm\/present-service/,
+      }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/present-service');
+    expect(within(record).getByTestId('setup-state')).toHaveTextContent(
+      /^converged$/,
+    );
     expect(
-      within(record).getByRole('link', { name: 'Catalog entity' }),
+      within(record).getByText(/Record from sweep, 5m3s old/),
+    ).toBeInTheDocument();
+
+    for (const card of ['Ownership', 'Activity', 'Tooling']) {
+      expect(
+        within(record).getByRole('heading', { name: card }),
+      ).toBeInTheDocument();
+    }
+    expect(
+      within(record).getByText('repositories/team-bumblebee.yaml'),
     ).toBeInTheDocument();
     expect(
-      within(record).getByRole('link', { name: /Last reconciler run/ }),
+      within(record).getByRole('link', { name: 'Catalog entity' }),
+    ).toHaveAttribute('href', '/catalog/default/component/present-service');
+    expect(
+      within(record).getByRole('link', { name: /^v1\.0\.0/ }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/present-service/releases/tag/v1.0.0',
+    );
+    expect(
+      within(record).getByRole('link', { name: /^2026-09-10/ }),
     ).toHaveAttribute(
       'href',
       'https://github.com/giantswarm/github/actions/runs/123',
     );
     expect(
-      within(record).getByRole('link', { name: /^Release v1\.0\.0/ }),
+      within(record).getByText('renovate.json5, preset'),
     ).toBeInTheDocument();
-    expect(within(record).getByTestId('record-findings')).toHaveTextContent(
-      '[default-icon] the repository uses the default icon',
+
+    const findings = within(record).getByTestId('record-findings');
+    expect(findings).toHaveTextContent('default-icon');
+    expect(findings).toHaveTextContent('the repository uses the default icon');
+    expect(findings).toHaveTextContent(
+      'Fix: upload an icon in the repository settings',
     );
-    expect(within(record).getByTestId('record-findings')).toHaveTextContent(
-      'fix: upload an icon in the repository settings',
-    );
-    expect(within(record).getByTestId('setup-state')).toHaveTextContent(
-      'converged',
-    );
-    const steps = within(record).getByRole('table', { name: 'Set-up' });
+
+    const steps = within(record).getByTestId('setup-steps');
     expect(within(steps).getAllByRole('row')).toHaveLength(1 + 10);
-    expect(within(steps).getByText('metadata').closest('tr')).toHaveTextContent(
-      'reported',
-    );
-    expect(within(steps).getByText('metadata').closest('tr')).toHaveTextContent(
-      'default icon | 1 finding',
-    );
+    const metadata = within(steps).getByRole('row', { name: /metadata/ });
+    expect(metadata).toHaveTextContent('reported');
+    expect(metadata).toHaveTextContent('default icon | 1 finding');
     expect(
-      within(record).getByText(/Record from sweep, 5m3s old/),
-    ).toBeInTheDocument();
+      within(record).queryByRole('button', { name: 'Keep' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the set-up steps of a repository being created and refreshes the record', async () => {
     const api = fakeApi();
     await renderPage(api);
-    await userEvent.click(
-      await screen.findByRole('button', {
-        name: 'Expand giantswarm/new-service',
-      }),
-    );
-    const record = await screen.findByTestId('record-new-service');
+    const record = await expand('new-service');
     expect(within(record).getByTestId('setup-state')).toHaveTextContent(
       'not converged',
     );
-    const steps = within(record).getByRole('table', { name: 'Set-up' });
-    expect(within(steps).getByText('scaffold').closest('tr')).toHaveAttribute(
-      'data-verdict',
-      'drift',
-    );
-    expect(within(steps).getByText('circleci').closest('tr')).toHaveTextContent(
-      'follow project',
-    );
+    const steps = within(record).getByTestId('setup-steps');
+    expect(
+      within(steps).getByRole('row', { name: /scaffold/ }),
+    ).toHaveTextContent('drift');
+    expect(
+      within(steps).getByRole('row', { name: /circleci/ }),
+    ).toHaveTextContent('follow project');
 
     await userEvent.click(
       within(record).getByRole('button', { name: 'Refresh' }),
@@ -301,8 +502,11 @@ describe('RepositoriesPage', () => {
     await waitFor(() =>
       expect(api.refreshes).toEqual(['giantswarm/new-service']),
     );
+    // The listing is re-read after a refresh; the table keeps the panel open
+    // (rows carry an id) and renders the record afresh, so look it up again.
+    const refreshed = await screen.findByTestId('record-new-service');
     expect(
-      await within(record).findByText(/Record from refresh, 0s old/),
+      await within(refreshed).findByText(/Record from refresh, 0s old/),
     ).toBeInTheDocument();
   });
 

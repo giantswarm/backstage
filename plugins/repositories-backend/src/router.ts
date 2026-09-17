@@ -35,13 +35,10 @@ const LIST_ARGUMENTS: Record<string, 'string' | 'number' | 'boolean'> = {
   visibility: 'string',
   fork: 'boolean',
   lifecycle: 'string',
+  archived: 'boolean',
   inactiveDays: 'number',
-  minOrphanScore: 'number',
-  decision: 'string',
   finding: 'string',
-  undeclared: 'boolean',
   limit: 'number',
-  stalePeriodDays: 'number',
 };
 
 /** The two arguments every write tool of the manager takes. */
@@ -75,7 +72,6 @@ const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
   },
   set_lifecycle: { lifecycle: 'string', reason: 'string', ...WRITE_OPTIONS },
   reconcile_repository: { team: 'string', ...WRITE_OPTIONS },
-  decide_repository: { verdict: 'string', note: 'string' },
 };
 
 export interface RouterOptions {
@@ -264,16 +260,9 @@ export async function createRouter(
   });
 
   router.get('/repositories/:name', async (req, res) => {
-    const stalePeriodDays = singleQueryValue(
-      req.query.stalePeriodDays,
-      'stalePeriodDays',
-    );
     res.json(
       await call(req, 'get_repository', {
         repository: repositoryName(req.params.name),
-        ...(stalePeriodDays !== undefined && {
-          stalePeriodDays: Number(stalePeriodDays),
-        }),
       }),
     );
   });
@@ -329,8 +318,6 @@ export async function createRouter(
   writeOfRepository('transfer', 'transfer_repository');
   writeOfRepository('lifecycle', 'set_lifecycle');
   writeOfRepository('reconcile', 'reconcile_repository');
-  // A decision note on the inventory record (verdict keep); the cache only.
-  writeOfRepository('decide', 'decide_repository');
 
   // A missing grant is a 401 that carries the sign-in URL; the manager's own
   // refusals are 403s and an unknown repository a 404, so neither pages us as

@@ -156,7 +156,7 @@ describe('createRouter', () => {
     };
     manager.answers.set('list_repositories', listing);
     const res = await request(app).get(
-      '/repositories?scope=team&team=team-bumblebee&fork=false&minOrphanScore=40&search=must&renovate=missing&limit=50',
+      '/repositories?scope=team&team=team-bumblebee&fork=false&archived=false&search=must&renovate=missing&lifecycle=active&inactiveDays=90&finding=default-icon&limit=50',
     );
     expect(res.status).toBe(200);
     expect(res.body).toEqual(listing);
@@ -168,17 +168,32 @@ describe('createRouter', () => {
           scope: 'team',
           team: 'team-bumblebee',
           fork: false,
-          minOrphanScore: 40,
+          archived: false,
           search: 'must',
           renovate: 'missing',
+          lifecycle: 'active',
+          inactiveDays: 90,
+          finding: 'default-icon',
           limit: 50,
         },
       },
     ]);
   });
 
+  it('drops the arguments the manager no longer takes', async () => {
+    manager.answers.set('list_repositories', { repositories: [] });
+    const res = await request(app).get(
+      '/repositories?scope=all&minOrphanScore=40&decision=keep&stalePeriodDays=90&undeclared=true',
+    );
+    expect(res.status).toBe(200);
+    expect(manager.calls[0].args).toEqual({ scope: 'all' });
+  });
+
   it('refuses a malformed filter instead of passing it on', async () => {
     expect((await request(app).get('/repositories?fork=maybe')).status).toBe(
+      400,
+    );
+    expect((await request(app).get('/repositories?archived=yes')).status).toBe(
       400,
     );
     expect(
@@ -187,17 +202,18 @@ describe('createRouter', () => {
     expect(manager.calls).toHaveLength(0);
   });
 
-  it('gets one repository record, rescored for a stale period on request', async () => {
-    const record = { repository: 'giantswarm/muster', orphan: { score: 0 } };
+  it('gets one repository record, the query string having no say', async () => {
+    const record = { repository: 'giantswarm/muster', findings: [] };
     manager.answers.set('get_repository', record);
     const res = await request(app).get(
       '/repositories/muster?stalePeriodDays=90',
     );
     expect(res.status).toBe(200);
     expect(res.body).toEqual(record);
-    expect(manager.calls[0]).toMatchObject({
+    expect(manager.calls[0]).toEqual({
       tool: 'get_repository',
-      args: { repository: 'muster', stalePeriodDays: 90 },
+      authToken: 'dex-id-token',
+      args: { repository: 'muster' },
     });
   });
 
@@ -307,21 +323,12 @@ describe('createRouter', () => {
       },
     );
 
-    it('leaves a decision note through decide_repository', async () => {
-      const record = {
-        repository: 'giantswarm/muster',
-        decision: { verdict: 'keep' },
-      };
-      manager.answers.set('decide_repository', record);
+    it('has no decide route any more', async () => {
       const res = await request(app)
         .post('/repositories/muster/decide')
-        .send({ verdict: 'keep', note: 'still ours' });
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual(record);
-      expect(manager.calls[0]).toMatchObject({
-        tool: 'decide_repository',
-        args: { repository: 'muster', verdict: 'keep', note: 'still ours' },
-      });
+        .send({ verdict: 'keep' });
+      expect(res.status).toBe(404);
+      expect(manager.calls).toHaveLength(0);
     });
 
     it("answers 403 with the manager's reason when it refuses the write", async () => {
@@ -393,8 +400,8 @@ describe('bodyArguments', () => {
 describe('listArguments', () => {
   it('drops empty values and keeps the tool argument names', () => {
     expect(
-      listArguments({ scope: 'mine', search: '', undeclared: 'true' }),
-    ).toEqual({ scope: 'mine', undeclared: true });
+      listArguments({ scope: 'mine', search: '', archived: 'false' }),
+    ).toEqual({ scope: 'mine', archived: false });
   });
 
   it('ignores parameters the tool does not take', () => {

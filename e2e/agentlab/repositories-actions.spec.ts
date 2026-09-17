@@ -73,7 +73,6 @@ const converging = {
     },
     checkedAt: '2026-09-17T10:00:02Z',
   },
-  orphan: { score: 50, reasons: ['empty repository'] },
   findings: [],
   refreshedAt: '2026-09-17T10:00:02Z',
   source: 'refresh',
@@ -165,8 +164,11 @@ test.describe('repositories: actions', () => {
 
       const live = admin.getByTestId('live-setup');
       await expect(live.getByTestId('setup-state')).toHaveText('not converged');
-      const steps = live.getByRole('table', { name: 'Set-up' });
+      const steps = live.getByTestId('setup-steps');
       await expect(steps.getByText('scaffold')).toBeVisible();
+      await expect(steps.getByRole('row', { name: /scaffold/ })).toContainText(
+        'drift',
+      );
       await expect(steps.getByRole('row', { name: /circleci/ })).toContainText(
         'follow project',
       );
@@ -179,20 +181,20 @@ test.describe('repositories: actions', () => {
     admin,
   }) => {
     await open(admin, '/repositories?scope=all');
-    const rows = admin
-      .getByRole('table', { name: 'Repositories' })
-      .locator('tbody tr[data-testid^="row-"]');
+    const rows = admin.locator('table').first().locator('tbody tr');
     await expect(rows.first()).toBeVisible({ timeout: 60_000 });
     // A declared repository: the team-file actions need an entry.
     const declared = rows
       .filter({ hasNot: admin.getByText('unassigned') })
       .first();
     await expect(declared).toBeVisible();
-    const name = (await declared.getAttribute('data-testid'))!.replace(
-      /^row-/,
-      '',
-    );
-    await declared.getByRole('button', { name: /^Expand / }).click();
+    const name = (await declared.locator('td').nth(1).innerText())
+      .trim()
+      .replace(/^[^/]+\//, '')
+      .split(/\s/)[0];
+    await declared
+      .getByRole('button', { name: 'Detail panel visiblity toggle' })
+      .click();
 
     const record = admin.getByTestId(`record-${name}`);
     await expect(record.getByTestId('row-actions')).toBeVisible({

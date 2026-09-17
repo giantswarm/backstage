@@ -4,28 +4,35 @@ Frontend plugin (`pluginId: repositories`) that renders the Repositories page:
 the org's repository inventory from
 [giantswarm-repo-manager](https://github.com/giantswarm/giantswarm-repo-manager),
 read as the signed-in person. It answers "what do my team's repositories look
-like", "who owns X" and "what is abandoned" over the manager's two read tools,
-with no composition of its own -- what the page shows for a repository is what
-`devctl repo status` prints for it, from the same record.
+like", "who owns X" and "what is set up, and what is not" over the manager's
+two read tools, with no composition of its own -- what the page shows for a
+repository is what `devctl repo status` prints for it, from the same record.
 
 ## Features
 
 - **Scopes**: _My team_ (default; _Unassigned_ for a Planeteer), _Unassigned_,
   _All repositories_ -- `list_repositories`' `scope`, kept in the URL.
-- **Tiles**: counts per set-up state, orphan score band and lifecycle over the
-  listed repositories.
-- **Filters**: search, Renovate state, team (including no team), visibility,
-  fork, lifecycle, inactivity, minimum orphan score, decision, finding -- the
-  tool's arguments, each a URL parameter.
-- **Table**: sortable by repository, team, lifecycle, last person commit,
-  score, set-up state, findings and age; the manager's order (by orphan score)
-  to begin with.
-- **Row expansion**: the full inventory record -- declaration, GitHub reality,
-  Renovate, CircleCI, catalog and mapping, orphan reasons, every finding with
-  its fix, the set-up steps (STEP / VERDICT / DETAIL and the findings, as the
-  CLI prints them, re-read every 15 s while they converge), the links
-  (repository, catalog entity, last reconciler run, latest release) and the
-  record's age with **Refresh** (`refresh_repository`).
+- **Archived hidden by default**: the listing asks for `archived=false` until
+  the person switches _Show archived_ on (`archived=true` in the URL) or asks
+  for the archived lifecycle.
+- **Filters**, in the column the Clusters page uses: search, team (the teams of
+  the scope's whole inventory, plus _No team_ under _All_; not offered under
+  _Unassigned_), lifecycle (any / active / deprecated / archived), Renovate
+  state, visibility, fork, finding kind (again from the whole inventory),
+  inactivity in days -- the tool's arguments, each a URL parameter, sent as
+  typed (`fork` a boolean, `inactiveDays` a number).
+- **Table** (`Table` of `@backstage/core-components`): repository, team,
+  lifecycle, set-up state, findings, last person commit, record age; sortable
+  by every column, by repository to begin with; the one-line summary above it
+  (shown / matched / total, last sweep).
+- **Row detail**: the full inventory record -- a header with the repository
+  (linked), its set-up state and the actions; the facts grouped as Ownership
+  (team, declaration, component type, flavours, CODEOWNERS, team mapping,
+  catalog), Activity (commits, pull requests, issues, latest release, last
+  reconciler run) and Tooling (Renovate, CircleCI, language, visibility,
+  default branch); the findings with their fix; the set-up steps with a status
+  per verdict and the CLI's detail text, re-read every 15 s while they
+  converge; and **Refresh** (`refresh_repository`).
 - **Create repository** (`/repositories/create`): the declaration form (team,
   name, component type, language, flavours, description, visibility, reason);
   _Review_ shows the dry run as `validate_repository` renders it -- the entry
@@ -40,10 +47,16 @@ with no composition of its own -- what the page shows for a repository is what
   the whole entry as it should read), _Transfer_ (`transfer_repository`, the
   receiving team approves, the giving team is told), _Deprecate_ and
   _Archive_ (`set_lifecycle`, the team's review asked in its channel),
-  _Reconcile now_ (`reconcile_repository`, a workflow dispatch as the person),
-  _Keep_ (`decide_repository`, a decision note for the clean-up).
+  _Reconcile now_ (`reconcile_repository`, a workflow dispatch as the person).
 - A write the manager refuses shows the manager's reason verbatim; the page
   offers no override -- `commit` is the only mode and the manager owns it.
+
+## Development
+
+`yarn start` in this package serves the page over the fixture records
+(`src/fixtures/records.ts`, filtered in memory by `src/fixtures/inMemoryApi.ts`
+the way the manager filters) at http://localhost:3000 -- no backend, no
+manager, no sign-in.
 
 ## Backend
 
