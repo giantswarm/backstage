@@ -719,7 +719,9 @@ export async function stubClusterManager(
     const body = route.request().postDataJSON() as RecordedCall;
     const tool = body?.name?.replace(/^x_cluster-manager_/, '');
     if (!body?.name || tool === body.name) {
-      await route.continue();
+      // Another server's tool: the next handler's (a model-manager stub
+      // registered beside this one), else the lab's.
+      await route.fallback();
       return;
     }
     calls.push({ name: body.name, arguments: body.arguments ?? {} });

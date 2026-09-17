@@ -1,56 +1,60 @@
-import { NotFoundError } from '@backstage/errors';
-import {
-  completionsTarget,
-  TRY_PROMPT,
-  tryServedModel,
-} from './tryServedModel';
+import { InputError } from '@backstage/errors';
+import { completionsUrl, TRY_PROMPT, tryServedModel } from './tryServedModel';
 
-const loaded = {
-  loaded: [
-    {
-      name: 'Qwen/Qwen3-4B-Instruct-2507',
-      backend: 'kserve',
-      resource: 'qwen3-4b-instruct',
-      kind: 'LLMInferenceService',
-      status: 'Ready',
-      phase: 'ready',
-      endpoint:
+describe('completionsUrl', () => {
+  it('posts to the served model’s endpoint under the installation’s domain', () => {
+    expect(
+      completionsUrl(
         'https://models.gazelle.example/model-serving/qwen3-4b-instruct/',
-    },
-    { name: 'llama3.2', backend: 'ollama', endpoint: 'http://10.0.0.5:11434' },
-  ],
-};
-
-describe('completionsTarget', () => {
-  it('posts to the served model’s endpoint as model-manager reports it, with the serving object’s name as the model id', () => {
-    expect(completionsTarget(loaded, 'qwen3-4b-instruct')).toEqual({
-      url: 'https://models.gazelle.example/model-serving/qwen3-4b-instruct/v1/chat/completions',
-      model: 'qwen3-4b-instruct',
-    });
-    expect(completionsTarget(loaded, 'Qwen/Qwen3-4B-Instruct-2507').model).toBe(
-      'qwen3-4b-instruct',
+        'gazelle.example',
+      ),
+    ).toBe(
+      'https://models.gazelle.example/model-serving/qwen3-4b-instruct/v1/chat/completions',
+    );
+    expect(
+      completionsUrl(
+        'https://Models.Gazelle.Example/x?y=1#z',
+        'gazelle.example',
+      ),
+    ).toBe('https://models.gazelle.example/x/v1/chat/completions');
+    expect(completionsUrl('https://gazelle.example/', 'gazelle.example')).toBe(
+      'https://gazelle.example/v1/chat/completions',
     );
   });
 
-  it('refuses a model that is not serving, and one without an endpoint yet', () => {
-    expect(() => completionsTarget(loaded, 'nope')).toThrow(NotFoundError);
+  it('refuses another host, a look-alike domain, plain http, a non-URL and an installation without a base domain', () => {
     expect(() =>
-      completionsTarget(
-        { loaded: [{ resource: 'pending-one', endpoint: '' }] },
-        'pending-one',
-      ),
-    ).toThrow(/no endpoint/);
-    expect(() => completionsTarget(undefined, 'x')).toThrow(NotFoundError);
+      completionsUrl('https://models.other.example/x', 'gazelle.example'),
+    ).toThrow(InputError);
+    expect(() =>
+      completionsUrl('https://notgazelle.example/x', 'gazelle.example'),
+    ).toThrow(/not under the installation's domain/);
+    expect(() =>
+      completionsUrl('http://models.gazelle.example/x', 'gazelle.example'),
+    ).toThrow(/https/);
+    expect(() => completionsUrl('not a url', 'gazelle.example')).toThrow(
+      /not a URL/,
+    );
+    expect(() =>
+      completionsUrl('https://models.gazelle.example/x', undefined),
+    ).toThrow(/no base domain/);
   });
 });
 
 describe('tryServedModel', () => {
+  const url =
+    'https://models.gazelle.example/model-serving/qwen3-4b-instruct/v1/chat/completions';
+
   it('sends one completion without a token and one as the person, and reports both', async () => {
     const calls: { url: string; headers: Record<string, string>; body: any }[] =
       [];
-    const fetchFn = jest.fn(async (url: any, init: any) => {
+    const fetchFn = jest.fn(async (target: any, init: any) => {
       const headers = init.headers as Record<string, string>;
-      calls.push({ url: String(url), headers, body: JSON.parse(init.body) });
+      calls.push({
+        url: String(target),
+        headers,
+        body: JSON.parse(init.body),
+      });
       if (!headers.Authorization) {
         return new Response('authentication failure: no bearer token found', {
           status: 401,
@@ -65,7 +69,7 @@ describe('tryServedModel', () => {
     }) as unknown as typeof fetch;
 
     const result = await tryServedModel({
-      loaded,
+      url,
       model: 'qwen3-4b-instruct',
       userToken: 'id-token',
       fetchFn,
@@ -75,9 +79,7 @@ describe('tryServedModel', () => {
     expect(calls[0].headers.Authorization).toBeUndefined();
     expect(calls[1].headers.Authorization).toBe('Bearer id-token');
     calls.forEach(call => {
-      expect(call.url).toBe(
-        'https://models.gazelle.example/model-serving/qwen3-4b-instruct/v1/chat/completions',
-      );
+      expect(call.url).toBe(url);
       expect(call.body).toEqual({
         model: 'qwen3-4b-instruct',
         messages: [{ role: 'user', content: TRY_PROMPT }],
@@ -85,6 +87,8 @@ describe('tryServedModel', () => {
         temperature: 0,
       });
     });
+    expect(result.url).toBe(url);
+    expect(result.model).toBe('qwen3-4b-instruct');
     expect(result.without).toEqual({
       status: 401,
       error: 'authentication failure: no bearer token found',
@@ -100,7 +104,7 @@ describe('tryServedModel', () => {
         new Response('token uses the unknown key "1b07"', { status: 401 }),
     ) as unknown as typeof fetch;
     const refused = await tryServedModel({
-      loaded,
+      url,
       model: 'qwen3-4b-instruct',
       userToken: 'stale',
       fetchFn: refusing,
@@ -112,7 +116,7 @@ describe('tryServedModel', () => {
       throw new Error('ECONNREFUSED');
     }) as unknown as typeof fetch;
     const unreachable = await tryServedModel({
-      loaded,
+      url,
       model: 'qwen3-4b-instruct',
       userToken: 't',
       fetchFn: dead,

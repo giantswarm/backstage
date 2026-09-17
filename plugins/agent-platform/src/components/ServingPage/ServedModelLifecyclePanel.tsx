@@ -9,6 +9,7 @@ import { useMutation } from '@tanstack/react-query';
 import { modelManagerApiRef, type TryServedModelResult } from '../../apis';
 import { formatSeconds } from '../../lib/lifecycle';
 import { modelLifecycleSteps, modelPhaseLabel } from '../../lib/modelLifecycle';
+import { tryModelIdOf } from '../../lib/modelManagerServe';
 import { LifecycleSteps } from '../LifecycleSteps';
 import { CopyEndpointButton } from './ServedModelsGroupHeader';
 import type { ServedModelRow } from './ServedModelsTable';
@@ -94,9 +95,10 @@ export function describeTry(result: TryServedModelResult): {
 
 /**
  * What the served model is ready with: its endpoint, the ModelConfig agents
- * use, and **Try it** — one chat completion sent by the portal's backend
- * without a token and as the signed-in person, both outcomes shown, so the
- * gateway's passthrough enforcement is seen, not assumed.
+ * use, and **Try it** — one chat completion for the model id the ModelConfig
+ * sends ({@link tryModelIdOf}), sent by the portal's backend without a token
+ * and as the signed-in person, both outcomes shown, so the gateway's
+ * passthrough enforcement is seen, not assumed.
  */
 function ReadyBlock({ row }: { row: ServedModelRow }) {
   const modelManagerApi = useApi(modelManagerApiRef);
@@ -108,8 +110,9 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
       : undefined);
   const attempt = useMutation({
     mutationFn: () =>
-      modelManagerApi.tryModel(row.installation, row.name, {
-        backend: row.backend,
+      modelManagerApi.tryModel(row.installation, {
+        model: tryModelIdOf(row),
+        url: endpoint!,
       }),
   });
   const tried = attempt.data ? describeTry(attempt.data) : undefined;

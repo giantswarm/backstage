@@ -423,6 +423,13 @@ export type ServedModel = {
     managed?: boolean;
     ready?: boolean;
     message?: string;
+    /**
+     * `spec.model` — the model id the ModelConfig sends the provider, which on
+     * a vLLM predictor is the name the model is served under (the Hugging
+     * Face repository, not the serving object's name). What a try of the
+     * served model sends too.
+     */
+    model?: string;
   };
   /**
    * The reference the operating source (model-manager) knows this model by

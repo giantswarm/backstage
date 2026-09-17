@@ -23,9 +23,7 @@ test('the page offers the two scopes and lands on All teams for a lab user', asy
     'aria-selected',
     'true',
   );
-  await expect(
-    admin.getByText(/The catalog lists no team/),
-  ).toBeVisible();
+  await expect(admin.getByText(/The catalog lists no team/)).toBeVisible();
 });
 
 test('a person without a GitHub grant is guided to sign in, one with a grant sees the queue', async ({

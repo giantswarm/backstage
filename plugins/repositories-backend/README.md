@@ -18,12 +18,11 @@ team-file pull request under that person's name.
 | `POST /repositories/:name/transfer`  | `transfer_repository`                                |
 | `POST /repositories/:name/lifecycle` | `set_lifecycle`                                      |
 | `POST /repositories/:name/reconcile` | `reconcile_repository`                               |
-| `POST /repositories/:name/decide`    | `decide_repository`                                  |
 
 The filters are the tool's own arguments (`scope`, `search`, `renovate`,
-`team`, `visibility`, `fork`, `lifecycle`, `inactiveDays`, `minOrphanScore`,
-`decision`, `finding`, `undeclared`, `limit`, `stalePeriodDays`), type-checked
-and handed on unchanged; the answers are the tools' answers. Every request
+`team`, `visibility`, `fork`, `lifecycle`, `archived`, `inactiveDays`,
+`finding`, `limit`), type-checked and handed on unchanged; the answers are the
+tools' answers. Every request
 carries the user's main login (Dex) ID token in the
 `backstage-muster-authorization` header; muster forwards it to the manager,
 which obtains the person's GitHub grant from muster's token broker. A session
@@ -41,7 +40,7 @@ the page shows it verbatim. A broken hop keeps its 5xx.
 ```yaml
 repositories:
   muster:
-    installation: gazelle # a name in muster.installations
+    installation: <installation> # a name in muster.installations
     server: giantswarm-repo-manager
 ```
 

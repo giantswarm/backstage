@@ -180,6 +180,8 @@ describe('toServedModelFromManager', () => {
         namespace: 'kagent',
         managed: false,
         ready: true,
+        // `spec.model`: what the ModelConfig sends the provider.
+        model: 'qwen3-14b',
       },
       operable: true,
     });

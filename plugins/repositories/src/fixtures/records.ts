@@ -1,19 +1,23 @@
 import {
   Committed,
+  Created,
   Dispatch,
   InventoryRecord,
   Plan,
   PullRequest,
   RepositoryListing,
   RepositoryRow,
+  SweepSummary,
   Validation,
 } from '../apis';
 
 /**
  * Inventory records in the shape giantswarm-repo-manager stores them
- * (`docs/inventory-record.md`): a declared repository whose set-up converged,
- * one being created whose set-up has not, and an undeclared one. The tests
- * render the page over these; the Playwright spec stages the same rows.
+ * (`docs/inventory-record.md`), over two teams: a declared repository whose
+ * set-up converged, one being created whose set-up has not, an undeclared
+ * one, a deprecated one, one declared archived, and an undeclared fork that
+ * GitHub archived. The tests render the page over these through
+ * `inMemoryApi`; the dev app shows the same rows.
  */
 
 export const presentService: InventoryRecord = {
@@ -143,7 +147,6 @@ export const presentService: InventoryRecord = {
       timestamp: '2026-09-10T22:00:09Z',
     },
   },
-  orphan: { score: 0, reasons: [], stalePeriod: '4320h0m0s' },
   findings: [
     {
       kind: 'default-icon',
@@ -216,16 +219,6 @@ export const newService: InventoryRecord = {
     },
     checkedAt: '2026-09-16T22:00:02Z',
   },
-  orphan: {
-    score: 50,
-    reasons: [
-      'empty repository',
-      'Renovate not configured',
-      'no release',
-      'no CI',
-    ],
-    stalePeriod: '4320h0m0s',
-  },
   findings: [
     {
       kind: 'renovate-missing',
@@ -267,17 +260,6 @@ export const strayTool: InventoryRecord = {
   catalog: { present: false },
   mapping: { present: false },
   setup: { checkError: 'no declaration: the set-up checks need a team' },
-  orphan: {
-    score: 100,
-    reasons: [
-      'no declaration',
-      'no commit by a person within the stale period',
-      'Renovate not configured',
-      'no release',
-      'no CI',
-    ],
-    stalePeriod: '4320h0m0s',
-  },
   findings: [
     {
       kind: 'undeclared-on-github',
@@ -291,10 +273,206 @@ export const strayTool: InventoryRecord = {
   age: '1h5m3s',
 };
 
+/** Another team's repository, declared deprecated; Renovate configured but idle. */
+export const legacyTool: InventoryRecord = {
+  repository: 'giantswarm/legacy-tool',
+  name: 'legacy-tool',
+  declaration: {
+    team: 'team-planeteers',
+    file: 'repositories/team-planeteers.yaml',
+    componentType: 'tool',
+    lifecycle: 'deprecated',
+    language: 'go',
+    flavours: ['cli'],
+    entry:
+      '- name: legacy-tool\n  componentType: tool\n  lifecycle: deprecated\n',
+    accepted: true,
+  },
+  reality: {
+    url: 'https://github.com/giantswarm/legacy-tool',
+    description: 'Superseded by present-service',
+    visibility: 'public',
+    defaultBranch: 'main',
+    isArchived: false,
+    isFork: false,
+    isTemplate: false,
+    isEmpty: false,
+    createdAt: '2020-06-01T00:00:00Z',
+    pushedAt: '2025-11-02T09:00:00Z',
+    language: 'Go',
+    lastCommit: {
+      date: '2025-11-02T09:00:00Z',
+      author: 'carol',
+      message: 'Point at present-service',
+    },
+    lastPersonCommit: {
+      date: '2025-11-02T09:00:00Z',
+      author: 'carol',
+      message: 'Point at present-service',
+    },
+    historySampled: 30,
+    botCommits: 4,
+    openPullRequests: { total: 3, people: 0, bots: 3, renovate: 3 },
+    openIssues: 0,
+    latestRelease: { tag: 'v0.9.0', publishedAt: '2025-06-01T12:00:00Z' },
+    codeownersTeams: ['team-planeteers'],
+    has: { renovate: true, circleci: true, readme: true, codeowners: true },
+  },
+  circleci: { followed: true, setupWorkflows: false },
+  renovate: {
+    configured: true,
+    path: 'renovate.json5',
+    enabled: true,
+    preset: true,
+    lastPullRequest: {
+      number: 88,
+      title: 'chore(deps): update module',
+      author: 'renovate',
+      createdAt: '2025-12-01T07:00:00Z',
+    },
+  },
+  catalog: { present: true },
+  mapping: { present: true, team: 'planeteers' },
+  setup: {
+    checks: {
+      repository: 'giantswarm/legacy-tool',
+      declared: 'legacy-tool',
+      team: 'team-planeteers',
+      mode: 'check',
+      added: false,
+      startedAt: '2026-09-16T22:00:00Z',
+      finishedAt: '2026-09-16T22:00:03Z',
+      steps: [
+        { step: 'settings', verdict: 'ok' },
+        { step: 'protection', verdict: 'ok' },
+        {
+          step: 'lifecycle',
+          verdict: 'ok',
+          summary: 'deprecated: description says so, no new issues',
+        },
+        { step: 'catalog', verdict: 'ok' },
+      ],
+      converged: true,
+    },
+    checkedAt: '2026-09-16T22:00:03Z',
+  },
+  findings: [
+    {
+      kind: 'renovate-inactive',
+      message: 'the last Renovate pull request is from 2025-12-01',
+      fix: 'merge or close the open Renovate pull requests, or archive the repository',
+      source: 'inventory',
+    },
+  ],
+  refreshedAt: '2026-09-16T22:00:03Z',
+  source: 'sweep',
+  age: '5m4s',
+};
+
+/** Declared archived; GitHub agrees. */
+export const oldOperator: InventoryRecord = {
+  repository: 'giantswarm/old-operator',
+  name: 'old-operator',
+  declaration: {
+    team: 'team-planeteers',
+    file: 'repositories/team-planeteers.yaml',
+    componentType: 'service',
+    lifecycle: 'archived',
+    entry:
+      '- name: old-operator\n  componentType: service\n  lifecycle: archived\n',
+    accepted: true,
+  },
+  reality: {
+    url: 'https://github.com/giantswarm/old-operator',
+    visibility: 'public',
+    defaultBranch: 'master',
+    isArchived: true,
+    isFork: false,
+    isTemplate: false,
+    isEmpty: false,
+    createdAt: '2018-02-01T00:00:00Z',
+    pushedAt: '2022-01-10T10:00:00Z',
+    language: 'Go',
+    lastPersonCommit: {
+      date: '2022-01-10T10:00:00Z',
+      author: 'dave',
+      message: 'Archive',
+    },
+    historySampled: 30,
+    botCommits: 0,
+    openPullRequests: { total: 0, people: 0, bots: 0, renovate: 0 },
+    openIssues: 0,
+    has: { readme: true },
+  },
+  renovate: { configured: false, enabled: false, preset: false },
+  catalog: { present: false },
+  mapping: { present: true, team: 'planeteers' },
+  setup: {
+    checks: {
+      repository: 'giantswarm/old-operator',
+      declared: 'old-operator',
+      team: 'team-planeteers',
+      mode: 'check',
+      added: false,
+      startedAt: '2026-09-16T22:00:00Z',
+      finishedAt: '2026-09-16T22:00:01Z',
+      steps: [
+        { step: 'lifecycle', verdict: 'ok', summary: 'archived on GitHub' },
+        { step: 'settings', verdict: 'skipped', summary: 'archived' },
+      ],
+      converged: true,
+    },
+    checkedAt: '2026-09-16T22:00:01Z',
+  },
+  findings: [],
+  refreshedAt: '2026-09-16T22:00:01Z',
+  source: 'sweep',
+  age: '5m6s',
+};
+
+/** Declared by nobody, archived on GitHub, a fork: the lifecycle filter counts it archived all the same. */
+export const forgottenFork: InventoryRecord = {
+  repository: 'giantswarm/forgotten-fork',
+  name: 'forgotten-fork',
+  declaration: null,
+  reality: {
+    url: 'https://github.com/giantswarm/forgotten-fork',
+    visibility: 'private',
+    isArchived: true,
+    isFork: true,
+    isTemplate: false,
+    isEmpty: false,
+    createdAt: '2019-09-01T00:00:00Z',
+    historySampled: 30,
+    botCommits: 0,
+    openPullRequests: { total: 0, people: 0, bots: 0, renovate: 0 },
+    openIssues: 2,
+    has: {},
+  },
+  renovate: { configured: false, enabled: false, preset: false },
+  catalog: { present: false },
+  mapping: { present: false },
+  setup: { checkError: 'no declaration: the set-up checks need a team' },
+  findings: [
+    {
+      kind: 'undeclared-on-github',
+      message: 'on GitHub without a declaration',
+      fix: 'declare it in a team file or archive it',
+      source: 'inventory',
+    },
+  ],
+  refreshedAt: '2026-09-16T21:00:00Z',
+  source: 'sweep',
+  age: '1h5m4s',
+};
+
 export const records: Record<string, InventoryRecord> = {
   'giantswarm/present-service': presentService,
   'giantswarm/new-service': newService,
   'giantswarm/stray-tool': strayTool,
+  'giantswarm/legacy-tool': legacyTool,
+  'giantswarm/old-operator': oldOperator,
+  'giantswarm/forgotten-fork': forgottenFork,
 };
 
 /** The `list_repositories` row of a record, as the manager derives it. */
@@ -306,8 +484,9 @@ export function rowOf(record: InventoryRecord): RepositoryRow {
     visibility: record.reality?.visibility,
     archived: record.reality?.isArchived ?? false,
     gone: record.reality === null || undefined,
+    fork: record.reality?.isFork,
+    renovate: record.renovate.configured,
     lastPersonCommit: record.reality?.lastPersonCommit?.date,
-    orphan: record.orphan,
     findings: record.findings.map(finding => finding.kind),
     setup: {
       converged: record.setup.checks?.converged,
@@ -315,27 +494,33 @@ export function rowOf(record: InventoryRecord): RepositoryRow {
       lastRun: record.setup.lastRun?.timestamp,
       error: record.setup.checkError,
     },
-    decision: record.decision?.verdict,
     age: record.age ?? '',
   };
 }
 
-export function listingOf(rows: RepositoryRow[]): RepositoryListing {
+/** The last sweep over the fixture records, as `list_repositories` reports it. */
+export const sweep: SweepSummary = {
+  startedAt: '2026-09-16T21:00:00Z',
+  finishedAt: '2026-09-16T21:04:00Z',
+  duration: '4m0s',
+  repositories: 6,
+  declared: 4,
+  undeclared: 2,
+  gone: 0,
+  archived: 2,
+  engineChecks: 4,
+  removed: 0,
+};
+
+/** A listing of these rows out of an inventory of `total` (default: the rows). */
+export function listingOf(
+  rows: RepositoryRow[],
+  total = rows.length,
+): RepositoryListing {
   return {
-    sweep: {
-      startedAt: '2026-09-16T21:00:00Z',
-      finishedAt: '2026-09-16T21:04:00Z',
-      duration: '4m0s',
-      repositories: 3,
-      declared: 2,
-      undeclared: 1,
-      gone: 0,
-      archived: 0,
-      engineChecks: 2,
-      removed: 0,
-    },
+    sweep,
     sweepRunning: false,
-    total: 3,
+    total,
     matched: rows.length,
     shown: rows.length,
     repositories: rows,
@@ -368,6 +553,87 @@ export const acceptedValidation: Validation = {
   authorTeams: ['team-bumblebee'],
   teamsSource: 'github',
   machineApproved: true,
+  creation: {
+    repositories: [
+      {
+        name: 'shiny-service',
+        steps: [
+          {
+            step: 'create',
+            verdict: 'drift',
+            changes: ['create giantswarm/shiny-service (private)'],
+          },
+          {
+            step: 'scaffold',
+            verdict: 'drift',
+            changes: [
+              'render the scaffold and push it as the first commit on main',
+            ],
+          },
+        ],
+      },
+    ],
+    pullRequest: {
+      repository: 'giantswarm/github',
+      branch: 'reposetup/create-shiny-service',
+      title: 'feat(repositories): declare shiny-service for team-bumblebee',
+      files: ['repositories/team-bumblebee.yaml'],
+      body: '## Problem\n\n…',
+      as: 'alice',
+    },
+  },
+};
+
+/**
+ * A configuration repository with the CircleCI generator on: the creation
+ * rules refuse `gen.ci.generate` (nothing to build) and say what to set.
+ */
+export const ciRefusedValidation: Validation = {
+  ...acceptedValidation,
+  entries: [
+    {
+      name: 'shiny-config',
+      rendered:
+        '- name: shiny-config\n  componentType: configuration\n  gen:\n    language: generic\n    flavours:\n      - generic\n    ci:\n      generate: true\n',
+      template: 'minimal',
+      nameCheck: { verdict: 'free' },
+      problems: [
+        {
+          field: 'gen.ci.generate',
+          message:
+            'no CircleCI job for language generic without the app flavour or gen.ci.image.dockerfile; set it to false',
+        },
+      ],
+      accepted: false,
+    },
+  ],
+  accepted: false,
+  machineApproved: false,
+  creation: undefined,
+  findings: [
+    {
+      kind: 'gen-circleci-refused',
+      message:
+        'gen.ci.generate: no CircleCI job for language generic without the app flavour or gen.ci.image.dockerfile; set it to false',
+      fix: 'edit gen.ci.generate of the entry "shiny-config" in repositories/team-bumblebee.yaml: no CircleCI job for language generic without the app flavour or gen.ci.image.dockerfile; set it to false',
+    },
+  ],
+};
+
+/** The same configuration repository with the generator off: accepted. */
+export const configurationValidation: Validation = {
+  ...acceptedValidation,
+  entries: [
+    {
+      name: 'shiny-config',
+      rendered:
+        '- name: shiny-config\n  componentType: configuration\n  gen:\n    language: generic\n    flavours:\n      - generic\n    ci:\n      generate: false\n',
+      template: 'minimal',
+      nameCheck: { verdict: 'free' },
+      accepted: true,
+    },
+  ],
+  creation: undefined,
 };
 
 /** The same declaration by a person outside the team: the team-review notice stands. */
@@ -427,7 +693,30 @@ export const openedPullRequest: PullRequest = {
   author: 'alice',
 };
 
-export const committedCreate: Committed = { pullRequest: openedPullRequest };
+/**
+ * `create_repository` in `mode: commit`: the repository and its scaffold as
+ * the person, then the declaration pull request.
+ */
+export const createdRepository: Created = {
+  repositories: [
+    {
+      name: 'shiny-service',
+      repository: 'https://github.com/giantswarm/shiny-service',
+      created: true,
+      scaffoldCommit: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+      steps: [
+        { step: 'create', verdict: 'repaired', summary: 'created (private)' },
+        {
+          step: 'scaffold',
+          verdict: 'repaired',
+          summary: 'pushed as the first commit on main',
+        },
+      ],
+    },
+  ],
+  pullRequest: openedPullRequest,
+  firstRelease: "v0.1.0 follows from the scaffold's auto-release",
+};
 
 /** The plan of a write on present-service, filled in per action by the tests. */
 export function planOf(overrides: Partial<Plan> = {}): Plan {

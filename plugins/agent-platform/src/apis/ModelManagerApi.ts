@@ -11,24 +11,22 @@ import type {
 } from '../lib/modelManager';
 
 /**
- * Header carrying the user's per-installation Dex OIDC ID token for
- * model-manager, read by the agent-platform-backend pass-through and promoted
- * to `Authorization: Bearer` toward the model-manager API — where the
- * agentgateway route's JWT policy, not model-manager, decides whether it is
- * accepted.
+ * Header carrying the person's per-installation Dex OIDC ID token for a
+ * **Try it** on a served model: the portal's backend sends it as
+ * `Authorization: Bearer` toward the served model's endpoint (the models
+ * Gateway of the installation) on the second of its two completions, so the
+ * gateway's own enforcement is what the person sees. Nothing else in this
+ * plugin reaches the backend with it: every model-manager call goes through
+ * muster as the person.
  *
- * A sibling of `KAGENT_AUTH_HEADER`, not a reuse: one header per upstream.
- *
- * Must match MODEL_MANAGER_AUTH_HEADER in plugins/agent-platform-backend.
+ * Must match SERVED_MODEL_AUTH_HEADER in plugins/agent-platform-backend.
  */
-export const MODEL_MANAGER_AUTH_HEADER =
-  'backstage-model-manager-authorization';
+export const SERVED_MODEL_AUTH_HEADER = 'backstage-served-model-authorization';
 
 /**
- * The backend's answer to a try of a served model (`POST
- * /model-manager/models/try`): the URL it posted to, the model id it sent,
- * and the two calls' outcomes. Must match `TryServedModelResult` in
- * plugins/agent-platform-backend.
+ * The backend's answer to a try of a served model (`POST /served-models/try`):
+ * the URL it posted to, the model id it sent, and the two calls' outcomes.
+ * Must match `TryServedModelResult` in plugins/agent-platform-backend.
  */
 export type TryServedModelResult = {
   url: string;
@@ -38,16 +36,20 @@ export type TryServedModelResult = {
 };
 
 /**
- * The model-manager REST API (giantswarm/model-manager), per installation,
- * through the agent-platform-backend proxy.
+ * model-manager (giantswarm/model-manager) per installation, through the
+ * installation's muster as the signed-in person: every method is one
+ * `x_model-manager_<tool>` call (the tools answer the JSON their REST routes
+ * do), except {@link ModelManagerApi.tryModel}, which the portal's backend
+ * carries out because the browser cannot post to the models Gateway itself.
  *
  * Errors carry the names the plugin's QueryClientProvider and serving source
- * key on: `NotFoundError` (the installation has no model-manager configured,
- * or the model/job is gone), `UnauthorizedError`, `ForbiddenError` (also how
- * an unsupported capability arrives — the backend never offered it),
- * `ConflictError`, `PreconditionFailedError` (a fit check refused the model —
- * model-manager's `412 does_not_fit`, with the numbers in the message),
- * `ServiceUnavailableError` (model-manager or its backend is unreachable).
+ * key on, mapped from model-manager's status word (`MODEL_MANAGER_ERROR_NAMES`):
+ * `NotFoundError` (the model or job is gone), `ForbiddenError` (an unsupported
+ * capability — the backend never offered it), `ConflictError`,
+ * `PreconditionFailedError` (a fit check refused the model — model-manager's
+ * `does_not_fit`, with the numbers in the message), `ServiceUnavailableError`
+ * (the backend behind model-manager is unreachable); muster's own answers keep
+ * theirs (`UnauthorizedError`, `ModelManagerNotConnectedError`).
  */
 /**
  * The backend a read is narrowed to, or a mutation addressed to, when the
@@ -60,30 +62,27 @@ export type TryServedModelResult = {
 export type BackendScope = { backend?: string };
 
 export interface ModelManagerApi {
-  /** Installations the backend can proxy model-manager for. Names only. */
-  listInstallations(): Promise<string[]>;
-
   /**
-   * `GET /api/v1/backend` — identity, health and capability flags of the
-   * installation's default backend (`backends` names the others, 0.17 on).
+   * `get_backend` — identity, health and capability flags of the
+   * installation's default backend (`backends` names the others).
    */
   getBackend(installation: string): Promise<ModelManagerBackend>;
 
   /**
-   * `GET /api/v1/backends` — every backend the installation's model-manager
-   * runs, in order (the first is the default backend), each with its own
-   * flags; empty when none is registered yet. On a model-manager before 0.17
-   * (no such route) the one descriptor of `GET /api/v1/backend`.
+   * `list_backends` — every backend the installation's model-manager runs, in
+   * order (the first is the default backend), each with its own flags. Empty
+   * on a model-manager with no backend registered yet: that is its shipped
+   * state, not a fault.
    */
   listBackends(installation: string): Promise<ModelManagerBackend[]>;
 
-  /** `GET /api/v1/models` — the inventory, with loaded state and ModelConfig; every model names its backend. */
+  /** `list_models` — the inventory, with loaded state and ModelConfig; every model names its backend. */
   listModels(
     installation: string,
     scope?: BackendScope,
   ): Promise<ModelManagerModel[]>;
 
-  /** `GET /api/v1/loaded` — what is in memory / serving right now. */
+  /** `list_loaded_models` — what is in memory / serving right now. */
   listLoaded(
     installation: string,
     scope?: BackendScope,
@@ -110,10 +109,11 @@ export interface ModelManagerApi {
 
   /**
    * Load into memory / start serving. Resolves once the backend has the
-   * model, which for a multi-GiB model takes a while — the backend proxy
-   * gives it its own timeout. On KServe, `preset` picks the serving preset
-   * the InferenceService is composed from (`model` may then be left out) and
-   * `node` pins the predictor.
+   * model — at once on KServe, where model-manager composes the serving
+   * object and answers; on a host backend once the weights are in memory,
+   * within the MCPServer's tool timeout. On KServe, `preset` picks the
+   * serving preset the object is composed from (`model` may then be left
+   * out) and `node` pins the predictor.
    */
   loadModel(
     installation: string,
@@ -164,15 +164,15 @@ export interface ModelManagerApi {
 
   /**
    * Try a served model: one short chat completion against its endpoint as
-   * model-manager reports it, sent by the portal's backend twice — without a
-   * token and as the signed-in person — so the gateway's enforcement of the
-   * ModelConfig's passthrough shows (401 without, 200 with) along with the
-   * model's answer. `model` is the serving object's name (the row's).
+   * model-manager reports it (`url`, the row's), sent by the portal's backend
+   * twice — without a token and as the signed-in person — so the gateway's
+   * enforcement of the ModelConfig's passthrough shows (401 without, 200
+   * with) along with the model's answer. `model` is the serving object's
+   * name (the row's), the model id the completion is sent for.
    */
   tryModel(
     installation: string,
-    model: string,
-    scope?: BackendScope,
+    request: { model: string; url: string },
   ): Promise<TryServedModelResult>;
 
   /**

@@ -7,6 +7,7 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
+import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
 import {
   modelConfigRefSchema,
@@ -30,11 +31,16 @@ import {
   type ModelManagerSearchResult,
 } from '../lib/modelManager';
 import {
-  MODEL_MANAGER_AUTH_HEADER,
+  MODEL_MANAGER_TOOLS,
+  type ModelManagerTool,
+} from '../lib/modelManagerBackends';
+import {
+  SERVED_MODEL_AUTH_HEADER,
   type BackendScope,
-  ModelManagerApi,
+  type ModelManagerApi,
   type TryServedModelResult,
 } from './ModelManagerApi';
+import { callModelManagerTool } from './ModelManagerToolsClient';
 
 export const modelManagerApiRef = createApiRef<ModelManagerApi>({
   id: 'plugin.agent-platform.model-manager',
@@ -51,62 +57,60 @@ function upstreamError(message: string): Error {
   return error;
 }
 
-/** The `?backend=` of a scoped read, or nothing. */
-function scopeQuery(scope?: BackendScope): Record<string, string> | undefined {
-  return scope?.backend ? { backend: scope.backend } : undefined;
+/** The `backend` argument of a scoped call, or nothing — every tool takes it as optional. */
+function scopeArgs(scope?: BackendScope): Record<string, unknown> {
+  return scope?.backend ? { backend: scope.backend } : {};
 }
 
-/**
- * Encode a model reference for a path segment of the proxy: the whole
- * reference in one segment (`/` becomes `%2F`), which Express decodes back
- * into the wildcard's parts. Slashes must not survive encoding here, or
- * `hf.co/org/repo` would read as three segments of the proxy's own route.
- */
-function encodeModelRef(ref: string): string {
-  return encodeURIComponent(ref);
-}
+/** The route of the portal's backend that carries out a try of a served model. */
+export const SERVED_MODEL_TRY_PATH = '/served-models/try';
 
 /**
- * Client for the model-manager REST API, via the agent-platform-backend
- * pass-through.
+ * model-manager per installation, over the installation's muster as the
+ * signed-in person — one `x_model-manager_<tool>` call per method through the
+ * muster plugin's client, which mints the person's token for that muster;
+ * muster runs the tool with the person's own grant for model-manager. No
+ * model-manager URL, no REST client, no proxy route: the portal knows
+ * model-manager only as the MCPServer its muster registers, which is also
+ * what says whether an installation has one (`useModelManagerInstallations`).
  *
- * Every call mints the target installation's Dex ID token and forwards it in
- * `MODEL_MANAGER_AUTH_HEADER` (a mint failure fails just that installation,
- * which is what lets the fleet fan-out degrade one installation at a time),
- * then parses the answer with the forgiving schemas in `lib/modelManager.ts`.
+ * The answers are parsed with the forgiving schemas in `lib/modelManager.ts`
+ * (the tools answer the JSON their REST routes do). The one exception is
+ * {@link tryModel}: two completions against the served model's endpoint that
+ * the portal's backend posts — the browser cannot reach the models Gateway
+ * cross-origin — with the person's installation token in its own header.
  */
 export class ModelManagerApiClient implements ModelManagerApi {
+  private readonly musterApi: MusterApi;
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
   private readonly kubernetesApi: KubernetesApi;
   private readonly kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
 
   constructor(options: {
+    musterApi: MusterApi;
     discoveryApi: DiscoveryApi;
     fetchApi: FetchApi;
     kubernetesApi: KubernetesApi;
     kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
   }) {
+    this.musterApi = options.musterApi;
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
     this.kubernetesApi = options.kubernetesApi;
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
   }
 
-  async listInstallations(): Promise<string[]> {
-    const body = await this.request<{ installations?: { name?: string }[] }>(
-      'GET',
-      '/model-manager/installations',
-    );
-    return (body?.installations ?? [])
-      .map(installation => installation.name)
-      .filter((name): name is string => Boolean(name));
+  private call<T = unknown>(
+    installation: string,
+    tool: ModelManagerTool,
+    args: Record<string, unknown> = {},
+  ): Promise<T> {
+    return callModelManagerTool<T>(this.musterApi, installation, tool, args);
   }
 
   async getBackend(installation: string): Promise<ModelManagerBackend> {
-    const body = await this.request('GET', '/model-manager/backend', {
-      installation,
-    });
+    const body = await this.call(installation, MODEL_MANAGER_TOOLS.getBackend);
     const parsed = modelManagerBackendSchema.safeParse(body);
     if (!parsed.success) {
       throw upstreamError(
@@ -117,24 +121,20 @@ export class ModelManagerApiClient implements ModelManagerApi {
   }
 
   async listBackends(installation: string): Promise<ModelManagerBackend[]> {
-    let body: unknown;
-    try {
-      body = await this.request('GET', '/model-manager/backends', {
-        installation,
-      });
-    } catch (error) {
-      // A model-manager before 0.17 has no /backends: it runs one backend,
-      // described by /backend.
-      if ((error as Error).name === 'NotFoundError') {
-        return [await this.getBackend(installation)];
-      }
-      throw error;
+    const body = await this.call(
+      installation,
+      MODEL_MANAGER_TOOLS.listBackends,
+    );
+    if (
+      body === null ||
+      typeof body !== 'object' ||
+      !('backends' in (body as Record<string, unknown>))
+    ) {
+      throw upstreamError(
+        `model-manager on ${installation} answered a backend list this portal cannot read.`,
+      );
     }
-    // An empty list is an answer, not a failure: a model-manager whose
-    // backends are all registered at runtime has none until someone adds
-    // one (and none again once the last is removed). Throwing here would
-    // leave the readers on their last successful answer — the removed
-    // backend — until the read errors out.
+    // `null` for none registered yet: model-manager's shipped state.
     return parseModelManagerList(body, 'backends', modelManagerBackendSchema);
   }
 
@@ -142,10 +142,11 @@ export class ModelManagerApiClient implements ModelManagerApi {
     installation: string,
     scope?: BackendScope,
   ): Promise<ModelManagerModel[]> {
-    const body = await this.request('GET', '/model-manager/models', {
+    const body = await this.call(
       installation,
-      query: scopeQuery(scope),
-    });
+      MODEL_MANAGER_TOOLS.listModels,
+      scopeArgs(scope),
+    );
     return parseModelManagerList(body, 'models', modelManagerModelSchema);
   }
 
@@ -153,10 +154,11 @@ export class ModelManagerApiClient implements ModelManagerApi {
     installation: string,
     scope?: BackendScope,
   ): Promise<ModelManagerLoadedModel[]> {
-    const body = await this.request('GET', '/model-manager/loaded', {
+    const body = await this.call(
       installation,
-      query: scopeQuery(scope),
-    });
+      MODEL_MANAGER_TOOLS.listLoadedModels,
+      scopeArgs(scope),
+    );
     return parseModelManagerList(body, 'loaded', modelManagerLoadedModelSchema);
   }
 
@@ -169,10 +171,10 @@ export class ModelManagerApiClient implements ModelManagerApi {
       node?: string;
     } & BackendScope,
   ): Promise<{ job: ModelManagerJob; created: boolean }> {
-    const body = await this.request<{ job?: unknown; created?: unknown }>(
-      'POST',
-      '/model-manager/models/pull',
-      { installation, body: request },
+    const body = await this.call<{ job?: unknown; created?: unknown }>(
+      installation,
+      MODEL_MANAGER_TOOLS.pullModel,
+      compact(request),
     );
     const job = modelManagerJobSchema.safeParse(body?.job);
     if (!job.success) {
@@ -192,10 +194,11 @@ export class ModelManagerApiClient implements ModelManagerApi {
       node?: string;
     } & BackendScope,
   ): Promise<ModelManagerModel> {
-    const body = await this.request('POST', '/model-manager/models/load', {
+    const body = await this.call(
       installation,
-      body: request,
-    });
+      MODEL_MANAGER_TOOLS.loadModel,
+      compact(request),
+    );
     const parsed = modelManagerModelSchema.safeParse(body);
     if (!parsed.success) {
       throw upstreamError(
@@ -209,10 +212,11 @@ export class ModelManagerApiClient implements ModelManagerApi {
     installation: string,
     request: { model?: string; preset?: string; node?: string } & BackendScope,
   ): Promise<ModelManagerFitResult> {
-    const body = await this.request('POST', '/model-manager/models/fit-check', {
+    const body = await this.call(
       installation,
-      body: request,
-    });
+      MODEL_MANAGER_TOOLS.checkFit,
+      compact(request),
+    );
     const parsed = modelManagerFitResultSchema.safeParse(body);
     if (!parsed.success) {
       throw upstreamError(
@@ -226,10 +230,11 @@ export class ModelManagerApiClient implements ModelManagerApi {
     installation: string,
     scope?: BackendScope,
   ): Promise<ModelManagerPreset[]> {
-    const body = await this.request('GET', '/model-manager/presets', {
+    const body = await this.call(
       installation,
-      query: scopeQuery(scope),
-    });
+      MODEL_MANAGER_TOOLS.listPresets,
+      scopeArgs(scope),
+    );
     return parseModelManagerList(body, 'presets', modelManagerPresetSchema);
   }
 
@@ -239,14 +244,15 @@ export class ModelManagerApiClient implements ModelManagerApi {
     limit?: number,
     scope?: BackendScope,
   ): Promise<ModelManagerSearchResult[]> {
-    const body = await this.request('GET', '/model-manager/search', {
+    const body = await this.call(
       installation,
-      query: {
-        q: query,
-        ...(limit !== undefined && { limit: String(limit) }),
-        ...scopeQuery(scope),
+      MODEL_MANAGER_TOOLS.searchModels,
+      {
+        query,
+        ...(limit !== undefined && { limit }),
+        ...scopeArgs(scope),
       },
-    });
+    );
     return parseModelManagerList(
       body,
       'results',
@@ -258,10 +264,11 @@ export class ModelManagerApiClient implements ModelManagerApi {
     installation: string,
     scope?: BackendScope,
   ): Promise<ModelManagerNode[]> {
-    const body = await this.request('GET', '/model-manager/nodes', {
+    const body = await this.call(
       installation,
-      query: scopeQuery(scope),
-    });
+      MODEL_MANAGER_TOOLS.listNodes,
+      scopeArgs(scope),
+    );
     return parseModelManagerList(body, 'nodes', modelManagerNodeSchema);
   }
 
@@ -270,25 +277,47 @@ export class ModelManagerApiClient implements ModelManagerApi {
     model: string,
     scope?: BackendScope,
   ): Promise<void> {
-    await this.request('POST', '/model-manager/models/unload', {
-      installation,
-      body: { model, ...scopeQuery(scope) },
+    await this.call(installation, MODEL_MANAGER_TOOLS.unloadModel, {
+      model,
+      ...scopeArgs(scope),
     });
   }
 
   async tryModel(
     installation: string,
-    model: string,
-    scope?: BackendScope,
+    request: { model: string; url: string },
   ): Promise<TryServedModelResult> {
-    const body = await this.request<TryServedModelResult>(
-      'POST',
-      '/model-manager/models/try',
-      { installation, body: { model, ...scopeQuery(scope) } },
+    const baseUrl = await this.discoveryApi.getBaseUrl('agent-platform');
+    const token = await getInstallationOidcToken(
+      this.kubernetesApi,
+      this.kubernetesAuthProvidersApi,
+      installation,
     );
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}${SERVED_MODEL_TRY_PATH}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [SERVED_MODEL_AUTH_HEADER]: token,
+        },
+        body: JSON.stringify({ installation, ...request }),
+      },
+    );
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as {
+        error?: { message?: string };
+      };
+      throw new Error(
+        errorData?.error?.message ??
+          `The portal's backend did not answer the try of ${request.model} on ${installation} (status ${response.status}).`,
+      );
+    }
+    const body = (await response.json().catch(() => undefined)) as
+      TryServedModelResult | undefined;
     if (!body || typeof body.with?.status !== 'number') {
       throw upstreamError(
-        `The portal's backend did not answer the try of ${model} on ${installation}.`,
+        `The portal's backend did not answer the try of ${request.model} on ${installation}.`,
       );
     }
     return body;
@@ -299,15 +328,11 @@ export class ModelManagerApiClient implements ModelManagerApi {
     model: string,
     options: { unwire?: boolean } & BackendScope = {},
   ): Promise<void> {
-    const query: Record<string, string> = {
-      ...(options.unwire === false && { unwire: 'false' }),
-      ...scopeQuery(options),
-    };
-    await this.request(
-      'DELETE',
-      `/model-manager/models/${encodeModelRef(model)}`,
-      { installation, query: Object.keys(query).length ? query : undefined },
-    );
+    await this.call(installation, MODEL_MANAGER_TOOLS.deleteModel, {
+      model,
+      ...(options.unwire === false && { unwire: false }),
+      ...scopeArgs(options),
+    });
   }
 
   async wireModel(
@@ -315,10 +340,10 @@ export class ModelManagerApiClient implements ModelManagerApi {
     model: string,
     scope?: BackendScope,
   ): Promise<ModelConfigRef | undefined> {
-    const body = await this.request<{ modelConfig?: unknown }>(
-      'POST',
-      '/model-manager/models/wire',
-      { installation, body: { model, ...scopeQuery(scope) } },
+    const body = await this.call<{ modelConfig?: unknown }>(
+      installation,
+      MODEL_MANAGER_TOOLS.wireModel,
+      { model, ...scopeArgs(scope) },
     );
     const parsed = modelConfigRefSchema.safeParse(body?.modelConfig);
     return parsed.success ? parsed.data : undefined;
@@ -329,9 +354,9 @@ export class ModelManagerApiClient implements ModelManagerApi {
     model: string,
     scope?: BackendScope,
   ): Promise<void> {
-    await this.request('POST', '/model-manager/models/unwire', {
-      installation,
-      body: { model, ...scopeQuery(scope) },
+    await this.call(installation, MODEL_MANAGER_TOOLS.unwireModel, {
+      model,
+      ...scopeArgs(scope),
     });
   }
 
@@ -339,19 +364,18 @@ export class ModelManagerApiClient implements ModelManagerApi {
     installation: string,
     scope?: BackendScope,
   ): Promise<ModelManagerJob[]> {
-    const body = await this.request('GET', '/model-manager/jobs', {
+    const body = await this.call(
       installation,
-      query: scopeQuery(scope),
-    });
+      MODEL_MANAGER_TOOLS.listJobs,
+      scopeArgs(scope),
+    );
     return parseModelManagerList(body, 'jobs', modelManagerJobSchema);
   }
 
   async getJob(installation: string, id: string): Promise<ModelManagerJob> {
-    const body = await this.request(
-      'GET',
-      `/model-manager/jobs/${encodeURIComponent(id)}`,
-      { installation },
-    );
+    const body = await this.call(installation, MODEL_MANAGER_TOOLS.getJob, {
+      id,
+    });
     const parsed = modelManagerJobSchema.safeParse(body);
     if (!parsed.success) {
       throw upstreamError(
@@ -362,11 +386,9 @@ export class ModelManagerApiClient implements ModelManagerApi {
   }
 
   async cancelJob(installation: string, id: string): Promise<ModelManagerJob> {
-    const body = await this.request(
-      'DELETE',
-      `/model-manager/jobs/${encodeURIComponent(id)}`,
-      { installation },
-    );
+    const body = await this.call(installation, MODEL_MANAGER_TOOLS.cancelJob, {
+      id,
+    });
     const parsed = modelManagerJobSchema.safeParse(body);
     if (!parsed.success) {
       throw upstreamError(
@@ -375,106 +397,13 @@ export class ModelManagerApiClient implements ModelManagerApi {
     }
     return parsed.data;
   }
+}
 
-  /**
-   * One proxy round-trip: resolve the route, mint and attach the
-   * installation's token, send, and map the status onto an error name.
-   *
-   * An empty or non-JSON success body resolves to `undefined` — a delete that
-   * happened must not be reported as a failure because it said nothing.
-   */
-  private async request<T = unknown>(
-    method: 'GET' | 'POST' | 'DELETE',
-    path: string,
-    options: {
-      installation?: string;
-      body?: unknown;
-      query?: Record<string, string>;
-    } = {},
-  ): Promise<T | undefined> {
-    const baseUrl = await this.discoveryApi.getBaseUrl('agent-platform');
-    const url = new URL(`${baseUrl}${path}`);
-    for (const [key, value] of Object.entries(options.query ?? {})) {
-      url.searchParams.set(key, value);
-    }
-
-    const headers: Record<string, string> = {};
-    if (options.installation) {
-      url.searchParams.set('installation', options.installation);
-      headers[MODEL_MANAGER_AUTH_HEADER] = await getInstallationOidcToken(
-        this.kubernetesApi,
-        this.kubernetesAuthProvidersApi,
-        options.installation,
-      );
-    }
-    if (options.body !== undefined) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    const response = await this.fetchApi.fetch(url.toString(), {
-      method,
-      headers,
-      ...(options.body !== undefined && { body: JSON.stringify(options.body) }),
-    });
-
-    await this.throwIfNotOk(response);
-
-    if (response.status === 204) {
-      return undefined;
-    }
-    return (await response.json().catch(() => undefined)) as T | undefined;
-  }
-
-  /**
-   * Map status codes onto error names.
-   *
-   * These names matter twice over: the plugin's QueryClientProvider
-   * short-circuits its retry predicate on them, and the serving source
-   * classifies an installation as unreadable on any of them while the
-   * mutations show the message; a 412 (`PreconditionFailedError`) is the
-   * fit check's refusal, shown where it was asked. A 400 is a request this proxy or
-   * model-manager refused — the message says which field — and stays a plain
-   * error, except that an unknown installation (outside the configured set)
-   * reads as "no model-manager here".
-   */
-  private async throwIfNotOk(response: Response): Promise<void> {
-    if (response.ok) {
-      return;
-    }
-    const errorData = (await response.json().catch(() => ({}))) as {
-      error?: { message?: string };
-    };
-    const message =
-      errorData?.error?.message ??
-      `model-manager request failed with status ${response.status}`;
-    const error = new Error(message);
-    if (
-      response.status === 400 &&
-      /Unknown model-manager installation|No model-manager installation/.test(
-        message,
-      )
-    ) {
-      error.name = 'NotFoundError';
-    }
-    if (response.status === 401) {
-      error.name = 'UnauthorizedError';
-    }
-    if (response.status === 403) {
-      error.name = 'ForbiddenError';
-    }
-    if (response.status === 404) {
-      error.name = 'NotFoundError';
-    }
-    if (response.status === 409) {
-      error.name = 'ConflictError';
-    }
-    if (response.status === 412) {
-      // A fit check refused the model: the message carries the numbers.
-      error.name = 'PreconditionFailedError';
-    }
-    if (response.status === 503) {
-      error.name = 'ServiceUnavailableError';
-    }
-    throw error;
-  }
+/** The request's fields that are set — a tool refuses `null` where it expects a string. */
+function compact(request: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(request).filter(
+      ([, value]) => value !== undefined && value !== null && value !== '',
+    ),
+  );
 }

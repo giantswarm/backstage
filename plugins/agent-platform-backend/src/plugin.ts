@@ -10,7 +10,9 @@ import { createRouter } from './router';
  * The Agent Platform frontend's door to kagent: a JSON/SSE surface for the
  * browser over a native gRPC client of each installation's kagent API v2
  * controller (`AgentInstanceService`, `AgentTemplateService`, `SystemService`
- * and the A2A v1 `A2AService`), plus the model-manager pass-through.
+ * and the A2A v1 `A2AService`), plus one try of a served model against the
+ * installation's models Gateway (everything else about models goes through
+ * muster as the person).
  *
  * It exists because the browser cannot reach `agentgateway.<baseDomain>`
  * cross-origin, because gRPC over HTTP/2 wants a server-side client, and

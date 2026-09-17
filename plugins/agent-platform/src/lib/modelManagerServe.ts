@@ -4,6 +4,7 @@ import type {
   ModelManagerServeStep,
 } from './modelManager';
 import { formatBytes } from './modelManagerServing';
+import type { ServedModel } from './serving';
 
 /**
  * Serving through model-manager as the signed-in person: what the Serve
@@ -176,4 +177,18 @@ export function withoutServeRoute(params: URLSearchParams): URLSearchParams {
     next.delete(name);
   }
   return next;
+}
+
+/**
+ * The model id a try of a served model sends in its completion: what the
+ * ModelConfig sends the provider (`spec.model` — on a vLLM predictor the name
+ * the model is served under, the Hugging Face repository), else the model's
+ * source reference, else the serving object's name. The serving object's
+ * name alone is not it: vLLM answers 404 "The model `<name>` does not exist"
+ * for a name it does not serve under.
+ */
+export function tryModelIdOf(
+  row: Pick<ServedModel, 'name' | 'modelSource' | 'modelConfig'>,
+): string {
+  return row.modelConfig?.model ?? row.modelSource ?? row.name;
 }

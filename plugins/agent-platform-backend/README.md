@@ -2,8 +2,13 @@
 
 Backend for the `agent-platform` plugin: the browser's door to the
 [kagent](https://github.com/kagent-dev/kagent) API v2 controller, per
-installation, and a pass-through to model-manager. It speaks **native gRPC** to
-the controller and hands the frontend **JSON and SSE**.
+installation, plus one route that tries a served model against the
+installation's models Gateway (`POST /served-models/try`, held to the
+installation's own domain). It speaks **native gRPC** to the controller and
+hands the frontend **JSON and SSE**. Everything else about models — the
+inventory, the backends, serving — the frontend does through muster's
+`x_model-manager_*` tools as the signed-in person; no model-manager URL or
+client lives here.
 
 ## Why a backend is needed
 

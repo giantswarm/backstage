@@ -14,6 +14,7 @@ import {
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
 import AndroidIcon from '@material-ui/icons/Android';
+import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 
 import {
   KagentApiClient,
@@ -196,16 +197,17 @@ const kagentApi = ApiBlueprint.make({
     }),
 });
 
-// Client for the model-manager REST API (the Models tab's Serving view on
-// installations that deploy it), via the same backend proxy. Same
-// dependencies as the kagent client, for the same reason: the per-installation
-// Dex ID token is minted through the kubernetes APIs.
+// model-manager (the Models tab's Serving view on installations whose muster
+// lists it): every call is one of its tools through the muster plugin's
+// client, as the signed-in person. The kubernetes APIs mint the installation
+// token the one backend-carried call (a try of a served model) sends along.
 const modelManagerApi = ApiBlueprint.make({
   name: 'model-manager',
   params: defineParams =>
     defineParams({
       api: modelManagerApiRef,
       deps: {
+        musterApi: musterApiRef,
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
         kubernetesApi: kubernetesApiRef,

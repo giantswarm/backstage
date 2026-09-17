@@ -6,6 +6,7 @@ import {
 import { RepositoriesAuthApi } from './auth';
 import {
   Committed,
+  Created,
   DeclarationEntry,
   DeclarationInput,
   Dispatch,
@@ -78,13 +79,8 @@ export class RepositoriesApiClient implements RepositoriesApi {
     return this.request('/repositories', { query: filters });
   }
 
-  getRepository(
-    name: string,
-    stalePeriodDays?: number,
-  ): Promise<InventoryRecord> {
-    return this.request(`/repositories/${encodeURIComponent(name)}`, {
-      query: { stalePeriodDays },
-    });
+  getRepository(name: string): Promise<InventoryRecord> {
+    return this.request(`/repositories/${encodeURIComponent(name)}`);
   }
 
   refreshRepository(name: string): Promise<InventoryRecord> {
@@ -103,7 +99,7 @@ export class RepositoriesApiClient implements RepositoriesApi {
   createRepository(
     input: DeclarationInput,
     options: { mode: 'commit' },
-  ): Promise<Committed> {
+  ): Promise<Created> {
     return this.request('/repositories', {
       method: 'POST',
       body: { ...input, ...options },
@@ -140,16 +136,6 @@ export class RepositoriesApiClient implements RepositoriesApi {
     options: WriteOptions,
   ): Promise<Dispatch> {
     return this.write(name, 'reconcile', args, options);
-  }
-
-  decideRepository(
-    name: string,
-    args: { verdict: 'keep'; note?: string },
-  ): Promise<InventoryRecord> {
-    return this.request(`/repositories/${encodeURIComponent(name)}/decide`, {
-      method: 'POST',
-      body: args,
-    });
   }
 
   /** One write of a repository: its arguments plus how it lands, as given. */

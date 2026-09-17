@@ -16,11 +16,12 @@ export type {
   KagentInstallation,
 } from './types';
 export {
-  MODEL_MANAGER_AUTH_HEADER,
+  SERVED_MODEL_AUTH_HEADER,
   type ModelManagerApi,
   type TryServedModelResult,
 } from './ModelManagerApi';
 export {
   ModelManagerApiClient,
   modelManagerApiRef,
+  SERVED_MODEL_TRY_PATH,
 } from './ModelManagerApiClient';

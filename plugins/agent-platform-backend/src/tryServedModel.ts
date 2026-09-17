@@ -1,4 +1,4 @@
-import { NotFoundError } from '@backstage/errors';
+import { InputError } from '@backstage/errors';
 
 /**
  * "Try it" on a served model: one short chat completion against the model's
@@ -6,12 +6,17 @@ import { NotFoundError } from '@backstage/errors';
  * signed-in person's — so the person sees the models Gateway enforce the
  * ModelConfig's passthrough (401 without, 200 with) and the model answer.
  *
- * The target is never the caller's: it is the `endpoint` of the served model
- * in model-manager's `GET /api/v1/loaded` answer for the installation, read
- * as the person on the same request. On gazelle that is the models Gateway's
- * route (`…/<namespace>/<name>`); the completion goes to its
- * `/v1/chat/completions`.
+ * The endpoint is what the person's Models page read from model-manager over
+ * muster (`list_models`, `running.endpoint`) and shows next to the button; on
+ * a GPU install that is the models Gateway's route (`…/<namespace>/<name>`),
+ * and the completion goes to its `/v1/chat/completions`. The portal's backend
+ * posts it because the browser cannot reach that host cross-origin; it is
+ * held to the installation's own domain ({@link completionsUrl}) so this
+ * route posts a person's token nowhere but where that installation serves.
  */
+
+/** Header carrying the person's installation token. Must match SERVED_MODEL_AUTH_HEADER in plugins/agent-platform. */
+export const SERVED_MODEL_AUTH_HEADER = 'backstage-served-model-authorization';
 
 /** The prompt of a try: short, deterministic, and the answer is one word. */
 export const TRY_PROMPT = 'Answer with the single word: pong';
@@ -32,9 +37,9 @@ export type TryServedModelResult = {
 };
 
 export type TryServedModelOptions = {
-  /** model-manager's `GET /api/v1/loaded` answer for the installation, read as the person. */
-  loaded: unknown;
-  /** The served model: its serving object's name (`resource`) or its model name. */
+  /** The served model's completions URL ({@link completionsUrl}). */
+  url: string;
+  /** The model id the completion is sent for: the serving object's name. */
   model: string;
   /** The person's Dex ID token, sent as `Authorization: Bearer` on the second call. */
   userToken: string;
@@ -42,36 +47,43 @@ export type TryServedModelOptions = {
   timeoutMs?: number;
 };
 
-type LoadedEntry = { name?: unknown; resource?: unknown; endpoint?: unknown };
-
-/** The served model's completions URL and the model id agents send, from the loaded list. */
-export function completionsTarget(
-  loaded: unknown,
-  model: string,
-): { url: string; model: string } {
-  const entries = (loaded as { loaded?: unknown } | undefined)?.loaded;
-  const entry = (Array.isArray(entries) ? (entries as LoadedEntry[]) : []).find(
-    candidate => candidate.resource === model || candidate.name === model,
-  );
-  if (!entry) {
-    throw new NotFoundError(
-      `Model '${model}' is not serving on this installation (model-manager does not list it as loaded).`,
+/**
+ * The completions URL of a served model's endpoint, held to the installation:
+ * `https`, and a host that is the installation's base domain or under it (the
+ * models Gateway is `models.<baseDomain>`). Anything else is refused — this
+ * backend posts a person's token to no other host — and so is an endpoint
+ * for an installation whose base domain the portal does not know.
+ */
+export function completionsUrl(
+  endpoint: string,
+  baseDomain: string | undefined,
+): string {
+  if (!baseDomain) {
+    throw new InputError(
+      'The installation has no base domain configured, so the portal cannot tell whether the endpoint is its own; nothing was sent.',
     );
   }
-  const endpoint = typeof entry.endpoint === 'string' ? entry.endpoint : '';
-  if (!/^https?:\/\//.test(endpoint)) {
-    throw new NotFoundError(
-      `model-manager reports no endpoint for '${model}' yet; it is not ready to be tried.`,
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new InputError(`'${endpoint}' is not a URL.`);
+  }
+  if (url.protocol !== 'https:') {
+    throw new InputError(
+      `The endpoint must be reached over https; '${url.protocol}' is refused.`,
     );
   }
-  const id =
-    typeof entry.resource === 'string' && entry.resource
-      ? entry.resource
-      : model;
-  return {
-    url: `${endpoint.replace(/\/+$/, '')}/v1/chat/completions`,
-    model: id,
-  };
+  const host = url.hostname.toLowerCase();
+  const domain = baseDomain.toLowerCase();
+  if (host !== domain && !host.endsWith(`.${domain}`)) {
+    throw new InputError(
+      `'${url.hostname}' is not under the installation's domain; the portal tries served models on the installation's own endpoints only.`,
+    );
+  }
+  url.hash = '';
+  url.search = '';
+  return `${url.toString().replace(/\/+$/, '')}/v1/chat/completions`;
 }
 
 /** Why a call got no HTTP answer: the deadline, or the network's own words. */
@@ -136,25 +148,24 @@ export async function tryServedModel(
   options: TryServedModelOptions,
 ): Promise<TryServedModelResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const target = completionsTarget(options.loaded, options.model);
   const anonymous = await postCompletion(
     options.fetchFn,
-    target.url,
-    target.model,
+    options.url,
+    options.model,
     undefined,
     timeoutMs,
   );
   const startedAt = Date.now();
   const asPerson = await postCompletion(
     options.fetchFn,
-    target.url,
-    target.model,
+    options.url,
+    options.model,
     options.userToken,
     timeoutMs,
   );
   return {
-    url: target.url,
-    model: target.model,
+    url: options.url,
+    model: options.model,
     without: { status: anonymous.status, error: anonymous.error },
     with: { ...asPerson, latencyMs: Date.now() - startedAt },
   };

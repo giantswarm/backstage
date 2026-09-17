@@ -1,159 +1,186 @@
-import { Fragment, useState } from 'react';
+import { useMemo } from 'react';
+import { Table, TableColumn } from '@backstage/core-components';
+import { Box, Chip, Typography } from '@material-ui/core';
 import {
-  Chip,
-  Collapse,
-  IconButton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TableSortLabel,
-  Typography,
-} from '@material-ui/core';
-import KeyboardArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
-import KeyboardArrowUpIcon from '@material-ui/icons/KeyboardArrowUp';
+  DateComponent,
+  NotAvailable,
+  StatusLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { RepositoryRow } from '../apis';
 import {
   lifecycleOf,
+  SETUP_INTENT,
+  SETUP_ORDER,
   setupState,
-  SortColumn,
-  SortDirection,
-  sortRows,
 } from '../lib/rows';
 import { RepositoryDetails } from './RepositoryDetails';
 
-const COLUMNS: { id: SortColumn; label: string; numeric?: boolean }[] = [
-  { id: 'repository', label: 'Repository' },
-  { id: 'team', label: 'Team' },
-  { id: 'lifecycle', label: 'Lifecycle' },
-  { id: 'lastPersonCommit', label: 'Last person commit' },
-  { id: 'score', label: 'Score', numeric: true },
-  { id: 'setup', label: 'Set-up' },
-  { id: 'findings', label: 'Findings', numeric: true },
-  { id: 'age', label: 'Age' },
+/** A row as the table keeps it: material-table holds a row's state (its open detail panel) by `id`. */
+type TableRow = RepositoryRow & { id: string };
+
+const byName = (a: RepositoryRow, b: RepositoryRow) =>
+  a.repository.localeCompare(b.repository, 'en', { sensitivity: 'base' });
+
+const byText =
+  (read: (row: RepositoryRow) => string) =>
+  (a: RepositoryRow, b: RepositoryRow) =>
+    read(a).localeCompare(read(b), 'en') || byName(a, b);
+
+const byNumber =
+  (read: (row: RepositoryRow) => number) =>
+  (a: RepositoryRow, b: RepositoryRow) =>
+    read(a) - read(b) || byName(a, b);
+
+/** The repository without its org: every row of the inventory shares it. */
+const nameOf = (row: RepositoryRow) => row.repository.replace(/^[^/]+\//, '');
+
+/** A cell whose words stay on one line. */
+const oneLine = { whiteSpace: 'nowrap' as const };
+
+/** One line, cut with an ellipsis when the column is narrower (the full text is the title). */
+const ellipsis = {
+  ...oneLine,
+  overflow: 'hidden' as const,
+  textOverflow: 'ellipsis' as const,
+};
+
+const columns: TableColumn<TableRow>[] = [
+  {
+    title: 'Repository',
+    field: 'repository',
+    highlight: true,
+    defaultSort: 'asc',
+    width: '30%',
+    cellStyle: ellipsis,
+    customSort: byName,
+    render: row => (
+      <span title={row.repository}>
+        {nameOf(row)}
+        {row.gone && (
+          <Chip
+            size="small"
+            variant="outlined"
+            label="gone from GitHub"
+            style={{ marginLeft: 8, marginBottom: 0 }}
+          />
+        )}
+      </span>
+    ),
+  },
+  {
+    title: 'Team',
+    field: 'team',
+    width: '18%',
+    cellStyle: ellipsis,
+    customSort: byText(row => row.team ?? ''),
+    render: row =>
+      row.team ?? (
+        <Typography variant="inherit" color="textSecondary">
+          unassigned
+        </Typography>
+      ),
+  },
+  {
+    title: 'Lifecycle',
+    field: 'lifecycle',
+    width: '10%',
+    cellStyle: oneLine,
+    customSort: byText(lifecycleOf),
+    render: lifecycleOf,
+  },
+  {
+    title: 'Set-up',
+    field: 'setup',
+    width: '15%',
+    cellStyle: oneLine,
+    customSort: byNumber(row => SETUP_ORDER[setupState(row)]),
+    render: row => (
+      <StatusLabel
+        label={setupState(row)}
+        intent={SETUP_INTENT[setupState(row)]}
+        title={row.setup.error}
+      />
+    ),
+  },
+  {
+    title: 'Findings',
+    field: 'findings',
+    type: 'numeric',
+    width: '9%',
+    customSort: byNumber(row => row.findings?.length ?? 0),
+    render: row => (
+      <span title={row.findings?.join('\n')}>{row.findings?.length ?? 0}</span>
+    ),
+  },
+  {
+    title: 'Last person commit',
+    field: 'lastPersonCommit',
+    width: '18%',
+    cellStyle: oneLine,
+    // ISO timestamps order as strings; a repository without one sorts first.
+    customSort: byText(row => row.lastPersonCommit ?? ''),
+    render: row =>
+      row.lastPersonCommit ? (
+        <DateComponent value={row.lastPersonCommit} relative />
+      ) : (
+        <NotAvailable />
+      ),
+  },
 ];
 
 /**
- * The inventory rows, sortable by every column, each expandable to the full
- * record. The manager lists by orphan score; the initial order keeps that.
+ * The inventory rows, sortable by every column (Repository ascending to
+ * begin with, the manager's own order), each expandable to the full record
+ * -- the Table of `@backstage/core-components` with its detail panel, as the
+ * cluster tables use it.
  */
-export function RepositoriesTable({ rows }: { rows: RepositoryRow[] }) {
-  const [sort, setSort] = useState<{
-    column: SortColumn;
-    direction: SortDirection;
-  }>({
-    column: 'score',
-    direction: 'desc',
-  });
-  const [expanded, setExpanded] = useState<string | undefined>();
-
-  const sorted = sortRows(rows, sort.column, sort.direction);
-
-  const toggleSort = (column: SortColumn) =>
-    setSort(current => ({
-      column,
-      direction:
-        current.column === column && current.direction === 'asc'
-          ? 'desc'
-          : 'asc',
-    }));
-
+export function RepositoriesTable({
+  rows,
+  isLoading,
+}: {
+  rows: RepositoryRow[];
+  isLoading: boolean;
+}) {
+  // The table annotates the rows it is given (keep the query cache's own) and
+  // carries a row's state -- its open detail panel -- across re-reads by id.
+  const data = useMemo(
+    () => rows.map(row => ({ ...row, id: row.repository })),
+    [rows],
+  );
   return (
-    <Table size="small" aria-label="Repositories">
-      <TableHead>
-        <TableRow>
-          <TableCell padding="checkbox" />
-          {COLUMNS.map(column => (
-            <TableCell
-              key={column.id}
-              align={column.numeric ? 'right' : 'left'}
-              sortDirection={sort.column === column.id ? sort.direction : false}
-            >
-              <TableSortLabel
-                active={sort.column === column.id}
-                direction={sort.column === column.id ? sort.direction : 'asc'}
-                onClick={() => toggleSort(column.id)}
-              >
-                {column.label}
-              </TableSortLabel>
-            </TableCell>
-          ))}
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {sorted.map(row => {
-          const open = expanded === row.repository;
-          const name = row.repository.replace(/^[^/]+\//, '');
-          return (
-            <Fragment key={row.repository}>
-              <TableRow
-                hover
-                data-testid={`row-${name}`}
-                onClick={() => setExpanded(open ? undefined : row.repository)}
-                style={{ cursor: 'pointer' }}
-              >
-                <TableCell padding="checkbox">
-                  <IconButton
-                    size="small"
-                    aria-label={`${open ? 'Collapse' : 'Expand'} ${row.repository}`}
-                    aria-expanded={open}
-                  >
-                    {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-                  </IconButton>
-                </TableCell>
-                <TableCell component="th" scope="row">
-                  {row.repository}
-                  {row.gone && (
-                    <Chip size="small" label="gone" style={{ marginLeft: 4 }} />
-                  )}
-                  {row.decision && (
-                    <Chip
-                      size="small"
-                      label={row.decision}
-                      style={{ marginLeft: 4 }}
-                    />
-                  )}
-                </TableCell>
-                <TableCell>{row.team ?? <em>unassigned</em>}</TableCell>
-                <TableCell>{lifecycleOf(row)}</TableCell>
-                <TableCell>
-                  {row.lastPersonCommit?.slice(0, 10) ?? '—'}
-                </TableCell>
-                <TableCell align="right" title={row.orphan.reasons.join('\n')}>
-                  {row.orphan.score}
-                </TableCell>
-                <TableCell title={row.setup.error}>{setupState(row)}</TableCell>
-                <TableCell align="right" title={row.findings?.join('\n')}>
-                  {row.findings?.length ?? 0}
-                </TableCell>
-                <TableCell>{row.age}</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell
-                  style={{ paddingBottom: 0, paddingTop: 0 }}
-                  colSpan={COLUMNS.length + 1}
-                >
-                  <Collapse in={open} timeout="auto" unmountOnExit>
-                    <div style={{ padding: 16 }}>
-                      <RepositoryDetails repository={row.repository} />
-                    </div>
-                  </Collapse>
-                </TableCell>
-              </TableRow>
-            </Fragment>
-          );
-        })}
-        {sorted.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={COLUMNS.length + 1}>
-              <Typography variant="body2" color="textSecondary">
-                No repositories match.
-              </Typography>
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+    <Table<TableRow>
+      isLoading={isLoading}
+      options={{
+        paging: false,
+        padding: 'dense',
+        search: false,
+        draggable: false,
+        // Fixed: the columns share the width they are given and a long name
+        // is cut with an ellipsis, instead of the table growing past its column.
+        tableLayout: 'fixed',
+      }}
+      data={data}
+      style={{ width: '100%' }}
+      // The toolbar wraps the title in an h2 already.
+      title={
+        <Typography variant="h6" component="span">
+          Repositories ({rows.length})
+        </Typography>
+      }
+      columns={columns}
+      detailPanel={({ rowData }) => (
+        <Box px={2} py={1} data-testid={`details-${rowData.repository}`}>
+          <RepositoryDetails repository={rowData.repository} />
+        </Box>
+      )}
+      onRowClick={(_event, _row, toggleDetailPanel) => toggleDetailPanel?.()}
+      localization={{
+        body: {
+          emptyDataSourceMessage: isLoading
+            ? 'Reading the inventory…'
+            : 'No repositories match.',
+        },
+      }}
+    />
   );
 }

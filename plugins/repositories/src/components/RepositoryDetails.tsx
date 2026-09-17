@@ -1,10 +1,20 @@
-import { Button, Chip, Grid, Typography } from '@material-ui/core';
+import { ReactNode } from 'react';
+import { Box, Button, Grid, Typography } from '@material-ui/core';
 import RefreshIcon from '@material-ui/icons/Refresh';
+import { Alert, Text } from '@backstage/ui';
 import { Link, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Fact,
+  FactList,
+  InfoCard,
+  StatusLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { InventoryRecord, repositoriesApiRef } from '../apis';
+import { convergedState } from '../lib/setupStatus';
 import { RowActions } from './actions/RowActions';
+import { FindingsList } from './FindingsList';
 import { RepositoriesErrorAlert } from './RepositoriesErrorAlert';
 import { SetupSteps } from './SetupSteps';
 
@@ -14,28 +24,75 @@ const CONVERGING_POLL_MS = 15_000;
 const catalogEntityPath = (name: string) =>
   `/catalog/default/component/${name}`;
 
-function Fact({ label, value }: { label: string; value?: string | number }) {
-  if (value === undefined || value === '') {
+const date = (iso?: string) => (iso ? iso.slice(0, 10) : undefined);
+const dateTime = (iso?: string) =>
+  iso ? `${iso.slice(0, 16).replace('T', ' ')}Z` : undefined;
+
+/** A fact for the list, or nothing when the record has no value for it. */
+function fact(
+  label: string,
+  value: ReactNode | undefined | null | false,
+): Fact | undefined {
+  if (
+    value === undefined ||
+    value === null ||
+    value === false ||
+    value === ''
+  ) {
+    return undefined;
+  }
+  return { label, value };
+}
+
+const facts = (...items: (Fact | undefined)[]): Fact[] =>
+  items.filter((item): item is Fact => item !== undefined);
+
+const commit = (entry?: { date: string; author: string }) =>
+  entry && `${date(entry.date)} by ${entry.author}`;
+
+const yes = (flag?: boolean) => (flag ? 'yes' : undefined);
+
+/** A card of grouped facts, half the row wide (a value must not break mid-word); nothing when every fact is empty. */
+function FactsCard({ title, items }: { title: string; items: Fact[] }) {
+  if (items.length === 0) {
     return null;
   }
   return (
-    <Grid item xs={6} md={3}>
-      <Typography variant="caption" color="textSecondary" component="div">
-        {label}
-      </Typography>
-      <Typography variant="body2">{value}</Typography>
+    <Grid item xs={12} md={6}>
+      <InfoCard title={title}>
+        <FactList facts={items} labelWidth={140} maxWidth={null} />
+      </InfoCard>
     </Grid>
   );
 }
 
-const date = (iso?: string) => (iso ? iso.slice(0, 10) : undefined);
+/** The set-up state of a record, as the header and the row show it. */
+function SetupState({ record }: { record: InventoryRecord }) {
+  const { checks, checkError } = record.setup;
+  if (!checks) {
+    return (
+      <StatusLabel label="unchecked" intent="neutral" title={checkError} />
+    );
+  }
+  return (
+    <StatusLabel
+      label={convergedState(checks)}
+      intent={checks.converged ? 'positive' : 'warning'}
+      title={
+        checks.converged
+          ? undefined
+          : `${checks.steps.filter(step => step.verdict !== 'ok' && step.verdict !== 'skipped').length} steps not ok`
+      }
+    />
+  );
+}
 
 /**
- * The expanded row: the full inventory record of one repository as
- * `get_repository` returns it -- declaration, GitHub reality, Renovate,
- * CircleCI, catalog and mapping, the orphan reasons, every finding with its
- * fix, the set-up steps (live while they converge), the last reconciler run
- * and the record's age with Refresh.
+ * The expanded row: one repository's inventory record as `get_repository`
+ * returns it. The header names the repository (a link to GitHub), its set-up
+ * state and the actions; the facts are grouped -- Ownership, Activity,
+ * Tooling -- with empty ones left out; then the findings with their fix and
+ * the set-up steps, re-read every 15 s while they converge.
  */
 export function RepositoryDetails({ repository }: { repository: string }) {
   const api = useApi(repositoriesApiRef);
@@ -82,21 +139,134 @@ export function RepositoryDetails({ repository }: { repository: string }) {
     void queryClient.invalidateQueries({ queryKey: ['repositories', 'list'] });
   };
 
+  const ownership = facts(
+    fact('Team', declaration?.team ?? 'unassigned'),
+    fact('Declared in', declaration?.file),
+    fact('Lifecycle', declaration?.lifecycle),
+    fact('Component type', declaration?.componentType),
+    fact('Flavours', declaration?.flavours?.join(', ')),
+    fact('CODEOWNERS teams', reality?.codeownersTeams?.join(', ')),
+    fact(
+      'Unknown CODEOWNERS teams',
+      reality?.unknownCodeownersTeams?.join(', '),
+    ),
+    fact(
+      'Team mapping',
+      record.mapping.present ? record.mapping.team : 'missing',
+    ),
+    fact(
+      'Catalog',
+      record.catalog.present ? (
+        <Text variant="body-small">
+          <Link to={catalogEntityPath(record.name)}>Catalog entity</Link>
+        </Text>
+      ) : (
+        'missing'
+      ),
+    ),
+  );
+
+  const activity = facts(
+    fact('Last commit', commit(reality?.lastCommit)),
+    fact('Last person commit', commit(reality?.lastPersonCommit)),
+    fact('Last push', date(reality?.pushedAt)),
+    fact(
+      'Open pull requests',
+      reality &&
+        (reality.openPullRequests.total === 0
+          ? '0'
+          : `${reality.openPullRequests.total} (${reality.openPullRequests.people} by people, ${reality.openPullRequests.bots} by bots)`),
+    ),
+    fact('Open issues', reality && String(reality.openIssues)),
+    fact(
+      'Latest release',
+      reality?.latestRelease && (
+        <Text variant="body-small">
+          <Link
+            to={`${reality.url}/releases/tag/${reality.latestRelease.tag}`}
+            target="_blank"
+            rel="noopener"
+          >
+            {reality.latestRelease.tag}
+          </Link>
+          {` on ${date(reality.latestRelease.publishedAt)}`}
+        </Text>
+      ),
+    ),
+    fact(
+      'Last reconciler run',
+      setup.lastRun && (
+        <Text variant="body-small">
+          <Link to={setup.lastRun.runUrl} target="_blank" rel="noopener">
+            {date(setup.lastRun.timestamp)}
+          </Link>
+          {`, ${setup.lastRun.result.mode}`}
+        </Text>
+      ),
+    ),
+    fact('Created', date(reality?.createdAt)),
+  );
+
+  const tooling = facts(
+    fact(
+      'Renovate',
+      renovate.configured
+        ? `${renovate.path}${renovate.enabled ? '' : ' (disabled)'}${renovate.preset ? ', preset' : ''}`
+        : 'not configured',
+    ),
+    fact(
+      'CircleCI',
+      circleci &&
+        (circleci.followed
+          ? `followed${circleci.lastPipeline ? `, pipeline #${circleci.lastPipeline.number} ${circleci.lastPipeline.state}` : ''}`
+          : 'not followed'),
+    ),
+    fact('Language', declaration?.language ?? reality?.language),
+    fact('Visibility', reality?.visibility),
+    fact('Default branch', reality?.defaultBranch),
+    fact('Archived on GitHub', yes(reality?.isArchived)),
+    fact('Fork', yes(reality?.isFork)),
+    fact('Template', yes(reality?.isTemplate)),
+    fact('Empty', yes(reality?.isEmpty)),
+    fact('Topics', reality?.topics?.join(', ')),
+  );
+
   return (
-    <div data-testid={`record-${record.name}`}>
-      <Grid container spacing={2} alignItems="center">
-        <Grid item xs>
+    <Box
+      display="flex"
+      flexDirection="column"
+      gridGap={16}
+      data-testid={`record-${record.name}`}
+    >
+      <Box display="flex" alignItems="flex-start" flexWrap="wrap" gridGap={16}>
+        <Box flexGrow={1} minWidth={0}>
+          <Box display="flex" alignItems="center" flexWrap="wrap" gridGap={16}>
+            <Typography variant="h6" component="h3">
+              {reality ? (
+                <Link to={reality.url} target="_blank" rel="noopener">
+                  {record.repository}
+                </Link>
+              ) : (
+                record.repository
+              )}
+            </Typography>
+            <div data-testid="setup-state">
+              <SetupState record={record} />
+            </div>
+          </Box>
           <Typography variant="body2" color="textSecondary">
+            {reality?.description && <>{reality.description} · </>}
             Record from {record.source}, {record.age} old
+            {setup.checkedAt && (
+              <> · set-up checked {dateTime(setup.checkedAt)}</>
+            )}
             {refresh.isError && (
-              <> — refresh failed: {(refresh.error as Error).message}</>
+              <> · refresh failed: {(refresh.error as Error).message}</>
             )}
           </Typography>
-        </Grid>
-        <Grid item>
+        </Box>
+        <Box display="flex" alignItems="center" gridGap={8}>
           <RowActions record={record} onChanged={changed} />
-        </Grid>
-        <Grid item>
           <Button
             size="small"
             variant="outlined"
@@ -106,166 +276,58 @@ export function RepositoryDetails({ repository }: { repository: string }) {
           >
             {refresh.isPending ? 'Refreshing…' : 'Refresh'}
           </Button>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
 
-      <Typography variant="body2" style={{ marginTop: 8 }}>
-        {reality && (
-          <Link to={reality.url} target="_blank" rel="noopener">
-            Repository
-          </Link>
-        )}
-        {record.catalog.present && (
-          <>
-            {' · '}
-            <Link to={catalogEntityPath(record.name)}>Catalog entity</Link>
-          </>
-        )}
-        {setup.lastRun && (
-          <>
-            {' · '}
-            <Link to={setup.lastRun.runUrl} target="_blank" rel="noopener">
-              Last reconciler run ({date(setup.lastRun.timestamp)})
-            </Link>
-          </>
-        )}
-        {reality?.latestRelease && (
-          <>
-            {' · '}
-            <Link
-              to={`${reality.url}/releases/tag/${reality.latestRelease.tag}`}
-              target="_blank"
-              rel="noopener"
-            >
-              Release {reality.latestRelease.tag}
-            </Link>
-          </>
-        )}
-      </Typography>
-
-      <Grid container spacing={2} style={{ marginTop: 8 }}>
-        <Fact label="Team" value={declaration?.team ?? 'unassigned'} />
-        <Fact label="Declared in" value={declaration?.file} />
-        <Fact label="Component type" value={declaration?.componentType} />
-        <Fact
-          label="Language"
-          value={declaration?.language ?? reality?.language}
+      {reality === null && (
+        <Alert
+          status="warning"
+          title="Gone from GitHub"
+          description="The declaration stands, but no repository answers to this name on GitHub."
         />
-        <Fact label="Flavours" value={declaration?.flavours?.join(', ')} />
-        <Fact label="Lifecycle" value={declaration?.lifecycle} />
-        <Fact label="Visibility" value={reality?.visibility} />
-        <Fact label="Default branch" value={reality?.defaultBranch} />
-        <Fact
-          label="Last commit"
-          value={
-            reality?.lastCommit
-              ? `${date(reality.lastCommit.date)} by ${reality.lastCommit.author}`
-              : undefined
-          }
-        />
-        <Fact
-          label="Last person commit"
-          value={
-            reality?.lastPersonCommit
-              ? `${date(reality.lastPersonCommit.date)} by ${reality.lastPersonCommit.author}`
-              : undefined
-          }
-        />
-        <Fact
-          label="Open PRs (people / bots)"
-          value={
-            reality
-              ? `${reality.openPullRequests.people} / ${reality.openPullRequests.bots}`
-              : undefined
-          }
-        />
-        <Fact label="Open issues" value={reality?.openIssues} />
-        <Fact
-          label="Renovate"
-          value={
-            renovate.configured
-              ? `${renovate.path}${renovate.enabled ? '' : ' (disabled)'}${renovate.preset ? ', preset' : ''}`
-              : 'not configured'
-          }
-        />
-        <Fact
-          label="CircleCI"
-          value={
-            circleci &&
-            (circleci.followed
-              ? `followed${circleci.lastPipeline ? `, pipeline #${circleci.lastPipeline.number} ${circleci.lastPipeline.state}` : ''}`
-              : 'not followed')
-          }
-        />
-        <Fact
-          label="Catalog"
-          value={record.catalog.present ? 'present' : 'missing'}
-        />
-        <Fact
-          label="Team mapping"
-          value={record.mapping.present ? record.mapping.team : 'missing'}
-        />
-        <Fact
-          label="CODEOWNERS teams"
-          value={reality?.codeownersTeams?.join(', ')}
-        />
-        <Fact label="Orphan score" value={record.orphan.score} />
-      </Grid>
-
-      {record.orphan.reasons.length > 0 && (
-        <div style={{ marginTop: 8 }} data-testid="orphan-reasons">
-          {record.orphan.reasons.map(reason => (
-            <Chip
-              key={reason}
-              size="small"
-              label={reason}
-              style={{ margin: 2 }}
-            />
-          ))}
-        </div>
       )}
-
-      {record.decision && (
-        <Typography variant="body2" style={{ marginTop: 8 }}>
-          Decision: {record.decision.verdict} by {record.decision.by} on{' '}
-          {date(record.decision.at)}
-          {record.decision.note && ` — ${record.decision.note}`}
-        </Typography>
-      )}
-
       {declaration?.problems && declaration.problems.length > 0 && (
-        <Typography variant="body2" color="error" style={{ marginTop: 8 }}>
-          Declaration refused: {declaration.problems.join('; ')}
-        </Typography>
+        <Alert
+          status="danger"
+          title="Declaration refused"
+          description={declaration.problems.join('; ')}
+        />
       )}
 
-      {record.findings.length > 0 && (
-        <div style={{ marginTop: 8 }} data-testid="record-findings">
-          <Typography variant="subtitle2">Findings</Typography>
-          <ul>
-            {record.findings.map((finding, index) => (
-              <li key={`${finding.kind}-${index}`}>
-                [{finding.kind}] {finding.message}
-                {finding.fix && (
-                  <Typography variant="body2" color="textSecondary">
-                    fix: {finding.fix}
-                  </Typography>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <Grid container spacing={2}>
+        <FactsCard title="Ownership" items={ownership} />
+        <FactsCard title="Activity" items={activity} />
+        <FactsCard title="Tooling" items={tooling} />
+        {record.findings.length > 0 && (
+          <Grid item xs={12} md={6}>
+            <InfoCard title={`Findings (${record.findings.length})`}>
+              <FindingsList
+                findings={record.findings}
+                data-testid="record-findings"
+              />
+            </InfoCard>
+          </Grid>
+        )}
+      </Grid>
 
-      <div style={{ marginTop: 8 }}>
+      <InfoCard title="Set-up steps">
         {setup.checks ? (
-          <SetupSteps result={setup.checks} title="Set-up" />
+          <Box display="flex" flexDirection="column" gridGap={8}>
+            <Typography variant="body2" color="textSecondary">
+              The engine's {setup.checks.mode} run of{' '}
+              {dateTime(setup.checks.finishedAt)}
+              {setup.checks.declared !== setup.checks.repository &&
+                `, declared as ${setup.checks.declared}`}
+              .
+            </Typography>
+            <SetupSteps result={setup.checks} />
+          </Box>
         ) : (
           <Typography variant="body2" color="textSecondary">
             Set-up not checked{setup.checkError && `: ${setup.checkError}`}
           </Typography>
         )}
-      </div>
-    </div>
+      </InfoCard>
+    </Box>
   );
 }

@@ -1,6 +1,12 @@
-import type { Page, Route } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
+import {
+  dropPersistedQueriesOnNextLoad,
+  installPersistedQueryDrop,
+  stubModelManagerTools,
+  type ToolCall,
+} from './model-manager.fixture';
 
 /**
  * The served model's step timeline (giantswarm/backstage#2415, part 2):
@@ -14,21 +20,12 @@ import { lab } from './lab';
  * model-manager 0.24.0 (`phase`, `steps[]`, the weights step's bytes and
  * `cached`); the lab has no KServe and no GPU. The inventory read advances
  * one stage per poll — the page polls at 10 s while a served model is on its
- * way, which is what this spec measures. The two tool calls (`check_fit`,
- * `load_model`) go through muster and are stubbed there; Try it and Stop
- * serving go over the portal's backend and are stubbed at its routes. Nothing
- * is written.
+ * way, which is what this spec measures. Every model-manager call goes
+ * through muster and is stubbed there (`list_backends`, `list_presets`,
+ * `list_models`, `check_fit`, `load_model`, `unload_model`); Try it goes over
+ * the portal's backend (`POST /served-models/try`, the endpoint model-manager
+ * reported) and is stubbed at that route. Nothing is written.
  */
-
-const PERSISTER_KEY = 'agent-platform-react-query-cache';
-const DROP_FLAG = 'e2e-drop-persisted-queries';
-
-async function dropPersistedQueriesOnNextLoad(page: Page): Promise<void> {
-  await page.evaluate(
-    flag => window.sessionStorage.setItem(flag, '1'),
-    DROP_FLAG,
-  );
-}
 
 const T = {
   created: '2026-09-17T06:59:00Z',
@@ -173,7 +170,8 @@ function servedModel(running: Record<string, unknown>) {
             namespace: 'kagent',
             managed: true,
             ready: true,
-            providerModel: 'qwen3-4b-instruct',
+            // `spec.model`: the repository, the name vLLM serves under.
+            providerModel: 'Qwen/Qwen3-4B-Instruct-2507',
             endpoint: `${ENDPOINT}/v1`,
           },
         }),
@@ -274,7 +272,7 @@ const TIMELINE: StageName[] = ['downloading', 'loading', 'ready'];
 
 const tryAnswer = {
   url: `${ENDPOINT}/v1/chat/completions`,
-  model: 'qwen3-4b-instruct',
+  model: 'Qwen/Qwen3-4B-Instruct-2507',
   without: {
     status: 401,
     error: 'authentication failure: no bearer token found',
@@ -282,7 +280,8 @@ const tryAnswer = {
   with: { status: 200, content: 'pong', latencyMs: 1_240 },
 };
 
-type ToolCall = { name: string; arguments: Record<string, unknown> };
+/** What the portal's backend was asked to try: the body of `POST /served-models/try`. */
+type TryRequest = { installation?: string; model?: string; url?: string };
 
 /**
  * The stubbed model-manager: the inventory read moves one stage per request
@@ -291,98 +290,67 @@ type ToolCall = { name: string; arguments: Record<string, unknown> };
  */
 async function stageModelManager(page: Page): Promise<{
   calls: ToolCall[];
+  callsOf: (tool: string) => ToolCall[];
   reads: StageName[];
+  tries: TryRequest[];
   unstage: () => Promise<void>;
 }> {
-  const calls: ToolCall[] = [];
   const reads: StageName[] = [];
+  const tries: TryRequest[] = [];
   let served = false;
   let stage = 0;
   let stopped: 'terminating' | 'gone' | undefined;
-  const ofThisInstallation = (url: URL) =>
-    url.searchParams.get('installation') === lab.installation;
-  const isRead = (path: string) => (url: URL) =>
-    url.pathname.endsWith(`/model-manager/${path}`) && ofThisInstallation(url);
 
-  await page.addInitScript(
-    ([key, flag]) => {
-      if (window.sessionStorage.getItem(flag)) {
-        window.sessionStorage.removeItem(flag);
-        window.localStorage.removeItem(key);
+  await installPersistedQueryDrop(page);
+  const stub = await stubModelManagerTools(page, {
+    list_backends: backends,
+    list_presets: presets,
+    list_models: () => {
+      if (!served) {
+        return { models: [] };
       }
+      let name: StageName;
+      if (stopped === 'terminating') {
+        name = 'terminating';
+        stopped = 'gone';
+      } else if (stopped === 'gone') {
+        name = 'gone';
+      } else {
+        name = TIMELINE[Math.min(stage, TIMELINE.length - 1)];
+        stage += 1;
+      }
+      reads.push(name);
+      return stages[name];
     },
-    [PERSISTER_KEY, DROP_FLAG] as const,
-  );
-  await page.route(isRead('backends'), route =>
-    route.fulfill({ json: backends }),
-  );
-  await page.route(isRead('presets'), route =>
-    route.fulfill({ json: presets }),
-  );
-  await page.route(isRead('models'), route => {
-    if (!served) {
-      return route.fulfill({ json: { models: [] } });
-    }
-    let name: StageName;
-    if (stopped === 'terminating') {
-      name = 'terminating';
-      stopped = 'gone';
-    } else if (stopped === 'gone') {
-      name = 'gone';
-    } else {
-      name = TIMELINE[Math.min(stage, TIMELINE.length - 1)];
-      stage += 1;
-    }
-    reads.push(name);
-    return route.fulfill({ json: stages[name] });
-  });
-  await page.route(isRead('models/unload'), route => {
-    stopped = 'terminating';
-    return route.fulfill({
-      json: {
+    check_fit: fit,
+    load_model: () => {
+      served = true;
+      return loadAnswer;
+    },
+    unload_model: () => {
+      stopped = 'terminating';
+      return {
         backend: 'kserve',
         model: 'qwen3-4b-instruct',
         loaded: false,
         status: 'Terminating',
-      },
-    });
+      };
+    },
   });
-  await page.route(isRead('models/try'), route =>
-    route.fulfill({ json: tryAnswer }),
-  );
-  const onCall = async (route: Route) => {
-    const body = route.request().postDataJSON() as ToolCall | undefined;
-    if (
-      body?.name !== 'x_model-manager_check_fit' &&
-      body?.name !== 'x_model-manager_load_model'
-    ) {
-      await route.continue();
-      return;
-    }
-    calls.push(body);
-    if (body.name === 'x_model-manager_check_fit') {
-      await route.fulfill({ json: fit });
-      return;
-    }
-    served = true;
-    await route.fulfill({ json: loadAnswer });
+  const onTry = async (route: import('@playwright/test').Route) => {
+    tries.push((route.request().postDataJSON() ?? {}) as TryRequest);
+    await route.fulfill({ json: tryAnswer });
   };
-  await page.route('**/api/muster/call**', onCall);
+  await page.route('**/served-models/try', onTry);
 
   return {
-    calls,
+    calls: stub.calls,
+    callsOf: stub.callsOf,
     reads,
+    tries,
     unstage: async () => {
-      await page.unroute('**/api/muster/call**', onCall);
-      for (const path of [
-        'backends',
-        'presets',
-        'models',
-        'models/unload',
-        'models/try',
-      ]) {
-        await page.unroute(isRead(path));
-      }
+      await stub.unroute();
+      await page.unroute('**/served-models/try', onTry);
       await dropPersistedQueriesOnNextLoad(page);
       await page.goto('/agent-platform/models/serving');
     },
@@ -479,16 +447,27 @@ test.describe('serving: the served model’s step timeline', () => {
         'one completion without a token and one as the person, both outcomes shown',
       ).toContainText('401 without a token · 200 as you in 1 s — “pong”');
       await expect(panel).toContainText(
-        `POST ${ENDPOINT}/v1/chat/completions · model qwen3-4b-instruct`,
+        `POST ${ENDPOINT}/v1/chat/completions · model Qwen/Qwen3-4B-Instruct-2507`,
       );
 
       expect(
         staged.reads.slice(0, 3),
         'the inventory was read once per stage: the page polled at 10 s while the model was on its way',
       ).toEqual(['downloading', 'loading', 'ready']);
-      expect(staged.calls.map(call => call.name)).toEqual([
-        'x_model-manager_check_fit',
-        'x_model-manager_load_model',
+      expect(
+        [...staged.callsOf('check_fit'), ...staged.callsOf('load_model')].map(
+          call => call.name,
+        ),
+      ).toEqual(['x_model-manager_check_fit', 'x_model-manager_load_model']);
+      expect(
+        staged.tries,
+        'the try named the installation, the model id the ModelConfig sends (not the serving object) and the endpoint model-manager reported',
+      ).toEqual([
+        {
+          installation: lab.installation,
+          model: 'Qwen/Qwen3-4B-Instruct-2507',
+          url: ENDPOINT,
+        },
       ]);
 
       // The row's chevron hides and shows the same timeline.
@@ -547,29 +526,12 @@ test.describe('serving: the served model’s step timeline', () => {
         pending('ready'),
       ],
     });
-    const ofThisInstallation = (url: URL) =>
-      url.searchParams.get('installation') === lab.installation;
-    const isRead = (path: string) => (url: URL) =>
-      url.pathname.endsWith(`/model-manager/${path}`) &&
-      ofThisInstallation(url);
-    await admin.addInitScript(
-      ([key, flag]) => {
-        if (window.sessionStorage.getItem(flag)) {
-          window.sessionStorage.removeItem(flag);
-          window.localStorage.removeItem(key);
-        }
-      },
-      [PERSISTER_KEY, DROP_FLAG] as const,
-    );
-    await admin.route(isRead('backends'), route =>
-      route.fulfill({ json: backends }),
-    );
-    await admin.route(isRead('presets'), route =>
-      route.fulfill({ json: presets }),
-    );
-    await admin.route(isRead('models'), route =>
-      route.fulfill({ json: failed }),
-    );
+    await installPersistedQueryDrop(admin);
+    const staged = await stubModelManagerTools(admin, {
+      list_backends: backends,
+      list_presets: presets,
+      list_models: failed,
+    });
     try {
       await dropPersistedQueriesOnNextLoad(admin);
       await open(admin, SERVING);
@@ -594,9 +556,7 @@ test.describe('serving: the served model’s step timeline', () => {
         panel.locator('[data-testid="lifecycle-step"][data-step="loading"]'),
       ).toHaveAttribute('data-state', 'pending');
     } finally {
-      for (const path of ['backends', 'presets', 'models']) {
-        await admin.unroute(isRead(path));
-      }
+      await staged.unroute();
       await dropPersistedQueriesOnNextLoad(admin);
       await admin.goto(SERVING);
     }

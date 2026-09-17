@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import { expect, open, signIn, test } from './fixtures';
 import { lab } from './lab';
@@ -14,15 +14,23 @@ import { lab } from './lab';
  *
  * What the tools answer is the lab's business; the specs pin the page's
  * behaviour on whatever inventory the manager serves: the default scope, the
- * switch to All, a row's record, and the sign-in a person without a grant is
- * guided through.
+ * switch to All, the archived repositories hidden until asked for, the team
+ * filter, a row's record, and the sign-in a person without a grant is guided
+ * through.
  */
 const MANAGER_TOOL = /x_giantswarm-repo-manager_/;
 
-async function rows(page: Page) {
-  return page
-    .getByRole('table', { name: 'Repositories' })
-    .locator('tbody tr[data-testid^="row-"]');
+const EXPAND = 'Detail panel visiblity toggle';
+
+/** The inventory table's rows (the first table on the page; a record's steps table comes after). */
+function rows(page: Page): Locator {
+  return page.locator('table').first().locator('tbody tr');
+}
+
+/** The repository named in a row, without the org. */
+async function nameOf(row: Locator): Promise<string> {
+  const text = (await row.locator('td').nth(1).innerText()).trim();
+  return text.replace(/^[^/]+\//, '').split(/\s/)[0];
 }
 
 test.describe('repositories', () => {
@@ -40,11 +48,54 @@ test.describe('repositories', () => {
       /matching repositories/,
       { timeout: 60_000 },
     );
-    await expect(admin.getByTestId('tile-set-up-state')).toBeVisible();
-    await expect(admin.getByTestId('tile-orphan-score')).toBeVisible();
+    // No tiles, no score: the filters column and the table.
+    await expect(admin.getByTestId('repositories-filters')).toBeVisible();
+    await expect(admin.getByText('Orphan score')).toHaveCount(0);
+    await expect(admin.locator('table').first()).toBeVisible();
     await expect(
-      admin.getByRole('table', { name: 'Repositories' }),
-    ).toBeVisible();
+      admin.getByRole('checkbox', { name: 'Show archived' }),
+    ).not.toBeChecked();
+  });
+
+  test('hides the archived repositories until Show archived', async ({
+    admin,
+  }) => {
+    await open(admin, '/repositories?scope=all');
+    const summary = admin.getByTestId('listing-summary');
+    await expect(summary).toContainText(/archived hidden/, {
+      timeout: 60_000,
+    });
+    const hidden = await rows(admin).count();
+
+    await admin.getByRole('checkbox', { name: 'Show archived' }).click();
+    await expect(admin).toHaveURL(/archived=true/);
+    await expect(summary).not.toContainText(/archived hidden/, {
+      timeout: 60_000,
+    });
+    expect(await rows(admin).count()).toBeGreaterThanOrEqual(hidden);
+  });
+
+  test('the Team filter narrows the rows to that team', async ({ admin }) => {
+    await open(admin, '/repositories?scope=all');
+    await expect(rows(admin).first()).toBeVisible({ timeout: 60_000 });
+    // The Autocomplete's labelled input; its combobox root carries no name.
+    await admin.getByLabel(/^Team/).click();
+    const team = admin
+      .getByRole('option')
+      .filter({ hasNotText: 'No team' })
+      .first();
+    const chosen = (await team.innerText()).trim();
+    await team.click();
+    await expect(admin).toHaveURL(new RegExp(`team=${chosen}`));
+    await expect(admin.getByTestId('listing-summary')).toContainText(
+      /\(filtered\)/,
+      { timeout: 60_000 },
+    );
+    const listed = rows(admin);
+    await expect(listed.first()).toBeVisible({ timeout: 60_000 });
+    for (const row of await listed.all()) {
+      await expect(row.locator('td').nth(2)).toHaveText(chosen);
+    }
   });
 
   test('switches to All repositories and keeps the scope in the URL', async ({
@@ -57,38 +108,36 @@ test.describe('repositories', () => {
       /in the inventory/,
       { timeout: 60_000 },
     );
-    const listed = await rows(admin);
-    expect(await listed.count()).toBeGreaterThan(0);
+    expect(await rows(admin).count()).toBeGreaterThan(0);
   });
 
   test('expands a row to the record with its set-up steps and Refresh', async ({
     admin,
   }) => {
     await open(admin, '/repositories?scope=all');
-    const listed = await rows(admin);
-    await expect(listed.first()).toBeVisible({ timeout: 60_000 });
-    const name = (await listed.first().getAttribute('data-testid'))!.replace(
-      /^row-/,
-      '',
-    );
-    await listed
-      .first()
-      .getByRole('button', { name: /^Expand / })
-      .click();
+    const first = rows(admin).first();
+    await expect(first).toBeVisible({ timeout: 60_000 });
+    const name = await nameOf(first);
+    await first.getByRole('button', { name: EXPAND }).click();
 
     const record = admin.getByTestId(`record-${name}`);
     await expect(record).toBeVisible({ timeout: 60_000 });
     await expect(
-      record.getByText(/^Record from (sweep|refresh|reconciler), .* old/),
+      record.getByText(/Record from (sweep|refresh|reconciler), .* old/),
     ).toBeVisible();
+    await expect(record.getByTestId('setup-state')).toBeVisible();
     await expect(record.getByRole('button', { name: 'Refresh' })).toBeVisible();
-    // A record whose checks ran shows the CLI's table; one whose checks could
-    // not run says so. Either is the manager's truth.
+    await expect(
+      record.getByRole('heading', { name: 'Ownership' }),
+    ).toBeVisible();
+    // A record whose checks ran shows the steps; one whose checks could not
+    // run says so. Either is the manager's truth.
     await expect(
       record
-        .getByRole('table', { name: 'Set-up' })
+        .getByTestId('setup-steps')
         .or(record.getByText(/^Set-up not checked/)),
     ).toBeVisible();
+    await expect(record.getByRole('button', { name: 'Keep' })).toHaveCount(0);
   });
 
   test('a person without a grant is sent through the connect and lands back', async ({

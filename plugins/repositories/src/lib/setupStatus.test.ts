@@ -4,6 +4,7 @@ import {
   resultFindings,
   stepDetail,
   stepsNotOk,
+  verdictIntent,
 } from './setupStatus';
 
 /**
@@ -63,6 +64,22 @@ describe('set-up status, as devctl repo status prints it', () => {
     ).toEqual([
       '- [default-icon] the repository uses the default icon\n  fix: upload an icon in the repository settings',
     ]);
+  });
+
+  it('gives every verdict a status intent, unknown ones a neutral one', () => {
+    expect(
+      ['ok', 'repaired', 'drift', 'reported', 'skipped', 'failed'].map(
+        verdictIntent,
+      ),
+    ).toEqual([
+      'positive',
+      'positive',
+      'warning',
+      'info',
+      'neutral',
+      'negative',
+    ]);
+    expect(verdictIntent('pending')).toBe('neutral');
   });
 
   it('names the steps still pending in a set-up that has not converged', () => {

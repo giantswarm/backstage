@@ -8,32 +8,43 @@
 /** `list_repositories` scope: whose repositories. */
 export type Scope = 'mine' | 'team' | 'unassigned' | 'all';
 
+/** The lifecycles `list_repositories` filters by, as the team files declare them. */
+export const LIFECYCLES = ['active', 'deprecated', 'archived'] as const;
+
+export type Lifecycle = (typeof LIFECYCLES)[number];
+
 /** The filters of `list_repositories`, as the page offers them. */
 export interface ListFilters {
   scope?: Scope;
   search?: string;
+  /** `active` and `inactive` are judged against the manager's Renovate activity period. */
   renovate?: 'configured' | 'missing' | 'active' | 'inactive';
-  /** A team slug, or `none` for undeclared repositories. */
+  /**
+   * A team slug, or `none` for undeclared repositories. Applies in every
+   * scope where it can: under `mine` it narrows to that team when it is one
+   * of the caller's; under `unassigned` no row has a team.
+   */
   team?: string;
   visibility?: 'public' | 'private';
+  /** `true`: forks only; `false`: no forks. */
   fork?: boolean;
-  /** `deprecated`, `archived`, … or `none`. */
+  /**
+   * `active`: no lifecycle declared and not archived on GitHub;
+   * `archived`: declared archived or archived on GitHub; `deprecated`:
+   * declared so. Any other value the team-file schema allows is matched
+   * against the declared lifecycle.
+   */
   lifecycle?: string;
+  /**
+   * `false` drops every repository that is declared archived or archived on
+   * GitHub; `true` keeps only those. Independent of `lifecycle`.
+   */
+  archived?: boolean;
+  /** No commit by a person within this many days, or none at all. */
   inactiveDays?: number;
-  minOrphanScore?: number;
-  /** `keep`, or `none`. */
-  decision?: string;
+  /** A finding kind. */
   finding?: string;
   limit?: number;
-  stalePeriodDays?: number;
-}
-
-export interface OrphanScore {
-  /** 0-100. */
-  score: number;
-  reasons: string[];
-  /** The stale period the score was judged against (a Go duration). */
-  stalePeriod?: string;
 }
 
 /** A row's set-up state: the engine's checks and the last reconciler run. */
@@ -53,12 +64,12 @@ export interface RepositoryRow {
   visibility?: string;
   archived: boolean;
   gone?: boolean;
+  fork?: boolean;
+  renovate?: boolean;
   lastPersonCommit?: string;
-  orphan: OrphanScore;
   /** Finding kinds. */
   findings?: string[];
   setup: RepositoryRowSetup;
-  decision?: string;
   age: string;
 }
 
@@ -84,6 +95,8 @@ export interface RepositoryListing {
   matched: number;
   shown: number;
   repositories: RepositoryRow[];
+  /** The manager's remark on the answer: a `team` under `mine` that is not one of the caller's, say. */
+  note?: string;
 }
 
 /** A finding of the engine or the inventory, with its fix text. */
@@ -209,9 +222,7 @@ export interface InventoryRecord {
     checkError?: string;
     lastRun?: { result: SetupResult; runUrl: string; timestamp: string };
   };
-  orphan: OrphanScore;
   findings: Finding[];
-  decision?: { verdict: string; note?: string; by: string; at: string };
   refreshedAt: string;
   /** `sweep` | `refresh` | `reconciler`. */
   source: string;
@@ -321,6 +332,35 @@ export interface Validation {
   /** The creation-only pull request would be approved by the machine. */
   machineApproved: boolean;
   findings?: Finding[];
+  /**
+   * The creation as the person would run it, in order: each repository
+   * created and scaffolded, then the pull request. Absent without the
+   * person's GitHub grant or when an entry is refused.
+   */
+  creation?: CreationPlan;
+}
+
+/** One repository's create and scaffold steps as `validate_repository` plans them. */
+export interface RepositoryPlan {
+  name: string;
+  /** The URL when it exists already: a creation resumed. */
+  repository?: string;
+  steps: SetupStep[];
+}
+
+/**
+ * The dry run of `create_repository`'s writes as the person: the engine's
+ * create and scaffold steps in check mode, then the declaration pull
+ * request -- or the refusal in place of the plan (the org lets only owners
+ * create repositories).
+ */
+export interface CreationPlan {
+  /** Why the creation would not run; nothing would be written. */
+  refusal?: string;
+  repositories?: RepositoryPlan[];
+  pullRequest?: PlannedPullRequest;
+  /** Entries whose repository exists and the person administers: a creation resumed. */
+  resumed?: string[];
 }
 
 /** The pull request a write would open, before it exists. */
@@ -385,6 +425,29 @@ export interface Committed {
   notice?: Delivery;
 }
 
+/** One repository after `create_repository`'s create and scaffold steps. */
+export interface CreatedRepository {
+  name: string;
+  /** The URL on GitHub. */
+  repository: string;
+  /** This call created it; false when it existed already (a creation resumed). */
+  created: boolean;
+  /** The scaffold commit at the head of the default branch. */
+  scaffoldCommit?: string;
+  steps: SetupStep[];
+}
+
+/**
+ * `create_repository`'s outcome in `mode: commit`, in the order it wrote:
+ * the repositories created and scaffolded as the person, then the
+ * declaration pull request.
+ */
+export interface Created extends Committed {
+  repositories: CreatedRepository[];
+  /** Where the first release comes from (the scaffold's push). */
+  firstRelease: string;
+}
+
 /** `reconcile_repository`'s answer: the workflow dispatch, planned or done. */
 export interface Dispatch {
   workflow: string;
@@ -425,19 +488,19 @@ export interface RepositoriesApi {
   getConnection(): Promise<RepositoriesConnectionResponse>;
   getInfo(): Promise<ManagerInfo>;
   listRepositories(filters: ListFilters): Promise<RepositoryListing>;
-  getRepository(
-    name: string,
-    stalePeriodDays?: number,
-  ): Promise<InventoryRecord>;
+  getRepository(name: string): Promise<InventoryRecord>;
   refreshRepository(name: string): Promise<InventoryRecord>;
 
   /** The dry run of declaring new repositories (`validate_repository`). Writes nothing. */
   validateRepository(input: DeclarationInput): Promise<Validation>;
-  /** Declares new repositories: the creation-only pull request as the person. */
+  /**
+   * Creates new repositories as the person: each repository, its scaffold
+   * commit, then the creation-only pull request.
+   */
   createRepository(
     input: DeclarationInput,
     options: { mode: 'commit' },
-  ): Promise<Committed>;
+  ): Promise<Created>;
   /** Replaces a declared repository's entry (the whole entry). */
   updateRepository<O extends WriteOptions>(
     name: string,
@@ -462,9 +525,4 @@ export interface RepositoriesApi {
     args: { team?: string },
     options: WriteOptions,
   ): Promise<Dispatch>;
-  /** Leaves a decision note (verdict keep) on the inventory record. */
-  decideRepository(
-    name: string,
-    args: { verdict: 'keep'; note?: string },
-  ): Promise<InventoryRecord>;
 }
