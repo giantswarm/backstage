@@ -25,10 +25,10 @@ import {
 } from '../../lib/rows';
 import { BotPrDetails } from '../BotPrDetails';
 
-const COLUMNS: { id: SortColumn; label: string }[] = [
+const COLUMNS: { id: SortColumn; label: string; width?: string }[] = [
   { id: 'team', label: 'Team' },
   { id: 'repository', label: 'Repository' },
-  { id: 'title', label: 'Pull request' },
+  { id: 'title', label: 'Pull request', width: '34%' },
   { id: 'dependency', label: 'Dependency' },
   { id: 'kind', label: 'Bot' },
   { id: 'update', label: 'Update' },
@@ -36,6 +36,9 @@ const COLUMNS: { id: SortColumn; label: string }[] = [
   { id: 'classification', label: 'Classification' },
   { id: 'rescue', label: 'Rescue' },
 ];
+
+/** Short values and every header stay on one line; the title column wraps. */
+const NOWRAP = { whiteSpace: 'nowrap' as const };
 
 export type BotPrsTableProps = {
   rows: BotPrRow[];
@@ -88,6 +91,7 @@ export function BotPrsTable({
           {columns.map(column => (
             <TableCell
               key={column.id}
+              style={{ ...NOWRAP, width: column.width }}
               sortDirection={sort.column === column.id ? sort.direction : false}
             >
               <TableSortLabel
@@ -138,16 +142,16 @@ export function BotPrsTable({
                   {row.title}
                 </TableCell>
                 <TableCell>{row.dependency}</TableCell>
-                <TableCell>{row.kind ?? '—'}</TableCell>
-                <TableCell>{row.update_type ?? '—'}</TableCell>
-                <TableCell>{formatAge(ageDays(row))}</TableCell>
-                <TableCell title={row.detail}>
+                <TableCell style={NOWRAP}>{row.kind ?? '—'}</TableCell>
+                <TableCell style={NOWRAP}>{row.update_type ?? '—'}</TableCell>
+                <TableCell style={NOWRAP}>{formatAge(ageDays(row))}</TableCell>
+                <TableCell style={NOWRAP} title={row.detail}>
                   <StatusLabel
                     label={row.status}
                     intent={statusIntentOf(row.group)}
                   />
                 </TableCell>
-                <TableCell title={row.rescue?.reason}>
+                <TableCell style={NOWRAP} title={row.rescue?.reason}>
                   {row.rescue
                     ? `${row.rescue.outcome}${row.rescue.stale ? ' (stale)' : ''}`
                     : '—'}

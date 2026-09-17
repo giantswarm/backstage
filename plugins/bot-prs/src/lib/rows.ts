@@ -63,9 +63,11 @@ export function withFilter(
   return next;
 }
 
-/** Whether any filter but the scope narrows the queue. */
+/** Whether any filter narrows the queue. The scope and the team pick the queue, they do not narrow it. */
 export function hasFilters(filters: QueueFilters): boolean {
-  return FILTER_NAMES.some(name => name !== 'scope' && filters[name]);
+  return FILTER_NAMES.some(
+    name => name !== 'scope' && name !== 'team' && filters[name],
+  );
 }
 
 export function applyFilters(

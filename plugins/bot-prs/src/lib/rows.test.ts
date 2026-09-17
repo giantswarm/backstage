@@ -113,8 +113,8 @@ describe('filtersFromParams and withFilter', () => {
     expect(withFilter(params, 'kind', undefined).toString()).toBe('scope=all');
   });
 
-  it('counts the scope as no filter', () => {
-    expect(hasFilters({ scope: 'all' })).toBe(false);
+  it('counts the scope and the team as no filter', () => {
+    expect(hasFilters({ scope: 'all', team: 'bumblebee' })).toBe(false);
     expect(hasFilters({ scope: 'all', kind: 'herald' })).toBe(true);
   });
 });
