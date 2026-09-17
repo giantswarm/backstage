@@ -262,10 +262,13 @@ test.describe('serving: through model-manager as the person', () => {
         'check_fit’s verdict stands before the button',
       ).toContainText('Fits — the node comes as g6.xlarge');
       await expect(verdict).toContainText('weights cached (index)');
+      // One registered backend: the installation is one unnamed target and the
+      // call names no backend — model-manager's default answers. A model-manager
+      // running several names it (`backend: 'kserve'`; covered by the unit tests).
       expect(staged.calls).toEqual([
         {
           name: 'x_model-manager_check_fit',
-          arguments: { model: 'qwen3-4b-instruct', backend: 'kserve' },
+          arguments: { model: 'qwen3-4b-instruct' },
         },
       ]);
 
@@ -278,7 +281,7 @@ test.describe('serving: through model-manager as the person', () => {
       ).toEqual([
         {
           name: 'x_model-manager_load_model',
-          arguments: { model: 'qwen3-4b-instruct', backend: 'kserve' },
+          arguments: { model: 'qwen3-4b-instruct' },
         },
       ]);
       await expect(
