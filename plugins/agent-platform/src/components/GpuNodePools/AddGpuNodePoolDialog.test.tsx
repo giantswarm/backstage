@@ -15,7 +15,11 @@ import type {
   PresetFit,
   PresetSizeFit,
 } from '../../lib/clusterManager';
-import { AddGpuNodePoolDialog, clusterMarks } from './AddGpuNodePoolDialog';
+import {
+  AddGpuNodePoolDialog,
+  clusterMarks,
+  SIZING_POOL_NAME,
+} from './AddGpuNodePoolDialog';
 
 jest.mock('../CodeBlock', () => ({
   CodeBlock: ({ filename, content }: { filename: string; content: string }) => (
@@ -465,7 +469,7 @@ describe('AddGpuNodePoolDialog', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Review' })).toBeDisabled();
     expect(screen.getByTestId('sizes-pending')).toHaveTextContent(
-      'pick a cluster and name the pool',
+      'pick a cluster',
     );
   });
 
@@ -513,6 +517,42 @@ describe('clusterMarks', () => {
 });
 
 describe('AddGpuNodePoolDialog: node size and price on the form', () => {
+  it('offers the sizes and prices as soon as a cluster is picked, before the pool is named; the name only enables Review and relabels the dry run', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderDialog();
+    await user.click(
+      await screen.findByRole('button', { name: /^Pick a cluster/ }),
+    );
+    await user.click(await screen.findByRole('option', { name: /wc1/ }));
+
+    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+    expect(dryRunsOf(callTool)[0][1]).toMatchObject({
+      cluster: 'wc1',
+      name: SIZING_POOL_NAME,
+      accelerator: 'nvidia-l4',
+    });
+    expect(sizeBox('g6.xlarge')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review' })).toBeDisabled();
+
+    await user.click(sizeBox('g6.xlarge'));
+    await user.type(screen.getByLabelText(/pool name/i), 'gpu-l4');
+    const button = await screen.findByRole(
+      'button',
+      { name: 'Review' },
+      AFTER_DEBOUNCE,
+    );
+    await waitFor(() => expect(button).toBeEnabled(), AFTER_DEBOUNCE);
+    const last = dryRunsOf(callTool).at(-1)?.[1];
+    expect(last).toMatchObject({ name: 'gpu-l4', sizes: ['2xlarge'] });
+    expect(sizeBox('g6.xlarge')).not.toBeChecked();
+    expect(
+      dryRunsOf(callTool).some(
+        call => (call[1] as Record<string, unknown>).name === SIZING_POOL_NAME,
+      ),
+    ).toBe(true);
+    expect(appliesOf(callTool)).toHaveLength(0);
+  });
+
   it('offers the sizes with usable resources, GPU memory and price as soon as cluster and name are set, the cheapest as the from price', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderDialog();
