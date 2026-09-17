@@ -169,8 +169,11 @@ export function useGpuNodePools(installations: string[]) {
         return { rows, note: clusterApiNote(clusterApi) };
       },
       staleTime: 30_000,
-      // 10 s while a pool of the installation is unsettled, 60 s otherwise.
+      // 10 s while a pool of the installation is unsettled, 60 s otherwise —
+      // in a tab that is not focused too: a pool's serve intent is served the
+      // moment its stack is ready, not when the person looks again.
       refetchInterval: gpuNodePoolsRefetchInterval,
+      refetchIntervalInBackground: true,
       retry: false,
     })),
   });

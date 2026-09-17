@@ -14,9 +14,11 @@ export { PoolFitReview, type PoolFitReviewProps } from './PoolFitReview';
 export {
   PoolLifecyclePanel,
   SERVE_FIRST_MODEL,
+  TRY_SERVING_AGAIN,
   serveFirstModelHref,
   type OpenedPool,
   type PoolLifecyclePanelProps,
+  type PoolServeState,
 } from './PoolLifecyclePanel';
 export {
   RemoveGpuNodePoolDialog,

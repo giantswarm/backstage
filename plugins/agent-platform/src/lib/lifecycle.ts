@@ -20,8 +20,13 @@ export type LifecycleStep = {
   message?: string;
   /** What the step usually takes, in seconds — shown next to a pending or running step. */
   typicalSeconds?: number;
-  /** The step is the next action: offered as a link once its `state` is `done`. */
+  /**
+   * The step is the next action: offered as a link once its `state` is
+   * `done` — or `failed`, as the way out.
+   */
   action?: { label: string; to: string };
+  /** The step's own steps, when it stands for another long-running action (a pool's step serving a model). */
+  steps?: LifecycleStep[];
 };
 
 const MINUTE = 60;

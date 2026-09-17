@@ -18,7 +18,11 @@ import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
 import { poolPhaseLabel } from '../../lib/poolLifecycle';
-import { PoolLifecyclePanel, type OpenedPool } from './PoolLifecyclePanel';
+import {
+  PoolLifecyclePanel,
+  type OpenedPool,
+  type PoolServeState,
+} from './PoolLifecyclePanel';
 
 export type GpuNodePoolsPanelProps = {
   rows: GpuNodePoolRow[];
@@ -29,6 +33,8 @@ export type GpuNodePoolsPanelProps = {
   onRemove: (row: GpuNodePoolRow) => void;
   /** The pool whose lifecycle panel is open beneath the table, if any. */
   opened: OpenedPool | undefined;
+  /** The opened pool's serve intent, where Deploy chose a preset. */
+  serve?: PoolServeState;
   /** The row's chevron: open this pool's lifecycle, or close it when it is the open one. */
   onToggleLifecycle: (row: GpuNodePoolRow) => void;
   onCloseLifecycle: () => void;
@@ -171,6 +177,7 @@ export function GpuNodePoolsPanel({
   errors,
   onRemove,
   opened,
+  serve,
   onToggleLifecycle,
   onCloseLifecycle,
 }: GpuNodePoolsPanelProps) {
@@ -209,6 +216,7 @@ export function GpuNodePoolsPanel({
           <PoolLifecyclePanel
             opened={opened}
             row={openedRow}
+            serve={serve}
             onClose={onCloseLifecycle}
           />
         )}

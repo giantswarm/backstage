@@ -303,14 +303,20 @@ export function ServingPage() {
   const closeOpenedModel = useCallback(() => setOpenedModel(undefined), []);
 
   // The pool panel's link: `?serve=1&installation=…&cluster=…&pool=…` opens
-  // the dialog on that pool, then leaves the URL, so a reload does not reopen it.
+  // the dialog on that pool — with `&preset=…` on the preset the pool was
+  // deployed to serve — then leaves the URL, so a reload does not reopen it.
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     const route = parseServeRoute(searchParams);
     if (!route) {
       return;
     }
-    setLoadSeed(route);
+    setLoadSeed({
+      installation: route.installation,
+      cluster: route.cluster,
+      pool: route.pool,
+      model: route.preset,
+    });
     setLoadOpen(true);
     setSearchParams(withoutServeRoute(searchParams), { replace: true });
   }, [searchParams, setSearchParams]);

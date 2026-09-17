@@ -140,13 +140,17 @@ export function describeLoadAnswer(answer: ModelManagerLoadAnswer): string {
 /**
  * The route the pool panel opens the Serve dialog with:
  * `?serve=1&installation=<installation>&cluster=<cluster>&pool=<pool name>`
- * — installation, cluster and pool preselected. Read once and stripped, so a
- * reload does not reopen the dialog.
+ * — installation, cluster and pool preselected — and, when the pool carries a
+ * serve intent (the preset chosen on the Add GPU node pool form),
+ * `&preset=<preset name>`, so the person never picks it twice. Read once and
+ * stripped, so a reload does not reopen the dialog.
  */
 export type ServeRoute = {
   installation?: string;
   cluster?: string;
   pool?: string;
+  /** The preset name to preselect (`LoadModelSeed.model`). */
+  preset?: string;
 };
 
 export const SERVE_ROUTE_PARAMS = [
@@ -154,6 +158,7 @@ export const SERVE_ROUTE_PARAMS = [
   'installation',
   'cluster',
   'pool',
+  'preset',
 ] as const;
 
 export function parseServeRoute(
@@ -167,6 +172,7 @@ export function parseServeRoute(
     installation: value('installation'),
     cluster: value('cluster'),
     pool: value('pool'),
+    preset: value('preset'),
   };
 }
 

@@ -16,8 +16,10 @@ import {
   installPersistedQueryDrop,
   KSERVE_POOL_BACKEND,
   L4_POOL_PRESETS,
+  NO_SIZE,
   poolFitAnswer,
   stubModelManagerTools,
+  ToolRefusal,
 } from './model-manager.fixture';
 
 /**
@@ -205,8 +207,11 @@ async function reachForm(page: Page, options: StubOptions = {}) {
   const calls = await stubClusterManager(page, options);
   await open(page, '/agent-platform/models/capacity');
 
+  // The header's button; a lab without a serving layer offers it once more
+  // in the page's empty state.
   await page
     .getByRole('button', { name: 'Add GPU node pool' })
+    .first()
     .click({ timeout: 60_000 });
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: /^Pick a cluster/ }).click();
@@ -573,8 +578,11 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       list_presets: { presets: L4_POOL_PRESETS },
       list_models: { models: [] },
       check_fit: poolFitAnswer,
+      load_model: new ToolRefusal('unexpected: nothing was to be served'),
     });
-    const { dialog, calls } = await reachReview(page);
+    const { dialog, calls } = await reachReview(page, {
+      servers: ['model-manager'],
+    });
     await dialog.getByRole('button', { name: /^Deploy/ }).click();
     await expect(dialog).toBeHidden({ timeout: 30_000 });
 
@@ -674,6 +682,8 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
     ]);
     await snapshot(page, 'gpu-pool-serve-first-model');
     await serveDialog.getByRole('button', { name: 'Cancel' }).click();
+    // Without a preset on the form there is no serve intent: nothing was loaded.
+    expect(modelManager.callsOf('load_model')).toEqual([]);
     await modelManager.unroute();
   });
 
@@ -694,6 +704,433 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       panel.getByRole('link', { name: 'Serve your first model' }),
     ).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+});
+
+/**
+ * The serve intent (giantswarm/backstage#2437): the preset chosen under **I want
+ * to serve** is served once the serving stack is ready. The lifecycle panel ends
+ * in **Serving <preset>**; when cluster-manager's readiness settles (read
+ * SETTLED_READ) the portal calls `check_fit`, then `load_model {backend: kserve,
+ * model: <preset>}` as the person — once — and the served model's own steps
+ * show beneath until it answers; a reload keeps the step and its state; Remove
+ * clears the intent; a refused fit shows model-manager's reason with **Serve
+ * another model**; a load model-manager threw on offers **Try serving again**
+ * and the dialog with the preset preselected. cluster-manager and model-manager
+ * stubbed at the browser as above; the lab's muster appears to list
+ * model-manager too (`servers`), and the stubbed inventory advances one stage per
+ * read once the load was accepted (the shapes of model-manager 0.24.0).
+ */
+const SERVE_INTENTS_KEY = 'gs-agent-platform-serve-intents';
+const ENDPOINT_8B = 'https://models.lab.example/model-serving/qwen3-8b-fp8';
+
+/** `check_fit` on the pool for the 8B preset once 2xlarge is among the sizes: it fits. */
+const FIT_8B_OK = {
+  model: 'qwen3-8b-fp8',
+  backend: 'kserve',
+  fits: true,
+  instanceType: 'g6.2xlarge',
+  budgetSource: 'pool-scale-from-zero',
+  cached: false,
+  cacheSource: 'index',
+  weightsBytes: 9_000_000_000,
+  overheadBytes: 4_000_000_000,
+  requiredBytes: 13_000_000_000,
+};
+
+const T8 = {
+  created: '2026-09-17T06:59:00Z',
+  nominated: '2026-09-17T06:59:35Z',
+  bound: '2026-09-17T07:03:02Z',
+  downloading: '2026-09-17T07:03:22Z',
+  downloaded: '2026-09-17T07:04:34Z',
+  pulled: '2026-09-17T07:08:34Z',
+  loaded: '2026-09-17T07:09:40Z',
+  ready: '2026-09-17T07:09:45Z',
+};
+
+type ServeStep = Record<string, unknown>;
+const pendingStep = (name: string): ServeStep => ({ name, state: 'pending' });
+const doneStep = (
+  name: string,
+  since: string,
+  finishedAt: string,
+  extra: ServeStep = {},
+): ServeStep => ({ name, state: 'done', since, finishedAt, ...extra });
+
+/** `load_model`'s answer for the 8B preset: the LLMInferenceService composed, the first step under way. */
+const LOAD_8B = {
+  name: 'qwen3-8b-fp8',
+  backend: 'kserve',
+  loaded: false,
+  running: {
+    resource: 'qwen3-8b-fp8',
+    kind: 'LLMInferenceService',
+    status: 'Pending',
+    reason: 'WaitingForPod',
+    message: 'waiting for the predictor pod',
+    phase: 'scheduling',
+    steps: [
+      {
+        name: 'scheduling',
+        state: 'inProgress',
+        since: T8.created,
+        reason: 'WaitingForPod',
+        message: 'waiting for the predictor pod',
+      },
+      ...[
+        'nodeStarting',
+        'downloadingWeights',
+        'pullingImage',
+        'loading',
+        'routing',
+        'ready',
+      ].map(pendingStep),
+    ],
+  },
+  fit: FIT_8B_OK,
+};
+
+/** The served 8B model of `list_models` at one stage of its timeline. */
+function served8b(running: Record<string, unknown>) {
+  return {
+    models: [
+      {
+        name: 'Qwen/Qwen3-8B-FP8',
+        backend: 'kserve',
+        sizeBytes: 9_000_000_000,
+        format: 'vLLM',
+        downloaded: false,
+        path: 'qwen3-8b-fp8',
+        preset: 'qwen3-8b-fp8',
+        loaded: true,
+        running: {
+          name: 'Qwen/Qwen3-8B-FP8',
+          backend: 'kserve',
+          resource: 'qwen3-8b-fp8',
+          kind: 'LLMInferenceService',
+          preset: 'qwen3-8b-fp8',
+          gpus: 1,
+          managedBy: 'model-manager',
+          ...running,
+        },
+      },
+    ],
+  };
+}
+
+/** The inventory read by read after the load: scheduling, the weights downloading, ready. */
+const STAGES_8B = [
+  served8b({
+    status: 'Pending',
+    reason: 'WaitingForPod',
+    message: 'waiting for the predictor pod',
+    phase: 'scheduling',
+    steps: LOAD_8B.running.steps,
+  }),
+  served8b({
+    status: 'Pending',
+    reason: 'DownloadingWeights',
+    message:
+      'DownloadingWeights storage-initializer downloading the weights into the cache claim',
+    phase: 'downloadingWeights',
+    steps: [
+      doneStep('scheduling', T8.created, T8.nominated),
+      doneStep('nodeStarting', T8.nominated, T8.bound),
+      {
+        name: 'downloadingWeights',
+        state: 'inProgress',
+        since: T8.downloading,
+        reason: 'DownloadingWeights',
+        message:
+          'storage-initializer downloading the weights into the cache claim',
+        bytesCompleted: 3_000_000_000,
+        bytesTotal: 9_000_000_000,
+      },
+      ...['pullingImage', 'loading', 'routing', 'ready'].map(pendingStep),
+    ],
+  }),
+  served8b({
+    status: 'Ready',
+    endpoint: ENDPOINT_8B,
+    phase: 'ready',
+    steps: [
+      doneStep('scheduling', T8.created, T8.nominated),
+      doneStep('nodeStarting', T8.nominated, T8.bound),
+      doneStep('downloadingWeights', T8.downloading, T8.downloaded, {
+        bytesTotal: 9_000_000_000,
+        cached: false,
+      }),
+      doneStep('pullingImage', T8.downloaded, T8.pulled),
+      doneStep('loading', T8.pulled, T8.loaded),
+      doneStep('routing', T8.loaded, T8.ready),
+      doneStep('ready', T8.ready, T8.ready),
+    ],
+  }),
+];
+
+type IntentStubOptions = {
+  /** `check_fit`'s answer for the intent; the default is the fixture's, which refuses the 8B preset. */
+  fit?: Record<string, unknown>;
+  /** `load_model` calls model-manager refuses before one is accepted. */
+  loadFailures?: number;
+};
+
+/**
+ * model-manager at the browser for the intent: the kserve backend the pool
+ * registers, its presets, `check_fit`, a `load_model` that flips the inventory
+ * to the served 8B model, and an inventory that advances one stage per read.
+ */
+async function stageServeIntent(page: Page, options: IntentStubOptions = {}) {
+  let loads = 0;
+  let served = false;
+  let reads = 0;
+  return stubModelManagerTools(page, {
+    list_backends: { backends: [KSERVE_POOL_BACKEND] },
+    list_presets: { presets: L4_POOL_PRESETS },
+    list_models: () => {
+      if (!served) {
+        return { models: [] };
+      }
+      reads += 1;
+      return STAGES_8B[Math.min(reads, STAGES_8B.length) - 1];
+    },
+    check_fit: options.fit ? () => options.fit : poolFitAnswer,
+    load_model: () => {
+      loads += 1;
+      if (loads <= (options.loadFailures ?? 0)) {
+        return new ToolRefusal(
+          'backend_error: the kserve backend did not answer: context deadline exceeded',
+        );
+      }
+      served = true;
+      return LOAD_8B;
+    },
+  });
+}
+
+/** Reach the form with model-manager listed, choose the 8B preset (2xlarge is its size), Review and Deploy. */
+async function deployWithPreset(page: Page) {
+  const { dialog, calls } = await reachForm(page, {
+    servers: ['model-manager'],
+  });
+  await dialog.getByRole('button', { name: /I want to serve/ }).click();
+  await page.getByRole('option', { name: /Qwen3 8B FP8/ }).click();
+  await expect
+    .poll(() => dryRuns(calls).at(-1)?.arguments.sizes)
+    .toEqual(['2xlarge']);
+  await dialog.getByRole('button', { name: 'Review' }).click();
+  await expect(dialog.getByTestId('pool-fit-review')).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(dialog.getByTestId('chosen-sizes')).toContainText(
+    'I want to serve: Qwen3 8B FP8 (Qwen/Qwen3-8B-FP8)',
+  );
+  await dialog.getByRole('button', { name: /^Deploy/ }).click();
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
+  const panel = page.getByTestId('pool-lifecycle');
+  await expect(panel).toContainText('Pool wc1-gpu-e2e');
+  return { panel, calls };
+}
+
+const storedIntents = (page: Page) =>
+  page.evaluate(key => window.localStorage.getItem(key), SERVE_INTENTS_KEY);
+
+/** After a reload the panel is closed; the row's chevron opens it again. */
+async function reopenPanel(page: Page) {
+  await page
+    .getByRole('row', { name: /wc1-gpu-e2e/ })
+    .getByRole('button', { name: 'Show lifecycle of pool wc1-gpu-e2e' })
+    .click({ timeout: 60_000 });
+  return page.getByTestId('pool-lifecycle');
+}
+
+test.describe('models: GPU node pool serve intent — the preset chosen on the form is served once the stack is ready (cluster-manager and model-manager stubbed)', () => {
+  test('Deploy with a preset ends in Serving <preset>: check_fit and load_model once as the person when the stack is ready, the model’s steps beneath until it answers; a reload keeps the step; Remove clears the intent', async ({
+    page,
+  }) => {
+    const modelManager = await stageServeIntent(page, { fit: FIT_8B_OK });
+    const { panel } = await deployWithPreset(page);
+
+    await expect(panel).toContainText('serving Qwen3 8B FP8');
+    const serve = panel.locator('[data-step="serve"]');
+    await expect(serve).toContainText('Serving Qwen3 8B FP8');
+    await expect(serve).toHaveAttribute('data-state', 'pending');
+    await expect(serve).toContainText('once the steps above are done');
+    await expect(
+      panel.getByRole('link', { name: 'Serve your first model' }),
+    ).toHaveCount(0);
+    expect(modelManager.callsOf('load_model')).toEqual([]);
+    await snapshot(page, 'gpu-pool-serve-intent-pending');
+
+    // A reload during the wait: the intent is read back from the browser and
+    // the step is there as it was.
+    await page.reload();
+    const reopened = await reopenPanel(page);
+    await expect(reopened.locator('[data-step="serve"]')).toContainText(
+      'Serving Qwen3 8B FP8',
+    );
+
+    // The stack settles: check_fit, then load_model — once, as the person, on
+    // the kserve backend.
+    await expect
+      .poll(() => modelManager.callsOf('load_model').length, {
+        timeout: 90_000,
+      })
+      .toBe(1);
+    expect(modelManager.callsOf('check_fit')).toEqual([
+      {
+        name: 'x_model-manager_check_fit',
+        arguments: { model: 'qwen3-8b-fp8', backend: 'kserve' },
+      },
+    ]);
+    expect(modelManager.callsOf('load_model')[0].arguments).toEqual({
+      model: 'qwen3-8b-fp8',
+      backend: 'kserve',
+    });
+
+    // The served model's own steps beneath the pool's, then done once it answers.
+    const serving = reopened.locator('[data-step="serve"]');
+    await expect(serving).toHaveAttribute('data-state', 'inProgress', {
+      timeout: 30_000,
+    });
+    await expect(serving.locator('[data-step="scheduling"]')).toBeVisible({
+      timeout: 30_000,
+    });
+    await snapshot(page, 'gpu-pool-serve-intent-on-its-way');
+    await expect(serving).toHaveAttribute('data-state', 'done', {
+      timeout: 60_000,
+    });
+    await expect(serving).toContainText(
+      `qwen3-8b-fp8 answers at ${ENDPOINT_8B}`,
+    );
+    await expect(serving.locator('[data-step="ready"]')).toHaveAttribute(
+      'data-state',
+      'done',
+    );
+    await expect(
+      serving.getByRole('link', { name: 'Serve another model' }),
+    ).toBeVisible();
+    await snapshot(page, 'gpu-pool-serve-intent-done');
+    expect(modelManager.callsOf('load_model')).toHaveLength(1);
+
+    // Reloaded once more: done stays done, nothing is loaded again.
+    await page.reload();
+    const again = await reopenPanel(page);
+    await expect(again.locator('[data-step="serve"]')).toHaveAttribute(
+      'data-state',
+      'done',
+      { timeout: 30_000 },
+    );
+    await page.waitForTimeout(3_000);
+    expect(modelManager.callsOf('load_model')).toHaveLength(1);
+    const stored = (await storedIntents(page)) ?? '';
+    expect(stored).toContain('"preset":"qwen3-8b-fp8"');
+    expect(stored).toContain('"kind":"served"');
+
+    // Remove clears the intent.
+    await page
+      .getByRole('row', { name: /wc1-gpu-e2e/ })
+      .getByRole('button', { name: 'Remove pool wc1-gpu-e2e' })
+      .click();
+    const remove = page.getByRole('dialog');
+    await remove.getByLabel(/Type wc1-gpu-e2e to confirm/).fill('wc1-gpu-e2e');
+    await remove.getByRole('button', { name: 'Remove pool' }).click();
+    await expect(remove).toBeHidden({ timeout: 30_000 });
+    await expect
+      .poll(async () => (await storedIntents(page)) ?? '')
+      .not.toContain('qwen3-8b-fp8');
+    await modelManager.unroute();
+  });
+
+  test('a preset the pool as deployed cannot host: check_fit’s reason verbatim as the dialog words it, load_model never called, Serve another model opens the dialog on the pool', async ({
+    page,
+  }) => {
+    const modelManager = await stageServeIntent(page);
+    const { panel } = await deployWithPreset(page);
+
+    const serve = panel.locator('[data-step="serve"]');
+    await expect(serve).toHaveAttribute('data-state', 'failed', {
+      timeout: 90_000,
+    });
+    await expect(serve).toContainText(
+      `Cannot be served on this pool: ${NO_SIZE}`,
+    );
+    expect(modelManager.callsOf('check_fit')).toHaveLength(1);
+    expect(modelManager.callsOf('load_model')).toEqual([]);
+    await expect(
+      panel.getByRole('button', { name: 'Try serving again' }),
+    ).toHaveCount(0);
+    await snapshot(page, 'gpu-pool-serve-intent-refused');
+
+    await serve.getByRole('link', { name: 'Serve another model' }).click();
+    await expect(page).toHaveURL(/\/agent-platform\/models\/serving/);
+    const serveDialog = page.getByRole('dialog', { name: 'Serve model' });
+    await expect(serveDialog).toBeVisible({ timeout: 30_000 });
+    await expect(serveDialog.getByTestId('serve-target')).toHaveText(
+      `On GPU pool gpu-e2e of cluster wc1 (${lab.installation})`,
+    );
+    await expect(
+      serveDialog.getByRole('button', { name: /Preset/ }),
+      'another model: the dialog starts from the first preset',
+    ).toHaveText(/Qwen3 4B Instruct/);
+    await serveDialog.getByRole('button', { name: 'Cancel' }).click();
+    await modelManager.unroute();
+  });
+
+  test('a load model-manager threw on: the message, the dialog with the preset preselected, Try serving again loads once more', async ({
+    page,
+  }) => {
+    const modelManager = await stageServeIntent(page, {
+      fit: FIT_8B_OK,
+      loadFailures: 1,
+    });
+    const { panel } = await deployWithPreset(page);
+
+    const serve = panel.locator('[data-step="serve"]');
+    await expect(serve).toHaveAttribute('data-state', 'failed', {
+      timeout: 90_000,
+    });
+    await expect(serve).toContainText(
+      'model-manager refused: backend_error: the kserve backend did not answer',
+    );
+    expect(modelManager.callsOf('load_model')).toHaveLength(1);
+    await snapshot(page, 'gpu-pool-serve-intent-failed');
+
+    // The way out carries the preset: the Serve dialog on the pool preselects it.
+    const link = serve.getByRole('link', {
+      name: 'Serve Qwen3 8B FP8 in the dialog',
+    });
+    expect(await link.getAttribute('href')).toContain('preset=qwen3-8b-fp8');
+    await link.click();
+    const serveDialog = page.getByRole('dialog', { name: 'Serve model' });
+    await expect(serveDialog).toBeVisible({ timeout: 30_000 });
+    await expect(
+      serveDialog.getByRole('button', { name: /Preset/ }),
+      'the preset the pool was deployed to serve is preselected',
+    ).toHaveText(/Qwen3 8B FP8/);
+    await expect(serveDialog.getByTestId('serve-fit-verdict')).toContainText(
+      'Fits — the node comes as g6.2xlarge',
+    );
+    await snapshot(page, 'gpu-pool-serve-dialog-preselected');
+    await serveDialog.getByRole('button', { name: 'Cancel' }).click();
+
+    // Back on the pool: Try serving again asks model-manager once more, and
+    // the second load is accepted.
+    await open(page, '/agent-platform/models/capacity');
+    const reopened = await reopenPanel(page);
+    await reopened.getByRole('button', { name: 'Try serving again' }).click();
+    await expect
+      .poll(() => modelManager.callsOf('load_model').length, {
+        timeout: 30_000,
+      })
+      .toBe(2);
+    await expect(reopened.locator('[data-step="serve"]')).toHaveAttribute(
+      'data-state',
+      'inProgress',
+      { timeout: 30_000 },
+    );
+    await modelManager.unroute();
   });
 });
 
