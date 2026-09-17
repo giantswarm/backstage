@@ -78,7 +78,8 @@ test.describe('repositories', () => {
   test('the Team filter narrows the rows to that team', async ({ admin }) => {
     await open(admin, '/repositories?scope=all');
     await expect(rows(admin).first()).toBeVisible({ timeout: 60_000 });
-    await admin.getByRole('combobox', { name: /^Team/ }).click();
+    // The Autocomplete's labelled input; its combobox root carries no name.
+    await admin.getByLabel(/^Team/).click();
     const team = admin
       .getByRole('option')
       .filter({ hasNotText: 'No team' })

@@ -40,7 +40,7 @@ the page shows it verbatim. A broken hop keeps its 5xx.
 ```yaml
 repositories:
   muster:
-    installation: gazelle # a name in muster.installations
+    installation: <installation> # a name in muster.installations
     server: giantswarm-repo-manager
 ```
 

@@ -84,6 +84,6 @@ app:
       catalog.createComponent: repositories.create
 repositories:
   muster:
-    installation: gazelle
+    installation: <installation> # a name in muster.installations
     server: giantswarm-repo-manager
 ```

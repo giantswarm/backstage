@@ -50,7 +50,7 @@ const columns: TableColumn<TableRow>[] = [
     field: 'repository',
     highlight: true,
     defaultSort: 'asc',
-    width: '20%',
+    width: '30%',
     cellStyle: ellipsis,
     customSort: byName,
     render: row => (
@@ -70,7 +70,7 @@ const columns: TableColumn<TableRow>[] = [
   {
     title: 'Team',
     field: 'team',
-    width: '20%',
+    width: '18%',
     cellStyle: ellipsis,
     customSort: byText(row => row.team ?? ''),
     render: row =>
@@ -83,7 +83,7 @@ const columns: TableColumn<TableRow>[] = [
   {
     title: 'Lifecycle',
     field: 'lifecycle',
-    width: '13%',
+    width: '10%',
     cellStyle: oneLine,
     customSort: byText(lifecycleOf),
     render: lifecycleOf,
@@ -91,7 +91,7 @@ const columns: TableColumn<TableRow>[] = [
   {
     title: 'Set-up',
     field: 'setup',
-    width: '17%',
+    width: '15%',
     cellStyle: oneLine,
     customSort: byNumber(row => SETUP_ORDER[setupState(row)]),
     render: row => (
@@ -106,7 +106,7 @@ const columns: TableColumn<TableRow>[] = [
     title: 'Findings',
     field: 'findings',
     type: 'numeric',
-    width: '14%',
+    width: '9%',
     customSort: byNumber(row => row.findings?.length ?? 0),
     render: row => (
       <span title={row.findings?.join('\n')}>{row.findings?.length ?? 0}</span>
@@ -115,7 +115,7 @@ const columns: TableColumn<TableRow>[] = [
   {
     title: 'Last person commit',
     field: 'lastPersonCommit',
-    width: '16%',
+    width: '18%',
     cellStyle: oneLine,
     // ISO timestamps order as strings; a repository without one sorts first.
     customSort: byText(row => row.lastPersonCommit ?? ''),
