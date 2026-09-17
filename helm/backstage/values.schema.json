@@ -2435,7 +2435,7 @@
             "properties": {
                 "apiKey": {
                     "type": "string",
-                    "description": "Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var)"
+                    "description": "Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var). Not needed when aiChat.anthropic.provider is vertex, where the Google service account is the credential instead"
                 }
             }
         },
@@ -2795,7 +2795,7 @@
         },
         "google": {
             "type": "object",
-            "description": "Google Vertex AI provider settings for AI chat (used when aiChat.model is a gemini-* model)",
+            "description": "Google Vertex AI provider settings for AI chat (used by gemini-* models, and by claude-* models when aiChat.anthropic.provider is vertex)",
             "additionalProperties": false,
             "properties": {
                 "credentialsJson": {
