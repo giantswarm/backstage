@@ -57,6 +57,12 @@ describe('isLostSessionError', () => {
     );
   });
 
+  it('recognises an id the gateway cannot read any more (400 invalid session ID header)', () => {
+    expect(
+      isLostSessionError(transportError(400, 'mcp: invalid session ID header')),
+    ).toBe(true);
+  });
+
   it('recognises a 404 on a tool call by status alone (modern protocol adds no hint)', () => {
     expect(isLostSessionError(transportError(404, 'not found'))).toBe(true);
   });

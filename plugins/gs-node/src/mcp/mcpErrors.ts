@@ -21,11 +21,14 @@ const TRANSPORT_ERROR_PREFIX = 'MCP HTTP Transport Error';
  * forgot (agentgateway `mcp: session not found`; the SDK appends its own
  * "The MCP session expired" hint), and 400 on the id-less request the client
  * sends after the SDK cleared the id (agentgateway `session header is required
- * for non-initialize requests`, the Python SDK `Missing session ID`).
+ * for non-initialize requests`, the Python SDK `Missing session ID`), and 400
+ * on an id the server cannot read any more (agentgateway `invalid session ID
+ * header` after its session key rotated or its encoding changed).
  */
 const LOST_SESSION_FRAGMENTS = [
   'session not found',
   'session header is required',
+  'invalid session id',
   'missing session id',
   'the mcp session expired',
   'session terminated',
