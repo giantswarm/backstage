@@ -79,6 +79,23 @@ const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
  */
 const MAIN_LOGIN_PROVIDER = 'main';
 
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every(entry => typeof entry === 'string')
+  );
+}
+
+/**
+ * The further text blocks a tool answered next to its error message — a
+ * `MusterToolError`'s `details` as {@link MusterApiClient} carries them — or
+ * none. Callers parse what their tool puts there (cluster-manager: the
+ * structured refusal of `delete_node_pool`).
+ */
+export function toolErrorDetails(error: unknown): string[] {
+  const details = (error as { details?: unknown } | null)?.details;
+  return isStringArray(details) ? details : [];
+}
+
 export class MusterApiClient implements MusterApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
@@ -537,14 +554,21 @@ export class MusterApiClient implements MusterApi {
   private async handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const message =
-        (errorData as { error?: { message?: string } })?.error?.message ??
-        `Muster request failed with status ${response.status}`;
-      const error = new Error(message);
+      const { message, details } =
+        (errorData as { error?: { message?: string; details?: unknown } })
+          ?.error ?? {};
+      const error = new Error(
+        message ?? `Muster request failed with status ${response.status}`,
+      );
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';
       if (response.status === 503) error.name = 'ServiceUnavailableError';
+      // A tool-level error's further text blocks (gs-node's MusterToolError
+      // `details`) stay with it: cluster-manager's structured refusal rides there.
+      if (isStringArray(details)) {
+        (error as Error & { details: string[] }).details = details;
+      }
       throw error;
     }
 

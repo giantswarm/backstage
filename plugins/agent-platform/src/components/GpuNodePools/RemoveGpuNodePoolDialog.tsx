@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Flex, Text, TextField } from '@backstage/ui';
+import { Link } from '@backstage/core-components';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 
 import type {
@@ -8,11 +10,14 @@ import type {
 } from '../../hooks/useClusterManager';
 import {
   CLUSTER_MANAGER_SERVER,
+  type DeleteRefusal,
   type NodePoolWriteResult,
 } from '../../lib/clusterManager';
 import type { ServedModel } from '../../lib/serving';
+import { servingRouteRef } from '../../routes';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { PartialWriteOutcome } from './PartialWriteOutcome';
 
 /**
  * The models served on a cluster, from the served-models list the Serving page
@@ -48,16 +53,73 @@ export type RemoveGpuNodePoolDialogProps = {
   servedModels: ServedModel[];
   /** cluster-manager reports `modes.commit`: a removal PR is offered too. */
   canCommit: boolean;
+  /** After an accepted, complete Remove: the teardown is under way. */
   onRemoved?: (result: NodePoolWriteResult) => void;
 };
+
+const nodes = (count: number) => `${count} ${count === 1 ? 'node' : 'nodes'}`;
+
+/**
+ * cluster-manager's structured refusal: the nodes the pool still runs, the
+ * models to unload first (each a link to the Serving page), and the hint that
+ * explains the wait — Karpenter removes an empty node about 10 minutes after
+ * its last pod.
+ */
+function RefusalDetails({
+  refused,
+  servingPath,
+}: {
+  refused: DeleteRefusal;
+  servingPath: string | undefined;
+}) {
+  return (
+    <>
+      {refused.nodes.length > 0 && (
+        <Text
+          variant="body-small"
+          data-testid="refused-nodes"
+          style={{ overflowWrap: 'anywhere' }}
+        >
+          Nodes: {refused.nodes.join(', ')}
+        </Text>
+      )}
+      <Flex direction="column" gap="1" data-testid="refused-models">
+        <Text variant="body-small">
+          {refused.models.length === 0
+            ? 'No model is served on this cluster: something else keeps the nodes busy.'
+            : `Unload ${refused.models.length === 1 ? 'this model' : 'these models'} first, on the Serving page:`}
+        </Text>
+        {refused.models.map(model =>
+          servingPath ? (
+            <Link key={model} to={servingPath}>
+              <Text as="span" variant="body-small">
+                {model}
+              </Text>
+            </Link>
+          ) : (
+            <Text key={model} variant="body-small">
+              {model}
+            </Text>
+          ),
+        )}
+      </Flex>
+      {refused.hint && <Text variant="body-small">{refused.hint}</Text>}
+    </>
+  );
+}
 
 /**
  * Remove pool — a name-typing confirm that shows what the person cannot work
  * out alone: the models served on that cluster by name, and, once
- * `delete_node_pool` refuses, the nodes the pool still runs. `force` is
- * offered only after that refusal; a refusal that is not the replicas guard is
- * shown verbatim. With the cluster's last pool the operator release
- * cluster-manager created and the registered backend go too.
+ * `delete_node_pool` refuses, its structured refusal (the nodes the pool still
+ * runs, the models to unload first, the hint) with **Check again**, the same
+ * call without force; an answer without the block (an older cluster-manager)
+ * is shown as it is, with Check again too. **Remove anyway** (`force`) is a
+ * second, deliberate choice after a structured refusal, never the default. An
+ * accepted Remove closes into the pool's teardown in the lifecycle panel; a
+ * Remove cut short (`partial`) stays open with the pending objects and
+ * **Continue**, the same call again. With the cluster's last pool the operator
+ * release cluster-manager created and the registered backend go too.
  */
 export function RemoveGpuNodePoolDialog({
   row,
@@ -71,12 +133,15 @@ export function RemoveGpuNodePoolDialog({
   const [typed, setTyped] = useState('');
   const [force, setForce] = useState(false);
   const [committed, setCommitted] = useState<NodePoolWriteResult>();
+  const [partial, setPartial] = useState<NodePoolWriteResult>();
+  const servingRoute = useRouteRef(servingRouteRef);
 
   useEffect(() => {
     if (!isOpen) {
       setTyped('');
       setForce(false);
       setCommitted(undefined);
+      setPartial(undefined);
       write.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,7 +153,9 @@ export function RemoveGpuNodePoolDialog({
 
   const { failure, isBusy } = write;
   const notConnected = failure?.kind === 'not-connected';
-  const guard = failure?.guard;
+  const refusal = failure && !notConnected ? failure : undefined;
+  const refused = refusal?.refused;
+  const confirmed = typed === row.pool.name;
   const served = servedModelsOnCluster(
     servedModels,
     row.installation,
@@ -100,9 +167,15 @@ export function RemoveGpuNodePoolDialog({
     name: row.poolName,
   };
 
-  const onConfirm = async () => {
+  /** Remove, Check again (never force) and Continue after a partial answer: the same call. */
+  const remove = async (options: { force: boolean }) => {
     try {
-      const result = await write.remove(input, { mode: 'apply', force });
+      const result = await write.remove(input, { mode: 'apply', ...options });
+      if (result.partial) {
+        setPartial(result);
+        return;
+      }
+      setPartial(undefined);
       onRemoved?.(result);
       onOpenChange(false);
     } catch {
@@ -127,11 +200,8 @@ export function RemoveGpuNodePoolDialog({
       confirmLabel={force ? 'Remove pool and its nodes' : 'Remove pool'}
       busyLabel="Removing…"
       isBusy={isBusy}
-      isConfirmDisabled={typed !== row.pool.name}
-      // cluster-manager's refusal, verbatim — unless it is the replicas guard,
-      // which is laid out below with the nodes it names.
-      error={failure && !notConnected && !guard ? failure.message : undefined}
-      onConfirm={onConfirm}
+      isConfirmDisabled={!confirmed || Boolean(partial)}
+      onConfirm={() => remove({ force })}
     >
       <Flex direction="column" gap="3">
         <Text variant="body-medium">
@@ -153,23 +223,51 @@ export function RemoveGpuNodePoolDialog({
             </Text>
           ))}
         </Flex>
-        {guard && (
+        {refusal && (
           <Alert
             status="warning"
-            title={`The pool still runs ${guard.count} node${guard.count === 1 ? '' : 's'}`}
+            data-testid="remove-refused"
+            title={
+              refused
+                ? `cluster-manager refused: the pool still runs ${nodes(refused.nodes.length)}`
+                : 'cluster-manager refused'
+            }
             description={
               <Flex direction="column" gap="2">
-                <Text variant="body-small">{guard.message}</Text>
-                {guard.nodes.length > 0 && (
-                  <Text variant="body-small" data-testid="guard-nodes">
-                    {guard.nodes.join(', ')}
-                  </Text>
+                {refused ? (
+                  <RefusalDetails
+                    refused={refused}
+                    servingPath={servingRoute?.()}
+                  />
+                ) : (
+                  <Text variant="body-small">{refusal.message}</Text>
                 )}
-                <Checkbox isSelected={force} onChange={setForce}>
-                  Remove anyway — the workloads on these nodes are evicted.
-                </Checkbox>
+                <div>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onPress={() => remove({ force: false })}
+                    isDisabled={isBusy || !confirmed}
+                  >
+                    {isBusy ? 'Checking…' : 'Check again'}
+                  </Button>
+                </div>
+                {refused && (
+                  <Checkbox isSelected={force} onChange={setForce}>
+                    Remove anyway — the nodes go with the pool and the workloads
+                    on them are evicted.
+                  </Checkbox>
+                )}
               </Flex>
             }
+          />
+        )}
+        {partial && (
+          <PartialWriteOutcome
+            result={partial}
+            action="Remove"
+            onContinue={() => remove({ force })}
+            isBusy={isBusy}
           />
         )}
         {notConnected && (
@@ -198,7 +296,7 @@ export function RemoveGpuNodePoolDialog({
               <Button
                 variant="secondary"
                 size="small"
-                isDisabled={isBusy || typed !== row.pool.name}
+                isDisabled={isBusy || !confirmed}
                 onPress={onCommit}
               >
                 {isBusy ? 'Committing…' : 'Commit'}

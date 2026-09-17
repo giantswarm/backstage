@@ -13,6 +13,8 @@
  * nothing of its own (bumblebee-plans#46, D2 and D7).
  */
 
+import { toolErrorDetails } from '@giantswarm/backstage-plugin-muster';
+
 import { looksNotConnected, type CommitAgentResult } from './agentManager';
 
 /** The MCPServer name muster registers cluster-manager under. */
@@ -392,9 +394,58 @@ export function isValidPoolName(name: string): boolean {
   return POOL_NAME_PATTERN.test(name);
 }
 
+/**
+ * `delete_node_pool`'s structured refusal (cluster-manager 0.8.1+), answered
+ * as a second text block next to the message: the nodes the pool still runs,
+ * the models served on the cluster to unload first (none: something else
+ * holds the nodes), and the hint that explains the wait.
+ */
+export type DeleteRefusal = {
+  nodes: string[];
+  models: string[];
+  hint: string;
+};
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+/** The `refused` block among a tool error's further text blocks, if any. */
+export function parseDeleteRefusal(
+  details: string[],
+): DeleteRefusal | undefined {
+  for (const detail of details) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(detail);
+    } catch {
+      continue;
+    }
+    const refused = (parsed as { refused?: unknown } | null)?.refused;
+    if (refused && typeof refused === 'object') {
+      const block = refused as Record<string, unknown>;
+      return {
+        nodes: strings(block.nodes),
+        models: strings(block.models),
+        hint: typeof block.hint === 'string' ? block.hint : '',
+      };
+    }
+  }
+  return undefined;
+}
+
 /** A refusal cluster-manager answered, in its own words. */
 export class ClusterManagerError extends Error {
   readonly name = 'ClusterManagerError';
+  /** `delete_node_pool`'s structured refusal, when the answer carried one. */
+  readonly refused?: DeleteRefusal;
+
+  constructor(message: string, refused?: DeleteRefusal) {
+    super(message);
+    this.refused = refused;
+  }
 }
 
 /**
@@ -422,37 +473,10 @@ export function classifyClusterManagerError(error: unknown): Error {
   if (looksNotConnected(message)) {
     return new ClusterManagerNotConnectedError(message);
   }
-  return new ClusterManagerError(message);
-}
-
-/**
- * `delete_node_pool`'s replicas guard, parsed from the refusal: "node pool
- * <name> still runs <n> node(s) (<node>, <node>): …". Undefined for any other
- * refusal — those are shown verbatim.
- */
-export type ReplicasGuard = {
-  pool: string;
-  count: number;
-  nodes: string[];
-  message: string;
-};
-
-const REPLICAS_GUARD = /node pool (\S+) still runs (\d+) node\(s\) \(([^)]*)\)/;
-
-export function parseReplicasGuard(message: string): ReplicasGuard | undefined {
-  const match = message.match(REPLICAS_GUARD);
-  if (!match) {
-    return undefined;
-  }
-  return {
-    pool: match[1],
-    count: Number(match[2]),
-    nodes: match[3]
-      .split(',')
-      .map(node => node.trim())
-      .filter(Boolean),
+  return new ClusterManagerError(
     message,
-  };
+    parseDeleteRefusal(toolErrorDetails(error)),
+  );
 }
 
 /** A manifest's file name in the review: `<kind>-<name>.yaml`. */

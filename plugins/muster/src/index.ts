@@ -3,6 +3,7 @@ export {
   musterApiRef,
   musterAuthProvidersApiRef,
   MusterAuthProviders,
+  toolErrorDetails,
 } from './apis';
 export type {
   MusterApi,

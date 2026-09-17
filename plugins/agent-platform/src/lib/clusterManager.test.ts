@@ -7,7 +7,7 @@ import {
   groupManifestsByRelease,
   isValidPoolName,
   manifestFilename,
-  parseReplicasGuard,
+  parseDeleteRefusal,
   poolNameOf,
 } from './clusterManager';
 
@@ -37,27 +37,51 @@ describe('isValidPoolName', () => {
   });
 });
 
-describe('parseReplicasGuard', () => {
-  it('reads the count and the nodes from the refusal', () => {
-    const guard = parseReplicasGuard(
-      "node pool gpu-l4 still runs 2 node(s) (i-0abc, i-0def): something is scheduled on them — check the cluster's Serving group, scale the workloads away and re-run once the pool is empty, or pass force to delete the pool with its nodes",
+describe('parseDeleteRefusal', () => {
+  const block = {
+    refused: {
+      nodes: ['aws:///eu-west-1a/i-0abc'],
+      models: ['LLMInferenceService model-serving/qwen3-4b (Qwen/Qwen3-4B)'],
+      hint: 'Karpenter removes an empty node about 10 minutes after its last pod; a served model has to be unloaded first.',
+    },
+  };
+  it('reads the refused block from the further text blocks', () => {
+    expect(parseDeleteRefusal(['not json', JSON.stringify(block)])).toEqual(
+      block.refused,
     );
-    expect(guard).toMatchObject({
-      pool: 'gpu-l4',
-      count: 2,
-      nodes: ['i-0abc', 'i-0def'],
+  });
+  it('tolerates a block with fields missing', () => {
+    expect(parseDeleteRefusal(['{"refused":{"nodes":["i-1"]}}'])).toEqual({
+      nodes: ['i-1'],
+      models: [],
+      hint: '',
     });
   });
-  it('is undefined for any other refusal', () => {
-    expect(
-      parseReplicasGuard(
-        'HelmRelease org-acme/wc1-def00 was not created by cluster-manager',
-      ),
-    ).toBeUndefined();
+  it('is undefined without a refused block', () => {
+    expect(parseDeleteRefusal([])).toBeUndefined();
+    expect(parseDeleteRefusal(['{"partial":true}'])).toBeUndefined();
   });
 });
 
 describe('classifyClusterManagerError', () => {
+  it('keeps the structured refusal a tool error carries as details', () => {
+    const error = classifyClusterManagerError(
+      Object.assign(new Error('node pool gpu-l4 still runs 1 node(s)'), {
+        details: ['{"refused":{"nodes":["i-1"],"models":[],"hint":"wait"}}'],
+      }),
+    );
+    expect(error).toBeInstanceOf(ClusterManagerError);
+    expect((error as ClusterManagerError).refused).toEqual({
+      nodes: ['i-1'],
+      models: [],
+      hint: 'wait',
+    });
+    expect(
+      (classifyClusterManagerError(new Error('plain')) as ClusterManagerError)
+        .refused,
+    ).toBeUndefined();
+  });
+
   it("turns muster's not-connected answers into the connect step", () => {
     expect(
       classifyClusterManagerError(

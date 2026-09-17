@@ -3,7 +3,7 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
-import { MusterApiClient } from './MusterApiClient';
+import { MusterApiClient, toolErrorDetails } from './MusterApiClient';
 import { MusterAuthProvidersApi } from './types';
 
 const HEADER = 'backstage-muster-authorization';
@@ -54,6 +54,47 @@ function okResponse(body: unknown): Response {
 function errorResponse(status: number, body: unknown): Response {
   return { ok: false, status, json: async () => body } as Response;
 }
+
+describe('MusterApiClient tool errors', () => {
+  it('keeps the further text blocks of a refused tool with the thrown error', async () => {
+    const { client, fetchMock } = setup();
+    fetchMock.mockResolvedValue(
+      errorResponse(500, {
+        error: {
+          name: 'MusterToolError',
+          message: 'node pool gpu-l4 still runs 1 node(s)',
+          details: ['{"refused":{"nodes":["i-0abc"]}}'],
+        },
+      }),
+    );
+
+    const error: unknown = await client
+      .callTool('x_cluster-manager_delete_node_pool', {}, 'open')
+      .catch(e => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      'node pool gpu-l4 still runs 1 node(s)',
+    );
+    expect(toolErrorDetails(error)).toEqual([
+      '{"refused":{"nodes":["i-0abc"]}}',
+    ]);
+  });
+});
+
+describe('toolErrorDetails', () => {
+  it('reads the further text blocks a tool error carries, else none', () => {
+    expect(
+      toolErrorDetails(
+        Object.assign(new Error('refused'), { details: ['{"refused":{}}'] }),
+      ),
+    ).toEqual(['{"refused":{}}']);
+    expect(toolErrorDetails(new Error('plain'))).toEqual([]);
+    expect(toolErrorDetails(undefined)).toEqual([]);
+    expect(
+      toolErrorDetails(Object.assign(new Error('x'), { details: [1] })),
+    ).toEqual([]);
+  });
+});
 
 type SetupOptions = {
   /** `gs.authProvider`; `null` leaves it unset. */

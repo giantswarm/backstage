@@ -7,6 +7,7 @@ import {
   EndpointProbeResult,
   MusterMcpClient,
   ReachabilityCache,
+  MusterToolError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
   createRouter,
@@ -969,6 +970,28 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(400);
       expect(callTool).not.toHaveBeenCalled();
+    });
+
+    // cluster-manager's delete_node_pool answers its structured refusal as a
+    // second text block; gs-node keeps it as the error's `details`, and the
+    // error middleware serializes it next to the message for the frontend.
+    it('answers a refused tool with its message and further text blocks', async () => {
+      callTool.mockRejectedValue(
+        new MusterToolError('node pool gpu-l4 still runs 1 node(s)', [
+          '{"refused":{"nodes":["i-0abc"],"models":[],"hint":"wait"}}',
+        ]),
+      );
+
+      const response = await request(app)
+        .post('/call')
+        .send({ name: 'x_cluster-manager_delete_node_pool', arguments: {} });
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterToolError',
+        message: 'node pool gpu-l4 still runs 1 node(s)',
+        details: ['{"refused":{"nodes":["i-0abc"],"models":[],"hint":"wait"}}'],
+      });
     });
   });
 

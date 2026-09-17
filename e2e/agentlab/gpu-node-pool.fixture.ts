@@ -296,9 +296,13 @@ export function dryRunAnswer(
 /** The objects a partial apply leaves for the re-run: the last three. */
 export const PENDING = 3;
 
-/** `create_node_pool` with `mode: apply`: cut short (`partial`) or complete. */
-export function applyAnswer(pool: string, partial: boolean) {
-  const all = objects(CLUSTER.name, pool, 'created');
+/** A write with `mode: apply`, cut short (`partial`) or complete: `created` or `deleted` objects. */
+function writeAnswer(
+  pool: string,
+  partial: boolean,
+  action: 'created' | 'deleted',
+) {
+  const all = objects(CLUSTER.name, pool, action);
   const done = partial ? all.slice(0, all.length - PENDING) : all;
   const pending = partial
     ? all
@@ -324,6 +328,51 @@ export function applyAnswer(pool: string, partial: boolean) {
   };
 }
 
+/** `create_node_pool` with `mode: apply`: cut short (`partial`) or complete. */
+export function applyAnswer(pool: string, partial: boolean) {
+  return writeAnswer(pool, partial, 'created');
+}
+
+/** `delete_node_pool` with `mode: apply` on the cluster's last pool: cut short or complete. */
+export function deleteAnswer(pool: string, partial: boolean) {
+  return { ...writeAnswer(pool, partial, 'deleted'), lastPool: true };
+}
+
+/** `delete_node_pool`'s structured refusal (cluster-manager 0.8.1): the second text block next to the message. */
+export const REFUSED = {
+  nodes: ['aws:///eu-west-1a/i-0a1b2c3d4e5f60001'],
+  models: [
+    'LLMInferenceService model-serving/qwen3-4b-instruct (Qwen/Qwen3-4B-Instruct-2507)',
+  ],
+  hint: 'Karpenter removes an empty node about 10 minutes after its last pod; a served model has to be unloaded first.',
+};
+
+export const refusalText = (pool: string) =>
+  `node pool ${CLUSTER.name}-${pool} still runs 1 node(s) (${REFUSED.nodes[0]}): a model is served on the cluster — unload it and re-run once the pool is empty, or pass force to delete the pool with its nodes`;
+
+/** The reads of `list_node_pools` after an accepted delete on which the pool still reads `removing`; gone on the next. */
+export const REMOVING_READS = 3;
+
+/**
+ * `list_node_pools` for a pool being removed, read `n` after the delete: the
+ * shapes of cluster-manager 0.8.1's live check (`removing` at T+1 s with the
+ * releases terminating, gone at T+44 s) — the pending objects shrink read by
+ * read, the pool's own release last. `legacy` reports `deleting` alone.
+ */
+export function removingPoolAnswer(
+  pool: string,
+  at: number,
+  n: number,
+  mode: LifecycleMode,
+) {
+  const settled = poolAnswer(pool, at, SETTLED_READ, mode);
+  const all = objects(CLUSTER.name, pool, 'terminating');
+  const pending = all.slice(0, Math.max(1, all.length - (n - 1) * 3));
+  return mode === 'legacy'
+    ? { ...settled, deleting: true }
+    : { ...settled, phase: 'removing', deleting: true, pending };
+}
+
 /** `phases`: cluster-manager 0.8's `phase`/`steps`/`readiness`; `legacy`: an older one without them. */
 export type LifecycleMode = 'phases' | 'legacy';
 
@@ -332,6 +381,12 @@ export type StubOptions = DryRunOptions & {
   partialApplies?: number;
   /** How the lists answer once a pool is applied (default `phases`). */
   lifecycle?: LifecycleMode;
+  /** A pool that exists, settled (`ready · 0 nodes`, every readiness block Ready), when the page opens. */
+  existingPool?: string;
+  /** `delete_node_pool` refusals before it accepts (unless `force`): 0.8.1's structured block, or an older cluster-manager's text alone. */
+  refusals?: { count: number; shape: 'structured' | 'text' };
+  /** Deletes cut short (`partial: true`) before one completes. */
+  partialDeletes?: number;
 };
 
 /** Reads after a complete apply that still answer `creating`; the next one is `ready`. */
@@ -570,10 +625,17 @@ export async function stubClusterManager(
 ): Promise<RecordedCall[]> {
   const calls: RecordedCall[] = [];
   let applies = 0;
-  // The pool a complete apply created, and the list reads since: the lists
-  // move it through the phases read by read (see poolAnswer/clusterAnswer).
-  let created: { pool: string; at: number } | undefined;
-  let reads = 0;
+  let deletes = 0;
+  let refusals = 0;
+  // The pool a complete apply created (or the existing one), and the list
+  // reads since: the lists move it through the phases read by read (see
+  // poolAnswer/clusterAnswer); after an accepted delete, through the teardown
+  // (removingPoolAnswer) until it is gone.
+  let created: { pool: string; at: number } | undefined = options.existingPool
+    ? { pool: options.existingPool, at: Date.now() - 10 * 60_000 }
+    : undefined;
+  let reads = options.existingPool ? SETTLED_READ : 0;
+  let removing: { reads: number } | undefined;
   const mode: LifecycleMode = options.lifecycle ?? 'phases';
 
   // The page offers the dialog where the installation's muster lists
@@ -630,18 +692,66 @@ export async function stubClusterManager(
           },
         });
         return;
-      case 'list_node_pools':
+      case 'list_node_pools': {
+        let nodePools: unknown[] = [];
+        if (created && removing) {
+          removing.reads += 1;
+          if (removing.reads > REMOVING_READS) {
+            created = undefined;
+            removing = undefined;
+          } else {
+            nodePools = [
+              removingPoolAnswer(
+                created.pool,
+                created.at,
+                removing.reads,
+                mode,
+              ),
+            ];
+          }
+        } else if (created) {
+          nodePools = [poolAnswer(created.pool, created.at, reads, mode)];
+        }
         await route.fulfill({
           json: {
             cluster: CLUSTER.name,
             namespace: CLUSTER.namespace,
             controlPlaneVersion: 'v1.31.4',
-            nodePools: created
-              ? [poolAnswer(created.pool, created.at, reads, mode)]
-              : [],
+            nodePools,
           },
         });
         return;
+      }
+      case 'delete_node_pool': {
+        const pool = String(args.name);
+        if (!args.force && refusals < (options.refusals?.count ?? 0)) {
+          refusals += 1;
+          const message = refusalText(pool);
+          // The wire shape of a refused tool: muster-backend's error body, the
+          // structured block as gs-node's MusterToolError `details`.
+          await route.fulfill({
+            status: 500,
+            json: {
+              error:
+                options.refusals?.shape === 'structured'
+                  ? {
+                      name: 'MusterToolError',
+                      message,
+                      details: [JSON.stringify({ refused: REFUSED })],
+                    }
+                  : { name: 'Error', message },
+            },
+          });
+          return;
+        }
+        deletes += 1;
+        const partial = deletes <= (options.partialDeletes ?? 0);
+        if (!partial) {
+          removing = { reads: 0 };
+        }
+        await route.fulfill({ json: deleteAnswer(pool, partial) });
+        return;
+      }
       case 'create_node_pool':
         if (args.dryRun) {
           await route.fulfill({
