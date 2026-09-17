@@ -194,10 +194,6 @@ async function toggleSize(picker: Locator, size: RegExp): Promise<void> {
   await expect(checkbox).toBeChecked({ checked: !before });
 }
 
-/** The footer's Close (the success alert's close icon is named Close too). */
-const footerClose = (dialog: Locator) =>
-  dialog.getByRole('button', { name: 'Close' }).filter({ hasText: 'Close' });
-
 /** Sign in, stub cluster-manager, open the dialog and reach the review of `gpu-e2e` on wc1. */
 async function reachReview(page: Page, options: StubOptions = {}) {
   await signIn(page, lab.users.admin);
@@ -300,11 +296,12 @@ test.describe('models: Add GPU node pool review — what the pool can serve (clu
     await expect(fit.getByText('g6.2xlarge')).toHaveCount(2);
     await snapshot(page, 'gpu-pool-fit-review-2xlarge');
 
-    // Deploy sends the sizes as reviewed.
+    // Deploy sends the sizes as reviewed, and closes into the lifecycle panel.
     await dialog.getByRole('button', { name: /^Deploy/ }).click();
-    await expect(
-      dialog.getByText('Pool wc1-gpu-e2e applied as you'),
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    await expect(page.getByTestId('pool-lifecycle')).toContainText(
+      'Pool wc1-gpu-e2e',
+    );
     expect(applies(calls).at(-1)?.arguments).toMatchObject({
       cluster: 'wc1',
       name: 'gpu-e2e',
@@ -312,7 +309,6 @@ test.describe('models: Add GPU node pool review — what the pool can serve (clu
       sizes: ['2xlarge'],
       mode: 'apply',
     });
-    await footerClose(dialog).click();
   });
 
   test('the preset the person wants to serve blocks Deploy when no size hosts it; Add the size unblocks', async ({
