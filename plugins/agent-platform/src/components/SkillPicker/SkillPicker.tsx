@@ -15,6 +15,7 @@ import {
   SelectableCard,
   SelectableCardGrid,
   StaticCard,
+  useClampedText,
   useSelectableCardStyles,
 } from '../SelectableCard';
 
@@ -60,6 +61,10 @@ function CatalogSkillCard({
     skill.path !== '' &&
     (skill.path.includes('/') || skill.path !== skill.name);
   const pinned = mounted && 'git' in mounted ? mounted.git.commit : undefined;
+  const description = useClampedText({
+    text: skill.description,
+    subject: skill.name,
+  });
 
   return (
     <SelectableCard
@@ -67,13 +72,10 @@ function CatalogSkillCard({
       selected={Boolean(mounted)}
       ariaLabel={`Skill ${skill.name}`}
       onSelect={onToggle}
+      hoverAction={description.toggle}
     >
       <Text weight="bold">{skill.name}</Text>
-      {skill.description && (
-        <Text variant="body-small" color="secondary">
-          {skill.description}
-        </Text>
-      )}
+      {description.content}
       <Text variant="body-x-small" color="secondary">
         {repoSlug(skill.repoUrl)}
         {showPath && (

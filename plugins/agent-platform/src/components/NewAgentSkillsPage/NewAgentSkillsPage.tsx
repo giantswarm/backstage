@@ -35,6 +35,7 @@ import { groupSkillsByRepo, RepoSkillGroup } from '../../lib/skillGrouping';
 import {
   SelectableCard,
   SelectableCardGrid,
+  useClampedText,
   useSelectableCardStyles,
 } from '../SelectableCard';
 
@@ -78,6 +79,10 @@ function SkillCard({
   const showPath =
     skill.path !== '' &&
     (skill.path.includes('/') || skill.path !== skill.name);
+  const description = useClampedText({
+    text: skill.description,
+    subject: skill.name,
+  });
 
   return (
     <SelectableCard
@@ -85,13 +90,10 @@ function SkillCard({
       selected={selected}
       ariaLabel={`Skill ${skill.name}`}
       onSelect={onSelect}
+      hoverAction={description.toggle}
     >
       <Text weight="bold">{skill.name}</Text>
-      {skill.description && (
-        <Text variant="body-small" color="secondary">
-          {skill.description}
-        </Text>
-      )}
+      {description.content}
       <Text variant="body-x-small" color="secondary">
         {repoSlug(skill.repoUrl)}
         {showPath && (

@@ -136,6 +136,62 @@ describe('NewAgentSkillsPage', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
+  it('leaves a description that fits alone', async () => {
+    await renderStep();
+
+    await screen.findByRole('checkbox', { name: 'Skill Incident responder' });
+    expect(
+      screen.queryByRole('button', { name: /Show more of/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('when a description is cut off by the clamp', () => {
+    // jsdom lays nothing out, so the measurement `useIsTruncated` makes always
+    // comes back "fits". Overflow is what the toggle exists for.
+    beforeEach(() => {
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        value: 120,
+      });
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+        configurable: true,
+        value: 40,
+      });
+    });
+
+    afterEach(() => {
+      // @ts-expect-error -- restores jsdom's own getter on Element.prototype.
+      delete HTMLElement.prototype.scrollHeight;
+      // @ts-expect-error -- ditto.
+      delete HTMLElement.prototype.clientHeight;
+    });
+
+    it("reveals the rest on click, from outside the card's checkbox", async () => {
+      const user = userEvent.setup();
+      await renderStep();
+
+      const toggle = await screen.findByRole('button', {
+        name: 'Show more of Incident responder',
+      });
+      // A control inside the checkbox would be invalid markup, and
+      // role="checkbox" would make it presentational to assistive tech.
+      const card = screen.getByRole('checkbox', {
+        name: 'Skill Incident responder',
+      });
+      expect(card).not.toContainElement(toggle);
+
+      await user.click(toggle);
+
+      expect(
+        await screen.findByRole('button', {
+          name: 'Show less of Incident responder',
+        }),
+      ).toBeInTheDocument();
+      // Revealing a description must not select the skill.
+      expect(screen.getByTestId('selection')).toHaveTextContent('');
+    });
+  });
+
   it('says that skills stay on their pinned commit', async () => {
     await renderStep();
     expect(
