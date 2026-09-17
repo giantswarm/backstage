@@ -8,6 +8,13 @@
 /** `list_repositories` scope: whose repositories. */
 export type Scope = 'mine' | 'team' | 'unassigned' | 'all';
 
+/**
+ * Rows to ask `list_repositories` for when the whole inventory is wanted --
+ * the teams and finding kinds of a scope -- above the manager's default of
+ * 100.
+ */
+export const LIST_LIMIT = 2000;
+
 /** The lifecycles `list_repositories` filters by, as the team files declare them. */
 export const LIFECYCLES = ['active', 'deprecated', 'archived'] as const;
 

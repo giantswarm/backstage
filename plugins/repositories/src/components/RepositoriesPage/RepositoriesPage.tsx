@@ -5,7 +5,7 @@ import { Box, Tab, Tabs, Typography } from '@material-ui/core';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { FiltersLayout } from '@giantswarm/backstage-plugin-ui-react';
-import { ListFilters, repositoriesApiRef, Scope } from '../../apis';
+import { LIST_LIMIT, ListFilters, repositoriesApiRef, Scope } from '../../apis';
 import {
   filtersFromParams,
   hasFilters,
@@ -17,9 +17,6 @@ import { createRepositoryRouteRef } from '../../routes';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
 import { RepositoriesFilters } from '../RepositoriesFilters';
 import { RepositoriesTable } from '../RepositoriesTable';
-
-/** The whole org fits; the manager's default of 100 rows would not. */
-const LIST_LIMIT = 2000;
 
 const SCOPES: { id: Scope; label: string }[] = [
   { id: 'mine', label: 'My team' },

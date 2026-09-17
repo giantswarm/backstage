@@ -1,5 +1,10 @@
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
+// The dev app is the app: the page's @backstage/ui controls need the
+// package's stylesheet, which packages/app imports; the rule guards the
+// published plugin bundle, and dev/ is not part of it.
+// eslint-disable-next-line @backstage/no-ui-css-imports-in-non-frontend
+import '@backstage/ui/css/styles.css';
 import { ConfigReader } from '@backstage/config';
 import { IdentityApi, SignInPageProps } from '@backstage/core-plugin-api';
 import { createApp } from '@backstage/frontend-defaults';

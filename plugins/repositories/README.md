@@ -33,21 +33,30 @@ repository is what `devctl repo status` prints for it, from the same record.
   default branch); the findings with their fix; the set-up steps with a status
   per verdict and the CLI's detail text, re-read every 15 s while they
   converge; and **Refresh** (`refresh_repository`).
-- **Create repository** (`/repositories/create`): the declaration form (team,
-  name, component type, language, flavours, _Generate CircleCI config_ --
-  `gen.ci.generate`, written out true or false as `devctl repo create` writes
-  it -- description, visibility, reason); _Review_ shows the dry run as
-  `validate_repository` renders it -- the entry with the schema's defaults, the
-  implied template and its options, the GitHub name check, the refusals per
-  field (a refusal that names a value the form can set, such as
-  `gen.ci.generate … set it to false` for a repository with nothing to build,
-  is one click that applies it and reviews again), the guard notices
-  (`team-review`, `batch-review`, `names-unchecked`), whether the machine
-  approves, and the creation as the person would run it (create, scaffold,
-  then the pull request); _Create_ runs `create_repository` in `mode: commit`
-  -- the repository and one scaffold commit as the person, then the team-file
-  pull request under their name -- names the three in that order and follows
-  the new repository's set-up steps live once the reconciler has it.
+- **Create repository** (`/repositories/create`): the declaration as a form
+  beside its review. The team is a choice -- the person's own teams first (from
+  `get_info`'s groups; the form opens on the first), then every team the
+  inventory knows -- the name is held to the engine's rule as typed (lowercase;
+  the chart's name without `-app` where a chart exists), description and
+  visibility (private, the org's default, is left out of the entry as the team
+  files do). A **Kind** -- Go service, chart-only app, Go CLI, Go library,
+  configuration, customer project, other: the shapes the team files declare --
+  fills component type, language and flavours, and turns _Generate CircleCI
+  config_ (`gen.ci.generate`, written out true or false as `devctl repo
+create` writes it) on where the kind has a job; the three are choices too
+  (the schema's values) and re-derive the switch when changed by hand. The
+  review runs `validate_repository` on its own once the person pauses and
+  keeps it current: the entry with the schema's defaults, the implied template
+  and its options, the GitHub name check (also under the name field), the
+  refusals per field (a refusal that names a value the form can set, such as
+  `gen.ci.generate … set it to false`, is one click that applies it), the
+  guard notices (`team-review`, `batch-review`, `names-unchecked`), whether the
+  machine approves, and the creation as the person would run it (create,
+  scaffold, then the pull request). _Create_ is enabled once the dry run for
+  the form as it stands is accepted; it runs `create_repository` in `mode:
+commit` -- the repository and one scaffold commit as the person, then the
+  team-file pull request under their name -- names the three in that order and
+  follows the new repository's set-up steps live once the reconciler has it.
 - **Row actions** on the expanded record, each one tool call as the person
   with the manager's plan reviewed first: _Configure_ (`update_repository`,
   the whole entry as it should read), _Transfer_ (`transfer_repository`, the
