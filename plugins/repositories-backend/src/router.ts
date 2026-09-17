@@ -56,7 +56,14 @@ const WRITE_OPTIONS: Record<string, ArgumentKind> = {
  * declaration entry itself is validated by the manager, not here.
  */
 const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
-  validate_repository: { team: 'string', entry: 'object', entries: 'array' },
+  // The dry run takes exactly the arguments the commit takes, the reason
+  // included: the page reviews the very request it then commits.
+  validate_repository: {
+    team: 'string',
+    entry: 'object',
+    entries: 'array',
+    reason: 'string',
+  },
   create_repository: {
     team: 'string',
     entry: 'object',

@@ -1,5 +1,6 @@
-import { Alert, Flex, Text } from '@backstage/ui';
-import { Plan, PlannedMessage, Problem } from '../../apis';
+import { ReactNode } from 'react';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
+import { Plan, PlannedMessage, PlannedPullRequest, Problem } from '../../apis';
 
 const PRE_STYLE = {
   margin: 0,
@@ -24,8 +25,24 @@ export function EntryBlock({ title, yaml }: { title: string; yaml: string }) {
   );
 }
 
-/** The manager's refusals of an entry, each naming the field. */
-export function Problems({ problems }: { problems?: Problem[] }) {
+/** The fix a refusal names, as one action of the form that holds the field. */
+export interface ProblemFix {
+  label: string;
+  apply: () => void;
+}
+
+/**
+ * The manager's refusals of an entry, each naming the field. A refusal whose
+ * fix the form can apply carries it as a button (`fixFor`); the rest name
+ * the field for the person.
+ */
+export function Problems({
+  problems,
+  fixFor,
+}: {
+  problems?: Problem[];
+  fixFor?: (problem: Problem) => ProblemFix | undefined;
+}) {
   if (!problems || problems.length === 0) {
     return null;
   }
@@ -35,14 +52,49 @@ export function Problems({ problems }: { problems?: Problem[] }) {
       title="Refused by the schema"
       description={
         <ul data-testid="problems" style={{ margin: 0, paddingLeft: 16 }}>
-          {problems.map((problem, index) => (
-            <li key={`${problem.field}-${index}`}>
-              <code>{problem.field}</code>: {problem.message}
-            </li>
-          ))}
+          {problems.map((problem, index) => {
+            const fix = fixFor?.(problem);
+            return (
+              <li key={`${problem.field}-${index}`}>
+                <code>{problem.field}</code>: {problem.message}
+                {fix && (
+                  <>
+                    {' '}
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onPress={fix.apply}
+                    >
+                      {fix.label}
+                    </Button>
+                  </>
+                )}
+              </li>
+            );
+          })}
         </ul>
       }
     />
+  );
+}
+
+/** The pull request a write would open, as the manager plans it: where, as whom, what. */
+export function PlannedPullRequestView({
+  pullRequest: pr,
+  children,
+}: {
+  pullRequest: PlannedPullRequest;
+  children?: ReactNode;
+}) {
+  return (
+    <div data-testid="planned-pull-request">
+      <Text variant="body-small" color="secondary">
+        {children ?? 'Pull request'} on {pr.repository} as {pr.as}
+      </Text>
+      <Text variant="body-small">
+        {pr.title} — branch {pr.branch}; files: {pr.files.join(', ')}
+      </Text>
+    </div>
   );
 }
 
@@ -76,7 +128,6 @@ function Message({ kind, message }: { kind: string; message: PlannedMessage }) {
  * computed by the page.
  */
 export function PlanView({ plan }: { plan: Plan }) {
-  const pr = plan.pullRequest;
   return (
     <Flex direction="column" gap="3" data-testid="plan">
       <Text variant="body-medium">
@@ -89,14 +140,7 @@ export function PlanView({ plan }: { plan: Plan }) {
       <Problems problems={plan.problems} />
       {plan.before && <EntryBlock title="Before" yaml={plan.before} />}
       {plan.entry && <EntryBlock title="After" yaml={plan.entry} />}
-      <div data-testid="planned-pull-request">
-        <Text variant="body-small" color="secondary">
-          Pull request on {pr.repository} as {pr.as}
-        </Text>
-        <Text variant="body-small">
-          {pr.title} — branch {pr.branch}; files: {pr.files.join(', ')}
-        </Text>
-      </div>
+      <PlannedPullRequestView pullRequest={plan.pullRequest} />
       {plan.ask && <Message kind="Approval asked" message={plan.ask} />}
       {plan.notice && <Message kind="Notice" message={plan.notice} />}
     </Flex>

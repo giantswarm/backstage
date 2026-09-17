@@ -252,7 +252,7 @@ describe('createRouter', () => {
       gen: { language: 'go', flavours: ['app'] },
     };
 
-    it('runs the dry run of a declaration through validate_repository', async () => {
+    it('runs the dry run of a declaration through validate_repository, the reason included', async () => {
       const validation = {
         team: 'team-bumblebee',
         entries: [],
@@ -261,14 +261,14 @@ describe('createRouter', () => {
       manager.answers.set('validate_repository', validation);
       const res = await request(app)
         .post('/repositories/validate')
-        .send({ team: 'team-bumblebee', entry });
+        .send({ team: 'team-bumblebee', entry, reason: 'the new service' });
       expect(res.status).toBe(200);
       expect(res.body).toEqual(validation);
       expect(manager.calls).toEqual([
         {
           tool: 'validate_repository',
           authToken: 'dex-id-token',
-          args: { team: 'team-bumblebee', entry },
+          args: { team: 'team-bumblebee', entry, reason: 'the new service' },
         },
       ]);
     });

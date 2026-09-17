@@ -6,6 +6,7 @@ import {
 import { RepositoriesAuthApi } from './auth';
 import {
   Committed,
+  Created,
   DeclarationEntry,
   DeclarationInput,
   Dispatch,
@@ -98,7 +99,7 @@ export class RepositoriesApiClient implements RepositoriesApi {
   createRepository(
     input: DeclarationInput,
     options: { mode: 'commit' },
-  ): Promise<Committed> {
+  ): Promise<Created> {
     return this.request('/repositories', {
       method: 'POST',
       body: { ...input, ...options },
