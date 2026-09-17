@@ -275,7 +275,11 @@ function presetColumns(shapes: InstanceShape[]): ColumnConfig<PresetRow>[] {
     {
       id: 'needs',
       label: 'Needs',
-      cell: row => <CellText title={describePresetNeeds(row)} />,
+      cell: row => (
+        <Cell>
+          <Text variant="body-small">{describePresetNeeds(row)}</Text>
+        </Cell>
+      ),
     },
     {
       id: 'hostedBy',
