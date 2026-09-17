@@ -2,6 +2,9 @@ import { TableColumn } from '@backstage/core-components';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { Box, Typography } from '@material-ui/core';
 import {
+  getBuildFailingChecksFromEntity,
+  getBuildStatusFromEntity,
+  getBuildToolchainFromEntity,
   getHelmChartsAppVersionsFromEntity,
   getHelmChartsFromEntity,
   getLatestReleaseDateFromEntity,
@@ -9,6 +12,14 @@ import {
   getReadinessFlagsFromEntity,
   getReadinessFromEntity,
 } from '../utils/entity';
+import {
+  BUILD_STATUS_MEANINGS,
+  buildStatusIntent,
+  buildStatusLabel,
+  buildStatusRank,
+  toolchainOrbText,
+  toolchainTitle,
+} from '../utils/build';
 import {
   READINESS_MEANINGS,
   partitionReadinessFlags,
@@ -198,6 +209,85 @@ export const columnFactories = Object.freeze({
             intent={readinessIntent(readiness)}
             title={readinessTitle(readiness, releaseFlags)}
           />
+        );
+      },
+    };
+  },
+  /**
+   * The verdict `BuildStatusProcessor` writes, with the confirmed failing
+   * checks as hover detail. Filtering belongs to the sidebar picker.
+   */
+  createBuildStatusColumn(
+    options: {
+      hidden: boolean;
+    } = { hidden: false },
+  ): TableColumn<CatalogTableRow> {
+    return {
+      title: 'Build',
+      hidden: options.hidden,
+      width: 'auto',
+      filtering: false,
+      customSort({ entity: entity1 }, { entity: entity2 }) {
+        return (
+          buildStatusRank(getBuildStatusFromEntity(entity1)) -
+          buildStatusRank(getBuildStatusFromEntity(entity2))
+        );
+      },
+      render: ({ entity }) => {
+        const status = getBuildStatusFromEntity(entity);
+        if (!status) {
+          return undefined;
+        }
+        const failing = getBuildFailingChecksFromEntity(entity);
+
+        return (
+          <StatusLabel
+            label={buildStatusLabel(status)}
+            intent={buildStatusIntent(status)}
+            title={
+              failing.length > 0
+                ? failing.join(', ')
+                : BUILD_STATUS_MEANINGS[status]
+            }
+          />
+        );
+      },
+    };
+  },
+  /**
+   * The architect orb the default branch declares, with the app-build-suite
+   * and app-test-suite versions it pins as hover detail. Sorts newest orb
+   * first; a pin that is not a release (`dev:…`, `volatile`) sorts after every
+   * release, since `semverCompareSort` puts anything it cannot parse last.
+   */
+  createBuildToolchainColumn(
+    options: {
+      hidden: boolean;
+    } = { hidden: false },
+  ): TableColumn<CatalogTableRow> {
+    return {
+      title: 'Build toolchain',
+      hidden: options.hidden,
+      width: 'auto',
+      filtering: false,
+      customSort: semverCompareSort(
+        ({ entity }) => getBuildToolchainFromEntity(entity).orbVersion,
+      ),
+      render: ({ entity }) => {
+        const toolchain = getBuildToolchainFromEntity(entity);
+        const text = toolchainOrbText(toolchain);
+        if (!text) {
+          return undefined;
+        }
+
+        return (
+          <Typography
+            variant="body2"
+            component="span"
+            title={toolchainTitle(toolchain)}
+          >
+            {text}
+          </Typography>
         );
       },
     };
