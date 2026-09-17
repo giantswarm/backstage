@@ -25,6 +25,19 @@ export const MODEL_MANAGER_AUTH_HEADER =
   'backstage-model-manager-authorization';
 
 /**
+ * The backend's answer to a try of a served model (`POST
+ * /model-manager/models/try`): the URL it posted to, the model id it sent,
+ * and the two calls' outcomes. Must match `TryServedModelResult` in
+ * plugins/agent-platform-backend.
+ */
+export type TryServedModelResult = {
+  url: string;
+  model: string;
+  without: { status: number; error?: string };
+  with: { status: number; content?: string; error?: string; latencyMs: number };
+};
+
+/**
  * The model-manager REST API (giantswarm/model-manager), per installation,
  * through the agent-platform-backend proxy.
  *
@@ -148,6 +161,19 @@ export interface ModelManagerApi {
     model: string,
     scope?: BackendScope,
   ): Promise<void>;
+
+  /**
+   * Try a served model: one short chat completion against its endpoint as
+   * model-manager reports it, sent by the portal's backend twice — without a
+   * token and as the signed-in person — so the gateway's enforcement of the
+   * ModelConfig's passthrough shows (401 without, 200 with) along with the
+   * model's answer. `model` is the serving object's name (the row's).
+   */
+  tryModel(
+    installation: string,
+    model: string,
+    scope?: BackendScope,
+  ): Promise<TryServedModelResult>;
 
   /**
    * Remove a downloaded model. `unwire` (default true, like the server's)

@@ -11,6 +11,7 @@ import type {
   ModelManagerLoading,
   ModelManagerModel,
   ModelManagerNode,
+  ModelManagerServeStep,
 } from './modelManager';
 import {
   endpointAuthority,
@@ -18,6 +19,8 @@ import {
   notLoadedReadiness,
   type GpuNode,
   type ServedModel,
+  type ServedModelStep,
+  type ServedModelStepState,
   type ServingBackend,
   type ServingCapabilities,
   type ServingLoading,
@@ -146,6 +149,34 @@ export function namespaceOfPredictorUrl(
   const host = urlHostname(url);
   const parts = host?.split('.') ?? [];
   return parts.length >= 3 && parts[2] === 'svc' ? parts[1] : undefined;
+}
+
+/**
+ * model-manager's steps in the seam's vocabulary. A state this portal has no
+ * word for (a newer model-manager) reads as `pending`: the step is shown, not
+ * judged. Absent stays absent — an older model-manager, or a backend without
+ * a serve lifecycle, reports none.
+ */
+export function toServedModelSteps(
+  steps: ModelManagerServeStep[] | undefined,
+): ServedModelStep[] | undefined {
+  return steps?.map(step => ({
+    name: step.name,
+    state: toStepState(step.state),
+    since: step.since,
+    finishedAt: step.finishedAt,
+    reason: step.reason,
+    message: step.message,
+    bytesTotal: step.bytesTotal,
+    bytesCompleted: step.bytesCompleted,
+    cached: step.cached,
+  }));
+}
+
+function toStepState(state: string | undefined): ServedModelStepState {
+  return state === 'inProgress' || state === 'done' || state === 'failed'
+    ? state
+    : 'pending';
 }
 
 /**
@@ -319,6 +350,8 @@ export function toServedModelFromManager(
     readiness,
     readinessMessage,
     readinessReason,
+    phase: running?.phase,
+    steps: toServedModelSteps(running?.steps),
     node: running?.node ?? model.node,
     nodeSource: kserve && running?.node ? 'pod' : undefined,
     gpuCount: running?.gpus,

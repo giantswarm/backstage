@@ -18,6 +18,7 @@ export type {
 export {
   MODEL_MANAGER_AUTH_HEADER,
   type ModelManagerApi,
+  type TryServedModelResult,
 } from './ModelManagerApi';
 export {
   ModelManagerApiClient,
