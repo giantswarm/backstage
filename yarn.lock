@@ -522,8 +522,8 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-markdown@npm:^0.14.0":
-  version: 0.14.13
-  resolution: "@assistant-ui/react-markdown@npm:0.14.13"
+  version: 0.14.15
+  resolution: "@assistant-ui/react-markdown@npm:0.14.15"
   dependencies:
     "@radix-ui/react-primitive": "npm:^2.1.10"
     "@radix-ui/react-use-callback-ref": "npm:^1.1.4"
@@ -537,7 +537,7 @@ __metadata:
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/28b94f63866677136c0b4cc1db5940a2c1c9734fe89328eaba52328ef11421670f6b050692d93f72b0f366da81a38cc178dba26cb49ca8617fd39e9d9f0f6e46
+  checksum: 10c0/8fbd837b543aac40d1e291c6868bff45e72737740657efdf79086929747e09b15420a899b210a8811b8c0d61d16e08608ee73625c59404451ae643115e5c39e6
   languageName: node
   linkType: hard
 
