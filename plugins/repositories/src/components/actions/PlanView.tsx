@@ -78,7 +78,11 @@ export function Problems({
   );
 }
 
-/** The pull request a write would open, as the manager plans it: where, as whom, what. */
+/**
+ * The pull request a write would open, as the manager plans it: where and as
+ * whom on one line, what on the next (`Text` is inline; the column keeps the
+ * two lines apart wherever the view sits, a list item included).
+ */
 export function PlannedPullRequestView({
   pullRequest: pr,
   children,
@@ -87,14 +91,14 @@ export function PlannedPullRequestView({
   children?: ReactNode;
 }) {
   return (
-    <div data-testid="planned-pull-request">
+    <Flex direction="column" gap="1" data-testid="planned-pull-request">
       <Text variant="body-small" color="secondary">
         {children ?? 'Pull request'} on {pr.repository} as {pr.as}
       </Text>
       <Text variant="body-small">
         {pr.title} — branch {pr.branch}; files: {pr.files.join(', ')}
       </Text>
-    </div>
+    </Flex>
   );
 }
 
