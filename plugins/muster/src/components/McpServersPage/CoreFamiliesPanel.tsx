@@ -3,7 +3,7 @@ import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
-import { ToolList } from '../shared';
+import { ToolTable, toolTableItem } from '../shared';
 import { ToolSummary } from '../../apis/types';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -108,11 +108,11 @@ export function CoreFamiliesPanel({ installation }: CoreFamiliesPanelProps) {
             </Typography>
             <span className={classes.count}>{family.tools.length} tools</span>
           </Box>
-          <ToolList
-            tools={family.tools.map(t => ({
-              name: t.name,
-              description: t.summary ?? t.description,
-            }))}
+          <ToolTable
+            items={family.tools.map(tool =>
+              toolTableItem(tool, { mode: { kind: 'static' } }),
+            )}
+            ariaLabel={`${family.label} tools`}
           />
         </Box>
       ))}

@@ -502,22 +502,10 @@ export function selectorForTool(
     : `tool:${tool.name}`;
 }
 
-export function isReadOnly(tool: Pick<ToolSummary, 'annotations'>): boolean {
-  return tool.annotations?.readOnlyHint === true;
-}
-
-/**
- * Destructive only when the server does not also call the tool read-only: the
- * MCP spec defaults `destructiveHint` to true and defines it only for tools
- * that are not read-only, and servers do send both (agent-manager's
- * `get_agent` arrives with `readOnlyHint: true, destructiveHint: true`).
- */
-export function isDestructive(tool: Pick<ToolSummary, 'annotations'>): boolean {
-  return (
-    tool.annotations?.destructiveHint === true &&
-    tool.annotations?.readOnlyHint !== true
-  );
-}
+// Moved to the muster plugin, where ToolTable also needs them: every surface
+// that lists a tool must give the same answer about what it does. Re-exported
+// here so this module stays the one import for the toolset helpers.
+export { isReadOnly, isDestructive } from '@giantswarm/backstage-plugin-muster';
 
 /**
  * A group on the Tools step and the detail card: the muster plugin's three

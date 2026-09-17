@@ -10,6 +10,10 @@ import {
   TextField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import {
+  ToolTable,
+  type ToolTableItem,
+} from '@giantswarm/backstage-plugin-muster';
 
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useToolsetPresets } from '../../hooks/useToolsetPresets';
@@ -22,7 +26,6 @@ import {
   toolsetProblems,
   toolsetShape,
 } from '../../lib/toolset';
-import { SelectableRow, SelectableRowList } from '../SelectableCard';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
 const useStyles = makeStyles(theme => ({
@@ -92,23 +95,27 @@ export function EditAgentToolsetField({
         description="Which of the gateway's tools the agent can discover and call, within whatever the person using it may reach. Nothing selected means no tools."
       />
 
-      <SelectableRowList role="group" ariaLabel="Presets">
-        {presets.presets.map(preset => {
+      {/* A preset is named by its selector — `preset:read-only` — which is
+          what goes into the toolset, and what the rows below it resolve to. */}
+      <ToolTable
+        role="group"
+        ariaLabel="Presets"
+        items={presets.presets.map((preset): ToolTableItem => {
           const selector = presetSelector(preset.name);
-          return (
-            <SelectableRow
-              key={selector}
-              role="checkbox"
-              selected={selected.has(selector)}
-              ariaLabel={`Preset ${preset.name}`}
-              onSelect={() => onChange(toggleSelector(value, selector))}
-              title={selector}
-              code
-              summary={preset.description}
-            />
-          );
+          return {
+            key: selector,
+            name: selector,
+            ariaLabel: `Preset ${preset.name}`,
+            description: preset.description,
+            mode: {
+              kind: 'select',
+              role: 'checkbox',
+              checked: selected.has(selector),
+              onToggle: () => onChange(toggleSelector(value, selector)),
+            },
+          };
         })}
-      </SelectableRowList>
+      />
       {presets.source === 'built-in' && (
         <Text variant="body-x-small" color="secondary">
           Only the built-in presets are known

@@ -1,6 +1,9 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
   ServerSignIn,
+  ToolTable,
+  toolTableItem,
+  type ToolTableItem,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
 
@@ -14,37 +17,31 @@ import {
   workflowNameOf,
 } from '../../lib/toolset';
 import { Disclosures, type DisclosureEntry } from '../Disclosures';
-import {
-  SelectableRow,
-  SelectableRowList,
-  useSelectableCardStyles,
-} from '../SelectableCard';
+import { useSelectableCardStyles } from '../SelectableCard';
 import { ShowMore } from '../ShowMore';
-import { ToolMarkers } from '../ToolsetResolutionList';
 
-function ToolRow({
-  tool,
-  selected,
-  onSelect,
-}: {
-  tool: ToolSummary;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const isWorkflow = selectorForTool(tool).startsWith('workflow:');
+/**
+ * One catalogue entry as a checkbox row. A workflow is shown under its own
+ * name, without the `workflow_` prefix it carries as a tool.
+ */
+function toolRowItem(
+  tool: ToolSummary,
+  selected: boolean,
+  onToggle: (selector: string) => void,
+): ToolTableItem {
+  const selector = selectorForTool(tool);
+  const isWorkflow = selector.startsWith('workflow:');
   const title = isWorkflow ? workflowNameOf(tool.name) : tool.name;
-  return (
-    <SelectableRow
-      role="checkbox"
-      selected={selected}
-      ariaLabel={`${isWorkflow ? 'Workflow' : 'Tool'} ${title}`}
-      onSelect={onSelect}
-      title={title}
-      code
-      meta={<ToolMarkers tool={tool} />}
-      summary={tool.summary ?? tool.description}
-    />
-  );
+  return toolTableItem(tool, {
+    name: title,
+    ariaLabel: `${isWorkflow ? 'Workflow' : 'Tool'} ${title}`,
+    mode: {
+      kind: 'select',
+      role: 'checkbox',
+      checked: selected,
+      onToggle: () => onToggle(selector),
+    },
+  });
 }
 
 /** Compact rows, the first few at once and the rest behind *Show all*. */
@@ -64,19 +61,13 @@ function ToolRows({
   return (
     <ShowMore items={tools} noun={noun}>
       {visible => (
-        <SelectableRowList role="group" ariaLabel={ariaLabel}>
-          {visible.map(tool => {
-            const selector = selectorForTool(tool);
-            return (
-              <ToolRow
-                key={tool.name}
-                tool={tool}
-                selected={selected.has(selector)}
-                onSelect={() => onToggle(selector)}
-              />
-            );
-          })}
-        </SelectableRowList>
+        <ToolTable
+          role="group"
+          ariaLabel={ariaLabel}
+          items={visible.map(tool =>
+            toolRowItem(tool, selected.has(selectorForTool(tool)), onToggle),
+          )}
+        />
       )}
     </ShowMore>
   );
@@ -171,26 +162,39 @@ function ServerPanel({
   const wholeServerSelected = selected.has(selector);
   return (
     <>
-      <SelectableRowList role="group" ariaLabel={`Whole server ${bucket.name}`}>
-        <SelectableRow
-          role="checkbox"
-          selected={wholeServerSelected}
-          ariaLabel={`Server ${bucket.name}`}
-          onSelect={() => onToggle(selector)}
-          title={`Every tool of ${bucket.name}`}
-          meta={
-            <Text variant="body-x-small" color="secondary">
-              <span className={cardClasses.code}>{selector}</span>
-              {bucket.state ? ` · ${bucket.state}` : ''}
-            </Text>
-          }
-          summary={
-            bucket.isFamily
+      {/* The whole-server row is a table of one, sharing the row design but not
+          the tracks: `subgrid` ties rows to their own list's columns, so this
+          table sizes its name column from its own single item and does not
+          line up with the tools below it. Only the checkbox does, both being
+          the leading `auto` track at the same padding. It reads as different
+          because its text is -- a sentence rather than a tool name, with the
+          selector itself as the meta. */}
+      <ToolTable
+        role="group"
+        ariaLabel={`Whole server ${bucket.name}`}
+        items={[
+          {
+            key: selector,
+            name: `Every tool of ${bucket.name}`,
+            ariaLabel: `Server ${bucket.name}`,
+            meta: (
+              <Text variant="body-x-small" color="secondary">
+                <span className={cardClasses.code}>{selector}</span>
+                {bucket.state ? ` · ${bucket.state}` : ''}
+              </Text>
+            ),
+            description: bucket.isFamily
               ? 'A federated family: one tool surface across the management clusters it runs on.'
-              : 'Whatever this server exposes, now and after it adds tools.'
-          }
-        />
-      </SelectableRowList>
+              : 'Whatever this server exposes, now and after it adds tools.',
+            mode: {
+              kind: 'select',
+              role: 'checkbox',
+              checked: wholeServerSelected,
+              onToggle: () => onToggle(selector),
+            },
+          },
+        ]}
+      />
       <ServerTools
         bucket={bucket}
         installation={installation}
