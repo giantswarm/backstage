@@ -15,9 +15,22 @@ import type { Page, Route } from '@playwright/test';
 
 export type ToolCall = { name: string; arguments: Record<string, unknown> };
 
-/** A stubbed tool's answer: a value, or computed from the call's arguments. */
+/**
+ * A tool the stub refuses: answered in the wire shape of a refused tool —
+ * muster-backend's error body, a structured block as gs-node's
+ * `MusterToolError` `details` — so the portal's error handling runs for real.
+ */
+export class ToolRefusal {
+  constructor(
+    readonly message: string,
+    readonly details: string[] = [],
+  ) {}
+}
+
+/** A stubbed tool's answer: a value, a refusal, or computed from the call's arguments. */
 export type ToolAnswer =
   | Record<string, unknown>
+  | ToolRefusal
   | ((args: Record<string, unknown>, call: ToolCall) => unknown);
 
 export type ModelManagerStub = {
@@ -59,6 +72,19 @@ export async function stubModelManagerTools(
       typeof answer === 'function'
         ? await answer(call.arguments, call)
         : answer;
+    if (json instanceof ToolRefusal) {
+      await route.fulfill({
+        status: 500,
+        json: {
+          error: {
+            name: 'MusterToolError',
+            message: json.message,
+            details: json.details,
+          },
+        },
+      });
+      return;
+    }
     await route.fulfill({ json });
   };
   await page.route(CALL_ROUTE, handler);

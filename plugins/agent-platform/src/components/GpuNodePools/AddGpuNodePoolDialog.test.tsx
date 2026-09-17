@@ -15,6 +15,7 @@ import type {
   PresetFit,
   PresetSizeFit,
 } from '../../lib/clusterManager';
+import type { ServeChoice } from '../../lib/serveIntent';
 import {
   AddGpuNodePoolDialog,
   clusterMarks,
@@ -297,7 +298,11 @@ function makeMusterApi(scenario: Scenario = {}) {
 
 async function renderDialog(
   scenario: Scenario = {},
-  onDeployed?: (result: NodePoolWriteResult) => void,
+  onDeployed?: (
+    result: NodePoolWriteResult,
+    installation: string,
+    serve?: ServeChoice,
+  ) => void,
 ) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
@@ -399,7 +404,8 @@ describe('AddGpuNodePoolDialog', () => {
 
   it('Deploy calls create_node_pool with mode apply as the person', async () => {
     const user = userEvent.setup();
-    const { callTool } = await renderDialog();
+    const onDeployed = jest.fn();
+    const { callTool } = await renderDialog({}, onDeployed);
     await fillAndReview(user);
     await user.click(screen.getByRole('button', { name: 'Deploy' }));
     await screen.findByText(/Pool wc1-gpu-l4 applied as you/);
@@ -413,6 +419,34 @@ describe('AddGpuNodePoolDialog', () => {
       cluster: 'wc1',
       name: 'gpu-l4',
     });
+    // Without a preset chosen there is no serve intent.
+    expect(onDeployed).toHaveBeenCalledTimes(1);
+    expect(onDeployed.mock.calls[0][1]).toBe('inst-1');
+    expect(onDeployed.mock.calls[0][2]).toBeUndefined();
+  });
+
+  it('Deploy hands the preset chosen under I want to serve on, with its display name and model', async () => {
+    const user = userEvent.setup();
+    const onDeployed = jest.fn();
+    await renderDialog({}, onDeployed);
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+    await user.click(screen.getByRole('button', { name: /I want to serve/ }));
+    await user.click(
+      await screen.findByRole('option', { name: /Qwen3 4B Instruct/ }),
+    );
+    await review(user);
+    await user.click(screen.getByRole('button', { name: 'Deploy' }));
+    await screen.findByText(/Pool wc1-gpu-l4 applied as you/);
+    expect(onDeployed).toHaveBeenCalledWith(
+      expect.objectContaining({ cluster: 'wc1', pool: 'gpu-l4' }),
+      'inst-1',
+      {
+        preset: 'qwen3-4b-instruct',
+        displayName: 'Qwen3 4B Instruct',
+        model: 'Qwen/Qwen3-4B-Instruct-2507',
+      },
+    );
   });
 
   it('Commit is disabled with "not available yet" until cluster-manager offers it', async () => {

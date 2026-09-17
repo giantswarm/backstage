@@ -169,7 +169,20 @@ describe('parseServeRoute', () => {
     expect(parseServeRoute(new URLSearchParams('pool=gpu-l4'))).toBeUndefined();
     expect(
       parseServeRoute(new URLSearchParams('serve=1&installation=&pool= ')),
-    ).toEqual({ installation: undefined, cluster: undefined, pool: undefined });
+    ).toEqual({
+      installation: undefined,
+      cluster: undefined,
+      pool: undefined,
+      preset: undefined,
+    });
+  });
+
+  it('carries the preset the pool was deployed to serve, and strips it too', () => {
+    const params = new URLSearchParams(
+      'serve=1&installation=gazelle&cluster=gazelle&pool=gpu-l4&preset=qwen3-8b-fp8',
+    );
+    expect(parseServeRoute(params)?.preset).toBe('qwen3-8b-fp8');
+    expect(withoutServeRoute(params).toString()).toBe('');
   });
 });
 

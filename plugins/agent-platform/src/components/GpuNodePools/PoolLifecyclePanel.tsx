@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ButtonIcon, Flex, Text } from '@backstage/ui';
+import { Button, ButtonIcon, Flex, Text } from '@backstage/ui';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import CloseIcon from '@material-ui/icons/Close';
 
@@ -12,6 +12,12 @@ import {
   poolPhaseLabel,
   poolTeardownSteps,
 } from '../../lib/poolLifecycle';
+import {
+  serveChoiceLabel,
+  serveIntentStep,
+  type ServeIntent,
+} from '../../lib/serveIntent';
+import type { ServedModel } from '../../lib/serving';
 import { servingRouteRef } from '../../routes';
 import { LifecycleSteps } from '../LifecycleSteps';
 
@@ -31,22 +37,39 @@ export type OpenedPool = {
   removedAt?: string;
 };
 
+/** The pool's serve intent as the panel shows it: the preset Deploy chose, its served model, the load in flight. */
+export type PoolServeState = {
+  intent: ServeIntent;
+  /** The served model of the intent, while model-manager lists it. */
+  model: ServedModel | undefined;
+  /** `check_fit` → `load_model` is in flight. */
+  loading: boolean;
+  /** After a failed `load_model`: ask model-manager once more. */
+  onRetry: () => void;
+};
+
 export type PoolLifecyclePanelProps = {
   opened: OpenedPool;
   /** The pool's row, once `list_node_pools` lists it. */
   row: GpuNodePoolRow | undefined;
+  /** The preset Deploy chose to serve on this pool, if any (giantswarm/backstage#2437). */
+  serve?: PoolServeState;
   onClose: () => void;
 };
 
 export const SERVE_FIRST_MODEL = 'Serve your first model';
+export const TRY_SERVING_AGAIN = 'Try serving again';
 
 /**
  * The link contract with the Serving page: `serve=1` opens the Serve flow with
- * the installation, cluster and pool preselected (giantswarm/backstage#2415).
+ * the installation, cluster and pool preselected (giantswarm/backstage#2415),
+ * and `preset` the preset too, where the pool carries a serve intent
+ * (giantswarm/backstage#2437).
  */
 export function serveFirstModelHref(
   servingPath: string,
   opened: Pick<OpenedPool, 'installation' | 'cluster' | 'poolName'>,
+  preset?: string,
 ): string {
   const params = new URLSearchParams({
     serve: '1',
@@ -54,15 +77,21 @@ export function serveFirstModelHref(
     cluster: opened.cluster,
     pool: opened.poolName,
   });
+  if (preset) {
+    params.set('preset', preset);
+  }
   return `${servingPath}?${params.toString()}`;
 }
 
 /**
  * What happens underneath after Deploy and after Remove, per pool. After
  * Deploy: the lifecycle steps from `list_node_pools` and `list_clusters`,
- * ending in **Serve your first model** once every step is done. After Remove
- * (or while cluster-manager reports `removing`): the teardown's groups from
- * the delete's answer, in progress while `list_node_pools` still lists their
+ * ending in **Serve your first model** once every step is done — or, where
+ * Deploy carried a preset, in **Serving <preset>**: the served model's own
+ * timeline once model-manager has it, `check_fit`'s reason where the preset
+ * fits no size of the pool (`lib/serveIntent`). After Remove (or while
+ * cluster-manager reports `removing`): the teardown's groups from the
+ * delete's answer, in progress while `list_node_pools` still lists their
  * objects as pending, until the pool is gone from the list. Opened by Deploy
  * or Remove (their objects stay listed here) or by the row's chevron; the
  * reads keep coming while the pool is unsettled, so the steps turn done as the
@@ -71,6 +100,7 @@ export function serveFirstModelHref(
 export function PoolLifecyclePanel({
   opened,
   row,
+  serve,
   onClose,
 }: PoolLifecyclePanelProps) {
   const servingRoute = useRouteRef(servingRouteRef);
@@ -98,7 +128,24 @@ export function PoolLifecyclePanel({
     }
     const lifecycle = poolLifecycleSteps(row.pool, row.cluster);
     const allDone = lifecycle.every(step => step.state === 'done');
-    const serve: LifecycleStep = {
+    if (serve) {
+      return [
+        ...lifecycle,
+        serveIntentStep({
+          intent: serve.intent,
+          stackReady: allDone,
+          loading: serve.loading,
+          model: serve.model,
+          serveAnotherHref: servingRoute
+            ? serveFirstModelHref(servingRoute(), opened)
+            : undefined,
+          serveInDialogHref: servingRoute
+            ? serveFirstModelHref(servingRoute(), opened, serve.intent.preset)
+            : undefined,
+        }),
+      ];
+    }
+    const first: LifecycleStep = {
       id: 'serve',
       title: SERVE_FIRST_MODEL,
       state: allDone ? 'done' : 'pending',
@@ -112,10 +159,11 @@ export function PoolLifecyclePanel({
           }
         : undefined,
     };
-    return [...lifecycle, serve];
-  }, [row, opened, servingRoute, phase, removing]);
+    return [...lifecycle, first];
+  }, [row, opened, serve, servingRoute, phase, removing]);
 
   const fullName = `${opened.cluster}-${opened.poolName}`;
+  const serveFailed = serve?.intent.outcome?.kind === 'failed';
   return (
     <Flex
       direction="column"
@@ -136,6 +184,9 @@ export function PoolLifecyclePanel({
             {opened.installation}
             {row && ` · ${poolPhaseLabel(row.pool, row.cluster)}`}
             {!row && opened.removed && ' · removed'}
+            {serve &&
+              !removing &&
+              ` · serving ${serveChoiceLabel(serve.intent)}`}
           </Text>
         </Flex>
         <ButtonIcon
@@ -166,6 +217,21 @@ export function PoolLifecyclePanel({
         >
           The pool is gone: cluster-manager no longer lists it.
         </Text>
+      )}
+      {serve && serveFailed && !removing && (
+        <Flex gap="2" align="center">
+          <Button
+            size="small"
+            variant="secondary"
+            onPress={serve.onRetry}
+            isDisabled={serve.loading}
+          >
+            {TRY_SERVING_AGAIN}
+          </Button>
+          <Text as="span" variant="body-small" color="secondary">
+            check_fit and load_model as you, once more
+          </Text>
+        </Flex>
       )}
       {opened.applied && (
         <Text
