@@ -4,18 +4,18 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClusterManagerClient } from '../apis/ClusterManagerClient';
 import {
   CLUSTER_MANAGER_SERVER,
+  ClusterManagerError,
   ClusterManagerNotConnectedError,
   clusterApiNote,
   isManagedPool,
-  parseReplicasGuard,
   poolNameOf,
   type ClusterManagerInfo,
   type CreateNodePoolInput,
   type DeleteNodePoolInput,
+  type DeleteRefusal,
   type ManagedCluster,
   type NodePool,
   type NodePoolWriteResult,
-  type ReplicasGuard,
   type WriteMode,
 } from '../lib/clusterManager';
 import { gpuNodePoolsRefetchInterval } from '../lib/poolLifecycle';
@@ -206,8 +206,8 @@ export function useGpuNodePools(installations: string[]) {
 export type NodePoolWriteFailure = {
   kind: 'refused' | 'not-connected' | 'error';
   message: string;
-  /** `delete_node_pool`'s replicas guard, when the refusal is that one. */
-  guard?: ReplicasGuard;
+  /** `delete_node_pool`'s structured refusal (nodes, models, hint), when the answer carried one. */
+  refused?: DeleteRefusal;
 };
 
 export function classifyNodePoolWriteFailure(
@@ -217,8 +217,11 @@ export function classifyNodePoolWriteFailure(
   if (error instanceof ClusterManagerNotConnectedError) {
     return { kind: 'not-connected', message };
   }
-  const guard = parseReplicasGuard(message);
-  return { kind: 'refused', message, guard };
+  return {
+    kind: 'refused',
+    message,
+    refused: error instanceof ClusterManagerError ? error.refused : undefined,
+  };
 }
 
 export type NodePoolWriteState = {
@@ -229,7 +232,7 @@ export type NodePoolWriteState = {
     input: CreateNodePoolInput,
     mode: WriteMode,
   ) => Promise<NodePoolWriteResult>;
-  /** `delete_node_pool` as the person; `force` only after the guard showed. */
+  /** `delete_node_pool` as the person; `force` only after a refusal, as the second choice. */
   remove: (
     input: DeleteNodePoolInput,
     options: { mode: WriteMode; force?: boolean },

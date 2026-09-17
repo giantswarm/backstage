@@ -7,6 +7,8 @@ import {
   POOL_POLL_IDLE_MS,
   poolLifecycleSteps,
   poolPhaseLabel,
+  poolTeardownSteps,
+  teardownGroupOf,
 } from './poolLifecycle';
 
 const T0 = '2026-09-17T11:33:22Z';
@@ -127,7 +129,7 @@ describe('poolPhaseLabel', () => {
       'creating',
     );
     expect(poolPhaseLabel(pool({ phase: 'removing' }), READY_CLUSTER)).toBe(
-      'removing',
+      'removing…',
     );
     expect(
       poolPhaseLabel(
@@ -363,5 +365,119 @@ describe('stepTiming', () => {
     expect(formatSeconds(3)).toBe('3 s');
     expect(formatSeconds(120)).toBe('2 min');
     expect(formatSeconds(3900)).toBe('1 h 5 min');
+  });
+});
+
+describe('poolTeardownSteps', () => {
+  const object = (kind: string, name: string, namespace = 'org-acme') => ({
+    apiVersion: 'v1',
+    kind,
+    name,
+    namespace,
+    action: 'deleted',
+  });
+  const removed = {
+    cluster: 'wc1',
+    namespace: 'org-acme',
+    pool: 'gpu-l4',
+    mode: 'apply' as const,
+    dryRun: false,
+    lastPool: true,
+    objects: [
+      object('HelmRelease', 'wc1-gpu-l4'),
+      object('OCIRepository', 'wc1-gpu-l4'),
+      object('HelmRelease', 'wc1-agent-platform'),
+      object('HelmRelease', 'wc1-agent-platform-kserve'),
+      object('LLMInferenceServiceConfig', 'llm-d-a', 'model-serving'),
+      object('LLMInferenceServiceConfig', 'llm-d-b', 'model-serving'),
+      object('ConfigMap', 'model-backend-kserve', 'agent-platform'),
+      object('HelmRelease', 'wc1-gpu-operator'),
+    ],
+  };
+
+  it('groups the objects by kind and name in the order they go', () => {
+    expect(
+      removed.objects.map(o => teardownGroupOf(o, 'wc1', 'gpu-l4')),
+    ).toEqual([
+      'pool',
+      'pool',
+      'slice',
+      'controllers',
+      'configs',
+      'configs',
+      'backend',
+      'operator',
+    ]);
+  });
+
+  it('runs the groups whose objects are still pending, the pool last, until the pool is gone', () => {
+    const pending = [
+      { ...object('HelmRelease', 'wc1-gpu-l4'), action: 'terminating' },
+      { ...object('HelmRelease', 'wc1-gpu-operator'), action: 'terminating' },
+    ];
+    const steps = poolTeardownSteps({
+      cluster: 'wc1',
+      poolName: 'gpu-l4',
+      removed,
+      removedAt: '2026-09-17T12:00:00Z',
+      pending,
+      gone: false,
+    });
+    expect(steps.map(step => [step.id, step.state])).toEqual([
+      ['controllers', 'done'],
+      ['configs', 'done'],
+      ['operator', 'inProgress'],
+      ['backend', 'done'],
+      ['slice', 'done'],
+      ['pool', 'inProgress'],
+    ]);
+    expect(steps[1].message).toBe('2 objects gone');
+    expect(steps[2]).toMatchObject({
+      since: '2026-09-17T12:00:00Z',
+      message: '1 of 1 terminating: HelmRelease org-acme/wc1-gpu-operator',
+    });
+    expect(steps[5].message).toContain('HelmRelease org-acme/wc1-gpu-l4');
+
+    const gone = poolTeardownSteps({
+      cluster: 'wc1',
+      poolName: 'gpu-l4',
+      removed,
+      pending: [],
+      gone: true,
+    });
+    expect(gone.every(step => step.state === 'done')).toBe(true);
+    expect(gone.find(step => step.id === 'pool')?.message).toBe(
+      '2 objects gone',
+    );
+  });
+
+  it('opened by the chevron without the answer, shows the pending groups; only deleting gets the pool release', () => {
+    const fromPending = poolTeardownSteps({
+      cluster: 'wc1',
+      poolName: 'gpu-l4',
+      pending: [
+        {
+          ...object('LLMInferenceServiceConfig', 'llm-d-a', 'model-serving'),
+          action: 'terminating',
+        },
+      ],
+      gone: false,
+    });
+    expect(fromPending.map(step => step.id)).toEqual(['configs', 'pool']);
+    expect(fromPending[0].state).toBe('inProgress');
+
+    const legacy = poolTeardownSteps({
+      cluster: 'wc1',
+      poolName: 'gpu-l4',
+      pending: [],
+      gone: false,
+    });
+    expect(legacy).toEqual([
+      expect.objectContaining({
+        id: 'pool',
+        state: 'inProgress',
+        message: 'the pool release is being uninstalled',
+      }),
+    ]);
   });
 });

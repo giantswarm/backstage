@@ -6,7 +6,12 @@ import CloseIcon from '@material-ui/icons/Close';
 import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
 import type { NodePoolWriteResult } from '../../lib/clusterManager';
 import type { LifecycleStep } from '../../lib/lifecycle';
-import { poolLifecycleSteps, poolPhaseLabel } from '../../lib/poolLifecycle';
+import {
+  poolLifecycleSteps,
+  poolPhase,
+  poolPhaseLabel,
+  poolTeardownSteps,
+} from '../../lib/poolLifecycle';
 import { servingRouteRef } from '../../routes';
 import { LifecycleSteps } from '../LifecycleSteps';
 
@@ -20,6 +25,10 @@ export type OpenedPool = {
   poolName: string;
   /** Deploy's answer, when the panel opened from it: the objects stay readable here. */
   applied?: NodePoolWriteResult;
+  /** Remove's answer, when the panel opened from an accepted Remove: the teardown's objects. */
+  removed?: NodePoolWriteResult;
+  /** RFC3339: when that Remove was accepted. */
+  removedAt?: string;
 };
 
 export type PoolLifecyclePanelProps = {
@@ -49,11 +58,15 @@ export function serveFirstModelHref(
 }
 
 /**
- * What happens underneath after Deploy, per pool: the lifecycle steps from
- * `list_node_pools` and `list_clusters`, ending in **Serve your first model**
- * once every step is done. Opened by Deploy (the applied objects stay listed
- * here) or by the row's chevron; the reads keep coming while the pool is
- * unsettled, so the steps turn done as the managers report them.
+ * What happens underneath after Deploy and after Remove, per pool. After
+ * Deploy: the lifecycle steps from `list_node_pools` and `list_clusters`,
+ * ending in **Serve your first model** once every step is done. After Remove
+ * (or while cluster-manager reports `removing`): the teardown's groups from
+ * the delete's answer, in progress while `list_node_pools` still lists their
+ * objects as pending, until the pool is gone from the list. Opened by Deploy
+ * or Remove (their objects stay listed here) or by the row's chevron; the
+ * reads keep coming while the pool is unsettled, so the steps turn done as the
+ * managers report them.
  */
 export function PoolLifecyclePanel({
   opened,
@@ -61,7 +74,25 @@ export function PoolLifecyclePanel({
   onClose,
 }: PoolLifecyclePanelProps) {
   const servingRoute = useRouteRef(servingRouteRef);
+  const phase = row ? poolPhase(row.pool, row.cluster) : undefined;
+  const removing = Boolean(opened.removed) || phase === 'removing';
   const steps = useMemo<LifecycleStep[]>(() => {
+    if (removing) {
+      // Until cluster-manager reports the teardown, every object of the
+      // delete's answer is still assumed present.
+      let pending = row?.pool.pending ?? [];
+      if (row && phase !== 'removing') {
+        pending = opened.removed?.objects ?? [];
+      }
+      return poolTeardownSteps({
+        cluster: opened.cluster,
+        poolName: opened.poolName,
+        removed: opened.removed,
+        removedAt: opened.removedAt,
+        pending,
+        gone: !row,
+      });
+    }
     if (!row) {
       return [];
     }
@@ -82,7 +113,7 @@ export function PoolLifecyclePanel({
         : undefined,
     };
     return [...lifecycle, serve];
-  }, [row, opened, servingRoute]);
+  }, [row, opened, servingRoute, phase, removing]);
 
   const fullName = `${opened.cluster}-${opened.poolName}`;
   return (
@@ -103,7 +134,8 @@ export function PoolLifecyclePanel({
           </Text>
           <Text as="span" variant="body-small" color="secondary">
             {opened.installation}
-            {row ? ` · ${poolPhaseLabel(row.pool, row.cluster)}` : ''}
+            {row && ` · ${poolPhaseLabel(row.pool, row.cluster)}`}
+            {!row && opened.removed && ' · removed'}
           </Text>
         </Flex>
         <ButtonIcon
@@ -114,7 +146,7 @@ export function PoolLifecyclePanel({
           onPress={onClose}
         />
       </Flex>
-      {row ? (
+      {row || removing ? (
         <LifecycleSteps
           steps={steps}
           aria-label={`Lifecycle of pool ${fullName}`}
@@ -123,6 +155,16 @@ export function PoolLifecyclePanel({
         <Text as="p" variant="body-small" color="secondary">
           cluster-manager does not list the pool yet — the first read after
           Deploy follows in a moment.
+        </Text>
+      )}
+      {!row && opened.removed && (
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          data-testid="pool-removed"
+        >
+          The pool is gone: cluster-manager no longer lists it.
         </Text>
       )}
       {opened.applied && (

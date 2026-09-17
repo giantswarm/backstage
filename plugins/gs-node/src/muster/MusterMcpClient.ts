@@ -188,29 +188,48 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * The human-readable message of an errored tool result's text block. When the
- * text is itself a serialized MCP result (`{"isError":true,"content":[...]}` —
- * what `call_tool` puts in its envelope for a failed wrapped tool), return the
- * inner text block's text; otherwise the text already is the message.
+ * The text blocks of an errored tool result, the human-readable message first.
+ * When the text is itself a serialized MCP result (`{"isError":true,"content":[...]}`
+ * — what `call_tool` puts in its envelope for a failed wrapped tool), these are
+ * the inner text blocks; otherwise the text already is the message.
  */
-function errorTextOf(text: string): string {
+function errorTextsOf(text: string): string[] {
   let inner: unknown;
   try {
     inner = JSON.parse(text);
   } catch {
-    return text;
+    return [text];
   }
   if (inner === null || typeof inner !== 'object') {
-    return text;
+    return [text];
   }
   const content = (inner as { content?: unknown }).content;
   if (!Array.isArray(content)) {
-    return text;
+    return [text];
   }
-  const innerText = (content as ContentItem[]).find(
-    item => item?.type === 'text',
-  )?.text;
-  return innerText ?? text;
+  const texts = (content as ContentItem[])
+    .filter(item => item?.type === 'text' && typeof item.text === 'string')
+    .map(item => item.text as string);
+  return texts.length > 0 ? texts : [text];
+}
+
+/**
+ * A tool-level error (`isError`) of a muster call: the message is the tool's
+ * first text block, as before; `details` are its further text blocks,
+ * verbatim, where the tool answered more than one — cluster-manager's
+ * `delete_node_pool` puts its structured refusal (`{"refused": {nodes, models,
+ * hint}}`) in a second block next to the text. Backstage's error middleware
+ * serializes an error's own properties, so `details` reaches the frontend
+ * with the message.
+ */
+export class MusterToolError extends Error {
+  readonly name = 'MusterToolError';
+  readonly details: string[];
+
+  constructor(message: string, details: string[] = []) {
+    super(message);
+    this.details = details;
+  }
 }
 
 /**
@@ -591,9 +610,11 @@ export class MusterMcpClient {
     const text = content?.find(item => item.type === 'text')?.text;
 
     if (isError) {
-      throw new Error(
-        (text === undefined ? undefined : errorTextOf(text)) ??
-          `Muster tool ${toolName} failed without an error message`,
+      const [message, ...details] =
+        text === undefined ? [] : errorTextsOf(text);
+      throw new MusterToolError(
+        message ?? `Muster tool ${toolName} failed without an error message`,
+        details,
       );
     }
 

@@ -3,6 +3,8 @@ import type {
   LifecycleStepState,
   ManagedCluster,
   NodePool,
+  NodePoolWriteResult,
+  ObjectAction,
   PoolLifecycleStep,
   PoolPhase,
   ServingComponent,
@@ -43,7 +45,7 @@ export function poolPhase(pool: NodePool, cluster: ManagedCluster): PoolPhase {
   return pool.readyReplicas < pool.replicas ? 'scaling' : 'ready';
 }
 
-/** The phase word of the row: `creating`, `ready · 0 nodes`, `scaling`, `removing`, `failed · <reason>`. */
+/** The phase word of the row: `creating`, `ready · 0 nodes`, `scaling`, `removing…`, `failed · <reason>`. */
 export function poolPhaseLabel(
   pool: NodePool,
   cluster: ManagedCluster,
@@ -59,9 +61,118 @@ export function poolPhaseLabel(
       const reason = failed?.message?.split(':')[0]?.trim();
       return reason ? `failed · ${reason}` : 'failed';
     }
+    case 'removing':
+      return 'removing…';
     default:
       return phase;
   }
+}
+
+/**
+ * The teardown's groups after Remove, in the order the objects go: the
+ * serving controllers (the slice's child releases), the well-known configs,
+ * the GPU operator release, the backend registration, the serving slice
+ * release, the pool release — the last three only with the cluster's last pool.
+ */
+export const TEARDOWN_GROUPS = [
+  { id: 'controllers', title: 'Serving controllers removed' },
+  { id: 'configs', title: 'Well-known configs removed' },
+  { id: 'operator', title: 'GPU operator release removed' },
+  { id: 'backend', title: 'Backend registration removed' },
+  { id: 'slice', title: 'Serving slice release removed' },
+  { id: 'pool', title: 'Pool release removed' },
+] as const;
+
+export type TeardownGroup = (typeof TEARDOWN_GROUPS)[number]['id'];
+
+/** The teardown group of an object of `delete_node_pool`'s answer, by kind and name. */
+export function teardownGroupOf(
+  object: Pick<ObjectAction, 'kind' | 'name'>,
+  cluster: string,
+  poolName: string,
+): TeardownGroup {
+  if (object.kind === 'ConfigMap') {
+    return 'backend';
+  }
+  if (object.kind === 'LLMInferenceServiceConfig') {
+    return 'configs';
+  }
+  if (object.name === `${cluster}-${poolName}`) {
+    return 'pool';
+  }
+  if (object.name === `${cluster}-agent-platform`) {
+    return 'slice';
+  }
+  if (object.name === `${cluster}-gpu-operator`) {
+    return 'operator';
+  }
+  return 'controllers';
+}
+
+export type PoolTeardown = {
+  cluster: string;
+  poolName: string;
+  /** `delete_node_pool`'s answer when the panel opened from Remove: every object of the teardown. */
+  removed?: NodePoolWriteResult;
+  /** RFC3339: when the delete was accepted — the steps' clock. */
+  removedAt?: string;
+  /** `list_node_pools`' pending objects while `phase: removing`. */
+  pending: ObjectAction[];
+  /** cluster-manager no longer lists the pool. */
+  gone: boolean;
+};
+
+const MAX_NAMED = 3;
+
+function named(objects: ObjectAction[]): string {
+  const names = objects
+    .slice(0, MAX_NAMED)
+    .map(object => `${object.kind} ${object.namespace}/${object.name}`);
+  const more = objects.length - names.length;
+  return more > 0 ? `${names.join(', ')} and ${more} more` : names.join(', ');
+}
+
+/**
+ * The teardown after Remove as steps for `LifecycleSteps`: a group is in
+ * progress while `list_node_pools` still lists one of its objects as pending
+ * and done once none is left; the pool release is done only once the pool is
+ * gone from the list. The groups come from the delete's answer (the panel
+ * opened from Remove) or, opened later by the chevron, from the pending
+ * objects alone; an older cluster-manager that reports only `deleting` gets
+ * the pool release as the one step.
+ */
+export function poolTeardownSteps(teardown: PoolTeardown): LifecycleStep[] {
+  const { cluster, poolName, removed, removedAt, pending, gone } = teardown;
+  const groupOf = (object: ObjectAction) =>
+    teardownGroupOf(object, cluster, poolName);
+  const all = removed?.objects ?? pending;
+  const present = new Set<TeardownGroup>(all.map(groupOf));
+  present.add('pool');
+  return TEARDOWN_GROUPS.filter(group => present.has(group.id)).map(group => {
+    const total = all.filter(object => groupOf(object) === group.id).length;
+    const left = gone
+      ? []
+      : pending.filter(object => groupOf(object) === group.id);
+    const objects = (n: number) => `${n} ${n === 1 ? 'object' : 'objects'}`;
+    if (left.length > 0 || (group.id === 'pool' && !gone)) {
+      return {
+        id: group.id,
+        title: group.title,
+        state: 'inProgress',
+        since: removedAt,
+        message:
+          left.length > 0
+            ? `${left.length} of ${Math.max(total, left.length)} terminating: ${named(left)}`
+            : 'the pool release is being uninstalled',
+      };
+    }
+    return {
+      id: group.id,
+      title: group.title,
+      state: 'done',
+      message: total > 0 ? `${objects(total)} gone` : undefined,
+    };
+  });
 }
 
 function fromManager(

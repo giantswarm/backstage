@@ -534,3 +534,152 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
     await expect(page.getByRole('alert')).toHaveCount(0);
   });
 });
+
+const deletes = (calls: RecordedCall[]) =>
+  calls.filter(call => call.name === 'x_cluster-manager_delete_node_pool');
+
+/** Sign in, stub cluster-manager with `gpu-e2e` settled on wc1, open the page and the Remove confirm with the name typed. */
+async function reachRemove(page: Page, options: StubOptions = {}) {
+  await signIn(page, lab.users.admin);
+  await dropPersistedQueriesOnNextLoad(page);
+  const calls = await stubClusterManager(page, {
+    existingPool: 'gpu-e2e',
+    ...options,
+  });
+  await open(page, '/agent-platform/models/capacity');
+  const row = page.getByRole('row', { name: /wc1-gpu-e2e/ });
+  await expect(row).toContainText('ready · 0 nodes', { timeout: 60_000 });
+  await row.getByRole('button', { name: 'Remove pool wc1-gpu-e2e' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel(/Type wc1-gpu-e2e to confirm/).fill('wc1-gpu-e2e');
+  return { row, dialog, calls };
+}
+
+/** After an accepted Remove: the row reads removing… with the teardown in the panel, then the pool is gone. */
+async function expectRemovingThenGone(page: Page, row: Locator) {
+  const panel = page.getByTestId('pool-lifecycle');
+  await expect(row).toContainText('removing…', { timeout: 30_000 });
+  await expect(panel).toContainText('Pool wc1-gpu-e2e');
+  const pool = panel.locator('[data-step="pool"]');
+  await expect(pool).toHaveAttribute('data-state', 'inProgress');
+  await expect(pool).toContainText('terminating');
+  await expect(panel.locator('[data-step="slice"]')).toBeVisible();
+  await expect(
+    panel.getByRole('link', { name: 'Serve your first model' }),
+  ).toHaveCount(0);
+  await snapshot(page, 'gpu-pool-removing');
+
+  await expect(row).toHaveCount(0, { timeout: 60_000 });
+  await expect(panel).toContainText('removed');
+  await expect(panel.getByTestId('pool-removed')).toBeVisible();
+  for (const id of ['operator', 'backend', 'slice', 'pool']) {
+    await expect(panel.locator(`[data-step="${id}"]`)).toHaveAttribute(
+      'data-state',
+      'done',
+    );
+  }
+  await snapshot(page, 'gpu-pool-removed');
+}
+
+/**
+ * Remove (giantswarm/backstage#2414, part 2): the row reads removing… with the
+ * teardown until `list_node_pools` no longer lists the pool; a refusal is
+ * rendered from cluster-manager 0.8.1's structured `refused` block with Check
+ * again, Remove anyway a second choice; a Remove cut short is continued.
+ * cluster-manager stubbed at the browser as above (the lab has none).
+ */
+test.describe('models: GPU node pool Remove — Removing until gone, the refusal explained, partial continued (cluster-manager stubbed)', () => {
+  test('a refused Remove shows the nodes, the models to unload and the hint; Check again re-runs without force and closes into Removing…, then the pool is gone', async ({
+    page,
+  }) => {
+    const { row, dialog, calls } = await reachRemove(page, {
+      refusals: { count: 1, shape: 'structured' },
+    });
+    await dialog.getByRole('button', { name: 'Remove pool' }).click();
+
+    const refused = dialog.getByTestId('remove-refused');
+    await expect(refused).toContainText('the pool still runs 1 node', {
+      timeout: 30_000,
+    });
+    await expect(refused.getByTestId('refused-nodes')).toContainText(
+      'i-0a1b2c3d4e5f60001',
+    );
+    await expect(refused.getByTestId('refused-models')).toContainText(
+      'Unload this model first',
+    );
+    await expect(
+      refused.getByRole('link', { name: /qwen3-4b-instruct/ }),
+    ).toHaveAttribute('href', /\/agent-platform\/models\/serving/);
+    await expect(refused).toContainText(
+      'Karpenter removes an empty node about 10 minutes after its last pod',
+    );
+    await expect(
+      refused.getByRole('checkbox', { name: /Remove anyway/ }),
+    ).not.toBeChecked();
+    expect(deletes(calls)).toHaveLength(1);
+    expect(deletes(calls)[0].arguments).not.toHaveProperty('force');
+    await snapshot(page, 'gpu-pool-remove-refused');
+
+    await refused.getByRole('button', { name: 'Check again' }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    expect(deletes(calls)).toHaveLength(2);
+    expect(deletes(calls)[1].arguments).toMatchObject({
+      mode: 'apply',
+      cluster: 'wc1',
+      name: 'gpu-e2e',
+    });
+    expect(deletes(calls)[1].arguments).not.toHaveProperty('force');
+    await expectRemovingThenGone(page, row);
+  });
+
+  test('a Remove cut short lists the pending objects and Continue re-runs the same call, then Removing…', async ({
+    page,
+  }) => {
+    const { row, dialog, calls } = await reachRemove(page, {
+      partialDeletes: 1,
+    });
+    await dialog.getByRole('button', { name: 'Remove pool' }).click();
+
+    const partial = dialog.getByTestId('partial-write');
+    await expect(partial).toContainText(
+      'Remove was cut short: 3 of 7 objects are pending',
+      { timeout: 30_000 },
+    );
+    await expect(dialog.getByTestId('pending-objects')).toContainText(
+      'HelmRelease org-lab/wc1-gpu-operator: pending',
+    );
+    await expect(
+      dialog.getByRole('button', { name: 'Remove pool' }),
+    ).toBeDisabled();
+    await snapshot(page, 'gpu-pool-remove-partial');
+
+    await partial.getByRole('button', { name: 'Continue' }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    const [first, second] = deletes(calls);
+    expect(second.arguments).toEqual(first.arguments);
+    await expect(row).toContainText('removing…', { timeout: 30_000 });
+    await expect(page.getByTestId('pool-lifecycle')).toContainText(
+      'terminating',
+    );
+  });
+
+  test('an older cluster-manager without the refused block: the text as it is, Check again, no Remove anyway', async ({
+    page,
+  }) => {
+    const { dialog, calls } = await reachRemove(page, {
+      refusals: { count: 1, shape: 'text' },
+    });
+    await dialog.getByRole('button', { name: 'Remove pool' }).click();
+
+    const refused = dialog.getByTestId('remove-refused');
+    await expect(refused).toContainText(
+      'node pool wc1-gpu-e2e still runs 1 node(s)',
+      { timeout: 30_000 },
+    );
+    await expect(refused.getByTestId('refused-nodes')).toHaveCount(0);
+    await expect(refused.getByRole('checkbox')).toHaveCount(0);
+    await refused.getByRole('button', { name: 'Check again' }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    expect(deletes(calls)).toHaveLength(2);
+  });
+});

@@ -46,7 +46,8 @@ export function openedPoolOf(
  * The GPU node pool controls the Models pages share (GPU capacity, Serving):
  * feature-detected per installation through the person's muster session —
  * where no reachable installation lists cluster-manager, nothing is offered.
- * Deploy closes into the pool's lifecycle panel; a row's chevron opens it later.
+ * Deploy closes into the pool's lifecycle panel, an accepted Remove into the
+ * teardown in the same panel; a row's chevron opens it later.
  */
 export function useGpuNodePoolControls(
   installations: string[],
@@ -67,6 +68,20 @@ export function useGpuNodePoolControls(
       setOpened(openedPoolOf(installation, result));
       setAddOpen(false);
     },
+    [],
+  );
+  // Remove closes into the teardown: the panel shows the objects going until
+  // list_node_pools no longer lists the pool.
+  const onRemoved = useCallback(
+    (row: GpuNodePoolRow, result: NodePoolWriteResult) =>
+      setOpened({
+        id: row.id,
+        installation: row.installation,
+        cluster: row.cluster.name,
+        poolName: row.poolName,
+        removed: result,
+        removedAt: new Date().toISOString(),
+      }),
     [],
   );
   const onToggleLifecycle = useCallback(
@@ -117,6 +132,11 @@ export function useGpuNodePoolControls(
           write={write}
           servedModels={servedModels}
           canCommit={info?.modes.commit === true}
+          onRemoved={result => {
+            if (removing) {
+              onRemoved(removing, result);
+            }
+          }}
         />
       </>
     ) : undefined,
