@@ -240,6 +240,19 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // its views into the Agents page's numbers, which is exactly the question a
     // new tab exists to answer. It carries no `view`: the page is one view, and
     // the installation it reports on is scope state, not a page identity.
+    // Must stay above the generic '/agent-platform' cases below, like the
+    // Sessions and Usage cases. The bare tab only ever redirects to a team.
+    case pathname === '/agent-platform/marge':
+      payload = { page: 'marge index' };
+      break;
+
+    // One team's queue: `/agent-platform/marge/<team>`. No `view`: the
+    // segment is a team name, and a page name per team is a distinct signal
+    // per team rather than a countable page.
+    case pathname.startsWith('/agent-platform/marge/'):
+      payload = { page: 'marge' };
+      break;
+
     case pathname === '/agent-platform/usage':
       payload = { page: 'Usage' };
       break;

@@ -317,3 +317,20 @@ export function musterNodePoolsQueryKey(
 export function musterAcceleratorsQueryKey(installation: string) {
   return ['muster', 'agent-platform', 'accelerators', installation] as const;
 }
+
+/**
+ * marge's reads on the marge page: a team's queue as the signed-in
+ * person's GitHub grant sees it. Under the `muster` prefix for the same two
+ * reasons as the agent-manager reads: one person's view is never persisted,
+ * and the muster plugin's sign-in invalidation re-reads it once the person
+ * connects to marge.
+ */
+export function musterMargeListQueryKey(installation: string, team: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'marge-list',
+    installation,
+    team,
+  ] as const;
+}

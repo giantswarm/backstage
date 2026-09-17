@@ -496,6 +496,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/muster/workflows/my-workflow/run',
       '/agent-platform/muster/tools',
       '/agent-platform',
+      '/agent-platform/marge',
+      '/agent-platform/marge/bumblebee',
       '/agent-platform/agents/new',
       '/agent-platform/agents/new/skills',
       '/agent-platform/agents/new/review',
