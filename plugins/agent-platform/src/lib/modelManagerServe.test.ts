@@ -9,6 +9,7 @@ import {
   describeLoadAnswer,
   parseServeRoute,
   withoutServeRoute,
+  tryModelIdOf,
 } from './modelManagerServe';
 
 /** `check_fit` on gazelle's L4 pool for a preset that fits (model-manager 0.24.0). */
@@ -169,5 +170,32 @@ describe('parseServeRoute', () => {
     expect(
       parseServeRoute(new URLSearchParams('serve=1&installation=&pool= ')),
     ).toEqual({ installation: undefined, cluster: undefined, pool: undefined });
+  });
+});
+
+describe('tryModelIdOf', () => {
+  const row = {
+    name: 'qwen3-4b-instruct',
+    modelSource: 'Qwen/Qwen3-4B-Instruct-2507',
+    modelConfig: {
+      name: 'qwen3-4b-instruct',
+      namespace: 'kagent',
+      model: 'Qwen/Qwen3-4B-Instruct-2507',
+    },
+  };
+
+  it("sends what the ModelConfig sends — spec.model — never the serving object's name", () => {
+    expect(tryModelIdOf(row)).toBe('Qwen/Qwen3-4B-Instruct-2507');
+    // A ModelConfig that does not say: the model's source reference.
+    expect(
+      tryModelIdOf({
+        ...row,
+        modelConfig: { name: 'qwen3-4b-instruct', namespace: 'kagent' },
+      }),
+    ).toBe('Qwen/Qwen3-4B-Instruct-2507');
+    // Nothing better known: the serving object's name, as before.
+    expect(tryModelIdOf({ name: 'llama3', modelSource: undefined })).toBe(
+      'llama3',
+    );
   });
 });

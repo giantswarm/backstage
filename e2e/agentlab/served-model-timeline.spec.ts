@@ -170,7 +170,8 @@ function servedModel(running: Record<string, unknown>) {
             namespace: 'kagent',
             managed: true,
             ready: true,
-            providerModel: 'qwen3-4b-instruct',
+            // `spec.model`: the repository, the name vLLM serves under.
+            providerModel: 'Qwen/Qwen3-4B-Instruct-2507',
             endpoint: `${ENDPOINT}/v1`,
           },
         }),
@@ -271,7 +272,7 @@ const TIMELINE: StageName[] = ['downloading', 'loading', 'ready'];
 
 const tryAnswer = {
   url: `${ENDPOINT}/v1/chat/completions`,
-  model: 'qwen3-4b-instruct',
+  model: 'Qwen/Qwen3-4B-Instruct-2507',
   without: {
     status: 401,
     error: 'authentication failure: no bearer token found',
@@ -446,7 +447,7 @@ test.describe('serving: the served model’s step timeline', () => {
         'one completion without a token and one as the person, both outcomes shown',
       ).toContainText('401 without a token · 200 as you in 1 s — “pong”');
       await expect(panel).toContainText(
-        `POST ${ENDPOINT}/v1/chat/completions · model qwen3-4b-instruct`,
+        `POST ${ENDPOINT}/v1/chat/completions · model Qwen/Qwen3-4B-Instruct-2507`,
       );
 
       expect(
@@ -460,11 +461,11 @@ test.describe('serving: the served model’s step timeline', () => {
       ).toEqual(['x_model-manager_check_fit', 'x_model-manager_load_model']);
       expect(
         staged.tries,
-        'the try named the installation, the serving object and the endpoint model-manager reported',
+        'the try named the installation, the model id the ModelConfig sends (not the serving object) and the endpoint model-manager reported',
       ).toEqual([
         {
           installation: lab.installation,
-          model: 'qwen3-4b-instruct',
+          model: 'Qwen/Qwen3-4B-Instruct-2507',
           url: ENDPOINT,
         },
       ]);

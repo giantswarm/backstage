@@ -381,6 +381,7 @@ export function toServedModelFromManager(
           managed: model.modelConfig.managed,
           ready: model.modelConfig.ready,
           message: model.modelConfig.message,
+          model: model.modelConfig.providerModel ?? model.modelConfig.model,
         }
       : undefined,
     managerRef: model.name,

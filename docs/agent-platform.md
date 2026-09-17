@@ -273,7 +273,9 @@ are `ModelManagerNotConnectedError`, an error to show, not a connect flow.
 The one model-related call the portal's backend carries out itself is **Try
 it** on a served model (`POST /served-models/try`, `tryRouter.ts`): two chat
 completions against the served model's endpoint as model-manager reports it,
-without a token and with the person's installation token
+for the model id the ModelConfig sends (`spec.model` — the name vLLM serves
+under, not the serving object's name), without a token and with the person's
+installation token
 (`backstage-served-model-authorization`), because the browser cannot post to
 the models Gateway cross-origin. The route holds the endpoint to the
 installation's own base domain (`gs.installations.<name>.baseDomain`) and
