@@ -283,11 +283,23 @@ export type InstanceShape = {
   gpuMemoryGiB: number;
   usableVcpu: number;
   usableMemoryGiB: number;
+  /** The node's on-demand list price per hour (giantswarm/cluster-manager#44); absent with `priceNote`. */
+  pricePerHourUSD?: number;
+  /** Where the price was read (`AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1)`). */
+  priceSource?: string;
+  /** The day the price list was read (`2026-09-17`). */
+  priceAsOf?: string;
+  /** Why no price is listed (the size is not offered in the region, the list unreadable). */
+  priceNote?: string;
 };
 
 /** One serving preset placed against the pool's sizes. */
 export type PresetSizeFit = {
   preset: string;
+  /** The preset's name for people (`Qwen3 8B FP8`; giantswarm/cluster-manager#44). */
+  displayName?: string;
+  /** The model the preset serves (`Qwen/Qwen3-8B-FP8`). */
+  model?: string;
   /** The predictor's requests as the preset writes them (`unset` for none). */
   cpu: string;
   memory: string;
@@ -301,6 +313,13 @@ export type PresetSizeFit = {
 
 /** The serving presets published on the cluster, judged against the pool's sizes. */
 export type PresetFit = {
+  /**
+   * `published` — the ConfigMaps a serving slice publishes on the cluster;
+   * `chart` — the presets the connectivity chart the slice would resolve
+   * ships, answered before the slice exists (giantswarm/cluster-manager#44).
+   * Absent with `note`, and from an older cluster-manager.
+   */
+  origin?: 'published' | 'chart';
   /** Where the presets were read (`3 preset ConfigMap(s) in model-serving on wc1`). */
   source?: string;
   /** Why nothing was judged: no presets published yet, or not readable as the person. */
@@ -608,6 +627,53 @@ export function describeGpus(
   shape: Pick<InstanceShape, 'gpus' | 'gpuMemoryGiB'>,
 ): string {
   return `${shape.gpus} × ${shape.gpuMemoryGiB} GiB GPU${shape.gpus === 1 ? '' : 's'}`;
+}
+
+/** `$1.01/h` — the node's on-demand price as cluster-manager lists it; `undefined` without one. */
+export function describePrice(
+  shape: Pick<InstanceShape, 'pricePerHourUSD'>,
+): string | undefined {
+  return shape.pricePerHourUSD === undefined
+    ? undefined
+    : `$${shape.pricePerHourUSD.toFixed(2)}/h`;
+}
+
+/** The cheapest of the chosen sizes that carries a price; `undefined` when none does. */
+export function cheapestPriced(
+  shapes: InstanceShape[],
+  sizes: string[],
+): InstanceShape | undefined {
+  return shapes
+    .filter(
+      shape =>
+        sizes.includes(shape.size) && shape.pricePerHourUSD !== undefined,
+    )
+    .sort((a, b) => a.pricePerHourUSD! - b.pricePerHourUSD!)[0];
+}
+
+/**
+ * The fine print under the prices: every distinct source with its date
+ * (`AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1), as of 2026-09-17`).
+ */
+export function describePriceSources(shapes: InstanceShape[]): string[] {
+  return [
+    ...new Set(
+      shapes
+        .filter(shape => shape.priceSource)
+        .map(shape =>
+          shape.priceAsOf
+            ? `${shape.priceSource}, as of ${shape.priceAsOf}`
+            : shape.priceSource!,
+        ),
+    ),
+  ];
+}
+
+/** The preset's name for people: `displayName`, or the preset's id from an older cluster-manager. */
+export function presetLabel(
+  fit: Pick<PresetSizeFit, 'preset' | 'displayName'>,
+): string {
+  return fit.displayName || fit.preset;
 }
 
 /** `4 vCPU / 12Gi, 1 GPU, 9.6 GiB of GPU memory` — what the preset's predictor asks for. */

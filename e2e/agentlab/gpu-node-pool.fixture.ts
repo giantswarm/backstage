@@ -1,9 +1,11 @@
 import type { Page } from '@playwright/test';
 
 /**
- * cluster-manager 0.7.7's answers for the Add GPU node pool dialog, stubbed at
- * the browser: the lab has no cluster-manager (no Cluster API on a kind
- * cluster), so the muster calls the dialog makes are answered here in the
+ * cluster-manager's answers for the Add GPU node pool dialog (0.8.1's shapes,
+ * with the prices per size and the preset display names, models and origin
+ * of giantswarm/cluster-manager#44), stubbed at the browser: the lab has no
+ * cluster-manager (no Cluster API on a kind cluster), so the muster calls the
+ * dialog makes are answered here in the
  * shapes `internal/tools/nodepool_write.go` produces, and the lab's muster
  * server list gains a `cluster-manager` entry so the page offers the dialog.
  *
@@ -13,7 +15,9 @@ import type { Page } from '@playwright/test';
  * (`agent-platform-connectivity/files/model-serving/presets`) with their real
  * requests; their GPU-memory figures, the usable numbers of 2xlarge and
  * 4xlarge and the fit verdicts are synthetic — gazelle had no pool, so no
- * preset was published to judge (giantswarm/backstage#2413).
+ * preset was published to judge (giantswarm/backstage#2413). The prices are
+ * the Frankfurt on-demand list prices of the three sizes (2026-09-17); the
+ * display names and models are the presets' own.
  */
 
 export const CLUSTER = {
@@ -56,9 +60,24 @@ type Shape = {
   gpuMemoryGiB: number;
   usableVcpu: number;
   usableMemoryGiB: number;
+  pricePerHourUSD?: number;
+  priceSource?: string;
+  priceAsOf?: string;
+  priceNote?: string;
 };
 
-/** The g6 (L4) family as the chart's default sizes compose it, smallest first. */
+/** Where cluster-manager read the prices, and when. */
+export const PRICE_SOURCE =
+  'AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1)';
+export const PRICE_AS_OF = '2026-09-17';
+
+const priced = (pricePerHourUSD: number) => ({
+  pricePerHourUSD,
+  priceSource: PRICE_SOURCE,
+  priceAsOf: PRICE_AS_OF,
+});
+
+/** The g6 (L4) family as the chart's default sizes compose it, smallest first, priced. */
 export const SHAPES: Shape[] = [
   {
     instanceType: 'g6.xlarge',
@@ -69,6 +88,7 @@ export const SHAPES: Shape[] = [
     gpuMemoryGiB: 24,
     usableVcpu: 3,
     usableMemoryGiB: 11.9,
+    ...priced(1.0064),
   },
   {
     instanceType: 'g6.2xlarge',
@@ -79,6 +99,7 @@ export const SHAPES: Shape[] = [
     gpuMemoryGiB: 24,
     usableVcpu: 6.5,
     usableMemoryGiB: 26.9,
+    ...priced(1.22249),
   },
   {
     instanceType: 'g6.4xlarge',
@@ -89,11 +110,14 @@ export const SHAPES: Shape[] = [
     gpuMemoryGiB: 24,
     usableVcpu: 14.5,
     usableMemoryGiB: 58.4,
+    ...priced(1.65466),
   },
 ];
 
 type Preset = {
   preset: string;
+  displayName: string;
+  model: string;
   cpu: string;
   memory: string;
   gpus: number;
@@ -104,6 +128,8 @@ type Preset = {
 export const PRESETS: Preset[] = [
   {
     preset: 'qwen3-4b-instruct',
+    displayName: 'Qwen3 4B Instruct',
+    model: 'Qwen/Qwen3-4B-Instruct-2507',
     cpu: '4',
     memory: '12Gi',
     gpus: 1,
@@ -111,6 +137,8 @@ export const PRESETS: Preset[] = [
   },
   {
     preset: 'qwen3-8b-fp8',
+    displayName: 'Qwen3 8B FP8',
+    model: 'Qwen/Qwen3-8B-FP8',
     cpu: '4',
     memory: '12Gi',
     gpus: 1,
@@ -118,6 +146,8 @@ export const PRESETS: Preset[] = [
   },
   {
     preset: 'devstral-small-2',
+    displayName: 'Devstral Small 2',
+    model: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
     cpu: '8',
     memory: '64Gi',
     gpus: 1,
@@ -125,6 +155,8 @@ export const PRESETS: Preset[] = [
   },
   {
     preset: 'nemotron-3-super-nvfp4',
+    displayName: 'Nemotron 3 Super NVFP4',
+    model: 'nvidia/Nemotron-3-Super-NVFP4',
     cpu: '8',
     memory: '64Gi',
     gpus: 1,
@@ -132,6 +164,8 @@ export const PRESETS: Preset[] = [
   },
   {
     preset: 'qwen3-14b',
+    displayName: 'Qwen3 14B',
+    model: 'Qwen/Qwen3-14B',
     cpu: '8',
     memory: '64Gi',
     gpus: 1,
@@ -139,6 +173,8 @@ export const PRESETS: Preset[] = [
   },
   {
     preset: 'qwen3-5-27b',
+    displayName: 'Qwen3.5 27B',
+    model: 'Qwen/Qwen3.5-27B',
     cpu: '8',
     memory: '64Gi',
     gpus: 1,
@@ -146,6 +182,8 @@ export const PRESETS: Preset[] = [
   },
   {
     preset: 'qwen3-5-35b-a3b',
+    displayName: 'Qwen3.5 35B A3B',
+    model: 'Qwen/Qwen3.5-35B-A3B',
     cpu: '8',
     memory: '64Gi',
     gpus: 1,
@@ -153,6 +191,8 @@ export const PRESETS: Preset[] = [
   },
   {
     preset: 'qwen3-8-27b',
+    displayName: 'Qwen3.8 27B',
+    model: 'Qwen/Qwen3.8-27B',
     cpu: '8',
     memory: '64Gi',
     gpus: 1,
@@ -160,6 +200,8 @@ export const PRESETS: Preset[] = [
   },
   {
     preset: 'qwen3-coder-next',
+    displayName: 'Qwen3 Coder Next',
+    model: 'Qwen/Qwen3-Coder-Next-FP8',
     cpu: '8',
     memory: '64Gi',
     gpus: 1,
@@ -231,9 +273,17 @@ function objects(cluster: string, pool: string, action: string) {
 }
 
 export type DryRunOptions = {
-  /** Whether the cluster publishes serving presets (a slice already on it). */
+  /** `false`: nothing could be judged — `presetFit.note` alone (an older cluster-manager, an unreadable cluster). */
   presets?: boolean;
+  /** Where the presets come from: the slice's ConfigMaps (default), or the chart before the slice exists. */
+  presetOrigin?: 'published' | 'chart';
 };
+
+/** How `presetFit.source` words each origin. */
+export const PRESET_SOURCE = {
+  published: `${PRESETS.length} preset ConfigMap(s) in model-serving on ${CLUSTER.name}`,
+  chart: `${PRESETS.length} preset(s) shipped by agent-platform-connectivity 4.30.0, the chart the slice's agent-platform 4.29.1 release resolves for ">=4.0.0 <5.0.0" at gsoci.azurecr.io — the slice publishes them once it is ready`,
+} as const;
 
 /** `create_node_pool` with `dryRun` for the chosen sizes (the chart's defaults when none). */
 export function dryRunAnswer(
@@ -260,7 +310,8 @@ export function dryRunAnswer(
           note: `no serving preset is published on ${CLUSTER.name} yet — the slice release publishes them once it is ready; a dryRun re-run then says which of the pool's sizes host each`,
         }
       : {
-          source: `${PRESETS.length} preset ConfigMap(s) in model-serving on ${CLUSTER.name}`,
+          origin: options.presetOrigin ?? 'published',
+          source: PRESET_SOURCE[options.presetOrigin ?? 'published'],
           presets: judged.map(({ entry }) => entry),
         };
   return {
