@@ -4,6 +4,7 @@ import {
   type ProviderName,
   type SelectModelOptions,
 } from './selectModel';
+import { buildAnthropicProviderOptions } from './utils/anthropicProviderOptions';
 
 /**
  * Identify `AI_UnsupportedModelVersionError` by its stable public name.
@@ -131,6 +132,35 @@ describe('selectModel provider precedence', () => {
       expected: 'anthropic',
     },
     {
+      name: 'routes claude- models to Vertex when anthropic.provider is vertex',
+      options: {
+        modelName: 'claude-sonnet-5',
+        anthropic: { provider: 'vertex' },
+        google: { project: 'p', location: 'europe-west1' },
+      },
+      expected: 'google-vertex-anthropic',
+    },
+    {
+      // Regression guard for installations on the Anthropic API: adding a
+      // google block (e.g. to try a gemini model) must not reroute claude-*.
+      name: 'keeps claude- models on the Anthropic API when no provider is set',
+      options: {
+        modelName: 'claude-sonnet-5',
+        anthropic: { apiKey: 'k' },
+        google: { project: 'p', location: 'europe-west1' },
+      },
+      expected: 'anthropic',
+    },
+    {
+      name: 'prefers Vertex over a configured Anthropic API key',
+      options: {
+        modelName: 'claude-sonnet-5',
+        anthropic: { apiKey: 'k', provider: 'vertex' },
+        google: { project: 'p', location: 'europe-west1' },
+      },
+      expected: 'google-vertex-anthropic',
+    },
+    {
       name: 'routes gemini- models to Vertex ahead of the Azure branch',
       options: {
         modelName: 'gemini-2.5-flash',
@@ -208,6 +238,17 @@ describe('selectModel core/provider spec-version compatibility', () => {
         google: { project: 'p', location: 'europe-west1' },
       },
     },
+    {
+      // Not just symmetry: the Vertex-Anthropic provider bundles its own copy of
+      // `@ai-sdk/anthropic`, so a dependency bump can split its spec version
+      // from the one the direct Anthropic branch resolves.
+      name: 'google-vertex-anthropic',
+      options: {
+        modelName: 'claude-sonnet-5',
+        anthropic: { provider: 'vertex' },
+        google: { project: 'p', location: 'europe-west1' },
+      },
+    },
   ];
 
   it.each(providerCases)(
@@ -253,5 +294,98 @@ describe('selectModel core/provider spec-version compatibility', () => {
     const error = await collectVersionError(aheadModel);
     expect(error).toBeDefined();
     expect(isUnsupportedModelVersionError(error)).toBe(true);
+  });
+});
+
+describe('selectModel Vertex Anthropic requests', () => {
+  type JsonBody = Record<string, unknown>;
+
+  /**
+   * Drive one request through `streamText` and return what the provider put on
+   * the wire. The response body is irrelevant -- the request is the assertion.
+   */
+  async function captureRequest(options: Partial<SelectModelOptions>) {
+    let captured: { url: string; headers: Headers; body: JsonBody } | undefined;
+    const captureFetch: typeof globalThis.fetch = async (input, init) => {
+      captured = {
+        url: String(input),
+        headers: new Headers(init?.headers as HeadersInit),
+        body: JSON.parse(String(init?.body)),
+      };
+      return new Response('', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    };
+
+    const { model } = selectModel({
+      ...baseOptions(),
+      ...options,
+      fetch: captureFetch,
+    });
+
+    const result = streamText({
+      model,
+      messages: [{ role: 'user', content: 'ping' }],
+      providerOptions: {
+        anthropic: buildAnthropicProviderOptions({
+          modelName: 'claude-sonnet-5',
+          isAnthropicModel: true,
+        })!,
+      },
+      onError: () => {},
+    });
+    await result.consumeStream({ onError: () => {} });
+
+    if (!captured) {
+      throw new Error('the provider issued no request');
+    }
+    return captured;
+  }
+
+  const vertexOptions: Partial<SelectModelOptions> = {
+    modelName: 'claude-sonnet-5',
+    anthropic: { provider: 'vertex' },
+    google: { project: 'egger-project', location: 'europe-west1' },
+  };
+
+  it('posts to the regional Vertex Anthropic streaming endpoint', async () => {
+    const { url, headers } = await captureRequest(vertexOptions);
+
+    expect(url).toBe(
+      'https://europe-west1-aiplatform.googleapis.com/v1/projects/egger-project' +
+        '/locations/europe-west1/publishers/anthropic/models' +
+        '/claude-sonnet-5:streamRawPredict',
+    );
+    // The OAuth2 token google-auth-library minted from the service account.
+    expect(headers.get('authorization')).toBe('Bearer test-token');
+  });
+
+  it('uses the global host when the location is global', async () => {
+    const { url } = await captureRequest({
+      ...vertexOptions,
+      google: { project: 'egger-project', location: 'global' },
+    });
+
+    expect(url).toBe(
+      'https://aiplatform.googleapis.com/v1/projects/egger-project' +
+        '/locations/global/publishers/anthropic/models' +
+        '/claude-sonnet-5:streamRawPredict',
+    );
+  });
+
+  it('sends the Vertex body shape with adaptive thinking and no sampling params', async () => {
+    const { body } = await captureRequest(vertexOptions);
+
+    expect(body).toMatchObject({
+      anthropic_version: 'vertex-2023-10-16',
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'high' },
+    });
+    // Vertex takes the model from the URL, and Sonnet 5 rejects a thinking
+    // budget or sampling params with a 400.
+    expect(body).not.toHaveProperty('model');
+    expect(body).not.toHaveProperty('temperature');
+    expect(body).not.toHaveProperty('budget_tokens');
   });
 });
