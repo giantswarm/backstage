@@ -6,7 +6,14 @@ export {
 } from './PartialWriteOutcome';
 export { PoolFitReview, type PoolFitReviewProps } from './PoolFitReview';
 export {
+  PoolLifecyclePanel,
+  SERVE_FIRST_MODEL,
+  serveFirstModelHref,
+  type OpenedPool,
+  type PoolLifecyclePanelProps,
+} from './PoolLifecyclePanel';
+export {
   RemoveGpuNodePoolDialog,
   servedModelsOnCluster,
 } from './RemoveGpuNodePoolDialog';
-export { useGpuNodePoolControls } from './GpuNodePoolControls';
+export { openedPoolOf, useGpuNodePoolControls } from './GpuNodePoolControls';

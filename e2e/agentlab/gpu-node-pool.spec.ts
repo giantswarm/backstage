@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { expect, open, signIn, test } from './fixtures';
 import {
+  SETTLED_READ,
   stubClusterManager,
   type RecordedCall,
   type StubOptions,
@@ -420,13 +421,120 @@ test.describe('models: Add GPU node pool review — what the pool can serve (clu
     await snapshot(page, 'gpu-pool-deploy-partial');
 
     await partial.getByRole('button', { name: 'Continue' }).click();
-    await expect(
-      dialog.getByText('Pool wc1-gpu-e2e applied as you'),
-    ).toBeVisible({ timeout: 30_000 });
-    await expect(dialog.getByTestId('partial-write')).toHaveCount(0);
+    // The completed Deploy closes into the pool's lifecycle panel.
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    await expect(page.getByTestId('pool-lifecycle')).toContainText(
+      'Pool wc1-gpu-e2e',
+    );
     const [first, second] = applies(calls);
     expect(second.arguments).toEqual(first.arguments);
     expect(first.arguments).toMatchObject({ mode: 'apply', name: 'gpu-e2e' });
-    await footerClose(dialog).click();
+  });
+});
+
+const LIFECYCLE_STEPS = [
+  'release',
+  'karpenterPool',
+  'gpuOperator',
+  'serving',
+  'backend',
+  'serve',
+];
+
+const listReads = (calls: RecordedCall[]) =>
+  calls.filter(call => call.name === 'x_cluster-manager_list_clusters').length;
+
+test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stubbed)', () => {
+  test('Deploy closes into the lifecycle panel: the row reads creating, then ready · 0 nodes; the steps turn done and end in Serve your first model', async ({
+    page,
+  }) => {
+    const { dialog, calls } = await reachReview(page);
+    await dialog.getByRole('button', { name: /^Deploy/ }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+
+    const panel = page.getByTestId('pool-lifecycle');
+    await expect(panel).toContainText('Pool wc1-gpu-e2e');
+    await expect(panel.getByTestId('applied-objects')).toContainText(
+      'HelmRelease wc1-gpu-e2e: created',
+    );
+    const row = page.getByRole('row', { name: /wc1-gpu-e2e/ });
+    await expect(row).toContainText('creating', { timeout: 30_000 });
+    await expect(panel.locator('[data-step="release"]')).toHaveAttribute(
+      'data-state',
+      /inProgress|done/,
+    );
+    await expect(panel.locator('[data-step="karpenterPool"]')).toContainText(
+      'Karpenter pool ready',
+    );
+    await expect(panel.locator('[data-step="serve"]')).toHaveAttribute(
+      'data-state',
+      'pending',
+    );
+    await snapshot(page, 'gpu-pool-lifecycle-creating');
+
+    await expect(row).toContainText('ready · 0 nodes', { timeout: 45_000 });
+    await expect(row).not.toContainText('0 / 0');
+    await expect(panel.locator('[data-step="karpenterPool"]')).toContainText(
+      '0 nodes, launches on demand',
+    );
+    await expect(panel.locator('[data-step="gpuOperator"]')).toContainText(
+      'starts with the first node',
+      { timeout: 30_000 },
+    );
+    const serve = panel.getByRole('link', { name: 'Serve your first model' });
+    await expect(serve).toBeVisible({ timeout: 45_000 });
+    await expect(panel.locator('[data-step="backend"]')).toContainText(
+      'agent-platform/model-backend-kserve',
+    );
+    for (const id of LIFECYCLE_STEPS) {
+      await expect(panel.locator(`[data-step="${id}"]`)).toHaveAttribute(
+        'data-state',
+        'done',
+      );
+    }
+    const href = (await serve.getAttribute('href')) ?? '';
+    expect(href).toContain('/agent-platform/models/serving?');
+    expect(href).toContain('serve=1');
+    expect(href).toContain('cluster=wc1');
+    expect(href).toContain('pool=gpu-e2e');
+    await snapshot(page, 'gpu-pool-lifecycle-ready');
+
+    // Polling: the lists were re-read every 10 s while the pool was unsettled
+    // (the stub settles on read SETTLED_READ), and every 60 s from then on.
+    const settledReads = listReads(calls);
+    expect(settledReads).toBeGreaterThanOrEqual(SETTLED_READ);
+    await page.waitForTimeout(15_000);
+    expect(listReads(calls)).toBe(settledReads);
+
+    // The panel closes, and the row's chevron opens it again.
+    await panel
+      .getByRole('button', { name: 'Close lifecycle of pool wc1-gpu-e2e' })
+      .click();
+    await expect(page.getByTestId('pool-lifecycle')).toHaveCount(0);
+    await row
+      .getByRole('button', { name: 'Show lifecycle of pool wc1-gpu-e2e' })
+      .click();
+    await expect(page.getByTestId('pool-lifecycle')).toContainText(
+      'ready · 0 nodes',
+    );
+  });
+
+  test('an installation on an older cluster-manager gets the panel with fewer steps from poolReleases and the components status, never an error', async ({
+    page,
+  }) => {
+    const { dialog } = await reachReview(page, { lifecycle: 'legacy' });
+    await dialog.getByRole('button', { name: /^Deploy/ }).click();
+
+    const panel = page.getByTestId('pool-lifecycle');
+    await expect(panel).toContainText('Pool wc1-gpu-e2e', { timeout: 30_000 });
+    const row = page.getByRole('row', { name: /wc1-gpu-e2e/ });
+    await expect(row).toContainText('creating', { timeout: 30_000 });
+    await expect(row).toContainText('ready · 0 nodes', { timeout: 45_000 });
+    await expect(panel.locator('[data-step="backend"]')).toHaveCount(0);
+    await expect(panel.getByTestId('lifecycle-step')).toHaveCount(5);
+    await expect(
+      panel.getByRole('link', { name: 'Serve your first model' }),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('alert')).toHaveCount(0);
   });
 });

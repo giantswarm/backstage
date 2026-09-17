@@ -45,8 +45,8 @@ export type AddGpuNodePoolDialogProps = {
   installations: string[];
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  /** After a Deploy: the pool was applied as the person. */
-  onDeployed?: (result: NodePoolWriteResult) => void;
+  /** After a complete Deploy: the pool was applied as the person on `installation`. */
+  onDeployed?: (result: NodePoolWriteResult, installation: string) => void;
 };
 
 type TeleportChoice = 'default' | 'on' | 'off';
@@ -234,8 +234,8 @@ export function AddGpuNodePoolDialog({
     try {
       const result = await write.create(input, 'apply');
       setApplied(result);
-      if (!result.partial) {
-        onDeployed?.(result);
+      if (!result.partial && installation) {
+        onDeployed?.(result, installation);
       }
     } catch {
       // Shown from `write.failure`.
