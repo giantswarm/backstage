@@ -96,6 +96,33 @@ export function modelManagerJobsQueryKey(installation: string) {
 export function modelManagerNodesQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'nodes', installation] as const;
 }
+export function modelManagerPresetsQueryKey(
+  installation: string,
+  backend?: string,
+) {
+  return [
+    'agent-platform',
+    'model-manager',
+    'presets',
+    installation,
+    backend ?? '',
+  ] as const;
+}
+/** `check_fit` of one model on one backend, as the Serve dialog asks it. */
+export function modelManagerFitQueryKey(
+  installation: string,
+  backend: string | undefined,
+  model: string,
+) {
+  return [
+    'agent-platform',
+    'model-manager',
+    'fit',
+    installation,
+    backend ?? '',
+    model,
+  ] as const;
+}
 
 /**
  * The muster-backed reads the agent creation Tools step and the agent detail

@@ -1,6 +1,12 @@
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import {
+  modelManagerFitResultSchema,
+  modelManagerLoadAnswerSchema,
+  type ModelManagerFitResult,
+  type ModelManagerLoadAnswer,
+} from '../lib/modelManager';
+import {
   addBackendArgs,
   classifyModelManagerToolError,
   MODEL_MANAGER_TOOLS,
@@ -14,9 +20,16 @@ import {
   type RemoveBackendResult,
 } from '../lib/modelManagerBackends';
 
+/** What `check_fit` and `load_model` judge or start: a preset by name or a model reference, on one backend. */
+export type ServeRequest = {
+  /** The preset name on kserve (`qwen3-4b-instruct`), the model reference on a host backend. */
+  model: string;
+  backend?: string;
+};
+
 /**
- * model-manager's backend-registration tools on one installation, called as
- * the signed-in person.
+ * model-manager's backend-registration and serving tools on one installation,
+ * called as the signed-in person.
  *
  * The seam is the muster plugin's own client — the same one agent-manager's
  * tools go through: `musterApi.callTool()` sends the person's token for the
@@ -73,6 +86,31 @@ export class ModelManagerToolsClient {
       MODEL_MANAGER_TOOLS.addBackend,
       addBackendArgs(input, options),
     );
+  }
+
+  /**
+   * `check_fit`: whether the preset fits the backend — on a GPU pool judged
+   * against the pool's instance shapes (`instanceType` names the node the
+   * load would launch) — with the cache verdict (`cached`, `cacheSource`).
+   * `fits: false` is an answer with a `reason`, not an error.
+   */
+  async checkFit(request: ServeRequest): Promise<ModelManagerFitResult> {
+    const answer = await this.call<unknown>(MODEL_MANAGER_TOOLS.checkFit, {
+      ...request,
+    });
+    return modelManagerFitResultSchema.parse(answer);
+  }
+
+  /**
+   * `load_model`: starts serving as the person. On kserve the answer names
+   * the object model-manager composed (`running.kind`, `running.resource`),
+   * echoes the fit it was judged by and carries the initial timeline.
+   */
+  async loadModel(request: ServeRequest): Promise<ModelManagerLoadAnswer> {
+    const answer = await this.call<unknown>(MODEL_MANAGER_TOOLS.loadModel, {
+      ...request,
+    });
+    return modelManagerLoadAnswerSchema.parse(answer);
   }
 
   /**

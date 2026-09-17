@@ -501,9 +501,57 @@ export const modelManagerFitResultSchema = z.looseObject({
   tokenConfigured: wireBoolean(false),
   /** The model is already in the node's cache. */
   cached: wireBoolean(false),
+  /** How `cached` was decided (model-manager 0.24.0): `scan`, `index`, or `unknown` — then `cached: false` is no verdict. */
+  cacheSource: wireString,
+  /** The instance type the pool's node comes as when the load scales it from zero. */
+  instanceType: wireString,
 });
 
 export type ModelManagerFitResult = z.infer<typeof modelManagerFitResultSchema>;
+
+/**
+ * One step of a served model's timeline (model-manager 0.24.0, kserve):
+ * `scheduling`, `nodeStarting`, `downloadingWeights`, `pullingImage`,
+ * `loading`, `routing`, `ready`, in that order.
+ */
+export const modelManagerServeStepSchema = z.looseObject({
+  name: z.string(),
+  state: wireString,
+  since: wireString,
+  finishedAt: wireString,
+  reason: wireString,
+  message: wireString,
+  bytesTotal: wireNumber,
+  bytesCompleted: wireNumber,
+  cached: wireOptionalBoolean,
+});
+export type ModelManagerServeStep = z.infer<typeof modelManagerServeStepSchema>;
+
+/**
+ * `load_model`'s answer: the object it created (`running.resource`,
+ * `running.kind`), the fit verdict the load was judged by (`fit`, the
+ * `check_fit` shape) and the initial timeline (`running.phase`, `running.steps`).
+ */
+export const modelManagerLoadAnswerSchema = z.looseObject({
+  name: z.string(),
+  backend: wireString,
+  loaded: wireBoolean(false),
+  running: z
+    .looseObject({
+      resource: wireString,
+      kind: wireString,
+      status: wireString,
+      reason: wireString,
+      message: wireString,
+      phase: wireString,
+      steps: z.array(modelManagerServeStepSchema).optional(),
+    })
+    .optional(),
+  fit: modelManagerFitResultSchema.optional(),
+});
+export type ModelManagerLoadAnswer = z.infer<
+  typeof modelManagerLoadAnswerSchema
+>;
 
 /**
  * One entry of `GET /api/v1/nodes`: a node's memory budget and download cache.
