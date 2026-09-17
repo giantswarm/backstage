@@ -9,6 +9,19 @@ import { Text } from '@backstage/ui';
 import { ToolAnnotations, ToolSummary } from '../../../apis';
 import { hasMarkers, ToolMarkers } from './ToolMarkers';
 
+/**
+ * Below this table width the description takes a line of its own instead of a
+ * column.
+ *
+ * Measured against the widest row the app has -- the Tool Explorer's search
+ * results, where a long name carries markers, a score and the favourite star.
+ * There the description gets `tableWidth - 417px`, so it keeps a readable
+ * ~200px only above this. A plainer row would survive a narrower table, but a
+ * threshold cannot see its own content: erring wide costs a stacked row that
+ * had room to be a grid row, erring narrow costs the description entirely.
+ */
+const NARROW = '@container (max-width: 620px)';
+
 const useStyles = makeStyles((theme: Theme) => ({
   // The table is one grid, so every row's columns line up without a header to
   // set their widths. Each row re-adopts the grid with `subgrid` rather than
@@ -17,6 +30,10 @@ const useStyles = makeStyles((theme: Theme) => ({
   list: {
     display: 'grid',
     gridTemplateColumns: 'var(--tool-table-columns)',
+    // Rows respond to the width of the table, not of the viewport: the Tool
+    // Explorer's browse panel is the narrow column of a two-column page and is
+    // cramped on the widest screen.
+    containerType: 'inline-size',
     border: `1px solid ${theme.palette.divider}`,
     borderRadius: theme.shape.borderRadius,
     overflow: 'hidden',
@@ -33,7 +50,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     // for a baseline to serve.
     alignItems: 'center',
     columnGap: theme.spacing(1.5),
-    padding: theme.spacing(0.75, 1.5),
     minWidth: 0,
     '&:not(:last-child)': {
       borderBottom: `1px solid ${theme.palette.divider}`,
@@ -44,6 +60,25 @@ const useStyles = makeStyles((theme: Theme) => ({
       outline: `2px solid ${theme.palette.primary.main}`,
       outlineOffset: -2,
     },
+    // Columns need room to be columns. The name track is `max-content` with a
+    // zero floor, so grid grows it before it gives anything to the flexible
+    // description track -- and once name + markers exceed the table, the
+    // description resolves to nothing at all, not even an ellipsis. Below the
+    // threshold the row stops being a grid row and wraps instead, which is
+    // what every list this replaces did.
+    [NARROW]: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      columnGap: theme.spacing(1.5),
+    },
+  },
+  // A row with no control of its own pads itself. An interactive row does not:
+  // its button carries the padding instead, so the ring around the text is part
+  // of the click target rather than a dead border that merely lights up on
+  // hover.
+  rowStatic: {
+    padding: theme.spacing(0.75, 1.5),
   },
   rowInteractive: {
     '&:hover': { background: theme.palette.action.hover },
@@ -69,10 +104,10 @@ const useStyles = makeStyles((theme: Theme) => ({
     // its own contents instead.
     alignSelf: 'stretch',
     columnGap: theme.spacing(1.5),
+    padding: theme.spacing(0.75, 1.5),
     appearance: 'none',
     background: 'none',
     border: 'none',
-    padding: 0,
     margin: 0,
     font: 'inherit',
     color: 'inherit',
@@ -80,6 +115,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     cursor: 'pointer',
     minWidth: 0,
     outline: 'none',
+    [NARROW]: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      flex: '1 1 auto',
+    },
   },
   // Standard type, not monospace: a tool name is read as a name here, not
   // quoted as code. It shares the description's type scale so the two columns
@@ -98,11 +139,24 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(1),
     minWidth: 0,
   },
+  // Outside the button, so the row's padding does not reach it either.
+  trailingCell: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: theme.spacing(0.75, 1.5, 0.75, 0),
+  },
   description: {
     minWidth: 0,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    // On its own line there is nothing to compete with, so it wraps in full
+    // rather than being clipped.
+    [NARROW]: {
+      flex: '1 1 100%',
+      whiteSpace: 'normal',
+      overflow: 'visible',
+    },
   },
   indicator: {
     flexShrink: 0,
@@ -282,7 +336,7 @@ function ToolTableRow({
 
   const rowClassName = [
     classes.row,
-    interactive ? classes.rowInteractive : '',
+    interactive ? classes.rowInteractive : classes.rowStatic,
     selected || (mode.kind === 'select' && mode.checked)
       ? classes.rowSelected
       : '',
@@ -319,7 +373,9 @@ function ToolTableRow({
       ) : (
         cells
       )}
-      {showTrailing && (item.trailing ?? <span aria-hidden />)}
+      {showTrailing && (
+        <span className={classes.trailingCell}>{item.trailing}</span>
+      )}
     </div>
   );
 }

@@ -28,7 +28,15 @@ const config: StorybookConfig = {
     // supplies the theme, router and a minimal API surface — a component
     // needing `musterApiRef` or react-query needs a decorator of its own
     // before it can be storied here.
-    '../plugins/muster/src/**/*.stories.@(ts|tsx)',
+    //
+    // Scoped to the one directory the Storybook CI workflow watches, not the
+    // whole plugin: a story outside it would build here but be gated by
+    // nothing, so a broken one would first fail some later, unrelated PR --
+    // and the Pages deploy would have been broken since the merge. Widening
+    // this means widening `.github/workflows/storybook.yaml` in the same
+    // commit. A story added outside the glob simply does not appear in
+    // Storybook, which its author sees immediately.
+    '../plugins/muster/src/components/shared/**/*.stories.@(ts|tsx)',
   ],
   // Storybook 9/10 fold controls, actions, viewport, etc. into core; only the
   // docs addon (autodocs + MDX) needs to be listed.

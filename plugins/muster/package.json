@@ -47,6 +47,7 @@
     "react-router-dom": "*"
   },
   "devDependencies": {
+    "@storybook/react": "^10.5.3",
     "@backstage/cli": "backstage:^",
     "@backstage/core-app-api": "backstage:^",
     "@backstage/dev-utils": "backstage:^",

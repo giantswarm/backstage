@@ -155,6 +155,25 @@ describe('ToolTable', () => {
     );
   });
 
+  // The narrow-container fallback is layout, which jsdom does not do, so this
+  // guards the one part that can be checked here: that the rule is emitted at
+  // all. Without it the description track collapses to nothing in a narrow
+  // table -- no text and no ellipsis.
+  it('emits a container query so narrow tables can stack', () => {
+    const { container } = renderTable([
+      staticItem('core_ping', { description: 'Check it answers.' }),
+    ]);
+
+    const css = [...document.querySelectorAll('style')]
+      .map(style => style.textContent ?? '')
+      .join('\n');
+
+    expect(css).toContain('@container (max-width: 620px)');
+    expect(
+      (container.querySelector('[role="list"]') as HTMLElement).className,
+    ).toBeTruthy();
+  });
+
   it('links the name in link mode', () => {
     renderTable([
       staticItem('core_ping', {

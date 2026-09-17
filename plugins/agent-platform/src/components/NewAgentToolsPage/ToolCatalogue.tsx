@@ -162,8 +162,11 @@ function ServerPanel({
   const wholeServerSelected = selected.has(selector);
   return (
     <>
-      {/* The whole-server row is a table of one: same checkbox, same columns,
-          so it lines up with the tools listed under it. It reads as different
+      {/* The whole-server row is a table of one, sharing the row design but not
+          the tracks: `subgrid` ties rows to their own list's columns, so this
+          table sizes its name column from its own single item and does not
+          line up with the tools below it. Only the checkbox does, both being
+          the leading `auto` track at the same padding. It reads as different
           because its text is -- a sentence rather than a tool name, with the
           selector itself as the meta. */}
       <ToolTable
