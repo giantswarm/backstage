@@ -23,7 +23,8 @@ backend.add(import('@giantswarm/backstage-plugin-ai-chat-backend'));
 
 The provider is selected from `aiChat.model`:
 
-- `claude-*` → Anthropic (`aiChat.anthropic`)
+- `claude-*` → Anthropic (`aiChat.anthropic`), or Google Vertex AI when
+  `aiChat.anthropic.provider` is `vertex` (`aiChat.google`)
 - `gemini-*` → Google Vertex AI (`aiChat.google`)
 - otherwise → Azure OpenAI (`aiChat.azure`, when configured), an
   OpenAI-compatible server (`aiChat.openai.api: chat`, e.g. vLLM), or OpenAI
@@ -57,7 +58,44 @@ aiChat:
 In the Helm chart, set `google.project`, `google.location`, and
 `google.credentialsJson` (the SA JSON content, SOPS-encrypted in gitops); the
 chart mounts it at `/app/google/credentials.json` and exports
-`GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION`.
+`GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION`. The same values serve Claude
+on Vertex, below.
+
+### Claude on Google Vertex AI
+
+`aiChat.anthropic.provider: vertex` serves `claude-*` models from the Anthropic
+publisher on Vertex AI instead of Anthropic's own API — for installations that
+run Claude on their own GCP project. There is no Anthropic API key: the
+credentials are the `aiChat.google` service account, exactly as for Gemini.
+
+```yaml
+aiChat:
+  model: claude-sonnet-5
+  anthropic:
+    provider: vertex # default: api, i.e. Anthropic's own API
+  google:
+    project: my-gcp-project
+    location: global # or a multi-region (eu, us) or a single region
+    keyFilename: /app/google/credentials.json
+```
+
+- The key defaults to `api`, so installations with `aiChat.anthropic.apiKey`
+  are unaffected. The provider is never switched implicitly by the presence or
+  absence of credentials — a missing key stays a misconfiguration, not a silent
+  reroute.
+- `aiChat.anthropic.effort`, adaptive thinking and prompt caching apply exactly
+  as on the direct Anthropic path; streaming and tool calling too.
+- `aiChat.anthropic.baseUrl` is ignored here — the URL is derived from the
+  project and location.
+- `GET /api/ai-chat/health` reports `provider: google-vertex-anthropic` and
+  takes `configured` from the Google configuration.
+
+Two prerequisites on the GCP side, both outside this plugin:
+
+- the Claude model must be enabled for the project in Vertex AI Model Garden,
+  for the location in use — otherwise Vertex answers `404 NOT_FOUND … was not
+found or your project does not have access to it`;
+- the service account needs `roles/aiplatform.user` on the project.
 
 ## Sampling
 
