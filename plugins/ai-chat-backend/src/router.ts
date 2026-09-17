@@ -171,6 +171,14 @@ export async function createRouter(
   // Get Anthropic configuration
   const anthropicApiKey = config.getOptionalString('aiChat.anthropic.apiKey');
   const anthropicBaseUrl = config.getOptionalString('aiChat.anthropic.baseUrl');
+  // Which platform serves `claude-*` models: Anthropic's own API (the default)
+  // or the Anthropic publisher on Google Vertex AI, which authenticates from
+  // `aiChat.google` instead of an API key. Normalised here so an unexpected
+  // value can never reach `selectModel`.
+  const anthropicProvider =
+    config.getOptionalString('aiChat.anthropic.provider') === 'vertex'
+      ? 'vertex'
+      : 'api';
 
   // Get Azure OpenAI configuration
   const azureApiKey = config.getOptionalString('aiChat.azure.apiKey');
@@ -206,18 +214,33 @@ export async function createRouter(
   // misconfiguration where a gemini deployment is missing its mounted secret.
   const googleCredentialsAvailable =
     !!googleKeyFile && existsSync(googleKeyFile);
+  // Hoisted out of the /health handler so the warnings below and the reported
+  // health can never disagree, as with `azureConfigured`.
+  const googleConfigured =
+    !!googleProject && !!googleLocation && googleCredentialsAvailable;
+
+  // A `claude-*` model served from Vertex AI rather than Anthropic's own API.
+  const isVertexAnthropicModel =
+    isAnthropicModel && anthropicProvider === 'vertex';
 
   // Validate configuration
-  if (isAnthropicModel && !anthropicApiKey) {
+  if (isAnthropicModel && !isVertexAnthropicModel && !anthropicApiKey) {
+    // When Vertex is fully configured the likely intent is Claude on Vertex, so
+    // name the key that selects it -- the provider is never switched implicitly.
     logger.warn(
-      'No Anthropic API key configured for Anthropic model. Set aiChat.anthropic.apiKey in app-config.yaml',
+      googleConfigured
+        ? 'No Anthropic API key configured for Anthropic model, but Google Vertex AI is configured. Set aiChat.anthropic.provider to vertex to serve Claude models from Vertex AI, or set aiChat.anthropic.apiKey in app-config.yaml'
+        : 'No Anthropic API key configured for Anthropic model. Set aiChat.anthropic.apiKey in app-config.yaml',
     );
   }
 
-  if (
-    isGoogleModel &&
-    (!googleProject || !googleLocation || !googleCredentialsAvailable)
-  ) {
+  if (isVertexAnthropicModel && !googleConfigured) {
+    logger.warn(
+      'Claude on Google Vertex AI selected but configuration is incomplete. Set aiChat.google.project, aiChat.google.location, and aiChat.google.keyFilename (pointing to a mounted service-account JSON) in app-config.yaml',
+    );
+  }
+
+  if (isGoogleModel && !googleConfigured) {
     logger.warn(
       'Google Vertex model selected but configuration is incomplete. Set aiChat.google.project, aiChat.google.location, and aiChat.google.keyFilename (pointing to a mounted service-account JSON) in app-config.yaml',
     );
@@ -244,11 +267,15 @@ export async function createRouter(
     );
   }
 
-  // Anthropic thinking config is model-aware. Opus 4.5+/Sonnet 4.6 use the
-  // adaptive-thinking + `effort` interface; older Claude models use the legacy
-  // `thinking: { type: 'enabled', budgetTokens }` shape. `modelName` and
-  // `isAnthropicModel` are fixed for the router's lifetime, so the provider
-  // options are computed once here. See utils/anthropicProviderOptions.ts.
+  // Anthropic thinking config is model-aware. Opus 4.5+/Sonnet 4.6 and the
+  // Claude 5 family use the adaptive-thinking + `effort` interface; older Claude
+  // models use the legacy `thinking: { type: 'enabled', budgetTokens }` shape.
+  // `modelName` and `isAnthropicModel` are fixed for the router's lifetime, so
+  // the provider options are computed once here. Everything below keys on
+  // `isAnthropicModel`, not on the selected provider, and that is deliberate:
+  // these are properties of the model family and apply on Vertex too, where the
+  // provider options are parsed under the same `anthropic` key.
+  // See utils/anthropicProviderOptions.ts.
   const anthropicEffort =
     config.getOptionalString('aiChat.anthropic.effort') ??
     DEFAULT_ANTHROPIC_EFFORT;
@@ -295,6 +322,7 @@ export async function createRouter(
     anthropic: {
       apiKey: anthropicApiKey,
       baseUrl: anthropicBaseUrl,
+      provider: anthropicProvider,
     },
     azure: {
       apiKey: azureApiKey,
@@ -690,12 +718,12 @@ export async function createRouter(
     const openaiCompatibleConfigured = azureConfigured
       ? !!azureApiKey
       : !!openaiApiKey;
-    const googleConfigured =
-      !!googleProject && !!googleLocation && googleCredentialsAvailable;
-
     let provider: string;
     let configured: boolean;
-    if (isAnthropicModel) {
+    if (isVertexAnthropicModel) {
+      provider = 'google-vertex-anthropic';
+      configured = googleConfigured;
+    } else if (isAnthropicModel) {
       provider = 'anthropic';
       configured = !!anthropicApiKey;
     } else if (isGoogleModel) {

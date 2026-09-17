@@ -80,10 +80,10 @@ Backstage app provided by Giant Swarm
 | externalAccess | object | `{"mcpToken":""}` | External access settings for programmatic API access |
 | externalAccess.mcpToken | string | `""` | Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var) |
 | anthropic | object | `{"apiKey":""}` | Anthropic AI provider settings |
-| anthropic.apiKey | string | `""` | Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var) |
+| anthropic.apiKey | string | `""` | Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var). Not needed when aiChat.anthropic.provider is vertex, where the Google service account is the credential instead |
 | openai | object | `{"apiKey":""}` | OpenAI provider settings |
 | openai.apiKey | string | `""` | OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var) |
-| google | object | `{"credentialsJson":"","location":"","project":""}` | Google Vertex AI provider settings for AI chat (used when aiChat.model is a gemini-* model) |
+| google | object | `{"credentialsJson":"","location":"","project":""}` | Google Vertex AI provider settings for AI chat (used by gemini-* models, and by claude-* models when aiChat.anthropic.provider is vertex) |
 | google.project | string | `""` | GCP project ID for Vertex AI (exposed as GOOGLE_CLOUD_PROJECT env var) |
 | google.location | string | `""` | Vertex AI region, e.g. europe-west1 (exposed as GOOGLE_CLOUD_LOCATION env var) |
 | google.credentialsJson | string | `""` | Service-account JSON content for Vertex AI authentication. When set, mounted as a file at /app/google/credentials.json (SOPS-encrypted in gitops). google-auth-library uses it to mint and auto-refresh short-lived OAuth2 tokens |
