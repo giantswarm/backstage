@@ -12,7 +12,7 @@ import {
   RepositoriesApiClient,
   repositoriesAuthApiRef,
 } from './apis';
-import { rootRouteRef } from './routes';
+import { createRepositoryRouteRef, rootRouteRef } from './routes';
 
 // Disabled by default: the Repositories page is Giant Swarm's own inventory
 // and must not appear in customer portals. A deployment opts in via
@@ -26,15 +26,9 @@ const repositoriesPage = PageBlueprint.make({
     path: '/repositories',
     routeRef: rootRouteRef,
     loader: async () => {
-      const { RepositoriesProviders } =
-        await import('./components/RepositoriesProviders');
-      const { RepositoriesPage } =
-        await import('./components/RepositoriesPage');
-      return (
-        <RepositoriesProviders>
-          <RepositoriesPage />
-        </RepositoriesProviders>
-      );
+      const { RepositoriesRouter } =
+        await import('./components/RepositoriesRouter');
+      return <RepositoriesRouter />;
     },
   },
 });
@@ -60,5 +54,8 @@ export const repositoriesPlugin = createFrontendPlugin({
   extensions: [repositoriesPage, repositoriesApi],
   routes: {
     root: rootRouteRef,
+    // Bind `catalog.createComponent` to `repositories.create` so the
+    // catalog's Create… lands on the declaration form.
+    create: createRepositoryRouteRef,
   },
 });

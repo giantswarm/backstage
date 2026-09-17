@@ -5,12 +5,20 @@ import {
 } from '@backstage/core-plugin-api';
 import { RepositoriesAuthApi } from './auth';
 import {
+  Committed,
+  DeclarationEntry,
+  DeclarationInput,
+  Dispatch,
   InventoryRecord,
   ListFilters,
   ManagerInfo,
+  Plan,
   RepositoriesApi,
   RepositoriesConnectionResponse,
   RepositoryListing,
+  Validation,
+  WriteOptions,
+  WriteResult,
 } from './types';
 
 export const repositoriesApiRef = createApiRef<RepositoriesApi>({
@@ -85,11 +93,84 @@ export class RepositoriesApiClient implements RepositoriesApi {
     });
   }
 
+  validateRepository(input: DeclarationInput): Promise<Validation> {
+    return this.request('/repositories/validate', {
+      method: 'POST',
+      body: input,
+    });
+  }
+
+  createRepository(
+    input: DeclarationInput,
+    options: { mode: 'commit' },
+  ): Promise<Committed> {
+    return this.request('/repositories', {
+      method: 'POST',
+      body: { ...input, ...options },
+    });
+  }
+
+  updateRepository<O extends WriteOptions>(
+    name: string,
+    args: { entry: DeclarationEntry; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>> {
+    return this.write(name, 'update', args, options);
+  }
+
+  transferRepository<O extends WriteOptions>(
+    name: string,
+    args: { toTeam: string; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>> {
+    return this.write(name, 'transfer', args, options);
+  }
+
+  setLifecycle<O extends WriteOptions>(
+    name: string,
+    args: { lifecycle: 'deprecated' | 'archived'; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>> {
+    return this.write(name, 'lifecycle', args, options);
+  }
+
+  reconcileRepository(
+    name: string,
+    args: { team?: string },
+    options: WriteOptions,
+  ): Promise<Dispatch> {
+    return this.write(name, 'reconcile', args, options);
+  }
+
+  decideRepository(
+    name: string,
+    args: { verdict: 'keep'; note?: string },
+  ): Promise<InventoryRecord> {
+    return this.request(`/repositories/${encodeURIComponent(name)}/decide`, {
+      method: 'POST',
+      body: args,
+    });
+  }
+
+  /** One write of a repository: its arguments plus how it lands, as given. */
+  private write<T>(
+    name: string,
+    action: string,
+    args: object,
+    options: WriteOptions,
+  ): Promise<T> {
+    return this.request(`/repositories/${encodeURIComponent(name)}/${action}`, {
+      method: 'POST',
+      body: { ...args, ...options },
+    });
+  }
+
   private async request<T>(
     path: string,
     options: {
       method?: 'GET' | 'POST';
       query?: object;
+      body?: object;
     } = {},
   ): Promise<T> {
     const baseUrl = await this.discoveryApi.getBaseUrl('repositories');
@@ -108,7 +189,11 @@ export class RepositoriesApiClient implements RepositoriesApi {
       `${baseUrl}${path}${search ? `?${search}` : ''}`,
       {
         method: options.method ?? 'GET',
-        headers: token ? { [MUSTER_AUTH_HEADER]: token } : {},
+        headers: {
+          ...(token && { [MUSTER_AUTH_HEADER]: token }),
+          ...(options.body && { 'Content-Type': 'application/json' }),
+        },
+        ...(options.body && { body: JSON.stringify(options.body) }),
       },
     );
     if (!response.ok) {

@@ -26,6 +26,24 @@ with no composition of its own -- what the page shows for a repository is what
   CLI prints them, re-read every 15 s while they converge), the links
   (repository, catalog entity, last reconciler run, latest release) and the
   record's age with **Refresh** (`refresh_repository`).
+- **Create repository** (`/repositories/create`): the declaration form (team,
+  name, component type, language, flavours, description, visibility, reason);
+  _Review_ shows the dry run as `validate_repository` renders it -- the entry
+  with the schema's defaults, the implied template and its options, the GitHub
+  name check, the refusals per field, the guard notices (`team-review`,
+  `batch-review`, `names-unchecked`) and whether the machine approves; _Create_
+  runs `create_repository` in `mode: commit`, shows the pull request opened as
+  the person and follows the new repository's set-up steps live once the
+  reconciler has it.
+- **Row actions** on the expanded record, each one tool call as the person
+  with the manager's plan reviewed first: _Configure_ (`update_repository`,
+  the whole entry as it should read), _Transfer_ (`transfer_repository`, the
+  receiving team approves, the giving team is told), _Deprecate_ and
+  _Archive_ (`set_lifecycle`, the team's review asked in its channel),
+  _Reconcile now_ (`reconcile_repository`, a workflow dispatch as the person),
+  _Keep_ (`decide_repository`, a decision note for the clean-up).
+- A write the manager refuses shows the manager's reason verbatim; the page
+  offers no override -- `commit` is the only mode and the manager owns it.
 
 ## Backend
 
@@ -46,6 +64,11 @@ app:
   extensions:
     - page:repositories
     - api:repositories
+  routes:
+    bindings:
+      # The catalog's Create… lands on Create repository; no scaffolder
+      # template is registered for repositories.
+      catalog.createComponent: repositories.create
 repositories:
   muster:
     installation: gazelle

@@ -11,6 +11,7 @@ import {
   repositoriesApiRef,
   RepositoryRow,
 } from '../../apis';
+import { unusedWrites } from '../../fixtures/fakeApi';
 import {
   listingOf,
   newService,
@@ -95,6 +96,7 @@ function fakeApi(overrides: Partial<RepositoriesApi> = {}): RepositoriesApi & {
         age: '0s',
       } as InventoryRecord;
     },
+    ...unusedWrites,
     ...overrides,
   };
 }

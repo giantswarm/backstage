@@ -9,6 +9,7 @@ import { compatWrapper } from '@backstage/core-compat-api';
 import { useApiHolder } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { NavContentBlueprint } from '@backstage/plugin-app-react';
+import catalogPlugin from '@backstage/plugin-catalog/alpha';
 import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
@@ -58,6 +59,21 @@ function AiChatSidebarItem() {
   return null;
 }
 
+/**
+ * *Create…*: where the catalog's `createComponent` external route points
+ * (`app.routes.bindings`) -- the scaffolder's templates by default, the
+ * Repositories page's declaration form where a deployment binds
+ * `repositories.create`. Shown only when something is bound.
+ */
+function CreateSidebarItem({ fallback }: { fallback?: string }) {
+  const createLink = useRouteRef(catalogPlugin.externalRoutes.createComponent);
+  const to = createLink?.() ?? fallback;
+  if (!to) {
+    return null;
+  }
+  return <SidebarItem icon={CreateComponentIcon} to={to} text="Create..." />;
+}
+
 export const SidebarContent = NavContentBlueprint.make({
   params: {
     component: ({ navItems }) => {
@@ -98,15 +114,11 @@ export const SidebarContent = NavContentBlueprint.make({
 
       const group3 = [
         <AiChatSidebarItem key="ai-chat" />,
-        scaffolderItem && (
-          <SidebarItem
-            key="create"
-            icon={CreateComponentIcon}
-            to="create"
-            text="Create..."
-          />
-        ),
-      ].filter(Boolean);
+        <CreateSidebarItem
+          key="create"
+          fallback={scaffolderItem ? 'create' : undefined}
+        />,
+      ];
 
       const menuGroups = [group1, group2, group3].filter(g => g.length > 0);
 

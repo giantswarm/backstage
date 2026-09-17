@@ -2,10 +2,12 @@ import { renderTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RepositoriesApi, repositoriesApiRef } from './apis';
+import { unusedWrites } from './fixtures/fakeApi';
 import { listingOf } from './fixtures/records';
 import { repositoriesPlugin } from './plugin';
 
 const api: RepositoriesApi = {
+  ...unusedWrites,
   getConnection: async () => ({ connected: true }),
   getInfo: async () => ({
     version: 'v0.3.0',
@@ -57,5 +59,21 @@ describe('repositoriesPlugin gating', () => {
     expect(
       await screen.findByRole('tab', { name: 'My team' }, { timeout: 15_000 }),
     ).toBeInTheDocument();
-  }, 20_000);
+
+    // Create repository is the page's own sub-route, `repositories.create`
+    // -- the target a deployment binds `catalog.createComponent` to.
+    expect(repositoriesPlugin.routes.create).toBeDefined();
+    // A LinkButton: MUI gives the anchor role button.
+    const create = screen.getByRole('button', { name: 'Create repository' });
+    expect(create).toHaveAttribute('href', '/repositories/create');
+    await userEvent.click(create);
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: 'Create repository' },
+        { timeout: 15_000 },
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Team/)).toBeInTheDocument();
+  }, 30_000);
 });

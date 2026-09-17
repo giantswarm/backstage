@@ -255,6 +255,172 @@ export interface RepositoriesConnectionResponse {
   message?: string;
 }
 
+/**
+ * A declaration as it goes into a team file: `name`, `componentType`,
+ * `gen: {language, flavours}`, `description`, `visibility` and the other
+ * fields of the repositories schema. The page passes it to the manager as
+ * typed; the schema's verdict comes back as `problems`.
+ */
+export type DeclarationEntry = { name: string } & Record<string, unknown>;
+
+/** One refusal of the schema or the creation rules, naming the field. */
+export interface Problem {
+  /** Dotted: `gen.ci.chartName`, `gen.flavours[1]`; `(entry)` for the whole. */
+  field: string;
+  message: string;
+}
+
+/**
+ * A guard notice about the change as a whole: `team-review` (the author is
+ * outside the owning team and Planeteers), `batch-review` (above three
+ * entries), `names-unchecked` (no App to ask GitHub). A notice does not
+ * refuse; it says what review the change gets.
+ */
+export interface Notice {
+  kind: string;
+  message: string;
+}
+
+/** The dry run of one declaration (devctl's `reposetup.Entry`). */
+export interface ValidationEntry {
+  name: string;
+  /** The entry as it would be written, defaults applied (a one-item YAML list). */
+  rendered: string;
+  /** The template the repository would be scaffolded from; empty when none. */
+  template?: string;
+  options?: {
+    name: string;
+    description: string;
+    values?: string[];
+    default?: string;
+  }[];
+  /** The GitHub name check: `free`, `taken`, `unchecked`, … with detail. */
+  nameCheck: { verdict: string; detail?: string };
+  problems?: Problem[];
+  accepted: boolean;
+}
+
+/**
+ * `validate_repository`'s answer, and `create_repository`'s dry run: the
+ * engine's result plus who the author is on GitHub, which decides the
+ * notices.
+ */
+export interface Validation {
+  team: string;
+  mode: string;
+  schema: string;
+  entries: ValidationEntry[];
+  notices?: Notice[];
+  /** True when every entry is accepted. */
+  accepted: boolean;
+  author?: string;
+  authorLogin?: string;
+  authorTeams?: string[];
+  /** Where the author's teams were read: `github`, or `none` (with the reason). */
+  teamsSource: string;
+  /** The creation-only pull request would be approved by the machine. */
+  machineApproved: boolean;
+  findings?: Finding[];
+}
+
+/** The pull request a write would open, before it exists. */
+export interface PlannedPullRequest {
+  repository: string;
+  branch: string;
+  title: string;
+  files: string[];
+  body: string;
+  /** The GitHub login the pull request is opened as. */
+  as: string;
+}
+
+/** An ask (approval) or notice to a team's channel, before it is posted. */
+export interface PlannedMessage {
+  team: string;
+  channel?: string;
+  text: string;
+  deliverable: boolean;
+  reason?: string;
+}
+
+/** A write's dry run (`update_repository`, `transfer_repository`, `set_lifecycle`). */
+export interface Plan {
+  repository: string;
+  /** The owning team afterwards (the receiving team for a transfer). */
+  team: string;
+  fromTeam?: string;
+  /** The entry before the change, as it reads in the team file. */
+  before?: string;
+  /** The entry afterwards. */
+  entry?: string;
+  problems?: Problem[];
+  accepted: boolean;
+  pullRequest: PlannedPullRequest;
+  ask?: PlannedMessage;
+  notice?: PlannedMessage;
+}
+
+/** The pull request a write opened as the person. */
+export interface PullRequest {
+  number: number;
+  url: string;
+  branch: string;
+  title: string;
+  author?: string;
+}
+
+/** What became of an ask or notice. */
+export interface Delivery {
+  team: string;
+  channel?: string;
+  delivered: boolean;
+  reviewId?: string;
+  error?: string;
+}
+
+/** A write's outcome in `mode: commit`. */
+export interface Committed {
+  pullRequest: PullRequest | null;
+  ask?: Delivery;
+  notice?: Delivery;
+}
+
+/** `reconcile_repository`'s answer: the workflow dispatch, planned or done. */
+export interface Dispatch {
+  workflow: string;
+  inputs: Record<string, unknown>;
+  /** The GitHub login the dispatch is made as. */
+  as: string;
+  dispatched: boolean;
+  runsUrl: string;
+  /** What follows: the completion message in the team's channel. */
+  then: string;
+  findings?: Finding[];
+}
+
+/**
+ * How a write lands: `dryRun` renders the change and writes nothing;
+ * `mode: commit` opens the team-file pull request as the person. The
+ * manager owns the modes -- anything else is refused by it with its reason.
+ */
+export type WriteOptions = { dryRun: true } | { mode: 'commit' };
+
+/** A write's answer: the plan for a dry run, the outcome for a commit. */
+export type WriteResult<O extends WriteOptions, TPlan, TCommitted> = O extends {
+  dryRun: true;
+}
+  ? TPlan
+  : TCommitted;
+
+export interface DeclarationInput {
+  /** The owning team's file, as its GitHub team slug: `team-bumblebee`. */
+  team: string;
+  entry?: DeclarationEntry;
+  entries?: DeclarationEntry[];
+  /** Why, for the pull request body. */
+  reason?: string;
+}
+
 export interface RepositoriesApi {
   getConnection(): Promise<RepositoriesConnectionResponse>;
   getInfo(): Promise<ManagerInfo>;
@@ -264,4 +430,41 @@ export interface RepositoriesApi {
     stalePeriodDays?: number,
   ): Promise<InventoryRecord>;
   refreshRepository(name: string): Promise<InventoryRecord>;
+
+  /** The dry run of declaring new repositories (`validate_repository`). Writes nothing. */
+  validateRepository(input: DeclarationInput): Promise<Validation>;
+  /** Declares new repositories: the creation-only pull request as the person. */
+  createRepository(
+    input: DeclarationInput,
+    options: { mode: 'commit' },
+  ): Promise<Committed>;
+  /** Replaces a declared repository's entry (the whole entry). */
+  updateRepository<O extends WriteOptions>(
+    name: string,
+    args: { entry: DeclarationEntry; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>>;
+  /** Moves a declared repository to another team. */
+  transferRepository<O extends WriteOptions>(
+    name: string,
+    args: { toTeam: string; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>>;
+  /** Deprecates or archives a declared repository. */
+  setLifecycle<O extends WriteOptions>(
+    name: string,
+    args: { lifecycle: 'deprecated' | 'archived'; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>>;
+  /** Runs the reconciler for one repository now (a workflow dispatch as the person). */
+  reconcileRepository(
+    name: string,
+    args: { team?: string },
+    options: WriteOptions,
+  ): Promise<Dispatch>;
+  /** Leaves a decision note (verdict keep) on the inventory record. */
+  decideRepository(
+    name: string,
+    args: { verdict: 'keep'; note?: string },
+  ): Promise<InventoryRecord>;
 }

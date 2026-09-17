@@ -1,4 +1,13 @@
-import { InventoryRecord, RepositoryListing, RepositoryRow } from '../apis';
+import {
+  Committed,
+  Dispatch,
+  InventoryRecord,
+  Plan,
+  PullRequest,
+  RepositoryListing,
+  RepositoryRow,
+  Validation,
+} from '../apis';
 
 /**
  * Inventory records in the shape giantswarm-repo-manager stores them
@@ -330,5 +339,150 @@ export function listingOf(rows: RepositoryRow[]): RepositoryListing {
     matched: rows.length,
     shown: rows.length,
     repositories: rows,
+  };
+}
+
+/**
+ * The write tools' answers for the fixtures, in the shapes the manager
+ * returns them: the dry run of a declaration (`validate_repository`), a
+ * write's plan and its committed outcome, a reconcile dispatch.
+ */
+
+export const acceptedValidation: Validation = {
+  team: 'team-bumblebee',
+  mode: 'create',
+  schema: 'embedded',
+  entries: [
+    {
+      name: 'shiny-service',
+      rendered:
+        '- name: shiny-service\n  componentType: service\n  gen:\n    language: go\n    flavours:\n      - app\n    ci:\n      generate: true\n',
+      template: 'giantswarm/template',
+      nameCheck: { verdict: 'free' },
+      accepted: true,
+    },
+  ],
+  accepted: true,
+  author: 'Alice',
+  authorLogin: 'alice',
+  authorTeams: ['team-bumblebee'],
+  teamsSource: 'github',
+  machineApproved: true,
+};
+
+/** The same declaration by a person outside the team: the team-review notice stands. */
+export const noticedValidation: Validation = {
+  ...acceptedValidation,
+  authorTeams: ['team-honeybadger'],
+  notices: [
+    {
+      kind: 'team-review',
+      message:
+        "alice is not a member of team-bumblebee or team-planeteers: the team's review will be required before the pull request merges",
+    },
+  ],
+  machineApproved: false,
+};
+
+/** A declaration the creation rules refuse: the name is taken, the flavour unknown. */
+export const refusedValidation: Validation = {
+  ...acceptedValidation,
+  entries: [
+    {
+      name: 'present-service',
+      rendered: '- name: present-service\n  componentType: service\n',
+      nameCheck: {
+        verdict: 'taken',
+        detail: 'giantswarm/present-service exists on GitHub',
+      },
+      problems: [
+        {
+          field: 'name',
+          message: 'giantswarm/present-service exists on GitHub already',
+        },
+        {
+          field: 'gen.flavours[0]',
+          message: 'value must be one of "app", "cli", "cluster-app", …',
+        },
+      ],
+      accepted: false,
+    },
+  ],
+  accepted: false,
+  machineApproved: false,
+  findings: [
+    {
+      kind: 'entry-refused',
+      message: 'name: giantswarm/present-service exists on GitHub already',
+      fix: 'pick another name',
+    },
+  ],
+};
+
+export const openedPullRequest: PullRequest = {
+  number: 4242,
+  url: 'https://github.com/giantswarm/github/pull/4242',
+  branch: 'reposetup/create-shiny-service',
+  title: 'feat(repositories): declare shiny-service for team-bumblebee',
+  author: 'alice',
+};
+
+export const committedCreate: Committed = { pullRequest: openedPullRequest };
+
+/** The plan of a write on present-service, filled in per action by the tests. */
+export function planOf(overrides: Partial<Plan> = {}): Plan {
+  return {
+    repository: 'giantswarm/present-service',
+    team: 'team-bumblebee',
+    before: '- name: present-service\n  componentType: service\n',
+    entry:
+      '- name: present-service\n  componentType: service\n  lifecycle: archived\n',
+    accepted: true,
+    pullRequest: {
+      repository: 'giantswarm/github',
+      branch: 'reposetup/present-service-archived',
+      title: 'chore(repositories): archive present-service',
+      files: ['repositories/team-bumblebee.yaml'],
+      body: '## Problem\n\n…',
+      as: 'alice',
+    },
+    ask: {
+      team: 'team-bumblebee',
+      channel: '#team-bumblebee',
+      text: 'alice asks to archive giantswarm/present-service — Approve lands it',
+      deliverable: true,
+    },
+    ...overrides,
+  };
+}
+
+export function committedOf(overrides: Partial<Committed> = {}): Committed {
+  return {
+    pullRequest: {
+      ...openedPullRequest,
+      number: 4243,
+      url: 'https://github.com/giantswarm/github/pull/4243',
+      branch: 'reposetup/present-service-archived',
+      title: 'chore(repositories): archive present-service',
+    },
+    ask: {
+      team: 'team-bumblebee',
+      channel: '#team-bumblebee',
+      delivered: true,
+      reviewId: 'rev-1',
+    },
+    ...overrides,
+  };
+}
+
+export function dispatchOf(dispatched: boolean): Dispatch {
+  return {
+    workflow: 'reconcile-repositories.yaml',
+    inputs: { repository: 'present-service', team: 'team-bumblebee' },
+    as: 'alice',
+    dispatched,
+    runsUrl:
+      'https://github.com/giantswarm/github/actions/workflows/reconcile-repositories.yaml',
+    then: "the completion message follows in team-bumblebee's channel",
   };
 }
