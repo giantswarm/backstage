@@ -89,6 +89,28 @@ export type ServedModelReadiness =
   | 'pending'
   | 'terminating';
 
+/** The states a served model's step can be in — the managers' vocabulary. */
+export type ServedModelStepState = 'pending' | 'inProgress' | 'done' | 'failed';
+
+/**
+ * One step of a served model's timeline as the backend reports it (KServe
+ * through model-manager 0.24.0: `scheduling`, `nodeStarting`,
+ * `downloadingWeights`, `pullingImage`, `loading`, `routing`, `ready`). The
+ * weights step carries the size, the progress where a cache agent reports
+ * it, and — once done — whether the cache already held them.
+ */
+export type ServedModelStep = {
+  name: string;
+  state: ServedModelStepState;
+  since?: string;
+  finishedAt?: string;
+  reason?: string;
+  message?: string;
+  bytesTotal?: number;
+  bytesCompleted?: number;
+  cached?: boolean;
+};
+
 export type ServedModelReadinessPresentation = {
   /** The status label. */
   label: string;
@@ -307,6 +329,14 @@ export type ServedModel = {
    * row, and on backends that name none.
    */
   readinessReason?: string;
+  /**
+   * Where the serve stands, in the backend's vocabulary (KServe through
+   * model-manager 0.24.0 on: `scheduling` … `ready`, `failed`,
+   * `terminating`). Absent on backends without a serve lifecycle.
+   */
+  phase?: string;
+  /** The serve's timeline, one step per phase in order; absent where `phase` is. */
+  steps?: ServedModelStep[];
   /** Node the workload runs on or is pinned to; `undefined` when unknown. */
   node?: string;
   /** Whether `node` is where the pod actually is, or only the declared pin. */

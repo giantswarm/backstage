@@ -21,6 +21,7 @@ import {
   SEARCH_LIMIT_MAX,
   SEARCH_QUERY_MAX_LENGTH,
 } from './ModelManagerClient';
+import { tryServedModel } from './tryServedModel';
 
 export interface ModelManagerRouterOptions {
   logger: LoggerService;
@@ -428,6 +429,26 @@ export function createModelManagerRouter(
         { model },
         { userToken, backend: readBackendScope(req, body(req)) },
       ),
+    );
+  });
+
+  /**
+   * "Try it" on a served model: one short chat completion against the
+   * model's endpoint as model-manager lists it for the installation — read
+   * as the person here, never a URL the caller supplies — sent without a
+   * token and with the person's, both outcomes answered
+   * ({@link tryServedModel}).
+   */
+  router.post('/model-manager/models/try', async (req, res) => {
+    const client = resolveClient(req);
+    const userToken = readUserToken(req);
+    const model = readModelRef(body(req));
+    const loaded = await client.listLoaded({
+      userToken,
+      backend: readBackendScope(req, body(req)),
+    });
+    res.json(
+      await tryServedModel({ loaded, model, userToken, fetchFn: fetch }),
     );
   });
 

@@ -65,6 +65,13 @@ import {
   type ServeModelSeed,
 } from './ServeModelDialog';
 import {
+  hasServedModelTimeline,
+  isOpenedServedModel,
+  ServedModelLifecyclePanel,
+  ServedModelLifecycleToggle,
+  type OpenedServedModel,
+} from './ServedModelLifecyclePanel';
+import {
   isDownloadRow,
   isServableDownload,
   isStoppable,
@@ -266,6 +273,20 @@ export function ServingPage() {
   const [isLoadOpen, setLoadOpen] = useState(false);
   const [loadSeed, setLoadSeed] = useState<LoadModelSeed>();
 
+  // The served model whose step timeline is open: Serve's answer opens it on
+  // the object model-manager composed, a row's chevron on that row.
+  const [openedModel, setOpenedModel] = useState<OpenedServedModel>();
+  const toggleOpenedModel = useCallback(
+    (row: ServedModelRow) =>
+      setOpenedModel(current =>
+        isOpenedServedModel(current, row)
+          ? undefined
+          : { installation: row.installation, name: row.name },
+      ),
+    [],
+  );
+  const closeOpenedModel = useCallback(() => setOpenedModel(undefined), []);
+
   // The pool panel's link: `?serve=1&installation=…&cluster=…&pool=…` opens
   // the dialog on that pool, then leaves the URL, so a reload does not reopen it.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -288,6 +309,12 @@ export function ServingPage() {
           'model-manager is starting it — the status column follows the served model.',
         status: 'success',
         timeout: TOAST_TIMEOUT_MS,
+      });
+      // The timeline follows the object model-manager composed; the row
+      // arrives with the next inventory read.
+      setOpenedModel({
+        installation: target.name,
+        name: answer.running?.resource ?? answer.name,
       });
     },
     [toastApi],
@@ -422,7 +449,14 @@ export function ServingPage() {
         );
       }
       const offers = offersFor(row);
-      return hasRowActions(row, capabilities, offers) ? (
+      const timeline = hasServedModelTimeline(row) ? (
+        <ServedModelLifecycleToggle
+          row={row}
+          isOpen={isOpenedServedModel(openedModel, row)}
+          onToggle={toggleOpenedModel}
+        />
+      ) : null;
+      const actions = hasRowActions(row, capabilities, offers) ? (
         <ServedModelActions
           model={row}
           capabilities={capabilities}
@@ -431,8 +465,31 @@ export function ServingPage() {
           onStop={offers.onStop}
         />
       ) : null;
+      return timeline || actions ? (
+        <>
+          {timeline}
+          {actions}
+        </>
+      ) : null;
     },
-    [capabilitiesFor, loadingFor, offersFor, downloadRows.dismiss],
+    [
+      capabilitiesFor,
+      loadingFor,
+      offersFor,
+      downloadRows.dismiss,
+      openedModel,
+      toggleOpenedModel,
+    ],
+  );
+  const hasTimelines = rows.some(hasServedModelTimeline);
+  const openedRow = useMemo(
+    () =>
+      openedModel
+        ? rows.find(
+            row => !isDownloadRow(row) && isOpenedServedModel(openedModel, row),
+          )
+        : undefined,
+    [openedModel, rows],
   );
 
   const servePermission = useSelfSubjectAccessReview(
@@ -670,10 +727,19 @@ export function ServingPage() {
           ) : (
             <ServedModelsTable
               rows={rows}
-              renderActions={hasActions ? renderActions : undefined}
+              renderActions={
+                hasActions || hasTimelines ? renderActions : undefined
+              }
               renderGroupActions={
                 backends.available ? backends.renderGroupActions : undefined
               }
+            />
+          )}
+          {openedModel && (
+            <ServedModelLifecyclePanel
+              opened={openedModel}
+              row={openedRow}
+              onClose={closeOpenedModel}
             />
           )}
 

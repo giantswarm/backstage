@@ -33,6 +33,7 @@ import {
   MODEL_MANAGER_AUTH_HEADER,
   type BackendScope,
   ModelManagerApi,
+  type TryServedModelResult,
 } from './ModelManagerApi';
 
 export const modelManagerApiRef = createApiRef<ModelManagerApi>({
@@ -273,6 +274,24 @@ export class ModelManagerApiClient implements ModelManagerApi {
       installation,
       body: { model, ...scopeQuery(scope) },
     });
+  }
+
+  async tryModel(
+    installation: string,
+    model: string,
+    scope?: BackendScope,
+  ): Promise<TryServedModelResult> {
+    const body = await this.request<TryServedModelResult>(
+      'POST',
+      '/model-manager/models/try',
+      { installation, body: { model, ...scopeQuery(scope) } },
+    );
+    if (!body || typeof body.with?.status !== 'number') {
+      throw upstreamError(
+        `The portal's backend did not answer the try of ${model} on ${installation}.`,
+      );
+    }
+    return body;
   }
 
   async deleteModel(

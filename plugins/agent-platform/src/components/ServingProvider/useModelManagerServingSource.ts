@@ -8,6 +8,7 @@ import type {
   ModelManagerModel,
   ModelManagerNode,
 } from '../../lib/modelManager';
+import { modelsRefetchInterval } from '../../lib/modelLifecycle';
 import {
   sharedHostsOf,
   toGpuNodeFromManager,
@@ -191,7 +192,11 @@ export function useModelManagerServingSource(
       // — an empty inventory, not an unreadable installation.
       enabled: (backends[installation]?.length ?? 0) > 0,
       staleTime: 10_000,
-      refetchInterval: MODELS_REFETCH_MS,
+      // 10 s while a served model is on its way or being deleted, so its
+      // timeline moves as model-manager reports the steps; the inventory's
+      // own rate otherwise.
+      refetchInterval: (query: { state: { data?: ModelManagerModel[] } }) =>
+        modelsRefetchInterval(query.state.data, MODELS_REFETCH_MS),
     })),
   });
 

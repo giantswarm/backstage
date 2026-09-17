@@ -202,6 +202,27 @@ export const modelConfigRefSchema = z.looseObject({
 
 export type ModelConfigRef = z.infer<typeof modelConfigRefSchema>;
 
+/**
+ * One step of a served model's timeline (model-manager 0.24.0, kserve):
+ * `scheduling`, `nodeStarting`, `downloadingWeights`, `pullingImage`,
+ * `loading`, `routing`, `ready`, in that order. The `downloadingWeights`
+ * step carries the weights' size (`bytesTotal`), the progress where the
+ * cache agent reports it (`bytesCompleted`) and, once done, whether the
+ * claim already held the weights (`cached`).
+ */
+export const modelManagerServeStepSchema = z.looseObject({
+  name: z.string(),
+  state: wireString,
+  since: wireString,
+  finishedAt: wireString,
+  reason: wireString,
+  message: wireString,
+  bytesTotal: wireNumber,
+  bytesCompleted: wireNumber,
+  cached: wireOptionalBoolean,
+});
+export type ModelManagerServeStep = z.infer<typeof modelManagerServeStepSchema>;
+
 /** One entry of `GET /api/v1/loaded`, and `Model.running`. */
 export const modelManagerLoadedModelSchema = z.looseObject({
   name: z.string(),
@@ -254,6 +275,15 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   device: wireString,
   /** Lemonade — exempt from slot eviction (loaded with keepAlive -1). */
   pinned: wireOptionalBoolean,
+  /**
+   * KServe (model-manager 0.24.0 on) — where the serve stands:
+   * `scheduling`, `nodeStarting`, `downloadingWeights`, `pullingImage`,
+   * `loading`, `routing`, `ready`, `failed` or `terminating`. Absent on the
+   * backends without a serve lifecycle (Ollama, LM Studio, Lemonade).
+   */
+  phase: wireString,
+  /** KServe (0.24.0 on) — the whole timeline, one step per phase in order. */
+  steps: z.array(modelManagerServeStepSchema).optional(),
 });
 
 export type ModelManagerLoadedModel = z.infer<
@@ -508,24 +538,6 @@ export const modelManagerFitResultSchema = z.looseObject({
 });
 
 export type ModelManagerFitResult = z.infer<typeof modelManagerFitResultSchema>;
-
-/**
- * One step of a served model's timeline (model-manager 0.24.0, kserve):
- * `scheduling`, `nodeStarting`, `downloadingWeights`, `pullingImage`,
- * `loading`, `routing`, `ready`, in that order.
- */
-export const modelManagerServeStepSchema = z.looseObject({
-  name: z.string(),
-  state: wireString,
-  since: wireString,
-  finishedAt: wireString,
-  reason: wireString,
-  message: wireString,
-  bytesTotal: wireNumber,
-  bytesCompleted: wireNumber,
-  cached: wireOptionalBoolean,
-});
-export type ModelManagerServeStep = z.infer<typeof modelManagerServeStepSchema>;
 
 /**
  * `load_model`'s answer: the object it created (`running.resource`,
