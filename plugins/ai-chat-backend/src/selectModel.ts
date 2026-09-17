@@ -118,6 +118,18 @@ export function selectModel(options: SelectModelOptions): SelectedModel {
 
   if (isAnthropicModel) {
     if (options.anthropic.provider === 'vertex') {
+      // `createVertexAnthropic` reads project and location as *optional*
+      // settings (unlike `createVertex`, which throws), and its env fallbacks
+      // are GOOGLE_VERTEX_*, not the GOOGLE_CLOUD_* pair the chart exports. A
+      // missing value would otherwise reach the wire as
+      // `https://undefined-aiplatform.googleapis.com/...projects/undefined/...`
+      // and fail per request as a DNS error pointing nowhere near the cause.
+      if (!options.google.project || !options.google.location) {
+        throw new Error(
+          'Claude on Google Vertex AI is selected (aiChat.anthropic.provider: vertex) but aiChat.google.project and/or aiChat.google.location are not set',
+        );
+      }
+
       // Claude served from the operator's own Vertex AI project. The model is an
       // AnthropicLanguageModel underneath, and its internals parse provider
       // options under the hardcoded key `anthropic` -- so `providerOptions
