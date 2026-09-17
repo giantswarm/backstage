@@ -11,3 +11,20 @@ export function defaultScope(info: ManagerInfo | undefined): Scope {
     ? 'unassigned'
     : 'mine';
 }
+
+/**
+ * The caller's team slugs (`team-bumblebee`) as the manager's groups name
+ * them (`giantswarm-github:giantswarm:team-bumblebee`), for the team a
+ * declaration form opens on. The manager decides membership; this is a
+ * default, editable.
+ */
+export function teamsOf(info: ManagerInfo | undefined): string[] {
+  const groups = info?.caller?.groups ?? [];
+  return [
+    ...new Set(
+      groups
+        .map(group => /(team-[\w-]+)$/.exec(group)?.[1])
+        .filter((team): team is string => !!team),
+    ),
+  ].sort();
+}

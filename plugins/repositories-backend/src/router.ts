@@ -1,6 +1,7 @@
 import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import {
   AuthenticationError,
+  CustomErrorBase,
   InputError,
   NotAllowedError,
   NotFoundError,
@@ -8,6 +9,7 @@ import {
 } from '@backstage/errors';
 import {
   asConnected,
+  isInfrastructureError,
   MUSTER_AUTH_HEADER,
   MusterServerGateway,
   MusterServerNotConnectedError,
@@ -17,6 +19,8 @@ import Router from 'express-promise-router';
 
 /** A repository name, with or without the org: `muster` or `giantswarm/muster`. */
 const REPOSITORY_PATTERN = /^(?:[\w.-]+\/)?[\w.-]+$/;
+
+type ArgumentKind = 'string' | 'number' | 'boolean' | 'object' | 'array';
 
 /**
  * The `list_repositories` arguments the page may pass, with how each query
@@ -38,6 +42,40 @@ const LIST_ARGUMENTS: Record<string, 'string' | 'number' | 'boolean'> = {
   undeclared: 'boolean',
   limit: 'number',
   stalePeriodDays: 'number',
+};
+
+/** The two arguments every write tool of the manager takes. */
+const WRITE_OPTIONS: Record<string, ArgumentKind> = {
+  dryRun: 'boolean',
+  // Handed on as given: the manager refuses everything but "commit" with its
+  // own reason, which the page shows verbatim.
+  mode: 'string',
+};
+
+/**
+ * The arguments each write (or dry-run) tool takes from a request body, by
+ * tool. The names are the tools' own; the backend checks the type of every
+ * value and refuses an argument the tool does not take, nothing more -- the
+ * declaration entry itself is validated by the manager, not here.
+ */
+const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
+  validate_repository: { team: 'string', entry: 'object', entries: 'array' },
+  create_repository: {
+    team: 'string',
+    entry: 'object',
+    entries: 'array',
+    reason: 'string',
+    ...WRITE_OPTIONS,
+  },
+  update_repository: { entry: 'object', reason: 'string', ...WRITE_OPTIONS },
+  transfer_repository: {
+    toTeam: 'string',
+    reason: 'string',
+    ...WRITE_OPTIONS,
+  },
+  set_lifecycle: { lifecycle: 'string', reason: 'string', ...WRITE_OPTIONS },
+  reconcile_repository: { team: 'string', ...WRITE_OPTIONS },
+  decide_repository: { verdict: 'string', note: 'string' },
 };
 
 export interface RouterOptions {
@@ -81,6 +119,49 @@ export function listArguments(
       }
       args[name] = value;
     }
+  }
+  return args;
+}
+
+function isKind(value: unknown, kind: ArgumentKind): boolean {
+  switch (kind) {
+    case 'array':
+      return Array.isArray(value);
+    case 'object':
+      return (
+        typeof value === 'object' && value !== null && !Array.isArray(value)
+      );
+    default:
+      return typeof value === kind;
+  }
+}
+
+/**
+ * Reads a tool's arguments out of a request body, typed: an argument the
+ * tool does not take or a value of the wrong type is refused; `null` and
+ * `undefined` are dropped. The values themselves are handed on unchanged.
+ */
+export function bodyArguments(
+  body: unknown,
+  tool: keyof typeof BODY_ARGUMENTS,
+): Record<string, unknown> {
+  const spec = BODY_ARGUMENTS[tool];
+  if (!isKind(body, 'object')) {
+    throw new InputError(`${tool} expects a JSON object body`);
+  }
+  const args: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(body as Record<string, unknown>)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+    const kind = spec[name];
+    if (!kind) {
+      throw new InputError(`${tool} takes no argument '${name}'`);
+    }
+    if (!isKind(value, kind)) {
+      throw new InputError(`${name} must be a ${kind}`);
+    }
+    args[name] = value;
   }
   return args;
 }
@@ -207,6 +288,50 @@ export async function createRouter(
     );
   });
 
+  // The dry run of declaring new repositories: the rendered entries, the
+  // implied template, the name checks, the refusals as data and the guard
+  // notices. Read-only; a POST for the body.
+  router.post('/repositories/validate', async (req, res) => {
+    res.json(
+      await call(
+        req,
+        'validate_repository',
+        bodyArguments(req.body, 'validate_repository'),
+      ),
+    );
+  });
+
+  // Every write below runs as the signed-in person and lands as a team-file
+  // pull request under their name (`mode: commit`), or renders the change
+  // (`dryRun: true`). The manager owns the modes: whatever else the body
+  // asks for is refused by it, with the reason.
+  router.post('/repositories', async (req, res) => {
+    res.json(
+      await call(
+        req,
+        'create_repository',
+        bodyArguments(req.body, 'create_repository'),
+      ),
+    );
+  });
+
+  const writeOfRepository = (path: string, tool: keyof typeof BODY_ARGUMENTS) =>
+    router.post(`/repositories/:name/${path}`, async (req, res) => {
+      res.json(
+        await call(req, tool, {
+          repository: repositoryName(req.params.name),
+          ...bodyArguments(req.body, tool),
+        }),
+      );
+    });
+
+  writeOfRepository('update', 'update_repository');
+  writeOfRepository('transfer', 'transfer_repository');
+  writeOfRepository('lifecycle', 'set_lifecycle');
+  writeOfRepository('reconcile', 'reconcile_repository');
+  // A decision note on the inventory record (verdict keep); the cache only.
+  writeOfRepository('decide', 'decide_repository');
+
   // A missing grant is a 401 that carries the sign-in URL; the manager's own
   // refusals are 403s and an unknown repository a 404, so neither pages us as
   // a server fault.
@@ -230,16 +355,22 @@ export async function createRouter(
       }
       if (
         error instanceof Error &&
-        /\b403\b|forbidden|refused|not a member/i.test(error.message)
-      ) {
-        next(new NotAllowedError(error.message));
-        return;
-      }
-      if (
-        error instanceof Error &&
         /\b404\b|not found|no record|neither declared/i.test(error.message)
       ) {
         next(new NotFoundError(error.message));
+        return;
+      }
+      // A tool-level refusal -- mode "apply", a name that is taken, a
+      // declaration the engine refuses, a non-member -- arrives as a plain
+      // Error carrying the manager's reason; it is the manager's decision,
+      // shown to the person as such, not a fault of ours. A broken
+      // dependency keeps its 5xx.
+      if (
+        error instanceof Error &&
+        !(error instanceof CustomErrorBase) &&
+        !isInfrastructureError(error)
+      ) {
+        next(new NotAllowedError(error.message));
         return;
       }
       next(error);

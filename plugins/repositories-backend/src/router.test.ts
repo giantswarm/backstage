@@ -7,7 +7,12 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
-import { createRouter, listArguments, RouterOptions } from './router';
+import {
+  bodyArguments,
+  createRouter,
+  listArguments,
+  RouterOptions,
+} from './router';
 
 const TOKEN_HEADER = 'backstage-muster-authorization';
 
@@ -222,6 +227,166 @@ describe('createRouter', () => {
     const res = await request(app).get('/info');
     expect(res.status).toBe(200);
     expect(res.body).toEqual(info);
+  });
+
+  describe('writes as the signed-in person', () => {
+    const entry = {
+      name: 'new-service',
+      componentType: 'service',
+      gen: { language: 'go', flavours: ['app'] },
+    };
+
+    it('runs the dry run of a declaration through validate_repository', async () => {
+      const validation = {
+        team: 'team-bumblebee',
+        entries: [],
+        accepted: true,
+      };
+      manager.answers.set('validate_repository', validation);
+      const res = await request(app)
+        .post('/repositories/validate')
+        .send({ team: 'team-bumblebee', entry });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(validation);
+      expect(manager.calls).toEqual([
+        {
+          tool: 'validate_repository',
+          authToken: 'dex-id-token',
+          args: { team: 'team-bumblebee', entry },
+        },
+      ]);
+    });
+
+    it('creates through create_repository with dryRun and mode handed on as given', async () => {
+      const committed = {
+        pullRequest: {
+          number: 7,
+          url: 'https://github.com/giantswarm/github/pull/7',
+        },
+      };
+      manager.answers.set('create_repository', committed);
+      const res = await request(app).post('/repositories').send({
+        team: 'team-bumblebee',
+        entry,
+        reason: 'the new service',
+        mode: 'commit',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(committed);
+      expect(manager.calls[0]).toMatchObject({
+        tool: 'create_repository',
+        args: {
+          team: 'team-bumblebee',
+          entry,
+          reason: 'the new service',
+          mode: 'commit',
+        },
+      });
+    });
+
+    it.each([
+      ['update', 'update_repository', { entry, reason: 'more flavours' }],
+      ['transfer', 'transfer_repository', { toTeam: 'team-planeteers' }],
+      ['lifecycle', 'set_lifecycle', { lifecycle: 'archived', reason: 'done' }],
+      ['reconcile', 'reconcile_repository', { team: 'team-bumblebee' }],
+    ])(
+      'POST /repositories/:name/%s calls %s for the repository',
+      async (path, tool, body) => {
+        const plan = { repository: 'giantswarm/muster', accepted: true };
+        manager.answers.set(tool, plan);
+        const res = await request(app)
+          .post(`/repositories/muster/${path}`)
+          .send({ ...body, dryRun: true });
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual(plan);
+        expect(manager.calls[0]).toEqual({
+          tool,
+          authToken: 'dex-id-token',
+          args: { repository: 'muster', ...body, dryRun: true },
+        });
+      },
+    );
+
+    it('leaves a decision note through decide_repository', async () => {
+      const record = {
+        repository: 'giantswarm/muster',
+        decision: { verdict: 'keep' },
+      };
+      manager.answers.set('decide_repository', record);
+      const res = await request(app)
+        .post('/repositories/muster/decide')
+        .send({ verdict: 'keep', note: 'still ours' });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(record);
+      expect(manager.calls[0]).toMatchObject({
+        tool: 'decide_repository',
+        args: { repository: 'muster', verdict: 'keep', note: 'still ours' },
+      });
+    });
+
+    it("answers 403 with the manager's reason when it refuses the write", async () => {
+      const refusal =
+        'mode "apply" is refused: a repository without its declaration is drift the reconciler reports. Use mode "commit" (a team-file pull request opened as you) or dryRun: true for the rendered change';
+      manager.failNextCallWith = new Error(refusal);
+      const res = await request(app)
+        .post('/repositories/muster/lifecycle')
+        .send({ lifecycle: 'archived', mode: 'apply' });
+      expect(res.status).toBe(403);
+      expect(res.body.error.message).toBe(refusal);
+      // The mode reached the manager unchanged: the refusal is its, not ours.
+      expect(manager.calls[0].args).toMatchObject({ mode: 'apply' });
+    });
+
+    it('keeps a broken hop a server fault', async () => {
+      // undici reports a connection failure as a TypeError.
+      manager.failNextCallWith = new TypeError('fetch failed');
+      const res = await request(app)
+        .post('/repositories/muster/reconcile')
+        .send({ mode: 'commit' });
+      expect(res.status).toBe(500);
+    });
+
+    it('refuses an argument the tool does not take or of the wrong type', async () => {
+      expect(
+        (
+          await request(app)
+            .post('/repositories/muster/transfer')
+            .send({ toTeam: 'team-planeteers', force: true })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await request(app)
+            .post('/repositories')
+            .send({ team: 'team-bumblebee', entry: 'not an object' })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await request(app)
+            .post('/repositories/muster/lifecycle')
+            .send({ lifecycle: 'archived', dryRun: 'yes' })
+        ).status,
+      ).toBe(400);
+      expect(manager.calls).toHaveLength(0);
+    });
+  });
+});
+
+describe('bodyArguments', () => {
+  it('drops null and undefined values and keeps the tool argument names', () => {
+    expect(
+      bodyArguments(
+        { team: 'team-bumblebee', reason: null, entry: { name: 'x' } },
+        'create_repository',
+      ),
+    ).toEqual({ team: 'team-bumblebee', entry: { name: 'x' } });
+  });
+
+  it('refuses a body that is not an object', () => {
+    expect(() => bodyArguments([], 'validate_repository')).toThrow(
+      /JSON object/,
+    );
   });
 });
 

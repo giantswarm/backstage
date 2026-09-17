@@ -1,12 +1,13 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Content, Progress } from '@backstage/core-components';
+import { Content, LinkButton, Progress } from '@backstage/core-components';
 import { Box, Tab, Tabs, Typography } from '@material-ui/core';
-import { useApi } from '@backstage/frontend-plugin-api';
+import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { ListFilters, repositoriesApiRef, Scope } from '../../apis';
 import { filtersFromParams, hasFilters, withFilter } from '../../lib/filters';
 import { defaultScope } from '../../lib/scope';
+import { createRepositoryRouteRef } from '../../routes';
 import { FilterBar } from '../FilterBar';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
 import { RepositoriesTable } from '../RepositoriesTable';
@@ -30,6 +31,7 @@ const SCOPES: { id: Scope; label: string }[] = [
  */
 export function RepositoriesPage() {
   const api = useApi(repositoriesApiRef);
+  const createLink = useRouteRef(createRepositoryRouteRef);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Who the caller is decides the scope the page opens on; the tabs and
@@ -85,15 +87,27 @@ export function RepositoriesPage() {
 
   return (
     <Content>
-      <Tabs
-        value={scope}
-        onChange={(_event, next: Scope) => setFilter('scope', next)}
-        aria-label="Scope"
-      >
-        {SCOPES.map(tab => (
-          <Tab key={tab.id} value={tab.id} label={tab.label} />
-        ))}
-      </Tabs>
+      <Box display="flex" alignItems="center">
+        <Box flexGrow={1}>
+          <Tabs
+            value={scope}
+            onChange={(_event, next: Scope) => setFilter('scope', next)}
+            aria-label="Scope"
+          >
+            {SCOPES.map(tab => (
+              <Tab key={tab.id} value={tab.id} label={tab.label} />
+            ))}
+          </Tabs>
+        </Box>
+        <LinkButton
+          to={createLink?.() ?? 'create'}
+          color="primary"
+          variant="contained"
+          size="small"
+        >
+          Create repository
+        </LinkButton>
+      </Box>
 
       {error && (
         <Box pt={2}>

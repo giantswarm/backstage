@@ -4,6 +4,7 @@ import { Link, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { InventoryRecord, repositoriesApiRef } from '../apis';
+import { RowActions } from './actions/RowActions';
 import { RepositoriesErrorAlert } from './RepositoriesErrorAlert';
 import { SetupSteps } from './SetupSteps';
 
@@ -76,6 +77,10 @@ export function RepositoryDetails({ repository }: { repository: string }) {
   }
   const record = data;
   const { declaration, reality, renovate, circleci, setup } = record;
+  const changed = () => {
+    void queryClient.invalidateQueries({ queryKey });
+    void queryClient.invalidateQueries({ queryKey: ['repositories', 'list'] });
+  };
 
   return (
     <div data-testid={`record-${record.name}`}>
@@ -87,6 +92,9 @@ export function RepositoryDetails({ repository }: { repository: string }) {
               <> — refresh failed: {(refresh.error as Error).message}</>
             )}
           </Typography>
+        </Grid>
+        <Grid item>
+          <RowActions record={record} onChanged={changed} />
         </Grid>
         <Grid item>
           <Button
