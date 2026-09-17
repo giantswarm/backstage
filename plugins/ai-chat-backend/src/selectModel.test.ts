@@ -379,7 +379,7 @@ describe('selectModel Vertex Anthropic requests', () => {
 
     expect(body).toMatchObject({
       anthropic_version: 'vertex-2023-10-16',
-      thinking: { type: 'adaptive' },
+      thinking: { type: 'adaptive', display: 'summarized' },
       output_config: { effort: 'high' },
     });
     // Vertex takes the model from the URL, and Sonnet 5 rejects a thinking

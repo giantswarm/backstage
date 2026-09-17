@@ -50,7 +50,10 @@ describe('buildAnthropicProviderOptions', () => {
         modelName: 'claude-opus-4-8',
         isAnthropicModel: true,
       }),
-    ).toEqual({ thinking: { type: 'adaptive' }, effort: 'high' });
+    ).toEqual({
+      thinking: { type: 'adaptive', display: 'summarized' },
+      effort: 'high',
+    });
   });
 
   it('honors an explicit effort for adaptive-thinking models', () => {
@@ -60,7 +63,10 @@ describe('buildAnthropicProviderOptions', () => {
         isAnthropicModel: true,
         effort: 'max',
       }),
-    ).toEqual({ thinking: { type: 'adaptive' }, effort: 'max' });
+    ).toEqual({
+      thinking: { type: 'adaptive', display: 'summarized' },
+      effort: 'max',
+    });
   });
 
   it.each([
@@ -75,7 +81,21 @@ describe('buildAnthropicProviderOptions', () => {
         modelName: model,
         isAnthropicModel: true,
       }),
-    ).toEqual({ thinking: { type: 'adaptive' }, effort: 'high' });
+    ).toEqual({
+      thinking: { type: 'adaptive', display: 'summarized' },
+      effort: 'high',
+    });
+  });
+
+  it('asks for summarized reasoning, which these models otherwise omit', () => {
+    // Opus 4.7+ and the Claude 5 family default `display` to `omitted`, which
+    // returns thinking blocks with empty text and blanks the reasoning pane.
+    const options = buildAnthropicProviderOptions({
+      modelName: 'claude-sonnet-5',
+      isAnthropicModel: true,
+    });
+
+    expect(options).toHaveProperty('thinking.display', 'summarized');
   });
 
   it('never sends a thinking budget for Sonnet 5, which rejects it with a 400', () => {
@@ -84,7 +104,10 @@ describe('buildAnthropicProviderOptions', () => {
       isAnthropicModel: true,
     });
 
-    expect(options).toEqual({ thinking: { type: 'adaptive' }, effort: 'high' });
+    expect(options).toEqual({
+      thinking: { type: 'adaptive', display: 'summarized' },
+      effort: 'high',
+    });
     expect(options).not.toHaveProperty('thinking.budgetTokens');
   });
 
