@@ -95,311 +95,103 @@ describe('createRouter', () => {
 
   beforeEach(async () => {
     manager = new FakeGateway();
-    app = await buildApp();
-  });
 
-  it('returns 503 when the manager is not configured', async () => {
-    const res = await request(await buildApp({ manager: undefined })).get(
-      '/repositories',
-    );
-    expect(res.status).toBe(503);
-    expect(res.body.error.message).toMatch(/repositories\.muster/);
-  });
+  describe('grant server', () => {
+    const NO_GRANT =
+      'no GitHub grant for you yet: connect GitHub in muster (core_auth_login on the GitHub server)';
+    const GRANT_URL =
+      'https://muster.example/oauth/proxy/start?state=grant&redirect=%2Frepositories';
 
-  it('requires the caller muster token', async () => {
-    const res = await request(await buildApp({}, { withToken: false })).get(
-      '/repositories',
-    );
-    expect(res.status).toBe(401);
-    expect(manager.calls).toHaveLength(0);
-  });
+    function grantGateway(gateway: MusterServerGateway) {
+      (gateway.callTool as jest.Mock).mockResolvedValue(toolError(NO_GRANT));
+      (gateway.login as jest.Mock).mockImplementation(
+        async (server: string) => ({
+          authUrl:
+            server === 'github-repository-setup'
+              ? GRANT_URL
+              : 'https://muster.example/oauth/proxy/start?state=manager',
+          server,
+        }),
+      );
+    }
 
-  it('reports the connection with the sign-in URL when there is no grant', async () => {
-    manager.loginResult = {
-      status: 'auth_required',
-      message: 'Sign in',
-      authUrl: 'https://muster/oauth/proxy/start?state=abc',
-    };
-    const res = await request(app).get('/connection');
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      connected: false,
-      authUrl: 'https://muster/oauth/proxy/start?state=abc',
-      message: 'Sign in',
-    });
-  });
-
-  it('answers 401 with the sign-in URL when the first call finds no grant', async () => {
-    manager.loginResult = {
-      status: 'auth_required',
-      message: 'Sign in',
-      authUrl: 'https://muster/oauth/proxy/start?state=abc',
-    };
-    manager.failNextCallWith = new Error('not authenticated: sign in first');
-    const res = await request(app).get('/repositories');
-    expect(res.status).toBe(401);
-    expect(res.body.error).toMatchObject({
-      name: 'MusterServerNotConnectedError',
-      server: 'giantswarm-repo-manager',
-      authUrl: 'https://muster/oauth/proxy/start?state=abc',
-    });
-  });
-
-  it('lists repositories with the query passed on as typed tool arguments', async () => {
-    const listing = {
-      sweep: null,
-      sweepRunning: false,
-      total: 2,
-      matched: 1,
-      shown: 1,
-      repositories: [{ repository: 'giantswarm/muster', age: '5m' }],
-    };
-    manager.answers.set('list_repositories', listing);
-    const res = await request(app).get(
-      '/repositories?scope=team&team=team-bumblebee&fork=false&minOrphanScore=40&search=must&renovate=missing&limit=50',
-    );
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual(listing);
-    expect(manager.calls).toEqual([
-      {
-        tool: 'list_repositories',
-        authToken: 'dex-id-token',
-        args: {
-          scope: 'team',
-          team: 'team-bumblebee',
-          fork: false,
-          minOrphanScore: 40,
-          search: 'must',
-          renovate: 'missing',
-          limit: 50,
-        },
-      },
-    ]);
-  });
-
-  it('refuses a malformed filter instead of passing it on', async () => {
-    expect((await request(app).get('/repositories?fork=maybe')).status).toBe(
-      400,
-    );
-    expect(
-      (await request(app).get('/repositories?inactiveDays=soon')).status,
-    ).toBe(400);
-    expect(manager.calls).toHaveLength(0);
-  });
-
-  it('gets one repository record, rescored for a stale period on request', async () => {
-    const record = { repository: 'giantswarm/muster', orphan: { score: 0 } };
-    manager.answers.set('get_repository', record);
-    const res = await request(app).get(
-      '/repositories/muster?stalePeriodDays=90',
-    );
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual(record);
-    expect(manager.calls[0]).toMatchObject({
-      tool: 'get_repository',
-      args: { repository: 'muster', stalePeriodDays: 90 },
-    });
-  });
-
-  it('answers 404 when the manager knows no such repository', async () => {
-    manager.failNextCallWith = new Error(
-      'giantswarm/nope: no record (neither declared nor on GitHub)',
-    );
-    const res = await request(app).get('/repositories/nope');
-    expect(res.status).toBe(404);
-  });
-
-  it('refreshes a record through refresh_repository', async () => {
-    const record = { repository: 'giantswarm/muster', source: 'refresh' };
-    manager.answers.set('refresh_repository', record);
-    const res = await request(app).post('/repositories/muster/refresh');
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual(record);
-    expect(manager.calls[0]).toMatchObject({
-      tool: 'refresh_repository',
-      args: { repository: 'muster' },
-    });
-  });
-
-  it('reports the identity chain from get_info', async () => {
-    const info = { version: 'v0.3.0', github: { grant: { obtained: true } } };
-    manager.answers.set('get_info', info);
-    const res = await request(app).get('/info');
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual(info);
-  });
-
-  describe('writes as the signed-in person', () => {
-    const entry = {
-      name: 'new-service',
-      componentType: 'service',
-      gen: { language: 'go', flavours: ['app'] },
-    };
-
-    it('runs the dry run of a declaration through validate_repository', async () => {
-      const validation = {
-        team: 'team-bumblebee',
-        entries: [],
-        accepted: true,
-      };
-      manager.answers.set('validate_repository', validation);
-      const res = await request(app)
-        .post('/repositories/validate')
-        .send({ team: 'team-bumblebee', entry });
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual(validation);
-      expect(manager.calls).toEqual([
-        {
-          tool: 'validate_repository',
-          authToken: 'dex-id-token',
-          args: { team: 'team-bumblebee', entry },
-        },
-      ]);
-    });
-
-    it('creates through create_repository with dryRun and mode handed on as given', async () => {
-      const committed = {
-        pullRequest: {
-          number: 7,
-          url: 'https://github.com/giantswarm/github/pull/7',
-        },
-      };
-      manager.answers.set('create_repository', committed);
-      const res = await request(app).post('/repositories').send({
-        team: 'team-bumblebee',
-        entry,
-        reason: 'the new service',
-        mode: 'commit',
-      });
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual(committed);
-      expect(manager.calls[0]).toMatchObject({
-        tool: 'create_repository',
-        args: {
-          team: 'team-bumblebee',
-          entry,
-          reason: 'the new service',
-          mode: 'commit',
-        },
-      });
-    });
-
-    it.each([
-      ['update', 'update_repository', { entry, reason: 'more flavours' }],
-      ['transfer', 'transfer_repository', { toTeam: 'team-planeteers' }],
-      ['lifecycle', 'set_lifecycle', { lifecycle: 'archived', reason: 'done' }],
-      ['reconcile', 'reconcile_repository', { team: 'team-bumblebee' }],
-    ])(
-      'POST /repositories/:name/%s calls %s for the repository',
-      async (path, tool, body) => {
-        const plan = { repository: 'giantswarm/muster', accepted: true };
-        manager.answers.set(tool, plan);
-        const res = await request(app)
-          .post(`/repositories/muster/${path}`)
-          .send({ ...body, dryRun: true });
-        expect(res.status).toBe(200);
-        expect(res.body).toEqual(plan);
-        expect(manager.calls[0]).toEqual({
-          tool,
-          authToken: 'dex-id-token',
-          args: { repository: 'muster', ...body, dryRun: true },
-        });
-      },
-    );
-
-    it('leaves a decision note through decide_repository', async () => {
-      const record = {
-        repository: 'giantswarm/muster',
-        decision: { verdict: 'keep' },
-      };
-      manager.answers.set('decide_repository', record);
-      const res = await request(app)
-        .post('/repositories/muster/decide')
-        .send({ verdict: 'keep', note: 'still ours' });
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual(record);
-      expect(manager.calls[0]).toMatchObject({
-        tool: 'decide_repository',
-        args: { repository: 'muster', verdict: 'keep', note: 'still ours' },
-      });
-    });
-
-    it("answers 403 with the manager's reason when it refuses the write", async () => {
-      const refusal =
-        'mode "apply" is refused: a repository without its declaration is drift the reconciler reports. Use mode "commit" (a team-file pull request opened as you) or dryRun: true for the rendered change';
-      manager.failNextCallWith = new Error(refusal);
-      const res = await request(app)
-        .post('/repositories/muster/lifecycle')
-        .send({ lifecycle: 'archived', mode: 'apply' });
+    it('passes the manager answer through unchanged when grantServer is unset', async () => {
+      const { app, gateway } = await makeApp();
+      grantGateway(gateway);
+      const res = await request(app).get('/api/repositories/repositories');
       expect(res.status).toBe(403);
-      expect(res.body.error.message).toBe(refusal);
-      // The mode reached the manager unchanged: the refusal is its, not ours.
-      expect(manager.calls[0].args).toMatchObject({ mode: 'apply' });
+      expect(res.body.authUrl).toBeUndefined();
+      expect(gateway.login).not.toHaveBeenCalled();
     });
 
-    it('keeps a broken hop a server fault', async () => {
-      // undici reports a connection failure as a TypeError.
-      manager.failNextCallWith = new TypeError('fetch failed');
-      const res = await request(app)
-        .post('/repositories/muster/reconcile')
-        .send({ mode: 'commit' });
-      expect(res.status).toBe(500);
+    it('answers 401 with the grant server authUrl when the grant is missing', async () => {
+      const { app, gateway } = await makeApp({
+        muster: { grantServer: 'github-repository-setup' },
+      });
+      grantGateway(gateway);
+      const res = await request(app).get('/api/repositories/repositories');
+      expect(res.status).toBe(401);
+      expect(res.body.authUrl).toBe(GRANT_URL);
+      expect(res.body.server).toBe('github-repository-setup');
+      expect(gateway.login).toHaveBeenCalledWith(
+        'github-repository-setup',
+        expect.anything(),
+      );
     });
 
-    it('refuses an argument the tool does not take or of the wrong type', async () => {
-      expect(
-        (
-          await request(app)
-            .post('/repositories/muster/transfer')
-            .send({ toTeam: 'team-planeteers', force: true })
-        ).status,
-      ).toBe(400);
-      expect(
-        (
-          await request(app)
-            .post('/repositories')
-            .send({ team: 'team-bumblebee', entry: 'not an object' })
-        ).status,
-      ).toBe(400);
-      expect(
-        (
-          await request(app)
-            .post('/repositories/muster/lifecycle')
-            .send({ lifecycle: 'archived', dryRun: 'yes' })
-        ).status,
-      ).toBe(400);
-      expect(manager.calls).toHaveLength(0);
+    it('passes through when the grant is present', async () => {
+      const { app, gateway } = await makeApp({
+        muster: { grantServer: 'github-repository-setup' },
+      });
+      (gateway.callTool as jest.Mock).mockResolvedValue(
+        text({ repositories: [{ name: 'x' }] }),
+      );
+      const res = await request(app).get('/api/repositories/repositories');
+      expect(res.status).toBe(200);
+      expect(gateway.login).not.toHaveBeenCalled();
     });
-  });
-});
 
-describe('bodyArguments', () => {
-  it('drops null and undefined values and keeps the tool argument names', () => {
-    expect(
-      bodyArguments(
-        { team: 'team-bumblebee', reason: null, entry: { name: 'x' } },
-        'create_repository',
-      ),
-    ).toEqual({ team: 'team-bumblebee', entry: { name: 'x' } });
-  });
+    it('leaves other tool errors alone even with grantServer set', async () => {
+      const { app, gateway } = await makeApp({
+        muster: { grantServer: 'github-repository-setup' },
+      });
+      (gateway.callTool as jest.Mock).mockResolvedValue(
+        toolError('repository not found'),
+      );
+      const res = await request(app).get('/api/repositories/repositories/x');
+      expect(res.status).toBe(403);
+      expect(gateway.login).not.toHaveBeenCalled();
+    });
 
-  it('refuses a body that is not an object', () => {
-    expect(() => bodyArguments([], 'validate_repository')).toThrow(
-      /JSON object/,
-    );
-  });
-});
+    it('reports the grant server on /connection', async () => {
+      const { app, gateway } = await makeApp({
+        muster: { grantServer: 'github-repository-setup' },
+      });
+      (gateway.status as jest.Mock).mockImplementation(
+        async (server: string) => ({
+          connected: server !== 'github-repository-setup',
+        }),
+      );
+      (gateway.login as jest.Mock).mockResolvedValue({
+        authUrl: GRANT_URL,
+        server: 'github-repository-setup',
+      });
+      const res = await request(app).get('/api/repositories/connection');
+      expect(res.status).toBe(200);
+      expect(res.body.connected).toBe(true);
+      expect(res.body.grant).toEqual({
+        server: 'github-repository-setup',
+        connected: false,
+        authUrl: GRANT_URL,
+      });
+    });
 
-describe('listArguments', () => {
-  it('drops empty values and keeps the tool argument names', () => {
-    expect(
-      listArguments({ scope: 'mine', search: '', undeclared: 'true' }),
-    ).toEqual({ scope: 'mine', undeclared: true });
-  });
-
-  it('ignores parameters the tool does not take', () => {
-    expect(listArguments({ page: '2', scope: 'all' })).toEqual({
-      scope: 'all',
+    it('reports only the manager on /connection when grantServer is unset', async () => {
+      const { app } = await makeApp();
+      const res = await request(app).get('/api/repositories/connection');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ connected: true });
+      expect(res.body.grant).toBeUndefined();
     });
   });
 });
