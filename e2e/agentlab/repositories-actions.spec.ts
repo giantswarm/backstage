@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 
 import { expect, open, test } from './fixtures';
 
@@ -124,20 +124,26 @@ test.describe('repositories: actions', () => {
   test('Create opens the pull request as the person and the row shows the set-up steps', async ({
     admin,
   }) => {
-    const isCreate = (url: URL, method: string) =>
-      method === 'POST' && url.pathname.endsWith('/repositories/repositories');
+    const isCreatePath = (url: URL) =>
+      url.pathname.endsWith('/repositories/repositories');
     const isRecord = (url: URL) =>
       url.pathname.endsWith(`/repositories/repositories/${NAME}`);
-    await admin.route(
-      url => isCreate(url, 'POST') || isRecord(url),
-      route => {
-        const url = new URL(route.request().url());
-        if (route.request().method() === 'POST' && isCreate(url, 'POST')) {
-          return route.fulfill({ json: { pullRequest } });
-        }
+    // The list shares the create path, so the method decides inside the
+    // handler; the same references are unrouted below -- a fresh closure
+    // would leave the stub on the page for the cases that follow.
+    const stubbed = (url: URL) => isCreatePath(url) || isRecord(url);
+    const stub = (route: Route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === 'POST' && isCreatePath(url)) {
+        return route.fulfill({ json: { pullRequest } });
+      }
+      if (isRecord(url)) {
         return route.fulfill({ json: converging });
-      },
-    );
+      }
+      return route.continue();
+    };
+    await admin.route(stubbed, stub);
     try {
       await open(admin, '/repositories/create');
       await fillDeclaration(admin);
@@ -165,7 +171,7 @@ test.describe('repositories: actions', () => {
         'follow project',
       );
     } finally {
-      await admin.unroute(url => isCreate(url, 'POST') || isRecord(url));
+      await admin.unroute(stubbed, stub);
     }
   });
 
