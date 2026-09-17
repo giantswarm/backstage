@@ -201,8 +201,9 @@ async function toggleSize(picker: Locator, size: RegExp): Promise<void> {
 }
 
 /**
- * Sign in, stub cluster-manager, open the dialog, pick wc1 and name the pool
- * `gpu-e2e`: the form's own dry run answers with the sizes to pick from.
+ * Sign in, stub cluster-manager, open the dialog, pick wc1 — the form's own
+ * dry run answers with the sizes to pick from before the pool is named — and
+ * name the pool `gpu-e2e`.
  */
 async function reachForm(page: Page, options: StubOptions = {}) {
   await signIn(page, lab.users.admin);
@@ -216,8 +217,14 @@ async function reachForm(page: Page, options: StubOptions = {}) {
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: /^Pick a cluster/ }).click();
   await page.getByRole('option', { name: /wc1/ }).click();
-  await dialog.getByLabel(/Pool name/).fill('gpu-e2e');
+  // The sizes, their prices and the presets are there before the pool is
+  // named: the decision is made on the form, the name only labels the pool.
   await expect(dialog.getByTestId('node-size-picker')).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(dialog.getByRole('button', { name: 'Review' })).toBeDisabled();
+  await dialog.getByLabel(/Pool name/).fill('gpu-e2e');
+  await expect(dialog.getByRole('button', { name: 'Review' })).toBeEnabled({
     timeout: 60_000,
   });
   return { dialog, calls };

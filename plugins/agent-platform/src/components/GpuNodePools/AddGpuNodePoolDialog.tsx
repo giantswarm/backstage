@@ -66,6 +66,15 @@ const TELEPORT_OPTIONS: { id: TeleportChoice; label: string }[] = [
 /** How long the form waits after the last change before it asks cluster-manager. */
 export const DRY_RUN_DEBOUNCE_MS = 400;
 
+/**
+ * The pool name the sizing dry run carries while the person has not named
+ * the pool yet: `create_node_pool` requires a name, and the sizes, their
+ * prices and the presets each hosts depend on the cluster and the accelerator
+ * alone. A dry run writes nothing; the name only labels the manifests, which
+ * the review shows once the pool is named.
+ */
+export const SIZING_POOL_NAME = 'gpu-sizing';
+
 /** The marks `list_clusters` reports for one cluster, as one line each. */
 export function clusterMarks(cluster: ManagedCluster): string[] {
   const marks = [
@@ -172,20 +181,31 @@ export function AddGpuNodePoolDialog({
     [clusters, clusterName],
   );
 
-  /** The form's input; without `sizes` cluster-manager composes the chart's defaults. */
-  const formInput: CreateNodePoolInput | undefined = useMemo(() => {
-    if (!cluster || !isValidPoolName(name)) {
+  /**
+   * The sizing input: as soon as a cluster is picked, with the pool's name
+   * where it is valid and SIZING_POOL_NAME until then, so the sizes, their
+   * prices and the presets appear before the person names the pool. Without
+   * `sizes` cluster-manager composes the chart's defaults.
+   */
+  const sizingInput: CreateNodePoolInput | undefined = useMemo(() => {
+    if (!cluster) {
       return undefined;
     }
     return {
       cluster: cluster.name,
       namespace: cluster.namespace,
-      name,
+      name: isValidPoolName(name) ? name : SIZING_POOL_NAME,
       accelerator,
       maxGpus,
       ...(teleport === 'default' ? {} : { teleport: teleport === 'on' }),
     };
   }, [cluster, name, accelerator, maxGpus, teleport]);
+
+  /** The form's input as Deploy and Review take it: the pool named. */
+  const formInput: CreateNodePoolInput | undefined = useMemo(
+    () => (sizingInput && isValidPoolName(name) ? sizingInput : undefined),
+    [sizingInput, name],
+  );
 
   /** The sizes as chosen: the person's, or every size of the chart's defaults. */
   const chosen = useMemo(
@@ -200,18 +220,21 @@ export function AddGpuNodePoolDialog({
   );
 
   /**
-   * The dry run for the form as it stands; without a choice of sizes it asks
-   * for the chart's defaults and its answer is the set to pick from.
+   * The dry run for the form as it stands (the sizing name until the pool is
+   * named); without a choice of sizes it asks for the chart's defaults and
+   * its answer is the set to pick from.
    */
   const judge = async (
     seq: number,
   ): Promise<NodePoolWriteResult | undefined> => {
-    if (!formInput) {
+    if (!sizingInput) {
       return undefined;
     }
     setJudging(true);
     try {
-      const result = await dryRun(sizes ? { ...formInput, sizes } : formInput);
+      const result = await dryRun(
+        sizes ? { ...sizingInput, sizes } : sizingInput,
+      );
       if (seq !== rerun.current) {
         return undefined;
       }
@@ -234,7 +257,7 @@ export function AddGpuNodePoolDialog({
   // debounced: the answer is the review, kept current while the person types.
   useEffect(() => {
     rerun.current += 1;
-    if (!isOpen || !formInput) {
+    if (!isOpen || !sizingInput) {
       setReview(undefined);
       setJudging(false);
       return undefined;
@@ -245,7 +268,7 @@ export function AddGpuNodePoolDialog({
     return () => clearTimeout(timer);
     // `judge` closes over the same inputs; `dryRun` follows the installation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, formInput, sizes, dryRun]);
+  }, [isOpen, sizingInput, sizes, dryRun]);
 
   const canCommit = info?.modes.commit === true;
   const notConnected = write.failure?.kind === 'not-connected';
@@ -423,18 +446,18 @@ export function AddGpuNodePoolDialog({
                     }
                   }}
                 />
-                {!hasShapes && !formInput && (
+                {!hasShapes && !sizingInput && (
                   <Text
                     variant="body-small"
                     color="secondary"
                     data-testid="sizes-pending"
                   >
-                    Node size: pick a cluster and name the pool — the sizes for
-                    the accelerator, their prices and the presets each hosts are
-                    read from cluster-manager's dry run of this pool.
+                    Node size: pick a cluster — the sizes for the accelerator,
+                    their prices and the presets each hosts are read from
+                    cluster-manager's dry run.
                   </Text>
                 )}
-                {!hasShapes && formInput && judging && (
+                {!hasShapes && sizingInput && judging && (
                   <Text
                     variant="body-small"
                     color="secondary"
