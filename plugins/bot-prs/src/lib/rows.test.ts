@@ -147,7 +147,7 @@ describe('sortRows', () => {
     expect(
       sortRows(rows, 'classification', 'asc').map(row => row.group),
     ).toEqual(['action_required', 'stale', 'unclassified']);
-    expect(sortRows(rows, 'age', 'desc').map(row => row.number)).toEqual([
+    expect(sortRows(rows, 'age', 'desc', now).map(row => row.number)).toEqual([
       37, 488, 2250,
     ]);
   });
@@ -168,7 +168,7 @@ describe('ageDays', () => {
 
 describe('countTiles and classificationOptions', () => {
   it('counts per engine state, bot and age band', () => {
-    const tiles = countTiles(rows);
+    const tiles = countTiles(rows, now);
     expect(tiles.classification).toEqual({
       Failed: 1,
       Stale: 1,
