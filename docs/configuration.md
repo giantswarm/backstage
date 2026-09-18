@@ -156,6 +156,24 @@ Keycloak and Entra ID need no extra scope. They reject both scopes above with
 `invalid_scope` and show no login page, so leave `gs.auth.extraScopes` unset or
 set it to `[]`.
 
+### Changing the scopes on a running instance
+
+Widening `gs.auth.extraScopes` (or `gs.auth.scopes`) signs everyone in again.
+An existing session was granted the previous scope set, and a token refresh
+cannot add a scope to that grant: the issuer re-issues the tokens with the
+scopes the sign-in consented to, whatever the refresh asks for. The login
+provider therefore refuses to refresh a session with fewer scopes than the
+configuration now requests, and the portal starts a fresh sign-in (a popup) on
+the person's next page load, asking for the new set. No manual sign-out is
+needed. Until that sign-in completes, the Agent Platform section explains any
+`401` an installation's API server answers with, and offers the sign-out.
+
+Without the refusal an instance that gained the `dex-k8s-authenticator` audience
+scope kept refreshing the old grant: the backend answered the wider refresh
+request with a token that still lacked the audience, reported the requested
+scopes as granted, and every Kubernetes proxy read failed with `401 oidc:
+expected audience "dex-k8s-authenticator"` until the person signed out by hand.
+
 Keycloak needs one more step, on the IdP side: it has no built-in `groups`
 scope. Add a client scope named `groups` with a Group Membership mapper (claim
 `groups`, full path off) and attach it to the client as a default scope, or the
