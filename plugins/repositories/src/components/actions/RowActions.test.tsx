@@ -6,10 +6,11 @@ import {
   RepositoriesApi,
   repositoriesApiRef,
 } from '../../apis';
-import { unusedWrites } from '../../fixtures/fakeApi';
+import { createInMemoryApi } from '../../fixtures/inMemoryApi';
 import {
   alignmentOf,
   committedOf,
+  legacyTool,
   optInAlignmentOf,
   planOf,
   presentService,
@@ -40,7 +41,9 @@ function renderActions(
   onChanged = jest.fn(),
 ) {
   const api = {
-    ...unusedWrites,
+    // The reads as the fixtures answer them (the Transfer choice reads the
+    // caller and the listings); every write the test does not give throws.
+    ...createInMemoryApi(),
     // The record as an Align now follows it: unchanged unless a test says.
     getRepository: async () => record,
     ...writes,
@@ -62,6 +65,20 @@ const closeButton = () =>
   screen
     .getAllByRole('button', { name: 'Close' })
     .find(candidate => candidate.textContent === 'Close')!;
+
+/** A `Select`'s trigger: named by its value then its label, so match the label at the end. */
+const select = (name: RegExp) => screen.getByRole('button', { name });
+
+/** The receiving-team choice, read: its options' labels. */
+async function receivingTeams() {
+  const receiving = select(/Receiving team$/);
+  await waitFor(() =>
+    expect(receiving).toHaveTextContent('Pick the receiving team'),
+  );
+  await userEvent.click(receiving);
+  const options = await screen.findAllByRole('option');
+  return { receiving, options, labels: options.map(o => o.textContent) };
+}
 
 /** present-service with its entry as the team file holds one. */
 const withEntry = (entry: string): InventoryRecord => ({
@@ -211,7 +228,7 @@ describe('RowActions', () => {
     );
   });
 
-  it('Transfer: says who gives and who takes and that the receiving team approves', async () => {
+  it('Transfer: says who gives and who takes, offers the teams as a choice without the giving one, and says the receiving team approves', async () => {
     const transferRepository = jest.fn().mockResolvedValue(
       planOf({
         team: 'team-planeteers',
@@ -234,16 +251,20 @@ describe('RowActions', () => {
     await userEvent.click(button('Transfer'));
     const form = dialog(/^Transfer present-service/);
     expect(form).toHaveTextContent(
-      'team-bumblebee gives giantswarm/present-service; the team named below takes it.',
+      'team-bumblebee gives giantswarm/present-service; the team chosen below takes it.',
     );
     expect(form).toHaveTextContent(
       "receiving team's channel and its member approves",
     );
+    expect(form).toHaveTextContent('team-bumblebee gives and is not offered');
     expect(button('Review')).toBeDisabled();
-    await userEvent.type(
-      within(form).getByLabelText(/^Receiving team/),
-      'team-planeteers',
-    );
+    // The choice is the Create form's -- the teams the inventory knows --
+    // less the giving team: of the fixtures' two, team-planeteers.
+    const { receiving, options, labels } = await receivingTeams();
+    expect(labels).toEqual(['team-planeteers']);
+    await userEvent.click(options[0]);
+    expect(receiving).toHaveTextContent('team-planeteers');
+    expect(button('Review')).toBeEnabled();
     await userEvent.click(button('Review'));
     expect(transferRepository).toHaveBeenCalledWith(
       'giantswarm/present-service',
@@ -260,6 +281,28 @@ describe('RowActions', () => {
     expect(plan).toHaveTextContent('Notice to team-bumblebee');
     expect(plan).toHaveTextContent(
       'Cannot be delivered: no channel configured',
+    );
+  });
+
+  it('Transfer: offers the caller’s own team first, labelled, when another team gives', async () => {
+    const transferRepository = jest
+      .fn()
+      .mockResolvedValue(
+        planOf({ team: 'team-bumblebee', fromTeam: 'team-planeteers' }),
+      );
+    renderActions({ transferRepository }, legacyTool);
+    await userEvent.click(button('Transfer'));
+    expect(dialog(/^Transfer legacy-tool/)).toHaveTextContent(
+      'team-planeteers gives giantswarm/legacy-tool',
+    );
+    const { options, labels } = await receivingTeams();
+    expect(labels).toEqual(['team-bumblebee (your team)']);
+    await userEvent.click(options[0]);
+    await userEvent.click(button('Review'));
+    expect(transferRepository).toHaveBeenCalledWith(
+      'giantswarm/legacy-tool',
+      { toTeam: 'team-bumblebee', reason: undefined },
+      { dryRun: true },
     );
   });
 
