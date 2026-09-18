@@ -1,4 +1,4 @@
-import type { Page, Route } from '@playwright/test';
+import type { Locator, Page, Route } from '@playwright/test';
 
 import { expect, open, test } from './fixtures';
 
@@ -10,9 +10,10 @@ import { expect, open, test } from './fixtures';
  * `catalog.createComponent` to `repositories.create`. Skipped unless
  * AGENTLAB_REPO_MANAGER=1.
  *
- * The dry run runs against the lab's manager for real (it writes nothing):
- * a Go service accepted with the CircleCI generator on, a configuration
- * repository refused until the form's fix turns it off. The commit is
+ * The dry run runs against the lab's manager for real (it writes nothing),
+ * as the form runs it -- on its own once the person pauses: a Go service
+ * accepted with the CircleCI generator on, a configuration repository with
+ * the generator forced on refused until the form's fix turns it off. The commit is
  * **stubbed at the browser**: the backend's create route answers the way
  * the manager does -- the repository, its scaffold commit, the pull request
  * -- and the record of the new repository with its set-up steps converging,
@@ -106,43 +107,58 @@ const converging = {
   age: '12s',
 };
 
-/** The declaration's fields as `devctl repo create` takes them. */
+/** The declaration as the form takes it: a kind, a name. */
 interface Declaration {
   name: string;
-  componentType: string;
-  language: string;
-  flavours: string;
+  /** The Kind radio's label. */
+  kind: RegExp;
 }
 
 /** A Go service: the CircleCI generator has a job, the form's default holds. */
-const goService: Declaration = {
-  name: NAME,
-  componentType: 'service',
-  language: 'go',
-  flavours: 'app',
-};
+const goService: Declaration = { name: NAME, kind: /^Go service/ };
 
 /**
- * A configuration repository: nothing to build, so the creation rules refuse
- * `gen.ci.generate: true` -- the kind the form could not express before
+ * A configuration repository: nothing to build, so the kind turns the
+ * CircleCI generator off and the creation rules refuse it when forced on
  * (giantswarm/backstage#2428).
  */
 const configuration: Declaration = {
   name: `e2e-configs-${Date.now().toString(36)}`,
-  componentType: 'configuration',
-  language: 'generic',
-  flavours: 'generic',
+  kind: /^Configuration/,
 };
 
+/**
+ * The team is a choice the form opens on the person's own team with; in the
+ * lab the caller's teams may be unreadable, so team-bumblebee is picked when
+ * nothing is.
+ */
 async function fillDeclaration(page: Page, declaration = goService) {
-  const team = page.getByLabel(/^Team/);
-  if (!(await team.inputValue())) {
-    await team.fill('team-bumblebee');
+  const team = page.getByRole('button', { name: /Team$/ });
+  await expect(team).not.toHaveText(/Reading your teams/);
+  if (await team.textContent().then(text => !text?.includes('team-'))) {
+    await team.click();
+    await page.getByRole('option', { name: /^team-bumblebee/ }).click();
   }
+  await kind(page, declaration.kind).click();
   await page.getByLabel(/^Name/).fill(declaration.name);
-  await page.getByLabel(/^Component type/).fill(declaration.componentType);
-  await page.getByLabel(/^Language/).fill(declaration.language);
-  await page.getByLabel(/^Flavours/).fill(declaration.flavours);
+}
+
+/**
+ * The label around a radio's or checkbox's (visually hidden) input: it takes
+ * the click -- the input itself is covered by it.
+ */
+const labelOf = (control: Locator) => control.locator('xpath=ancestor::label');
+
+/** A Kind radio's card. */
+const kind = (page: Page, name: RegExp) =>
+  labelOf(page.getByRole('radio', { name }));
+
+/** The form's dry run for the declaration as it stands has answered. */
+async function answered(page: Page) {
+  await expect(page.getByTestId('dry-run')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('dry-run-checking')).toHaveCount(0, {
+    timeout: 60_000,
+  });
 }
 
 const ciGenerate = (page: Page) =>
@@ -154,7 +170,7 @@ test.describe('repositories: actions', () => {
     'needs a lab whose muster serves giantswarm-repo-manager and whose Backstage enables page:repositories; set AGENTLAB_REPO_MANAGER=1',
   );
 
-  test('Create repository says what it does and shows the dry run the manager renders', async ({
+  test('Create repository says what it does, opens as a Go service and shows the dry run the manager renders as the form is filled', async ({
     admin,
   }) => {
     await open(admin, '/repositories/create');
@@ -168,12 +184,19 @@ test.describe('repositories: actions', () => {
         /created as you: the repository, one scaffold commit on its default branch/,
       ),
     ).toBeVisible();
+    // The defaults: a Go service, private, the generator on; the review
+    // waits for a name.
+    await expect(
+      admin.getByRole('radio', { name: /^Go service/ }),
+    ).toBeChecked();
+    await expect(admin.getByRole('radio', { name: /^Private/ })).toBeChecked();
     await expect(ciGenerate(admin)).toBeChecked();
+    await expect(admin.getByTestId('review-hint')).toBeVisible();
+    await expect(admin.getByRole('button', { name: 'Create' })).toBeDisabled();
     await fillDeclaration(admin);
-    await admin.getByRole('button', { name: 'Review' }).click();
+    await answered(admin);
 
     const dryRun = admin.getByTestId('dry-run');
-    await expect(dryRun).toBeVisible({ timeout: 60_000 });
     // The manager's rendering of the entry, and its verdict on the name
     // (free, taken or unchecked -- the lab's App decides), nothing composed.
     const entry = dryRun.getByTestId(`dry-run-${NAME}`);
@@ -187,35 +210,67 @@ test.describe('repositories: actions', () => {
     await expect(entry.getByTestId('entry-entry')).toContainText(
       'generate: true',
     );
+    // The name's verdict under the field, as the manager gave it.
+    await expect(admin.getByTestId('name-check')).toContainText(
+      new RegExp(`giantswarm/${NAME} is free on GitHub|taken|name unchecked`),
+    );
     await expect(admin.getByRole('button', { name: 'Create' })).toBeVisible();
   });
 
-  test('a configuration repository: the manager refuses the CircleCI generator, its fix is one click, and Review passes', async ({
+  test('the name is held to the engine’s rule as typed; the manager is not asked until it holds', async ({
+    admin,
+  }) => {
+    await open(admin, '/repositories/create');
+    await fillDeclaration(admin, { ...goService, name: 'Shiny-app' });
+    await expect(admin.getByLabel(/^Name/)).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    await expect(admin.getByTestId('name-check')).toContainText(
+      'the chart is named after the repository',
+    );
+    await expect(admin.getByTestId('review-hint')).toBeVisible();
+    await expect(admin.getByTestId('dry-run')).toHaveCount(0);
+    await expect(admin.getByRole('button', { name: 'Create' })).toBeDisabled();
+  });
+
+  test('a configuration repository: the kind turns the CircleCI generator off; forced on, the manager refuses it and its fix is one click', async ({
     admin,
   }) => {
     await open(admin, '/repositories/create');
     await fillDeclaration(admin, configuration);
-    await admin.getByRole('button', { name: 'Review' }).click();
-
-    // With the generator on, the creation rules refuse: no CircleCI job for
-    // language generic. The refusal names the field and the value to set.
+    // The kind: componentType configuration, language generic, the generic
+    // flavour, and nothing to build, so the generator is off.
+    await expect(
+      admin.getByRole('button', { name: /Component type$/ }),
+    ).toHaveText(/configuration/);
+    await expect(admin.getByRole('button', { name: /Language$/ })).toHaveText(
+      /generic/,
+    );
+    await expect(ciGenerate(admin)).not.toBeChecked();
+    await answered(admin);
     const entry = admin.getByTestId(`dry-run-${configuration.name}`);
-    await expect(entry).toBeVisible({ timeout: 60_000 });
+    await expect(entry).toContainText(`${configuration.name}: accepted`);
+    await expect(admin.getByRole('button', { name: 'Create' })).toBeEnabled();
+
+    // Forced on, the creation rules refuse: no CircleCI job for language
+    // generic. The refusal names the field and the value to set.
+    await labelOf(ciGenerate(admin)).click();
+    await answered(admin);
     await expect(entry).toContainText(`${configuration.name}: refused`);
     const problems = entry.getByTestId('problems');
     await expect(problems).toContainText(
       'gen.ci.generate: no CircleCI job for language generic without the app flavour or gen.ci.image.dockerfile; set it to false',
     );
-    await expect(admin.getByRole('button', { name: 'Create' })).toHaveCount(0);
+    await expect(admin.getByRole('button', { name: 'Create' })).toBeDisabled();
 
-    // The fix as an action: the switch goes off and the dry run runs again.
+    // The fix as an action: the switch goes off and the dry run follows.
     await problems
       .getByRole('button', { name: 'Set Generate CircleCI config to off' })
       .click();
     await expect(ciGenerate(admin)).not.toBeChecked();
-    await expect(entry).toContainText(`${configuration.name}: accepted`, {
-      timeout: 60_000,
-    });
+    await answered(admin);
+    await expect(entry).toContainText(`${configuration.name}: accepted`);
     await expect(entry.getByTestId('problems')).toHaveCount(0);
     await expect(entry.getByTestId('entry-entry')).toContainText(
       'generate: false',
@@ -249,10 +304,7 @@ test.describe('repositories: actions', () => {
     try {
       await open(admin, '/repositories/create');
       await fillDeclaration(admin);
-      await admin.getByRole('button', { name: 'Review' }).click();
-      await expect(admin.getByTestId('dry-run')).toBeVisible({
-        timeout: 60_000,
-      });
+      await answered(admin);
       await admin.getByRole('button', { name: 'Create' }).click();
 
       // The three artefacts in the order the manager wrote them.

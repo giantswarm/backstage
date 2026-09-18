@@ -6,7 +6,13 @@ import {
   RepositoryListing,
 } from '../apis';
 import { unusedWrites } from './fakeApi';
-import { listingOf, records as fixtureRecords, rowOf } from './records';
+import {
+  listingOf,
+  newService,
+  records as fixtureRecords,
+  rowOf,
+} from './records';
+import { createInMemory, validateInMemory } from './validate';
 
 /** The manager's default period for judging Renovate active or inactive. */
 export const RENOVATE_ACTIVE_DAYS = 180;
@@ -154,8 +160,11 @@ export function matches(
 /**
  * giantswarm-repo-manager's read tools over the fixture records, filtering
  * the way `list_repositories` does and answering `get_repository` and
- * `refresh_repository` from the same records. The dev app runs the page over
- * it; the tests assert the filters the page sends through `lists`.
+ * `refresh_repository` from the same records; `validate_repository` judges
+ * a declaration the way the engine's creation rules do (a name is taken when
+ * a record holds it) and `create_repository` adds the new repository's
+ * record, converging. The dev app runs the page over it; the tests assert
+ * the filters the page sends through `lists`.
  */
 export function createInMemoryApi(
   options: InMemoryApiOptions = {},
@@ -194,12 +203,41 @@ export function createInMemoryApi(
     return found;
   };
 
+  const world = {
+    taken: (name: string) => records.has(`giantswarm/${name}`),
+    callerTeams: teams,
+    login: 'alice',
+  };
+
   return {
     lists,
     refreshes,
     ...unusedWrites,
     getConnection: async () => ({ connected: true }),
     getInfo: async () => info,
+    validateRepository: async input => validateInMemory(input, world),
+    createRepository: async input => {
+      const created = createInMemory(
+        validateInMemory(input, world),
+        world.login,
+      );
+      // The new repository's record, as the reconciler finds it: created and
+      // scaffolded, the rest of the set-up still to come.
+      created.repositories.forEach(repository => {
+        records.set(`giantswarm/${repository.name}`, {
+          ...newService,
+          repository: `giantswarm/${repository.name}`,
+          name: repository.name,
+          declaration: {
+            ...newService.declaration!,
+            team: input.team,
+            file: `repositories/${input.team}.yaml`,
+            entry: `- name: ${repository.name}\n`,
+          },
+        });
+      });
+      return created;
+    },
     listRepositories: async (filters): Promise<RepositoryListing> => {
       lists.push(filters);
       const matched = [...records.values()]
