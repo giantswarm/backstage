@@ -36,6 +36,10 @@ const REMOVED_TITLE =
  * The agent column: a known agent's name, linked to its page; a removed
  * agent's technical name marked as removed, so it is not read as a system
  * component with spend; unattributed traffic by the caller's word for it.
+ *
+ * The mark sits under the name rather than beside it: `namespace/name` is
+ * long as names go and the column is narrow, and a mark next to it left only
+ * `kagent/lab-re…` of the one thing the row has to say.
  */
 function AgentCell({ row }: { row: LlmAgentRow }) {
   if (row.kind !== 'removed') {
@@ -43,7 +47,7 @@ function AgentCell({ row }: { row: LlmAgentRow }) {
   }
   return (
     <Cell>
-      <Flex align="center" gap="2">
+      <Flex direction="column" align="start" gap="1">
         <Text as="p" variant="body-medium" truncate title={row.label}>
           {row.label}
         </Text>
