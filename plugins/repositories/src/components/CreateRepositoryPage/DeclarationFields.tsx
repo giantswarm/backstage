@@ -254,7 +254,7 @@ function Declaration({
           variant="secondary"
           size="small"
           aria-expanded={adjusting}
-          aria-controls={panelId}
+          aria-controls={adjusting ? panelId : undefined}
           onPress={() => setAdjusting(!adjusting)}
           isDisabled={isDisabled}
         >
