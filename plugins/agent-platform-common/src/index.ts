@@ -15,6 +15,7 @@ export * from './kagent/kagentA2aV1';
 export * from './kagent/kagentAgentInstance';
 export * from './kagent/kagentMetadata';
 export * from './kagent/kagentParts';
+export * from './kagent/kagentAttachments';
 export * from './kagent/kagentSessions';
 export * from './kagent/kagentSessionDetail';
 export * from './kagent/kagentSessionState';

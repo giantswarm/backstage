@@ -1,0 +1,11 @@
+{
+  "note": "The same PNG as kagent API v2 serves it: proto3 JSON encodes the `bytes raw` field as standard base64.",
+  "part": {
+    "kind": "file",
+    "file": {
+      "name": "screenshot.png",
+      "mimeType": "image/png",
+      "bytes": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+    }
+  }
+}

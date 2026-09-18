@@ -1323,6 +1323,7 @@ yanking someone who scrolled up out of what they were reading.
 | Delegation           | a `function_call` whose name contains `__NS__`, plus the child's own usage |
 | Approval             | ADK's `adk_request_confirmation`, with the user's verdict                  |
 | Failed turn          | a task in state `failed`/`rejected`, with the reason from `status.message` |
+| Attachment           | a file part, previewed only when its own bytes say it is an allowed image  |
 
 **Calls through Muster are unwrapped.** Agents reach most MCP tools via muster's
 `call_tool`, so untreated every row reads `call_tool` with the real tool buried in the
@@ -1349,6 +1350,42 @@ Two things real payloads taught us, both now relied on: kagent repeats each user
 message under the **same `messageId`** on every turn, so the session-wide dedupe is
 required rather than defensive; and one message can carry prose plus several tool
 calls, always text first.
+
+#### Attachments
+
+A file part renders as an attachment beside the message it came with. It is
+**conversation, not working**, so it is never one of the activity kinds and the
+Hidden setting does not remove it.
+
+**The bytes are untrusted and rendered in our own origin**, so the declared
+`mimeType` is never acted on. `readAttachmentPreview` rejects in order: no
+payload, a location rather than bytes, invalid base64, over the 8 MB cap — and
+only then decodes the first 18 bytes to derive the type from the magic bytes. The
+allowlist is PNG, JPEG, GIF and WebP, and the `data:` URL is labelled with the
+**sniffed** type, so the browser is never told a type the bytes do not support.
+
+**SVG is never previewed**, whatever it calls itself. An SVG in
+`<img src="data:…">` does not run script — browsers load it in a non-scripting
+mode — so this is defence in depth: it holds if the renderer ever becomes an
+inline `<svg>`, an `<object>` or an "open in a new tab", and it keeps SVG's
+XML-entity and filter denial-of-service surface out of the page. Sniffing is what
+makes the rule effective: a `.png`-declared SVG never reaches a renderer either.
+
+Anything with no preview renders as an inert chip naming the file, its declared
+type, its size and why there is nothing to see. **No download link** — handing an
+untrusted file to disk only moves the risk to wherever it is opened next. The
+bytes never pass through the markdown renderer, whose sanitiser strips `data:`
+sources today; loosening that would weaken markdown everywhere in the portal.
+
+**A file kagent only linked to is not fetched.** The portal would be making a
+request on the reader's behalf to a host named by whoever sent the message.
+
+No CSP change is needed: `img-src` already carries `data:`. Backstage _replaces_
+config arrays rather than merging them, so a deployment that overrides `img-src`
+must re-list `data:` along with the other base entries.
+
+**Only the poll renders attachments.** The live stream overlay reads text and
+call parts; a file part arrives with the next poll, at most 10 s later.
 
 **A message the parser cannot read is counted, not hidden.** `skippedMessages`
 counts history entries that failed the schema outright — artifact and status updates

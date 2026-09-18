@@ -696,3 +696,102 @@ describe('SessionTimeline — a turn the runtime failed', () => {
     }
   });
 });
+
+describe('SessionTimeline — an attached file', () => {
+  const PNG_BYTES = Buffer.from(
+    Uint8Array.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
+    ]),
+  ).toString('base64');
+
+  function withAttachment(file: Record<string, unknown>) {
+    return {
+      data: [
+        {
+          id: 'task-1',
+          status: { state: 'completed', timestamp: '2026-09-15T10:00:00Z' },
+          history: [
+            {
+              kind: 'message',
+              messageId: 'message-1',
+              role: 'user',
+              parts: [
+                { kind: 'text', text: 'Look at this' },
+                { kind: 'file', file },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it('shows an image the bytes say is one', async () => {
+    await render(
+      withAttachment({
+        name: 'shot.png',
+        mimeType: 'image/png',
+        bytes: PNG_BYTES,
+      }),
+    );
+
+    const image = screen.getByRole('img', { name: 'shot.png' });
+    expect(image).toHaveAttribute('src', `data:image/png;base64,${PNG_BYTES}`);
+  });
+
+  it('never renders an SVG as an image, even when it claims to be a PNG', async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+
+    await render(
+      withAttachment({
+        name: 'harmless.png',
+        mimeType: 'image/png',
+        bytes: svg.toString('base64'),
+      }),
+    );
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/not an image type the portal shows/),
+    ).toBeInTheDocument();
+  });
+
+  it('says what it cannot show, rather than dropping it silently', async () => {
+    await render(
+      withAttachment({
+        name: 'shot.png',
+        mimeType: 'image/png',
+        bytes: 'not base64!',
+      }),
+    );
+
+    expect(screen.getByText('shot.png')).toBeInTheDocument();
+    expect(
+      screen.getByText(/attached bytes could not be read/),
+    ).toBeInTheDocument();
+    // Nothing to click: an untrusted file is not offered for download.
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('is conversation, so Hidden does not remove it', async () => {
+    // The file someone attached is part of what was said, not part of the
+    // agent's working.
+    const conversation = timelineFor(tasksV099);
+    const attachment = timelineFor(
+      withAttachment({ name: 'shot.png', bytes: PNG_BYTES }),
+    );
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={{
+          ...conversation,
+          items: [...conversation.items, ...attachment.items],
+        }}
+        agentName="Issue tracker"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Hidden' }));
+
+    expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument();
+  });
+});

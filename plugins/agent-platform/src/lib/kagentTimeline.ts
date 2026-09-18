@@ -2,6 +2,7 @@ import {
   a2aMessageWireSchema,
   A2aTaskWire,
   addTokenUsage,
+  AttachmentPreview,
   ASK_USER_TOOL_NAME,
   AWAITING_INPUT_STATES,
   CONFIRMATION_TOOL_NAME,
@@ -19,6 +20,9 @@ import {
   readFunctionResponse,
   readKagentMetadataString,
   readMessageText,
+  decodedLength,
+  readAttachment,
+  readAttachmentPreview,
   readNestedTokenUsage,
   readPartText,
   readTokenUsage,
@@ -108,6 +112,24 @@ export type TimelineItem =
       args?: unknown;
       /** Undefined while the request is still unanswered. */
       verdict?: 'approved' | 'rejected';
+    })
+  | (TimelineItemBase & {
+      kind: 'attachment';
+      /** The file name kagent reported, when it reported one. */
+      name?: string;
+      /**
+       * The type the sender declared.
+       *
+       * Carried so the entry can say what the file claims to be, and never used
+       * to decide how to render it — see `readAttachmentPreview`.
+       */
+      declaredType?: string;
+      /** Decoded size in bytes, when the payload could be measured. */
+      byteSize?: number;
+      /** Whether it can be shown, and as what. */
+      preview: AttachmentPreview;
+      /** Whether the attachment came from the user rather than the agent. */
+      isUser: boolean;
     })
   | (TimelineItemBase & {
       kind: 'turn-failed';
@@ -531,10 +553,41 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           return;
         }
 
+        const attachment = readAttachment(part);
+        if (attachment) {
+          // Conversation, not working: a file someone attached belongs with the
+          // message it came with, so it is never one of `ACTIVITY_KINDS` and the
+          // Hidden setting does not remove it.
+          flushText();
+          const preview = readAttachmentPreview(attachment);
+          items.push({
+            kind: 'attachment',
+            id: `${taskIndex}:${entryIndex}:${items.length}`,
+            at,
+            author,
+            taskIndex,
+            messageId: message.messageId,
+            isUser,
+            preview,
+            ...(attachment.name === undefined ? {} : { name: attachment.name }),
+            ...(attachment.declaredType === undefined
+              ? {}
+              : { declaredType: attachment.declaredType }),
+            // Only for a payload that is valid base64 — the length of a string
+            // that is not tells the reader nothing, and stating it as a size
+            // would be a number we made up.
+            ...(attachment.base64 === undefined ||
+            (preview.kind === 'none' && preview.reason === 'undecodable')
+              ? {}
+              : { byteSize: decodedLength(attachment.base64) }),
+          });
+          return;
+        }
+
         if (!isFunctionCallPart(part)) {
-          // A file part, or something we have no renderer for. Silently ignored:
-          // the timeline is about what the agent said and did, and an unknown part
-          // type is not evidence of either.
+          // Something we have no renderer for. Silently ignored: the timeline is
+          // about what the agent said and did, and an unknown part type is not
+          // evidence of either.
           return;
         }
 

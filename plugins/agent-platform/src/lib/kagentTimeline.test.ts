@@ -957,3 +957,104 @@ function withDecision(fixture: typeof approval, decision: object) {
   (message as { parts: unknown[] }).parts = [{ kind: 'data', data: decision }];
   return copy;
 }
+
+describe('buildTimeline — attachments', () => {
+  const PNG_BYTES = Buffer.from(
+    Uint8Array.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
+    ]),
+  ).toString('base64');
+
+  function taskWithAttachment(file: Record<string, unknown>): A2aTaskWire[] {
+    return [
+      {
+        id: 'task-1',
+        status: { state: 'completed', timestamp: '2026-09-15T10:00:00Z' },
+        history: [
+          {
+            kind: 'message',
+            messageId: 'message-1',
+            role: 'user',
+            parts: [
+              { kind: 'text', text: 'Look at this' },
+              { kind: 'file', file },
+            ],
+          },
+        ],
+      },
+    ] as unknown as A2aTaskWire[];
+  }
+
+  it('renders an attached image instead of dropping it', () => {
+    const { items } = buildTimeline(
+      taskWithAttachment({
+        name: 'shot.png',
+        mimeType: 'image/png',
+        bytes: PNG_BYTES,
+      }),
+    );
+
+    expect(kinds(items)).toEqual(['user-message', 'attachment']);
+    expect(items[1]).toMatchObject({
+      kind: 'attachment',
+      name: 'shot.png',
+      declaredType: 'image/png',
+      isUser: true,
+      preview: { kind: 'image', type: 'image/png' },
+    });
+  });
+
+  it('keeps the message that came with it, in order', () => {
+    // The attachment follows the words it was sent with rather than replacing
+    // them or jumping ahead of them.
+    const { items } = buildTimeline(taskWithAttachment({ bytes: PNG_BYTES }));
+
+    expect(items[0]).toMatchObject({
+      kind: 'user-message',
+      text: 'Look at this',
+    });
+  });
+
+  it('reports a file it cannot show rather than hiding it', () => {
+    const { items } = buildTimeline(
+      taskWithAttachment({
+        name: 'notes.pdf',
+        mimeType: 'application/pdf',
+        bytes: Buffer.from('%PDF-1.7 and then some').toString('base64'),
+      }),
+    );
+
+    expect(items[1]).toMatchObject({
+      kind: 'attachment',
+      name: 'notes.pdf',
+      preview: { kind: 'none', reason: 'not-previewable' },
+    });
+  });
+
+  it('states no size for a payload that is not readable base64', () => {
+    // A number derived from a string that is not base64 would be invented.
+    const { items } = buildTimeline(
+      taskWithAttachment({ name: 'shot.png', bytes: 'not base64!' }),
+    );
+
+    expect(items[1]).toMatchObject({
+      kind: 'attachment',
+      preview: { kind: 'none', reason: 'undecodable' },
+    });
+    expect(items[1]).not.toHaveProperty('byteSize');
+  });
+
+  it('counts the attachment once when kagent repeats the message', () => {
+    // The `messageId` dedupe covers attachments too: kagent stores the user's
+    // message on every turn, so the file crosses the wire more than once.
+    const [task] = taskWithAttachment({ bytes: PNG_BYTES });
+    const repeated = [
+      task,
+      { ...task, id: 'task-2' },
+    ] as unknown as A2aTaskWire[];
+
+    const { items } = buildTimeline(repeated);
+
+    expect(items.filter(item => item.kind === 'attachment')).toHaveLength(1);
+  });
+});

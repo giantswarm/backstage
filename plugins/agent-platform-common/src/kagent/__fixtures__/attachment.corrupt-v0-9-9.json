@@ -1,0 +1,11 @@
+{
+  "note": "kagent v0.9.9 served attachment bytes as raw binary lossily decoded to UTF-8, not base64. Recorded from GET /api/sessions/{id}/tasks on gazelle; see giantswarm/giantswarm#37298.",
+  "part": {
+    "kind": "file",
+    "file": {
+      "name": "screenshot.png",
+      "mimeType": "image/png",
+      "bytes": "�PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR\u0000\u0000\u0000\u0001\u0000\u0000\u0000\u0001\b\u0002\u0000\u0000\u0000�wS�\u0000\u0000\u0000\fIDATx�c���\u0000\u0000\u0003\u0001\u0001\u0000����\u0000\u0000\u0000\u0000IEND�B`�"
+    }
+  }
+}

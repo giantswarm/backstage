@@ -55,6 +55,8 @@ import sessionDetailNoEventsJson from './kagent/__fixtures__/session-detail.no-e
 import sessionDetailNoSessionJson from './kagent/__fixtures__/session-detail.no-session.json';
 import sessionDetailV010Json from './kagent/__fixtures__/session-detail.v0-10.json';
 import sessionDetailV099Json from './kagent/__fixtures__/session-detail.v0-9-9.json';
+import attachmentCorruptV099Json from './kagent/__fixtures__/attachment.corrupt-v0-9-9.json';
+import attachmentPngV2Json from './kagent/__fixtures__/attachment.png.kagent-v2.json';
 import sessionsBareArrayJson from './kagent/__fixtures__/sessions.bare-array.json';
 import sessionsDataNotArrayJson from './kagent/__fixtures__/sessions.data-not-array.json';
 import sessionsDataNullJson from './kagent/__fixtures__/sessions.data-null.json';
@@ -82,6 +84,16 @@ import tasksMalformedJson from './kagent/__fixtures__/tasks.malformed.json';
 import tasksUnknownStateJson from './kagent/__fixtures__/tasks.unknown-state.json';
 import tasksV099Json from './kagent/__fixtures__/tasks.v0-9-9.json';
 
+/** One PNG attachment as kagent API v2 serves it: proto3 JSON base64. */
+export const attachmentPngV2: { part: unknown } =
+  attachmentPngV2Json as unknown as { part: unknown };
+/**
+ * The same PNG as kagent 0.9.9 served it — raw binary lossily decoded to UTF-8,
+ * which destroys roughly half the bytes. A regression fixture: the renderer must
+ * report it honestly and never try to show it.
+ */
+export const attachmentCorruptV099: { part: unknown } =
+  attachmentCorruptV099Json as unknown as { part: unknown };
 export const sessionDetailBare: unknown = sessionDetailBareJson as unknown;
 export const sessionDetailNoEvents: unknown =
   sessionDetailNoEventsJson as unknown;

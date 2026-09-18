@@ -3,7 +3,10 @@ import { Alert, Badge } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import LoopIcon from '@material-ui/icons/Loop';
 
-import { isRuntimeLostFailureText } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  isRuntimeLostFailureText,
+  NoPreviewReason,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { ActivityRow, InertActivityRow } from './ActivityRow';
 import { MessageMarkdown } from './MessageMarkdown';
@@ -122,6 +125,51 @@ const useStyles = makeStyles(theme => ({
     fontFamily: 'monospace',
     fontSize: '0.8125rem',
   },
+  // An attachment sits where its message sits: the sender's side of the column.
+  attachmentRow: {
+    display: 'flex',
+    '&[data-user="true"]': {
+      justifyContent: 'flex-end',
+    },
+  },
+  attachment: {
+    maxWidth: '85%',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+  },
+  // Scaled to fit the column and never taller than a screenful, so a long
+  // screenshot cannot push the rest of the conversation out of reach.
+  attachmentImage: {
+    display: 'block',
+    maxWidth: '100%',
+    maxHeight: 480,
+    width: 'auto',
+    height: 'auto',
+    borderRadius: 'var(--bui-radius-3)',
+    border: `1px solid ${theme.palette.divider}`,
+  },
+  attachmentCaption: {
+    fontSize: '0.75rem',
+    color: theme.palette.text.secondary,
+    overflowWrap: 'anywhere',
+  },
+  // The inert chip for a file with no preview. Deliberately not a link and not a
+  // button: there is nothing safe to do with these bytes.
+  attachmentChip: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.25),
+    padding: theme.spacing(1, 1.5),
+    borderRadius: 'var(--bui-radius-3)',
+    border: `1px dashed ${theme.palette.divider}`,
+    backgroundColor: 'var(--bui-bg-neutral-2)',
+    fontSize: '0.8125rem',
+  },
+  attachmentName: {
+    fontWeight: 500,
+    overflowWrap: 'anywhere',
+  },
 }));
 
 export type TimelineEntryProps = {
@@ -139,6 +187,91 @@ export type TimelineEntryProps = {
 /** Prose from the agent, rendered as markdown. */
 function MessageBody({ text }: { text: string }) {
   return <MessageMarkdown text={text} />;
+}
+
+/** How a size reads in a caption. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Why a file has no preview, in words the reader can act on. */
+const NO_PREVIEW_REASONS: Record<NoPreviewReason, string> = {
+  'not-previewable': 'No preview: this is not an image type the portal shows.',
+  undecodable: 'No preview: the attached bytes could not be read.',
+  'too-large': 'No preview: the file is too large to show inline.',
+  remote: 'No preview: kagent linked to this file instead of sending it.',
+  empty: 'No preview: the attachment arrived with no content.',
+};
+
+/**
+ * A file attached to a message.
+ *
+ * **The bytes are untrusted and rendered in our own origin**, so an image is only
+ * ever shown when the bytes themselves say they are one of the allowlisted raster
+ * types — the declared type is reported as a claim and never acted on, and an SVG
+ * is never previewed whatever it calls itself (`readAttachmentPreview`).
+ *
+ * Anything with no preview renders as an inert chip: the name, the declared type,
+ * the size and why there is nothing to see. **No download link** — handing an
+ * untrusted file to disk only moves the risk to wherever it is opened next — and
+ * the bytes never pass through the markdown renderer, whose sanitiser strips
+ * `data:` sources today and should go on doing so.
+ */
+function AttachmentEntry({
+  item,
+}: {
+  item: Extract<TimelineItem, { kind: 'attachment' }>;
+}) {
+  const classes = useStyles();
+  const name = item.name ?? 'Attachment';
+  const facts = [
+    item.declaredType,
+    item.byteSize === undefined ? undefined : formatBytes(item.byteSize),
+  ].filter(Boolean);
+
+  return (
+    <div
+      className={classes.attachmentRow}
+      data-user={item.isUser}
+      data-testid="timeline-attachment"
+    >
+      <div className={classes.attachment}>
+        {item.preview.kind === 'image' ? (
+          <>
+            <img
+              className={classes.attachmentImage}
+              src={item.preview.dataUrl}
+              // The file name is the only description anyone supplied. It is
+              // rendered as text below as well, so a reader who cannot see the
+              // image still gets it once, not twice.
+              alt={name}
+            />
+            <span className={classes.attachmentCaption}>
+              {[name, ...facts].join(' · ')}
+            </span>
+          </>
+        ) : (
+          <div className={classes.attachmentChip}>
+            <span className={classes.attachmentName}>{name}</span>
+            {facts.length > 0 && (
+              <span className={classes.attachmentCaption}>
+                {facts.join(' · ')}
+              </span>
+            )}
+            <span className={classes.attachmentCaption}>
+              {NO_PREVIEW_REASONS[item.preview.reason]}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -334,6 +467,10 @@ export function TimelineEntry({
         <MessageBody text={item.text} />
       </div>
     );
+  }
+
+  if (item.kind === 'attachment') {
+    return <AttachmentEntry item={item} />;
   }
 
   // The turn ended in error. Rendered as an alert, not as prose: before this
