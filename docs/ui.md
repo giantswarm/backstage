@@ -4,22 +4,78 @@ When working with the Backstage user interface, e. g. in order to create new com
 
 ## Component libraries
 
-There are three UI layers in this repo, in order of preference for new work:
+There are three UI layers in this repo:
 
 - **bui** (`@backstage/ui`, aka "Backstage UI") — the new Backstage design
-  system and the direction we are migrating toward. **Prefer it for new work.**
-  The global stylesheet is imported once in `packages/app/src/index.tsx`.
+  system and the direction we are migrating toward. **New and edited UI code
+  imports from here.** The global stylesheet is imported once in
+  `packages/app/src/index.tsx`, and `BUIProvider` is mounted by
+  `@backstage/plugin-app`'s `AppRoot`, so bui `href`s are client-side routed
+  (keep them absolute — a relative href inside a splat route appends).
 
 - **core-components** (`@backstage/core-components`) — the classic Backstage
-  components. Legacy, but still required where bui has no equivalent yet (e.g.
-  the feature-rich `Table`, the `Page`/`Header`/`Content` scaffolding, and
-  `Link` with route refs).
+  components. Legacy.
 
 - [Material UI version 4](https://v4.mui.com/) (`@material-ui/core`) — legacy
-  primitives and `makeStyles`, used for styling and gaps the above don't cover.
+  primitives and `makeStyles`.
 
-Mixing all three in one file is normal during the migration. Reach for bui
-first and fall back only when a piece is missing.
+The two legacy layers are for the pieces bui has no equivalent for, and that
+set is smaller than it looks: `makeStyles`, `@material-ui/icons/<Icon>`, the
+feature-rich core-components `Table`, the `Page`/`Header`/`Content` scaffolding
+on classic (non-NFS) pages, route-ref `Link`/`LinkButton`, and `Progress` /
+`EmptyState` / `ErrorPanel` / `WarningPanel` / `MarkdownContent` / `CodeSnippet`
+/ the `Status*` dots / the sidebar and entity-page scaffolding.
+
+### What to reach for instead of MUI
+
+Everything below has a bui equivalent, and these are the ones that most often
+get rebuilt in MUI by mistake:
+
+| Instead of `@material-ui/core`                       | Use `@backstage/ui`                                                         |
+| ---------------------------------------------------- | --------------------------------------------------------------------------- |
+| `Typography`                                         | `Text`                                                                      |
+| `Tabs`, `Tab`                                        | `Tabs` + `TabList` + `Tab` + `TabPanel`                                     |
+| `Chip`                                               | `Tag` (`Badge` for a count/state pill)                                      |
+| `Dialog`, `DialogTitle/Content/Actions`              | `DialogTrigger` + `Dialog` + `DialogHeader`/`DialogBody`/`DialogFooter`     |
+| `FormControl` + `InputLabel` + `Select` + `MenuItem` | `Select` + `SelectItem`, or `Combobox`                                      |
+| `TextField`, `InputBase`                             | `TextField`, `TextAreaField`, `NumberField`, `PasswordField`, `SearchField` |
+| `Checkbox`, `Radio`, `Switch`, `Slider`              | same names, from bui                                                        |
+| `Accordion` / `ExpansionPanel`                       | `AccordionGroup` + `Accordion` + `AccordionTrigger` + `AccordionPanel`      |
+| `Paper`, `Card*`                                     | the `InfoCard` from `@giantswarm/backstage-plugin-ui-react`                 |
+| `CircularProgress` as a placeholder                  | `Skeleton`, or `isPending` on `Table`/`Alert`                               |
+| MUI-lab `Alert`, `Snackbar`                          | `Alert` (`status`: `info`/`success`/`warning`/`danger`)                     |
+
+bui moves fast and this table will lag it. The installed package is the
+authority on what exists:
+
+```bash
+grep -oE '^declare (const|function) [A-Z][A-Za-z]+' \
+  node_modules/@backstage/ui/dist/index.d.ts \
+  | sed -E 's/declare (const|function) //' | grep -v 'Definition$' | sort -u
+```
+
+MUI and bui coexist in many files. That is the migration's residue, not
+permission: a file that already imports `@material-ui/core` is a reason to
+migrate the part you touch, not to add to it.
+
+ESLint backs this up: the root `.eslintrc.js` restricts every
+`@material-ui/core` export that has a bui equivalent — the list is
+`muiWithBuiEquivalent` — through `@typescript-eslint/no-restricted-imports`
+(a different rule id from the `no-restricted-imports` that
+`@backstage/cli`'s eslint-factory configures per package, so it adds to that
+rather than replacing it).
+
+It is a **warning**, because ~550 legacy imports are already in the tree. Where
+you see it:
+
+- **On commit**, for the files you staged — `lint-staged` runs `eslint --fix`
+  directly, which prints warnings. Non-blocking, so read the output.
+- **In your editor**, and from `npx eslint <file>`.
+- **Not** in `yarn lint` / `yarn lint:all`. `backstage-cli repo lint` defaults to
+  `--max-warnings -1` and prints a package's report only when that package
+  _fails_, so warnings are swallowed. Use `yarn lint --max-warnings 0` when you
+  want them to fail — worth doing on a package you are actively migrating,
+  unusable repo-wide until the backlog is gone.
 
 ## Page headers and tabs (New Frontend System)
 
