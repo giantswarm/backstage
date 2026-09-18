@@ -13,12 +13,9 @@ const api: RepositoriesApi = {
     version: 'v0.3.0',
     toolPrefix: 'giantswarm-repo-manager',
     caller: { groups: [] },
-    github: {
-      apiUrl: '',
-      grant: { obtained: true },
-      circleciConfigured: false,
-    },
+    github: { apiUrl: '', grant: { obtained: true } },
     inventory: { connected: true, records: 0 },
+    circleci: { source: 'statuses+artifact' },
   }),
   listRepositories: async () => listingOf([]),
   getRepository: async () => {

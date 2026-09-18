@@ -38,12 +38,22 @@ export const SIGNINGS = ['signed', 'unsigned', 'unknown', 'none'] as const;
 
 export type Signing = (typeof SIGNINGS)[number];
 
+/**
+ * A row's Renovate state, judged when the row is read: `missing` without a
+ * configuration, `active` when Renovate opened a pull request or committed
+ * within the manager's activity period, else `inactive`.
+ */
+export type RenovateState = 'missing' | 'active' | 'inactive';
+
 /** The filters of `list_repositories`, as the page offers them. */
 export interface ListFilters {
   scope?: Scope;
   search?: string;
-  /** `active` and `inactive` are judged against the manager's Renovate activity period. */
-  renovate?: 'configured' | 'missing' | 'active' | 'inactive';
+  /**
+   * A row's state, or `configured`: every repository with a configuration,
+   * active or not.
+   */
+  renovate?: RenovateState | 'configured';
   /**
    * A team slug, or `none` for undeclared repositories. Applies in every
    * scope where it can: under `mine` it narrows to that team when it is one
@@ -109,7 +119,8 @@ export interface RepositoryRow {
   archived: boolean;
   gone?: boolean;
   fork?: boolean;
-  renovate?: boolean;
+  /** Absent when the repository is gone from GitHub. */
+  renovate?: RenovateState;
   lastPersonCommit?: string;
   /** Finding kinds. */
   findings?: string[];
@@ -406,13 +417,20 @@ export interface ManagerInfo {
       reason?: string;
     };
     appError?: string;
-    circleciConfigured: boolean;
   };
   inventory: {
     address?: string;
     connected: boolean;
     records: number;
     error?: string;
+  };
+  /** Where the inventory's CircleCI facts come from. */
+  circleci: {
+    /**
+     * `statuses+artifact`: the `ci/circleci:` commit statuses and the
+     * reconciler's run artifact; the manager holds no CircleCI token.
+     */
+    source: string;
   };
 }
 

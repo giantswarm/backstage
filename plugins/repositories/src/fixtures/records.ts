@@ -5,6 +5,7 @@ import {
   InventoryRecord,
   Plan,
   PullRequest,
+  RenovateState,
   RepositoryListing,
   RepositoryRow,
   SweepSummary,
@@ -525,8 +526,39 @@ export const records: Record<string, InventoryRecord> = {
   'giantswarm/forgotten-fork': forgottenFork,
 };
 
-/** The `list_repositories` row of a record, as the manager derives it. */
-export function rowOf(record: InventoryRecord): RepositoryRow {
+/** Activity is judged against this moment: the fixtures' dates stand still. */
+export const NOW = new Date('2026-09-17T00:00:00Z');
+
+/** The manager's default period for judging Renovate active or inactive. */
+const RENOVATE_ACTIVE_DAYS = 180;
+
+const DAY_MS = 86_400_000;
+
+/** Days from `iso` to `now`; infinite without a date. */
+export const daysSince = (iso: string | undefined, now: Date) =>
+  iso ? (now.getTime() - new Date(iso).getTime()) / DAY_MS : Infinity;
+
+/**
+ * A record's Renovate state as the manager derives it for a row: `missing`
+ * without a configuration, `active` when Renovate committed or opened a pull
+ * request within the activity period, else `inactive`.
+ */
+export function renovateStateOf(
+  record: InventoryRecord,
+  now: Date,
+): RenovateState {
+  const { configured, lastCommit, lastPullRequest } = record.renovate;
+  if (!configured) {
+    return 'missing';
+  }
+  const active = [lastCommit, lastPullRequest?.createdAt].some(
+    seen => daysSince(seen, now) < RENOVATE_ACTIVE_DAYS,
+  );
+  return active ? 'active' : 'inactive';
+}
+
+/** The `list_repositories` row of a record, as the manager derives it when read at `now`. */
+export function rowOf(record: InventoryRecord, now = NOW): RepositoryRow {
   return {
     repository: record.repository,
     team: record.declaration?.team,
@@ -535,7 +567,7 @@ export function rowOf(record: InventoryRecord): RepositoryRow {
     archived: record.reality?.isArchived ?? false,
     gone: record.reality === null || undefined,
     fork: record.reality?.isFork,
-    renovate: record.renovate.configured,
+    renovate: record.reality ? renovateStateOf(record, now) : undefined,
     lastPersonCommit: record.reality?.lastPersonCommit?.date,
     findings: record.findings.map(finding => finding.kind),
     ci: record.ci && {

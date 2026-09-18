@@ -12,6 +12,7 @@ import {
   createInMemoryApi,
   InMemoryRepositoriesApi,
 } from '../../fixtures/inMemoryApi';
+import { NOW } from '../../fixtures/records';
 import {
   RepositoriesProviders,
   repositoriesQueryClient,
@@ -31,8 +32,6 @@ function LocationProbe() {
   return <div data-testid="location">{location.search}</div>;
 }
 
-/** Activity is judged against this moment: the fixtures' dates stand still. */
-const NOW = new Date('2026-09-17T00:00:00Z');
 const LIMIT = 2000;
 
 /** The manager's read tools over the fixtures, for a Bumblebee member. */
