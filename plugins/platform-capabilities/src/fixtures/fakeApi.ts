@@ -55,6 +55,58 @@ export const AGENT_PLATFORM_DEFINITION: Definition = {
       },
     },
   },
+  features: [
+    {
+      id: 'identity',
+      title: 'Identity',
+      description: 'Dex clients and the sign-in chain.',
+      dimensions: [
+        { id: 'dex-clients', kind: 'dex-secret', key: 'staticClients' },
+        { id: 'dex-auth-request', kind: 'probe', key: 'Dex /auth 302' },
+        { id: 'live-dex-auth-per-client', kind: 'live', key: 'Dex /auth' },
+      ],
+    },
+    {
+      id: 'secrets',
+      title: 'Secrets',
+      dimensions: [
+        { id: 'other-secret-shapes', kind: 'extras', key: 'secrets/' },
+      ],
+    },
+    {
+      id: 'runtime',
+      title: 'Runtime',
+      dimensions: [
+        { id: 'patch-top-level-keys', kind: 'configmap', key: 'top-level' },
+        { id: 'live-drift', kind: 'live', key: 'live values' },
+      ],
+    },
+    {
+      id: 'tool-access',
+      title: 'Tool access',
+      dimensions: [
+        {
+          id: 'muster-protected-resource-metadata',
+          kind: 'probe',
+          key: 'oauth-protected-resource',
+        },
+      ],
+    },
+    {
+      id: 'federation',
+      title: 'Federation and tunnels',
+      dimensions: [
+        { id: 'federation-targets', kind: 'extras', key: 'tunnels' },
+      ],
+    },
+    {
+      id: 'portal',
+      title: 'Portal section',
+      dimensions: [
+        { id: 'portal-extra-files', kind: 'backstage', key: 'portal' },
+      ],
+    },
+  ],
 };
 
 export const RECORD = {
@@ -212,13 +264,73 @@ export const ACTION: Action = {
   },
 };
 
+const AUTHORITY_REASON =
+  "needs the person's authority on the installation: the live comparison comes with the read-side shape";
+
+/**
+ * rowan verified: the three marks across the definition's six features, a
+ * live dimension the manager does not check yet, a feature that renders no
+ * file.
+ */
 export const VERIFIED: VerifyResult = {
   installation: 'rowan',
   capability: 'agent-platform',
   state: 'drifted',
-  inputs: { source: 'action enable-agent-platform-rowan-1' },
+  inputs: {
+    source: 'action enable-agent-platform-rowan-1',
+    values: { installation: RECORD, kagent: { enabled: true } },
+  },
   features: [
-    { id: 'sso', title: 'Single sign-on', mark: 'as defined', dimensions: [] },
+    {
+      id: 'identity',
+      title: 'Identity',
+      mark: 'as defined',
+      dimensions: [
+        { id: 'dex-clients', kind: 'dex-secret', mark: 'as defined' },
+        {
+          id: 'dex-auth-request',
+          kind: 'probe',
+          mark: 'as defined',
+          probe: {
+            expect: [302],
+            requests: [
+              {
+                url: 'https://dex.rowan.example.test/auth?client_id=kagent',
+                status: 302,
+                ok: true,
+              },
+            ],
+          },
+        },
+        {
+          id: 'live-dex-auth-per-client',
+          kind: 'live',
+          mark: 'not checked',
+          reason: AUTHORITY_REASON,
+        },
+      ],
+    },
+    {
+      id: 'secrets',
+      title: 'Secrets',
+      mark: 'differs by input',
+      dimensions: [
+        {
+          id: 'other-secret-shapes',
+          kind: 'extras',
+          mark: 'differs by input',
+          differences: [
+            {
+              file: 'example/example-management-clusters:management-clusters/rowan/extras/agent-platform/secrets/kustomization.yaml',
+              path: 'resources',
+              input: 'installation.private',
+              rendered: ['a.yaml'],
+              current: ['a.yaml', 'b.yaml'],
+            },
+          ],
+        },
+      ],
+    },
     {
       id: 'runtime',
       title: 'Runtime',
@@ -237,10 +349,113 @@ export const VERIFIED: VerifyResult = {
             },
           ],
         },
+        {
+          id: 'live-drift',
+          kind: 'live',
+          mark: 'not checked',
+          reason: AUTHORITY_REASON,
+        },
+      ],
+    },
+    {
+      id: 'tool-access',
+      title: 'Tool access',
+      mark: 'as defined',
+      dimensions: [
+        {
+          id: 'muster-protected-resource-metadata',
+          kind: 'probe',
+          mark: 'as defined',
+        },
+      ],
+    },
+    {
+      id: 'federation',
+      title: 'Federation and tunnels',
+      mark: 'not checked',
+      dimensions: [
+        {
+          id: 'federation-targets',
+          kind: 'extras',
+          mark: 'not checked',
+          reason: 'renders no file of this kind',
+        },
+      ],
+    },
+    {
+      id: 'portal',
+      title: 'Portal section',
+      mark: 'as defined',
+      dimensions: [
+        { id: 'portal-extra-files', kind: 'backstage', mark: 'as defined' },
       ],
     },
   ],
-  summary: { 'as defined': 1, drifted: 1 },
+  summary: {
+    'as defined': 3,
+    'differs by input': 1,
+    drifted: 1,
+    'not checked': 1,
+  },
+};
+
+/**
+ * alder verified as someone whose probes the manager ran anyway: the
+ * anonymous probe of the identity feature answered 403, the tool-access
+ * feature has nothing but that kind of dimension. The view shows neither as
+ * drift to a person who may not read the installation.
+ */
+export const PROBES_DRIFTED: VerifyResult = {
+  installation: 'alder',
+  capability: 'agent-platform',
+  state: 'drifted',
+  inputs: { source: 'none' },
+  features: [
+    {
+      id: 'identity',
+      title: 'Identity',
+      mark: 'drifted',
+      dimensions: [
+        { id: 'dex-clients', kind: 'dex-secret', mark: 'as defined' },
+        {
+          id: 'dex-auth-request',
+          kind: 'probe',
+          mark: 'drifted',
+          probe: {
+            expect: [302],
+            requests: [
+              {
+                url: 'https://dex.alder.example.test/auth?client_id=kagent',
+                status: 403,
+                ok: false,
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      id: 'tool-access',
+      title: 'Tool access',
+      mark: 'drifted',
+      dimensions: [
+        {
+          id: 'muster-protected-resource-metadata',
+          kind: 'probe',
+          mark: 'drifted',
+        },
+      ],
+    },
+    {
+      id: 'runtime',
+      title: 'Runtime',
+      mark: 'as defined',
+      dimensions: [
+        { id: 'patch-top-level-keys', kind: 'configmap', mark: 'as defined' },
+      ],
+    },
+  ],
+  summary: { drifted: 2, 'as defined': 1 },
 };
 
 export interface FakeOptions {
@@ -250,7 +465,10 @@ export interface FakeOptions {
   plan?: CapabilityPlan;
   committed?: Committed;
   actions?: Action[];
-  verified?: VerifyResult;
+  /** One answer for every installation, or one per installation. */
+  verified?: VerifyResult | ((installation: string) => VerifyResult);
+  /** Installations whose verify fails, with the error. */
+  verifyErrors?: Record<string, Error>;
 }
 
 export interface Write {
@@ -266,6 +484,8 @@ export class FakeApi implements PlatformCapabilitiesApi {
   writes: Write[] = [];
   listFilters: ListInstallationsFilters[] = [];
   verified = 0;
+  /** The installations verified, in order. */
+  verifiedInstallations: string[] = [];
 
   constructor(private readonly options: FakeOptions = {}) {}
 
@@ -319,9 +539,18 @@ export class FakeApi implements PlatformCapabilitiesApi {
     return this.write('reconcile_capability', name, capability, args, options);
   }
 
-  async verifyCapability(): Promise<VerifyResult> {
+  async verifyCapability(name: string): Promise<VerifyResult> {
     this.verified++;
-    return this.options.verified ?? VERIFIED;
+    this.verifiedInstallations.push(name);
+    const failure = this.options.verifyErrors?.[name];
+    if (failure) {
+      throw failure;
+    }
+    const { verified } = this.options;
+    if (typeof verified === 'function') {
+      return verified(name);
+    }
+    return verified ?? { ...VERIFIED, installation: name };
   }
 
   async listActions(): Promise<ActionListing> {

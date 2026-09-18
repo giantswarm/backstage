@@ -16,6 +16,13 @@ export const actionsKey = (installation: string) => [
   'actions',
   installation,
 ];
+/** One installation's `verify_capability` answer for a capability. */
+export const verifyKey = (installation: string, capability: string) => [
+  QUERY_ROOT,
+  'verify',
+  capability,
+  installation,
+];
 
 export function useInstallations(filters?: ListInstallationsFilters) {
   const api = useApi(platformCapabilitiesApiRef);
