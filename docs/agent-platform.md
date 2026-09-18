@@ -1008,7 +1008,7 @@ answer:
 
 `GET /api/agent-platform/kagent/session-states?installation=<name>` answers, for
 each of the caller's sessions, what state it is in. The session switcher rail
-groups by it.
+groups by it, and the sessions list shows it as a column.
 
 **This is one of two routes in the backend that interpret kagent rather than
 forwarding it**, and the exception is arithmetic rather than taste. An
@@ -1115,6 +1115,37 @@ write, a terminal session whose `updated_at` has not moved needs no re-read at
 all, and steady-state cost drops by roughly an order of magnitude. That is the
 same open question the polling section raises above, and it is unverified — so
 the memo is deliberately not in the baseline.
+
+#### The State column on the sessions list
+
+The Sessions tab and an agent's own sessions card render the same summary as a
+sortable **State** column, through the same `describeSessionState` map the rail
+and the session page read — so one session cannot be called two things on two
+screens.
+
+**The column is fetched per installation the list actually shows a row from**,
+not per installation in scope: an installation with no row has no state to ask
+after, and each pass costs it one task read per session it holds. The reads go
+under the rail's own query key, so a list and a session page open together share
+one entry per installation instead of each paying for its own.
+
+**It polls on the baseline tier (60 s), not the rail's fast 10 s.** The rail
+watches one installation and exists to show a turn moving; the list spans the
+fleet, and at the fast tier an eleven-installation scope would spend a full pass
+on each of them every 15 s for a column nobody reads for progress. Opening a
+session still shows its live state immediately.
+
+**Four outcomes per cell, never a blank.** A state; `No activity yet` for a
+session that reported none; `Unknown` for one the backend could not read, or for
+every row of an installation whose whole summary failed; and a dash that says in
+its tooltip that nothing asked — past the activity window or the per-pass cap.
+Collapsing the last three into one cell would let "we could not tell" read as
+"nothing is waiting on you", which is the opposite answer.
+
+**Sorting is by urgency, not by label.** Ascending is waiting, then running, then
+failed, then finished, then the three kinds of no-answer, each group newest
+first. Alphabetical labels would sort `Completed` above `Waiting for input`,
+which inverts the only reason to sort by state at all.
 
 ### The session switcher rail
 

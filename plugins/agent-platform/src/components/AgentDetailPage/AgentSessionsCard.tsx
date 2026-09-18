@@ -2,6 +2,7 @@ import { Flex, Text } from '@backstage/ui';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
+import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { SessionsTable } from '../SessionsTable';
 
 /**
@@ -22,7 +23,13 @@ export function AgentSessionsCard({
 }: {
   sessions: AgentSessionsView;
 }) {
-  const { rows, isLoading, isNotUserScoped, isUnavailable } = sessions;
+  const { rows, installation, isLoading, isNotUserScoped, isUnavailable } =
+    sessions;
+  // The same summary the Sessions tab reads, under the same query key: opening
+  // this card after that tab costs nothing, and this page's read warms it back.
+  const sessionStates = useFleetSessionStates(
+    rows.length ? [installation] : [],
+  );
 
   return (
     <InfoCard title="Sessions">
@@ -43,6 +50,7 @@ export function AgentSessionsCard({
         ) : (
           <SessionsTable
             rows={rows}
+            sessionStates={sessionStates}
             isLoading={isLoading}
             hideColumns={['agentName', 'installation']}
             emptyMessage="No sessions with this agent yet. Conversations from before the move to kagent API v2 are not available."

@@ -1,6 +1,8 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { SessionRow } from '../SessionsDataProvider/helpers';
 import { sessionsRouteRef } from '../../routes';
 import { SessionsTable } from './SessionsTable';
@@ -306,5 +308,105 @@ describe('SessionsTable — a session whose runtime kagent reports lost', () => 
     expect(
       screen.getByRole('rowheader', { name: /What issues are assi/ }),
     ).toHaveTextContent('Runtime lost');
+  });
+});
+
+describe('SessionsTable — the State column', () => {
+  function statesView(
+    overrides: Partial<FleetSessionStatesView> = {},
+  ): FleetSessionStatesView {
+    return {
+      states: new Map<string, SessionStateEntry>(),
+      unreadable: new Set<string>(),
+      failedInstallations: new Set<string>(),
+      skippedCount: 0,
+      isLoading: false,
+      isError: false,
+      ...overrides,
+    };
+  }
+
+  it('is left out entirely when the caller loads no states', async () => {
+    // A column of dashes is worse than no column: it implies the answer is
+    // unknown when in fact nobody asked.
+    await renderInTestApp(<SessionsTable rows={rows} />, {
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
+
+    expect(screen.queryByText('State')).not.toBeInTheDocument();
+  });
+
+  it('names the state of each row in the same words the session page uses', async () => {
+    await renderInTestApp(
+      <SessionsTable
+        rows={rows}
+        sessionStates={statesView({
+          states: new Map<string, SessionStateEntry>([
+            ['gazelle/abc', { sessionId: 'abc', state: 'input-required' }],
+            ['golem/def', { sessionId: 'def', state: 'completed' }],
+          ]),
+        })}
+      />,
+      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    );
+
+    expect(screen.getByText('State')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for input')).toBeInTheDocument();
+    expect(screen.getByText('Completed')).toBeInTheDocument();
+  });
+
+  it('says a session it could not read is unknown, never that it is finished', async () => {
+    await renderInTestApp(
+      <SessionsTable
+        rows={rows}
+        sessionStates={statesView({ unreadable: new Set(['gazelle/abc']) })}
+      />,
+      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    );
+
+    expect(screen.getByText('Unknown')).toHaveAttribute(
+      'title',
+      expect.stringContaining('not the same as finished'),
+    );
+  });
+
+  it('distinguishes a session that has never run from one nobody asked about', async () => {
+    await renderInTestApp(
+      <SessionsTable
+        rows={rows}
+        sessionStates={statesView({
+          states: new Map<string, SessionStateEntry>([
+            ['gazelle/abc', { sessionId: 'abc', state: null }],
+          ]),
+        })}
+      />,
+      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    );
+
+    expect(screen.getByText('No activity yet')).toBeInTheDocument();
+    // The second row was never evaluated, so its cell explains itself rather
+    // than claiming anything.
+    expect(screen.getByTitle(/activity window/)).toBeInTheDocument();
+  });
+
+  it('sorts what needs a person to the top', async () => {
+    const user = userEvent.setup();
+    await renderInTestApp(
+      <SessionsTable
+        rows={rows}
+        sessionStates={statesView({
+          states: new Map<string, SessionStateEntry>([
+            ['gazelle/abc', { sessionId: 'abc', state: 'completed' }],
+            ['golem/def', { sessionId: 'def', state: 'input-required' }],
+          ]),
+        })}
+      />,
+      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    );
+
+    await user.click(screen.getByRole('columnheader', { name: /State/ }));
+
+    const cells = screen.getAllByRole('rowheader');
+    expect(cells[0]).toHaveTextContent('Chat');
   });
 });

@@ -53,6 +53,19 @@ jest.mock('../../hooks/useAgentSessions', () => ({
 // them itself. Stubbed for the same reason `useAgentSessions` is: this page's
 // react-query client and the muster API are not part of the test, and the menu
 // and the write dialogs are covered by their own tests.
+// The states summary is one more backend read this page's branches do not turn
+// on; the table renders the column, and its own tests cover it.
+jest.mock('../../hooks/useFleetSessionStates', () => ({
+  useFleetSessionStates: () => ({
+    states: new Map(),
+    unreadable: new Set(),
+    failedInstallations: new Set(),
+    skippedCount: 0,
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 jest.mock('../../hooks/useAgentDeletion', () => ({
   useAgentDeletion: () => ({
     deleteAgent: jest.fn(),
@@ -281,6 +294,7 @@ function makeModelConfig() {
 
 const NO_SESSIONS: AgentSessionsView = {
   rows: [],
+  installation: 'gazelle',
   isLoading: false,
   isNotUserScoped: false,
   isUnavailable: false,
