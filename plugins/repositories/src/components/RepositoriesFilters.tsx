@@ -1,18 +1,25 @@
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import {
   Box,
   FormControlLabel,
   Switch,
-  TextField,
+  // A number input: bui's TextField has no `type="number"`.
+  TextField as MuiTextField,
   Typography,
 } from '@material-ui/core';
-import { SearchField, Text } from '@backstage/ui';
+import { SearchField, Text, TextField } from '@backstage/ui';
 import {
   Autocomplete,
   SingleSelect,
 } from '@giantswarm/backstage-plugin-ui-react';
 import useDebounce from 'react-use/esm/useDebounce';
-import { LIFECYCLES, ListFilters, Scope } from '../apis';
+import {
+  CHINA_PUSHES,
+  LIFECYCLES,
+  ListFilters,
+  Scope,
+  SIGNINGS,
+} from '../apis';
 
 type SelectItem = { value: string; label: string };
 
@@ -24,29 +31,32 @@ const withAny = (items: SelectItem[]): SelectItem[] => [
   ...items,
 ];
 
-const RENOVATE = withAny([
-  { value: 'configured', label: 'Configured' },
-  { value: 'missing', label: 'Missing' },
-  { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Inactive' },
-]);
-const VISIBILITY = withAny([
-  { value: 'public', label: 'Public' },
-  { value: 'private', label: 'Private' },
-]);
+/** The manager's values as radios, each labelled with its own word capitalised. */
+const ofValues = (values: readonly string[]): SelectItem[] =>
+  withAny(
+    values.map(value => ({
+      value,
+      label: value[0].toUpperCase() + value.slice(1),
+    })),
+  );
+
+const RENOVATE = ofValues(['configured', 'missing', 'active', 'inactive']);
+const VISIBILITY = ofValues(['public', 'private']);
 const FORK = withAny([
   { value: 'true', label: 'Forks only' },
   { value: 'false', label: 'No forks' },
 ]);
-const LIFECYCLE = withAny(
-  LIFECYCLES.map(lifecycle => ({
-    value: lifecycle,
-    label: lifecycle[0].toUpperCase() + lifecycle.slice(1),
-  })),
-);
+const LIFECYCLE = ofValues(LIFECYCLES);
+/** `ci.arm64`: the images include linux/arm64, or are built without it. */
+const IMAGES = withAny([
+  { value: 'true', label: 'arm64' },
+  { value: 'false', label: 'amd64 only' },
+]);
+const CHINA_PUSH = ofValues(CHINA_PUSHES);
+const SIGNING = ofValues(SIGNINGS);
 
-/** A person stopped typing: the search goes to the manager after this. */
-const SEARCH_DEBOUNCE_MS = 300;
+/** A person stopped typing: the text goes to the manager after this. */
+const TEXT_DEBOUNCE_MS = 300;
 
 export type FilterChange = (
   name: keyof ListFilters,
@@ -91,7 +101,44 @@ function Choice({
   );
 }
 
-/** The manager's name-or-description search, sent once the person pauses. */
+/**
+ * A text filter as the person types it, sent to the manager once they pause;
+ * the URL's value (a shared view, a reload) is what the field shows first.
+ */
+function useTypedFilter(
+  name: keyof ListFilters,
+  value: string | undefined,
+  onChange: FilterChange,
+) {
+  const [text, setText] = useState(value ?? '');
+  useEffect(() => setText(value ?? ''), [value]);
+  useDebounce(
+    () => {
+      if (text !== (value ?? '')) {
+        onChange(name, text || undefined);
+      }
+    },
+    TEXT_DEBOUNCE_MS,
+    [text],
+  );
+  return [text, setText] as const;
+}
+
+/** A filter's label above its control, the way the column labels every filter. */
+function Labelled({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Box pt={1} pb={1}>
+      <Box mb={1}>
+        <Text variant="body-small" weight="bold">
+          {label}
+        </Text>
+      </Box>
+      {children}
+    </Box>
+  );
+}
+
+/** The manager's name-or-description search. */
 function Search({
   value,
   onChange,
@@ -99,24 +146,9 @@ function Search({
   value: string | undefined;
   onChange: FilterChange;
 }) {
-  const [text, setText] = useState(value ?? '');
-  useEffect(() => setText(value ?? ''), [value]);
-  useDebounce(
-    () => {
-      if (text !== (value ?? '')) {
-        onChange('search', text || undefined);
-      }
-    },
-    SEARCH_DEBOUNCE_MS,
-    [text],
-  );
+  const [text, setText] = useTypedFilter('search', value, onChange);
   return (
-    <Box pt={1} pb={1}>
-      <Box mb={1}>
-        <Text variant="body-small" weight="bold">
-          Search
-        </Text>
-      </Box>
+    <Labelled label="Search">
       <SearchField
         aria-label="Search"
         placeholder="Name or description"
@@ -124,16 +156,40 @@ function Search({
         onChange={setText}
         size="small"
       />
-    </Box>
+    </Labelled>
+  );
+}
+
+/** The manager's `orb` argument: an architect orb version, or its prefix. */
+function OrbVersion({
+  value,
+  onChange,
+}: {
+  value: string | undefined;
+  onChange: FilterChange;
+}) {
+  const [text, setText] = useTypedFilter('orb', value, onChange);
+  return (
+    <Labelled label="Orb version">
+      <TextField
+        aria-label="Orb version"
+        placeholder="10, or 10.5.0"
+        value={text}
+        onChange={setText}
+        size="small"
+      />
+    </Labelled>
   );
 }
 
 /**
  * The filters of `list_repositories`, one control each, in the layout the
- * Clusters page uses: the choices as radio groups, the long lists (teams,
- * finding kinds) as autocompletes whose options come from the scope's whole
- * inventory -- never from the rows a filter already narrowed. Under
- * *Unassigned* no row has a team, so the Team filter is not offered.
+ * Clusters page uses: the choices as radio groups (the CI facts among them:
+ * arm64 images, China push, signing), the long lists (teams, finding kinds)
+ * as autocompletes whose options come from the scope's whole inventory --
+ * never from the rows a filter already narrowed -- and the typed ones
+ * (search, orb version) sent once the person pauses. Under *Unassigned* no
+ * row has a team, so the Team filter is not offered.
  */
 export function RepositoriesFilters({
   scope,
@@ -218,6 +274,30 @@ export function RepositoriesFilters({
           onChange(name, value === undefined ? undefined : value === 'true')
         }
       />
+      <Choice
+        label="Images"
+        name="arm64"
+        value={filters.arm64 === undefined ? undefined : String(filters.arm64)}
+        items={IMAGES}
+        onChange={(name, value) =>
+          onChange(name, value === undefined ? undefined : value === 'true')
+        }
+      />
+      <Choice
+        label="China push"
+        name="chinaPush"
+        value={filters.chinaPush}
+        items={CHINA_PUSH}
+        onChange={onChange}
+      />
+      <Choice
+        label="Signing"
+        name="signing"
+        value={filters.signing}
+        items={SIGNING}
+        onChange={onChange}
+      />
+      <OrbVersion value={filters.orb} onChange={onChange} />
       <Box pt={1} pb={1}>
         <Autocomplete
           label="Finding"
@@ -226,13 +306,8 @@ export function RepositoriesFilters({
           onChange={selected => onChange('finding', selected ?? undefined)}
         />
       </Box>
-      <Box pt={1} pb={1}>
-        <Box mb={1}>
-          <Text variant="body-small" weight="bold">
-            Inactive for (days)
-          </Text>
-        </Box>
-        <TextField
+      <Labelled label="Inactive for (days)">
+        <MuiTextField
           fullWidth
           size="small"
           variant="outlined"
@@ -249,7 +324,7 @@ export function RepositoriesFilters({
             )
           }
         />
-      </Box>
+      </Labelled>
     </Box>
   );
 }

@@ -38,6 +38,10 @@ export function filtersFromParams(params: URLSearchParams): ListFilters {
     archived: showsArchived(params) ? undefined : false,
     inactiveDays: num('inactiveDays'),
     finding: text('finding'),
+    orb: text('orb'),
+    arm64: flag('arm64'),
+    chinaPush: text('chinaPush') as ListFilters['chinaPush'],
+    signing: text('signing') as ListFilters['signing'],
   };
 }
 

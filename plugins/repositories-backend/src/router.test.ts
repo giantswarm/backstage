@@ -156,7 +156,7 @@ describe('createRouter', () => {
     };
     manager.answers.set('list_repositories', listing);
     const res = await request(app).get(
-      '/repositories?scope=team&team=team-bumblebee&fork=false&archived=false&search=must&renovate=missing&lifecycle=active&inactiveDays=90&finding=default-icon&limit=50',
+      '/repositories?scope=team&team=team-bumblebee&fork=false&archived=false&search=must&renovate=missing&lifecycle=active&inactiveDays=90&finding=default-icon&orb=10&arm64=true&chinaPush=split&signing=signed&limit=50',
     );
     expect(res.status).toBe(200);
     expect(res.body).toEqual(listing);
@@ -174,6 +174,10 @@ describe('createRouter', () => {
           lifecycle: 'active',
           inactiveDays: 90,
           finding: 'default-icon',
+          orb: '10',
+          arm64: true,
+          chinaPush: 'split',
+          signing: 'signed',
           limit: 50,
         },
       },
@@ -199,6 +203,9 @@ describe('createRouter', () => {
     expect(
       (await request(app).get('/repositories?inactiveDays=soon')).status,
     ).toBe(400);
+    expect((await request(app).get('/repositories?arm64=arm')).status).toBe(
+      400,
+    );
     expect(manager.calls).toHaveLength(0);
   });
 

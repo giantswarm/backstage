@@ -20,6 +20,24 @@ export const LIFECYCLES = ['active', 'deprecated', 'archived'] as const;
 
 export type Lifecycle = (typeof LIFECYCLES)[number];
 
+/**
+ * How a pipeline's images reach the China registry: `split` (the in-China
+ * sync job), `inline` (the push job pushes there itself), `custom` (an
+ * overridden registry list), `none` (no image push).
+ */
+export const CHINA_PUSHES = ['split', 'inline', 'custom', 'none'] as const;
+
+export type ChinaPush = (typeof CHINA_PUSHES)[number];
+
+/**
+ * Whether a pipeline's images and charts are signed with cosign: `unsigned`
+ * comes with the record's reason, `unknown` when the configuration does not
+ * say, `none` when nothing is pushed.
+ */
+export const SIGNINGS = ['signed', 'unsigned', 'unknown', 'none'] as const;
+
+export type Signing = (typeof SIGNINGS)[number];
+
 /** The filters of `list_repositories`, as the page offers them. */
 export interface ListFilters {
   scope?: Scope;
@@ -51,7 +69,26 @@ export interface ListFilters {
   inactiveDays?: number;
   /** A finding kind. */
   finding?: string;
+  /** An architect orb version, or its prefix: `10` selects every `10.x.y`. */
+  orb?: string;
+  /** `true`: the pipeline builds linux/arm64 images; `false`: images without it. */
+  arm64?: boolean;
+  chinaPush?: ChinaPush;
+  signing?: Signing;
   limit?: number;
+}
+
+/**
+ * The CI facts of a row, from the repository's CircleCI configuration:
+ * absent from a row without one.
+ */
+export interface RowCI {
+  /** The giantswarm/architect orb version pinned; absent without the orb. */
+  orb?: string;
+  /** Absent when the configuration does not say. */
+  arm64?: boolean;
+  chinaPush: ChinaPush;
+  signing: Signing;
 }
 
 /** A row's set-up state: the engine's checks and the last reconciler run. */
@@ -76,6 +113,7 @@ export interface RepositoryRow {
   lastPersonCommit?: string;
   /** Finding kinds. */
   findings?: string[];
+  ci?: RowCI;
   setup: RepositoryRowSetup;
   age: string;
 }
@@ -152,6 +190,45 @@ export interface PullRequestRef {
   createdAt: string;
 }
 
+/**
+ * A commit's `ci/circleci:` statuses -- the default branch head's, or the
+ * latest release's tag commit's: whether CircleCI built it.
+ */
+export interface HeadStatus {
+  /** The worst state among the contexts: `failure`, `error`, `pending`, `expected` or `success`. */
+  state: string;
+  /** The status contexts, `ci/circleci: <job>`, sorted. */
+  contexts: string[];
+  /** When the newest of them was posted. */
+  at: string;
+}
+
+/**
+ * What the repository's CircleCI configuration on the default branch says
+ * (`.circleci/config.yml`, `workflows.yml`, `custom.yml`); absent from a
+ * record without one.
+ */
+export interface CI {
+  /** The `.circleci` files found. */
+  files: string[];
+  /** `config.yml` carries devctl's generator header. */
+  generated: boolean;
+  /** The giantswarm/architect orb version pinned; absent without the orb. */
+  orb?: string;
+  imagePush: boolean;
+  chartPush: boolean;
+  /** The image platforms the push jobs build; absent when the configuration does not say. */
+  platforms?: string[];
+  /** linux/arm64 among the platforms; absent when the configuration does not say. */
+  arm64?: boolean;
+  chinaPush: ChinaPush;
+  signing: Signing;
+  /** Why unsigned: a private repository, `sign: false`, an orb before 8.2.0. */
+  signingReason?: string;
+  /** A file that did not parse. */
+  error?: string;
+}
+
 /** The full inventory record of one repository (`get_repository`). */
 export interface InventoryRecord {
   repository: string;
@@ -195,22 +272,34 @@ export interface InventoryRecord {
       onboarding?: PullRequestRef[];
     };
     openIssues: number;
-    latestRelease?: { tag: string; publishedAt: string };
+    latestRelease?: {
+      tag: string;
+      publishedAt: string;
+      /** The tag commit's CircleCI statuses; absent when it carries none. */
+      build?: HeadStatus;
+      /** More status contexts than were read, none of them CircleCI's. */
+      buildTruncated?: boolean;
+    };
     codeownersTeams?: string[];
     unknownCodeownersTeams?: string[];
     has: Record<string, boolean>;
   } | null;
+  /** The project's state on CircleCI, from GitHub alone; absent when the repository is gone. */
   circleci?: {
+    /** CircleCI builds the repository: statuses on the head, or the reconciler found the project followed. */
     followed: boolean;
+    /** From the reconciler's run only; absent until a run tells. */
     setupWorkflows?: boolean;
-    lastPipeline?: {
-      number: number;
-      state: string;
-      createdAt: string;
-      ref?: string;
-    };
+    /** The default branch head's CircleCI statuses; absent when it has none. */
+    head?: HeadStatus;
+    /** `statuses` | `artifact` | `statuses+artifact`: the sources that answered. */
+    source: string;
+    /** The facts no source yields: `followed`, `setupWorkflows`. */
+    unknown?: string[];
+    /** The reconciler's circleci step failing, as its run reported it. */
     error?: string;
   };
+  ci?: CI;
   renovate: {
     configured: boolean;
     path?: string;

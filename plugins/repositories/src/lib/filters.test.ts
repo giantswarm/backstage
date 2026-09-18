@@ -9,7 +9,7 @@ describe('filters in the URL', () => {
   it('reads the tool arguments off the query string, typed', () => {
     const filters = filtersFromParams(
       new URLSearchParams(
-        'scope=unassigned&search=must&fork=true&inactiveDays=90&renovate=missing&team=none&finding=default-icon&visibility=public&lifecycle=deprecated',
+        'scope=unassigned&search=must&fork=true&inactiveDays=90&renovate=missing&team=none&finding=default-icon&visibility=public&lifecycle=deprecated&orb=10&arm64=false&chinaPush=split&signing=unsigned',
       ),
     );
     expect(filters).toEqual({
@@ -23,6 +23,10 @@ describe('filters in the URL', () => {
       visibility: 'public',
       lifecycle: 'deprecated',
       archived: false,
+      orb: '10',
+      arm64: false,
+      chinaPush: 'split',
+      signing: 'unsigned',
     });
     expect(hasFilters(filters)).toBe(true);
   });

@@ -14,10 +14,12 @@ import {
 /**
  * Inventory records in the shape giantswarm-repo-manager stores them
  * (`docs/inventory-record.md`), over two teams: a declared repository whose
- * set-up converged, one being created whose set-up has not, an undeclared
- * one, a deprecated one, one declared archived, and an undeclared fork that
- * GitHub archived. The tests render the page over these through
- * `inMemoryApi`; the dev app shows the same rows.
+ * set-up converged (a generated pipeline on a current orb: arm64, split
+ * China push, signed), one being created whose set-up has not, an undeclared
+ * one, a deprecated one (a hand-maintained pipeline on an old orb: amd64
+ * only, inline China push, unsigned), one declared archived, and an
+ * undeclared fork that GitHub archived. The tests render the page over these
+ * through `inMemoryApi`; the dev app shows the same rows.
  */
 
 export const presentService: InventoryRecord = {
@@ -58,7 +60,18 @@ export const presentService: InventoryRecord = {
     botCommits: 12,
     openPullRequests: { total: 2, people: 1, bots: 1, renovate: 1 },
     openIssues: 1,
-    latestRelease: { tag: 'v1.0.0', publishedAt: '2026-09-01T12:00:00Z' },
+    latestRelease: {
+      tag: 'v1.0.0',
+      publishedAt: '2026-09-01T12:00:00Z',
+      build: {
+        state: 'success',
+        contexts: [
+          'ci/circleci: push-to-app-catalog-release',
+          'ci/circleci: push-to-registries-release',
+        ],
+        at: '2026-09-01T11:58:00Z',
+      },
+    },
     codeownersTeams: ['team-bumblebee'],
     has: {
       renovate: true,
@@ -74,12 +87,23 @@ export const presentService: InventoryRecord = {
   circleci: {
     followed: true,
     setupWorkflows: true,
-    lastPipeline: {
-      number: 42,
-      state: 'created',
-      createdAt: '2026-09-15T08:01:00Z',
-      ref: 'main',
+    head: {
+      state: 'success',
+      contexts: ['ci/circleci: go-build', 'ci/circleci: push-to-registries'],
+      at: '2026-09-15T08:05:00Z',
     },
+    source: 'statuses+artifact',
+  },
+  ci: {
+    files: ['config.yml', 'workflows.yml', 'custom.yml'],
+    generated: true,
+    orb: '10.5.0',
+    imagePush: true,
+    chartPush: true,
+    platforms: ['linux/amd64', 'linux/arm64'],
+    arm64: true,
+    chinaPush: 'split',
+    signing: 'signed',
   },
   renovate: {
     configured: true,
@@ -318,7 +342,30 @@ export const legacyTool: InventoryRecord = {
     codeownersTeams: ['team-planeteers'],
     has: { renovate: true, circleci: true, readme: true, codeowners: true },
   },
-  circleci: { followed: true, setupWorkflows: false },
+  circleci: {
+    followed: true,
+    setupWorkflows: false,
+    head: {
+      state: 'failure',
+      contexts: ['ci/circleci: build'],
+      at: '2025-11-02T09:04:00Z',
+    },
+    source: 'statuses+artifact',
+  },
+  // A hand-maintained pipeline on an old orb: amd64 only, pushed to China
+  // by the push job itself, unsigned; the tag commit carries no statuses.
+  ci: {
+    files: ['config.yml'],
+    generated: false,
+    orb: '6.3.0',
+    imagePush: true,
+    chartPush: false,
+    platforms: ['linux/amd64'],
+    arm64: false,
+    chinaPush: 'inline',
+    signing: 'unsigned',
+    signingReason: 'an orb before 8.2.0',
+  },
   renovate: {
     configured: true,
     path: 'renovate.json5',
@@ -488,6 +535,12 @@ export function rowOf(record: InventoryRecord): RepositoryRow {
     renovate: record.renovate.configured,
     lastPersonCommit: record.reality?.lastPersonCommit?.date,
     findings: record.findings.map(finding => finding.kind),
+    ci: record.ci && {
+      orb: record.ci.orb,
+      arm64: record.ci.arm64,
+      chinaPush: record.ci.chinaPush,
+      signing: record.ci.signing,
+    },
     setup: {
       converged: record.setup.checks?.converged,
       checkedAt: record.setup.checkedAt,

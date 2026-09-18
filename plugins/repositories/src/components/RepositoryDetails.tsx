@@ -11,7 +11,7 @@ import {
   InfoCard,
   StatusLabel,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { InventoryRecord, repositoriesApiRef } from '../apis';
+import { CI, HeadStatus, InventoryRecord, repositoriesApiRef } from '../apis';
 import { convergedState } from '../lib/setupStatus';
 import { RowActions } from './actions/RowActions';
 import { FindingsList } from './FindingsList';
@@ -52,6 +52,45 @@ const commit = (entry?: { date: string; author: string }) =>
 
 const yes = (flag?: boolean) => (flag ? 'yes' : undefined);
 
+/** The record has no value for this fact: shown as a dash, never made up. */
+const NONE = '—';
+
+/** A commit's CircleCI statuses in one phrase: the worst state, the jobs, when. */
+const built = (status: HeadStatus) =>
+  `${status.state} (${status.contexts.length} ${status.contexts.length === 1 ? 'job' : 'jobs'}, ${dateTime(status.at)})`;
+
+/** Whether CircleCI builds the repository, and how the default branch's head fared. */
+function circleciFact(
+  circleci: NonNullable<InventoryRecord['circleci']>,
+  branch: string,
+): string {
+  if (!circleci.followed) {
+    return 'not followed';
+  }
+  return circleci.head
+    ? `builds ${branch}: ${built(circleci.head)}`
+    : 'followed';
+}
+
+/**
+ * The CI facts of a repository in the record's words: the orb version,
+ * whether the images include arm64, how they reach China and whether they
+ * are signed -- each a dash without a CircleCI configuration to read it from.
+ */
+function ciFacts(ci?: CI): (Fact | undefined)[] {
+  const arm64 = { true: 'arm64', false: 'amd64 only' }[String(ci?.arm64)];
+  const signing =
+    ci?.signing === 'unsigned' && ci.signingReason
+      ? `unsigned: ${ci.signingReason}`
+      : ci?.signing;
+  return [
+    fact('Orb', ci?.orb ? `architect ${ci.orb}` : NONE),
+    fact('Images', arm64 ?? NONE),
+    fact('China push', ci?.chinaPush ?? NONE),
+    fact('Signing', signing ?? NONE),
+  ];
+}
+
 /** A card of grouped facts, half the row wide (a value must not break mid-word); nothing when every fact is empty. */
 function FactsCard({ title, items }: { title: string; items: Fact[] }) {
   if (items.length === 0) {
@@ -91,8 +130,11 @@ function SetupState({ record }: { record: InventoryRecord }) {
  * The expanded row: one repository's inventory record as `get_repository`
  * returns it. The header names the repository (a link to GitHub), its set-up
  * state and the actions; the facts are grouped -- Ownership, Activity,
- * Tooling -- with empty ones left out; then the findings with their fix and
- * the set-up steps, re-read every 15 s while they converge.
+ * Tooling -- with empty ones left out, except the CI facts (the build of the
+ * default branch and of the latest release, the orb, arm64, China push,
+ * signing), which show a dash where the record has no CircleCI configuration
+ * to read them from; then the findings with their fix and the set-up steps,
+ * re-read every 15 s while they converge.
  */
 export function RepositoryDetails({ repository }: { repository: string }) {
   const api = useApi(repositoriesApiRef);
@@ -216,11 +258,16 @@ export function RepositoryDetails({ repository }: { repository: string }) {
     ),
     fact(
       'CircleCI',
-      circleci &&
-        (circleci.followed
-          ? `followed${circleci.lastPipeline ? `, pipeline #${circleci.lastPipeline.number} ${circleci.lastPipeline.state}` : ''}`
-          : 'not followed'),
+      circleci && circleciFact(circleci, reality?.defaultBranch ?? 'main'),
     ),
+    fact(
+      'Release build',
+      reality?.latestRelease &&
+        (reality.latestRelease.build
+          ? `built: ${built(reality.latestRelease.build)}`
+          : NONE),
+    ),
+    ...ciFacts(record.ci),
     fact('Language', declaration?.language ?? reality?.language),
     fact('Visibility', reality?.visibility),
     fact('Default branch', reality?.defaultBranch),
