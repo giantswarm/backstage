@@ -11,6 +11,7 @@ import {
   DeclarationEntry,
   DeclarationInput,
   InventoryRecord,
+  LifecycleChange,
   ListFilters,
   ManagerInfo,
   Plan,
@@ -135,7 +136,7 @@ export class RepositoriesApiClient implements RepositoriesApi {
 
   setLifecycle<O extends WriteOptions>(
     name: string,
-    args: { lifecycle: 'deprecated' | 'archived'; reason?: string },
+    args: { lifecycle: LifecycleChange; reason?: string; confirm?: string },
     options: O,
   ): Promise<WriteResult<O, Plan, Committed>> {
     return this.write(name, 'lifecycle', args, options);

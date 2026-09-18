@@ -92,7 +92,12 @@ commit` -- the repository and one scaffold commit as the person, then the
   they are and named on the form), _Transfer_ (`transfer_repository`, the
   receiving team approves, the giving team is told), _Deprecate_ and
   _Archive_ (`set_lifecycle`, the team's review asked in its channel),
-  _Align now_ (`align_repository`, the set-up workflow dispatched as the
+  _Delete_ (`set_lifecycle` with `lifecycle: deleted` -- a red button apart
+  from the others; the dialog says what is deleted, the repository's name
+  typed by the person goes to the manager as `confirm`, which refuses the
+  deletion without it; the reconciler unfollows CircleCI and deletes the
+  repository on GitHub once the team has approved, and the entry stays in the
+  team file as the record), _Align now_ (`align_repository`, the set-up workflow dispatched as the
   person: the dialog says that the run changes the repository on GitHub and
   CircleCI to its declared set-up and the company baseline, and its dry run
   shows the manager's warning, the changes the last check planned per step
