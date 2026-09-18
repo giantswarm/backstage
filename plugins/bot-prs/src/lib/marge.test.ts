@@ -152,7 +152,10 @@ describe('dependencyOf', () => {
       'build(deps): bump k8s.io/client-go from 0.30 to 0.31',
       'k8s.io/client-go',
     ],
-    ['Align files with template', 'Align files with template'],
+    // A PR that moves no dependency names none: the title is in the Pull
+    // request column already, and repeating it here reads as a dependency.
+    ['Align files with template', ''],
+    ['Configure Renovate', ''],
   ])('%s -> %s', (title, dependency) => {
     expect(dependencyOf(title)).toBe(dependency);
   });
