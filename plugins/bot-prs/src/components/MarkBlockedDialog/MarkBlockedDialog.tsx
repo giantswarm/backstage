@@ -12,7 +12,6 @@ import { ConnectMargeAlert } from '../ConnectMargeAlert';
 
 export type MarkBlockedDialogProps = {
   installation: string;
-  team: string;
   row: BotPrRow | undefined;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
@@ -27,13 +26,12 @@ export type MarkBlockedDialogProps = {
  */
 export function MarkBlockedDialog({
   installation,
-  team,
   row,
   isOpen,
   onOpenChange,
   onApplied,
 }: MarkBlockedDialogProps) {
-  const mark = useMargeMark(installation, team);
+  const mark = useMargeMark(installation);
   const [reason, setReason] = useState('');
   const [applied, setApplied] = useState(false);
 

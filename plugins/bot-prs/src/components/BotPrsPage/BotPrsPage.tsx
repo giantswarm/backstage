@@ -206,7 +206,7 @@ function Queue({
 
   // A whole-team sweep needs one team: the scope's only team, or the team
   // the filter picked. With several teams in view the button says so.
-  const sweepTeam = teams.length === 1 ? teams[0] : (filters.team ?? undefined);
+  const sweepTeam = filters.team ?? (teams.length === 1 ? teams[0] : undefined);
   const confirmModeOfTeam = (team: string) =>
     confirmModeOf(
       queue.queues.find(entry => entry.team === team)?.result as
@@ -436,7 +436,6 @@ function Queue({
       {open?.kind === 'mark' ? (
         <MarkBlockedDialog
           installation={installation}
-          team={open.row.team}
           row={open.row}
           isOpen
           onOpenChange={close}
@@ -475,8 +474,15 @@ export function BotPrsPage() {
   const scope: Scope =
     filters.scope ?? (teams.ownTeams.length > 0 ? 'mine' : 'all');
   const scopeTeams = scope === 'mine' ? teams.ownTeams : teams.teams;
+  // The team filter narrows what is shown and not what is read: a team of
+  // the scope is already in the queue, so picking it from the bar costs no
+  // call. A team the scope does not hold is a link somebody shared, and is
+  // the scope on its own.
   const inScope = useMemo(
-    () => (filters.team ? [filters.team] : scopeTeams),
+    () =>
+      filters.team && !scopeTeams.includes(filters.team)
+        ? [filters.team]
+        : scopeTeams,
     // Keyed on contents: the hook derives its arrays fresh each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filters.team, scopeTeams.join(',')],
