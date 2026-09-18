@@ -50,7 +50,13 @@ const previewOf = (repo: string, number: number): MargeResult => ({
       policy: {
         sweep: true,
         update_types: { renovate: ['patch'] },
-        rescue: { enabled: true, confirm: 'per-sweep' },
+        rescue: {
+          enabled: true,
+          weekly: 5,
+          budget_enforced: false,
+          rescues_dispatched: false,
+          confirm: 'per-sweep',
+        },
         concurrency: { per_team: 1, per_repo: 1 },
       },
     },
