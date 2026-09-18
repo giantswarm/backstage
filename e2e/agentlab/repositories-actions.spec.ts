@@ -1,4 +1,4 @@
-import type { Page, Route } from '@playwright/test';
+import type { Locator, Page, Route } from '@playwright/test';
 
 import { expect, open, test } from './fixtures';
 
@@ -139,9 +139,19 @@ async function fillDeclaration(page: Page, declaration = goService) {
     await team.click();
     await page.getByRole('option', { name: /^team-bumblebee/ }).click();
   }
-  await page.getByRole('radio', { name: declaration.kind }).click();
+  await kind(page, declaration.kind).click();
   await page.getByLabel(/^Name/).fill(declaration.name);
 }
+
+/**
+ * The label around a radio's or checkbox's (visually hidden) input: it takes
+ * the click -- the input itself is covered by it.
+ */
+const labelOf = (control: Locator) => control.locator('xpath=ancestor::label');
+
+/** A Kind radio's card. */
+const kind = (page: Page, name: RegExp) =>
+  labelOf(page.getByRole('radio', { name }));
 
 /** The form's dry run for the declaration as it stands has answered. */
 async function answered(page: Page) {
@@ -245,7 +255,7 @@ test.describe('repositories: actions', () => {
 
     // Forced on, the creation rules refuse: no CircleCI job for language
     // generic. The refusal names the field and the value to set.
-    await ciGenerate(admin).click();
+    await labelOf(ciGenerate(admin)).click();
     await answered(admin);
     await expect(entry).toContainText(`${configuration.name}: refused`);
     const problems = entry.getByTestId('problems');
