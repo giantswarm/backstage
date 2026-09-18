@@ -190,6 +190,11 @@ async function snapshot(page: Page, name: string): Promise<void> {
 }
 
 /** Toggle a size in the picker: the react-aria input is visually hidden, its label is what a person clicks. */
+/** Click the label of a visually hidden bui checkbox or switch input. */
+async function toggleByLabel(input: Locator): Promise<void> {
+  await input.locator('xpath=ancestor::label[1]').click();
+}
+
 async function toggleSize(picker: Locator, size: RegExp): Promise<void> {
   const checkbox = picker.getByRole('checkbox', { name: size });
   const before = await checkbox.isChecked();
@@ -591,9 +596,14 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
     expect(dryRuns(calls)[0].arguments).toMatchObject({ cache: true });
     await snapshot(page, 'gpu-pool-zones-cache-defaults');
 
-    await zones.getByRole('checkbox', { name: 'eu-central-1a' }).check();
-    await zones.getByRole('checkbox', { name: 'eu-central-1c' }).check();
-    await cache.click();
+    // bui's checkbox and switch inputs are visually hidden under their labels: click the label.
+    await toggleByLabel(zones.getByRole('checkbox', { name: 'eu-central-1a' }));
+    await toggleByLabel(zones.getByRole('checkbox', { name: 'eu-central-1c' }));
+    await toggleByLabel(cache);
+    await expect(
+      zones.getByRole('checkbox', { name: 'eu-central-1a' }),
+    ).toBeChecked();
+    await expect(cache).not.toBeChecked();
     await expect(dialog.getByTestId('zones-choice')).toContainText(
       'The nodes launch in eu-central-1a, eu-central-1c only.',
     );
