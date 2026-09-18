@@ -82,4 +82,32 @@ describe('useMusterServerAvailability', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.missing).toEqual(['gazelle']);
   });
+
+  it('reports unreachable, not missing, when the server list cannot be read', async () => {
+    listServers.mockRejectedValue(new Error('muster answered 503'));
+
+    const { result } = render('marge', ['gazelle']);
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.presenceOf('gazelle')).toBe('unreachable');
+    expect(result.current.unreachable).toEqual(['gazelle']);
+    expect(result.current.missing).toEqual([]);
+    expect(result.current.error?.message).toBe('muster answered 503');
+  });
+
+  it('keeps the installations that answered apart from the one that did not', async () => {
+    listServers.mockImplementation((installation: string) =>
+      installation === 'gazelle'
+        ? Promise.resolve({
+            mcpServers: [{ name: 'gazelle-mcp-marge', toolPrefix: 'marge' }],
+          })
+        : Promise.reject(new Error('muster answered 503')),
+    );
+
+    const { result } = render('marge', ['gazelle', 'glean']);
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.available).toEqual(['gazelle']);
+    expect(result.current.unreachable).toEqual(['glean']);
+  });
 });

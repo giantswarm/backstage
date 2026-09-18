@@ -1,8 +1,10 @@
 export { musterPlugin as default } from './plugin';
 export {
+  isSessionExpiredError,
   musterApiRef,
   musterAuthProvidersApiRef,
   MusterAuthProviders,
+  MusterTokenMintError,
   toolErrorDetails,
 } from './apis';
 export type {

@@ -11,14 +11,19 @@ import {
   Typography,
 } from '@material-ui/core';
 import { Alert } from '@backstage/ui';
-import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
+import {
+  isSessionExpiredError,
+  useServerSignIn,
+} from '@giantswarm/backstage-plugin-muster';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBotPrs, useMargeInstallation } from '../../hooks/useMarge';
 import { useTeams } from '../../hooks/useTeams';
 import {
   confirmModeOf,
+  looksUnknownTeam,
   MARGE_SERVER,
+  MargeNotConnectedError,
   rowsOf,
   type BotPrRow,
   type MargeResult,
@@ -161,8 +166,17 @@ function Queue({
   );
   const filtered = useMemo(() => applyFilters(rows, filters), [rows, filters]);
   const answered = queue.queues.filter(entry => entry.result);
+  // Teams the catalog names and giantswarm/github does not: one gap, listed
+  // once. Anything else marge refused is a real failure per team.
+  const unknownTeams = queue.queues
+    .filter(entry => looksUnknownTeam(entry.error))
+    .map(entry => entry.team);
   const refused = queue.queues.filter(
-    entry => entry.error && entry.error !== queue.notConnected,
+    entry =>
+      entry.error &&
+      !(entry.error instanceof MargeNotConnectedError) &&
+      !isSessionExpiredError(entry.error) &&
+      !looksUnknownTeam(entry.error),
   );
   const total = answered.reduce(
     (sum, entry) => sum + (entry.result?.summary.total ?? 0),
@@ -195,6 +209,38 @@ function Queue({
     [],
   );
   const close = useCallback(() => setOpen(undefined), []);
+
+  // A dead portal session fails every read here and everywhere else in the
+  // portal, and no action on this page can mend it: the page says so and
+  // stops. The portal asks for the sign-in again on the next load.
+  const expired = queue.queues.find(entry =>
+    isSessionExpiredError(entry.error),
+  );
+  if (expired?.error) {
+    return (
+      <Box pt={2}>
+        <Alert
+          status="warning"
+          title="Your portal session has expired"
+          description={`${expired.error.message} Reload the page to sign in again.`}
+        />
+      </Box>
+    );
+  }
+
+  // Without a grant there is no queue to show and no action to offer, and
+  // every team's read failed on the same missing grant. The sign-in is the
+  // whole page until it is done.
+  if (queue.notConnected) {
+    return (
+      <Box pt={2}>
+        <ConnectMargeAlert
+          installation={installation}
+          message={queue.notConnected.message}
+        />
+      </Box>
+    );
+  }
 
   return (
     <>
@@ -243,23 +289,32 @@ function Queue({
         </Tooltip>
       </Box>
 
-      {queue.notConnected ? (
+      {unknownTeams.length > 0 ? (
         <Box pt={2}>
-          <ConnectMargeAlert
-            installation={installation}
-            message={queue.notConnected.message}
+          <Alert
+            status="warning"
+            title={`marge has no team file for ${unknownTeams.join(', ')}`}
+            description={`A team is swept under its own file in giantswarm/github, and ${
+              unknownTeams.length === 1 ? 'this one has' : 'these have'
+            } none. Add the file to put ${
+              unknownTeams.length === 1 ? 'the team' : 'them'
+            } in the queue; the other teams in view are unaffected.`}
           />
         </Box>
       ) : null}
-      {refused.map(entry => (
-        <Box pt={2} key={entry.team}>
+      {refused.length > 0 ? (
+        <Box pt={2}>
           <Alert
             status="danger"
-            title={`marge refused the read for team ${entry.team}`}
-            description={entry.error?.message}
+            title={`marge refused the read for ${refused
+              .map(entry => entry.team)
+              .join(', ')}`}
+            description={[
+              ...new Set(refused.map(entry => entry.error?.message ?? '')),
+            ].join(' ')}
           />
         </Box>
-      ))}
+      ) : null}
 
       {queue.isLoading ? (
         <Box pt={2}>
