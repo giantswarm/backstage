@@ -114,13 +114,22 @@ async function answered() {
   return screen.getByTestId('dry-run');
 }
 
-/** The team is read off the caller; the kind is picked, the name typed. */
-async function fillDeclaration(kind = /^Go service/, name = 'shiny-service') {
+const summary = () => screen.getByTestId('declaration-summary');
+const source = () => screen.getByTestId('declaration-source');
+
+/** The team is read off the caller; the preset is picked, the name typed. */
+async function fillDeclaration(preset = /^Go service/, name = 'shiny-service') {
   await waitFor(() =>
     expect(select(/Team$/)).toHaveTextContent('team-bumblebee (your team)'),
   );
-  await userEvent.click(radio(kind));
+  await userEvent.click(radio(preset));
   await userEvent.type(field(/^Name/), name);
+}
+
+/** Adjust opens the declaration's raw controls. */
+async function adjust() {
+  await userEvent.click(button('Adjust'));
+  return screen.getByTestId('declaration-fields');
 }
 
 /** The Go service the tests declare; the CircleCI generator on, as the form opens. */
@@ -137,7 +146,7 @@ const declaration = {
 beforeEach(() => repositoriesQueryClient.clear());
 
 describe('CreateRepositoryPage', () => {
-  it('says what Create does and opens as a Go service for the person’s team, the review waiting for a name', async () => {
+  it('says what Create does and opens as a Go service for the person’s team, the declaration as the preset’s result, the review waiting for a name', async () => {
     await renderPage({});
     expect(
       screen.getByText(
@@ -148,10 +157,13 @@ describe('CreateRepositoryPage', () => {
       expect(select(/Team$/)).toHaveTextContent('team-bumblebee (your team)'),
     );
     expect(radio(/^Go service/)).toBeChecked();
-    expect(select(/Component type$/)).toHaveTextContent('service');
-    expect(select(/Language$/)).toHaveTextContent('go');
-    expect(screen.getByRole('checkbox', { name: 'app' })).toBeChecked();
-    expect(ciGenerate()).toBeChecked();
+    expect(summary()).toHaveTextContent(
+      'service · go · app · CircleCI config generated',
+    );
+    expect(source()).toHaveTextContent('Set by the Go service preset.');
+    // The raw controls wait behind Adjust.
+    expect(screen.queryByTestId('declaration-fields')).toBeNull();
+    expect(button('Adjust')).toHaveAttribute('aria-expanded', 'false');
     expect(radio(/^Private/)).toBeChecked();
     expect(screen.getByTestId('review-hint')).toHaveTextContent(
       'Pick the team and a name',
@@ -208,14 +220,14 @@ describe('CreateRepositoryPage', () => {
     expect(button('Create')).toBeEnabled();
   });
 
-  it('a kind fills the generation fields; a field set by hand reads as Custom and follows the CircleCI rule', async () => {
+  it('a preset fills the declaration; Adjust opens its raw controls, where a nature set by hand matches no preset and follows the CircleCI rule', async () => {
     const validateRepository = jest.fn().mockResolvedValue(acceptedValidation);
     await renderPage({ validateRepository });
     await fillDeclaration(/^Configuration/, 'shiny-config');
-    expect(select(/Component type$/)).toHaveTextContent('configuration');
-    expect(select(/Language$/)).toHaveTextContent('generic');
-    expect(screen.getByRole('checkbox', { name: 'generic' })).toBeChecked();
-    expect(ciGenerate()).not.toBeChecked();
+    expect(summary()).toHaveTextContent(
+      'configuration · generic · generic · CircleCI config not generated',
+    );
+    expect(source()).toHaveTextContent('Set by the Configuration preset.');
     await answered();
     expect(validateRepository).toHaveBeenLastCalledWith({
       team: 'team-bumblebee',
@@ -231,18 +243,91 @@ describe('CreateRepositoryPage', () => {
       reason: undefined,
     });
 
-    // The app flavour added by hand: no kind matches, and a chart is a job.
-    await userEvent.click(screen.getByRole('checkbox', { name: 'app' }));
-    expect(radio(/^Custom\b/)).toBeChecked();
+    // The raw controls: the catalog type, the language, the nature as one
+    // choice, the add-ons, the CircleCI switch.
+    const fields = await adjust();
+    expect(button('Done')).toHaveAttribute('aria-expanded', 'true');
+    expect(select(/Catalog type$/)).toHaveTextContent('configuration');
+    expect(select(/Language$/)).toHaveTextContent('generic');
+    expect(radio(/^generic$/)).toBeChecked();
+    expect(radio(/^app$/)).not.toBeChecked();
+    expect(ciGenerate()).not.toBeChecked();
+    const clusterApp = within(fields).getByRole('checkbox', {
+      name: 'cluster-app',
+    });
+    // An add-on to app: disabled with another nature, and saying so.
+    expect(clusterApp).toBeDisabled();
+    expect(clusterApp).toHaveAccessibleDescription(
+      /Only with the app nature\./,
+    );
+
+    // The app nature by hand: no preset matches, and a chart is a job.
+    await userEvent.click(radio(/^app$/));
+    expect(source()).toHaveTextContent('Adjusted by hand: no preset matches.');
+    expect(
+      screen.queryByRole('radio', { checked: true, name: /^Go/ }),
+    ).toBeNull();
     expect(ciGenerate()).toBeChecked();
+    expect(clusterApp).toBeEnabled();
+    await userEvent.click(clusterApp);
+    expect(summary()).toHaveTextContent(
+      'configuration · generic · app + cluster-app · CircleCI config generated',
+    );
     await answered();
     expect(validateRepository).toHaveBeenLastCalledWith(
       expect.objectContaining({
         entry: expect.objectContaining({
           gen: {
             language: 'generic',
-            flavours: ['generic', 'app'],
+            flavours: ['app', 'cluster-app'],
             ci: { generate: true },
+          },
+        }),
+      }),
+    );
+
+    // Back to a nature the add-on does not go with: the add-on is dropped.
+    await userEvent.click(radio(/^customer$/));
+    expect(clusterApp).not.toBeChecked();
+    expect(clusterApp).toBeDisabled();
+    expect(summary()).toHaveTextContent(
+      'configuration · generic · customer · CircleCI config not generated',
+    );
+    await userEvent.click(button('Done'));
+    expect(screen.queryByTestId('declaration-fields')).toBeNull();
+  });
+
+  it('holds the cli flavour to Go as typed, the manager not asked until the rule holds', async () => {
+    const validateRepository = jest.fn().mockResolvedValue(acceptedValidation);
+    await renderPage({ validateRepository });
+    await fillDeclaration(/^Go CLI/, 'shiny-cli');
+    await answered();
+    expect(validateRepository).toHaveBeenCalledTimes(1);
+    await adjust();
+    await userEvent.click(select(/Language$/));
+    await userEvent.click(screen.getByRole('option', { name: 'python' }));
+    expect(screen.getByTestId('flavour-check')).toHaveTextContent(
+      'flavour cli is supported only for language go: pick go, or another nature',
+    );
+    expect(summary()).toHaveTextContent(
+      'cli · python · cli · CircleCI config not generated',
+    );
+    expect(screen.getByTestId('review-hint')).toBeInTheDocument();
+    expect(button('Create')).toBeDisabled();
+    await new Promise(resolve => setTimeout(resolve, DRY_RUN_DEBOUNCE_MS * 2));
+    expect(validateRepository).toHaveBeenCalledTimes(1);
+
+    // Another nature: the rule holds, the dry run follows.
+    await userEvent.click(radio(/^generic$/));
+    expect(screen.queryByTestId('flavour-check')).toBeNull();
+    await answered();
+    expect(validateRepository).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        entry: expect.objectContaining({
+          gen: {
+            language: 'python',
+            flavours: ['generic'],
+            ci: { generate: false },
           },
         }),
       }),
@@ -320,9 +405,11 @@ describe('CreateRepositoryPage', () => {
       .mockResolvedValueOnce(configurationValidation);
     await renderPage({ validateRepository });
     await fillDeclaration(/^Configuration/, 'shiny-config');
-    // The kind turned the generator off; the person turns it back on.
+    // The preset turned the generator off; the person turns it back on.
+    await adjust();
     await userEvent.click(ciGenerate());
     expect(ciGenerate()).toBeChecked();
+    expect(summary()).toHaveTextContent('CircleCI config generated');
     await answered();
     expect(validateRepository).toHaveBeenLastCalledWith({
       team: 'team-bumblebee',
@@ -444,7 +531,7 @@ describe('CreateRepositoryPage', () => {
     // The form is done: no second Create, the fields frozen.
     expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();
     expect(field(/^Name/)).toBeDisabled();
-    expect(ciGenerate()).toBeDisabled();
+    expect(button('Adjust')).toBeDisabled();
     expect(radio(/^Go service/)).toBeDisabled();
 
     // The set-up: waiting while the manager knows no record, then the steps.
@@ -500,6 +587,7 @@ describe('CreateRepositoryPage', () => {
     await fillDeclaration();
     await answered();
     expect(button('Create')).toBeEnabled();
+    await adjust();
     await userEvent.click(ciGenerate());
     expect(ciGenerate()).not.toBeChecked();
     expect(button('Create')).toBeDisabled();

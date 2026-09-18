@@ -163,7 +163,7 @@ export function formatAge(days: number | undefined): string {
   return days === 0 ? 'today' : `${days} d`;
 }
 
-function key(row: BotPrRow, column: SortColumn): string | number {
+function key(row: BotPrRow, column: SortColumn, now: number): string | number {
   switch (column) {
     case 'team':
       return row.team;
@@ -178,7 +178,7 @@ function key(row: BotPrRow, column: SortColumn): string | number {
     case 'update':
       return row.update_type ?? '';
     case 'age':
-      return ageDays(row) ?? -1;
+      return ageDays(row, now) ?? -1;
     case 'classification':
       return GROUP_ORDER[row.group];
     case 'rescue':
@@ -188,18 +188,22 @@ function key(row: BotPrRow, column: SortColumn): string | number {
   }
 }
 
-/** The rows sorted by a column; ties keep the engine's order. */
+/**
+ * The rows sorted by a column; ties keep the engine's order. The clock is a
+ * parameter so the age order does not depend on the hour a test runs at.
+ */
 export function sortRows(
   rows: BotPrRow[],
   column: SortColumn,
   direction: SortDirection,
+  now = Date.now(),
 ): BotPrRow[] {
   const sign = direction === 'asc' ? 1 : -1;
   return rows
     .map((row, index) => ({ row, index }))
     .sort((a, b) => {
-      const ka = key(a.row, column);
-      const kb = key(b.row, column);
+      const ka = key(a.row, column, now);
+      const kb = key(b.row, column, now);
       if (ka < kb) {
         return -sign;
       }
@@ -229,7 +233,7 @@ export type Tiles = {
 };
 
 /** Counts over the listed rows, for the tiles. */
-export function countTiles(rows: BotPrRow[]): Tiles {
+export function countTiles(rows: BotPrRow[], now = Date.now()): Tiles {
   const tiles: Tiles = {
     classification: {},
     kind: {},
@@ -240,7 +244,7 @@ export function countTiles(rows: BotPrRow[]): Tiles {
       (tiles.classification[row.status] ?? 0) + 1;
     const kind = row.kind ?? 'unknown';
     tiles.kind[kind] = (tiles.kind[kind] ?? 0) + 1;
-    tiles.age[ageBand(ageDays(row))]++;
+    tiles.age[ageBand(ageDays(row, now))]++;
   }
   return tiles;
 }

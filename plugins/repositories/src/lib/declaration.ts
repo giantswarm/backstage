@@ -9,8 +9,9 @@ import {
  * The Create form: the declaration's fields as the manager's tools name
  * them. The choices offered for the enumerated fields mirror the
  * repositories schema of giantswarm/github and the engine's creation rules
- * (devctl's reposetup package) so a person picks instead of typing; the
- * manager's dry run stays the verdict on whatever the form sends.
+ * (devctl's reposetup package and its generators) so a person picks instead
+ * of typing; the manager's dry run stays the verdict on whatever the form
+ * sends.
  */
 export interface DeclarationForm {
   /** The owning team's file, as its GitHub team slug: `team-bumblebee`. */
@@ -19,7 +20,7 @@ export interface DeclarationForm {
   componentType: string;
   /** `gen.language`. */
   language: string;
-  /** `gen.flavours`. */
+  /** `gen.flavours`: the nature first, then its add-ons. */
   flavours: string[];
   description: string;
   /** `public`, or empty for the org's default (private), left out of the entry. */
@@ -78,17 +79,75 @@ export const LANGUAGES: Choice[] = [
   { id: 'kyverno-policy', label: 'kyverno-policy' },
 ];
 
-/** `gen.flavours`, as the schema enumerates them, the common ones first. */
-export const FLAVOURS: Choice[] = [
-  { id: 'app', label: 'app', description: 'a Helm chart under helm/<name>' },
-  { id: 'generic', label: 'generic', description: 'no generated build files' },
-  { id: 'cli', label: 'cli', description: 'released binaries' },
-  { id: 'cluster-app', label: 'cluster-app', description: 'a cluster chart' },
-  { id: 'fleet', label: 'fleet', description: 'a fleet configuration' },
-  { id: 'customer', label: 'customer', description: 'a customer project' },
-  { id: 'helmchart', label: 'helmchart', description: 'a plain Helm chart' },
-  { id: 'k8sapi', label: 'k8sapi', description: 'a Kubernetes API' },
+/** The language devctl builds a CLI for: `gen makefile` refuses the cli flavour with any other. */
+const CLI_LANGUAGE = 'go';
+
+/**
+ * `gen.flavours`, the nature of the repository: what devctl generates for it.
+ * The org's repositories declare one of these each; the add-ons come on top.
+ */
+export const NATURES: Choice[] = [
+  {
+    id: 'app',
+    label: 'app',
+    description:
+      'A Helm chart under helm/<name>: the chart pipeline and the values-schema check. The repository is named after its chart.',
+  },
+  {
+    id: 'generic',
+    label: 'generic',
+    description:
+      'Nothing specific: the shared Makefile, workflows and Renovate config only.',
+  },
+  {
+    id: 'cli',
+    label: 'cli',
+    description:
+      'A command-line tool: its binaries are built and put on the GitHub release. Go only.',
+  },
+  {
+    id: 'customer',
+    label: 'customer',
+    description:
+      'A customer project: the customer board automation and Renovate, no CircleCI, the minimal scaffold.',
+  },
+  {
+    id: 'fleet',
+    label: 'fleet',
+    description:
+      'A GitOps repository with clusters: the cluster values validation.',
+  },
 ];
+
+/** An add-on flavour: generated on top of the nature, some only with one. */
+export interface Addon extends Choice {
+  /** The nature the add-on needs, if any. */
+  needs?: string;
+}
+
+/**
+ * `gen.flavours`, the add-ons. The schema also enumerates `helmchart`, which
+ * devctl's generators refuse -- it is a pre-commit flavour (`gen.preCommit`)
+ * -- so a repository declaring it cannot be aligned; it is not offered.
+ */
+export const ADDONS: Addon[] = [
+  {
+    id: 'cluster-app',
+    label: 'cluster-app',
+    description:
+      'A cluster chart with the RFC 55 values schema: the schema and docs validation and the render-diff workflows.',
+    needs: 'app',
+  },
+  {
+    id: 'k8sapi',
+    label: 'k8sapi',
+    description:
+      'Provides a Kubernetes API: the Makefile targets for its custom resource definitions.',
+  },
+];
+
+/** Every flavour the form offers: the natures and the add-ons. */
+export const FLAVOURS: Choice[] = [...NATURES, ...ADDONS];
 
 /** `visibility`: the org's default (private) is left out of the entry, as the team files do. */
 export const VISIBILITIES: Choice[] = [
@@ -108,31 +167,28 @@ export const VISIBILITIES: Choice[] = [
 const CHART_FLAVOURS = ['app', 'cluster-app'];
 
 /**
- * A kind of repository: the component type, language and flavours the
- * org's repositories of that shape declare. Picking one fills the fields;
+ * A preset: the component type, language and flavours the org's
+ * repositories of that shape declare. Picking one fills the declaration;
  * every field stays editable.
  */
-export interface Kind extends Choice {
+export interface Preset extends Choice {
   componentType: string;
   language: string;
   flavours: string[];
 }
 
-/** The kind whose fields match no preset: as set by hand. */
-export const CUSTOM_KIND = 'custom';
-
 /**
- * The kinds the org's team files declare, the most common shapes first:
- * a chart-only app (a packaged upstream component), a Go service with its
- * chart, a Go CLI, a Go library, a configuration repository, a customer
- * project, and anything else on the minimal scaffold.
+ * The shapes the org's team files declare, the most common first: a Go
+ * service with its chart, a chart-only app (a packaged upstream component),
+ * a Go CLI, a Go library, a configuration repository, a customer project,
+ * and anything else on the minimal scaffold.
  */
-export const KINDS: Kind[] = [
+export const PRESETS: Preset[] = [
   {
     id: 'go-service',
     label: 'Go service',
     description:
-      'A Go service with its Helm chart: built, scanned and released by CircleCI.',
+      'Go with its Helm chart; built, scanned and released by CircleCI.',
     componentType: 'service',
     language: 'go',
     flavours: ['app'],
@@ -140,8 +196,7 @@ export const KINDS: Kind[] = [
   {
     id: 'chart-app',
     label: 'Chart-only app',
-    description:
-      'A Helm chart for something built elsewhere: an upstream component packaged for the platform.',
+    description: 'A Helm chart for something built elsewhere.',
     componentType: 'service',
     language: 'generic',
     flavours: ['app'],
@@ -149,8 +204,7 @@ export const KINDS: Kind[] = [
   {
     id: 'go-cli',
     label: 'Go CLI',
-    description:
-      'A Go command-line tool, cross-compiled and released as binaries.',
+    description: 'A Go command-line tool, released as binaries.',
     componentType: 'cli',
     language: 'go',
     flavours: ['cli'],
@@ -158,8 +212,7 @@ export const KINDS: Kind[] = [
   {
     id: 'go-library',
     label: 'Go library',
-    description:
-      'A Go module other repositories import: built and tested, no image, no chart.',
+    description: 'A Go module others import; no image, no chart.',
     componentType: 'library',
     language: 'go',
     flavours: ['generic'],
@@ -167,8 +220,7 @@ export const KINDS: Kind[] = [
   {
     id: 'configuration',
     label: 'Configuration',
-    description:
-      'GitOps or configuration files: nothing to build, no CircleCI.',
+    description: 'GitOps or configuration files; nothing to build.',
     componentType: 'configuration',
     language: 'generic',
     flavours: ['generic'],
@@ -176,8 +228,7 @@ export const KINDS: Kind[] = [
   {
     id: 'customer',
     label: 'Customer project',
-    description:
-      'A customer’s project repository: the generated workflows and Renovate, no CircleCI.',
+    description: 'Issues and boards shared with a customer; no CircleCI.',
     componentType: 'customer',
     language: 'generic',
     flavours: ['customer'],
@@ -185,8 +236,7 @@ export const KINDS: Kind[] = [
   {
     id: 'other',
     label: 'Other',
-    description:
-      'Docs, skills, experiments: the minimal scaffold, no CircleCI.',
+    description: 'Docs, skills, experiments: the minimal scaffold.',
     componentType: 'unspecified',
     language: 'generic',
     flavours: ['generic'],
@@ -197,9 +247,9 @@ export const KINDS: Kind[] = [
 export const EMPTY: DeclarationForm = {
   team: '',
   name: '',
-  componentType: KINDS[0].componentType,
-  language: KINDS[0].language,
-  flavours: KINDS[0].flavours,
+  componentType: PRESETS[0].componentType,
+  language: PRESETS[0].language,
+  flavours: PRESETS[0].flavours,
   description: '',
   visibility: '',
   ciGenerate: true,
@@ -251,42 +301,96 @@ export function nameProblem(
     : 'must be lowercase letters, digits, dots, dashes or underscores, starting with a letter or digit';
 }
 
+/**
+ * The generator's rule the flavours break with the language, in devctl's
+ * words, or nothing: `gen makefile` builds a CLI for Go only.
+ */
+export function flavourProblem(
+  language: string,
+  flavours: string[],
+): string | undefined {
+  return flavours.includes('cli') && language !== CLI_LANGUAGE
+    ? `flavour cli is supported only for language ${CLI_LANGUAGE}: pick ${CLI_LANGUAGE}, or another nature`
+    : undefined;
+}
+
 /** Whether the form describes a declaration the manager can dry-run. */
 export function isComplete(form: DeclarationForm): boolean {
   const name = form.name.trim();
   return (
     form.team.trim().length > 0 &&
     name.length > 0 &&
-    !nameProblem(name, form.flavours)
+    !nameProblem(name, form.flavours) &&
+    !flavourProblem(form.language, form.flavours)
   );
 }
 
-/** The kind the form's fields match, or [CUSTOM_KIND]. */
-export function kindOf(form: DeclarationForm): string {
-  const flavours = [...form.flavours].sort().join(',');
-  return (
-    KINDS.find(
-      kind =>
-        kind.componentType === form.componentType &&
-        kind.language === form.language &&
-        [...kind.flavours].sort().join(',') === flavours,
-    )?.id ?? CUSTOM_KIND
+/** The nature among the flavours, if one is declared. */
+export function natureOf(flavours: string[]): string | undefined {
+  return flavours.find(flavour =>
+    NATURES.some(nature => nature.id === flavour),
   );
+}
+
+/** The add-ons among the flavours. */
+export function addonsOf(flavours: string[]): string[] {
+  return flavours.filter(flavour => ADDONS.some(addon => addon.id === flavour));
+}
+
+/** Whether an add-on goes with the nature: the one it needs, or any. */
+export function addonAllowed(
+  addon: Addon,
+  nature: string | undefined,
+): boolean {
+  return !addon.needs || addon.needs === nature;
+}
+
+/** The form with the nature, keeping the add-ons that go with it. */
+export function withNature(
+  form: DeclarationForm,
+  nature: string,
+): DeclarationForm {
+  const addons = addonsOf(form.flavours).filter(id =>
+    addonAllowed(ADDONS.find(addon => addon.id === id) as Addon, nature),
+  );
+  return withGen(form, { flavours: [nature, ...addons] });
+}
+
+/** The form with these add-ons, the nature staying first. */
+export function withAddons(
+  form: DeclarationForm,
+  addons: string[],
+): DeclarationForm {
+  const nature = natureOf(form.flavours);
+  return withGen(form, {
+    flavours: [...(nature ? [nature] : []), ...addons],
+  });
+}
+
+/** The preset the form's fields match, or nothing: adjusted by hand. */
+export function presetOf(form: DeclarationForm): string | undefined {
+  const flavours = [...form.flavours].sort().join(',');
+  return PRESETS.find(
+    preset =>
+      preset.componentType === form.componentType &&
+      preset.language === form.language &&
+      [...preset.flavours].sort().join(',') === flavours,
+  )?.id;
 }
 
 /**
- * The form with a kind's fields, the CircleCI generator on where the kind
- * has a job. [CUSTOM_KIND] changes nothing: the fields are as set.
+ * The form with a preset's fields, the CircleCI generator on where the
+ * preset has a job. An unknown id changes nothing.
  */
-export function withKind(form: DeclarationForm, id: string): DeclarationForm {
-  const kind = KINDS.find(candidate => candidate.id === id);
-  if (!kind) {
+export function withPreset(form: DeclarationForm, id: string): DeclarationForm {
+  const preset = PRESETS.find(candidate => candidate.id === id);
+  if (!preset) {
     return form;
   }
   return withGen(form, {
-    componentType: kind.componentType,
-    language: kind.language,
-    flavours: kind.flavours,
+    componentType: preset.componentType,
+    language: preset.language,
+    flavours: preset.flavours,
   });
 }
 
@@ -320,6 +424,14 @@ export const ENTRY_FIELDS = {
 } as const satisfies Partial<Record<keyof DeclarationForm, string>>;
 
 export type EntryField = keyof typeof ENTRY_FIELDS;
+
+/** The form fields the Declaration section's raw controls set. */
+export const DECLARATION_FIELDS: EntryField[] = [
+  'componentType',
+  'language',
+  'flavours',
+  'ciGenerate',
+];
 
 /**
  * The entry the form describes, as it goes into the team file: `name`,

@@ -41,13 +41,22 @@ repository is what `devctl repo status` prints for it, from the same record.
   inventory knows -- the name is held to the engine's rule as typed (lowercase;
   the chart's name without `-app` where a chart exists), description and
   visibility (private, the org's default, is left out of the entry as the team
-  files do). A **Kind** -- Go service, chart-only app, Go CLI, Go library,
-  configuration, customer project, other: the shapes the team files declare --
-  fills component type, language and flavours, and turns _Generate CircleCI
-  config_ (`gen.ci.generate`, written out true or false as `devctl repo
-create` writes it) on where the kind has a job; the three are choices too
-  (the schema's values) and re-derive the switch when changed by hand. The
-  review runs `validate_repository` on its own once the person pauses and
+  files do). One question, **What are you creating?** -- a preset: Go service,
+  chart-only app, Go CLI, Go library, configuration, customer project, other,
+  the shapes the team files declare -- fills the **Declaration**: catalog type
+  (`componentType`), language, flavours, and _Generate CircleCI config_
+  (`gen.ci.generate`, written out true or false as `devctl repo create` writes
+  it) on where the preset has a job. The declaration shows as one line
+  (`service · go · app · CircleCI config generated`) with the preset it came
+  from; **Adjust** opens the raw controls for a shape no preset fits -- the
+  schema's values as choices: the flavours as a _nature_ (one of app, generic,
+  cli, customer, fleet) and _add-ons_ (cluster-app, only with app; k8sapi),
+  each saying what devctl generates for it, cli held to Go as devctl's
+  Makefile generator holds it (`helmchart`, which devctl's generators refuse,
+  is not offered) -- and the controls open by themselves when the dry run
+  refuses one of the fields; a change by hand re-derives the CircleCI switch
+  and reads as matching no preset. The review runs `validate_repository` on
+  its own once the person pauses and
   keeps it current: the entry with the schema's defaults, the implied template
   and its options, the GitHub name check (also under the name field), the
   refusals per field (a refusal that names a value the form can set, such as

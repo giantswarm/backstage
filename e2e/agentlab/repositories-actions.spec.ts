@@ -107,24 +107,24 @@ const converging = {
   age: '12s',
 };
 
-/** The declaration as the form takes it: a kind, a name. */
+/** The declaration as the form takes it: a preset, a name. */
 interface Declaration {
   name: string;
-  /** The Kind radio's label. */
-  kind: RegExp;
+  /** The preset radio's label. */
+  preset: RegExp;
 }
 
 /** A Go service: the CircleCI generator has a job, the form's default holds. */
-const goService: Declaration = { name: NAME, kind: /^Go service/ };
+const goService: Declaration = { name: NAME, preset: /^Go service/ };
 
 /**
- * A configuration repository: nothing to build, so the kind turns the
+ * A configuration repository: nothing to build, so the preset turns the
  * CircleCI generator off and the creation rules refuse it when forced on
  * (giantswarm/backstage#2428).
  */
 const configuration: Declaration = {
   name: `e2e-configs-${Date.now().toString(36)}`,
-  kind: /^Configuration/,
+  preset: /^Configuration/,
 };
 
 /**
@@ -139,7 +139,7 @@ async function fillDeclaration(page: Page, declaration = goService) {
     await team.click();
     await page.getByRole('option', { name: /^team-bumblebee/ }).click();
   }
-  await kind(page, declaration.kind).click();
+  await preset(page, declaration.preset).click();
   await page.getByLabel(/^Name/).fill(declaration.name);
 }
 
@@ -149,9 +149,16 @@ async function fillDeclaration(page: Page, declaration = goService) {
  */
 const labelOf = (control: Locator) => control.locator('xpath=ancestor::label');
 
-/** A Kind radio's card. */
-const kind = (page: Page, name: RegExp) =>
+/** A preset radio's card. */
+const preset = (page: Page, name: RegExp) =>
   labelOf(page.getByRole('radio', { name }));
+
+/** The declaration's one-line summary: `service · go · app · CircleCI config generated`. */
+const summary = (page: Page) => page.getByTestId('declaration-summary');
+
+/** Adjust opens the declaration's raw controls. */
+const adjust = (page: Page) =>
+  page.getByRole('button', { name: 'Adjust' }).click();
 
 /** The form's dry run for the declaration as it stands has answered. */
 async function answered(page: Page) {
@@ -184,13 +191,19 @@ test.describe('repositories: actions', () => {
         /created as you: the repository, one scaffold commit on its default branch/,
       ),
     ).toBeVisible();
-    // The defaults: a Go service, private, the generator on; the review
-    // waits for a name.
+    // The defaults: a Go service, private, the declaration as the preset's
+    // result with the generator on; the review waits for a name.
     await expect(
       admin.getByRole('radio', { name: /^Go service/ }),
     ).toBeChecked();
     await expect(admin.getByRole('radio', { name: /^Private/ })).toBeChecked();
-    await expect(ciGenerate(admin)).toBeChecked();
+    await expect(summary(admin)).toHaveText(
+      'service · go · app · CircleCI config generated',
+    );
+    await expect(admin.getByTestId('declaration-source')).toHaveText(
+      'Set by the Go service preset.',
+    );
+    await expect(admin.getByTestId('declaration-fields')).toHaveCount(0);
     await expect(admin.getByTestId('review-hint')).toBeVisible();
     await expect(admin.getByRole('button', { name: 'Create' })).toBeDisabled();
     await fillDeclaration(admin);
@@ -234,28 +247,40 @@ test.describe('repositories: actions', () => {
     await expect(admin.getByRole('button', { name: 'Create' })).toBeDisabled();
   });
 
-  test('a configuration repository: the kind turns the CircleCI generator off; forced on, the manager refuses it and its fix is one click', async ({
+  test('a configuration repository: the preset turns the CircleCI generator off; forced on behind Adjust, the manager refuses it and its fix is one click', async ({
     admin,
   }) => {
     await open(admin, '/repositories/create');
     await fillDeclaration(admin, configuration);
-    // The kind: componentType configuration, language generic, the generic
-    // flavour, and nothing to build, so the generator is off.
-    await expect(
-      admin.getByRole('button', { name: /Component type$/ }),
-    ).toHaveText(/configuration/);
-    await expect(admin.getByRole('button', { name: /Language$/ })).toHaveText(
-      /generic/,
+    // The preset: componentType configuration, language generic, the generic
+    // nature, and nothing to build, so the generator is off.
+    await expect(summary(admin)).toHaveText(
+      'configuration · generic · generic · CircleCI config not generated',
     );
-    await expect(ciGenerate(admin)).not.toBeChecked();
     await answered(admin);
     const entry = admin.getByTestId(`dry-run-${configuration.name}`);
     await expect(entry).toContainText(`${configuration.name}: accepted`);
     await expect(admin.getByRole('button', { name: 'Create' })).toBeEnabled();
 
+    // The raw controls behind Adjust: the catalog type, the language, the
+    // nature as one choice, the add-ons, the CircleCI switch.
+    await adjust(admin);
+    await expect(
+      admin.getByRole('button', { name: /Catalog type$/ }),
+    ).toHaveText(/configuration/);
+    await expect(admin.getByRole('button', { name: /Language$/ })).toHaveText(
+      /generic/,
+    );
+    await expect(admin.getByRole('radio', { name: 'generic' })).toBeChecked();
+    await expect(
+      admin.getByRole('checkbox', { name: 'cluster-app' }),
+    ).toBeDisabled();
+    await expect(ciGenerate(admin)).not.toBeChecked();
+
     // Forced on, the creation rules refuse: no CircleCI job for language
     // generic. The refusal names the field and the value to set.
     await labelOf(ciGenerate(admin)).click();
+    await expect(summary(admin)).toHaveText(/CircleCI config generated$/);
     await answered(admin);
     await expect(entry).toContainText(`${configuration.name}: refused`);
     const problems = entry.getByTestId('problems');
@@ -269,6 +294,7 @@ test.describe('repositories: actions', () => {
       .getByRole('button', { name: 'Set Generate CircleCI config to off' })
       .click();
     await expect(ciGenerate(admin)).not.toBeChecked();
+    await expect(summary(admin)).toHaveText(/CircleCI config not generated$/);
     await answered(admin);
     await expect(entry).toContainText(`${configuration.name}: accepted`);
     await expect(entry.getByTestId('problems')).toHaveCount(0);
