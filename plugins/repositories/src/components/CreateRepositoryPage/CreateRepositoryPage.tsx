@@ -27,6 +27,7 @@ import { CI_GENERATE_LABEL, DeclarationFields } from './DeclarationFields';
 import { DryRunPanel } from './DryRunPanel';
 import { LiveSetup } from './LiveSetup';
 import { RepositoryCreated } from './RepositoryCreated';
+import { useRepositoryWatch } from './useRepositoryWatch';
 
 /** How long the form waits after the last change before it asks the manager. */
 export const DRY_RUN_DEBOUNCE_MS = 600;
@@ -50,10 +51,11 @@ const MINE: ListFilters = { scope: 'mine', limit: LIST_LIMIT };
  * GitHub name check, the refusals with their fix, the guard notices and the
  * creation as the person would run it. **Create** -- `create_repository` in
  * `mode: commit`: the repository and one scaffold commit as the signed-in
- * person, then the team-file pull request under their name -- and the
- * set-up steps of the new repository completing live once the reconciler
- * has it. The form's choices are the schema's values; the manager's verdict
- * is what decides.
+ * person, then the team-file pull request under their name -- and the new
+ * repository followed to readiness with `watch_repository`: the phases as
+ * they complete, the repository linked as ready only when every one is. The
+ * form's choices are the schema's values; the manager's verdict is what
+ * decides.
  */
 export function CreateRepositoryPage() {
   const api = useApi(repositoriesApiRef);
@@ -103,6 +105,12 @@ export function CreateRepositoryPage() {
     mutationFn: () => api.createRepository(toInput(form), { mode: 'commit' }),
   });
   const created = create.data;
+  // The form declares one repository; the follow is its.
+  const [target] = created?.repositories ?? [];
+  const watch = useRepositoryWatch({
+    repository: target?.name,
+    pullRequest: created?.pullRequest?.number,
+  });
 
   const input = useMemo(() => toInput(settled), [settled]);
   const dryRun = useQuery({
@@ -234,7 +242,10 @@ export function CreateRepositoryPage() {
                   />
                 )}
                 {created ? (
-                  <RepositoryCreated result={created} />
+                  <RepositoryCreated
+                    result={created}
+                    ready={watch.data?.ready ?? false}
+                  />
                 ) : (
                   <div>
                     <Button
@@ -252,12 +263,17 @@ export function CreateRepositoryPage() {
         </Grid>
       </Box>
 
-      {created && (
+      {created && target && (
         <Box mt={4} data-testid="live-setup">
           <Typography variant="subtitle1" component="h2" gutterBottom>
-            Set-up of {form.name.trim()}
+            Set-up of {target.name}
           </Typography>
-          <LiveSetup repository={form.name.trim()} />
+          <LiveSetup
+            repository={target.name}
+            pullRequest={created.pullRequest?.number}
+            watch={watch.data}
+            error={watch.error}
+          />
         </Box>
       )}
     </Content>

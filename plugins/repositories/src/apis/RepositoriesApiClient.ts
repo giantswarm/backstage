@@ -18,6 +18,7 @@ import {
   RepositoriesConnectionResponse,
   RepositoryListing,
   Validation,
+  Watch,
   WriteOptions,
   WriteResult,
 } from './types';
@@ -86,6 +87,16 @@ export class RepositoriesApiClient implements RepositoriesApi {
   refreshRepository(name: string): Promise<InventoryRecord> {
     return this.request(`/repositories/${encodeURIComponent(name)}/refresh`, {
       method: 'POST',
+    });
+  }
+
+  watchRepository(
+    name: string,
+    args: { pullRequest: number; timeout?: number },
+  ): Promise<Watch> {
+    return this.request(`/repositories/${encodeURIComponent(name)}/watch`, {
+      method: 'POST',
+      body: args,
     });
   }
 

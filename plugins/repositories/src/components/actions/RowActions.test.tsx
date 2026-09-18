@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TestApiProvider } from '@backstage/test-utils';
 import {
@@ -26,7 +26,11 @@ const APPLY_REFUSAL =
 
 type Writes = Pick<
   RepositoriesApi,
-  'updateRepository' | 'transferRepository' | 'setLifecycle' | 'alignRepository'
+  | 'updateRepository'
+  | 'transferRepository'
+  | 'setLifecycle'
+  | 'alignRepository'
+  | 'getRepository'
 >;
 
 function renderActions(
@@ -36,6 +40,8 @@ function renderActions(
 ) {
   const api = {
     ...unusedWrites,
+    // The record as an Align now follows it: unchanged unless a test says.
+    getRepository: async () => record,
     ...writes,
   } as unknown as RepositoriesApi;
   render(
@@ -290,12 +296,38 @@ describe('RowActions', () => {
     expect(screen.queryByTestId('plan')).toBeNull();
   });
 
-  it('Align now, team opted in: what it changes, the warning, the planned changes per step, Align now, then the dispatch', async () => {
+  it('Align now, team opted in: what it changes, the warning, the planned changes per step, Align now, then the dispatch followed to the run’s report', async () => {
     const alignRepository = jest
       .fn()
       .mockResolvedValueOnce(alignmentOf(false))
       .mockResolvedValueOnce(alignmentOf(true));
-    const { onChanged } = renderActions({ alignRepository });
+    const dispatched: InventoryRecord = {
+      ...presentService,
+      setup: {
+        ...presentService.setup,
+        pendingRun: {
+          dispatchedAt: new Date().toISOString(),
+          by: 'alice',
+          kind: 'dispatched',
+        },
+      },
+    };
+    const reported: InventoryRecord = {
+      ...presentService,
+      setup: {
+        ...presentService.setup,
+        lastRun: {
+          ...presentService.setup.lastRun!,
+          timestamp: new Date(Date.now() + 30_000).toISOString(),
+          change: { kind: 'dispatched', by: 'alice' },
+        },
+      },
+    };
+    const getRepository = jest
+      .fn()
+      .mockResolvedValueOnce(dispatched)
+      .mockResolvedValue(reported);
+    const { onChanged } = renderActions({ alignRepository, getRepository });
     await userEvent.click(button('Align now'));
     const form = dialog(/^Align present-service now/);
     expect(form).toHaveTextContent(
@@ -358,6 +390,34 @@ describe('RowActions', () => {
       alignmentOf(true).runsUrl,
     );
     expect(onChanged).toHaveBeenCalled();
+
+    // The dispatch is followed through the record: its pending run is the
+    // dispatch, the report waited for; once the run's artifact is in, the
+    // report with the run's verdict and the run linked.
+    const follow = await screen.findByTestId('live-alignment');
+    expect(
+      await within(follow).findByTestId('phase-dispatched'),
+    ).toHaveTextContent(/^Dispatched at \d\d:\d\d:\d\dZ by alice$/);
+    expect(within(follow).getByTestId('phase-reported')).toHaveTextContent(
+      'Reported the run has not reported yet; the record expects it since',
+    );
+    expect(getRepository).toHaveBeenCalledWith('giantswarm/present-service');
+    await repositoriesQueryClient.refetchQueries({
+      queryKey: ['repositories', 'record', 'giantswarm/present-service'],
+    });
+    await waitFor(() =>
+      expect(within(follow).getByTestId('phase-reported')).toHaveAttribute(
+        'data-state',
+        'done',
+      ),
+    );
+    expect(within(follow).getByTestId('phase-reported')).toHaveTextContent(
+      /^Reported after \d+ s converged run ↗$/,
+    );
+    expect(within(follow).getByRole('link', { name: /^run/ })).toHaveAttribute(
+      'href',
+      reported.setup.lastRun!.runUrl,
+    );
   });
 
   it('Align now, team not opted in: the warning and the planned changes, the run checks and changes nothing, Check now', async () => {

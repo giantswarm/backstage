@@ -83,6 +83,9 @@ const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
   },
   set_lifecycle: { lifecycle: 'string', reason: 'string', ...WRITE_OPTIONS },
   align_repository: { team: 'string', ...WRITE_OPTIONS },
+  // Read-only, a POST for the body: the pull request the creation opened and
+  // how long one call may wait -- the manager bounds it (at most 150 s).
+  watch_repository: { pullRequest: 'number', timeout: 'number' },
 };
 
 export interface RouterOptions {
@@ -315,7 +318,8 @@ export async function createRouter(
     );
   });
 
-  const writeOfRepository = (path: string, tool: keyof typeof BODY_ARGUMENTS) =>
+  /** One tool of a repository, its arguments read out of the body. */
+  const toolOfRepository = (path: string, tool: keyof typeof BODY_ARGUMENTS) =>
     router.post(`/repositories/:name/${path}`, async (req, res) => {
       res.json(
         await call(req, tool, {
@@ -325,10 +329,16 @@ export async function createRouter(
       );
     });
 
-  writeOfRepository('update', 'update_repository');
-  writeOfRepository('transfer', 'transfer_repository');
-  writeOfRepository('lifecycle', 'set_lifecycle');
-  writeOfRepository('align', 'align_repository');
+  toolOfRepository('update', 'update_repository');
+  toolOfRepository('transfer', 'transfer_repository');
+  toolOfRepository('lifecycle', 'set_lifecycle');
+  toolOfRepository('align', 'align_repository');
+
+  // Follows a repository just created to readiness: one call blocks until a
+  // phase completes, the repository is ready or fails, or the timeout runs
+  // out, and answers with the phases reached; the page calls again while
+  // it is neither ready nor failed. Read-only.
+  toolOfRepository('watch', 'watch_repository');
 
   // A missing grant is a 401 that carries the sign-in URL; the manager's own
   // refusals are 403s and an unknown repository a 404, so neither pages us as

@@ -19,6 +19,7 @@ import {
   repositoriesApiRef,
 } from '../../apis';
 import { ActionDialog } from './ActionDialog';
+import { LiveAlignment } from './LiveAlignment';
 import { PlanView } from './PlanView';
 import { PullRequestOpened } from './PullRequestOpened';
 
@@ -326,7 +327,8 @@ function AlignmentView({ alignment }: { alignment: Alignment }) {
 /**
  * Align now: the set-up workflow dispatched as the person, after the
  * manager's dry run said what it would change and whether the team has
- * opted in to having it changed (else the run only checks).
+ * opted in to having it changed (else the run only checks); then the run
+ * followed to its report through the record.
  */
 export function AlignDialog({
   record,
@@ -367,7 +369,14 @@ export function AlignDialog({
       commit={() =>
         api.alignRepository(record.repository, args(), { mode: 'commit' })
       }
-      renderDone={alignment => <AlignmentView alignment={alignment} />}
+      renderDone={alignment => (
+        <Flex direction="column" gap="3">
+          <AlignmentView alignment={alignment} />
+          {alignment.dispatched && (
+            <LiveAlignment repository={record.repository} />
+          )}
+        </Flex>
+      )}
       commitLabel={alignment =>
         alignment?.optedIn === false ? 'Check now' : 'Align now'
       }
