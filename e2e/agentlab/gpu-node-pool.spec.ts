@@ -720,6 +720,11 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
  * stubbed at the browser as above; the lab's muster appears to list
  * model-manager too (`servers`), and the stubbed inventory advances one stage per
  * read once the load was accepted (the shapes of model-manager 0.24.0).
+ *
+ * The steps come without a reload (giantswarm/backstage#2446): in a tab that is
+ * not focused, on a backend the pool registered after the page was opened, the
+ * served model's steps appear with the read that follows `load_model` and keep
+ * moving until the model answers — the page never reloaded, never focused.
  */
 const SERVE_INTENTS_KEY = 'gs-agent-platform-serve-intents';
 const ENDPOINT_8B = 'https://models.lab.example/model-serving/qwen3-8b-fp8';
@@ -874,6 +879,12 @@ type IntentStubOptions = {
   fit?: Record<string, unknown>;
   /** `load_model` calls model-manager refuses before one is accepted. */
   loadFailures?: number;
+  /**
+   * `list_backends` lists no backend until `check_fit` is asked: the pool
+   * registers its backend with its stack, after the page — and the list —
+   * was opened, as on an installation without another GPU pool.
+   */
+  backendOnFit?: boolean;
 };
 
 /**
@@ -885,8 +896,11 @@ async function stageServeIntent(page: Page, options: IntentStubOptions = {}) {
   let loads = 0;
   let served = false;
   let reads = 0;
+  let fitAsked = false;
   return stubModelManagerTools(page, {
-    list_backends: { backends: [KSERVE_POOL_BACKEND] },
+    list_backends: () => ({
+      backends: options.backendOnFit && !fitAsked ? [] : [KSERVE_POOL_BACKEND],
+    }),
     list_presets: { presets: L4_POOL_PRESETS },
     list_models: () => {
       if (!served) {
@@ -895,7 +909,10 @@ async function stageServeIntent(page: Page, options: IntentStubOptions = {}) {
       reads += 1;
       return STAGES_8B[Math.min(reads, STAGES_8B.length) - 1];
     },
-    check_fit: options.fit ? () => options.fit : poolFitAnswer,
+    check_fit: args => {
+      fitAsked = true;
+      return options.fit ?? poolFitAnswer(args);
+    },
     load_model: () => {
       loads += 1;
       if (loads <= (options.loadFailures ?? 0)) {
@@ -935,6 +952,36 @@ async function deployWithPreset(page: Page) {
 
 const storedIntents = (page: Page) =>
   page.evaluate(key => window.localStorage.getItem(key), SERVE_INTENTS_KEY);
+
+type MarkedWindow = Window & { __e2eSameDocument?: true };
+
+/**
+ * Send the tab to the background as react-query sees it — its focus manager
+ * reads `document.visibilityState` and listens for `visibilitychange` — and
+ * plant a marker on the window that a reload would drop.
+ */
+async function hideTab(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      get: () => true,
+    });
+    (window as MarkedWindow).__e2eSameDocument = true;
+    document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+  });
+}
+
+/** Still the document `hideTab` marked — no reload since — and still hidden. */
+const stillHiddenSameDocument = (page: Page) =>
+  page.evaluate(
+    () =>
+      (window as MarkedWindow).__e2eSameDocument === true &&
+      document.visibilityState === 'hidden',
+  );
 
 /** After a reload the panel is closed; the row's chevron opens it again. */
 async function reopenPanel(page: Page) {
@@ -1040,6 +1087,52 @@ test.describe('models: GPU node pool serve intent — the preset chosen on the f
     await expect
       .poll(async () => (await storedIntents(page)) ?? '')
       .not.toContain('qwen3-8b-fp8');
+    await modelManager.unroute();
+  });
+
+  test('in a tab that is not focused, on a backend the pool registered after the page was opened: the served model’s steps appear beneath Serving <preset> with the read after load_model — no reload, no focus — and keep moving until it answers', async ({
+    page,
+  }) => {
+    const modelManager = await stageServeIntent(page, {
+      fit: FIT_8B_OK,
+      backendOnFit: true,
+    });
+    const { panel } = await deployWithPreset(page);
+    const serve = panel.locator('[data-step="serve"]');
+    await expect(serve).toHaveAttribute('data-state', 'pending');
+    await hideTab(page);
+
+    // The pools read goes on in the background: the stack settles and the
+    // load is asked without anybody looking.
+    await expect
+      .poll(() => modelManager.callsOf('load_model').length, {
+        timeout: 90_000,
+      })
+      .toBe(1);
+    // The backends are read again right after the load — the list read when
+    // the page opened had none, and the inventory read waits on it — then the
+    // inventory: the steps are there within seconds, not with the descriptors'
+    // next poll a minute later, and not after a reload.
+    await expect(serve.locator('[data-step="scheduling"]')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(serve).toHaveAttribute('data-state', 'inProgress');
+    await expect(serve).not.toContainText('the first inventory read follows');
+    const names = modelManager.calls.map(call => call.name);
+    expect(names.lastIndexOf('x_model-manager_list_backends')).toBeGreaterThan(
+      names.indexOf('x_model-manager_load_model'),
+    );
+    await snapshot(page, 'gpu-pool-serve-intent-background-tab');
+
+    // …and keep moving there: the inventory advances a stage per read at the
+    // 10 s pace of a model on its way, until the model answers.
+    await expect(serve).toHaveAttribute('data-state', 'done', {
+      timeout: 60_000,
+    });
+    await expect(serve).toContainText(`qwen3-8b-fp8 answers at ${ENDPOINT_8B}`);
+    await snapshot(page, 'gpu-pool-serve-intent-background-tab-done');
+    expect(await stillHiddenSameDocument(page)).toBe(true);
+    expect(modelManager.callsOf('load_model')).toHaveLength(1);
     await modelManager.unroute();
   });
 
