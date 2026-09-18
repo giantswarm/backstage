@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
-import { Alert, ButtonLink, Flex, Text, TextField } from '@backstage/ui';
+import { ReactNode, useMemo, useState } from 'react';
+import { Alert, ButtonLink, Flex, Link, Text, TextField } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
+import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { load } from 'js-yaml';
 import {
   Alignment,
@@ -8,7 +9,6 @@ import {
   DeclarationEntry,
   Dispatch,
   InventoryRecord,
-  OptIn,
   Plan,
   repositoriesApiRef,
 } from '../../apis';
@@ -233,25 +233,36 @@ export function LifecycleDialog({
   );
 }
 
-function DispatchView({ dispatch }: { dispatch: Dispatch }) {
+/**
+ * The intranet page on repository set-up: what alignment changes, the
+ * opt-in, the checks and the nightly. The dialogs say the one thing the
+ * click does and link here for the rest.
+ */
+export const REPOSITORY_SETUP_DOCS_URL =
+  'https://intranet.giantswarm.io/docs/dev-and-releng/repository-setup/';
+
+function DocsLink() {
+  return (
+    <Link
+      href={REPOSITORY_SETUP_DOCS_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      How alignment works ↗
+    </Link>
+  );
+}
+
+/** The set-up workflow dispatched as the person, with the runs to follow it by. */
+function Dispatched({ dispatch }: { dispatch: Dispatch }) {
   return (
     <Alert
-      status={dispatch.dispatched ? 'success' : 'info'}
-      title={
-        dispatch.dispatched
-          ? `Dispatched ${dispatch.workflow} as ${dispatch.as}`
-          : `Would dispatch ${dispatch.workflow} as ${dispatch.as}`
-      }
+      status="success"
+      title={`Dispatched ${dispatch.workflow} as ${dispatch.as}`}
       description={
-        <div data-testid="dispatch">
-          <Text variant="body-small">
-            Inputs:{' '}
-            {Object.entries(dispatch.inputs)
-              .map(([key, value]) => `${key}=${String(value)}`)
-              .join(', ')}
-            . {dispatch.then}
-          </Text>
-          <div style={{ marginTop: 8 }}>
+        <Flex direction="column" gap="2" data-testid="dispatch">
+          <Text variant="body-small">{dispatch.then}</Text>
+          <div>
             <ButtonLink
               href={dispatch.runsUrl}
               target="_blank"
@@ -262,50 +273,57 @@ function DispatchView({ dispatch }: { dispatch: Dispatch }) {
               Workflow runs ↗
             </ButtonLink>
           </div>
-        </div>
+        </Flex>
       }
     />
   );
 }
 
-const OPT_IN_LINE: Record<Alignment['mode'], (repository: string) => string> = {
-  align: repository =>
-    `${repository} is opted in to alignment: the changes below are applied.`,
-  'opt-in': repository =>
-    `${repository} has not opted in to alignment: Align now opts it in and the reconciler aligns it when the pull request merges.`,
-  check: repository =>
-    `${repository} has not opted in to alignment: this run checks and changes nothing.`,
+/**
+ * What the commit does, per the manager's mode, in one sentence: opted in,
+ * the repository is aligned; declared but not opted in, the pull request
+ * that opts it in, whose merge aligns it; otherwise a check. The rest is
+ * the intranet page's.
+ */
+const LEAD: Record<
+  Alignment['mode'],
+  (repository: string, team: string) => ReactNode
+> = {
+  align: repository => (
+    <>
+      Applies the declared set-up and the company baseline to {repository} on
+      GitHub and CircleCI, as you.
+    </>
+  ),
+  'opt-in': (repository, team) => (
+    <>
+      {repository} has not opted in to alignment. <em>Opt in and align</em>{' '}
+      opens a pull request as you that sets <code>align: true</code> in its
+      entry; a member of {team} approves it and the reconciler applies the
+      changes below when it merges.
+    </>
+  ),
+  check: repository => (
+    <>
+      {repository} is not opted in to alignment: this run checks it against the
+      baseline and changes nothing.
+    </>
+  ),
 };
 
 /**
- * The opt-in line: the repository's own opt-in to alignment (`align: true`
- * in its team-file entry) and what the run does about it -- opted in, the
- * changes are applied; declared but not opted in, Align now opts it in;
- * without an entry, the run only checks.
- */
-function OptInLine({
-  repository,
-  alignment,
-}: {
-  repository: string;
-  alignment: Alignment;
-}) {
-  return (
-    <Text variant="body-medium" data-testid="opt-in">
-      {OPT_IN_LINE[alignment.mode](repository)}
-    </Text>
-  );
-}
-
-/**
  * The changes the last check planned, per step, as the manager returns
- * them; the two empty cases named -- no check yet, or nothing to change.
+ * them, and when it checked; the two empty cases named -- no check yet, or
+ * nothing to change.
  */
 function PlannedChanges({ alignment }: { alignment: Alignment }) {
   const steps = alignment.planned?.filter(step => step.changes.length > 0);
-  const checked = alignment.checkedAt
-    ? ` Checked at ${alignment.checkedAt}.`
-    : '';
+  const checked = alignment.checkedAt ? (
+    <>
+      {' '}
+      · checked <DateComponent value={alignment.checkedAt} relative />
+    </>
+  ) : null;
   if (!steps) {
     return (
       <Text variant="body-small" color="secondary" data-testid="planned">
@@ -316,14 +334,14 @@ function PlannedChanges({ alignment }: { alignment: Alignment }) {
   if (steps.length === 0) {
     return (
       <Text variant="body-small" color="secondary" data-testid="planned">
-        Nothing to change.{checked}
+        Nothing to change{checked}.
       </Text>
     );
   }
   return (
     <Flex direction="column" gap="2" data-testid="planned">
       <Text variant="body-small" color="secondary">
-        Planned changes.{checked}
+        Planned changes{checked}
       </Text>
       {steps.map(step => (
         <div key={step.step}>
@@ -344,68 +362,57 @@ function PlannedChanges({ alignment }: { alignment: Alignment }) {
 }
 
 /**
- * An opt-in as the manager rendered it: the pull request that sets
- * `align: true` in the entry -- the entry before and after, the pull
- * request, the ask -- then the changes the reconciler applies once it
- * merges; after the commit, the pull request opened and the delivered ask.
- * Nothing is dispatched.
+ * The dry run of an Align now on a declared repository: what the commit
+ * does, the link to the rest, the changes the last check planned.
  */
-function OptInView({
+function AlignmentPlan({
+  repository,
+  team,
   alignment,
-  optIn,
 }: {
+  repository: string;
+  team: string;
   alignment: Alignment;
-  optIn: OptIn;
 }) {
   return (
-    <>
-      {optIn.committed ? (
-        <PullRequestOpened result={optIn.committed} />
-      ) : (
-        <>
-          <PlanView plan={optIn.plan} />
-          <PlannedChanges alignment={alignment} />
-        </>
-      )}
-      <Text variant="body-small" color="secondary" data-testid="then">
-        {alignment.then}
+    <Flex direction="column" gap="3" data-testid="alignment">
+      <Text variant="body-medium" data-testid="lead">
+        {LEAD[alignment.mode](repository, alignment.team ?? team)} <DocsLink />
       </Text>
-    </>
+      <PlannedChanges alignment={alignment} />
+    </Flex>
   );
 }
 
 /**
- * An alignment as the manager rendered it: what the run changes, the
- * repository's opt-in, the changes the last check planned, and how it lands
- * -- the dispatch (`align`, `check`) or the opt-in pull request (`opt-in`)
- * -- planned in the dry run, done afterwards (the plan is then behind the
- * run).
+ * An Align now committed: the opt-in pull request opened with its ask
+ * delivered (`opt-in`), or the dispatch followed through the record to the
+ * run's report (`align`, `check`).
  */
-function AlignmentView({
+function AlignmentDone({
   repository,
   alignment,
 }: {
   repository: string;
   alignment: Alignment;
 }) {
-  const optIn = alignment.mode === 'opt-in' ? alignment.optIn : undefined;
-  const done = alignment.dispatched || !!optIn?.committed;
+  if (alignment.mode === 'opt-in') {
+    return (
+      <Flex direction="column" gap="3" data-testid="alignment">
+        <PullRequestOpened
+          result={alignment.optIn?.committed ?? { pullRequest: null }}
+        />
+        <Text variant="body-small" color="secondary" data-testid="then">
+          When it merges, the reconciler aligns {repository}; the row shows the
+          run until it reports.
+        </Text>
+      </Flex>
+    );
+  }
   return (
     <Flex direction="column" gap="3" data-testid="alignment">
-      {!done && (
-        <div data-testid="alignment-warning">
-          <Alert status="warning" title={alignment.warning} />
-        </div>
-      )}
-      <OptInLine repository={repository} alignment={alignment} />
-      {optIn ? (
-        <OptInView alignment={alignment} optIn={optIn} />
-      ) : (
-        <>
-          {!done && <PlannedChanges alignment={alignment} />}
-          <DispatchView dispatch={alignment} />
-        </>
-      )}
+      <Dispatched dispatch={alignment} />
+      {alignment.dispatched && <LiveAlignment repository={repository} />}
     </Flex>
   );
 }
@@ -417,12 +424,14 @@ const COMMIT_LABEL: Record<Alignment['mode'], string> = {
 };
 
 /**
- * Align now: the repository aligned as the person, after the manager's dry
- * run said what it would change and how -- opted in, the set-up workflow is
- * dispatched; declared but not opted in, the commit opens the pull request
- * that opts it in and the reconciler aligns it when that merges; without an
- * entry, the run only checks. A dispatched run is then followed to its report
- * through the record.
+ * Align now: one dialog. A declared repository has nothing to fill in, so
+ * the manager's dry run starts as the dialog opens and the dialog says in a
+ * sentence what the commit does -- opted in, the set-up workflow is
+ * dispatched; not opted in, the commit opens the pull request that opts it
+ * in and the reconciler aligns it when that merges -- then the changes the
+ * last check planned; the button follows the mode. An undeclared repository
+ * needs the team and gets a check that changes nothing. A dispatched run is
+ * followed to its report through the record.
  */
 export function AlignDialog({
   record,
@@ -432,57 +441,62 @@ export function AlignDialog({
 }: RowDialogProps) {
   const api = useApi(repositoriesApiRef);
   const [team, setTeam] = useState('');
-  const undeclared = record.declaration === null;
   const args = () => ({ team: team.trim() || undefined });
-  return (
-    <ActionDialog<Alignment, Alignment>
-      title={`Align ${record.name} now`}
-      intro={
-        <>
-          Changes {record.repository} on GitHub and CircleCI to its declared
-          set-up and the company baseline — settings, permissions, branch
-          protection, the CircleCI project — as you. Opted in to alignment (
-          <code>align: true</code> in its entry), the set-up workflow is
-          dispatched; not yet opted in, a team-file pull request opts it in and
-          the reconciler aligns it when the pull request merges; without an
-          entry, the run checks from the team alone and changes nothing.
-        </>
-      }
-      isOpen={isOpen}
-      onClose={onClose}
-      ready={!undeclared || team.trim().length > 0}
-      fields={
-        undeclared ? (
+  const commit = () =>
+    api.alignRepository(record.repository, args(), { mode: 'commit' });
+  const renderDone = (alignment: Alignment) => (
+    <AlignmentDone repository={record.repository} alignment={alignment} />
+  );
+  const title = `Align ${record.name} now`;
+
+  if (!isDeclared(record)) {
+    return (
+      <ActionDialog<Alignment, Alignment>
+        title={title}
+        intro={
+          <>
+            {record.repository} has no entry in a team file, so it cannot be
+            aligned yet: the run checks it against the baseline for the team
+            named below and changes nothing. <DocsLink />
+          </>
+        }
+        isOpen={isOpen}
+        onClose={onClose}
+        ready={team.trim().length > 0}
+        fields={
           <TextField
             label="Team"
-            description="This repository has no entry: the run checks it from the team alone."
+            description="The team's GitHub slug: team-planeteers, …"
             isRequired
             value={team}
             onChange={setTeam}
           />
-        ) : (
-          <Text variant="body-small" color="secondary">
-            Declared by {record.declaration!.team}.
-          </Text>
-        )
-      }
+        }
+        commit={commit}
+        renderDone={renderDone}
+        commitLabel={COMMIT_LABEL.check}
+        onDone={onDone}
+      />
+    );
+  }
+  return (
+    <ActionDialog<Alignment, Alignment>
+      title={title}
+      isOpen={isOpen}
+      onClose={onClose}
+      ready
       dryRun={() =>
         api.alignRepository(record.repository, args(), { dryRun: true })
       }
       renderPlan={alignment => (
-        <AlignmentView repository={record.repository} alignment={alignment} />
+        <AlignmentPlan
+          repository={record.repository}
+          team={record.declaration.team}
+          alignment={alignment}
+        />
       )}
-      commit={() =>
-        api.alignRepository(record.repository, args(), { mode: 'commit' })
-      }
-      renderDone={alignment => (
-        <Flex direction="column" gap="3">
-          <AlignmentView repository={record.repository} alignment={alignment} />
-          {alignment.dispatched && (
-            <LiveAlignment repository={record.repository} />
-          )}
-        </Flex>
-      )}
+      commit={commit}
+      renderDone={renderDone}
       commitLabel={alignment => COMMIT_LABEL[alignment?.mode ?? 'align']}
       onDone={onDone}
     />

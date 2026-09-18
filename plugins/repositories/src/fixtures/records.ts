@@ -197,7 +197,8 @@ export const newService: InventoryRecord = {
     file: 'repositories/team-bumblebee.yaml',
     componentType: 'service',
     language: 'go',
-    entry: '- name: new-service\n',
+    // Created through the product: opted in to alignment by its creation.
+    entry: '- name: new-service\n  align: true\n',
     accepted: true,
   },
   reality: {

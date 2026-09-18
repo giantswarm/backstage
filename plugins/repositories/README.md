@@ -92,25 +92,27 @@ commit` -- the repository and one scaffold commit as the person, then the
   they are and named on the form), _Transfer_ (`transfer_repository`, the
   receiving team approves, the giving team is told), _Deprecate_ and
   _Archive_ (`set_lifecycle`, the team's review asked in its channel),
-  _Align now_ (`align_repository`: the dialog says that the run changes the
-  repository on GitHub and CircleCI to its declared set-up and the company
-  baseline as the person, and its dry run shows the manager's warning, the
-  repository's opt-in to alignment (`align: true` in its team-file entry) and
-  the changes the last check planned per step, then how it lands -- one of
-  the manager's three modes. Opted in, the set-up workflow is dispatched and
-  the changes are applied; the button reads _Align now_, and the dispatch is
-  then followed through the record -- its pending run, then the run's report
-  with the verdict and the run linked, or the inventory's finding when the
-  run never reported. Declared but not opted in, nothing is dispatched: the
-  dry run shows the entry as it will read, the pull request and the ask the
-  team's channel receives (a member other than the person approves); the
-  button reads _Opt in and align_, the commit opens that pull request as the
-  person, and the done view shows it, the delivered ask and that the
-  reconciler aligns the repository when it merges. Without an entry, the run
-  checks from the team alone and changes nothing; the button reads _Check
-  now_).
+  _Align now_ (`align_repository`: one dialog. A declared repository has
+  nothing to fill in, so the manager's dry run starts as the dialog opens
+  and the dialog says in one sentence what the commit does, links the
+  intranet's repository set-up page for the rest, and lists the changes the
+  last check planned per step with when it checked -- the manager's mode
+  decides the sentence and the button. Opted in (`align: true` in its
+  team-file entry), the set-up workflow is dispatched as the person and the
+  button reads _Align now_; the dispatch is then followed through the
+  record -- its pending run, then the run's report with the verdict and the
+  run linked, or the inventory's finding when the run never reported.
+  Declared but not opted in, the button reads _Opt in and align_: the commit
+  opens the pull request that sets the field as the person, the team's
+  approval asked in its channel, and the done view shows the pull request
+  and the delivered ask -- nothing is dispatched; the reconciler aligns the
+  repository when it merges. Without an entry there is no dry run: the
+  dialog asks for the team and _Check now_ dispatches a check that changes
+  nothing).
 - A write the manager refuses shows the manager's reason verbatim; the page
   offers no override -- `commit` is the only mode and the manager owns it.
+- A write's result stays on screen until the person closes the dialog; the
+  record and the listing are re-read on that Close.
 
 ## Development
 

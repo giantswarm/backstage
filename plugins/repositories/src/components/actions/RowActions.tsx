@@ -23,16 +23,28 @@ export function RowActions({
   onChanged,
 }: {
   record: InventoryRecord;
-  /** A write landed: the record and the listing are re-read. */
+  /** A write landed and its dialog was closed: the record and the listing are re-read. */
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState<Action>();
+  // A write landed while its dialog is open. The re-read waits for the
+  // dialog's Close: a re-read listing re-renders the table's rows, which
+  // re-mounts this panel and would take the dialog -- and the result it
+  // shows -- with it.
+  const [landed, setLanded] = useState(false);
   const declared = isDeclared(record);
+  const close = () => {
+    setOpen(undefined);
+    if (landed) {
+      setLanded(false);
+      onChanged();
+    }
+  };
   const dialog: RowDialogProps = {
     record,
     isOpen: true,
-    onClose: () => setOpen(undefined),
-    onDone: onChanged,
+    onClose: close,
+    onDone: () => setLanded(true),
   };
   const undeclaredTitle = declared
     ? undefined

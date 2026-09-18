@@ -1,4 +1,5 @@
 import {
+  Alignment,
   InventoryRecord,
   ListFilters,
   ManagerInfo,
@@ -9,11 +10,13 @@ import {
 } from '../apis';
 import { unusedWrites } from './fakeApi';
 import {
+  alignmentOf,
   daysSince,
   firstRelease,
   listingOf,
   newService,
   NOW,
+  optInAlignmentOf,
   presentService,
   records as fixtureRecords,
   renovateStateOf,
@@ -268,6 +271,55 @@ export function createInMemoryApi(
       };
     },
     getRepository: async name => record(name),
+    /**
+     * `align_repository` the way the manager answers it: an undeclared
+     * repository is checked from the team given (`mode: check`); a declared
+     * one is aligned when its entry says `align: true` (`mode: align`) and
+     * opted in through the pull request otherwise (`mode: opt-in`, the
+     * fixture's present-service texts). A commit that dispatches marks the
+     * record's pending run, so the dialog's follow has something to show.
+     */
+    alignRepository: async (name, args, write): Promise<Alignment> => {
+      const current = record(name);
+      const commit = 'mode' in write;
+      const inputs = { repository: current.name, team: args.team };
+      let alignment: Alignment;
+      if (current.declaration === null) {
+        alignment = alignmentOf(commit, {
+          inputs,
+          team: args.team,
+          optedIn: false,
+          mode: 'check',
+          planned: undefined,
+          checkedAt: undefined,
+        });
+      } else if (/^\s+align:\s*true\s*$/m.test(current.declaration.entry)) {
+        alignment = alignmentOf(commit, {
+          inputs,
+          team: current.declaration.team,
+        });
+      } else {
+        alignment = {
+          ...optInAlignmentOf(commit),
+          inputs,
+          team: current.declaration.team,
+        };
+      }
+      if (alignment.dispatched) {
+        records.set(current.repository, {
+          ...current,
+          setup: {
+            ...current.setup,
+            pendingRun: {
+              dispatchedAt: new Date().toISOString(),
+              by: world.login,
+              kind: 'dispatched',
+            },
+          },
+        });
+      }
+      return alignment;
+    },
     /**
      * The follow, a phase further on every call -- the creation left the
      * repository created and scaffolded -- ready with its first release at
