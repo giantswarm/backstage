@@ -531,6 +531,29 @@ describe('applyStreamEvent', () => {
     });
   });
 
+  describe('a turn the person cancels', () => {
+    it('settles into the entry the poll will deliver', () => {
+      // Pressing Stop ends the turn with a terminal `canceled`. Left to the
+      // default path the partial reply stayed on screen as though the agent were
+      // still mid-sentence, and then vanished when the poll — whose history holds
+      // no reply — replaced it with nothing.
+      const turn = fold([
+        statusUpdate(agentMessage([textPart('Let me check the')], 'reply-1')),
+        statusUpdate(undefined, { final: true, state: 'canceled' }),
+      ]);
+
+      expect(turn.isFinal).toBe(true);
+      expect(turn.live).toBeUndefined();
+      expect(turn.items.map(describeItem)).toEqual([
+        'text:Let me check the',
+        'text:turn-failed',
+      ]);
+      expect(turn.items[1]).toEqual(
+        expect.objectContaining({ kind: 'turn-failed', state: 'canceled' }),
+      );
+    });
+  });
+
   describe('the Go executor flow: artifact updates', () => {
     const artifactUpdate = (
       parts: unknown[],

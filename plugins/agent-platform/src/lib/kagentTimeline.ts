@@ -4,6 +4,7 @@ import {
   addTokenUsage,
   ASK_USER_TOOL_NAME,
   AWAITING_INPUT_STATES,
+  CANCELED_STATE,
   CONFIRMATION_TOOL_NAME,
   describeSessionState,
   FAILED_STATES,
@@ -110,10 +111,17 @@ export type TimelineItem =
       verdict?: 'approved' | 'rejected';
     })
   | (TimelineItemBase & {
+      /**
+       * A turn that ended with no reply under it. Named for the case it was built
+       * for, and kept that way because an e2e suite and the stream reducer address
+       * it by this name — `state` says which ending it actually was.
+       */
       kind: 'turn-failed';
       /**
-       * The terminal state that ended the turn — `failed` or `rejected`, as the
-       * normalised key `describeSessionState` resolves (see `FAILED_STATES`).
+       * The terminal state that ended the turn — `failed` or `rejected` (see
+       * `FAILED_STATES`), or `canceled` (see `CANCELED_STATE`), as the normalised
+       * key `describeSessionState` resolves. A cancel is not a failure and the
+       * entry says so; it is here because it leaves the same hole in the page.
        */
       state: string;
       /**
@@ -204,7 +212,12 @@ function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
 }
 
 /**
- * Whether a task ended in error, and what kagent said about it.
+ * Whether a task ended without answering, and what kagent said about it.
+ *
+ * Two endings qualify, and they are not the same thing. A **failure** is the
+ * agent's or the provider's; a **cancel** is the person's own Stop, or the
+ * controller ending the run. Both leave the turn with no reply under it, which is
+ * the hole this fills, so both are read here and the caller's entry says which.
  *
  * A failed turn was the one outcome that rendered as *nothing*: the badge said
  * "Failed", but the timeline showed the user's message with no reply under it,
@@ -218,19 +231,24 @@ function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
  * a terminal failure `status.message` is the reason; on a completed task it is the
  * reply, already in history, and reading it here would show it twice.
  *
+ * A cancel usually carries no `status.message` at all — a turn stopped four
+ * seconds in on a live installation had one history entry, the person's message,
+ * and nothing else — so the entry is the whole of what is known about it. Read the
+ * field anyway: a controller that does record why is worth repeating verbatim.
+ *
  * The reason is dropped — not the entry — when history already carries the same
  * message: a runtime that also records the failing reply as an agent message has
- * already rendered it as prose above, and the entry then says only that the turn
- * failed, which the prose alone does not.
+ * already rendered it as prose above, and the entry then says only how the turn
+ * ended, which the prose alone does not.
  */
-function readTurnFailure(
+function readTurnEnding(
   task: A2aTaskWire,
   alreadyRendered: Set<string>,
 ):
   | { state: string; reason?: string; messageId?: string; author?: string }
   | undefined {
   const state = describeSessionState(task.status?.state)?.key;
-  if (!state || !FAILED_STATES.has(state)) {
+  if (!state || !(FAILED_STATES.has(state) || state === CANCELED_STATE)) {
     return undefined;
   }
   const raw = task.status?.message;
@@ -614,20 +632,19 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       flushText();
     });
 
-    // Last in its turn: whatever the agent managed to say or do before failing
-    // keeps its place, and the failure closes the turn the way the badge says
-    // it ended.
-    const failure = readTurnFailure(task, seenMessageIds);
-    if (failure) {
+    // Last in its turn: whatever the agent managed to say or do before it ended
+    // keeps its place, and the ending closes the turn the way the badge says.
+    const ending = readTurnEnding(task, seenMessageIds);
+    if (ending) {
       items.push({
         kind: 'turn-failed',
-        id: `${taskIndex}:failed:${items.length}`,
+        id: `${taskIndex}:ended:${items.length}`,
         at: taskTimestamp,
-        author: failure.author,
+        author: ending.author,
         taskIndex,
-        messageId: failure.messageId,
-        state: failure.state,
-        reason: failure.reason,
+        messageId: ending.messageId,
+        state: ending.state,
+        reason: ending.reason,
       });
     }
   });

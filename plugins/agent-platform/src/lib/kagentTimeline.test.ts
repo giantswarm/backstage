@@ -475,6 +475,80 @@ describe('buildTimeline', () => {
     });
   });
 
+  describe('a turn that was canceled', () => {
+    /**
+     * A turn stopped before the agent answered, shaped like one read off a live
+     * session: the person's message, and nothing else at all — no reply, no
+     * artifacts, no `status.message`. Cancelling is the ordinary way out of a
+     * turn that is taking too long, so this is the common shape, not an edge.
+     */
+    const canceled = {
+      data: [
+        {
+          id: 'task-canceled',
+          status: {
+            state: 'canceled',
+            timestamp: '2026-09-18T05:56:07.729Z',
+          },
+          history: [
+            {
+              messageId: 'm-canceled-1',
+              role: 'user',
+              parts: [{ text: 'Would it be possible to…' }],
+            },
+          ],
+        },
+      ],
+    };
+
+    it('closes the turn with an entry instead of silence', () => {
+      // Without it the turn rendered as the person's message and nothing under
+      // it. The header badge reads the newest task only, so on a session that
+      // went on afterwards the cancel left no trace anywhere on the page.
+      const { items } = timelineFor(canceled);
+
+      expect(kinds(items)).toEqual(['user-message', 'turn-failed']);
+      expect(items[1]).toMatchObject({
+        kind: 'turn-failed',
+        state: 'canceled',
+        taskIndex: 0,
+        at: '2026-09-18T05:56:07.729Z',
+      });
+      expect((items[1] as { reason?: string }).reason).toBeUndefined();
+    });
+
+    it('repeats a reason when the controller recorded one', () => {
+      const withReason = structuredClone(canceled) as typeof canceled;
+      (withReason.data[0].status as { message?: unknown }).message = {
+        messageId: 'm-canceled-reason',
+        role: 'agent',
+        parts: [{ text: 'Canceled by the user.' }],
+      };
+
+      expect(timelineFor(withReason).items[1]).toMatchObject({
+        state: 'canceled',
+        reason: 'Canceled by the user.',
+      });
+    });
+
+    it('counts no tokens for it and reports no unreadable message', () => {
+      const { tokens, skippedMessages } = timelineFor(canceled);
+
+      expect(tokens.total).toBe(0);
+      expect(skippedMessages).toBe(0);
+    });
+
+    it('reads the A2A v1 spelling of the state', () => {
+      // The v2 API answers `TASK_STATE_CANCELED`; the readers work in the legacy
+      // spelling, and the translation is what bridges them. A cancel that missed
+      // it would be as invisible as it was before this entry existed.
+      const v1 = structuredClone(canceled) as typeof canceled;
+      v1.data[0].status.state = 'TASK_STATE_CANCELED';
+
+      expect(timelineFor(v1).items[1]).toMatchObject({ state: 'canceled' });
+    });
+  });
+
   describe('approvals', () => {
     it('shows the proposed tool and the verdict, not the decision message', () => {
       const { items } = timelineFor(approval);
@@ -739,11 +813,14 @@ describe('buildTimeline', () => {
       const { items, skippedMessages } = timelineFor(malformed);
 
       // The readable message, the orphan response, and the unnamed call survive.
+      // The last row is a canceled task with no history at all; it still closes
+      // with its ending, which is the only thing known about it.
       expect(kinds(items)).toEqual([
         'user-message',
         'tool-call',
         'tool-call',
         'agent-message',
+        'turn-failed',
       ]);
       expect(items[0]).toMatchObject({ text: 'still readable' });
       expect(skippedMessages).toBeGreaterThan(0);
