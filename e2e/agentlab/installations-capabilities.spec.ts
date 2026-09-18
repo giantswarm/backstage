@@ -138,10 +138,14 @@ test.describe('installations: platform capabilities', () => {
         await expect(commit).toBeDisabled();
         await expect(dialog.getByText('Commit needs your grant')).toBeVisible();
       } else {
-        // A commit the manager would refuse anyway (not opted in) has no
-        // button at all; the note says why.
+        // A commit the manager would refuse anyway -- the installation not
+        // opted in, or the definition refusing the inputs left unchosen -- has
+        // no button at all; the note says why.
         await expect(
-          dialog.getByText('A commit would be refused'),
+          dialog
+            .getByText('A commit would be refused')
+            .or(dialog.getByText('Refused by the definition'))
+            .first(),
         ).toBeVisible();
       }
       await dialog.getByRole('button', { name: 'Cancel' }).click();
