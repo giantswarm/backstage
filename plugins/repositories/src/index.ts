@@ -36,6 +36,7 @@ export type {
   Committed,
   Delivery,
   Alignment,
+  OptIn,
   Dispatch,
   PlannedStep,
   WriteOptions,

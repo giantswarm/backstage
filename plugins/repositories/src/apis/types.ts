@@ -642,17 +642,36 @@ export interface PlannedStep {
 }
 
 /**
- * `align_repository`'s answer: the dispatch of the set-up workflow, plus
- * what the run does to the repository -- the manager's warning, whether the
- * owning team has opted in (`mode: align` applies the planned changes;
- * `mode: check` reports them) and the changes the last check planned.
+ * The opt-in an Align now performs for a declared repository that has not
+ * opted in (`mode: opt-in`): the team-file pull request that sets
+ * `align: true` in its entry, planned in the dry run and, after the commit,
+ * what the manager committed -- the pull request and the delivered ask.
+ */
+export interface OptIn {
+  plan: Plan;
+  committed?: Committed;
+}
+
+/**
+ * `align_repository`'s answer: what the run does to the repository -- the
+ * manager's warning, the repository's opt-in and the changes the last check
+ * planned -- and how it lands. `mode: align` dispatches the set-up workflow
+ * and applies the planned changes; `mode: check` (no entry) dispatches it
+ * and reports them; `mode: opt-in` (declared, not opted in) dispatches
+ * nothing: the commit opens the pull request that opts the repository in
+ * and the reconciler aligns it when that merges.
  */
 export interface Alignment extends Dispatch {
   /** The owning team, when known. */
   team?: string;
-  /** The team has opted in: the run applies the planned changes. */
+  /**
+   * The repository's own opt-in to alignment (`align: true` in its team-file
+   * entry), as the manager answers it.
+   */
   optedIn: boolean;
-  mode: 'align' | 'check';
+  mode: 'align' | 'check' | 'opt-in';
+  /** The opt-in pull request; present in `mode: opt-in`. */
+  optIn?: OptIn;
   /** Per step, the changes the last check planned; absent when no check has run. */
   planned?: PlannedStep[];
   /** When the planned changes were checked. */
