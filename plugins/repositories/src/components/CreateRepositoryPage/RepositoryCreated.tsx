@@ -1,28 +1,56 @@
 import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
 import { Created, CreatedRepository } from '../../apis';
 import { PullRequestBody } from '../actions/PullRequestOpened';
 
 /** The GitHub URL as the manager returns it, without the scheme and host. */
 const slugOf = (url: string) => url.replace(/^https?:\/\/github\.com\//, '');
 
-/** One repository as `create_repository` left it: the repository, then its scaffold commit. */
+/**
+ * One repository as `create_repository` left it: the repository -- its name
+ * while the set-up runs, the link marked ready once every phase is done --
+ * then its scaffold commit.
+ */
 function RepositoryLines({
   repository,
   firstRelease,
+  ready,
 }: {
   repository: CreatedRepository;
   firstRelease: string;
+  ready: boolean;
 }) {
   return (
     <>
       <li>
-        <Text variant="body-small">
-          Repository{' '}
-          <Link href={repository.repository} target="_blank">
-            {slugOf(repository.repository)}
-          </Link>
-          {repository.created ? '' : ' — existed already; the creation resumed'}
-        </Text>
+        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+          <Text variant="body-small">
+            Repository{' '}
+            {ready ? (
+              <Link href={repository.repository} target="_blank">
+                {slugOf(repository.repository)}
+              </Link>
+            ) : (
+              <span data-testid="repository-name">
+                {slugOf(repository.repository)}
+              </span>
+            )}
+            {repository.created
+              ? ''
+              : ' — existed already; the creation resumed'}
+          </Text>
+          {ready ? (
+            <>
+              {' '}
+              <StatusLabel label="ready" intent="positive" />
+            </>
+          ) : (
+            <Text variant="body-small" color="secondary">
+              {' '}
+              — being set up, see below
+            </Text>
+          )}
+        </Flex>
       </li>
       {repository.scaffoldCommit && (
         <li>
@@ -47,9 +75,18 @@ function RepositoryLines({
  * manager wrote as the person: the repository, its scaffold commit (the
  * first release follows from that push), then the declaration pull request
  * with what became of its ask and notice. The attribution is the manager's:
- * the author it reports is the GitHub login of the person's grant.
+ * the author it reports is the GitHub login of the person's grant. The
+ * repository is linked and marked ready only once the follow says every
+ * phase is done; until then it is the name.
  */
-export function RepositoryCreated({ result }: { result: Created }) {
+export function RepositoryCreated({
+  result,
+  ready = false,
+}: {
+  result: Created;
+  /** `watch_repository` answered `ready`. */
+  ready?: boolean;
+}) {
   const author = result.pullRequest?.author;
   return (
     <Alert
@@ -63,6 +100,7 @@ export function RepositoryCreated({ result }: { result: Created }) {
                 key={repository.name}
                 repository={repository}
                 firstRelease={result.firstRelease}
+                ready={ready}
               />
             ))}
             <li>

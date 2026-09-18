@@ -5,8 +5,9 @@ const unused = (tool: string) => async () => {
 };
 
 /**
- * The write side of the API for tests that exercise the read side only:
- * every write throws when called, so a test that reaches one fails loudly.
+ * The write side of the API -- and the one read a test opts into, the watch
+ * that follows a creation -- for tests that exercise the read side only:
+ * every one throws when called, so a test that reaches one fails loudly.
  */
 export const unusedWrites: Pick<
   RepositoriesApi,
@@ -16,6 +17,7 @@ export const unusedWrites: Pick<
   | 'transferRepository'
   | 'setLifecycle'
   | 'alignRepository'
+  | 'watchRepository'
 > = {
   validateRepository: unused('validate_repository'),
   createRepository: unused('create_repository'),
@@ -23,4 +25,5 @@ export const unusedWrites: Pick<
   transferRepository: unused('transfer_repository'),
   setLifecycle: unused('set_lifecycle'),
   alignRepository: unused('align_repository'),
+  watchRepository: unused('watch_repository'),
 };

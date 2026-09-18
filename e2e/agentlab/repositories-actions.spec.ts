@@ -16,9 +16,11 @@ import { expect, open, test } from './fixtures';
  * the generator forced on refused until the form's fix turns it off. The commit is
  * **stubbed at the browser**: the backend's create route answers the way
  * the manager does -- the repository, its scaffold commit, the pull request
- * -- and the record of the new repository with its set-up steps converging,
- * so nothing is created by a test and the page's behaviour after Create is
- * pinned all the same. Every other call reaches the manager.
+ * -- the follow (`watch_repository`) answers the phases reached, first with
+ * the pull request open and then every phase done, and the record of the new
+ * repository comes with its set-up steps, so nothing is created by a test and
+ * the page's behaviour after Create is pinned all the same. Every other call
+ * reaches the manager.
  */
 const NAME = `e2e-shiny-${Date.now().toString(36)}`;
 
@@ -53,6 +55,59 @@ const created = {
   ],
   pullRequest,
   firstRelease: "v0.1.0 follows from the scaffold's auto-release",
+};
+
+/** When each phase of the creation was reached: 4 min 10 s to a green release. */
+const reachedAt = {
+  created: '2026-09-17T10:00:00Z',
+  scaffolded: '2026-09-17T10:00:04Z',
+  declared: '2026-09-17T10:00:13Z',
+  merged: '2026-09-17T10:01:15Z',
+  setUp: '2026-09-17T10:02:29Z',
+  released: '2026-09-17T10:04:10Z',
+};
+
+const phaseOf = (name: keyof typeof reachedAt, seconds: number) => ({
+  name,
+  at: reachedAt[name],
+  seconds,
+});
+
+/**
+ * `watch_repository`'s answers in the manager's shape: the first call finds
+ * the pull request open and returns on its timeout with `merged` pending;
+ * the second finds every phase done and the first release green.
+ */
+const watching = {
+  repository: `https://github.com/giantswarm/${NAME}`,
+  pullRequest: pullRequest.url,
+  phases: [
+    phaseOf('created', 0),
+    phaseOf('scaffolded', 4),
+    phaseOf('declared', 9),
+  ],
+  changed: false,
+  ready: false,
+  pending: 'merged',
+  waited: 20,
+};
+
+const ready = {
+  ...watching,
+  phases: [
+    ...watching.phases,
+    phaseOf('merged', 62),
+    phaseOf('setUp', 74),
+    phaseOf('released', 101),
+  ],
+  changed: true,
+  ready: true,
+  pending: undefined,
+  release: {
+    tag: 'v0.1.0',
+    url: `https://github.com/giantswarm/${NAME}/releases/tag/v0.1.0`,
+  },
+  waited: 3,
 };
 
 /** The new repository's record while the reconciler sets it up. */
@@ -304,22 +359,30 @@ test.describe('repositories: actions', () => {
     await expect(admin.getByRole('button', { name: 'Create' })).toBeVisible();
   });
 
-  test('Create names the repository, its scaffold commit and the pull request as the person, and the row shows the set-up steps', async ({
+  test('Create names the repository, its scaffold commit and the pull request as the person, follows the phases to readiness and marks the repository ready only then', async ({
     admin,
   }) => {
     const isCreatePath = (url: URL) =>
       url.pathname.endsWith('/repositories/repositories');
     const isRecord = (url: URL) =>
       url.pathname.endsWith(`/repositories/repositories/${NAME}`);
+    const isWatch = (url: URL) =>
+      url.pathname.endsWith(`/repositories/repositories/${NAME}/watch`);
     // The list shares the create path, so the method decides inside the
     // handler; the same references are unrouted below -- a fresh closure
     // would leave the stub on the page for the cases that follow.
-    const stubbed = (url: URL) => isCreatePath(url) || isRecord(url);
+    const stubbed = (url: URL) =>
+      isCreatePath(url) || isRecord(url) || isWatch(url);
+    const watches: unknown[] = [];
     const stub = (route: Route) => {
       const request = route.request();
       const url = new URL(request.url());
       if (request.method() === 'POST' && isCreatePath(url)) {
         return route.fulfill({ json: created });
+      }
+      if (isWatch(url)) {
+        watches.push(request.postDataJSON());
+        return route.fulfill({ json: watches.length === 1 ? watching : ready });
       }
       if (isRecord(url)) {
         return route.fulfill({ json: converging });
@@ -333,13 +396,14 @@ test.describe('repositories: actions', () => {
       await answered(admin);
       await admin.getByRole('button', { name: 'Create' }).click();
 
-      // The three artefacts in the order the manager wrote them.
+      // The three artefacts in the order the manager wrote them; the
+      // repository is its name while the set-up runs.
       const result = admin.getByTestId('repository-created');
       await expect(result).toBeVisible();
       await expect(admin.getByText('Created as admin')).toBeVisible();
-      await expect(
-        result.getByRole('link', { name: `giantswarm/${NAME}` }),
-      ).toHaveAttribute('href', `https://github.com/giantswarm/${NAME}`);
+      await expect(result.getByTestId('repository-name')).toHaveText(
+        `giantswarm/${NAME}`,
+      );
       await expect(
         result.getByRole('link', { name: 'a1b2c3d' }),
       ).toHaveAttribute(
@@ -353,7 +417,30 @@ test.describe('repositories: actions', () => {
         opened.getByRole('link', { name: /Open the pull request/ }),
       ).toHaveAttribute('href', pullRequest.url);
 
+      // The follow: the phases as the manager answered them, with the time
+      // since the creation, the pending one with what it waits for; then,
+      // on the next call, every phase done -- the release linked, the
+      // repository marked ready, the record's steps beneath.
       const live = admin.getByTestId('live-setup');
+      const phases = live.getByTestId('phases');
+      await expect(phases.getByTestId('phase-declared')).toContainText(
+        'Declared after 13 s (+9 s)',
+      );
+      await expect(live.getByTestId('setup-ready')).toBeVisible({
+        timeout: 30_000,
+      });
+      expect(watches[0]).toEqual({ pullRequest: 4242, timeout: 20 });
+      expect(watches.length).toBeGreaterThanOrEqual(2);
+      await expect(phases.getByTestId('phase-released')).toContainText(
+        'Released after 4 min 10 s (+1 min 41 s) v0.1.0',
+      );
+      await expect(
+        phases.getByRole('link', { name: /v0\.1\.0/ }),
+      ).toHaveAttribute('href', ready.release.url);
+      await expect(
+        result.getByRole('link', { name: `giantswarm/${NAME}` }),
+      ).toHaveAttribute('href', `https://github.com/giantswarm/${NAME}`);
+      await expect(result).toContainText('ready');
       await expect(live.getByTestId('setup-state')).toHaveText('not converged');
       const steps = live.getByTestId('setup-steps');
       await expect(steps.getByText('scaffold')).toBeVisible();

@@ -9,6 +9,9 @@ import {
   RepositoryRow,
   SweepSummary,
   Validation,
+  Watch,
+  WATCH_PHASES,
+  WatchPhaseName,
 } from '../apis';
 
 /**
@@ -854,3 +857,81 @@ export function alignmentOf(
     ...overrides,
   };
 }
+
+/**
+ * `watch_repository`'s answers for shiny-service, in the manager's shape:
+ * when each phase was reached (4 min 10 s from the creation to a settled
+ * green release), the answer with the phases through one of them done and
+ * the next pending, the ready answer, a red first release.
+ */
+
+export const WATCH_AT: Record<WatchPhaseName, string> = {
+  created: '2026-09-18T10:00:00Z',
+  scaffolded: '2026-09-18T10:00:04Z',
+  declared: '2026-09-18T10:00:13Z',
+  merged: '2026-09-18T10:01:15Z',
+  setUp: '2026-09-18T10:02:29Z',
+  released: '2026-09-18T10:04:10Z',
+};
+
+export const firstRelease = {
+  tag: 'v0.1.0',
+  url: 'https://github.com/giantswarm/shiny-service/releases/tag/v0.1.0',
+};
+
+const secondsBetween = (from: string, to: string) =>
+  Math.round((Date.parse(to) - Date.parse(from)) / 1000);
+
+/**
+ * The answer with the phases through `through` done (none for `undefined`)
+ * and the phase after it pending; `overrides` make it ready, failed, or
+ * carry the manager's reason for the pending phase. A failure leaves no
+ * phase pending, as the manager answers.
+ */
+export function watchOf(
+  through: WatchPhaseName | undefined,
+  overrides: Partial<Watch> = {},
+): Watch {
+  const count = through ? WATCH_PHASES.indexOf(through) + 1 : 0;
+  const names = WATCH_PHASES.slice(0, count);
+  return {
+    repository: 'https://github.com/giantswarm/shiny-service',
+    pullRequest: count >= 3 ? openedPullRequest.url : undefined,
+    phases: names.map((name, index) => ({
+      name,
+      at: WATCH_AT[name],
+      seconds:
+        index === 0
+          ? 0
+          : secondsBetween(WATCH_AT[names[index - 1]], WATCH_AT[name]),
+    })),
+    changed: false,
+    ready: false,
+    pending: overrides.failure ? undefined : WATCH_PHASES[count],
+    waited: 20,
+    ...overrides,
+  };
+}
+
+/** Every phase done: the first release built green, one finding for the person. */
+export const watchReady: Watch = watchOf('released', {
+  ready: true,
+  release: firstRelease,
+  findings: [
+    {
+      kind: 'default-icon',
+      message: 'the repository uses the default icon',
+      fix: 'upload an icon in the repository settings',
+    },
+  ],
+});
+
+/** The first release red: the manager names the job. */
+export const watchRedRelease: Watch = watchOf('setUp', {
+  failure: {
+    phase: 'released',
+    reason:
+      'the CircleCI statuses on v0.1.0 are failure: ci/circleci: build (failure)',
+  },
+  release: firstRelease,
+});

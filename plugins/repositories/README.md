@@ -72,7 +72,17 @@ repository is what `devctl repo status` prints for it, from the same record.
   the form as it stands is accepted; it runs `create_repository` in `mode:
 commit` -- the repository and one scaffold commit as the person, then the
   team-file pull request under their name -- names the three in that order and
-  follows the new repository's set-up steps live once the reconciler has it.
+  **follows the repository to readiness** with the manager's
+  `watch_repository`: one call blocks until a phase completes (20 s at most),
+  and the page calls again while the repository is neither ready nor failed.
+  The phases -- created, scaffolded, declared, merged, set up, released --
+  appear as they complete with their time since the creation; the pending
+  one carries the manager's reason (the release's statuses reported and what
+  is awaited, the settle window) or what it waits for; a failure carries the
+  manager's reason (a red first release names the job). The repository is
+  linked and marked _ready_ only when every phase is done; until then it is
+  the name. Once the reconciler has reported, the record with its set-up
+  steps shows beneath, as the row shows it.
 - **Row actions** on the expanded record, each one tool call as the person
   with the manager's plan reviewed first: _Configure_ (`update_repository`,
   the whole entry as it should read), _Transfer_ (`transfer_repository`, the
@@ -84,7 +94,9 @@ commit` -- the repository and one scaffold commit as the person, then the
   shows the manager's warning, the changes the last check planned per step
   and whether the owning team has opted in -- opted in, the changes are
   applied and the button reads _Align now_; not opted in, the run only checks
-  and the button reads _Check now_).
+  and the button reads _Check now_; the dispatch is then followed through the
+  record -- its pending run, then the run's report with the verdict and the
+  run linked, or the inventory's finding when the run never reported).
 - A write the manager refuses shows the manager's reason verbatim; the page
   offers no override -- `commit` is the only mode and the manager owns it.
 

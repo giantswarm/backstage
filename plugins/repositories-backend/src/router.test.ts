@@ -330,6 +330,41 @@ describe('createRouter', () => {
       },
     );
 
+    it('follows a new repository through watch_repository with the pull request and the timeout as numbers', async () => {
+      const watch = {
+        repository: 'https://github.com/giantswarm/muster',
+        phases: [
+          { name: 'created', at: '2026-09-18T10:00:00Z', seconds: 0 },
+          { name: 'scaffolded', at: '2026-09-18T10:00:04Z', seconds: 4 },
+        ],
+        changed: false,
+        ready: false,
+        pending: 'declared',
+        waited: 20,
+      };
+      manager.answers.set('watch_repository', watch);
+      const res = await request(app)
+        .post('/repositories/muster/watch')
+        .send({ pullRequest: 4242, timeout: 20 });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(watch);
+      expect(manager.calls).toEqual([
+        {
+          tool: 'watch_repository',
+          authToken: 'dex-id-token',
+          args: { repository: 'muster', pullRequest: 4242, timeout: 20 },
+        },
+      ]);
+      // The pull request is the tool's number, not a string off a form.
+      expect(
+        (
+          await request(app)
+            .post('/repositories/muster/watch')
+            .send({ pullRequest: '4242' })
+        ).status,
+      ).toBe(400);
+    });
+
     it('has no decide route any more', async () => {
       const res = await request(app)
         .post('/repositories/muster/decide')

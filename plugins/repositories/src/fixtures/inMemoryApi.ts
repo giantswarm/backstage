@@ -4,13 +4,18 @@ import {
   ManagerInfo,
   RepositoriesApi,
   RepositoryListing,
+  Watch,
+  WATCH_PHASES,
 } from '../apis';
 import { unusedWrites } from './fakeApi';
 import {
+  firstRelease,
   listingOf,
   newService,
+  presentService,
   records as fixtureRecords,
   rowOf,
+  watchOf,
 } from './records';
 import { createInMemory, validateInMemory } from './validate';
 
@@ -191,6 +196,8 @@ export function createInMemoryApi(
   const records = new Map(Object.entries(options.records ?? fixtureRecords));
   const lists: ListFilters[] = [];
   const refreshes: string[] = [];
+  // How many phases each followed repository has reached: one more per call.
+  const watched = new Map<string, number>();
 
   const info: ManagerInfo = {
     version: 'dev',
@@ -279,6 +286,56 @@ export function createInMemoryApi(
       };
     },
     getRepository: async name => record(name),
+    /**
+     * The follow, a phase further on every call -- the creation left the
+     * repository created and scaffolded -- ready with its first release at
+     * the end; once the reconciler has reported (setUp), the record's set-up
+     * converges the way the row then shows it.
+     */
+    watchRepository: async (name): Promise<Watch> => {
+      const reached = Math.min(
+        (watched.get(name) ?? 1) + 1,
+        WATCH_PHASES.length - 1,
+      );
+      watched.set(name, reached);
+      const through = WATCH_PHASES[reached];
+      const url = `https://github.com/giantswarm/${name}`;
+      if (reached >= WATCH_PHASES.indexOf('setUp')) {
+        const current = records.get(`giantswarm/${name}`);
+        if (current) {
+          records.set(current.repository, {
+            ...current,
+            setup: {
+              ...current.setup,
+              checks: {
+                ...presentService.setup.checks!,
+                repository: current.repository,
+                declared: name,
+                team: current.declaration?.team ?? 'team-bumblebee',
+              },
+              lastRun: {
+                ...presentService.setup.lastRun!,
+                timestamp: now.toISOString(),
+                change: { kind: 'created', by: world.login },
+              },
+            },
+            findings: [],
+          });
+        }
+      }
+      const ready = through === 'released';
+      return {
+        ...watchOf(through, {
+          changed: reached > 1,
+          ready,
+          release: ready
+            ? { tag: firstRelease.tag, url: `${url}/releases/tag/v0.1.0` }
+            : undefined,
+        }),
+        repository: url,
+        waited: 0,
+      };
+    },
     refreshRepository: async name => {
       refreshes.push(name);
       const refreshed: InventoryRecord = {

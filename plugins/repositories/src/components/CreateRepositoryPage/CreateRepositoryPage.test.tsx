@@ -21,6 +21,9 @@ import {
   refusedValidation,
   rowOf,
   records,
+  watchOf,
+  watchReady,
+  watchRedRelease,
 } from '../../fixtures/records';
 import {
   RepositoriesProviders,
@@ -469,19 +472,21 @@ describe('CreateRepositoryPage', () => {
     expect(button('Create')).toBeEnabled();
   });
 
-  it('Create creates the repository, pushes the scaffold and opens the pull request as the person, then follows the set-up live', async () => {
+  it('Create creates the repository, pushes the scaffold and opens the pull request as the person, then follows the repository to readiness phase by phase', async () => {
     const createRepository = jest.fn().mockResolvedValue(createdRepository);
-    const getRepository = jest
+    const watchRepository = jest
       .fn()
-      .mockRejectedValueOnce(notFound())
-      .mockResolvedValue({
-        ...newService,
-        name: 'shiny-service',
-        repository: 'giantswarm/shiny-service',
-      });
+      .mockResolvedValueOnce(watchOf('declared'))
+      .mockResolvedValue(watchReady);
+    const getRepository = jest.fn().mockResolvedValue({
+      ...newService,
+      name: 'shiny-service',
+      repository: 'giantswarm/shiny-service',
+    });
     await renderPage({
       validateRepository: jest.fn().mockResolvedValue(acceptedValidation),
       createRepository,
+      watchRepository,
       getRepository,
     });
     await fillDeclaration();
@@ -503,18 +508,23 @@ describe('CreateRepositoryPage', () => {
       { mode: 'commit' },
     );
 
-    // The three artefacts in the order the manager wrote them.
+    // The three artefacts in the order the manager wrote them; the
+    // repository is its name until the follow says it is ready.
     const created = await screen.findByTestId('repository-created');
     expect(screen.getByText('Created as alice')).toBeInTheDocument();
     const items = within(created).getAllByRole('listitem');
-    expect(items.map(item => item.textContent)).toEqual([
-      'Repository giantswarm/shiny-service',
+    expect(items[0]).toHaveTextContent(
+      'Repository giantswarm/shiny-service — being set up, see below',
+    );
+    expect(items.slice(1).map(item => item.textContent)).toEqual([
       "Scaffold commit a1b2c3d on its default branch — v0.1.0 follows from the scaffold's auto-release",
       "Pull request, declaring shiny-service in the team's file",
     ]);
     expect(
-      within(items[0]).getByRole('link', { name: 'giantswarm/shiny-service' }),
-    ).toHaveAttribute('href', 'https://github.com/giantswarm/shiny-service');
+      within(items[0]).queryByRole('link', {
+        name: 'giantswarm/shiny-service',
+      }),
+    ).toBeNull();
     expect(
       within(items[1]).getByRole('link', { name: 'a1b2c3d' }),
     ).toHaveAttribute(
@@ -534,24 +544,111 @@ describe('CreateRepositoryPage', () => {
     expect(button('Adjust')).toBeDisabled();
     expect(radio(/^Go service/)).toBeDisabled();
 
-    // The set-up: waiting while the manager knows no record, then the steps.
+    // The follow: watch_repository with the pull request the creation
+    // opened, one call blocking 20 s at most; the phases as it answered.
     const live = screen.getByTestId('live-setup');
-    expect(await within(live).findByTestId('setup-waiting')).toHaveTextContent(
-      'Waiting for the pull request to merge: the reconciler sets shiny-service up after that (the repository and its scaffold exist already)',
-    );
-    expect(getRepository).toHaveBeenCalledWith('shiny-service');
-    // The next probe finds the record (the poll is 15 s; ask the cache directly).
-    await repositoriesQueryClient.refetchQueries({
-      queryKey: ['repositories', 'record', 'shiny-service'],
+    const phases = await within(live).findByTestId('phases');
+    expect(watchRepository).toHaveBeenCalledWith('shiny-service', {
+      pullRequest: 4242,
+      timeout: 20,
     });
+    expect(within(phases).getByTestId('phase-declared')).toHaveTextContent(
+      /^Declared after 13 s \(\+9 s\) pull request ↗$/,
+    );
+    expect(within(phases).getByTestId('phase-merged')).toHaveTextContent(
+      'Merged the declaration pull request has not merged yet',
+    );
+    expect(within(phases).getByTestId('phase-released')).toHaveAttribute(
+      'data-state',
+      'ahead',
+    );
+    // No record is asked for before the reconciler has run.
+    expect(getRepository).not.toHaveBeenCalled();
+    expect(within(live).queryByTestId('setup-ready')).toBeNull();
+
+    // The next call (the page calls again as soon as one answers) finds
+    // every phase done: the link is marked ready, the release named, the
+    // reconciler run's finding shown, the record with its steps below.
+    await repositoriesQueryClient.refetchQueries({
+      queryKey: ['repositories', 'watch'],
+    });
+    const readyAlert = await within(live).findByTestId('setup-ready');
+    expect(readyAlert).toHaveTextContent('shiny-service is ready');
+    expect(readyAlert).toHaveTextContent(
+      'Every phase is done: the first release v0.1.0 built green.',
+    );
+    expect(within(phases).getByTestId('phase-released')).toHaveTextContent(
+      /^Released after 4 min 10 s \(\+1 min 41 s\) v0\.1\.0 ↗$/,
+    );
+    expect(
+      within(items[0]).getByRole('link', { name: 'giantswarm/shiny-service' }),
+    ).toHaveAttribute('href', 'https://github.com/giantswarm/shiny-service');
+    expect(items[0]).toHaveTextContent('ready');
+    expect(items[0]).not.toHaveTextContent('being set up');
+    expect(within(live).getByTestId('watch-findings')).toHaveTextContent(
+      'default-icon',
+    );
     expect(await within(live).findByTestId('setup-state')).toHaveTextContent(
       'not converged',
     );
+    expect(getRepository).toHaveBeenCalledWith('shiny-service');
     expect(
       within(within(live).getByTestId('setup-steps')).getByRole('row', {
         name: /scaffold/,
       }),
     ).toHaveTextContent('drift');
+  });
+
+  it('a red first release is shown with the failing job and the manager’s reason; the repository is not marked ready', async () => {
+    const watchRepository = jest.fn().mockResolvedValue(watchRedRelease);
+    await renderPage({
+      validateRepository: jest.fn().mockResolvedValue(acceptedValidation),
+      createRepository: jest.fn().mockResolvedValue(createdRepository),
+      watchRepository,
+      getRepository: jest.fn().mockResolvedValue(newService),
+    });
+    await fillDeclaration();
+    await answered();
+    await userEvent.click(button('Create'));
+    const live = screen.getByTestId('live-setup');
+    const failure = await within(live).findByTestId('setup-failure');
+    expect(failure).toHaveTextContent('The first release failed');
+    expect(failure).toHaveTextContent(
+      'the CircleCI statuses on v0.1.0 are failure: ci/circleci: build (failure)',
+    );
+    expect(within(live).getByTestId('phase-released')).toHaveAttribute(
+      'data-state',
+      'failed',
+    );
+    expect(within(live).getByTestId('phase-setUp')).toHaveAttribute(
+      'data-state',
+      'done',
+    );
+    const created = screen.getByTestId('repository-created');
+    expect(
+      within(created).queryByRole('link', { name: 'giantswarm/shiny-service' }),
+    ).toBeNull();
+    expect(created).toHaveTextContent('being set up');
+    expect(within(live).queryByTestId('setup-ready')).toBeNull();
+  });
+
+  it('without a pull request there is nothing to follow, and the page says so', async () => {
+    const watchRepository = jest.fn();
+    await renderPage({
+      validateRepository: jest.fn().mockResolvedValue(acceptedValidation),
+      createRepository: jest
+        .fn()
+        .mockResolvedValue({ ...createdRepository, pullRequest: null }),
+      watchRepository,
+    });
+    await fillDeclaration();
+    await answered();
+    await userEvent.click(button('Create'));
+    const live = await screen.findByTestId('live-setup');
+    expect(within(live).getByTestId('setup-waiting')).toHaveTextContent(
+      'The manager opened no pull request, so there is no set-up to follow',
+    );
+    expect(watchRepository).not.toHaveBeenCalled();
   });
 
   it("shows the manager's refusal of the write verbatim and offers no override", async () => {

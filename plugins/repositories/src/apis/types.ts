@@ -229,6 +229,64 @@ export interface CI {
   error?: string;
 }
 
+/** The pull request of a team-file change. */
+export interface ChangePullRequest {
+  number: number;
+  url: string;
+}
+
+/**
+ * The team-file change a reconciler run followed, as the reconciler
+ * classifies it: `created`, `added`, `transferred`, `archived`,
+ * `deprecated`, `changed` (a person's pull request), `dispatched` (an Align
+ * now), `nightly` (the schedule).
+ */
+export interface Change {
+  kind: string;
+  /** The pull request's author, or who dispatched the run; absent for the schedule. */
+  by?: string;
+  pullRequest?: ChangePullRequest;
+  /** The giving team of a transfer. */
+  fromTeam?: string;
+}
+
+/**
+ * A reconciler run expected for the repository that has not reported yet:
+ * an Align now dispatched, or the run that follows the merge of a team-file
+ * pull request. The run's artifact clears it; the pending window running
+ * out leaves `MissingRun`.
+ */
+export interface PendingRun {
+  /** The dispatch of an Align now, or the opening of the pull request. */
+  dispatchedAt: string;
+  /** Who dispatched it, or who opened the pull request. */
+  by: string;
+  /** `dispatched`, or the kind of the team-file pull request. */
+  kind?: string;
+  /** The pull request whose merge the run follows; absent for an Align now. */
+  pullRequest?: ChangePullRequest;
+  /** When the pull request merged: the pending window counts from it. */
+  mergedAt?: string;
+}
+
+/** An expected run that did not report within the pending window. */
+export interface MissingRun extends PendingRun {
+  noticedAt: string;
+  /** The workflow's Actions page: where the run is, if any. */
+  runsUrl: string;
+}
+
+/** One reconciler run: the engine's result, the run, when, and the change it followed. */
+export interface LastRun {
+  result: SetupResult;
+  runUrl: string;
+  timestamp: string;
+  runId?: number;
+  attempt?: number;
+  /** Absent for an artifact without a change block. */
+  change?: Change;
+}
+
 /** The full inventory record of one repository (`get_repository`). */
 export interface InventoryRecord {
   repository: string;
@@ -316,7 +374,9 @@ export interface InventoryRecord {
     checks?: SetupResult;
     checkedAt?: string;
     checkError?: string;
-    lastRun?: { result: SetupResult; runUrl: string; timestamp: string };
+    lastRun?: LastRun;
+    pendingRun?: PendingRun;
+    missingRun?: MissingRun;
   };
   findings: Finding[];
   refreshedAt: string;
@@ -584,6 +644,69 @@ export interface Alignment extends Dispatch {
 }
 
 /**
+ * The phases of a new repository in the order `watch_repository` reaches
+ * them: the repository exists, its default branch carries the scaffold, the
+ * declaration pull request is open, merged, the reconciler run of that pull
+ * request has reported, the first release exists with its CircleCI statuses
+ * green, complete and settled.
+ */
+export const WATCH_PHASES = [
+  'created',
+  'scaffolded',
+  'declared',
+  'merged',
+  'setUp',
+  'released',
+] as const;
+
+export type WatchPhaseName = (typeof WATCH_PHASES)[number];
+
+/** One phase done: when it was reached, and the seconds since the phase before. */
+export interface WatchPhase {
+  name: string;
+  at: string;
+  seconds: number;
+}
+
+/** The phase that failed and why, in the manager's words (a red first release names the job). */
+export interface WatchFailure {
+  phase: string;
+  reason: string;
+}
+
+/**
+ * `watch_repository`'s answer: the phases done so far, whether the
+ * repository is ready, still pending or failed, and why a pending phase
+ * could not be decided on the last read.
+ */
+export interface Watch {
+  /** The repository's URL on GitHub. */
+  repository: string;
+  /** The declaration pull request's URL, once the `declared` phase is done. */
+  pullRequest?: string;
+  phases: WatchPhase[];
+  /** A phase completed during the call that was not done when it started. */
+  changed: boolean;
+  /** Every phase is done without a failure. */
+  ready: boolean;
+  /** The phase still waited for when the timeout ran out; absent when ready or failed. */
+  pending?: string;
+  /**
+   * Why the pending phase could not be decided: a read GitHub refused, the
+   * release's statuses reported and what is awaited, the settle window;
+   * absent when the phase is simply not reached yet.
+   */
+  pendingReason?: string;
+  failure?: WatchFailure;
+  /** The first release once it exists. */
+  release?: { tag: string; url: string };
+  /** The reconciler run's findings for a person, once it has reported. */
+  findings?: Finding[];
+  /** How many seconds the call blocked. */
+  waited: number;
+}
+
+/**
  * How a write lands: `dryRun` renders the change and writes nothing;
  * `mode: commit` opens the team-file pull request as the person. The
  * manager owns the modes -- anything else is refused by it with its reason.
@@ -612,6 +735,16 @@ export interface RepositoriesApi {
   listRepositories(filters: ListFilters): Promise<RepositoryListing>;
   getRepository(name: string): Promise<InventoryRecord>;
   refreshRepository(name: string): Promise<InventoryRecord>;
+  /**
+   * Follows a repository just created to readiness (`watch_repository`):
+   * one call blocks until a phase completes, the repository is ready or
+   * fails, or `timeout` seconds pass, and answers with the phases reached.
+   * Called again while the answer is neither ready nor failed.
+   */
+  watchRepository(
+    name: string,
+    args: { pullRequest: number; timeout?: number },
+  ): Promise<Watch>;
 
   /** The dry run of declaring new repositories (`validate_repository`). Writes nothing. */
   validateRepository(input: DeclarationInput): Promise<Validation>;

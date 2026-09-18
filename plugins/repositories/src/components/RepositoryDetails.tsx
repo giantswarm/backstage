@@ -243,8 +243,14 @@ export function RepositoryDetails({ repository }: { repository: string }) {
             {date(setup.lastRun.timestamp)}
           </Link>
           {`, ${setup.lastRun.result.mode}`}
+          {setup.lastRun.change && ` (${setup.lastRun.change.kind})`}
         </Text>
       ),
+    ),
+    fact(
+      'Reconciler run expected',
+      setup.pendingRun &&
+        `since ${dateTime(setup.pendingRun.dispatchedAt)}${setup.pendingRun.kind ? `, ${setup.pendingRun.kind}` : ''} by ${setup.pendingRun.by}`,
     ),
     fact('Created', date(reality?.createdAt)),
   );
