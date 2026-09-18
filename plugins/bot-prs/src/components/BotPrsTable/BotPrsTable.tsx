@@ -105,10 +105,25 @@ function ClassificationCell({
   );
 }
 
+/**
+ * A column nothing in view fills is dropped rather than shown as a column of
+ * blanks. The update type and the prior rescue each need the PR itself, which
+ * the stored read does not do, so both are empty until something reads the
+ * PRs -- a sweep, or a preview.
+ */
+function withValues(
+  columns: (TableColumn<BotPrRow> & { fills?: (row: BotPrRow) => boolean })[],
+  rows: BotPrRow[],
+): TableColumn<BotPrRow>[] {
+  return columns
+    .filter(column => !column.fills || rows.some(column.fills))
+    .map(({ fills, ...column }) => column);
+}
+
 function columnsOf(
   filtered: MargeGroup | undefined,
   onFilter: ((group: MargeGroup | undefined) => void) | undefined,
-): TableColumn<BotPrRow>[] {
+): (TableColumn<BotPrRow> & { fills?: (row: BotPrRow) => boolean })[] {
   return [
     {
       title: 'Repository',
@@ -152,6 +167,7 @@ function columnsOf(
       field: 'versionTo',
       width: '11%',
       cellStyle: ellipsis,
+      fills: row => Boolean(versionOf(row)),
       customSort: byText(row => versionOf(row)),
       render: row => {
         const version = versionOf(row);
@@ -181,6 +197,7 @@ function columnsOf(
       field: 'update_type',
       width: '7%',
       cellStyle: oneLine,
+      fills: row => Boolean(row.update_type),
       customSort: byText(row => row.update_type ?? ''),
       render: row => row.update_type ?? <NotAvailable />,
     },
@@ -218,6 +235,7 @@ function columnsOf(
       field: 'rescue',
       width: '6%',
       cellStyle: oneLine,
+      fills: row => Boolean(row.rescue),
       customSort: byText(row =>
         row.rescue ? `${row.rescue.outcome} ${row.rescue.at ?? ''}` : '',
       ),
@@ -266,9 +284,12 @@ export function BotPrsTable({
   onMarkBlocked,
 }: BotPrsTableProps) {
   const columns = useMemo(() => {
-    const listed = columnsOf(classification, onClassification);
+    const listed = withValues(
+      columnsOf(classification, onClassification),
+      rows,
+    );
     return showTeam ? [TEAM_COLUMN, ...listed] : listed;
-  }, [showTeam, classification, onClassification]);
+  }, [showTeam, classification, onClassification, rows]);
   return (
     <Table<BotPrRow>
       isLoading={isLoading}

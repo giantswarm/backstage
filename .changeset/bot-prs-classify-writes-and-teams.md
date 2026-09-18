@@ -29,3 +29,7 @@ view, with how many PRs carry it, and each row of it narrows the table too. The
 `unclassified` class no longer draws itself as an unticked radio button, which
 read as a control a person could set; the classes are the engine's own and
 nobody writes one by hand.
+
+A column nothing in view fills is dropped rather than shown as a column of
+blanks. The update type and the prior rescue each need the PR itself, which
+the stored read does not do, so both were always empty.
