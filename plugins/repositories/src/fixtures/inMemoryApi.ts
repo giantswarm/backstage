@@ -46,6 +46,15 @@ export function isArchived(record: InventoryRecord): boolean {
 }
 
 /**
+ * Archived, or declared deleted: the repositories whose life is over, which
+ * the manager's boolean `archived` filter selects and the listing hides by
+ * default.
+ */
+export function isOver(record: InventoryRecord): boolean {
+  return isArchived(record) || record.declaration?.lifecycle === 'deleted';
+}
+
+/**
  * Whether a record has the lifecycle asked for, as the manager judges it:
  * `archived` is declared archived or archived on GitHub, `active` is no
  * lifecycle declared (or `active`) and not archived on GitHub, anything else
@@ -126,10 +135,7 @@ export function matches(
   if (filters.lifecycle && !hasLifecycle(record, filters.lifecycle)) {
     return false;
   }
-  if (
-    filters.archived !== undefined &&
-    isArchived(record) !== filters.archived
-  ) {
+  if (filters.archived !== undefined && isOver(record) !== filters.archived) {
     return false;
   }
   if (

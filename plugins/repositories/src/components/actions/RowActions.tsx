@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, ButtonGroup } from '@material-ui/core';
+import { Button, ButtonGroup, makeStyles } from '@material-ui/core';
 import { InventoryRecord } from '../../apis';
 import {
   AlignDialog,
@@ -10,13 +10,37 @@ import {
   TransferDialog,
 } from './dialogs';
 
-type Action = 'edit' | 'transfer' | 'deprecate' | 'archive' | 'align';
+type Action =
+  'edit' | 'transfer' | 'deprecate' | 'archive' | 'delete' | 'align';
+
+/**
+ * Delete stands apart from the group, in the theme's error colour: the one
+ * action after which the repository is gone.
+ */
+const useStyles = makeStyles(theme => ({
+  delete: {
+    marginLeft: theme.spacing(1),
+    color: theme.palette.error.main,
+    borderColor: theme.palette.error.main,
+    '&:hover': {
+      color: theme.palette.error.contrastText,
+      backgroundColor: theme.palette.error.main,
+      borderColor: theme.palette.error.main,
+    },
+    '&.Mui-disabled': {
+      color: theme.palette.action.disabled,
+      borderColor: theme.palette.action.disabledBackground,
+    },
+  },
+}));
 
 /**
  * The actions of one repository's row, each one tool call as the signed-in
- * person: Edit, Transfer, Deprecate and Archive (team-file pull requests)
- * and Align now (the set-up workflow dispatched). The team-file writes need
- * a declaration; an undeclared repository offers Align now (with the team).
+ * person: Edit, Transfer, Deprecate and Archive (team-file pull requests),
+ * Align now (the set-up workflow dispatched) and, apart from the group and in
+ * red, Delete (a team-file pull request too: the reconciler deletes the
+ * repository once the team has approved). The team-file writes need a
+ * declaration; an undeclared repository offers Align now (with the team).
  */
 export function RowActions({
   record,
@@ -27,6 +51,7 @@ export function RowActions({
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState<Action>();
+  const classes = useStyles();
   const declared = isDeclared(record);
   const dialog: RowDialogProps = {
     record,
@@ -71,6 +96,16 @@ export function RowActions({
         </Button>
         <Button onClick={() => setOpen('align')}>Align now</Button>
       </ButtonGroup>
+      <Button
+        size="small"
+        variant="outlined"
+        className={classes.delete}
+        disabled={!declared}
+        title={undeclaredTitle}
+        onClick={() => setOpen('delete')}
+      >
+        Delete
+      </Button>
       {open === 'edit' && isDeclared(record) && (
         <EditDialog {...dialog} record={record} />
       )}
@@ -81,6 +116,7 @@ export function RowActions({
       {open === 'archive' && (
         <LifecycleDialog lifecycle="archived" {...dialog} />
       )}
+      {open === 'delete' && <LifecycleDialog lifecycle="deleted" {...dialog} />}
       {open === 'align' && <AlignDialog {...dialog} />}
     </div>
   );

@@ -8,6 +8,7 @@ import {
   DeclarationEntry,
   Dispatch,
   InventoryRecord,
+  LifecycleChange,
   Plan,
   repositoriesApiRef,
 } from '../../apis';
@@ -181,29 +182,63 @@ export function TransferDialog({
   );
 }
 
-const LIFECYCLE_TEXT = {
+const LIFECYCLE_TEXT: Record<LifecycleChange, string> = {
   deprecated:
     'security-only Renovate updates and a deprecated flag on the catalog entity; the repository stays as it is.',
   archived:
-    'the reconciler archives the repository on GitHub and unfollows it on CircleCI; the entry stays in the team file as the record. Deletion is not expressible.',
+    'the reconciler archives the repository on GitHub and unfollows it on CircleCI; the entry stays in the team file as the record.',
+  deleted:
+    'the reconciler unfollows the repository on CircleCI and deletes it on GitHub — its code, issues, pull requests, releases and packages with it; an organization owner can restore it on GitHub for 90 days. The entry stays in the team file as the record of the deletion.',
 };
 
-/** Deprecate or Archive: `set_lifecycle`, the team's review asked in its channel. */
+const LIFECYCLE_VERB: Record<LifecycleChange, string> = {
+  deprecated: 'Deprecate',
+  archived: 'Archive',
+  deleted: 'Delete',
+};
+
+/**
+ * The typed name is the repository's -- with or without the org, whatever
+ * the case: what a deletion needs before the manager is asked.
+ */
+export function namesRepository(
+  typed: string,
+  record: InventoryRecord,
+): boolean {
+  const name = typed.trim().toLowerCase();
+  return (
+    name.length > 0 &&
+    (name === record.name.toLowerCase() ||
+      name === record.repository.toLowerCase())
+  );
+}
+
+/**
+ * Deprecate, Archive or Delete: `set_lifecycle`, the team's review asked in
+ * its channel. A deletion needs the repository's name typed; it goes to the
+ * manager as `confirm`, which refuses the deletion without it.
+ */
 export function LifecycleDialog({
   lifecycle,
   record,
   isOpen,
   onClose,
   onDone,
-}: RowDialogProps & { lifecycle: 'deprecated' | 'archived' }) {
+}: RowDialogProps & { lifecycle: LifecycleChange }) {
   const api = useApi(repositoriesApiRef);
   const [reason, setReason] = useState('');
+  const [typed, setTyped] = useState('');
   const team = record.declaration?.team ?? 'the owning team';
-  const verb = lifecycle === 'archived' ? 'Archive' : 'Deprecate';
-  const args = () => ({ lifecycle, reason: reason || undefined });
+  const deleting = lifecycle === 'deleted';
+  const confirmed = !deleting || namesRepository(typed, record);
+  const args = () => ({
+    lifecycle,
+    reason: reason || undefined,
+    ...(deleting && { confirm: typed.trim() }),
+  });
   return (
     <ActionDialog<Plan, Committed>
-      title={`${verb} ${record.name}`}
+      title={`${LIFECYCLE_VERB[lifecycle]} ${record.name}`}
       intro={
         <>
           Sets <code>lifecycle: {lifecycle}</code> in the team-file entry of{' '}
@@ -214,9 +249,21 @@ export function LifecycleDialog({
       }
       isOpen={isOpen}
       onClose={onClose}
-      ready
+      ready={confirmed}
       fields={
-        <TextField {...reasonField()} value={reason} onChange={setReason} />
+        <>
+          {deleting && (
+            <TextField
+              label="Repository name"
+              description={`Type ${record.name} to confirm the deletion; the manager refuses it without the name.`}
+              isRequired
+              value={typed}
+              onChange={setTyped}
+              isInvalid={typed.trim().length > 0 && !confirmed}
+            />
+          )}
+          <TextField {...reasonField()} value={reason} onChange={setReason} />
+        </>
       }
       dryRun={() =>
         api.setLifecycle(record.repository, args(), { dryRun: true })
