@@ -14,8 +14,9 @@ a PR is what `marge list` and `marge sweep --dry-run` print for it.
 
 - **Scopes**: _My team_ (the person's `team-*` catalog groups, the default
   when they have one) and _All teams_ (every `team-*` group the catalog
-  names), kept in the URL as `?scope=`. marge answers one team per call, so a
-  scope is one `x_marge_list` per team.
+  names), kept in the URL as `?scope=`. A scope is one `x_marge_list` with
+  `teams`: marge merges the teams' repository lists and reads them once, and
+  still decides every team under its own team file.
 - **Layout**: the shape of the Repositories page -- the scopes as tabs, the
   filters in their own column (`FiltersLayout`), the stats strip, the summary
   line and the table -- built from the shared `ui-react` components, so the
@@ -23,7 +24,9 @@ a PR is what `marge list` and `marge sweep --dry-run` print for it.
 - **Stats**: open, green, waiting, action required, security failures and
   unclassified over the listed rows, as a `Stat` strip.
 - **Filters**: search, team (under _All teams_), repository, classification,
-  bot kind and dependency, each a URL parameter, applied on the page.
+  bot kind and dependency, each a URL parameter, applied on the page. The
+  team filter reads nothing: the team is already in the queue. A `?team=` a
+  person shared that the scope does not hold is read on its own.
 - **Table**: the `Table` of `@backstage/core-components`, sortable by every
   column and expandable per row; classification first, worst first.
 - **Row expansion**: the engine's record -- classification and evidence, the
@@ -32,10 +35,10 @@ a PR is what `marge list` and `marge sweep --dry-run` print for it.
   mode), the prior rescue marker -- and the two per-PR actions.
 - **Refresh classification**: `x_marge_list` with `refresh: true` on every
   team in view. The table is otherwise the **stored** read: the label the
-  last sweep left on each PR, in one search per team, which says what the
-  last sweep decided, not what a sweep would decide now. A PR no sweep has
-  labelled reads `Unclassified`. Nothing on the page classifies on mount, on
-  focus or on a timer.
+  last sweep left on each PR, which costs the discovery of the scope and
+  nothing more, and says what the last sweep decided, not what a sweep would
+  decide now. A PR no sweep has labelled reads `Unclassified`. Nothing on the
+  page classifies on mount, on focus or on a timer.
 - **Preview sweep** and **Apply**: `x_marge_sweep` with `dry_run: true` on
   one team, the engine's steps (approve, merge, refresh, retry, remedy) as
   checkboxes all ticked to begin with, the way a CLI sweep runs them; Apply

@@ -8,7 +8,10 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { MargeNotConnectedError, type MargeResult } from '../lib/marge';
-import { musterMargeListQueryKey } from '../lib/queryKeys';
+import {
+  musterMargeListQueryKey,
+  musterMargeListScopeKey,
+} from '../lib/queryKeys';
 import {
   useBotPrs,
   useMargeMark,
@@ -16,6 +19,15 @@ import {
   useMargeSweep,
   useMargeTeamSweeps,
 } from './useMarge';
+
+/** The several-team answer of `list`, from one result per team. */
+const queuesOf = (byTeam: Record<string, MargeResult | string>) => ({
+  teams: Object.entries(byTeam).map(([team, answer]) =>
+    typeof answer === 'string'
+      ? { team, error: answer }
+      : { team, result: answer },
+  ),
+});
 
 const callTool = jest.fn();
 const listServers = jest.fn();
@@ -82,8 +94,8 @@ beforeEach(() => {
 });
 
 describe('useBotPrs', () => {
-  it('reads the stored classification of every team on mount and never refreshes on its own', async () => {
-    callTool.mockResolvedValue(stored);
+  it('reads every team in one call and never refreshes on its own', async () => {
+    callTool.mockResolvedValue(queuesOf({ bumblebee: stored, atlas: stored }));
     const { result } = renderHook(
       () => useBotPrs('gazelle', ['bumblebee', 'atlas']),
       { wrapper: wrapperWith(client()) },
@@ -95,15 +107,10 @@ describe('useBotPrs', () => {
         stored,
       ]),
     );
-    expect(callTool).toHaveBeenCalledTimes(2);
+    expect(callTool).toHaveBeenCalledTimes(1);
     expect(callTool).toHaveBeenCalledWith(
       'x_marge_list',
-      { team: 'bumblebee', refresh: false },
-      'gazelle',
-    );
-    expect(callTool).toHaveBeenCalledWith(
-      'x_marge_list',
-      { team: 'atlas', refresh: false },
+      { teams: ['bumblebee', 'atlas'], refresh: false },
       'gazelle',
     );
     expect(result.current.queues.map(queue => queue.mode)).toEqual([
@@ -112,8 +119,23 @@ describe('useBotPrs', () => {
     ]);
   });
 
+  it('refuses an answer that is not the several-team shape', async () => {
+    // A marge that does not take `teams` ignores it and answers the query
+    // scope: every bot PR the person can see, under no team at all.
+    callTool.mockResolvedValue(stored);
+    const { result } = renderHook(() => useBotPrs('gazelle', ['bumblebee']), {
+      wrapper: wrapperWith(client()),
+    });
+
+    await waitFor(() => expect(result.current.queues[0].error).toBeTruthy());
+    expect(result.current.queues[0].error?.message).toMatch(/one team a call/);
+    expect(result.current.queues[0].result).toBeUndefined();
+  });
+
   it('classifies live only when asked, and keeps that answer as the queue', async () => {
-    callTool.mockResolvedValueOnce(stored).mockResolvedValueOnce(live);
+    callTool
+      .mockResolvedValueOnce(queuesOf({ bumblebee: stored }))
+      .mockResolvedValueOnce(queuesOf({ bumblebee: live }));
     const queryClient = client();
     const { result } = renderHook(() => useBotPrs('gazelle', ['bumblebee']), {
       wrapper: wrapperWith(queryClient),
@@ -127,13 +149,15 @@ describe('useBotPrs', () => {
     await waitFor(() => expect(result.current.queues[0].mode).toBe('live'));
     expect(callTool).toHaveBeenLastCalledWith(
       'x_marge_list',
-      { team: 'bumblebee', refresh: true },
+      { teams: ['bumblebee'], refresh: true },
       'gazelle',
     );
     expect(result.current.queues[0].result).toEqual(live);
     expect(
-      queryClient.getQueryData(musterMargeListQueryKey('gazelle', 'bumblebee')),
-    ).toMatchObject({ mode: 'live', result: live });
+      queryClient.getQueryData(
+        musterMargeListQueryKey('gazelle', ['bumblebee']),
+      ),
+    ).toMatchObject({ mode: 'live', queues: queuesOf({ bumblebee: live }) });
   });
 
   it("reports muster's not-connected answer as such, for the sign-in gate", async () => {
@@ -146,10 +170,8 @@ describe('useBotPrs', () => {
   });
 
   it('keeps a team refusal to that team', async () => {
-    callTool.mockImplementation((_tool, args: { team: string }) =>
-      args.team === 'atlas'
-        ? Promise.reject(new Error('no team file for "atlas"'))
-        : Promise.resolve(stored),
+    callTool.mockResolvedValue(
+      queuesOf({ bumblebee: stored, atlas: 'no team file for "atlas"' }),
     );
     const { result } = renderHook(
       () => useBotPrs('gazelle', ['bumblebee', 'atlas']),
@@ -161,6 +183,7 @@ describe('useBotPrs', () => {
       ),
     );
     expect(result.current.queues[0].result).toEqual(stored);
+    expect(result.current.queues[1].result).toBeUndefined();
     expect(result.current.notConnected).toBeUndefined();
   });
 
@@ -210,7 +233,7 @@ describe('useMargeSweep', () => {
     );
     expect(result.current.isDryRun).toBe(false);
     expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: musterMargeListQueryKey('gazelle', 'bumblebee'),
+      queryKey: musterMargeListScopeKey('gazelle'),
     });
   });
 });
@@ -266,7 +289,7 @@ describe('useMargeTeamSweeps', () => {
     });
     expect(result.current.isDryRun).toBe(false);
     expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: musterMargeListQueryKey('gazelle', 'bumblebee'),
+      queryKey: musterMargeListScopeKey('gazelle'),
     });
   });
 
@@ -313,7 +336,7 @@ describe('useMargeMark', () => {
       change_id: 'typescript@v7',
     };
     callTool.mockResolvedValue(written);
-    const { result } = renderHook(() => useMargeMark('gazelle', 'bumblebee'), {
+    const { result } = renderHook(() => useMargeMark('gazelle'), {
       wrapper: wrapperWith(client()),
     });
 

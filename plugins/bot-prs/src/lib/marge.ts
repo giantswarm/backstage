@@ -240,6 +240,29 @@ export type MargeResult = Partial<Record<MargeGroup, MargeEntry[]>> & {
   repositories_failed?: { repo: string; error: string }[];
 };
 
+/** One team's queue inside a `list` that covered several teams (`TeamQueue`). */
+export type MargeTeamQueue = {
+  team: string;
+  result?: MargeResult;
+  /** Why the team has no result: it has no team file, or its files do not parse. */
+  error?: string;
+};
+
+/** What `list` answers when it was given `teams` (`TeamQueues`). */
+export type MargeTeamQueues = {
+  teams: MargeTeamQueue[];
+};
+
+/**
+ * Whether an answer is the several-team shape. A marge that does not take
+ * `teams` ignores the argument and answers the query scope instead, which is
+ * a SweepResult and every bot PR the person can see, so the shape is what
+ * tells the two apart.
+ */
+export function isTeamQueues(answer: unknown): answer is MargeTeamQueues {
+  return Array.isArray((answer as MargeTeamQueues | undefined)?.teams);
+}
+
 /** What `mark` answers: the marker it wrote, or would write. */
 export type MargeMarkResult = {
   owner: string;

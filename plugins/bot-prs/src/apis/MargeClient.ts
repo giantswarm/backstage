@@ -2,10 +2,12 @@ import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import {
   classifyMargeError,
+  isTeamQueues,
   MARGE_TOOLS,
   margeToolName,
   type MargeMarkResult,
   type MargeResult,
+  type MargeTeamQueues,
   type MargeTool,
 } from '../lib/marge';
 
@@ -79,6 +81,28 @@ export class MargeClient {
    */
   list(team: string, refresh: boolean): Promise<MargeResult> {
     return this.call<MargeResult>(MARGE_TOOLS.list, { team, refresh });
+  }
+
+  /**
+   * The queues of several teams in one call. The teams share one discovery
+   * in the engine, so this is one listing of the repositories they own
+   * between them rather than one listing per team.
+   *
+   * A marge that does not take `teams` ignores it and answers the query
+   * scope, which is every bot PR the person can see. That answer carries no
+   * team, so it is refused here rather than rendered as the teams asked for.
+   */
+  async listTeams(teams: string[], refresh: boolean): Promise<MargeTeamQueues> {
+    const answer = await this.call<unknown>(MARGE_TOOLS.list, {
+      teams,
+      refresh,
+    });
+    if (!isTeamQueues(answer)) {
+      throw new Error(
+        'this installation runs a marge that reads one team a call; update it to read every team at once',
+      );
+    }
+    return answer;
   }
 
   /** The sweep, whole team or narrowed; `dry_run` is the preview. */

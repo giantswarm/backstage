@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ALL_INSTALLATIONS,
   applyInstallationScope,
@@ -18,8 +18,12 @@ import {
   MargeNotConnectedError,
   type MargeMarkResult,
   type MargeResult,
+  type MargeTeamQueues,
 } from '../lib/marge';
-import { musterMargeListQueryKey } from '../lib/queryKeys';
+import {
+  musterMargeListQueryKey,
+  musterMargeListScopeKey,
+} from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import {
   useMusterServerAvailability,
@@ -172,22 +176,22 @@ export type BotPrsState = {
 };
 
 type QueueData = {
-  result: MargeResult;
+  queues: MargeTeamQueues;
   mode: 'stored' | 'live';
   readAt: number;
 };
 
 /**
- * The queues of the teams in scope through one installation's marge, one
- * `x_marge_list` per team: marge takes one team per call, and the page's
- * "All teams" is the sum.
+ * The queues of the teams in scope through one installation's marge, in one
+ * `x_marge_list` call: the engine merges the teams' repository lists and
+ * reads them once, so a scope of every team costs one listing and not one
+ * per team.
  *
  * The table is the stored read, `x_marge_list` without `refresh`, which
- * costs one search per team and reports what the last sweep decided. The
- * live read is a separate mutation behind the Refresh button, so nothing the
- * page does on mount, on focus or on a timer classifies a PR; its answer
- * replaces the stored one in the same cache entry, and stays until the next
- * read.
+ * reports what the last sweep decided. The live read is a separate mutation
+ * behind the Refresh button, so nothing the page does on mount, on focus or
+ * on a timer classifies a PR; its answer replaces the stored one in the same
+ * cache entry, and stays until the next read.
  */
 export function useBotPrs(
   installation: string | undefined,
@@ -196,84 +200,68 @@ export function useBotPrs(
   const client = useMargeClient(installation);
   const queryClient = useQueryClient();
   const enabled = Boolean(client) && teams.length > 0;
+  const teamsKey = teams.join(',');
+  const queryKey = musterMargeListQueryKey(installation ?? '', teams);
 
-  const queries = useQueries({
-    queries: teams.map(team => ({
-      queryKey: musterMargeListQueryKey(installation ?? '', team),
-      enabled: Boolean(client),
-      queryFn: async (): Promise<QueueData> => ({
-        result: await client!.list(team, false),
-        mode: 'stored',
-        readAt: Date.now(),
-      }),
-      staleTime: 60_000,
-      refetchOnWindowFocus: false,
-      retry: false,
-    })),
+  const query = useQuery({
+    queryKey,
+    enabled,
+    queryFn: async (): Promise<QueueData> => ({
+      queues: await client!.listTeams(teams, false),
+      mode: 'stored',
+      readAt: Date.now(),
+    }),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
   });
 
   const refresh = useMutation({
     mutationFn: async () => {
-      const answers = await Promise.allSettled(
-        teams.map(async team => ({
-          team,
-          data: {
-            result: await client!.list(team, true),
-            mode: 'live' as const,
-            readAt: Date.now(),
-          },
-        })),
-      );
-      for (const answer of answers) {
-        if (answer.status === 'fulfilled') {
-          queryClient.setQueryData(
-            musterMargeListQueryKey(installation ?? '', answer.value.team),
-            answer.value.data,
-          );
-        }
-      }
-      const failed = answers.find(
-        (answer): answer is PromiseRejectedResult =>
-          answer.status === 'rejected',
-      );
-      if (failed) {
-        throw failed.reason;
-      }
+      const data: QueueData = {
+        queues: await client!.listTeams(teams, true),
+        mode: 'live',
+        readAt: Date.now(),
+      };
+      queryClient.setQueryData(queryKey, data);
     },
   });
 
-  const teamsKey = teams.join(',');
   const reload = useCallback(() => {
     refresh.reset();
-    for (const team of teamsKey ? teamsKey.split(',') : []) {
-      queryClient.invalidateQueries({
-        queryKey: musterMargeListQueryKey(installation ?? '', team),
-      });
-    }
+    queryClient.invalidateQueries({
+      queryKey: musterMargeListScopeKey(installation ?? ''),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, installation, teamsKey]);
 
-  const queues: TeamQueue[] = teams.map((team, index) => {
-    const query = queries[index];
-    const data = query.data as QueueData | undefined;
+  // A call that failed says nothing about one team: the whole read failed,
+  // so every team carries that error and the page reports it once. A team's
+  // own error is marge's answer about that team alone.
+  const failure = (query.error as Error | null) ?? null;
+  const answers = new Map(
+    (query.data?.queues.teams ?? []).map(entry => [entry.team, entry]),
+  );
+  const queues: TeamQueue[] = teams.map(team => {
+    const answer = answers.get(team);
     return {
       team,
-      result: data?.result,
-      mode: data?.mode ?? 'stored',
-      readAt: data?.readAt,
-      isLoading: Boolean(client) && query.isLoading,
-      error: (query.error as Error | null) ?? null,
+      result: answer?.result,
+      mode: query.data?.mode ?? 'stored',
+      readAt: query.data?.readAt,
+      isLoading: enabled && query.isLoading,
+      error: failure ?? (answer?.error ? new Error(answer.error) : null),
     };
   });
   const refreshError = refresh.error as Error | null;
-  const notConnected = [refreshError, ...queues.map(queue => queue.error)].find(
+  const notConnected = [refreshError, failure].find(
     (error): error is MargeNotConnectedError =>
       error instanceof MargeNotConnectedError,
   );
 
   return {
     queues,
-    isLoading: enabled && queues.some(queue => queue.isLoading),
+    isLoading: enabled && query.isLoading,
     isRefreshing: refresh.isPending,
     notConnected,
     reload,
@@ -320,7 +308,7 @@ export function useMargeSweep(
     onSuccess: (_result, args) => {
       if (!args.dry_run) {
         queryClient.invalidateQueries({
-          queryKey: musterMargeListQueryKey(installation ?? '', team ?? ''),
+          queryKey: musterMargeListScopeKey(installation ?? ''),
         });
       }
     },
@@ -413,15 +401,13 @@ export function useMargeTeamSweeps(
         };
       });
     },
-    onSuccess: (runs, args) => {
+    onSuccess: (_runs, args) => {
       if (args.dryRun) {
         return;
       }
-      for (const run of runs) {
-        queryClient.invalidateQueries({
-          queryKey: musterMargeListQueryKey(installation ?? '', run.team),
-        });
-      }
+      queryClient.invalidateQueries({
+        queryKey: musterMargeListScopeKey(installation ?? ''),
+      });
     },
   });
 
@@ -478,7 +464,7 @@ export function useMargeRemedy(
     onSuccess: (_result, args) => {
       if (!args.dry_run) {
         queryClient.invalidateQueries({
-          queryKey: musterMargeListQueryKey(installation ?? '', team ?? ''),
+          queryKey: musterMargeListScopeKey(installation ?? ''),
         });
       }
     },
@@ -503,10 +489,7 @@ export type MargeMarkState = {
 };
 
 /** `x_marge_mark` on one PR, as the person. */
-export function useMargeMark(
-  installation: string | undefined,
-  team: string | undefined,
-): MargeMarkState {
+export function useMargeMark(installation: string | undefined): MargeMarkState {
   const client = useMargeClient(installation);
   const queryClient = useQueryClient();
 
@@ -520,7 +503,7 @@ export function useMargeMark(
     onSuccess: (_result, args) => {
       if (!args.dry_run) {
         queryClient.invalidateQueries({
-          queryKey: musterMargeListQueryKey(installation ?? '', team ?? ''),
+          queryKey: musterMargeListScopeKey(installation ?? ''),
         });
       }
     },
