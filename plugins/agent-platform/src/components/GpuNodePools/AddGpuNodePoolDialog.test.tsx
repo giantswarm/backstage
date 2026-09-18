@@ -414,8 +414,29 @@ async function renderDialog(
   return { callTool };
 }
 
-/** The form waits after the last keystroke before it asks cluster-manager. */
-const AFTER_DEBOUNCE = { timeout: 3000 };
+/**
+ * The form asks cluster-manager DRY_RUN_DEBOUNCE_MS after the last change, and
+ * the longer flows below change the sizes four or five times: on real timers
+ * that is seconds of pure waiting per test, and under load the longest outgrow
+ * Jest's per-test limit. On fake timers the wait is clock arithmetic: `findBy*`
+ * and `waitFor` advance the fake clock while they poll, so a debounce and the
+ * dry run behind it settle within one poll, whatever the machine is doing.
+ */
+beforeEach(() => {
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+/**
+ * user-event on fake timers, without its macrotask hop between two actions:
+ * nothing moves the clock between a click and the test's next `findBy*` or
+ * `waitFor`, so every deferred update (react-query's notifications, the write
+ * hook settling) lands inside those, under act, and not between them.
+ */
+const setupUser = () => userEvent.setup({ delay: null });
 
 /** Pick wc1 and name the pool: the form's dry run answers with the sizes. */
 async function fillForm(user: ReturnType<typeof userEvent.setup>) {
@@ -429,11 +450,7 @@ async function fillForm(user: ReturnType<typeof userEvent.setup>) {
 
 /** Review, once the form's dry run has answered. */
 async function review(user: ReturnType<typeof userEvent.setup>) {
-  const button = await screen.findByRole(
-    'button',
-    { name: 'Review' },
-    AFTER_DEBOUNCE,
-  );
+  const button = await screen.findByRole('button', { name: 'Review' });
   await waitFor(() => expect(button).toBeEnabled());
   await user.click(button);
   await screen.findByTestId('node-pool-review');
@@ -441,7 +458,7 @@ async function review(user: ReturnType<typeof userEvent.setup>) {
 
 async function fillAndReview(user: ReturnType<typeof userEvent.setup>) {
   await fillForm(user);
-  await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+  await screen.findByTestId('node-size-picker');
   await review(user);
 }
 
@@ -466,7 +483,7 @@ const sizeBox = (instanceType: string) =>
 
 describe('AddGpuNodePoolDialog', () => {
   it('shows the marks of the picked cluster and renders the dry run as manifests', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { callTool } = await renderDialog();
     await fillAndReview(user);
 
@@ -494,7 +511,7 @@ describe('AddGpuNodePoolDialog', () => {
   });
 
   it('Deploy calls create_node_pool with mode apply as the person', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const onDeployed = jest.fn();
     const { callTool } = await renderDialog({}, onDeployed);
     await fillAndReview(user);
@@ -517,11 +534,11 @@ describe('AddGpuNodePoolDialog', () => {
   });
 
   it('Deploy hands the preset chosen under I want to serve on, with its display name and model', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const onDeployed = jest.fn();
     await renderDialog({}, onDeployed);
     await fillForm(user);
-    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('node-size-picker');
     await user.click(screen.getByRole('button', { name: /I want to serve/ }));
     await user.click(
       await screen.findByRole('option', { name: /Qwen3 4B Instruct/ }),
@@ -541,7 +558,7 @@ describe('AddGpuNodePoolDialog', () => {
   });
 
   it('Commit is disabled with "not available yet" until cluster-manager offers it', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     await renderDialog({ commit: false });
     await fillAndReview(user);
     const commit = screen.getByRole('button', {
@@ -556,7 +573,7 @@ describe('AddGpuNodePoolDialog', () => {
   });
 
   it('Commit calls mode commit once offered', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { callTool } = await renderDialog({ commit: true });
     await fillAndReview(user);
     await user.click(screen.getByRole('button', { name: 'Commit' }));
@@ -570,7 +587,7 @@ describe('AddGpuNodePoolDialog', () => {
   });
 
   it('offers the muster connect step when the session is not connected', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     await renderDialog({
       createError: new Error(
         'tool not found: x_cluster-manager_create_node_pool',
@@ -579,7 +596,7 @@ describe('AddGpuNodePoolDialog', () => {
     await fillForm(user);
     // The form's own dry run meets the answer; no Review needed.
     expect(
-      await screen.findByText('Connect to cluster-manager', {}, AFTER_DEBOUNCE),
+      await screen.findByText('Connect to cluster-manager'),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('node-size-picker')).not.toBeInTheDocument();
   });
@@ -599,18 +616,14 @@ describe('AddGpuNodePoolDialog', () => {
   });
 
   it('shows a refusal verbatim on the form, and Review tries once more', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { callTool } = await renderDialog({
       createError: new Error(
         'pool gpu-l4 would run Kubernetes 1.32 ahead of the control plane 1.31',
       ),
     });
     await fillForm(user);
-    const alert = await screen.findByText(
-      'cluster-manager refused',
-      {},
-      AFTER_DEBOUNCE,
-    );
+    const alert = await screen.findByText('cluster-manager refused');
     expect(
       within(alert.closest('[role="alert"]') ?? alert.parentElement!).getByText(
         /ahead of the control plane/,
@@ -636,11 +649,11 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
     screen.getByRole('switch', { name: 'Keep a model cache' });
 
   it('offers the cluster’s zones, none chosen, and the cache on by default; two zones and the cache off travel to the dry run, the review and Deploy', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const onDeployed = jest.fn();
     const { callTool } = await renderDialog({ placement: true }, onDeployed);
     await fillForm(user);
-    await screen.findByTestId('zones-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('zones-picker');
     for (const zone of ZONES) {
       expect(zoneBox(zone)).not.toBeChecked();
     }
@@ -665,19 +678,17 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
     expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
       'about 90 s more',
     );
-    await waitFor(
-      () =>
-        expect(
-          dryRunsOf(callTool).some(call =>
-            expect
-              .objectContaining({
-                zones: ['eu-central-1a', 'eu-central-1c'],
-                cache: false,
-              })
-              .asymmetricMatch(call[1]),
-          ),
-        ).toBe(true),
-      AFTER_DEBOUNCE,
+    await waitFor(() =>
+      expect(
+        dryRunsOf(callTool).some(call =>
+          expect
+            .objectContaining({
+              zones: ['eu-central-1a', 'eu-central-1c'],
+              cache: false,
+            })
+            .asymmetricMatch(call[1]),
+        ),
+      ).toBe(true),
     );
 
     await review(user);
@@ -707,17 +718,17 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
   });
 
   it('another cluster clears the zones; the cache choice stands', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     await renderDialog({ placement: true });
     await fillForm(user);
-    await screen.findByTestId('zones-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('zones-picker');
     await user.click(zoneBox('eu-central-1b'));
     await user.click(cacheSwitch());
     expect(zoneBox('eu-central-1b')).toBeChecked();
     // Another cluster: its zones are others, so the choice is cleared.
     await user.click(screen.getByRole('button', { name: /wc1/ }));
     await user.click(await screen.findByRole('option', { name: /wc2/ }));
-    await screen.findByTestId('zones-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('zones-picker');
     expect(zoneBox('eu-central-1a')).not.toBeChecked();
     expect(
       within(screen.getByTestId('zones-picker')).queryByRole('checkbox', {
@@ -728,10 +739,10 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
   });
 
   it('shows neither choice where cluster-manager takes neither argument, and sends nothing of them', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { callTool } = await renderDialog();
     await fillForm(user);
-    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('node-size-picker');
     expect(
       screen.queryByTestId('pool-placement-picker'),
     ).not.toBeInTheDocument();
@@ -744,17 +755,13 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
   });
 
   it('renders a structured cache refusal with the claim and the ways out, and the form stays', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     await renderDialog({ placement: true, cacheRefusal: true });
     await fillForm(user);
-    await screen.findByTestId('zones-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('zones-picker');
     await user.click(zoneBox('eu-central-1a'));
     await user.click(zoneBox('eu-central-1c'));
-    const refused = await screen.findByTestId(
-      'refused-cache',
-      {},
-      AFTER_DEBOUNCE,
-    );
+    const refused = await screen.findByTestId('refused-cache');
     expect(refused).toHaveTextContent(
       'Claim model-serving/hf-cache (Bound in eu-central-1b), volume pvc-1',
     );
@@ -767,10 +774,8 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
     // The person changes the choice; the next dry run is not refused.
     await user.click(zoneBox('eu-central-1c'));
     await user.click(zoneBox('eu-central-1a'));
-    await waitFor(
-      () =>
-        expect(screen.queryByTestId('refused-cache')).not.toBeInTheDocument(),
-      AFTER_DEBOUNCE,
+    await waitFor(() =>
+      expect(screen.queryByTestId('refused-cache')).not.toBeInTheDocument(),
     );
   });
 });
@@ -791,14 +796,14 @@ describe('clusterMarks', () => {
 
 describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   it('offers the sizes and prices as soon as a cluster is picked, before the pool is named; the name only enables Review and relabels the dry run', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { callTool } = await renderDialog();
     await user.click(
       await screen.findByRole('button', { name: /^Pick a cluster/ }),
     );
     await user.click(await screen.findByRole('option', { name: /wc1/ }));
 
-    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('node-size-picker');
     expect(dryRunsOf(callTool)[0][1]).toMatchObject({
       cluster: 'wc1',
       name: SIZING_POOL_NAME,
@@ -809,12 +814,8 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
 
     await user.click(sizeBox('g6.xlarge'));
     await user.type(screen.getByLabelText(/pool name/i), 'gpu-l4');
-    const button = await screen.findByRole(
-      'button',
-      { name: 'Review' },
-      AFTER_DEBOUNCE,
-    );
-    await waitFor(() => expect(button).toBeEnabled(), AFTER_DEBOUNCE);
+    const button = await screen.findByRole('button', { name: 'Review' });
+    await waitFor(() => expect(button).toBeEnabled());
     const last = dryRunsOf(callTool).at(-1)?.[1];
     expect(last).toMatchObject({ name: 'gpu-l4', sizes: ['2xlarge'] });
     expect(sizeBox('g6.xlarge')).not.toBeChecked();
@@ -827,15 +828,11 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   });
 
   it('offers the sizes with usable resources, GPU memory and price as soon as cluster and name are set, the cheapest as the from price', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { callTool } = await renderDialog();
     await fillForm(user);
 
-    const picker = await screen.findByTestId(
-      'node-size-picker',
-      {},
-      AFTER_DEBOUNCE,
-    );
+    const picker = await screen.findByTestId('node-size-picker');
     // The first dry run sends no sizes: the chart's defaults, every one preselected.
     expect(dryRunsOf(callTool)[0][1]).not.toHaveProperty('sizes');
     expect(dryRunsOf(callTool)[0][1]).toMatchObject({
@@ -893,10 +890,10 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   });
 
   it('warns on the form when a chosen set hosts a preset no more; Add puts the size back; Back keeps the choice', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { callTool } = await renderDialog();
     await fillForm(user);
-    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('node-size-picker');
 
     await user.click(sizeBox('g6.2xlarge'));
     const warnings = await screen.findByTestId('fit-warnings');
@@ -935,10 +932,10 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   });
 
   it('choosing a preset preselects the smallest size hosting it with its price and marks the others; an unhosted preset blocks Deploy with the reason', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const { callTool } = await renderDialog();
     await fillForm(user);
-    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('node-size-picker');
 
     await user.click(screen.getByRole('button', { name: /I want to serve/ }));
     const option = await screen.findByRole('option', {
@@ -1003,14 +1000,10 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   });
 
   it('offers the presets the chart ships on a cluster without a serving slice', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     await renderDialog({ chartPresets: true });
     await fillForm(user);
-    const picker = await screen.findByTestId(
-      'node-size-picker',
-      {},
-      AFTER_DEBOUNCE,
-    );
+    const picker = await screen.findByTestId('node-size-picker');
     expect(
       screen.getByRole('button', { name: /I want to serve/ }),
     ).toBeInTheDocument();
@@ -1019,10 +1012,10 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   });
 
   it('shows the note instead of a picker where nothing could be judged', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     await renderDialog({ noPresets: true });
     await fillForm(user);
-    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+    await screen.findByTestId('node-size-picker');
     expect(screen.getByTestId('preset-fit-note')).toHaveTextContent(
       'no serving preset is published on wc1 yet',
     );
@@ -1035,14 +1028,10 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   });
 
   it('shows the price note where a size has no price, and prices nothing from an older cluster-manager', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     await renderDialog({ unpriced: true });
     await fillForm(user);
-    const picker = await screen.findByTestId(
-      'node-size-picker',
-      {},
-      AFTER_DEBOUNCE,
-    );
+    const picker = await screen.findByTestId('node-size-picker');
     expect(picker).toHaveTextContent(`1 × 24 GiB GPU — ${PRICE_NOTE}`);
     expect(screen.getByTestId('price-summary')).toHaveTextContent(
       'from $1.01/h per node (g6.xlarge)',
@@ -1050,14 +1039,10 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   });
 
   it('works without prices, display names and origin from an older cluster-manager', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     await renderDialog({ legacy: true });
     await fillForm(user);
-    const picker = await screen.findByTestId(
-      'node-size-picker',
-      {},
-      AFTER_DEBOUNCE,
-    );
+    const picker = await screen.findByTestId('node-size-picker');
     expect(sizeBox('g6.xlarge')).toHaveAccessibleName(
       'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU',
     );
@@ -1077,7 +1062,7 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   });
 
   it('a Deploy cut short lists the pending objects and Continue re-runs the same call', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const onDeployed = jest.fn();
     const { callTool } = await renderDialog({ partial: true }, onDeployed);
     await fillAndReview(user);
