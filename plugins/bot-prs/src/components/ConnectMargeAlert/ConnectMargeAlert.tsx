@@ -1,7 +1,7 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
-import { MARGE_SERVER } from '../../lib/marge';
+import { useMargeServerName } from '../../hooks/useMarge';
 
 /**
  * The person's muster session holds no GitHub grant for marge yet: says so in
@@ -17,6 +17,7 @@ export function ConnectMargeAlert({
   /** muster's answer, verbatim. */
   message: string;
 }) {
+  const serverName = useMargeServerName(installation);
   return (
     <Alert
       status="warning"
@@ -29,7 +30,7 @@ export function ConnectMargeAlert({
             your name. Your muster session on {installation} holds no grant for
             it yet: {message}
           </Text>
-          <ServerSignIn serverName={MARGE_SERVER} installation={installation} />
+          <ServerSignIn serverName={serverName} installation={installation} />
         </Flex>
       }
     />

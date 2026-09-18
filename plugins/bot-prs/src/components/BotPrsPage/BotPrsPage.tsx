@@ -17,12 +17,15 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useBotPrs, useMargeInstallation } from '../../hooks/useMarge';
+import {
+  useBotPrs,
+  useMargeInstallation,
+  useMargeServerName,
+} from '../../hooks/useMarge';
 import { useTeams } from '../../hooks/useTeams';
 import {
   confirmModeOf,
   looksUnknownTeam,
-  MARGE_SERVER,
   MargeNotConnectedError,
   rowsOf,
   type BotPrRow,
@@ -144,7 +147,8 @@ function Queue({
   isResolvedFromAll: boolean;
 }) {
   const queue = useBotPrs(installation, teams);
-  const signIn = useServerSignIn(MARGE_SERVER, installation);
+  const margeServerName = useMargeServerName(installation);
+  const signIn = useServerSignIn(margeServerName, installation);
   const [open, setOpen] = useState<OpenDialog>(undefined);
 
   // A completed sign-in flips the server's auth status to connected. The

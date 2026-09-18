@@ -143,6 +143,15 @@ describe('applyFilters', () => {
 });
 
 describe('sortRows', () => {
+  // The age key reads the clock, and two PRs a day apart fall into the same
+  // whole day of age once enough real time has passed since the fixtures.
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('sorts worst first by classification, and by age', () => {
     expect(
       sortRows(rows, 'classification', 'asc').map(row => row.group),
