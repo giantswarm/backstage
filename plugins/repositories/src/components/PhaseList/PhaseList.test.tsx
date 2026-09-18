@@ -9,7 +9,9 @@ describe('PhaseList', () => {
   it('lists the phases done with their timing and links, the one waiting with its reason, the rest dimmed', () => {
     render(<PhaseList phases={watchPhases(watchOf('declared'))} />);
     expect(screen.getAllByRole('listitem')).toHaveLength(6);
-    expect(row('created')).toHaveTextContent(/^Created at 10:00:00Z repository ↗$/);
+    expect(row('created')).toHaveTextContent(
+      /^Created at 10:00:00Z repository ↗$/,
+    );
     expect(
       within(row('created')).getByRole('link', { name: /repository/ }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/shiny-service');
