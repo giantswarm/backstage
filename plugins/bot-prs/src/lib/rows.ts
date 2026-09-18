@@ -1,4 +1,9 @@
-import { MARGE_GROUPS, type BotPrRow, type MargeGroup } from './marge';
+import {
+  GREEN_GROUP,
+  MARGE_GROUPS,
+  type BotPrRow,
+  type MargeGroup,
+} from './marge';
 
 /**
  * The page's filters live in the URL (`?team=bumblebee&kind=renovate…`), so a
@@ -103,19 +108,6 @@ export function applyFilters(
   });
 }
 
-export type SortColumn =
-  | 'team'
-  | 'repository'
-  | 'title'
-  | 'dependency'
-  | 'kind'
-  | 'update'
-  | 'age'
-  | 'classification'
-  | 'rescue';
-
-export type SortDirection = 'asc' | 'desc';
-
 /** The engine's group order, so a sort by classification reads worst first. */
 const GROUP_ORDER: Record<MargeGroup, number> = Object.fromEntries(
   [
@@ -137,6 +129,11 @@ const GROUP_ORDER: Record<MargeGroup, number> = Object.fromEntries(
     'merged',
   ].map((group, index) => [group, index]),
 ) as Record<MargeGroup, number>;
+
+/** Where a row's class sits in that order: the key the table sorts on. */
+export function groupRank(row: BotPrRow): number {
+  return GROUP_ORDER[row.group];
+}
 
 /**
  * The PR's age in whole days, from `created_at`. The engine leaves `age_days`
@@ -163,90 +160,51 @@ export function formatAge(days: number | undefined): string {
   return days === 0 ? 'today' : `${days} d`;
 }
 
-function key(row: BotPrRow, column: SortColumn, now: number): string | number {
-  switch (column) {
-    case 'team':
-      return row.team;
-    case 'repository':
-      return row.repository.toLowerCase();
-    case 'title':
-      return row.title.toLowerCase();
-    case 'dependency':
-      return row.dependency.toLowerCase();
-    case 'kind':
-      return row.kind ?? '';
-    case 'update':
-      return row.update_type ?? '';
-    case 'age':
-      return ageDays(row, now) ?? -1;
-    case 'classification':
-      return GROUP_ORDER[row.group];
-    case 'rescue':
-      return row.rescue ? `${row.rescue.outcome} ${row.rescue.at ?? ''}` : '';
-    default:
-      return '';
-  }
+export type QueueStats = {
+  /** Every row in view. */
+  total: number;
+  /** Green and merged by the team policy: what **Approve and merge** acts on. */
+  green: number;
+  /** A check has not reported yet. */
+  waiting: number;
+  /** A person decides: the engine will not act on its own. */
+  actionRequired: number;
+  /** A security check failed. The engine never merges past one. */
+  securityFailures: number;
+  /** No sweep has labelled the PR yet. */
+  unclassified: number;
+};
+
+/** Counts over the listed rows, for the stats strip. */
+export function countStats(rows: BotPrRow[]): QueueStats {
+  const of = (group: MargeGroup) =>
+    rows.filter(row => row.group === group).length;
+  return {
+    total: rows.length,
+    green: greenRows(rows).length,
+    waiting: of('waiting'),
+    actionRequired: of('action_required'),
+    securityFailures: of('security_failures'),
+    unclassified: of('unclassified'),
+  };
 }
 
 /**
- * The rows sorted by a column; ties keep the engine's order. The clock is a
- * parameter so the age order does not depend on the hour a test runs at.
+ * The rows a sweep would approve and merge: the ones the engine filed as
+ * green under the team policy. The button acts on these and on nothing else;
+ * the engine classifies each one again before it writes.
  */
-export function sortRows(
-  rows: BotPrRow[],
-  column: SortColumn,
-  direction: SortDirection,
-  now = Date.now(),
-): BotPrRow[] {
-  const sign = direction === 'asc' ? 1 : -1;
-  return rows
-    .map((row, index) => ({ row, index }))
-    .sort((a, b) => {
-      const ka = key(a.row, column, now);
-      const kb = key(b.row, column, now);
-      if (ka < kb) {
-        return -sign;
-      }
-      if (ka > kb) {
-        return sign;
-      }
-      return a.index - b.index;
-    })
-    .map(({ row }) => row);
+export function greenRows(rows: BotPrRow[]): BotPrRow[] {
+  return rows.filter(row => row.group === GREEN_GROUP);
 }
 
-export type AgeBand = 'this week' | 'this month' | 'older';
-
-export function ageBand(days: number | undefined): AgeBand {
-  if (days === undefined || days < 7) {
-    return 'this week';
+/** The green rows of each team, keyed by team: marge sweeps one team a call. */
+export function greenByTeam(rows: BotPrRow[]): Record<string, string[]> {
+  const byTeam: Record<string, string[]> = {};
+  for (const row of greenRows(rows)) {
+    byTeam[row.team] = [...(byTeam[row.team] ?? []), row.ref];
   }
-  return days < 30 ? 'this month' : 'older';
-}
-
-export type Tiles = {
-  /** Per classification the engine reports, in the engine's words. */
-  classification: Record<string, number>;
-  /** Per bot kind. */
-  kind: Record<string, number>;
-  age: Record<AgeBand, number>;
-};
-
-/** Counts over the listed rows, for the tiles. */
-export function countTiles(rows: BotPrRow[], now = Date.now()): Tiles {
-  const tiles: Tiles = {
-    classification: {},
-    kind: {},
-    age: { 'this week': 0, 'this month': 0, older: 0 },
-  };
-  for (const row of rows) {
-    tiles.classification[row.status] =
-      (tiles.classification[row.status] ?? 0) + 1;
-    const kind = row.kind ?? 'unknown';
-    tiles.kind[kind] = (tiles.kind[kind] ?? 0) + 1;
-    tiles.age[ageBand(ageDays(row, now))]++;
-  }
-  return tiles;
+  return byTeam;
 }
 
 /** The distinct values of a column over the rows, sorted, for a filter's options. */

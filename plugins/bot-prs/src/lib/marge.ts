@@ -80,6 +80,24 @@ export function actionsArgument(steps: readonly SweepStep[]): string {
 }
 
 /**
+ * The class the engine files a PR under when it is green and the team policy
+ * merges its update type: what a sweep approves and merges on its next run.
+ * Every other class is waiting on a check, on a person, or on nothing.
+ */
+export const GREEN_GROUP: MargeGroup = 'eligible';
+
+/**
+ * The steps behind **Approve and merge**: the engine approves the PRs its own
+ * policy approves, then merges the ones it approved. Each step keeps its
+ * guards, so a PR that stopped being green between the read and the run is
+ * held, not merged.
+ */
+export const MERGE_GREEN_STEPS = [
+  'approve',
+  'merge',
+] as const satisfies readonly SweepStep[];
+
+/**
  * The per-PR actions of the page, each one sweep step narrowed to the PR.
  * Merge carries approve with it, because the engine merges only what it has
  * approved. Remedy and Mark blocked are their own tools and not listed here.

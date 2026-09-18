@@ -7683,6 +7683,7 @@ __metadata:
     "@testing-library/react": "npm:^16.0.0"
     "@testing-library/user-event": "npm:^14.0.0"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+    react-use: "npm:^17.2.4"
   peerDependencies:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: "*"

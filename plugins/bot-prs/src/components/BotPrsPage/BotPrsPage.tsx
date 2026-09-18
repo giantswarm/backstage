@@ -15,7 +15,10 @@ import {
   isSessionExpiredError,
   useServerSignIn,
 } from '@giantswarm/backstage-plugin-muster';
-import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  EmptyStateCard,
+  FiltersLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useBotPrs,
@@ -35,18 +38,20 @@ import {
   applyFilters,
   classificationOptions,
   filtersFromParams,
+  greenRows,
   hasFilters,
   optionsOf,
   withFilter,
   type QueueFilters,
   type Scope,
 } from '../../lib/rows';
+import { BotPrsFilters } from '../BotPrsFilters';
 import { BotPrsTable } from '../BotPrsTable';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
-import { FilterBar } from '../FilterBar';
 import { MarkBlockedDialog } from '../MarkBlockedDialog';
+import { MergeGreenDialog } from '../MergeGreenDialog';
+import { QueueStats } from '../QueueStats';
 import { SweepDialog } from '../SweepDialog';
-import { Tiles } from '../Tiles';
 
 /**
  * The way in when the scope holds no team: the catalog places the person in
@@ -114,6 +119,7 @@ const SCOPES: { id: Scope; label: string }[] = [
 type OpenDialog =
   | { kind: 'sweep'; team: string; pr?: string }
   | { kind: 'mark'; row: BotPrRow }
+  | { kind: 'merge-green' }
   | undefined;
 
 function formatReadAt(readAt: number | undefined): string {
@@ -122,8 +128,8 @@ function formatReadAt(readAt: number | undefined): string {
 
 /**
  * The queues of the teams in scope through one installation's marge: the
- * tiles, the filters, the summary line and the table, the same shape as the
- * Repositories page. The table is the stored classification, what the last
+ * stats strip, the filters column, the summary line and the table, the same
+ * shape as the Repositories page. The table is the stored classification, what the last
  * sweep decided; **Refresh classification** is the only live read, and a
  * click. **Preview sweep** and the per-PR **Sweep this PR** show what the
  * engine would do before it does it. Every call runs through muster as the
@@ -169,6 +175,9 @@ function Queue({
     [queue.queues],
   );
   const filtered = useMemo(() => applyFilters(rows, filters), [rows, filters]);
+  // What Approve and merge acts on: the green rows of the filtered view, so
+  // the button acts on exactly what the table shows.
+  const green = useMemo(() => greenRows(filtered), [filtered]);
   const answered = queue.queues.filter(entry => entry.result);
   // Teams the catalog names and giantswarm/github does not: one gap, listed
   // once. Anything else marge refused is a real failure per team.
@@ -270,11 +279,33 @@ function Queue({
             </span>
           </Tooltip>
         </Box>
+        <Box mr={1}>
+          <Tooltip
+            title={
+              sweepTeam
+                ? `Show what a sweep would do to each PR of team ${sweepTeam}, step by step, before applying it.`
+                : 'A sweep runs under one team’s policy: pick a team in the filters to preview one.'
+            }
+          >
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={!canAct || !sweepTeam}
+                onClick={() =>
+                  sweepTeam && setOpen({ kind: 'sweep', team: sweepTeam })
+                }
+              >
+                Preview sweep
+              </Button>
+            </span>
+          </Tooltip>
+        </Box>
         <Tooltip
           title={
-            sweepTeam
-              ? `Show what a sweep would do to each PR of team ${sweepTeam}, step by step, before applying it.`
-              : 'A sweep runs under one team’s policy: pick a team in the filters to preview one.'
+            green.length > 0
+              ? 'Approve and merge every PR in view the engine filed as green, under the same guards a sweep runs. You confirm once, after a preview.'
+              : 'No PR in view is green: there is nothing to approve and merge.'
           }
         >
           <span>
@@ -282,12 +313,12 @@ function Queue({
               size="small"
               variant="contained"
               color="primary"
-              disabled={!canAct || !sweepTeam}
-              onClick={() =>
-                sweepTeam && setOpen({ kind: 'sweep', team: sweepTeam })
-              }
+              disabled={!canAct || green.length === 0}
+              onClick={() => setOpen({ kind: 'merge-green' })}
             >
-              Preview sweep
+              {`Approve and merge ${green.length} green PR${
+                green.length === 1 ? '' : 's'
+              }`}
             </Button>
           </span>
         </Tooltip>
@@ -327,54 +358,61 @@ function Queue({
       ) : null}
 
       {answered.length > 0 ? (
-        <>
-          <Box pt={2}>
-            <Tiles rows={filtered} />
-          </Box>
-          <Box pt={2}>
-            <FilterBar
-              filters={filters}
-              teams={[...new Set([...allTeams, ...teams])].sort()}
-              repositories={optionsOf(rows, row => row.repository)}
-              kinds={optionsOf(rows, row => row.kind)}
-              classifications={classificationOptions(rows)}
-              dependencies={optionsOf(rows, row => row.dependency)}
-              onChange={setFilter}
-            />
-          </Box>
-          <Box pt={2} pb={1}>
-            <Typography
-              variant="body2"
-              color="textSecondary"
-              data-testid="queue-summary"
-            >
-              {`${filtered.length} of ${total} open bot PR${
-                total === 1 ? '' : 's'
-              }${hasFilters(filters) ? ' (filtered)' : ''} across ${
-                answered.length
-              } team${answered.length === 1 ? '' : 's'}; `}
-              {isLive
-                ? `every PR classified live at ${formatReadAt(readAt)}`
-                : `classification as the last sweep stored it on each PR, read at ${formatReadAt(
-                    readAt,
-                  )}`}
-              {unclassified > 0
-                ? `; ${unclassified} with no stored classification, no sweep has labelled ${
-                    unclassified === 1 ? 'it' : 'them'
-                  } yet`
-                : ''}
-              .
-            </Typography>
-          </Box>
-          <BotPrsTable
-            rows={filtered}
-            showTeam={teams.length > 1}
-            isLive={isLive}
-            canAct={canAct}
-            onSweep={onSweep}
-            onMarkBlocked={onMarkBlocked}
-          />
-        </>
+        <Box pt={2}>
+          <FiltersLayout>
+            <FiltersLayout.Filters>
+              <BotPrsFilters
+                filters={filters}
+                teams={[...new Set([...allTeams, ...teams])].sort()}
+                repositories={optionsOf(rows, row => row.repository)}
+                kinds={optionsOf(rows, row => row.kind)}
+                classifications={classificationOptions(rows)}
+                dependencies={optionsOf(rows, row => row.dependency)}
+                onChange={setFilter}
+              />
+            </FiltersLayout.Filters>
+            <FiltersLayout.Content>
+              <Box pl={{ lg: 2 }}>
+                <QueueStats rows={filtered} />
+              </Box>
+              <Box pt={1} pb={1} pl={{ lg: 2 }}>
+                <Typography
+                  variant="body2"
+                  color="textSecondary"
+                  data-testid="queue-summary"
+                >
+                  {`${filtered.length} of ${total} open bot PR${
+                    total === 1 ? '' : 's'
+                  }${hasFilters(filters) ? ' (filtered)' : ''} across ${
+                    answered.length
+                  } team${answered.length === 1 ? '' : 's'}; `}
+                  {isLive
+                    ? `every PR classified live at ${formatReadAt(readAt)}`
+                    : `classification as the last sweep stored it on each PR, read at ${formatReadAt(
+                        readAt,
+                      )}`}
+                  {unclassified > 0
+                    ? `; ${unclassified} with no stored classification, no sweep has labelled ${
+                        unclassified === 1 ? 'it' : 'them'
+                      } yet`
+                    : ''}
+                  .
+                </Typography>
+              </Box>
+              <Box pl={{ lg: 2 }}>
+                <BotPrsTable
+                  rows={filtered}
+                  showTeam={teams.length > 1}
+                  isLoading={queue.isLoading}
+                  isLive={isLive}
+                  canAct={canAct}
+                  onSweep={onSweep}
+                  onMarkBlocked={onMarkBlocked}
+                />
+              </Box>
+            </FiltersLayout.Content>
+          </FiltersLayout>
+        </Box>
       ) : null}
 
       {open?.kind === 'sweep' ? (
@@ -385,6 +423,14 @@ function Queue({
           onOpenChange={close}
           pr={open.pr}
           confirmMode={confirmModeOfTeam(open.team)}
+        />
+      ) : null}
+      {open?.kind === 'merge-green' ? (
+        <MergeGreenDialog
+          installation={installation}
+          rows={filtered}
+          isOpen
+          onOpenChange={close}
         />
       ) : null}
       {open?.kind === 'mark' ? (

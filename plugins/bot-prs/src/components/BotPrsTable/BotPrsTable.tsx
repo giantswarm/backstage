@@ -1,49 +1,155 @@
-import { Fragment, useState } from 'react';
+import { useMemo } from 'react';
+import { Table, TableColumn } from '@backstage/core-components';
+import { Box, Link, Typography } from '@material-ui/core';
 import {
-  Collapse,
-  IconButton,
-  Link,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TableSortLabel,
-  Typography,
-} from '@material-ui/core';
-import KeyboardArrowDownIcon from '@material-ui/icons/KeyboardArrowDown';
-import KeyboardArrowUpIcon from '@material-ui/icons/KeyboardArrowUp';
-import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
+  DateComponent,
+  NotAvailable,
+  StatusLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { statusIntentOf, type BotPrRow } from '../../lib/marge';
-import {
-  ageDays,
-  formatAge,
-  sortRows,
-  type SortColumn,
-  type SortDirection,
-} from '../../lib/rows';
+import { groupRank } from '../../lib/rows';
 import { BotPrDetails } from '../BotPrDetails';
 
-const COLUMNS: { id: SortColumn; label: string; width?: string }[] = [
-  { id: 'team', label: 'Team' },
-  { id: 'repository', label: 'Repository' },
-  { id: 'title', label: 'Pull request', width: '34%' },
-  { id: 'dependency', label: 'Dependency' },
-  { id: 'kind', label: 'Bot' },
-  { id: 'update', label: 'Update' },
-  { id: 'age', label: 'Age' },
-  { id: 'classification', label: 'Classification' },
-  { id: 'rescue', label: 'Rescue' },
-];
+const byRef = (a: BotPrRow, b: BotPrRow) => a.ref.localeCompare(b.ref, 'en');
 
-/** Short values and every header stay on one line; the title column wraps. */
-const NOWRAP = { whiteSpace: 'nowrap' as const };
+const byText =
+  (read: (row: BotPrRow) => string) => (a: BotPrRow, b: BotPrRow) =>
+    read(a).localeCompare(read(b), 'en') || byRef(a, b);
+
+const byNumber =
+  (read: (row: BotPrRow) => number) => (a: BotPrRow, b: BotPrRow) =>
+    read(a) - read(b) || byRef(a, b);
+
+/** A cell whose words stay on one line. */
+const oneLine = { whiteSpace: 'nowrap' as const };
+
+/** One line, cut with an ellipsis when the column is narrower (the full text is the title). */
+const ellipsis = {
+  ...oneLine,
+  overflow: 'hidden' as const,
+  textOverflow: 'ellipsis' as const,
+};
+
+/** The repository without its org: nearly every row of the queue shares it. */
+const nameOf = (row: BotPrRow) => row.repository.replace(/^[^/]+\//, '');
+
+const TEAM_COLUMN: TableColumn<BotPrRow> = {
+  title: 'Team',
+  field: 'team',
+  width: '9%',
+  cellStyle: ellipsis,
+  customSort: byText(row => row.team),
+};
+
+const COLUMNS: TableColumn<BotPrRow>[] = [
+  {
+    title: 'Repository',
+    field: 'repository',
+    width: '15%',
+    cellStyle: ellipsis,
+    customSort: byText(nameOf),
+    render: row => <span title={row.repository}>{nameOf(row)}</span>,
+  },
+  {
+    title: 'Pull request',
+    field: 'title',
+    highlight: true,
+    width: '25%',
+    cellStyle: ellipsis,
+    customSort: byText(row => row.title.toLowerCase()),
+    render: row => (
+      <span title={row.title}>
+        <Link
+          href={row.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={event => event.stopPropagation()}
+        >
+          #{row.number}
+        </Link>{' '}
+        {row.title}
+      </span>
+    ),
+  },
+  {
+    title: 'Dependency',
+    field: 'dependency',
+    width: '13%',
+    cellStyle: ellipsis,
+    customSort: byText(row => row.dependency.toLowerCase()),
+    render: row => <span title={row.dependency}>{row.dependency}</span>,
+  },
+  {
+    title: 'Bot',
+    field: 'kind',
+    width: '7%',
+    cellStyle: oneLine,
+    customSort: byText(row => row.kind ?? ''),
+    render: row => row.kind ?? <NotAvailable />,
+  },
+  {
+    title: 'Update',
+    field: 'update_type',
+    width: '7%',
+    cellStyle: oneLine,
+    customSort: byText(row => row.update_type ?? ''),
+    render: row => row.update_type ?? <NotAvailable />,
+  },
+  {
+    title: 'Opened',
+    field: 'created_at',
+    width: '11%',
+    cellStyle: oneLine,
+    // ISO timestamps order as strings; a PR without one sorts first.
+    customSort: byText(row => row.created_at ?? ''),
+    render: row =>
+      row.created_at ? (
+        <DateComponent value={row.created_at} relative />
+      ) : (
+        <NotAvailable />
+      ),
+  },
+  {
+    title: 'Classification',
+    field: 'status',
+    width: '12%',
+    cellStyle: oneLine,
+    defaultSort: 'asc',
+    customSort: byNumber(groupRank),
+    render: row => (
+      <StatusLabel
+        label={row.status}
+        intent={statusIntentOf(row.group)}
+        title={row.detail}
+      />
+    ),
+  },
+  {
+    title: 'Rescue',
+    field: 'rescue',
+    width: '6%',
+    cellStyle: oneLine,
+    customSort: byText(row =>
+      row.rescue ? `${row.rescue.outcome} ${row.rescue.at ?? ''}` : '',
+    ),
+    render: row =>
+      row.rescue ? (
+        <span title={row.rescue.reason}>
+          {row.rescue.outcome}
+          {row.rescue.stale ? ' (stale)' : ''}
+        </span>
+      ) : (
+        <NotAvailable />
+      ),
+  },
+];
 
 export type BotPrsTableProps = {
   rows: BotPrRow[];
   /** Several teams in view: the Team column is shown. */
   showTeam: boolean;
+  isLoading: boolean;
   isLive: boolean;
   canAct: boolean;
   onSweep: (row: BotPrRow) => void;
@@ -52,142 +158,64 @@ export type BotPrsTableProps = {
 
 /**
  * The queue rows, sortable by every column, each expandable to the engine's
- * full record and the two per-PR actions. Sorted worst first to begin with:
- * the failures, then what waits, then what is fine.
+ * full record and the per-PR actions -- the Table of
+ * `@backstage/core-components` with its detail panel, as the Repositories and
+ * cluster tables use it. Sorted worst first to begin with: what failed, then
+ * what waits, then what the engine would merge.
  */
 export function BotPrsTable({
   rows,
   showTeam,
+  isLoading,
   isLive,
   canAct,
   onSweep,
   onMarkBlocked,
 }: BotPrsTableProps) {
-  const [sort, setSort] = useState<{
-    column: SortColumn;
-    direction: SortDirection;
-  }>({ column: 'classification', direction: 'asc' });
-  const [expanded, setExpanded] = useState<string | undefined>();
-
-  const sorted = sortRows(rows, sort.column, sort.direction);
-  const columns = showTeam
-    ? COLUMNS
-    : COLUMNS.filter(column => column.id !== 'team');
-
-  const toggleSort = (column: SortColumn) =>
-    setSort(current => ({
-      column,
-      direction:
-        current.column === column && current.direction === 'asc'
-          ? 'desc'
-          : 'asc',
-    }));
-
+  const columns = useMemo(
+    () => (showTeam ? [TEAM_COLUMN, ...COLUMNS] : COLUMNS),
+    [showTeam],
+  );
   return (
-    <Table size="small" aria-label="Bot PRs">
-      <TableHead>
-        <TableRow>
-          <TableCell padding="checkbox" />
-          {columns.map(column => (
-            <TableCell
-              key={column.id}
-              style={{ ...NOWRAP, width: column.width }}
-              sortDirection={sort.column === column.id ? sort.direction : false}
-            >
-              <TableSortLabel
-                active={sort.column === column.id}
-                direction={sort.column === column.id ? sort.direction : 'asc'}
-                onClick={() => toggleSort(column.id)}
-              >
-                {column.label}
-              </TableSortLabel>
-            </TableCell>
-          ))}
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {sorted.map(row => {
-          const open = expanded === row.ref;
-          return (
-            <Fragment key={row.ref}>
-              <TableRow
-                hover
-                data-testid={`row-${row.ref}`}
-                onClick={() => setExpanded(open ? undefined : row.ref)}
-                style={{ cursor: 'pointer' }}
-              >
-                <TableCell padding="checkbox">
-                  <IconButton
-                    size="small"
-                    aria-label={`${open ? 'Collapse' : 'Expand'} ${row.ref}`}
-                    aria-expanded={open}
-                  >
-                    {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-                  </IconButton>
-                </TableCell>
-                {showTeam ? <TableCell>{row.team}</TableCell> : null}
-                <TableCell component="th" scope="row">
-                  {row.repository.replace(/^giantswarm\//, '')}
-                </TableCell>
-                <TableCell>
-                  <Link
-                    href={row.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={event => event.stopPropagation()}
-                    title={row.title}
-                  >
-                    #{row.number}
-                  </Link>{' '}
-                  {row.title}
-                </TableCell>
-                <TableCell>{row.dependency}</TableCell>
-                <TableCell style={NOWRAP}>{row.kind ?? '—'}</TableCell>
-                <TableCell style={NOWRAP}>{row.update_type ?? '—'}</TableCell>
-                <TableCell style={NOWRAP}>{formatAge(ageDays(row))}</TableCell>
-                <TableCell style={NOWRAP} title={row.detail}>
-                  <StatusLabel
-                    label={row.status}
-                    intent={statusIntentOf(row.group)}
-                  />
-                </TableCell>
-                <TableCell style={NOWRAP} title={row.rescue?.reason}>
-                  {row.rescue
-                    ? `${row.rescue.outcome}${row.rescue.stale ? ' (stale)' : ''}`
-                    : '—'}
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell
-                  style={{ paddingBottom: 0, paddingTop: 0 }}
-                  colSpan={columns.length + 1}
-                >
-                  <Collapse in={open} timeout="auto" unmountOnExit>
-                    <div style={{ padding: 16 }}>
-                      <BotPrDetails
-                        row={row}
-                        isLive={isLive}
-                        canAct={canAct}
-                        onSweep={onSweep}
-                        onMarkBlocked={onMarkBlocked}
-                      />
-                    </div>
-                  </Collapse>
-                </TableCell>
-              </TableRow>
-            </Fragment>
-          );
-        })}
-        {sorted.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={columns.length + 1}>
-              <Typography variant="body2" color="textSecondary">
-                No bot PR matches.
-              </Typography>
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+    <Table<BotPrRow>
+      isLoading={isLoading}
+      options={{
+        paging: false,
+        padding: 'dense',
+        search: false,
+        draggable: false,
+        // Fixed: the columns share the width they are given and a long title
+        // is cut with an ellipsis, instead of the table growing past its column.
+        tableLayout: 'fixed',
+      }}
+      data={rows}
+      style={{ width: '100%' }}
+      // The toolbar wraps the title in an h2 already.
+      title={
+        <Typography variant="h6" component="span">
+          Bot PRs ({rows.length})
+        </Typography>
+      }
+      columns={columns}
+      detailPanel={({ rowData }) => (
+        <Box px={2} py={1} data-testid={`details-${rowData.ref}`}>
+          <BotPrDetails
+            row={rowData}
+            isLive={isLive}
+            canAct={canAct}
+            onSweep={onSweep}
+            onMarkBlocked={onMarkBlocked}
+          />
+        </Box>
+      )}
+      onRowClick={(_event, _row, toggleDetailPanel) => toggleDetailPanel?.()}
+      localization={{
+        body: {
+          emptyDataSourceMessage: isLoading
+            ? 'Reading the queue…'
+            : 'No bot PR matches.',
+        },
+      }}
+    />
   );
 }

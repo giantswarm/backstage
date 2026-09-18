@@ -1,30 +1,7 @@
-import { Button, Grid, Link, Typography } from '@material-ui/core';
+import { Button, Flex, Link, Text } from '@backstage/ui';
+import { FactList, type Fact } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { BotPrRow } from '../../lib/marge';
-
-function Fact({
-  label,
-  value,
-  title,
-}: {
-  label: string;
-  value?: string | number;
-  title?: string;
-}) {
-  if (value === undefined || value === '') {
-    return null;
-  }
-  return (
-    <Grid item xs={6} md={3}>
-      <Typography variant="caption" color="textSecondary" component="div">
-        {label}
-      </Typography>
-      <Typography variant="body2" title={title}>
-        {value}
-      </Typography>
-    </Grid>
-  );
-}
 
 const date = (iso?: string) => (iso ? iso.slice(0, 10) : undefined);
 
@@ -64,100 +41,79 @@ export function BotPrDetails({
     }
   }
 
+  const facts: Fact[] = [
+    { label: 'Classification', value: row.status },
+    { label: 'Evidence', value: row.detail },
+    { label: 'Label', value: row.label ?? 'none' },
+    { label: 'Bot', value: row.kind },
+    {
+      label: 'Update',
+      value: row.update_type ?? (isLive ? 'unknown' : 'stored read: not read'),
+    },
+    { label: 'Opened', value: date(row.created_at) },
+    { label: 'Obsolete because', value: row.reason },
+  ];
+  if (policy) {
+    facts.push(
+      {
+        label: 'Policy',
+        value: policy.sweep ? 'sweep on' : 'sweep off for this repository',
+      },
+      {
+        label: 'Merges when green',
+        value:
+          row.kind && policy.update_types[row.kind]
+            ? policy.update_types[row.kind].join(', ')
+            : 'nothing for this bot',
+      },
+      { label: 'Confirm', value: policy.rescue.confirm ?? 'per-pr' },
+      { label: 'Policy files', value: policy.sources?.join(', ') },
+    );
+  }
+  if (rescue) {
+    facts.push(
+      { label: 'Rescue outcome', value: rescue.outcome },
+      { label: 'Rescue by', value: rescue.tool },
+      { label: 'Rescue on', value: date(rescue.at) },
+      { label: 'Rescue marker', value: rescueState },
+      { label: 'Rescue reason', value: rescue.reason },
+    );
+  }
+
   return (
-    <Grid container spacing={2}>
-      <Grid item xs={12}>
-        <Typography variant="body2">
-          <Link href={row.url} target="_blank" rel="noopener noreferrer">
-            {row.ref}
-          </Link>{' '}
-          {row.title}
-        </Typography>
-      </Grid>
-      <Fact label="Classification" value={row.status} />
-      <Fact label="Evidence" value={row.detail} />
-      <Fact label="Label" value={row.label ?? 'none'} />
-      <Fact label="Bot" value={row.kind} />
-      <Fact
-        label="Update"
-        value={
-          row.update_type ?? (isLive ? 'unknown' : 'stored read: not read')
-        }
+    <Flex direction="column" gap="3">
+      <Text variant="body-medium">
+        <Link href={row.url} target="_blank" rel="noopener noreferrer">
+          {row.ref}
+        </Link>{' '}
+        {row.title}
+      </Text>
+      <FactList
+        facts={facts.filter(
+          fact => fact.value !== undefined && fact.value !== '',
+        )}
       />
-      <Fact label="Opened" value={date(row.created_at)} />
-      {row.reason ? <Fact label="Obsolete because" value={row.reason} /> : null}
-      {policy ? (
-        <>
-          <Fact
-            label="Policy"
-            value={policy.sweep ? 'sweep on' : 'sweep off for this repository'}
-            title={policy.sources?.join('\n')}
-          />
-          <Fact
-            label="Merges when green"
-            value={
-              row.kind && policy.update_types[row.kind]
-                ? policy.update_types[row.kind].join(', ')
-                : 'nothing for this bot'
-            }
-          />
-          <Fact
-            label="Confirm"
-            value={policy.rescue.confirm ?? 'per-pr'}
-            title="who confirms before the engine acts, from the team policy"
-          />
-          <Fact
-            label="Policy files"
-            value={policy.sources?.length ?? 0}
-            title={policy.sources?.join('\n')}
-          />
-        </>
-      ) : (
-        <Grid item xs={12}>
-          <Typography variant="caption" color="textSecondary">
-            {isLive
-              ? 'The engine reported no policy for this PR.'
-              : 'The stored read carries the label only. Refresh classification reads the update type, the policy and the rescue marker.'}
-          </Typography>
-        </Grid>
-      )}
-      {rescue ? (
-        <>
-          <Fact label="Rescue outcome" value={rescue.outcome} />
-          <Fact label="Rescue by" value={rescue.tool} />
-          <Fact label="Rescue on" value={date(rescue.at)} />
-          <Fact
-            label="Rescue marker"
-            value={rescueState}
-            title={rescue.reason}
-          />
-        </>
+      {!policy ? (
+        <Text variant="body-small" color="secondary">
+          {isLive
+            ? 'The engine reported no policy for this PR.'
+            : 'The stored read carries the label only. Refresh classification reads the update type, the policy and the rescue marker.'}
+        </Text>
       ) : null}
       {canAct ? (
-        <Grid item xs={12}>
-          <Grid container spacing={1}>
-            <Grid item>
-              <Button
-                size="small"
-                variant="outlined"
-                color="primary"
-                onClick={() => onSweep(row)}
-              >
-                Sweep this PR…
-              </Button>
-            </Grid>
-            <Grid item>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => onMarkBlocked(row)}
-              >
-                Mark blocked…
-              </Button>
-            </Grid>
-          </Grid>
-        </Grid>
+        <Flex gap="2">
+          <Button variant="secondary" size="small" onPress={() => onSweep(row)}>
+            Sweep this PR…
+          </Button>
+          <Button
+            variant="tertiary"
+            size="small"
+            onPress={() => onMarkBlocked(row)}
+          >
+            Mark blocked…
+          </Button>
+        </Flex>
       ) : null}
-    </Grid>
+    </Flex>
   );
 }
