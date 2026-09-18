@@ -1,5 +1,13 @@
 import { useMemo } from 'react';
-import { Cell, CellText, Table, Text, useTable } from '@backstage/ui';
+import {
+  Badge,
+  Cell,
+  CellText,
+  Flex,
+  Table,
+  Text,
+  useTable,
+} from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
@@ -19,12 +27,39 @@ export type LlmByAgentTableProps = {
   note?: string;
 };
 
+/** The mark on a row whose agent the portal no longer knows. */
+const REMOVED_MARK = 'Removed';
+const REMOVED_TITLE =
+  'This agent matches none the portal knows: it has been removed since, or runs outside this view. Its spend stays in the totals.';
+
+/**
+ * The agent column: a known agent's name, linked to its page; a removed
+ * agent's technical name marked as removed, so it is not read as a system
+ * component with spend; unattributed traffic by the caller's word for it.
+ */
+function AgentCell({ row }: { row: LlmAgentRow }) {
+  if (row.kind !== 'removed') {
+    return <CellText title={row.label} href={row.href} />;
+  }
+  return (
+    <Cell>
+      <Flex align="center" gap="2">
+        <Text as="p" variant="body-medium" truncate title={row.label}>
+          {row.label}
+        </Text>
+        <span title={REMOVED_TITLE}>
+          <Badge size="small">{REMOVED_MARK}</Badge>
+        </span>
+      </Flex>
+    </Cell>
+  );
+}
+
 /**
  * Spend and volume by the agent that made the calls, across every user.
  *
- * The agent is the gateway's attribution of the *calling pod*, so this covers
- * everyone's traffic through that agent — which is the only "all users" view
- * the metrics can give: they carry no user label.
+ * The agent is the one the gateway attributed the call to, so a row covers
+ * everyone's traffic through that agent.
  *
  * Every numeric column carries a `DataBar` scaled to that column's own
  * maximum, each on its own hue. The bars are for comparing rows **down** a
@@ -55,7 +90,7 @@ export function LlmByAgentTable({
       label: 'Agent',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <CellText title={row.label} href={row.href} />,
+      cell: row => <AgentCell row={row} />,
     },
     {
       id: 'calls',

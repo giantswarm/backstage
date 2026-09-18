@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
 import { LlmByAgentTable } from './LlmByAgentTable';
@@ -8,6 +8,7 @@ const ROWS: LlmAgentRow[] = [
     id: 'kagent|big',
     namespace: 'kagent',
     agent: 'big',
+    kind: 'agent',
     label: 'Big spender',
     href: '/agents/gazelle/kagent/big',
     tokens: 7_500_000,
@@ -19,6 +20,7 @@ const ROWS: LlmAgentRow[] = [
     id: 'kagent|chatty',
     namespace: 'kagent',
     agent: 'chatty',
+    kind: 'agent',
     label: 'Chatty',
     tokens: 300_000,
     calls: 400,
@@ -29,6 +31,7 @@ const ROWS: LlmAgentRow[] = [
     id: 'kagent|idle',
     namespace: 'kagent',
     agent: 'idle',
+    kind: 'agent',
     label: 'Almost idle',
     tokens: 60_000,
     calls: 3,
@@ -84,6 +87,65 @@ describe('LlmByAgentTable', () => {
       '/agents/gazelle/kagent/big',
     );
     expect(screen.queryByRole('link', { name: 'Chatty' })).toBeNull();
+  });
+
+  it('marks a removed agent as removed, unlinked, with its figures', () => {
+    render(
+      <LlmByAgentTable
+        rows={[
+          ROWS[0],
+          {
+            id: 'kagent|gone',
+            namespace: 'kagent',
+            agent: 'gone',
+            kind: 'removed',
+            label: 'kagent/gone',
+            tokens: 60_000,
+            calls: 3,
+            costUsd: 1,
+            sharePct: 2,
+          },
+        ]}
+        emptyMessage="none"
+      />,
+    );
+
+    // The technical name is all that is left of a removed agent, so it is
+    // shown as `namespace/name` with the mark next to it — a reader must not
+    // take it for a system component with spend, nor for an agent to open.
+    const removed = screen.getByText('kagent/gone').closest('[role="row"]');
+    expect(removed).not.toBeNull();
+    expect(within(removed as HTMLElement).getByText('Removed')).toBeVisible();
+    expect(within(removed as HTMLElement).queryByRole('link')).toBeNull();
+    expect(within(removed as HTMLElement).getByText('$1.00')).toBeVisible();
+
+    const known = screen.getByText('Big spender').closest('[role="row"]');
+    expect(within(known as HTMLElement).queryByText('Removed')).toBeNull();
+  });
+
+  it('renders unattributed traffic by its label alone, with no mark and no link', () => {
+    render(
+      <LlmByAgentTable
+        rows={[
+          {
+            id: 'kagent|unknown',
+            namespace: 'kagent',
+            agent: 'unknown',
+            kind: 'unattributed',
+            label: 'Unattributed',
+            tokens: 1_000,
+            calls: 1,
+            costUsd: 0.1,
+            sharePct: 100,
+          },
+        ]}
+        emptyMessage="none"
+      />,
+    );
+
+    expect(screen.getByText('Unattributed')).toBeVisible();
+    expect(screen.queryByText('Removed')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('renders no share for an agent whose spend could not be priced', () => {

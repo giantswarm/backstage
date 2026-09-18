@@ -29,7 +29,7 @@ export type LlmUsageView = {
   isAvailable: boolean | undefined;
 };
 
-/** Copy for a gateway label that resolves to no `Agent` CR. */
+/** Copy for the gateway's own `unknown`: a call it could attribute to no caller. */
 const UNKNOWN_AGENT = 'Unattributed';
 const UNKNOWN_MODEL = 'Unknown model';
 

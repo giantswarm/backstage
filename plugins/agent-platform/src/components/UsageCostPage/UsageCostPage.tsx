@@ -54,7 +54,7 @@ export function UsageCostPage() {
             <LlmByAgentTable
               rows={usage.byAgent}
               emptyMessage="The gateway attributed no calls to an agent in this window."
-              note="An agent is the ServiceAccount of the pod that made the call, so a row covers everyone's traffic through that agent. A name that resolves to no agent here has been deleted since, or runs outside this portal's view; its spend is still in the totals."
+              note="Each model call names its agent: the runtime sends the agent's name and namespace and the person on the call, the gateway records them for a call arriving through the Substrate egress and attributes any other call to the ServiceAccount of the pod that made it. A row covers everyone's traffic through that agent. An agent marked as removed matches none this portal knows — it has been removed since, or runs outside this portal's view — and its spend stays in the totals. Unattributed is traffic the gateway could match to no caller."
             />
             <LlmByModelTable
               rows={usage.byModel}

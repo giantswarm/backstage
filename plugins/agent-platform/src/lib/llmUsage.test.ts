@@ -61,6 +61,7 @@ describe('reduceByAgent', () => {
         id: 'kagent|sre-agent',
         namespace: 'kagent',
         agent: 'sre-agent',
+        kind: 'agent',
         label: 'SRE Agent',
         href: '/agents/gazelle/SRE Agent',
         tokens: 1_000_000,
@@ -93,19 +94,41 @@ describe('reduceByAgent', () => {
     expect(rows[0].tokens).toBe(1_000_000);
   });
 
-  it('keeps a label that matches no CR, unlinked, showing namespace/agent', () => {
+  it('renders a pair that matches no agent as a removed agent, unlinked, its spend kept', () => {
     const rows = reduceByAgent({
       ...byAgentOptions,
-      cost: [sample({ agent_namespace: 'kagent', agent: 'deleted' }, '1')],
+      cost: [
+        sample({ agent_namespace: 'kagent', agent: 'sre-agent' }, '3'),
+        sample({ agent_namespace: 'kagent', agent: 'deleted' }, '1'),
+      ],
       tokens: undefined,
       calls: undefined,
     });
 
-    expect(rows[0].label).toBe('kagent/deleted');
-    expect(rows[0].href).toBeUndefined();
+    const removed = rows.find(row => row.agent === 'deleted');
+    expect(removed).toMatchObject({
+      kind: 'removed',
+      label: 'kagent/deleted',
+      costUsd: 1,
+      // Its dollar is part of the whole the shares are measured against, so
+      // the table keeps agreeing with the tiles above it.
+      sharePct: 25,
+    });
+    expect(removed?.href).toBeUndefined();
   });
 
-  it("renders the gateway's `unknown` agent as the caller's unknown label", () => {
+  it('names a removed agent that has no namespace by its bare name', () => {
+    const rows = reduceByAgent({
+      ...byAgentOptions,
+      cost: [sample({ agent: 'deleted' }, '1')],
+      tokens: undefined,
+      calls: undefined,
+    });
+
+    expect(rows[0]).toMatchObject({ kind: 'removed', label: 'deleted' });
+  });
+
+  it("renders the gateway's `unknown` agent as unattributed, by the caller's label", () => {
     const rows = reduceByAgent({
       ...byAgentOptions,
       cost: [sample({ agent_namespace: 'kagent', agent: 'unknown' }, '1')],
@@ -113,7 +136,10 @@ describe('reduceByAgent', () => {
       calls: undefined,
     });
 
-    expect(rows[0].label).toBe('Unattributed');
+    expect(rows[0]).toMatchObject({
+      kind: 'unattributed',
+      label: 'Unattributed',
+    });
     expect(rows[0].href).toBeUndefined();
   });
 
