@@ -207,6 +207,44 @@ export const MARGE_GROUPS = [
 
 export type MargeGroup = (typeof MARGE_GROUPS)[number];
 
+/**
+ * What each class means, in the reader's terms: what the engine decided, and
+ * who the PR is waiting for. The classes are the engine's own closed
+ * vocabulary -- a sweep writes one to each PR's `marge/<class>` label and
+ * nobody writes one by hand -- so this is the page's legend for them.
+ */
+export const GROUP_MEANING: Record<MargeGroup, string> = {
+  merged: 'The engine merged it. Nothing is left to do.',
+  auto_merge:
+    'GitHub merges it as soon as every requirement is met, because the PR has auto-merge on.',
+  remedied:
+    'A catalogue rule fixed what was failing. The PR is back with CI, not with you.',
+  security_failures:
+    'A security check failed. The engine never merges past one: a person reads the finding.',
+  action_required:
+    'CI failed for a reason the engine has no rule for. This is the queue a person works through.',
+  eligible:
+    'Green, and the team policy merges its update type. Approve and merge acts on exactly these.',
+  unclassified:
+    'Nothing has decided this PR yet: no sweep has labelled it. Classify now decides it.',
+  stale:
+    'It failed on something the base branch has already fixed. Refreshing the branch re-runs CI.',
+  refreshed:
+    'Its branch was just updated from the base, so CI is running again.',
+  cancelled:
+    'CI itself cancelled the build, so there is no verdict on the code yet. A retry gets one.',
+  retried: 'Its cancelled build was just retried.',
+  ci_unavailable:
+    'CI could not run: a budget, a disabled pipeline, a setting a person has to change.',
+  ci_no_verdict:
+    'A check failed without establishing anything about the code. The detail names the remedy.',
+  obsolete:
+    'A newer PR replaces it, or its change does nothing. It wants closing, not fixing.',
+  waiting: 'A required check has not finished. The engine waits; so do you.',
+  skipped:
+    'The engine did not decide it: the repository is out of the sweep, or its author is not a trusted bot.',
+};
+
 export type MargeSummary = {
   total: number;
   merged: number;
@@ -347,11 +385,14 @@ export function rowsOf(
  *
  * marge reads the same title with its own patterns and sends the answer on
  * the entry. This is the fallback for an installation whose marge does not.
+ * A title in neither shape names no dependency: an Align files PR, a Herald
+ * PR and a bot's own onboarding PR each move nothing, and echoing the title
+ * into the column says otherwise.
  */
 export function dependencyOf(title: string): string {
   const text = title.replace(/^[a-z]+(\([^)]*\))?!?:\s*/i, '').trim();
   const renovate = text.match(
-    /^update\s+(?:(?:dependency|module|helm release|plugin|vendir|ocm component|github action)\s+)?(.+?)(?:\s+(?:docker tag|action|digest|orb))?\s+to\s+\S+/i,
+    /^update\s+(?:(?:dependency|module|helm release|plugin|vendir|ocm component|github action)\s+)?(.+?)(?:\s+(?:docker tag|action|digest|orb|image))?\s+to\s+\S+/i,
   );
   if (renovate) {
     return renovate[1];
@@ -360,7 +401,7 @@ export function dependencyOf(title: string): string {
   if (dependabot) {
     return dependabot[1];
   }
-  return text || title;
+  return '';
 }
 
 /**

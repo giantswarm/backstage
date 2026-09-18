@@ -7,7 +7,14 @@ import {
   StatusLabel,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { statusIntentOf, versionOf, type BotPrRow } from '../../lib/marge';
+import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
+
+import {
+  statusIntentOf,
+  versionOf,
+  type BotPrRow,
+  type MargeGroup,
+} from '../../lib/marge';
 import { groupRank } from '../../lib/rows';
 import { BotPrDetails } from '../BotPrDetails';
 
@@ -38,133 +45,212 @@ const TEAM_COLUMN: TableColumn<BotPrRow> = {
   customSort: byText(row => row.team),
 };
 
-const COLUMNS: TableColumn<BotPrRow>[] = [
-  {
-    title: 'Repository',
-    field: 'repository',
-    width: '15%',
-    cellStyle: ellipsis,
-    customSort: byText(nameOf),
-    render: row => <span title={row.repository}>{nameOf(row)}</span>,
-  },
-  {
-    title: 'Pull request',
-    field: 'title',
-    highlight: true,
-    width: '25%',
-    cellStyle: ellipsis,
-    customSort: byText(row => row.title.toLowerCase()),
-    render: row => (
-      <span title={row.title}>
-        <Link
-          href={row.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={event => event.stopPropagation()}
-        >
-          #{row.number}
-        </Link>{' '}
-        {row.title}
-      </span>
-    ),
-  },
-  {
-    title: 'Dependency',
-    field: 'dependency',
-    width: '13%',
-    cellStyle: ellipsis,
-    customSort: byText(row => row.dependency.toLowerCase()),
-    render: row => <span title={row.dependency}>{row.dependency}</span>,
-  },
-  {
-    title: 'Version',
-    field: 'versionTo',
-    width: '11%',
-    cellStyle: ellipsis,
-    customSort: byText(row => versionOf(row)),
-    render: row => {
-      const version = versionOf(row);
-      return version ? (
-        <span title={version}>{version}</span>
-      ) : (
-        <NotAvailable />
-      );
+/**
+ * The classification cell: the engine's own state, and the way to see the
+ * rest of its class. The classes are the engine's closed vocabulary -- no one
+ * writes one by hand -- so the only thing to do with one is to narrow the
+ * table to it, which is what a click does. A second click on the class in
+ * view clears the filter.
+ */
+function ClassificationCell({
+  row,
+  filtered,
+  onFilter,
+}: {
+  row: BotPrRow;
+  filtered: MargeGroup | undefined;
+  onFilter: ((group: MargeGroup | undefined) => void) | undefined;
+}) {
+  const label = (
+    <StatusLabel
+      label={row.status}
+      intent={statusIntentOf(row.group)}
+      // The neutral default is a radio button, which reads as a control the
+      // reader may tick. A class nobody has decided is a question, not a
+      // choice.
+      icon={row.group === 'unclassified' ? HelpOutlineIcon : undefined}
+      title={row.detail}
+    />
+  );
+  if (!onFilter) {
+    return label;
+  }
+  const isFiltered = filtered === row.group;
+  return (
+    <button
+      type="button"
+      title={`${
+        isFiltered
+          ? 'Show every classification again'
+          : `Show the ${row.status} PRs alone`
+      }${row.detail ? `. ${row.detail}` : ''}`}
+      onClick={event => {
+        // The row itself opens the record; this click narrows the table.
+        event.stopPropagation();
+        onFilter(isFiltered ? undefined : row.group);
+      }}
+      style={{
+        background: 'none',
+        border: 'none',
+        padding: 0,
+        font: 'inherit',
+        color: 'inherit',
+        cursor: 'pointer',
+        textAlign: 'left',
+        textDecoration: isFiltered ? 'underline' : undefined,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
+ * A column nothing in view fills is dropped rather than shown as a column of
+ * blanks. The update type and the prior rescue each need the PR itself, which
+ * the stored read does not do, so both are empty until something reads the
+ * PRs -- a sweep, or a preview.
+ */
+function withValues(
+  columns: (TableColumn<BotPrRow> & { fills?: (row: BotPrRow) => boolean })[],
+  rows: BotPrRow[],
+): TableColumn<BotPrRow>[] {
+  return columns
+    .filter(column => !column.fills || rows.some(column.fills))
+    .map(({ fills, ...column }) => column);
+}
+
+function columnsOf(
+  filtered: MargeGroup | undefined,
+  onFilter: ((group: MargeGroup | undefined) => void) | undefined,
+): (TableColumn<BotPrRow> & { fills?: (row: BotPrRow) => boolean })[] {
+  return [
+    {
+      title: 'Repository',
+      field: 'repository',
+      width: '15%',
+      cellStyle: ellipsis,
+      customSort: byText(nameOf),
+      render: row => <span title={row.repository}>{nameOf(row)}</span>,
     },
-  },
-  {
-    title: 'Bot',
-    field: 'kind',
-    width: '7%',
-    cellStyle: oneLine,
-    // The bot is the first thing a reader separates: a Renovate bump and an
-    // Align files PR are not read the same way. Under it the rows stay in
-    // the classification order the page sorts by.
-    customSort: (a: BotPrRow, b: BotPrRow) =>
-      (a.kind ?? '').localeCompare(b.kind ?? '', 'en') ||
-      groupRank(a) - groupRank(b) ||
-      byRef(a, b),
-    render: row => row.kind ?? <NotAvailable />,
-  },
-  {
-    title: 'Update',
-    field: 'update_type',
-    width: '7%',
-    cellStyle: oneLine,
-    customSort: byText(row => row.update_type ?? ''),
-    render: row => row.update_type ?? <NotAvailable />,
-  },
-  {
-    title: 'Opened',
-    field: 'created_at',
-    width: '11%',
-    cellStyle: oneLine,
-    // ISO timestamps order as strings; a PR without one sorts first.
-    customSort: byText(row => row.created_at ?? ''),
-    render: row =>
-      row.created_at ? (
-        <DateComponent value={row.created_at} relative />
-      ) : (
-        <NotAvailable />
-      ),
-  },
-  {
-    title: 'Classification',
-    field: 'status',
-    width: '12%',
-    cellStyle: oneLine,
-    defaultSort: 'asc',
-    // Worst first, and inside one class the bots stay apart.
-    customSort: (a: BotPrRow, b: BotPrRow) =>
-      groupRank(a) - groupRank(b) ||
-      (a.kind ?? '').localeCompare(b.kind ?? '', 'en') ||
-      byRef(a, b),
-    render: row => (
-      <StatusLabel
-        label={row.status}
-        intent={statusIntentOf(row.group)}
-        title={row.detail}
-      />
-    ),
-  },
-  {
-    title: 'Rescue',
-    field: 'rescue',
-    width: '6%',
-    cellStyle: oneLine,
-    customSort: byText(row =>
-      row.rescue ? `${row.rescue.outcome} ${row.rescue.at ?? ''}` : '',
-    ),
-    render: row =>
-      row.rescue ? (
-        <span title={row.rescue.reason}>
-          {row.rescue.outcome}
-          {row.rescue.stale ? ' (stale)' : ''}
+    {
+      title: 'Pull request',
+      field: 'title',
+      highlight: true,
+      width: '25%',
+      cellStyle: ellipsis,
+      customSort: byText(row => row.title.toLowerCase()),
+      render: row => (
+        <span title={row.title}>
+          <Link
+            href={row.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={event => event.stopPropagation()}
+          >
+            #{row.number}
+          </Link>{' '}
+          {row.title}
         </span>
-      ) : (
-        <NotAvailable />
       ),
-  },
-];
+    },
+    {
+      title: 'Dependency',
+      field: 'dependency',
+      width: '13%',
+      cellStyle: ellipsis,
+      customSort: byText(row => row.dependency.toLowerCase()),
+      render: row => <span title={row.dependency}>{row.dependency}</span>,
+    },
+    {
+      title: 'Version',
+      field: 'versionTo',
+      width: '11%',
+      cellStyle: ellipsis,
+      fills: row => Boolean(versionOf(row)),
+      customSort: byText(row => versionOf(row)),
+      render: row => {
+        const version = versionOf(row);
+        return version ? (
+          <span title={version}>{version}</span>
+        ) : (
+          <NotAvailable />
+        );
+      },
+    },
+    {
+      title: 'Bot',
+      field: 'kind',
+      width: '7%',
+      cellStyle: oneLine,
+      // The bot is the first thing a reader separates: a Renovate bump and an
+      // Align files PR are not read the same way. Under it the rows stay in
+      // the classification order the page sorts by.
+      customSort: (a: BotPrRow, b: BotPrRow) =>
+        (a.kind ?? '').localeCompare(b.kind ?? '', 'en') ||
+        groupRank(a) - groupRank(b) ||
+        byRef(a, b),
+      render: row => row.kind ?? <NotAvailable />,
+    },
+    {
+      title: 'Update',
+      field: 'update_type',
+      width: '7%',
+      cellStyle: oneLine,
+      fills: row => Boolean(row.update_type),
+      customSort: byText(row => row.update_type ?? ''),
+      render: row => row.update_type ?? <NotAvailable />,
+    },
+    {
+      title: 'Opened',
+      field: 'created_at',
+      width: '11%',
+      cellStyle: oneLine,
+      // ISO timestamps order as strings; a PR without one sorts first.
+      customSort: byText(row => row.created_at ?? ''),
+      render: row =>
+        row.created_at ? (
+          <DateComponent value={row.created_at} relative />
+        ) : (
+          <NotAvailable />
+        ),
+    },
+    {
+      title: 'Classification',
+      field: 'status',
+      width: '12%',
+      cellStyle: oneLine,
+      defaultSort: 'asc',
+      // Worst first, and inside one class the bots stay apart.
+      customSort: (a: BotPrRow, b: BotPrRow) =>
+        groupRank(a) - groupRank(b) ||
+        (a.kind ?? '').localeCompare(b.kind ?? '', 'en') ||
+        byRef(a, b),
+      render: row => (
+        <ClassificationCell row={row} filtered={filtered} onFilter={onFilter} />
+      ),
+    },
+    {
+      title: 'Rescue',
+      field: 'rescue',
+      width: '6%',
+      cellStyle: oneLine,
+      fills: row => Boolean(row.rescue),
+      customSort: byText(row =>
+        row.rescue ? `${row.rescue.outcome} ${row.rescue.at ?? ''}` : '',
+      ),
+      render: row =>
+        row.rescue ? (
+          <span title={row.rescue.reason}>
+            {row.rescue.outcome}
+            {row.rescue.stale ? ' (stale)' : ''}
+          </span>
+        ) : (
+          <NotAvailable />
+        ),
+    },
+  ];
+}
 
 export type BotPrsTableProps = {
   rows: BotPrRow[];
@@ -172,6 +258,10 @@ export type BotPrsTableProps = {
   showTeam: boolean;
   isLoading: boolean;
   canAct: boolean;
+  /** The classification the table is narrowed to, when it is. */
+  classification?: MargeGroup;
+  /** Narrow the table to one classification, or show every one again. */
+  onClassification?: (group: MargeGroup | undefined) => void;
   onSweep: (row: BotPrRow) => void;
   onMarkBlocked: (row: BotPrRow) => void;
 };
@@ -188,13 +278,18 @@ export function BotPrsTable({
   showTeam,
   isLoading,
   canAct,
+  classification,
+  onClassification,
   onSweep,
   onMarkBlocked,
 }: BotPrsTableProps) {
-  const columns = useMemo(
-    () => (showTeam ? [TEAM_COLUMN, ...COLUMNS] : COLUMNS),
-    [showTeam],
-  );
+  const columns = useMemo(() => {
+    const listed = withValues(
+      columnsOf(classification, onClassification),
+      rows,
+    );
+    return showTeam ? [TEAM_COLUMN, ...listed] : listed;
+  }, [showTeam, classification, onClassification, rows]);
   return (
     <Table<BotPrRow>
       isLoading={isLoading}
