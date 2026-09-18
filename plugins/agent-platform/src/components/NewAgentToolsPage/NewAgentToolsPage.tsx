@@ -13,7 +13,10 @@ import {
   TextField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  LoadingIndicator,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useMusterServers } from '../../hooks/useMusterServers';
@@ -293,22 +296,32 @@ export function NewAgentToolsPage() {
                 description="Named selections the platform defines. Read-only tools is the safe default; Full gateway is today's unbounded behaviour, made explicit. A preset combines with anything you add from the catalogue."
               />
               <Flex direction="column" gap="3">
-                {presets.source === 'built-in' && musterApi && installation && (
-                  <Alert
-                    status="info"
-                    title="Only the built-in presets are known"
-                    description={
-                      presets.error
-                        ? `The installation's muster could not be asked for its presets (${presets.error}). The three presets built into every muster are offered.`
-                        : "This installation's muster did not list its presets — it may predate toolsets. The three presets built into every muster are offered."
-                    }
-                  />
+                {/* Cards and notice both wait for the read: the built-in list
+                    is also what the hook holds while it is outstanding. */}
+                {presets.isLoading ? (
+                  <LoadingIndicator label="Reading the installation's presets…" />
+                ) : (
+                  <>
+                    {presets.source === 'built-in' &&
+                      musterApi &&
+                      installation && (
+                        <Alert
+                          status="info"
+                          title="Only the built-in presets are known"
+                          description={
+                            presets.error
+                              ? `The installation's muster could not be asked for its presets (${presets.error}). The three presets built into every muster are offered.`
+                              : "This installation's muster did not list its presets — it may predate toolsets. The three presets built into every muster are offered."
+                          }
+                        />
+                      )}
+                    <PresetCards
+                      presets={presets.presets}
+                      selected={selected}
+                      onToggle={toggleToolsetSelector}
+                    />
+                  </>
                 )}
-                <PresetCards
-                  presets={presets.presets}
-                  selected={selected}
-                  onToggle={toggleToolsetSelector}
-                />
               </Flex>
               <details className={`${classes.details} ${classes.afterPresets}`}>
                 <summary className={classes.summaryLine}>
@@ -360,7 +373,7 @@ export function NewAgentToolsPage() {
                   />
                 )}
                 {isCatalogueLoading && groups.length === 0 && (
-                  <Text color="secondary">Reading the catalogue…</Text>
+                  <LoadingIndicator label="Reading the catalogue…" />
                 )}
                 {groups.length > 0 && (
                   <>
