@@ -15,10 +15,12 @@ import { musterPluginOverrides } from './modules/muster';
 import { plansPluginOverrides } from './modules/plans';
 import { roadmapPluginOverrides } from './modules/roadmap';
 import { repositoriesPluginOverrides } from './modules/repositories';
+import { platformCapabilitiesPluginOverrides } from './modules/platform-capabilities';
 import agentPlatformPlugin from '@giantswarm/backstage-plugin-agent-platform';
 import plansPlugin from '@giantswarm/backstage-plugin-plans';
 import roadmapPlugin from '@giantswarm/backstage-plugin-roadmap';
 import repositoriesPlugin from '@giantswarm/backstage-plugin-repositories';
+import platformCapabilitiesPlugin from '@giantswarm/backstage-plugin-platform-capabilities';
 import botPrsPlugin from '@giantswarm/backstage-plugin-bot-prs';
 
 // Upstream NFS plugins:
@@ -74,9 +76,11 @@ const app = createApp({
     plansPluginOverrides,
     roadmapPluginOverrides,
     repositoriesPluginOverrides,
+    platformCapabilitiesPluginOverrides,
     plansPlugin,
     roadmapPlugin,
     repositoriesPlugin,
+    platformCapabilitiesPlugin,
     botPrsPlugin,
 
     // Upstream NFS plugins:

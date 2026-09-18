@@ -53,6 +53,7 @@
     "@giantswarm/backstage-plugin-gs-backend": "^0.10.2",
     "@giantswarm/backstage-plugin-muster-backend": "workspace:^",
     "@giantswarm/backstage-plugin-plans-backend": "workspace:^",
+    "@giantswarm/backstage-plugin-platform-capabilities-backend": "workspace:^",
     "@giantswarm/backstage-plugin-repositories-backend": "workspace:^",
     "@giantswarm/backstage-plugin-roadmap-backend": "workspace:^",
     "@giantswarm/backstage-plugin-scaffolder-backend-module-gs": "^0.12.0",
