@@ -38,24 +38,43 @@ import {
 import { TeamOption } from '../../lib/scope';
 
 export const CI_GENERATE_LABEL = 'Generate CircleCI config';
+export const ALIGN_LABEL = 'Opted in to alignment';
 
 /** The choice whose id is `private`: the org's default, left out of the entry. */
 const PRIVATE = VISIBILITIES[0].id;
 
+/**
+ * Whose declaration the form holds. A new repository's: the team is a choice
+ * among `teams`, the name is typed and checked as typed. An existing entry's:
+ * the team and the name are fixed (Transfer moves a repository; a rename is
+ * followed by the reconciler, not declared), the opt-in to alignment is on
+ * the form, and the entry's fields the form does not carry are named as kept.
+ */
+export type DeclarationSubject =
+  | { kind: 'new'; teams: TeamOption[]; teamsLoading: boolean }
+  | {
+      kind: 'existing';
+      repository: string;
+      team: string;
+      file: string;
+      /** The entry's fields the form does not carry, dotted. */
+      kept: string[];
+    };
+
+type NewRepository = Extract<DeclarationSubject, { kind: 'new' }>;
+type ExistingEntry = Extract<DeclarationSubject, { kind: 'existing' }>;
+
 export interface DeclarationFieldsProps {
   form: DeclarationForm;
   onChange: (form: DeclarationForm) => void;
-  /** The teams to file for, the caller's own first. */
-  teams: TeamOption[];
-  /** The teams are still being read. */
-  teamsLoading: boolean;
+  subject: DeclarationSubject;
   /**
    * The manager's dry run of the form as it stands: the fields it refused
    * are marked, the name's verdict shows under the name.
    */
   validation?: Validation;
   /** A dry run for the form as it stands is in flight: the verdict shown is the last one. */
-  checking: boolean;
+  checking?: boolean;
   /** The repository was created: the declaration is frozen. */
   isDisabled: boolean;
 }
@@ -189,12 +208,15 @@ function nameVerdict(
   }
 }
 
-/** The declaration's generation fields in one line: `service · go · app · CircleCI config generated`. */
+/**
+ * The declaration's generation fields in one line: `service · go · app ·
+ * CircleCI config generated`; an entry without one of them says so.
+ */
 export function summaryOf(form: DeclarationForm): string {
   return [
-    form.componentType || 'unspecified',
-    form.language,
-    form.flavours.join(' + '),
+    form.componentType || 'no catalog type',
+    form.language || 'no language',
+    form.flavours.length > 0 ? form.flavours.join(' + ') : 'no flavours',
     `CircleCI config ${form.ciGenerate ? 'generated' : 'not generated'}`,
   ].join(' · ');
 }
@@ -204,7 +226,8 @@ export function summaryOf(form: DeclarationForm): string {
  * summing them up and where it came from, and **Adjust**, which opens the
  * raw controls -- catalog type, language, the nature and add-ons, the
  * CircleCI switch -- for the shape no preset fits. The controls open by
- * themselves when the manager refuses one of the fields, so the mark is seen.
+ * themselves when the manager refuses one of the fields or the generator's
+ * rule is broken, so the mark is seen.
  */
 function Declaration({
   form,
@@ -220,14 +243,13 @@ function Declaration({
   const preset = PRESETS.find(candidate => candidate.id === presetOf(form));
   const nature = natureOf(form.flavours);
   const rule = flavourProblem(form.language, form.flavours);
-  const refusedField = DECLARATION_FIELDS.some(field =>
-    refused(validation, field),
-  );
+  const marked =
+    !!rule || DECLARATION_FIELDS.some(field => refused(validation, field));
   useEffect(() => {
-    if (refusedField) {
+    if (marked) {
       setAdjusting(true);
     }
-  }, [refusedField]);
+  }, [marked]);
 
   return (
     <Flex direction="column" gap="3">
@@ -274,7 +296,7 @@ function Declaration({
               isRequired
               description="componentType: how the Dev Portal's catalog shows the repository; with the language and flavours it picks the template."
               options={COMPONENT_TYPES}
-              selectedKey={form.componentType}
+              selectedKey={form.componentType || null}
               onSelectionChange={key =>
                 key && onChange(withGen(form, { componentType: String(key) }))
               }
@@ -287,7 +309,7 @@ function Declaration({
               isRequired
               description="gen.language: the template and the build job."
               options={LANGUAGES}
-              selectedKey={form.language}
+              selectedKey={form.language || null}
               onSelectionChange={key =>
                 key && onChange(withGen(form, { language: String(key) }))
               }
@@ -360,69 +382,162 @@ function Declaration({
 }
 
 /**
- * The declaration as a form: the repository (team, name, description,
- * visibility); the one question -- what is being created -- as a preset,
- * one of the shapes the org's team files declare, which fills the
- * declaration; the declaration itself (catalog type, language, flavours,
- * the CircleCI switch) as that preset's result, adjustable; and the reason
- * for the pull request. Every enumerated field is a choice, not a text: the
- * values are the schema's. The name is checked against the engine's rule as
- * typed; the manager's verdict on it (free, taken) shows once the dry run
- * answers.
+ * A new repository's team -- a choice, the caller's own first -- and name,
+ * typed and checked against the engine's rule as typed; the manager's
+ * verdict on the name (free, taken) shows once the dry run answers.
+ */
+function NewRepositoryFields({
+  form,
+  onChange,
+  subject,
+  validation,
+  checking,
+  isDisabled,
+}: Pick<
+  DeclarationFieldsProps,
+  'form' | 'onChange' | 'validation' | 'checking' | 'isDisabled'
+> & { subject: NewRepository }) {
+  const name = form.name.trim();
+  const problem = nameProblem(name, form.flavours);
+  const verdict = checking ? undefined : nameVerdict(name, validation);
+  const teamPlaceholder = subject.teamsLoading
+    ? 'Reading your teams…'
+    : 'Pick the owning team';
+  return (
+    <>
+      <Select
+        label="Team"
+        isRequired
+        description="The owning team: its file repositories/<team>.yaml in giantswarm/github takes the entry."
+        placeholder={teamPlaceholder}
+        options={subject.teams.map(team => ({
+          id: team.id,
+          label: team.label,
+        }))}
+        selectedKey={form.team || null}
+        onSelectionChange={key =>
+          key && onChange({ ...form, team: String(key) })
+        }
+        isDisabled={isDisabled}
+      />
+      <Flex direction="column" gap="1">
+        <TextField
+          label="Name"
+          isRequired
+          description="The repository name in the giantswarm org, lowercase; a chart repository is named after its chart."
+          placeholder="my-operator"
+          value={form.name}
+          onChange={value => onChange({ ...form, name: value })}
+          isInvalid={!!problem || refused(validation, 'name')}
+          isDisabled={isDisabled}
+        />
+        {(problem || verdict) && (
+          <Text
+            variant="body-small"
+            color={problem || !verdict?.ok ? 'danger' : 'success'}
+            data-testid="name-check"
+          >
+            {problem ?? verdict?.text}
+          </Text>
+        )}
+      </Flex>
+    </>
+  );
+}
+
+/**
+ * An existing entry's repository, team and file -- fixed -- and the fields
+ * of the entry the form does not carry, which the edit keeps as they are.
+ */
+function ExistingEntryFields({ subject }: { subject: ExistingEntry }) {
+  return (
+    <Flex direction="column" gap="1" data-testid="existing-entry">
+      <Text variant="body-medium" weight="bold">
+        {subject.repository}
+      </Text>
+      <Text variant="body-small" color="secondary">
+        Declared by {subject.team} in {subject.file}. The name and the team are
+        not edited here: a rename is followed by the reconciler, not declared,
+        and Transfer moves the repository to another team.
+      </Text>
+      {subject.kept.length > 0 && (
+        <Text variant="body-small" color="secondary" data-testid="kept-fields">
+          Kept as they are: {subject.kept.join(', ')}.
+        </Text>
+      )}
+    </Flex>
+  );
+}
+
+/** The repository's opt-in to alignment, `align`, on an existing entry's form. */
+function AlignmentField({
+  form,
+  onChange,
+  validation,
+  isDisabled,
+}: Pick<
+  DeclarationFieldsProps,
+  'form' | 'onChange' | 'validation' | 'isDisabled'
+>) {
+  const hintId = useId();
+  return (
+    <Flex direction="column" gap="1">
+      <Checkbox
+        isSelected={form.align === true}
+        onChange={align => onChange({ ...form, align })}
+        aria-describedby={hintId}
+        isInvalid={refused(validation, 'align')}
+        isDisabled={isDisabled}
+      >
+        {ALIGN_LABEL}
+      </Checkbox>
+      <Text id={hintId} variant="body-small" color="secondary">
+        align: the reconciler changes the repository on GitHub and CircleCI to
+        its declared set-up and the company baseline — settings, permissions,
+        branch protection, the CircleCI project — on every run. Without it the
+        runs check and report the drift and change nothing.
+      </Text>
+    </Flex>
+  );
+}
+
+/**
+ * The declaration as a form: the repository (team and name -- chosen and
+ * typed for a new one, fixed for an existing entry -- description,
+ * visibility); the one question -- what it is -- as a preset, one of the
+ * shapes the org's team files declare, which fills the declaration; the
+ * declaration itself (catalog type, language, flavours, the CircleCI switch)
+ * as that preset's result, adjustable; for an existing entry the opt-in to
+ * alignment; and the reason for the pull request. Every enumerated field is
+ * a choice, not a text: the values are the schema's.
  */
 export function DeclarationFields({
   form,
   onChange,
-  teams,
-  teamsLoading,
+  subject,
   validation,
-  checking,
+  checking = false,
   isDisabled,
 }: DeclarationFieldsProps) {
   const presetHintId = useId();
-  const name = form.name.trim();
-  const problem = nameProblem(name, form.flavours);
-  const verdict = checking ? undefined : nameVerdict(name, validation);
-  const teamPlaceholder = teamsLoading
-    ? 'Reading your teams…'
-    : 'Pick the owning team';
+  const existing = subject.kind === 'existing';
+  const question = existing ? 'What is it?' : 'What are you creating?';
 
   return (
     <Flex direction="column" gap="6">
       <Section title="Repository" testId="section-repository">
-        <Select
-          label="Team"
-          isRequired
-          description="The owning team: its file repositories/<team>.yaml in giantswarm/github takes the entry."
-          placeholder={teamPlaceholder}
-          options={teams.map(team => ({ id: team.id, label: team.label }))}
-          selectedKey={form.team || null}
-          onSelectionChange={key =>
-            key && onChange({ ...form, team: String(key) })
-          }
-          isDisabled={isDisabled}
-        />
-        <Flex direction="column" gap="1">
-          <TextField
-            label="Name"
-            isRequired
-            description="The repository name in the giantswarm org, lowercase; a chart repository is named after its chart."
-            placeholder="my-operator"
-            value={form.name}
-            onChange={value => onChange({ ...form, name: value })}
-            isInvalid={!!problem || refused(validation, 'name')}
+        {subject.kind === 'new' ? (
+          <NewRepositoryFields
+            form={form}
+            onChange={onChange}
+            subject={subject}
+            validation={validation}
+            checking={checking}
             isDisabled={isDisabled}
           />
-          {(problem || verdict) && (
-            <Text
-              variant="body-small"
-              color={problem || !verdict?.ok ? 'danger' : 'success'}
-              data-testid="name-check"
-            >
-              {problem ?? verdict?.text}
-            </Text>
-          )}
-        </Flex>
+        ) : (
+          <ExistingEntryFields subject={subject} />
+        )}
         <TextAreaField
           label="Description"
           description="The About text on GitHub; the automation keeps it in sync."
@@ -448,13 +563,13 @@ export function DeclarationFields({
         </RadioGroup>
       </Section>
 
-      <Section title="What are you creating?" testId="section-preset">
+      <Section title={question} testId="section-preset">
         <Text variant="body-small" color="secondary" id={presetHintId}>
           A preset: it fills the declaration below the way the team files
           declare that shape. Adjust the declaration for a shape none fits.
         </Text>
         <RadioGroup
-          aria-label="What are you creating?"
+          aria-label={question}
           aria-describedby={presetHintId}
           value={presetOf(form) ?? null}
           onChange={id => onChange(withPreset(form, id))}
@@ -488,10 +603,25 @@ export function DeclarationFields({
         />
       </Section>
 
+      {existing && (
+        <Section title="Alignment" testId="section-alignment">
+          <AlignmentField
+            form={form}
+            onChange={onChange}
+            validation={validation}
+            isDisabled={isDisabled}
+          />
+        </Section>
+      )}
+
       <Section title="Pull request" testId="section-pull-request">
         <TextField
           label="Reason"
-          description="Why this repository — the pull request body carries it."
+          description={
+            existing
+              ? 'Why this change — the pull request body carries it.'
+              : 'Why this repository — the pull request body carries it.'
+          }
           value={form.reason}
           onChange={value => onChange({ ...form, reason: value })}
           isDisabled={isDisabled}

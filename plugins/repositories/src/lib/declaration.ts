@@ -6,11 +6,12 @@ import {
 } from '../apis';
 
 /**
- * The Create form: the declaration's fields as the manager's tools name
- * them. The choices offered for the enumerated fields mirror the
- * repositories schema of giantswarm/github and the engine's creation rules
- * (devctl's reposetup package and its generators) so a person picks instead
- * of typing; the manager's dry run stays the verdict on whatever the form
+ * The declaration as a form -- Create repository's, and Edit's for an
+ * existing entry: the declaration's fields as the manager's tools name them.
+ * The choices offered for the enumerated fields mirror the repositories
+ * schema of giantswarm/github and the engine's creation rules (devctl's
+ * reposetup package and its generators) so a person picks instead of
+ * typing; the manager's dry run stays the verdict on whatever the form
  * sends.
  */
 export interface DeclarationForm {
@@ -27,6 +28,13 @@ export interface DeclarationForm {
   visibility: string;
   /** `gen.ci.generate`: align-files generates and keeps the CircleCI config. */
   ciGenerate: boolean;
+  /**
+   * `align`: the repository's opt-in to alignment -- the reconciler changes
+   * it to its declared set-up; without it the runs only check. On the form
+   * of an existing entry; a new repository is opted in by its creation, so
+   * the Create form does not carry it.
+   */
+  align?: boolean;
   /** Why, for the pull request body. */
   reason: string;
 }
@@ -421,6 +429,7 @@ export const ENTRY_FIELDS = {
   description: 'description',
   visibility: 'visibility',
   ciGenerate: 'gen.ci.generate',
+  align: 'align',
 } as const satisfies Partial<Record<keyof DeclarationForm, string>>;
 
 export type EntryField = keyof typeof ENTRY_FIELDS;
@@ -441,6 +450,8 @@ export const DECLARATION_FIELDS: EntryField[] = [
  * run says what it makes of it. `gen.ci.generate` is written out, true or
  * false, the way `devctl repo create` writes it: align-files reads the team
  * file, not the dry run, and an unset `generate` is not `true` to it.
+ * `align` is written when the form is opted in; `editedEntry` decides for
+ * an existing entry's explicit `false`.
  */
 export function toEntry(form: DeclarationForm): DeclarationEntry {
   const gen: Record<string, unknown> = {};
@@ -460,6 +471,7 @@ export function toEntry(form: DeclarationForm): DeclarationEntry {
     gen,
     ...(form.description.trim() && { description: form.description.trim() }),
     ...(form.visibility.trim() && { visibility: form.visibility.trim() }),
+    ...(form.align && { align: true }),
   };
 }
 

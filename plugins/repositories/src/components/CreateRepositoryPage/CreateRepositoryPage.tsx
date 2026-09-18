@@ -184,10 +184,12 @@ export function CreateRepositoryPage() {
               <DeclarationFields
                 form={form}
                 onChange={setForm}
-                teams={teams}
-                teamsLoading={
-                  info.isLoading || mine.isLoading || inventory.isLoading
-                }
+                subject={{
+                  kind: 'new',
+                  teams,
+                  teamsLoading:
+                    info.isLoading || mine.isLoading || inventory.isLoading,
+                }}
                 validation={validation}
                 checking={checking}
                 isDisabled={!!created}

@@ -3,20 +3,20 @@ import { Button, ButtonGroup } from '@material-ui/core';
 import { InventoryRecord } from '../../apis';
 import {
   AlignDialog,
-  ConfigureDialog,
+  EditDialog,
+  isDeclared,
   LifecycleDialog,
   RowDialogProps,
   TransferDialog,
 } from './dialogs';
 
-type Action = 'configure' | 'transfer' | 'deprecate' | 'archive' | 'align';
+type Action = 'edit' | 'transfer' | 'deprecate' | 'archive' | 'align';
 
 /**
  * The actions of one repository's row, each one tool call as the signed-in
- * person: Configure, Transfer, Deprecate and Archive (team-file pull
- * requests) and Align now (the set-up workflow dispatched). The team-file
- * writes need a declaration; an undeclared repository offers Align now (with
- * the team).
+ * person: Edit, Transfer, Deprecate and Archive (team-file pull requests)
+ * and Align now (the set-up workflow dispatched). The team-file writes need
+ * a declaration; an undeclared repository offers Align now (with the team).
  */
 export function RowActions({
   record,
@@ -27,7 +27,7 @@ export function RowActions({
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState<Action>();
-  const declared = record.declaration !== null;
+  const declared = isDeclared(record);
   const dialog: RowDialogProps = {
     record,
     isOpen: true,
@@ -44,9 +44,9 @@ export function RowActions({
         <Button
           disabled={!declared}
           title={undeclaredTitle}
-          onClick={() => setOpen('configure')}
+          onClick={() => setOpen('edit')}
         >
-          Configure
+          Edit
         </Button>
         <Button
           disabled={!declared}
@@ -71,7 +71,9 @@ export function RowActions({
         </Button>
         <Button onClick={() => setOpen('align')}>Align now</Button>
       </ButtonGroup>
-      {open === 'configure' && <ConfigureDialog {...dialog} />}
+      {open === 'edit' && isDeclared(record) && (
+        <EditDialog {...dialog} record={record} />
+      )}
       {open === 'transfer' && <TransferDialog {...dialog} />}
       {open === 'deprecate' && (
         <LifecycleDialog lifecycle="deprecated" {...dialog} />

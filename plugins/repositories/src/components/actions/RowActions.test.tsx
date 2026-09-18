@@ -57,6 +57,38 @@ function renderActions(
 const dialog = (name: RegExp) => screen.getByRole('form', { name });
 const button = (name: string) => screen.getByRole('button', { name });
 
+/** present-service with its entry as the team file holds one. */
+const withEntry = (entry: string): InventoryRecord => ({
+  ...presentService,
+  declaration: { ...presentService.declaration!, entry },
+});
+
+/** The Go service: the form's fields, and fields the form does not carry at two levels. */
+const declaredService = withEntry(
+  [
+    '- name: present-service',
+    '  componentType: service',
+    '  system: agent-platform',
+    '  lifecycle: production',
+    '  gen:',
+    '    language: go',
+    '    flavours:',
+    '      - app',
+    '    ci:',
+    '      generate: true',
+    '      appCatalog: giantswarm',
+    '',
+  ].join('\n'),
+);
+
+/** A CLI in Python: devctl's Makefile generator builds a CLI for Go only. */
+const pythonCli = withEntry(
+  '- name: present-service\n  componentType: cli\n  gen:\n    language: python\n    flavours:\n      - cli\n',
+);
+
+/** An entry the page cannot read as YAML. */
+const unreadable = withEntry('- [');
+
 beforeEach(() => repositoriesQueryClient.clear());
 
 describe('parseEntry', () => {
@@ -76,7 +108,7 @@ describe('parseEntry', () => {
 describe('RowActions', () => {
   it('offers only Align now for an undeclared repository', () => {
     renderActions({}, strayTool);
-    for (const name of ['Configure', 'Transfer', 'Deprecate', 'Archive']) {
+    for (const name of ['Edit', 'Transfer', 'Deprecate', 'Archive']) {
       expect(button(name)).toBeDisabled();
     }
     expect(button('Align now')).toBeEnabled();
@@ -225,7 +257,7 @@ describe('RowActions', () => {
     );
   });
 
-  it('Configure: sends the edited entry whole and shows the schema refusal as data', async () => {
+  it('Edit: opens on the entry as the Create form shows it, sends it whole with the fields the form does not carry kept, and shows the schema refusal as data', async () => {
     const updateRepository = jest.fn().mockResolvedValue(
       planOf({
         accepted: false,
@@ -238,23 +270,74 @@ describe('RowActions', () => {
         entry: '- name: present-service\n  gen:\n    flavours:\n      - nope\n',
       }),
     );
-    renderActions({ updateRepository });
-    await userEvent.click(button('Configure'));
-    const form = dialog(/^Configure present-service/);
-    const entry = within(form).getByLabelText(/^Entry/);
-    expect(entry).toHaveValue(presentService.declaration!.entry);
-    await userEvent.clear(entry);
-    // user-event: `{{` and `[[` type the literal brace and bracket.
+    renderActions({ updateRepository }, declaredService);
+    await userEvent.click(button('Edit'));
+    const form = dialog(/^Edit present-service/);
+    expect(form).toHaveTextContent(
+      'replaced by the declaration below, the fields as Create repository asks them',
+    );
+    // The entry's repository, team and file are fixed: no team choice, no
+    // name field; the fields the form does not carry are named as kept.
+    const existing = within(form).getByTestId('existing-entry');
+    expect(existing).toHaveTextContent('giantswarm/present-service');
+    expect(existing).toHaveTextContent(
+      'Declared by team-bumblebee in repositories/team-bumblebee.yaml',
+    );
+    expect(within(form).getByTestId('kept-fields')).toHaveTextContent(
+      'Kept as they are: system, lifecycle, gen.ci.appCatalog.',
+    );
+    expect(within(form).queryByLabelText(/^Name/)).toBeNull();
+    expect(within(form).queryByRole('button', { name: /Team$/ })).toBeNull();
+    // The entry as the Create form shows it: the preset it matches, the
+    // declaration line, the visibility, the opt-in.
+    expect(
+      within(form).getByRole('radiogroup', { name: 'What is it?' }),
+    ).toBeInTheDocument();
+    expect(
+      within(form).getByRole('radio', { name: /^Go service/ }),
+    ).toBeChecked();
+    expect(within(form).getByTestId('declaration-summary')).toHaveTextContent(
+      'service · go · app · CircleCI config generated',
+    );
+    expect(within(form).getByRole('radio', { name: /^Private/ })).toBeChecked();
+    const optIn = within(form).getByRole('checkbox', {
+      name: 'Opted in to alignment',
+    });
+    expect(optIn).not.toBeChecked();
+
     await userEvent.type(
-      entry,
-      '- name: present-service{enter}  gen: {{flavours: [[nope]}',
+      within(form).getByLabelText(/^Description/),
+      'Serves the present',
+    );
+    await userEvent.click(
+      within(form).getByRole('radio', { name: /^Chart-only app/ }),
+    );
+    expect(within(form).getByTestId('declaration-summary')).toHaveTextContent(
+      'service · generic · app · CircleCI config generated',
+    );
+    await userEvent.click(optIn);
+    await userEvent.type(
+      within(form).getByLabelText(/^Reason/),
+      'built elsewhere now',
     );
     await userEvent.click(button('Review'));
     expect(updateRepository).toHaveBeenCalledWith(
       'giantswarm/present-service',
       {
-        entry: { name: 'present-service', gen: { flavours: ['nope'] } },
-        reason: undefined,
+        entry: {
+          name: 'present-service',
+          componentType: 'service',
+          system: 'agent-platform',
+          lifecycle: 'production',
+          gen: {
+            language: 'generic',
+            flavours: ['app'],
+            ci: { generate: true, appCatalog: 'giantswarm' },
+          },
+          description: 'Serves the present',
+          align: true,
+        },
+        reason: 'built elsewhere now',
       },
       { dryRun: true },
     );
@@ -267,14 +350,37 @@ describe('RowActions', () => {
     expect(button('Open pull request')).toBeEnabled();
   });
 
-  it('Configure: an entry that is not YAML disables Review and says so', async () => {
-    renderActions({});
-    await userEvent.click(button('Configure'));
-    const entry = within(dialog(/^Configure/)).getByLabelText(/^Entry/);
-    await userEvent.clear(entry);
-    await userEvent.type(entry, '- [[');
+  it('Edit: an entry that breaks the generator’s rule opens the declaration’s controls and waits for the fix', async () => {
+    renderActions({}, pythonCli);
+    await userEvent.click(button('Edit'));
+    const form = dialog(/^Edit present-service/);
+    expect(within(form).getByTestId('declaration-summary')).toHaveTextContent(
+      'cli · python · cli · CircleCI config not generated',
+    );
+    expect(within(form).getByTestId('declaration-source')).toHaveTextContent(
+      'Adjusted by hand: no preset matches.',
+    );
+    // The controls opened by themselves: the rule is shown where it is fixed.
+    expect(button('Done')).toHaveAttribute('aria-expanded', 'true');
+    expect(within(form).getByTestId('flavour-check')).toHaveTextContent(
+      'flavour cli is supported only for language go',
+    );
     expect(button('Review')).toBeDisabled();
-    expect(screen.getByText(/Not a team-file entry yet/)).toBeInTheDocument();
+
+    await userEvent.click(within(form).getByRole('radio', { name: 'generic' }));
+    expect(within(form).queryByTestId('flavour-check')).toBeNull();
+    expect(button('Review')).toBeEnabled();
+  });
+
+  it('Edit: an entry that is not YAML says so and offers no Review', async () => {
+    renderActions({}, unreadable);
+    await userEvent.click(button('Edit'));
+    const form = dialog(/^Edit present-service/);
+    expect(form).toHaveTextContent(
+      'The entry of present-service in repositories/team-bumblebee.yaml could not be read',
+    );
+    expect(within(form).queryByTestId('existing-entry')).toBeNull();
+    expect(button('Review')).toBeDisabled();
   });
 
   it("shows the manager's refusal verbatim and offers no override", async () => {
