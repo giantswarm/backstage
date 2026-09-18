@@ -406,7 +406,28 @@ describe('EditAgentPage', () => {
     expect(saveButton()).toBeDisabled();
   });
 
-  it("shows agent-manager's refusal for a GitOps-owned agent verbatim, Save locked", async () => {
+  it('never offers the form for an agent applied from git', async () => {
+    // agent-manager refuses every write to it, so the page says so instead of
+    // pre-filling a form whose Save can only be refused. The detail page
+    // withholds Edit for the same agent; this is the deep link's answer.
+    await renderPage({
+      agent: {
+        ...AGENT,
+        managed: 'gitops',
+        helmRelease: { ...AGENT.helmRelease!, gitOpsOwned: true },
+      },
+    });
+
+    expect(
+      await screen.findByText(/This agent is applied from git/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Save/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('PR reviewer')).not.toBeInTheDocument();
+  });
+
+  it("shows agent-manager's refusal for a refused update verbatim, Save locked", async () => {
     const message =
       'HelmRelease kagent/pr-reviewer is applied by Flux Kustomization "agents": its desired state lives in git, a live write would be undone. Change it in the GitOps repository, or pass force to write anyway';
     await renderPage({ validateError: new Error(`conflict: ${message}`) });

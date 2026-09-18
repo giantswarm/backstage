@@ -10,14 +10,22 @@ import type { AgentManagerPresence } from '../../hooks/useAgentManager';
 import { AgentManifestDialog } from './AgentManifestDialog';
 
 /**
- * Whether the installation's muster lists agent-manager — the one signal the
- * write actions gate on. `presence` is per installation (`core_mcpserver_list`
- * through the person's own muster session); `isUnavailable` means this portal
- * has no muster plugin, the only way to reach agent-manager.
+ * What the write actions gate on. `presence` is whether the installation's
+ * muster lists agent-manager, per installation (`core_mcpserver_list` through
+ * the person's own muster session); `isUnavailable` means this portal has no
+ * muster plugin, the only way to reach agent-manager.
+ *
+ * `isGitOpsOwned` is agent-manager's own verdict on this agent (`get_agent`'s
+ * `managed: 'gitops'`): its HelmRelease is applied by a Flux Kustomization, so
+ * every live write is refused. False whenever that could not be established —
+ * the read is in flight, refused, or the muster session is not connected — in
+ * which case the actions stay offered and agent-manager refuses in its own
+ * words, as it did before this gate existed.
  */
 export type AgentManagerGate = {
   presence: AgentManagerPresence;
   isUnavailable: boolean;
+  isGitOpsOwned: boolean;
 };
 
 /**
@@ -29,6 +37,9 @@ export function agentManagerAbsenceReason(
   gate: AgentManagerGate,
   installation: string,
 ): string | undefined {
+  if (gate.isGitOpsOwned) {
+    return 'This agent is applied from git, so agent-manager refuses live writes. Edit it, update its skills or remove it in the GitOps repository instead.';
+  }
   if (gate.isUnavailable) {
     return 'Editing, updating skills and deleting go through agent-manager over muster, and this portal has no muster plugin.';
   }
@@ -50,11 +61,11 @@ export function agentManagerAbsenceReason(
  * rendering **outside the plugin's `QueryClientProvider`**, so anything backed
  * by react-query — the agent-manager reads and mutations behind Delete, Edit
  * and Update skills — is called by the page and their dialogs are rendered in
- * the page body; the menu only says whether they are offered (feature
- * detection from the MCPServer presence, passed in as `agentManager`) and asks
- * the page to open them. Authorization is the apiserver's, reached through
- * agent-manager as the person: a viewer sees the items and gets the Forbidden
- * on confirm.
+ * the page body; the menu only says whether they are offered (`agentManager`:
+ * agent-manager's presence, and its verdict that the agent is writable at all)
+ * and asks the page to open them. Authorization stays the apiserver's, reached
+ * through agent-manager as the person: a viewer sees the items and gets the
+ * Forbidden on confirm.
  */
 export function AgentActionsMenu({
   agent,
@@ -72,7 +83,9 @@ export function AgentActionsMenu({
   const [isManifestOpen, setManifestOpen] = useState(false);
   const installation = agent.cluster;
   const offered =
-    !agentManager.isUnavailable && agentManager.presence === 'available';
+    !agentManager.isUnavailable &&
+    agentManager.presence === 'available' &&
+    !agentManager.isGitOpsOwned;
   const reason = agentManagerAbsenceReason(agentManager, installation);
 
   return (

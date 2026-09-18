@@ -2545,6 +2545,26 @@ are absent and a disabled item says why; while the server list is still being
 read they are withheld rather than appearing and disappearing. The read-only
 `View manifest` stays in every case.
 
+**And by whether the agent can be written at all.** The page reads `get_agent`
+(`useAgentManagerAgent`, the same query the edit page and the update-skills
+dialog use, so opening either is a cache hit) for one field: `managed`. An agent
+whose `HelmRelease` is applied by a Flux Kustomization comes back as
+`managed: 'gitops'`, agent-manager refuses every live write to it, and the three
+items are withheld with a disabled item saying so — as is the Skills card's
+`Update skills…` button, and the edit page, which answers a deep link with the
+same sentence instead of a form. Before this, the refusal only arrived after the
+dialog was opened and its dry run had run.
+
+Use **agent-manager's verdict**, not `isGitOpsManaged()` from the provenance
+labels: that answers "is a reconciler in charge", which is true of _every_ agent
+this plugin deploys, since the create flow applies a `HelmRelease` of its own.
+When `get_agent` has not answered — the muster session is not connected, the read
+was refused, it is still in flight — the actions stay offered. Withholding them
+there would take them from people who do have them, and agent-manager still
+refuses on confirm. The `commit` mode is the affordance a GitOps-owned agent
+should eventually get instead; it is declared-but-false on every installation
+today, and this gate is where to reopen the actions when it ships.
+
 **The dialog says one thing:** that this ends any session currently running with
 the agent, including ones started by other people that are not shown. That is
 the only thing the person clicking cannot work out for themselves — kagent scopes
@@ -2659,8 +2679,9 @@ ready again on the platform Harness.
 repository does not exist, the ref is unknown, or the configured token cannot
 read it`) comes back from the dry run as an `invalid_request:` refusal: the
 dialog shows agent-manager's message, the confirm stays locked and nothing is
-written. A GitOps-owned or suspended agent is refused the same way with
-agent-manager's `conflict:` message. Note what agent-manager does **not** check
+written. A suspended agent is refused the same way with agent-manager's
+`conflict:` message. A GitOps-owned agent no longer reaches the dialog at all —
+the button is withheld (see "What is offered…" above). Note what agent-manager does **not** check
 at write time: that the skill's `path` still exists at the new head — a vanished
 path is written and then reported by the Harness on the template
 (`ResolvedRefs=False`), which the detail page's status card shows.
