@@ -21,3 +21,11 @@ and a failed run is reported instead of being dropped.
 The table shows the version an update moves between, `4.17.20 → 4.17.21`, from
 the dependency and versions marge now sends on each entry. The rows sort by
 bot under the classification, so Renovate and Align files read apart.
+
+A classification is now a way into the queue rather than a badge: clicking one
+in the table narrows the table to that class, and clicking it again shows every
+class. **What the classifications mean** above the table explains each class in
+view, with how many PRs carry it, and each row of it narrows the table too. The
+`unclassified` class no longer draws itself as an unticked radio button, which
+read as a control a person could set; the classes are the engine's own and
+nobody writes one by hand.

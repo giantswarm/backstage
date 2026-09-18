@@ -46,6 +46,7 @@ import {
   type Scope,
 } from '../../lib/rows';
 import { BotPrsFilters } from '../BotPrsFilters';
+import { ClassificationLegend } from '../ClassificationLegend';
 import { BotPrsTable } from '../BotPrsTable';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
 import { MarkBlockedDialog } from '../MarkBlockedDialog';
@@ -416,12 +417,21 @@ function Queue({
                   .
                 </Typography>
               </Box>
+              <Box pb={1} pl={{ lg: 2 }}>
+                <ClassificationLegend
+                  rows={rows}
+                  classification={filters.classification}
+                  onClassification={group => setFilter('classification', group)}
+                />
+              </Box>
               <Box pl={{ lg: 2 }}>
                 <BotPrsTable
                   rows={filtered}
                   showTeam={teams.length > 1}
                   isLoading={queue.isLoading}
                   canAct={canAct}
+                  classification={filters.classification}
+                  onClassification={group => setFilter('classification', group)}
                   onSweep={onSweep}
                   onMarkBlocked={onMarkBlocked}
                 />
