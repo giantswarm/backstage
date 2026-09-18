@@ -55,8 +55,6 @@ export type MargeInstallationView = {
   installation: string | undefined;
   /** The in-scope installations whose muster lists marge, home first. */
   candidates: string[];
-  /** The in-scope installations whose muster answered without marge. */
-  missing: string[];
   /**
    * True when the scope is "all installations" and the page picked one on
    * the person's behalf, so it can say which muster it went through.
@@ -102,7 +100,6 @@ export function useMargeInstallation(): MargeInstallationView {
   return {
     installation,
     candidates,
-    missing: availability.missing,
     isResolvedFromAll:
       installation !== undefined &&
       pinned === undefined &&

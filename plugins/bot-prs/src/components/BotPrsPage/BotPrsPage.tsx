@@ -390,14 +390,8 @@ export function BotPrsPage() {
   } else if (!marge.installation) {
     body = (
       <EmptyStateCard
-        title="No marge on this portal's installations"
-        description={
-          marge.missing.length > 0
-            ? `Bot PRs are read and swept through marge, and muster on ${marge.missing.join(
-                ', ',
-              )} lists no marge MCPServer. A platform admin registers marge with muster.`
-            : 'No installation runs a muster that lists marge.'
-        }
+        title="marge is not reachable from this portal"
+        description="Bot PRs are read and swept through marge, and no muster this portal reaches lists it. A platform admin registers marge with muster."
       />
     );
   } else if (inScope.length === 0) {

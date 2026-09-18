@@ -8,6 +8,7 @@ export {
 export type {
   MusterApi,
   MusterAuthProvidersApi,
+  McpServerRuntime,
   FilterToolsOptions,
   FilterToolsResponse,
   ListToolsResponse,
