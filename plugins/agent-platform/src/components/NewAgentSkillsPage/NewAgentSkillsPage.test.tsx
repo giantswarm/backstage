@@ -1,7 +1,9 @@
 import { ReactNode, useEffect } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, screen } from '@testing-library/react';
+import userEvent, {
+  PointerEventsCheckLevel,
+} from '@testing-library/user-event';
 
 import { agentsRouteRef } from '../../routes';
 import type { DiscoveredSkill } from '../../lib/skills';
@@ -37,16 +39,26 @@ const SKILLS: DiscoveredSkill[] = [
   },
 ];
 
+const RESOLVED = {
+  skills: SKILLS,
+  isLoading: false,
+  error: null,
+  hasRepositories: true,
+  failedRepositories: [],
+  truncated: false,
+};
+
+// Mutable so a test can flip it to loading. The `mock` prefix is what lets
+// jest.mock's factory reference it.
+const mockCatalog = { ...RESOLVED };
+
 jest.mock('../../hooks/useSkillCatalog', () => ({
-  useSkillCatalog: () => ({
-    skills: SKILLS,
-    isLoading: false,
-    error: null,
-    hasRepositories: true,
-    failedRepositories: [],
-    truncated: false,
-  }),
+  useSkillCatalog: () => mockCatalog,
 }));
+
+beforeEach(() => {
+  Object.assign(mockCatalog, RESOLVED);
+});
 
 /** Fills the step-1 fields the skills step requires, then renders its child. */
 function Seed({ children }: { children: ReactNode }) {
@@ -115,6 +127,139 @@ describe('NewAgentSkillsPage', () => {
     // A branch name is never what is selected.
     expect(screen.getByTestId('selection')).not.toHaveTextContent('main');
     expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+
+  it('shows a progress bar while the catalogue is being discovered', async () => {
+    Object.assign(mockCatalog, { skills: [], isLoading: true });
+    await renderStep();
+
+    expect(await screen.findByText('Discovering skills…')).toBeInTheDocument();
+    // `Progress` renders a hidden placeholder for its first 250ms, so the bar
+    // itself is what has to be waited for -- a `progress` test id matches either.
+    expect(
+      await screen.findByRole('progressbar', { name: 'Discovering skills…' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('leaves a description that fits alone', async () => {
+    await renderStep();
+
+    await screen.findByRole('checkbox', { name: 'Skill Incident responder' });
+    expect(
+      screen.queryByRole('button', { name: /Show more of/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('when a description is cut off by the clamp', () => {
+    // The shim in setupTests is a no-op, so nothing would ever be re-measured.
+    // A controllable one lets a test do what a browser does when the clamp is
+    // lifted and the paragraph changes height.
+    const resizeCallbacks = new Set<() => void>();
+    const flushResizeObservers = () =>
+      act(() => {
+        resizeCallbacks.forEach(callback => callback());
+      });
+    const RealResizeObserver = globalThis.ResizeObserver;
+
+    beforeEach(() => {
+      globalThis.ResizeObserver = class {
+        constructor(private readonly callback: () => void) {}
+        observe() {
+          resizeCallbacks.add(this.callback);
+        }
+        unobserve() {}
+        disconnect() {
+          resizeCallbacks.delete(this.callback);
+        }
+      } as unknown as typeof ResizeObserver;
+    });
+
+    afterEach(() => {
+      resizeCallbacks.clear();
+      globalThis.ResizeObserver = RealResizeObserver;
+    });
+
+    // jsdom lays nothing out, so the measurement `useIsTruncated` makes always
+    // comes back "fits". Overflow is what the toggle exists for. Only a clamped
+    // element overflows, which is what makes expanding measurable: it is the
+    // state the toggle has to survive to still be there for *Show less*.
+    beforeEach(() => {
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get(this: HTMLElement) {
+          const className = this.getAttribute('class') ?? '';
+          return className.includes('clamped') ? 120 : 40;
+        },
+      });
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+        configurable: true,
+        value: 40,
+      });
+    });
+
+    afterEach(() => {
+      // @ts-expect-error -- restores jsdom's own getter on Element.prototype.
+      delete HTMLElement.prototype.scrollHeight;
+      // @ts-expect-error -- ditto.
+      delete HTMLElement.prototype.clientHeight;
+    });
+
+    it("reveals the rest on click, from outside the card's checkbox", async () => {
+      // The toggle is `pointer-events: none` until its card is hovered, and
+      // jsdom applies no `:hover` state -- so the check has to come off, or
+      // every click on it is refused for a reason that only exists in the test.
+      const user = userEvent.setup({
+        pointerEventsCheck: PointerEventsCheckLevel.Never,
+      });
+      await renderStep();
+
+      const toggle = await screen.findByRole('button', {
+        name: 'Show more of Incident responder',
+      });
+      // A control inside the checkbox would be invalid markup, and
+      // role="checkbox" would make it presentational to assistive tech.
+      const card = screen.getByRole('checkbox', {
+        name: 'Skill Incident responder',
+      });
+      expect(card).not.toContainElement(toggle);
+
+      await user.click(toggle);
+      // What the browser does next: the text is no longer clamped, so the
+      // paragraph grows and measures as fitting.
+      flushResizeObservers();
+
+      const collapse = await screen.findByRole('button', {
+        name: 'Show less of Incident responder',
+      });
+      expect(collapse).toHaveAttribute('aria-expanded', 'true');
+      // Revealing a description must not select the skill.
+      expect(screen.getByTestId('selection')).toHaveTextContent('');
+
+      // The toggle has to survive that measurement, or it is pulled out from
+      // under the pointer -- and from under the keyboard focus that is on it --
+      // until the clamp is back and the observer has fired again.
+      await user.click(collapse);
+
+      expect(
+        await screen.findByRole('button', {
+          name: 'Show more of Incident responder',
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("points the card's description at the text it describes", async () => {
+      await renderStep();
+
+      const card = await screen.findByRole('checkbox', {
+        name: 'Skill Incident responder',
+      });
+      const describedBy = card.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      expect(document.getElementById(describedBy!)).toHaveTextContent(
+        'Triage an incident.',
+      );
+    });
   });
 
   it('says that skills stay on their pinned commit', async () => {

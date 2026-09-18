@@ -16,6 +16,7 @@ export * from './ExternalLink';
 export * from './GSMarkdownContent';
 export * from './InfoCard';
 export * from './JsonHighlight';
+export * from './LoadingIndicator';
 export * from './MenuArrowIcons';
 export * from './MultiplePicker';
 export * from './MultipleSelect';

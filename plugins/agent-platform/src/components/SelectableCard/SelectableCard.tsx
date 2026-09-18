@@ -14,31 +14,74 @@ const useStyles = makeStyles(theme => ({
     display: 'grid',
     gap: theme.spacing(1.5),
   },
+  // The card's frame. A shell around the button rather than the button itself,
+  // so a card can carry a control of its own -- a nested <button> would be
+  // invalid markup, and role="checkbox" makes its children presentational,
+  // hiding one from assistive tech.
+  shell: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    width: '100%',
+    borderRadius: theme.shape.borderRadius,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.background.paper,
+    color: theme.palette.text.primary,
+    '&:hover': {
+      borderColor: theme.palette.text.secondary,
+    },
+  },
   card: {
     // Flex column so content stays pinned to the top when the grid stretches
     // cards to equal row height (native buttons otherwise center content).
     display: 'flex',
     flexDirection: 'column',
+    flexGrow: 1,
     width: '100%',
     textAlign: 'left',
     cursor: 'pointer',
     padding: theme.spacing(1.5),
-    borderRadius: theme.shape.borderRadius,
-    border: `1px solid ${theme.palette.divider}`,
-    background: theme.palette.background.paper,
-    color: theme.palette.text.primary,
+    border: 0,
+    borderRadius: 'inherit',
+    background: 'none',
+    color: 'inherit',
     font: 'inherit',
-    '&:hover': {
-      borderColor: theme.palette.text.secondary,
-    },
+    // Drawn inside the shell, which now owns the border the ring used to sit on.
     '&:focus-visible': {
       outline: `2px solid ${theme.palette.primary.main}`,
-      outlineOffset: 1,
+      outlineOffset: -2,
     },
   },
-  // Same shell as `card`, minus the affordances: nothing to click, so no pointer
-  // cursor and no hover feedback. Kept next to `card` so the two stay visually
-  // identical as that one evolves.
+  // Out of the card's flow, so a card with a control is exactly as tall as one
+  // without, and faded out until the pointer is on the card or the control
+  // itself has focus -- an affordance for the card you are reading, not a row of
+  // buttons down the grid. Invisible means untouchable: a tap on a touch screen
+  // (where nothing is ever hovered) or a click that lands mid-fade would
+  // otherwise hit a control that isn't there yet, and toggle a description
+  // instead of selecting the card.
+  hoverAction: {
+    position: 'absolute',
+    right: theme.spacing(0.5),
+    bottom: theme.spacing(0.5),
+    borderRadius: theme.shape.borderRadius,
+    background: theme.palette.background.paper,
+    opacity: 0,
+    pointerEvents: 'none',
+    transition: theme.transitions.create('opacity', {
+      duration: theme.transitions.duration.shortest,
+    }),
+    '$shell:hover &': {
+      opacity: 1,
+      pointerEvents: 'auto',
+    },
+    '&:focus-within': {
+      opacity: 1,
+      pointerEvents: 'auto',
+    },
+  },
+  // The same frame as `shell`, minus the affordances: nothing to click, so no
+  // pointer cursor and no hover feedback. Kept next to it so the two stay
+  // visually identical as that one evolves.
   cardStatic: {
     display: 'flex',
     flexDirection: 'column',
@@ -112,6 +155,18 @@ type SelectableCardProps = {
   selected: boolean;
   ariaLabel: string;
   onSelect: () => void;
+  /**
+   * A control of the card's own -- a *Show more* toggle, say -- shown in the
+   * bottom-right corner while the pointer is on the card or it has focus.
+   * Anything interactive belongs here rather than in `children`.
+   */
+  hoverAction?: ReactNode;
+  /**
+   * An element describing the card, for `aria-describedby`. `role="checkbox"`
+   * makes the card's own content presentational, so prose inside it reaches
+   * assistive tech only by being pointed at.
+   */
+  describedById?: string;
   children: ReactNode;
 };
 
@@ -142,6 +197,8 @@ export function SelectableCard({
   selected,
   ariaLabel,
   onSelect,
+  hoverAction,
+  describedById,
   children,
 }: SelectableCardProps) {
   const classes = useStyles();
@@ -151,26 +208,30 @@ export function SelectableCard({
   const Indicator = selected ? SelectedIcon : UnselectedIcon;
 
   return (
-    <button
-      type="button"
-      role={role}
-      aria-checked={selected}
-      aria-label={ariaLabel}
-      onClick={onSelect}
-      className={`${classes.card} ${selected ? classes.selected : ''}`}
-    >
-      <Flex align="start" justify="between" gap="2">
-        <Flex direction="column" gap="1">
-          {children}
+    <div className={`${classes.shell} ${selected ? classes.selected : ''}`}>
+      <button
+        type="button"
+        role={role}
+        aria-checked={selected}
+        aria-label={ariaLabel}
+        aria-describedby={describedById}
+        onClick={onSelect}
+        className={classes.card}
+      >
+        <Flex align="start" justify="between" gap="2">
+          <Flex direction="column" gap="1">
+            {children}
+          </Flex>
+          <Indicator
+            fontSize="small"
+            aria-hidden
+            className={`${classes.indicator} ${
+              selected ? classes.indicatorSelected : classes.indicatorUnselected
+            }`}
+          />
         </Flex>
-        <Indicator
-          fontSize="small"
-          aria-hidden
-          className={`${classes.indicator} ${
-            selected ? classes.indicatorSelected : classes.indicatorUnselected
-          }`}
-        />
-      </Flex>
-    </button>
+      </button>
+      {hoverAction && <div className={classes.hoverAction}>{hoverAction}</div>}
+    </div>
   );
 }
