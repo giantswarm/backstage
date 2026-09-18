@@ -143,6 +143,20 @@ describe('applyFilters', () => {
 });
 
 describe('sortRows', () => {
+  // Pinned to the same instant the `ageDays` assertions above pass explicitly.
+  // Sorting reads the clock through `ageDays`, which `sortRows` gives no `now`
+  // to, so this ran against the real one — and #488 and #2250 were created 23
+  // hours apart, so their whole-day ages tie for the one hour a day the floors
+  // coincide. In that hour the sort falls back to the engine's own order, which
+  // puts #2250 first, and the expectation flipped: red between 09:00 and 10:00
+  // UTC, on main and on every branch cut from it.
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('sorts worst first by classification, and by age', () => {
     expect(
       sortRows(rows, 'classification', 'asc').map(row => row.group),
