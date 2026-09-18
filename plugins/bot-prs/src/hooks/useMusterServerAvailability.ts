@@ -25,6 +25,21 @@ function exposedNameOf(server: McpServerRuntime): string {
   return server.family?.name ?? server.toolPrefix ?? server.name;
 }
 
+/**
+ * The name muster's own session holds the server under: its CR name. The
+ * exposed name addresses a tool, `core_auth_login` and `auth://status` name
+ * the registered server, and the two differ under a `toolPrefix`, so a
+ * sign-in sent under the exposed name is refused ("Server 'marge' not
+ * found").
+ */
+function registeredIn(
+  servers: McpServerRuntime[] | null | undefined,
+  serverName: string,
+): string | undefined {
+  return (servers ?? []).find(server => exposedNameOf(server) === serverName)
+    ?.name;
+}
+
 function presenceIn(
   servers: McpServerRuntime[] | null | undefined,
   serverName: string,
@@ -48,6 +63,12 @@ export type MusterServerAvailability = {
   /** The first refusal a read met, for the page to show verbatim. */
   error: Error | undefined;
   presenceOf: (installation: string) => MusterServerPresence;
+  /**
+   * The name this installation's muster registers the server under, for the
+   * calls that name a server rather than a tool. `undefined` until that
+   * muster has listed it.
+   */
+  registeredNameOf: (installation: string) => string | undefined;
   /** True while any installation's server list is still being read. */
   isLoading: boolean;
   /** The muster plugin is not installed: the server is reachable nowhere. */
@@ -86,7 +107,10 @@ export function useMusterServerAvailability(
         serverName,
         query.error,
       );
-      return `${installation}:${presence}:${query.isLoading ? 'l' : ''}`;
+      const registered = registeredIn(query.data?.mcpServers, serverName);
+      return `${installation}:${presence}:${query.isLoading ? 'l' : ''}:${
+        registered ?? ''
+      }`;
     })
     .join('|');
 
@@ -94,10 +118,14 @@ export function useMusterServerAvailability(
 
   return useMemo(() => {
     const presence = new Map<string, MusterServerPresence>();
+    const registered = new Map<string, string>();
     let isLoading = false;
     for (const entry of signature ? signature.split('|') : []) {
-      const [installation, state, loading] = entry.split(':');
+      const [installation, state, loading, name] = entry.split(':');
       presence.set(installation, state as MusterServerPresence);
+      if (name) {
+        registered.set(installation, name);
+      }
       isLoading = isLoading || loading === 'l';
     }
     const of = (installation: string): MusterServerPresence =>
@@ -108,6 +136,7 @@ export function useMusterServerAvailability(
       unreachable: installations.filter(name => of(name) === 'unreachable'),
       error: firstError,
       presenceOf: of,
+      registeredNameOf: (installation: string) => registered.get(installation),
       isLoading: Boolean(musterApi) && isLoading,
       isUnavailable: !musterApi,
     };

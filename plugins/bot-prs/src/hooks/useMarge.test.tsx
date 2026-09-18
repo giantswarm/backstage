@@ -9,10 +9,16 @@ import {
 
 import { MargeNotConnectedError, type MargeResult } from '../lib/marge';
 import { musterMargeListQueryKey } from '../lib/queryKeys';
-import { useBotPrs, useMargeMark, useMargeSweep } from './useMarge';
+import {
+  useBotPrs,
+  useMargeMark,
+  useMargeServerName,
+  useMargeSweep,
+} from './useMarge';
 
 const callTool = jest.fn();
-const musterApi = { callTool } as unknown as MusterApi;
+const listServers = jest.fn();
+const musterApi = { callTool, listServers } as unknown as MusterApi;
 
 const summary = {
   total: 1,
@@ -71,6 +77,7 @@ const client = () =>
 
 beforeEach(() => {
   callTool.mockReset();
+  listServers.mockReset();
 });
 
 describe('useBotPrs', () => {
@@ -245,5 +252,29 @@ describe('useMargeMark', () => {
       'gazelle',
     );
     expect(outcome).toEqual(written);
+  });
+});
+
+describe('useMargeServerName', () => {
+  it('names the server muster registers, not the prefix its tools carry', async () => {
+    listServers.mockResolvedValue({
+      mcpServers: [{ name: 'gazelle-mcp-marge', toolPrefix: 'marge' }],
+    });
+
+    const { result } = renderHook(() => useMargeServerName('gazelle'), {
+      wrapper: wrapperWith(client()),
+    });
+
+    await waitFor(() => expect(result.current).toBe('gazelle-mcp-marge'));
+  });
+
+  it('stands on the exposed name while the server list has not answered', () => {
+    listServers.mockReturnValue(new Promise(() => {}));
+
+    const { result } = renderHook(() => useMargeServerName('gazelle'), {
+      wrapper: wrapperWith(client()),
+    });
+
+    expect(result.current).toBe('marge');
   });
 });

@@ -50,6 +50,26 @@ export function useMargeAvailability(
   return useMusterServerAvailability(MARGE_SERVER, installations);
 }
 
+/**
+ * The name this installation's muster registers marge under, for the sign-in
+ * and the auth status, which name a server and not a tool. muster declares
+ * marge with a `toolPrefix`, so the CR name (`gazelle-mcp-marge`) and the
+ * exposed name (`marge`) differ, and a call under the exposed one is refused.
+ * The exposed name stands until the server list answers, so an installation
+ * whose muster registers marge under its own name still signs in.
+ */
+export function useMargeServerName(installation: string | undefined): string {
+  const installations = useMemo(
+    () => (installation ? [installation] : []),
+    [installation],
+  );
+  const availability = useMargeAvailability(installations);
+  return (
+    (installation && availability.registeredNameOf(installation)) ||
+    MARGE_SERVER
+  );
+}
+
 export type MargeInstallationView = {
   /** The one installation the page calls marge on, or undefined while resolving. */
   installation: string | undefined;

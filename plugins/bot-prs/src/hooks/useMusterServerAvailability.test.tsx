@@ -72,6 +72,28 @@ describe('useMusterServerAvailability', () => {
     expect(result.current.available).toEqual(['gazelle']);
   });
 
+  it('reports the registered name behind the exposed one, for the calls that name a server', async () => {
+    listServers.mockResolvedValue({
+      mcpServers: [{ name: 'gazelle-mcp-marge', toolPrefix: 'marge' }],
+    });
+
+    const { result } = render('marge', ['gazelle']);
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.registeredNameOf('gazelle')).toBe(
+      'gazelle-mcp-marge',
+    );
+  });
+
+  it('reports no registered name for an installation whose muster does not list the server', async () => {
+    listServers.mockResolvedValue({ mcpServers: [{ name: 'agent-manager' }] });
+
+    const { result } = render('marge', ['gazelle']);
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.registeredNameOf('gazelle')).toBeUndefined();
+  });
+
   it('reports missing when no server exposes that name', async () => {
     listServers.mockResolvedValue({
       mcpServers: [{ name: 'gazelle-mcp-marge', toolPrefix: 'marge' }],
