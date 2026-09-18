@@ -236,6 +236,14 @@ export interface MusterInstallationsResponse {
  */
 export interface McpServerRuntime {
   name: string;
+  /**
+   * `spec.toolPrefix`: the segment muster puts in this server's exposed tool
+   * names, which is not its name. A server named `gazelle-mcp-marge` with
+   * prefix `marge` exposes `x_marge_<tool>`.
+   */
+  toolPrefix?: string;
+  /** `spec.family`: set when the server shares its exposed names with siblings. */
+  family?: { name: string; instanceArg?: string };
   type?: string;
   state?: string;
   statusMessage?: string;
