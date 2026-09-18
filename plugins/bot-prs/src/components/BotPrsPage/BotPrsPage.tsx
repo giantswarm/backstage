@@ -11,7 +11,10 @@ import {
   Typography,
 } from '@material-ui/core';
 import { Alert } from '@backstage/ui';
-import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
+import {
+  isSessionExpiredError,
+  useServerSignIn,
+} from '@giantswarm/backstage-plugin-muster';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBotPrs, useMargeInstallation } from '../../hooks/useMarge';
@@ -172,6 +175,7 @@ function Queue({
     entry =>
       entry.error &&
       !(entry.error instanceof MargeNotConnectedError) &&
+      !isSessionExpiredError(entry.error) &&
       !looksUnknownTeam(entry.error),
   );
   const total = answered.reduce(
@@ -205,6 +209,24 @@ function Queue({
     [],
   );
   const close = useCallback(() => setOpen(undefined), []);
+
+  // A dead portal session fails every read here and everywhere else in the
+  // portal, and no action on this page can mend it: the page says so and
+  // stops. The portal asks for the sign-in again on the next load.
+  const expired = queue.queues.find(entry =>
+    isSessionExpiredError(entry.error),
+  );
+  if (expired?.error) {
+    return (
+      <Box pt={2}>
+        <Alert
+          status="warning"
+          title="Your portal session has expired"
+          description={`${expired.error.message} Reload the page to sign in again.`}
+        />
+      </Box>
+    );
+  }
 
   // Without a grant there is no queue to show and no action to offer, and
   // every team's read failed on the same missing grant. The sign-in is the

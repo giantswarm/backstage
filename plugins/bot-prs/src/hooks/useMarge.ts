@@ -93,15 +93,25 @@ export function useMargeInstallation(): MargeInstallationView {
 
   const pinned = scope === ALL_INSTALLATIONS ? undefined : scope;
   const preferred = pinned !== undefined ? [pinned] : [home, candidates[0]];
-  const installation = preferred.find(
+  const listed = preferred.find(
     (name): name is string => name !== undefined && candidates.includes(name),
   );
+
+  // A server list that could not be read says nothing about marge, so it is
+  // not an answer to act on: the page calls marge on that installation and
+  // reports what marge, or muster, says. Only a muster that answered without
+  // marge leaves the page with no installation.
+  const fallback = [pinned, home, availability.unreachable[0]].find(
+    (name): name is string =>
+      name !== undefined && availability.unreachable.includes(name),
+  );
+  const installation = listed ?? fallback;
 
   return {
     installation,
     candidates,
     isResolvedFromAll:
-      installation !== undefined &&
+      listed !== undefined &&
       pinned === undefined &&
       !isSingleInstallation &&
       candidates.length > 1,

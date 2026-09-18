@@ -7,10 +7,12 @@ import { useMusterPluginApi } from './useMusterPluginApi';
 
 /**
  * Whether an installation's muster lists a server (`core_mcpserver_list`).
- * `unknown` while the read is in flight or failed; `missing` when muster
- * answered without it.
+ * `missing` when muster answered without it; `unreachable` when the read
+ * failed, which says nothing about the server; `unknown` while it is in
+ * flight.
  */
-export type MusterServerPresence = 'available' | 'missing' | 'unknown';
+export type MusterServerPresence =
+  'available' | 'missing' | 'unreachable' | 'unknown';
 
 /**
  * The segment muster puts in a server's exposed names, which is what a caller
@@ -26,9 +28,10 @@ function exposedNameOf(server: McpServerRuntime): string {
 function presenceIn(
   servers: McpServerRuntime[] | null | undefined,
   serverName: string,
+  error: unknown,
 ): MusterServerPresence {
   if (!servers) {
-    return 'unknown';
+    return error ? 'unreachable' : 'unknown';
   }
   return servers.some(server => exposedNameOf(server) === serverName)
     ? 'available'
@@ -40,6 +43,10 @@ export type MusterServerAvailability = {
   available: string[];
   /** The installations whose muster answered without the server. */
   missing: string[];
+  /** The installations whose server list could not be read. */
+  unreachable: string[];
+  /** The first refusal a read met, for the page to show verbatim. */
+  error: Error | undefined;
   presenceOf: (installation: string) => MusterServerPresence;
   /** True while any installation's server list is still being read. */
   isLoading: boolean;
@@ -74,10 +81,16 @@ export function useMusterServerAvailability(
   const signature = installations
     .map((installation, index) => {
       const query = queries[index];
-      const presence = presenceIn(query.data?.mcpServers, serverName);
+      const presence = presenceIn(
+        query.data?.mcpServers,
+        serverName,
+        query.error,
+      );
       return `${installation}:${presence}:${query.isLoading ? 'l' : ''}`;
     })
     .join('|');
+
+  const firstError = queries.find(query => query.error)?.error ?? undefined;
 
   return useMemo(() => {
     const presence = new Map<string, MusterServerPresence>();
@@ -92,11 +105,13 @@ export function useMusterServerAvailability(
     return {
       available: installations.filter(name => of(name) === 'available'),
       missing: installations.filter(name => of(name) === 'missing'),
+      unreachable: installations.filter(name => of(name) === 'unreachable'),
+      error: firstError,
       presenceOf: of,
       isLoading: Boolean(musterApi) && isLoading,
       isUnavailable: !musterApi,
     };
     // `installations` is captured by the signature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, musterApi]);
+  }, [signature, musterApi, firstError]);
 }
