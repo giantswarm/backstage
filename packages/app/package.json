@@ -55,6 +55,7 @@
     "@giantswarm/backstage-plugin-agent-platform": "workspace:^",
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^",
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^",
+    "@giantswarm/backstage-plugin-bot-prs": "workspace:^",
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^",
     "@giantswarm/backstage-plugin-flux": "workspace:^",
     "@giantswarm/backstage-plugin-flux-react": "workspace:^",

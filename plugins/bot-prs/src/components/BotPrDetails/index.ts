@@ -1,0 +1,1 @@
+export { BotPrDetails } from './BotPrDetails';

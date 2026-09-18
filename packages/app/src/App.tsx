@@ -19,6 +19,7 @@ import agentPlatformPlugin from '@giantswarm/backstage-plugin-agent-platform';
 import plansPlugin from '@giantswarm/backstage-plugin-plans';
 import roadmapPlugin from '@giantswarm/backstage-plugin-roadmap';
 import repositoriesPlugin from '@giantswarm/backstage-plugin-repositories';
+import botPrsPlugin from '@giantswarm/backstage-plugin-bot-prs';
 
 // Upstream NFS plugins:
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
@@ -76,6 +77,7 @@ const app = createApp({
     plansPlugin,
     roadmapPlugin,
     repositoriesPlugin,
+    botPrsPlugin,
 
     // Upstream NFS plugins:
     catalogPlugin,

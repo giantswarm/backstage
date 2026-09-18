@@ -290,6 +290,13 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Plan detail' };
       break;
 
+    // The Bot PRs page (`/bot-prs`): the team and the filters live in the
+    // query string, which `pathname` never carries, so one page name covers
+    // every team.
+    case pathname === '/bot-prs':
+      payload = { page: 'Bot PRs' };
+      break;
+
     case pathname === '/roadmap':
       payload = { page: 'Roadmap index' };
       break;

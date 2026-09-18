@@ -110,6 +110,7 @@ export const SidebarContent = NavContentBlueprint.make({
         nav.take('page:plans'),
         nav.take('page:roadmap'),
         nav.take('page:repositories'),
+        nav.take('page:bot-prs'),
       ].filter(Boolean);
 
       const group3 = [
