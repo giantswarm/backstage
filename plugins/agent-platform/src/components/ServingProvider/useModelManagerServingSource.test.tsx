@@ -25,6 +25,8 @@ import { useModelManagerServingSource } from './useModelManagerServingSource';
 import {
   modelManagerBackendQueryKey,
   modelManagerBackendsQueryKey,
+  modelManagerModelsQueryKey,
+  modelManagerNodesQueryKey,
 } from '../../lib/queryKeys';
 
 const listBackends = jest.fn();
@@ -362,6 +364,35 @@ describe('useModelManagerServingSource', () => {
     expect(result.current.isLoading).toBe(true);
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.servedModels.length).toBeGreaterThan(0);
+  });
+
+  it('polls the descriptors, the inventory and the node view in a tab that is not focused too', async () => {
+    // The query client refetches nothing on focus, so a hidden tab would
+    // otherwise stay on its last read until a reload — a served model's
+    // timeline frozen, a pool's serve intent never seen served
+    // (giantswarm/backstage#2446). Same policy as the pools read.
+    let client: QueryClient | undefined;
+    const { result } = renderSource(undefined, queryClient => {
+      client = queryClient;
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const backgroundPolicyOf = (queryKey: readonly unknown[]) =>
+      client
+        ?.getQueryCache()
+        .find({ queryKey })
+        ?.observers.map(
+          observer => observer.options.refetchIntervalInBackground,
+        );
+    expect(backgroundPolicyOf(modelManagerBackendsQueryKey('gpu'))).toEqual([
+      true,
+    ]);
+    expect(backgroundPolicyOf(modelManagerModelsQueryKey('gpu'))).toEqual([
+      true,
+    ]);
+    expect(backgroundPolicyOf(modelManagerNodesQueryKey('gpu'))).toEqual([
+      true,
+    ]);
   });
 
   it('lists the host of an Ollama-backed model-manager that reports a node inventory, off the rows', async () => {

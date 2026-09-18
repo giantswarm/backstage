@@ -109,19 +109,20 @@ export function useServeIntentRunner(
       );
       const request = { model: intent.preset, backend: SERVE_INTENT_BACKEND };
       (async () => {
+        let loadAsked = false;
         try {
           const fit = await client.checkFit(request);
           if (!fit.fits) {
             setOutcome(id, refusedOutcome(fit));
             return;
           }
+          loadAsked = true;
           const answer = await client.loadModel(request);
           setOutcome(id, {
             kind: 'served',
             resource: answer.running?.resource ?? answer.name,
             at: new Date().toISOString(),
           });
-          await invalidate(intent.installation);
         } catch (error) {
           setOutcome(id, {
             kind: 'failed',
@@ -131,6 +132,17 @@ export function useServeIntentRunner(
         } finally {
           running.current.delete(id);
           setInFlight(Array.from(running.current));
+          if (loadAsked) {
+            // Once load_model was asked, whether it resolved or threw: the
+            // installation's model-manager reads are re-read now — the
+            // backends list the inventory read is gated on (the pool
+            // registered its backend after that list was read) and the
+            // inventory itself — so the served model's steps appear beneath
+            // the step with this read, not with a later poll or a reload. A
+            // load that timed out at the proxy may well have completed, and
+            // the inventory is the truth (the Serve dialog's rule too).
+            await invalidate(intent.installation);
+          }
         }
       })();
     }
