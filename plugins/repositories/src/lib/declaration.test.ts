@@ -1,16 +1,21 @@
 import {
-  CUSTOM_KIND,
+  addonsOf,
   DeclarationForm,
   EMPTY,
   fixOf,
+  FLAVOURS,
+  flavourProblem,
   hasCIJob,
   isComplete,
-  kindOf,
-  KINDS,
   nameProblem,
+  natureOf,
+  presetOf,
+  PRESETS,
   toEntry,
+  withAddons,
   withGen,
-  withKind,
+  withNature,
+  withPreset,
 } from './declaration';
 
 const form = (changes: Partial<DeclarationForm> = {}): DeclarationForm => ({
@@ -21,7 +26,7 @@ const form = (changes: Partial<DeclarationForm> = {}): DeclarationForm => ({
 
 describe('EMPTY', () => {
   it('opens as a Go service with the CircleCI generator on', () => {
-    expect(kindOf(EMPTY)).toBe('go-service');
+    expect(presetOf(EMPTY)).toBe('go-service');
     expect(EMPTY.ciGenerate).toBe(true);
     expect(EMPTY.visibility).toBe('');
   });
@@ -123,6 +128,16 @@ describe('nameProblem', () => {
   });
 });
 
+describe('flavourProblem', () => {
+  it('holds the cli flavour to Go, as devctl’s Makefile generator does', () => {
+    expect(flavourProblem('go', ['cli'])).toBeUndefined();
+    expect(flavourProblem('python', ['app'])).toBeUndefined();
+    expect(flavourProblem('python', ['cli'])).toBe(
+      'flavour cli is supported only for language go: pick go, or another nature',
+    );
+  });
+});
+
 describe('isComplete', () => {
   it('needs a team and a name that follows the rule', () => {
     expect(isComplete(form({ name: '' }))).toBe(false);
@@ -130,43 +145,94 @@ describe('isComplete', () => {
     expect(isComplete(form({ name: 'Shiny' }))).toBe(false);
     expect(isComplete(form({ name: 'shiny' }))).toBe(true);
   });
+
+  it('waits while the flavours break the generator’s rule', () => {
+    expect(
+      isComplete(
+        form({ name: 'shiny', language: 'python', flavours: ['cli'] }),
+      ),
+    ).toBe(false);
+  });
 });
 
-describe('kinds', () => {
-  it('every kind is recognised from its own fields', () => {
-    KINDS.forEach(kind => {
-      expect(kindOf(withKind(EMPTY, kind.id))).toBe(kind.id);
+describe('flavours', () => {
+  it('offers the natures and the add-ons, not helmchart, which devctl’s generators refuse', () => {
+    expect(FLAVOURS.map(flavour => flavour.id)).toEqual([
+      'app',
+      'generic',
+      'cli',
+      'customer',
+      'fleet',
+      'cluster-app',
+      'k8sapi',
+    ]);
+  });
+
+  it('reads the nature and the add-ons off the flavours in any order', () => {
+    expect(natureOf(['cluster-app', 'app'])).toBe('app');
+    expect(natureOf(['k8sapi'])).toBeUndefined();
+    expect(addonsOf(['app', 'cluster-app', 'k8sapi'])).toEqual([
+      'cluster-app',
+      'k8sapi',
+    ]);
+  });
+
+  it('withNature keeps the add-ons that go with the new nature and drops the rest', () => {
+    const app = withAddons(withNature(EMPTY, 'app'), ['cluster-app', 'k8sapi']);
+    expect(app.flavours).toEqual(['app', 'cluster-app', 'k8sapi']);
+    expect(withNature(app, 'generic')).toMatchObject({
+      flavours: ['generic', 'k8sapi'],
+      ciGenerate: true,
+    });
+    expect(
+      withNature(withGen(app, { language: 'generic' }), 'customer'),
+    ).toMatchObject({ flavours: ['customer', 'k8sapi'], ciGenerate: false });
+  });
+
+  it('withAddons sets the add-ons after the nature and re-derives the CircleCI switch', () => {
+    const configuration = withPreset(EMPTY, 'configuration');
+    expect(withAddons(configuration, ['k8sapi'])).toMatchObject({
+      flavours: ['generic', 'k8sapi'],
+      ciGenerate: false,
+    });
+    expect(withAddons(configuration, []).flavours).toEqual(['generic']);
+  });
+});
+
+describe('presets', () => {
+  it('every preset is recognised from its own fields', () => {
+    PRESETS.forEach(preset => {
+      expect(presetOf(withPreset(EMPTY, preset.id))).toBe(preset.id);
     });
   });
 
-  it('withKind sets the fields and the CircleCI switch where the kind has a job', () => {
-    const configuration = withKind(EMPTY, 'configuration');
+  it('withPreset sets the fields and the CircleCI switch where the preset has a job', () => {
+    const configuration = withPreset(EMPTY, 'configuration');
     expect(configuration).toMatchObject({
       componentType: 'configuration',
       language: 'generic',
       flavours: ['generic'],
       ciGenerate: false,
     });
-    expect(withKind(configuration, 'chart-app')).toMatchObject({
+    expect(withPreset(configuration, 'chart-app')).toMatchObject({
       componentType: 'service',
       language: 'generic',
       flavours: ['app'],
       ciGenerate: true,
     });
-    expect(withKind(EMPTY, 'go-library').ciGenerate).toBe(true);
-    expect(withKind(EMPTY, 'customer').ciGenerate).toBe(false);
+    expect(withPreset(EMPTY, 'go-library').ciGenerate).toBe(true);
+    expect(withPreset(EMPTY, 'customer').ciGenerate).toBe(false);
   });
 
-  it('withKind with Custom or an unknown id changes nothing', () => {
-    expect(withKind(EMPTY, CUSTOM_KIND)).toEqual(EMPTY);
-    expect(withKind(EMPTY, 'no-such-kind')).toEqual(EMPTY);
+  it('withPreset with an unknown id changes nothing', () => {
+    expect(withPreset(EMPTY, 'no-such-preset')).toEqual(EMPTY);
   });
 
-  it('fields matching no kind read as Custom, in any flavour order', () => {
-    expect(kindOf(form({ flavours: ['app', 'cli'] }))).toBe(CUSTOM_KIND);
-    expect(kindOf(form({ componentType: 'library' }))).toBe(CUSTOM_KIND);
+  it('fields matching no preset read as none, in any flavour order', () => {
+    expect(presetOf(form({ flavours: ['app', 'cli'] }))).toBeUndefined();
+    expect(presetOf(form({ componentType: 'library' }))).toBeUndefined();
     expect(
-      kindOf(
+      presetOf(
         form({
           componentType: 'service',
           language: 'generic',
