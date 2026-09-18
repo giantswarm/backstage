@@ -158,8 +158,10 @@ describe('CapabilitySurface', () => {
     );
 
     // bui's Table drops the `aria-label` it is given and renders react-aria's
-    // `grid`, so it is found by role alone -- there is one table here.
-    const table = await screen.findByRole('grid');
+    // `grid`, so the name is on the region around it.
+    const table = within(
+      await screen.findByRole('region', { name: 'Capability surface' }),
+    ).getByRole('grid');
     expect(await screen.findByText('agent-manager')).toBeInTheDocument();
 
     expect(tableText(table)).toEqual([

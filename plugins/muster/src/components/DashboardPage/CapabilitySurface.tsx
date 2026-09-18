@@ -225,7 +225,14 @@ export function CapabilitySurface({
   );
 
   return (
-    <Paper variant="outlined" className={classes.card}>
+    <Paper
+      variant="outlined"
+      component="section"
+      aria-label="Capability surface"
+      className={classes.card}
+    >
+      {/* bui's Table drops the `aria-label` it is given, so the surrounding
+          region carries the name instead. */}
       <Table<CapabilityRow>
         columnConfig={COLUMN_CONFIG}
         // `undefined` rather than `[]` while the counts are in flight: an empty
@@ -233,11 +240,6 @@ export function CapabilitySurface({
         data={isPending ? undefined : rows}
         isPending={isPending}
         pagination={{ type: 'none' }}
-        emptyState={
-          <Text variant="body-medium" color="secondary">
-            No servers registered with this muster.
-          </Text>
-        }
       />
       <Text
         as="p"
