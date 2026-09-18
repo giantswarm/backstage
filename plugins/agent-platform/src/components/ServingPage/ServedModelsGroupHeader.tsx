@@ -46,7 +46,7 @@ export function describeGroup(
 /**
  * Icon-only "copy this endpoint" control. The URL is what a client base URL
  * is set to, so it is worth a click, not a column: a group of Ollama models
- * shares one, an InferenceService has its own.
+ * shares one, an LLMInferenceService has its own.
  */
 export function CopyEndpointButton({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
@@ -103,7 +103,7 @@ export type ServedModelsGroupHeaderProps = {
  * and therefore left the grid: the installation (when the table shows more
  * than one), the backend with its runtime version, and the endpoint they all
  * answer on — an Ollama host — with a copy action. A group whose rows have
- * their own endpoints (InferenceServices) shows none here; each row carries
+ * their own endpoints (LLMInferenceServices) shows none here; each row carries
  * its own copy action instead. `actions` trails it all.
  */
 export function ServedModelsGroupHeader({

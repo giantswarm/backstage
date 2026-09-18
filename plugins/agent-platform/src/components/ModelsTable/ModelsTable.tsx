@@ -33,7 +33,7 @@ import { ModelReadinessCell } from './readinessStatus';
  * What the serving layer says about the model a ModelConfig's endpoint points
  * at, when the endpoint is the serving layer's — the link from the agents'
  * side of the Models tab to the serving side: the served model (a KServe
- * InferenceService, an Ollama model) and its readiness, or `notServing` for a
+ * LLMInferenceService, an Ollama model) and its readiness, or `notServing` for a
  * model that is gone, plus the one-click fix the installation offers for it.
  * Plain data, so the row stays sortable and serialisable.
  */
@@ -234,8 +234,9 @@ function getColumnConfig(
       // Empty means the provider's own default endpoint, which is worth saying
       // rather than leaving a blank that reads as "unknown". When the endpoint
       // is the serving layer's, say which model answers there and whether it
-      // does — that is the link between a ModelConfig and the InferenceService
-      // or Ollama model behind it, with the fix inline where there is one.
+      // does — that is the link between a ModelConfig and the
+      // LLMInferenceService or Ollama model behind it, with the fix inline
+      // where there is one.
       cell: row => (
         <Cell>
           <Text

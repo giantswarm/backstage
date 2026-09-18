@@ -122,7 +122,7 @@ const ollamaRows: ServedModelRow[] = [
   },
 ];
 
-/** A KServe model-manager's rows: a served InferenceService and a cached download. */
+/** A KServe model-manager's rows: a served LLMInferenceService and a cached download. */
 const kserveManagerRows: ServedModelRow[] = [
   {
     ...rows[0],
@@ -207,7 +207,7 @@ describe('columnsForRows', () => {
       runtime: false,
       capabilities: true,
     });
-    // A fresh InferenceService alone: nothing placed, nothing to show yet.
+    // A fresh LLMInferenceService alone: nothing placed, nothing to show yet.
     expect(columnsForRows([rows[2]])).toEqual({
       placement: false,
       model: false,
@@ -472,7 +472,7 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
           {
             ...rows[1],
             readiness: 'terminating',
-            readinessMessage: 'InferenceService devstral is being deleted.',
+            readinessMessage: 'LLMInferenceService devstral is being deleted.',
           },
         ]}
       />,
@@ -584,7 +584,7 @@ describe('ServedModelsTable', () => {
     ]) {
       expect(screen.queryByRole('columnheader', { name: header })).toBeNull();
     }
-    // The fresh InferenceService has no node and no source yet: its group has
+    // The fresh LLMInferenceService has no node and no source yet: its group has
     // neither column.
     expect(
       within(second).queryByRole('columnheader', { name: 'Node' }),
@@ -603,7 +603,7 @@ describe('ServedModelsTable', () => {
     expect(screen.getByText('Not ready')).toBeInTheDocument();
     expect(screen.getByText('Pending')).toBeInTheDocument();
     expect(screen.getByText('hf://Qwen/Qwen3-14B')).toBeInTheDocument();
-    // The endpoints differ per InferenceService, so each row carries its own
+    // The endpoints differ per LLMInferenceService, so each row carries its own
     // copy action and the group header none.
     expect(
       screen.queryByText('http://qwen3-14b-predictor.kserve.svc.cluster.local'),
@@ -644,7 +644,7 @@ describe('ServedModelsTable', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows a fresh InferenceService with nothing but its name and status', async () => {
+  it('shows a fresh LLMInferenceService with nothing but its name and status', async () => {
     await renderTable(<ServedModelsTable rows={[rows[2]]} />);
 
     expect(screen.getByText('fresh')).toBeInTheDocument();
@@ -1005,7 +1005,7 @@ describe('sortServedModelsBy', () => {
   });
 });
 
-describe('ServedModelsTable actions and wiring', () => {
+describe('ServedModelsTable actions', () => {
   it('renders one actions column only when given a menu, and lets it decide per row', async () => {
     const ollamaRow: ServedModelRow = {
       ...rows[2],
@@ -1044,35 +1044,15 @@ describe('ServedModelsTable actions and wiring', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows where a model came from and how its wiring is going', async () => {
+  it('shows where a model came from, and that nothing points at it yet', async () => {
     await renderTable(
-      <ServedModelsTable
-        rows={[
-          {
-            ...rows[1],
-            preset: 'devstral-small-2',
-            wiring: { status: 'wiring' },
-          },
-          {
-            ...rows[2],
-            wiring: {
-              status: 'conflict',
-              message: 'name taken by another config',
-            },
-          },
-        ]}
-      />,
+      <ServedModelsTable rows={[{ ...rows[1], preset: 'devstral-small-2' }]} />,
     );
 
     expect(
       screen.getByText('kserve · preset devstral-small-2'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Creating model config…')).toBeInTheDocument();
-    expect(screen.getByText('Model config name taken')).toBeInTheDocument();
-    expect(
-      screen.getByTitle('name taken by another config'),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('No model config')).not.toBeInTheDocument();
+    expect(screen.getByText('No model config')).toBeInTheDocument();
   });
 });
 

@@ -462,7 +462,7 @@ describe('the model behind the agent', () => {
       readiness: 'notReady',
       name: 'qwen3-14b',
       namespace: 'kserve',
-      message: 'InferenceService qwen3-14b is not ready.',
+      message: 'LLMInferenceService qwen3-14b is not ready.',
     },
   });
   const idleModel = agentRow({
@@ -500,7 +500,7 @@ describe('the model behind the agent', () => {
       screen.getByText("SRE Agent's model is not ready"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/InferenceService kserve\/qwen3-14b: /),
+      screen.getByText(/LLMInferenceService kserve\/qwen3-14b: /),
     ).toBeInTheDocument();
   });
 

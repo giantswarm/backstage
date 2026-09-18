@@ -13,17 +13,14 @@ import CloudDownloadIcon from '@material-ui/icons/CloudDownload';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
 import SearchIcon from '@material-ui/icons/Search';
 import {
-  InferenceService,
+  LLMInferenceService,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
-import { useModelManagerInstallations } from '../../hooks/useModelManagerInstallations';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
-import { useServeModel } from '../../hooks/useServeModel';
-import { useServingPresets } from '../../hooks/useServingPresets';
 import {
   useStopServedModel,
   type StopServedModelVia,
@@ -60,12 +57,6 @@ import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import {
-  ServeModelDialog,
-  toDownloadedModelOption,
-  type ServeModelConfirmation,
-  type ServeModelSeed,
-} from './ServeModelDialog';
-import {
   hasServedModelTimeline,
   isOpenedServedModel,
   ServedModelLifecyclePanel,
@@ -94,42 +85,32 @@ const TOAST_TIMEOUT_MS = 6000;
  * least one reachable installation has a serving backend (or could not be
  * asked), so portals without one never see a Serving view. Must be mounted
  * inside a ServingProvider, a ModelConfigsProvider, a ServedModelRowsProvider
- * (the rows, with the auto-wiring that completes a serve) and the plugin's
- * QueryClientProvider (the writes are react-query mutations). The primary
- * actions — Serve, Import, Pull — are surfaced in the shared page header,
- * like "Add model" on the Model configs view.
+ * (the rows) and the plugin's QueryClientProvider (the writes are react-query
+ * mutations). The primary actions — Serve, Import, Pull — are surfaced in the
+ * shared page header, like "Add model" on the Model configs view.
  *
- * Two families of controls, each gated by what the installation reports,
- * meeting in one actions menu per row:
- *
- * - **Capability-driven** (the model-manager source): every control and panel
- *   keys off the installation's `ServingCapabilities`, never off a backend's
- *   name. `pull` puts the Pull button here and the pulls themselves into the
- *   table — a download is a row where its model will land, with its progress
- *   as the status and Cancel (or, once failed, Retry / Dismiss) as its menu
- *   (useDownloadRows) — with `search` it becomes the Hugging Face import
- *   (search, size and fit check against a node, pre-warm download);
- *   load/unload/delete/wire fill the per-row menu of the rows the source
- *   operates on. An Ollama-backed
- *   installation shows its controls; a read-only KServe CR view shows its rows
- *   and nothing operational — both ordinary state. The table's columns follow
- *   its rows, per installation (ServedModelsTable): Node and GPUs appear on
- *   the rows that carry a node, never from a capability flag, so a backend
- *   that merely knows its nodes does not get placement columns.
- - **Preset-driven** (the KServe CR source): on installations that publish
- *   serving presets and whose muster lists **no** model-manager, serve a
- *   model from a preset — or from a download already in a node's cache
- *   ("Serve…" on that row) — by composing the InferenceService in the browser,
- *   and stop one; once a model the portal served reports ready, its kagent
- *   ModelConfig is created too (see ServedModelRowsProvider). Where the
- *   installation has a model-manager, serving is its `load_model` as the
- *   person (the fit check included) and this path is never offered — not
- *   even while model-manager reports no backend yet or cannot be read.
+ * Every control and panel keys off the installation's `ServingCapabilities`
+ * (the model-manager source's flags), never off a backend's name. `pull` puts
+ * the Pull button here and the pulls themselves into the table — a download
+ * is a row where its model will land, with its progress as the status and
+ * Cancel (or, once failed, Retry / Dismiss) as its menu (useDownloadRows) —
+ * with `search` it becomes the Hugging Face import (search, size and fit
+ * check against a node, pre-warm download); `load` is the Serve: on a GPU
+ * pool the kserve backend's presets, `check_fit` and one `load_model` over
+ * muster as the person (LoadModelDialog) — model-manager composes the
+ * LLMInferenceService and wires the model config once it answers; nothing is
+ * composed here; load/unload/delete/wire fill the per-row menu of the rows the
+ * source operates on. An Ollama-backed installation shows its controls; a
+ * read-only KServe CR view shows its rows and nothing operational — both
+ * ordinary state. The table's columns follow its rows, per installation
+ * (ServedModelsTable): Node and GPUs appear on the rows that carry a node,
+ * never from a capability flag, so a backend that merely knows its nodes does
+ * not get placement columns.
  *
  * On a KServe installation with a model-manager, the provider has already
- * folded the two views of an InferenceService into one row: its menu offers
- * "Stop serving…" once, done through model-manager where it operates the row
- * and by deleting the CR with the user's RBAC otherwise.
+ * folded the two views of an LLMInferenceService into one row: its menu
+ * offers "Stop serving…" once, done through model-manager where it operates
+ * the row and by deleting the CR with the user's RBAC otherwise.
  */
 export function ServingPage() {
   const serving = useServing();
@@ -183,32 +164,6 @@ export function ServingPage() {
       return [{ capabilities: capabilitiesFor(installation) }];
     },
     [serving.backendCapabilities, capabilitiesFor],
-  );
-
-  const kserveInstallations = useMemo(
-    () =>
-      installations.filter(installation =>
-        (
-          serving.sourceBackends?.[installation] ?? [
-            serving.backends[installation],
-          ]
-        ).includes('kserve'),
-      ),
-    [installations, serving.backends, serving.sourceBackends],
-  );
-  const presets = useServingPresets(kserveInstallations);
-  // The client-side serve is for installations without a model-manager only:
-  // where muster lists one, serving is its job (fit check included), so the
-  // path stays closed until muster has answered *without* model-manager —
-  // or there is no muster plugin to ask.
-  const modelManager = useModelManagerInstallations(
-    serving.reachableInstallations,
-  );
-  const servableInstallations = presets.installations.filter(
-    installation =>
-      presets.presetsFor(installation).length > 0 &&
-      (modelManager.isUnavailable ||
-        modelManager.presenceOf(installation) === 'missing'),
   );
 
   // --- Capability-driven controls (model-manager) ---------------------------
@@ -265,9 +220,8 @@ export function ServingPage() {
 
   // --- Serve through model-manager, as the person ----------------------------
   // Every backend that can load — on a GPU pool the kserve backend the pool
-  // registered: presets, `check_fit` and `load_model` over muster. It is the
-  // Serve of every installation that has one; the client-side InferenceService
-  // below stays only for installations without model-manager.
+  // registered: presets, `check_fit` and `load_model` over muster. The one
+  // Serve there is.
   const musterApi = useMusterPluginApi();
   const loadTargets = useMemo<LoadTarget[]>(
     () =>
@@ -341,65 +295,20 @@ export function ServingPage() {
     [toastApi],
   );
 
-  // --- Serve (client-side InferenceService, installations without model-manager)
-  const [isServeOpen, setServeOpen] = useState(false);
-  const [serveInstallation, setServeInstallation] = useState<string>();
-  const [serveSeed, setServeSeed] = useState<ServeModelSeed>();
-  const installation = serveInstallation ?? servableInstallations[0];
-  const config = installation ? presets.configFor(installation) : undefined;
-  const {
-    serve,
-    isServing,
-    error: serveError,
-    reset: resetServe,
-  } = useServeModel();
-
   const openServe = useCallback(() => {
-    if (canLoad) {
-      setLoadSeed(undefined);
-      setLoadOpen(true);
-      return;
-    }
-    resetServe();
-    setServeSeed(undefined);
-    setServeOpen(true);
-  }, [canLoad, resetServe]);
+    setLoadSeed(undefined);
+    setLoadOpen(true);
+  }, []);
 
-  /** "Serve…" on a cached download: the dialog starts from that model, on its node. */
-  const openServeFor = useCallback(
-    (row: ServedModel) => {
-      if (loadTargets.some(target => target.name === row.installation)) {
-        setLoadSeed({
-          installation: row.installation,
-          backend: row.backend,
-          model: row.preset ?? row.name,
-        });
-        setLoadOpen(true);
-        return;
-      }
-      resetServe();
-      setServeInstallation(row.installation);
-      setServeSeed({
-        download: toDownloadedModelOption(row),
-        presetName: row.preset,
-      });
-      setServeOpen(true);
-    },
-    [loadTargets, resetServe],
-  );
-
-  // The cached downloads of the installation the dialog serves on, offered
-  // as its weights.
-  const downloads = useMemo(
-    () =>
-      servedModels
-        .filter(
-          model =>
-            model.installation === installation && isServableDownload(model),
-        )
-        .map(toDownloadedModelOption),
-    [servedModels, installation],
-  );
+  /** "Serve…" on a cached download: the dialog starts on its installation and preset. */
+  const openServeFor = useCallback((row: ServedModel) => {
+    setLoadSeed({
+      installation: row.installation,
+      backend: row.backend,
+      model: row.preset ?? row.name,
+    });
+    setLoadOpen(true);
+  }, []);
 
   // --- Stop ----------------------------------------------------------------
   const [stopping, setStopping] = useState<ServedModelRow | undefined>();
@@ -429,7 +338,7 @@ export function ServingPage() {
       row.managerRef !== undefined &&
       capabilitiesFor(row.installation, row.backend).unload
         ? 'model-manager'
-        : 'inferenceservice',
+        : 'llminferenceservice',
     [capabilitiesFor],
   );
 
@@ -437,14 +346,13 @@ export function ServingPage() {
   const offersFor = useCallback(
     (row: ServedModelRow) => ({
       onServe:
-        (loadTargets.some(target => target.name === row.installation) ||
-          servableInstallations.includes(row.installation)) &&
+        loadTargets.some(target => target.name === row.installation) &&
         isServableDownload(row)
           ? openServeFor
           : undefined,
       onStop: isStoppable(row) ? openStop : undefined,
     }),
-    [loadTargets, servableInstallations, openServeFor, openStop],
+    [loadTargets, openServeFor, openStop],
   );
 
   const hasActions = rows.some(
@@ -513,61 +421,20 @@ export function ServingPage() {
     [openedModel, rows],
   );
 
-  const servePermission = useSelfSubjectAccessReview(
-    installation ?? '',
-    {
-      group: InferenceService.group,
-      resource: InferenceService.plural,
-      namespace: config?.namespace,
-      verb: 'create',
-    },
-    { enabled: isServeOpen && Boolean(installation && config) },
-  );
-
-  const confirmServe = useCallback(
-    async ({
-      manifest,
-      request,
-      preset,
-      config: target,
-    }: ServeModelConfirmation) => {
-      try {
-        await serve({
-          installation: request.installation,
-          namespace: target.namespace,
-          manifest,
-        });
-      } catch {
-        // Left to the dialog, which stays open and renders the error.
-        return;
-      }
-      setServeOpen(false);
-      toastApi.post({
-        title: `Serving "${preset.displayName}" as ${request.name}`,
-        // Whether it comes up is the controller's verdict, read from the CR.
-        description:
-          'KServe is starting it — the status column follows the InferenceService. The model config is created once it is ready.',
-        status: 'success',
-        timeout: TOAST_TIMEOUT_MS,
-      });
-    },
-    [serve, toastApi],
-  );
-
-  const stoppingVia = stopping ? stopVia(stopping) : 'inferenceservice';
+  const stoppingVia = stopping ? stopVia(stopping) : 'llminferenceservice';
 
   // The user's own RBAC matters only when the CR is deleted directly; through
   // model-manager the gateway's JWT policy is the boundary.
   const stopPermission = useSelfSubjectAccessReview(
     stopping?.installation ?? '',
     {
-      group: InferenceService.group,
-      resource: InferenceService.plural,
+      group: LLMInferenceService.group,
+      resource: LLMInferenceService.plural,
       namespace: stopping?.namespace,
       name: stopping?.name,
       verb: 'delete',
     },
-    { enabled: Boolean(stopping) && stoppingVia === 'inferenceservice' },
+    { enabled: Boolean(stopping) && stoppingVia === 'llminferenceservice' },
   );
 
   const confirmStop = useCallback(async () => {
@@ -575,27 +442,24 @@ export function ServingPage() {
       return;
     }
     const via = stopVia(stopping);
-    let outcome: Awaited<ReturnType<typeof stop>>;
     try {
-      outcome = await stop({ model: stopping, via });
+      await stop({ model: stopping, via });
     } catch {
+      // Left to the dialog, which stays open and renders the error.
       return;
     }
     setStopping(undefined);
     toastApi.post({
       title: `Stopped serving "${stopping.displayName ?? stopping.name}"`,
-      // What happened, not what was asked: model-manager may have handed the
-      // stop back to the CR delete.
       description:
-        outcome.via === 'model-manager'
-          ? 'model-manager is removing the predictor and the model config it created; the weights stay cached on the node.'
-          : 'The predictor is being removed; the weights stay cached on the node.',
+        via === 'model-manager'
+          ? 'model-manager is removing the workload and the model config it created; the weights stay cached on the node.'
+          : 'The workload is being removed; the weights stay cached on the node.',
       status: 'success',
       timeout: TOAST_TIMEOUT_MS,
     });
   }, [stop, stopVia, stopping, toastApi]);
 
-  const canServe = !canLoad && servableInstallations.length > 0;
   const canPull = pullTargets.length > 0;
   const canImport = importTargets.length > 0;
 
@@ -605,7 +469,6 @@ export function ServingPage() {
   const headerActions = useMemo(
     () =>
       canLoad ||
-      canServe ||
       canPull ||
       canImport ||
       backends.available ||
@@ -631,7 +494,7 @@ export function ServingPage() {
               Import from Hugging Face
             </Button>
           )}
-          {(canLoad || canServe) && (
+          {canLoad && (
             <Button
               variant="primary"
               iconStart={<PlayArrowIcon />}
@@ -644,7 +507,6 @@ export function ServingPage() {
       ) : null,
     [
       canLoad,
-      canServe,
       canPull,
       canImport,
       openServe,
@@ -695,7 +557,7 @@ export function ServingPage() {
       <EmptyState
         missing="data"
         title="No serving layer"
-        description="None of the reachable installations has a serving layer this portal can see — KServe InferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
+        description="None of the reachable installations has a serving layer this portal can see — KServe LLMInferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
         action={addActions}
       />
     );
@@ -715,18 +577,17 @@ export function ServingPage() {
   const stopDialogError =
     stopError?.message ??
     (stopping &&
-    stoppingVia === 'inferenceservice' &&
+    stoppingVia === 'llminferenceservice' &&
     !stopPermission.isLoading &&
     !stopPermission.allowed
-      ? `Your account may not delete InferenceService ${stopping.name} in ${stopping.namespace} on ${stopping.installation}, so the cluster would refuse this.`
+      ? `Your account may not delete LLMInferenceService ${stopping.name} in ${stopping.namespace} on ${stopping.installation}, so the cluster would refuse this.`
       : undefined);
 
   let description =
-    'Models served on the installations that have a serving layer — KServe InferenceServices read from the cluster, or the inventory of a model-manager (Ollama, LM Studio, Lemonade, KServe). The model configs are how agents reach them.';
-  if (canLoad || canServe || canPull || canImport) {
+    'Models served on the installations that have a serving layer — KServe LLMInferenceServices read from the cluster, or the inventory of a model-manager (Ollama, LM Studio, Lemonade, KServe). The model configs are how agents reach them.';
+  if (canLoad || canPull || canImport) {
     description = `${description} ${[
-      (canLoad || canServe) &&
-        'Serve a model from a curated preset or stop one',
+      canLoad && 'Serve a model from a curated preset or stop one',
       canImport &&
         "import a model from Hugging Face into a node's cache after a size and fit check",
       canPull && 'pull a model onto a backend, load, unload or delete it',
@@ -771,32 +632,6 @@ export function ServingPage() {
             resourceName="served models"
           />
 
-          {presets.problems.length > 0 && (
-            <Alert
-              status="warning"
-              title="Serving presets could not be read"
-              description={presets.problems
-                .map(problem =>
-                  installationErrorLine(problem.installation, problem.message),
-                )
-                .join(' ')}
-            />
-          )}
-          {presets.invalidPresets.length > 0 && (
-            <Alert
-              status="warning"
-              title={`${presets.invalidPresets.length} serving preset${
-                presets.invalidPresets.length === 1 ? ' is' : 's are'
-              } unusable`}
-              description={presets.invalidPresets
-                .map(
-                  invalid =>
-                    `${invalid.name} (${invalid.installation}): ${invalid.error}`,
-                )
-                .join(' ')}
-            />
-          )}
-
           {downloadRows.errors.length > 0 && (
             <Alert
               status="warning"
@@ -833,37 +668,6 @@ export function ServingPage() {
               models={servedModels}
               seed={loadSeed}
               onServed={onServed}
-            />
-          )}
-
-          {canServe && (
-            <ServeModelDialog
-              isOpen={isServeOpen}
-              onOpenChange={setServeOpen}
-              installations={servableInstallations}
-              installation={installation}
-              onInstallationChange={setServeInstallation}
-              presets={installation ? presets.presetsFor(installation) : []}
-              config={config}
-              gpuNodes={serving.gpuNodes.filter(
-                node => node.installation === installation,
-              )}
-              existingNames={servedModels
-                .filter(
-                  model =>
-                    model.installation === installation &&
-                    model.namespace === config?.namespace,
-                )
-                .map(model => model.name)}
-              downloads={downloads}
-              seed={serveSeed}
-              permission={{
-                allowed: servePermission.allowed,
-                isLoading: servePermission.isLoading,
-              }}
-              isServing={isServing}
-              error={serveError?.message}
-              onConfirm={confirmServe}
             />
           )}
 

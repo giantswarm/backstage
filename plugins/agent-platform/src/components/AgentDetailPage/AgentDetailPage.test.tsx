@@ -1501,7 +1501,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
       readiness: 'notServing',
       name: 'opus',
       namespace: 'model-serving',
-      message: 'InferenceService model-serving/opus is not serving.',
+      message: 'LLMInferenceService model-serving/opus is not serving.',
     });
     stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
@@ -1511,7 +1511,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
       'Not serving',
     );
     expect(
-      screen.getByText('Points at InferenceService model-serving/opus'),
+      screen.getByText('Points at LLMInferenceService model-serving/opus'),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
       'href',

@@ -17,8 +17,9 @@ import {
   NO_SERVING_CAPABILITIES,
   notLoadedReadiness,
   overlayServedModel,
-  predictorOfHostname,
   resolveClientServing,
+  servedObjectOfHostname,
+  servedObjectOfRoute,
   SERVED_MODEL_READINESS,
   SERVED_MODEL_READINESS_SEVERITY,
   servingShortcutFor,
@@ -38,10 +39,10 @@ const qwen: ServedModel = {
   namespace: 'kserve',
   readiness: 'ready',
   endpointHosts: [
-    'qwen3-14b-predictor.kserve.svc.cluster.local',
-    'qwen3-14b-predictor.kserve.svc',
-    'qwen3-14b-predictor.kserve',
-    'qwen3-14b.models.example.test',
+    'qwen3-14b-kserve-workload-svc.kserve.svc.cluster.local',
+    'qwen3-14b-kserve-workload-svc.kserve.svc',
+    'qwen3-14b-kserve-workload-svc.kserve',
+    'models.example.test',
   ],
 };
 
@@ -49,13 +50,13 @@ describe('findServedModelForEndpoint', () => {
   it('matches a base URL by hostname regardless of scheme, port and path', () => {
     expect(
       findServedModelForEndpoint(
-        'http://qwen3-14b-predictor.kserve.svc.cluster.local/v1',
+        'http://qwen3-14b-kserve-workload-svc.kserve.svc.cluster.local:8000/v1',
         [qwen],
       ),
     ).toBe(qwen);
     expect(
       findServedModelForEndpoint(
-        'HTTPS://Qwen3-14b.models.example.test:443/v1/',
+        'HTTPS://Models.example.test:443/kserve/qwen3-14b/v1/',
         [qwen],
       ),
     ).toBe(qwen);
@@ -158,17 +159,58 @@ describe('findServedModel', () => {
   });
 
   it('accepts the single model on a host whatever the client calls it', () => {
-    // A vLLM InferenceService: the served-model name is the InferenceService,
-    // the ModelConfig's model id is whatever vLLM was told to answer as.
+    // A vLLM workload: the served-model name is the LLMInferenceService, the
+    // ModelConfig's model id is whatever vLLM was told to answer as.
     expect(
       findServedModel(
         {
-          endpoint: 'http://qwen3-14b-predictor.kserve.svc.cluster.local/v1',
-          model: 'qwen3-8-27b',
+          endpoint:
+            'http://qwen3-14b-kserve-workload-svc.kserve.svc.cluster.local:8000/v1',
+          model: 'Qwen/Qwen3-14B',
         },
         [qwen],
       ),
     ).toBe(qwen);
+  });
+
+  it('tells routed KServe models on the models Gateway apart by the route’s path', () => {
+    // Every routed model answers on the Gateway's one host, each under
+    // `/<namespace>/<name>`; the ModelConfig's model id is the served name,
+    // not the object's.
+    const devstral: ServedModel = {
+      ...qwen,
+      id: 'alpha/kserve/kserve/devstral',
+      name: 'devstral',
+      endpointHosts: ['models.example.test'],
+    };
+    expect(
+      findServedModel(
+        {
+          endpoint: 'https://models.example.test/kserve/devstral/v1',
+          model: 'mistralai/Devstral-Small-2',
+        },
+        [qwen, devstral],
+      ),
+    ).toBe(devstral);
+    expect(
+      findServedModel(
+        {
+          endpoint: 'https://models.example.test/kserve/qwen3-14b/v1',
+          model: 'Qwen/Qwen3-14B',
+        },
+        [qwen, devstral],
+      ),
+    ).toBe(qwen);
+    // A route naming no listed object, with several on the host: nothing.
+    expect(
+      findServedModel(
+        {
+          endpoint: 'https://models.example.test/kserve/gone/v1',
+          model: 'x',
+        },
+        [qwen, devstral],
+      ),
+    ).toBeUndefined();
   });
 
   it('leaves a client of another server on the same machine alone, even with a single model on the host', () => {
@@ -258,14 +300,14 @@ describe('findServedModel', () => {
     ).toBeUndefined();
   });
 
-  it('matches a KServe predictor by hostname in every form, on any port and scheme', () => {
+  it('matches a KServe workload by hostname in every form, on any port and scheme', () => {
     for (const endpoint of [
-      'http://qwen3-14b-predictor.kserve.svc.cluster.local/v1',
-      'https://qwen3-14b-predictor.kserve.svc.cluster.local/v1',
-      'http://qwen3-14b-predictor.kserve.svc.cluster.local:80',
-      'http://qwen3-14b-predictor.kserve.svc:8080/v1',
-      'http://qwen3-14b-predictor.kserve/v1',
-      'https://qwen3-14b.models.example.test/v1',
+      'http://qwen3-14b-kserve-workload-svc.kserve.svc.cluster.local/v1',
+      'https://qwen3-14b-kserve-workload-svc.kserve.svc.cluster.local/v1',
+      'http://qwen3-14b-kserve-workload-svc.kserve.svc.cluster.local:8000',
+      'http://qwen3-14b-kserve-workload-svc.kserve.svc:8080/v1',
+      'http://qwen3-14b-kserve-workload-svc.kserve/v1',
+      'https://models.example.test/kserve/qwen3-14b/v1',
     ]) {
       expect(findServedModel({ endpoint, model: 'anything' }, [qwen])).toBe(
         qwen,
@@ -273,7 +315,10 @@ describe('findServedModel', () => {
     }
     expect(
       findServedModel(
-        { endpoint: 'http://other-predictor.kserve.svc.cluster.local/v1' },
+        {
+          endpoint:
+            'http://other-kserve-workload-svc.kserve.svc.cluster.local/v1',
+        },
         [qwen],
       ),
     ).toBeUndefined();
@@ -481,8 +526,9 @@ describe('mergeServingSnapshots', () => {
   });
 
   describe('folding two views of one served model', () => {
-    // model-manager's view of the same InferenceService: named the same,
-    // answering on the predictor host, carrying what the CR read lacks.
+    // model-manager's view of the same LLMInferenceService: the same object
+    // by namespace and name, answering on the models Gateway, carrying what
+    // the CR read lacks.
     const qwenFromManager: ServedModel = {
       id: 'alpha/kserve/kserve/qwen3-14b',
       installation: 'alpha',
@@ -493,7 +539,7 @@ describe('mergeServingSnapshots', () => {
       readinessMessage:
         '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
       readinessReason: 'Unschedulable',
-      endpointHosts: ['qwen3-14b-predictor.kserve.svc.cluster.local'],
+      endpointHosts: ['models.example.test'],
       managerRef: 'Qwen/Qwen3-14B',
       sizeBytes: 29_540_000_000,
       downloaded: true,
@@ -523,11 +569,23 @@ describe('mergeServingSnapshots', () => {
       servedModels: [qwenFromManager, cached],
     };
 
-    it('recognises the same predictor by hostname, never rows without one', () => {
+    it('recognises the same object by namespace and name, never by the Gateway host it shares', () => {
       expect(isSameServedModel(qwen, qwenFromManager)).toBe(true);
       expect(isSameServedModel(qwen, cached)).toBe(false);
       expect(
         isSameServedModel(qwen, { ...qwenFromManager, installation: 'beta' }),
+      ).toBe(false);
+      // Another object routed on the same Gateway host is another model.
+      expect(
+        isSameServedModel(qwen, {
+          ...qwenFromManager,
+          id: 'alpha/kserve/kserve/devstral',
+          name: 'devstral',
+        }),
+      ).toBe(false);
+      // A row whose namespace could not be read is never folded on a host.
+      expect(
+        isSameServedModel(qwen, { ...qwenFromManager, namespace: undefined }),
       ).toBe(false);
     });
 
@@ -551,10 +609,7 @@ describe('mergeServingSnapshots', () => {
       expect(merged.readinessMessage).toBeUndefined();
       expect(merged.readinessReason).toBeUndefined();
       expect(merged.endpointHosts).toEqual(
-        expect.arrayContaining([
-          ...qwen.endpointHosts,
-          'qwen3-14b-predictor.kserve.svc.cluster.local',
-        ]),
+        expect.arrayContaining([...qwen.endpointHosts, 'models.example.test']),
       );
     });
 
@@ -733,6 +788,7 @@ describe('mergeServingSnapshots', () => {
       capabilities: {},
       loading: {},
       sharedHosts: {},
+      gatewayHosts: {},
       unreachableInstallations: [],
       servedModels: [],
       gpuNodes: [],
@@ -896,25 +952,52 @@ describe('endpointAuthority', () => {
   });
 });
 
-describe('predictorOfHostname', () => {
-  it('reads the InferenceService and namespace out of a predictor host in every form KServe gives it', () => {
+describe('servedObjectOfHostname', () => {
+  it('reads the LLMInferenceService and namespace out of a workload Service host in every form KServe gives it', () => {
     const expected = { name: 'lab-echo', namespace: 'model-serving' };
     expect(
-      predictorOfHostname('lab-echo-predictor.model-serving.svc.cluster.local'),
+      servedObjectOfHostname(
+        'lab-echo-kserve-workload-svc.model-serving.svc.cluster.local',
+      ),
     ).toEqual(expected);
-    expect(predictorOfHostname('lab-echo-predictor.model-serving.svc')).toEqual(
-      expected,
-    );
-    expect(predictorOfHostname('lab-echo-predictor.model-serving')).toEqual(
-      expected,
-    );
+    expect(
+      servedObjectOfHostname('lab-echo-kserve-workload-svc.model-serving.svc'),
+    ).toEqual(expected);
+    expect(
+      servedObjectOfHostname('lab-echo-kserve-workload-svc.model-serving'),
+    ).toEqual(expected);
   });
 
-  it('answers nothing for hosts that are not predictors', () => {
-    expect(predictorOfHostname(undefined)).toBeUndefined();
-    expect(predictorOfHostname('172.21.0.1')).toBeUndefined();
-    expect(predictorOfHostname('api.openai.com')).toBeUndefined();
-    expect(predictorOfHostname('lab-echo.model-serving.svc')).toBeUndefined();
+  it('answers nothing for hosts that are not workload Services', () => {
+    expect(servedObjectOfHostname(undefined)).toBeUndefined();
+    expect(servedObjectOfHostname('172.21.0.1')).toBeUndefined();
+    expect(servedObjectOfHostname('api.openai.com')).toBeUndefined();
+    expect(
+      servedObjectOfHostname('lab-echo.model-serving.svc'),
+    ).toBeUndefined();
+    expect(
+      servedObjectOfHostname('lab-echo-predictor.model-serving.svc'),
+    ).toBeUndefined();
+  });
+});
+
+describe('servedObjectOfRoute', () => {
+  it('reads the namespace and name out of a route on the models Gateway', () => {
+    expect(
+      servedObjectOfRoute('https://models.example.test/model-serving/lab-echo'),
+    ).toEqual({ name: 'lab-echo', namespace: 'model-serving' });
+    expect(
+      servedObjectOfRoute(
+        'https://models.example.test/model-serving/lab-echo/v1/',
+      ),
+    ).toEqual({ name: 'lab-echo', namespace: 'model-serving' });
+  });
+
+  it('answers nothing without two path segments, or for a non-URL', () => {
+    expect(servedObjectOfRoute(undefined)).toBeUndefined();
+    expect(servedObjectOfRoute('https://api.openai.com/v1')).toBeUndefined();
+    expect(servedObjectOfRoute('https://models.example.test/')).toBeUndefined();
+    expect(servedObjectOfRoute('not a url')).toBeUndefined();
   });
 });
 
@@ -947,6 +1030,7 @@ describe('resolveClientServing', () => {
     candidates: [qwenSmall, qwenBig],
     backends: ['ollama' as const],
     sharedHosts: ['172.21.0.1:11434'],
+    gatewayHosts: [],
   };
 
   it('takes the readiness, name and words of the served model a client fronts', () => {
@@ -1068,11 +1152,11 @@ describe('resolveClientServing', () => {
     expect(gone?.model).toBeUndefined();
   });
 
-  it('reports a KServe predictor nobody serves as Not serving, named after the InferenceService', () => {
+  it('reports a KServe workload nobody serves as Not serving, named after the LLMInferenceService', () => {
     const state = resolveClientServing(
       {
         endpoint:
-          'http://lab-echo-predictor.model-serving.svc.cluster.local/v1',
+          'http://lab-echo-kserve-workload-svc.model-serving.svc.cluster.local:8000/v1',
         model: 'lab-echo',
       },
       {
@@ -1080,6 +1164,7 @@ describe('resolveClientServing', () => {
         candidates: [],
         backends: ['kserve'],
         sharedHosts: [],
+        gatewayHosts: [],
       },
     );
     expect(state).toMatchObject({
@@ -1092,11 +1177,50 @@ describe('resolveClientServing', () => {
     expect(state?.message).toMatch(/stopped, or never created/);
   });
 
-  it('ignores a predictor-shaped host on an installation without a KServe backend', () => {
+  it('reports a route on the models Gateway that names no served object as Not serving — on the Gateway host alone', () => {
+    const gone = resolveClientServing(
+      {
+        endpoint: 'https://models.example.test/model-serving/lab-echo/v1',
+        model: 'org/lab-echo',
+      },
+      {
+        installation: 'gpu',
+        candidates: [],
+        backends: ['kserve'],
+        sharedHosts: [],
+        gatewayHosts: ['models.example.test:443'],
+      },
+    );
+    expect(gone).toMatchObject({
+      backend: 'kserve',
+      readiness: 'notServing',
+      name: 'lab-echo',
+      namespace: 'model-serving',
+    });
+    // The same path on a host the installation does not declare as its
+    // Gateway is an external provider's business.
     expect(
       resolveClientServing(
         {
-          endpoint: 'http://x-predictor.ns.svc.cluster.local/v1',
+          endpoint: 'https://models.example.test/model-serving/lab-echo/v1',
+          model: 'org/lab-echo',
+        },
+        {
+          installation: 'gpu',
+          candidates: [],
+          backends: ['kserve'],
+          sharedHosts: [],
+          gatewayHosts: [],
+        },
+      ),
+    ).toBeUndefined();
+  });
+
+  it('ignores a workload-shaped host on an installation without a KServe backend', () => {
+    expect(
+      resolveClientServing(
+        {
+          endpoint: 'http://x-kserve-workload-svc.ns.svc.cluster.local:8000/v1',
           model: 'x',
         },
         lab,
@@ -1172,10 +1296,10 @@ describe('resolveClientServing', () => {
       ).toBeUndefined();
     });
 
-    it('offers the backend load for a gone InferenceService, and nothing without it', () => {
+    it('offers the backend load for a gone LLMInferenceService, and nothing without it', () => {
       const state = resolveClientServing(
         {
-          endpoint: 'http://lab-echo-predictor.model-serving.svc/v1',
+          endpoint: 'http://lab-echo-kserve-workload-svc.model-serving.svc/v1',
           model: 'lab-echo',
         },
         {
@@ -1183,6 +1307,7 @@ describe('resolveClientServing', () => {
           candidates: [],
           backends: ['kserve'],
           sharedHosts: [],
+          gatewayHosts: [],
         },
       ) as ClientServingState;
       expect(servingShortcutFor(state, canLoadAndPull, 'kserve')).toEqual({
@@ -1197,7 +1322,7 @@ describe('resolveClientServing', () => {
         ),
       ).toBeUndefined();
       // The `load` flag of an Ollama model-manager on the same installation
-      // (its CRs read beside it) cannot bring an InferenceService back.
+      // (its CRs read beside it) cannot bring an LLMInferenceService back.
       expect(
         servingShortcutFor(state, canLoadAndPull, 'ollama'),
       ).toBeUndefined();

@@ -1,74 +1,43 @@
-// The KServe serving source's pure half: turning InferenceService, Node and
+// The KServe serving source's pure half: turning LLMInferenceService, Node and
 // Pod objects (read with the user's RBAC) into the backend-agnostic shapes in
 // `serving.ts`. The hook that fetches them is
 // `components/ServingProvider/useKServeServingSource.ts`.
 
 import {
-  BACKSTAGE_FIELD_MANAGER,
-  deriveInferenceServiceReadiness,
-  InferenceService,
+  deriveLLMInferenceServiceReadiness,
+  LLMInferenceService,
   Node,
   NVIDIA_GPU_RESOURCE,
   Pod,
-  type InferenceServiceInterface,
+  type LLMInferenceServiceInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { AGENT_PLATFORM_PRESET_LABEL } from './modelServingConfig';
 import {
   explanationWithoutReason,
   type GpuNode,
   type ServedModel,
 } from './serving';
-import { AGENT_PLATFORM_PRESET_LABEL } from './servingPresets';
+
+/** Poll cadence for LLMInferenceServices while any of them is still converging. */
+export const LLMISVC_POLL_ACTIVE_MS = 10_000;
+/** Poll cadence once every LLMInferenceService is ready — a model can still fail later. */
+export const LLMISVC_POLL_IDLE_MS = 60_000;
 
 /**
- * Label KServe puts on every predictor pod, valued with the InferenceService
- * name. Listing pods by this label (all namespaces) yields the fleet's
- * predictor pods in one request per installation.
+ * `refetchInterval` for the LLMInferenceService lists: readiness comes from
+ * the object's status, written by the llm-d controller minutes after the
+ * create — so the list has to be re-read to see a served model come up. Fast
+ * while something is pending or failed, slow once everything answers.
  */
-export const KSERVE_INFERENCESERVICE_LABEL =
-  'serving.kserve.io/inferenceservice';
-
-/** Marks the objects this portal writes (same value as its field manager). */
-export const MANAGED_BY_LABEL = 'app.kubernetes.io/managed-by';
-
-/**
- * Annotation the serve flow puts on an InferenceService it creates: the kagent
- * ModelConfig (`<namespace>/<name>`) to create once the model is ready. The
- * auto-wiring reads it back, so the promise survives a page reload and is kept
- * by whichever session sees the model ready first.
- */
-export const MODEL_CONFIG_ANNOTATION =
-  'agent-platform.giantswarm.io/model-config';
-
-/** Friendly name, the same annotation `ModelConfig.getDisplayName()` reads. */
-export const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
-
-/** `<namespace>/<name>` → its parts; `undefined` for anything else. */
-export function parseModelConfigRef(
-  value: string | undefined,
-): { namespace: string; name: string } | undefined {
-  const match = value ? /^([^/\s]+)\/([^/\s]+)$/.exec(value) : null;
-  return match ? { namespace: match[1], name: match[2] } : undefined;
-}
-
-/** Poll cadence for InferenceServices while any of them is still converging. */
-export const INFERENCESERVICE_POLL_ACTIVE_MS = 10_000;
-/** Poll cadence once every InferenceService is ready — a model can still fail later. */
-export const INFERENCESERVICE_POLL_IDLE_MS = 60_000;
-
-/**
- * `refetchInterval` for the InferenceService lists: readiness comes from the
- * CR's status, written by the KServe controller minutes after the create — so
- * the list has to be re-read to see a served model come up (and to complete its
- * auto-wiring). Fast while something is pending or failed, slow once everything
- * answers.
- */
-export function inferenceServiceRefetchInterval(query: {
-  state: { data?: InferenceServiceInterface[] };
+export function llmInferenceServiceRefetchInterval(query: {
+  state: { data?: LLMInferenceServiceInterface[] };
 }): number {
   const items = query.state.data ?? [];
-  return items.some(item => deriveInferenceServiceReadiness(item) !== 'ready')
-    ? INFERENCESERVICE_POLL_ACTIVE_MS
-    : INFERENCESERVICE_POLL_IDLE_MS;
+  return items.some(
+    item => deriveLLMInferenceServiceReadiness(item) !== 'ready',
+  )
+    ? LLMISVC_POLL_ACTIVE_MS
+    : LLMISVC_POLL_IDLE_MS;
 }
 
 /**
@@ -142,60 +111,70 @@ function parseLabelInteger(value: string | undefined): number | undefined {
 }
 
 /**
- * The predictor pod that currently backs an InferenceService: same namespace,
- * labelled with its name, not finished. A Running pod wins over a Pending one
- * so a rollout shows where the model *is*, not where it is heading.
+ * The workload pod that currently backs an LLMInferenceService: same
+ * namespace, labelled with its name the way the llm-d controller labels the
+ * pods it derives (`app.kubernetes.io/part-of=llminferenceservice`,
+ * `app.kubernetes.io/name=<object>`), not finished. A Running pod wins over a
+ * Pending one so a rollout shows where the model *is*, not where it is
+ * heading.
  */
-export function findPredictorPod(
-  inferenceService: InferenceService,
+export function findWorkloadPod(
+  object: LLMInferenceService,
   pods: Pod[],
 ): Pod | undefined {
+  const { partOf, name } = LLMInferenceService.WORKLOAD_POD_LABELS;
   const candidates = pods.filter(
     pod =>
-      pod.cluster === inferenceService.cluster &&
-      pod.getNamespace() === inferenceService.getNamespace() &&
-      pod.findLabel(KSERVE_INFERENCESERVICE_LABEL) ===
-        inferenceService.getName() &&
+      pod.cluster === object.cluster &&
+      pod.getNamespace() === object.getNamespace() &&
+      pod.findLabel(partOf) === LLMInferenceService.WORKLOAD_POD_PART_OF &&
+      pod.findLabel(name) === object.getName() &&
       !pod.isTerminal(),
   );
   return candidates.find(pod => pod.getPhase() === 'Running') ?? candidates[0];
 }
 
 /**
- * One InferenceService as a backend-agnostic served model.
+ * One LLMInferenceService as a backend-agnostic served model.
  *
- * The state is the CR's conditions — unless the object is being deleted
- * (`terminating`), or its predictor pod waits for a node or an image, which
+ * The state is the object's conditions — unless it is being deleted
+ * (`terminating`), or its workload pod waits for a node or an image, which
  * says more than the conditions do: the row is then `pending` with the pod's
  * reason (`Unschedulable`, `ImagePullBackOff`) and message. The same rule
- * model-manager applies from 0.23.4 on, so the two sources agree on a folded
- * row. A non-ready condition's reason becomes `readinessReason` and leaves
- * the explanation, so the row does not say it twice.
+ * model-manager applies, so the two sources agree on a folded row. A
+ * non-ready condition's reason becomes `readinessReason` and leaves the
+ * explanation, so the row does not say it twice.
+ *
+ * Named like model-manager names the same object: the model source is the
+ * name the model is served under (`spec.model.name`, the Hugging Face
+ * repository), the preset the label model-manager put on it. The accelerator
+ * count is read under `gpuResourceName` — the installation's, from its
+ * discovery config — else NVIDIA's.
  */
 export function toServedModel(
-  inferenceService: InferenceService,
+  object: LLMInferenceService,
   pods: Pod[] = [],
+  gpuResourceName?: string,
 ): ServedModel {
-  const namespace = inferenceService.getNamespace();
-  const labels = inferenceService.getLabels() ?? {};
-  const annotations = inferenceService.getAnnotations() ?? {};
-  const pod = findPredictorPod(inferenceService, pods);
+  const namespace = object.getNamespace();
+  const labels = object.getLabels() ?? {};
+  const pod = findWorkloadPod(object, pods);
   const podNode = pod?.getNodeName();
-  const pinnedNode = inferenceService.getPinnedNode();
+  const pinnedNode = object.getPinnedNode();
 
-  let readiness: ServedModel['readiness'] = inferenceService.getReadiness();
+  let readiness: ServedModel['readiness'] = object.getReadiness();
   let readinessReason: string | undefined;
-  let readinessMessage = inferenceService.getReadinessMessage();
+  let readinessMessage = object.getReadinessMessage();
   const waiting = pod?.getPendingState();
-  if (inferenceService.getDeletionTimestamp()) {
+  if (object.getDeletionTimestamp()) {
     readiness = 'terminating';
-    readinessMessage = `InferenceService ${inferenceService.getName()} is being deleted.`;
+    readinessMessage = `LLMInferenceService ${object.getName()} is being deleted.`;
   } else if (readiness !== 'ready' && waiting) {
     readiness = 'pending';
     readinessReason = waiting.reason;
     readinessMessage = waiting.message ?? readinessMessage;
   } else if (readiness !== 'ready') {
-    readinessReason = inferenceService.getReadinessReason();
+    readinessReason = object.getReadinessReason();
     readinessMessage = explanationWithoutReason(
       readinessMessage,
       readinessReason,
@@ -213,26 +192,22 @@ export function toServedModel(
   }
 
   return {
-    id: `${inferenceService.cluster}/kserve/${namespace ?? ''}/${inferenceService.getName()}`,
-    installation: inferenceService.cluster,
+    id: `${object.cluster}/kserve/${namespace ?? ''}/${object.getName()}`,
+    installation: object.cluster,
     backend: 'kserve',
-    name: inferenceService.getName(),
+    name: object.getName(),
     namespace,
-    modelSource: inferenceService.getStorageUri(),
-    runtime: inferenceService.getRuntime() ?? inferenceService.getModelFormat(),
+    modelSource: object.getModelName() ?? object.getModelUri(),
     readiness,
     readinessMessage,
     readinessReason,
     node,
     nodeSource,
-    gpuCount: inferenceService.getGpuRequest(),
-    internalUrl: inferenceService.getInternalUrl(),
-    externalUrl: inferenceService.getUrl(),
-    endpointHosts: inferenceService.getEndpointHosts(),
-    displayName: annotations[DISPLAY_NAME_ANNOTATION],
+    gpuCount: object.getGpuRequest(gpuResourceName),
+    internalUrl: object.getServedUrl(),
+    externalUrl: object.getExternalUrl(),
+    endpointHosts: object.getEndpointHosts(),
     preset: labels[AGENT_PLATFORM_PRESET_LABEL],
-    managedByPortal: labels[MANAGED_BY_LABEL] === BACKSTAGE_FIELD_MANAGER,
-    autoWire: parseModelConfigRef(annotations[MODEL_CONFIG_ANNOTATION]),
   };
 }
 

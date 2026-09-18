@@ -150,9 +150,13 @@ _serving sources_ merged in `ServingProvider` (`lib/serving.ts` is the
 backend-agnostic seam: `ServedModel`, `ServingCapabilities`,
 `ServingSourceSnapshot`, `findServedModel`, `mergeServingSnapshots`):
 
-- **KServe CRs** (`useKServeServingSource`): InferenceServices, nodes and
-  predictor pods read with the user's own RBAC on installations that serve the
-  InferenceService CRD. Read-only, plus the GPU capacity panel.
+- **KServe CRs** (`useKServeServingSource`): `LLMInferenceService`s (KServe's
+  llm-d control plane, `serving.kserve.io/v1alpha2`), nodes and the workload
+  pods (`app.kubernetes.io/part-of=llminferenceservice`,
+  `app.kubernetes.io/name=<object>`) read with the user's own RBAC on
+  installations that serve the `serving.kserve.io` API group. Read-only, plus
+  the GPU capacity panel; the installation's model-serving discovery ConfigMap
+  gives it the accelerator resource name and the models Gateway.
 - **model-manager** (`useModelManagerServingSource`): the inventory of the
   installations whose muster lists
   [model-manager](https://github.com/giantswarm/model-manager) as an
@@ -179,27 +183,29 @@ schedules onto nodes).
 listed the row. Its items follow the capabilities and the row's state; on
 KServe the words are the serving layer's: a cached download that nobody
 serves offers _Serve…_ (the portal's serve flow, pre-filled — see below) and
-_Delete…_ (the cache directory), a served InferenceService offers _Stop
+_Delete…_ (the cache directory), a served LLMInferenceService offers _Stop
 serving…_ — done through model-manager where it operates the row (it also
 removes the ModelConfig it created), by deleting the CR with the user's own
 RBAC otherwise (the ModelConfigs stay) — and wiring only while it serves.
 _Remove model config_ is withheld for a ModelConfig model-manager merely
-recognises (`modelConfig.managed: false`, the portal's own wiring): it never
+recognises (`modelConfig.managed: false`, a hand-written one): it never
 deletes what it did not create, and the "Used by" column says who wired each
 one.
 
-**KServe through model-manager** (`backend: kserve`, model-manager ≥ 0.3):
-the inventory is the per-node download cache plus the InferenceServices. A
-cached model nobody serves is an `available` row — "downloaded on `<node>`",
-with its size, cache directory and preset — named after its Hugging Face
-repository; a served one is named after its InferenceService (the name agents
-address it by), takes the CR's readiness and, on an installation whose
-InferenceServices the user can also read as CRs, is **folded onto that CR
-row** (`mergeServingSnapshots`, by predictor hostname) so one row carries the
-CR's status and placement and model-manager's size, cache and controls. The
-GPU panel gains each node's memory budget (what the fit check compares
-against, less what the models served there reserve) and its model cache
-(`list_nodes`), laid over the CR source's device-plugin figures.
+**KServe through model-manager** (`backend: kserve`): the inventory is the
+per-node download cache plus the LLMInferenceServices. A cached model nobody
+serves is an `available` row — "downloaded on `<node>`", with its size, cache
+directory and preset — named after its Hugging Face repository; a served one
+is named after its LLMInferenceService, takes the object's readiness (with
+the workload pod's reason while it waits) and its serve timeline, and, on an
+installation whose LLMInferenceServices the user can also read as CRs, is
+**folded onto that CR row** (`mergeServingSnapshots`, by namespace and name —
+never by host: every routed model answers on the models Gateway's one host)
+so one row carries the CR's status and placement and model-manager's size,
+cache, timeline and controls. The GPU panel gains each node's memory budget
+(what the fit check compares against, less what the models served there
+reserve) and its model cache (`list_nodes`), laid over the CR source's
+device-plugin figures.
 
 **Import from Hugging Face** (`search` + `pull`; `ImportModelDialog`): search
 the hub (`search_models`), pick a hit, choose the serving preset the
@@ -209,13 +215,11 @@ own size and fit verdict for exactly that combination
 preset's overhead against the node's memory budget). A model that does not fit
 cannot be submitted, a gated one needs the installation's hub token; the
 download is a pre-warm `pull` with `preset` and `node`, followed in the
-downloads panel like any other job. Serving it afterwards goes through the
-serve flow, whose **Weights** picker offers the cached downloads of the
-installation: picking one names the InferenceService after the cache
-directory (which is where the storage-initializer is redirected to, or —
-without the admission policies — becomes a `pvc://<claim>/<dir>` source) and
-pins it to the node that holds the weights. _Serve…_ on a downloaded row opens
-the dialog seeded that way.
+downloads panel like any other job. Serving it afterwards is the Serve dialog
+on its preset (_Serve…_ on the downloaded row opens it seeded that way):
+model-manager composes the LLMInferenceService named after the preset, which
+is the cache directory the storage-initializer is redirected to, so the
+pre-warmed weights are found.
 
 **Readiness** is backend-neutral: `ready` (loaded, serving), `available`
 (downloaded, not in memory — a backend with `load` brings it to ready, and
@@ -232,13 +236,17 @@ pull of a reference already downloading is joined, not duplicated.
 **ModelConfig linkage** runs in both directions and on one matcher
 (`findServedModel`): a ModelConfig row says which served model its endpoint
 points at ("Served by …"), a served-model row lists the ModelConfigs that use
-it. Three rules, most exact first: the ModelConfig the backend itself created
+it. Four rules, most exact first: the ModelConfig the backend itself created
 for the model (model-manager's `modelConfig` field) wins outright; otherwise
 the endpoint hostname, disambiguated by the ModelConfig's `model` id — an
 Ollama host serves every tag on one hostname, so the id is what tells them
 apart (agentlab's static `qwen35-local` resolves to `qwen3.5:9b` this way);
-with a single served model on a host and no name match, that one (a vLLM
-InferenceService names its model however it likes).
+then by the endpoint's path — every routed KServe model answers on the models
+Gateway's one host, each under `/<namespace>/<name>`; with a single served
+model on a host and no name or path match, that one (a vLLM workload names
+its model however it likes). A client on the Gateway whose path names no
+listed object, or on a workload Service hostname nobody serves, is told its
+LLMInferenceService is gone (`resolveClientServing`).
 
 **Mixed installations.** Sources are merged: the served models of both render
 side by side — except a model both list, which is folded into one row (above)
@@ -259,10 +267,11 @@ model-manager at all is the presence of the `model-manager` MCPServer in its
 muster (`core_mcpserver_list`, `useModelManagerInstallations`) — no portal
 configuration says where model-manager is, and an installation whose muster
 lists none shows what it shows without one (the KServe CR view, or nothing).
-Where muster does list model-manager, serving is its `load_model` as the
-person (the fit check against the pool's sizes included); the browser-composed
-InferenceService of the CR view is offered only where muster has answered
-without model-manager. model-manager's refusals arrive as `"<code>: <message>"`
+Serving is model-manager's `load_model` as the person (the fit check against
+the pool's sizes included): the portal composes no serving object of its own
+— model-manager composes the `LLMInferenceService` from the preset onto the
+platform's well-known `LLMInferenceServiceConfig`s, and wires the model
+config once it answers. model-manager's refusals arrive as `"<code>: <message>"`
 and keep their meaning (`lib/modelManagerBackends.ts`: `not_found` →
 `NotFoundError`, `unsupported` → `ForbiddenError` — the capability was never
 offered, `conflict` → `ConflictError` — name the backend, `does_not_fit` →

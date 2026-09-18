@@ -72,7 +72,7 @@ export function isStartableAgent(agent: AgentRow): boolean {
  * layer says nothing answers for the agent's model (`notServing`) or it is
  * failing (`notReady`), so the first turn will fail. A warning, not a block —
  * kagent accepts the session either way, the model may be back by the time
- * the turn runs (a Load is in flight, an InferenceService is rolling out), and
+ * the turn runs (a Load is in flight, an LLMInferenceService is rolling out), and
  * the fix is one click away on the Serving view. `idle` is deliberately not
  * one: the first turn loads the model.
  */

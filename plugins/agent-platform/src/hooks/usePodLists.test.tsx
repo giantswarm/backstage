@@ -55,9 +55,11 @@ describe('podListPath', () => {
     expect(
       podListPath({
         installation: 'a',
-        labelSelector: 'serving.kserve.io/inferenceservice',
+        labelSelector: 'app.kubernetes.io/part-of=llminferenceservice',
       }),
-    ).toBe('/api/v1/pods?labelSelector=serving.kserve.io%2Finferenceservice');
+    ).toBe(
+      '/api/v1/pods?labelSelector=app.kubernetes.io%2Fpart-of%3Dllminferenceservice',
+    );
     expect(
       podListPath({
         installation: 'a',
@@ -75,7 +77,7 @@ describe('usePodLists', () => {
     const { result, proxy } = renderWith([
       {
         installation: 'alpha',
-        labelSelector: 'serving.kserve.io/inferenceservice',
+        labelSelector: 'app.kubernetes.io/part-of=llminferenceservice',
       },
       { installation: 'alpha', fieldSelector: 'spec.nodeName=gpu-node-1' },
     ]);
@@ -86,7 +88,7 @@ describe('usePodLists', () => {
     expect(result.current.results).toHaveLength(2);
     const [byLabel, byNode] = result.current.results;
     expect(byLabel.pods?.[0].getName()).toBe(
-      '/api/v1/pods?labelSelector=serving.kserve.io%2Finferenceservice',
+      '/api/v1/pods?labelSelector=app.kubernetes.io%2Fpart-of%3Dllminferenceservice',
     );
     expect(byLabel.pods?.[0].cluster).toBe('alpha');
     expect(byNode.pods?.[0].getNodeName()).toBe('gpu-node-1');

@@ -36,24 +36,6 @@ export {
   type ServedModelsGroupHeaderProps,
 } from './ServedModelsGroupHeader';
 export {
-  ANY_NODE,
-  cacheNotice,
-  choiceForSeed,
-  describeChoice,
-  describeChoiceDetails,
-  downloadMatchesPreset,
-  networkPolicyNotice,
-  ServeModelDialog,
-  serveModelChoices,
-  storageUriForDownload,
-  toDownloadedModelOption,
-  type DownloadedModelOption,
-  type ServeModelChoice,
-  type ServeModelConfirmation,
-  type ServeModelDialogProps,
-  type ServeModelSeed,
-} from './ServeModelDialog';
-export {
   StopServedModelDialog,
   type StopServedModelDialogProps,
 } from './StopServedModelDialog';

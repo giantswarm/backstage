@@ -239,7 +239,7 @@ describe('useModelManagerServingSource', () => {
       ['lab', 'ollama', 'qwen3.5:9b', 'available'],
       ['lab', 'ollama', 'qwen3:0.6b', 'available'],
       ['lab', 'ollama', 'gemma3:270m', 'available'],
-      // A served KServe model is named after its InferenceService; a cached
+      // A served KServe model is named after its LLMInferenceService; a cached
       // one after its repository, "downloaded on <node>".
       ['gpu', 'kserve', 'qwen3-14b', 'ready'],
       [

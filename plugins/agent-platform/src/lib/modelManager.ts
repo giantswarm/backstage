@@ -178,7 +178,7 @@ export const modelConfigRefSchema = z.looseObject({
   apiVersion: wireString,
   provider: wireString,
   model: wireString,
-  /** `spec.model` — the name the provider serves the model under (kserve: the InferenceService name). */
+  /** `spec.model` — the name the provider serves the model under (kserve: `spec.model.name` of the LLMInferenceService). */
   providerModel: wireString,
   /** `openAI.baseUrl` or `ollama.host`. */
   endpoint: wireString,
@@ -258,16 +258,15 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   /** KServe — the serving object's name (also the served model name). */
   resource: wireString,
   /**
-   * KServe — the serving object's kind behind `resource`: `InferenceService`
-   * or `LLMInferenceService` (model-manager 0.23.4 on; absent before, when
-   * every object was an InferenceService).
+   * KServe — the serving object's kind behind `resource`: `LLMInferenceService`
+   * (model-manager 0.23.4 on; absent before).
    */
   kind: wireString,
-  /** KServe — the preset the InferenceService was created from. */
+  /** KServe — the preset the LLMInferenceService was composed from. */
   preset: wireString,
   /** KServe — accelerators the predictor requests. */
   gpus: wireNumber,
-  /** KServe — `app.kubernetes.io/managed-by` of the InferenceService (model-manager, backstage, …). */
+  /** KServe — `app.kubernetes.io/managed-by` of the LLMInferenceService (model-manager, …). */
   managedBy: wireString,
   /** The backend serving it (model-manager 0.17 on); absent = the descriptor's. */
   backend: wireString,
@@ -327,14 +326,14 @@ export const modelManagerModelSchema = z.looseObject({
   node: wireString,
   /**
    * KServe — whether the weights are in the node's cache: false for a model
-   * known only from a preset or a running InferenceService whose weights are
+   * known only from a preset or a running LLMInferenceService whose weights are
    * not cached yet. Absent (undefined) means the backend lists downloads only.
    */
   downloaded: z
     .unknown()
     .transform(value => (typeof value === 'boolean' ? value : undefined))
     .optional(),
-  /** KServe — the cache directory, which is the InferenceService name the storage-initializer uses. */
+  /** KServe — the cache directory, which is the LLMInferenceService name the storage-initializer uses. */
   path: wireString,
   /** KServe — the serving preset whose model this is. */
   preset: wireString,
@@ -422,7 +421,7 @@ export function isJobActive(job: Pick<ModelManagerJob, 'phase'>): boolean {
 
 /** One entry of `GET /api/v1/presets` (kserve): a published ServingPreset, resolved for clients. */
 export const modelManagerPresetSchema = z.looseObject({
-  /** Also the InferenceService name a load creates. */
+  /** Also the LLMInferenceService name a load creates. */
   name: z.string(),
   displayName: wireString,
   description: wireString,

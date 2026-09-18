@@ -56,7 +56,7 @@ beforeEach(() => {
 });
 
 describe('useStopServedModel', () => {
-  it('deletes the InferenceService', async () => {
+  it('deletes the LLMInferenceService', async () => {
     const { result } = setup();
 
     await act(async () => {
@@ -71,13 +71,14 @@ describe('useStopServedModel', () => {
         namespace: 'model-serving',
         gvk: expect.objectContaining({
           group: 'serving.kserve.io',
-          plural: 'inferenceservices',
+          apiVersion: 'v1alpha2',
+          plural: 'llminferenceservices',
         }),
       }),
     );
   });
 
-  it('treats an already-deleted InferenceService as stopped', async () => {
+  it('treats an already-deleted LLMInferenceService as stopped', async () => {
     const notFound = new Error('gone');
     notFound.name = 'NotFoundError';
     mockDeleteResource.mockRejectedValueOnce(notFound);
@@ -92,7 +93,7 @@ describe('useStopServedModel', () => {
   });
 
   it('surfaces a refusal', async () => {
-    const forbidden = new Error('inferenceservices is forbidden');
+    const forbidden = new Error('llminferenceservices is forbidden');
     forbidden.name = 'ForbiddenError';
     mockDeleteResource.mockRejectedValueOnce(forbidden);
 
@@ -123,7 +124,7 @@ describe('useStopServedModel', () => {
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 
-  it('stops through model-manager by the InferenceService name, when asked to', async () => {
+  it('stops through model-manager by the LLMInferenceService name, when asked to', async () => {
     const { result } = setup();
 
     await act(async () => {
@@ -133,14 +134,13 @@ describe('useStopServedModel', () => {
       });
     });
 
-    // The name, not the repository: an InferenceService composed from another
-    // model's preset is still found by its name.
-    // …and on the row's backend, so a model-manager running several never
-    // mistakes a same-named reference elsewhere.
+    // The name, not the repository: model-manager resolves the object by it
+    // whatever preset composed it — and on the row's backend, so a
+    // model-manager running several never mistakes a same-named reference
+    // elsewhere.
     expect(unloadModel).toHaveBeenCalledWith('gazelle', 'qwen3-14b', {
       backend: 'kserve',
     });
-    expect(mockDeleteResource).not.toHaveBeenCalled();
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 
@@ -156,39 +156,9 @@ describe('useStopServedModel', () => {
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 
-  it('falls back to deleting the CR when model-manager serves no model it can attribute to it', async () => {
-    const notFound = new Error(
-      'model not found: no InferenceService serves hf-internal-testing/tiny-random-gpt2',
-    );
-    notFound.name = 'NotFoundError';
-    unloadModel.mockRejectedValue(notFound);
-    const { result } = setup();
-
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await result.current.stop({
-        model: {
-          ...served,
-          managerRef: 'hf-internal-testing/tiny-random-gpt2',
-          operable: true,
-        },
-        via: 'model-manager',
-      });
-    });
-
-    expect(unloadModel).toHaveBeenCalledTimes(1);
-    expect(mockDeleteResource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'qwen3-14b',
-        namespace: 'model-serving',
-      }),
-    );
-    expect(outcome).toEqual({ via: 'inferenceservice' });
-  });
-
-  it('does not fall back on other model-manager failures', async () => {
+  it("surfaces model-manager's refusal as it answered, and deletes nothing itself", async () => {
     const refused = new Error(
-      'InferenceService is not managed by model-manager',
+      'LLMInferenceService is not managed by model-manager',
     );
     refused.name = 'ConflictError';
     unloadModel.mockRejectedValue(refused);
@@ -202,6 +172,19 @@ describe('useStopServedModel', () => {
         });
       }),
     ).rejects.toThrow(/not managed/);
+    expect(mockDeleteResource).not.toHaveBeenCalled();
+
+    const notFound = new Error('model not found: nothing serves qwen3-14b');
+    notFound.name = 'NotFoundError';
+    unloadModel.mockRejectedValue(notFound);
+    await expect(
+      act(async () => {
+        await result.current.stop({
+          model: { ...served, managerRef: 'Qwen/Qwen3-14B', operable: true },
+          via: 'model-manager',
+        });
+      }),
+    ).rejects.toThrow(/nothing serves/);
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 });
