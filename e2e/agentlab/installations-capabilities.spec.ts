@@ -27,7 +27,13 @@ function rows(page: Page): Locator {
 /** Opens the Capabilities tab of the installation a row names. */
 async function openCapabilities(page: Page, row: Locator): Promise<void> {
   await row.getByRole('link').first().click();
-  await page.getByRole('tab', { name: 'Capabilities' }).click();
+  // The entity page's content navigation renders its entries as links (a
+  // tab on older layouts).
+  await page
+    .getByRole('link', { name: 'Capabilities', exact: true })
+    .or(page.getByRole('tab', { name: 'Capabilities' }))
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/capabilities$/);
   await expect(page.getByTestId(`capability-${CAPABILITY}`)).toBeVisible({
     timeout: 120_000,
@@ -154,6 +160,10 @@ test.describe('installations: platform capabilities', () => {
       )
       .first();
     await expect(rows(admin).first()).toBeVisible({ timeout: 120_000 });
+    // The cells render once the listing has arrived; count after that.
+    await expect(
+      admin.locator(`[data-testid^="capability-${CAPABILITY}-"]`).first(),
+    ).toBeVisible({ timeout: 120_000 });
     test.skip(
       (await notOptedIn.count()) === 0,
       'every installation of the lab registry is opted in; the not-opted-in state needs one that is not',
