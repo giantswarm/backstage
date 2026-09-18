@@ -100,9 +100,10 @@ test.describe('repositories: CI facts', () => {
     });
     const before = await rows(admin).count();
 
+    // Exact: "Unsigned" contains "Signed".
     await admin
       .getByRole('group', { name: 'Signing' })
-      .getByRole('radio', { name: 'Signed' })
+      .getByRole('radio', { name: 'Signed', exact: true })
       .click();
     await expect(admin).toHaveURL(/signing=signed/);
     await expect(summary).toContainText(/\(filtered\)/, { timeout: 60_000 });
