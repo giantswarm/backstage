@@ -8,11 +8,7 @@ import {
   TOOL_GROUP_LABEL,
   ToolGroup,
 } from '../../lib/k8s';
-import {
-  CapabilitySurface,
-  capabilityRows,
-  capabilityRowsByGroup,
-} from './CapabilitySurface';
+import { CapabilitySurface, capabilityRows } from './CapabilitySurface';
 
 function makeServer(
   name: string,
@@ -60,11 +56,22 @@ const RUNTIME = [
   { name: 'agent-manager', toolsCount: 7 },
 ];
 
+/** The rendered rows, header included, as arrays of cell text. */
+function tableText(table: HTMLElement): string[][] {
+  return within(table)
+    .getAllByRole('row')
+    .map(row =>
+      Array.from(row.querySelectorAll('th, td')).map(
+        cell => cell.textContent ?? '',
+      ),
+    );
+}
+
 describe('capabilityRows', () => {
   it('groups by tool group in display order, counts a family’s tools once, adds up its resources and prompts, and closes Agent Platform with muster core', () => {
     expect(capabilityRows(SERVERS, RUNTIME, 41)).toEqual([
       {
-        key: 'server:agent-manager',
+        id: 'server:agent-manager',
         name: 'agent-manager',
         kind: 'server',
         group: 'agent-platform',
@@ -72,7 +79,7 @@ describe('capabilityRows', () => {
         tools: 7,
       },
       {
-        key: 'core',
+        id: 'core',
         name: 'muster',
         kind: 'core',
         group: 'agent-platform',
@@ -80,7 +87,7 @@ describe('capabilityRows', () => {
         tools: 41,
       },
       {
-        key: 'family:kubernetes',
+        id: 'family:kubernetes',
         name: 'kubernetes',
         kind: 'family',
         group: 'infrastructure',
@@ -90,7 +97,7 @@ describe('capabilityRows', () => {
         prompts: 2,
       },
       {
-        key: 'server:pro',
+        id: 'server:pro',
         name: 'pro',
         kind: 'server',
         group: 'registered',
@@ -116,10 +123,6 @@ describe('capabilityRows', () => {
       ['registered', 'kubernetes'],
       ['registered', 'pro'],
     ]);
-    expect(capabilityRowsByGroup(rows).map(entry => entry.group)).toEqual([
-      'agent-platform',
-      'registered',
-    ]);
   });
 
   it('leaves a row the runtime does not report as unknown rather than zero', () => {
@@ -133,7 +136,7 @@ describe('capabilityRows', () => {
 });
 
 describe('CapabilitySurface', () => {
-  it('renders the tool groups in order, one row per server, muster core last under Agent Platform', async () => {
+  it('renders one row per server in tool group order, with the group, the kind and the instance count each in a column', async () => {
     const musterApi = {
       listServers: jest.fn().mockResolvedValue({ mcpServers: RUNTIME }),
       listCoreTools: jest.fn().mockResolvedValue({
@@ -154,32 +157,18 @@ describe('CapabilitySurface', () => {
       </TestApiProvider>,
     );
 
-    const table = await screen.findByRole('table', {
-      name: 'Capability surface',
-    });
-    const rows = within(table).getAllByRole('row').slice(1);
-    // Three group headings interleaved with four server rows.
-    expect(
-      rows.map(row => within(row).getAllByRole('cell')[0].textContent),
-    ).toEqual([
-      'Agent Platform',
-      'agent-managerserver',
-      'mustercore',
-      'Infrastructure',
-      'kubernetesfamily · 2 instances',
-      'Registered servers',
-      'proserver',
+    // bui's Table drops the `aria-label` it is given and renders react-aria's
+    // `grid`, so it is found by role alone -- there is one table here.
+    const table = await screen.findByRole('grid');
+    expect(await screen.findByText('agent-manager')).toBeInTheDocument();
+
+    expect(tableText(table)).toEqual([
+      ['Group', 'Server', 'Kind', 'Instances', 'Tools', 'Resources', 'Prompts'],
+      ['Agent Platform', 'agent-manager', 'server', '1', '7', '—', '—'],
+      ['Agent Platform', 'muster', 'core', '1', '41', '—', '—'],
+      ['Infrastructure', 'kubernetes', 'family', '2', '12', '2', '2'],
+      ['Registered servers', 'pro', 'server', '1', '30', '3', '—'],
     ]);
-    expect(
-      within(rows[4])
-        .getAllByRole('cell')
-        .map(c => c.textContent),
-    ).toEqual(['kubernetesfamily · 2 instances', '12', '2', '2']);
-    expect(
-      within(rows[2])
-        .getAllByRole('cell')
-        .map(c => c.textContent),
-    ).toEqual(['mustercore', '41', '—', '—']);
     expect(musterApi.listServers).toHaveBeenCalledWith('gazelle');
     expect(musterApi.listCoreTools).toHaveBeenCalledWith('gazelle');
   });

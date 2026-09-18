@@ -1,26 +1,10 @@
-import { Fragment } from 'react';
-import {
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
-import { Progress } from '@backstage/core-components';
+import { Paper, makeStyles, Theme } from '@material-ui/core';
+import { Cell, CellText, ColumnConfig, Table, Text } from '@backstage/ui';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 import type { McpServerRuntime } from '../../apis/types';
-import {
-  MCPServer,
-  TOOL_GROUPS,
-  TOOL_GROUP_ORDER,
-  ToolGroupKey,
-} from '../../lib/k8s';
+import { MCPServer, TOOL_GROUPS, ToolGroupKey } from '../../lib/k8s';
 import { partitionServers } from '../../lib/serverGrouping';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -28,38 +12,15 @@ const useStyles = makeStyles((theme: Theme) => ({
     borderRadius: theme.shape.borderRadius * 2,
     overflow: 'hidden',
   },
-  name: {
-    fontFamily: 'monospace',
-    fontSize: 13,
-  },
-  kind: {
-    marginLeft: theme.spacing(1),
-    fontSize: 11,
-    color: theme.palette.text.secondary,
-    whiteSpace: 'nowrap',
-  },
-  numeric: {
-    fontVariantNumeric: 'tabular-nums',
-    whiteSpace: 'nowrap',
-  },
   note: {
     display: 'block',
     padding: theme.spacing(1.5, 2),
-    color: theme.palette.text.secondary,
-  },
-  groupCell: {
-    paddingTop: theme.spacing(1.5),
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    color: theme.palette.text.secondary,
-    borderBottom: 'none',
   },
 }));
 
 export type CapabilityRow = {
-  key: string;
+  /** React key, and the row's identity to the table. */
+  id: string;
   name: string;
   /** A family shown once, a singular server, or muster's own core tools. */
   kind: 'family' | 'server' | 'core';
@@ -114,7 +75,7 @@ export function capabilityRows(
           .map(server => byName.get(server.getName()))
           .filter((entry): entry is McpServerRuntime => Boolean(entry));
         rows.push({
-          key: `family:${row.family}`,
+          id: `family:${row.family}`,
           name: row.family,
           kind: 'family',
           group,
@@ -126,7 +87,7 @@ export function capabilityRows(
       } else {
         const entry = byName.get(row.server.getName());
         rows.push({
-          key: `server:${row.server.getName()}`,
+          id: `server:${row.server.getName()}`,
           name: row.server.getName(),
           kind: 'server',
           group,
@@ -139,7 +100,7 @@ export function capabilityRows(
     }
     if (group === 'agent-platform') {
       rows.push({
-        key: 'core',
+        id: 'core',
         name: 'muster',
         kind: 'core',
         group,
@@ -152,19 +113,71 @@ export function capabilityRows(
   return rows;
 }
 
-/** The rows of one tool group, in the order {@link capabilityRows} returns them. */
-export function capabilityRowsByGroup(
-  rows: CapabilityRow[],
-): { group: ToolGroupKey; rows: CapabilityRow[] }[] {
-  return TOOL_GROUP_ORDER.map(group => ({
-    group,
-    rows: rows.filter(row => row.group === group),
-  })).filter(entry => entry.rows.length > 0);
-}
-
 function formatCount(value: number | undefined): string {
   return value === undefined ? '—' : value.toLocaleString();
 }
+
+/**
+ * A count, or a dash where the runtime reports nothing. Tabular figures, so
+ * the digits line up down the column -- bui has no per-column alignment to
+ * line them up with. Returns the contents, not a `Cell`: react-aria matches a
+ * cell to its column by the element the `cell` callback itself returns.
+ */
+function count(value: number | undefined) {
+  return (
+    <Text variant="body-medium" style={{ fontVariantNumeric: 'tabular-nums' }}>
+      {formatCount(value)}
+    </Text>
+  );
+}
+
+/**
+ * The tool group, what the row is, and how many instances back it each take a
+ * column: separate facts about the row, comparable down the table rather than
+ * markers trailing a name.
+ *
+ * The group repeats on its rows instead of heading them -- the bui table is
+ * data-driven and has no cell that spans a row. The rows still arrive grouped:
+ * `capabilityRows` emits them in `TOOL_GROUP_ORDER`.
+ */
+const COLUMN_CONFIG: ColumnConfig<CapabilityRow>[] = [
+  {
+    id: 'group',
+    label: 'Group',
+    cell: row => <CellText title={TOOL_GROUPS[row.group].title} />,
+  },
+  {
+    id: 'name',
+    label: 'Server',
+    isRowHeader: true,
+    cell: row => <CellText title={row.name} />,
+  },
+  {
+    id: 'kind',
+    label: 'Kind',
+    cell: row => <CellText title={row.kind} color="secondary" />,
+  },
+  {
+    id: 'instances',
+    label: 'Instances',
+    cell: row => <Cell>{count(row.instances)}</Cell>,
+  },
+  {
+    id: 'tools',
+    label: 'Tools',
+    cell: row => <Cell>{count(row.tools)}</Cell>,
+  },
+  {
+    id: 'resources',
+    label: 'Resources',
+    cell: row => <Cell>{count(row.resources)}</Cell>,
+  },
+  {
+    id: 'prompts',
+    label: 'Prompts',
+    cell: row => <Cell>{count(row.prompts)}</Cell>,
+  },
+];
 
 export interface CapabilitySurfaceProps {
   /** MCPServer CRs of the active installation. */
@@ -196,17 +209,15 @@ export function CapabilitySurface({
     queryFn: () => musterApi.listCoreTools(installation),
   });
 
-  if (runtime.isLoading || core.isLoading) {
-    return <Progress />;
-  }
   if (runtime.error) {
     return (
-      <Typography variant="body2" color="textSecondary">
+      <Text variant="body-medium" color="secondary">
         Capability counts unavailable: {(runtime.error as Error).message}
-      </Typography>
+      </Text>
     );
   }
 
+  const isPending = runtime.isLoading || core.isLoading;
   const rows = capabilityRows(
     servers,
     runtime.data?.mcpServers ?? [],
@@ -215,58 +226,30 @@ export function CapabilitySurface({
 
   return (
     <Paper variant="outlined" className={classes.card}>
-      <Table size="small" aria-label="Capability surface">
-        <TableHead>
-          <TableRow>
-            <TableCell>Server</TableCell>
-            <TableCell align="right">Tools</TableCell>
-            <TableCell align="right">Resources</TableCell>
-            <TableCell align="right">Prompts</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {capabilityRowsByGroup(rows).map(({ group, rows: groupRows }) => (
-            <Fragment key={group}>
-              <TableRow>
-                <TableCell
-                  colSpan={4}
-                  className={classes.groupCell}
-                  component="th"
-                  scope="rowgroup"
-                >
-                  {TOOL_GROUPS[group].title}
-                </TableCell>
-              </TableRow>
-              {groupRows.map(row => (
-                <TableRow key={row.key}>
-                  <TableCell>
-                    <code className={classes.name}>{row.name}</code>
-                    <span className={classes.kind}>
-                      {row.kind}
-                      {row.instances > 1 ? ` · ${row.instances} instances` : ''}
-                    </span>
-                  </TableCell>
-                  <TableCell align="right" className={classes.numeric}>
-                    {formatCount(row.tools)}
-                  </TableCell>
-                  <TableCell align="right" className={classes.numeric}>
-                    {formatCount(row.resources)}
-                  </TableCell>
-                  <TableCell align="right" className={classes.numeric}>
-                    {formatCount(row.prompts)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </Fragment>
-          ))}
-        </TableBody>
-      </Table>
-      <Typography variant="caption" className={classes.note}>
+      <Table<CapabilityRow>
+        columnConfig={COLUMN_CONFIG}
+        // `undefined` rather than `[]` while the counts are in flight: an empty
+        // array renders the empty state, so the skeleton would never show.
+        data={isPending ? undefined : rows}
+        isPending={isPending}
+        pagination={{ type: 'none' }}
+        emptyState={
+          <Text variant="body-medium" color="secondary">
+            No servers registered with this muster.
+          </Text>
+        }
+      />
+      <Text
+        as="p"
+        variant="body-small"
+        color="secondary"
+        className={classes.note}
+      >
         Counted for your muster session. A family's tools are shown once —
         muster deduplicates them across its instances — while resources and
         prompts are per instance and add up. A dash means the server reports
         none, or is not connected for this session.
-      </Typography>
+      </Text>
     </Paper>
   );
 }
