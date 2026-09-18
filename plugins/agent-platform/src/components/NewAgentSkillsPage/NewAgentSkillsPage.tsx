@@ -110,6 +110,7 @@ function SkillCard({
       ariaLabel={`Skill ${skill.name}`}
       onSelect={onSelect}
       hoverAction={description.toggle}
+      describedById={description.describedById}
     >
       <Text weight="bold">{skill.name}</Text>
       {description.content}

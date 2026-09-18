@@ -23,6 +23,11 @@ markup, and `role="checkbox"` makes its children presentational, so a control
 inside the card would have been hidden from assistive tech and pressing it would
 have selected the skill.
 
+That same rule is why a skill's description never reached a screen reader, whole
+or clamped: the card announced only its name. `SelectableCard` now takes a
+`describedById`, and the skill cards point it at their description, so the text
+is announced in full however the card is displayed.
+
 New `useIsTruncated` hook in `ui-react`: whether an element's own styling — a
 line clamp or an ellipsis — is cutting its content off, re-measured as the
 element resizes, so the same text can show a toggle in a narrow card and none in

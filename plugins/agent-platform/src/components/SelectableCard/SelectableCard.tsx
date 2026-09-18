@@ -55,8 +55,10 @@ const useStyles = makeStyles(theme => ({
   // Out of the card's flow, so a card with a control is exactly as tall as one
   // without, and faded out until the pointer is on the card or the control
   // itself has focus -- an affordance for the card you are reading, not a row of
-  // buttons down the grid. It stays clickable while invisible, which costs
-  // nothing: a pointer can't reach it without hovering the card first.
+  // buttons down the grid. Invisible means untouchable: a tap on a touch screen
+  // (where nothing is ever hovered) or a click that lands mid-fade would
+  // otherwise hit a control that isn't there yet, and toggle a description
+  // instead of selecting the card.
   hoverAction: {
     position: 'absolute',
     right: theme.spacing(0.5),
@@ -64,14 +66,17 @@ const useStyles = makeStyles(theme => ({
     borderRadius: theme.shape.borderRadius,
     background: theme.palette.background.paper,
     opacity: 0,
+    pointerEvents: 'none',
     transition: theme.transitions.create('opacity', {
       duration: theme.transitions.duration.shortest,
     }),
     '$shell:hover &': {
       opacity: 1,
+      pointerEvents: 'auto',
     },
     '&:focus-within': {
       opacity: 1,
+      pointerEvents: 'auto',
     },
   },
   // The same frame as `shell`, minus the affordances: nothing to click, so no
@@ -156,6 +161,12 @@ type SelectableCardProps = {
    * Anything interactive belongs here rather than in `children`.
    */
   hoverAction?: ReactNode;
+  /**
+   * An element describing the card, for `aria-describedby`. `role="checkbox"`
+   * makes the card's own content presentational, so prose inside it reaches
+   * assistive tech only by being pointed at.
+   */
+  describedById?: string;
   children: ReactNode;
 };
 
@@ -187,6 +198,7 @@ export function SelectableCard({
   ariaLabel,
   onSelect,
   hoverAction,
+  describedById,
   children,
 }: SelectableCardProps) {
   const classes = useStyles();
@@ -202,6 +214,7 @@ export function SelectableCard({
         role={role}
         aria-checked={selected}
         aria-label={ariaLabel}
+        aria-describedby={describedById}
         onClick={onSelect}
         className={classes.card}
       >

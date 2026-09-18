@@ -73,6 +73,7 @@ function CatalogSkillCard({
       ariaLabel={`Skill ${skill.name}`}
       onSelect={onToggle}
       hoverAction={description.toggle}
+      describedById={description.describedById}
     >
       <Text weight="bold">{skill.name}</Text>
       {description.content}
