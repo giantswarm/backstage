@@ -6456,12 +6456,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@codemirror/state@npm:6.7.2":
-  version: 6.7.2
-  resolution: "@codemirror/state@npm:6.7.2"
+"@codemirror/state@npm:6.7.4":
+  version: 6.7.4
+  resolution: "@codemirror/state@npm:6.7.4"
   dependencies:
     "@marijn/find-cluster-break": "npm:^1.0.0"
-  checksum: 10c0/2033933f175c04fdea14c5daa0293c01f42ba05c16029b11f5926dc7e1d0a331639151b369f3dd768eba751b45c70b9a9a48cd10921de0ee96bd4121edf66713
+  checksum: 10c0/eccc99ebffe4d469d38abbd0cef5a9eaa245ee8b0b3bb51fc24ffcb330666d736968b3fa0b34d2bbbd6b58586d29c6132bc6090274749f48f92cb9bd2458d6ed
   languageName: node
   linkType: hard
 
