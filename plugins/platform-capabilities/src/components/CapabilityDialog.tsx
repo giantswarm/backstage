@@ -147,7 +147,12 @@ export function CapabilityDialog({
       isKeyboardDismissDisabled={busy}
       width="min(90vw, 900px)"
     >
-      <form onSubmit={onSubmit} style={FORM_STYLE} aria-label={title}>
+      <form
+        noValidate
+        onSubmit={onSubmit}
+        style={FORM_STYLE}
+        aria-label={title}
+      >
         <DialogHeader>{title}</DialogHeader>
         <DialogBody>
           <Flex direction="column" gap="4">
