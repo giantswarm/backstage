@@ -117,7 +117,7 @@ const SCOPES: { id: Scope; label: string }[] = [
 ];
 
 type OpenDialog =
-  | { kind: 'sweep'; team: string; pr?: string }
+  | { kind: 'sweep'; teams: string[]; pr?: string }
   | { kind: 'mark'; row: BotPrRow }
   | { kind: 'merge-green' }
   | undefined;
@@ -199,22 +199,27 @@ function Queue({
     (sum, entry) => sum + (entry.result?.summary.unclassified ?? 0),
     0,
   );
-  const isLive =
-    answered.length > 0 && answered.every(entry => entry.mode === 'live');
   const readAt = Math.max(0, ...answered.map(entry => entry.readAt ?? 0));
   const canAct = !queue.notConnected && answered.length > 0;
 
-  // A whole-team sweep needs one team: the scope's only team, or the team
-  // the filter picked. With several teams in view the button says so.
-  const sweepTeam = filters.team ?? (teams.length === 1 ? teams[0] : undefined);
-  const confirmModeOfTeam = (team: string) =>
-    confirmModeOf(
-      queue.queues.find(entry => entry.team === team)?.result as
-        MargeResult | undefined,
-    );
+  // A sweep runs under one team's policy, so a scope of several teams is
+  // several sweeps: the ones in view, or the one the filter picked.
+  const sweepTeams = filters.team ? [filters.team] : teams;
+  const confirmModeOfTeams = (named: string[]) =>
+    named
+      .map(team =>
+        confirmModeOf(
+          queue.queues.find(entry => entry.team === team)?.result as
+            MargeResult | undefined,
+        ),
+      )
+      .some(mode => mode === 'per-pr')
+      ? ('per-pr' as const)
+      : ('per-sweep' as const);
 
   const onSweep = useCallback(
-    (row: BotPrRow) => setOpen({ kind: 'sweep', team: row.team, pr: row.ref }),
+    (row: BotPrRow) =>
+      setOpen({ kind: 'sweep', teams: [row.team], pr: row.ref }),
     [],
   );
   const onMarkBlocked = useCallback(
@@ -266,35 +271,31 @@ function Queue({
           ) : null}
         </Box>
         <Box mr={1}>
-          <Tooltip title="Classify every PR in view again, now: one check read per PR. The table otherwise shows what the last sweep stored on each PR.">
+          <Tooltip title="Classify every PR in view now and write the class to its label, so this page, a teammate's and the CLI all report it. One check read per PR; nothing is approved, merged or commented on.">
             <span>
               <Button
                 size="small"
                 variant="outlined"
-                disabled={!canAct || queue.isRefreshing}
-                onClick={queue.refresh}
+                disabled={!canAct || queue.isClassifying}
+                onClick={queue.classify}
               >
-                {queue.isRefreshing ? 'Classifying…' : 'Refresh classification'}
+                {queue.isClassifying ? 'Classifying…' : 'Classify now'}
               </Button>
             </span>
           </Tooltip>
         </Box>
         <Box mr={1}>
           <Tooltip
-            title={
-              sweepTeam
-                ? `Show what a sweep would do to each PR of team ${sweepTeam}, step by step, before applying it.`
-                : 'A sweep runs under one team’s policy: pick a team in the filters to preview one.'
-            }
+            title={`Show what a sweep would do to each PR of ${sweepTeams.join(
+              ', ',
+            )}, step by step, before applying it. Each team is decided under its own policy.`}
           >
             <span>
               <Button
                 size="small"
                 variant="outlined"
-                disabled={!canAct || !sweepTeam}
-                onClick={() =>
-                  sweepTeam && setOpen({ kind: 'sweep', team: sweepTeam })
-                }
+                disabled={!canAct || sweepTeams.length === 0}
+                onClick={() => setOpen({ kind: 'sweep', teams: sweepTeams })}
               >
                 Preview sweep
               </Button>
@@ -324,6 +325,24 @@ function Queue({
         </Tooltip>
       </Box>
 
+      {queue.isClassifying ? (
+        <Box pt={2}>
+          <Alert
+            status="info"
+            title={`Classifying ${queue.classifying.length > 0 ? queue.classifying.join(', ') : 'the PRs in view'}`}
+            description="The engine reads every PR's checks and writes the class it decides to the PR's label. One check read per PR, so a team of many repositories takes a minute. The table reloads when it is done."
+          />
+        </Box>
+      ) : null}
+      {queue.classifyError ? (
+        <Box pt={2}>
+          <Alert
+            status="danger"
+            title="The classification failed"
+            description={`${queue.classifyError.message} Whatever it wrote before the failure is in the labels; the table below shows that.`}
+          />
+        </Box>
+      ) : null}
       {unknownTeams.length > 0 ? (
         <Box pt={2}>
           <Alert
@@ -386,15 +405,13 @@ function Queue({
                   }${hasFilters(filters) ? ' (filtered)' : ''} across ${
                     answered.length
                   } team${answered.length === 1 ? '' : 's'}; `}
-                  {isLive
-                    ? `every PR classified live at ${formatReadAt(readAt)}`
-                    : `classification as the last sweep stored it on each PR, read at ${formatReadAt(
-                        readAt,
-                      )}`}
+                  {`classification as the last sweep or classification run stored it on each PR, read at ${formatReadAt(
+                    readAt,
+                  )}`}
                   {unclassified > 0
-                    ? `; ${unclassified} with no stored classification, no sweep has labelled ${
+                    ? `; ${unclassified} with no stored classification, nothing has labelled ${
                         unclassified === 1 ? 'it' : 'them'
-                      } yet`
+                      } yet, and Classify now does`
                     : ''}
                   .
                 </Typography>
@@ -404,7 +421,6 @@ function Queue({
                   rows={filtered}
                   showTeam={teams.length > 1}
                   isLoading={queue.isLoading}
-                  isLive={isLive}
                   canAct={canAct}
                   onSweep={onSweep}
                   onMarkBlocked={onMarkBlocked}
@@ -418,11 +434,11 @@ function Queue({
       {open?.kind === 'sweep' ? (
         <SweepDialog
           installation={installation}
-          team={open.team}
+          teams={open.teams}
           isOpen
           onOpenChange={close}
           pr={open.pr}
-          confirmMode={confirmModeOfTeam(open.team)}
+          confirmMode={confirmModeOfTeams(open.teams)}
         />
       ) : null}
       {open?.kind === 'merge-green' ? (

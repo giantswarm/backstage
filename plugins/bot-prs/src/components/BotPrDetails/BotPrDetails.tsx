@@ -1,14 +1,12 @@
 import { Button, Flex, Link, Text } from '@backstage/ui';
 import { FactList, type Fact } from '@giantswarm/backstage-plugin-ui-react';
 
-import type { BotPrRow } from '../../lib/marge';
+import { versionOf, type BotPrRow } from '../../lib/marge';
 
 const date = (iso?: string) => (iso ? iso.slice(0, 10) : undefined);
 
 export type BotPrDetailsProps = {
   row: BotPrRow;
-  /** Whether the read behind the row was live: the stored read leaves half the record empty. */
-  isLive: boolean;
   /** Whether the person's session reaches marge, so the actions are offered. */
   canAct: boolean;
   onSweep: (row: BotPrRow) => void;
@@ -19,12 +17,12 @@ export type BotPrDetailsProps = {
  * The expanded row: everything the engine reported for the PR -- the state
  * and its evidence, the label it carries, the bot and the update, the policy
  * it was decided under and the prior rescue marker -- and the two actions the
- * page offers on one PR. The stored read carries only the label; a live read
- * fills the rest, and the record says so instead of showing blanks as facts.
+ * page offers on one PR. The stored read carries the label and what the
+ * title says; the update type, the policy and the rescue marker each need
+ * the PR itself, and the record says so instead of showing a blank as a fact.
  */
 export function BotPrDetails({
   row,
-  isLive,
   canAct,
   onSweep,
   onMarkBlocked,
@@ -46,10 +44,9 @@ export function BotPrDetails({
     { label: 'Evidence', value: row.detail },
     { label: 'Label', value: row.label ?? 'none' },
     { label: 'Bot', value: row.kind },
-    {
-      label: 'Update',
-      value: row.update_type ?? (isLive ? 'unknown' : 'stored read: not read'),
-    },
+    { label: 'Update', value: row.update_type ?? 'stored read: not read' },
+    { label: 'Dependency', value: row.dependency },
+    { label: 'Version', value: versionOf(row) },
     { label: 'Opened', value: date(row.created_at) },
     { label: 'Obsolete because', value: row.reason },
   ];
@@ -95,9 +92,8 @@ export function BotPrDetails({
       />
       {!policy ? (
         <Text variant="body-small" color="secondary">
-          {isLive
-            ? 'The engine reported no policy for this PR.'
-            : 'The stored read carries the label only. Refresh classification reads the update type, the policy and the rescue marker.'}
+          The stored read carries the label and the title. Classify now reads
+          the update type, the policy and the rescue marker.
         </Text>
       ) : null}
       {canAct ? (

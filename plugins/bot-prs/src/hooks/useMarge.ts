@@ -14,6 +14,7 @@ import {
   type MargeSweepArgs,
 } from '../apis/MargeClient';
 import {
+  CLASSIFY_ACTIONS,
   MARGE_SERVER,
   MargeNotConnectedError,
   type MargeMarkResult,
@@ -148,12 +149,6 @@ export function useMargeInstallation(): MargeInstallationView {
 export type TeamQueue = {
   team: string;
   result: MargeResult | undefined;
-  /**
-   * `stored`: the classification the last sweep left in each PR's label, one
-   * search. `live`: the engine classified every PR again on the person's
-   * request, a check read per PR.
-   */
-  mode: 'stored' | 'live';
   /** Epoch ms of the read the result came from. */
   readAt: number | undefined;
   isLoading: boolean;
@@ -165,19 +160,26 @@ export type BotPrsState = {
   queues: TeamQueue[];
   /** True while any team's stored read is in flight. */
   isLoading: boolean;
-  /** True while the live classification the person asked for is in flight. */
-  isRefreshing: boolean;
+  /** True while the classification the person asked for is in flight. */
+  isClassifying: boolean;
+  /** The teams whose classification has not answered yet. */
+  classifying: string[];
+  /** Why the classification failed, when it did. */
+  classifyError: Error | null;
   /** The first not-connected refusal, when one team's read met one. */
   notConnected: MargeNotConnectedError | undefined;
   /** The stored reads again: cheap, and what a write leaves behind. */
   reload: () => void;
-  /** `refresh: true` on every team in scope: classify every PR now. An explicit action, never automatic. */
-  refresh: () => void;
+  /**
+   * Classify every PR in scope now and write the class to its label, one
+   * `x_marge_sweep` per team with `classify` as the only step. An explicit
+   * action, never automatic.
+   */
+  classify: () => void;
 };
 
 type QueueData = {
   queues: MargeTeamQueues;
-  mode: 'stored' | 'live';
   readAt: number;
 };
 
@@ -188,10 +190,11 @@ type QueueData = {
  * per team.
  *
  * The table is the stored read, `x_marge_list` without `refresh`, which
- * reports what the last sweep decided. The live read is a separate mutation
- * behind the Refresh button, so nothing the page does on mount, on focus or
- * on a timer classifies a PR; its answer replaces the stored one in the same
- * cache entry, and stays until the next read.
+ * reports what the last sweep decided. Classifying is a separate mutation
+ * behind its own button, so nothing the page does on mount, on focus or on a
+ * timer classifies a PR. It is a write: `x_marge_sweep` with `classify` as
+ * its only step leaves the class in each PR's `marge/<class>` label, so the
+ * next stored read, a teammate's page and the CLI all report what it decided.
  */
 export function useBotPrs(
   installation: string | undefined,
@@ -208,7 +211,6 @@ export function useBotPrs(
     enabled,
     queryFn: async (): Promise<QueueData> => ({
       queues: await client!.listTeams(teams, false),
-      mode: 'stored',
       readAt: Date.now(),
     }),
     staleTime: 60_000,
@@ -216,19 +218,45 @@ export function useBotPrs(
     retry: false,
   });
 
-  const refresh = useMutation({
+  // One sweep per team, not one call with every team: a marge that does not
+  // take a team list would read this as the query scope and classify every
+  // bot PR the person can see. A read can be refused after the fact; a
+  // write cannot.
+  const [classifying, setClassifying] = useState<string[]>([]);
+  const classifyRun = useMutation({
     mutationFn: async () => {
-      const data: QueueData = {
-        queues: await client!.listTeams(teams, true),
-        mode: 'live',
-        readAt: Date.now(),
-      };
-      queryClient.setQueryData(queryKey, data);
+      setClassifying(teams);
+      const answers = await Promise.allSettled(
+        teams.map(team =>
+          client!
+            .sweep({ team, actions: CLASSIFY_ACTIONS, dry_run: false })
+            .finally(() =>
+              setClassifying(current =>
+                current.filter(pending => pending !== team),
+              ),
+            ),
+        ),
+      );
+      const failed = answers.find(
+        (answer): answer is PromiseRejectedResult =>
+          answer.status === 'rejected',
+      );
+      if (failed) {
+        throw failed.reason;
+      }
+    },
+    onSettled: () => {
+      setClassifying([]);
+      // Whatever the run wrote is in the labels now, so the stored read is
+      // the answer -- including for a team whose own call failed.
+      queryClient.invalidateQueries({
+        queryKey: musterMargeListScopeKey(installation ?? ''),
+      });
     },
   });
 
   const reload = useCallback(() => {
-    refresh.reset();
+    classifyRun.reset();
     queryClient.invalidateQueries({
       queryKey: musterMargeListScopeKey(installation ?? ''),
     });
@@ -247,14 +275,13 @@ export function useBotPrs(
     return {
       team,
       result: answer?.result,
-      mode: query.data?.mode ?? 'stored',
       readAt: query.data?.readAt,
       isLoading: enabled && query.isLoading,
       error: failure ?? (answer?.error ? new Error(answer.error) : null),
     };
   });
-  const refreshError = refresh.error as Error | null;
-  const notConnected = [refreshError, failure].find(
+  const classifyError = (classifyRun.error as Error | null) ?? null;
+  const notConnected = [classifyError, failure].find(
     (error): error is MargeNotConnectedError =>
       error instanceof MargeNotConnectedError,
   );
@@ -262,12 +289,15 @@ export function useBotPrs(
   return {
     queues,
     isLoading: enabled && query.isLoading,
-    isRefreshing: refresh.isPending,
+    isClassifying: classifyRun.isPending,
+    classifying,
+    classifyError:
+      classifyError instanceof MargeNotConnectedError ? null : classifyError,
     notConnected,
     reload,
-    refresh: () => {
-      if (enabled && !refresh.isPending) {
-        refresh.mutate();
+    classify: () => {
+      if (enabled && !classifyRun.isPending) {
+        classifyRun.mutate();
       }
     },
   };
@@ -339,21 +369,29 @@ export type MargeTeamSweepsState = {
   isPending: boolean;
   /** The first not-connected refusal, when one team's call met one. */
   notConnected: MargeNotConnectedError | undefined;
-  run: (args: {
-    /** The PRs to act on, per team. A team with no PR is not called. */
-    prsByTeam: Record<string, string[]>;
-    actions: string;
-    dryRun: boolean;
-  }) => Promise<TeamSweepRun[]>;
+  run: (args: TeamSweepArgs) => Promise<TeamSweepRun[]>;
   reset: () => void;
+};
+
+/** What one several-team run asks for. */
+export type TeamSweepArgs = {
+  /** The teams to sweep, each under its own policy. */
+  teams: string[];
+  /**
+   * The PRs to act on, per team. A team named here with no PR is not
+   * called; a team absent from it is swept whole.
+   */
+  prsByTeam?: Record<string, string[]>;
+  actions: string;
+  dryRun: boolean;
 };
 
 /**
  * One `x_marge_sweep` per team, as one action of the page.
  *
- * marge takes one team a call, because a team file decides what its PRs may
- * become; a run over several teams is therefore several calls, each narrowed
- * with `prs` to the PRs of that team. One team's refusal is that team's own
+ * A team file decides what its PRs may become, so a run over several teams
+ * is several calls, one per team, each narrowed with `prs` when the caller
+ * named PRs. One team's refusal is that team's own
  * outcome and leaves the others alone, so the dialog reports per team. A run
  * that wrote invalidates every team it touched: its mark step moved the
  * labels the stored read shows.
@@ -366,23 +404,20 @@ export function useMargeTeamSweeps(
   const [isDryRun, setIsDryRun] = useState(true);
 
   const mutation = useMutation({
-    mutationFn: async (args: {
-      prsByTeam: Record<string, string[]>;
-      actions: string;
-      dryRun: boolean;
-    }): Promise<TeamSweepRun[]> => {
+    mutationFn: async (args: TeamSweepArgs): Promise<TeamSweepRun[]> => {
       if (!client) {
         throw new Error('marge is not reachable on this installation');
       }
       setIsDryRun(args.dryRun);
-      const teams = Object.keys(args.prsByTeam).filter(
-        team => args.prsByTeam[team].length > 0,
+      const narrowed = args.prsByTeam;
+      const teams = args.teams.filter(
+        team => !narrowed || (narrowed[team]?.length ?? 0) > 0,
       );
       const answers = await Promise.allSettled(
         teams.map(team =>
           client.sweep({
             team,
-            prs: args.prsByTeam[team],
+            prs: narrowed?.[team],
             actions: args.actions,
             dry_run: args.dryRun,
           }),

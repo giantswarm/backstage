@@ -8,6 +8,7 @@ import {
   rowsOf,
   statusIntentOf,
   teamOfGroupRef,
+  versionOf,
   type MargeResult,
 } from './marge';
 
@@ -76,8 +77,58 @@ describe('rowsOf', () => {
     expect(rows[0].repository).toBe('giantswarm/marge');
   });
 
+  it('takes the dependency and the versions marge sent, and reads the title when it sent none', () => {
+    const result: MargeResult = {
+      summary,
+      action_required: [
+        entry(
+          'agent-platform',
+          488,
+          'chore(deps): bump lodash from 4.17.20 to 4.17.21',
+          {
+            dependency: 'lodash',
+            version_from: '4.17.20',
+            version_to: '4.17.21',
+          },
+        ),
+        entry(
+          'agent-platform',
+          548,
+          'chore(deps): update giantswarm/pause docker tag to v3.10.2',
+          {
+            dependency: 'giantswarm/pause',
+            version_to: 'v3.10.2',
+          },
+        ),
+        entry('backstage', 2250, 'Update dependency typescript to v7'),
+      ],
+    };
+
+    expect(
+      rowsOf(result).map(row => [
+        row.dependency,
+        row.versionFrom,
+        row.versionTo,
+      ]),
+    ).toEqual([
+      ['lodash', '4.17.20', '4.17.21'],
+      ['giantswarm/pause', '', 'v3.10.2'],
+      ['typescript', '', ''],
+    ]);
+  });
+
   it('is empty without a result', () => {
     expect(rowsOf(undefined)).toEqual([]);
+  });
+});
+
+describe('versionOf', () => {
+  it.each([
+    [{ versionFrom: '4.17.20', versionTo: '4.17.21' }, '4.17.20 → 4.17.21'],
+    [{ versionFrom: '', versionTo: 'v3.10.2' }, 'v3.10.2'],
+    [{ versionFrom: '', versionTo: '' }, ''],
+  ])('renders %p as %p', (row, expected) => {
+    expect(versionOf(row)).toBe(expected);
   });
 });
 

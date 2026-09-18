@@ -80,6 +80,14 @@ export function actionsArgument(steps: readonly SweepStep[]): string {
 }
 
 /**
+ * The `actions` argument of a classification run: the classify step alone.
+ * The engine adds classify to every set, so this is the smallest run there
+ * is. It writes each PR's `marge/<class>` label and nothing else: no
+ * approval, no merge, no branch update, no evidence comment.
+ */
+export const CLASSIFY_ACTIONS = 'classify';
+
+/**
  * The class the engine files a PR under when it is green and the team policy
  * merges its update type: what a sweep approves and merges on its next run.
  * Every other class is waiting on a check, on a person, or on nothing.
@@ -167,6 +175,10 @@ export type MargeEntry = {
   label?: string;
   created_at?: string;
   age_days?: number;
+  /** The title read as an update: what moves, and between which versions. */
+  dependency?: string;
+  version_from?: string;
+  version_to?: string;
   rescue?: MargeRescue;
   /** Why an obsolete PR is obsolete: `superseded` or `no_op`. */
   reason?: string;
@@ -288,8 +300,14 @@ export type BotPrRow = MargeEntry & {
   repository: string;
   /** `owner/repo#number`, the reference every tool accepts. */
   ref: string;
-  /** The dependency the PR updates, read from its title; the title otherwise. */
+  /** The dependency the PR updates, as marge read it; the title otherwise. */
   dependency: string;
+  /**
+   * The versions the update moves between, as marge read them. A marge that
+   * does not send them, and a title that names none, leave both empty.
+   */
+  versionFrom: string;
+  versionTo: string;
 };
 
 /** Every entry of a result as one flat list, in the engine's group order. */
@@ -311,7 +329,9 @@ export function rowsOf(
         group,
         repository: `${entry.owner}/${entry.repo}`,
         ref,
-        dependency: dependencyOf(entry.title),
+        dependency: entry.dependency || dependencyOf(entry.title),
+        versionFrom: entry.version_from ?? '',
+        versionTo: entry.version_to ?? '',
       });
     }
   }
@@ -324,6 +344,9 @@ export function rowsOf(
  * X to v2` / `Update vendir X to v2` / `Update ocm component X to v2`, Dependabot's `Bump X from 1 to 2`, with or without a conventional
  * `chore(deps):` prefix. A title neither shape matches groups under itself,
  * so an Align files or Herald PR forms a group of one.
+ *
+ * marge reads the same title with its own patterns and sends the answer on
+ * the entry. This is the fallback for an installation whose marge does not.
  */
 export function dependencyOf(title: string): string {
   const text = title.replace(/^[a-z]+(\([^)]*\))?!?:\s*/i, '').trim();
@@ -338,6 +361,20 @@ export function dependencyOf(title: string): string {
     return dependabot[1];
   }
   return text || title;
+}
+
+/**
+ * The version change a row carries, for the table: both versions when the
+ * title names both, the target alone when it names one, empty when it names
+ * none.
+ */
+export function versionOf(row: Pick<BotPrRow, 'versionFrom' | 'versionTo'>) {
+  if (!row.versionTo) {
+    return '';
+  }
+  return row.versionFrom
+    ? `${row.versionFrom} → ${row.versionTo}`
+    : row.versionTo;
 }
 
 /**

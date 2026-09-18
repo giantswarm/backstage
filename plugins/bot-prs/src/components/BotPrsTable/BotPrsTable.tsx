@@ -7,7 +7,7 @@ import {
   StatusLabel,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { statusIntentOf, type BotPrRow } from '../../lib/marge';
+import { statusIntentOf, versionOf, type BotPrRow } from '../../lib/marge';
 import { groupRank } from '../../lib/rows';
 import { BotPrDetails } from '../BotPrDetails';
 
@@ -16,10 +16,6 @@ const byRef = (a: BotPrRow, b: BotPrRow) => a.ref.localeCompare(b.ref, 'en');
 const byText =
   (read: (row: BotPrRow) => string) => (a: BotPrRow, b: BotPrRow) =>
     read(a).localeCompare(read(b), 'en') || byRef(a, b);
-
-const byNumber =
-  (read: (row: BotPrRow) => number) => (a: BotPrRow, b: BotPrRow) =>
-    read(a) - read(b) || byRef(a, b);
 
 /** A cell whose words stay on one line. */
 const oneLine = { whiteSpace: 'nowrap' as const };
@@ -81,11 +77,32 @@ const COLUMNS: TableColumn<BotPrRow>[] = [
     render: row => <span title={row.dependency}>{row.dependency}</span>,
   },
   {
+    title: 'Version',
+    field: 'versionTo',
+    width: '11%',
+    cellStyle: ellipsis,
+    customSort: byText(row => versionOf(row)),
+    render: row => {
+      const version = versionOf(row);
+      return version ? (
+        <span title={version}>{version}</span>
+      ) : (
+        <NotAvailable />
+      );
+    },
+  },
+  {
     title: 'Bot',
     field: 'kind',
     width: '7%',
     cellStyle: oneLine,
-    customSort: byText(row => row.kind ?? ''),
+    // The bot is the first thing a reader separates: a Renovate bump and an
+    // Align files PR are not read the same way. Under it the rows stay in
+    // the classification order the page sorts by.
+    customSort: (a: BotPrRow, b: BotPrRow) =>
+      (a.kind ?? '').localeCompare(b.kind ?? '', 'en') ||
+      groupRank(a) - groupRank(b) ||
+      byRef(a, b),
     render: row => row.kind ?? <NotAvailable />,
   },
   {
@@ -116,7 +133,11 @@ const COLUMNS: TableColumn<BotPrRow>[] = [
     width: '12%',
     cellStyle: oneLine,
     defaultSort: 'asc',
-    customSort: byNumber(groupRank),
+    // Worst first, and inside one class the bots stay apart.
+    customSort: (a: BotPrRow, b: BotPrRow) =>
+      groupRank(a) - groupRank(b) ||
+      (a.kind ?? '').localeCompare(b.kind ?? '', 'en') ||
+      byRef(a, b),
     render: row => (
       <StatusLabel
         label={row.status}
@@ -150,7 +171,6 @@ export type BotPrsTableProps = {
   /** Several teams in view: the Team column is shown. */
   showTeam: boolean;
   isLoading: boolean;
-  isLive: boolean;
   canAct: boolean;
   onSweep: (row: BotPrRow) => void;
   onMarkBlocked: (row: BotPrRow) => void;
@@ -167,7 +187,6 @@ export function BotPrsTable({
   rows,
   showTeam,
   isLoading,
-  isLive,
   canAct,
   onSweep,
   onMarkBlocked,
@@ -201,7 +220,6 @@ export function BotPrsTable({
         <Box px={2} py={1} data-testid={`details-${rowData.ref}`}>
           <BotPrDetails
             row={rowData}
-            isLive={isLive}
             canAct={canAct}
             onSweep={onSweep}
             onMarkBlocked={onMarkBlocked}

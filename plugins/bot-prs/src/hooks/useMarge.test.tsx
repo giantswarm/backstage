@@ -8,10 +8,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { MargeNotConnectedError, type MargeResult } from '../lib/marge';
-import {
-  musterMargeListQueryKey,
-  musterMargeListScopeKey,
-} from '../lib/queryKeys';
+import { musterMargeListScopeKey } from '../lib/queryKeys';
 import {
   useBotPrs,
   useMargeMark,
@@ -113,10 +110,6 @@ describe('useBotPrs', () => {
       { teams: ['bumblebee', 'atlas'], refresh: false },
       'gazelle',
     );
-    expect(result.current.queues.map(queue => queue.mode)).toEqual([
-      'stored',
-      'stored',
-    ]);
   });
 
   it('refuses an answer that is not the several-team shape', async () => {
@@ -132,32 +125,66 @@ describe('useBotPrs', () => {
     expect(result.current.queues[0].result).toBeUndefined();
   });
 
-  it('classifies live only when asked, and keeps that answer as the queue', async () => {
+  it('classifies only when asked, and writes the class to each label', async () => {
+    callTool
+      .mockResolvedValueOnce(queuesOf({ bumblebee: stored, atlas: stored }))
+      .mockResolvedValueOnce(live)
+      .mockResolvedValueOnce(live)
+      .mockResolvedValue(queuesOf({ bumblebee: live, atlas: live }));
+    const queryClient = client();
+    const { result } = renderHook(
+      () => useBotPrs('gazelle', ['bumblebee', 'atlas']),
+      { wrapper: wrapperWith(queryClient) },
+    );
+    await waitFor(() =>
+      expect(result.current.queues[0].result).toEqual(stored),
+    );
+
+    act(() => result.current.classify());
+
+    // One sweep per team, not one call naming both: a marge that does not
+    // take a team list would read a team list as the query scope and write
+    // to every bot PR the person can see.
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_marge_sweep',
+        { team: 'bumblebee', actions: 'classify', dry_run: false },
+        'gazelle',
+      ),
+    );
+    expect(callTool).toHaveBeenCalledWith(
+      'x_marge_sweep',
+      { team: 'atlas', actions: 'classify', dry_run: false },
+      'gazelle',
+    );
+
+    // The labels carry the answer now, so the stored read is read again
+    // rather than the live answer being kept in the cache.
+    await waitFor(() => expect(result.current.queues[0].result).toEqual(live));
+    expect(callTool).toHaveBeenLastCalledWith(
+      'x_marge_list',
+      { teams: ['bumblebee', 'atlas'], refresh: false },
+      'gazelle',
+    );
+  });
+
+  it('reports a failed classification and reloads the stored read anyway', async () => {
     callTool
       .mockResolvedValueOnce(queuesOf({ bumblebee: stored }))
-      .mockResolvedValueOnce(queuesOf({ bumblebee: live }));
-    const queryClient = client();
+      .mockRejectedValueOnce(new Error('marge refused: rate limited'))
+      .mockResolvedValue(queuesOf({ bumblebee: stored }));
     const { result } = renderHook(() => useBotPrs('gazelle', ['bumblebee']), {
-      wrapper: wrapperWith(queryClient),
+      wrapper: wrapperWith(client()),
     });
     await waitFor(() =>
       expect(result.current.queues[0].result).toEqual(stored),
     );
 
-    act(() => result.current.refresh());
+    act(() => result.current.classify());
 
-    await waitFor(() => expect(result.current.queues[0].mode).toBe('live'));
-    expect(callTool).toHaveBeenLastCalledWith(
-      'x_marge_list',
-      { teams: ['bumblebee'], refresh: true },
-      'gazelle',
-    );
-    expect(result.current.queues[0].result).toEqual(live);
-    expect(
-      queryClient.getQueryData(
-        musterMargeListQueryKey('gazelle', ['bumblebee']),
-      ),
-    ).toMatchObject({ mode: 'live', queues: queuesOf({ bumblebee: live }) });
+    await waitFor(() => expect(result.current.classifyError).toBeTruthy());
+    expect(result.current.classifyError?.message).toMatch(/rate limited/);
+    expect(result.current.isClassifying).toBe(false);
   });
 
   it("reports muster's not-connected answer as such, for the sign-in gate", async () => {
@@ -249,6 +276,7 @@ describe('useMargeTeamSweeps', () => {
 
     await act(async () => {
       await result.current.run({
+        teams: ['bumblebee', 'atlas', 'rocket'],
         prsByTeam: {
           bumblebee: ['giantswarm/backstage#2250'],
           atlas: [],
@@ -282,6 +310,7 @@ describe('useMargeTeamSweeps', () => {
 
     await act(async () => {
       await result.current.run({
+        teams: ['bumblebee'],
         prsByTeam: { bumblebee: ['giantswarm/backstage#2250'] },
         actions: 'approve,merge,mark',
         dryRun: false,
@@ -305,6 +334,7 @@ describe('useMargeTeamSweeps', () => {
 
     await act(async () => {
       await result.current.run({
+        teams: ['bumblebee', 'atlas'],
         prsByTeam: {
           bumblebee: ['giantswarm/backstage#2250'],
           atlas: ['giantswarm/mimir#7'],
