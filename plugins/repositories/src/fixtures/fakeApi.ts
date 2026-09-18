@@ -15,12 +15,12 @@ export const unusedWrites: Pick<
   | 'updateRepository'
   | 'transferRepository'
   | 'setLifecycle'
-  | 'reconcileRepository'
+  | 'alignRepository'
 > = {
   validateRepository: unused('validate_repository'),
   createRepository: unused('create_repository'),
   updateRepository: unused('update_repository'),
   transferRepository: unused('transfer_repository'),
   setLifecycle: unused('set_lifecycle'),
-  reconcileRepository: unused('reconcile_repository'),
+  alignRepository: unused('align_repository'),
 };

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Alert,
   ButtonLink,
+  Flex,
   Text,
   TextAreaField,
   TextField,
@@ -9,6 +10,7 @@ import {
 import { useApi } from '@backstage/frontend-plugin-api';
 import { load } from 'js-yaml';
 import {
+  Alignment,
   Committed,
   DeclarationEntry,
   Dispatch,
@@ -243,8 +245,90 @@ function DispatchView({ dispatch }: { dispatch: Dispatch }) {
   );
 }
 
-/** Reconcile now: the reconcile-repositories workflow dispatched as the person. */
-export function ReconcileDialog({
+/** The opt-in line: who has opted in to what, or that the run only checks. */
+function OptIn({ alignment }: { alignment: Alignment }) {
+  const team = alignment.team ?? 'The owning team';
+  return (
+    <Text variant="body-medium" data-testid="opt-in">
+      {alignment.optedIn
+        ? `${team} has opted in: the changes below are applied.`
+        : `${team} has not opted in: this run checks and changes nothing.`}
+    </Text>
+  );
+}
+
+/**
+ * The changes the last check planned, per step, as the manager returns
+ * them; the two empty cases named -- no check yet, or nothing to change.
+ */
+function PlannedChanges({ alignment }: { alignment: Alignment }) {
+  const steps = alignment.planned?.filter(step => step.changes.length > 0);
+  const checked = alignment.checkedAt
+    ? ` Checked at ${alignment.checkedAt}.`
+    : '';
+  if (!steps) {
+    return (
+      <Text variant="body-small" color="secondary" data-testid="planned">
+        No check yet: the run's own check plans the changes.
+      </Text>
+    );
+  }
+  if (steps.length === 0) {
+    return (
+      <Text variant="body-small" color="secondary" data-testid="planned">
+        Nothing to change.{checked}
+      </Text>
+    );
+  }
+  return (
+    <Flex direction="column" gap="2" data-testid="planned">
+      <Text variant="body-small" color="secondary">
+        Planned changes.{checked}
+      </Text>
+      {steps.map(step => (
+        <div key={step.step}>
+          <Text variant="body-small" weight="bold">
+            {step.step}
+          </Text>
+          <ul style={{ margin: 0, paddingLeft: 16 }}>
+            {step.changes.map(change => (
+              <li key={change}>
+                <Text variant="body-small">{change}</Text>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </Flex>
+  );
+}
+
+/**
+ * An alignment as the manager rendered it: what the run changes, whether the
+ * team has opted in, the changes the last check planned, and the dispatch --
+ * planned in the dry run, done afterwards (the plan is then behind the run).
+ */
+function AlignmentView({ alignment }: { alignment: Alignment }) {
+  return (
+    <Flex direction="column" gap="3" data-testid="alignment">
+      {!alignment.dispatched && (
+        <div data-testid="alignment-warning">
+          <Alert status="warning" title={alignment.warning} />
+        </div>
+      )}
+      <OptIn alignment={alignment} />
+      {!alignment.dispatched && <PlannedChanges alignment={alignment} />}
+      <DispatchView dispatch={alignment} />
+    </Flex>
+  );
+}
+
+/**
+ * Align now: the set-up workflow dispatched as the person, after the
+ * manager's dry run said what it would change and whether the team has
+ * opted in to having it changed (else the run only checks).
+ */
+export function AlignDialog({
   record,
   isOpen,
   onClose,
@@ -255,9 +339,9 @@ export function ReconcileDialog({
   const undeclared = record.declaration === null;
   const args = () => ({ team: team.trim() || undefined });
   return (
-    <ActionDialog<Dispatch, Dispatch>
-      title={`Reconcile ${record.name} now`}
-      intro={`Runs the engine's set-up steps for ${record.repository} now — settings, permissions, protection, CircleCI, Renovate check, CODEOWNERS, metadata, lifecycle, catalog, release — by dispatching the reconcile-repositories workflow as you. The record refreshes with the run; the completion message follows in the team's channel. Nothing is written to the team files.`}
+    <ActionDialog<Alignment, Alignment>
+      title={`Align ${record.name} now`}
+      intro={`Changes ${record.repository} on GitHub and CircleCI to its declared set-up and the company baseline — settings, permissions, branch protection, the CircleCI project — as you, by dispatching the set-up workflow. Nothing is written to the team files.`}
       isOpen={isOpen}
       onClose={onClose}
       ready={!undeclared || team.trim().length > 0}
@@ -265,7 +349,7 @@ export function ReconcileDialog({
         undeclared ? (
           <TextField
             label="Team"
-            description="This repository has no entry: it is reconciled from the team alone."
+            description="This repository has no entry: it is aligned from the team alone."
             isRequired
             value={team}
             onChange={setTeam}
@@ -277,14 +361,16 @@ export function ReconcileDialog({
         )
       }
       dryRun={() =>
-        api.reconcileRepository(record.repository, args(), { dryRun: true })
+        api.alignRepository(record.repository, args(), { dryRun: true })
       }
-      renderPlan={dispatch => <DispatchView dispatch={dispatch} />}
+      renderPlan={alignment => <AlignmentView alignment={alignment} />}
       commit={() =>
-        api.reconcileRepository(record.repository, args(), { mode: 'commit' })
+        api.alignRepository(record.repository, args(), { mode: 'commit' })
       }
-      renderDone={dispatch => <DispatchView dispatch={dispatch} />}
-      commitLabel="Reconcile now"
+      renderDone={alignment => <AlignmentView alignment={alignment} />}
+      commitLabel={alignment =>
+        alignment?.optedIn === false ? 'Check now' : 'Align now'
+      }
       onDone={onDone}
     />
   );

@@ -8,6 +8,10 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import type { ManagedCluster, NodePool } from '../lib/clusterManager';
+import {
+  modelManagerBackendsQueryKey,
+  modelManagerModelsQueryKey,
+} from '../lib/queryKeys';
 import { newServeIntent, type ServeIntents } from '../lib/serveIntent';
 import type { ServedModel } from '../lib/serving';
 import type { GpuNodePoolRow } from './useClusterManager';
@@ -212,6 +216,9 @@ async function render(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  // Spied before the render: the runner invalidates from the effect, before
+  // the render settles.
+  const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
   const utils = await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
@@ -219,11 +226,15 @@ async function render(
       </QueryClientProvider>
     </TestApiProvider>,
   );
-  return { callTool, ...utils };
+  return { callTool, invalidateQueries, ...utils };
 }
 
 const toolNames = (callTool: jest.Mock) =>
   callTool.mock.calls.map(call => call[0]);
+
+/** The query keys `invalidateQueries` was asked for. */
+const invalidatedKeys = (invalidateQueries: jest.SpyInstance) =>
+  invalidateQueries.mock.calls.map(call => call[0]?.queryKey);
 
 describe('isPoolStackReady', () => {
   it('is the same gate as Serve your first model: every lifecycle step done', () => {
@@ -291,9 +302,34 @@ describe('useServeIntentRunner', () => {
     expect(writes).toHaveLength(1);
   });
 
-  it('keeps check_fit’s refusal with its reason and never calls load_model', async () => {
+  it('re-reads the installation’s backends and inventory once load_model was accepted, so the served model’s steps follow with that read', async () => {
     const { store } = makeStore({ [ID]: newServeIntent(POOL, CHOICE, T0) });
-    const { callTool } = await render(store, [row()], [], {
+    const { invalidateQueries } = await render(store, [row()], [], {
+      check_fit: FIT_OK,
+      load_model: LOADED,
+    });
+    await waitFor(() =>
+      expect(store.setOutcome).toHaveBeenCalledWith(
+        ID,
+        expect.objectContaining({ kind: 'served' }),
+      ),
+    );
+    // The backends list gates the inventory read: a pool that registered its
+    // backend after the list was read leaves the inventory unread until the
+    // list is read again — so both go, for this installation.
+    await waitFor(() =>
+      expect(invalidatedKeys(invalidateQueries)).toEqual(
+        expect.arrayContaining([
+          modelManagerBackendsQueryKey('inst-1'),
+          modelManagerModelsQueryKey('inst-1'),
+        ]),
+      ),
+    );
+  });
+
+  it('keeps check_fit’s refusal with its reason and never calls load_model, nor re-reads anything', async () => {
+    const { store } = makeStore({ [ID]: newServeIntent(POOL, CHOICE, T0) });
+    const { callTool, invalidateQueries } = await render(store, [row()], [], {
       check_fit: FIT_NO,
       load_model: LOADED,
     });
@@ -306,11 +342,15 @@ describe('useServeIntentRunner', () => {
       }),
     );
     expect(toolNames(callTool)).toEqual(['x_model-manager_check_fit']);
+    await waitFor(() =>
+      expect(screen.getByTestId('serving')).toHaveTextContent('false'),
+    );
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
-  it('keeps what load_model threw', async () => {
+  it('keeps what load_model threw, and re-reads the inventory all the same — a load that timed out may well have completed', async () => {
     const { store } = makeStore({ [ID]: newServeIntent(POOL, CHOICE, T0) });
-    await render(store, [row()], [], {
+    const { invalidateQueries } = await render(store, [row()], [], {
       check_fit: FIT_OK,
       load_model: new Error('backend_error: kserve backend unreachable'),
     });
@@ -320,6 +360,11 @@ describe('useServeIntentRunner', () => {
         message: 'backend_error: kserve backend unreachable',
         at: expect.any(String),
       }),
+    );
+    await waitFor(() =>
+      expect(invalidatedKeys(invalidateQueries)).toEqual(
+        expect.arrayContaining([modelManagerModelsQueryKey('inst-1')]),
+      ),
     );
   });
 

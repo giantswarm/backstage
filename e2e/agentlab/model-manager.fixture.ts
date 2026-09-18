@@ -209,7 +209,9 @@ export const POOL_FIT: Record<string, Record<string, unknown>> = {
 };
 
 /** `check_fit` answered from {@link POOL_FIT} by the preset asked about. */
-export const poolFitAnswer: ToolAnswer = args => {
+export const poolFitAnswer = (
+  args: Record<string, unknown>,
+): Record<string, unknown> => {
   const model = String(args.model ?? '');
   return POOL_FIT[model] ?? { model, fits: false };
 };

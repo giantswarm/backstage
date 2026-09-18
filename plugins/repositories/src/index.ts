@@ -35,6 +35,8 @@ export type {
   PullRequest,
   Committed,
   Delivery,
+  Alignment,
   Dispatch,
+  PlannedStep,
   WriteOptions,
 } from './apis';

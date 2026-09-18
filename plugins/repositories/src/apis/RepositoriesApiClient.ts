@@ -5,11 +5,11 @@ import {
 } from '@backstage/core-plugin-api';
 import { RepositoriesAuthApi } from './auth';
 import {
+  Alignment,
   Committed,
   Created,
   DeclarationEntry,
   DeclarationInput,
-  Dispatch,
   InventoryRecord,
   ListFilters,
   ManagerInfo,
@@ -130,12 +130,12 @@ export class RepositoriesApiClient implements RepositoriesApi {
     return this.write(name, 'lifecycle', args, options);
   }
 
-  reconcileRepository(
+  alignRepository(
     name: string,
     args: { team?: string },
     options: WriteOptions,
-  ): Promise<Dispatch> {
-    return this.write(name, 'reconcile', args, options);
+  ): Promise<Alignment> {
+    return this.write(name, 'align', args, options);
   }
 
   /** One write of a repository: its arguments plus how it lands, as given. */

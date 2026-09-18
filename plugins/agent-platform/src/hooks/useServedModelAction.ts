@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { modelManagerApiRef } from '../apis';
 import {
+  modelManagerBackendsQueryKey,
   modelManagerJobsQueryKey,
   modelManagerModelsQueryKey,
   modelManagerNodesQueryKey,
@@ -35,9 +36,12 @@ export const SERVED_MODEL_ACTION_LABEL: Record<
 
 /**
  * Invalidate every read a model-manager operation can change on an
- * installation: the inventory (loaded state, the model itself), the jobs, and
- * the kagent ModelConfig list the Models table above is built from (wiring
- * creates and removes ModelConfigs behind the portal's back).
+ * installation: the backends (a load lands on a backend a GPU pool may have
+ * registered since the list was read — and the inventory read is gated on
+ * that list, so a stale one keeps the inventory from being read at all), the
+ * inventory (loaded state, the model itself), the jobs, and the kagent
+ * ModelConfig list the Models table above is built from (wiring creates and
+ * removes ModelConfigs behind the portal's back).
  */
 export function useInvalidateModelManagerReads(installation: string) {
   const invalidate = useInvalidateModelManagerReadsFor();
@@ -53,6 +57,9 @@ export function useInvalidateModelManagerReadsFor() {
   return useCallback(
     async (installation: string) => {
       await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: modelManagerBackendsQueryKey(installation),
+        }),
         queryClient.invalidateQueries({
           queryKey: modelManagerModelsQueryKey(installation),
         }),

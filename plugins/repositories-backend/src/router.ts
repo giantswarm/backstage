@@ -78,7 +78,7 @@ const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
     ...WRITE_OPTIONS,
   },
   set_lifecycle: { lifecycle: 'string', reason: 'string', ...WRITE_OPTIONS },
-  reconcile_repository: { team: 'string', ...WRITE_OPTIONS },
+  align_repository: { team: 'string', ...WRITE_OPTIONS },
 };
 
 export interface RouterOptions {
@@ -324,7 +324,7 @@ export async function createRouter(
   writeOfRepository('update', 'update_repository');
   writeOfRepository('transfer', 'transfer_repository');
   writeOfRepository('lifecycle', 'set_lifecycle');
-  writeOfRepository('reconcile', 'reconcile_repository');
+  writeOfRepository('align', 'align_repository');
 
   // A missing grant is a 401 that carries the sign-in URL; the manager's own
   // refusals are 403s and an unknown repository a 404, so neither pages us as

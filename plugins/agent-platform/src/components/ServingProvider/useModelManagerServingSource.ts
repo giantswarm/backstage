@@ -130,12 +130,21 @@ export function useModelManagerServingSource(
   );
   const installationsKey = installations.join(',');
 
+  // The three reads poll in a tab that is not focused too, like the pools
+  // read (`useGpuNodePools`): a GPU pool's serve intent is served the moment
+  // its stack is ready, whichever tab is in front, and the person waiting
+  // for the served model's timeline — the pool panel's nested steps, the
+  // Serving view's row — sees it move when they look, not a page frozen at
+  // the moment they looked away. The query client refetches nothing on focus
+  // (`refetchOnWindowFocus: false`), so without this a hidden tab stays on
+  // the last read until a reload (giantswarm/backstage#2446).
   const backendQueries = useQueries({
     queries: installations.map(installation => ({
       queryKey: modelManagerBackendsQueryKey(installation),
       queryFn: () => modelManagerApi.listBackends(installation),
       staleTime: BACKEND_REFETCH_MS,
       refetchInterval: BACKEND_REFETCH_MS,
+      refetchIntervalInBackground: true,
     })),
   });
 
@@ -196,6 +205,7 @@ export function useModelManagerServingSource(
       // own rate otherwise.
       refetchInterval: (query: { state: { data?: ModelManagerModel[] } }) =>
         modelsRefetchInterval(query.state.data, MODELS_REFETCH_MS),
+      refetchIntervalInBackground: true,
     })),
   });
 
@@ -216,6 +226,7 @@ export function useModelManagerServingSource(
       ),
       staleTime: 30_000,
       refetchInterval: NODES_REFETCH_MS,
+      refetchIntervalInBackground: true,
     })),
   });
 

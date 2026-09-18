@@ -329,6 +329,66 @@ test.describe('repositories: actions', () => {
     await expect(dialog).toBeHidden();
   });
 
+  test('Align now says what it changes; the dry run shows the warning, the opt-in and the planned changes, and writes nothing on Cancel', async ({
+    admin,
+  }) => {
+    await open(admin, '/repositories?scope=all');
+    const rows = admin.locator('table').first().locator('tbody tr');
+    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+    const declared = rows
+      .filter({ hasNot: admin.getByText('unassigned') })
+      .first();
+    await expect(declared).toBeVisible();
+    const name = (await declared.locator('td').nth(1).innerText())
+      .trim()
+      .replace(/^[^/]+\//, '')
+      .split(/\s/)[0];
+    await declared
+      .getByRole('button', { name: 'Detail panel visiblity toggle' })
+      .click();
+
+    const record = admin.getByTestId(`record-${name}`);
+    await expect(record.getByTestId('row-actions')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(
+      record.getByRole('button', { name: 'Reconcile now' }),
+    ).toHaveCount(0);
+    await record.getByRole('button', { name: 'Align now' }).click();
+    const dialog = admin.getByRole('form', {
+      name: new RegExp(`^Align ${name} now`),
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      /Changes giantswarm\/\S+ on GitHub and CircleCI to its declared set-up and the company baseline/,
+    );
+    await expect(dialog).toContainText('as you');
+    await dialog.getByRole('button', { name: 'Review' }).click();
+
+    // The manager's dry run (`align_repository`, nothing written): its
+    // warning, the team's opt-in line and the changes the last check planned
+    // -- or that there is no check yet, or nothing to change.
+    const alignment = dialog.getByTestId('alignment');
+    await expect(alignment).toBeVisible({ timeout: 60_000 });
+    await expect(alignment.getByTestId('alignment-warning')).not.toBeEmpty();
+    await expect(alignment.getByTestId('opt-in')).toContainText(
+      /has (not )?opted in/,
+    );
+    await expect(alignment.getByTestId('planned')).toContainText(
+      /Planned changes|No check yet|Nothing to change/,
+    );
+    await expect(alignment.getByTestId('dispatch')).toBeVisible();
+    // The confirm label follows the opt-in: Align now applies, Check now only checks.
+    const optedIn = /has opted in/.test(
+      await alignment.getByTestId('opt-in').innerText(),
+    );
+    await expect(
+      dialog.getByRole('button', { name: optedIn ? 'Align now' : 'Check now' }),
+    ).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test('the catalog’s Create… lands on Create repository', async ({
     admin,
   }) => {
