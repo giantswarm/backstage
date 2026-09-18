@@ -67,7 +67,7 @@ export function MergeGreenDialog({
     setApplied(false);
     sweeps.reset();
     sweeps
-      .run({ prsByTeam: targets, actions: ACTIONS, dryRun: true })
+      .run({ teams, prsByTeam: targets, actions: ACTIONS, dryRun: true })
       .catch(() => {
         // Shown by the dialog through the runs' own errors.
       });
@@ -112,6 +112,7 @@ export function MergeGreenDialog({
     }
     try {
       await sweeps.run({
+        teams: Object.keys(applyTargets),
         prsByTeam: applyTargets,
         actions: ACTIONS,
         dryRun: false,

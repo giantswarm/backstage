@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Checkbox, Flex, Text } from '@backstage/ui';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useMargeSweep } from '../../hooks/useMarge';
+import { useMargeTeamSweeps } from '../../hooks/useMarge';
 import {
   actionsArgument,
   confirmModeOf,
-  MargeNotConnectedError,
   rowsOf,
   SWEEP_STEPS,
   type ConfirmMode,
@@ -17,7 +16,8 @@ import { OutcomeList } from '../OutcomeList';
 
 export type SweepDialogProps = {
   installation: string;
-  team: string;
+  /** The teams to sweep, each under its own policy. */
+  teams: string[];
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   /** One PR (`OWNER/REPO#NUMBER`) to narrow the sweep to; the whole team without. */
@@ -32,8 +32,12 @@ export type SweepDialogProps = {
 
 const ALL_STEPS: SweepStep[] = SWEEP_STEPS.map(step => step.id);
 
+const plural = (count: number, word: string) =>
+  `${count} ${word}${count === 1 ? '' : 's'}`;
+
 /**
- * Preview, then Apply, for one `x_marge_sweep` call on the team or on one PR.
+ * Preview, then Apply, for one `x_marge_sweep` per team in view, or for one
+ * PR.
  *
  * The steps are the engine's own, every one ticked to begin with, the way a
  * CLI sweep runs them; unticking one narrows `actions` the way `--actions`
@@ -45,28 +49,31 @@ const ALL_STEPS: SweepStep[] = SWEEP_STEPS.map(step => step.id);
  * ones the person ticked, none by default -- so a PR that appeared in between
  * is not swept unseen. A refusal is an outcome row with its reason; there is
  * no override to offer, because the engine has none.
+ *
+ * A team is its own call and its own outcome: one team's refusal leaves the
+ * others alone, and the dialog reports each under its name.
  */
 export function SweepDialog({
   installation,
-  team,
+  teams,
   isOpen,
   onOpenChange,
   pr,
   confirmMode,
 }: SweepDialogProps) {
-  const sweep = useMargeSweep(installation, team);
+  const sweeps = useMargeTeamSweeps(installation);
   const [steps, setSteps] = useState<SweepStep[]>(ALL_STEPS);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [applied, setApplied] = useState(false);
 
-  const args = useMemo(
-    () => ({
-      prs: pr ? [pr] : undefined,
-      actions: actionsArgument(steps),
-    }),
-    [pr, steps],
+  const actions = actionsArgument(steps);
+  const teamsKey = teams.join(',');
+  const prsByTeam = useMemo(
+    () => (pr ? { [teams[0]]: [pr] } : undefined),
+    // Keyed on contents: a one-PR sweep is always one team's.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pr, teamsKey],
   );
-  const argsKey = JSON.stringify(args);
 
   useEffect(() => {
     if (!isOpen) {
@@ -74,13 +81,13 @@ export function SweepDialog({
     }
     setApplied(false);
     setSelected(new Set());
-    sweep.reset();
-    sweep.run({ ...args, dry_run: true }).catch(() => {
-      // Shown by the dialog through `sweep.error`.
+    sweeps.reset();
+    sweeps.run({ teams, prsByTeam, actions, dryRun: true }).catch(() => {
+      // Shown by the dialog through the runs' own errors.
     });
     // A new open, or new steps, is a new preview.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, argsKey, installation, team]);
+  }, [isOpen, actions, installation, teamsKey, pr]);
 
   useEffect(() => {
     if (isOpen) {
@@ -88,19 +95,58 @@ export function SweepDialog({
     }
   }, [isOpen, pr]);
 
-  const preview = sweep.isDryRun ? sweep.result : undefined;
-  const outcome = !sweep.isDryRun ? sweep.result : undefined;
-  const mode = useMemo(
-    () => (preview ? confirmModeOf(preview) : (confirmMode ?? 'per-pr')),
-    [preview, confirmMode],
+  const runs = sweeps.runs;
+  const isDryRun = sweeps.isDryRun;
+  const preview = useMemo(
+    () => (isDryRun ? runs : []),
+    // Keyed on the runs themselves: react-query hands back the same array
+    // until the next call settles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isDryRun, runs],
   );
+  const outcome = isDryRun ? [] : runs;
+  const failed = runs.filter(run => run.error);
+  const notConnected = sweeps.notConnected;
+
+  // The strictest mode any team in view asks for decides for the dialog: a
+  // team that confirms per PR is not confirmed in bulk because another team
+  // does not.
+  const mode = useMemo(() => {
+    // A team that did not answer states no policy: it must not decide how
+    // the teams that did answer are confirmed.
+    const answered = preview.filter(run => run.result);
+    if (answered.length === 0) {
+      return confirmMode ?? 'per-pr';
+    }
+    return answered.some(run => confirmModeOf(run.result) === 'per-pr')
+      ? 'per-pr'
+      : 'per-sweep';
+  }, [preview, confirmMode]);
   const wholeTeam = !pr;
   const selectable = wholeTeam && mode === 'per-pr';
-  const previewRefs = rowsOf(preview).map(row => row.ref);
-  const targets = selectable
-    ? previewRefs.filter(ref => selected.has(ref))
-    : previewRefs;
-  const notConnected = sweep.error instanceof MargeNotConnectedError;
+
+  // What Apply runs on: exactly the PRs the preview listed, per team.
+  const applyTargets = useMemo(() => {
+    const byTeam: Record<string, string[]> = {};
+    for (const run of preview) {
+      const refs = rowsOf(run.result, run.team)
+        .map(row => row.ref)
+        .filter(ref => !selectable || selected.has(ref));
+      if (refs.length > 0) {
+        byTeam[run.team] = refs;
+      }
+    }
+    return byTeam;
+  }, [preview, selectable, selected]);
+  const applyCount = Object.values(applyTargets).reduce(
+    (sum, refs) => sum + refs.length,
+    0,
+  );
+  const previewRefs = useMemo(
+    () =>
+      preview.flatMap(run => rowsOf(run.result, run.team).map(row => row.ref)),
+    [preview],
+  );
 
   const toggleStep = (step: SweepStep, checked: boolean) => {
     setSteps(current =>
@@ -116,14 +162,24 @@ export function SweepDialog({
       return;
     }
     try {
-      await sweep.run({ ...args, prs: targets });
+      await sweeps.run({
+        teams: Object.keys(applyTargets),
+        prsByTeam: applyTargets,
+        actions,
+        dryRun: false,
+      });
       setApplied(true);
     } catch {
-      // Shown by the dialog through `sweep.error`.
+      // Shown by the dialog through the runs' own errors.
     }
   };
 
-  const title = pr ? `Sweep ${pr}` : `Sweep team ${team}`;
+  let title = `Sweep team ${teams[0]}`;
+  if (pr) {
+    title = `Sweep ${pr}`;
+  } else if (teams.length > 1) {
+    title = `Sweep ${plural(teams.length, 'team')}`;
+  }
   let confirmLabel = 'Apply sweep';
   if (applied) {
     confirmLabel = 'Close';
@@ -137,13 +193,15 @@ export function SweepDialog({
       onOpenChange={onOpenChange}
       title={title}
       confirmLabel={confirmLabel}
-      busyLabel={sweep.isDryRun ? 'Previewing…' : 'Applying…'}
-      isBusy={sweep.isPending}
+      busyLabel={sweeps.isDryRun ? 'Previewing…' : 'Applying…'}
+      isBusy={sweeps.isPending}
       isConfirmDisabled={
         !applied &&
-        (!preview || targets.length === 0 || steps.length === 0 || notConnected)
+        (sweeps.isPending ||
+          applyCount === 0 ||
+          steps.length === 0 ||
+          Boolean(notConnected))
       }
-      error={sweep.error && !notConnected ? sweep.error.message : undefined}
       onConfirm={onConfirm}
       width="min(90vw, 760px)"
     >
@@ -159,7 +217,7 @@ export function SweepDialog({
               <Flex key={step.id} gap="2" align="start">
                 <Checkbox
                   isSelected={steps.includes(step.id)}
-                  isDisabled={sweep.isPending}
+                  isDisabled={sweeps.isPending}
                   onChange={checked => toggleStep(step.id, checked)}
                   aria-label={step.label}
                 />
@@ -174,42 +232,46 @@ export function SweepDialog({
           </Flex>
         </Flex>
       ) : null}
-      {notConnected && sweep.error ? (
+      {notConnected ? (
         <ConnectMargeAlert
           installation={installation}
-          message={sweep.error.message}
+          message={notConnected.message}
         />
       ) : null}
-      {sweep.isPending && sweep.isDryRun ? (
+      {sweeps.isPending && sweeps.isDryRun ? (
         <Text variant="body-small" color="secondary">
           {wholeTeam
-            ? 'Classifying every PR of the team and deciding what the sweep would do to each. One check read per PR; a whole team takes a few seconds.'
+            ? `Classifying every PR of ${plural(teams.length, 'team')} and deciding what the sweep would do to each. One check read per PR; a whole team takes a few seconds.`
             : 'Classifying the PR and deciding what the sweep would do to it.'}
         </Text>
       ) : null}
-      {applied && outcome ? (
-        <>
-          <Alert
-            status="success"
-            title="Applied"
-            description={`The engine ran the sweep as you on ${outcome.summary.total} PR${
-              outcome.summary.total === 1 ? '' : 's'
-            }. What it did to each is below, and in each PR's evidence comment.`}
-          />
-          <OutcomeList result={outcome} />
-        </>
+      {failed.length > 0 && !notConnected ? (
+        <Alert
+          status="danger"
+          title={`marge refused the run for ${failed
+            .map(run => run.team)
+            .join(', ')}`}
+          description={[
+            ...new Set(failed.map(run => run.error?.message ?? '')),
+          ].join(' ')}
+        />
       ) : null}
-      {!applied && preview && !sweep.isPending ? (
+      {applied && outcome.length > 0 ? (
+        <Alert
+          status="success"
+          title="Applied"
+          description="The engine ran the sweep as you. What it did to each PR is below, and in each PR's evidence comment."
+        />
+      ) : null}
+      {!applied && !sweeps.isPending && preview.length > 0 ? (
         <>
           <Text variant="body-small" color="secondary">
             {wholeTeam
-              ? `What the sweep would do to each PR of team ${team} right now. `
+              ? `What the sweep would do to each PR of ${teams.join(', ')} right now. `
               : 'What the sweep would do to this PR right now. '}
             {selectable
-              ? `The team's policy confirms per PR: tick the PRs the engine may act on. Apply runs on the ${targets.length} ticked.`
-              : `Apply runs exactly this, on the ${targets.length} PR${
-                  targets.length === 1 ? '' : 's'
-                } listed.`}
+              ? `The team's policy confirms per PR: tick the PRs the engine may act on. Apply runs on the ${applyCount} ticked.`
+              : `Apply runs exactly this, on the ${plural(applyCount, 'PR')} listed.`}
           </Text>
           {selectable ? (
             <Flex gap="2">
@@ -229,26 +291,38 @@ export function SweepDialog({
               </Button>
             </Flex>
           ) : null}
-          <OutcomeList
-            result={preview}
-            selected={selectable ? selected : undefined}
-            onSelectedChange={selectable ? setSelected : undefined}
-          />
-          {preview.rules ? (
-            <Text variant="body-small" color="secondary">
-              Rule catalogue {preview.rules.source}
-              {preview.rules.digest ? ` (${preview.rules.digest})` : ''},{' '}
-              {preview.rules.loaded} rule
-              {preview.rules.loaded === 1 ? '' : 's'} loaded.
-            </Text>
-          ) : null}
         </>
       ) : null}
+      {(applied ? outcome : preview)
+        .filter(run => run.result)
+        .map(run => (
+          <Flex key={run.team} direction="column" gap="2">
+            {teams.length > 1 ? (
+              <Text variant="body-medium" weight="bold">
+                {run.team}
+              </Text>
+            ) : null}
+            <OutcomeList
+              result={run.result!}
+              selected={!applied && selectable ? selected : undefined}
+              onSelectedChange={
+                !applied && selectable ? setSelected : undefined
+              }
+            />
+            {!applied && run.result?.rules ? (
+              <Text variant="body-small" color="secondary">
+                Rule catalogue {run.result.rules.source}
+                {run.result.rules.digest ? ` (${run.result.rules.digest})` : ''}
+                , {run.result.rules.loaded} rule
+                {run.result.rules.loaded === 1 ? '' : 's'} loaded.
+              </Text>
+            ) : null}
+          </Flex>
+        ))}
       {!applied &&
-      !preview &&
-      !sweep.isPending &&
-      sweep.error &&
-      !notConnected ? (
+      !sweeps.isPending &&
+      preview.length === 0 &&
+      failed.length > 0 ? (
         <Text variant="body-small" color="secondary">
           The engine refused the preview. Its reason is above; nothing was
           written.
