@@ -1,46 +1,62 @@
 import {
-  InferenceService,
+  LLMInferenceService,
   Node,
   Pod,
-  type InferenceServiceInterface,
+  type LLMInferenceServiceInterface,
   type NodeInterface,
   type PodInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   acceleratorResourceOf,
-  findPredictorPod,
-  INFERENCESERVICE_POLL_ACTIVE_MS,
-  INFERENCESERVICE_POLL_IDLE_MS,
-  inferenceServiceRefetchInterval,
+  findWorkloadPod,
   isAcceleratorNode,
-  KSERVE_INFERENCESERVICE_LABEL,
-  parseModelConfigRef,
+  LLMISVC_POLL_ACTIVE_MS,
+  LLMISVC_POLL_IDLE_MS,
+  llmInferenceServiceRefetchInterval,
   toGpuNode,
   toServedModel,
 } from './kserveServing';
 
-function isvc(
-  overrides: Partial<InferenceServiceInterface> = {},
+const WORKLOAD_LABELS = {
+  'app.kubernetes.io/part-of': 'llminferenceservice',
+  'app.kubernetes.io/name': 'qwen3-14b',
+  'kserve.io/component': 'workload',
+};
+
+/** An LLMInferenceService as model-manager composes it from a preset. */
+function llmisvc(
+  overrides: Partial<LLMInferenceServiceInterface> = {},
   installation = 'alpha',
 ) {
-  return new InferenceService(
+  return new LLMInferenceService(
     {
-      apiVersion: 'serving.kserve.io/v1beta1',
-      kind: 'InferenceService',
-      metadata: { name: 'qwen3-14b', namespace: 'kserve', generation: 1 },
+      apiVersion: 'serving.kserve.io/v1alpha2',
+      kind: 'LLMInferenceService',
+      metadata: {
+        name: 'qwen3-14b',
+        namespace: 'kserve',
+        generation: 1,
+        labels: {
+          'app.kubernetes.io/managed-by': 'model-manager',
+          'agent-platform.giantswarm.io/preset': 'qwen3-14b',
+        },
+      },
       spec: {
-        predictor: {
+        model: { uri: 'hf://Qwen/Qwen3-14B', name: 'Qwen/Qwen3-14B' },
+        replicas: 1,
+        router: { route: {} },
+        template: {
           nodeSelector: { 'kubernetes.io/hostname': 'gpu-node-1' },
-          model: {
-            modelFormat: { name: 'vLLM' },
-            runtime: 'kserve-vllm',
-            storageUri: 'hf://Qwen/Qwen3-14B',
-            resources: { requests: { 'nvidia.com/gpu': '1' } },
-          },
+          containers: [
+            {
+              name: 'main',
+              resources: { requests: { 'nvidia.com/gpu': '1' } },
+            },
+          ],
         },
       },
       ...overrides,
-    } as InferenceServiceInterface,
+    } as LLMInferenceServiceInterface,
     installation,
   );
 }
@@ -55,15 +71,15 @@ function pod(
       apiVersion: 'v1',
       kind: 'Pod',
       metadata: {
-        name: 'qwen3-14b-predictor-abc',
+        name: 'qwen3-14b-kserve-abc',
         namespace: 'kserve',
-        labels: labels ?? { [KSERVE_INFERENCESERVICE_LABEL]: 'qwen3-14b' },
+        labels: labels ?? WORKLOAD_LABELS,
       },
       spec: {
         nodeName: 'gpu-node-2',
         containers: [
           {
-            name: 'kserve-container',
+            name: 'main',
             resources: { requests: { 'nvidia.com/gpu': '1' } },
           },
         ],
@@ -88,16 +104,16 @@ function node(overrides: Partial<NodeInterface> = {}, installation = 'alpha') {
   );
 }
 
+const ROUTE = 'https://models.example.test/kserve/qwen3-14b';
+
 describe('toServedModel', () => {
-  it('maps the spec and status into the backend-agnostic shape', () => {
+  it('maps the spec and status into the backend-agnostic shape, named like model-manager names it', () => {
     const served = toServedModel(
-      isvc({
+      llmisvc({
         status: {
           observedGeneration: 1,
-          url: 'https://qwen3-14b.models.example.test',
-          address: {
-            url: 'http://qwen3-14b-predictor.kserve.svc.cluster.local',
-          },
+          url: ROUTE,
+          addresses: [{ url: ROUTE }],
           conditions: [{ type: 'Ready', status: 'True' }],
         },
       }),
@@ -109,27 +125,61 @@ describe('toServedModel', () => {
       backend: 'kserve',
       name: 'qwen3-14b',
       namespace: 'kserve',
-      modelSource: 'hf://Qwen/Qwen3-14B',
-      runtime: 'kserve-vllm',
+      // The name the model is served under — model-manager's `model.name`.
+      modelSource: 'Qwen/Qwen3-14B',
       readiness: 'ready',
       gpuCount: 1,
-      internalUrl: 'http://qwen3-14b-predictor.kserve.svc.cluster.local',
-      externalUrl: 'https://qwen3-14b.models.example.test',
+      // The route on the models Gateway is where clients reach it, in and
+      // outside the cluster.
+      internalUrl: ROUTE,
+      externalUrl: ROUTE,
+      preset: 'qwen3-14b',
     });
-    expect(served.endpointHosts).toContain(
-      'qwen3-14b-predictor.kserve.svc.cluster.local',
+    // The well-known template's runtime: nothing to name per model.
+    expect(served.runtime).toBeUndefined();
+    expect(served.endpointHosts).toEqual(
+      expect.arrayContaining([
+        'qwen3-14b-kserve-workload-svc.kserve.svc.cluster.local',
+        'models.example.test',
+      ]),
     );
   });
 
-  it('takes the node from the predictor pod when there is one', () => {
-    const served = toServedModel(isvc(), [pod()]);
+  it('serves at the workload Service until the router has published a route', () => {
+    const served = toServedModel(llmisvc());
+
+    expect(served.internalUrl).toBe(
+      'http://qwen3-14b-kserve-workload-svc.kserve.svc.cluster.local:8000',
+    );
+    expect(served.externalUrl).toBeUndefined();
+    expect(served.readiness).toBe('pending');
+  });
+
+  it("counts accelerators under the installation's resource name", () => {
+    const amd = llmisvc({
+      spec: {
+        model: { uri: 'hf://x', name: 'x' },
+        template: {
+          containers: [
+            { name: 'main', resources: { requests: { 'amd.com/gpu': '2' } } },
+          ],
+        },
+      },
+    });
+
+    expect(toServedModel(amd, [], 'amd.com/gpu').gpuCount).toBe(2);
+    expect(toServedModel(amd).gpuCount).toBeUndefined();
+  });
+
+  it('takes the node from the workload pod when there is one', () => {
+    const served = toServedModel(llmisvc(), [pod()]);
 
     expect(served.node).toBe('gpu-node-2');
     expect(served.nodeSource).toBe('pod');
   });
 
   it('falls back to the declared node pin without a pod', () => {
-    const served = toServedModel(isvc(), []);
+    const served = toServedModel(llmisvc(), []);
 
     expect(served.node).toBe('gpu-node-1');
     expect(served.nodeSource).toBe('spec');
@@ -137,24 +187,25 @@ describe('toServedModel', () => {
 
   it('has no node when neither a pod nor a pin exists', () => {
     const served = toServedModel(
-      isvc({ spec: { predictor: { model: { storageUri: 'pvc://m' } } } }),
+      llmisvc({ spec: { model: { uri: 'pvc://m/x', name: 'x' } } }),
     );
 
     expect(served.node).toBeUndefined();
     expect(served.nodeSource).toBeUndefined();
     expect(served.gpuCount).toBeUndefined();
+    expect(served.modelSource).toBe('x');
   });
 
-  it('carries the failure explanation for a not-ready model', () => {
+  it('carries the failure explanation for a not-ready model, the reason as its word', () => {
     const served = toServedModel(
-      isvc({
+      llmisvc({
         status: {
           observedGeneration: 1,
           conditions: [
             {
               type: 'Ready',
               status: 'False',
-              reason: 'RevisionFailed',
+              reason: 'WorkloadsNotReady',
               message: 'Deployment does not have minimum availability.',
             },
           ],
@@ -166,40 +217,40 @@ describe('toServedModel', () => {
     expect(served.readinessMessage).toBe(
       'Deployment does not have minimum availability.',
     );
-    // The condition's reason is the row's word for it.
-    expect(served.readinessReason).toBe('RevisionFailed');
+    expect(served.readinessReason).toBe('WorkloadsNotReady');
   });
 
-  it('says the reason once: a failure info that starts with it leaves the text as the explanation', () => {
+  it('says the reason once: a message that starts with it leaves the text as the explanation', () => {
     const served = toServedModel(
-      isvc({
+      llmisvc({
         status: {
           observedGeneration: 1,
-          conditions: [{ type: 'Ready', status: 'False' }],
-          modelStatus: {
-            lastFailureInfo: {
-              reason: 'ModelLoadFailed',
-              message: 'CUDA out of memory',
+          conditions: [
+            {
+              type: 'Ready',
+              status: 'False',
+              reason: 'HTTPRoutesNotReady',
+              message: 'HTTPRoutesNotReady: route not accepted by the gateway',
             },
-          },
+          ],
         },
       }),
     );
 
     expect(served.readiness).toBe('notReady');
-    expect(served.readinessReason).toBe('ModelLoadFailed');
-    expect(served.readinessMessage).toBe('CUDA out of memory');
+    expect(served.readinessReason).toBe('HTTPRoutesNotReady');
+    expect(served.readinessMessage).toBe('route not accepted by the gateway');
   });
 
-  it('reads a waiting predictor pod as Pending with the pod’s reason, whatever the conditions say', () => {
-    const notReady = isvc({
+  it('reads a waiting workload pod as Pending with the pod’s reason, whatever the conditions say', () => {
+    const notReady = llmisvc({
       status: {
         observedGeneration: 1,
         conditions: [
           {
             type: 'Ready',
             status: 'False',
-            reason: 'PredictorNotReady',
+            reason: 'WorkloadsNotReady',
             message: 'Deployment does not have minimum availability.',
           },
         ],
@@ -225,11 +276,11 @@ describe('toServedModel', () => {
         conditions: [{ type: 'PodScheduled', status: 'True' }],
         containerStatuses: [
           {
-            name: 'kserve-container',
+            name: 'main',
             state: {
               waiting: {
                 reason: 'ImagePullBackOff',
-                message: 'Back-off pulling image "vllm/vllm-openai:v0.11"',
+                message: 'Back-off pulling image "llm-d-cuda:v0.8.0"',
               },
             },
           },
@@ -249,20 +300,20 @@ describe('toServedModel', () => {
     expect(toServedModel(notReady, [pulling])).toMatchObject({
       readiness: 'pending',
       readinessReason: 'ImagePullBackOff',
-      readinessMessage: 'Back-off pulling image "vllm/vllm-openai:v0.11"',
+      readinessMessage: 'Back-off pulling image "llm-d-cuda:v0.8.0"',
       node: 'gpu-node-2',
       nodeSource: 'pod',
     });
     // A Running pod says the model is somewhere: the conditions stand.
     expect(toServedModel(notReady, [pod()])).toMatchObject({
       readiness: 'notReady',
-      readinessReason: 'PredictorNotReady',
+      readinessReason: 'WorkloadsNotReady',
       readinessMessage: 'Deployment does not have minimum availability.',
     });
     // A ready object with a pending sibling (a rollout) stays ready.
     expect(
       toServedModel(
-        isvc({
+        llmisvc({
           status: {
             observedGeneration: 1,
             conditions: [{ type: 'Ready', status: 'True' }],
@@ -273,9 +324,9 @@ describe('toServedModel', () => {
     ).toMatchObject({ readiness: 'ready' });
   });
 
-  it('reads an InferenceService being deleted as Stopping', () => {
+  it('reads an LLMInferenceService being deleted as Stopping', () => {
     const served = toServedModel(
-      isvc({
+      llmisvc({
         metadata: {
           name: 'qwen3-14b',
           namespace: 'kserve',
@@ -285,7 +336,7 @@ describe('toServedModel', () => {
         status: {
           observedGeneration: 1,
           conditions: [
-            { type: 'Ready', status: 'False', reason: 'PredictorNotReady' },
+            { type: 'Ready', status: 'False', reason: 'WorkloadsNotReady' },
           ],
         },
       }),
@@ -294,58 +345,53 @@ describe('toServedModel', () => {
     expect(served.readiness).toBe('terminating');
     expect(served.readinessReason).toBeUndefined();
     expect(served.readinessMessage).toBe(
-      'InferenceService qwen3-14b is being deleted.',
+      'LLMInferenceService qwen3-14b is being deleted.',
     );
   });
 
-  it('falls back to the model format when no runtime is named', () => {
+  it('leaves the preset unset on an object nothing composed from one', () => {
     const served = toServedModel(
-      isvc({
-        spec: {
-          predictor: {
-            model: {
-              modelFormat: { name: 'huggingface' },
-              storageUri: 'hf://x',
-            },
-          },
-        },
+      llmisvc({
+        metadata: { name: 'qwen3-14b', namespace: 'kserve', generation: 1 },
       }),
     );
 
-    expect(served.runtime).toBe('huggingface');
+    expect(served.preset).toBeUndefined();
   });
 });
 
-describe('findPredictorPod', () => {
-  it('matches on installation, namespace and the KServe label, skipping finished pods', () => {
-    const service = isvc();
+describe('findWorkloadPod', () => {
+  it('matches on installation, namespace and the controller’s labels, skipping finished pods', () => {
+    const object = llmisvc();
     const finished = pod({ status: { phase: 'Succeeded' } });
     const otherInstallation = pod({}, 'beta');
     const otherNamespace = pod({
-      metadata: {
-        name: 'x',
-        namespace: 'other',
-        labels: { [KSERVE_INFERENCESERVICE_LABEL]: 'qwen3-14b' },
-      },
+      metadata: { name: 'x', namespace: 'other', labels: WORKLOAD_LABELS },
     });
-    const otherService = pod({
-      labels: { [KSERVE_INFERENCESERVICE_LABEL]: 'llama' },
+    const otherObject = pod({
+      labels: { ...WORKLOAD_LABELS, 'app.kubernetes.io/name': 'llama' },
+    });
+    // The same name on a pod of another kind (a Deployment named like the
+    // model) is not the workload.
+    const otherKind = pod({
+      labels: { 'app.kubernetes.io/name': 'qwen3-14b' },
     });
     const pending = pod({ status: { phase: 'Pending' } });
     const running = pod();
 
     expect(
-      findPredictorPod(service, [
+      findWorkloadPod(object, [
         finished,
         otherInstallation,
         otherNamespace,
-        otherService,
+        otherObject,
+        otherKind,
         pending,
         running,
       ]),
     ).toBe(running);
-    expect(findPredictorPod(service, [pending])).toBe(pending);
-    expect(findPredictorPod(service, [finished])).toBeUndefined();
+    expect(findWorkloadPod(object, [pending])).toBe(pending);
+    expect(findWorkloadPod(object, [finished])).toBeUndefined();
   });
 });
 
@@ -584,53 +630,6 @@ describe('toGpuNode', () => {
   });
 });
 
-describe('toServedModel portal markers', () => {
-  it('reads the preset label, display name, ownership and wiring promise', () => {
-    const served = toServedModel(
-      isvc({
-        metadata: {
-          name: 'qwen3-14b',
-          namespace: 'model-serving',
-          generation: 1,
-          labels: {
-            'app.kubernetes.io/managed-by': 'giantswarm-backstage',
-            'agent-platform.giantswarm.io/preset': 'qwen3-14b',
-          },
-          annotations: {
-            'agent-platform.giantswarm.io/model-config': 'kagent/qwen3-14b',
-            'ui.giantswarm.io/display-name': 'Qwen3 14B',
-          },
-        },
-      }),
-    );
-
-    expect(served).toMatchObject({
-      preset: 'qwen3-14b',
-      displayName: 'Qwen3 14B',
-      managedByPortal: true,
-      autoWire: { namespace: 'kagent', name: 'qwen3-14b' },
-    });
-  });
-
-  it('leaves the markers unset on a hand-written InferenceService', () => {
-    const served = toServedModel(isvc());
-
-    expect(served.preset).toBeUndefined();
-    expect(served.displayName).toBeUndefined();
-    expect(served.managedByPortal).toBe(false);
-    expect(served.autoWire).toBeUndefined();
-  });
-
-  it('ignores a malformed wiring annotation', () => {
-    expect(parseModelConfigRef('kagent')).toBeUndefined();
-    expect(parseModelConfigRef('a/b/c')).toBeUndefined();
-    expect(parseModelConfigRef('kagent/qwen')).toEqual({
-      namespace: 'kagent',
-      name: 'qwen',
-    });
-  });
-});
-
 describe('toGpuNode memory', () => {
   it('reports the allocatable memory in bytes and the schedulability', () => {
     const gpuNode = toGpuNode(
@@ -654,31 +653,33 @@ describe('toGpuNode memory', () => {
   });
 });
 
-describe('inferenceServiceRefetchInterval', () => {
-  const ready: InferenceServiceInterface = {
-    apiVersion: 'serving.kserve.io/v1beta1',
-    kind: 'InferenceService',
+describe('llmInferenceServiceRefetchInterval', () => {
+  const ready: LLMInferenceServiceInterface = {
+    apiVersion: 'serving.kserve.io/v1alpha2',
+    kind: 'LLMInferenceService',
     metadata: { name: 'a', generation: 1 },
     status: {
       observedGeneration: 1,
       conditions: [{ type: 'Ready', status: 'True' }],
     },
   };
-  const pending: InferenceServiceInterface = {
-    apiVersion: 'serving.kserve.io/v1beta1',
-    kind: 'InferenceService',
+  const pending: LLMInferenceServiceInterface = {
+    apiVersion: 'serving.kserve.io/v1alpha2',
+    kind: 'LLMInferenceService',
     metadata: { name: 'b' },
   };
 
   it('polls fast while anything is not ready, slowly once everything is', () => {
     expect(
-      inferenceServiceRefetchInterval({ state: { data: [ready, pending] } }),
-    ).toBe(INFERENCESERVICE_POLL_ACTIVE_MS);
-    expect(inferenceServiceRefetchInterval({ state: { data: [ready] } })).toBe(
-      INFERENCESERVICE_POLL_IDLE_MS,
-    );
-    expect(inferenceServiceRefetchInterval({ state: {} })).toBe(
-      INFERENCESERVICE_POLL_IDLE_MS,
+      llmInferenceServiceRefetchInterval({
+        state: { data: [ready, pending] },
+      }),
+    ).toBe(LLMISVC_POLL_ACTIVE_MS);
+    expect(
+      llmInferenceServiceRefetchInterval({ state: { data: [ready] } }),
+    ).toBe(LLMISVC_POLL_IDLE_MS);
+    expect(llmInferenceServiceRefetchInterval({ state: {} })).toBe(
+      LLMISVC_POLL_IDLE_MS,
     );
   });
 });

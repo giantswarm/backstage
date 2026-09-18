@@ -117,7 +117,7 @@ export function describeLoadAnswer(answer: ModelManagerLoadAnswer): string {
   const parts: string[] = [];
   const running = answer.running;
   if (running?.resource) {
-    parts.push(`${running.kind ?? 'InferenceService'} ${running.resource}`);
+    parts.push(`${running.kind ?? 'LLMInferenceService'} ${running.resource}`);
   }
   if (answer.fit) {
     const verdict = describeFitVerdict(answer.fit);

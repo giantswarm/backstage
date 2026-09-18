@@ -49,7 +49,7 @@ const goneKserve: ClientServingSummary = {
   readiness: 'notServing',
   name: 'lab-echo',
   namespace: 'model-serving',
-  message: 'InferenceService model-serving/lab-echo is not serving.',
+  message: 'LLMInferenceService model-serving/lab-echo is not serving.',
 };
 
 /** model-manager 0.23.4's word for a predictor pod that waits for a GPU node. */
@@ -96,7 +96,7 @@ describe('describeServedModel / describeServedBy / servingTitle', () => {
   it('names the model the backend’s way, with its namespace where it has one', () => {
     expect(describeServedModel(idle)).toBe('Ollama model qwen3:0.6b');
     expect(describeServedModel(goneKserve)).toBe(
-      'InferenceService model-serving/lab-echo',
+      'LLMInferenceService model-serving/lab-echo',
     );
   });
 
@@ -112,11 +112,11 @@ describe('describeServedModel / describeServedBy / servingTitle', () => {
       'Ollama model qwen3:0.6b is idle — loads on first request — Downloaded; not loaded.',
     );
     expect(servingTitle(goneKserve)).toBe(
-      'InferenceService model-serving/lab-echo is not serving — InferenceService model-serving/lab-echo is not serving.',
+      'LLMInferenceService model-serving/lab-echo is not serving — LLMInferenceService model-serving/lab-echo is not serving.',
     );
     // The backend's word for the state, where it has one.
     expect(servingTitle(stuckKserve)).toBe(
-      'InferenceService model-serving/qwen3-4b-instruct is pending (Unschedulable) — 0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+      'LLMInferenceService model-serving/qwen3-4b-instruct is pending (Unschedulable) — 0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
     );
   });
 });
@@ -187,7 +187,7 @@ describe('ModelServingStatus', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
-  it('calls the same load "Serve" on KServe, where it creates the InferenceService', async () => {
+  it('calls the same load "Serve" on KServe, where it creates the LLMInferenceService', async () => {
     await render(
       <ModelServingStatus
         serving={goneKserve}
@@ -205,7 +205,7 @@ describe('ModelServingStatus', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'lab-echo: InferenceService requested',
+          title: 'lab-echo: LLMInferenceService requested',
           status: 'success',
         }),
       ),

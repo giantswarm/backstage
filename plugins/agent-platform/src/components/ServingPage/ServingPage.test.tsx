@@ -6,13 +6,7 @@ import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServingContextValue } from '../ServingProvider';
 import type { ModelConfigsContextValue } from '../ModelConfigsProvider';
 import type { ServedModel } from '../../lib/serving';
-import type {
-  ModelServingConfig,
-  ServingPreset,
-} from '../../lib/servingPresets';
-import type { ServingPresets } from '../../hooks/useServingPresets';
 import type { PullJob, PullJobs } from '../../hooks/usePullJobs';
-import type { WiringState } from '../../hooks/useAutoWireServedModels';
 import type { ServedModelDownloadRow } from './ServedModelsTable';
 import {
   PageHeaderActionsProvider,
@@ -58,13 +52,12 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => mockUseModelConfigs(),
 }));
 
-// The write side: presets read, the two mutations, the auto-wiring and the
-// permission probe are all mocked — their own tests cover them; here it is
-// about what the section offers and what it does with the outcome.
-const mockUseServingPresets = jest.fn<ServingPresets, [string[]]>();
-const mockServe = jest.fn();
+// The write side: the stop mutation and the permission probe are mocked —
+// their own tests cover them; here it is about what the section offers and
+// what it does with the outcome. The Serve dialog is model-manager's
+// (LoadModelDialog, reduced to a marker below): what matters here is when it
+// is offered and what it is opened on.
 const mockStop = jest.fn();
-const mockWiringFor = jest.fn<WiringState | undefined, [string]>();
 const mockUseSelfSubjectAccessReview = jest.fn();
 const mockToastPost = jest.fn();
 // The jobs list behind the download rows; the rows themselves are the real
@@ -72,37 +65,9 @@ const mockToastPost = jest.fn();
 const mockUsePullJobs = jest.fn<PullJobs, [string[]]>();
 const mockCancelDownload = jest.fn();
 const mockUseMusterPluginApi = jest.fn();
-// Which installations' muster lists model-manager: the gate that keeps the
-// client-side InferenceService serve to installations without one.
-const mockPresenceOf = jest.fn<'available' | 'missing' | 'unknown', [string]>();
-
-jest.mock('../../hooks/useModelManagerInstallations', () => ({
-  useModelManagerInstallations: (installations: string[]) => ({
-    installations: installations.filter(
-      name => mockPresenceOf(name) === 'available',
-    ),
-    isLoading: false,
-    presenceOf: (name: string) => mockPresenceOf(name),
-    isUnavailable: false,
-  }),
-}));
-
-jest.mock('../../hooks/useServingPresets', () => ({
-  useServingPresets: (installations: string[]) =>
-    mockUseServingPresets(installations),
-}));
 
 jest.mock('../../hooks/useMusterPluginApi', () => ({
   useMusterPluginApi: () => mockUseMusterPluginApi(),
-}));
-
-jest.mock('../../hooks/useServeModel', () => ({
-  useServeModel: () => ({
-    serve: mockServe,
-    isServing: false,
-    error: null,
-    reset: jest.fn(),
-  }),
 }));
 
 jest.mock('../../hooks/useStopServedModel', () => ({
@@ -111,12 +76,6 @@ jest.mock('../../hooks/useStopServedModel', () => ({
     isStopping: false,
     error: null,
     reset: jest.fn(),
-  }),
-}));
-
-jest.mock('../../hooks/useAutoWireServedModels', () => ({
-  useAutoWireServedModels: () => ({
-    wiringFor: (id: string) => mockWiringFor(id),
   }),
 }));
 
@@ -139,54 +98,6 @@ jest.mock('@backstage/frontend-plugin-api', () => {
   };
 });
 
-const noPresets: ServingPresets = {
-  isLoading: false,
-  installations: [],
-  configFor: () => undefined,
-  presetsFor: () => [],
-  problems: [],
-  invalidPresets: [],
-};
-
-const config: ModelServingConfig = {
-  installation: 'inst-1',
-  namespace: 'model-serving',
-  runtime: 'kserve-vllm',
-  gpuResourceName: 'nvidia.com/gpu',
-  nodeSelector: {},
-  cache: { enabled: false, redirectPolicy: false },
-  presets: {
-    namespace: 'agent-platform',
-    matchingLabels: { 'agent-platform.giantswarm.io/serving-preset': 'true' },
-    names: ['qwen3-14b'],
-  },
-};
-
-const preset: ServingPreset = {
-  installation: 'inst-1',
-  name: 'qwen3-14b',
-  displayName: 'Qwen3 14B',
-  model: {
-    id: 'Qwen/Qwen3-14B',
-    storageUri: 'hf://Qwen/Qwen3-14B',
-    format: 'vLLM',
-    capabilities: [],
-  },
-  args: [],
-  env: [],
-  resources: { gpus: 1, requests: {}, limits: {} },
-  requirements: { weightsGiB: 28, overheadGiB: 30 },
-  scheduling: { nodeSelector: {}, tolerations: [] },
-  predictor: {},
-};
-
-const withPresets: ServingPresets = {
-  ...noPresets,
-  installations: ['inst-1'],
-  configFor: () => config,
-  presetsFor: () => [preset],
-};
-
 // The model-manager controls are react-query/API-backed and tested on their
 // own; here only *whether* the section mounts them, and what it hands them,
 // matters. The row menu is reduced to one button per offer it received; the
@@ -197,13 +108,16 @@ jest.mock('../ModelManagerControls', () => ({
   LoadModelDialog: ({
     isOpen,
     targets,
+    seed,
   }: {
     isOpen: boolean;
     targets: { name: string }[];
+    seed?: { installation?: string; model?: string };
   }) =>
     isOpen ? (
       <div data-testid="load-dialog">
         {targets.map(target => target.name).join(',')}
+        {seed?.model ? ` seeded ${seed.installation}/${seed.model}` : ''}
       </div>
     ) : null,
   describeLoadTarget: (target: { name: string }) => target.name,
@@ -263,18 +177,13 @@ const qwen: ServedModel = {
   backend: 'kserve',
   name: 'qwen3-14b',
   namespace: 'kserve',
-  modelSource: 'hf://Qwen/Qwen3-14B',
-  runtime: 'kserve-vllm',
+  modelSource: 'Qwen/Qwen3-14B',
   readiness: 'ready',
   node: 'gpu-node-1',
   nodeSource: 'pod',
   gpuCount: 1,
-  internalUrl: 'http://qwen3-14b-predictor.kserve.svc.cluster.local',
-  endpointHosts: [
-    'qwen3-14b-predictor.kserve.svc.cluster.local',
-    'qwen3-14b-predictor.kserve.svc',
-    'qwen3-14b-predictor.kserve',
-  ],
+  internalUrl: 'https://models.example.test/kserve/qwen3-14b',
+  endpointHosts: ['models.example.test'],
 };
 
 const baseServing: ServingContextValue = {
@@ -298,7 +207,7 @@ const baseServing: ServingContextValue = {
   ],
   gpuCapacityUnavailable: {},
   servedModelFor: (_installation, lookup) =>
-    lookup.endpoint?.includes('qwen3-14b-predictor') ? qwen : undefined,
+    lookup.endpoint?.includes('/kserve/qwen3-14b') ? qwen : undefined,
   servedModelForEndpoint: () => undefined,
   servingStateFor: () => undefined,
   capabilitiesFor: () => KSERVE_CR_CAPABILITIES,
@@ -394,64 +303,41 @@ describe('ServingPage', () => {
   beforeEach(() => {
     mockUseServing.mockReset();
     mockUseModelConfigs.mockReset();
-    mockUseServingPresets.mockReset();
-    mockServe.mockReset();
     mockStop.mockReset();
-    mockWiringFor.mockReset();
     mockToastPost.mockReset();
     mockUseSelfSubjectAccessReview.mockReset();
     mockUsePullJobs.mockReset();
     mockCancelDownload.mockReset();
     mockUseMusterPluginApi.mockReset();
     mockUseMusterPluginApi.mockReturnValue(undefined);
-    mockPresenceOf.mockReset();
-    mockPresenceOf.mockReturnValue('missing');
     window.sessionStorage.clear();
     mockUsePullJobs.mockReturnValue(noJobs);
     mockUseServing.mockReturnValue(baseServing);
     mockUseModelConfigs.mockReturnValue(baseModelConfigs);
-    mockUseServingPresets.mockReturnValue(noPresets);
     mockUseSelfSubjectAccessReview.mockReturnValue({
       allowed: true,
       isLoading: false,
     });
-    mockServe.mockResolvedValue(undefined);
-    mockStop.mockImplementation(async ({ via }: { via: string }) => ({ via }));
+    mockStop.mockResolvedValue(undefined);
   });
 
-  it('asks for presets only on the installations with a KServe backend', async () => {
-    mockUseServing.mockReturnValue({
-      ...baseServing,
-      installations: ['inst-1', 'inst-2'],
-      backends: { 'inst-1': 'kserve', 'inst-2': 'ollama' },
-    });
-
+  it('offers no Serve on a read-only CR source: serving is model-manager’s', async () => {
     await renderSection();
 
-    expect(mockUseServingPresets).toHaveBeenCalledWith(['inst-1']);
-  });
-
-  it('offers "Serve model" only where presets are published', async () => {
-    const { unmount } = await renderSection();
     expect(
       screen.queryByRole('button', { name: /Serve model/ }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/Read-only|are how agents reach them/),
-    ).toBeInTheDocument();
-    unmount();
-
-    mockUseServingPresets.mockReturnValue(withPresets);
-    await renderSection();
-
-    expect(
-      screen.getByRole('button', { name: /Serve model/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/are how agents reach them/)).toBeInTheDocument();
+    // Nothing is composed in the browser: no permission probe for a create.
+    expect(mockUseSelfSubjectAccessReview).not.toHaveBeenCalledWith(
+      'inst-1',
+      expect.objectContaining({ verb: 'create' }),
+      expect.anything(),
+    );
   });
 
-  it('serves through model-manager as the person where a backend can load and muster is connected — not the client-side InferenceService', async () => {
+  it('serves through model-manager as the person where a backend can load and muster is connected', async () => {
     mockUseMusterPluginApi.mockReturnValue({});
-    mockUseServingPresets.mockReturnValue(withPresets);
     mockUseServing.mockReturnValue({
       ...baseServing,
       capabilities: {
@@ -468,82 +354,24 @@ describe('ServingPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Serve model/ }));
 
     expect(screen.getByTestId('load-dialog')).toHaveTextContent('inst-1');
-    expect(screen.queryByText('Serve a model')).not.toBeInTheDocument();
-    expect(mockUseSelfSubjectAccessReview).not.toHaveBeenCalledWith(
-      'inst-1',
-      expect.objectContaining({ verb: 'create' }),
-      expect.objectContaining({ enabled: true }),
-    );
+    expect(
+      screen.getByText(/Serve a model from a curated preset or stop one/),
+    ).toBeInTheDocument();
   });
 
-  it.each(['available', 'unknown'] as const)(
-    'withholds the client-side InferenceService serve where muster lists model-manager (presence %s), even with presets published',
-    async presence => {
-      // Serving there is model-manager's (fit check included): until the
-      // installation's muster has answered *without* model-manager, the
-      // browser composes nothing — not while the list is in flight, not
-      // while model-manager reports no backend yet.
-      mockPresenceOf.mockReturnValue(presence);
-      mockUseServingPresets.mockReturnValue(withPresets);
-
-      await renderSection();
-
-      expect(
-        screen.queryByRole('button', { name: /Serve model/ }),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByText('Serve a model')).not.toBeInTheDocument();
-    },
-  );
-
-  it("opens the serve dialog seeded with the installation's presets and creates the composed InferenceService", async () => {
-    mockUseServingPresets.mockReturnValue(withPresets);
+  it('withholds Serve where a backend can load but muster is not connected', async () => {
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      capabilities: {
+        'inst-1': { ...KSERVE_CR_CAPABILITIES, load: true, presets: true },
+      },
+    });
 
     await renderSection();
-    await userEvent.click(screen.getByRole('button', { name: /Serve model/ }));
 
-    expect(screen.getByText('Serve a model')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue(
-      'qwen3-14b',
-    );
-    // The permission probe asks about creating InferenceServices there.
-    expect(mockUseSelfSubjectAccessReview).toHaveBeenCalledWith(
-      'inst-1',
-      expect.objectContaining({
-        group: 'serving.kserve.io',
-        resource: 'inferenceservices',
-        namespace: 'model-serving',
-        verb: 'create',
-      }),
-      expect.objectContaining({ enabled: true }),
-    );
-
-    // The served qwen3-14b already exists in the fixture's namespace `kserve`,
-    // not in `model-serving`, so the default name is free.
-    await userEvent.click(screen.getByRole('button', { name: 'Serve model' }));
-
-    await waitFor(() => expect(mockServe).toHaveBeenCalledTimes(1));
-    expect(mockServe).toHaveBeenCalledWith({
-      installation: 'inst-1',
-      namespace: 'model-serving',
-      manifest: expect.objectContaining({
-        kind: 'InferenceService',
-        metadata: expect.objectContaining({
-          name: 'qwen3-14b',
-          namespace: 'model-serving',
-        }),
-      }),
-    });
-    await waitFor(() =>
-      expect(mockToastPost).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Serving "Qwen3 14B" as qwen3-14b',
-          status: 'success',
-        }),
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByText('Serve a model')).not.toBeInTheDocument(),
-    );
+    expect(
+      screen.queryByRole('button', { name: /Serve model/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('offers "Stop serving…" on KServe rows and asks before deleting the CR', async () => {
@@ -554,11 +382,17 @@ describe('ServingPage', () => {
     );
 
     expect(screen.getByText('Stop serving "qwen3-14b"?')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /The LLMInferenceService qwen3-14b in kserve on inst-1 is deleted/,
+      ),
+    ).toBeInTheDocument();
     // A read-only CR source: the CR is deleted with the user's own RBAC.
     expect(mockUseSelfSubjectAccessReview).toHaveBeenCalledWith(
       'inst-1',
       expect.objectContaining({
-        resource: 'inferenceservices',
+        group: 'serving.kserve.io',
+        resource: 'llminferenceservices',
         namespace: 'kserve',
         name: 'qwen3-14b',
         verb: 'delete',
@@ -571,11 +405,15 @@ describe('ServingPage', () => {
     await waitFor(() => expect(mockStop).toHaveBeenCalledTimes(1));
     expect(mockStop.mock.calls[0][0]).toMatchObject({
       model: { name: 'qwen3-14b' },
-      via: 'inferenceservice',
+      via: 'llminferenceservice',
     });
     await waitFor(() =>
       expect(mockToastPost).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Stopped serving "qwen3-14b"' }),
+        expect.objectContaining({
+          title: 'Stopped serving "qwen3-14b"',
+          description:
+            'The workload is being removed; the weights stay cached on the node.',
+        }),
       ),
     );
   });
@@ -628,28 +466,14 @@ describe('ServingPage', () => {
       capabilities: { 'inst-1': kserveManagerCapabilities },
       servedModels: [qwenFolded, devstral],
       servedModelFor: (_installation, lookup) =>
-        lookup.endpoint?.includes('qwen3-14b-predictor')
-          ? qwenFolded
-          : undefined,
-    };
-    const devstralPreset: ServingPreset = {
-      ...preset,
-      name: 'devstral-small-2',
-      displayName: 'Devstral Small 2',
-      model: {
-        id: 'mistralai/Devstral-Small-2-24B-Instruct-2512',
-        storageUri: 'hf://mistralai/Devstral-Small-2-24B-Instruct-2512',
-        format: 'vLLM',
-        capabilities: ['tools'],
-      },
+        lookup.endpoint?.includes('/kserve/qwen3-14b') ? qwenFolded : undefined,
     };
 
     beforeEach(() => {
+      // muster connected: the installation's model-manager can load, so the
+      // Serve is its dialog.
+      mockUseMusterPluginApi.mockReturnValue({});
       mockUseServing.mockReturnValue(mixedServing);
-      mockUseServingPresets.mockReturnValue({
-        ...withPresets,
-        presetsFor: () => [preset, devstralPreset],
-      });
     });
 
     it('offers the Hugging Face import instead of the plain pull, and one menu per row', async () => {
@@ -682,7 +506,7 @@ describe('ServingPage', () => {
         screen.getByRole('button', { name: 'Cancel download Qwen/Qwen3-8B' }),
       ).toBeInTheDocument();
       expect(screen.queryByText('Model downloads')).not.toBeInTheDocument();
-      // The served InferenceService: one menu, one stop.
+      // The served LLMInferenceService: one menu, one stop.
       expect(
         screen.getAllByRole('button', { name: 'Actions for qwen3-14b' }),
       ).toHaveLength(1);
@@ -720,7 +544,7 @@ describe('ServingPage', () => {
 
       expect(screen.getByText('Stop serving "qwen3-14b"?')).toBeInTheDocument();
       expect(
-        screen.getByText(/model-manager deletes the InferenceService/),
+        screen.getByText(/model-manager deletes the LLMInferenceService/),
       ).toBeInTheDocument();
       expect(mockUseSelfSubjectAccessReview).toHaveBeenLastCalledWith(
         'inst-1',
@@ -746,31 +570,7 @@ describe('ServingPage', () => {
       );
     });
 
-    it('says what happened when model-manager handed the stop back to the CR delete', async () => {
-      mockStop.mockResolvedValue({ via: 'inferenceservice' });
-      await renderSection();
-
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Stop serving… qwen3-14b' }),
-      );
-      expect(
-        screen.getByText(/deleted with your own permissions instead/),
-      ).toBeInTheDocument();
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Stop serving' }),
-      );
-
-      await waitFor(() =>
-        expect(mockToastPost).toHaveBeenCalledWith(
-          expect.objectContaining({
-            description:
-              'The predictor is being removed; the weights stay cached on the node.',
-          }),
-        ),
-      );
-    });
-
-    it('opens the serve dialog seeded with a cached download: its preset, cache directory and node', async () => {
+    it('opens the Serve dialog on a cached download’s installation and preset', async () => {
       await renderSection();
 
       await userEvent.click(
@@ -779,26 +579,12 @@ describe('ServingPage', () => {
         }),
       );
 
-      expect(screen.getByText('Serve a model')).toBeInTheDocument();
-      // The model picker lands on the preset's cached entry; the preset is
-      // derived from it, so there is no separate preset choice.
-      expect(screen.getByRole('button', { name: /Model/ })).toHaveTextContent(
-        'Devstral Small 2 · cached on gpu-node-1',
+      // model-manager's dialog, seeded with the preset the cached weights
+      // belong to: it composes the LLMInferenceService; nothing is composed
+      // here.
+      expect(screen.getByTestId('load-dialog')).toHaveTextContent(
+        'inst-1 seeded inst-1/devstral-small-2',
       );
-      expect(
-        screen.getByText(
-          /served from the cache directory devstral-small-2 on gpu-node-1/,
-        ),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /Preset/ }),
-      ).not.toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue(
-        'devstral-small-2',
-      );
-      expect(
-        screen.getByRole('button', { name: /Target node/ }),
-      ).toHaveTextContent('gpu-node-1');
     });
   });
 
@@ -815,49 +601,8 @@ describe('ServingPage', () => {
 
     expect(
       screen.getByText(
-        /may not delete InferenceService qwen3-14b in kserve on inst-1/,
+        /may not delete LLMInferenceService qwen3-14b in kserve on inst-1/,
       ),
-    ).toBeInTheDocument();
-  });
-
-  it('shows the auto-wiring progress in the "Used by" column', async () => {
-    mockWiringFor.mockReturnValue({
-      status: 'error',
-      message: 'The model config could not be created: forbidden',
-    });
-
-    await renderSection();
-
-    expect(screen.getByText('Model config not created')).toBeInTheDocument();
-    expect(
-      screen.getByTitle('The model config could not be created: forbidden'),
-    ).toBeInTheDocument();
-  });
-
-  it('warns when presets could not be read or are unusable', async () => {
-    mockUseServingPresets.mockReturnValue({
-      ...withPresets,
-      problems: [
-        { installation: 'inst-1', message: 'configmaps is forbidden' },
-      ],
-      invalidPresets: [
-        { installation: 'inst-1', name: 'broken', error: 'no displayName' },
-      ],
-    });
-
-    await renderSection();
-
-    expect(
-      screen.getByText('Serving presets could not be read'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/inst-1: configmaps is forbidden/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('1 serving preset is unusable'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/broken \(inst-1\): no displayName/),
     ).toBeInTheDocument();
   });
 
@@ -927,7 +672,7 @@ describe('ServingPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('qwen3-14b')).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
-    expect(screen.getByText('hf://Qwen/Qwen3-14B')).toBeInTheDocument();
+    expect(screen.getByText('Qwen/Qwen3-14B')).toBeInTheDocument();
     expect(screen.queryByText('GPU capacity')).not.toBeInTheDocument();
     expect(screen.queryByText('NVIDIA-GB10')).not.toBeInTheDocument();
   });
@@ -938,7 +683,7 @@ describe('ServingPage', () => {
       modelConfigsFor: () => [
         modelConfig(
           'qwen3-14b',
-          'http://qwen3-14b-predictor.kserve.svc.cluster.local/v1',
+          'https://models.example.test/kserve/qwen3-14b/v1',
         ),
         modelConfig('claude'),
         modelConfig('other-vllm', 'https://vllm.example.test/v1'),
@@ -967,7 +712,7 @@ describe('ServingPage', () => {
     expect(screen.getByTestId('progress')).toBeInTheDocument();
   });
 
-  it('surfaces installations whose InferenceServices could not be read', async () => {
+  it('surfaces installations whose LLMInferenceServices could not be read', async () => {
     mockUseServing.mockReturnValue({
       ...baseServing,
       unreachableInstallations: ['inst-3'],

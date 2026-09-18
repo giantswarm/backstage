@@ -1,9 +1,9 @@
 import { renderHook } from '@testing-library/react';
 import {
   ConfigMap,
-  InferenceService,
+  LLMInferenceService,
   Node,
-  type InferenceServiceInterface,
+  type LLMInferenceServiceInterface,
   type NodeInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { buildResourceErrors } from '../resourceErrorFixtures';
@@ -14,7 +14,7 @@ import {
 
 // The inventory's KServe verdict is handed in, and the two fetch layers are
 // mocked, so each fixture drives the merge logic directly: which installations
-// have KServe, what their InferenceServices, nodes and pods say, and how
+// have KServe, what their LLMInferenceServices, nodes and pods say, and how
 // failures at each layer surface.
 const kserveInstallations = jest.fn<KServeInstallations, []>();
 const mockUseResources = jest.fn();
@@ -34,20 +34,20 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
   };
 });
 
-function isvc(
+const WORKLOAD_SELECTOR = 'app.kubernetes.io/part-of=llminferenceservice';
+
+function llmisvc(
   installation: string,
   name: string,
   ready: boolean | undefined,
   gpus = '1',
-): InferenceService {
-  const status: InferenceServiceInterface['status'] =
+): LLMInferenceService {
+  const status: LLMInferenceServiceInterface['status'] =
     ready === undefined
       ? undefined
       : {
           observedGeneration: 1,
-          address: {
-            url: `http://${name}-predictor.kserve.svc.cluster.local`,
-          },
+          url: `https://models.example.test/kserve/${name}`,
           conditions: [
             {
               type: 'Ready',
@@ -58,23 +58,25 @@ function isvc(
             },
           ],
         };
-  return new InferenceService(
+  return new LLMInferenceService(
     {
-      apiVersion: 'serving.kserve.io/v1beta1',
-      kind: 'InferenceService',
+      apiVersion: 'serving.kserve.io/v1alpha2',
+      kind: 'LLMInferenceService',
       metadata: { name, namespace: 'kserve', generation: 1 },
       spec: {
-        predictor: {
+        model: { uri: `hf://org/${name}`, name: `org/${name}` },
+        template: {
           nodeSelector: { 'kubernetes.io/hostname': 'gpu-node-1' },
-          model: {
-            runtime: 'kserve-vllm',
-            storageUri: `hf://org/${name}`,
-            resources: { requests: { 'nvidia.com/gpu': gpus } },
-          },
+          containers: [
+            {
+              name: 'main',
+              resources: { requests: { 'nvidia.com/gpu': gpus } },
+            },
+          ],
         },
       },
       status,
-    } as InferenceServiceInterface,
+    } as LLMInferenceServiceInterface,
     installation,
   );
 }
@@ -121,8 +123,15 @@ const gpuNodeLabelsOnly = (installation: string) =>
     },
   });
 
-/** The installation's discovery ConfigMap, naming the resource its accelerators go by. */
-const discoveryConfigMap = (installation: string, gpuResourceName: string) =>
+/**
+ * The installation's discovery ConfigMap, naming the resource its accelerators
+ * go by and the models Gateway its routes attach to.
+ */
+const discoveryConfigMap = (
+  installation: string,
+  gpuResourceName: string,
+  gateway?: string,
+) =>
   new ConfigMap(
     {
       apiVersion: 'v1',
@@ -137,9 +146,10 @@ const discoveryConfigMap = (installation: string, gpuResourceName: string) =>
 kind: ModelServingConfig
 spec:
   namespace: model-serving
-  runtime: kserve-vllm
   gpuResourceName: ${gpuResourceName}
-  presets:
+  gateway:
+    enabled: ${gateway ? 'true' : 'false'}
+${gateway ? `    endpoint: ${gateway}\n` : ''}  presets:
     namespace: agent-platform
 `,
       },
@@ -155,15 +165,15 @@ type ResourcesResult = {
 
 /** Route `useResources` calls by resource class. */
 function mockResources(byClass: {
-  inferenceServices?: ResourcesResult;
+  objects?: ResourcesResult;
   nodes?: ResourcesResult;
   /** The discovery ConfigMaps ({@link discoveryConfigMap}); none by default. */
   configMaps?: ResourcesResult;
 }) {
   mockUseResources.mockImplementation((_clusters, ResourceClass) => {
     let result: ResourcesResult | undefined;
-    if (ResourceClass === InferenceService) {
-      result = byClass.inferenceServices;
+    if (ResourceClass === LLMInferenceService) {
+      result = byClass.objects;
     } else if (ResourceClass === ConfigMap) {
       result = byClass.configMaps;
     } else {
@@ -219,19 +229,22 @@ describe('useKServeServingSource', () => {
     mockPods();
   });
 
-  it('reads InferenceServices, nodes and pods only on installations with KServe', () => {
+  it('reads LLMInferenceServices, nodes and pods only on installations with KServe', () => {
     render();
 
-    // Both resource reads are scoped to the inventory's answer.
+    // Every resource read is scoped to the inventory's answer, and the
+    // objects are the llm-d control plane's v1alpha2, no discovery.
     for (const call of mockUseResources.mock.calls) {
       expect(call[0]).toEqual(['alpha']);
     }
-    // One predictor-pod list per KServe installation, no per-node lists yet.
+    const objectsCall = mockUseResources.mock.calls.find(
+      call => call[1] === LLMInferenceService,
+    );
+    expect(objectsCall?.[3]).toMatchObject({ enableDiscovery: false });
+    // One workload-pod list per KServe installation, by the controller's
+    // label; no per-node lists yet.
     expect(mockUsePodLists.mock.calls[0][0]).toEqual([
-      {
-        installation: 'alpha',
-        labelSelector: 'serving.kserve.io/inferenceservice',
-      },
+      { installation: 'alpha', labelSelector: WORKLOAD_SELECTOR },
     ]);
   });
 
@@ -249,6 +262,7 @@ describe('useKServeServingSource', () => {
       installations: [],
       backends: {},
       capabilities: {},
+      gatewayHosts: {},
       unreachableInstallations: [],
       servedModels: [],
       gpuNodes: [],
@@ -257,13 +271,13 @@ describe('useKServeServingSource', () => {
     expect(mockUsePodLists.mock.calls[0][0]).toEqual([]);
   });
 
-  it('maps mixed ready / not-ready / pending InferenceServices', () => {
+  it('maps mixed ready / not-ready / pending LLMInferenceServices', () => {
     mockResources({
-      inferenceServices: {
+      objects: {
         resources: [
-          isvc('alpha', 'qwen3-14b', true),
-          isvc('alpha', 'devstral', false),
-          isvc('alpha', 'fresh', undefined, '2'),
+          llmisvc('alpha', 'qwen3-14b', true),
+          llmisvc('alpha', 'devstral', false),
+          llmisvc('alpha', 'fresh', undefined, '2'),
         ],
       },
     });
@@ -297,24 +311,31 @@ describe('useKServeServingSource', () => {
     expect(result.current.servedModels[1].readinessMessage).toBe(
       'Deployment does not have minimum availability.',
     );
+    expect(result.current.servedModels[0].internalUrl).toBe(
+      'https://models.example.test/kserve/qwen3-14b',
+    );
   });
 
-  it('places a served model on the node its predictor pod runs on', () => {
+  it('places a served model on the node its workload pod runs on', () => {
     mockResources({
-      inferenceServices: { resources: [isvc('alpha', 'qwen3-14b', true)] },
+      objects: { resources: [llmisvc('alpha', 'qwen3-14b', true)] },
     });
     mockPods([
       {
         installation: 'alpha',
-        labelSelector: 'serving.kserve.io/inferenceservice',
+        labelSelector: WORKLOAD_SELECTOR,
         pods: [
           {
             apiVersion: 'v1',
             kind: 'Pod',
             metadata: {
-              name: 'qwen3-14b-predictor-x',
+              name: 'qwen3-14b-kserve-x',
               namespace: 'kserve',
-              labels: { 'serving.kserve.io/inferenceservice': 'qwen3-14b' },
+              labels: {
+                'app.kubernetes.io/part-of': 'llminferenceservice',
+                'app.kubernetes.io/name': 'qwen3-14b',
+                'kserve.io/component': 'workload',
+              },
             },
             spec: { nodeName: 'gpu-node-2' },
             status: { phase: 'Running' },
@@ -336,11 +357,7 @@ describe('useKServeServingSource', () => {
       },
     });
     mockPods([
-      {
-        installation: 'alpha',
-        labelSelector: 'serving.kserve.io/inferenceservice',
-        pods: [],
-      },
+      { installation: 'alpha', labelSelector: WORKLOAD_SELECTOR, pods: [] },
       {
         installation: 'alpha',
         fieldSelector: 'spec.nodeName=gpu-node-1',
@@ -368,10 +385,7 @@ describe('useKServeServingSource', () => {
 
     // Only the node with an allocatable figure gets a per-node pod list.
     expect(mockUsePodLists.mock.calls.at(-1)?.[0]).toEqual([
-      {
-        installation: 'alpha',
-        labelSelector: 'serving.kserve.io/inferenceservice',
-      },
+      { installation: 'alpha', labelSelector: WORKLOAD_SELECTOR },
       { installation: 'alpha', fieldSelector: 'spec.nodeName=gpu-node-1' },
     ]);
     expect(result.current.gpuNodes).toEqual([
@@ -438,11 +452,31 @@ describe('useKServeServingSource', () => {
     });
   });
 
-  it("counts the resource the installation's discovery ConfigMap names, and lists nodes by it", () => {
+  it("counts the resource the installation's discovery ConfigMap names — on nodes and on the served models — and lists nodes by it", () => {
+    const fpgaModel = new LLMInferenceService(
+      {
+        apiVersion: 'serving.kserve.io/v1alpha2',
+        kind: 'LLMInferenceService',
+        metadata: { name: 'fpga-model', namespace: 'kserve', generation: 1 },
+        spec: {
+          model: { uri: 'hf://org/fpga-model', name: 'org/fpga-model' },
+          template: {
+            containers: [
+              {
+                name: 'main',
+                resources: { requests: { 'xilinx.com/fpga': '2' } },
+              },
+            ],
+          },
+        },
+      } as LLMInferenceServiceInterface,
+      'alpha',
+    );
     mockResources({
       configMaps: {
         resources: [discoveryConfigMap('alpha', 'xilinx.com/fpga')],
       },
+      objects: { resources: [fpgaModel] },
       nodes: {
         resources: [
           node('alpha', 'fpga-node', {
@@ -476,6 +510,29 @@ describe('useKServeServingSource', () => {
       installation: 'alpha',
       fieldSelector: 'spec.nodeName=fpga-node',
     });
+    expect(result.current.servedModels[0].gpuCount).toBe(2);
+    // No Gateway rendered there: nothing to resolve a client's route on.
+    expect(result.current.gatewayHosts).toEqual({});
+  });
+
+  it("publishes the installation's models Gateway as its gatewayHosts", () => {
+    mockResources({
+      configMaps: {
+        resources: [
+          discoveryConfigMap(
+            'alpha',
+            'nvidia.com/gpu',
+            'https://models.example.test',
+          ),
+        ],
+      },
+    });
+
+    const { result } = render();
+
+    expect(result.current.gatewayHosts).toEqual({
+      alpha: ['models.example.test:443'],
+    });
   });
 
   it('surfaces an installation whose probe failed as unreachable', () => {
@@ -491,15 +548,15 @@ describe('useKServeServingSource', () => {
     expect(result.current.installations).toEqual(['alpha']);
   });
 
-  it('surfaces an installation whose InferenceServices could not be listed', () => {
+  it('surfaces an installation whose LLMInferenceServices could not be listed', () => {
     kserveInstallations.mockReturnValue({
       installations: ['alpha', 'beta'],
       isProbing: false,
       errors: [],
     });
     mockResources({
-      inferenceServices: {
-        resources: [isvc('alpha', 'qwen3-14b', true)],
+      objects: {
+        resources: [llmisvc('alpha', 'qwen3-14b', true)],
         errors: buildResourceErrors({ failed: ['beta'] }),
       },
     });
@@ -511,16 +568,17 @@ describe('useKServeServingSource', () => {
 
   it('drops an installation whose CRD vanished after the probe answered', () => {
     // The probe verdict is cached for minutes; a 404 on the list itself is
-    // the earliest sign KServe was uninstalled. Neither a failure nor an empty
-    // section: the installation simply leaves the Serving view.
+    // the earliest sign the llm-d control plane was uninstalled. Neither a
+    // failure nor an empty section: the installation simply leaves the
+    // Serving view.
     kserveInstallations.mockReturnValue({
       installations: ['alpha', 'beta'],
       isProbing: false,
       errors: [],
     });
     mockResources({
-      inferenceServices: {
-        resources: [isvc('alpha', 'qwen3-14b', true)],
+      objects: {
+        resources: [llmisvc('alpha', 'qwen3-14b', true)],
         errors: buildResourceErrors({ notFound: ['beta'] }),
       },
       nodes: {
@@ -540,7 +598,7 @@ describe('useKServeServingSource', () => {
 
   it('reports why GPU capacity is unavailable per installation, without hiding the models', () => {
     mockResources({
-      inferenceServices: { resources: [isvc('alpha', 'qwen3-14b', true)] },
+      objects: { resources: [llmisvc('alpha', 'qwen3-14b', true)] },
       nodes: {
         errors: [
           ...buildResourceErrors({ failed: ['alpha'] }),
@@ -572,7 +630,7 @@ describe('useKServeServingSource', () => {
       isProbing: false,
       errors: [],
     });
-    mockResources({ inferenceServices: { isLoading: true } });
+    mockResources({ objects: { isLoading: true } });
     expect(render().result.current.isLoading).toBe(true);
 
     mockResources({});

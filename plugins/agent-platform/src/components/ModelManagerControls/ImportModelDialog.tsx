@@ -421,7 +421,7 @@ export function ImportModelDialog({
                           : NO_PRESET,
                       )
                     }
-                    description="The weights land in the cache directory that preset's InferenceService mounts, and its serving overhead is what the fit check adds."
+                    description="The weights land in the cache directory that preset's LLMInferenceService mounts, and its serving overhead is what the fit check adds."
                   />
                 </Grid.Item>
                 <Grid.Item>

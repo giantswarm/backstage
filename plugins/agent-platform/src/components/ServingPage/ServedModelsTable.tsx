@@ -22,7 +22,7 @@ import {
   formatContextLength,
   formatGpuShare,
   formatTime,
-  isServedInferenceService,
+  isServedKServeModel,
   lacksToolCalling,
 } from '../../lib/modelManagerServing';
 import type {
@@ -31,7 +31,6 @@ import type {
   ServingBackend,
 } from '../../lib/serving';
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
-import type { WiringState } from '../../hooks/useAutoWireServedModels';
 import { ServedReadinessLabel } from '../ModelServingStatus';
 import {
   CopyEndpointButton,
@@ -75,8 +74,6 @@ export type ServedModelDownload = {
  */
 export type ServedModelRow = ServedModel & {
   usedBy: ServedModelConsumer[];
-  /** The auto-wiring's progress for this model, while it has no consumer yet. */
-  wiring?: WiringState;
   /** Absent for a served model; `download` for a pull rendered as a row. */
   kind?: 'download';
   /** The pull, on a `download` row. */
@@ -105,13 +102,13 @@ export function isActiveDownload(row: ServedModelRow): boolean {
 }
 
 /**
- * Rows this portal can stop serving: a KServe InferenceService, whichever
+ * Rows this portal can stop serving: a KServe LLMInferenceService, whichever
  * source listed it — deleted through model-manager where it operates the row,
  * else as a CR with the user's RBAC. A cached download nobody serves is not
  * one.
  */
 export function isStoppable(row: ServedModel): boolean {
-  return isServedInferenceService(row);
+  return isServedKServeModel(row);
 }
 
 /**
@@ -193,8 +190,9 @@ function endpointOf(row: ServedModel): string | undefined {
 
 /**
  * Group the rows by installation and backend, in installation order. An
- * installation with two serving sources of different backends (InferenceServices
- * read as CRs next to an Ollama model-manager) is two groups, so a group's
+ * installation with two serving sources of different backends
+ * (LLMInferenceServices read as CRs next to an Ollama model-manager) is two
+ * groups, so a group's
  * header always describes every row under it.
  */
 export function groupServedModelRows(
@@ -245,7 +243,7 @@ export type ServedModelColumns = {
   placement: boolean;
   /**
    * Where the weights come from, when that differs from the served name: a
-   * Hugging Face id behind an InferenceService. An Ollama tag is both, so the
+   * Hugging Face id behind an LLMInferenceService. An Ollama tag is both, so the
    * column stays out.
    */
   model: boolean;
@@ -284,7 +282,7 @@ export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
  * the backend reports the split) and the eviction time, as far as the
  * backend reports them — `Not loaded` when the backend knows the model but
  * has not got it in memory, nothing when it has no notion of memory (an
- * InferenceService read as a CR) or is loaded without figures (its status
+ * LLMInferenceService read as a CR) or is loaded without figures (its status
  * already says so).
  */
 export function memoryLine(
@@ -602,37 +600,6 @@ export function ModelFeaturesCell({ row }: { row: ServedModelRow }) {
   );
 }
 
-/** What the "Used by" cell says while the auto-wiring is at work, or stuck. */
-function WiringStatus({ wiring }: { wiring: WiringState }) {
-  switch (wiring.status) {
-    case 'wiring':
-      return (
-        <Text variant="body-medium" color="secondary">
-          Creating model config…
-        </Text>
-      );
-    case 'done':
-      return (
-        <Text variant="body-medium" color="secondary">
-          Model config created
-        </Text>
-      );
-    case 'conflict':
-      return (
-        <Text variant="body-medium" color="warning" title={wiring.message}>
-          Model config name taken
-        </Text>
-      );
-    case 'error':
-    default:
-      return (
-        <Text variant="body-medium" color="danger" title={wiring.message}>
-          Model config not created
-        </Text>
-      );
-  }
-}
-
 /**
  * The "Used by" cell of a model no ModelConfig points at (yet). Empty on a
  * download row: nothing points at a pull in flight, the model it produces is
@@ -642,10 +609,7 @@ function UsedByNobody({ row }: { row: ServedModelRow }) {
   if (isDownloadRow(row)) {
     return null;
   }
-  const { wiring } = row;
-  return wiring ? (
-    <WiringStatus wiring={wiring} />
-  ) : (
+  return (
     <Text variant="body-medium" color="secondary">
       No model config
     </Text>

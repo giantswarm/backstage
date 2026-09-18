@@ -16,13 +16,14 @@
         "name": "Qwen/Qwen3-14B",
         "sizeBytes": 29540000000,
         "contextLength": 40960,
-        "endpoint": "http://qwen3-14b-predictor.model-serving.svc.cluster.local",
+        "endpoint": "https://models.example.test/model-serving/qwen3-14b",
         "node": "gpu-node-1",
         "status": "Ready",
         "resource": "qwen3-14b",
         "preset": "qwen3-14b",
         "gpus": 1,
-        "managedBy": "giantswarm-backstage"
+        "managedBy": "model-manager",
+        "kind": "LLMInferenceService"
       },
       "modelConfig": {
         "name": "qwen3-14b",
@@ -30,9 +31,9 @@
         "apiVersion": "kagent.dev/v1alpha3",
         "provider": "OpenAI",
         "model": "Qwen/Qwen3-14B",
-        "providerModel": "qwen3-14b",
-        "endpoint": "http://qwen3-14b-predictor.model-serving.svc.cluster.local/v1",
-        "managed": false,
+        "providerModel": "Qwen/Qwen3-14B",
+        "endpoint": "https://models.example.test/model-serving/qwen3-14b/v1",
+        "managed": true,
         "ready": true
       }
     },

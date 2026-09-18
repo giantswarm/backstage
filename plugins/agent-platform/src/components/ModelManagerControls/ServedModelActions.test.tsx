@@ -73,7 +73,7 @@ const kserveCapabilities: ServingCapabilities = {
   search: true,
 };
 
-/** A served InferenceService as the provider folds it: CR identity, model-manager's inventory. */
+/** A served LLMInferenceService as the provider folds it: CR identity, model-manager's inventory. */
 const servedKserve: ServedModel = {
   id: 'gpu/kserve/model-serving/qwen3-14b',
   installation: 'gpu',
@@ -409,7 +409,7 @@ describe('ServedModelActions', () => {
       );
     });
 
-    it('offers one Stop serving… on a served InferenceService and no Unload, Delete or unwire of a recognised model config', async () => {
+    it('offers one Stop serving… on a served LLMInferenceService and no Unload, Delete or unwire of a recognised model config', async () => {
       const onStop = jest.fn();
       await render(servedKserve, kserveCapabilities, { onStop });
       const menu = await openMenu('qwen3-14b');
@@ -429,7 +429,7 @@ describe('ServedModelActions', () => {
       expect(unloadModel).not.toHaveBeenCalled();
     });
 
-    it('offers to remove a model config model-manager created itself, by the InferenceService name', async () => {
+    it('offers to remove a model config model-manager created itself, by the LLMInferenceService name', async () => {
       unwireModel.mockResolvedValue(undefined);
       await render(
         {

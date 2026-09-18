@@ -19,7 +19,7 @@ export type StopServedModelDialogProps = {
 };
 
 /**
- * Asks before stopping a served model — deleting its InferenceService.
+ * Asks before stopping a served model — deleting its LLMInferenceService.
  *
  * Says the things the person clicking cannot see for themselves: the weight
  * cache on the node survives (so serving it again is quick), and what becomes
@@ -33,7 +33,7 @@ export function StopServedModelDialog({
   onOpenChange,
   isStopping,
   error,
-  via = 'inferenceservice',
+  via = 'llminferenceservice',
   onConfirm,
 }: StopServedModelDialogProps) {
   const where = model.namespace
@@ -65,23 +65,17 @@ export function StopServedModelDialog({
     >
       <Text variant="body-medium">
         {via === 'model-manager'
-          ? `model-manager deletes the InferenceService ${model.name} in ${where}`
-          : `The InferenceService ${model.name} in ${where} is deleted`}{' '}
-        and KServe removes its predictor, freeing the GPU. The downloaded
-        weights stay in the model cache on the node, so serving it again skips
-        the download.
+          ? `model-manager deletes the LLMInferenceService ${model.name} in ${where}`
+          : `The LLMInferenceService ${model.name} in ${where} is deleted`}{' '}
+        and KServe removes its workload, freeing the GPU. The downloaded weights
+        stay in the model cache on the node, so serving it again skips the
+        download.
       </Text>
       {via === 'model-manager' && managedModelConfig && (
         <Text variant="body-medium">
           The model config {managedModelConfig.namespace}/
           {managedModelConfig.name} model-manager created for it is removed as
           well, so no agent keeps pointing at a model that is gone.
-        </Text>
-      )}
-      {via === 'model-manager' && (
-        <Text variant="body-small" color="secondary">
-          Should model-manager not recognise the model it serves, the
-          InferenceService is deleted with your own permissions instead.
         </Text>
       )}
       {consumersKept.length > 0 && (

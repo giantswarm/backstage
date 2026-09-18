@@ -127,8 +127,9 @@ export function toDownloadRow(
  * dismissed. A finished pull is not one — its model is in the inventory the
  * moment the job completes (usePullJobs invalidates it), a cancelled one left
  * nothing behind; both vanish at once rather than duplicating the row above
- * or lingering as history. `load` jobs (KServe: following an InferenceService
- * to readiness) are not downloads; the InferenceService row already tells.
+ * or lingering as history. `load` jobs (KServe: following an
+ * LLMInferenceService to readiness) are not downloads; the served model's row
+ * already tells.
  * Jobs of an installation whose backend is unknown have no group to join.
  */
 export function downloadRowsFor(

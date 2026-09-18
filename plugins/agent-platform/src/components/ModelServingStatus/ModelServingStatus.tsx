@@ -21,7 +21,7 @@ import { ServedReadinessLabel } from './ServedReadinessLabel';
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
 
-/** "InferenceService kserve/qwen3", "Ollama model qwen3:0.6b". */
+/** "LLMInferenceService kserve/qwen3", "Ollama model qwen3:0.6b". */
 export function describeServedModel(serving: ClientServingSummary): string {
   return `${SERVING_BACKEND_LABEL[serving.backend]} ${
     serving.namespace ? `${serving.namespace}/` : ''
@@ -164,10 +164,10 @@ export function ServingShortcutButton({
         await action.run({ type: 'load', model: shortcut.ref });
         toastApi.post({
           title: kserve
-            ? `${serving.name}: InferenceService requested`
+            ? `${serving.name}: LLMInferenceService requested`
             : `${serving.name}: loaded into memory`,
           description: kserve
-            ? 'The status follows the InferenceService.'
+            ? 'The status follows the LLMInferenceService.'
             : undefined,
           status: 'success',
           timeout: TOAST_TIMEOUT_MS,
