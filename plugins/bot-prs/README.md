@@ -16,12 +16,16 @@ a PR is what `marge list` and `marge sweep --dry-run` print for it.
   when they have one) and _All teams_ (every `team-*` group the catalog
   names), kept in the URL as `?scope=`. marge answers one team per call, so a
   scope is one `x_marge_list` per team.
-- **Tiles**: counts per classification as the engine names it, per bot kind
-  and per age band, over the listed rows.
+- **Layout**: the shape of the Repositories page -- the scopes as tabs, the
+  filters in their own column (`FiltersLayout`), the stats strip, the summary
+  line and the table -- built from the shared `ui-react` components, so the
+  two inventory pages read alike.
+- **Stats**: open, green, waiting, action required, security failures and
+  unclassified over the listed rows, as a `Stat` strip.
 - **Filters**: search, team (under _All teams_), repository, classification,
   bot kind and dependency, each a URL parameter, applied on the page.
-- **Table**: sortable by team, repository, pull request, dependency, bot,
-  update type, age, classification and rescue; worst first to begin with.
+- **Table**: the `Table` of `@backstage/core-components`, sortable by every
+  column and expandable per row; classification first, worst first.
 - **Row expansion**: the engine's record -- classification and evidence, the
   `marge/<class>` label, bot and update type, the policy the PR was decided
   under (sweep on or off, the update types that merge when green, the confirm
@@ -39,11 +43,20 @@ a PR is what `marge list` and `marge sweep --dry-run` print for it.
   preview listed. Under a team policy with `rescue.confirm: per-pr` (the
   company default) the rows carry checkboxes and Apply runs on the ticked
   ones, none by default; under `per-sweep` one confirmation covers the run.
-- **Sweep this PR**: the same dialog narrowed to one PR, from the expanded
-  row. There is no separate merge, refresh or rerun button: each is a step
-  the engine takes or refuses on its own terms, and a rerun is a remedy
-  action a catalogue rule selects under its guards (roadmap#4355), so a
-  direct button would route around them.
+- **Approve and merge the green PRs**: one `x_marge_sweep` per team with
+  `actions: approve,merge,mark`, narrowed with `prs` to the PRs the engine
+  filed as `eligible` in the current view -- green, and of an update type the
+  team policy merges. The dialog previews with `dry_run: true` first, so the
+  list is a live classification and not the stored label; one confirmation
+  then applies to exactly the PRs it listed. Each step keeps its own guards:
+  a pending check waits, a failing security check is never merged past, an
+  update type the policy does not merge is held. The per-PR confirmation of
+  the sweep dialog is the rescue path's and does not apply here.
+- **Sweep this PR**: the sweep dialog narrowed to one PR, from the expanded
+  row. There is no separate refresh or rerun button: each is a step the
+  engine takes or refuses on its own terms, and a rerun is a remedy action a
+  catalogue rule selects under its guards (roadmap#4355), so a direct button
+  would route around them.
 - **Mark blocked**: `x_marge_mark` with `outcome: blocked`,
   `tool: developer-portal` and the person's reason, from the expanded row.
 - A guard that refuses shows the engine's reason as the row's evidence

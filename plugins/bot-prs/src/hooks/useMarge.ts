@@ -336,6 +336,114 @@ export function useMargeSweep(
   };
 }
 
+/** One team's answer inside a run that covered several teams. */
+export type TeamSweepRun = {
+  team: string;
+  result: MargeResult | undefined;
+  error: Error | null;
+};
+
+export type MargeTeamSweepsState = {
+  /** One entry per team the last run covered, in the order given. */
+  runs: TeamSweepRun[];
+  /** Whether `runs` came from a dry run. */
+  isDryRun: boolean;
+  isPending: boolean;
+  /** The first not-connected refusal, when one team's call met one. */
+  notConnected: MargeNotConnectedError | undefined;
+  run: (args: {
+    /** The PRs to act on, per team. A team with no PR is not called. */
+    prsByTeam: Record<string, string[]>;
+    actions: string;
+    dryRun: boolean;
+  }) => Promise<TeamSweepRun[]>;
+  reset: () => void;
+};
+
+/**
+ * One `x_marge_sweep` per team, as one action of the page.
+ *
+ * marge takes one team a call, because a team file decides what its PRs may
+ * become; a run over several teams is therefore several calls, each narrowed
+ * with `prs` to the PRs of that team. One team's refusal is that team's own
+ * outcome and leaves the others alone, so the dialog reports per team. A run
+ * that wrote invalidates every team it touched: its mark step moved the
+ * labels the stored read shows.
+ */
+export function useMargeTeamSweeps(
+  installation: string | undefined,
+): MargeTeamSweepsState {
+  const client = useMargeClient(installation);
+  const queryClient = useQueryClient();
+  const [isDryRun, setIsDryRun] = useState(true);
+
+  const mutation = useMutation({
+    mutationFn: async (args: {
+      prsByTeam: Record<string, string[]>;
+      actions: string;
+      dryRun: boolean;
+    }): Promise<TeamSweepRun[]> => {
+      if (!client) {
+        throw new Error('marge is not reachable on this installation');
+      }
+      setIsDryRun(args.dryRun);
+      const teams = Object.keys(args.prsByTeam).filter(
+        team => args.prsByTeam[team].length > 0,
+      );
+      const answers = await Promise.allSettled(
+        teams.map(team =>
+          client.sweep({
+            team,
+            prs: args.prsByTeam[team],
+            actions: args.actions,
+            dry_run: args.dryRun,
+          }),
+        ),
+      );
+      return teams.map((team, index) => {
+        const answer = answers[index];
+        return {
+          team,
+          result: answer.status === 'fulfilled' ? answer.value : undefined,
+          error:
+            answer.status === 'rejected'
+              ? ((answer.reason as Error | undefined) ??
+                new Error('the sweep failed'))
+              : null,
+        };
+      });
+    },
+    onSuccess: (runs, args) => {
+      if (args.dryRun) {
+        return;
+      }
+      for (const run of runs) {
+        queryClient.invalidateQueries({
+          queryKey: musterMargeListQueryKey(installation ?? '', run.team),
+        });
+      }
+    },
+  });
+
+  const runs = (mutation.data as TeamSweepRun[] | undefined) ?? [];
+  const notConnected = [
+    mutation.error as Error | null,
+    ...runs.map(run => run.error),
+  ].find(
+    (error): error is MargeNotConnectedError =>
+      error instanceof MargeNotConnectedError,
+  );
+
+  return {
+    runs,
+    isDryRun,
+    isPending: mutation.isPending,
+    notConnected,
+    run: mutation.mutateAsync,
+    reset: mutation.reset,
+  };
+}
+
 export type MargeRemedyState = {
   result: MargeResult | undefined;
   isDryRun: boolean;

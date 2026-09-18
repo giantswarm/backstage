@@ -14,6 +14,7 @@ import {
   useMargeMark,
   useMargeServerName,
   useMargeSweep,
+  useMargeTeamSweeps,
 } from './useMarge';
 
 const callTool = jest.fn();
@@ -211,6 +212,90 @@ describe('useMargeSweep', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: musterMargeListQueryKey('gazelle', 'bumblebee'),
     });
+  });
+});
+
+describe('useMargeTeamSweeps', () => {
+  it('calls marge once per team with that team\u2019s PRs, and invalidates only on a write', async () => {
+    callTool.mockResolvedValue(live);
+    const queryClient = client();
+    const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useMargeTeamSweeps('gazelle'), {
+      wrapper: wrapperWith(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.run({
+        prsByTeam: {
+          bumblebee: ['giantswarm/backstage#2250'],
+          atlas: [],
+          rocket: ['giantswarm/mimir#7'],
+        },
+        actions: 'approve,merge,mark',
+        dryRun: true,
+      });
+    });
+
+    // The team with no PR is not called at all.
+    expect(callTool).toHaveBeenCalledTimes(2);
+    expect(callTool).toHaveBeenCalledWith(
+      'x_marge_sweep',
+      {
+        team: 'bumblebee',
+        prs: ['giantswarm/backstage#2250'],
+        actions: 'approve,merge,mark',
+        dry_run: true,
+      },
+      'gazelle',
+    );
+    await waitFor(() =>
+      expect(result.current.runs.map(run => run.team)).toEqual([
+        'bumblebee',
+        'rocket',
+      ]),
+    );
+    expect(result.current.isDryRun).toBe(true);
+    expect(invalidateQueries).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.run({
+        prsByTeam: { bumblebee: ['giantswarm/backstage#2250'] },
+        actions: 'approve,merge,mark',
+        dryRun: false,
+      });
+    });
+    expect(result.current.isDryRun).toBe(false);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: musterMargeListQueryKey('gazelle', 'bumblebee'),
+    });
+  });
+
+  it('keeps one team\u2019s refusal to that team, and reports a missing grant as one', async () => {
+    callTool.mockImplementation((_tool, args: { team: string }) =>
+      args.team === 'atlas'
+        ? Promise.reject(new MargeNotConnectedError('not signed in'))
+        : Promise.resolve(live),
+    );
+    const { result } = renderHook(() => useMargeTeamSweeps('gazelle'), {
+      wrapper: wrapperWith(client()),
+    });
+
+    await act(async () => {
+      await result.current.run({
+        prsByTeam: {
+          bumblebee: ['giantswarm/backstage#2250'],
+          atlas: ['giantswarm/mimir#7'],
+        },
+        actions: 'approve,merge,mark',
+        dryRun: true,
+      });
+    });
+
+    await waitFor(() => expect(result.current.runs).toHaveLength(2));
+    expect(result.current.runs[0].result).toEqual(live);
+    expect(result.current.runs[0].error).toBeNull();
+    expect(result.current.runs[1].result).toBeUndefined();
+    expect(result.current.notConnected).toBeInstanceOf(MargeNotConnectedError);
   });
 });
 

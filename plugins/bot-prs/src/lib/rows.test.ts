@@ -3,11 +3,12 @@ import {
   ageDays,
   applyFilters,
   classificationOptions,
-  countTiles,
+  countStats,
   filtersFromParams,
   formatAge,
+  greenByTeam,
+  groupRank,
   hasFilters,
-  sortRows,
   withFilter,
 } from './rows';
 
@@ -142,23 +143,13 @@ describe('applyFilters', () => {
   });
 });
 
-describe('sortRows', () => {
-  // The age key reads the clock, and two PRs a day apart fall into the same
-  // whole day of age once enough real time has passed since the fixtures.
-  beforeEach(() => {
-    jest.useFakeTimers().setSystemTime(now);
-  });
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('sorts worst first by classification, and by age', () => {
+describe('groupRank', () => {
+  it('ranks the classes worst first, so the table opens on what failed', () => {
     expect(
-      sortRows(rows, 'classification', 'asc').map(row => row.group),
+      [...rows]
+        .sort((a, b) => groupRank(a) - groupRank(b))
+        .map(row => row.group),
     ).toEqual(['action_required', 'stale', 'unclassified']);
-    expect(sortRows(rows, 'age', 'desc', now).map(row => row.number)).toEqual([
-      37, 488, 2250,
-    ]);
   });
 });
 
@@ -175,19 +166,44 @@ describe('ageDays', () => {
   });
 });
 
-describe('countTiles and classificationOptions', () => {
-  it('counts per engine state, bot and age band', () => {
-    const tiles = countTiles(rows, now);
-    expect(tiles.classification).toEqual({
-      Failed: 1,
-      Stale: 1,
-      Unclassified: 1,
+describe('countStats, greenByTeam and classificationOptions', () => {
+  it('counts per engine class and names the classes in view', () => {
+    expect(countStats(rows)).toEqual({
+      total: 3,
+      green: 0,
+      waiting: 0,
+      actionRequired: 1,
+      securityFailures: 0,
+      unclassified: 1,
     });
-    expect(tiles.kind).toEqual({ herald: 1, renovate: 2 });
     expect(classificationOptions(rows)).toEqual([
       { value: 'action_required', label: 'Failed' },
       { value: 'unclassified', label: 'Unclassified' },
       { value: 'stale', label: 'Stale' },
     ]);
+  });
+
+  it('groups the green PRs per team, and no other class', () => {
+    const green = rowsOf(
+      {
+        summary: { ...summary, eligible: 2 },
+        eligible: [
+          {
+            owner: 'giantswarm',
+            repo: 'backstage',
+            number: 1,
+            title: 'chore(deps): update dependency react to v18.3.2',
+            url: 'https://github.com/giantswarm/backstage/pull/1',
+            status: 'Eligible',
+            kind: 'renovate',
+          },
+        ],
+      },
+      'bumblebee',
+    );
+    expect(greenByTeam([...rows, ...green])).toEqual({
+      bumblebee: ['giantswarm/backstage#1'],
+    });
+    expect(greenByTeam(rows)).toEqual({});
   });
 });
