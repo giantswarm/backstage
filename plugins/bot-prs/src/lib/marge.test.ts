@@ -2,6 +2,7 @@ import {
   classifyMargeError,
   confirmModeOf,
   dependencyOf,
+  looksUnknownTeam,
   MargeNotConnectedError,
   margeToolName,
   rowsOf,
@@ -178,5 +179,26 @@ describe('classifyMargeError', () => {
     const error = classifyMargeError(new Error('no team file for "bumblebee"'));
     expect(error).not.toBeInstanceOf(MargeNotConnectedError);
     expect(error.message).toBe('no team file for "bumblebee"');
+  });
+});
+
+describe('looksUnknownTeam', () => {
+  it("reads marge's missing team file as a gap in giantswarm/github", () => {
+    expect(
+      looksUnknownTeam(
+        new Error(
+          'no team file for "planeteers": giantswarm/github@main has no team/planeteers.yaml, or it cannot be read',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    new Error('marge refused: 403 Forbidden'),
+    new MargeNotConnectedError('not signed in'),
+    null,
+    undefined,
+  ])('reads %s as something else', error => {
+    expect(looksUnknownTeam(error)).toBe(false);
   });
 });

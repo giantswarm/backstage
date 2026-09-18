@@ -413,3 +413,15 @@ export function classifyMargeError(error: unknown): Error {
   }
   return error instanceof Error ? error : new Error(message);
 }
+
+/**
+ * marge answers this for a team it has no policy file for: `no team file for
+ * "x": giantswarm/github@main has no team/x.yaml, or it cannot be read`
+ * (internal/policy/load.go). The catalog names the team, giantswarm/github
+ * does not, which is a gap to report once, not a refusal per team.
+ */
+const UNKNOWN_TEAM_PATTERN = /no team file for/i;
+
+export function looksUnknownTeam(error: Error | null | undefined): boolean {
+  return Boolean(error) && UNKNOWN_TEAM_PATTERN.test(error!.message);
+}
