@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -7,6 +7,7 @@ import { LinearProgress } from '@material-ui/core';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCreateSession } from '../../hooks/useCreateSession';
+import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { sessionDetailRouteRef } from '../../routes';
@@ -196,6 +197,15 @@ function SessionsIndexPageContent() {
   // The agents fan-out is a second, independent load: the sessions can settle
   // long before it, and on first run the composer is all there is to show.
   const { isLoading: isLoadingAgents } = useAgents();
+  // Only the installations that actually returned a session. An installation
+  // with no row has no state to ask after, and each pass costs it one task read
+  // per session it does hold — so the fan-out is bounded by what is on screen
+  // rather than by the size of the scope.
+  const stateInstallations = useMemo(
+    () => Array.from(new Set(rows.map(row => row.installation))).sort(),
+    [rows],
+  );
+  const sessionStates = useFleetSessionStates(stateInstallations);
   // Which container the composer mounts in, decided once — see the latch below.
   // Declared up here because the `hasInstallations` guard returns early.
   const firstRunRef = useRef<boolean | undefined>(undefined);
@@ -306,7 +316,7 @@ function SessionsIndexPageContent() {
                 installation without sessions simply has no row, and one that
                 could not be read is called out below. */}
             <Box>
-              <SessionsTable rows={rows} />
+              <SessionsTable rows={rows} sessionStates={sessionStates} />
             </Box>
           </>
         )}

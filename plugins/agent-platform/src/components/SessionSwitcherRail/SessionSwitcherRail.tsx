@@ -6,7 +6,8 @@ import {
   ArrowMenuOpenIcon,
   PLUGIN_CONTENT_VIEWPORT_OFFSET,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { SessionSwitcherGroup, toneColor } from './SessionSwitcherGroup';
+import { SessionSwitcherGroup } from './SessionSwitcherGroup';
+import { toneColor } from '../../lib/sessionStateTone';
 import { useRailCollapsed } from './useRailCollapsed';
 import { useSessionSwitcher } from './useSessionSwitcher';
 

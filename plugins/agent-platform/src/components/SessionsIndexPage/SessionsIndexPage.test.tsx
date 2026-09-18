@@ -35,6 +35,19 @@ jest.mock('../SessionsTable', () => ({
   ),
 }));
 
+// The states summary is one more backend read this page's branches do not turn
+// on; the table renders the column, and its own tests cover it.
+jest.mock('../../hooks/useFleetSessionStates', () => ({
+  useFleetSessionStates: () => ({
+    states: new Map(),
+    unreadable: new Set(),
+    failedInstallations: new Set(),
+    skippedCount: 0,
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 // The scope note reads the section scope from gs; none of the page's branches
 // depend on it, so it renders nothing here.
 jest.mock('../InstallationScopeNote', () => ({

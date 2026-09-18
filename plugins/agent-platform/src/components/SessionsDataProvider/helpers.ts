@@ -208,10 +208,10 @@ export function sortSessionRows(
  * rows with an unknown timestamp always sort last — in *both* directions, since
  * "unknown" is not "oldest".
  */
-export function sortSessionsBy(
-  rows: SessionRow[],
+export function sortSessionsBy<T extends SessionRow>(
+  rows: T[],
   sort: { column: unknown; direction: 'ascending' | 'descending' },
-): SessionRow[] {
+): T[] {
   const column = String(sort.column);
   const factor = sort.direction === 'ascending' ? 1 : -1;
 
@@ -227,17 +227,17 @@ export function sortSessionsBy(
       return (aTime - bTime) * factor;
     }
 
-    const aValue = String(a[column as keyof SessionRow] ?? '');
-    const bValue = String(b[column as keyof SessionRow] ?? '');
+    const aValue = String(a[column as keyof T] ?? '');
+    const bValue = String(b[column as keyof T] ?? '');
     return aValue.localeCompare(bValue) * factor;
   });
 }
 
 /** Free-text search over the title and the agent name. */
-export function sessionSearchFn(
-  rows: SessionRow[],
+export function sessionSearchFn<T extends SessionRow>(
+  rows: T[],
   search: string,
-): SessionRow[] {
+): T[] {
   const needle = search.trim().toLowerCase();
   if (!needle) {
     return rows;
