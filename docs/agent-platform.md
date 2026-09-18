@@ -2558,10 +2558,13 @@ dialog was opened and its dry run had run.
 Use **agent-manager's verdict**, not `isGitOpsManaged()` from the provenance
 labels: that answers "is a reconciler in charge", which is true of _every_ agent
 this plugin deploys, since the create flow applies a `HelmRelease` of its own.
-When `get_agent` has not answered — the muster session is not connected, the read
-was refused, it is still in flight — the actions stay offered. Withholding them
-there would take them from people who do have them, and agent-manager still
-refuses on confirm. The `commit` mode is the affordance a GitOps-owned agent
+When the read **settles without an answer** — the muster session is not
+connected, or it was refused — the actions stay offered. Withholding them there
+would take them from people who do have them, and agent-manager still refuses on
+confirm. While the read is **in flight** they are withheld instead, the same way
+the kebab already withholds them while the muster server list is being read:
+offering them for a muster round-trip and then taking them away is the one
+window in which a GitOps-owned agent could still be written to. The `commit` mode is the affordance a GitOps-owned agent
 should eventually get instead; it is declared-but-false on every installation
 today, and this gate is where to reopen the actions when it ships.
 

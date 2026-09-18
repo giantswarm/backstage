@@ -111,11 +111,12 @@ jest.mock('../../hooks/useAgentManager', () => ({
 // can write to this agent at all (`managed`). Undefined is the unread case —
 // not connected, refused, still in flight — where the actions stay offered.
 let managerAgent: { managed: string } | undefined;
+let isReadingManagerAgent = false;
 
 jest.mock('../../hooks/useAgentManagerAgent', () => ({
   useAgentManagerAgent: () => ({
     agent: managerAgent,
-    isLoading: false,
+    isLoading: isReadingManagerAgent,
     failure: undefined,
   }),
 }));
@@ -125,6 +126,7 @@ function withAgentManager(managed: string | undefined = 'helmrelease') {
   agentManagerPresence = 'available';
   isMusterUnavailable = false;
   managerAgent = managed === undefined ? undefined : { managed };
+  isReadingManagerAgent = false;
 }
 // agent-manager's `get_agent_status`, the page's word on whether an agent whose
 // template the apiserver does not know is being deployed (its HelmRelease exists)
@@ -479,6 +481,7 @@ describe('AgentDetailPage', () => {
     agentManagerPresence = 'unknown';
     isMusterUnavailable = true;
     managerAgent = undefined;
+    isReadingManagerAgent = false;
   });
 
   it('renders every section for a ready agent', async () => {
@@ -695,6 +698,19 @@ describe('AgentDetailPage', () => {
       // the GitOps repository, so pressing the button could only ever end in the
       // refusal the dialog used to show after the fact.
       withAgentManager('gitops');
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).not.toBeInTheDocument();
+    });
+
+    it("withholds Update skills while agent-manager's verdict is in flight", async () => {
+      // Not the same as "did not answer": showing the button for a muster
+      // round-trip and then removing it is the one window in which a
+      // GitOps-owned agent's skills could still be updated.
+      withAgentManager('gitops');
+      isReadingManagerAgent = true;
       stubResources({ resource: makeAgent() });
 
       await renderPage('skills');

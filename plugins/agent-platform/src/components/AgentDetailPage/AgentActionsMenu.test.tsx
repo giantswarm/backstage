@@ -40,6 +40,7 @@ const AVAILABLE: AgentManagerGate = {
   presence: 'available',
   isUnavailable: false,
   isGitOpsOwned: false,
+  isVerdictPending: false,
 };
 
 const renderMenu = (agentManager: AgentManagerGate = AVAILABLE) =>
@@ -119,6 +120,7 @@ describe('AgentActionsMenu', () => {
       presence: 'missing',
       isUnavailable: false,
       isGitOpsOwned: false,
+      isVerdictPending: false,
     });
     await openMenu();
 
@@ -168,11 +170,24 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
+  it("withholds the actions while agent-manager's verdict is still in flight", async () => {
+    // Offering them for a muster round-trip and then taking them away is the
+    // one window where a GitOps-owned agent could still be written to.
+    await renderMenu({ ...AVAILABLE, isVerdictPending: true });
+    await openMenu();
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(
+      screen.getByRole('menuitem', { name: 'View manifest' }),
+    ).toBeInTheDocument();
+  });
+
   it('says the muster plugin is missing when the portal has none', async () => {
     await renderMenu({
       presence: 'unknown',
       isUnavailable: true,
       isGitOpsOwned: false,
+      isVerdictPending: false,
     });
     await openMenu();
 
@@ -190,6 +205,7 @@ describe('AgentActionsMenu', () => {
       presence: 'unknown',
       isUnavailable: false,
       isGitOpsOwned: false,
+      isVerdictPending: false,
     });
     await openMenu();
 

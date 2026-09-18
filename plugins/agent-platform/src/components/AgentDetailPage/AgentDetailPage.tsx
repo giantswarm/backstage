@@ -296,23 +296,30 @@ function AgentDetailPageContent() {
   // the GitOps repository. Deliberately not `isGitOpsManaged(agent)` from the
   // labels — that answers "is a reconciler in charge", which is true of every
   // agent this plugin deploys, since the create flow applies a HelmRelease of
-  // its own. Unread (not connected, refused, in flight) leaves the actions
-  // offered: agent-manager then refuses on confirm, as it did before.
-  const { agent: managerAgent } = useAgentManagerAgent(
-    installation,
-    namespace,
-    name,
-    { enabled: isAgentManagerReachable },
-  );
+  // its own. A read that settles without an answer — not connected, refused —
+  // leaves the actions offered: agent-manager then refuses on confirm, as it
+  // did before. One still in flight withholds them instead, so they are not
+  // shown for a muster round-trip and then taken back.
+  const { agent: managerAgent, isLoading: isReadingManagerAgent } =
+    useAgentManagerAgent(installation, namespace, name, {
+      enabled: isAgentManagerReachable,
+    });
 
   const agentManagerGate = useMemo(
     () => ({
       presence: availability.presenceOf(installation),
       isUnavailable: availability.isUnavailable,
       isGitOpsOwned: managerAgent?.managed === 'gitops',
+      isVerdictPending: isReadingManagerAgent,
     }),
-    [availability, installation, managerAgent?.managed],
+    [availability, installation, managerAgent?.managed, isReadingManagerAgent],
   );
+
+  /** Every live write the page offers is gated on this. */
+  const canWriteAgent =
+    isAgentManagerReachable &&
+    !agentManagerGate.isVerdictPending &&
+    !agentManagerGate.isGitOpsOwned;
   const { info: agentManagerInfo } = useAgentManagerInfo(
     agentManagerGate.presence === 'available' ? installation : undefined,
   );
@@ -699,11 +706,7 @@ function AgentDetailPageContent() {
             element={
               <AgentSkillsCard
                 agent={agent}
-                onUpdateSkills={
-                  isAgentManagerReachable && !agentManagerGate.isGitOpsOwned
-                    ? openUpdateSkills
-                    : undefined
-                }
+                onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
               />
             }
           />

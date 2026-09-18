@@ -582,12 +582,14 @@ function EditAgentPageContent() {
 
   // An agent applied from git is refused by agent-manager, so the form is never
   // offered — the same sentence the detail page's actions menu gives, in the
-  // same place this page already explains a missing agent-manager. False while
-  // the read is in flight, which lands on the progress branch below.
+  // same place this page already explains a missing agent-manager. While the
+  // read is in flight there is no verdict and no reason; that lands on the
+  // progress branch below.
   const gate = {
     presence,
     isUnavailable: availability.isUnavailable,
     isGitOpsOwned: agent?.managed === 'gitops',
+    isVerdictPending: isLoading,
   };
   const reason = agentManagerAbsenceReason(gate, installation);
 

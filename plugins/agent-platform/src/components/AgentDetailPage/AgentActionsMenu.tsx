@@ -17,26 +17,36 @@ import { AgentManifestDialog } from './AgentManifestDialog';
  *
  * `isGitOpsOwned` is agent-manager's own verdict on this agent (`get_agent`'s
  * `managed: 'gitops'`): its HelmRelease is applied by a Flux Kustomization, so
- * every live write is refused. False whenever that could not be established —
- * the read is in flight, refused, or the muster session is not connected — in
- * which case the actions stay offered and agent-manager refuses in its own
- * words, as it did before this gate existed.
+ * every live write is refused. False when the read came back and said
+ * otherwise, *and* when it settled without an answer — refused, or the muster
+ * session is not connected — in which case the actions stay offered and
+ * agent-manager refuses in its own words, as it did before this gate existed.
+ *
+ * `isVerdictPending` is that read still being in flight, which is not the same
+ * thing: offering the actions then would show them to everyone for a muster
+ * round-trip and take them away from exactly the people this gate exists for,
+ * with a click in between opening the dialog it exists to prevent.
  */
 export type AgentManagerGate = {
   presence: AgentManagerPresence;
   isUnavailable: boolean;
   isGitOpsOwned: boolean;
+  isVerdictPending: boolean;
 };
 
 /**
  * Why the write actions are not offered, in one sentence for the menu. Absent
- * while the server list is still being read: the items are withheld then,
- * rather than appearing and disappearing under the pointer.
+ * while the server list or agent-manager's verdict on the agent is still being
+ * read: the items are withheld then, rather than appearing and disappearing
+ * under the pointer.
  */
 export function agentManagerAbsenceReason(
   gate: AgentManagerGate,
   installation: string,
 ): string | undefined {
+  if (gate.isVerdictPending) {
+    return undefined;
+  }
   if (gate.isGitOpsOwned) {
     return 'This agent is applied from git, so agent-manager refuses live writes. Edit it, update its skills or remove it in the GitOps repository instead.';
   }
@@ -85,6 +95,7 @@ export function AgentActionsMenu({
   const offered =
     !agentManager.isUnavailable &&
     agentManager.presence === 'available' &&
+    !agentManager.isVerdictPending &&
     !agentManager.isGitOpsOwned;
   const reason = agentManagerAbsenceReason(agentManager, installation);
 
