@@ -226,6 +226,33 @@ async function answered(page: Page) {
 const ciGenerate = (page: Page) =>
   page.getByRole('checkbox', { name: 'Generate CircleCI config' });
 
+/**
+ * The first declared repository of the All scope with its row expanded --
+ * the team-file actions need an entry: its name as the row shows it, and the
+ * expanded record with the row actions.
+ */
+async function expandDeclared(page: Page) {
+  await open(page, '/repositories?scope=all');
+  const rows = page.locator('table').first().locator('tbody tr');
+  await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+  const declared = rows
+    .filter({ hasNot: page.getByText('unassigned') })
+    .first();
+  await expect(declared).toBeVisible();
+  const name = (await declared.locator('td').nth(1).innerText())
+    .trim()
+    .replace(/^[^/]+\//, '')
+    .split(/\s/)[0];
+  await declared
+    .getByRole('button', { name: 'Detail panel visiblity toggle' })
+    .click();
+  const record = page.getByTestId(`record-${name}`);
+  await expect(record.getByTestId('row-actions')).toBeVisible({
+    timeout: 60_000,
+  });
+  return { name, record };
+}
+
 test.describe('repositories: actions', () => {
   test.skip(
     !process.env.AGENTLAB_REPO_MANAGER,
@@ -469,26 +496,7 @@ test.describe('repositories: actions', () => {
   test('Archive names what it does and the team review it asks for, and writes nothing on Cancel', async ({
     admin,
   }) => {
-    await open(admin, '/repositories?scope=all');
-    const rows = admin.locator('table').first().locator('tbody tr');
-    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
-    // A declared repository: the team-file actions need an entry.
-    const declared = rows
-      .filter({ hasNot: admin.getByText('unassigned') })
-      .first();
-    await expect(declared).toBeVisible();
-    const name = (await declared.locator('td').nth(1).innerText())
-      .trim()
-      .replace(/^[^/]+\//, '')
-      .split(/\s/)[0];
-    await declared
-      .getByRole('button', { name: 'Detail panel visiblity toggle' })
-      .click();
-
-    const record = admin.getByTestId(`record-${name}`);
-    await expect(record.getByTestId('row-actions')).toBeVisible({
-      timeout: 60_000,
-    });
+    const { name, record } = await expandDeclared(admin);
     await record.getByRole('button', { name: 'Archive' }).click();
     const dialog = admin.getByRole('form', {
       name: new RegExp(`^Archive ${name}`),
@@ -500,6 +508,46 @@ test.describe('repositories: actions', () => {
     await expect(dialog).toContainText(
       /the ask goes to .*channel, where a member's Approve/,
     );
+    await expect(dialog.getByRole('button', { name: 'Review' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  test('Edit opens on the entry as the Create form shows it -- the team and the name fixed, the preset, the declaration, the opt-in, the reason -- and writes nothing on Cancel', async ({
+    admin,
+  }) => {
+    const { name, record } = await expandDeclared(admin);
+    await expect(record.getByRole('button', { name: 'Configure' })).toHaveCount(
+      0,
+    );
+    await record.getByRole('button', { name: 'Edit' }).click();
+    const dialog = admin.getByRole('form', {
+      name: new RegExp(`^Edit ${name}`),
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      'the fields as Create repository asks them',
+    );
+    // The entry's repository, team and file are fixed: no team choice, no
+    // name field.
+    const existing = dialog.getByTestId('existing-entry');
+    await expect(existing).toContainText(`giantswarm/${name}`);
+    await expect(existing).toContainText(
+      /Declared by team-\S+ in repositories\/team-\S+\.yaml/,
+    );
+    await expect(dialog.getByLabel(/^Name/)).toHaveCount(0);
+    // The Create form's sections: the preset question, the declaration line,
+    // the opt-in to alignment, the reason.
+    await expect(
+      dialog.getByRole('radiogroup', { name: 'What is it?' }),
+    ).toBeVisible();
+    await expect(dialog.getByTestId('declaration-summary')).toContainText(
+      'CircleCI config',
+    );
+    await expect(
+      dialog.getByRole('checkbox', { name: 'Opted in to alignment' }),
+    ).toBeVisible();
+    await expect(dialog.getByLabel(/^Reason/)).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Review' })).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();

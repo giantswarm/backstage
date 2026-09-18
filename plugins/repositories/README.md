@@ -84,8 +84,12 @@ commit` -- the repository and one scaffold commit as the person, then the
   the name. Once the reconciler has reported, the record with its set-up
   steps shows beneath, as the row shows it.
 - **Row actions** on the expanded record, each one tool call as the person
-  with the manager's plan reviewed first: _Configure_ (`update_repository`,
-  the whole entry as it should read), _Transfer_ (`transfer_repository`, the
+  with the manager's plan reviewed first: _Edit_ (`update_repository`: the
+  entry as the Create form shows it -- description, visibility, the preset
+  with the declaration behind _Adjust_, the opt-in to alignment (`align`),
+  the reason -- opened on the entry as it stands, the team and the name
+  fixed; the entry goes whole, the fields the form does not carry kept as
+  they are and named on the form), _Transfer_ (`transfer_repository`, the
   receiving team approves, the giving team is told), _Deprecate_ and
   _Archive_ (`set_lifecycle`, the team's review asked in its channel),
   _Align now_ (`align_repository`, the set-up workflow dispatched as the

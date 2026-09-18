@@ -1,12 +1,5 @@
-import { useState } from 'react';
-import {
-  Alert,
-  ButtonLink,
-  Flex,
-  Text,
-  TextAreaField,
-  TextField,
-} from '@backstage/ui';
+import { useMemo, useState } from 'react';
+import { Alert, ButtonLink, Flex, Text, TextField } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { load } from 'js-yaml';
 import {
@@ -18,6 +11,9 @@ import {
   Plan,
   repositoriesApiRef,
 } from '../../apis';
+import { EMPTY, flavourProblem } from '../../lib/declaration';
+import { editedEntry, fromEntry, keptFields } from '../../lib/entry';
+import { DeclarationFields } from '../CreateRepositoryPage/DeclarationFields';
 import { ActionDialog } from './ActionDialog';
 import { LiveAlignment } from './LiveAlignment';
 import { PlanView } from './PlanView';
@@ -39,9 +35,9 @@ const reasonField = (
 });
 
 /**
- * The entry the person edited, as `update_repository` takes it: the one
- * item of the team file's list. Not parseable → undefined (the textarea says
- * so); the schema's verdict on the content is the manager's.
+ * The entry as the team file holds it: the one item of the file's list. Not
+ * parseable → undefined (the dialog says so); the schema's verdict on the
+ * content is the manager's.
  */
 export function parseEntry(yaml: string): DeclarationEntry | undefined {
   try {
@@ -60,53 +56,78 @@ export function parseEntry(yaml: string): DeclarationEntry | undefined {
   }
 }
 
-/** Configure: the entry as it should read afterwards (flavours, a CI knob, …). */
-export function ConfigureDialog({
+/** A record with its team-file entry: what the team-file edits work on. */
+export type DeclaredRecord = InventoryRecord & {
+  declaration: NonNullable<InventoryRecord['declaration']>;
+};
+
+export const isDeclared = (record: InventoryRecord): record is DeclaredRecord =>
+  record.declaration !== null;
+
+/**
+ * Edit: the entry as the Create form shows it -- description and
+ * visibility, the preset with the declaration as its result behind Adjust,
+ * the opt-in to alignment, the reason -- opened on the entry as it stands in
+ * the team file; the team and the name are fixed. `update_repository` takes
+ * the entry whole: the form's fields replaced, every field the form does not
+ * carry kept as it was and named on the form.
+ */
+export function EditDialog({
   record,
   isOpen,
   onClose,
   onDone,
-}: RowDialogProps) {
+}: Omit<RowDialogProps, 'record'> & { record: DeclaredRecord }) {
   const api = useApi(repositoriesApiRef);
-  const [yaml, setYaml] = useState(record.declaration?.entry ?? '');
-  const [reason, setReason] = useState('');
-  const entry = parseEntry(yaml);
-  const args = () => ({ entry: entry!, reason: reason || undefined });
+  const { team, file, entry: yaml } = record.declaration;
+  const entry = useMemo(() => parseEntry(yaml), [yaml]);
+  const [form, setForm] = useState(() =>
+    entry ? fromEntry(entry, team) : EMPTY,
+  );
+  const change = () => {
+    if (!entry) {
+      throw new Error(`${file}: the entry of ${record.name} could not be read`);
+    }
+    return {
+      entry: editedEntry(entry, form),
+      reason: form.reason.trim() || undefined,
+    };
+  };
   return (
     <ActionDialog<Plan, Committed>
-      title={`Configure ${record.name}`}
-      intro={`The team-file entry of ${record.repository} is replaced by the entry below — the whole entry as it should read afterwards. The manager validates it against the repositories schema; the reconciler applies the change after ${record.declaration?.team ?? 'the team'}'s review of the pull request.`}
+      title={`Edit ${record.name}`}
+      intro={`The team-file entry of ${record.repository} is replaced by the declaration below, the fields as Create repository asks them. The manager validates the entry against the repositories schema; the reconciler applies the change after ${team}'s review of the pull request.`}
       isOpen={isOpen}
       onClose={onClose}
-      ready={!!entry}
+      ready={!!entry && !flavourProblem(form.language, form.flavours)}
       fields={
-        <>
-          <TextAreaField
-            label="Entry"
-            description="YAML, the one-item list as it stands in the team file."
-            value={yaml}
-            onChange={setYaml}
-            isInvalid={yaml.trim().length > 0 && !entry}
-            rows={12}
+        entry ? (
+          <DeclarationFields
+            form={form}
+            onChange={setForm}
+            subject={{
+              kind: 'existing',
+              repository: record.repository,
+              team,
+              file,
+              kept: keptFields(entry),
+            }}
+            isDisabled={false}
           />
-          {yaml.trim().length > 0 && !entry && (
-            <Text variant="body-small" color="secondary">
-              Not a team-file entry yet: one YAML item with a name.
-            </Text>
-          )}
-          <TextField
-            {...reasonField('Why, for the pull request body.')}
-            value={reason}
-            onChange={setReason}
+        ) : (
+          <Alert
+            status="danger"
+            title={`The entry of ${record.name} in ${file} could not be read`}
+            description="Not one YAML item with a name: the team file needs a look before the entry can be edited here."
           />
-        </>
+        )
       }
       dryRun={() =>
-        api.updateRepository(record.repository, args(), { dryRun: true })
+        api.updateRepository(record.repository, change(), { dryRun: true })
       }
       renderPlan={plan => <PlanView plan={plan} />}
       commit={() =>
-        api.updateRepository(record.repository, args(), { mode: 'commit' })
+        api.updateRepository(record.repository, change(), { mode: 'commit' })
       }
       renderDone={result => <PullRequestOpened result={result} />}
       commitLabel="Open pull request"
