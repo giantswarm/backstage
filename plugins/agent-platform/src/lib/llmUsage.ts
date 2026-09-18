@@ -16,7 +16,7 @@ import { WINDOW_DAYS } from './llmUsageQueries';
  * The same policy `normalizeSessionUsage` follows on the kagent wire.
  */
 
-/** The gateway's own value for "the caller IP matched no known Pod". */
+/** The gateway's own value for a call it could attribute to no caller at all. */
 export const UNKNOWN_AGENT_LABEL = 'unknown';
 
 export type TokenTypeTotals = {
@@ -28,13 +28,26 @@ export type TokenTypeTotals = {
   other: number;
 };
 
+/**
+ * What a row of the by-agent table is, so a reader is told rather than left
+ * to guess: an agent the portal knows, one it knew once, or traffic the
+ * gateway could attribute to no caller.
+ */
+export type LlmAgentRowKind = 'agent' | 'removed' | 'unattributed';
+
 export type LlmAgentRow = {
   id: string;
   namespace: string;
   /** The raw `agent` label. */
   agent: string;
-  /** What to show: the matched `Agent` CR's display name, or a fallback. */
+  kind: LlmAgentRowKind;
+  /**
+   * What to show: a known agent's display name; a removed agent's
+   * `namespace/name`, the technical identity that is all that is left of it;
+   * the caller's word for unattributed traffic.
+   */
   label: string;
+  /** Only an `agent` row has a page to link to. */
   href?: string;
   tokens: number;
   calls: number;
@@ -272,22 +285,24 @@ export function cacheReadShare(types: TokenTypeTotals): number | undefined {
 }
 
 /**
- * Join the gateway's per-agent totals against the fleet's `Agent` CRs.
+ * Join the gateway's per-agent totals against the fleet's agents.
  *
- * The gateway labels a call with the **ServiceAccount of the calling pod**, so
- * the match is `agent_namespace`/`agent` against the CR's namespace and
- * technical name — not kagent's encoded agent id, which is what the
- * session-derived table joins on. Verified on `gazelle` (2026-09-10): kagent
- * names each agent's Deployment ServiceAccount after the agent, and every
- * `agent_namespace`/`agent` pair the gateway reported resolved to an `Agent`
- * CR by namespace and name.
+ * The runtime names the agent on every model call — the `AgentTemplate`'s name
+ * and namespace travel as request headers — and the gateway writes them into
+ * the `agent` and `agent_namespace` labels when the call arrives through the
+ * Substrate egress; any other caller is labelled with the ServiceAccount of
+ * the pod that made the call. Either way the pair is a namespace and a
+ * technical name, so that is what the match is on — not kagent's encoded
+ * agent id, which is what the session-derived table joins on.
  *
- * Three fallbacks, none of which drops a row: `unknown` is the gateway's own
- * "no Pod matched" and reads as "Unattributed"; a label that matches no CR is
- * shown as `namespace/agent`, unlinked, because the agent may have been
- * deleted since and its spend is still in the totals above; and a row with no
- * namespace at all keeps the bare agent name. Dropping any of them would make
- * the table disagree with the tiles.
+ * Every pair becomes a row, because dropping one would make the table
+ * disagree with the tiles above it, and each row says what it is: an agent
+ * the portal knows, linked; a pair that matches no agent, which is one that
+ * was removed since (or runs outside this portal's view), shown by its
+ * technical name and marked as removed, unlinked, its spend still in the
+ * totals; or the gateway's own `unknown`, a call it could attribute to no
+ * caller, which reads as unattributed. A pair with no namespace keeps the
+ * bare agent name.
  */
 export function reduceByAgent(options: {
   cost: MimirMetricSample[] | undefined;
@@ -326,20 +341,11 @@ export function reduceByAgent(options: {
     const matched = index.get(key);
     const costUsd = optionalTotal(costByAgent, key);
 
-    let label: string;
-    if (matched) {
-      label = matched.name;
-    } else if (agent === UNKNOWN_AGENT_LABEL || agent === '') {
-      label = unknownLabel;
-    } else {
-      label = namespace ? `${namespace}/${agent}` : agent;
-    }
-
     rows.push({
       id: key,
       namespace,
       agent,
-      label,
+      ...identifyAgent(matched, namespace, agent, unknownLabel),
       href: matched ? hrefFor(matched) : undefined,
       tokens: tokensByAgent.get(key) ?? 0,
       calls: callsByAgent.get(key) ?? 0,
@@ -354,6 +360,25 @@ export function reduceByAgent(options: {
       b.tokens - a.tokens ||
       a.label.localeCompare(b.label),
   );
+}
+
+/** What an `agent_namespace`/`agent` pair is, and the name to show for it. */
+function identifyAgent(
+  matched: AgentRow | undefined,
+  namespace: string,
+  agent: string,
+  unknownLabel: string,
+): Pick<LlmAgentRow, 'kind' | 'label'> {
+  if (matched) {
+    return { kind: 'agent', label: matched.name };
+  }
+  if (agent === UNKNOWN_AGENT_LABEL || agent === '') {
+    return { kind: 'unattributed', label: unknownLabel };
+  }
+  return {
+    kind: 'removed',
+    label: namespace ? `${namespace}/${agent}` : agent,
+  };
 }
 
 /**
