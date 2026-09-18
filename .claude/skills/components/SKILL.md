@@ -3,6 +3,14 @@ name: components
 description: Component file structure and organization patterns for React components in this repository
 ---
 
+## Before you write the JSX
+
+Read the **`ui`** skill first. New and edited UI code imports its components
+from bui (`@backstage/ui`) — `Text`, `Tabs`, `Dialog`, `Select`, `Tag`, `Alert`
+and the rest — not from `@material-ui/core`. The `ui` skill has the full bui
+inventory, the MUI→bui swap table, and the closed list of cases where a legacy
+import is still correct. For tables, read the **`tables`** skill.
+
 ## Component Directory Structure
 
 Each React component should be placed in its own directory with the same name as the component. The directory must contain:

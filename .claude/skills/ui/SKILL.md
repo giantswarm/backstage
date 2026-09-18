@@ -7,19 +7,36 @@ description: How to build UI in this repo — the bui (@backstage/ui) design sys
 
 | Layer | Import from | Status |
 | --- | --- | --- |
-| **bui** — the new Backstage design system | `@backstage/ui` (aka "Backstage UI", "BUI") | **Preferred for new work.** The direction we're migrating toward. |
-| **core-components** — classic Backstage components | `@backstage/core-components` | Legacy but still required where bui has no equivalent (e.g. feature-rich `Table`, `Page`/`Header`/`Content` scaffolding, `Link` with route refs). |
-| **Material UI v4** | `@material-ui/core` | Legacy primitives + `makeStyles`. Used for styling and gaps bui doesn't cover. [MUI v4 docs](https://v4.mui.com/). |
+| **bui** — the new Backstage design system | `@backstage/ui` (aka "Backstage UI", "BUI") | **The default for new work.** The direction we're migrating toward. |
+| **core-components** — classic Backstage components | `@backstage/core-components` | Legacy. Allowed only for the pieces bui has no equivalent for (listed below). |
+| **Material UI v4** | `@material-ui/core` | Legacy. Allowed only for `makeStyles` and the gaps listed below. [MUI v4 docs](https://v4.mui.com/). |
 
-**Rule of thumb: reach for bui first.** Fall back to core-components / MUI v4 only
-when bui lacks the piece you need. Mixing all three in one file is normal and
-expected during the migration — see `ClusterAboutCard.tsx`, which imports `Grid`
-from bui, `Link` from core-components, and `Box`/`Tooltip` from MUI v4 together.
+**The rule: in new or edited UI code, import from `@backstage/ui`. Reaching for
+`@material-ui/core` or `@backstage/core-components` instead requires that bui has
+no equivalent — and you check that, you don't assume it.**
 
-`@backstage/ui` is currently `0.16.0` — a young, fast-moving package. APIs change
-between releases and it is **not** a full replacement for core-components yet.
-When unsure whether a bui component exists or what props it takes, check the
-Storybook source (see below) rather than guessing.
+bui is much wider than it looks. It ships `Tabs`, `Dialog`, `Select`,
+`Combobox`, `Checkbox`, `Radio`, `Switch`, `Slider`, `Tag`, `Badge`, `Alert`,
+`Skeleton`, `Accordion`, `TextField`, `SearchField`, `DatePicker`,
+`ToggleButtonGroup` and more — see the inventory and the swap table below. The
+common failure mode is assuming a component is missing because it isn't
+mentioned in a doc, and writing the MUI version instead.
+
+### Check before you fall back
+
+The installed package is the only authority on what exists. It moves fast, so
+grep it rather than trusting any list (including this file):
+
+```bash
+grep -oE '^declare (const|function) [A-Z][A-Za-z]+' \
+  node_modules/@backstage/ui/dist/index.d.ts \
+  | sed -E 's/declare (const|function) //' | grep -v 'Definition$' | sort -u
+```
+
+For a component's props, grep the same `index.d.ts` for `<Name>OwnProps`, or
+read its upstream story (see "Reading upstream Backstage (bui) Storybook
+source" below). Don't guess at an API and don't conclude "bui doesn't have it"
+without having run the grep.
 
 ### Picking an MUI v4 icon
 
@@ -33,28 +50,126 @@ need an icon name but don't know it (e.g. `grep -i wallet` finds
 ## bui setup (already done)
 
 - The plugin's `package.json` must declare `"@backstage/ui": "backstage:^"`
-  (already present in `gs`, `ui-react`, `ai-chat`, and `app`).
+  (already present in `app` and most plugins — check with
+  `grep -l '"@backstage/ui"' plugins/*/package.json`).
 - The global stylesheet is imported once in `packages/app/src/index.tsx`:
   `import '@backstage/ui/css/styles.css';`. Don't re-import it per component.
-- We do **not** wrap the app in `BUIProvider` — bui components render against the
-  existing app theme + the global CSS. (Storybook recipes use `BUIProvider`
-  because they render in isolation; the real app doesn't need it.)
+- `BUIProvider` **is** mounted — `@backstage/plugin-app`'s `AppRoot` wraps the
+  app in it (verified in `plugin-app` 0.5.1,
+  `dist/extensions/AppRoot.esm.js`), so react-aria's `RouterProvider` is active
+  and bui `href`s (`Link`, `ButtonLink`, `Tab`, `ListRow`, table `getHref`) are
+  client-side routed through react-router. You don't need to add a provider, and
+  you don't need `onClick` + `useNavigate` to avoid a full page reload. Some
+  older comments in `plugins/agent-platform` still claim the opposite — they are
+  stale. Keep such hrefs **absolute**: a relative bui href inside a splat route
+  appends to the current path (the reason react-router stays pinned to v6).
 
-## bui components we actually use
+## What bui gives you (0.17.0)
 
-Common primitives already in the codebase (import from `@backstage/ui`):
+The full export list, so nothing here gets rebuilt in MUI by mistake. Regenerate
+it with the grep above after a bui bump.
 
-- **Layout**: `Flex`, `Grid`, `Box`, `Container`
-- **Surfaces**: `Card`, `CardHeader`, `CardBody`, `CardFooter`
-- **Typography**: `Text` (e.g. `<Text as="h3" variant="title-x-small" weight="bold">`)
-- **Controls**: `Button`, `ButtonIcon`, `Switch`, `Link`
-- **Overlay/menu**: `Tooltip`, `TooltipTrigger`, `MenuTrigger`, `Menu`, `MenuItem`
-- **Data display**: `Table` + `Cell` / `CellText` / `ColumnConfig`, `List`, `ListRow`, `Avatar`
-- **Page chrome**: `PluginHeader`, `Header` (the two-tier header pattern — plugin-level
-  `PluginHeader` above an entity-level `Header`). NFS page headers and
-  `SubPageBlueprint` tabs are rendered by the custom `GSPageLayout` swappable
-  component, not directly — see "Page headers and tabs" in `docs/ui.md` before
-  building a tabbed page.
+- **Layout**: `Box`, `Flex`, `Grid`, `Container`, `FullPage`
+- **Surfaces**: `Card`, `CardHeader`, `CardBody`, `CardFooter` (use `ui-react`'s
+  `InfoCard` wrapper — see below)
+- **Typography**: `Text`
+- **Page chrome**: `PluginHeader`, `Header`, `HeaderPage`,
+  `HeaderMetadataStatus`, `HeaderMetadataUsers`
+- **Navigation**: `Tabs`, `TabList`, `Tab`, `TabPanel`, `Link`, `ButtonLink`
+- **Controls**: `Button`, `ButtonIcon`, `ToggleButton`, `ToggleButtonGroup`,
+  `Switch`, `Checkbox`, `CheckboxGroup`, `Radio`, `RadioGroup`, `Slider`
+- **Inputs**: `TextField`, `TextAreaField`, `NumberField`, `PasswordField`,
+  `SearchField`, `SearchAutocomplete`, `Select` + `SelectItem`, `Combobox` +
+  `ComboboxItem`, `DatePicker`, `DateRangePicker`, `FieldLabel`
+- **Overlay/menu**: `Dialog` + `DialogTrigger`/`DialogHeader`/`DialogBody`/
+  `DialogFooter`, `Popover`, `Tooltip` + `TooltipTrigger`, `MenuTrigger`,
+  `Menu`, `MenuItem`, `MenuSection`, `MenuSeparator`, `SubmenuTrigger`,
+  `MenuAutocomplete`
+- **Data display**: `Table` + `Cell`/`CellText`/`CellProfile`/`ColumnConfig`,
+  `List`, `ListRow`, `Avatar`, `Tag`, `TagGroup`, `Badge`
+- **Feedback**: `Alert`, `Skeleton`
+- **Disclosure**: `Accordion`, `AccordionGroup`, `AccordionTrigger`,
+  `AccordionPanel`
+- **A11y**: `VisuallyHidden`
+
+### Swap table: MUI v4 → bui
+
+Writing new UI, or touching a file that already has the MUI import? Use the
+right column.
+
+| Instead of `@material-ui/core` | Use `@backstage/ui` |
+| --- | --- |
+| `Typography` | `Text` (`as` + `variant` + `weight` + `color`) |
+| `Tabs`, `Tab` | `Tabs` + `TabList` + `Tab` + `TabPanel` |
+| `Box`, `Grid`, `Container` | `Box`, `Flex`, `Grid`, `Container` |
+| `Button`, `IconButton` | `Button`, `ButtonIcon`, `ButtonLink` |
+| `Chip` | `Tag` (`Badge` for a count/state pill) |
+| `Dialog`, `DialogTitle/Content/Actions` | `DialogTrigger` + `Dialog` + `DialogHeader`/`DialogBody`/`DialogFooter` |
+| `FormControl` + `InputLabel` + `Select` + `MenuItem` | `Select` + `SelectItem` (or `Combobox` when it needs typing) |
+| `TextField`, `InputBase` | `TextField`, `TextAreaField`, `NumberField`, `PasswordField`, `SearchField` |
+| `Checkbox` + `FormControlLabel` | `Checkbox`, `CheckboxGroup` |
+| `Radio`, `RadioGroup` | `Radio`, `RadioGroup` |
+| `Switch`, `Slider` | `Switch`, `Slider` |
+| `Tooltip` | `TooltipTrigger` + `Tooltip` |
+| `Menu` + `MenuItem`, `Popover` | `MenuTrigger` + `Menu` + `MenuItem`, `Popover` |
+| `Accordion`/`ExpansionPanel` | `AccordionGroup` + `Accordion` + `AccordionTrigger` + `AccordionPanel` |
+| `Paper`, `Card*` | `ui-react` `InfoCard` |
+| `List`, `ListItem` | `List`, `ListRow` (interactive rows need `selectionMode`) |
+| `Avatar` | `Avatar` |
+| `CircularProgress`/`LinearProgress` as a placeholder | `Skeleton`, or the `isPending` prop on `Table`/`Alert` |
+| `Snackbar`, MUI-lab `Alert` | `Alert` (`status`: `info`/`success`/`warning`/`danger`) |
+| MUI-lab `ToggleButtonGroup` | `ToggleButtonGroup` + `ToggleButton` |
+| MUI pickers | `DatePicker`, `DateRangePicker` |
+
+bui `Tabs` covers both modes: in-page tabs keyed by `id`
+(`<Tab id="overview">`, with `selectedKey`/`onSelectionChange` on `Tabs`) and
+routed tabs (`href` + `matchStrategy: 'exact' | 'prefix'`, active state derived
+from the URL). Both need a router in context, which the app always has. For
+`SubPageBlueprint` tabs you don't write `Tabs` at all — `GSPageLayout` does; see
+"Page headers and tabs" in `docs/ui.md`.
+
+### The only legitimate fallbacks
+
+This list is closed. Anything not on it should be bui:
+
+- `makeStyles` from `@material-ui/core` — for layout/spacing tweaks bui's props
+  don't express. Prefer bui layout props first; keep the styles thin.
+- `@material-ui/icons/<Icon>` — bui ships no icon set (see the icon reference
+  above). Always import the single-icon path.
+- `Table` from `@backstage/core-components` — when you need column-visibility
+  persistence, CSV export or the faceted `FiltersLayout` sidebar. See the
+  **`tables`** skill for the choice matrix; bui `Table` is the default otherwise.
+- `Page`/`Header`/`Content` from `@backstage/core-components` — classic
+  (non-NFS) pages only. Never add them to an NFS page: double header + double
+  scrollbar.
+- `Link` / `LinkButton` from `@backstage/core-components` — when the target is a
+  route ref. Plain hrefs use bui `Link`/`ButtonLink`.
+- `Progress`, `EmptyState`, `ErrorPanel`, `WarningPanel`, `ResponseErrorPanel`,
+  `MarkdownContent`, `CodeSnippet`, the `Status*` dots, `DependencyGraph`,
+  `Breadcrumbs`, `LogViewer`, the sidebar/entity-page scaffolding — no bui
+  equivalent yet.
+- A `ui-react` component that is still MUI v4 inside (`SingleSelect`,
+  `MultipleSelect`, `Autocomplete`, `MultiplePicker`, `FiltersLayout`,
+  `YamlEditor`, …). **Reuse it anyway** — one shared component to migrate later
+  beats a hand-rolled MUI copy per call site. The story's migration-status note
+  tells you which stack each is on.
+
+MUI and bui do coexist in many files. That is the migration's residue, not
+permission: a file already importing `@material-ui/core` is a reason to migrate
+the part you touch, not to add to it.
+
+ESLint backs this up: the root `.eslintrc.js` restricts every
+`@material-ui/core` export that has a bui equivalent (`muiWithBuiEquivalent`)
+via `@typescript-eslint/no-restricted-imports`. It is a **warning**, because the
+imports already in the tree are debt — so treat one on a line *you* wrote as a
+failure, and add a name to that list if you find a swap it is missing.
+
+Note where the warning is and isn't visible: `lint-staged` prints it on commit
+for staged files, and so does `npx eslint <file>`, but **`yarn lint` does not** —
+`backstage-cli repo lint` runs with `--max-warnings -1` and only prints a
+package's report when that package fails. To check a file you just wrote, run
+`npx eslint <path>` from the package directory, or `yarn lint --max-warnings 0`
+for the whole changed package.
 
 ### Cards: use the shared `InfoCard` wrapper
 
