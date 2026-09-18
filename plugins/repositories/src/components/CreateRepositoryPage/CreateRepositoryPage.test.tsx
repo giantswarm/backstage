@@ -47,14 +47,14 @@ const info: ManagerInfo = {
   github: {
     apiUrl: '',
     grant: { obtained: true, login: 'alice' },
-    circleciConfigured: false,
   },
   inventory: { connected: true, records: 3 },
+  circleci: { source: 'statuses+artifact' },
 };
 
 /** The inventory the Team choice reads the other teams off. */
 const inventory: RepositoryListing = listingOf(
-  Object.values(records).map(rowOf),
+  Object.values(records).map(record => rowOf(record)),
   Object.keys(records).length,
 );
 
@@ -62,7 +62,7 @@ const inventory: RepositoryListing = listingOf(
 const mine: RepositoryListing = listingOf(
   Object.values(records)
     .filter(record => record.declaration?.team === 'team-bumblebee')
-    .map(rowOf),
+    .map(record => rowOf(record)),
   Object.keys(records).length,
 );
 

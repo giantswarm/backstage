@@ -9,26 +9,24 @@ import {
 } from '../apis';
 import { unusedWrites } from './fakeApi';
 import {
+  daysSince,
   firstRelease,
   listingOf,
   newService,
+  NOW,
   presentService,
   records as fixtureRecords,
+  renovateStateOf,
   rowOf,
   watchOf,
 } from './records';
 import { createInMemory, validateInMemory } from './validate';
 
-/** The manager's default period for judging Renovate active or inactive. */
-export const RENOVATE_ACTIVE_DAYS = 180;
-
-const DAY_MS = 86_400_000;
-
 export interface InMemoryApiOptions {
   /** The caller's team slugs: the `mine` scope, and `get_info`'s groups. */
   teams?: string[];
   records?: Record<string, InventoryRecord>;
-  /** The moment activity is judged against. */
+  /** The moment activity is judged against; the fixtures' `NOW` by default. */
   now?: Date;
 }
 
@@ -65,19 +63,6 @@ export function hasLifecycle(record: InventoryRecord, lifecycle: string) {
     default:
       return declared === lifecycle;
   }
-}
-
-const daysSince = (iso: string | undefined, now: Date) =>
-  iso ? (now.getTime() - new Date(iso).getTime()) / DAY_MS : Infinity;
-
-/** Renovate configured and heard from within the activity period. */
-export function renovateActive(record: InventoryRecord, now: Date): boolean {
-  if (!record.renovate.configured) {
-    return false;
-  }
-  const lastSeen =
-    record.renovate.lastPullRequest?.createdAt ?? record.renovate.lastCommit;
-  return daysSince(lastSeen, now) <= RENOVATE_ACTIVE_DAYS;
 }
 
 /** The pinned orb version is the one wanted, or starts with it at a version boundary: `10` matches `10.5.0`, not `100.0.0`. */
@@ -120,14 +105,11 @@ export function matches(
     }
   }
   if (filters.renovate) {
-    const configured = record.renovate.configured;
-    const active = renovateActive(record, now);
-    const wanted = {
-      configured,
-      missing: !configured,
-      active,
-      inactive: configured && !active,
-    }[filters.renovate];
+    const state = renovateStateOf(record, now);
+    const wanted =
+      filters.renovate === 'configured'
+        ? state !== 'missing'
+        : state === filters.renovate;
     if (!wanted) {
       return false;
     }
@@ -192,7 +174,7 @@ export function createInMemoryApi(
   options: InMemoryApiOptions = {},
 ): InMemoryRepositoriesApi {
   const teams = options.teams ?? ['team-bumblebee'];
-  const now = options.now ?? new Date();
+  const now = options.now ?? NOW;
   const records = new Map(Object.entries(options.records ?? fixtureRecords));
   const lists: ListFilters[] = [];
   const refreshes: string[] = [];
@@ -211,9 +193,9 @@ export function createInMemoryApi(
     github: {
       apiUrl: 'https://api.github.com',
       grant: { obtained: true, login: 'alice' },
-      circleciConfigured: true,
     },
     inventory: { connected: true, records: records.size },
+    circleci: { source: 'statuses+artifact' },
   };
 
   const record = (name: string): InventoryRecord => {
@@ -266,7 +248,7 @@ export function createInMemoryApi(
       lists.push(filters);
       const matched = [...records.values()]
         .filter(candidate => matches(candidate, filters, teams, now))
-        .map(rowOf)
+        .map(candidate => rowOf(candidate, now))
         .sort((a, b) =>
           a.repository.localeCompare(b.repository, 'en', {
             sensitivity: 'base',

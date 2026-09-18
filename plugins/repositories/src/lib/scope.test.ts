@@ -14,8 +14,9 @@ const info = (groups: string[]): ManagerInfo => ({
   version: 'v0.3.0',
   toolPrefix: 'giantswarm-repo-manager',
   caller: { email: 'someone@example.com', groups },
-  github: { apiUrl: '', grant: { obtained: true }, circleciConfigured: false },
+  github: { apiUrl: '', grant: { obtained: true } },
   inventory: { connected: true, records: 3 },
+  circleci: { source: 'statuses+artifact' },
 });
 
 describe('defaultScope', () => {
