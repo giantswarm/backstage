@@ -98,10 +98,27 @@ export interface JsonSchema {
   additionalProperties?: boolean | JsonSchema;
 }
 
+/** One observed aspect of a feature, as the definition declares it. */
+export interface DefinitionDimension {
+  id: string;
+  /** configmap, dex-secret, extras, backstage, live, probe */
+  kind?: string;
+  key?: string;
+}
+
+/** One consistency feature of a definition: what `verify_capability` rolls its dimensions up into. */
+export interface DefinitionFeature {
+  id: string;
+  title?: string;
+  description?: string;
+  dimensions?: DefinitionDimension[];
+}
+
 export interface Definition {
   name: string;
   description?: string;
   inputSchema?: JsonSchema;
+  features?: DefinitionFeature[];
 }
 
 export interface ManagerInfo {

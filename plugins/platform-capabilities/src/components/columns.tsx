@@ -13,11 +13,13 @@ import { StateTag } from './StateTag';
 export interface InstallationCapabilityColumns {
   /** One column per capability the manager knows; none until the listing arrived. */
   columns: TableColumn<CatalogTableRow>[];
+  /** The capabilities the manager knows, in its order: one Consistency view each. */
+  capabilities: string[];
   /** What to show above the table: the connect on a missing grant, or the manager's error. */
   notice?: ReactNode;
 }
 
-const NONE: InstallationCapabilityColumns = { columns: [] };
+const NONE: InstallationCapabilityColumns = { columns: [], capabilities: [] };
 
 function stateOf(
   listing: InstallationListing | undefined,
@@ -83,6 +85,6 @@ export function useInstallationCapabilityColumns(): InstallationCapabilityColumn
         },
       }),
     );
-    return { columns, notice };
+    return { columns, capabilities: listing?.capabilities ?? [], notice };
   }, [api, listing, error, isPending]);
 }

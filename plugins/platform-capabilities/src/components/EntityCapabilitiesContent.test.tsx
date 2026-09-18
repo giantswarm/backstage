@@ -221,7 +221,9 @@ describe('EntityCapabilitiesContent', () => {
     );
     expect(api.verified).toBe(1);
     expect(screen.getByTestId('verify-state')).toHaveTextContent('drifted');
-    expect(screen.getByTestId('feature-sso')).toHaveTextContent('as defined');
+    expect(screen.getByTestId('feature-identity')).toHaveTextContent(
+      'as defined',
+    );
     expect(screen.getByTestId('feature-runtime')).toHaveTextContent(
       'kagent.replicas',
     );

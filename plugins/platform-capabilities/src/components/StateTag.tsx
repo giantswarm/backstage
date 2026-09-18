@@ -1,7 +1,8 @@
 import { Text } from '@backstage/ui';
 import { CapabilityStateName } from '../apis';
+import { CellMark } from './consistency';
 
-const COLOR: Record<CapabilityStateName, string> = {
+const COLOR: Record<CapabilityStateName | CellMark, string> = {
   'not opted in': '#8a8a8a',
   'not enabled': '#8a8a8a',
   'pending approval': '#b8860b',
@@ -11,17 +12,24 @@ const COLOR: Record<CapabilityStateName, string> = {
   drifted: '#d2691e',
   failed: '#c62828',
   unknown: '#8a8a8a',
+  'as defined': '#2e8b57',
+  'differs by input': '#b8860b',
+  'not checked': '#8a8a8a',
+  'not readable': '#8a8a8a',
 };
 
-/** A capability's state in the manager's words, with a dot in the state's colour. */
+/**
+ * A capability's state, or a verify mark, in the manager's words, with a dot
+ * in its colour.
+ */
 export function StateTag({
   state,
   testId,
 }: {
-  state: CapabilityStateName | string;
+  state: CapabilityStateName | CellMark | string;
   testId?: string;
 }) {
-  const color = COLOR[state as CapabilityStateName] ?? COLOR.unknown;
+  const color = COLOR[state as keyof typeof COLOR] ?? COLOR.unknown;
   return (
     <span
       data-testid={testId}
