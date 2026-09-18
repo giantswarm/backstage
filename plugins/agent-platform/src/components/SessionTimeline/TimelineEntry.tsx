@@ -347,10 +347,17 @@ export function TimelineEntry({
   // session that went on afterwards there was no sign at all.
   if (item.kind === 'turn-failed') {
     // A turn the person stopped is not an error, so it does not wear one: an
-    // `info` alert, in the words of the thing they did. kagent records no reason
-    // for a cancel — a turn stopped four seconds in on gazelle held the person's
-    // message and nothing else — so there is usually nothing to add, and
-    // "kagent recorded no reason" under a deliberate Stop would read as a fault.
+    // `info` alert, in the words of the thing they did. Where a failure says
+    // "kagent recorded no reason" when it gave none, a cancel says nothing at
+    // all: kagent records no reason for one as a rule, the reason is that
+    // somebody pressed Stop, and announcing its absence would read as a fault.
+    //
+    // The title carries it alone for a second reason. A canceled turn often has
+    // the agent's half-finished reply directly above it — kagent keeps what it
+    // streamed, as an artifact, and `toWireTask` merges that into the history —
+    // so a line here about how far it got would contradict what the reader can
+    // see. The entry says when the turn ended; the turn itself says what it
+    // managed.
     if (item.state === CANCELED_STATE) {
       return (
         <div data-testid="timeline-turn-canceled">
@@ -361,9 +368,7 @@ export function TimelineEntry({
             description={
               item.reason ? (
                 <span className={classes.failureReason}>{item.reason}</span>
-              ) : (
-                'It was stopped before the agent replied.'
-              )
+              ) : undefined
             }
           />
         </div>

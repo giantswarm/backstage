@@ -1378,6 +1378,74 @@ describe('SessionDetailPage', () => {
         screen.queryByText('a duplicate stand-in'),
       ).not.toBeInTheDocument();
     });
+
+    describe('a streamed turn ending', () => {
+      /** The stream's copy of a cancel: terminal, and with no reason to carry. */
+      const canceledStream = () => ({
+        ...createStreamTurn('m-canceled-1'),
+        dispatched: true,
+        isFinal: true,
+        stateKey: 'canceled',
+        items: [
+          {
+            kind: 'turn-failed' as const,
+            id: 'stream:0',
+            taskIndex: 0,
+            state: 'canceled',
+          },
+        ],
+      });
+
+      const canceledTimeline = buildTimeline(
+        normalizeTaskList({
+          data: [
+            {
+              id: 'task-canceled',
+              status: {
+                state: 'canceled',
+                timestamp: '2026-09-18T05:56:07.729Z',
+              },
+              history: [
+                {
+                  messageId: 'm-canceled-1',
+                  role: 'user',
+                  parts: [{ text: 'Could a node pool sit in another region?' }],
+                },
+              ],
+            },
+          ],
+        }).tasks,
+      );
+
+      it('is dropped once the poll has closed that turn', async () => {
+        // How a turn ended carries a `messageId` only when kagent wrote a reason,
+        // and a cancel has none to write — so neither copy can be recognised by
+        // id, and both rendered until the send discarded its preview. A turn has
+        // one ending, so the poll having closed this turn retires the streamed one.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: canceledTimeline,
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: canceledStream() }),
+        );
+        await render();
+
+        expect(screen.getAllByText('This turn was canceled')).toHaveLength(1);
+      });
+
+      it('is still shown while the poll has not caught up', async () => {
+        // The other half: the preview is the only record of how the turn ended
+        // until the conversation read lands, and dropping it there would put the
+        // page back to a reply that stops mid-sentence with nothing to say why.
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: canceledStream() }),
+        );
+        await render();
+
+        expect(screen.getByText('This turn was canceled')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('the first message of a session just created', () => {
