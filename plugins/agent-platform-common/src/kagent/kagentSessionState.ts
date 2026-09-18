@@ -66,6 +66,25 @@ export const AWAITING_INPUT_STATES = new Set([
 export const FAILED_STATES = new Set(['failed', 'rejected']);
 
 /**
+ * The terminal state of a turn that was stopped before it answered — the person
+ * pressed Stop, or the controller ended the run.
+ *
+ * Deliberately **not** in {@link FAILED_STATES}: nothing went wrong, it is
+ * `tone: 'neutral'` below, and saying "this turn failed" over a turn the person
+ * stopped themselves would be a lie. It shares only the property the readers
+ * care about — the turn is over and there is no reply under it — so they gate on
+ * this alongside `FAILED_STATES` and then say which of the two happened.
+ *
+ * Without it a canceled turn rendered as the person's message and then silence,
+ * with nothing on the page saying it had been stopped. The session badge reads
+ * the *newest* task only, so on a session that went on afterwards the cancel left
+ * no trace anywhere.
+ *
+ * Legacy (v0) spelling, like {@link FAILED_STATES}.
+ */
+export const CANCELED_STATE = 'canceled';
+
+/**
  * The A2A task states kagent can report, as of a2a 0.3 / kagent v0.10.
  *
  * Deliberately a lookup rather than a `z.enum` at the parse boundary: a state we

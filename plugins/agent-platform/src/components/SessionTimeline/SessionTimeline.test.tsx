@@ -696,3 +696,130 @@ describe('SessionTimeline — a turn the runtime failed', () => {
     }
   });
 });
+
+describe('SessionTimeline — a turn the person canceled', () => {
+  /** The shape a live session gave: the message, and nothing under it. */
+  const canceledTasks = {
+    data: [
+      {
+        id: 'task-canceled',
+        status: { state: 'canceled', timestamp: '2026-09-18T05:56:07.729Z' },
+        history: [
+          {
+            messageId: 'm-canceled-1',
+            role: 'user',
+            parts: [{ text: 'Could a node pool sit in another region?' }],
+          },
+        ],
+      },
+    ],
+  };
+
+  it('says the turn was stopped rather than leaving the message unanswered', async () => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(canceledTasks)}
+        agentName="sre-agent"
+      />,
+    );
+
+    expect(
+      screen.getByText('Could a node pool sit in another region?'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('This turn was canceled')).toBeInTheDocument();
+  });
+
+  it('says nothing about how far the turn got', async () => {
+    // kagent keeps what a canceled turn had already streamed, as an artifact,
+    // which `toWireTask` merges into the history — so the agent's half-written
+    // reply is often directly above this entry. A line here about the turn having
+    // been stopped "before the agent replied" contradicted what the reader could
+    // see. Mirrors the captured fixture `task.canceled.kagent-4a91c273.json`.
+    // In the API v2 shape, which is where artifacts exist at all: a v1 list is
+    // discriminated by `tasks` rather than `data`, and only that path translates.
+    const withPartialReply = {
+      tasks: [
+        {
+          id: 'task-canceled',
+          status: {
+            state: 'TASK_STATE_CANCELED',
+            timestamp: '2026-09-18T05:56:07.729Z',
+          },
+          history: [
+            {
+              messageId: 'm-canceled-1',
+              role: 'ROLE_USER',
+              parts: [{ text: 'Could a node pool sit in another region?' }],
+              metadata: {
+                'kagent.dev/timeline-position': '2026-09-18T05:56:03.078Z',
+              },
+            },
+          ],
+          artifacts: [
+            {
+              artifactId: 'a-partial',
+              parts: [{ text: 'A node pool in another region is' }],
+              metadata: {
+                adk_author: 'sre-agent',
+                'kagent.dev/timeline-position': '2026-09-18T05:56:05.011Z',
+              },
+            },
+          ],
+        },
+      ],
+    };
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(withPartialReply)}
+        agentName="sre-agent"
+      />,
+    );
+
+    expect(
+      screen.getByText('A node pool in another region is'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('This turn was canceled')).toBeInTheDocument();
+    expect(screen.queryByText(/before the agent replied/)).toBeNull();
+    expect(screen.queryByText(/recorded no reason/)).toBeNull();
+  });
+
+  it('does not dress a cancel up as a failure', async () => {
+    // Stopping a turn that is taking too long is the ordinary way out of it, not
+    // an error — and the runtime-lost notice keys off the failed entry, which a
+    // cancel is not.
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(canceledTasks)}
+        agentName="sre-agent"
+      />,
+    );
+
+    expect(screen.queryByText('This turn failed')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-turn-failed'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('timeline-turn-canceled')).toBeInTheDocument();
+  });
+
+  it('keeps the entry when the agent’s working is hidden', async () => {
+    // `hidden` removes the agent's working, not how the turn ended — otherwise
+    // the page is back to a message that went unanswered for no visible reason.
+    // Combined with a fixture that *has* activity, since the control is only
+    // offered when there is something to hide.
+    const working = timelineFor(tasksV099);
+    const canceled = timelineFor(canceledTasks);
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={{
+          ...working,
+          items: [...working.items, ...canceled.items],
+        }}
+        agentName="sre-agent"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Hidden' }));
+
+    expect(screen.getByTestId('timeline-turn-canceled')).toBeInTheDocument();
+  });
+});

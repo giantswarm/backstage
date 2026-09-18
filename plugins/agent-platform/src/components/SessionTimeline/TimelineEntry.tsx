@@ -3,7 +3,10 @@ import { Alert, Badge } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import LoopIcon from '@material-ui/icons/Loop';
 
-import { isRuntimeLostFailureText } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  CANCELED_STATE,
+  isRuntimeLostFailureText,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { ActivityRow, InertActivityRow } from './ActivityRow';
 import { MessageMarkdown } from './MessageMarkdown';
@@ -336,11 +339,42 @@ export function TimelineEntry({
     );
   }
 
-  // The turn ended in error. Rendered as an alert, not as prose: before this
-  // entry existed a failed turn showed the user's message with nothing under it,
-  // the "Failed" badge in the header being the only sign — and on a session whose
-  // model the provider refuses, every message sent appeared to do nothing.
+  // The turn ended without answering — it failed, was rejected, or was canceled.
+  // Rendered as an alert, not as prose: before this entry existed such a turn
+  // showed the user's message with nothing under it, the header badge being the
+  // only sign — and on a session whose model the provider refuses, every message
+  // sent appeared to do nothing. The badge reads the *newest* task, so on a
+  // session that went on afterwards there was no sign at all.
   if (item.kind === 'turn-failed') {
+    // A turn the person stopped is not an error, so it does not wear one: an
+    // `info` alert, in the words of the thing they did. Where a failure says
+    // "kagent recorded no reason" when it gave none, a cancel says nothing at
+    // all: kagent records no reason for one as a rule, the reason is that
+    // somebody pressed Stop, and announcing its absence would read as a fault.
+    //
+    // The title carries it alone for a second reason. A canceled turn often has
+    // the agent's half-finished reply directly above it — kagent keeps what it
+    // streamed, as an artifact, and `toWireTask` merges that into the history —
+    // so a line here about how far it got would contradict what the reader can
+    // see. The entry says when the turn ended; the turn itself says what it
+    // managed.
+    if (item.state === CANCELED_STATE) {
+      return (
+        <div data-testid="timeline-turn-canceled">
+          <Alert
+            status="info"
+            icon
+            title="This turn was canceled"
+            description={
+              item.reason ? (
+                <span className={classes.failureReason}>{item.reason}</span>
+              ) : undefined
+            }
+          />
+        </div>
+      );
+    }
+
     // A turn the *runtime* failed — kagent could not bring the agent's process
     // back to read the message — is not the agent's failure, and the runtime's
     // words alone (`actor "ai-…" request timed out`) explained nothing to the

@@ -464,8 +464,20 @@ export function SessionDetailPage() {
       const polled = new Set(
         timeline.items.map(item => item.messageId).filter(Boolean),
       );
+      // How a turn ended carries a `messageId` only when kagent wrote a reason
+      // for it — the exception for a failure, the rule for a cancel, which has no
+      // reason to write. Recognition by id therefore cannot retire the streamed
+      // entry once the poll delivers its own, and the two rendered one under the
+      // other for as long as the send's remaining invalidation took. A turn has
+      // one ending, so the poll having closed *this* turn is what retires it.
+      const polledEndedTurn = timeline.items.some(
+        item => item.kind === 'turn-failed' && item.taskIndex === taskIndex,
+      );
       for (const item of stream.items) {
         if (item.messageId && polled.has(item.messageId)) {
+          continue;
+        }
+        if (item.kind === 'turn-failed' && polledEndedTurn) {
           continue;
         }
         items.push({ ...item, taskIndex });
