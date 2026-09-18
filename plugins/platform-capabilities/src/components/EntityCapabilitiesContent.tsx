@@ -1,0 +1,79 @@
+import { Alert, Flex, Skeleton, Text } from '@backstage/ui';
+import { useEntity } from '@backstage/plugin-catalog-react';
+import { ActionHistory } from './ActionHistory';
+import { CapabilityCard } from './CapabilityCard';
+import { ErrorAlert } from './ErrorAlert';
+import { PlatformCapabilitiesProviders } from './Providers';
+import { useInstallations, useManagerInfo } from './queries';
+
+function Capabilities({ name }: { name: string }) {
+  const listing = useInstallations({ installations: [name] });
+  const info = useManagerInfo();
+
+  if (listing.isPending) {
+    return <Skeleton width={320} height={80} />;
+  }
+  if (listing.error) {
+    return (
+      <ErrorAlert
+        title="giantswarm-platform-manager"
+        error={listing.error as Error}
+      />
+    );
+  }
+  const installation = listing.data?.installations.find(i => i.name === name);
+  if (!installation) {
+    return (
+      <Alert
+        status="info"
+        title="Not in the registry"
+        description={`${name} is not an installation the platform manager knows.`}
+      />
+    );
+  }
+  return (
+    <Flex direction="column" gap="4">
+      {!installation.readable && (
+        <Alert
+          status="warning"
+          title="Repositories not readable as you"
+          description={
+            (installation.errors ?? []).join('; ') ||
+            "The installation's repositories could not be read with your grant."
+          }
+        />
+      )}
+      {installation.capabilities.map(capability => (
+        <CapabilityCard
+          key={capability.name}
+          installation={installation}
+          capability={capability}
+          definition={info.data?.definitions.find(
+            d => d.name === capability.name,
+          )}
+        />
+      ))}
+      {installation.capabilities.length === 0 && (
+        <Text variant="body-small" color="secondary">
+          The manager defines no capability.
+        </Text>
+      )}
+      <ActionHistory installation={name} />
+    </Flex>
+  );
+}
+
+/**
+ * The Capabilities tab of an installation: per platform capability the
+ * state, the inputs on record and the last action from `list_installations`,
+ * Enable/Reconcile with the dry run, Verify, and the action history --
+ * everything through the manager's tools as the signed-in person.
+ */
+export function EntityCapabilitiesContent() {
+  const { entity } = useEntity();
+  return (
+    <PlatformCapabilitiesProviders>
+      <Capabilities name={entity.metadata.name} />
+    </PlatformCapabilitiesProviders>
+  );
+}
