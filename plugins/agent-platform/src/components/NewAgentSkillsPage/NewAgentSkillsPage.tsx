@@ -53,6 +53,25 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '70ch',
     marginBottom: theme.spacing(3),
   },
+  // bui gives an expanded panel 4px of padding, which leaves the first row of
+  // cards crowding the repo it belongs to. A margin rather than more padding,
+  // because the panel's own rule is the more specific one -- and scoped to the
+  // expanded state the same way that rule is, because the panel element stays
+  // in the layout while the section is collapsed.
+  skillsPanel: {
+    '[data-expanded="true"] > &': {
+      marginTop: theme.spacing(1.5),
+    },
+  },
+  // Sets a subfolder off from the cards above it. The panel already opens with
+  // space of its own, so the first subfolder in a repository doesn't need it --
+  // and when the repository has no loose skills, that heading is what the panel
+  // opens with.
+  subgroup: {
+    '&:first-child $subgroupHeading': {
+      marginTop: 0,
+    },
+  },
   subgroupHeading: {
     marginTop: theme.spacing(2),
     marginBottom: theme.spacing(1),
@@ -193,7 +212,7 @@ function GroupedSkills({
             <AccordionTrigger>
               {group.repoSlug} ({total})
             </AccordionTrigger>
-            <AccordionPanel>
+            <AccordionPanel className={classes.skillsPanel}>
               <Flex direction="column" gap="3">
                 {group.ungrouped.length > 0 && (
                   <SkillGrid
@@ -204,7 +223,7 @@ function GroupedSkills({
                   />
                 )}
                 {group.subgroups.map(subgroup => (
-                  <div key={subgroup.key}>
+                  <div key={subgroup.key} className={classes.subgroup}>
                     {/* A real heading, so the grouping is reachable by heading
                         navigation and not just visible styling. */}
                     <Text
