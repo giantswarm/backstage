@@ -374,6 +374,9 @@ test.describe('repositories: actions', () => {
     const stubbed = (url: URL) =>
       isCreatePath(url) || isRecord(url) || isWatch(url);
     const watches: unknown[] = [];
+    // The follow answers "the pull request is open" until the test has seen
+    // that state; the page calls again on its own and finds every phase done.
+    let phasesDone = false;
     const stub = (route: Route) => {
       const request = route.request();
       const url = new URL(request.url());
@@ -382,7 +385,7 @@ test.describe('repositories: actions', () => {
       }
       if (isWatch(url)) {
         watches.push(request.postDataJSON());
-        return route.fulfill({ json: watches.length === 1 ? watching : ready });
+        return route.fulfill({ json: phasesDone ? ready : watching });
       }
       if (isRecord(url)) {
         return route.fulfill({ json: converging });
@@ -426,10 +429,18 @@ test.describe('repositories: actions', () => {
       await expect(phases.getByTestId('phase-declared')).toContainText(
         'Declared after 13 s (+9 s)',
       );
+      await expect(phases.getByTestId('phase-merged')).toContainText(
+        'the declaration pull request has not merged yet',
+      );
+      await expect(phases.getByTestId('phase-released')).toHaveAttribute(
+        'data-state',
+        'ahead',
+      );
+      expect(watches[0]).toEqual({ pullRequest: 4242, timeout: 20 });
+      phasesDone = true;
       await expect(live.getByTestId('setup-ready')).toBeVisible({
         timeout: 30_000,
       });
-      expect(watches[0]).toEqual({ pullRequest: 4242, timeout: 20 });
       expect(watches.length).toBeGreaterThanOrEqual(2);
       await expect(phases.getByTestId('phase-released')).toContainText(
         'Released after 4 min 10 s (+1 min 41 s) v0.1.0',

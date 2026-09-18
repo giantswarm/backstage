@@ -8,6 +8,7 @@ import {
   RepositoriesApi,
   repositoriesApiRef,
   RepositoryListing,
+  Watch,
 } from '../../apis';
 import { unusedWrites } from '../../fixtures/fakeApi';
 import {
@@ -474,10 +475,16 @@ describe('CreateRepositoryPage', () => {
 
   it('Create creates the repository, pushes the scaffold and opens the pull request as the person, then follows the repository to readiness phase by phase', async () => {
     const createRepository = jest.fn().mockResolvedValue(createdRepository);
+    // The first call finds the pull request open; the calls after it wait
+    // until the test has seen that state, then find every phase done.
+    let phasesDone!: (watch: Watch) => void;
+    const later = new Promise<Watch>(resolve => {
+      phasesDone = resolve;
+    });
     const watchRepository = jest
       .fn()
       .mockResolvedValueOnce(watchOf('declared'))
-      .mockResolvedValue(watchReady);
+      .mockImplementation(() => later);
     const getRepository = jest.fn().mockResolvedValue({
       ...newService,
       name: 'shiny-service',
@@ -569,9 +576,7 @@ describe('CreateRepositoryPage', () => {
     // The next call (the page calls again as soon as one answers) finds
     // every phase done: the link is marked ready, the release named, the
     // reconciler run's finding shown, the record with its steps below.
-    await repositoriesQueryClient.refetchQueries({
-      queryKey: ['repositories', 'watch'],
-    });
+    phasesDone(watchReady);
     const readyAlert = await within(live).findByTestId('setup-ready');
     expect(readyAlert).toHaveTextContent('shiny-service is ready');
     expect(readyAlert).toHaveTextContent(
