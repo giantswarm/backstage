@@ -853,10 +853,11 @@ export function committedOf(overrides: Partial<Committed> = {}): Committed {
 }
 
 /**
- * `align_repository`'s answer for present-service: the dispatch, planned or
- * done, with the manager's warning, the team's opt-in and the changes the
- * last check planned. `overrides` turn it into the other cases: a team that
- * has not opted in (`mode: check`), no check yet, nothing to change.
+ * `align_repository`'s answer for present-service, opted in (`align: true`
+ * in its entry): the dispatch, planned or done, with the manager's warning
+ * and the changes the last check planned. `overrides` turn it into the other
+ * cases: an undeclared repository (`mode: check`), no check yet, nothing to
+ * change.
  */
 export function alignmentOf(
   dispatched: boolean,
@@ -967,3 +968,56 @@ export const watchRedRelease: Watch = watchOf('setUp', {
   },
   release: firstRelease,
 });
+
+const OPT_IN_PULL_REQUEST = {
+  branch: 'reposetup/align-present-service',
+  title:
+    'chore(repositories): opt present-service in to alignment (team-bumblebee)',
+};
+
+/**
+ * `align_repository`'s answer for present-service declared but not opted in
+ * (`mode: opt-in`): nothing is dispatched; the commit opens the pull request
+ * that sets `align: true` in its entry, the team's review asked in its
+ * channel, and the reconciler aligns the repository when that merges.
+ * `committed` is the answer after the commit: the pull request opened and
+ * the delivered ask.
+ */
+export function optInAlignmentOf(committed: boolean): Alignment {
+  return alignmentOf(false, {
+    optedIn: false,
+    mode: 'opt-in',
+    warning:
+      "giantswarm/present-service has not opted in to alignment. Align now opts it in — `align: true` in its entry, in a pull request team-bumblebee reviews (the ask goes to team-bumblebee's channel; a member other than you approves) — and the reconciler applies the planned changes when it merges: protection, circleci. It runs as you.",
+    then: 'when the pull request merges, the reconciler aligns giantswarm/present-service (its push run); the record shows setup.pendingRun until that run reports',
+    optIn: {
+      plan: planOf({
+        entry:
+          '- name: present-service\n  componentType: service\n  align: true\n',
+        pullRequest: {
+          repository: 'giantswarm/github',
+          ...OPT_IN_PULL_REQUEST,
+          files: ['repositories/team-bumblebee.yaml'],
+          body: '## Problem\n\n…',
+          as: 'alice',
+        },
+        ask: {
+          team: 'team-bumblebee',
+          channel: '#team-bumblebee',
+          text: 'alice asks to align `giantswarm/present-service` (owned by team-bumblebee): the change opts it in to alignment (`align: true`) and the reconciler applies 3 planned changes once merged — protection, circleci. A member of team-bumblebee other than alice approves.',
+          deliverable: true,
+        },
+      }),
+      committed: committed
+        ? committedOf({
+            pullRequest: {
+              ...openedPullRequest,
+              number: 4244,
+              url: 'https://github.com/giantswarm/github/pull/4244',
+              ...OPT_IN_PULL_REQUEST,
+            },
+          })
+        : undefined,
+    },
+  });
+}

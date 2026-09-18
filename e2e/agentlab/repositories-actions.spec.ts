@@ -590,25 +590,39 @@ test.describe('repositories: actions', () => {
     await dialog.getByRole('button', { name: 'Review' }).click();
 
     // The manager's dry run (`align_repository`, nothing written): its
-    // warning, the team's opt-in line and the changes the last check planned
-    // -- or that there is no check yet, or nothing to change.
+    // warning, the repository's opt-in line and the changes the last check
+    // planned -- or that there is no check yet, or nothing to change -- then
+    // how it lands: the dispatch, or (declared, not opted in) the pull
+    // request that opts the repository in.
     const alignment = dialog.getByTestId('alignment');
     await expect(alignment).toBeVisible({ timeout: 60_000 });
     await expect(alignment.getByTestId('alignment-warning')).not.toBeEmpty();
     await expect(alignment.getByTestId('opt-in')).toContainText(
-      /has (not )?opted in/,
+      /(is|has not) opted in to alignment/,
     );
     await expect(alignment.getByTestId('planned')).toContainText(
       /Planned changes|No check yet|Nothing to change/,
     );
-    await expect(alignment.getByTestId('dispatch')).toBeVisible();
-    // The confirm label follows the opt-in: Align now applies, Check now only checks.
-    const optedIn = /has opted in/.test(
-      await alignment.getByTestId('opt-in').innerText(),
-    );
-    await expect(
-      dialog.getByRole('button', { name: optedIn ? 'Align now' : 'Check now' }),
-    ).toBeVisible();
+    // The confirm label follows the mode: Align now applies, Opt in and
+    // align opens the opt-in pull request, Check now only checks.
+    const optInLine = await alignment.getByTestId('opt-in').innerText();
+    const optingIn = /Align now opts it in/.test(optInLine);
+    if (optingIn) {
+      const plan = alignment.getByTestId('plan');
+      await expect(plan.getByTestId('entry-after')).toContainText(
+        'align: true',
+      );
+      await expect(plan.getByTestId('planned-pull-request')).toBeVisible();
+      await expect(alignment.getByTestId('dispatch')).toHaveCount(0);
+    } else {
+      await expect(alignment.getByTestId('dispatch')).toBeVisible();
+    }
+    const label = optingIn
+      ? 'Opt in and align'
+      : /is opted in to alignment/.test(optInLine)
+        ? 'Align now'
+        : 'Check now';
+    await expect(dialog.getByRole('button', { name: label })).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();
   });
