@@ -97,6 +97,17 @@ async function expand(name: string) {
   return screen.findByTestId(`record-${name}`);
 }
 
+/** The value of one fact of an expanded record, by its label (the cards are definition lists); undefined when the card leaves it out. */
+const factOf = (record: HTMLElement, label: string) =>
+  within(record).queryByText(label)?.closest('dt')?.nextElementSibling
+    ?.textContent;
+
+/** The CI facts of an expanded record, in the order the Tooling card lists them. */
+const ciFactsOf = (record: HTMLElement) =>
+  ['CircleCI', 'Release build', 'Orb', 'Images', 'China push', 'Signing'].map(
+    label => factOf(record, label),
+  );
+
 describe('RepositoriesPage', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
@@ -371,6 +382,84 @@ describe('RepositoriesPage', () => {
       );
     });
 
+    it('Images sends arm64 as a boolean', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.click(
+        within(group('Images')).getByRole('radio', { name: 'arm64' }),
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          arm64: true,
+        }),
+      );
+      await waitFor(() => expect(listed()).toEqual(['present-service']));
+      await userEvent.click(
+        within(group('Images')).getByRole('radio', { name: 'amd64 only' }),
+      );
+      await waitFor(() => expect(api.lists.at(-1)?.arm64).toBe(false));
+      await waitFor(() => expect(listed()).toEqual(['legacy-tool']));
+      expect(urlSearch()).toContain('arm64=false');
+    });
+
+    it('China push', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.click(
+        within(group('China push')).getByRole('radio', { name: 'Split' }),
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          chinaPush: 'split',
+        }),
+      );
+      await waitFor(() => expect(listed()).toEqual(['present-service']));
+      expect(urlSearch()).toContain('chinaPush=split');
+    });
+
+    it('Signing', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.click(
+        within(group('Signing')).getByRole('radio', { name: 'Unsigned' }),
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          signing: 'unsigned',
+        }),
+      );
+      await waitFor(() => expect(listed()).toEqual(['legacy-tool']));
+      expect(urlSearch()).toContain('signing=unsigned');
+    });
+
+    it('Orb version goes to the manager once the person pauses, a prefix included', async () => {
+      const api = fakeApi();
+      await openAll(api);
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Orb version' }),
+        '10',
+      );
+      await waitFor(() =>
+        expect(api.lists.at(-1)).toEqual({
+          scope: 'all',
+          limit: LIMIT,
+          archived: false,
+          orb: '10',
+        }),
+      );
+      await waitFor(() => expect(listed()).toEqual(['present-service']));
+      expect(urlSearch()).toContain('orb=10');
+    });
+
     it('Finding: the kinds come from the scope’s inventory', async () => {
       const api = fakeApi();
       await openAll(api);
@@ -463,6 +552,16 @@ describe('RepositoriesPage', () => {
     expect(
       within(record).getByText('renovate.json5, preset'),
     ).toBeInTheDocument();
+    // The CI facts, in the record's words: the head's and the tag commit's
+    // statuses, the orb, the image platforms, the China push, the signing.
+    expect(ciFactsOf(record)).toEqual([
+      'builds main: success (2 jobs, 2026-09-15 08:05Z)',
+      'built: success (2 jobs, 2026-09-01 11:58Z)',
+      'architect 10.5.0',
+      'arm64',
+      'split',
+      'signed',
+    ]);
 
     const findings = within(record).getByTestId('record-findings');
     expect(findings).toHaveTextContent('default-icon');
@@ -479,6 +578,31 @@ describe('RepositoriesPage', () => {
     expect(
       within(record).queryByRole('button', { name: 'Keep' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows the CI facts as the record says them, a dash where it says nothing', async () => {
+    await openAll(fakeApi());
+    // A hand-maintained pipeline: a red head, a release whose commit carries
+    // no statuses, amd64 only, unsigned with the record's reason.
+    const legacy = await expand('legacy-tool');
+    expect(ciFactsOf(legacy)).toEqual([
+      'builds main: failure (1 job, 2025-11-02 09:04Z)',
+      '—',
+      'architect 6.3.0',
+      'amd64 only',
+      'inline',
+      'unsigned: an orb before 8.2.0',
+    ]);
+    // No CircleCI configuration and no release: nothing is made up.
+    const stray = await expand('stray-tool');
+    expect(ciFactsOf(stray)).toEqual([
+      undefined,
+      undefined,
+      '—',
+      '—',
+      '—',
+      '—',
+    ]);
   });
 
   it('shows the set-up steps of a repository being created and refreshes the record', async () => {

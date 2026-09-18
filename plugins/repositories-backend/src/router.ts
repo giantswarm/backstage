@@ -38,6 +38,10 @@ const LIST_ARGUMENTS: Record<string, 'string' | 'number' | 'boolean'> = {
   archived: 'boolean',
   inactiveDays: 'number',
   finding: 'string',
+  orb: 'string',
+  arm64: 'boolean',
+  chinaPush: 'string',
+  signing: 'string',
   limit: 'number',
 };
 

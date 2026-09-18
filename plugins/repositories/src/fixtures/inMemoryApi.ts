@@ -75,6 +75,10 @@ export function renovateActive(record: InventoryRecord, now: Date): boolean {
   return daysSince(lastSeen, now) <= RENOVATE_ACTIVE_DAYS;
 }
 
+/** The pinned orb version is the one wanted, or starts with it at a version boundary: `10` matches `10.5.0`, not `100.0.0`. */
+const orbMatches = (have: string, want: string) =>
+  have === want || have.startsWith(`${want}.`);
+
 /**
  * Whether a record passes `list_repositories`' filters, each as the manager
  * applies it: the scope first, then `team` wherever it can apply, then the
@@ -152,6 +156,19 @@ export function matches(
     filters.finding &&
     !record.findings.some(finding => finding.kind === filters.finding)
   ) {
+    return false;
+  }
+  const ci = record.ci;
+  if (filters.orb && !(ci?.orb && orbMatches(ci.orb, filters.orb))) {
+    return false;
+  }
+  if (filters.arm64 !== undefined && ci?.arm64 !== filters.arm64) {
+    return false;
+  }
+  if (filters.chinaPush && ci?.chinaPush !== filters.chinaPush) {
+    return false;
+  }
+  if (filters.signing && ci?.signing !== filters.signing) {
     return false;
   }
   return true;

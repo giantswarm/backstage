@@ -18,9 +18,11 @@ repository is what `devctl repo status` prints for it, from the same record.
 - **Filters**, in the column the Clusters page uses: search, team (the teams of
   the scope's whole inventory, plus _No team_ under _All_; not offered under
   _Unassigned_), lifecycle (any / active / deprecated / archived), Renovate
-  state, visibility, fork, finding kind (again from the whole inventory),
-  inactivity in days -- the tool's arguments, each a URL parameter, sent as
-  typed (`fork` a boolean, `inactiveDays` a number).
+  state, visibility, fork, the CI facts (arm64 images, China push, signing,
+  and an orb version or its prefix), finding kind (again from the whole
+  inventory), inactivity in days -- the tool's arguments, each a URL
+  parameter, sent as typed (`fork` and `arm64` booleans, `inactiveDays` a
+  number).
 - **Table** (`Table` of `@backstage/core-components`): repository, team,
   lifecycle, set-up state, findings, last person commit, record age; sortable
   by every column, by repository to begin with; the one-line summary above it
@@ -29,8 +31,11 @@ repository is what `devctl repo status` prints for it, from the same record.
   (linked), its set-up state and the actions; the facts grouped as Ownership
   (team, declaration, component type, flavours, CODEOWNERS, team mapping,
   catalog), Activity (commits, pull requests, issues, latest release, last
-  reconciler run) and Tooling (Renovate, CircleCI, language, visibility,
-  default branch); the findings with their fix; the set-up steps with a status
+  reconciler run) and Tooling (Renovate; the CI facts in the record's words --
+  whether CircleCI builds the default branch and built the latest release,
+  the architect orb version, arm64 images, China push, signing -- a dash
+  where the repository has no CircleCI configuration to say; language,
+  visibility, default branch); the findings with their fix; the set-up steps with a status
   per verdict and the CLI's detail text, re-read every 15 s while they
   converge; and **Refresh** (`refresh_repository`).
 - **Create repository** (`/repositories/create`): the declaration as a form
