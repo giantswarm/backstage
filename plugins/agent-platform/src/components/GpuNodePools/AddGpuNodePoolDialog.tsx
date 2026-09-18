@@ -15,20 +15,23 @@ import {
 import { dump } from 'js-yaml';
 
 import {
-  useAccelerators,
   useClusterManagerInfo,
+  useCreateNodePoolSchema,
   useManagedClusters,
   useNodePoolWrite,
 } from '../../hooks/useClusterManager';
 import {
+  CACHE_ARGUMENT,
   CLUSTER_MANAGER_SERVER,
   DEFAULT_ACCELERATORS,
+  ZONES_ARGUMENT,
   deployBlocker,
   describeComponent,
   describeReleaseGroup,
   groupManifestsByRelease,
   isValidPoolName,
   manifestFilename,
+  offersArgument,
   presetFitOf,
   presetLabel,
   type CreateNodePoolInput,
@@ -43,6 +46,12 @@ import { DIALOG_FORM_STYLE } from '../dialogForm';
 import { NodeSizePicker } from './NodeSizePicker';
 import { PartialWriteOutcome } from './PartialWriteOutcome';
 import { PoolFitReview } from './PoolFitReview';
+import {
+  CacheRefusalDetails,
+  PoolPlacementPicker,
+  PoolPlacementReview,
+  cacheRefusalDetails,
+} from './PoolPlacementPicker';
 
 export type AddGpuNodePoolDialogProps = {
   /** The installations whose muster lists cluster-manager. */
@@ -113,8 +122,13 @@ export function clusterMarks(cluster: ManagedCluster): string[] {
  * chart's defaults and offers the sizes cluster-manager composed with their
  * prices and the presets each hosts; every change re-runs it. The review
  * shows the same choice and the manifests; Deploy sends the sizes as chosen.
- * The portal composes nothing: what the review shows is exactly what
- * cluster-manager would write.
+ * Where the pool runs (**Zones**, any combination of the cluster's, none for
+ * the platform's choice) and whether it keeps a **model cache** are the
+ * person's too (giantswarm/backstage#2483), offered where the installation's
+ * cluster-manager takes the arguments; the dry run's `zonesNote` and
+ * `cache.note` say in the review what the choice comes to. The portal
+ * composes nothing: what the review shows is exactly what cluster-manager
+ * would write.
  */
 export function AddGpuNodePoolDialog({
   installations,
@@ -132,6 +146,10 @@ export function AddGpuNodePoolDialog({
   );
   const [maxGpus, setMaxGpus] = useState(4);
   const [teleport, setTeleport] = useState<TeleportChoice>('default');
+  /** The zones the nodes may launch in; empty lets the platform choose. */
+  const [zones, setZones] = useState<string[]>([]);
+  /** Whether the pool's serving slice keeps a model cache claim (the installation's default: on). */
+  const [cache, setCache] = useState(true);
   const [step, setStep] = useState<'form' | 'review'>('form');
   /** The first dry run with the chart's defaults: every size to pick from, every preset. */
   const [shapes, setShapes] = useState<NodePoolWriteResult>();
@@ -153,7 +171,16 @@ export function AddGpuNodePoolDialog({
     error: clustersError,
   } = useManagedClusters(installation);
   const { info } = useClusterManagerInfo(installation);
-  const accelerators = useAccelerators(installation) ?? DEFAULT_ACCELERATORS;
+  const schema = useCreateNodePoolSchema(installation);
+  const accelerators = schema?.accelerators ?? DEFAULT_ACCELERATORS;
+  /** The two choices this installation's cluster-manager takes; an older one shows neither. */
+  const offers = useMemo(
+    () => ({
+      zones: offersArgument(schema, ZONES_ARGUMENT),
+      cache: offersArgument(schema, CACHE_ARGUMENT),
+    }),
+    [schema],
+  );
   const write = useNodePoolWrite(installation);
   const { dryRun } = write;
 
@@ -168,6 +195,11 @@ export function AddGpuNodePoolDialog({
     setShapes(undefined);
     setSizes(undefined);
     setPreset(undefined);
+  };
+  /** Another cluster: its zones are others; the cache choice stands. */
+  const resetCluster = () => {
+    resetChoice();
+    setZones([]);
   };
 
   useEffect(() => {
@@ -207,8 +239,12 @@ export function AddGpuNodePoolDialog({
       accelerator,
       maxGpus,
       ...(teleport === 'default' ? {} : { teleport: teleport === 'on' }),
+      // Only what the installation's cluster-manager takes: zones when
+      // named (none is the platform's choice), the cache as chosen.
+      ...(offers.zones && zones.length > 0 ? { zones } : {}),
+      ...(offers.cache ? { cache } : {}),
     };
-  }, [cluster, name, accelerator, maxGpus, teleport]);
+  }, [cluster, name, accelerator, maxGpus, teleport, offers, zones, cache]);
 
   /** The form's input as Deploy and Review take it: the pool named. */
   const formInput: CreateNodePoolInput | undefined = useMemo(
@@ -396,7 +432,7 @@ export function AddGpuNodePoolDialog({
                       if (key) {
                         setInstallation(String(key));
                         setClusterName(undefined);
-                        resetChoice();
+                        resetCluster();
                       }
                     }}
                   />
@@ -417,7 +453,7 @@ export function AddGpuNodePoolDialog({
                   selectedKey={clusterName ?? null}
                   onSelectionChange={key => {
                     setClusterName(key ? String(key) : undefined);
-                    resetChoice();
+                    resetCluster();
                   }}
                 />
                 {cluster && (
@@ -498,6 +534,17 @@ export function AddGpuNodePoolDialog({
                     judging={judging}
                   />
                 )}
+                {cluster && (
+                  <PoolPlacementPicker
+                    cluster={cluster}
+                    offers={offers}
+                    zones={zones}
+                    onZonesChange={setZones}
+                    cache={cache}
+                    onCacheChange={setCache}
+                    isBusy={isBusy}
+                  />
+                )}
                 <NumberField
                   label="Maximum GPUs"
                   description="Across all nodes of the pool; the pool scales to zero."
@@ -550,6 +597,12 @@ export function AddGpuNodePoolDialog({
                     preset={preset}
                   />
                 )}
+                <PoolPlacementReview
+                  offers={offers}
+                  zones={zones}
+                  cache={cache}
+                  review={review}
+                />
                 {groups.map(group => (
                   <Flex key={group.name} direction="column" gap="2">
                     <Text variant="body-medium">
@@ -602,7 +655,16 @@ export function AddGpuNodePoolDialog({
               <Alert
                 status="danger"
                 title="cluster-manager refused"
-                description={write.failure.message}
+                description={
+                  cacheRefusalDetails(write.failure.refused) ? (
+                    <Flex direction="column" gap="2">
+                      <Text variant="body-small">{write.failure.message}</Text>
+                      <CacheRefusalDetails refused={write.failure.refused!} />
+                    </Flex>
+                  ) : (
+                    write.failure.message
+                  )
+                }
               />
             )}
             {notConnected && installation && (

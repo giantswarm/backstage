@@ -10,7 +10,7 @@ import type {
 } from '../../hooks/useClusterManager';
 import {
   CLUSTER_MANAGER_SERVER,
-  type DeleteRefusal,
+  type Refusal,
   type NodePoolWriteResult,
 } from '../../lib/clusterManager';
 import type { ServedModel } from '../../lib/serving';
@@ -69,7 +69,7 @@ function RefusalDetails({
   refused,
   servingPath,
 }: {
-  refused: DeleteRefusal;
+  refused: Refusal;
   servingPath: string | undefined;
 }) {
   return (

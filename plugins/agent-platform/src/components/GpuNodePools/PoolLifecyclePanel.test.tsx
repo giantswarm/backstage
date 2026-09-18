@@ -248,4 +248,39 @@ describe('PoolLifecyclePanel with a serve intent', () => {
       within(serve).getByRole('link', { name: 'Serve your first model' }),
     ).toBeInTheDocument();
   });
+
+  it("shows Deploy's word on the zones and the model cache beneath the applied objects (giantswarm/backstage#2483)", async () => {
+    await renderInTestApp(
+      <PoolLifecyclePanel
+        opened={{
+          ...OPENED,
+          applied: {
+            cluster: 'wc1',
+            namespace: 'org-acme',
+            pool: 'gpu-l4',
+            mode: 'apply',
+            dryRun: false,
+            objects: [],
+            zones: ['eu-central-1a', 'eu-central-1c'],
+            zonesNote:
+              'nodes pinned to eu-central-1a, eu-central-1c, the zones named on create; this pool’s slice serves without the model cache (cache false), so no zone follows from a claim',
+            cache: {
+              enabled: false,
+              note: 'modelServing.cache.enabled false on the slice release: no claim is applied or mounted',
+            },
+          },
+        }}
+        row={READY_ROW}
+        onClose={() => {}}
+      />,
+      { mountedRoutes: { '/agent-platform/models': modelsRouteRef } },
+    );
+    const panel = within(screen.getByTestId('pool-lifecycle'));
+    expect(panel.getByTestId('applied-zones')).toHaveTextContent(
+      'Zones: nodes pinned to eu-central-1a, eu-central-1c, the zones named on create',
+    );
+    expect(panel.getByTestId('applied-cache')).toHaveTextContent(
+      'Model cache off: modelServing.cache.enabled false on the slice release',
+    );
+  });
 });

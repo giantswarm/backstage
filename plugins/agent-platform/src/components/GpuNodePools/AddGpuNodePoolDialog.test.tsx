@@ -110,6 +110,63 @@ type Scenario = {
   legacy?: boolean;
   /** The first apply is cut short (`partial`); the re-run completes. */
   partial?: boolean;
+  /** cluster-manager 0.16+: `create_node_pool` takes `zones` and `cache`, `list_clusters` names the zones (giantswarm/backstage#2483). */
+  placement?: boolean;
+  /** The dry run is refused with a structured cache block (the zones named against a claim). */
+  cacheRefusal?: boolean;
+};
+
+const ZONES = ['eu-central-1a', 'eu-central-1b', 'eu-central-1c'];
+
+/** cluster-manager's word on the zones and the cache, as the dry run echoes the choice. */
+function placementAnswer(args: Record<string, unknown>) {
+  const zones = args.zones as string[] | undefined;
+  const cache = args.cache !== false;
+  return {
+    ...(zones ? { zones } : {}),
+    zonesNote: zones
+      ? `nodes pinned to ${zones.join(', ')}, the zones named on create; ${
+          cache
+            ? 'the slice mounts the model cache claim model-serving/hf-cache, which does not exist yet'
+            : 'this pool’s slice serves without the model cache (cache false), so no zone follows from a claim'
+        }`
+      : 'the pool’s nodes are not pinned to a zone',
+    cache: cache
+      ? {
+          enabled: true,
+          claim: 'model-serving/hf-cache',
+          note: 'the predictors mount the model cache claim model-serving/hf-cache',
+        }
+      : {
+          enabled: false,
+          note: 'modelServing.cache.enabled false on the slice release: no claim is applied or mounted',
+        },
+  };
+}
+
+const CACHE_REFUSAL = {
+  message:
+    'zones eu-central-1a, eu-central-1c: the model cache claim model-serving/hf-cache on wc1 is bound to volume pvc-1 in eu-central-1b already, outside every zone named',
+  refused: {
+    nodes: [],
+    models: [],
+    hint: 'Name the claim’s zone among the zones, name one zone, or pass cache false, and re-run.',
+    cacheZone: {
+      claim: {
+        namespace: 'model-serving',
+        name: 'hf-cache',
+        phase: 'Bound',
+        volume: 'pvc-1',
+        zone: 'eu-central-1b',
+      },
+      claimZone: 'eu-central-1b',
+      zones: ['eu-central-1a', 'eu-central-1c'],
+      remedies: [
+        'name eu-central-1b among the zones — the pool then follows the claim there',
+        'pass cache false, so this pool’s slice serves without the cache across the zones',
+      ],
+    },
+  },
 };
 
 const PRICE_SOURCE =
@@ -275,24 +332,58 @@ function makeMusterApi(scenario: Scenario = {}) {
             tools: [],
           };
         case 'x_cluster-manager_list_clusters':
-          return scenario.noClusterApi
-            ? { clusters: [], clusterApi: NO_CLUSTER_API }
-            : { clusters: [WC1] };
-        case 'x_cluster-manager_create_node_pool':
+          if (scenario.noClusterApi) {
+            return { clusters: [], clusterApi: NO_CLUSTER_API };
+          }
+          return {
+            clusters: scenario.placement
+              ? [
+                  { ...WC1, zones: ZONES },
+                  { ...WC1, name: 'wc2', zones: ['eu-central-1a'] },
+                ]
+              : [WC1],
+          };
+        case 'x_cluster-manager_create_node_pool': {
           if (scenario.createError) {
             throw scenario.createError;
           }
+          if (scenario.cacheRefusal && Array.isArray(args.zones)) {
+            // The wire shape of a structured refusal: the block as `details`.
+            throw Object.assign(new Error(CACHE_REFUSAL.message), {
+              details: [JSON.stringify({ refused: CACHE_REFUSAL.refused })],
+            });
+          }
+          const placement = scenario.placement ? placementAnswer(args) : {};
           if (args.dryRun) {
-            return withFit(args.sizes as string[] | undefined, scenario);
+            return {
+              ...withFit(args.sizes as string[] | undefined, scenario),
+              ...placement,
+            };
           }
           applies += 1;
-          return applied(args.mode, Boolean(scenario.partial) && applies === 1);
+          return {
+            ...applied(args.mode, Boolean(scenario.partial) && applies === 1),
+            ...placement,
+          };
+        }
         default:
           throw new Error(`unexpected tool ${name}`);
       }
     },
   );
-  const describeTool = jest.fn(async () => ({ inputSchema: {} }));
+  const describeTool = jest.fn(async () =>
+    scenario.placement
+      ? {
+          inputSchema: {
+            properties: {
+              cluster: { type: 'string' },
+              zones: { type: 'array' },
+              cache: { type: 'boolean' },
+            },
+          },
+        }
+      : { inputSchema: {} },
+  );
   return { api: { callTool, describeTool } as unknown as MusterApi, callTool };
 }
 
@@ -533,6 +624,154 @@ describe('AddGpuNodePoolDialog', () => {
       expect(dryRunsOf(callTool).length).toBeGreaterThan(before),
     );
     expect(screen.queryByTestId('node-pool-review')).not.toBeInTheDocument();
+  });
+});
+
+describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483)', () => {
+  const zoneBox = (zone: string) =>
+    within(screen.getByTestId('zones-picker')).getByRole('checkbox', {
+      name: zone,
+    });
+  const cacheSwitch = () =>
+    screen.getByRole('switch', { name: 'Keep a model cache' });
+
+  it('offers the cluster’s zones, none chosen, and the cache on by default; two zones and the cache off travel to the dry run, the review and Deploy', async () => {
+    const user = userEvent.setup();
+    const onDeployed = jest.fn();
+    const { callTool } = await renderDialog({ placement: true }, onDeployed);
+    await fillForm(user);
+    await screen.findByTestId('zones-picker', {}, AFTER_DEBOUNCE);
+    for (const zone of ZONES) {
+      expect(zoneBox(zone)).not.toBeChecked();
+    }
+    expect(screen.getByTestId('zones-choice')).toHaveTextContent(
+      'Let the platform choose',
+    );
+    expect(cacheSwitch()).toBeChecked();
+    expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
+      'about $27 a month',
+    );
+    // The default choice: no zones argument, the cache on, explicitly.
+    await waitFor(() => expect(dryRunsOf(callTool).length).toBeGreaterThan(0));
+    expect(dryRunsOf(callTool)[0][1]).not.toHaveProperty('zones');
+    expect(dryRunsOf(callTool)[0][1]).toMatchObject({ cache: true });
+
+    await user.click(zoneBox('eu-central-1a'));
+    await user.click(zoneBox('eu-central-1c'));
+    await user.click(cacheSwitch());
+    expect(screen.getByTestId('zones-choice')).toHaveTextContent(
+      'The nodes launch in eu-central-1a, eu-central-1c only.',
+    );
+    expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
+      'about 90 s more',
+    );
+    await waitFor(
+      () =>
+        expect(
+          dryRunsOf(callTool).some(call =>
+            expect
+              .objectContaining({
+                zones: ['eu-central-1a', 'eu-central-1c'],
+                cache: false,
+              })
+              .asymmetricMatch(call[1]),
+          ),
+        ).toBe(true),
+      AFTER_DEBOUNCE,
+    );
+
+    await review(user);
+    const placement = screen.getByTestId('placement-review');
+    expect(placement).toHaveTextContent(
+      'Zones: eu-central-1a, eu-central-1c — pinned to eu-central-1a, eu-central-1c.',
+    );
+    expect(placement).toHaveTextContent('Model cache: off');
+    expect(screen.getByTestId('review-zones-note')).toHaveTextContent(
+      'nodes pinned to eu-central-1a, eu-central-1c, the zones named on create; this pool’s slice serves without the model cache',
+    );
+    expect(screen.getByTestId('review-cache-note')).toHaveTextContent(
+      'modelServing.cache.enabled false on the slice release',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Deploy' }));
+    await screen.findByText(/Pool wc1-gpu-l4 applied as you/);
+    expect(appliesOf(callTool)[0][1]).toMatchObject({
+      mode: 'apply',
+      zones: ['eu-central-1a', 'eu-central-1c'],
+      cache: false,
+    });
+    expect(onDeployed.mock.calls[0][0]).toMatchObject({
+      zones: ['eu-central-1a', 'eu-central-1c'],
+      cache: { enabled: false },
+    });
+  });
+
+  it('another cluster clears the zones; the cache choice stands', async () => {
+    const user = userEvent.setup();
+    await renderDialog({ placement: true });
+    await fillForm(user);
+    await screen.findByTestId('zones-picker', {}, AFTER_DEBOUNCE);
+    await user.click(zoneBox('eu-central-1b'));
+    await user.click(cacheSwitch());
+    expect(zoneBox('eu-central-1b')).toBeChecked();
+    // Another cluster: its zones are others, so the choice is cleared.
+    await user.click(screen.getByRole('button', { name: /wc1/ }));
+    await user.click(await screen.findByRole('option', { name: /wc2/ }));
+    await screen.findByTestId('zones-picker', {}, AFTER_DEBOUNCE);
+    expect(zoneBox('eu-central-1a')).not.toBeChecked();
+    expect(
+      within(screen.getByTestId('zones-picker')).queryByRole('checkbox', {
+        name: 'eu-central-1b',
+      }),
+    ).not.toBeInTheDocument();
+    expect(cacheSwitch()).not.toBeChecked();
+  });
+
+  it('shows neither choice where cluster-manager takes neither argument, and sends nothing of them', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderDialog();
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker', {}, AFTER_DEBOUNCE);
+    expect(
+      screen.queryByTestId('pool-placement-picker'),
+    ).not.toBeInTheDocument();
+    for (const call of dryRunsOf(callTool)) {
+      expect(call[1]).not.toHaveProperty('zones');
+      expect(call[1]).not.toHaveProperty('cache');
+    }
+    await review(user);
+    expect(screen.queryByTestId('placement-review')).not.toBeInTheDocument();
+  });
+
+  it('renders a structured cache refusal with the claim and the ways out, and the form stays', async () => {
+    const user = userEvent.setup();
+    await renderDialog({ placement: true, cacheRefusal: true });
+    await fillForm(user);
+    await screen.findByTestId('zones-picker', {}, AFTER_DEBOUNCE);
+    await user.click(zoneBox('eu-central-1a'));
+    await user.click(zoneBox('eu-central-1c'));
+    const refused = await screen.findByTestId(
+      'refused-cache',
+      {},
+      AFTER_DEBOUNCE,
+    );
+    expect(refused).toHaveTextContent(
+      'Claim model-serving/hf-cache (Bound in eu-central-1b), volume pvc-1',
+    );
+    expect(refused).toHaveTextContent(
+      '· name eu-central-1b among the zones — the pool then follows the claim there',
+    );
+    expect(refused).toHaveTextContent('· pass cache false');
+    expect(refused).toHaveTextContent('Name the claim’s zone among the zones');
+    expect(screen.getByText(/outside every zone named/)).toBeInTheDocument();
+    // The person changes the choice; the next dry run is not refused.
+    await user.click(zoneBox('eu-central-1c'));
+    await user.click(zoneBox('eu-central-1a'));
+    await waitFor(
+      () =>
+        expect(screen.queryByTestId('refused-cache')).not.toBeInTheDocument(),
+      AFTER_DEBOUNCE,
+    );
   });
 });
 

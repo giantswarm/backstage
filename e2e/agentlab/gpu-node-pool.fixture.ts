@@ -20,6 +20,9 @@ import type { Page } from '@playwright/test';
  * display names and models are the presets' own.
  */
 
+/** The cluster's node-subnet zones, as `list_clusters` names them (cluster-manager 0.16+). */
+export const ZONES = ['eu-central-1a', 'eu-central-1b', 'eu-central-1c'];
+
 export const CLUSTER = {
   name: 'wc1',
   namespace: 'org-lab',
@@ -29,8 +32,70 @@ export const CLUSTER = {
   gpuOperator: { status: 'absent' },
   serving: { status: 'absent' },
   poolReleases: [],
+  zones: ZONES,
   commitTarget: null,
 };
+
+/**
+ * `create_node_pool`'s schema as muster describes the tool: the curated
+ * accelerators, and the arguments the form feature-detects (`zones`,
+ * `cache`; cluster-manager 0.16+).
+ */
+export const CREATE_NODE_POOL_SCHEMA = {
+  name: 'x_cluster-manager_create_node_pool',
+  description:
+    'Create a GPU node pool for a cluster, or update the pool of that name.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      cluster: { type: 'string' },
+      namespace: { type: 'string' },
+      name: { type: 'string' },
+      accelerator: {
+        type: 'string',
+        enum: ['nvidia-l4', 'nvidia-a10g', 'nvidia-t4', 'nvidia-l40s'],
+      },
+      sizes: { type: 'array', items: { type: 'string' } },
+      maxGpus: { type: 'number' },
+      teleport: { type: 'boolean' },
+      prewarm: { type: 'boolean' },
+      zones: { type: 'array', items: { type: 'string' } },
+      cache: { type: 'boolean' },
+      mode: { type: 'string' },
+      dryRun: { type: 'boolean' },
+    },
+    required: ['cluster', 'name'],
+  },
+};
+
+/**
+ * cluster-manager's word on the zones and the model cache for the choice a
+ * call carries (0.16+): the pin as named, and the claim the slice mounts or
+ * the cache off.
+ */
+export function placementAnswer(args: Record<string, unknown>) {
+  const zones = args.zones as string[] | undefined;
+  const cache = args.cache !== false;
+  const pinned = zones
+    ? `nodes pinned to ${zones.join(', ')}, the zones named on create`
+    : 'the pool’s nodes are not pinned to a zone';
+  return {
+    ...(zones ? { zones } : {}),
+    zonesNote: cache
+      ? `${pinned}; the slice mounts the model cache claim model-serving/hf-cache, which does not exist yet: the connectivity chart creates it and keeps it, and the first predictor binds it to a volume in its node's zone`
+      : `${pinned}; this pool's slice serves without the model cache (cache false), so no zone follows from a claim`,
+    cache: cache
+      ? {
+          enabled: true,
+          claim: 'model-serving/hf-cache',
+          note: 'the predictors mount the model cache claim model-serving/hf-cache — it does not exist yet: the connectivity chart creates it and keeps it',
+        }
+      : {
+          enabled: false,
+          note: 'modelServing.cache.enabled false on the slice release: no claim is applied or mounted, every predictor downloads its weights into its pod’s ephemeral storage',
+        },
+  };
+}
 
 const CLUSTER_API = {
   group: 'cluster.x-k8s.io',
@@ -39,7 +104,7 @@ const CLUSTER_API = {
 };
 
 export const INFO = {
-  version: '0.7.7',
+  version: '0.16.0',
   modes: { apply: true, commit: false },
   tools: [
     'get_info',
@@ -720,6 +785,15 @@ export async function stubClusterManager(
     });
   });
 
+  // The create tool's schema (`GET /api/muster/tools/<name>`): the form reads
+  // the accelerators and the arguments it may offer from it.
+  await page.route(
+    '**/api/muster/tools/x_cluster-manager_create_node_pool**',
+    async route => {
+      await route.fulfill({ json: CREATE_NODE_POOL_SCHEMA });
+    },
+  );
+
   await page.route('**/api/muster/call**', async route => {
     const body = route.request().postDataJSON() as RecordedCall;
     const tool = body?.name?.replace(/^x_cluster-manager_/, '');
@@ -813,11 +887,14 @@ export async function stubClusterManager(
       case 'create_node_pool':
         if (args.dryRun) {
           await route.fulfill({
-            json: dryRunAnswer(
-              String(args.name),
-              args.sizes as string[] | undefined,
-              options,
-            ),
+            json: {
+              ...dryRunAnswer(
+                String(args.name),
+                args.sizes as string[] | undefined,
+                options,
+              ),
+              ...placementAnswer(args),
+            },
           });
         } else {
           applies += 1;
@@ -827,7 +904,10 @@ export async function stubClusterManager(
             reads = 0;
           }
           await route.fulfill({
-            json: applyAnswer(String(args.name), partial),
+            json: {
+              ...applyAnswer(String(args.name), partial),
+              ...placementAnswer(args),
+            },
           });
         }
         return;

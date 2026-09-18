@@ -282,7 +282,7 @@ export function musterValidateAgentUpdateQueryKey(
  * cluster-manager, read through the person's muster session like agent-manager
  * above: what it offers (`get_info`), the installation's clusters with their
  * marks (`list_clusters`), one cluster's pools (`list_node_pools`) and the
- * curated accelerators from the create tool's schema.
+ * create tool's schema (the curated accelerators, the arguments it takes).
  */
 export function musterClusterManagerInfoQueryKey(installation: string) {
   return [
@@ -312,6 +312,11 @@ export function musterNodePoolsQueryKey(
   ] as const;
 }
 
-export function musterAcceleratorsQueryKey(installation: string) {
-  return ['muster', 'agent-platform', 'accelerators', installation] as const;
+export function musterCreateNodePoolSchemaQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'create-node-pool-schema',
+    installation,
+  ] as const;
 }

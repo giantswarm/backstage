@@ -10,7 +10,7 @@ import {
   groupManifestsByRelease,
   isValidPoolName,
   manifestFilename,
-  parseDeleteRefusal,
+  parseRefusal,
   poolNameOf,
   presetLabel,
 } from './clusterManager';
@@ -41,7 +41,7 @@ describe('isValidPoolName', () => {
   });
 });
 
-describe('parseDeleteRefusal', () => {
+describe('parseRefusal', () => {
   const block = {
     refused: {
       nodes: ['aws:///eu-west-1a/i-0abc'],
@@ -50,20 +50,85 @@ describe('parseDeleteRefusal', () => {
     },
   };
   it('reads the refused block from the further text blocks', () => {
-    expect(parseDeleteRefusal(['not json', JSON.stringify(block)])).toEqual(
+    expect(parseRefusal(['not json', JSON.stringify(block)])).toEqual(
       block.refused,
     );
   });
   it('tolerates a block with fields missing', () => {
-    expect(parseDeleteRefusal(['{"refused":{"nodes":["i-1"]}}'])).toEqual({
+    expect(parseRefusal(['{"refused":{"nodes":["i-1"]}}'])).toEqual({
       nodes: ['i-1'],
       models: [],
       hint: '',
     });
   });
   it('is undefined without a refused block', () => {
-    expect(parseDeleteRefusal([])).toBeUndefined();
-    expect(parseDeleteRefusal(['{"partial":true}'])).toBeUndefined();
+    expect(parseRefusal([])).toBeUndefined();
+    expect(parseRefusal(['{"partial":true}'])).toBeUndefined();
+  });
+
+  it("carries create_node_pool's cache blocks: the zones named against a claim, or several claims", () => {
+    const claim = {
+      namespace: 'model-serving',
+      name: 'hf-cache',
+      phase: 'Bound',
+      volume: 'pvc-1',
+      zone: 'eu-central-1b',
+    };
+    expect(
+      parseRefusal([
+        JSON.stringify({
+          refused: {
+            nodes: [],
+            models: [],
+            hint: "Name the claim's zone among the zones, name one zone, or pass cache false, and re-run.",
+            cacheZone: {
+              claim,
+              claimZone: 'eu-central-1b',
+              zones: ['eu-central-1a', 'eu-central-1c'],
+              remedies: [
+                'name eu-central-1b among the zones',
+                'pass cache false',
+              ],
+            },
+          },
+        }),
+      ]),
+    ).toEqual({
+      nodes: [],
+      models: [],
+      hint: "Name the claim's zone among the zones, name one zone, or pass cache false, and re-run.",
+      cacheZone: {
+        claim: { ...claim, error: undefined },
+        claimZone: 'eu-central-1b',
+        zones: ['eu-central-1a', 'eu-central-1c'],
+        remedies: ['name eu-central-1b among the zones', 'pass cache false'],
+      },
+    });
+    const several = parseRefusal([
+      JSON.stringify({
+        refused: {
+          nodes: [],
+          models: [],
+          hint: '',
+          cacheClaims: {
+            claims: [
+              claim,
+              {
+                ...claim,
+                name: 'hf-cache-eu-central-1a',
+                zone: 'eu-central-1a',
+              },
+            ],
+            remedies: ['name one zone'],
+          },
+        },
+      }),
+    ]);
+    expect(several?.cacheClaims?.claims.map(c => c.name)).toEqual([
+      'hf-cache',
+      'hf-cache-eu-central-1a',
+    ]);
+    expect(several?.cacheZone).toBeUndefined();
   });
 });
 

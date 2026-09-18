@@ -9,6 +9,7 @@ import {
   stubClusterManager,
   type RecordedCall,
   type StubOptions,
+  ZONES,
 } from './gpu-node-pool.fixture';
 import { lab } from './lab';
 import {
@@ -564,6 +565,84 @@ const LIFECYCLE_STEPS = [
 
 const listReads = (calls: RecordedCall[]) =>
   calls.filter(call => call.name === 'x_cluster-manager_list_clusters').length;
+
+test.describe('models: Add GPU node pool — zones and model cache on the form (cluster-manager stubbed)', () => {
+  test('the form offers the cluster’s zones, none chosen, and the cache on; two zones and the cache off travel to the dry run, the review, Deploy and the lifecycle panel', async ({
+    page,
+  }) => {
+    const { dialog, calls } = await reachForm(page);
+    const zones = dialog.getByTestId('zones-picker');
+    await expect(zones).toBeVisible();
+    for (const zone of ZONES) {
+      await expect(
+        zones.getByRole('checkbox', { name: zone }),
+      ).not.toBeChecked();
+    }
+    await expect(dialog.getByTestId('zones-choice')).toContainText(
+      'Let the platform choose',
+    );
+    const cache = dialog.getByRole('switch', { name: 'Keep a model cache' });
+    await expect(cache).toBeChecked();
+    await expect(dialog.getByTestId('cache-consequence')).toContainText(
+      'about $27 a month',
+    );
+    // The defaults travel as such: no zones argument, the cache on.
+    expect(dryRuns(calls)[0].arguments).not.toHaveProperty('zones');
+    expect(dryRuns(calls)[0].arguments).toMatchObject({ cache: true });
+    await snapshot(page, 'gpu-pool-zones-cache-defaults');
+
+    await zones.getByRole('checkbox', { name: 'eu-central-1a' }).check();
+    await zones.getByRole('checkbox', { name: 'eu-central-1c' }).check();
+    await cache.click();
+    await expect(dialog.getByTestId('zones-choice')).toContainText(
+      'The nodes launch in eu-central-1a, eu-central-1c only.',
+    );
+    await expect(dialog.getByTestId('cache-consequence')).toContainText(
+      'about 90 s more',
+    );
+    await expect
+      .poll(() =>
+        dryRuns(calls).some(
+          call =>
+            JSON.stringify(call.arguments.zones) ===
+              JSON.stringify(['eu-central-1a', 'eu-central-1c']) &&
+            call.arguments.cache === false,
+        ),
+      )
+      .toBe(true);
+
+    await dialog.getByRole('button', { name: 'Review' }).click();
+    const placement = dialog.getByTestId('placement-review');
+    await expect(placement).toBeVisible({ timeout: 60_000 });
+    await expect(placement).toContainText(
+      'Zones: eu-central-1a, eu-central-1c — pinned to eu-central-1a, eu-central-1c.',
+    );
+    await expect(placement).toContainText('Model cache: off');
+    await expect(dialog.getByTestId('review-zones-note')).toContainText(
+      "nodes pinned to eu-central-1a, eu-central-1c, the zones named on create; this pool's slice serves without the model cache (cache false)",
+    );
+    await expect(dialog.getByTestId('review-cache-note')).toContainText(
+      'modelServing.cache.enabled false on the slice release',
+    );
+    await snapshot(page, 'gpu-pool-zones-cache-review');
+
+    await dialog.getByRole('button', { name: /^Deploy/ }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    expect(applies(calls)[0].arguments).toMatchObject({
+      mode: 'apply',
+      zones: ['eu-central-1a', 'eu-central-1c'],
+      cache: false,
+    });
+    const panel = page.getByTestId('pool-lifecycle');
+    await expect(panel.getByTestId('applied-zones')).toContainText(
+      'Zones: nodes pinned to eu-central-1a, eu-central-1c, the zones named on create',
+    );
+    await expect(panel.getByTestId('applied-cache')).toContainText(
+      'Model cache off: modelServing.cache.enabled false on the slice release',
+    );
+    await snapshot(page, 'gpu-pool-zones-cache-panel');
+  });
+});
 
 test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stubbed)', () => {
   test('Deploy closes into the lifecycle panel: the row reads creating, then ready · 0 nodes; the steps turn done and end in Serve your first model, whose link opens the Serve dialog on the pool with model-manager’s presets and fit verdict', async ({

@@ -15,6 +15,7 @@ import {
   type NodePoolWriteResult,
   type NodePoolsResult,
   type WriteMode,
+  type CreateNodePoolSchema,
 } from '../lib/clusterManager';
 
 export type WriteOptions = {
@@ -127,11 +128,14 @@ export class ClusterManagerClient {
   }
 
   /**
-   * The curated accelerators: the enum of `create_node_pool`'s `accelerator`
-   * argument as muster describes the tool, or the shipped list when the schema
-   * cannot be read.
+   * What this installation's `create_node_pool` takes, as muster describes
+   * the tool: the curated accelerators (the `accelerator` enum, the shipped
+   * list when the schema cannot be read) and the arguments it declares — so
+   * the form offers only what the installation's cluster-manager takes
+   * (`zones`, `cache`), and nothing at all of them when the schema cannot be
+   * read.
    */
-  async listAccelerators(): Promise<string[]> {
+  async createNodePoolSchema(): Promise<CreateNodePoolSchema> {
     try {
       const detail = await this.musterApi.describeTool(
         clusterManagerToolName(CLUSTER_MANAGER_TOOLS.createNodePool),
@@ -139,14 +143,20 @@ export class ClusterManagerClient {
       );
       const schema = (detail as { inputSchema?: unknown })?.inputSchema as
         { properties?: Record<string, { enum?: unknown }> } | undefined;
-      const values = schema?.properties?.accelerator?.enum;
-      if (Array.isArray(values) && values.every(v => typeof v === 'string')) {
-        return values as string[];
-      }
+      const properties = schema?.properties ?? {};
+      const values = properties.accelerator?.enum;
+      return {
+        accelerators:
+          Array.isArray(values) && values.every(v => typeof v === 'string')
+            ? (values as string[])
+            : [...DEFAULT_ACCELERATORS],
+        arguments: Object.keys(properties),
+      };
     } catch {
-      // The schema is a convenience; the shipped list stands in.
+      // The schema is a convenience; the shipped list stands in, and no
+      // argument the schema might have offered is assumed.
+      return { accelerators: [...DEFAULT_ACCELERATORS], arguments: [] };
     }
-    return [...DEFAULT_ACCELERATORS];
   }
 }
 
