@@ -23,8 +23,9 @@ const meta = {
             'For a single value inside a table cell, prefer `AsyncValue`.',
           migration: 'mixed',
           extra:
-            '`Progress` holds the bar back for 250ms, so a fetch that resolves ' +
-            'from cache does not flash one.',
+            'Bar and label are both held back for 250ms, so a fetch that ' +
+            'resolves from cache shows nothing rather than flashing a bare ' +
+            'label with no bar under it.',
         }),
       },
     },

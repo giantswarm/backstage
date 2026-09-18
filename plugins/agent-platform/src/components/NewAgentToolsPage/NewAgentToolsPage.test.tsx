@@ -605,7 +605,7 @@ describe('NewAgentToolsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows progress while the presets are read, and claims nothing until they are in', async () => {
+  it('shows progress while the presets are read, without claiming the built-ins are all there is', async () => {
     const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
     let release!: () => void;
     const gate = new Promise<void>(resolve => {
@@ -629,14 +629,15 @@ describe('NewAgentToolsPage', () => {
         name: "Reading the installation's presets…",
       }),
     ).toBeInTheDocument();
-    // The built-in list is what the hook holds while it waits; offering it with
-    // its notice would state something untrue for as long as the read takes.
+    // The notice would state something untrue for as long as the read takes,
+    // so it waits -- but the built-in cards the hook holds meanwhile are valid
+    // whatever muster answers, and stay clickable while the bar runs.
     expect(
       screen.queryByText('Only the built-in presets are known'),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('checkbox', { name: 'Preset Read-only tools' }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('checkbox', { name: 'Preset Read-only tools' }),
+    ).toBeInTheDocument();
 
     release();
 
