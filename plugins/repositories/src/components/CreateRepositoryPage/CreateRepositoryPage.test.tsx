@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TestApiProvider } from '@backstage/test-utils';
 import {
+  ListFilters,
   ManagerInfo,
   RepositoriesApi,
   repositoriesApiRef,
@@ -30,13 +31,15 @@ import {
   DRY_RUN_DEBOUNCE_MS,
 } from './CreateRepositoryPage';
 
+/**
+ * The caller as the manager reports it behind the GitHub App: the login,
+ * no team groups (GitHub's identity carries none; a lab Dex does). The
+ * person's teams come from the `mine` listing.
+ */
 const info: ManagerInfo = {
   version: 'v0.9.4',
   toolPrefix: 'giantswarm-repo-manager',
-  caller: {
-    email: 'alice@example.com',
-    groups: ['giantswarm-github:giantswarm:team-bumblebee'],
-  },
+  caller: { email: 'alice@example.com' },
   github: {
     apiUrl: '',
     grant: { obtained: true, login: 'alice' },
@@ -50,6 +53,18 @@ const inventory: RepositoryListing = listingOf(
   Object.values(records).map(rowOf),
   Object.keys(records).length,
 );
+
+/** The caller's repositories: the manager read the person's teams on GitHub -- team-bumblebee. */
+const mine: RepositoryListing = listingOf(
+  Object.values(records)
+    .filter(record => record.declaration?.team === 'team-bumblebee')
+    .map(rowOf),
+  Object.keys(records).length,
+);
+
+/** `list_repositories` by scope: the caller's own, or the whole inventory. */
+const listRepositories = async (filters: ListFilters) =>
+  filters.scope === 'mine' ? mine : inventory;
 
 /** Long enough for the debounce and the dry run to answer. */
 const AFTER_DEBOUNCE = { timeout: DRY_RUN_DEBOUNCE_MS * 4 };
@@ -65,7 +80,7 @@ async function renderPage(writes: Partial<RepositoriesApi>) {
     ...unusedWrites,
     getConnection: async () => ({ connected: true }),
     getInfo: async () => info,
-    listRepositories: async () => inventory,
+    listRepositories,
     getRepository: async () => {
       throw notFound();
     },
@@ -145,7 +160,7 @@ describe('CreateRepositoryPage', () => {
     expect(screen.queryByTestId('dry-run')).toBeNull();
   });
 
-  it('offers the caller’s teams first and the inventory’s after', async () => {
+  it('offers the caller’s teams first -- read off the mine listing, the identity carrying no groups -- and the inventory’s after', async () => {
     await renderPage({});
     await waitFor(() =>
       expect(select(/Team$/)).toHaveTextContent('team-bumblebee (your team)'),

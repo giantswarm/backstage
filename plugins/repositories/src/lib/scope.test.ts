@@ -1,5 +1,14 @@
 import { ManagerInfo } from '../apis';
-import { defaultScope, teamOptions, teamsOf } from './scope';
+import { RepositoryRow } from '../apis';
+import { callerTeams, defaultScope, teamOptions, teamsOf } from './scope';
+
+const row = (team?: string): RepositoryRow => ({
+  repository: `giantswarm/${team ?? 'nobody'}-repo`,
+  team,
+  archived: false,
+  setup: {},
+  age: '1h',
+});
 
 const info = (groups: string[]): ManagerInfo => ({
   version: 'v0.3.0',
@@ -45,8 +54,27 @@ describe('teamsOf', () => {
   });
 });
 
+describe('callerTeams', () => {
+  it('reads the teams off the mine listing -- membership as the manager read it on GitHub -- and the groups, sorted, once each', () => {
+    expect(
+      callerTeams(info([]), [
+        row('team-planeteers'),
+        row('team-bumblebee'),
+        row('team-bumblebee'),
+        row(undefined),
+      ]),
+    ).toEqual(['team-bumblebee', 'team-planeteers']);
+    expect(
+      callerTeams(info(['giantswarm-github:giantswarm:team-rocket']), [
+        row('team-bumblebee'),
+      ]),
+    ).toEqual(['team-bumblebee', 'team-rocket']);
+    expect(callerTeams(undefined, [])).toEqual([]);
+  });
+});
+
 describe('teamOptions', () => {
-  const mine = info(['giantswarm-github:giantswarm:team-bumblebee']);
+  const mine = ['team-bumblebee'];
 
   it('offers the caller’s teams first, labelled, then the inventory’s, sorted and once each', () => {
     expect(
@@ -67,6 +95,6 @@ describe('teamOptions', () => {
   });
 
   it('is empty while nothing is known', () => {
-    expect(teamOptions(undefined, [])).toEqual([]);
+    expect(teamOptions([], [])).toEqual([]);
   });
 });
