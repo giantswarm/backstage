@@ -34,8 +34,10 @@ repository is what `devctl repo status` prints for it, from the same record.
   per verdict and the CLI's detail text, re-read every 15 s while they
   converge; and **Refresh** (`refresh_repository`).
 - **Create repository** (`/repositories/create`): the declaration as a form
-  beside its review. The team is a choice -- the person's own teams first (from
-  `get_info`'s groups; the form opens on the first), then every team the
+  beside its review. The team is a choice -- the person's own teams first (the
+  teams of `list_repositories` in scope `mine`, membership as the manager reads
+  it on GitHub as the person, plus the team slugs of `get_info`'s groups where
+  the identity carries them; the form opens on the first), then every team the
   inventory knows -- the name is held to the engine's rule as typed (lowercase;
   the chart's name without `-app` where a chart exists), description and
   visibility (private, the org's default, is left out of the entry as the team

@@ -18,7 +18,7 @@ import {
   isComplete,
   toInput,
 } from '../../lib/declaration';
-import { teamOptions, teamsOf } from '../../lib/scope';
+import { callerTeams, teamOptions } from '../../lib/scope';
 import { REFUSED_TITLE } from '../actions/ActionDialog';
 import { ProblemFix } from '../actions/PlanView';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
@@ -33,6 +33,13 @@ export const DRY_RUN_DEBOUNCE_MS = 600;
 
 /** The whole inventory, for the teams a declaration can be filed for. */
 const INVENTORY: ListFilters = { scope: 'all', limit: LIST_LIMIT };
+
+/**
+ * The caller's repositories: the manager reads the person's teams on GitHub
+ * for this scope, so their teams are the rows' teams -- the same listing the
+ * Repositories page opens on, so it is answered from the cache there.
+ */
+const MINE: ListFilters = { scope: 'mine', limit: LIST_LIMIT };
 
 /**
  * Create repository: the declaration as a form -- the team (a choice, the
@@ -66,22 +73,31 @@ export function CreateRepositoryPage() {
     queryFn: () => api.listRepositories(INVENTORY),
     enabled: !info.isLoading,
   });
+  const mine = useQuery({
+    queryKey: ['repositories', 'list', MINE],
+    queryFn: () => api.listRepositories(MINE),
+    enabled: !info.isLoading,
+  });
+  const own = useMemo(
+    () => callerTeams(info.data, mine.data?.repositories ?? []),
+    [info.data, mine.data],
+  );
   const teams = useMemo(
     () =>
       teamOptions(
-        info.data,
+        own,
         (inventory.data?.repositories ?? []).map(row => row.team ?? ''),
         form.team,
       ),
-    [info.data, inventory.data, form.team],
+    [own, inventory.data, form.team],
   );
   // The form opens on the person's team; the manager decides membership.
   useEffect(() => {
-    const [team] = teamsOf(info.data);
+    const [team] = own;
     if (team) {
       setForm(current => (current.team ? current : { ...current, team }));
     }
-  }, [info.data]);
+  }, [own]);
 
   const create = useMutation({
     mutationFn: () => api.createRepository(toInput(form), { mode: 'commit' }),
@@ -161,7 +177,9 @@ export function CreateRepositoryPage() {
                 form={form}
                 onChange={setForm}
                 teams={teams}
-                teamsLoading={info.isLoading || inventory.isLoading}
+                teamsLoading={
+                  info.isLoading || mine.isLoading || inventory.isLoading
+                }
                 validation={validation}
                 checking={checking}
                 isDisabled={!!created}
