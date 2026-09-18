@@ -12,7 +12,7 @@ import {
   type ClusterManagerInfo,
   type CreateNodePoolInput,
   type DeleteNodePoolInput,
-  type DeleteRefusal,
+  type Refusal,
   type ManagedCluster,
   type NodePool,
   type NodePoolWriteResult,
@@ -20,7 +20,7 @@ import {
 } from '../lib/clusterManager';
 import { gpuNodePoolsRefetchInterval } from '../lib/poolLifecycle';
 import {
-  musterAcceleratorsQueryKey,
+  musterCreateNodePoolSchemaQueryKey,
   musterClusterManagerInfoQueryKey,
   musterClustersQueryKey,
 } from '../lib/queryKeys';
@@ -102,13 +102,17 @@ export function useManagedClusters(installation: string | undefined) {
   };
 }
 
-/** The curated accelerators for the create dialog. */
-export function useAccelerators(installation: string | undefined) {
+/**
+ * The create tool's schema for the create dialog: the curated accelerators
+ * and the arguments this installation's cluster-manager takes; `undefined`
+ * while it is read.
+ */
+export function useCreateNodePoolSchema(installation: string | undefined) {
   const client = useClusterManagerClient(installation);
   const { data } = useQuery({
-    queryKey: musterAcceleratorsQueryKey(installation ?? ''),
+    queryKey: musterCreateNodePoolSchemaQueryKey(installation ?? ''),
     enabled: Boolean(client),
-    queryFn: () => client!.listAccelerators(),
+    queryFn: () => client!.createNodePoolSchema(),
     staleTime: 5 * 60_000,
     retry: false,
   });
@@ -209,8 +213,8 @@ export function useGpuNodePools(installations: string[]) {
 export type NodePoolWriteFailure = {
   kind: 'refused' | 'not-connected' | 'error';
   message: string;
-  /** `delete_node_pool`'s structured refusal (nodes, models, hint), when the answer carried one. */
-  refused?: DeleteRefusal;
+  /** The structured refusal (the nodes and models of a delete, the model cache of a create), when the answer carried one. */
+  refused?: Refusal;
 };
 
 export function classifyNodePoolWriteFailure(

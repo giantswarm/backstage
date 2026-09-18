@@ -7,7 +7,7 @@ function makeMusterApi(answer: unknown = {}) {
   const callTool = jest.fn(
     async (_name: string, _args: Record<string, unknown>) => answer,
   );
-  const describeTool = jest.fn(async () => ({
+  const describeTool = jest.fn(async (): Promise<unknown> => ({
     inputSchema: {
       properties: { accelerator: { enum: ['nvidia-l4', 'nvidia-t4'] } },
     },
@@ -108,18 +108,58 @@ describe('ClusterManagerClient', () => {
     );
   });
 
-  it("reads the accelerators from the create tool's schema, with a fallback", async () => {
-    const { api } = makeMusterApi();
+  it("reads the accelerators and the arguments from the create tool's schema, with a fallback", async () => {
+    const { api, describeTool } = makeMusterApi();
+    describeTool.mockResolvedValueOnce({
+      inputSchema: {
+        properties: {
+          accelerator: { enum: ['nvidia-l4', 'nvidia-t4'] },
+          zones: { type: 'array' },
+          cache: { type: 'boolean' },
+        },
+      },
+    });
     await expect(
-      new ClusterManagerClient(api, 'inst-1').listAccelerators(),
-    ).resolves.toEqual(['nvidia-l4', 'nvidia-t4']);
+      new ClusterManagerClient(api, 'inst-1').createNodePoolSchema(),
+    ).resolves.toEqual({
+      accelerators: ['nvidia-l4', 'nvidia-t4'],
+      arguments: ['accelerator', 'zones', 'cache'],
+    });
     const broken = {
       describeTool: jest.fn(async () => {
         throw new Error('nope');
       }),
     } as unknown as MusterApi;
-    await expect(
-      new ClusterManagerClient(broken, 'inst-1').listAccelerators(),
-    ).resolves.toContain('nvidia-l4');
+    const fallback = await new ClusterManagerClient(
+      broken,
+      'inst-1',
+    ).createNodePoolSchema();
+    expect(fallback.accelerators).toContain('nvidia-l4');
+    expect(fallback.arguments).toEqual([]);
+  });
+
+  it('sends zones only when named and the cache as chosen', async () => {
+    const { api, callTool } = makeMusterApi({ cluster: 'wc1', pool: 'gpu-l4' });
+    const client = new ClusterManagerClient(api, 'inst-1');
+    await client.createNodePool(
+      { cluster: 'wc1', name: 'gpu-l4', zones: [], cache: false },
+      { dryRun: true },
+    );
+    expect(callTool.mock.calls[0][1]).not.toHaveProperty('zones');
+    expect(callTool.mock.calls[0][1]).toMatchObject({ cache: false });
+    await client.createNodePool(
+      {
+        cluster: 'wc1',
+        name: 'gpu-l4',
+        zones: ['eu-central-1a', 'eu-central-1c'],
+        cache: true,
+      },
+      { mode: 'apply' },
+    );
+    expect(callTool.mock.calls[1][1]).toMatchObject({
+      zones: ['eu-central-1a', 'eu-central-1c'],
+      cache: true,
+      mode: 'apply',
+    });
   });
 });

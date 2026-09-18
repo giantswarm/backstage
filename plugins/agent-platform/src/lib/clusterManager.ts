@@ -205,6 +205,13 @@ export type ManagedCluster = {
   gpuOperator: GpuOperatorComponent;
   serving: ServingComponent;
   poolReleases: PoolRelease[];
+  /**
+   * The availability zones of the cluster's node subnets — what a pool may
+   * be pinned to (cluster-manager 0.16+; giantswarm/cluster-manager#79);
+   * absent from an older one, empty with `zonesNote` when unreadable.
+   */
+  zones?: string[];
+  zonesNote?: string;
   /** Null when no git repository owns the cluster. */
   commitTarget: CommitTarget | null;
 };
@@ -343,6 +350,32 @@ export type BackendRegistration = {
   target: string;
 };
 
+/** A model cache claim of the serving namespace as cluster-manager reads it. */
+export type CacheClaim = {
+  namespace: string;
+  name: string;
+  /** `Pending` until a volume is bound, `Bound`, `Lost`. */
+  phase?: string;
+  /** The bound volume's name. */
+  volume?: string;
+  /** The zone the bound volume's node affinity names. */
+  zone?: string;
+  /** Why the claim could not be read as the person. */
+  error?: string;
+};
+
+/**
+ * `create_node_pool`'s word on the model cache of the slice it composed:
+ * whether the predictors mount a claim, which, and what follows
+ * (cluster-manager 0.15+, giantswarm/cluster-manager#65, #71).
+ */
+export type CacheSetting = {
+  enabled: boolean;
+  /** `namespace/name` of the claim the predictors mount; absent with the cache off. */
+  claim?: string;
+  note: string;
+};
+
 /** `create_node_pool` and `delete_node_pool`: the write, dry or real. */
 export type NodePoolWriteResult = {
   cluster: string;
@@ -369,6 +402,17 @@ export type NodePoolWriteResult = {
   /** Presets the accelerator could serve but no size of the pool hosts, naming the size that would. */
   warnings?: string[];
   /**
+   * The zones the pool's nodes are pinned to — the person's, or the model
+   * cache's — and `zonesNote`, whose the pin is and what it means
+   * (cluster-manager 0.12+, giantswarm/cluster-manager#59, #65, #79).
+   */
+  zones?: string[];
+  zonesNote?: string;
+  /** The model cache of the slice composed; absent when none was. */
+  cache?: CacheSetting;
+  cacheClaim?: CacheClaim | null;
+  cacheClaims?: CacheClaim[] | null;
+  /**
    * An apply that stopped writing to answer within the caller's deadline: the
    * objects it did not reach carry action `pending`; `nextStep` says to re-run
    * with the same arguments, the pending objects are written first.
@@ -387,6 +431,10 @@ export type CreateNodePoolInput = {
   maxGpus?: number;
   teleport?: boolean;
   chartVersion?: string;
+  /** The zones the nodes may launch in, any combination of the cluster's; none: the platform chooses. */
+  zones?: string[];
+  /** Whether the pool's serving slice keeps a model cache claim (the tool's default: on). */
+  cache?: boolean;
 };
 
 export type DeleteNodePoolInput = {
@@ -406,6 +454,30 @@ export const DEFAULT_ACCELERATORS: readonly string[] = [
   'nvidia-l40s',
 ];
 
+/**
+ * What an installation's `create_node_pool` takes, from its schema as muster
+ * describes the tool: the curated accelerators, and the arguments it
+ * declares — empty when the schema could not be read, so nothing is offered
+ * that an older cluster-manager does not take.
+ */
+export type CreateNodePoolSchema = {
+  accelerators: string[];
+  arguments: string[];
+};
+
+/** The `zones` argument of `create_node_pool` (cluster-manager 0.13+). */
+export const ZONES_ARGUMENT = 'zones';
+/** The `cache` argument of `create_node_pool` (cluster-manager 0.15+). */
+export const CACHE_ARGUMENT = 'cache';
+
+/** Whether the installation's `create_node_pool` declares the argument. */
+export function offersArgument(
+  schema: CreateNodePoolSchema | undefined,
+  argument: string,
+): boolean {
+  return schema?.arguments.includes(argument) ?? false;
+}
+
 /** The chart's pool-name pattern: five to twenty of `[a-z0-9-]`. */
 export const POOL_NAME_PATTERN = /^[a-z0-9][-a-z0-9]{3,18}[a-z0-9]$/;
 
@@ -413,16 +485,35 @@ export function isValidPoolName(name: string): boolean {
   return POOL_NAME_PATTERN.test(name);
 }
 
+/** The zones named against the model cache: the claim at fault, its zone, the zones named and the ways out. */
+export type CacheZoneRefusal = {
+  claim?: CacheClaim;
+  claimZone?: string;
+  zones: string[];
+  remedies: string[];
+};
+
+/** Several claims to choose from and none chosen for the person: the claims and the ways out. */
+export type CacheClaimsRefusal = {
+  claims: CacheClaim[];
+  remedies: string[];
+};
+
 /**
- * `delete_node_pool`'s structured refusal (cluster-manager 0.8.1+), answered
- * as a second text block next to the message: the nodes the pool still runs,
- * the models served on the cluster to unload first (none: something else
- * holds the nodes), and the hint that explains the wait.
+ * A structured refusal of cluster-manager's, answered as a second text block
+ * next to the message. `delete_node_pool` (cluster-manager 0.8.1+): the nodes
+ * the pool still runs, the models served on the cluster to unload first
+ * (none: something else holds the nodes), and the hint that explains the
+ * wait. `create_node_pool` (0.15+): the zones named against the model cache
+ * (`cacheZone`), or several claims and none chosen (`cacheClaims`), each with
+ * the ways out.
  */
-export type DeleteRefusal = {
+export type Refusal = {
   nodes: string[];
   models: string[];
   hint: string;
+  cacheZone?: CacheZoneRefusal;
+  cacheClaims?: CacheClaimsRefusal;
 };
 
 function strings(value: unknown): string[] {
@@ -431,10 +522,56 @@ function strings(value: unknown): string[] {
     : [];
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+function cacheClaimOf(value: unknown): CacheClaim | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const claim = value as Record<string, unknown>;
+  if (typeof claim.name !== 'string') {
+    return undefined;
+  }
+  return {
+    namespace: optionalString(claim.namespace) ?? '',
+    name: claim.name,
+    phase: optionalString(claim.phase),
+    volume: optionalString(claim.volume),
+    zone: optionalString(claim.zone),
+    error: optionalString(claim.error),
+  };
+}
+
+function cacheZoneOf(value: unknown): CacheZoneRefusal | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const block = value as Record<string, unknown>;
+  return {
+    claim: cacheClaimOf(block.claim),
+    claimZone: optionalString(block.claimZone),
+    zones: strings(block.zones),
+    remedies: strings(block.remedies),
+  };
+}
+
+function cacheClaimsOf(value: unknown): CacheClaimsRefusal | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const block = value as Record<string, unknown>;
+  const claims = Array.isArray(block.claims)
+    ? block.claims
+        .map(cacheClaimOf)
+        .filter((claim): claim is CacheClaim => Boolean(claim))
+    : [];
+  return { claims, remedies: strings(block.remedies) };
+}
+
 /** The `refused` block among a tool error's further text blocks, if any. */
-export function parseDeleteRefusal(
-  details: string[],
-): DeleteRefusal | undefined {
+export function parseRefusal(details: string[]): Refusal | undefined {
   for (const detail of details) {
     let parsed: unknown;
     try {
@@ -445,23 +582,41 @@ export function parseDeleteRefusal(
     const refused = (parsed as { refused?: unknown } | null)?.refused;
     if (refused && typeof refused === 'object') {
       const block = refused as Record<string, unknown>;
+      const cacheZone = cacheZoneOf(block.cacheZone);
+      const cacheClaims = cacheClaimsOf(block.cacheClaims);
       return {
         nodes: strings(block.nodes),
         models: strings(block.models),
         hint: typeof block.hint === 'string' ? block.hint : '',
+        ...(cacheZone ? { cacheZone } : {}),
+        ...(cacheClaims ? { cacheClaims } : {}),
       };
     }
   }
   return undefined;
 }
 
+/**
+ * `model-serving/hf-cache (Bound in eu-central-1b)`: a claim and where it
+ * stands, as cluster-manager words it.
+ */
+export function describeCacheClaim(claim: CacheClaim): string {
+  let where = claim.phase ?? 'not Bound';
+  if (claim.error) {
+    where = 'not readable as you';
+  } else if (claim.phase === 'Bound' && claim.zone) {
+    where = `Bound in ${claim.zone}`;
+  }
+  return `${claim.namespace}/${claim.name} (${where})`;
+}
+
 /** A refusal cluster-manager answered, in its own words. */
 export class ClusterManagerError extends Error {
   readonly name = 'ClusterManagerError';
-  /** `delete_node_pool`'s structured refusal, when the answer carried one. */
-  readonly refused?: DeleteRefusal;
+  /** The structured refusal, when the answer carried one. */
+  readonly refused?: Refusal;
 
-  constructor(message: string, refused?: DeleteRefusal) {
+  constructor(message: string, refused?: Refusal) {
     super(message);
     this.refused = refused;
   }
@@ -494,7 +649,7 @@ export function classifyClusterManagerError(error: unknown): Error {
   }
   return new ClusterManagerError(
     message,
-    parseDeleteRefusal(toolErrorDetails(error)),
+    parseRefusal(toolErrorDetails(error)),
   );
 }
 

@@ -93,9 +93,10 @@ export function serveFirstModelHref(
  * cluster-manager reports `removing`): the teardown's groups from the
  * delete's answer, in progress while `list_node_pools` still lists their
  * objects as pending, until the pool is gone from the list. Opened by Deploy
- * or Remove (their objects stay listed here) or by the row's chevron; the
- * reads keep coming while the pool is unsettled, so the steps turn done as the
- * managers report them.
+ * or Remove (their objects stay listed here, and Deploy's word on the zones
+ * and the model cache — `zonesNote`, `cache.note`) or by the row's chevron;
+ * the reads keep coming while the pool is unsettled, so the steps turn done
+ * as the managers report them.
  */
 export function PoolLifecyclePanel({
   opened,
@@ -245,6 +246,27 @@ export function PoolLifecyclePanel({
           {opened.applied.objects
             .map(object => `${object.kind} ${object.name}: ${object.action}`)
             .join(' · ')}
+        </Text>
+      )}
+      {opened.applied?.zonesNote && (
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          data-testid="applied-zones"
+        >
+          Zones: {opened.applied.zonesNote}
+        </Text>
+      )}
+      {opened.applied?.cache && (
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          data-testid="applied-cache"
+        >
+          Model cache {opened.applied.cache.enabled ? 'on' : 'off'}:{' '}
+          {opened.applied.cache.note}
         </Text>
       )}
     </Flex>
