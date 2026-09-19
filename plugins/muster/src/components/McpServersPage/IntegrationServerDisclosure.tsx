@@ -1,4 +1,5 @@
-import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
+import { makeStyles, Theme } from '@material-ui/core';
+import { Flex, Text } from '@backstage/ui';
 import {
   DEACTIVATED_LABEL,
   MCPServer,
@@ -21,10 +22,7 @@ import { ServerMutationActions } from './ServerMutationActions';
 
 const useStyles = makeStyles((theme: Theme) => ({
   summary: {
-    display: 'flex',
     flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: theme.spacing(1, 1.5),
     width: '100%',
   },
   name: {
@@ -40,9 +38,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   right: {
     marginLeft: 'auto',
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
   },
 }));
 
@@ -70,12 +65,12 @@ export function IntegrationServerDisclosure({
   const healthy = severity === 'ok';
 
   const summary = (
-    <Box className={classes.summary}>
+    <Flex align="center" gap="2" className={classes.summary}>
       <code className={classes.name}>{server.getName()}</code>
       {server.getUrl() && (
         <code className={classes.endpoint}>{server.getUrl()}</code>
       )}
-      <Box className={classes.right}>
+      <Flex align="center" gap="2" className={classes.right}>
         {/* The durable switch ahead of the transient state: a deactivated
             server is `Disconnected` by design, and the live state alone reads
             as an outage with the Activate button as its only explanation. */}
@@ -83,8 +78,8 @@ export function IntegrationServerDisclosure({
           <StateBadge tone="neutral" label={DEACTIVATED_LABEL} />
         )}
         <StateBadge tone={severityTone(severity)} label={state} />
-      </Box>
-    </Box>
+      </Flex>
+    </Flex>
   );
 
   return (
@@ -92,9 +87,9 @@ export function IntegrationServerDisclosure({
       <DetailBlock title="Configuration">
         <ServerConfig server={server} />
         {server.getDescription() && (
-          <Typography variant="body2" color="textSecondary">
+          <Text variant="body-small" color="secondary">
             {server.getDescription()}
-          </Typography>
+          </Text>
         )}
       </DetailBlock>
 

@@ -20,7 +20,10 @@ import Add from '@material-ui/icons/Add';
 import Close from '@material-ui/icons/Close';
 import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
-import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  GitOpsManagedLabel,
+  YamlEditorFormField,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { MusterWorkflow } from '../../lib/k8s';
 import {
@@ -40,11 +43,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: theme.spacing(1),
-  },
-  managedNote: {
-    color: theme.palette.text.secondary,
-    flex: 1,
-    minWidth: 200,
   },
   titleBar: {
     display: 'flex',
@@ -438,10 +436,7 @@ export function WorkflowMutationActions({
   if (managed) {
     return (
       <Box className={classes.actions}>
-        <StateBadge tone="info" label="GitOps-managed (read-only)" />
-        <Typography variant="body2" className={classes.managedNote}>
-          Changes are made by committing a manifest to the GitOps repo.
-        </Typography>
+        <GitOpsManagedLabel />
         <Button
           size="small"
           variant="outlined"

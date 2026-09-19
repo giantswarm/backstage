@@ -122,7 +122,9 @@ describe('IntegrationServerDisclosure for a deactivated server', () => {
     // The runtime block's stale session is marked as such.
     expect(await screen.findByText('58')).toBeInTheDocument();
     expect(
-      screen.getByText(/the session rows below are your session's last/),
+      screen.getByText(
+        /the Session, Tools, Resources and Prompts rows are your session's last/,
+      ),
     ).toBeInTheDocument();
     // Sign in is on the page but gated; Activate is the live action.
     expect(
@@ -140,7 +142,7 @@ describe('IntegrationServerDisclosure for a deactivated server', () => {
     expect(await screen.findByText(/down or unreachable/)).toBeInTheDocument();
     expect(screen.queryByText('Deactivated')).not.toBeInTheDocument();
     expect(
-      screen.queryByText(/the session rows below/),
+      screen.queryByText(/the Session, Tools, Resources and Prompts rows/),
     ).not.toBeInTheDocument();
     expect(
       await screen.findByRole('button', { name: 'Sign in' }),
