@@ -268,34 +268,36 @@ export function ModelCachePanel({
   );
 
   return (
-    <InfoCard title="Model cache">
-      <Flex direction="column" gap="3">
-        <Text as="p" variant="body-small" color="secondary">
-          A model cache keeps the weights and compiled graphs of the models
-          served on a cluster, so a model starts about 90 s faster the second
-          time. It is a volume that stays after the pools are removed and is
-          billed every month it exists, filled or not — until it is removed
-          here. Every pool of a cluster serves from the cluster's cache.
-          {total ? ` Standing: ${total}.` : ''}
-        </Text>
-        <Table<ModelCacheRow>
-          {...tableProps}
-          columnConfig={columnConfig}
-          emptyState={
-            <Text variant="body-medium" color="secondary">
-              {isLoading ? 'Reading model caches…' : NO_MODEL_CACHE}
-            </Text>
-          }
-        />
-        {readOnly.length > 0 && (
-          <Alert
-            status="info"
-            title="Removing needs a newer cluster-manager on some installations"
-            description={`${readOnly.join(', ')}: the installation's cluster-manager does not offer remove_model_cache yet (0.17+); the cache is shown as it stands and stays until removed by other means.`}
-            data-testid="cache-read-only"
+    <div data-testid="model-cache-panel">
+      <InfoCard title="Model cache">
+        <Flex direction="column" gap="3">
+          <Text as="p" variant="body-small" color="secondary">
+            A model cache keeps the weights and compiled graphs of the models
+            served on a cluster, so a model starts about 90 s faster the second
+            time. It is a volume that stays after the pools are removed and is
+            billed every month it exists, filled or not — until it is removed
+            here. Every pool of a cluster serves from the cluster's cache.
+            {total ? ` Standing: ${total}.` : ''}
+          </Text>
+          <Table<ModelCacheRow>
+            {...tableProps}
+            columnConfig={columnConfig}
+            emptyState={
+              <Text variant="body-medium" color="secondary">
+                {isLoading ? 'Reading model caches…' : NO_MODEL_CACHE}
+              </Text>
+            }
           />
-        )}
-      </Flex>
-    </InfoCard>
+          {readOnly.length > 0 && (
+            <Alert
+              status="info"
+              title="Removing needs a newer cluster-manager on some installations"
+              description={`${readOnly.join(', ')}: the installation's cluster-manager does not offer remove_model_cache yet (0.17+); the cache is shown as it stands and stays until removed by other means.`}
+              data-testid="cache-read-only"
+            />
+          )}
+        </Flex>
+      </InfoCard>
+    </div>
   );
 }

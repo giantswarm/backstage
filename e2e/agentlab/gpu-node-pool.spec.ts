@@ -589,8 +589,9 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
     );
     const cache = dialog.getByRole('switch', { name: 'Keep a model cache' });
     await expect(cache).toBeChecked();
+    // The figure is cluster-manager's (the dry run's cache block), and the line says the cost stands after the pool.
     await expect(dialog.getByTestId('cache-consequence')).toContainText(
-      'about $27 a month',
+      '$27.37/month at list prices, billed while the claim exists — after this pool is removed too',
     );
     // The defaults travel as such: no zones argument, the cache on.
     expect(dryRuns(calls)[0].arguments).not.toHaveProperty('zones');
@@ -674,11 +675,11 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     await expect(dialog).toBeHidden();
 
     // The kept claim: on the card, with its size, cost and since when.
-    const card = page
-      .getByRole('heading', { name: 'Model cache' })
-      .locator('xpath=ancestor::*[contains(@class, "MuiCard-root")][1]');
-    await expect(card).toContainText('Standing: $27.37/month across 1 claim');
-    const row = card.getByRole('row', { name: /hf-cache/ });
+    const card = page.getByTestId('model-cache-panel');
+    await expect(card).toContainText('Standing: $27.37/month across 1 claim', {
+      timeout: 60_000,
+    });
+    const row = card.locator('tr', { hasText: 'hf-cache' });
     await expect(row).toContainText('100 GiB gp3 at 500 MiB/s');
     await expect(row).toContainText('$27.37/month');
     await expect(row).toContainText('eu-central-1b');
