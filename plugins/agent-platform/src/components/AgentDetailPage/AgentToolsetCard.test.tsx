@@ -301,11 +301,11 @@ describe('AgentToolsetCard', () => {
     );
 
     // No gateway binding: decided by the agent alone, so the carrier read has
-    // no bearing on it.
+    // no bearing on it. The indicator is pinned by its bar and not by its
+    // label — `Progress` renders the testid hidden from the first paint, while
+    // the label is held back 250ms and would be absent either way.
     expect(screen.getByText('No tools')).toBeInTheDocument();
-    expect(
-      screen.queryByText("Reading the agent's toolset…"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
   });
 
   it('labels an agent without a toolset as implicit full access', async () => {

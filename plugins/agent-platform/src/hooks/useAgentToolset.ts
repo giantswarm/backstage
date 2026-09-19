@@ -53,11 +53,19 @@ export function useAgentToolset(agent: Agent): AgentToolset {
   );
 
   // Paused counts as done: offline, the query sits pending with nothing on the
-  // way, and the read has failed as far as this page is concerned.
-  const settled = queries.every(
-    ({ query }) => query.isSuccess || query.isError || query.isPaused,
+  // way. No queries at all is *not* done — an empty `every` is vacuously true,
+  // and settling on it would make the card pronounce on a read that never
+  // happened.
+  const settled =
+    queries.length > 0 &&
+    queries.every(
+      ({ query }) => query.isSuccess || query.isError || query.isPaused,
+    );
+  // A pause over an answer is not a failure: a background refetch pausing
+  // offline must not turn a read that already succeeded into an unreadable one.
+  const failed = queries.some(
+    ({ query }) => query.isError || (query.isPaused && !query.isSuccess),
   );
-  const failed = queries.some(({ query }) => query.isError || query.isPaused);
 
   // Booleans, not the arrays they come from: `errors` is a new array on every
   // render (its own memo depends on the cluster list `useResources` rebuilds

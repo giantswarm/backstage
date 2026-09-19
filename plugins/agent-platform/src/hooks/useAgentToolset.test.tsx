@@ -120,6 +120,17 @@ describe('useAgentToolset', () => {
     expect(result.current.isReading).toBe(true);
   });
 
+  // An empty `every` is vacuously true. Settling on it would have the card
+  // pronounce on a read that never started.
+  it('keeps reading when there is no query at all', () => {
+    mockUseResources.mockReturnValue({ resources: [], queries: [] });
+
+    const { result } = renderHook(() => useAgentToolset(agent));
+
+    expect(result.current.isReading).toBe(true);
+    expect(result.current.isUnreadable).toBe(false);
+  });
+
   it('reports the read as failed when the list errored', () => {
     mockUseResources.mockReturnValue({
       resources: [],
@@ -150,6 +161,21 @@ describe('useAgentToolset', () => {
 
     expect(result.current.isReading).toBe(false);
     expect(result.current.isUnreadable).toBe(true);
+  });
+
+  // A refetch pausing offline over data that was already read is not a failed
+  // read — the card would otherwise relabel an answered carrier as unreadable.
+  it('does not call a pause over an answer a failure', () => {
+    mockUseResources.mockReturnValue({
+      resources: [],
+      errors: [],
+      queries: query({ isSuccess: true, isPaused: true }),
+    });
+
+    const { result } = renderHook(() => useAgentToolset(agent));
+
+    expect(result.current.isReading).toBe(false);
+    expect(result.current.isUnreadable).toBe(false);
   });
 
   // Offline the query is pending but paused: nothing is on its way.
