@@ -166,6 +166,11 @@ export function useGpuNodePoolControls(
   );
   const onCloseLifecycle = useCallback(() => setOpened(undefined), []);
   const available = availability.available.length > 0;
+  // While the installations' server lists are read the cards and the button
+  // are in place already, their contents reading: nothing appears later
+  // and moves the page (giantswarm/backstage#2501).
+  const shown = available || availability.isLoading;
+  const reading = availability.isLoading || pools.isLoading;
 
   // The opened pool's intent, as the panel shows it.
   const serve = useMemo<PoolServeState | undefined>(() => {
@@ -184,11 +189,12 @@ export function useGpuNodePoolControls(
   return {
     available,
     isLoading: availability.isLoading,
-    addButton: available ? (
+    addButton: shown ? (
       <Button
         variant="secondary"
         iconStart={<AddIcon />}
         onPress={() => setAddOpen(true)}
+        isDisabled={!available}
       >
         Add GPU node pool
       </Button>
@@ -231,10 +237,10 @@ export function useGpuNodePoolControls(
         />
       </>
     ) : undefined,
-    panel: available ? (
+    panel: shown ? (
       <GpuNodePoolsPanel
         rows={pools.rows}
-        isLoading={pools.isLoading}
+        isLoading={reading}
         notes={pools.notes}
         errors={pools.errors}
         onRemove={onRemove}
@@ -244,10 +250,10 @@ export function useGpuNodePoolControls(
         onCloseLifecycle={onCloseLifecycle}
       />
     ) : undefined,
-    cachePanel: available ? (
+    cachePanel: shown ? (
       <ModelCachePanel
         rows={pools.caches}
-        isLoading={pools.isLoading}
+        isLoading={reading}
         removable={cacheRemovable}
         onRemove={onRemoveCache}
       />
