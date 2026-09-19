@@ -295,6 +295,8 @@ describe('McpServersPage', () => {
     await renderPage([], { isLoading: false, activeInstallation: undefined });
 
     expect(screen.getByText('No muster installation')).toBeInTheDocument();
-    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    // Not `queryByRole('progressbar')`: the bar carries that role only after
+    // its 250ms delay, so it is absent in the loading branch too.
+    expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
   });
 });

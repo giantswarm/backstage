@@ -19,7 +19,7 @@ import DeviceHub from '@material-ui/icons/DeviceHub';
 import Extension from '@material-ui/icons/Extension';
 import VerifiedUser from '@material-ui/icons/VerifiedUser';
 import Lock from '@material-ui/icons/Lock';
-import { Content, Link } from '@backstage/core-components';
+import { Content, EmptyState, Link } from '@backstage/core-components';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -277,6 +277,22 @@ function BrowseCard({
   );
 }
 
+/**
+ * No installation to show: still resolving which one runs muster, or the fleet
+ * answered and none does.
+ */
+function renderNoInstallation(isLoadingInstallations: boolean) {
+  return isLoadingInstallations ? (
+    <LoadingIndicator label="Finding the installation's muster…" />
+  ) : (
+    <EmptyState
+      missing="data"
+      title="No muster installation"
+      description="None of the installations this portal knows runs muster, so there is nothing to show here."
+    />
+  );
+}
+
 export function DashboardPage() {
   const classes = useStyles();
   const theme = useTheme();
@@ -286,6 +302,7 @@ export function DashboardPage() {
     mcpServers,
     workflows,
     isLoading,
+    isLoadingInstallations,
     dataUpdatedAt,
     isRefreshing,
     retry,
@@ -361,7 +378,7 @@ export function DashboardPage() {
       <ActiveInstallationNote />
 
       {!activeInstallation ? (
-        <LoadingIndicator label="Finding the installation's muster…" />
+        renderNoInstallation(isLoadingInstallations)
       ) : (
         <Box className={classes.column}>
           {isLoading && (
