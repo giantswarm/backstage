@@ -21,7 +21,7 @@ import {
   servedObjectOfHostname,
   servedObjectOfRoute,
   SERVED_MODEL_READINESS,
-  SERVED_MODEL_READINESS_SEVERITY,
+  SERVED_MODEL_READINESS_ORDER,
   servingShortcutFor,
   summarizeClientServing,
   type ClientServingState,
@@ -836,13 +836,21 @@ describe('SERVED_MODEL_READINESS', () => {
     expect(SERVED_MODEL_READINESS.available.label).toBe('Available');
   });
 
-  it('ranks the states that need attention first', () => {
+  it('lists what answers first, then what needs attention, then what is not running', () => {
     const sorted = [...EVERY_READINESS].sort(
       (a, b) =>
-        SERVED_MODEL_READINESS_SEVERITY[a] - SERVED_MODEL_READINESS_SEVERITY[b],
+        SERVED_MODEL_READINESS_ORDER[a] - SERVED_MODEL_READINESS_ORDER[b],
     );
-    expect(sorted[0]).toBe('notServing');
-    expect(sorted[sorted.length - 1]).toBe('ready');
+    expect(sorted).toEqual([
+      'ready',
+      'idle',
+      'notServing',
+      'notReady',
+      'pending',
+      'terminating',
+      'downloading',
+      'available',
+    ]);
   });
 
   it('counts Not serving, Not ready and Stopping as failures an agent would hit', () => {
@@ -858,11 +866,11 @@ describe('SERVED_MODEL_READINESS', () => {
       label: 'Stopping',
       intent: 'neutral',
     });
-    expect(SERVED_MODEL_READINESS_SEVERITY.terminating).toBeGreaterThan(
-      SERVED_MODEL_READINESS_SEVERITY.pending,
+    expect(SERVED_MODEL_READINESS_ORDER.terminating).toBeGreaterThan(
+      SERVED_MODEL_READINESS_ORDER.pending,
     );
-    expect(SERVED_MODEL_READINESS_SEVERITY.terminating).toBeLessThan(
-      SERVED_MODEL_READINESS_SEVERITY.downloading,
+    expect(SERVED_MODEL_READINESS_ORDER.terminating).toBeLessThan(
+      SERVED_MODEL_READINESS_ORDER.downloading,
     );
   });
 });

@@ -186,21 +186,26 @@ export const SERVED_MODEL_READINESS: Record<
 };
 
 /**
- * Severity order for a readiness column: ascending puts the rows that need
- * attention first. Alphabetical order on the labels would be meaningless.
+ * The order the Serving page lists models in — what a Status column sorted
+ * ascending means. What answers requests first: `ready`, then `idle` (loaded
+ * by the first request). Then what needs attention: `notServing` and
+ * `notReady`, a `pending` rollout, a model being stopped. Then the inventory
+ * nothing runs yet: `downloading`, `available`. A person opening the page
+ * reads what works, then what to fix, then what could be served; alphabetical
+ * order on the words would be meaningless.
  */
-export const SERVED_MODEL_READINESS_SEVERITY: Record<
+export const SERVED_MODEL_READINESS_ORDER: Record<
   ServedModelReadiness,
   number
 > = {
-  notServing: 0,
-  notReady: 1,
-  pending: 2,
-  terminating: 3,
-  downloading: 4,
-  available: 5,
-  idle: 6,
-  ready: 7,
+  ready: 0,
+  idle: 1,
+  notServing: 2,
+  notReady: 3,
+  pending: 4,
+  terminating: 5,
+  downloading: 6,
+  available: 7,
 };
 
 /**

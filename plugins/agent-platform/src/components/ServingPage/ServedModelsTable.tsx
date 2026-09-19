@@ -25,10 +25,11 @@ import {
   isServedKServeModel,
   lacksToolCalling,
 } from '../../lib/modelManagerServing';
-import type {
-  ServedModel,
-  ServedModelReadiness,
-  ServingBackend,
+import {
+  SERVED_MODEL_READINESS_ORDER,
+  type ServedModel,
+  type ServedModelReadiness,
+  type ServingBackend,
 } from '../../lib/serving';
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
 import { ServedReadinessLabel } from '../ModelServingStatus';
@@ -124,7 +125,9 @@ export function isServableDownload(row: ServedModel): boolean {
 /**
  * Client-side sorting with the row id as the stable tiebreaker (same
  * reasoning as ModelsTable). Sorts within a group — every group is its own
- * table.
+ * table. Status sorts in {@link SERVED_MODEL_READINESS_ORDER} — the models
+ * that answer, then the ones that need attention, then the inventory nothing
+ * runs — which is also the order a group's table opens in.
  */
 export function sortServedModelsBy(
   rows: ServedModelRow[],
@@ -137,7 +140,10 @@ export function sortServedModelsBy(
       case 'name':
         return row.name;
       case 'readiness':
-        return row.readiness;
+        return String(SERVED_MODEL_READINESS_ORDER[row.readiness]).padStart(
+          2,
+          '0',
+        );
       case 'modelSource':
         return row.modelSource ?? '';
       case 'runtime':
@@ -934,7 +940,7 @@ function ServedModelsGroupTable({
     mode: 'complete',
     data: group.rows,
     sortFn: sortServedModelsBy,
-    initialSort: { column: 'name', direction: 'ascending' },
+    initialSort: { column: 'readiness', direction: 'ascending' },
     paginationOptions: { type: 'none' },
   });
 
@@ -961,7 +967,9 @@ export type ServedModelsTableProps = {
  * Presentational table of served models, grouped by installation and backend
  * ({@link groupServedModelRows}): one header per group with what its rows
  * share — backend, runtime version, the endpoint they answer on — and one
- * table under it whose columns follow those rows ({@link columnsForRows}). A
+ * table under it whose columns follow those rows ({@link columnsForRows}) and
+ * whose rows open with the models that answer, then the ones that need
+ * attention, then the inventory nothing runs ({@link sortServedModelsBy}). A
  * backend that schedules onto nodes gets Node and GPUs, one whose weights
  * come from somewhere other than the served name gets Model, one that
  * reports features gets Features; an Ollama installation next to a KServe
