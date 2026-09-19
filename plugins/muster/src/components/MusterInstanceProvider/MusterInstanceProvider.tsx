@@ -175,7 +175,13 @@ export const MusterInstanceProvider = ({
     [installationInfos],
   );
 
-  const isLoadingInstallations = isLoadingBackend || inventory.isLoading;
+  // `inventory.isLoading` only covers the home installation's probe; `isProbing`
+  // covers the rest of the fleet. While no muster is known yet the list can
+  // still grow, so the views must not conclude there is none.
+  const isLoadingInstallations =
+    isLoadingBackend ||
+    inventory.isLoading ||
+    (installations.length === 0 && inventory.isProbing);
 
   const activeInstallation = useMemo(
     () =>

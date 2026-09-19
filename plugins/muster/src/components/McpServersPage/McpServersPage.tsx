@@ -13,10 +13,13 @@ import Power from '@material-ui/icons/Power';
 import Build from '@material-ui/icons/Build';
 import Lock from '@material-ui/icons/Lock';
 import AddIcon from '@material-ui/icons/Add';
-import { Content, EmptyState, Progress } from '@backstage/core-components';
+import { Content, EmptyState } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button as UiButton } from '@backstage/ui';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  LoadingIndicator,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { newMcpServerRouteRef } from '../../routes';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
@@ -270,7 +273,7 @@ export function McpServersPage() {
   let body;
   if (isLoading || !activeInstallation) {
     body = isLoading ? (
-      <Progress />
+      <LoadingIndicator label="Reading the installation's MCP servers…" />
     ) : (
       <EmptyState
         missing="data"

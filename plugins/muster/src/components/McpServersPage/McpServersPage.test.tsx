@@ -35,6 +35,9 @@ jest.mock('./ServerMutationActions', () => ({
 }));
 
 let mcpServers: MCPServer[] = [];
+// What the provider says, so a test can put the page in its loading or
+// no-muster state without a real inventory behind it.
+let instanceOverrides: Record<string, unknown> = {};
 
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -56,6 +59,7 @@ jest.mock('../MusterInstanceProvider', () => ({
     dataUpdatedAt: Date.now(),
     isRefreshing: false,
     retry: jest.fn(),
+    ...instanceOverrides,
   }),
   // Unauthenticated: the core row shows its gate instead of loading the core
   // families, which keeps the page free of muster API calls here.
@@ -93,8 +97,12 @@ function makeServer(
   );
 }
 
-async function renderPage(servers: MCPServer[]) {
+async function renderPage(
+  servers: MCPServer[],
+  overrides: Record<string, unknown> = {},
+) {
   mcpServers = servers;
+  instanceOverrides = overrides;
   return renderInTestApp(<McpServersPage />, {
     mountedRoutes: { '/agent-platform/muster': rootRouteRef },
   });
@@ -124,6 +132,10 @@ function expectDocumentOrder(...elements: HTMLElement[]) {
 }
 
 describe('McpServersPage', () => {
+  afterEach(() => {
+    instanceOverrides = {};
+  });
+
   // The lab's fake fleet once its charts carry the label: the two managers
   // declare agent-platform, the federated families infrastructure, and the
   // installation's own registrations nothing.
@@ -262,5 +274,27 @@ describe('McpServersPage', () => {
     expect(
       screen.queryByRole('region', { name: 'Agent Platform' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('loads rather than claiming there is no muster while the fleet is still answering', async () => {
+    await renderPage([], { isLoading: true, activeInstallation: undefined });
+
+    // The indicator holds itself back 250ms, so a warm cache flashes nothing.
+    expect(
+      await screen.findByRole('progressbar', {
+        name: "Reading the installation's MCP servers…",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No muster installation'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('No MCP servers')).not.toBeInTheDocument();
+  });
+
+  it('says there is no muster once the fleet has answered with none', async () => {
+    await renderPage([], { isLoading: false, activeInstallation: undefined });
+
+    expect(screen.getByText('No muster installation')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 });

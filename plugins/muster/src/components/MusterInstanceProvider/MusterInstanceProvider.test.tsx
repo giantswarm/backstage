@@ -255,6 +255,50 @@ describe('MusterInstanceProvider installations', () => {
     expect(result.current.activeInstallation).toBe('golem');
   });
 
+  it('keeps loading while the home has no muster and the rest of the fleet is still probing', async () => {
+    // The inventory's own `isLoading` covers the home probe only, so it is
+    // already false here. Concluding "no muster anywhere" now would flash the
+    // views' empty state for the second until wombat answers.
+    mockInventory = inventory([
+      entry('gazelle', { components: NONE }),
+      entry('wombat', { probe: 'pending', components: NONE }),
+    ]);
+
+    const { result, rerender } = renderInstance();
+
+    await act(() => new Promise(resolve => setTimeout(resolve, 30)));
+    expect(result.current.isLoadingInstallations).toBe(true);
+    expect(result.current.installations).toEqual([]);
+    expect(result.current.activeInstallation).toBeUndefined();
+
+    mockInventory = inventory([
+      entry('gazelle', { components: NONE }),
+      entry('wombat'),
+    ]);
+    rerender();
+
+    await waitFor(() =>
+      expect(result.current.activeInstallation).toBe('wombat'),
+    );
+    expect(result.current.isLoadingInstallations).toBe(false);
+  });
+
+  it('stops loading once the fleet has settled with no muster anywhere', async () => {
+    // The views' "No muster installation" empty state is an answer only here.
+    mockInventory = inventory([
+      entry('gazelle', { components: NONE }),
+      entry('wombat', { components: NONE }),
+    ]);
+
+    const { result } = renderInstance();
+
+    await waitFor(() =>
+      expect(result.current.isLoadingInstallations).toBe(false),
+    );
+    expect(result.current.installations).toEqual([]);
+    expect(result.current.activeInstallation).toBeUndefined();
+  });
+
   it('lists the backend installations as they are when the portal has no inventory', async () => {
     // No gs.installations: the legacy single-installation setup.
     mockInventory = inventory([], { home: undefined });

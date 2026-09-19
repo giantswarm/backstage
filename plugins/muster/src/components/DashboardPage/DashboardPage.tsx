@@ -19,7 +19,8 @@ import DeviceHub from '@material-ui/icons/DeviceHub';
 import Extension from '@material-ui/icons/Extension';
 import VerifiedUser from '@material-ui/icons/VerifiedUser';
 import Lock from '@material-ui/icons/Lock';
-import { Content, Link, Progress } from '@backstage/core-components';
+import { Content, Link } from '@backstage/core-components';
+import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
@@ -360,7 +361,7 @@ export function DashboardPage() {
       <ActiveInstallationNote />
 
       {!activeInstallation ? (
-        <Progress />
+        <LoadingIndicator label="Finding the installation's muster…" />
       ) : (
         <Box className={classes.column}>
           {isLoading && (
