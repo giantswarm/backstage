@@ -2550,10 +2550,17 @@ read they are withheld rather than appearing and disappearing. The read-only
 dialog use, so opening either is a cache hit) for one field: `managed`. An agent
 whose `HelmRelease` is applied by a Flux Kustomization comes back as
 `managed: 'gitops'`, agent-manager refuses every live write to it, and the three
-items are withheld with a disabled item saying so — as is the Skills card's
-`Update skills…` button, and the edit page, which answers a deep link with the
-same sentence instead of a form. Before this, the refusal only arrived after the
-dialog was opened and its dry run had run.
+items are withheld — as is the Skills card's `Update skills…` button. Before
+this, the refusal only arrived after the dialog was opened and its dry run had
+run.
+
+**Nothing explains the absence in place.** A menu is a list of things to do, so
+what cannot be offered is left out rather than spelled out in a disabled item —
+that holds for the missing-agent-manager cases too, which used to do exactly
+that. The Overview tab's "Managed through GitOps" card is the explanation, and
+it is already there. `agentManagerAbsenceReason` survives for `EditAgentPage`,
+which has to say something when a deep link lands on it: it answers with its
+existing empty state instead of a form whose Save could only be refused.
 
 Use **agent-manager's verdict**, not `isGitOpsManaged()` from the provenance
 labels: that answers "is a reconciler in charge", which is true of _every_ agent

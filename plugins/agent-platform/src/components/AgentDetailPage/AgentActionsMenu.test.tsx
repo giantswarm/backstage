@@ -115,7 +115,7 @@ describe('AgentActionsMenu', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  it('offers none of the three and says why when muster lists no agent-manager', async () => {
+  it('offers none of the three when muster lists no agent-manager', async () => {
     await renderMenu({
       presence: 'missing',
       isUnavailable: false,
@@ -133,38 +133,22 @@ describe('AgentActionsMenu', () => {
     expect(
       screen.queryByRole('menuitem', { name: /Update skills/ }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('menuitem', {
-        name: /muster on gazelle lists no agent-manager/,
-      }),
-    ).toHaveAttribute('aria-disabled', 'true');
-    // The read-only escape hatch stays.
+    // The read-only escape hatch, and nothing else: a menu lists things to do,
+    // so what cannot be offered is left out rather than explained in place.
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(
       screen.getByRole('menuitem', { name: 'View manifest' }),
     ).toBeInTheDocument();
   });
 
-  it('offers none of the three and says why for an agent applied from git', async () => {
+  it('offers none of the three for an agent applied from git', async () => {
     // agent-manager refuses every live write to it, so the actions are withheld
-    // rather than opened and refused on confirm.
+    // rather than opened and refused on confirm. No explanation here: the
+    // Overview tab's "Managed through GitOps" card already carries it.
     await renderMenu({ ...AVAILABLE, isGitOpsOwned: true });
     await openMenu();
 
-    expect(
-      screen.queryByRole('menuitem', { name: /Update skills/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('menuitem', { name: /Edit agent/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('menuitem', { name: /Delete agent/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('menuitem', {
-        name: /applied from git/,
-      }),
-    ).toHaveAttribute('aria-disabled', 'true');
-    // The read-only escape hatch stays.
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(
       screen.getByRole('menuitem', { name: 'View manifest' }),
     ).toBeInTheDocument();
@@ -182,7 +166,7 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
-  it('says the muster plugin is missing when the portal has none', async () => {
+  it('offers none of the three when the portal has no muster plugin', async () => {
     await renderMenu({
       presence: 'unknown',
       isUnavailable: true,
@@ -191,15 +175,13 @@ describe('AgentActionsMenu', () => {
     });
     await openMenu();
 
-    expect(
-      screen.getByRole('menuitem', { name: /no muster plugin/ }),
-    ).toBeInTheDocument();
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(
       screen.queryByRole('menuitem', { name: /Delete agent/ }),
     ).not.toBeInTheDocument();
   });
 
-  it('withholds the actions while the server list is still being read, without a reason', async () => {
+  it('withholds the actions while the server list is still being read', async () => {
     // Rather than offering them and taking them away again once muster answers.
     await renderMenu({
       presence: 'unknown',

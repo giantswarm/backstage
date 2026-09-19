@@ -35,10 +35,14 @@ export type AgentManagerGate = {
 };
 
 /**
- * Why the write actions are not offered, in one sentence for the menu. Absent
- * while the server list or agent-manager's verdict on the agent is still being
- * read: the items are withheld then, rather than appearing and disappearing
- * under the pointer.
+ * Why the write actions are not offered, in one sentence — for a page to show,
+ * not the menu. A menu is a list of things to do; an explanation sitting in it
+ * as an unclickable item is neither. The menu therefore just omits what it
+ * cannot offer, and `EditAgentPage` uses this for the empty state it answers a
+ * deep link with.
+ *
+ * Absent while the server list or agent-manager's verdict on the agent is still
+ * being read: nothing is offered then either, but there is nothing to say yet.
  */
 export function agentManagerAbsenceReason(
   gate: AgentManagerGate,
@@ -60,6 +64,23 @@ export function agentManagerAbsenceReason(
 }
 
 /**
+ * A definite width for the menu, which is not cosmetic — the same fix, and the
+ * same reason, as `SessionActionsMenu`'s `MENU_WIDTH`.
+ *
+ * Without it bui writes the literal string `"undefined"` as the menu's `width`,
+ * the browser discards it, and the popover lays out at its natural width before
+ * settling back to `.bui-MenuContent`'s `min-width: 150px`. That second pass
+ * makes the browser report "ResizeObserver loop completed with undelivered
+ * notifications" from react-aria's popover observer, which trips the dev-server
+ * error overlay.
+ *
+ * Note bui applies `maxWidth` as CSS `width` despite the name, so this is the
+ * definite width — keep it comfortably above the longest item ("Update
+ * skills…" plus its icon) rather than trimmed to fit.
+ */
+const MENU_WIDTH = '12rem';
+
+/**
  * The agent details page's header actions.
  *
  * Owns its manifest dialog's open state itself, rather than the page doing so:
@@ -73,9 +94,12 @@ export function agentManagerAbsenceReason(
  * and Update skills — is called by the page and their dialogs are rendered in
  * the page body; the menu only says whether they are offered (`agentManager`:
  * agent-manager's presence, and its verdict that the agent is writable at all)
- * and asks the page to open them. Authorization stays the apiserver's, reached
- * through agent-manager as the person: a viewer sees the items and gets the
- * Forbidden on confirm.
+ * and asks the page to open them. What it cannot offer it simply leaves out —
+ * an explanation belongs on the page (the Overview tab's GitOps card already
+ * carries the one for an agent applied from git), not as an unclickable item in
+ * a list of things to do. Authorization stays the apiserver's, reached through
+ * agent-manager as the person: a viewer sees the items and gets the Forbidden
+ * on confirm.
  */
 export function AgentActionsMenu({
   agent,
@@ -91,13 +115,11 @@ export function AgentActionsMenu({
   onDelete: () => void;
 }) {
   const [isManifestOpen, setManifestOpen] = useState(false);
-  const installation = agent.cluster;
   const offered =
     !agentManager.isUnavailable &&
     agentManager.presence === 'available' &&
     !agentManager.isVerdictPending &&
     !agentManager.isGitOpsOwned;
-  const reason = agentManagerAbsenceReason(agentManager, installation);
 
   return (
     <>
@@ -107,7 +129,7 @@ export function AgentActionsMenu({
           aria-label="Agent actions"
           variant="tertiary"
         />
-        <Menu>
+        <Menu maxWidth={MENU_WIDTH}>
           <MenuItem onAction={() => setManifestOpen(true)}>
             View manifest
           </MenuItem>
@@ -132,10 +154,6 @@ export function AgentActionsMenu({
               Delete agent…
             </MenuItem>
           ) : null}
-          {/* Says why the actions are missing rather than leaving a menu with
-              one item and no explanation; disabled, since there is nothing to
-              do about it from here. */}
-          {reason ? <MenuItem isDisabled>{reason}</MenuItem> : null}
         </Menu>
       </MenuTrigger>
 
