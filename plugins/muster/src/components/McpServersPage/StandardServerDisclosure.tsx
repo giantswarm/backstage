@@ -1,4 +1,6 @@
-import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
+import { makeStyles, Theme } from '@material-ui/core';
+import { Box, Flex, Text } from '@backstage/ui';
+import { GitOpsManagedLabel } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer } from '../../lib/k8s';
 import {
   DEACTIVATED_SIGN_IN_GATE,
@@ -23,18 +25,11 @@ import {
   ServerTools,
   useServerCapabilityCounts,
 } from './serverDetail';
-import {
-  isGitOpsManaged,
-  provenanceReleaseId,
-  readProvenance,
-} from '../../lib/gitops';
+import { isGitOpsManaged } from '../../lib/gitops';
 
 const useStyles = makeStyles((theme: Theme) => ({
   summary: {
-    display: 'flex',
     flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: theme.spacing(1, 1.5),
     width: '100%',
   },
   name: {
@@ -48,10 +43,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   pills: {
     marginLeft: 'auto',
-    display: 'flex',
     flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: theme.spacing(0.75),
   },
   // The folded healthy remainder of a long row ("+14 more"): same weight as a
   // pill so the row reads as one list, but no dot -- it is a count, not a
@@ -69,25 +61,17 @@ const useStyles = makeStyles((theme: Theme) => ({
     whiteSpace: 'nowrap',
   },
   clusterList: {
-    display: 'flex',
     flexWrap: 'wrap',
-    gap: theme.spacing(0.75),
   },
   coverageNote: {
     display: 'block',
-    marginTop: theme.spacing(1),
-    color: theme.palette.text.secondary,
-  },
-  managedNote: {
-    color: theme.palette.text.secondary,
     marginTop: theme.spacing(1),
   },
   mcHealthRow: {
     marginBottom: theme.spacing(1.5),
   },
   mcHealthLabel: {
-    fontWeight: 600,
-    fontSize: 13,
+    display: 'block',
     marginBottom: theme.spacing(0.5),
   },
   // The counterpart of ServerMutationActions' bottom action row (standard
@@ -95,10 +79,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   // entry per instance; when every instance renders nothing (the connected
   // majority), `:empty` removes the row so no stray divider is left behind.
   sessionActions: {
-    display: 'flex',
-    flexDirection: 'column',
     alignItems: 'flex-start',
-    gap: theme.spacing(1),
     marginTop: theme.spacing(2),
     paddingTop: theme.spacing(1.5),
     borderTop: `1px solid ${theme.palette.divider}`,
@@ -179,13 +160,12 @@ export function StandardServerDisclosure({
   const { resourcesCount, promptsCount } =
     useServerCapabilityCounts(representative);
   const managed = isGitOpsManaged(representative);
-  const releaseId = provenanceReleaseId(readProvenance(representative));
 
   const summary = (
-    <Box className={classes.summary}>
+    <Flex align="center" gap="2" className={classes.summary}>
       <code className={classes.name}>{family}</code>
       <span className={classes.kindLabel}>standard server</span>
-      <Box className={classes.pills}>
+      <Flex align="center" gap="1" className={classes.pills}>
         {shown.map(p => (
           <InstallationHealthPill
             key={p.mc}
@@ -203,8 +183,8 @@ export function StandardServerDisclosure({
         >
           {clustersLabel}
         </span>
-      </Box>
-    </Box>
+      </Flex>
+    </Flex>
   );
 
   let coverageNote = partial
@@ -222,7 +202,7 @@ export function StandardServerDisclosure({
           where the full per-cluster picture lives now that the dashboard no
           longer repeats it. */}
       <DetailBlock title="Management clusters">
-        <Box className={classes.clusterList}>
+        <Flex align="center" gap="1" className={classes.clusterList}>
           {present.map(p => (
             <InstallationHealthPill
               key={p.mc}
@@ -231,19 +211,27 @@ export function StandardServerDisclosure({
               state={p.state}
             />
           ))}
-        </Box>
-        <Typography variant="caption" className={classes.coverageNote}>
+        </Flex>
+        <Text
+          variant="body-small"
+          color="secondary"
+          className={classes.coverageNote}
+        >
           {coverageNote}
-        </Typography>
+        </Text>
       </DetailBlock>
 
       {degraded.length > 0 && (
         <DetailBlock title="Degraded clusters">
           {degraded.map(p => (
             <Box key={p.mc} className={classes.mcHealthRow}>
-              <Typography className={classes.mcHealthLabel}>
+              <Text
+                variant="body-small"
+                weight="bold"
+                className={classes.mcHealthLabel}
+              >
                 {p.mc} · {p.state}
-              </Typography>
+              </Text>
               <HealthDetails server={p.server} />
             </Box>
           ))}
@@ -260,19 +248,19 @@ export function StandardServerDisclosure({
 
       <DetailBlock title="Configuration">
         <ServerConfig server={representative} />
-        <Typography variant="caption" color="textSecondary">
+        <Text variant="body-small" color="secondary">
           {qualified
             ? `Shared across the fleet; shown for ${repMc}.`
             : `Federated across the fleet; no connected representative on this installation — values shown are from ${repMc} and may differ per cluster.`}
-        </Typography>
+        </Text>
       </DetailBlock>
 
       <DetailBlock title="Authentication / token chain">
         <AuthChain server={representative} />
-        <Typography variant="caption" color="textSecondary">
+        <Text variant="body-small" color="secondary">
           Shown for {repMc}; the auth/token chain differs per cluster (e.g.
           forward-token vs token-exchange/OBO).
-        </Typography>
+        </Text>
       </DetailBlock>
 
       {authenticated && (resourcesCount ?? 0) > 0 && (
@@ -289,41 +277,40 @@ export function StandardServerDisclosure({
 
       <DetailBlock title="GitOps provenance">
         <Provenance server={representative} />
-        {managed && (
-          <Typography variant="body2" className={classes.managedNote}>
-            Lifecycle is managed via GitOps and read-only here
-            {releaseId ? ` (HelmRelease ${releaseId})` : ''}. Edit the manifest
-            in the management-clusters repo and open a PR.
-          </Typography>
-        )}
       </DetailBlock>
 
-      {/* One affordance per instance, not per family: `auth://status` and
+      {/* The footer these rows close with, matching the integration rows'
+          action row: the GitOps claim, then one sign-in affordance per
+          instance -- not per family, because `auth://status` and
           `core_auth_login`/`core_auth_logout` are per server, so the
           representative CR's sign-in would leave the family's other instances
           gated with no way to act. ServerAuthActions keeps this quiet for the
-          connected majority. Only meaningful with a muster session: the
+          connected majority. The affordances need a muster session: the
           downstream flow is scoped to it, and without one the status read
           behind it would just 401. */}
-      {authenticated && (
-        <Box className={classes.sessionActions}>
-          {servers
-            // A sigv4 instance has no user sign-in at all; AuthChain above
-            // explains the machine identity instead.
-            .filter(instance => instance.canAuthenticateInteractively())
-            .map(instance => (
-              <ServerAuthActions
-                key={instance.getName()}
-                serverName={instance.getName()}
-                installation={instance.cluster}
-                showName
-                oauthConfigured={instance.getAuth()?.type === 'oauth'}
-                signInGate={
-                  instance.getSuspended() ? DEACTIVATED_SIGN_IN_GATE : undefined
-                }
-              />
-            ))}
-        </Box>
+      {(managed || authenticated) && (
+        <Flex direction="column" gap="2" className={classes.sessionActions}>
+          {managed && <GitOpsManagedLabel />}
+          {authenticated &&
+            servers
+              // A sigv4 instance has no user sign-in at all; AuthChain above
+              // explains the machine identity instead.
+              .filter(instance => instance.canAuthenticateInteractively())
+              .map(instance => (
+                <ServerAuthActions
+                  key={instance.getName()}
+                  serverName={instance.getName()}
+                  installation={instance.cluster}
+                  showName
+                  oauthConfigured={instance.getAuth()?.type === 'oauth'}
+                  signInGate={
+                    instance.getSuspended()
+                      ? DEACTIVATED_SIGN_IN_GATE
+                      : undefined
+                  }
+                />
+              ))}
+        </Flex>
       )}
     </DisclosureAccordion>
   );

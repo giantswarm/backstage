@@ -165,27 +165,46 @@ describe('AuthChain', () => {
   });
 });
 
-describe('ServerTools with no tools to show', () => {
-  /** Renders the tool list for a server whose catalogue comes back empty. */
-  async function renderTools(server: MCPServer) {
-    const musterApi = {
-      filterTools: jest.fn().mockResolvedValue({ tools: [] }),
-    };
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    return renderInTestApp(
-      <TestApiProvider apis={[[musterApiRef, musterApi]]}>
-        <QueryClientProvider client={queryClient}>
-          <ServerTools server={server} />
-        </QueryClientProvider>
-      </TestApiProvider>,
-      // ServerTools links each tool into the explorer, so the route the link
-      // resolves against has to be mounted.
-      { mountedRoutes: { '/agent-platform/muster': rootRouteRef } },
-    );
-  }
+/** Renders the tool list over a stubbed `filter_tools` result. */
+async function renderTools(
+  server: MCPServer,
+  result: Record<string, unknown> = { tools: [] },
+) {
+  const musterApi = { filterTools: jest.fn().mockResolvedValue(result) };
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderInTestApp(
+    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+      <QueryClientProvider client={queryClient}>
+        <ServerTools server={server} />
+      </QueryClientProvider>
+    </TestApiProvider>,
+    // ServerTools links each tool into the explorer, so the route the link
+    // resolves against has to be mounted.
+    { mountedRoutes: { '/agent-platform/muster': rootRouteRef } },
+  );
+}
 
+describe('ServerTools', () => {
+  it('links each tool into the explorer, scoped to this server', async () => {
+    // The tags are the way from a server to its tools; an unscoped link would
+    // drop the reader into the whole aggregated catalogue.
+    await renderTools(makeServer(OAUTH_SPEC, 'Connected'), {
+      total: 1,
+      tools: [{ name: 'x_aws-root_list_buckets', summary: 'List buckets' }],
+    });
+
+    const link = await screen.findByRole('link', { name: 'list_buckets' });
+    const href = link.getAttribute('href')!;
+    const params = new URLSearchParams(href.slice(href.indexOf('?')));
+    expect(params.get('installation')).toBe('gazelle');
+    expect(params.get('server')).toBe('aws-root');
+    expect(params.get('tool')).toBe('x_aws-root_list_buckets');
+  });
+});
+
+describe('ServerTools with no tools to show', () => {
   it('does not send a sigv4 server’s user to a sign-in that cannot exist', async () => {
     // muster keeps a rejected sigv4 credential in `Failed`, but the CR status
     // is one read behind the aggregator — so the guard is the auth type, not
@@ -272,7 +291,9 @@ describe('RuntimeState on a deactivated server', () => {
     expect(await screen.findByText('connected')).toBeInTheDocument();
     expect(screen.getByText('58')).toBeInTheDocument();
     expect(
-      screen.getByText(/the session rows below are your session's last/),
+      screen.getByText(
+        /the Session, Tools, Resources and Prompts rows are your session's last/,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -281,7 +302,7 @@ describe('RuntimeState on a deactivated server', () => {
 
     expect(await screen.findByText('connected')).toBeInTheDocument();
     expect(
-      screen.queryByText(/the session rows below/),
+      screen.queryByText(/the Session, Tools, Resources and Prompts rows/),
     ).not.toBeInTheDocument();
   });
 });

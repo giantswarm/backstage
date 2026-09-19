@@ -1,4 +1,3 @@
-import { Box, Typography } from '@material-ui/core';
 import { useMemo } from 'react';
 import {
   getErrorMessage,
@@ -15,13 +14,10 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
-  AsyncValue,
-  ErrorStatus,
-  ExternalLink,
+  GitOpsManagedLabel,
   InfoCard,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useGitSourceLink } from '../../hooks';
-import { GitOpsIcon } from '../../assets/icons';
 
 type GitOpsCardProps = {
   /**
@@ -192,31 +188,9 @@ export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
 
   return (
     <InfoCard>
-      <Box display="flex" alignItems="center">
-        <Box display="flex" alignItems="center" marginRight={1.5}>
-          <GitOpsIcon />
-        </Box>
-        <Typography variant="inherit">Managed through GitOps</Typography>
-        <Box marginLeft={1.5} minWidth={75}>
-          <AsyncValue
-            isLoading={isLoading}
-            value={sourceUrl}
-            errorMessage={errorMessage}
-            renderError={message => (
-              <ErrorStatus errorMessage={message} notAvailable={false} />
-            )}
-          >
-            {value => (
-              <Box display="flex" alignItems="center">
-                <Box marginLeft={-0.5} marginRight={1}>
-                  <Typography variant="inherit">·</Typography>
-                </Box>
-                <ExternalLink href={value}>Source</ExternalLink>
-              </Box>
-            )}
-          </AsyncValue>
-        </Box>
-      </Box>
+      <GitOpsManagedLabel
+        source={{ url: sourceUrl, isLoading, errorMessage }}
+      />
     </InfoCard>
   );
 }

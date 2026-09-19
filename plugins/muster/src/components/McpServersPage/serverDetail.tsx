@@ -1,9 +1,11 @@
 import { ReactNode } from 'react';
-import { Box, Chip, Typography, makeStyles, Theme } from '@material-ui/core';
-import { Link, Progress } from '@backstage/core-components';
+import { makeStyles, Theme } from '@material-ui/core';
+import { Box, Flex, Link, Tag, TagGroup, Text } from '@backstage/ui';
+import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { FactList, type Fact } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import {
   DEACTIVATED_LABEL,
@@ -25,48 +27,37 @@ import { severityTone } from '../shared';
 import { toolExplorerRouteRef } from '../../routes';
 
 const useStyles = makeStyles((theme: Theme) => ({
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(120px, max-content) 1fr',
-    columnGap: theme.spacing(2),
-    rowGap: theme.spacing(0.5),
-    alignItems: 'baseline',
-  },
-  key: {
-    color: theme.palette.text.secondary,
-    fontWeight: 500,
-    fontSize: 13,
-  },
-  value: {
-    fontSize: 13,
-  },
   mono: {
     fontFamily: 'monospace',
     fontSize: 12,
     wordBreak: 'break-all',
   },
-  note: {
-    color: theme.palette.text.secondary,
-  },
-  // A caption spanning both columns of the definition grid, for a remark that
-  // belongs to the rows that follow it rather than to one key.
-  gridNote: {
-    gridColumn: '1 / -1',
-    marginTop: theme.spacing(1),
-    color: theme.palette.text.secondary,
-  },
   block: {
     marginBottom: theme.spacing(2),
   },
-  blockTitle: {
-    fontWeight: 600,
-    marginBottom: theme.spacing(1),
+  // bui's Link is underlined by default and takes the body colour. Both rules
+  // live in bui's `components` cascade layer, so these unlayered ones win
+  // without needing extra specificity.
+  link: {
+    color: theme.palette.link,
+    textDecoration: 'none',
+    '&:hover': {
+      textDecoration: 'underline',
+    },
   },
-  toolList: {
+  // A tool tag is already a pill: the underline only crowds the rows.
+  //
+  // The pill is also the hit target the reader sees -- bui highlights it and
+  // shows a pointer on hover -- so the anchor has to fill it. Left as the
+  // anchor's own width, the tag's 8px padding and the rest of its 26px height
+  // look clickable and are not.
+  tagLink: {
+    textDecoration: 'none',
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(0.75),
-    marginTop: theme.spacing(1),
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    margin: '0 calc(-1 * var(--bui-space-2))',
+    padding: '0 var(--bui-space-2)',
   },
   capabilityList: {
     display: 'flex',
@@ -74,10 +65,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(1),
     marginTop: theme.spacing(1),
     fontSize: 13,
-  },
-  capabilityNote: {
-    display: 'block',
-    color: theme.palette.text.secondary,
   },
   errorPre: {
     whiteSpace: 'pre-wrap',
@@ -92,20 +79,19 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-export function DefRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  const classes = useStyles();
+/** A note in the secondary voice the detail blocks use for their asides. */
+function Note({ children }: { children: ReactNode }) {
   return (
-    <>
-      <span className={classes.key}>{label}</span>
-      <span className={classes.value}>{children}</span>
-    </>
+    <Text variant="body-small" color="secondary">
+      {children}
+    </Text>
   );
+}
+
+/** Monospace for an identifier the reader may need to copy or compare. */
+function Mono({ children }: { children: ReactNode }) {
+  const classes = useStyles();
+  return <span className={classes.mono}>{children}</span>;
 }
 
 /** A small captioned sub-section inside a disclosure body. */
@@ -118,12 +104,12 @@ export function DetailBlock({
 }) {
   const classes = useStyles();
   return (
-    <Box className={classes.block}>
-      <Typography variant="body2" className={classes.blockTitle}>
+    <Flex direction="column" gap="2" className={classes.block}>
+      <Text as="h4" variant="title-x-small" weight="bold">
         {title}
-      </Typography>
+      </Text>
       {children}
-    </Box>
+    </Flex>
   );
 }
 
@@ -139,45 +125,43 @@ function activateHint(server: MCPServer): string {
 
 /** CRD-sourced configuration (always available, no muster session needed). */
 export function ServerConfig({ server }: { server: MCPServer }) {
-  const classes = useStyles();
-  const metaEntries = Object.entries(server.getMeta() ?? {});
-  return (
-    <Box className={classes.grid}>
-      {/* The durable switch behind a `Disconnected` live state. Only rendered
-          when set: a "Deactivated: no" row on every healthy server would be
-          noise, while on a deactivated one this row is the reason the page
-          exists. */}
-      {server.getSuspended() && (
-        <DefRow label={DEACTIVATED_LABEL}>
-          yes — muster keeps it disconnected until it is activated.
-          {activateHint(server)}
-        </DefRow>
-      )}
-      <DefRow label="Type">{server.getType() ?? '-'}</DefRow>
-      <DefRow label="Family">{server.getFamily() ?? '-'}</DefRow>
-      {server.getManagementCluster() && (
-        <DefRow label="Target MC">{server.getManagementCluster()}</DefRow>
-      )}
-      {server.getUrl() && (
-        <DefRow label="URL">
-          <span className={classes.mono}>{server.getUrl()}</span>
-        </DefRow>
-      )}
-      {server.getTimeout() !== undefined && (
-        <DefRow label="Timeout">{server.getTimeout()}s</DefRow>
-      )}
-      <DefRow label="Auto start">{server.getAutoStart() ? 'yes' : 'no'}</DefRow>
-      {/* `spec.meta`: merged into `params._meta` of every request. Worth its
-          own row rather than a footnote — an AWS-hosted server reads the region
-          it operates in from here, and a wrong value produces confident answers
-          about the wrong account region rather than an error. */}
-      {metaEntries.map(([key, value]) => (
-        <DefRow key={key} label={`Meta ${key}`}>
-          <span className={classes.mono}>{value}</span>
-        </DefRow>
-      ))}
-    </Box>
-  );
+  const facts: Fact[] = [];
+
+  // The durable switch behind a `Disconnected` live state. Only added when
+  // set: a "Deactivated: no" row on every healthy server would be noise, while
+  // on a deactivated one this row is the reason the page exists.
+  if (server.getSuspended()) {
+    facts.push({
+      label: DEACTIVATED_LABEL,
+      value: `yes — muster keeps it disconnected until it is activated.${activateHint(
+        server,
+      )}`,
+    });
+  }
+  facts.push({ label: 'Type', value: server.getType() ?? '-' });
+  facts.push({ label: 'Family', value: server.getFamily() ?? '-' });
+  if (server.getManagementCluster()) {
+    facts.push({ label: 'Target MC', value: server.getManagementCluster() });
+  }
+  if (server.getUrl()) {
+    facts.push({ label: 'URL', value: <Mono>{server.getUrl()}</Mono> });
+  }
+  if (server.getTimeout() !== undefined) {
+    facts.push({ label: 'Timeout', value: `${server.getTimeout()}s` });
+  }
+  facts.push({
+    label: 'Auto start',
+    value: server.getAutoStart() ? 'yes' : 'no',
+  });
+  // `spec.meta`: merged into `params._meta` of every request. Worth its own row
+  // rather than a footnote — an AWS-hosted server reads the region it operates
+  // in from here, and a wrong value produces confident answers about the wrong
+  // account region rather than an error.
+  for (const [key, value] of Object.entries(server.getMeta() ?? {})) {
+    facts.push({ label: `Meta ${key}`, value: <Mono>{value}</Mono> });
+  }
+
+  return <FactList facts={facts} maxWidth={null} />;
 }
 
 /**
@@ -191,18 +175,93 @@ export function ServerConfig({ server }: { server: MCPServer }) {
  * instance.
  */
 export function AuthChain({ server }: { server: MCPServer }) {
-  const classes = useStyles();
   const auth = server.getAuth();
 
   if (!auth || auth.type === 'none' || auth.type === undefined) {
-    return (
-      <Typography variant="body2" className={classes.note}>
-        No authentication configured (anonymous).
-      </Typography>
-    );
+    return <Note>No authentication configured (anonymous).</Note>;
   }
 
   const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
+
+  const facts: Fact[] = [{ label: 'Type', value: auth.type }];
+  if (sigv4) {
+    facts.push(
+      { label: 'Signing region', value: <Mono>{sigv4.region}</Mono> },
+      {
+        label: 'Signing service',
+        value: sigv4.service ? (
+          <Mono>{sigv4.service}</Mono>
+        ) : (
+          <Note>derived from the URL host</Note>
+        ),
+      },
+      {
+        label: 'Assumed role',
+        value: sigv4.roleArn ? (
+          <Mono>{sigv4.roleArn}</Mono>
+        ) : (
+          <Note>none — signs as muster's own identity</Note>
+        ),
+      },
+    );
+  } else {
+    // Meaningless for sigv4 — the CRD rejects the two together, so the row
+    // could only ever read "no".
+    facts.push({
+      label: 'Forward token',
+      value: auth.forwardToken ? 'yes' : 'no',
+    });
+  }
+  if (auth.requiredAudiences && auth.requiredAudiences.length > 0) {
+    facts.push({
+      label: 'Required audiences',
+      value: <Mono>{auth.requiredAudiences.join(', ')}</Mono>,
+    });
+  }
+  if (authorizationServer) {
+    facts.push({
+      label: 'Authorization server',
+      value: (
+        <>
+          <Mono>{authorizationServer.issuer}</Mono>
+          {authorizationServer.scopes ? ` (${authorizationServer.scopes})` : ''}
+        </>
+      ),
+    });
+  }
+  if (tokenExchange?.enabled) {
+    if (tokenExchange.connectorId) {
+      facts.push({
+        label: 'TE connector',
+        value: tokenExchange.connectorId,
+      });
+    }
+    if (tokenExchange.dexTokenEndpoint) {
+      facts.push({
+        label: 'Dex endpoint',
+        value: <Mono>{tokenExchange.dexTokenEndpoint}</Mono>,
+      });
+    }
+    if (tokenExchange.expectedIssuer) {
+      facts.push({
+        label: 'Expected issuer',
+        value: <Mono>{tokenExchange.expectedIssuer}</Mono>,
+      });
+    }
+    if (tokenExchange.scopes) {
+      facts.push({ label: 'TE scopes', value: tokenExchange.scopes });
+    }
+  }
+  if (localMint?.enabled) {
+    facts.push({
+      label: 'Local mint',
+      value: (
+        <>
+          audience <Mono>{localMint.audience ?? '-'}</Mono>
+        </>
+      ),
+    });
+  }
 
   return (
     <>
@@ -211,90 +270,13 @@ export function AuthChain({ server }: { server: MCPServer }) {
           and "who does this act as" is the question an operator is here to
           answer. */}
       {sigv4 && (
-        <Typography variant="body2" className={classes.note}>
+        <Note>
           Requests are signed with muster's own AWS machine identity, not the
           calling user's. All users share this identity, and CloudTrail
           attributes their actions to muster. There is no user sign-in.
-        </Typography>
+        </Note>
       )}
-      <Box className={classes.grid}>
-        <DefRow label="Type">{auth.type}</DefRow>
-        {sigv4 && (
-          <>
-            <DefRow label="Signing region">
-              <span className={classes.mono}>{sigv4.region}</span>
-            </DefRow>
-            <DefRow label="Signing service">
-              {sigv4.service ? (
-                <span className={classes.mono}>{sigv4.service}</span>
-              ) : (
-                <span className={classes.note}>derived from the URL host</span>
-              )}
-            </DefRow>
-            <DefRow label="Assumed role">
-              {sigv4.roleArn ? (
-                <span className={classes.mono}>{sigv4.roleArn}</span>
-              ) : (
-                <span className={classes.note}>
-                  none — signs as muster's own identity
-                </span>
-              )}
-            </DefRow>
-          </>
-        )}
-        {/* Meaningless for sigv4 — the CRD rejects the two together, so the
-            row could only ever read "no". */}
-        {!sigv4 && (
-          <DefRow label="Forward token">
-            {auth.forwardToken ? 'yes' : 'no'}
-          </DefRow>
-        )}
-        {auth.requiredAudiences && auth.requiredAudiences.length > 0 && (
-          <DefRow label="Required audiences">
-            <span className={classes.mono}>
-              {auth.requiredAudiences.join(', ')}
-            </span>
-          </DefRow>
-        )}
-        {authorizationServer && (
-          <DefRow label="Authorization server">
-            <span className={classes.mono}>{authorizationServer.issuer}</span>
-            {authorizationServer.scopes
-              ? ` (${authorizationServer.scopes})`
-              : ''}
-          </DefRow>
-        )}
-        {tokenExchange?.enabled && (
-          <>
-            {tokenExchange.connectorId && (
-              <DefRow label="TE connector">{tokenExchange.connectorId}</DefRow>
-            )}
-            {tokenExchange.dexTokenEndpoint && (
-              <DefRow label="Dex endpoint">
-                <span className={classes.mono}>
-                  {tokenExchange.dexTokenEndpoint}
-                </span>
-              </DefRow>
-            )}
-            {tokenExchange.expectedIssuer && (
-              <DefRow label="Expected issuer">
-                <span className={classes.mono}>
-                  {tokenExchange.expectedIssuer}
-                </span>
-              </DefRow>
-            )}
-            {tokenExchange.scopes && (
-              <DefRow label="TE scopes">{tokenExchange.scopes}</DefRow>
-            )}
-          </>
-        )}
-        {localMint?.enabled && (
-          <DefRow label="Local mint">
-            audience{' '}
-            <span className={classes.mono}>{localMint.audience ?? '-'}</span>
-          </DefRow>
-        )}
-      </Box>
+      <FactList facts={facts} maxWidth={null} />
     </>
   );
 }
@@ -311,32 +293,41 @@ export function HealthDetails({ server }: { server: MCPServer }) {
   const nextRetry = server.getNextRetryAfter();
   const lastError = server.getLastError();
 
+  const facts: Fact[] = [];
+  if (lastConnected) {
+    facts.push({
+      label: 'Last connected',
+      value: (
+        <>
+          {formatRelativeTime(lastConnected)}{' '}
+          <Note>({formatTimestamp(lastConnected)})</Note>
+        </>
+      ),
+    });
+  }
+  if (typeof consecutiveFailures === 'number' && consecutiveFailures > 0) {
+    facts.push({ label: 'Consecutive failures', value: consecutiveFailures });
+  }
+  if (nextRetry) {
+    facts.push({
+      label: 'Next retry',
+      value: (
+        <>
+          {formatRelativeTime(nextRetry)}{' '}
+          <Note>({formatTimestamp(nextRetry)})</Note>
+        </>
+      ),
+    });
+  }
+
   return (
     <Box>
-      <Box className={classes.grid}>
-        {lastConnected && (
-          <DefRow label="Last connected">
-            {formatRelativeTime(lastConnected)}{' '}
-            <span className={classes.note}>
-              ({formatTimestamp(lastConnected)})
-            </span>
-          </DefRow>
-        )}
-        {typeof consecutiveFailures === 'number' && consecutiveFailures > 0 && (
-          <DefRow label="Consecutive failures">{consecutiveFailures}</DefRow>
-        )}
-        {nextRetry && (
-          <DefRow label="Next retry">
-            {formatRelativeTime(nextRetry)}{' '}
-            <span className={classes.note}>({formatTimestamp(nextRetry)})</span>
-          </DefRow>
-        )}
-      </Box>
+      <FactList facts={facts} maxWidth={null} />
       {lastError && (
-        <Box mt={1}>
-          <Typography variant="caption" className={classes.note}>
+        <Box mt="2">
+          <Text variant="body-small" color="secondary">
             Last error
-          </Typography>
+          </Text>
           <pre className={classes.errorPre}>{lastError}</pre>
         </Box>
       )}
@@ -350,7 +341,6 @@ export function HealthDetails({ server }: { server: MCPServer }) {
  * inline note when muster is unreachable / auth-required.
  */
 export function RuntimeState({ server }: { server: MCPServer }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const installation = server.cluster;
   const name = server.getName();
@@ -365,26 +355,21 @@ export function RuntimeState({ server }: { server: MCPServer }) {
   }
   if (error) {
     return (
-      <Typography variant="body2" className={classes.note}>
-        Live runtime state unavailable: {(error as Error).message}
-      </Typography>
+      <Note>Live runtime state unavailable: {(error as Error).message}</Note>
     );
   }
 
   const runtime = (data?.mcpServers ?? []).find(s => s.name === name);
   if (!runtime) {
-    return (
-      <Typography variant="body2" className={classes.note}>
-        Server not present in the aggregator's runtime list.
-      </Typography>
-    );
+    return <Note>Server not present in the aggregator's runtime list.</Note>;
   }
 
   // The session rows describe this user's session, not the server: on a
   // deactivated server they can still read "connected / 58 tools" from a
   // sign-in the reconciler has since undone, which next to `Disconnected`
   // looks like a working server with an empty Tools block. Said once, above
-  // the rows, rather than suffixed onto each of them.
+  // the list, and naming the rows it means -- "the rows below" would take in
+  // Live state and Status, which are about the server.
   const sessionRows =
     runtime.sessionStatus !== undefined ||
     runtime.sessionAuth !== undefined ||
@@ -393,71 +378,81 @@ export function RuntimeState({ server }: { server: MCPServer }) {
     runtime.promptsCount !== undefined;
   const staleSessionNote = server.getSuspended() && sessionRows;
 
+  const facts: Fact[] = [
+    {
+      label: 'Live state',
+      value: runtime.state ? (
+        <StateBadge
+          tone={severityTone(mcpServerStateSeverity(runtime.state as never))}
+          label={runtime.state}
+        />
+      ) : (
+        '-'
+      ),
+    },
+  ];
+  if (runtime.statusMessage) {
+    facts.push({ label: 'Status', value: runtime.statusMessage });
+  }
+  if (runtime.sessionStatus) {
+    facts.push({ label: 'Session', value: runtime.sessionStatus });
+  }
+  if (runtime.sessionAuth) {
+    facts.push({ label: 'Session auth', value: runtime.sessionAuth });
+  }
+  if (runtime.toolsCount !== undefined) {
+    facts.push({ label: 'Tools (session)', value: runtime.toolsCount });
+  }
+  if (runtime.resourcesCount !== undefined) {
+    facts.push({ label: 'Resources (session)', value: runtime.resourcesCount });
+  }
+  if (runtime.promptsCount !== undefined) {
+    facts.push({ label: 'Prompts (session)', value: runtime.promptsCount });
+  }
+  if (runtime.registeredBy) {
+    facts.push({
+      label: 'Registered by',
+      value: (
+        <span title={runtime.registeredBy}>
+          {runtime.registeredByEmail ??
+            decodeDexSubject(runtime.registeredBy) ??
+            runtime.registeredBy}
+        </span>
+      ),
+    });
+  }
+  if (runtime.consecutiveFailures) {
+    facts.push({
+      label: 'Consecutive failures',
+      value: runtime.consecutiveFailures,
+    });
+  }
+  if (runtime.nextRetryAfter) {
+    facts.push({
+      label: 'Next retry',
+      value: formatTimestamp(runtime.nextRetryAfter),
+    });
+  }
+  if (runtime.connectedAt) {
+    facts.push({
+      label: 'Connected at',
+      value: formatTimestamp(runtime.connectedAt),
+    });
+  }
+  if (runtime.error) {
+    facts.push({ label: 'Error', value: <Mono>{runtime.error}</Mono> });
+  }
+
   return (
-    <Box className={classes.grid}>
-      <DefRow label="Live state">
-        {runtime.state ? (
-          <StateBadge
-            tone={severityTone(mcpServerStateSeverity(runtime.state as never))}
-            label={runtime.state}
-          />
-        ) : (
-          '-'
-        )}
-      </DefRow>
-      {runtime.statusMessage && (
-        <DefRow label="Status">{runtime.statusMessage}</DefRow>
-      )}
+    <Box>
       {staleSessionNote && (
-        <Typography variant="caption" className={classes.gridNote}>
-          {DEACTIVATED_LABEL} — the session rows below are your session's last
-          connection to this server, not a working server.
-        </Typography>
+        <Text variant="body-small" color="secondary">
+          {DEACTIVATED_LABEL} — the Session, Tools, Resources and Prompts rows
+          are your session's last connection to this server, not a working
+          server.
+        </Text>
       )}
-      {runtime.sessionStatus && (
-        <DefRow label="Session">{runtime.sessionStatus}</DefRow>
-      )}
-      {runtime.sessionAuth && (
-        <DefRow label="Session auth">{runtime.sessionAuth}</DefRow>
-      )}
-      {runtime.toolsCount !== undefined && (
-        <DefRow label="Tools (session)">{runtime.toolsCount}</DefRow>
-      )}
-      {runtime.resourcesCount !== undefined && (
-        <DefRow label="Resources (session)">{runtime.resourcesCount}</DefRow>
-      )}
-      {runtime.promptsCount !== undefined && (
-        <DefRow label="Prompts (session)">{runtime.promptsCount}</DefRow>
-      )}
-      {runtime.registeredBy && (
-        <DefRow label="Registered by">
-          <span title={runtime.registeredBy}>
-            {runtime.registeredByEmail ??
-              decodeDexSubject(runtime.registeredBy) ??
-              runtime.registeredBy}
-          </span>
-        </DefRow>
-      )}
-      {runtime.consecutiveFailures ? (
-        <DefRow label="Consecutive failures">
-          {runtime.consecutiveFailures}
-        </DefRow>
-      ) : null}
-      {runtime.nextRetryAfter && (
-        <DefRow label="Next retry">
-          {formatTimestamp(runtime.nextRetryAfter)}
-        </DefRow>
-      )}
-      {runtime.connectedAt && (
-        <DefRow label="Connected at">
-          {formatTimestamp(runtime.connectedAt)}
-        </DefRow>
-      )}
-      {runtime.error && (
-        <DefRow label="Error">
-          <span className={classes.mono}>{runtime.error}</span>
-        </DefRow>
-      )}
+      <FactList facts={facts} maxWidth={null} />
     </Box>
   );
 }
@@ -488,7 +483,7 @@ function noToolsExplanation(server: MCPServer): string {
 
 /**
  * Tools this server contributes to the aggregated catalogue, discovered lazily
- * via `filter_tools(pattern="<prefix>_*")`. Each chip links to the tool
+ * via `filter_tools(pattern="<prefix>_*")`. Each tag links to the tool
  * explorer scoped to the same installation + server. `prefixOverride` lets a
  * family-grouped (standard) server filter by `x_<family>_*` instead of the
  * single CR's name-derived prefix.
@@ -529,47 +524,48 @@ export function ServerTools({
     return <Progress />;
   }
   if (error) {
-    return (
-      <Typography variant="body2" className={classes.note}>
-        Tools unavailable: {(error as Error).message}
-      </Typography>
-    );
+    return <Note>Tools unavailable: {(error as Error).message}</Note>;
   }
 
   const tools = data?.tools ?? [];
   if (tools.length === 0) {
-    return (
-      <Typography variant="body2" className={classes.note}>
-        {noToolsExplanation(server)}
-      </Typography>
-    );
+    return <Note>{noToolsExplanation(server)}</Note>;
   }
 
   return (
-    <Box>
-      <Typography variant="body2" className={classes.note}>
-        {data?.total ?? tools.length} tool(s) under{' '}
-        <span className={classes.mono}>{pattern}</span>
+    <Flex direction="column" gap="3">
+      <Note>
+        {data?.total ?? tools.length} tool(s) under <Mono>{pattern}</Mono>
         {data?.truncated ? ' (first page)' : ''} —{' '}
-        <Link to={explorerLink()}>open in tool explorer</Link>
-      </Typography>
-      <Box className={classes.toolList}>
+        <Link className={classes.link} href={explorerLink()}>
+          Open in tool explorer
+        </Link>
+      </Note>
+      <TagGroup aria-label={`Tools under ${pattern}`}>
         {tools.map(tool => (
-          <Link key={tool.name} to={explorerLink(tool.name)}>
-            <Chip
-              size="small"
-              clickable
-              label={
-                tool.name.startsWith(`${prefix}_`)
-                  ? tool.name.slice(prefix.length + 1)
-                  : tool.name
-              }
+          <Tag
+            key={tool.name}
+            id={tool.name}
+            size="small"
+            textValue={tool.name}
+          >
+            {/* The link is the Tag's child rather than its `href`: react-aria
+                renders an `href`-carrying Tag as a pressable grid row, not an
+                anchor, which would cost the tool list middle-click and
+                open-in-new-tab. The title carries the summary on hover. */}
+            <Link
+              className={classes.tagLink}
+              href={explorerLink(tool.name)}
               title={tool.summary ?? tool.description ?? tool.name}
-            />
-          </Link>
+            >
+              {tool.name.startsWith(`${prefix}_`)
+                ? tool.name.slice(prefix.length + 1)
+                : tool.name}
+            </Link>
+          </Tag>
         ))}
-      </Box>
-    </Box>
+      </TagGroup>
+    </Flex>
   );
 }
 
@@ -629,37 +625,33 @@ export function ServerResources({ server }: { server: MCPServer }) {
     return <Progress />;
   }
   if (error) {
-    return (
-      <Typography variant="body2" className={classes.note}>
-        Resources unavailable: {(error as Error).message}
-      </Typography>
-    );
+    return <Note>Resources unavailable: {(error as Error).message}</Note>;
   }
 
   const resources = data?.resources ?? [];
   if (resources.length === 0) {
     return (
-      <Typography variant="body2" className={classes.note}>
+      <Note>
         No resources exposed (server may be down or require authentication).
-      </Typography>
+      </Note>
     );
   }
 
   return (
     <Box>
-      <Typography variant="body2" className={classes.note}>
+      <Note>
         {data?.total ?? resources.length} resource(s)
         {data?.truncated ? ' (first page)' : ''}
-      </Typography>
+      </Note>
       <Box className={classes.capabilityList}>
         {resources.map(resource => (
           <Box key={`${resource.server}:${resource.uri}`}>
-            <span className={classes.mono}>{resource.uri}</span>
+            <Mono>{resource.uri}</Mono>
             {resource.name ? ` — ${resource.name}` : ''}
             {resource.description && (
-              <Typography variant="caption" className={classes.capabilityNote}>
+              <Text as="p" variant="body-small" color="secondary">
                 {resource.description}
-              </Typography>
+              </Text>
             )}
           </Box>
         ))}
@@ -690,19 +682,15 @@ export function ServerPrompts({ server }: { server: MCPServer }) {
     return <Progress />;
   }
   if (error) {
-    return (
-      <Typography variant="body2" className={classes.note}>
-        Prompts unavailable: {(error as Error).message}
-      </Typography>
-    );
+    return <Note>Prompts unavailable: {(error as Error).message}</Note>;
   }
 
   const prompts = data?.prompts ?? [];
   if (prompts.length === 0) {
     return (
-      <Typography variant="body2" className={classes.note}>
+      <Note>
         No prompts exposed (server may be down or require authentication).
-      </Typography>
+      </Note>
     );
   }
 
@@ -711,22 +699,22 @@ export function ServerPrompts({ server }: { server: MCPServer }) {
 
   return (
     <Box>
-      <Typography variant="body2" className={classes.note}>
+      <Note>
         {data?.total ?? prompts.length} prompt(s)
         {data?.truncated ? ' (first page)' : ''}
-      </Typography>
+      </Note>
       <Box className={classes.capabilityList}>
         {prompts.map(prompt => (
           <Box key={prompt.name}>
-            <span className={classes.mono}>
+            <Mono>
               {prompt.name.startsWith(`${prefix}_`)
                 ? prompt.name.slice(prefix.length + 1)
                 : prompt.name}
-            </span>
+            </Mono>
             {prompt.description && (
-              <Typography variant="caption" className={classes.capabilityNote}>
+              <Text as="p" variant="body-small" color="secondary">
                 {prompt.description}
-              </Typography>
+              </Text>
             )}
           </Box>
         ))}
@@ -737,31 +725,30 @@ export function ServerPrompts({ server }: { server: MCPServer }) {
 
 /** GitOps provenance, with the managing HelmRelease/Kustomization surfaced. */
 export function Provenance({ server }: { server: MCPServer }) {
-  const classes = useStyles();
   const p = readProvenance(server);
   const releaseId = provenanceReleaseId(p);
 
   if (!releaseId && !p.managedBy) {
     return (
-      <Typography variant="body2" className={classes.note}>
+      <Note>
         No GitOps provenance labels found -- this looks like an ad-hoc server.
-      </Typography>
+      </Note>
     );
   }
 
-  return (
-    <Box className={classes.grid}>
-      {p.managedBy && <DefRow label="Managed by">{p.managedBy}</DefRow>}
-      {(p.helmRelease ?? p.fluxHelmRelease) && (
-        <DefRow label="HelmRelease">
-          <span className={classes.mono}>{releaseId}</span>
-        </DefRow>
-      )}
-      {p.fluxKustomization && (
-        <DefRow label="Flux kustomization">
-          <span className={classes.mono}>{p.fluxKustomization}</span>
-        </DefRow>
-      )}
-    </Box>
-  );
+  const facts: Fact[] = [];
+  if (p.managedBy) {
+    facts.push({ label: 'Managed by', value: p.managedBy });
+  }
+  if (p.helmRelease ?? p.fluxHelmRelease) {
+    facts.push({ label: 'HelmRelease', value: <Mono>{releaseId}</Mono> });
+  }
+  if (p.fluxKustomization) {
+    facts.push({
+      label: 'Flux kustomization',
+      value: <Mono>{p.fluxKustomization}</Mono>,
+    });
+  }
+
+  return <FactList facts={facts} maxWidth={null} />;
 }

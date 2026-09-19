@@ -5,8 +5,12 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
-import { Box, makeStyles } from '@material-ui/core';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import { makeStyles } from '@material-ui/core';
+import {
+  FactList,
+  useProvidePageHeaderActions,
+  type Fact,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
 import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
@@ -15,11 +19,7 @@ import { decodeDexSubject } from '../../lib/dexSubject';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { ServerSignIn, StateBadge, severityTone } from '../shared';
-import {
-  DefRow,
-  HealthDetails,
-  ServerTools,
-} from '../McpServersPage/serverDetail';
+import { HealthDetails, ServerTools } from '../McpServersPage/serverDetail';
 
 /**
  * How often the live runtime list is re-read while the server is still
@@ -45,13 +45,6 @@ const useStyles = makeStyles(theme => ({
   intro: {
     maxWidth: '70ch',
     marginBottom: theme.spacing(3),
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(140px, max-content) 1fr',
-    columnGap: theme.spacing(2),
-    rowGap: theme.spacing(0.75),
-    alignItems: 'baseline',
   },
   code: {
     fontFamily: 'monospace',
@@ -144,6 +137,38 @@ export function NewMcpServerVerifyPage() {
   const failed = severity === 'error';
   const toolsCount = runtime?.toolsCount;
 
+  const connectionFacts: Fact[] = [
+    {
+      label: 'State',
+      value: serverState ? (
+        <StateBadge tone={severityTone(severity)} label={serverState} />
+      ) : (
+        'Waiting for the server to appear…'
+      ),
+    },
+  ];
+  if (runtime?.statusMessage) {
+    connectionFacts.push({ label: 'Status', value: runtime.statusMessage });
+  }
+  if (runtime?.sessionStatus) {
+    connectionFacts.push({ label: 'Session', value: runtime.sessionStatus });
+  }
+  if (toolsCount !== undefined) {
+    connectionFacts.push({ label: 'Tools discovered', value: toolsCount });
+  }
+  if (runtime?.registeredBy) {
+    connectionFacts.push({
+      label: 'Registered by',
+      value: (
+        <span title={runtime.registeredBy}>
+          {runtime.registeredByEmail ??
+            decodeDexSubject(runtime.registeredBy) ??
+            runtime.registeredBy}
+        </span>
+      ),
+    });
+  }
+
   const actions = useMemo(
     () => (
       <Flex gap="2">
@@ -212,36 +237,7 @@ export function NewMcpServerVerifyPage() {
                 <Text as="h3" variant="title-small" weight="bold">
                   Connection status
                 </Text>
-                <Box className={classes.grid}>
-                  <DefRow label="State">
-                    {serverState ? (
-                      <StateBadge
-                        tone={severityTone(severity)}
-                        label={serverState}
-                      />
-                    ) : (
-                      'Waiting for the server to appear…'
-                    )}
-                  </DefRow>
-                  {runtime?.statusMessage && (
-                    <DefRow label="Status">{runtime.statusMessage}</DefRow>
-                  )}
-                  {runtime?.sessionStatus && (
-                    <DefRow label="Session">{runtime.sessionStatus}</DefRow>
-                  )}
-                  {toolsCount !== undefined && (
-                    <DefRow label="Tools discovered">{toolsCount}</DefRow>
-                  )}
-                  {runtime?.registeredBy && (
-                    <DefRow label="Registered by">
-                      <span title={runtime.registeredBy}>
-                        {runtime.registeredByEmail ??
-                          decodeDexSubject(runtime.registeredBy) ??
-                          runtime.registeredBy}
-                      </span>
-                    </DefRow>
-                  )}
-                </Box>
+                <FactList facts={connectionFacts} maxWidth={null} />
                 {!serverState && (
                   <Text variant="body-small" color="secondary">
                     Newly registered servers can take a few seconds to show up

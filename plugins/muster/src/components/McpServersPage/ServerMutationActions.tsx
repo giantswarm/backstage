@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import {
   Box,
-  Button,
+  // The three dialogs below this row are still on MUI -- migrating them is a
+  // rework, not a swap (ConfirmActionDialog's "Done." state has no counterpart
+  // in ui-react's ConfirmDialog), so their buttons stay MUI's for now.
+  Button as MuiButton,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -13,12 +16,17 @@ import {
   makeStyles,
   Theme,
 } from '@material-ui/core';
+import { Button, Flex } from '@backstage/ui';
 import GitHub from '@material-ui/icons/GitHub';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import PlayArrow from '@material-ui/icons/PlayArrow';
 import Stop from '@material-ui/icons/Stop';
 import Replay from '@material-ui/icons/Replay';
+// MUI's Tooltip, not bui's: bui wraps react-aria's TooltipTrigger, and a
+// disabled bui Button renders a native `disabled` button, which fires neither
+// hover nor focus -- so the react-aria tooltip could never open on exactly the
+// buttons whose disabled state it exists to explain.
 import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
 import { musterApiRef } from '../../apis';
@@ -32,6 +40,7 @@ import {
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
+import { GitOpsManagedLabel } from '@giantswarm/backstage-plugin-ui-react';
 import {
   DEACTIVATED_SIGN_IN_GATE,
   ServerAuthActions,
@@ -40,18 +49,10 @@ import {
 
 const useStyles = makeStyles((theme: Theme) => ({
   actions: {
-    display: 'flex',
     flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: theme.spacing(1),
     marginTop: theme.spacing(2),
     paddingTop: theme.spacing(1.5),
     borderTop: `1px solid ${theme.palette.divider}`,
-  },
-  managedNote: {
-    color: theme.palette.text.secondary,
-    flex: 1,
-    minWidth: 200,
   },
   manifest: {
     whiteSpace: 'pre',
@@ -134,10 +135,10 @@ function GitOpsManifestDialog({
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={copy}>Copy manifest</Button>
-        <Button onClick={onClose} color="primary">
+        <MuiButton onClick={copy}>Copy manifest</MuiButton>
+        <MuiButton onClick={onClose} color="primary">
           Close
-        </Button>
+        </MuiButton>
       </DialogActions>
     </Dialog>
   );
@@ -242,9 +243,9 @@ function ConfirmActionDialog({
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose}>{done ? 'Close' : 'Cancel'}</Button>
+        <MuiButton onClick={handleClose}>{done ? 'Close' : 'Cancel'}</MuiButton>
         {!done && (
-          <Button
+          <MuiButton
             onClick={run}
             color="secondary"
             variant="contained"
@@ -252,7 +253,7 @@ function ConfirmActionDialog({
             startIcon={busy ? <CircularProgress size={14} /> : undefined}
           >
             {action?.destructive ? 'Delete' : 'Confirm'}
-          </Button>
+          </MuiButton>
         )}
       </DialogActions>
     </Dialog>
@@ -398,11 +399,11 @@ export function AdHocServerDialog({
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
-        <Button onClick={validate} disabled={busy}>
+        <MuiButton onClick={onClose}>Close</MuiButton>
+        <MuiButton onClick={validate} disabled={busy}>
           Validate
-        </Button>
-        <Button
+        </MuiButton>
+        <MuiButton
           onClick={save}
           color="secondary"
           variant="contained"
@@ -410,7 +411,7 @@ export function AdHocServerDialog({
           startIcon={busy ? <CircularProgress size={14} /> : undefined}
         >
           Save
-        </Button>
+        </MuiButton>
       </DialogActions>
     </Dialog>
   );
@@ -450,9 +451,10 @@ function LifecycleButton({
   const button = (
     <Button
       size="small"
-      startIcon={icon}
-      onClick={onClick}
-      disabled={Boolean(gateReason)}
+      variant="secondary"
+      iconStart={icon}
+      onPress={onClick}
+      isDisabled={Boolean(gateReason)}
     >
       {label}
     </Button>
@@ -528,23 +530,22 @@ export function ServerMutationActions({
 
   if (managed) {
     return (
-      <Box className={classes.actions}>
-        <StateBadge tone="info" label="GitOps-managed (read-only)" />
+      <Flex align="center" gap="2" className={classes.actions}>
+        <GitOpsManagedLabel />
         {authActions}
-        <Typography variant="body2" className={classes.managedNote}>
-          Changes are made by committing a manifest to the GitOps repo.
-        </Typography>
         <Button
           size="small"
-          startIcon={<GitHub />}
-          onClick={() => setGitopsIntent('edit')}
+          variant="secondary"
+          iconStart={<GitHub fontSize="inherit" />}
+          onPress={() => setGitopsIntent('edit')}
         >
           Edit via GitOps
         </Button>
         <Button
           size="small"
-          startIcon={<DeleteOutline />}
-          onClick={() => setGitopsIntent('delete')}
+          variant="secondary"
+          iconStart={<DeleteOutline fontSize="inherit" />}
+          onPress={() => setGitopsIntent('delete')}
         >
           Remove via GitOps
         </Button>
@@ -554,27 +555,29 @@ export function ServerMutationActions({
           intent={gitopsIntent ?? 'edit'}
           onClose={() => setGitopsIntent(null)}
         />
-      </Box>
+      </Flex>
     );
   }
 
   // Manually-added (ad-hoc) server: live CRUD + service lifecycle.
   return (
-    <Box className={classes.actions}>
+    <Flex align="center" gap="2" className={classes.actions}>
       <StateBadge tone="neutral" label="Manually added" />
       {authActions}
       <Button
         size="small"
-        startIcon={<Edit />}
-        onClick={() => setEditOpen(true)}
+        variant="secondary"
+        iconStart={<Edit fontSize="inherit" />}
+        onPress={() => setEditOpen(true)}
       >
         Edit
       </Button>
       {suspended ? (
         <Button
           size="small"
-          startIcon={<PlayArrow />}
-          onClick={() =>
+          variant="secondary"
+          iconStart={<PlayArrow fontSize="inherit" />}
+          onPress={() =>
             setAction({
               label: `Activate ${server.getName()}`,
               tool: 'core_service_start',
@@ -590,8 +593,9 @@ export function ServerMutationActions({
         <>
           <Button
             size="small"
-            startIcon={<Stop />}
-            onClick={() =>
+            variant="secondary"
+            iconStart={<Stop fontSize="inherit" />}
+            onPress={() =>
               setAction({
                 label: `Deactivate ${server.getName()}`,
                 tool: 'core_service_stop',
@@ -605,7 +609,7 @@ export function ServerMutationActions({
           </Button>
           <LifecycleButton
             label="Reconnect"
-            icon={<Replay />}
+            icon={<Replay fontSize="inherit" />}
             gateReason={reconnectGate}
             onClick={() =>
               setAction({
@@ -621,8 +625,10 @@ export function ServerMutationActions({
       )}
       <Button
         size="small"
-        startIcon={<DeleteOutline />}
-        onClick={() =>
+        variant="secondary"
+        destructive
+        iconStart={<DeleteOutline fontSize="inherit" />}
+        onPress={() =>
           setAction({
             label: `Delete ${server.getName()}`,
             tool: 'core_mcpserver_delete',
@@ -645,7 +651,7 @@ export function ServerMutationActions({
         open={action !== undefined}
         onClose={() => setAction(undefined)}
       />
-    </Box>
+    </Flex>
   );
 }
 
@@ -668,27 +674,28 @@ export function AddAdHocServerButton({
   authenticated?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const button = (
-    <Button
-      size="small"
-      startIcon={<Edit />}
-      onClick={() => setOpen(true)}
-      disabled={!authenticated}
-      title="Create a live ad-hoc MCP server"
-    >
-      Add ad-hoc server
-    </Button>
-  );
   return (
     <>
-      {authenticated ? (
-        button
-      ) : (
-        <Tooltip title="Connect to muster (sign in) to add an ad-hoc server.">
-          {/* span wrapper so the tooltip still fires over the disabled button */}
-          <span>{button}</span>
-        </Tooltip>
-      )}
+      <Tooltip
+        title={
+          authenticated
+            ? 'Create a live ad-hoc MCP server'
+            : 'Connect to muster (sign in) to add an ad-hoc server.'
+        }
+      >
+        {/* span wrapper so the tooltip still fires over the disabled button */}
+        <span>
+          <Button
+            size="small"
+            variant="secondary"
+            iconStart={<Edit fontSize="inherit" />}
+            onPress={() => setOpen(true)}
+            isDisabled={!authenticated}
+          >
+            Add ad-hoc server
+          </Button>
+        </span>
+      </Tooltip>
       <AdHocServerDialog
         installation={installation}
         open={open}

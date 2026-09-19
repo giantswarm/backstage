@@ -147,7 +147,7 @@ export function McpServersPage() {
     () => (
       <UiButton
         variant="primary"
-        iconStart={<AddIcon />}
+        iconStart={<AddIcon fontSize="inherit" />}
         onPress={() => newServerLink && navigate(newServerLink())}
       >
         Register server
