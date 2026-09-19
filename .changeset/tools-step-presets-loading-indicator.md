@@ -22,4 +22,4 @@ the progress bar too.
 `Progress` holds the bar back for. It used to render the label immediately, so a
 fetch that resolved in under 250ms flashed a bare line of grey text with no bar
 under it — the opposite of what the delay is for. Also affects the Select skills
-step, the skill picker on Edit agent, and the AI chat thread.
+step and the skill picker on Edit agent, its two other call sites.
