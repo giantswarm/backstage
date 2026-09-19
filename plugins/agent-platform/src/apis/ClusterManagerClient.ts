@@ -9,6 +9,7 @@ import {
   type ClusterManagerTool,
   type CreateNodePoolInput,
   type DeleteNodePoolInput,
+  type RemoveModelCacheInput,
   type ClusterApiStatus,
   type ManagedCluster,
   type ManagedClustersResult,
@@ -123,6 +124,26 @@ export class ClusterManagerClient {
         ...compact(input),
         ...writeArgs(options),
         ...(options.force ? { force: true } : {}),
+      },
+    );
+  }
+
+  /**
+   * `remove_model_cache`: the cluster's model cache claims deleted as the
+   * person — the slice release upgraded to serve without the cache first
+   * where it runs with it on — or, with `claim`, the one named; refused while
+   * a pod mounts a claim to be removed, the refusal naming the models to
+   * unload first (cluster-manager 0.17+, giantswarm/cluster-manager#83).
+   */
+  removeModelCache(
+    input: RemoveModelCacheInput,
+    options: WriteOptions = {},
+  ): Promise<NodePoolWriteResult> {
+    return this.call<NodePoolWriteResult>(
+      CLUSTER_MANAGER_TOOLS.removeModelCache,
+      {
+        ...compact(input),
+        ...writeArgs(options),
       },
     );
   }

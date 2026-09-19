@@ -13,6 +13,7 @@ jest.mock('../GpuNodePools', () => ({
     addButton: undefined,
     dialogs: undefined,
     panel: undefined,
+    cachePanel: undefined,
   }),
 }));
 

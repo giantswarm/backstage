@@ -9,6 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import type {
+  CacheSetting,
   InstanceShape,
   ManagedCluster,
   NodePoolWriteResult,
@@ -114,12 +115,72 @@ type Scenario = {
   placement?: boolean;
   /** The dry run is refused with a structured cache block (the zones named against a claim). */
   cacheRefusal?: boolean;
+  /**
+   * cluster-manager 0.17+: the dry run's cache block prices the claim, and
+   * wc1's slice keeps a cache (`kept`) — the switch locks
+   * (giantswarm/backstage#2493).
+   */
+  pricedCache?: boolean;
+  keptCache?: boolean;
+};
+
+/** The kept claim wc1's slice mounts, as `list_clusters` reads it (cluster-manager 0.17+). */
+const KEPT_CLAIM = {
+  namespace: 'model-serving',
+  name: 'hf-cache',
+  phase: 'Bound',
+  volume: 'pvc-1',
+  zone: 'eu-central-1b',
+  capacity: '100Gi',
+  capacityGiB: 100,
+  tier: { type: 'gp3', iops: 3000, throughputMiBps: 500 },
+  created: '2026-09-18T20:31:04Z',
+  price: {
+    monthlyUSD: 27.37,
+    source: 'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)',
+    asOf: '2026-09-19',
+  },
+  mounted: true,
+};
+
+/** wc1 as a cluster whose slice (cluster-manager's) runs with the cache on. */
+const WC1_KEPT: ManagedCluster = {
+  ...WC1,
+  serving: {
+    status: 'present',
+    provider: 'cluster-manager',
+    readiness: {
+      release: null,
+      children: [],
+      controllers: [],
+      configs: null,
+      backend: {},
+      presets: null,
+      modelsGateway: null,
+      cache: { enabled: true, claim: 'hf-cache' },
+      cacheClaims: [KEPT_CLAIM],
+    },
+  },
+};
+
+/** The dry run's cache block priced from the chart's defaults (0.17+). */
+const PRICED_CACHE = {
+  exists: false,
+  capacity: '100Gi',
+  tier: 'gp3, 500 MiB/s, 3000 IOPS',
+  monthlyPriceUSD: 27.37,
+  priceSource: 'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)',
+  priceAsOf: '2026-09-19',
 };
 
 const ZONES = ['eu-central-1a', 'eu-central-1b', 'eu-central-1c'];
 
 /** cluster-manager's word on the zones and the cache, as the dry run echoes the choice. */
-function placementAnswer(args: Record<string, unknown>) {
+function placementAnswer(args: Record<string, unknown>): {
+  zones?: string[];
+  zonesNote: string;
+  cache: CacheSetting;
+} {
   const zones = args.zones as string[] | undefined;
   const cache = args.cache !== false;
   return {
@@ -338,7 +399,7 @@ function makeMusterApi(scenario: Scenario = {}) {
           return {
             clusters: scenario.placement
               ? [
-                  { ...WC1, zones: ZONES },
+                  { ...(scenario.keptCache ? WC1_KEPT : WC1), zones: ZONES },
                   { ...WC1, name: 'wc2', zones: ['eu-central-1a'] },
                 ]
               : [WC1],
@@ -353,7 +414,11 @@ function makeMusterApi(scenario: Scenario = {}) {
               details: [JSON.stringify({ refused: CACHE_REFUSAL.refused })],
             });
           }
-          const placement = scenario.placement ? placementAnswer(args) : {};
+          const placement: Partial<ReturnType<typeof placementAnswer>> =
+            scenario.placement ? placementAnswer(args) : {};
+          if (scenario.pricedCache && placement.cache?.enabled) {
+            placement.cache = { ...placement.cache, ...PRICED_CACHE };
+          }
           if (args.dryRun) {
             return {
               ...withFit(args.sizes as string[] | undefined, scenario),
@@ -661,11 +726,14 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
       'Let the platform choose',
     );
     expect(cacheSwitch()).toBeChecked();
-    expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
-      'about $27 a month',
-    );
     // The default choice: no zones argument, the cache on, explicitly.
     await waitFor(() => expect(dryRunsOf(callTool).length).toBeGreaterThan(0));
+    // The cost line is the dry run's: this cluster-manager prices nothing, and the line says so rather than inventing a figure.
+    await waitFor(() =>
+      expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
+        'Creates a cache claim: its price is not known, billed while the claim exists — after this pool is removed too — until the cache is removed on the GPU capacity page.',
+      ),
+    );
     expect(dryRunsOf(callTool)[0][1]).not.toHaveProperty('zones');
     expect(dryRunsOf(callTool)[0][1]).toMatchObject({ cache: true });
 
@@ -1088,5 +1156,59 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
     expect(first[1]).toMatchObject({ sizes: ['xlarge', '2xlarge'] });
     expect(onDeployed).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('partial-write')).not.toBeInTheDocument();
+  });
+});
+
+describe('AddGpuNodePoolDialog — the model cache’s standing cost (giantswarm/backstage#2493)', () => {
+  it('reads the cache line from the dry run: the claim the slice would create, its price and source, and that it is billed until the cache is removed', async () => {
+    const user = setupUser();
+    await renderDialog({ placement: true, pricedCache: true });
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker');
+    const consequence = await screen.findByTestId('cache-consequence');
+    await waitFor(() =>
+      expect(consequence).toHaveTextContent(
+        'Creates a cache claim (100Gi gp3, 500 MiB/s, 3000 IOPS): $27.37/month at list prices, billed while the claim exists — after this pool is removed too — until the cache is removed on the GPU capacity page.',
+      ),
+    );
+    expect(screen.getByTestId('cache-price-source')).toHaveTextContent(
+      'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1), as of 2026-09-19',
+    );
+    // Off: nothing stands, and no claim exists to name.
+    await user.click(
+      screen.getByRole('switch', { name: 'Keep a model cache' }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
+        /^Nothing stands: the weights land on the node's disk at every start, and a cold start costs about 90 s more\.$/,
+      ),
+    );
+    expect(screen.queryByTestId('cache-price-source')).not.toBeInTheDocument();
+  });
+
+  it('locks the switch on where the cluster’s slice keeps the cache, names the kept claim with its cost, and sends the cache on', async () => {
+    const user = setupUser();
+    const { callTool } = await renderDialog({
+      placement: true,
+      keptCache: true,
+    });
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker');
+    const cache = screen.getByRole('switch', { name: 'Keep a model cache' });
+    expect(cache).toBeChecked();
+    expect(cache).toBeDisabled();
+    const kept = screen.getByTestId('cache-kept');
+    expect(kept).toHaveTextContent(
+      'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off. To serve without one, remove the cache under Model cache on the GPU capacity page.',
+    );
+    expect(kept).toHaveTextContent(
+      'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · since',
+    );
+    expect(kept).toHaveTextContent('Bound in eu-central-1b');
+    expect(screen.queryByTestId('cache-consequence')).not.toBeInTheDocument();
+    await waitFor(() => expect(dryRunsOf(callTool).length).toBeGreaterThan(0));
+    for (const call of dryRunsOf(callTool)) {
+      expect(call[1]).toMatchObject({ cache: true });
+    }
   });
 });

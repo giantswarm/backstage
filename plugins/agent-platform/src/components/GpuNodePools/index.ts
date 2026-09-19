@@ -24,4 +24,16 @@ export {
   RemoveGpuNodePoolDialog,
   servedModelsOnCluster,
 } from './RemoveGpuNodePoolDialog';
+export {
+  ModelCachePanel,
+  NO_MODEL_CACHE,
+  describeTotal,
+  describeUse,
+  type ModelCachePanelProps,
+} from './ModelCachePanel';
+export {
+  RemoveModelCacheDialog,
+  ACKNOWLEDGE_LOSS,
+  type RemoveModelCacheDialogProps,
+} from './RemoveModelCacheDialog';
 export { openedPoolOf, useGpuNodePoolControls } from './GpuNodePoolControls';

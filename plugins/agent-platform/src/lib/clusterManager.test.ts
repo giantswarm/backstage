@@ -13,6 +13,14 @@ import {
   parseRefusal,
   poolNameOf,
   presetLabel,
+  cacheKeptByCluster,
+  describeCacheSetting,
+  describeClaimSize,
+  describeMonthlyPrice,
+  describePriceSource,
+  mountedClaimOf,
+  offersTool,
+  type CacheClaim,
 } from './clusterManager';
 
 describe('clusterManagerToolName', () => {
@@ -294,5 +302,149 @@ describe('prices and preset names (giantswarm/cluster-manager#44)', () => {
     expect(presetLabel({ preset: 'qwen3-8b-fp8', displayName: '' })).toBe(
       'qwen3-8b-fp8',
     );
+  });
+});
+
+describe('the model cache’s standing cost (giantswarm/backstage#2493)', () => {
+  const claim: CacheClaim = {
+    namespace: 'model-serving',
+    name: 'hf-cache',
+    phase: 'Bound',
+    volume: 'pvc-1',
+    zone: 'eu-central-1b',
+    capacity: '100Gi',
+    capacityGiB: 100,
+    tier: { type: 'gp3', iops: 3000, throughputMiBps: 500 },
+    created: '2026-09-18T20:31:04Z',
+    price: {
+      monthlyUSD: 27.37,
+      source: 'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)',
+      asOf: '2026-09-19',
+    },
+    mounted: true,
+  };
+
+  it('parses the cacheOn refusal with the priced claim', () => {
+    const refusal = parseRefusal([
+      JSON.stringify({
+        refused: {
+          nodes: [],
+          models: [],
+          hint: 'Leave cache on, or remove the cache with remove_model_cache, and re-run.',
+          cacheOn: {
+            claim,
+            claimName: 'hf-cache',
+            remedies: [
+              'leave cache on',
+              'remove the cache with remove_model_cache',
+            ],
+          },
+        },
+      }),
+    ]);
+    expect(refusal?.cacheOn?.claimName).toBe('hf-cache');
+    expect(refusal?.cacheOn?.remedies).toHaveLength(2);
+    expect(refusal?.cacheOn?.claim).toMatchObject({
+      name: 'hf-cache',
+      capacity: '100Gi',
+      capacityGiB: 100,
+      tier: { type: 'gp3', iops: 3000, throughputMiBps: 500 },
+      created: '2026-09-18T20:31:04Z',
+      price: { monthlyUSD: 27.37 },
+      mounted: true,
+    });
+  });
+
+  it('words a claim’s size and price, and where the price came from', () => {
+    expect(describeClaimSize(claim)).toBe('100 GiB gp3 at 500 MiB/s');
+    expect(describeClaimSize({ capacity: '100Gi' })).toBe('100Gi');
+    expect(describeClaimSize({})).toBeUndefined();
+    expect(describeMonthlyPrice(claim.price)).toBe('$27.37/month');
+    expect(describeMonthlyPrice(undefined)).toBeUndefined();
+    expect(describePriceSource(claim)).toBe(
+      'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1), as of 2026-09-19',
+    );
+    expect(
+      describePriceSource({ priceNote: 'no price: the tier is not known' }),
+    ).toBe('no price: the tier is not known');
+    expect(
+      describeCacheSetting({
+        enabled: true,
+        capacity: '100Gi',
+        tier: 'gp3, 500 MiB/s, 3000 IOPS',
+        monthlyPriceUSD: 27.37,
+        priceSource: 'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)',
+        priceAsOf: '2026-09-19',
+        note: '',
+      }),
+    ).toEqual({
+      size: '100Gi gp3, 500 MiB/s, 3000 IOPS',
+      price: '$27.37/month',
+      source:
+        'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1), as of 2026-09-19',
+    });
+    expect(
+      describeCacheSetting({ enabled: true, priceNote: 'no price', note: '' }),
+    ).toEqual({ size: undefined, price: undefined, source: 'no price' });
+  });
+
+  it('tells a cluster that keeps a cache from one that does not, and names the mounted claim', () => {
+    const readiness = {
+      release: null,
+      children: [],
+      controllers: [],
+      configs: null,
+      backend: {},
+      presets: null,
+      modelsGateway: null,
+    };
+    const kept = {
+      serving: {
+        status: 'present' as const,
+        provider: 'cluster-manager' as const,
+        readiness: {
+          ...readiness,
+          cache: { enabled: true, claim: 'hf-cache' },
+          cacheClaims: [claim],
+        },
+      },
+    };
+    expect(cacheKeptByCluster(kept)).toBe(true);
+    expect(mountedClaimOf(kept)?.name).toBe('hf-cache');
+    expect(
+      cacheKeptByCluster({
+        serving: {
+          status: 'present',
+          provider: 'cluster-manager',
+          readiness: {
+            ...readiness,
+            cache: { enabled: false },
+            cacheClaims: [claim],
+          },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      cacheKeptByCluster({
+        serving: {
+          status: 'present',
+          provider: 'chart',
+          readiness: {
+            ...readiness,
+            cache: { enabled: true, claim: 'hf-cache' },
+          },
+        },
+      }),
+    ).toBe(false);
+    expect(cacheKeptByCluster(undefined)).toBe(false);
+    expect(mountedClaimOf({ serving: { status: 'absent' } })).toBeUndefined();
+  });
+
+  it('offersTool reads get_info.tools', () => {
+    expect(
+      offersTool({ tools: ['remove_model_cache'] }, 'remove_model_cache'),
+    ).toBe(true);
+    expect(offersTool({ tools: [] }, 'remove_model_cache')).toBe(false);
+    expect(offersTool(undefined, 'remove_model_cache')).toBe(false);
   });
 });

@@ -25,6 +25,7 @@ import {
   CLUSTER_MANAGER_SERVER,
   DEFAULT_ACCELERATORS,
   ZONES_ARGUMENT,
+  cacheKeptByCluster,
   deployBlocker,
   describeComponent,
   describeReleaseGroup,
@@ -221,6 +222,14 @@ export function AddGpuNodePoolDialog({
     () => clusters.find(candidate => candidate.name === clusterName),
     [clusters, clusterName],
   );
+  /**
+   * A cluster that keeps a model cache: every pool serves from it and
+   * cluster-manager refuses `cache: false`, so the switch stands on and the
+   * dry run carries the cache on whatever an earlier cluster's choice was
+   * (giantswarm/backstage#2493).
+   */
+  const cacheKept = cacheKeptByCluster(cluster);
+  const cacheChoice = cacheKept || cache;
 
   /**
    * The sizing input: as soon as a cluster is picked, with the pool's name
@@ -242,9 +251,18 @@ export function AddGpuNodePoolDialog({
       // Only what the installation's cluster-manager takes: zones when
       // named (none is the platform's choice), the cache as chosen.
       ...(offers.zones && zones.length > 0 ? { zones } : {}),
-      ...(offers.cache ? { cache } : {}),
+      ...(offers.cache ? { cache: cacheChoice } : {}),
     };
-  }, [cluster, name, accelerator, maxGpus, teleport, offers, zones, cache]);
+  }, [
+    cluster,
+    name,
+    accelerator,
+    maxGpus,
+    teleport,
+    offers,
+    zones,
+    cacheChoice,
+  ]);
 
   /** The form's input as Deploy and Review take it: the pool named. */
   const formInput: CreateNodePoolInput | undefined = useMemo(
@@ -540,9 +558,10 @@ export function AddGpuNodePoolDialog({
                     offers={offers}
                     zones={zones}
                     onZonesChange={setZones}
-                    cache={cache}
+                    cache={cacheChoice}
                     onCacheChange={setCache}
                     isBusy={isBusy}
+                    review={review}
                   />
                 )}
                 <NumberField
@@ -600,7 +619,7 @@ export function AddGpuNodePoolDialog({
                 <PoolPlacementReview
                   offers={offers}
                   zones={zones}
-                  cache={cache}
+                  cache={cacheChoice}
                   review={review}
                 />
                 {groups.map(group => (

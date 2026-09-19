@@ -6,12 +6,17 @@ import {
   useClusterManagerAvailability,
   useClusterManagerInfo,
   useGpuNodePools,
+  useInstallationsOffering,
   useNodePoolWrite,
   type GpuNodePoolRow,
+  type ModelCacheRow,
 } from '../../hooks/useClusterManager';
 import { useServeIntentRunner } from '../../hooks/useServeIntentRunner';
 import { useServeIntents } from '../../hooks/useServeIntents';
-import type { NodePoolWriteResult } from '../../lib/clusterManager';
+import {
+  CLUSTER_MANAGER_TOOLS,
+  type NodePoolWriteResult,
+} from '../../lib/clusterManager';
 import {
   poolIdOf,
   servedModelOf,
@@ -20,8 +25,10 @@ import {
 import type { ServedModel } from '../../lib/serving';
 import { AddGpuNodePoolDialog } from './AddGpuNodePoolDialog';
 import { GpuNodePoolsPanel } from './GpuNodePoolsPanel';
+import { ModelCachePanel } from './ModelCachePanel';
 import type { OpenedPool, PoolServeState } from './PoolLifecyclePanel';
 import { RemoveGpuNodePoolDialog } from './RemoveGpuNodePoolDialog';
+import { RemoveModelCacheDialog } from './RemoveModelCacheDialog';
 
 export type GpuNodePoolControls = {
   /** Some reachable installation's muster lists cluster-manager. */
@@ -33,6 +40,12 @@ export type GpuNodePoolControls = {
   dialogs: JSX.Element | undefined;
   /** The pools list with **Remove pool**; null where cluster-manager is absent. */
   panel: JSX.Element | undefined;
+  /**
+   * The Model cache card: the claims of every cluster cluster-manager lists
+   * with their size, price and since when, and **Remove cache**
+   * (giantswarm/backstage#2493); null where cluster-manager is absent.
+   */
+  cachePanel: JSX.Element | undefined;
 };
 
 /** The row id `useGpuNodePools` gives the pool Deploy just applied. */
@@ -67,9 +80,17 @@ export function useGpuNodePoolControls(
   const pools = useGpuNodePools(availability.available);
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState<GpuNodePoolRow>();
+  const [removingCache, setRemovingCache] = useState<ModelCacheRow>();
   const [opened, setOpened] = useState<OpenedPool>();
   const write = useNodePoolWrite(removing?.installation);
+  const cacheWrite = useNodePoolWrite(removingCache?.installation);
   const { info } = useClusterManagerInfo(removing?.installation);
+  // Remove cache is offered where the installation's cluster-manager has the
+  // tool; an older one shows its claims read-only.
+  const cacheRemovable = useInstallationsOffering(
+    availability.available,
+    CLUSTER_MANAGER_TOOLS.removeModelCache,
+  );
   const intents = useServeIntents();
   const settledInstallations = useMemo(
     () =>
@@ -89,6 +110,10 @@ export function useGpuNodePoolControls(
   });
 
   const onRemove = useCallback((row: GpuNodePoolRow) => setRemoving(row), []);
+  const onRemoveCache = useCallback(
+    (row: ModelCacheRow) => setRemovingCache(row),
+    [],
+  );
   // Deploy closes into the lifecycle panel of the pool it applied; the preset
   // it chose to serve becomes the pool's intent (a Deploy without one clears
   // an older pool's, so a re-created pool never inherits a choice).
@@ -193,6 +218,17 @@ export function useGpuNodePoolControls(
             }
           }}
         />
+        <RemoveModelCacheDialog
+          row={removingCache}
+          isOpen={Boolean(removingCache)}
+          onOpenChange={open => {
+            if (!open) {
+              setRemovingCache(undefined);
+            }
+          }}
+          write={cacheWrite}
+          servedModels={servedModels}
+        />
       </>
     ) : undefined,
     panel: available ? (
@@ -206,6 +242,14 @@ export function useGpuNodePoolControls(
         serve={serve}
         onToggleLifecycle={onToggleLifecycle}
         onCloseLifecycle={onCloseLifecycle}
+      />
+    ) : undefined,
+    cachePanel: available ? (
+      <ModelCachePanel
+        rows={pools.caches}
+        isLoading={pools.isLoading}
+        removable={cacheRemovable}
+        onRemove={onRemoveCache}
       />
     ) : undefined,
   };
