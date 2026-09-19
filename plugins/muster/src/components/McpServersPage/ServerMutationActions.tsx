@@ -536,7 +536,7 @@ export function ServerMutationActions({
         <Button
           size="small"
           variant="secondary"
-          iconStart={<GitHub />}
+          iconStart={<GitHub fontSize="inherit" />}
           onPress={() => setGitopsIntent('edit')}
         >
           Edit via GitOps
@@ -544,7 +544,7 @@ export function ServerMutationActions({
         <Button
           size="small"
           variant="secondary"
-          iconStart={<DeleteOutline />}
+          iconStart={<DeleteOutline fontSize="inherit" />}
           onPress={() => setGitopsIntent('delete')}
         >
           Remove via GitOps
@@ -567,7 +567,7 @@ export function ServerMutationActions({
       <Button
         size="small"
         variant="secondary"
-        iconStart={<Edit />}
+        iconStart={<Edit fontSize="inherit" />}
         onPress={() => setEditOpen(true)}
       >
         Edit
@@ -576,7 +576,7 @@ export function ServerMutationActions({
         <Button
           size="small"
           variant="secondary"
-          iconStart={<PlayArrow />}
+          iconStart={<PlayArrow fontSize="inherit" />}
           onPress={() =>
             setAction({
               label: `Activate ${server.getName()}`,
@@ -594,7 +594,7 @@ export function ServerMutationActions({
           <Button
             size="small"
             variant="secondary"
-            iconStart={<Stop />}
+            iconStart={<Stop fontSize="inherit" />}
             onPress={() =>
               setAction({
                 label: `Deactivate ${server.getName()}`,
@@ -609,7 +609,7 @@ export function ServerMutationActions({
           </Button>
           <LifecycleButton
             label="Reconnect"
-            icon={<Replay />}
+            icon={<Replay fontSize="inherit" />}
             gateReason={reconnectGate}
             onClick={() =>
               setAction({
@@ -627,7 +627,7 @@ export function ServerMutationActions({
         size="small"
         variant="secondary"
         destructive
-        iconStart={<DeleteOutline />}
+        iconStart={<DeleteOutline fontSize="inherit" />}
         onPress={() =>
           setAction({
             label: `Delete ${server.getName()}`,
@@ -688,7 +688,7 @@ export function AddAdHocServerButton({
           <Button
             size="small"
             variant="secondary"
-            iconStart={<Edit />}
+            iconStart={<Edit fontSize="inherit" />}
             onPress={() => setOpen(true)}
             isDisabled={!authenticated}
           >

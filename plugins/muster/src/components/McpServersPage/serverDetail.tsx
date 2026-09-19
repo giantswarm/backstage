@@ -46,8 +46,18 @@ const useStyles = makeStyles((theme: Theme) => ({
     },
   },
   // A tool tag is already a pill: the underline only crowds the rows.
+  //
+  // The pill is also the hit target the reader sees -- bui highlights it and
+  // shows a pointer on hover -- so the anchor has to fill it. Left as the
+  // anchor's own width, the tag's 8px padding and the rest of its 26px height
+  // look clickable and are not.
   tagLink: {
     textDecoration: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    margin: '0 calc(-1 * var(--bui-space-2))',
+    padding: '0 var(--bui-space-2)',
   },
   capabilityList: {
     display: 'flex',
@@ -315,7 +325,7 @@ export function HealthDetails({ server }: { server: MCPServer }) {
       <FactList facts={facts} maxWidth={null} />
       {lastError && (
         <Box mt="2">
-          <Text variant="body-x-small" color="secondary">
+          <Text variant="body-small" color="secondary">
             Last error
           </Text>
           <pre className={classes.errorPre}>{lastError}</pre>
@@ -436,7 +446,7 @@ export function RuntimeState({ server }: { server: MCPServer }) {
   return (
     <Box>
       {staleSessionNote && (
-        <Text variant="body-x-small" color="secondary">
+        <Text variant="body-small" color="secondary">
           {DEACTIVATED_LABEL} — the Session, Tools, Resources and Prompts rows
           are your session's last connection to this server, not a working
           server.
@@ -639,7 +649,7 @@ export function ServerResources({ server }: { server: MCPServer }) {
             <Mono>{resource.uri}</Mono>
             {resource.name ? ` — ${resource.name}` : ''}
             {resource.description && (
-              <Text as="p" variant="body-x-small" color="secondary">
+              <Text as="p" variant="body-small" color="secondary">
                 {resource.description}
               </Text>
             )}
@@ -702,7 +712,7 @@ export function ServerPrompts({ server }: { server: MCPServer }) {
                 : prompt.name}
             </Mono>
             {prompt.description && (
-              <Text as="p" variant="body-x-small" color="secondary">
+              <Text as="p" variant="body-small" color="secondary">
                 {prompt.description}
               </Text>
             )}

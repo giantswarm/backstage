@@ -213,7 +213,7 @@ export function StandardServerDisclosure({
           ))}
         </Flex>
         <Text
-          variant="body-x-small"
+          variant="body-small"
           color="secondary"
           className={classes.coverageNote}
         >
@@ -248,7 +248,7 @@ export function StandardServerDisclosure({
 
       <DetailBlock title="Configuration">
         <ServerConfig server={representative} />
-        <Text variant="body-x-small" color="secondary">
+        <Text variant="body-small" color="secondary">
           {qualified
             ? `Shared across the fleet; shown for ${repMc}.`
             : `Federated across the fleet; no connected representative on this installation — values shown are from ${repMc} and may differ per cluster.`}
@@ -257,7 +257,7 @@ export function StandardServerDisclosure({
 
       <DetailBlock title="Authentication / token chain">
         <AuthChain server={representative} />
-        <Text variant="body-x-small" color="secondary">
+        <Text variant="body-small" color="secondary">
           Shown for {repMc}; the auth/token chain differs per cluster (e.g.
           forward-token vs token-exchange/OBO).
         </Text>
