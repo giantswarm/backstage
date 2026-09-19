@@ -57,7 +57,6 @@ export const CREATE_NODE_POOL_SCHEMA = {
       },
       sizes: { type: 'array', items: { type: 'string' } },
       maxGpus: { type: 'number' },
-      teleport: { type: 'boolean' },
       prewarm: { type: 'boolean' },
       zones: { type: 'array', items: { type: 'string' } },
       cache: { type: 'boolean' },

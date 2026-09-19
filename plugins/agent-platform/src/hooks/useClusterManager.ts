@@ -21,6 +21,7 @@ import {
   type NodePool,
   type NodePoolWriteResult,
   type WriteMode,
+  type CreateNodePoolSchema,
 } from '../lib/clusterManager';
 import { gpuNodePoolsRefetchInterval } from '../lib/poolLifecycle';
 import {
@@ -106,21 +107,29 @@ export function useManagedClusters(installation: string | undefined) {
   };
 }
 
+export type CreateNodePoolSchemaState = {
+  schema: CreateNodePoolSchema | undefined;
+  /** True while the schema is read: the form keeps the sections it declares in place meanwhile. */
+  isLoading: boolean;
+};
+
 /**
  * The create tool's schema for the create dialog: the curated accelerators
  * and the arguments this installation's cluster-manager takes; `undefined`
- * while it is read.
+ * while it is read, and `isLoading` says so.
  */
-export function useCreateNodePoolSchema(installation: string | undefined) {
+export function useCreateNodePoolSchema(
+  installation: string | undefined,
+): CreateNodePoolSchemaState {
   const client = useClusterManagerClient(installation);
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: musterCreateNodePoolSchemaQueryKey(installation ?? ''),
     enabled: Boolean(client),
     queryFn: () => client!.createNodePoolSchema(),
     staleTime: 5 * 60_000,
     retry: false,
   });
-  return data;
+  return { schema: data, isLoading: Boolean(client) && isLoading };
 }
 
 /** One GPU node pool cluster-manager owns, as a row of the pools list. */

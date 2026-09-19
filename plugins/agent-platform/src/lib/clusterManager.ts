@@ -535,11 +535,10 @@ export type CreateNodePoolInput = {
   accelerator?: string;
   sizes?: string[];
   maxGpus?: number;
-  teleport?: boolean;
   chartVersion?: string;
-  /** The zones the nodes may launch in, any combination of the cluster's; none: the platform chooses. */
+  /** The zones the nodes may launch in, any combination of the cluster's — every zone by default (the form's choice travels as such). */
   zones?: string[];
-  /** Whether the pool's serving slice keeps a model cache claim (the tool's default: on). */
+  /** Whether the pool's serving slice keeps a model cache claim: off until asked for (the form always says). */
   cache?: boolean;
 };
 
@@ -1123,11 +1122,6 @@ export function sizeThatWouldHost(
   text: string | undefined,
 ): string | undefined {
   return text?.match(/ — (\S+) \([^)]*\) would host it/)?.[1];
-}
-
-/** Whether a warning line is about the preset (`serving preset <name> fits no size …`). */
-export function isWarningFor(warning: string, preset: string): boolean {
-  return warning.startsWith(`serving preset ${preset} `);
 }
 
 /**
