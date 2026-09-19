@@ -125,9 +125,9 @@ export function isServableDownload(row: ServedModel): boolean {
 /**
  * Client-side sorting with the row id as the stable tiebreaker (same
  * reasoning as ModelsTable). Sorts within a group — every group is its own
- * table. Status sorts in {@link SERVED_MODEL_READINESS_ORDER} — the models
- * that answer, then the ones that need attention, then the inventory nothing
- * runs — which is also the order a group's table opens in.
+ * table. Status sorts in {@link SERVED_MODEL_READINESS_ORDER} — the running
+ * models, then the ones that need attention, then the ones not running —
+ * which is also the order a group's table opens in.
  */
 export function sortServedModelsBy(
   rows: ServedModelRow[],
@@ -968,8 +968,8 @@ export type ServedModelsTableProps = {
  * ({@link groupServedModelRows}): one header per group with what its rows
  * share — backend, runtime version, the endpoint they answer on — and one
  * table under it whose columns follow those rows ({@link columnsForRows}) and
- * whose rows open with the models that answer, then the ones that need
- * attention, then the inventory nothing runs ({@link sortServedModelsBy}). A
+ * whose rows open with the running models, then the ones that need
+ * attention, then the ones not running ({@link sortServedModelsBy}). A
  * backend that schedules onto nodes gets Node and GPUs, one whose weights
  * come from somewhere other than the served name gets Model, one that
  * reports features gets Features; an Ollama installation next to a KServe

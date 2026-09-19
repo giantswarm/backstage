@@ -663,7 +663,7 @@ describe('ServedModelsTable', () => {
     expect(screen.getAllByText('No model config')).toHaveLength(2);
   });
 
-  it('lists the models that answer first, then the ones that need attention, then the available ones', async () => {
+  it('lists the running models first, then the ones that need attention, then the available ones', async () => {
     // Handed over in the reverse order, on one installation and backend.
     await renderTable(
       <ServedModelsTable
@@ -998,7 +998,7 @@ describe('ServedModelsTable', () => {
 });
 
 describe('sortServedModelsBy', () => {
-  it('sorts Status by what answers, what needs attention and what is not running, other columns by value, with a stable tiebreaker', () => {
+  it('sorts Status by what runs, what needs attention and what is not running, other columns by value, with a stable tiebreaker', () => {
     const byReadiness = sortServedModelsBy(rows, {
       column: 'readiness',
       direction: 'ascending',

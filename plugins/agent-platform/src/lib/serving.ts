@@ -187,23 +187,24 @@ export const SERVED_MODEL_READINESS: Record<
 
 /**
  * The order the Serving page lists models in — what a Status column sorted
- * ascending means. What answers requests first: `ready`, then `idle` (loaded
- * by the first request). Then what needs attention: `notServing` and
- * `notReady`, a `pending` rollout, a model being stopped. Then the inventory
- * nothing runs yet: `downloading`, `available`. A person opening the page
- * reads what works, then what to fix, then what could be served; alphabetical
- * order on the words would be meaningless.
+ * ascending means. What runs first: `ready`. Then what needs attention:
+ * `notServing` and `notReady`, a `pending` rollout, a model being stopped.
+ * Then what is not running: `idle` (an agent on it still works — the first
+ * request loads it), `downloading`, `available`. A person opening the page
+ * reads what works, then what to fix, then what could be served, and the
+ * models needing attention are never pushed down by a host's many idle ones;
+ * alphabetical order on the words would be meaningless.
  */
 export const SERVED_MODEL_READINESS_ORDER: Record<
   ServedModelReadiness,
   number
 > = {
   ready: 0,
-  idle: 1,
-  notServing: 2,
-  notReady: 3,
-  pending: 4,
-  terminating: 5,
+  notServing: 1,
+  notReady: 2,
+  pending: 3,
+  terminating: 4,
+  idle: 5,
   downloading: 6,
   available: 7,
 };

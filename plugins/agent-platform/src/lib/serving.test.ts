@@ -843,11 +843,11 @@ describe('SERVED_MODEL_READINESS', () => {
     );
     expect(sorted).toEqual([
       'ready',
-      'idle',
       'notServing',
       'notReady',
       'pending',
       'terminating',
+      'idle',
       'downloading',
       'available',
     ]);
