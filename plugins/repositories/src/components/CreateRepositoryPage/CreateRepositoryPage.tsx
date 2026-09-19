@@ -5,12 +5,7 @@ import { Button, Flex, Text } from '@backstage/ui';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import useDebounce from 'react-use/esm/useDebounce';
-import {
-  LIST_LIMIT,
-  ListFilters,
-  Problem,
-  repositoriesApiRef,
-} from '../../apis';
+import { Problem, repositoriesApiRef } from '../../apis';
 import {
   DeclarationForm,
   EMPTY,
@@ -18,10 +13,10 @@ import {
   isComplete,
   toInput,
 } from '../../lib/declaration';
-import { callerTeams, teamOptions } from '../../lib/scope';
 import { REFUSED_TITLE } from '../actions/ActionDialog';
 import { ProblemFix } from '../actions/PlanView';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
+import { useTeamOptions } from '../useTeamOptions';
 import { rootRouteRef } from '../../routes';
 import { CI_GENERATE_LABEL, DeclarationFields } from './DeclarationFields';
 import { DryRunPanel } from './DryRunPanel';
@@ -31,16 +26,6 @@ import { useRepositoryWatch } from './useRepositoryWatch';
 
 /** How long the form waits after the last change before it asks the manager. */
 export const DRY_RUN_DEBOUNCE_MS = 600;
-
-/** The whole inventory, for the teams a declaration can be filed for. */
-const INVENTORY: ListFilters = { scope: 'all', limit: LIST_LIMIT };
-
-/**
- * The caller's repositories: the manager reads the person's teams on GitHub
- * for this scope, so their teams are the rows' teams -- the same listing the
- * Repositories page opens on, so it is answered from the cache there.
- */
-const MINE: ListFilters = { scope: 'mine', limit: LIST_LIMIT };
 
 /**
  * Create repository: the declaration as a form -- the team (a choice, the
@@ -66,33 +51,14 @@ export function CreateRepositoryPage() {
   const [settled, setSettled] = useState<DeclarationForm>(EMPTY);
   useDebounce(() => setSettled(form), DRY_RUN_DEBOUNCE_MS, [form]);
 
-  const info = useQuery({
-    queryKey: ['repositories', 'info'],
-    queryFn: () => api.getInfo(),
-  });
-  const inventory = useQuery({
-    queryKey: ['repositories', 'list', INVENTORY],
-    queryFn: () => api.listRepositories(INVENTORY),
-    enabled: !info.isLoading,
-  });
-  const mine = useQuery({
-    queryKey: ['repositories', 'list', MINE],
-    queryFn: () => api.listRepositories(MINE),
-    enabled: !info.isLoading,
-  });
-  const own = useMemo(
-    () => callerTeams(info.data, mine.data?.repositories ?? []),
-    [info.data, mine.data],
-  );
-  const teams = useMemo(
-    () =>
-      teamOptions(
-        own,
-        (inventory.data?.repositories ?? []).map(row => row.team ?? ''),
-        form.team,
-      ),
-    [own, inventory.data, form.team],
-  );
+  // The teams the form offers, the person's own first; the one the form
+  // holds is kept among them.
+  const {
+    own,
+    teams,
+    loading: teamsLoading,
+    error: teamsError,
+  } = useTeamOptions(form.team);
   // The form opens on the person's team; the manager decides membership.
   useEffect(() => {
     const [team] = own;
@@ -168,11 +134,11 @@ export function CreateRepositoryPage() {
         the plan exactly as the manager would carry them out, as you fill it in.
       </Text>
 
-      {info.error && (
+      {teamsError && (
         <Box mt={2}>
           <RepositoriesErrorAlert
             title="The repository manager could not be reached"
-            error={info.error as Error}
+            error={teamsError}
           />
         </Box>
       )}
@@ -184,12 +150,7 @@ export function CreateRepositoryPage() {
               <DeclarationFields
                 form={form}
                 onChange={setForm}
-                subject={{
-                  kind: 'new',
-                  teams,
-                  teamsLoading:
-                    info.isLoading || mine.isLoading || inventory.isLoading,
-                }}
+                subject={{ kind: 'new', teams, teamsLoading }}
                 validation={validation}
                 checking={checking}
                 isDisabled={!!created}

@@ -89,8 +89,10 @@ commit` -- the repository and one scaffold commit as the person, then the
   with the declaration behind _Adjust_, the opt-in to alignment (`align`),
   the reason -- opened on the entry as it stands, the team and the name
   fixed; the entry goes whole, the fields the form does not carry kept as
-  they are and named on the form), _Transfer_ (`transfer_repository`, the
-  receiving team approves, the giving team is told), _Deprecate_ and
+  they are and named on the form), _Transfer_ (`transfer_repository`: the
+  receiving team is a choice -- the teams the Create form offers, the
+  person's own first, less the giving team; its member approves, the giving
+  team is told), _Deprecate_ and
   _Archive_ (`set_lifecycle`, the team's review asked in its channel),
   _Align now_ (`align_repository`: one dialog. A declared repository has
   nothing to fill in, so the manager's dry run starts as the dialog opens

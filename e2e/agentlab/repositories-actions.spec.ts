@@ -553,6 +553,51 @@ test.describe('repositories: actions', () => {
     await expect(dialog).toBeHidden();
   });
 
+  test('Transfer names who gives and who takes; the receiving team is a choice of the teams without the giving one, and Cancel writes nothing', async ({
+    admin,
+  }) => {
+    const { name, record } = await expandDeclared(admin);
+    await record.getByRole('button', { name: 'Transfer' }).click();
+    const dialog = admin.getByRole('form', {
+      name: new RegExp(`^Transfer ${name}`),
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      /team-\S+ gives giantswarm\/\S+; the team chosen below takes it\./,
+    );
+    await expect(dialog).toContainText(
+      "receiving team's channel and its member approves",
+    );
+    const [, giving] =
+      /(team-\S+) gives giantswarm\//.exec(await dialog.innerText()) ?? [];
+    expect(giving).toBeTruthy();
+
+    // The receiving team is a choice, not typed: the teams the manager
+    // knows -- the person's own first, labelled -- less the giving team.
+    const receiving = dialog.getByRole('button', { name: /Receiving team$/ });
+    await expect(receiving).toHaveText(/Pick the receiving team/, {
+      timeout: 60_000,
+    });
+    await expect(
+      dialog.getByRole('textbox', { name: /^Receiving team/ }),
+    ).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Review' })).toBeDisabled();
+    await receiving.click();
+    const options = admin.getByRole('option');
+    await expect(options.first()).toBeVisible();
+    const labels = await options.allInnerTexts();
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(label).toMatch(/^team-/);
+      expect(label.split(/\s/)[0]).not.toBe(giving);
+    }
+    await options.first().click();
+    await expect(receiving).toContainText(labels[0].split(/\s/)[0]);
+    await expect(dialog.getByRole('button', { name: 'Review' })).toBeEnabled();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   /**
    * `align_repository`'s answer in the manager's shape (0.22.0 and later),
    * per mode: opted in (`align`), declared but not opted in (`opt-in`), a

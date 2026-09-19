@@ -1,5 +1,13 @@
 import { ReactNode, useMemo, useState } from 'react';
-import { Alert, ButtonLink, Flex, Link, Text, TextField } from '@backstage/ui';
+import {
+  Alert,
+  ButtonLink,
+  Flex,
+  Link,
+  Select,
+  Text,
+  TextField,
+} from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { load } from 'js-yaml';
@@ -15,6 +23,8 @@ import {
 import { EMPTY, flavourProblem } from '../../lib/declaration';
 import { editedEntry, fromEntry, keptFields } from '../../lib/entry';
 import { DeclarationFields } from '../CreateRepositoryPage/DeclarationFields';
+import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
+import { useTeamOptions } from '../useTeamOptions';
 import { ActionDialog } from './ActionDialog';
 import { LiveAlignment } from './LiveAlignment';
 import { PlanView } from './PlanView';
@@ -137,7 +147,31 @@ export function EditDialog({
   );
 }
 
-/** Transfer: the receiving team; its member approves, the giving team is told. */
+/** What the empty receiving-team choice says: being read, unreadable, none, or pick. */
+function receivingTeamPlaceholder(
+  loading: boolean,
+  error: Error | undefined,
+  offered: number,
+): string {
+  if (loading) {
+    return 'Reading the teams…';
+  }
+  if (error) {
+    return 'The teams could not be read';
+  }
+  if (offered === 0) {
+    return 'No other team is known';
+  }
+  return 'Pick the receiving team';
+}
+
+/**
+ * Transfer: the receiving team, a choice among the teams the Create form
+ * offers -- the caller's own first, then every team with a declared
+ * repository -- less the giving team, which cannot take what it gives (the
+ * manager refuses that too). The receiving team's member approves, the
+ * giving team is told.
+ */
 export function TransferDialog({
   record,
   isOpen,
@@ -147,24 +181,42 @@ export function TransferDialog({
   const api = useApi(repositoriesApiRef);
   const [toTeam, setToTeam] = useState('');
   const [reason, setReason] = useState('');
-  const from = record.declaration?.team ?? 'its team';
-  const args = () => ({ toTeam: toTeam.trim(), reason: reason || undefined });
+  const giving = record.declaration?.team;
+  const from = giving ?? 'its team';
+  const { teams, loading, error } = useTeamOptions();
+  const receiving = useMemo(
+    () => teams.filter(team => team.id !== giving),
+    [teams, giving],
+  );
+  const args = () => ({ toTeam, reason: reason || undefined });
   return (
     <ActionDialog<Plan, Committed>
       title={`Transfer ${record.name}`}
-      intro={`${from} gives ${record.repository}; the team named below takes it. Its entry leaves ${from}'s file and enters the receiving team's file in one pull request that names both teams. The ask goes to the receiving team's channel and its member approves; ${from} gets a notice. The reconciler then re-applies permissions, CODEOWNERS and the catalog mapping for the new owner.`}
+      intro={`${from} gives ${record.repository}; the team chosen below takes it. Its entry leaves ${from}'s file and enters the receiving team's file in one pull request that names both teams. The ask goes to the receiving team's channel and its member approves; ${from} gets a notice. The reconciler then re-applies permissions, CODEOWNERS and the catalog mapping for the new owner.`}
       isOpen={isOpen}
       onClose={onClose}
-      ready={toTeam.trim().length > 0}
+      ready={toTeam.length > 0}
       fields={
         <>
-          <TextField
+          <Select
             label="Receiving team"
-            description="The team's GitHub slug: team-planeteers, …"
             isRequired
-            value={toTeam}
-            onChange={setToTeam}
+            description={`Your teams first, then every team with a declared repository; ${from} gives and is not offered.`}
+            placeholder={receivingTeamPlaceholder(
+              loading,
+              error,
+              receiving.length,
+            )}
+            options={receiving}
+            selectedKey={toTeam || null}
+            onSelectionChange={key => key && setToTeam(String(key))}
           />
+          {error && (
+            <RepositoriesErrorAlert
+              title="The teams could not be read"
+              error={error}
+            />
+          )}
           <TextField {...reasonField()} value={reason} onChange={setReason} />
         </>
       }
