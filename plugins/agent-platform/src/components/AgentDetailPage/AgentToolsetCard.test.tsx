@@ -15,6 +15,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { agentsRouteRef } from '../../routes';
+import { buildResourceErrors } from '../resourceErrorFixtures';
 import { AgentToolsetCard } from './AgentToolsetCard';
 
 const mockUseResources = jest.fn();
@@ -169,13 +170,42 @@ const resolvedAnswer =
     toolset_unmatched: unmatched,
   });
 
-async function renderCard(agent: Agent, api?: MusterApi) {
+/**
+ * One cluster's answer to a list: what `useResources` returns once the query
+ * has produced items. An answered read is `clustersData` with an entry — the
+ * card waits on that, not on `isLoading`.
+ */
+const ANSWERED = [{ cluster: 'gazelle', data: [] }];
+
+/** How the RemoteMCPServer read answers, when a test needs it unsettled or failed. */
+type CarrierRead = {
+  resources?: unknown[];
+  isLoading?: boolean;
+  errors?: unknown[];
+  clustersData?: unknown[];
+};
+
+async function renderCard(
+  agent: Agent,
+  api?: MusterApi,
+  carrierRead: CarrierRead = {},
+) {
   mockUseResources.mockImplementation(
-    (_clusters: unknown, ResourceClass: unknown) => ({
-      resources: ResourceClass === RemoteMCPServer ? CARRIERS : SERVER_CRS,
-      isLoading: false,
-      errors: [],
-    }),
+    (_clusters: unknown, ResourceClass: unknown) =>
+      ResourceClass === RemoteMCPServer
+        ? {
+            resources: CARRIERS,
+            isLoading: false,
+            errors: [],
+            clustersData: ANSWERED,
+            ...carrierRead,
+          }
+        : {
+            resources: SERVER_CRS,
+            isLoading: false,
+            errors: [],
+            clustersData: ANSWERED,
+          },
   );
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -204,6 +234,47 @@ describe('AgentToolsetCard', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
     CARRIERS = [carrier()];
+  });
+
+  it('says it is reading while the carrier read has not answered', async () => {
+    await renderCard(makeAgent([{ mcpServer: GATEWAY }]), undefined, {
+      resources: [],
+      isLoading: true,
+      clustersData: [],
+    });
+
+    // The flash this guards against: an unanswered read is not evidence that
+    // the carrier cannot be read.
+    expect(screen.queryByText('Toolset not readable')).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('progressbar', {
+        name: "Reading the agent's toolset…",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('says the carriers could not be read when the read failed', async () => {
+    await renderCard(makeAgent([{ mcpServer: GATEWAY }]), undefined, {
+      resources: [],
+      errors: buildResourceErrors({ failed: ['gazelle'] }),
+    });
+
+    expect(screen.getByText('Toolset not readable')).toBeInTheDocument();
+    expect(
+      screen.getByText(/RemoteMCPServers of namespace kagent on gazelle/),
+    ).toBeInTheDocument();
+  });
+
+  it('names the gateway server as missing when the read answered without it', async () => {
+    await renderCard(makeAgent([{ mcpServer: GATEWAY }]), undefined, {
+      resources: [],
+    });
+
+    expect(screen.getByText('Gateway server missing')).toBeInTheDocument();
+    expect(
+      screen.getByText(/no server of that name exists in namespace kagent/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Toolset not readable')).not.toBeInTheDocument();
   });
 
   it('labels an agent without a toolset as implicit full access', async () => {

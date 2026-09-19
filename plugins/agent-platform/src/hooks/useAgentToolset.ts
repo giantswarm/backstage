@@ -11,6 +11,14 @@ import {
   type DeclaredToolset,
 } from '../lib/toolset';
 
+export type AgentToolset = {
+  declared: DeclaredToolset;
+  /** The carrier read has not answered yet — nothing can be said about the toolset. */
+  isReading: boolean;
+  /** The read answered with a failure (no permission, no such kind, unreachable). */
+  isUnreadable: boolean;
+};
+
 /**
  * The toolset one agent declares, read off the `RemoteMCPServer` its gateway
  * binding names.
@@ -21,25 +29,39 @@ import {
  * proxy — a namespaced list, which a non-admin who can read the agent can
  * usually read too — and joins it with the template's bindings. While the
  * servers are still loading the result is `unresolved`, never a premature
- * "implicit full access".
+ * "implicit full access"; `isReading` is what tells the two apart, so a caller
+ * can wait rather than claim the carrier is unreadable.
+ *
+ * Settledness comes from the query's own answer (items or an error), not from
+ * `isLoading`: an enabled query reports `fetchStatus: 'idle'` on the render
+ * before it starts fetching, so `isLoading` is false with nothing read yet —
+ * the same trap `usePreferredVersions` documents. Reading it this way also
+ * keeps a background refetch from flipping a settled card back to reading.
  */
-export function useAgentToolset(agent: Agent): DeclaredToolset {
+export function useAgentToolset(agent: Agent): AgentToolset {
   const installation = agent.cluster;
   const namespace = agent.getNamespace();
-  const { resources, isLoading } = useResources(
+  const { resources, errors, clustersData } = useResources(
     installation,
     RemoteMCPServer,
     { [installation]: { namespace } },
     { enableDiscovery: false },
   );
 
+  // No installation means no query at all, which would never settle; there is
+  // nothing to wait for either.
+  const settled = !installation || clustersData.length > 0 || errors.length > 0;
+
   return useMemo(
-    () =>
-      toolsetOfAgent(
+    () => ({
+      declared: toolsetOfAgent(
         agent,
         MUSTER_MCP_SERVER_NAME,
-        isLoading && resources.length === 0 ? undefined : resources,
+        settled ? resources : undefined,
       ),
-    [agent, isLoading, resources],
+      isReading: !settled,
+      isUnreadable: settled && errors.length > 0,
+    }),
+    [agent, settled, resources, errors],
   );
 }

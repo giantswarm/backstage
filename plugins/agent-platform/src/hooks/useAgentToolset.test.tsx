@@ -43,6 +43,9 @@ function carrier(toolset?: string) {
   );
 }
 
+/** What `useResources` returns once its query has produced items. */
+const ANSWERED = [{ cluster: 'gazelle', data: [] }];
+
 describe('useAgentToolset', () => {
   beforeEach(() => mockUseResources.mockReset());
 
@@ -51,6 +54,7 @@ describe('useAgentToolset', () => {
       resources: [carrier('preset:read-only')],
       isLoading: false,
       errors: [],
+      clustersData: ANSWERED,
     });
 
     const { result } = renderHook(() => useAgentToolset(agent));
@@ -62,26 +66,85 @@ describe('useAgentToolset', () => {
       { enableDiscovery: false },
     );
     expect(result.current).toEqual({
-      state: 'declared',
-      selectors: ['preset:read-only'],
-      carrier: 'pr-reviewer',
+      declared: {
+        state: 'declared',
+        selectors: ['preset:read-only'],
+        carrier: 'pr-reviewer',
+      },
+      isReading: false,
+      isUnreadable: false,
     });
   });
 
   // Never a premature "implicit full access": until the servers have answered
   // nothing can be said about the toolset.
-  it('is unresolved while the servers are still loading', () => {
+  it('is unresolved, and says it is still reading, while the servers load', () => {
     mockUseResources.mockReturnValue({
       resources: [],
       isLoading: true,
       errors: [],
+      clustersData: [],
     });
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
     expect(result.current).toEqual({
-      state: 'unresolved',
-      carrier: 'pr-reviewer',
+      declared: { state: 'unresolved', carrier: 'pr-reviewer' },
+      isReading: true,
+      isUnreadable: false,
+    });
+  });
+
+  // The window `isLoading` misses: an enabled query reports fetchStatus 'idle'
+  // on the render before it starts fetching, so nothing has been read and
+  // `isLoading` is false. Reading it as an answer would claim the carrier is
+  // missing for one render.
+  it('is still reading when no query has answered, whatever isLoading says', () => {
+    mockUseResources.mockReturnValue({
+      resources: [],
+      isLoading: false,
+      errors: [],
+      clustersData: [],
+    });
+
+    const { result } = renderHook(() => useAgentToolset(agent));
+
+    expect(result.current.isReading).toBe(true);
+  });
+
+  it('reports the read as failed when the list errored', () => {
+    mockUseResources.mockReturnValue({
+      resources: [],
+      isLoading: false,
+      errors: [{ cluster: 'gazelle', error: { name: 'ForbiddenError' } }],
+      clustersData: [],
+    });
+
+    const { result } = renderHook(() => useAgentToolset(agent));
+
+    expect(result.current).toEqual({
+      declared: { state: 'unresolved', carrier: 'pr-reviewer' },
+      isReading: false,
+      isUnreadable: true,
+    });
+  });
+
+  // A read that answered without the bound server is a missing carrier, not an
+  // unreadable one — the card says so in its own words.
+  it('separates a carrier that is absent from one that could not be read', () => {
+    mockUseResources.mockReturnValue({
+      resources: [],
+      isLoading: false,
+      errors: [],
+      clustersData: ANSWERED,
+    });
+
+    const { result } = renderHook(() => useAgentToolset(agent));
+
+    expect(result.current).toEqual({
+      declared: { state: 'unresolved', carrier: 'pr-reviewer' },
+      isReading: false,
+      isUnreadable: false,
     });
   });
 
@@ -90,13 +153,15 @@ describe('useAgentToolset', () => {
       resources: [carrier()],
       isLoading: false,
       errors: [],
+      clustersData: ANSWERED,
     });
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
     expect(result.current).toEqual({
-      state: 'implicit-full',
-      carrier: 'pr-reviewer',
+      declared: { state: 'implicit-full', carrier: 'pr-reviewer' },
+      isReading: false,
+      isUnreadable: false,
     });
   });
 
@@ -106,6 +171,7 @@ describe('useAgentToolset', () => {
       resources,
       isLoading: false,
       errors: [],
+      clustersData: ANSWERED,
     });
 
     const { result, rerender } = renderHook(() => useAgentToolset(agent));

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Flex, SearchField, Text } from '@backstage/ui';
-import { LinearProgress } from '@material-ui/core';
 import {
   ToolTable,
   toolTableItem,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
+import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
 import { filterCatalogue } from '../../lib/filterCatalogue';
@@ -280,18 +280,12 @@ export function ToolsetResolutionList({
     case 'idle':
       return null;
     case 'loading':
-      // The sentence says what is being waited on, the bar that it is still
-      // being waited on: `filter_tools` against a large catalogue takes a few
-      // seconds, and a static line gives no sign of progress. A skeleton is the
-      // other house pattern (muster's Tool Explorer) but it can only imply the
-      // shape of what is coming, not name it — and here the name is the useful
-      // half.
-      return (
-        <Flex direction="column" gap="2">
-          <Text color="secondary">Resolving the toolset…</Text>
-          <LinearProgress aria-label="Resolving the toolset" />
-        </Flex>
-      );
+      // The label says what is being waited on, the bar that it is still being
+      // waited on: `filter_tools` against a large catalogue takes a few
+      // seconds, and a static line gives no sign of progress. Both are held
+      // back briefly, so a resolution served from cache — or one selector
+      // toggled in the Tools step — does not flash an indicator.
+      return <LoadingIndicator label="Resolving the toolset…" />;
     case 'unavailable':
       return (
         <Alert
