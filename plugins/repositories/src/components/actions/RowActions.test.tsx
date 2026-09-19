@@ -19,7 +19,7 @@ import {
   RepositoriesProviders,
   repositoriesQueryClient,
 } from '../RepositoriesProviders';
-import { parseEntry } from './dialogs';
+import { parseEntry, REPOSITORY_SETUP_DOCS_URL } from './dialogs';
 import { RowActions } from './RowActions';
 
 const APPLY_REFUSAL =
@@ -57,6 +57,11 @@ function renderActions(
 
 const dialog = (name: RegExp) => screen.getByRole('form', { name });
 const button = (name: string) => screen.getByRole('button', { name });
+/** The done view's Close (the dialog's own X is named Close as well). */
+const closeButton = () =>
+  screen
+    .getAllByRole('button', { name: 'Close' })
+    .find(candidate => candidate.textContent === 'Close')!;
 
 /** present-service with its entry as the team file holds one. */
 const withEntry = (entry: string): InventoryRecord => ({
@@ -173,15 +178,15 @@ describe('RowActions', () => {
     expect(
       screen.getByText('Pull request opened as alice'),
     ).toBeInTheDocument();
-    expect(onChanged).toHaveBeenCalled();
-    // Done: Cancel became Close (the dialog's own X is a Close as well).
+    // Done: Cancel became Close (the dialog's own X is a Close as well). The
+    // listing is re-read once the dialog closes, not while it shows the result.
+    expect(onChanged).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
-    expect(
-      screen.getAllByRole('button', { name: 'Close' }).length,
-    ).toBeGreaterThan(0);
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
     ).toBeNull();
+    await userEvent.click(closeButton());
+    expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
   it('Deprecate: names its effect and sets lifecycle deprecated', async () => {
@@ -403,7 +408,7 @@ describe('RowActions', () => {
     expect(screen.queryByTestId('plan')).toBeNull();
   });
 
-  it('Align now, repository opted in: what it changes, the warning, the planned changes per step, Align now, then the dispatch followed to the run’s report', async () => {
+  it('Align now, repository opted in: the dry run as the dialog opens, one sentence with the intranet link, the planned changes, Align now, then the dispatch followed to the run’s report', async () => {
     const alignRepository = jest
       .fn()
       .mockResolvedValueOnce(alignmentOf(false))
@@ -437,31 +442,29 @@ describe('RowActions', () => {
     const { onChanged } = renderActions({ alignRepository, getRepository });
     await userEvent.click(button('Align now'));
     const form = dialog(/^Align present-service now/);
-    expect(form).toHaveTextContent(
-      'Changes giantswarm/present-service on GitHub and CircleCI to its declared set-up and the company baseline',
-    );
-    expect(form).toHaveTextContent(
-      'as you. Opted in to alignment (align: true in its entry), the set-up workflow is dispatched; not yet opted in, a team-file pull request opts it in',
-    );
-    expect(form).toHaveTextContent('Declared by team-bumblebee.');
-    await userEvent.click(button('Review'));
+    // Nothing to fill in: the dry run is the dialog's opening move, and
+    // there is no Review step between the click and the plan.
     expect(alignRepository).toHaveBeenCalledWith(
       'giantswarm/present-service',
       { team: undefined },
       { dryRun: true },
     );
+    expect(screen.queryByRole('button', { name: 'Review' })).toBeNull();
 
     const alignment = await screen.findByTestId('alignment');
+    expect(within(alignment).getByTestId('lead')).toHaveTextContent(
+      'Applies the declared set-up and the company baseline to giantswarm/present-service on GitHub and CircleCI, as you. How alignment works',
+    );
     expect(
-      within(alignment).getByTestId('alignment-warning'),
-    ).toHaveTextContent(alignmentOf(false).warning);
-    expect(within(alignment).getByTestId('opt-in')).toHaveTextContent(
-      'giantswarm/present-service is opted in to alignment: the changes below are applied.',
-    );
+      within(alignment).getByRole('link', { name: /How alignment works/ }),
+    ).toHaveAttribute('href', REPOSITORY_SETUP_DOCS_URL);
+    // The manager's paragraph and the dispatch preview are not repeated:
+    // the sentence and the link carry it.
+    expect(form).not.toHaveTextContent(alignmentOf(false).warning);
+    expect(form).not.toHaveTextContent('Would dispatch');
+    expect(screen.queryByTestId('dispatch')).toBeNull();
     const planned = within(alignment).getByTestId('planned');
-    expect(planned).toHaveTextContent(
-      'Planned changes. Checked at 2026-09-17T21:00:00Z.',
-    );
+    expect(planned).toHaveTextContent(/^Planned changes · checked .+ ago/);
     expect(planned).toHaveTextContent('protection');
     expect(planned).toHaveTextContent(
       'main: require the ci/circleci: build status check',
@@ -469,13 +472,10 @@ describe('RowActions', () => {
     expect(planned).toHaveTextContent('main: enforce for administrators');
     expect(planned).toHaveTextContent('circleci');
     expect(planned).toHaveTextContent('follow the project');
-    expect(
-      screen.getByText('Would dispatch reconcile-repositories.yaml as alice'),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('dispatch')).toHaveTextContent(
-      'Inputs: repository=present-service, team=team-bumblebee',
-    );
     expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Opt in and align' }),
+    ).toBeNull();
 
     await userEvent.click(button('Align now'));
     expect(alignRepository).toHaveBeenLastCalledWith(
@@ -488,17 +488,17 @@ describe('RowActions', () => {
         'Dispatched reconcile-repositories.yaml as alice',
       ),
     ).toBeInTheDocument();
-    // Done: the opt-in line stays, the warning and the plan are behind the run.
-    expect(screen.getByTestId('opt-in')).toHaveTextContent(
-      'is opted in to alignment',
+    expect(screen.getByTestId('dispatch')).toHaveTextContent(
+      "the completion message follows in team-bumblebee's channel",
     );
-    expect(screen.queryByTestId('alignment-warning')).toBeNull();
-    expect(screen.queryByTestId('planned')).toBeNull();
     expect(screen.getByRole('link', { name: /Workflow runs/ })).toHaveAttribute(
       'href',
       alignmentOf(true).runsUrl,
     );
-    expect(onChanged).toHaveBeenCalled();
+    // Done: the plan is behind the run.
+    expect(screen.queryByTestId('lead')).toBeNull();
+    expect(screen.queryByTestId('planned')).toBeNull();
+    expect(onChanged).not.toHaveBeenCalled();
 
     // The dispatch is followed through the record: its pending run is the
     // dispatch, the report waited for; once the run's artifact is in, the
@@ -527,51 +527,31 @@ describe('RowActions', () => {
       'href',
       reported.setup.lastRun!.runUrl,
     );
+    // The listing is re-read when the dialog closes.
+    await userEvent.click(closeButton());
+    expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
-  it('Align now, repository declared but not opted in: the warning, the entry as it will read, the pull request and its ask, the planned changes, Opt in and align, then the pull request opened', async () => {
+  it('Align now, repository declared but not opted in: the sentence names the pull request and who approves, the planned changes, Opt in and align, then the pull request opened', async () => {
     const alignRepository = jest
       .fn()
       .mockResolvedValueOnce(optInAlignmentOf(false))
       .mockResolvedValueOnce(optInAlignmentOf(true));
     const { onChanged } = renderActions({ alignRepository });
     await userEvent.click(button('Align now'));
-    await userEvent.click(button('Review'));
 
     const alignment = await screen.findByTestId('alignment');
-    expect(
-      within(alignment).getByTestId('alignment-warning'),
-    ).toHaveTextContent(optInAlignmentOf(false).warning);
-    expect(within(alignment).getByTestId('opt-in')).toHaveTextContent(
-      'giantswarm/present-service has not opted in to alignment: Align now opts it in and the reconciler aligns it when the pull request merges.',
-    );
-    const plan = within(alignment).getByTestId('plan');
-    expect(within(plan).getByTestId('entry-before')).toHaveTextContent(
-      'componentType: service',
-    );
-    expect(within(plan).getByTestId('entry-after')).toHaveTextContent(
-      'align: true',
-    );
-    expect(within(plan).getByTestId('planned-pull-request')).toHaveTextContent(
-      'Pull request on giantswarm/github as alice',
-    );
-    expect(plan).toHaveTextContent(
-      'chore(repositories): opt present-service in to alignment (team-bumblebee) — branch reposetup/align-present-service; files: repositories/team-bumblebee.yaml',
-    );
-    expect(plan).toHaveTextContent(
-      'Approval asked to #team-bumblebee (team-bumblebee)',
-    );
-    expect(plan).toHaveTextContent(
-      'A member of team-bumblebee other than alice approves.',
+    expect(within(alignment).getByTestId('lead')).toHaveTextContent(
+      'giantswarm/present-service has not opted in to alignment. Opt in and align opens a pull request as you that sets align: true in its entry; a member of team-bumblebee approves it and the reconciler applies the changes below when it merges. How alignment works',
     );
     expect(within(alignment).getByTestId('planned')).toHaveTextContent(
       'main: require the ci/circleci: build status check',
     );
-    expect(within(alignment).getByTestId('then')).toHaveTextContent(
-      'when the pull request merges, the reconciler aligns giantswarm/present-service',
-    );
-    // Nothing is dispatched: no dispatch, no Align now, no Check now.
+    // The entry before and after, the pull request and the ask are the
+    // manager's plan; the sentence stands for them. Nothing is dispatched.
+    expect(screen.queryByTestId('plan')).toBeNull();
     expect(screen.queryByTestId('dispatch')).toBeNull();
+    expect(screen.queryByTestId('alignment-warning')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Align now' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
 
@@ -594,74 +574,47 @@ describe('RowActions', () => {
     expect(
       screen.getByText('Pull request opened as alice'),
     ).toBeInTheDocument();
-    // Done: the opt-in line and what follows stay; the warning and the plan are behind the commit.
-    expect(screen.getByTestId('opt-in')).toHaveTextContent(
-      'Align now opts it in and the reconciler aligns it when the pull request merges',
-    );
     expect(screen.getByTestId('then')).toHaveTextContent(
-      'the reconciler aligns giantswarm/present-service',
+      'When it merges, the reconciler aligns giantswarm/present-service; the row shows the run until it reports.',
     );
-    expect(screen.queryByTestId('alignment-warning')).toBeNull();
-    expect(screen.queryByTestId('plan')).toBeNull();
+    // Done: the plan is behind the commit; there is no run to follow yet.
+    expect(screen.queryByTestId('lead')).toBeNull();
     expect(screen.queryByTestId('planned')).toBeNull();
     expect(screen.queryByTestId('dispatch')).toBeNull();
     expect(screen.queryByTestId('live-alignment')).toBeNull();
-    expect(onChanged).toHaveBeenCalled();
+    expect(onChanged).not.toHaveBeenCalled();
+    await userEvent.click(closeButton());
+    expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
-  it('Align now on an undeclared repository: needs the team, the run checks and changes nothing, Check now', async () => {
-    const checked = (dispatched: boolean) =>
-      alignmentOf(dispatched, {
-        inputs: { repository: 'stray-tool', team: 'team-planeteers' },
-        team: 'team-planeteers',
-        optedIn: false,
-        mode: 'check',
-      });
-    const alignRepository = jest
-      .fn()
-      .mockResolvedValueOnce(checked(false))
-      .mockResolvedValueOnce(checked(true));
+  it('Align now on an undeclared repository: asks for the team, runs no dry run, and Check now dispatches the check', async () => {
+    const checked = alignmentOf(true, {
+      inputs: { repository: 'stray-tool', team: 'team-planeteers' },
+      team: 'team-planeteers',
+      optedIn: false,
+      mode: 'check',
+    });
+    const alignRepository = jest.fn().mockResolvedValueOnce(checked);
     renderActions({ alignRepository }, strayTool);
     await userEvent.click(button('Align now'));
     const form = dialog(/^Align stray-tool now/);
     expect(form).toHaveTextContent(
-      'This repository has no entry: the run checks it from the team alone.',
+      'giantswarm/stray-tool has no entry in a team file, so it cannot be aligned yet: the run checks it against the baseline for the team named below and changes nothing.',
     );
-    expect(button('Review')).toBeDisabled();
+    expect(
+      within(form).getByRole('link', { name: /How alignment works/ }),
+    ).toHaveAttribute('href', REPOSITORY_SETUP_DOCS_URL);
+    expect(screen.queryByRole('button', { name: 'Review' })).toBeNull();
+    expect(button('Check now')).toBeDisabled();
+    expect(alignRepository).not.toHaveBeenCalled();
+
     await userEvent.type(
       within(form).getByLabelText(/^Team/),
       'team-planeteers',
     );
-    await userEvent.click(button('Review'));
-    expect(alignRepository).toHaveBeenCalledWith(
-      'giantswarm/stray-tool',
-      { team: 'team-planeteers' },
-      { dryRun: true },
-    );
-
-    const alignment = await screen.findByTestId('alignment');
-    expect(
-      within(alignment).getByTestId('alignment-warning'),
-    ).toHaveTextContent(alignmentOf(false).warning);
-    expect(within(alignment).getByTestId('opt-in')).toHaveTextContent(
-      'giantswarm/stray-tool has not opted in to alignment: this run checks and changes nothing.',
-    );
-    expect(within(alignment).getByTestId('opt-in')).not.toHaveTextContent(
-      'Configure',
-    );
-    expect(within(alignment).getByTestId('planned')).toHaveTextContent(
-      'main: require the ci/circleci: build status check',
-    );
-    expect(screen.getByTestId('dispatch')).toHaveTextContent(
-      'Inputs: repository=stray-tool, team=team-planeteers',
-    );
-    expect(screen.queryByRole('button', { name: 'Align now' })).toBeNull();
-    expect(
-      screen.queryByRole('button', { name: 'Opt in and align' }),
-    ).toBeNull();
-
     await userEvent.click(button('Check now'));
-    expect(alignRepository).toHaveBeenLastCalledWith(
+    expect(alignRepository).toHaveBeenCalledTimes(1);
+    expect(alignRepository).toHaveBeenCalledWith(
       'giantswarm/stray-tool',
       { team: 'team-planeteers' },
       { mode: 'commit' },
@@ -671,9 +624,7 @@ describe('RowActions', () => {
         'Dispatched reconcile-repositories.yaml as alice',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByTestId('opt-in')).toHaveTextContent(
-      'has not opted in to alignment: this run checks and changes nothing',
-    );
+    expect(await screen.findByTestId('live-alignment')).toBeInTheDocument();
   });
 
   it('Align now: names no check yet, and nothing to change with when it was checked', async () => {
@@ -684,21 +635,22 @@ describe('RowActions', () => {
       );
     renderActions({ alignRepository });
     await userEvent.click(button('Align now'));
-    await userEvent.click(button('Review'));
     expect(await screen.findByTestId('planned')).toHaveTextContent(
       "No check yet: the run's own check plans the changes.",
     );
 
-    await userEvent.click(button('Back'));
+    // Reopened, the dialog asks the manager again.
+    await userEvent.click(button('Cancel'));
     alignRepository.mockResolvedValueOnce(
       alignmentOf(false, {
         planned: [{ step: 'settings', changes: [] }],
         checkedAt: '2026-09-17T22:00:00Z',
       }),
     );
-    await userEvent.click(button('Review'));
+    await userEvent.click(button('Align now'));
     expect(await screen.findByTestId('planned')).toHaveTextContent(
-      'Nothing to change. Checked at 2026-09-17T22:00:00Z.',
+      /^Nothing to change · checked .+ ago\.$/,
     );
+    expect(alignRepository).toHaveBeenCalledTimes(2);
   });
 });

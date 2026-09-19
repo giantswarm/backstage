@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import {
   Button,
   Dialog,
@@ -24,11 +24,15 @@ const FORM_STYLE = {
 export interface ActionDialogProps<TPlan, TDone> {
   title: string;
   /** What the action does and who reviews it, in the tool's own words. */
-  intro: ReactNode;
+  intro?: ReactNode;
   isOpen: boolean;
   onClose: () => void;
-  /** The form; hidden once the plan shows. */
-  fields: ReactNode;
+  /**
+   * The form; hidden once the plan shows. Without one there is nothing to
+   * fill in first: the dry run starts as the dialog opens and the plan is
+   * the dialog's one view before the commit.
+   */
+  fields?: ReactNode;
   /** The form holds what the tool needs. */
   ready: boolean;
   /** The dry run (`dryRun: true`); an action without one commits directly. */
@@ -82,17 +86,27 @@ export function ActionDialog<TPlan, TDone>({
       onDone?.(result);
     },
   });
+  // No form to fill in: the dry run is the dialog's opening move.
+  const reviewsOnOpen = fields === undefined && dryRun !== undefined;
+  const { mutate: startReview } = review;
+  useEffect(() => {
+    if (isOpen && reviewsOnOpen) {
+      startReview();
+    }
+  }, [isOpen, reviewsOnOpen, startReview]);
+
   const busy = review.isPending || write.isPending;
   const failure = (write.error ?? review.error) as Error | null;
   const commitText =
     typeof commitLabel === 'function' ? commitLabel(plan) : commitLabel;
+  const awaitsPlan = dryRun !== undefined && plan === undefined;
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (!ready || busy) {
       return;
     }
-    if (dryRun && !plan) {
+    if (awaitsPlan) {
       review.mutate();
     } else {
       write.mutate();
@@ -117,13 +131,20 @@ export function ActionDialog<TPlan, TDone>({
         <DialogHeader>{title}</DialogHeader>
         <DialogBody>
           <Flex direction="column" gap="4">
-            <Text variant="body-small" color="secondary">
-              {intro}
-            </Text>
-            {!plan && !done && (
+            {intro && (
+              <Text variant="body-small" color="secondary">
+                {intro}
+              </Text>
+            )}
+            {fields !== undefined && !plan && !done && (
               <Flex direction="column" gap="3">
                 {fields}
               </Flex>
+            )}
+            {reviewsOnOpen && review.isPending && (
+              <Text variant="body-small" color="secondary">
+                Asking the manager what it would change…
+              </Text>
             )}
             {plan && !done && renderPlan?.(plan)}
             {done && renderDone(done)}
@@ -137,7 +158,7 @@ export function ActionDialog<TPlan, TDone>({
             <Button variant="secondary" onPress={onClose} isDisabled={busy}>
               {done ? 'Close' : 'Cancel'}
             </Button>
-            {!done && dryRun && !plan && (
+            {!done && awaitsPlan && !reviewsOnOpen && (
               <Button
                 type="submit"
                 variant="primary"
@@ -146,12 +167,12 @@ export function ActionDialog<TPlan, TDone>({
                 {review.isPending ? 'Rendering…' : 'Review'}
               </Button>
             )}
-            {!done && dryRun && plan && (
+            {!done && dryRun && plan && !reviewsOnOpen && (
               <Button variant="secondary" onPress={back} isDisabled={busy}>
                 Back
               </Button>
             )}
-            {!done && (!dryRun || plan) && (
+            {!done && !awaitsPlan && (
               <Button
                 type="submit"
                 variant="primary"

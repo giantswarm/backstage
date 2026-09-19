@@ -84,3 +84,7 @@ graphify-out/
 # Storybook build output
 storybook-static/
 *.storybook.log
+
+# core dumps a killed node process leaves in the checkout
+core
+core.[0-9]*

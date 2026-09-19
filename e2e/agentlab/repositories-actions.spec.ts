@@ -553,7 +553,87 @@ test.describe('repositories: actions', () => {
     await expect(dialog).toBeHidden();
   });
 
-  test('Align now says what it changes; the dry run shows the warning, the opt-in and the planned changes, and writes nothing on Cancel', async ({
+  /**
+   * `align_repository`'s answer in the manager's shape (0.22.0 and later),
+   * per mode: opted in (`align`), declared but not opted in (`opt-in`), a
+   * check. The lab's manager refuses the dry run -- it reads the team file in
+   * giantswarm/github as the person, and the lab's GitHub stand-in has none
+   * -- so the align route is stubbed at the browser like the create commit;
+   * the dialog's behaviour per mode is pinned all the same.
+   */
+  const alignmentOf = (
+    name: string,
+    mode: 'align' | 'opt-in' | 'check',
+    committed: boolean,
+  ) => {
+    const title = `chore(repositories): opt ${name} in to alignment (team-bumblebee)`;
+    return {
+      workflow: 'reconcile-repositories.yaml',
+      inputs: { repository: name, team: 'team-bumblebee' },
+      as: 'admin',
+      dispatched: committed && mode !== 'opt-in',
+      runsUrl:
+        'https://github.com/giantswarm/github/actions/workflows/reconcile-repositories.yaml',
+      then: "the completion message follows in team-bumblebee's channel",
+      team: 'team-bumblebee',
+      optedIn: mode === 'align',
+      mode,
+      planned: [
+        {
+          step: 'protection',
+          changes: ['main: enforce for administrators', 'main: strict checks'],
+        },
+        { step: 'circleci', changes: ['follow the project'] },
+      ],
+      checkedAt: '2026-09-18T18:28:49Z',
+      warning:
+        "Aligning changes the repository's settings, permissions, branch protection and CircleCI project on GitHub and CircleCI to its declared set-up and the company baseline.",
+      ...(mode === 'opt-in' && {
+        optIn: {
+          plan: {
+            repository: `giantswarm/${name}`,
+            team: 'team-bumblebee',
+            accepted: true,
+            before: `- name: ${name}\n  componentType: service\n`,
+            entry: `- name: ${name}\n  componentType: service\n  align: true\n`,
+            pullRequest: {
+              repository: 'giantswarm/github',
+              branch: `reposetup/align-${name}`,
+              title,
+              files: ['repositories/team-bumblebee.yaml'],
+              body: '## Problem\n\n…',
+              as: 'admin',
+            },
+            ask: {
+              team: 'team-bumblebee',
+              channel: '#team-bumblebee',
+              text: `admin asks to align giantswarm/${name}`,
+              deliverable: true,
+            },
+          },
+          committed: committed
+            ? {
+                pullRequest: {
+                  number: 4244,
+                  url: 'https://github.com/giantswarm/github/pull/4244',
+                  branch: `reposetup/align-${name}`,
+                  title,
+                  author: 'admin',
+                },
+                ask: {
+                  team: 'team-bumblebee',
+                  channel: '#team-bumblebee',
+                  delivered: true,
+                  reviewId: 'rev-1',
+                },
+              }
+            : undefined,
+        },
+      }),
+    };
+  };
+
+  test('Align now is one dialog: the dry run as it opens, one sentence per mode with the intranet link, the planned changes; Cancel writes nothing, Opt in and align shows the pull request', async ({
     admin,
   }) => {
     await open(admin, '/repositories?scope=all');
@@ -578,53 +658,104 @@ test.describe('repositories: actions', () => {
     await expect(
       record.getByRole('button', { name: 'Reconcile now' }),
     ).toHaveCount(0);
-    await record.getByRole('button', { name: 'Align now' }).click();
+
+    // The align route, stubbed: the mode is the test's, the answer follows
+    // the request (dry run or commit).
+    let mode: 'align' | 'opt-in' = 'opt-in';
+    const isAlign = (url: URL) =>
+      decodeURIComponent(url.pathname).endsWith(
+        `/repositories/repositories/giantswarm/${name}/align`,
+      );
+    const stub = (route: Route) => {
+      const body = route.request().postDataJSON() as { mode?: string };
+      return route.fulfill({
+        json: alignmentOf(name, mode, body.mode === 'commit'),
+      });
+    };
     const dialog = admin.getByRole('form', {
       name: new RegExp(`^Align ${name} now`),
     });
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText(
-      /Changes giantswarm\/\S+ on GitHub and CircleCI to its declared set-up and the company baseline/,
-    );
-    await expect(dialog).toContainText('as you');
-    await dialog.getByRole('button', { name: 'Review' }).click();
+    const intranet =
+      /^https:\/\/intranet\.giantswarm\.io\/docs\/dev-and-releng\/repository-setup\/$/;
+    await admin.route(isAlign, stub);
+    try {
+      // A declared repository has nothing to fill in: the dry run starts as
+      // the dialog opens -- no Review step -- and the dialog says in one
+      // sentence what the commit does, links the intranet page for the rest
+      // and lists the changes the last check planned. The manager's
+      // paragraph, the opt-in plan and the dispatch preview are gone.
+      for (mode of ['opt-in', 'align'] as const) {
+        await record.getByRole('button', { name: 'Align now' }).click();
+        await expect(dialog).toBeVisible();
+        await expect(
+          dialog.getByRole('button', { name: 'Review' }),
+        ).toHaveCount(0);
+        const alignment = dialog.getByTestId('alignment');
+        await expect(alignment).toBeVisible({ timeout: 60_000 });
+        const lead = alignment.getByTestId('lead');
+        await expect(lead).toContainText(
+          mode === 'align'
+            ? `Applies the declared set-up and the company baseline to giantswarm/${name} on GitHub and CircleCI, as you.`
+            : `giantswarm/${name} has not opted in to alignment. Opt in and align opens a pull request as you that sets align: true in its entry; a member of team-bumblebee approves it and the reconciler applies the changes below when it merges.`,
+        );
+        await expect(
+          lead.getByRole('link', { name: /How alignment works/ }),
+        ).toHaveAttribute('href', intranet);
+        const planned = alignment.getByTestId('planned');
+        await expect(planned).toContainText(
+          /^Planned changes · checked .+ ago/,
+        );
+        await expect(planned).toContainText('main: enforce for administrators');
+        await expect(planned).toContainText('follow the project');
+        await expect(alignment.getByTestId('alignment-warning')).toHaveCount(0);
+        await expect(alignment.getByTestId('dispatch')).toHaveCount(0);
+        await expect(alignment.getByTestId('plan')).toHaveCount(0);
+        await expect(dialog).not.toContainText('Would dispatch');
+        // The confirm label follows the mode.
+        await expect(
+          dialog.getByRole('button', {
+            name: mode === 'align' ? 'Align now' : 'Opt in and align',
+          }),
+        ).toBeVisible();
+        await dialog.getByRole('button', { name: 'Cancel' }).click();
+        await expect(dialog).toBeHidden();
+      }
 
-    // The manager's dry run (`align_repository`, nothing written): its
-    // warning, the repository's opt-in line and the changes the last check
-    // planned -- or that there is no check yet, or nothing to change -- then
-    // how it lands: the dispatch, or (declared, not opted in) the pull
-    // request that opts the repository in.
-    const alignment = dialog.getByTestId('alignment');
-    await expect(alignment).toBeVisible({ timeout: 60_000 });
-    await expect(alignment.getByTestId('alignment-warning')).not.toBeEmpty();
-    await expect(alignment.getByTestId('opt-in')).toContainText(
-      /(is|has not) opted in to alignment/,
-    );
-    await expect(alignment.getByTestId('planned')).toContainText(
-      /Planned changes|No check yet|Nothing to change/,
-    );
-    // The confirm label follows the mode: Align now applies, Opt in and
-    // align opens the opt-in pull request, Check now only checks.
-    const optInLine = await alignment.getByTestId('opt-in').innerText();
-    const optingIn = /Align now opts it in/.test(optInLine);
-    if (optingIn) {
-      const plan = alignment.getByTestId('plan');
-      await expect(plan.getByTestId('entry-after')).toContainText(
-        'align: true',
+      // Opt in and align: the pull request opened as the person with its ask
+      // delivered, one line on what follows, nothing dispatched.
+      mode = 'opt-in';
+      await record.getByRole('button', { name: 'Align now' }).click();
+      await expect(dialog.getByTestId('alignment')).toBeVisible({
+        timeout: 60_000,
+      });
+      await dialog.getByRole('button', { name: 'Opt in and align' }).click();
+      const opened = dialog.getByTestId('pull-request-opened');
+      await expect(opened).toBeVisible({ timeout: 30_000 });
+      await expect(opened).toContainText(
+        `#4244 chore(repositories): opt ${name} in to alignment (team-bumblebee)`,
       );
-      await expect(plan.getByTestId('planned-pull-request')).toBeVisible();
-      await expect(alignment.getByTestId('dispatch')).toHaveCount(0);
-    } else {
-      await expect(alignment.getByTestId('dispatch')).toBeVisible();
+      await expect(opened).toContainText(
+        'The ask posted to #team-bumblebee (team-bumblebee).',
+      );
+      await expect(
+        opened.getByRole('link', { name: /Open the pull request/ }),
+      ).toHaveAttribute(
+        'href',
+        'https://github.com/giantswarm/github/pull/4244',
+      );
+      await expect(dialog.getByTestId('then')).toContainText(
+        `When it merges, the reconciler aligns giantswarm/${name}`,
+      );
+      await expect(dialog.getByTestId('dispatch')).toHaveCount(0);
+      await expect(dialog.getByTestId('planned')).toHaveCount(0);
+      await dialog
+        .getByRole('button', { name: 'Close' })
+        .filter({ hasText: 'Close' })
+        .click();
+      await expect(dialog).toBeHidden();
+    } finally {
+      await admin.unroute(isAlign, stub);
     }
-    const label = optingIn
-      ? 'Opt in and align'
-      : /is opted in to alignment/.test(optInLine)
-        ? 'Align now'
-        : 'Check now';
-    await expect(dialog.getByRole('button', { name: label })).toBeVisible();
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(dialog).toBeHidden();
   });
 
   test('the catalog’s Create… lands on Create repository', async ({
