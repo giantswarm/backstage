@@ -70,9 +70,9 @@ export function RuntimeLostNotice({
 
   let wayOut = `The conversation can be continued in a new session with ${agent} from the Sessions list.`;
   if (offersNewSession && loss.reported) {
-    wayOut = `To carry on, start a new session with ${agent} from the box below — your message goes with it.`;
+    wayOut = `To carry on, start a new session with ${agent} — the button under the message box takes your message with it.`;
   } else if (offersNewSession) {
-    wayOut = `You can send again to retry. If it fails the same way, start a new session with ${agent} from the box below — your message goes with it.`;
+    wayOut = `You can send again to retry. If it fails the same way, start a new session with ${agent} — the button under the message box takes your message with it.`;
   }
 
   return (

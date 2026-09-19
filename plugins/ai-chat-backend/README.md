@@ -1,5 +1,8 @@
 # ai-chat
 
+> **Deprecated.** The AI assistant is deprecated. No new features are being
+> added to it; changes are limited to fixes and keeping it building.
+
 This plugin backend was templated using the Backstage CLI. You should replace this text with a description of your plugin backend.
 
 ## Installation
