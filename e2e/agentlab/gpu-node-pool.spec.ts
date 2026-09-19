@@ -692,7 +692,9 @@ test.describe('models: the model cache is the cluster’s and billed while it st
       name: /Remove the model cache hf-cache on wc1\?/,
     });
     await expect(confirm.getByTestId('remove-cache-what')).toContainText(
-      'Deletes claim model-serving/hf-cache (100 GiB gp3 at 500 MiB/s, eu-central-1b) on wc1 of lab, with its volume. The $27.37/month at list prices stops.',
+      'Deletes claim model-serving/hf-cache (100 GiB gp3 at 500 MiB/s, eu-central-1b) on wc1 of ' +
+        lab.installation +
+        ', with its volume. The $27.37/month at list prices stops.',
     );
     await expect(confirm).toContainText('Nothing mounts this claim');
     const remove = confirm.getByRole('button', { name: 'Remove cache' });
