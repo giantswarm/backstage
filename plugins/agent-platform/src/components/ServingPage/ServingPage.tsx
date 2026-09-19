@@ -627,6 +627,8 @@ export function ServingPage() {
 
           {backendsWithoutModels}
 
+          {pools.cachePanel}
+
           <UnreachableInstallationsAlert
             installations={serving.unreachableInstallations}
             resourceName="served models"

@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { expect, open, signIn, test } from './fixtures';
 import {
+  KEPT_CLAIM,
   PRESET_SOURCE,
   PRICE_AS_OF,
   PRICE_SOURCE,
@@ -651,6 +652,84 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
       'Model cache off: modelServing.cache.enabled false on the slice release',
     );
     await snapshot(page, 'gpu-pool-zones-cache-panel');
+  });
+});
+
+test.describe('models: the model cache is the cluster’s and billed while it stands (cluster-manager stubbed)', () => {
+  test('the form’s cache line carries cluster-manager’s price and the standing-cost words; a kept claim shows on the Model cache card with its cost and goes with Remove cache', async ({
+    page,
+  }) => {
+    const { dialog, calls } = await reachForm(page, { keptCache: 'kept' });
+    // The price is cluster-manager's, from the dry run — not the plugin's.
+    const consequence = dialog.getByTestId('cache-consequence');
+    await expect(consequence).toContainText(
+      'Creates a cache claim (100Gi gp3, 500 MiB/s, 3000 IOPS): $27.37/month at list prices, billed while the claim exists — after this pool is removed too — until the cache is removed on the GPU capacity page.',
+      { timeout: 60_000 },
+    );
+    await expect(dialog.getByTestId('cache-price-source')).toContainText(
+      'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1), as of 2026-09-19',
+    );
+    await snapshot(page, 'gpu-pool-cache-cost-line');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+
+    // The kept claim: on the card, with its size, cost and since when.
+    const card = page
+      .getByRole('heading', { name: 'Model cache' })
+      .locator('xpath=ancestor::*[contains(@class, "MuiCard-root")][1]');
+    await expect(card).toContainText('Standing: $27.37/month across 1 claim');
+    const row = card.getByRole('row', { name: /hf-cache/ });
+    await expect(row).toContainText('100 GiB gp3 at 500 MiB/s');
+    await expect(row).toContainText('$27.37/month');
+    await expect(row).toContainText('eu-central-1b');
+    await expect(row).toContainText('Kept — nothing mounts it');
+    await snapshot(page, 'gpu-pool-cache-card');
+
+    // Remove cache: the confirm names what goes and what stops, and calls the tool once acknowledged.
+    await row.getByRole('button', { name: /^Remove cache/ }).click();
+    const confirm = page.getByRole('dialog', {
+      name: /Remove the model cache hf-cache on wc1\?/,
+    });
+    await expect(confirm.getByTestId('remove-cache-what')).toContainText(
+      'Deletes claim model-serving/hf-cache (100 GiB gp3 at 500 MiB/s, eu-central-1b) on wc1 of lab, with its volume. The $27.37/month at list prices stops.',
+    );
+    await expect(confirm).toContainText('Nothing mounts this claim');
+    const remove = confirm.getByRole('button', { name: 'Remove cache' });
+    await expect(remove).toBeDisabled();
+    await toggleByLabel(confirm.getByRole('checkbox'));
+    await snapshot(page, 'gpu-pool-cache-remove-confirm');
+    await remove.click();
+    await expect(confirm).toBeHidden({ timeout: 30_000 });
+    const removes = calls.filter(
+      call => call.name === 'x_cluster-manager_remove_model_cache',
+    );
+    expect(removes).toHaveLength(1);
+    expect(removes[0].arguments).toMatchObject({
+      cluster: 'wc1',
+      claim: KEPT_CLAIM.name,
+      mode: 'apply',
+    });
+    await expect(card).toContainText('No model cache stands', {
+      timeout: 60_000,
+    });
+    await snapshot(page, 'gpu-pool-cache-removed');
+  });
+
+  test('where the cluster’s slice keeps the cache the switch is on and locked, the kept claim named with its cost, and the dry run carries the cache on', async ({
+    page,
+  }) => {
+    const { dialog, calls } = await reachForm(page, { keptCache: 'mounted' });
+    const cache = dialog.getByRole('switch', { name: 'Keep a model cache' });
+    await expect(cache).toBeChecked();
+    await expect(cache).toBeDisabled();
+    await expect(dialog.getByTestId('cache-kept')).toContainText(
+      'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off.',
+    );
+    await expect(dialog.getByTestId('cache-kept')).toContainText(
+      'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month',
+    );
+    expect(dryRuns(calls)[0].arguments).toMatchObject({ cache: true });
+    await snapshot(page, 'gpu-pool-cache-locked');
   });
 });
 

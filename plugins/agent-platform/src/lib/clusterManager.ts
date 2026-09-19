@@ -27,7 +27,16 @@ export const CLUSTER_MANAGER_TOOLS = {
   listNodePools: 'list_node_pools',
   createNodePool: 'create_node_pool',
   deleteNodePool: 'delete_node_pool',
+  removeModelCache: 'remove_model_cache',
 } as const;
+
+/** Whether this installation's cluster-manager lists a tool (`get_info.tools`). */
+export function offersTool(
+  info: Pick<ClusterManagerInfo, 'tools'> | undefined,
+  tool: ClusterManagerTool,
+): boolean {
+  return info?.tools.includes(tool) ?? false;
+}
 
 export type ClusterManagerTool =
   (typeof CLUSTER_MANAGER_TOOLS)[keyof typeof CLUSTER_MANAGER_TOOLS];
@@ -176,7 +185,55 @@ export type ServingReadiness = {
     ready: boolean;
     reason?: string;
   } | null;
+  /**
+   * The model cache as cluster-manager's slice release states it: whether
+   * the predictors mount a claim and which (cluster-manager 0.15+); null
+   * where the slice is not cluster-manager's.
+   */
+  cache?: SliceCache | null;
+  /**
+   * The `hf-cache*` claims of the serving namespace, each with its zone and
+   * — from cluster-manager 0.17 on — its size, tier, price and since when
+   * (giantswarm/backstage#2493); null when the cluster cannot be read.
+   */
+  cacheClaims?: CacheClaim[] | null;
 };
+
+/** The slice release's model cache setting, from its values. */
+export type SliceCache = {
+  enabled: boolean;
+  /** The claim the predictors mount (its name); absent with the cache off. */
+  claim?: string;
+};
+
+/**
+ * Whether the cluster keeps a model cache the person cannot switch off pool
+ * by pool: cluster-manager's slice release runs with the cache on, so every
+ * pool of the cluster serves from it, and `create_node_pool {cache: false}`
+ * is refused — the way to serve without it is to remove the cache
+ * (giantswarm/cluster-manager#83).
+ */
+export function cacheKeptByCluster(
+  cluster: Pick<ManagedCluster, 'serving'> | undefined,
+): boolean {
+  return (
+    cluster?.serving.provider === 'cluster-manager' &&
+    cluster.serving.readiness?.cache?.enabled === true
+  );
+}
+
+/** The claim the cluster's slice mounts, as `list_clusters` read it; `undefined` while it does not exist yet. */
+export function mountedClaimOf(
+  cluster: Pick<ManagedCluster, 'serving'> | undefined,
+): CacheClaim | undefined {
+  const claims = cluster?.serving.readiness?.cacheClaims ?? [];
+  return (
+    claims.find(claim => claim.mounted) ??
+    claims.find(
+      claim => claim.name === cluster?.serving.readiness?.cache?.claim,
+    )
+  );
+}
 
 /** The GPU operator on a cluster; `readiness` from cluster-manager 0.8 on. */
 export type GpuOperatorComponent = ClusterComponent & {
@@ -350,7 +407,27 @@ export type BackendRegistration = {
   target: string;
 };
 
-/** A model cache claim of the serving namespace as cluster-manager reads it. */
+/** What a claim's volume is billed per month at AWS's list prices. */
+export type ClaimPrice = {
+  monthlyUSD: number;
+  /** `AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)`. */
+  source: string;
+  /** The day the price list was read. */
+  asOf: string;
+};
+
+/** A volume's provisioned tier, from its StorageClass parameters. */
+export type VolumeTier = {
+  type?: string;
+  iops?: number;
+  throughputMiBps?: number;
+};
+
+/**
+ * A model cache claim of the serving namespace as cluster-manager reads it —
+ * a gp3 volume that outlives every pool and is billed every month it exists
+ * (cluster-manager 0.17+ names what for; giantswarm/backstage#2493).
+ */
 export type CacheClaim = {
   namespace: string;
   name: string;
@@ -362,6 +439,22 @@ export type CacheClaim = {
   zone?: string;
   /** Why the claim could not be read as the person. */
   error?: string;
+  /** The volume's size (`100Gi`) — what the claim is billed for. */
+  capacity?: string;
+  capacityGiB?: number;
+  storageClass?: string;
+  /** What the class provisions; absent with `tierNote` saying why it is not known. */
+  tier?: VolumeTier;
+  tierNote?: string;
+  /** `Delete`: the volume goes with the claim; `Retain`: it stays, and is billed, until deleted by hand. */
+  reclaimPolicy?: string;
+  /** RFC3339: since when the claim stands. */
+  created?: string;
+  /** The monthly list price in the cluster's region; absent with `priceNote`. */
+  price?: ClaimPrice;
+  priceNote?: string;
+  /** The claim the cluster's slice release mounts. */
+  mounted?: boolean;
 };
 
 /**
@@ -373,6 +466,17 @@ export type CacheSetting = {
   enabled: boolean;
   /** `namespace/name` of the claim the predictors mount; absent with the cache off. */
   claim?: string;
+  /** Whether that claim exists already, or the connectivity chart creates it with the slice (cluster-manager 0.17+). */
+  exists?: boolean;
+  /** RFC3339: since when the claim stands, when it exists. */
+  since?: string;
+  /** The claim's size and tier — as read, or the chart's defaults — and its monthly list price; `priceNote` why there is none. */
+  capacity?: string;
+  tier?: string;
+  monthlyPriceUSD?: number;
+  priceSource?: string;
+  priceAsOf?: string;
+  priceNote?: string;
   note: string;
 };
 
@@ -412,6 +516,8 @@ export type NodePoolWriteResult = {
   cache?: CacheSetting;
   cacheClaim?: CacheClaim | null;
   cacheClaims?: CacheClaim[] | null;
+  /** `remove_model_cache`: the claims removed (or, dry-run, that would be), with their price. */
+  removedClaims?: CacheClaim[] | null;
   /**
    * An apply that stopped writing to answer within the caller's deadline: the
    * objects it did not reach carry action `pending`; `nextStep` says to re-run
@@ -441,6 +547,13 @@ export type DeleteNodePoolInput = {
   cluster: string;
   namespace?: string;
   name: string;
+};
+
+/** What the Remove cache dialog sends to `remove_model_cache`: every claim of the cluster, or the one named. */
+export type RemoveModelCacheInput = {
+  cluster: string;
+  namespace?: string;
+  claim?: string;
 };
 
 /**
@@ -500,6 +613,17 @@ export type CacheClaimsRefusal = {
 };
 
 /**
+ * `cache: false` while the cluster's slice runs with the cache on: the claim
+ * the slice mounts (as read, when it exists), its name and the ways out —
+ * leave the cache on, or remove it (giantswarm/cluster-manager#83).
+ */
+export type CacheOnRefusal = {
+  claim?: CacheClaim;
+  claimName: string;
+  remedies: string[];
+};
+
+/**
  * A structured refusal of cluster-manager's, answered as a second text block
  * next to the message. `delete_node_pool` (cluster-manager 0.8.1+): the nodes
  * the pool still runs, the models served on the cluster to unload first
@@ -514,6 +638,7 @@ export type Refusal = {
   hint: string;
   cacheZone?: CacheZoneRefusal;
   cacheClaims?: CacheClaimsRefusal;
+  cacheOn?: CacheOnRefusal;
 };
 
 function strings(value: unknown): string[] {
@@ -541,6 +666,61 @@ function cacheClaimOf(value: unknown): CacheClaim | undefined {
     volume: optionalString(claim.volume),
     zone: optionalString(claim.zone),
     error: optionalString(claim.error),
+    capacity: optionalString(claim.capacity),
+    capacityGiB: optionalNumber(claim.capacityGiB),
+    storageClass: optionalString(claim.storageClass),
+    tier: tierOf(claim.tier),
+    tierNote: optionalString(claim.tierNote),
+    reclaimPolicy: optionalString(claim.reclaimPolicy),
+    created: optionalString(claim.created),
+    price: priceOf(claim.price),
+    priceNote: optionalString(claim.priceNote),
+    mounted: claim.mounted === true ? true : undefined,
+  };
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function tierOf(value: unknown): VolumeTier | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const tier = value as Record<string, unknown>;
+  return {
+    type: optionalString(tier.type),
+    iops: optionalNumber(tier.iops),
+    throughputMiBps: optionalNumber(tier.throughputMiBps),
+  };
+}
+
+function priceOf(value: unknown): ClaimPrice | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const price = value as Record<string, unknown>;
+  const monthlyUSD = optionalNumber(price.monthlyUSD);
+  return monthlyUSD === undefined
+    ? undefined
+    : {
+        monthlyUSD,
+        source: optionalString(price.source) ?? '',
+        asOf: optionalString(price.asOf) ?? '',
+      };
+}
+
+function cacheOnOf(value: unknown): CacheOnRefusal | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const block = value as Record<string, unknown>;
+  return {
+    claim: cacheClaimOf(block.claim),
+    claimName: optionalString(block.claimName) ?? '',
+    remedies: strings(block.remedies),
   };
 }
 
@@ -584,12 +764,14 @@ export function parseRefusal(details: string[]): Refusal | undefined {
       const block = refused as Record<string, unknown>;
       const cacheZone = cacheZoneOf(block.cacheZone);
       const cacheClaims = cacheClaimsOf(block.cacheClaims);
+      const cacheOn = cacheOnOf(block.cacheOn);
       return {
         nodes: strings(block.nodes),
         models: strings(block.models),
         hint: typeof block.hint === 'string' ? block.hint : '',
         ...(cacheZone ? { cacheZone } : {}),
         ...(cacheClaims ? { cacheClaims } : {}),
+        ...(cacheOn ? { cacheOn } : {}),
       };
     }
   }
@@ -608,6 +790,77 @@ export function describeCacheClaim(claim: CacheClaim): string {
     where = `Bound in ${claim.zone}`;
   }
   return `${claim.namespace}/${claim.name} (${where})`;
+}
+
+/** `$27.37/month` — a claim's monthly list price; `undefined` without one. */
+export function describeMonthlyPrice(
+  price: Pick<ClaimPrice, 'monthlyUSD'> | undefined,
+): string | undefined {
+  return price === undefined
+    ? undefined
+    : `$${price.monthlyUSD.toFixed(2)}/month`;
+}
+
+/** `100 GiB gp3 at 500 MiB/s` — a claim's size and tier as far as they are known. */
+export function describeClaimSize(
+  claim: Pick<CacheClaim, 'capacity' | 'capacityGiB' | 'tier'>,
+): string | undefined {
+  if (!claim.capacity && claim.capacityGiB === undefined) {
+    return undefined;
+  }
+  let size =
+    claim.capacityGiB !== undefined
+      ? `${trimNumber(claim.capacityGiB)} GiB`
+      : claim.capacity!;
+  if (claim.tier?.type) {
+    size += ` ${claim.tier.type}`;
+    if (claim.tier.throughputMiBps) {
+      size += ` at ${claim.tier.throughputMiBps} MiB/s`;
+    }
+  }
+  return size;
+}
+
+/**
+ * The fine print of a claim's price: where it was read and when
+ * (`AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1), as of 2026-09-19`),
+ * or why there is none.
+ */
+export function describePriceSource(
+  claim: Pick<CacheClaim, 'price' | 'priceNote' | 'tierNote'>,
+): string | undefined {
+  if (claim.price) {
+    return claim.price.asOf
+      ? `${claim.price.source}, as of ${claim.price.asOf}`
+      : claim.price.source;
+  }
+  return claim.priceNote ?? claim.tierNote;
+}
+
+/**
+ * The claim the cache block of a dry run names, as far as its figures go:
+ * `100Gi gp3, 500 MiB/s, 3000 IOPS`, its price and its source, existing or
+ * projected from the chart.
+ */
+export function describeCacheSetting(setting: CacheSetting): {
+  size?: string;
+  price?: string;
+  source?: string;
+} {
+  const size = [setting.capacity, setting.tier].filter(Boolean).join(' ');
+  const price =
+    setting.monthlyPriceUSD === undefined
+      ? undefined
+      : describeMonthlyPrice({ monthlyUSD: setting.monthlyPriceUSD });
+  let source: string | undefined;
+  if (setting.priceSource) {
+    source = setting.priceAsOf
+      ? `${setting.priceSource}, as of ${setting.priceAsOf}`
+      : setting.priceSource;
+  } else {
+    source = setting.priceNote;
+  }
+  return { size: size || undefined, price, source };
 }
 
 /** A refusal cluster-manager answered, in its own words. */

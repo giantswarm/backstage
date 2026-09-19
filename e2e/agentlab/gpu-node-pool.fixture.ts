@@ -88,7 +88,13 @@ export function placementAnswer(args: Record<string, unknown>) {
       ? {
           enabled: true,
           claim: 'model-serving/hf-cache',
-          note: 'the predictors mount the model cache claim model-serving/hf-cache — it does not exist yet: the connectivity chart creates it and keeps it',
+          exists: false,
+          capacity: '100Gi',
+          tier: 'gp3, 500 MiB/s, 3000 IOPS',
+          monthlyPriceUSD: 27.37,
+          priceSource: 'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)',
+          priceAsOf: '2026-09-19',
+          note: 'the predictors mount the model cache claim model-serving/hf-cache — it does not exist yet: the connectivity chart creates it and keeps it at its defaults, 100Gi gp3, 500 MiB/s, 3000 IOPS: about $27.37 a month at list prices',
         }
       : {
           enabled: false,
@@ -104,7 +110,7 @@ const CLUSTER_API = {
 };
 
 export const INFO = {
-  version: '0.16.0',
+  version: '0.17.0',
   modes: { apply: true, commit: false },
   tools: [
     'get_info',
@@ -112,9 +118,116 @@ export const INFO = {
     'list_node_pools',
     'create_node_pool',
     'delete_node_pool',
+    'enable_model_serving',
+    'disable_model_serving',
+    'remove_model_cache',
   ],
   clusterApi: CLUSTER_API,
 };
+
+/**
+ * A model cache claim kept on the cluster after its last pool went, as
+ * cluster-manager 0.17 reads it (giantswarm/cluster-manager#83): a 100 GiB gp3
+ * volume at 500 MiB/s in one zone, $27.37 a month at Frankfurt's list prices
+ * — the shape of a real claim an installation kept for a day (2026-09-19).
+ */
+export const KEPT_CLAIM = {
+  namespace: 'model-serving',
+  name: 'hf-cache',
+  phase: 'Bound',
+  volume: 'pvc-cd15b89b-fed9-48d3-8b96-cccc5f00dd9f',
+  zone: 'eu-central-1b',
+  capacity: '100Gi',
+  capacityGiB: 100,
+  storageClass: 'agent-platform-connectivity-hf-cache-e11f27cb',
+  tier: { type: 'gp3', iops: 3000, throughputMiBps: 500 },
+  reclaimPolicy: 'Delete',
+  created: '2026-09-18T20:31:04Z',
+  price: {
+    monthlyUSD: 27.37,
+    source: 'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)',
+    asOf: '2026-09-19',
+  },
+};
+
+/** `list_clusters` for a cluster that keeps a cache: its slice runs with the cache on, mounting the claim (0.17+). */
+export function keptCacheCluster(mounted: boolean) {
+  return {
+    ...CLUSTER,
+    serving: mounted
+      ? {
+          status: 'present',
+          provider: 'cluster-manager',
+          readiness: {
+            release: {
+              name: `${CLUSTER.name}-agent-platform`,
+              namespace: CLUSTER.namespace,
+              ready: true,
+              reason: 'InstallSucceeded',
+            },
+            children: [],
+            controllers: [],
+            configs: null,
+            backend: { registered: true },
+            presets: null,
+            modelsGateway: null,
+            cache: { enabled: true, claim: KEPT_CLAIM.name },
+            cacheClaims: [{ ...KEPT_CLAIM, mounted: true }],
+          },
+        }
+      : {
+          status: 'absent',
+          readiness: {
+            release: null,
+            children: [],
+            controllers: [],
+            configs: null,
+            backend: { registered: false },
+            presets: null,
+            modelsGateway: null,
+            cache: null,
+            cacheClaims: [KEPT_CLAIM],
+          },
+        },
+  };
+}
+
+/** `remove_model_cache` with `mode: apply` on the kept claim: the claim deleted, the slice upgraded where it mounted it. */
+export function removeCacheAnswer(mounted: boolean) {
+  return {
+    cluster: CLUSTER.name,
+    namespace: CLUSTER.namespace,
+    mode: 'apply',
+    dryRun: false,
+    objects: [
+      ...(mounted
+        ? [
+            {
+              apiVersion: 'helm.toolkit.fluxcd.io/v2',
+              kind: 'HelmRelease',
+              name: `${CLUSTER.name}-agent-platform`,
+              namespace: CLUSTER.namespace,
+              action: 'updated',
+              changes: ['spec.values.modelServing.cache.enabled'],
+            },
+          ]
+        : []),
+      {
+        apiVersion: 'v1',
+        kind: 'PersistentVolumeClaim',
+        name: KEPT_CLAIM.name,
+        namespace: KEPT_CLAIM.namespace,
+        action: 'deleted',
+      },
+    ],
+    removedClaims: [KEPT_CLAIM],
+    cacheClaims: [KEPT_CLAIM],
+    cache: {
+      enabled: false,
+      note: `the model cache of ${CLUSTER.name} is removed: 1 claim(s) deleted`,
+    },
+  };
+}
 
 type Shape = {
   instanceType: string;
@@ -510,6 +623,13 @@ export type StubOptions = DryRunOptions & {
    * beside this one (`stubModelManagerTools`).
    */
   servers?: string[];
+  /**
+   * The cluster keeps a model cache claim when the page opens
+   * (giantswarm/backstage#2493): `mounted`, its slice runs with the cache on
+   * (the form's switch locks); `kept`, no slice — the claim alone stands.
+   * `remove_model_cache` deletes it; the next `list_clusters` lists none.
+   */
+  keptCache?: 'mounted' | 'kept';
 };
 
 /** Reads after a complete apply that still answer `creating`; the next one is `ready`. */
@@ -759,6 +879,7 @@ export async function stubClusterManager(
     : undefined;
   let reads = options.existingPool ? SETTLED_READ : 0;
   let removing: { reads: number } | undefined;
+  let keptCache = options.keptCache;
   const mode: LifecycleMode = options.lifecycle ?? 'phases';
 
   // The page offers the dialog where the installation's muster lists
@@ -809,21 +930,27 @@ export async function stubClusterManager(
       case 'get_info':
         await route.fulfill({ json: INFO });
         return;
-      case 'list_clusters':
+      case 'list_clusters': {
         if (created) {
           reads += 1;
         }
+        let cluster: unknown = CLUSTER;
+        if (created) {
+          cluster = clusterAnswer(created.pool, created.at, reads, mode);
+        } else if (keptCache) {
+          cluster = keptCacheCluster(keptCache === 'mounted');
+        }
         await route.fulfill({
-          json: {
-            clusters: [
-              created
-                ? clusterAnswer(created.pool, created.at, reads, mode)
-                : CLUSTER,
-            ],
-            clusterApi: CLUSTER_API,
-          },
+          json: { clusters: [cluster], clusterApi: CLUSTER_API },
         });
         return;
+      }
+      case 'remove_model_cache': {
+        const mounted = keptCache === 'mounted';
+        keptCache = undefined;
+        await route.fulfill({ json: removeCacheAnswer(mounted) });
+        return;
+      }
       case 'list_node_pools': {
         let nodePools: unknown[] = [];
         if (created && removing) {
