@@ -516,7 +516,7 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     await dialog.getByRole('button', { name: 'Cancel' }).click();
   });
 
-  test('where nothing could be judged the form shows the note instead of a preset picker', async ({
+  test('where nothing could be judged the form shows the note under a preset picker with nothing to pick', async ({
     page,
   }) => {
     const { dialog } = await reachForm(page, { presets: false });
@@ -525,9 +525,10 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     await expect(note).toContainText(
       "no serving preset is published on wc1 yet — the slice release publishes them once it is ready; a dryRun re-run then says which of the pool's sizes host each",
     );
+    // The picker stands in place, disabled: the form never moves for an answer.
     await expect(
       dialog.getByRole('button', { name: /I want to serve/ }),
-    ).toHaveCount(0);
+    ).toBeDisabled();
     await expect(dialog.getByTestId('sizes-picker')).toContainText(
       'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
     );
