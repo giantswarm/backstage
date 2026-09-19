@@ -578,7 +578,9 @@ test.describe('repositories: actions', () => {
     await expect(receiving).toHaveText(/Pick the receiving team/, {
       timeout: 60_000,
     });
-    await expect(dialog.getByLabel(/^Receiving team/)).toHaveCount(0);
+    await expect(
+      dialog.getByRole('textbox', { name: /^Receiving team/ }),
+    ).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: 'Review' })).toBeDisabled();
     await receiving.click();
     const options = admin.getByRole('option');
