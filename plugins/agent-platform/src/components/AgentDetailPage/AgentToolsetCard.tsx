@@ -4,7 +4,10 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  LoadingIndicator,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
@@ -109,9 +112,10 @@ function DeclaredSelectors({
 export function AgentToolsetCard({ agent }: { agent: Agent }) {
   const classes = useStyles();
   const installation = agent.cluster;
+  const namespace = agent.getNamespace();
   // Memoized on the read, so `selectors` keeps its identity across renders
   // (the resolution and grouping memos below depend on it).
-  const declared = useAgentToolset(agent);
+  const { declared, isReading, isUnreadable } = useAgentToolset(agent);
   const selectors = useMemo(
     () => (declared.state === 'declared' ? declared.selectors : []),
     [declared],
@@ -149,20 +153,34 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     : undefined;
 
   let body: React.ReactNode;
-  if (declared.state === 'unresolved') {
-    body = (
-      <Alert
-        status="info"
-        title="Toolset not readable"
-        description={`This agent binds the gateway through the RemoteMCPServer ${declared.carrier}, which could not be read — it may still be loading, or not be readable for you. The toolset is declared on that server, so nothing can be said about it here.`}
-      />
-    );
-  } else if (declared.state === 'no-gateway') {
+  if (declared.state === 'no-gateway') {
+    // Decided by the agent's own bindings, so it is already final — a
+    // chat-only agent has nothing to wait for and says so at once.
     body = (
       <Alert
         status="info"
         title="No tools"
         description="This agent has no gateway entry, so it has no tools beyond its own reasoning — what a toolset of preset:none renders to, and what a chat-only agent looks like."
+      />
+    );
+  } else if (isReading) {
+    // Until the carrier read answers, nothing can be said — and saying it
+    // cannot be read would be wrong on every healthy agent. The indicator
+    // holds itself back for 250ms, so a read served from cache shows nothing
+    // at all.
+    body = <LoadingIndicator label="Reading the agent's toolset…" />;
+  } else if (declared.state === 'unresolved') {
+    body = isUnreadable ? (
+      <Alert
+        status="info"
+        title="Toolset not readable"
+        description={`The RemoteMCPServers of namespace ${namespace} on ${installation} could not be read — they may be unreachable, or your account is not allowed to list them there. The toolset is declared on ${declared.carrier}, the server this agent binds the gateway through, so nothing can be said about it here.`}
+      />
+    ) : (
+      <Alert
+        status="warning"
+        title="Gateway server missing"
+        description={`This agent binds the gateway through the RemoteMCPServer ${declared.carrier}, but no server of that name exists in namespace ${namespace}. The binding reaches nothing, and the toolset — declared on that server — cannot be read.`}
       />
     );
   } else if (declared.state === 'implicit-full') {

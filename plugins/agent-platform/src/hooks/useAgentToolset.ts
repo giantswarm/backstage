@@ -11,6 +11,14 @@ import {
   type DeclaredToolset,
 } from '../lib/toolset';
 
+export type AgentToolset = {
+  declared: DeclaredToolset;
+  /** The carrier read has not answered yet — nothing can be said about the toolset. */
+  isReading: boolean;
+  /** The read answered with a failure (no permission, no such kind, unreachable). */
+  isUnreadable: boolean;
+};
+
 /**
  * The toolset one agent declares, read off the `RemoteMCPServer` its gateway
  * binding names.
@@ -21,25 +29,58 @@ import {
  * proxy — a namespaced list, which a non-admin who can read the agent can
  * usually read too — and joins it with the template's bindings. While the
  * servers are still loading the result is `unresolved`, never a premature
- * "implicit full access".
+ * "implicit full access"; `isReading` is what tells the two apart, so a caller
+ * can wait rather than claim the carrier is unreadable.
+ *
+ * Settledness comes from the queries' own terminal state, and from neither
+ * `isLoading` nor `errors`. Not `isLoading`, because an enabled query reports
+ * `fetchStatus: 'idle'` on the render before it starts fetching, so it is
+ * false with nothing read yet — the trap `usePreferredVersions` documents. Not
+ * `errors`, because `useResources` filters a `RejectedError` (an installation
+ * the person has not authenticated with) out of it: that read is over, but it
+ * leaves neither items nor a reported error, and waiting on those would leave
+ * the caller waiting forever. Reading the queries also keeps a background
+ * refetch from flipping a settled card back to reading.
  */
-export function useAgentToolset(agent: Agent): DeclaredToolset {
+export function useAgentToolset(agent: Agent): AgentToolset {
   const installation = agent.cluster;
   const namespace = agent.getNamespace();
-  const { resources, isLoading } = useResources(
+  const { resources, queries } = useResources(
     installation,
     RemoteMCPServer,
     { [installation]: { namespace } },
     { enableDiscovery: false },
   );
 
+  // Paused counts as done: offline, the query sits pending with nothing on the
+  // way. No queries at all is *not* done — an empty `every` is vacuously true,
+  // and settling on it would make the card pronounce on a read that never
+  // happened.
+  const settled =
+    queries.length > 0 &&
+    queries.every(
+      ({ query }) => query.isSuccess || query.isError || query.isPaused,
+    );
+  // A pause over an answer is not a failure: a background refetch pausing
+  // offline must not turn a read that already succeeded into an unreadable one.
+  const failed = queries.some(
+    ({ query }) => query.isError || (query.isPaused && !query.isSuccess),
+  );
+
+  // Booleans, not the arrays they come from: `errors` is a new array on every
+  // render (its own memo depends on the cluster list `useResources` rebuilds
+  // each time), and depending on it would give every render a new result —
+  // which the card's memos, keyed on this one, all hang off.
   return useMemo(
-    () =>
-      toolsetOfAgent(
+    () => ({
+      declared: toolsetOfAgent(
         agent,
         MUSTER_MCP_SERVER_NAME,
-        isLoading && resources.length === 0 ? undefined : resources,
+        settled ? resources : undefined,
       ),
-    [agent, isLoading, resources],
+      isReading: !settled,
+      isUnreadable: settled && failed,
+    }),
+    [agent, settled, failed, resources],
   );
 }

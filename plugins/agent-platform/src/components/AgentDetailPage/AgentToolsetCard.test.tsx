@@ -15,6 +15,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { agentsRouteRef } from '../../routes';
+import { buildResourceErrors } from '../resourceErrorFixtures';
 import { AgentToolsetCard } from './AgentToolsetCard';
 
 const mockUseResources = jest.fn();
@@ -169,13 +170,53 @@ const resolvedAnswer =
     toolset_unmatched: unmatched,
   });
 
-async function renderCard(agent: Agent, api?: MusterApi) {
+/** One cluster's query, in the state a test needs it in. */
+function query(
+  state: Partial<Record<'isSuccess' | 'isError' | 'isPaused', boolean>>,
+) {
+  return [
+    {
+      cluster: 'gazelle',
+      query: { isSuccess: false, isError: false, isPaused: false, ...state },
+    },
+  ];
+}
+
+/**
+ * The read answered with a list. The card waits on the query's own terminal
+ * state, not on `isLoading` and not on `errors`.
+ */
+const ANSWERED = query({ isSuccess: true });
+
+/** How the RemoteMCPServer read answers, when a test needs it unsettled or failed. */
+type CarrierRead = {
+  resources?: unknown[];
+  isLoading?: boolean;
+  errors?: unknown[];
+  queries?: unknown[];
+};
+
+async function renderCard(
+  agent: Agent,
+  api?: MusterApi,
+  carrierRead: CarrierRead = {},
+) {
   mockUseResources.mockImplementation(
-    (_clusters: unknown, ResourceClass: unknown) => ({
-      resources: ResourceClass === RemoteMCPServer ? CARRIERS : SERVER_CRS,
-      isLoading: false,
-      errors: [],
-    }),
+    (_clusters: unknown, ResourceClass: unknown) =>
+      ResourceClass === RemoteMCPServer
+        ? {
+            resources: CARRIERS,
+            isLoading: false,
+            errors: [],
+            queries: ANSWERED,
+            ...carrierRead,
+          }
+        : {
+            resources: SERVER_CRS,
+            isLoading: false,
+            errors: [],
+            queries: ANSWERED,
+          },
   );
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -204,6 +245,67 @@ describe('AgentToolsetCard', () => {
   beforeEach(() => {
     mockUseResources.mockReset();
     CARRIERS = [carrier()];
+  });
+
+  it('says it is reading while the carrier read has not answered', async () => {
+    await renderCard(makeAgent([{ mcpServer: GATEWAY }]), undefined, {
+      resources: [],
+      isLoading: true,
+      queries: query({}),
+    });
+
+    // The flash this guards against: an unanswered read is not evidence that
+    // the carrier cannot be read.
+    expect(screen.queryByText('Toolset not readable')).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('progressbar', {
+        name: "Reading the agent's toolset…",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('says the carriers could not be read when the read failed', async () => {
+    await renderCard(makeAgent([{ mcpServer: GATEWAY }]), undefined, {
+      resources: [],
+      errors: buildResourceErrors({ failed: ['gazelle'] }),
+      queries: query({ isError: true }),
+    });
+
+    expect(screen.getByText('Toolset not readable')).toBeInTheDocument();
+    expect(
+      screen.getByText(/RemoteMCPServers of namespace kagent on gazelle/),
+    ).toBeInTheDocument();
+  });
+
+  it('names the gateway server as missing when the read answered without it', async () => {
+    await renderCard(makeAgent([{ mcpServer: GATEWAY }]), undefined, {
+      resources: [],
+    });
+
+    expect(screen.getByText('Gateway server missing')).toBeInTheDocument();
+    expect(
+      screen.getByText(/no server of that name exists in namespace kagent/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Toolset not readable')).not.toBeInTheDocument();
+  });
+
+  it('says No tools at once for a chat-only agent, without waiting for the read', async () => {
+    await renderCard(
+      makeAgent([{ mcpServer: { name: 'grafana' } }]),
+      undefined,
+      {
+        resources: [],
+        isLoading: true,
+        queries: query({}),
+      },
+    );
+
+    // No gateway binding: decided by the agent alone, so the carrier read has
+    // no bearing on it. The indicator is pinned by its bar and not by its
+    // label — `Progress` renders the testid hidden from the first paint, while
+    // the label is held back 250ms and would be absent either way.
+    expect(screen.getByText('No tools')).toBeInTheDocument();
+    expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
   });
 
   it('labels an agent without a toolset as implicit full access', async () => {
