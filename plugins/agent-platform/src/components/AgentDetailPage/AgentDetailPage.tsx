@@ -44,6 +44,7 @@ import {
   useAgentManagerAvailability,
   useAgentManagerInfo,
 } from '../../hooks/useAgentManager';
+import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
@@ -276,21 +277,49 @@ function AgentDetailPageContent() {
 
   // The write actions — Delete, Edit, Update skills — go through agent-manager
   // over muster as the signed-in person, and are offered when the installation's
-  // muster lists agent-manager (feature detection; authorization stays the
-  // apiserver's, reached through agent-manager). Called here rather than inside
-  // the menu: the menu is rendered in the shared plugin header, outside this
-  // plugin's `QueryClientProvider`, so react-query has no client there. The
-  // dialogs are rendered in the page body for the same reason.
+  // muster lists agent-manager and the agent is not applied from git
+  // (authorization stays the apiserver's, reached through agent-manager).
+  // Called here rather than inside the menu: the menu is rendered in the shared
+  // plugin header, outside this plugin's `QueryClientProvider`, so react-query
+  // has no client there. The dialogs are rendered in the page body for the same
+  // reason.
   const availability = useAgentManagerAvailability(
     installation ? [installation] : [],
   );
+  const isAgentManagerReachable =
+    !availability.isUnavailable &&
+    availability.presenceOf(installation) === 'available';
+
+  // Whether a live write is possible at all, in agent-manager's own words:
+  // `managed: 'gitops'` means the agent's HelmRelease is applied by a Flux
+  // Kustomization, so every write is refused and its desired state belongs in
+  // the GitOps repository. Deliberately not `isGitOpsManaged(agent)` from the
+  // labels — that answers "is a reconciler in charge", which is true of every
+  // agent this plugin deploys, since the create flow applies a HelmRelease of
+  // its own. A read that settles without an answer — not connected, refused —
+  // leaves the actions offered: agent-manager then refuses on confirm, as it
+  // did before. One still in flight withholds them instead, so they are not
+  // shown for a muster round-trip and then taken back.
+  const { agent: managerAgent, isLoading: isReadingManagerAgent } =
+    useAgentManagerAgent(installation, namespace, name, {
+      enabled: isAgentManagerReachable,
+    });
+
   const agentManagerGate = useMemo(
     () => ({
       presence: availability.presenceOf(installation),
       isUnavailable: availability.isUnavailable,
+      isGitOpsOwned: managerAgent?.managed === 'gitops',
+      isVerdictPending: isReadingManagerAgent,
     }),
-    [availability, installation],
+    [availability, installation, managerAgent?.managed, isReadingManagerAgent],
   );
+
+  /** Every live write the page offers is gated on this. */
+  const canWriteAgent =
+    isAgentManagerReachable &&
+    !agentManagerGate.isVerdictPending &&
+    !agentManagerGate.isGitOpsOwned;
   const { info: agentManagerInfo } = useAgentManagerInfo(
     agentManagerGate.presence === 'available' ? installation : undefined,
   );
@@ -677,12 +706,7 @@ function AgentDetailPageContent() {
             element={
               <AgentSkillsCard
                 agent={agent}
-                onUpdateSkills={
-                  agentManagerGate.presence === 'available' &&
-                  !agentManagerGate.isUnavailable
-                    ? openUpdateSkills
-                    : undefined
-                }
+                onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
               />
             }
           />
@@ -750,7 +774,8 @@ function AgentDetailPageContent() {
  *
  * The agent can be edited, have its skills re-pinned and be deleted from the
  * header's actions menu — every write through agent-manager over muster as the
- * signed-in person, offered when the installation's muster lists agent-manager.
+ * signed-in person, offered when the installation's muster lists agent-manager
+ * and the agent is not applied from git.
  *
  * What the APUI prototype shows and this deliberately does not, because there is
  * no data behind it: sessions all-time, sessions in the last 30 days, a success

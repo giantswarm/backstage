@@ -572,17 +572,26 @@ function EditAgentPageContent() {
   const availability = useAgentManagerAvailability(
     installation ? [installation] : [],
   );
-  const gate = {
-    presence: availability.presenceOf(installation),
-    isUnavailable: availability.isUnavailable,
-  };
-  const reason = agentManagerAbsenceReason(gate, installation);
+  const presence = availability.presenceOf(installation);
   const { agent, isLoading, failure } = useAgentManagerAgent(
     installation,
     namespace,
     name,
-    { enabled: gate.presence === 'available' },
+    { enabled: presence === 'available' },
   );
+
+  // An agent applied from git is refused by agent-manager, so the form is never
+  // offered — the same sentence the detail page's actions menu gives, in the
+  // same place this page already explains a missing agent-manager. While the
+  // read is in flight there is no verdict and no reason; that lands on the
+  // progress branch below.
+  const gate = {
+    presence,
+    isUnavailable: availability.isUnavailable,
+    isGitOpsOwned: agent?.managed === 'gitops',
+    isVerdictPending: isLoading,
+  };
+  const reason = agentManagerAbsenceReason(gate, installation);
 
   if (reason) {
     return (
@@ -643,7 +652,8 @@ function EditAgentPageContent() {
  * person: the form pre-filled from `get_agent` (display name, description,
  * system prompt, model, toolset, skills with their pins — no runtime), the
  * review as `validate_agent`'s dry run of the update, Save as `update_agent`
- * with only the changed fields. A GitOps-owned or suspended agent's dry run
+ * with only the changed fields. An agent applied from git never reaches the
+ * form — agent-manager refuses every write to it. A suspended agent's dry run
  * comes back as agent-manager's refusal and Save stays locked. Commit
  * (`mode: commit`) appears only when `get_info` reports the capability.
  */

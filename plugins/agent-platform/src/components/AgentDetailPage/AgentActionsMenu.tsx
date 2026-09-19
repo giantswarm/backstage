@@ -10,25 +10,50 @@ import type { AgentManagerPresence } from '../../hooks/useAgentManager';
 import { AgentManifestDialog } from './AgentManifestDialog';
 
 /**
- * Whether the installation's muster lists agent-manager — the one signal the
- * write actions gate on. `presence` is per installation (`core_mcpserver_list`
- * through the person's own muster session); `isUnavailable` means this portal
- * has no muster plugin, the only way to reach agent-manager.
+ * What the write actions gate on. `presence` is whether the installation's
+ * muster lists agent-manager, per installation (`core_mcpserver_list` through
+ * the person's own muster session); `isUnavailable` means this portal has no
+ * muster plugin, the only way to reach agent-manager.
+ *
+ * `isGitOpsOwned` is agent-manager's own verdict on this agent (`get_agent`'s
+ * `managed: 'gitops'`): its HelmRelease is applied by a Flux Kustomization, so
+ * every live write is refused. False when the read came back and said
+ * otherwise, *and* when it settled without an answer — refused, or the muster
+ * session is not connected — in which case the actions stay offered and
+ * agent-manager refuses in its own words, as it did before this gate existed.
+ *
+ * `isVerdictPending` is that read still being in flight, which is not the same
+ * thing: offering the actions then would show them to everyone for a muster
+ * round-trip and take them away from exactly the people this gate exists for,
+ * with a click in between opening the dialog it exists to prevent.
  */
 export type AgentManagerGate = {
   presence: AgentManagerPresence;
   isUnavailable: boolean;
+  isGitOpsOwned: boolean;
+  isVerdictPending: boolean;
 };
 
 /**
- * Why the write actions are not offered, in one sentence for the menu. Absent
- * while the server list is still being read: the items are withheld then,
- * rather than appearing and disappearing under the pointer.
+ * Why the write actions are not offered, in one sentence — for a page to show,
+ * not the menu. A menu is a list of things to do; an explanation sitting in it
+ * as an unclickable item is neither. The menu therefore just omits what it
+ * cannot offer, and `EditAgentPage` uses this for the empty state it answers a
+ * deep link with.
+ *
+ * Absent while the server list or agent-manager's verdict on the agent is still
+ * being read: nothing is offered then either, but there is nothing to say yet.
  */
 export function agentManagerAbsenceReason(
   gate: AgentManagerGate,
   installation: string,
 ): string | undefined {
+  if (gate.isVerdictPending) {
+    return undefined;
+  }
+  if (gate.isGitOpsOwned) {
+    return 'This agent is applied from git, so agent-manager refuses live writes. Edit it, update its skills or remove it in the GitOps repository instead.';
+  }
   if (gate.isUnavailable) {
     return 'Editing, updating skills and deleting go through agent-manager over muster, and this portal has no muster plugin.';
   }
@@ -37,6 +62,23 @@ export function agentManagerAbsenceReason(
   }
   return undefined;
 }
+
+/**
+ * A definite width for the menu, which is not cosmetic — the same fix, and the
+ * same reason, as `SessionActionsMenu`'s `MENU_WIDTH`.
+ *
+ * Without it bui writes the literal string `"undefined"` as the menu's `width`,
+ * the browser discards it, and the popover lays out at its natural width before
+ * settling back to `.bui-MenuContent`'s `min-width: 150px`. That second pass
+ * makes the browser report "ResizeObserver loop completed with undelivered
+ * notifications" from react-aria's popover observer, which trips the dev-server
+ * error overlay.
+ *
+ * Note bui applies `maxWidth` as CSS `width` despite the name, so this is the
+ * definite width — keep it comfortably above the longest item ("Update
+ * skills…" plus its icon) rather than trimmed to fit.
+ */
+const MENU_WIDTH = '12rem';
 
 /**
  * The agent details page's header actions.
@@ -50,9 +92,12 @@ export function agentManagerAbsenceReason(
  * rendering **outside the plugin's `QueryClientProvider`**, so anything backed
  * by react-query — the agent-manager reads and mutations behind Delete, Edit
  * and Update skills — is called by the page and their dialogs are rendered in
- * the page body; the menu only says whether they are offered (feature
- * detection from the MCPServer presence, passed in as `agentManager`) and asks
- * the page to open them. Authorization is the apiserver's, reached through
+ * the page body; the menu only says whether they are offered (`agentManager`:
+ * agent-manager's presence, and its verdict that the agent is writable at all)
+ * and asks the page to open them. What it cannot offer it simply leaves out —
+ * an explanation belongs on the page (the Overview tab's GitOps card already
+ * carries the one for an agent applied from git), not as an unclickable item in
+ * a list of things to do. Authorization stays the apiserver's, reached through
  * agent-manager as the person: a viewer sees the items and gets the Forbidden
  * on confirm.
  */
@@ -70,10 +115,11 @@ export function AgentActionsMenu({
   onDelete: () => void;
 }) {
   const [isManifestOpen, setManifestOpen] = useState(false);
-  const installation = agent.cluster;
   const offered =
-    !agentManager.isUnavailable && agentManager.presence === 'available';
-  const reason = agentManagerAbsenceReason(agentManager, installation);
+    !agentManager.isUnavailable &&
+    agentManager.presence === 'available' &&
+    !agentManager.isVerdictPending &&
+    !agentManager.isGitOpsOwned;
 
   return (
     <>
@@ -83,7 +129,7 @@ export function AgentActionsMenu({
           aria-label="Agent actions"
           variant="tertiary"
         />
-        <Menu>
+        <Menu maxWidth={MENU_WIDTH}>
           <MenuItem onAction={() => setManifestOpen(true)}>
             View manifest
           </MenuItem>
@@ -108,10 +154,6 @@ export function AgentActionsMenu({
               Delete agent…
             </MenuItem>
           ) : null}
-          {/* Says why the actions are missing rather than leaving a menu with
-              one item and no explanation; disabled, since there is nothing to
-              do about it from here. */}
-          {reason ? <MenuItem isDisabled>{reason}</MenuItem> : null}
         </Menu>
       </MenuTrigger>
 

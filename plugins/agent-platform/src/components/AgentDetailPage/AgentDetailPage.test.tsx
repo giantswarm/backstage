@@ -86,13 +86,19 @@ jest.mock('../../hooks/useUpdateAgent', () => ({
     reset: jest.fn(),
   }),
 }));
+// agent-manager's presence on the installation, and what it says about this
+// agent. The default is an installation without it — nothing asked, no write
+// affordance offered — which is what most of this file's tests want.
+let agentManagerPresence: 'available' | 'missing' | 'unknown' = 'unknown';
+let isMusterUnavailable = true;
+
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: () => ({
     available: [],
     missing: [],
-    presenceOf: () => 'unknown',
+    presenceOf: () => agentManagerPresence,
     isLoading: false,
-    isUnavailable: true,
+    isUnavailable: isMusterUnavailable,
   }),
   useAgentManagerInfo: () => ({
     info: undefined,
@@ -100,6 +106,28 @@ jest.mock('../../hooks/useAgentManager', () => ({
     error: null,
   }),
 }));
+
+// `get_agent`, which the page reads for one thing only: whether agent-manager
+// can write to this agent at all (`managed`). Undefined is the unread case —
+// not connected, refused, still in flight — where the actions stay offered.
+let managerAgent: { managed: string } | undefined;
+let isReadingManagerAgent = false;
+
+jest.mock('../../hooks/useAgentManagerAgent', () => ({
+  useAgentManagerAgent: () => ({
+    agent: managerAgent,
+    isLoading: isReadingManagerAgent,
+    failure: undefined,
+  }),
+}));
+
+/** An installation whose muster lists agent-manager, which is what offers the writes. */
+function withAgentManager(managed: string | undefined = 'helmrelease') {
+  agentManagerPresence = 'available';
+  isMusterUnavailable = false;
+  managerAgent = managed === undefined ? undefined : { managed };
+  isReadingManagerAgent = false;
+}
 // agent-manager's `get_agent_status`, the page's word on whether an agent whose
 // template the apiserver does not know is being deployed (its HelmRelease exists)
 // or does not exist at all. The default is an installation without agent-manager:
@@ -450,6 +478,10 @@ describe('AgentDetailPage', () => {
     mockServingStateFor.mockReset();
     mockUseAgentStatus.mockReset();
     mockUseAgentStatus.mockReturnValue(NO_STATUS);
+    agentManagerPresence = 'unknown';
+    isMusterUnavailable = true;
+    managerAgent = undefined;
+    isReadingManagerAgent = false;
   });
 
   it('renders every section for a ready agent', async () => {
@@ -645,6 +677,57 @@ describe('AgentDetailPage', () => {
       );
       // Read-only: the picker's checkbox affordance must not come along.
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+
+    // The exact label, because the stubbed dialog's own button says
+    // "stub: Update skills landed" and would match a looser query.
+    const updateSkills = () =>
+      screen.queryByRole('button', { name: 'Update skills\u2026' });
+
+    it('offers Update skills when agent-manager can write to the agent', async () => {
+      withAgentManager('helmrelease');
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).toBeInTheDocument();
+    });
+
+    it('withholds Update skills for an agent applied from git', async () => {
+      // agent-manager refuses every live write to it: its desired state lives in
+      // the GitOps repository, so pressing the button could only ever end in the
+      // refusal the dialog used to show after the fact.
+      withAgentManager('gitops');
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).not.toBeInTheDocument();
+    });
+
+    it("withholds Update skills while agent-manager's verdict is in flight", async () => {
+      // Not the same as "did not answer": showing the button for a muster
+      // round-trip and then removing it is the one window in which a
+      // GitOps-owned agent's skills could still be updated.
+      withAgentManager('gitops');
+      isReadingManagerAgent = true;
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).not.toBeInTheDocument();
+    });
+
+    it('still offers Update skills when agent-manager did not answer', async () => {
+      // Not connected, refused, or still in flight. Withholding the action there
+      // would take it from people who do have it; agent-manager refuses on
+      // confirm if it must.
+      withAgentManager(undefined);
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).toBeInTheDocument();
     });
   });
 
