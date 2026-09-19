@@ -1,4 +1,11 @@
-import { Checkbox, CheckboxGroup, Flex, Switch, Text } from '@backstage/ui';
+import {
+  Checkbox,
+  CheckboxGroup,
+  Flex,
+  Skeleton,
+  Switch,
+  Text,
+} from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
@@ -25,10 +32,10 @@ export type PlacementOffer = {
 };
 
 export type PoolPlacementPickerProps = {
-  /** The picked cluster: its node-subnet zones and, when they cannot be read, why. */
+  /** The picked cluster: its node-subnet zones and, when they cannot be read, why; `undefined` before one is picked. */
   cluster: ManagedCluster | undefined;
   offers: PlacementOffer;
-  /** The zones chosen; empty lets the platform choose. */
+  /** The zones chosen: every zone of the cluster by default. */
   zones: string[];
   onZonesChange: (zones: string[]) => void;
   /** Whether the pool keeps a model cache. */
@@ -46,8 +53,14 @@ export type PoolPlacementPickerProps = {
 /** The id of the zones picker. */
 export const ZONES_PICKER_ID = 'gpu-node-pool-zones';
 
-export const LET_PLATFORM_CHOOSE =
-  'Let the platform choose — Karpenter searches every zone of the cluster for capacity.';
+/** How many zone rows the placeholder stands in for before a cluster is picked. */
+const PLACEHOLDER_ROWS = 3;
+
+export const EVERY_ZONE =
+  'The nodes may launch in every zone of the cluster; Karpenter picks by capacity.';
+export const PICK_A_ZONE = 'Pick at least one zone.';
+export const ZONES_PENDING =
+  'Pick a cluster — its zones are listed here, every one chosen.';
 
 /**
  * The cache's consequence, in one line each way (decisions of 2026-09-18 on
@@ -58,10 +71,14 @@ export const CACHE_ON_SAVES =
   'The download and the compile of every later start of the same model are saved.';
 export const CACHE_OFF_NOTE =
   "Nothing stands: the weights land on the node's disk at every start, and a cold start costs about 90 s more.";
+export const CACHE_OFF_COST =
+  'Switching it on creates a cache claim, a volume billed every month it exists; its price shows here.';
 /** The switch while the cluster keeps a cache: every pool serves from it, and the switch is not the pool's to flip. */
 export const CACHE_KEPT_NOTE =
   'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off. To serve without one, remove the cache';
-export const READING_PRICE = 'reading its price from cluster-manager…';
+export const READING_PRICE = "Reading the claim's price from cluster-manager…";
+export const BILLED_STANDING =
+  'billed while the claim exists, after this pool is removed too, until the cache is removed on the GPU capacity page.';
 
 /** How a claim stands in one line: `100 GiB gp3 at 500 MiB/s · $27.37/month · since 18 Sept 2026 · Bound in eu-central-1b`. */
 export function describeClaimStanding(claim: CacheClaim): string {
@@ -91,35 +108,48 @@ export function describeClaimStanding(claim: CacheClaim): string {
 }
 
 /**
- * The cost line under the switch, from the dry run's cache block: the claim
- * the slice would mount — its size, tier and monthly price, existing or as
- * the connectivity chart would create it — and that it is billed while it
- * exists, after this pool is removed too, until the cache is removed.
+ * The cost line under the switch, the switch's own line when it is on: the
+ * monthly price of the claim the slice would mount — cluster-manager's, from
+ * the dry run's cache block — and that it is billed while the claim exists,
+ * after this pool is removed too, until the cache is removed. Read from a
+ * dry run with the cache on only; until one answered, that it is being read.
  */
 export function cacheCostLine(setting: CacheSetting | undefined): string {
-  if (!setting) {
-    return `${CACHE_ON_SAVES} A cache claim stands with the cluster, ${READING_PRICE}`;
+  if (!setting?.enabled) {
+    return READING_PRICE;
   }
-  const { size, price, source } = describeCacheSetting(setting);
-  const what = setting.exists
-    ? `Serves from the cluster's existing claim${size ? ` (${size})` : ''}`
-    : `Creates a cache claim${size ? ` (${size})` : ''}`;
+  const { price, source } = describeCacheSetting(setting);
   const cost = price
     ? `${price} at list prices`
-    : (source ?? 'its price is not known');
-  const standing =
-    'billed while the claim exists — after this pool is removed too — until the cache is removed on the GPU capacity page.';
-  return `${CACHE_ON_SAVES} ${what}: ${cost}, ${standing}`;
+    : `Its price is not known${source ? ` (${source})` : ''}`;
+  return `${cost} — ${BILLED_STANDING}`;
 }
 
 /**
- * With the switch off and claims standing: the claims stay and keep costing —
- * said, so a person who switches off is not left thinking the bill stops.
+ * What the switch on comes to beside the cost: the claim the slice would
+ * mount — existing, or as the connectivity chart would create it — and what
+ * it saves.
+ */
+export function cacheOnLine(setting: CacheSetting | undefined): string {
+  if (!setting?.enabled) {
+    return CACHE_ON_SAVES;
+  }
+  const { size } = describeCacheSetting(setting);
+  const what = setting.exists
+    ? `Serves from the cluster's existing claim${size ? ` (${size})` : ''}.`
+    : `Creates a cache claim${size ? ` (${size})` : ''}.`;
+  return `${what} ${CACHE_ON_SAVES}`;
+}
+
+/**
+ * With the switch off: what a cold start costs, what switching on would
+ * create, and — claims standing — that they stay and keep costing, so a
+ * person who leaves the cache off is not left thinking the bill stops.
  */
 export function cacheOffLine(claims: CacheClaim[] | null | undefined): string {
   const standing = (claims ?? []).filter(claim => !claim.error);
   if (standing.length === 0) {
-    return CACHE_OFF_NOTE;
+    return `${CACHE_OFF_NOTE} ${CACHE_OFF_COST}`;
   }
   const kept = standing
     .map(claim => {
@@ -130,22 +160,51 @@ export function cacheOffLine(claims: CacheClaim[] | null | undefined): string {
   return `${CACHE_OFF_NOTE} The existing cache ${kept} stays and keeps costing until it is removed on the GPU capacity page.`;
 }
 
-/** `eu-central-1a, eu-central-1c`, or the platform's choice when none is named. */
-export function describeZonesChoice(zones: string[]): string {
-  return zones.length === 0 ? 'let the platform choose' : zones.join(', ');
+/** Whether the zones chosen are every zone of the cluster. */
+export function everyZone(zones: string[], clusterZones: string[]): boolean {
+  return (
+    clusterZones.length > 0 && clusterZones.every(zone => zones.includes(zone))
+  );
+}
+
+/** The zones line on the form: every zone, the ones named, or none picked. */
+export function describeZonesOnForm(
+  zones: string[],
+  clusterZones: string[],
+): string {
+  if (zones.length === 0) {
+    return PICK_A_ZONE;
+  }
+  if (everyZone(zones, clusterZones)) {
+    return EVERY_ZONE;
+  }
+  return `The nodes launch in ${zones.join(', ')} only.`;
+}
+
+/** `eu-central-1a, eu-central-1b, eu-central-1c — every zone of the cluster` / `eu-central-1a, eu-central-1c`. */
+export function describeZonesChoice(
+  zones: string[],
+  clusterZones: string[],
+): string {
+  return everyZone(zones, clusterZones)
+    ? `${zones.join(', ')} — every zone of the cluster`
+    : zones.join(', ');
 }
 
 /**
  * **Zones** and **Model cache** on the Add GPU node pool form
- * (giantswarm/backstage#2483): where the pool's nodes may launch — any
- * combination of the cluster's node-subnet zones as `list_clusters` names
- * them, none chosen leaving the choice to the platform — and whether the
- * pool's serving slice keeps a model cache claim, each with its consequence
- * in one line. Offered only where the installation's `create_node_pool`
- * takes the argument (its schema); an older cluster-manager shows the form
- * as before. What cluster-manager makes of the choice — the pin, the claim
- * the slice mounts — is the dry run's `zonesNote` and `cache.note`, shown
- * in the review and, after Deploy, in the lifecycle panel.
+ * (giantswarm/backstage#2483, #2501): where the pool's nodes may launch —
+ * every zone of the cluster's node subnets as `list_clusters` names them by
+ * default, any combination, at least one — and whether the pool's serving
+ * slice keeps a model cache claim, off by default, its monthly price the
+ * switch's own line when it is on. Offered only where the installation's
+ * `create_node_pool` takes the argument (its schema); an older
+ * cluster-manager shows the form as before. Both sections are in place before
+ * a cluster is picked — the zones' rows a placeholder until then — so the
+ * cluster's answer fills the form in instead of moving it. What
+ * cluster-manager makes of the choice — the pin, the claim the slice mounts —
+ * is the dry run's `zonesNote` and `cache.note`, shown in the review and,
+ * after Deploy, in the lifecycle panel.
  */
 export function PoolPlacementPicker({
   cluster,
@@ -162,47 +221,72 @@ export function PoolPlacementPicker({
     return null;
   }
   const clusterZones = cluster?.zones;
+  const hasZones = Boolean(clusterZones && clusterZones.length > 0);
   const kept = cacheKeptByCluster(cluster);
   const keptClaim = mountedClaimOf(cluster);
   const capacityPath = capacityRoute?.();
+  // The cost is read from a dry run with the cache on; the last answer for
+  // the cache off prices nothing and is not this switch's.
+  const priced = review?.cache?.enabled ? review.cache : undefined;
   return (
     <Flex direction="column" gap="3" data-testid="pool-placement-picker">
-      {offers.zones && clusterZones && clusterZones.length > 0 && (
+      {offers.zones && (
         <Flex
           direction="column"
           gap="1"
           id={ZONES_PICKER_ID}
-          data-testid="zones-picker"
+          data-testid={hasZones ? 'zones-picker' : 'zones-placeholder'}
         >
           <CheckboxGroup
             label="Zones"
-            description="Where the pool's nodes may launch: any combination of the cluster's zones. A zone the person names is a capacity risk taken knowingly; with the model cache on, the pool follows its cache once a claim is bound."
+            description="Where the pool's nodes may launch: every zone of the cluster by default, any combination. Fewer zones is a capacity risk taken knowingly; with the model cache on, the pool follows its cache once a claim is bound."
             value={zones}
             onChange={onZonesChange}
-            isDisabled={isBusy}
+            isDisabled={isBusy || !hasZones}
+            isInvalid={hasZones && zones.length === 0}
           >
-            {clusterZones.map(zone => (
+            {(clusterZones ?? []).map(zone => (
               <Checkbox key={zone} value={zone}>
                 {zone}
               </Checkbox>
             ))}
           </CheckboxGroup>
-          <Text
-            variant="body-small"
-            color="secondary"
-            data-testid="zones-choice"
-          >
-            {zones.length === 0
-              ? LET_PLATFORM_CHOOSE
-              : `The nodes launch in ${zones.join(', ')} only.`}
-          </Text>
+          {!cluster && (
+            <>
+              <Flex direction="column" gap="2" aria-hidden="true">
+                {Array.from({ length: PLACEHOLDER_ROWS }, (_, index) => (
+                  <Skeleton key={index} width={160} height={20} rounded />
+                ))}
+              </Flex>
+              <Text
+                variant="body-small"
+                color="secondary"
+                data-testid="zones-pending"
+              >
+                {ZONES_PENDING}
+              </Text>
+            </>
+          )}
+          {cluster && clusterZones && clusterZones.length === 0 && (
+            <Text
+              variant="body-small"
+              color="secondary"
+              data-testid="zones-note"
+            >
+              Zones: the platform chooses —{' '}
+              {cluster.zonesNote ?? 'the cluster names no node subnet zones'}.
+            </Text>
+          )}
+          {hasZones && (
+            <Text
+              variant="body-small"
+              color={zones.length === 0 ? 'danger' : 'secondary'}
+              data-testid="zones-choice"
+            >
+              {describeZonesOnForm(zones, clusterZones!)}
+            </Text>
+          )}
         </Flex>
-      )}
-      {offers.zones && clusterZones && clusterZones.length === 0 && (
-        <Text variant="body-small" color="secondary" data-testid="zones-note">
-          Zones: the platform chooses —{' '}
-          {cluster?.zonesNote ?? 'the cluster names no node subnet zones'}.
-        </Text>
       )}
       {offers.cache && (
         <Flex direction="column" gap="1" data-testid="cache-picker">
@@ -212,7 +296,7 @@ export function PoolPlacementPicker({
             onChange={onCacheChange}
             isDisabled={isBusy || kept}
           />
-          {kept ? (
+          {kept && (
             <Text
               variant="body-small"
               color="secondary"
@@ -232,27 +316,39 @@ export function PoolPlacementPicker({
                 ? ` The cache: ${keptClaim.name} — ${describeClaimStanding(keptClaim)}.`
                 : ''}
             </Text>
-          ) : (
+          )}
+          {!kept && cache && (
+            <>
+              <Text variant="body-medium" data-testid="cache-cost">
+                {cacheCostLine(priced)}
+              </Text>
+              <Text
+                variant="body-small"
+                color="secondary"
+                data-testid="cache-consequence"
+              >
+                {cacheOnLine(priced)}
+              </Text>
+              {priced && (
+                <Text
+                  variant="body-x-small"
+                  color="secondary"
+                  data-testid="cache-price-source"
+                >
+                  {describeCacheSetting(priced).source}
+                </Text>
+              )}
+            </>
+          )}
+          {!kept && !cache && (
             <Text
               variant="body-small"
               color="secondary"
               data-testid="cache-consequence"
             >
-              {cache
-                ? cacheCostLine(review?.cache)
-                : cacheOffLine(
-                    review?.cacheClaims ??
-                      cluster?.serving.readiness?.cacheClaims,
-                  )}
-            </Text>
-          )}
-          {cache && !kept && review?.cache && (
-            <Text
-              variant="body-x-small"
-              color="secondary"
-              data-testid="cache-price-source"
-            >
-              {describeCacheSetting(review.cache).source}
+              {cacheOffLine(
+                review?.cacheClaims ?? cluster?.serving.readiness?.cacheClaims,
+              )}
             </Text>
           )}
         </Flex>
@@ -264,6 +360,8 @@ export function PoolPlacementPicker({
 export type PoolPlacementReviewProps = {
   offers: PlacementOffer;
   zones: string[];
+  /** The cluster's zones: the review says when every one is chosen. */
+  clusterZones: string[];
   cache: boolean;
   /** The dry run for the form as it stands: what cluster-manager makes of the choice. */
   review: NodePoolWriteResult;
@@ -278,6 +376,7 @@ export type PoolPlacementReviewProps = {
 export function PoolPlacementReview({
   offers,
   zones,
+  clusterZones,
   cache,
   review,
 }: PoolPlacementReviewProps) {
@@ -286,12 +385,9 @@ export function PoolPlacementReview({
   }
   return (
     <Flex direction="column" gap="1" data-testid="placement-review">
-      {offers.zones && (
+      {offers.zones && zones.length > 0 && (
         <Text variant="body-small">
-          Zones: {describeZonesChoice(zones)}
-          {review.zones && review.zones.length > 0
-            ? ` — pinned to ${review.zones.join(', ')}.`
-            : '.'}
+          Zones: {describeZonesChoice(zones, clusterZones)}.
         </Text>
       )}
       {review.zonesNote && (
@@ -307,7 +403,7 @@ export function PoolPlacementReview({
         <Text variant="body-small">
           Model cache: {cache ? 'on' : 'off'} —{' '}
           {cache
-            ? cacheCostLine(review.cache)
+            ? `${cacheCostLine(review.cache)} ${cacheOnLine(review.cache)}`
             : cacheOffLine(review.cacheClaims)}
         </Text>
       )}

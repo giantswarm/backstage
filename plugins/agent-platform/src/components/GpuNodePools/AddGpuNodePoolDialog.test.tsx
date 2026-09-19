@@ -19,9 +19,18 @@ import type {
 import type { ServeChoice } from '../../lib/serveIntent';
 import {
   AddGpuNodePoolDialog,
+  CLUSTER_PENDING,
   clusterMarks,
   SIZING_POOL_NAME,
 } from './AddGpuNodePoolDialog';
+import { FITS_NO_CHOSEN_SIZE } from './NodeSizePicker';
+import {
+  BILLED_STANDING,
+  CACHE_OFF_COST,
+  CACHE_OFF_NOTE,
+  EVERY_ZONE,
+  PICK_A_ZONE,
+} from './PoolPlacementPicker';
 
 jest.mock('../CodeBlock', () => ({
   CodeBlock: ({ filename, content }: { filename: string; content: string }) => (
@@ -408,7 +417,12 @@ function makeMusterApi(scenario: Scenario = {}) {
           if (scenario.createError) {
             throw scenario.createError;
           }
-          if (scenario.cacheRefusal && Array.isArray(args.zones)) {
+          if (
+            scenario.cacheRefusal &&
+            Array.isArray(args.zones) &&
+            !args.zones.includes('eu-central-1b') &&
+            args.cache !== false
+          ) {
             // The wire shape of a structured refusal: the block as `details`.
             throw Object.assign(new Error(CACHE_REFUSAL.message), {
               details: [JSON.stringify({ refused: CACHE_REFUSAL.refused })],
@@ -503,13 +517,19 @@ afterEach(() => {
  */
 const setupUser = () => userEvent.setup({ delay: null });
 
-/** Pick wc1 and name the pool: the form's dry run answers with the sizes. */
+/**
+ * wc1 picked and the pool named: the form's dry run answers with the sizes.
+ * The one cluster of an installation is picked as the form opens
+ * (giantswarm/backstage#2501); among two, wc1 is picked by hand.
+ */
 async function fillForm(user: ReturnType<typeof userEvent.setup>) {
   const clusterSelect = await screen.findByRole('button', {
-    name: /^Pick a cluster/,
+    name: /^(Pick a cluster|wc1 \()/,
   });
-  await user.click(clusterSelect);
-  await user.click(await screen.findByRole('option', { name: /wc1/ }));
+  if (/^Pick a cluster/.test(clusterSelect.textContent ?? '')) {
+    await user.click(clusterSelect);
+    await user.click(await screen.findByRole('option', { name: /wc1/ }));
+  }
   await user.type(screen.getByLabelText(/pool name/i), 'gpu-l4');
 }
 
@@ -676,7 +696,10 @@ describe('AddGpuNodePoolDialog', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Review' })).toBeDisabled();
     expect(screen.getByTestId('sizes-pending')).toHaveTextContent(
-      'pick a cluster',
+      /pick a cluster/i,
+    );
+    expect(screen.getByTestId('cluster-marks')).toHaveTextContent(
+      CLUSTER_PENDING,
     );
   });
 
@@ -713,38 +736,43 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
   const cacheSwitch = () =>
     screen.getByRole('switch', { name: 'Keep a model cache' });
 
-  it('offers the cluster’s zones, none chosen, and the cache on by default; two zones and the cache off travel to the dry run, the review and Deploy', async () => {
+  it('offers every zone of the cluster chosen and the cache off by default; two zones and the cache on travel to the dry run, the review and Deploy', async () => {
     const user = setupUser();
     const onDeployed = jest.fn();
     const { callTool } = await renderDialog({ placement: true }, onDeployed);
     await fillForm(user);
     await screen.findByTestId('zones-picker');
     for (const zone of ZONES) {
-      expect(zoneBox(zone)).not.toBeChecked();
+      expect(zoneBox(zone)).toBeChecked();
     }
-    expect(screen.getByTestId('zones-choice')).toHaveTextContent(
-      'Let the platform choose',
-    );
-    expect(cacheSwitch()).toBeChecked();
-    // The default choice: no zones argument, the cache on, explicitly.
+    expect(screen.getByTestId('zones-choice')).toHaveTextContent(EVERY_ZONE);
+    expect(cacheSwitch()).not.toBeChecked();
+    const consequence = screen.getByTestId('cache-consequence');
+    expect(consequence).toHaveTextContent(CACHE_OFF_NOTE);
+    expect(consequence).toHaveTextContent(CACHE_OFF_COST);
+    expect(screen.queryByTestId('cache-cost')).not.toBeInTheDocument();
+    // The defaults travel as such: every zone named, the cache off, explicitly.
     await waitFor(() => expect(dryRunsOf(callTool).length).toBeGreaterThan(0));
-    // The cost line is the dry run's: this cluster-manager prices nothing, and the line says so rather than inventing a figure.
-    await waitFor(() =>
-      expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
-        'Creates a cache claim: its price is not known, billed while the claim exists — after this pool is removed too — until the cache is removed on the GPU capacity page.',
-      ),
-    );
-    expect(dryRunsOf(callTool)[0][1]).not.toHaveProperty('zones');
-    expect(dryRunsOf(callTool)[0][1]).toMatchObject({ cache: true });
+    expect(dryRunsOf(callTool)[0][1]).toMatchObject({
+      zones: ZONES,
+      cache: false,
+    });
 
-    await user.click(zoneBox('eu-central-1a'));
-    await user.click(zoneBox('eu-central-1c'));
+    await user.click(zoneBox('eu-central-1b'));
     await user.click(cacheSwitch());
     expect(screen.getByTestId('zones-choice')).toHaveTextContent(
       'The nodes launch in eu-central-1a, eu-central-1c only.',
     );
+    // The cost is the switch's own line, from the dry run: this
+    // cluster-manager prices nothing, and the line says so rather than
+    // inventing a figure.
+    await waitFor(() =>
+      expect(screen.getByTestId('cache-cost')).toHaveTextContent(
+        `Its price is not known — ${BILLED_STANDING}`,
+      ),
+    );
     expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
-      'about 90 s more',
+      'Creates a cache claim. The download and the compile of every later start of the same model are saved.',
     );
     await waitFor(() =>
       expect(
@@ -752,7 +780,7 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
           expect
             .objectContaining({
               zones: ['eu-central-1a', 'eu-central-1c'],
-              cache: false,
+              cache: true,
             })
             .asymmetricMatch(call[1]),
         ),
@@ -761,15 +789,14 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
 
     await review(user);
     const placement = screen.getByTestId('placement-review');
-    expect(placement).toHaveTextContent(
-      'Zones: eu-central-1a, eu-central-1c — pinned to eu-central-1a, eu-central-1c.',
-    );
-    expect(placement).toHaveTextContent('Model cache: off');
+    expect(placement).toHaveTextContent('Zones: eu-central-1a, eu-central-1c.');
+    expect(placement).not.toHaveTextContent('every zone of the cluster');
+    expect(placement).toHaveTextContent('Model cache: on');
     expect(screen.getByTestId('review-zones-note')).toHaveTextContent(
-      'nodes pinned to eu-central-1a, eu-central-1c, the zones named on create; this pool’s slice serves without the model cache',
+      'nodes pinned to eu-central-1a, eu-central-1c, the zones named on create; the slice mounts the model cache claim model-serving/hf-cache',
     );
     expect(screen.getByTestId('review-cache-note')).toHaveTextContent(
-      'modelServing.cache.enabled false on the slice release',
+      'the predictors mount the model cache claim model-serving/hf-cache',
     );
 
     await user.click(screen.getByRole('button', { name: 'Deploy' }));
@@ -777,33 +804,57 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
     expect(appliesOf(callTool)[0][1]).toMatchObject({
       mode: 'apply',
       zones: ['eu-central-1a', 'eu-central-1c'],
-      cache: false,
+      cache: true,
     });
+    expect(appliesOf(callTool)[0][1]).not.toHaveProperty('teleport');
     expect(onDeployed.mock.calls[0][0]).toMatchObject({
       zones: ['eu-central-1a', 'eu-central-1c'],
-      cache: { enabled: false },
+      cache: { enabled: true },
     });
   });
 
-  it('another cluster clears the zones; the cache choice stands', async () => {
+  it('every zone chosen, the review says so; none chosen holds Review until one is', async () => {
+    const user = setupUser();
+    await renderDialog({ placement: true });
+    await fillForm(user);
+    await screen.findByTestId('zones-picker');
+    await review(user);
+    expect(screen.getByTestId('placement-review')).toHaveTextContent(
+      'Zones: eu-central-1a, eu-central-1b, eu-central-1c — every zone of the cluster.',
+    );
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await screen.findByTestId('zones-picker');
+    for (const zone of ZONES) {
+      await user.click(zoneBox(zone));
+    }
+    expect(screen.getByTestId('zones-choice')).toHaveTextContent(PICK_A_ZONE);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Review' })).toBeDisabled(),
+    );
+    await user.click(zoneBox('eu-central-1c'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled(),
+    );
+  });
+
+  it('another cluster: every zone of it is chosen anew; the cache choice stands', async () => {
     const user = setupUser();
     await renderDialog({ placement: true });
     await fillForm(user);
     await screen.findByTestId('zones-picker');
     await user.click(zoneBox('eu-central-1b'));
     await user.click(cacheSwitch());
-    expect(zoneBox('eu-central-1b')).toBeChecked();
-    // Another cluster: its zones are others, so the choice is cleared.
+    expect(zoneBox('eu-central-1b')).not.toBeChecked();
+    // Another cluster: its zones are others, every one chosen again.
     await user.click(screen.getByRole('button', { name: /wc1/ }));
     await user.click(await screen.findByRole('option', { name: /wc2/ }));
-    await screen.findByTestId('zones-picker');
-    expect(zoneBox('eu-central-1a')).not.toBeChecked();
+    await waitFor(() => expect(zoneBox('eu-central-1a')).toBeChecked());
     expect(
       within(screen.getByTestId('zones-picker')).queryByRole('checkbox', {
         name: 'eu-central-1b',
       }),
     ).not.toBeInTheDocument();
-    expect(cacheSwitch()).not.toBeChecked();
+    expect(cacheSwitch()).toBeChecked();
   });
 
   it('shows neither choice where cluster-manager takes neither argument, and sends nothing of them', async () => {
@@ -827,8 +878,9 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
     await renderDialog({ placement: true, cacheRefusal: true });
     await fillForm(user);
     await screen.findByTestId('zones-picker');
-    await user.click(zoneBox('eu-central-1a'));
-    await user.click(zoneBox('eu-central-1c'));
+    // The cache on and the claim's zone left out: refused, with the claim.
+    await user.click(cacheSwitch());
+    await user.click(zoneBox('eu-central-1b'));
     const refused = await screen.findByTestId('refused-cache');
     expect(refused).toHaveTextContent(
       'Claim model-serving/hf-cache (Bound in eu-central-1b), volume pvc-1',
@@ -839,9 +891,8 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
     expect(refused).toHaveTextContent('· pass cache false');
     expect(refused).toHaveTextContent('Name the claim’s zone among the zones');
     expect(screen.getByText(/outside every zone named/)).toBeInTheDocument();
-    // The person changes the choice; the next dry run is not refused.
-    await user.click(zoneBox('eu-central-1c'));
-    await user.click(zoneBox('eu-central-1a'));
+    // The person names the claim's zone again; the next dry run is not refused.
+    await user.click(zoneBox('eu-central-1b'));
     await waitFor(() =>
       expect(screen.queryByTestId('refused-cache')).not.toBeInTheDocument(),
     );
@@ -863,13 +914,16 @@ describe('clusterMarks', () => {
 });
 
 describe('AddGpuNodePoolDialog: node size and price on the form', () => {
-  it('offers the sizes and prices as soon as a cluster is picked, before the pool is named; the name only enables Review and relabels the dry run', async () => {
+  it('picks the one cluster as the form opens and offers the sizes and prices before the pool is named; the name only enables Review and relabels the dry run', async () => {
     const user = setupUser();
     const { callTool } = await renderDialog();
-    await user.click(
-      await screen.findByRole('button', { name: /^Pick a cluster/ }),
+    // The installation's one cluster is picked, nothing clicked: its marks
+    // stand under the picker and the dry run runs.
+    await waitFor(() =>
+      expect(screen.getByTestId('cluster-marks')).toHaveTextContent(
+        'Workload cluster · GPU operator: absent',
+      ),
     );
-    await user.click(await screen.findByRole('option', { name: /wc1/ }));
 
     await screen.findByTestId('node-size-picker');
     expect(dryRunsOf(callTool)[0][1]).toMatchObject({
@@ -957,29 +1011,42 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
     });
   });
 
-  it('warns on the form when a chosen set hosts a preset no more; Add puts the size back; Back keeps the choice', async () => {
+  it('marks a preset in the I want to serve list once the chosen sizes host it no more, with the size that would; the size back unmarks it; Back keeps the choice', async () => {
     const user = setupUser();
     const { callTool } = await renderDialog();
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
 
     await user.click(sizeBox('g6.2xlarge'));
-    const warnings = await screen.findByTestId('fit-warnings');
-    expect(dryRunsOf(callTool).at(-1)?.[1]).toMatchObject({
-      sizes: ['xlarge'],
-    });
-    expect(warnings).toHaveTextContent(
-      '1 preset fits no size of this pool — Deploy is not blocked',
-    );
-    expect(warnings).toHaveTextContent(TOO_SMALL);
-
-    await user.click(
-      within(warnings).getByRole('button', { name: 'Add 2xlarge' }),
-    );
     await waitFor(() =>
-      expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument(),
+      expect(dryRunsOf(callTool).at(-1)?.[1]).toMatchObject({
+        sizes: ['xlarge'],
+      }),
     );
-    expect(sizeBox('g6.2xlarge')).toBeChecked();
+    // No alert wall: the list says how each preset fits the sizes as chosen.
+    await user.click(screen.getByRole('button', { name: /I want to serve/ }));
+    const marked = await screen.findByRole('option', {
+      name: new RegExp(`Qwen3 4B Instruct${FITS_NO_CHOSEN_SIZE}`),
+    });
+    expect(marked).toHaveTextContent(
+      'g6.2xlarge would host it — add it under Node size',
+    );
+    await user.click(screen.getByRole('option', { name: /Any preset/ }));
+
+    // The size back: the mark goes, the smallest chosen size hosting it named.
+    await user.click(sizeBox('g6.2xlarge'));
+    await waitFor(() =>
+      expect(dryRunsOf(callTool).at(-1)?.[1]).toMatchObject({
+        sizes: ['xlarge', '2xlarge'],
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: /I want to serve/ }));
+    const hosted = await screen.findByRole('option', {
+      name: /Qwen3 4B Instruct/,
+    });
+    expect(hosted).not.toHaveTextContent(FITS_NO_CHOSEN_SIZE);
+    expect(hosted).toHaveTextContent('from g6.2xlarge');
+    await user.click(screen.getByRole('option', { name: /Any preset/ }));
 
     await user.click(sizeBox('g6.xlarge'));
     await waitFor(() =>
@@ -1029,7 +1096,6 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
       'from $1.22/h per node (g6.2xlarge)',
     );
     expect(screen.queryByTestId('deploy-blocked')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument();
 
     // Unchecking the hosting size blocks with the reason; the reason's size unblocks.
     await user.click(sizeBox('g6.2xlarge'));
@@ -1039,7 +1105,6 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
       'Deploy is blocked: Qwen3 4B Instruct fits no size of this pool',
     );
     expect(blocked).toHaveTextContent(TOO_SMALL);
-    expect(screen.queryByTestId('fit-warnings')).not.toBeInTheDocument();
     await user.click(
       within(blocked).getByRole('button', { name: 'Add 2xlarge' }),
     );
@@ -1087,9 +1152,10 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
     expect(screen.getByTestId('preset-fit-note')).toHaveTextContent(
       'no serving preset is published on wc1 yet',
     );
+    // The picker stands in place, with nothing to pick.
     expect(
-      screen.queryByRole('button', { name: /I want to serve/ }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: /I want to serve/ }),
+    ).toBeDisabled();
     await review(user);
     expect(screen.queryByTestId('preset-fit')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
@@ -1160,29 +1226,36 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
 });
 
 describe('AddGpuNodePoolDialog — the model cache’s standing cost (giantswarm/backstage#2493)', () => {
-  it('reads the cache line from the dry run: the claim the slice would create, its price and source, and that it is billed until the cache is removed', async () => {
+  it('the switch on: the price from the dry run is its own line — the claim the slice would create, its source, billed until the cache is removed; off again, what a cold start costs', async () => {
     const user = setupUser();
     await renderDialog({ placement: true, pricedCache: true });
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
-    const consequence = await screen.findByTestId('cache-consequence');
+    expect(screen.queryByTestId('cache-cost')).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole('switch', { name: 'Keep a model cache' }),
+    );
     await waitFor(() =>
-      expect(consequence).toHaveTextContent(
-        'Creates a cache claim (100Gi gp3, 500 MiB/s, 3000 IOPS): $27.37/month at list prices, billed while the claim exists — after this pool is removed too — until the cache is removed on the GPU capacity page.',
+      expect(screen.getByTestId('cache-cost')).toHaveTextContent(
+        `$27.37/month at list prices — ${BILLED_STANDING}`,
       ),
+    );
+    expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
+      'Creates a cache claim (100Gi gp3, 500 MiB/s, 3000 IOPS). The download and the compile of every later start of the same model are saved.',
     );
     expect(screen.getByTestId('cache-price-source')).toHaveTextContent(
       'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1), as of 2026-09-19',
     );
-    // Off: nothing stands, and no claim exists to name.
+    // Off: nothing stands, no claim exists to name, and what on would cost is said in words.
     await user.click(
       screen.getByRole('switch', { name: 'Keep a model cache' }),
     );
     await waitFor(() =>
       expect(screen.getByTestId('cache-consequence')).toHaveTextContent(
-        /^Nothing stands: the weights land on the node's disk at every start, and a cold start costs about 90 s more\.$/,
+        `${CACHE_OFF_NOTE} ${CACHE_OFF_COST}`,
       ),
     );
+    expect(screen.queryByTestId('cache-cost')).not.toBeInTheDocument();
     expect(screen.queryByTestId('cache-price-source')).not.toBeInTheDocument();
   });
 
@@ -1209,6 +1282,54 @@ describe('AddGpuNodePoolDialog — the model cache’s standing cost (giantswarm
     await waitFor(() => expect(dryRunsOf(callTool).length).toBeGreaterThan(0));
     for (const call of dryRunsOf(callTool)) {
       expect(call[1]).toMatchObject({ cache: true });
+    }
+  });
+});
+
+describe('AddGpuNodePoolDialog: the form stands in place (giantswarm/backstage#2501)', () => {
+  it('renders every section before a cluster is picked — the sizes and zones as placeholders, the preset picker and the cache switch in place — and no Teleport field', async () => {
+    await renderDialog({ placement: true });
+    // Two clusters: none is picked for the person.
+    await screen.findByRole('button', { name: /^Pick a cluster/ });
+    expect(screen.getByTestId('cluster-marks')).toHaveTextContent(
+      CLUSTER_PENDING,
+    );
+    expect(screen.getByTestId('node-size-pending')).toBeInTheDocument();
+    expect(screen.getByTestId('sizes-placeholder')).toBeInTheDocument();
+    expect(screen.getByTestId('sizes-pending')).toHaveTextContent(
+      /Pick a cluster — the sizes for nvidia-l4/,
+    );
+    expect(
+      screen.getByRole('button', { name: /I want to serve/ }),
+    ).toBeDisabled();
+    expect(screen.getByTestId('zones-placeholder')).toBeInTheDocument();
+    expect(screen.getByTestId('zones-pending')).toBeInTheDocument();
+    expect(
+      screen.getByRole('switch', { name: 'Keep a model cache' }),
+    ).not.toBeChecked();
+    expect(screen.getByText('Maximum GPUs')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Teleport/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Teleport/)).not.toBeInTheDocument();
+  });
+
+  it('a picked cluster fills the sections in: its marks in one line, the sizes, the zones every one chosen', async () => {
+    const user = setupUser();
+    const { callTool } = await renderDialog({ placement: true });
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker');
+    expect(screen.queryByTestId('sizes-placeholder')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cluster-marks')).toHaveTextContent(
+      "Workload cluster · GPU operator: absent · Model serving: the platform's release · Commit target: https://github.com/acme/fleet (clusters/wc1)",
+    );
+    expect(screen.getByTestId('zones-picker')).toBeInTheDocument();
+    expect(screen.queryByTestId('zones-placeholder')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /I want to serve/ }),
+    ).toBeEnabled();
+    for (const call of dryRunsOf(callTool)) {
+      expect(call[1]).not.toHaveProperty('teleport');
     }
   });
 });

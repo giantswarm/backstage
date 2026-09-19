@@ -71,17 +71,6 @@ export type AddGpuNodePoolDialogProps = {
   ) => void;
 };
 
-type TeleportChoice = 'default' | 'on' | 'off';
-
-const TELEPORT_OPTIONS: { id: TeleportChoice; label: string }[] = [
-  {
-    id: 'default',
-    label: 'Cluster default (on when the cluster has a join token)',
-  },
-  { id: 'on', label: 'Join the nodes to Teleport' },
-  { id: 'off', label: 'Do not join Teleport' },
-];
-
 /** How long the form waits after the last change before it asks cluster-manager. */
 export const DRY_RUN_DEBOUNCE_MS = 400;
 
@@ -93,6 +82,10 @@ export const DRY_RUN_DEBOUNCE_MS = 400;
  * the review shows once the pool is named.
  */
 export const SIZING_POOL_NAME = 'gpu-sizing';
+
+/** Under the cluster picker until a cluster is picked: what the line says once one is. */
+export const CLUSTER_PENDING =
+  'Pick the cluster the pool joins: whether it has a GPU operator and model serving, and which repository owns it, are read from cluster-manager.';
 
 /** The marks `list_clusters` reports for one cluster, as one line each. */
 export function clusterMarks(cluster: ManagedCluster): string[] {
@@ -118,18 +111,22 @@ export function clusterMarks(cluster: ManagedCluster): string[] {
  * person, the composed releases as manifests in one review, and **Deploy**
  * (`mode: apply`) or **Commit** (`mode: commit`, once cluster-manager offers
  * it). The decision that sets the pool's price and the models it can serve —
- * the **node size** — is made on the form: as soon as the cluster, the pool
- * name and the accelerator are set, the form runs the dry run with the
- * chart's defaults and offers the sizes cluster-manager composed with their
- * prices and the presets each hosts; every change re-runs it. The review
- * shows the same choice and the manifests; Deploy sends the sizes as chosen.
- * Where the pool runs (**Zones**, any combination of the cluster's, none for
- * the platform's choice) and whether it keeps a **model cache** are the
- * person's too (giantswarm/backstage#2483), offered where the installation's
- * cluster-manager takes the arguments; the dry run's `zonesNote` and
- * `cache.note` say in the review what the choice comes to. The portal
- * composes nothing: what the review shows is exactly what cluster-manager
- * would write.
+ * the **node size** — is made on the form: as soon as the cluster is picked
+ * (the one cluster of an installation is picked as the form opens), the form
+ * runs the dry run with the chart's defaults and offers the sizes
+ * cluster-manager composed with their prices and the presets each hosts;
+ * every change re-runs it. Where the pool runs (**Zones**, every zone of the
+ * cluster by default, any combination) and whether it keeps a **model
+ * cache** (off by default, its monthly price the switch's own line when on)
+ * are the person's too (giantswarm/backstage#2483, #2501), offered where
+ * the installation's cluster-manager takes the arguments.
+ *
+ * The form is in place from the first paint: every section stands where it
+ * will, and a section whose content is still being read holds its place
+ * with a placeholder, so an answer fills the form in instead of moving it
+ * (giantswarm/backstage#2501). The review shows the same choices and the
+ * manifests; Deploy sends them as chosen. The portal composes nothing: what
+ * the review shows is exactly what cluster-manager would write.
  */
 export function AddGpuNodePoolDialog({
   installations,
@@ -146,11 +143,10 @@ export function AddGpuNodePoolDialog({
     DEFAULT_ACCELERATORS[0],
   );
   const [maxGpus, setMaxGpus] = useState(4);
-  const [teleport, setTeleport] = useState<TeleportChoice>('default');
-  /** The zones the nodes may launch in; empty lets the platform choose. */
+  /** The zones the nodes may launch in: every zone of the picked cluster until some are unchecked. */
   const [zones, setZones] = useState<string[]>([]);
-  /** Whether the pool's serving slice keeps a model cache claim (the installation's default: on). */
-  const [cache, setCache] = useState(true);
+  /** Whether the pool's serving slice keeps a model cache claim: off until asked for. */
+  const [cache, setCache] = useState(false);
   const [step, setStep] = useState<'form' | 'review'>('form');
   /** The first dry run with the chart's defaults: every size to pick from, every preset. */
   const [shapes, setShapes] = useState<NodePoolWriteResult>();
@@ -172,15 +168,20 @@ export function AddGpuNodePoolDialog({
     error: clustersError,
   } = useManagedClusters(installation);
   const { info } = useClusterManagerInfo(installation);
-  const schema = useCreateNodePoolSchema(installation);
+  const { schema, isLoading: schemaLoading } =
+    useCreateNodePoolSchema(installation);
   const accelerators = schema?.accelerators ?? DEFAULT_ACCELERATORS;
-  /** The two choices this installation's cluster-manager takes; an older one shows neither. */
+  /**
+   * The two choices this installation's cluster-manager takes — in place
+   * while the schema is read, so nothing appears later; an older
+   * cluster-manager shows neither.
+   */
   const offers = useMemo(
     () => ({
-      zones: offersArgument(schema, ZONES_ARGUMENT),
-      cache: offersArgument(schema, CACHE_ARGUMENT),
+      zones: schema ? offersArgument(schema, ZONES_ARGUMENT) : schemaLoading,
+      cache: schema ? offersArgument(schema, CACHE_ARGUMENT) : schemaLoading,
     }),
-    [schema],
+    [schema, schemaLoading],
   );
   const write = useNodePoolWrite(installation);
   const { dryRun } = write;
@@ -197,11 +198,22 @@ export function AddGpuNodePoolDialog({
     setSizes(undefined);
     setPreset(undefined);
   };
-  /** Another cluster: its zones are others; the cache choice stands. */
-  const resetCluster = () => {
+  /** A cluster picked: its sizes and presets are read anew, its zones are every zone; the cache choice stands. */
+  const pickCluster = (next: string | undefined) => {
+    setClusterName(next);
     resetChoice();
-    setZones([]);
+    setZones(clusters.find(candidate => candidate.name === next)?.zones ?? []);
   };
+
+  // One cluster on the installation: it is picked as the form opens, so its
+  // sizes, prices, presets and zones are there by the time the form is read.
+  useEffect(() => {
+    if (!clusterName && clusters.length === 1) {
+      pickCluster(clusters[0].name);
+    }
+    // `pickCluster` closes over the same `clusters`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clusters, clusterName]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -222,14 +234,18 @@ export function AddGpuNodePoolDialog({
     () => clusters.find(candidate => candidate.name === clusterName),
     [clusters, clusterName],
   );
+  const clusterZones = cluster?.zones ?? [];
   /**
    * A cluster that keeps a model cache: every pool serves from it and
    * cluster-manager refuses `cache: false`, so the switch stands on and the
-   * dry run carries the cache on whatever an earlier cluster's choice was
+   * dry run carries the cache on whatever the person's choice was
    * (giantswarm/backstage#2493).
    */
   const cacheKept = cacheKeptByCluster(cluster);
   const cacheChoice = cacheKept || cache;
+  /** Zones offered, the cluster names some and none is picked: the form waits for at least one. */
+  const zonesMissing =
+    offers.zones && clusterZones.length > 0 && zones.length === 0;
 
   /**
    * The sizing input: as soon as a cluster is picked, with the pool's name
@@ -247,22 +263,12 @@ export function AddGpuNodePoolDialog({
       name: isValidPoolName(name) ? name : SIZING_POOL_NAME,
       accelerator,
       maxGpus,
-      ...(teleport === 'default' ? {} : { teleport: teleport === 'on' }),
-      // Only what the installation's cluster-manager takes: zones when
-      // named (none is the platform's choice), the cache as chosen.
+      // Only what the installation's cluster-manager takes: the zones as
+      // chosen (every zone of the cluster by default), the cache as chosen.
       ...(offers.zones && zones.length > 0 ? { zones } : {}),
       ...(offers.cache ? { cache: cacheChoice } : {}),
     };
-  }, [
-    cluster,
-    name,
-    accelerator,
-    maxGpus,
-    teleport,
-    offers,
-    zones,
-    cacheChoice,
-  ]);
+  }, [cluster, name, accelerator, maxGpus, offers, zones, cacheChoice]);
 
   /** The form's input as Deploy and Review take it: the pool named. */
   const formInput: CreateNodePoolInput | undefined = useMemo(
@@ -338,13 +344,14 @@ export function AddGpuNodePoolDialog({
   const isBusy = write.isBusy && !judging;
   const done = Boolean(applied || committed?.pullRequestUrl);
   const blocker = deployBlocker(review, preset);
-  const canReview = Boolean(formInput) && !isBusy && !judging;
+  const canReview = Boolean(formInput) && !isBusy && !judging && !zonesMissing;
   const canWrite =
     Boolean(input) &&
     Boolean(review) &&
     !isBusy &&
     !judging &&
     !blocker &&
+    !zonesMissing &&
     chosen?.length !== 0;
 
   /** Review: the current dry run's manifests, or one more try where the last was refused. */
@@ -450,39 +457,41 @@ export function AddGpuNodePoolDialog({
                       if (key) {
                         setInstallation(String(key));
                         setClusterName(undefined);
-                        resetCluster();
+                        resetChoice();
+                        setZones([]);
                       }
                     }}
                   />
                 )}
-                <Select
-                  label="Cluster"
-                  isRequired
-                  placeholder={clusterPlaceholder(
-                    clustersLoading,
-                    clusters.length,
-                  )}
-                  options={clusters.map(candidate => ({
-                    id: candidate.name,
-                    label: `${candidate.name} (${candidate.organization}${
-                      candidate.ownCluster ? ', own cluster' : ''
-                    })`,
-                  }))}
-                  selectedKey={clusterName ?? null}
-                  onSelectionChange={key => {
-                    setClusterName(key ? String(key) : undefined);
-                    resetCluster();
-                  }}
-                />
-                {cluster && (
-                  <Flex direction="column" gap="1" data-testid="cluster-marks">
-                    {clusterMarks(cluster).map(mark => (
-                      <Text key={mark} variant="body-small" color="secondary">
-                        {mark}
-                      </Text>
-                    ))}
-                  </Flex>
-                )}
+                <Flex direction="column" gap="1">
+                  <Select
+                    label="Cluster"
+                    isRequired
+                    placeholder={clusterPlaceholder(
+                      clustersLoading,
+                      clusters.length,
+                    )}
+                    options={clusters.map(candidate => ({
+                      id: candidate.name,
+                      label: `${candidate.name} (${candidate.organization}${
+                        candidate.ownCluster ? ', own cluster' : ''
+                      })`,
+                    }))}
+                    selectedKey={clusterName ?? null}
+                    onSelectionChange={key =>
+                      pickCluster(key ? String(key) : undefined)
+                    }
+                  />
+                  <Text
+                    variant="body-small"
+                    color="secondary"
+                    data-testid="cluster-marks"
+                  >
+                    {cluster
+                      ? clusterMarks(cluster).join(' · ')
+                      : CLUSTER_PENDING}
+                  </Text>
+                </Flex>
                 {!clustersLoading && clusters.length === 0 && noClusterApi && (
                   <Alert
                     status="info"
@@ -518,52 +527,29 @@ export function AddGpuNodePoolDialog({
                     }
                   }}
                 />
-                {!hasShapes && !sizingInput && (
-                  <Text
-                    variant="body-small"
-                    color="secondary"
-                    data-testid="sizes-pending"
-                  >
-                    Node size: pick a cluster — the sizes for the accelerator,
-                    their prices and the presets each hosts are read from
-                    cluster-manager's dry run.
-                  </Text>
-                )}
-                {!hasShapes && sizingInput && judging && (
-                  <Text
-                    variant="body-small"
-                    color="secondary"
-                    data-testid="sizes-loading"
-                  >
-                    Node size: reading the sizes for {accelerator} from
-                    cluster-manager…
-                  </Text>
-                )}
-                {hasShapes && (
-                  <NodeSizePicker
-                    shapes={shapeList}
-                    presetFit={shapes?.presetFit}
-                    review={review}
-                    sizes={chosen ?? []}
-                    onSizesChange={setSizes}
-                    preset={preset}
-                    onPresetChange={onPresetChange}
-                    isBusy={isBusy}
-                    judging={judging}
-                  />
-                )}
-                {cluster && (
-                  <PoolPlacementPicker
-                    cluster={cluster}
-                    offers={offers}
-                    zones={zones}
-                    onZonesChange={setZones}
-                    cache={cacheChoice}
-                    onCacheChange={setCache}
-                    isBusy={isBusy}
-                    review={review}
-                  />
-                )}
+                <NodeSizePicker
+                  shapes={shapeList}
+                  presetFit={shapes?.presetFit}
+                  review={review}
+                  sizes={chosen ?? []}
+                  onSizesChange={setSizes}
+                  preset={preset}
+                  onPresetChange={onPresetChange}
+                  isBusy={isBusy}
+                  judging={judging}
+                  accelerator={accelerator}
+                  pending={!sizingInput}
+                />
+                <PoolPlacementPicker
+                  cluster={cluster}
+                  offers={offers}
+                  zones={zones}
+                  onZonesChange={setZones}
+                  cache={cacheChoice}
+                  onCacheChange={setCache}
+                  isBusy={isBusy}
+                  review={review}
+                />
                 <NumberField
                   label="Maximum GPUs"
                   description="Across all nodes of the pool; the pool scales to zero."
@@ -571,14 +557,6 @@ export function AddGpuNodePoolDialog({
                   value={maxGpus}
                   onChange={value =>
                     setMaxGpus(Number.isFinite(value) ? value : 1)
-                  }
-                />
-                <Select
-                  label="Teleport"
-                  options={TELEPORT_OPTIONS}
-                  selectedKey={teleport}
-                  onSelectionChange={key =>
-                    key && setTeleport(key as TeleportChoice)
                   }
                 />
               </Flex>
@@ -619,6 +597,7 @@ export function AddGpuNodePoolDialog({
                 <PoolPlacementReview
                   offers={offers}
                   zones={zones}
+                  clusterZones={clusterZones}
                   cache={cacheChoice}
                   review={review}
                 />

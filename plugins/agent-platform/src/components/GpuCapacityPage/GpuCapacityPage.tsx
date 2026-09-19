@@ -60,7 +60,11 @@ export function GpuCapacityPage() {
       installation => backendsOn(serving, installation).length === 0,
     );
 
-  if (!serving.isLoading && nodeInventoryInstallations.length === 0) {
+  // The page's shape is decided once everything is read: the list with its
+  // cards while reading, the empty state only when there is nothing to list
+  // — never one, then the other (giantswarm/backstage#2501).
+  const reading = serving.isLoading || pools.isLoading;
+  if (!reading && nodeInventoryInstallations.length === 0) {
     return (
       <Content>
         {pools.dialogs}
@@ -96,7 +100,7 @@ export function GpuCapacityPage() {
           nodes={serving.gpuNodes}
           installations={nodeInventoryInstallations}
           unavailable={serving.gpuCapacityUnavailable}
-          isLoading={serving.isLoading}
+          isLoading={reading}
         />
       </Flex>
     </Content>
