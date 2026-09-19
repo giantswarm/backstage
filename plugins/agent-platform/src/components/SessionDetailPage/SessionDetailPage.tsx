@@ -101,8 +101,13 @@ const useStyles = makeStyles(theme => ({
   },
   // The composer stays reachable however long the conversation gets. Only the
   // composer docks: a pending confirmation panel can be tall, and pinning it
-  // would cover the very conversation it asks about.
+  // would cover the very conversation it asks about. The gap is what keeps
+  // whatever shares the dock — a lost-runtime notice, a rejected send — off the
+  // composer's box; neither bui's Alert nor the composer's form has a margin.
   bottomDock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2),
     position: 'sticky',
     bottom: 0,
     zIndex: 1,
@@ -908,8 +913,8 @@ export function SessionDetailPage() {
       Boolean(pendingConfirmation && agent) &&
       !answerDispatched &&
       !runtimeLoss?.reported;
-    // The way out, offered from the box: beside Send while the loss is only
-    // suspected, in Send's place once kagent has reported it. Needs the agent
+    // The way out, offered under the box: a second button while the loss is
+    // only suspected, the only one once kagent has reported it. Needs the agent
     // as a row to create against; without one the notice says where else to go.
     const offersNewSession = Boolean(runtimeLoss && agentRow && !isConfirming);
     bottomControl = (

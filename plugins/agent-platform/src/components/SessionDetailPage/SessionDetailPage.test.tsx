@@ -1595,7 +1595,7 @@ describe('SessionDetailPage', () => {
       },
     });
 
-    it('explains the failed turn in the portal’s words and offers the new session beside Send', async () => {
+    it('explains the failed turn in the portal’s words and offers the new session under the box', async () => {
       mockUseSessionDetail.mockReturnValue(suspectedView);
       await render();
 

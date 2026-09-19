@@ -1344,10 +1344,12 @@ full; the agent's internal work is collapsible, with a Hidden/Collapsed/Expanded
 control — collapsed by default, because the working is the point of the screen but a
 wall of tool payloads is unreadable.
 
-Presentation follows the conventions of chat surfaces, shared with the AI chat
-plugin's visual language. The user's messages are right-aligned bubbles and
-deliberately **not** markdown — prompts quote logs and `#`-prefixed lines that must
-stay the characters typed. The agent's side of a turn opens with its avatar and
+Presentation follows the conventions of chat surfaces. The user's messages are
+right-aligned bubbles filled in the portal's primary colour — the same fill Send
+carries, and one that follows `app.branding.theme.<mode>.primaryColor`, so a
+white-labelled portal speaks in its own voice rather than bui's accent. Their text
+is deliberately **not** markdown — prompts quote logs and `#`-prefixed lines that
+must stay the characters typed. The agent's side of a turn opens with its avatar and
 name once, and its prose renders as GFM markdown (tables, code blocks, entity-aware
 links). Internal work renders as one-line disclosure rows whose payloads are
 JSON-highlighted, with JSON hiding inside result strings inlined rather than shown
@@ -1745,14 +1747,16 @@ reason. No surface shows `actor "ai-…" request timed out` as the whole of
 anything.
 
 **The way out is a new session with the same agent, from the composer.** The
-composer's `newSession` prop renders **Start a new session with &lt;agent&gt;**:
-_beside_ Send while the loss is only suspected — a cold worker can time out once,
-and sending again is the honest retry — and _in Send's place_ once kagent has
-reported it, when Enter starts the new session too and the answer panel yields
-to the composer (an answer would run into the same lost runtime). The action
-takes the box's text, else the message the failed send handed back, else the
-last message the person sent into this session — the one the runtime never
-read — and follows the order every entry point keeps: create the instance,
+composer's `newSession` prop renders **Start a new session with &lt;agent&gt;**
+under the message box, right-aligned — outside the box, because it leaves this
+session rather than being one of the box's own controls. It is the _secondary_
+button while the loss is only suspected — a cold worker can time out once, and
+sending again is the honest retry — and the _primary_ one, with Send gone, once
+kagent has reported it, when Enter starts the new session too and the answer
+panel yields to the composer (an answer would run into the same lost runtime).
+The action takes the box's text, else the message the failed send handed back,
+else the last message the person sent into this session — the one the runtime
+never read — and follows the order every entry point keeps: create the instance,
 navigate, let the new page dispatch the text from the router state (see
 "Starting a session"). That navigation is from one session's page to another's,
 which the route element would otherwise survive with its state intact — the

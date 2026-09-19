@@ -28,10 +28,11 @@ const useStyles = makeStyles(theme => ({
   },
   userBubble: {
     maxWidth: '85%',
-    backgroundColor: 'var(--bui-bg-neutral-2)',
-    // The bui neutrals sit within a couple of points of the light theme's page
-    // background, so without an outline the bubble dissolves into the page.
-    border: `1px solid ${theme.palette.divider}`,
+    // The portal's own colour, the same fill Send carries — and unlike bui's
+    // accent token it follows `app.branding.theme.<mode>.primaryColor`, so a
+    // white-labelled portal speaks in its own voice.
+    backgroundColor: theme.palette.primary.main,
+    color: theme.palette.primary.contrastText,
     padding: theme.spacing(1.25, 2),
     borderRadius: 'var(--bui-radius-3)',
   },

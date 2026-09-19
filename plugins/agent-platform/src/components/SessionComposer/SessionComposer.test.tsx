@@ -506,9 +506,9 @@ describe('SessionComposer — the way out of a lost runtime', () => {
     onStart.mockReset();
   });
 
-  it('offers the new session beside Send while the loss is only suspected', async () => {
+  it('offers the new session under the box while the loss is only suspected', async () => {
     // A cold worker can time out once, so sending again stays the honest retry
-    // and the way out stands next to it.
+    // and the way out waits below it.
     renderComposer({ newSession, isFinished: true });
 
     expect(sendButton()).toBeInTheDocument();
@@ -516,6 +516,16 @@ describe('SessionComposer — the way out of a lost runtime', () => {
     expect(
       screen.getByText('Sending again retries the runtime.'),
     ).toBeInTheDocument();
+  });
+
+  it('keeps the way out outside the box, not among its controls', () => {
+    // It leaves this session; reading as one of the message box's own controls
+    // was the confusion worth a test.
+    renderComposer({ newSession, isFinished: true });
+
+    expect(screen.getByTestId('composer-card')).not.toContainElement(
+      startButton(),
+    );
   });
 
   it('hands the box’s text to the new session and keeps it in the box', async () => {

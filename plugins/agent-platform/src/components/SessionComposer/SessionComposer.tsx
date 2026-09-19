@@ -52,7 +52,7 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'space-between',
     gap: theme.spacing(2),
   },
-  // Send (or Stop) and, when the runtime is lost, the way out beside it.
+  // Send, or Stop while a turn runs.
   actions: {
     display: 'flex',
     alignItems: 'center',
@@ -181,12 +181,13 @@ export type SessionComposerProps = {
    * The way out of a session whose runtime kagent cannot bring back: start a
    * new session with the same agent, taking the box's text along.
    *
-   * Offered **beside** Send while the loss is only suspected — a cold worker can
-   * time out once, and sending again is the honest retry — and **in place of**
-   * Send once kagent has reported the runtime lost (`replacesSend`), because a
-   * send then fails the same way every time and Enter should do the one thing
-   * that works. The action receives whatever is in the box; the caller decides
-   * what to carry when it is empty (the message that never got its answer).
+   * Rendered under the box, as a secondary button while the loss is only
+   * suspected — a cold worker can time out once, and sending again is the honest
+   * retry — and as the primary one, Send gone, once kagent has reported the
+   * runtime lost (`replacesSend`), because a send then fails the same way every
+   * time and Enter should do the one thing that works. The action receives
+   * whatever is in the box; the caller decides what to carry when it is empty
+   * (the message that never got its answer).
    */
   newSession?: {
     /** The button's text — names the agent, so it says where the person lands. */
@@ -382,6 +383,7 @@ export function SessionComposer({
 
         <div
           className={`${classes.card} ${isDisabled ? classes.cardDisabled : ''}`}
+          data-testid="composer-card"
         >
           <InputBase
             className={classes.input}
@@ -406,22 +408,6 @@ export function SessionComposer({
                 : caption}
             </span>
             <div className={classes.actions}>
-              {newSession && (
-                // A real button beside (or instead of) Send, worded — an icon
-                // could not say where the person lands. `type="button"`: only
-                // the primary control submits the form, and while this merely
-                // stands beside Send, Enter must keep sending.
-                <Button
-                  type={newSessionReplacesSend ? 'submit' : 'button'}
-                  size="small"
-                  variant={newSessionReplacesSend ? 'primary' : 'secondary'}
-                  isDisabled={!canStartNewSession}
-                  isPending={newSession.isStarting}
-                  onPress={newSessionReplacesSend ? undefined : startNewSession}
-                >
-                  {newSession.label}
-                </Button>
-              )}
               {showStop ? (
                 <IconButton
                   type="button"
@@ -451,6 +437,26 @@ export function SessionComposer({
             </div>
           </div>
         </div>
+
+        {newSession && (
+          // Under the box, not in it: it is a way out of this session, not one
+          // of the box's own controls. Worded rather than an icon — an icon
+          // could not say where the person lands. `type="button"`: only the
+          // primary control submits the form, and while Send is still there,
+          // Enter must keep sending.
+          <Flex justify="end">
+            <Button
+              type={newSessionReplacesSend ? 'submit' : 'button'}
+              size="small"
+              variant={newSessionReplacesSend ? 'primary' : 'secondary'}
+              isDisabled={!canStartNewSession}
+              isPending={newSession.isStarting}
+              onPress={newSessionReplacesSend ? undefined : startNewSession}
+            >
+              {newSession.label}
+            </Button>
+          </Flex>
+        )}
       </Flex>
     </form>
   );

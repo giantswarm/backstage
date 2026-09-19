@@ -178,7 +178,8 @@ All plugins live under `plugins/` and are published under the
 
 - **`flux`** - Flux CD GitOps plugin shell (most logic lives in `flux-react`)
 
-- **`ai-chat`** - AI chat interface
+- **`ai-chat`** - AI chat interface. **Deprecated** — no new features; fixes
+  and keeping it building only.
 
 - **`agent-platform`** - Agent Platform: scaffolder-driven agent creation
   (kagent), ported from the APUI prototype
@@ -193,7 +194,8 @@ All plugins live under `plugins/` and are published under the
 
 - **`gs-backend`** - Backend services for GS functionality
 
-- **`ai-chat-backend`** - AI chat backend service (LLM providers)
+- **`ai-chat-backend`** - AI chat backend service (LLM providers).
+  **Deprecated** along with `ai-chat`.
 
 - **`muster-backend`** - Backend for the Muster plugin
 
@@ -224,7 +226,8 @@ All plugins live under `plugins/` and are published under the
   - Reusable components like tables, charts, date formatting
   - Utilities: `useTableColumns`, `isTableColumnHidden`, `sortAndFilterOptions`, `semverCompareSort`
 
-- **`ai-chat-react`** (web) - Shared components for the AI chat plugin
+- **`ai-chat-react`** (web) - Shared components for the AI chat plugin.
+  **Deprecated** along with `ai-chat`.
 
 - **`error-reporter-react`** (web) - Error reporting components
 
