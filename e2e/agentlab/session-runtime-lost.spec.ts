@@ -259,7 +259,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
     const lostUrl = new URL(admin.url());
     created.push(lostUrl.pathname);
 
-    // --- The interim shape: explained, retry kept, the way out beside it --
+    // --- The interim shape: explained, retry kept, the way out under it --
     // The bubble, not the title: the session's title is derived from the same
     // prompt, so a bare text match finds both.
     const bubble = () =>
@@ -300,7 +300,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
     const startNew = admin.getByRole('button', {
       name: `Start a new session with ${agentName}`,
     });
-    await expect(startNew, 'the way out stands beside it').toBeEnabled();
+    await expect(startNew, 'the way out stands under the box').toBeEnabled();
     await snapshot(admin, 'runtime-lost-suspected');
 
     // --- kagent's mark: the header, the composer, the list ----------------

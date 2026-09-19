@@ -196,7 +196,8 @@ export type SessionComposerProps = {
     onStart: (draft: string) => void;
     /** The new session is being created. */
     isStarting?: boolean;
-    /** Send is withheld and this takes its slot; Enter starts the session. */
+    /** Send is withheld and this becomes the primary control; Enter starts
+     * the session. */
     replacesSend?: boolean;
     /** What the caption says while this is offered. */
     caption: string;
@@ -264,8 +265,8 @@ export function SessionComposer({
   const text = value.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
   const isDisabled = Boolean(disabledReason);
-  // Once kagent has said the runtime is lost, Send has nothing left to do and
-  // the new session takes its slot — and Enter.
+  // Once kagent has said the runtime is lost, Send has nothing left to do: it
+  // goes, and the new session becomes the primary control — and takes Enter.
   const newSessionReplacesSend = Boolean(newSession?.replacesSend);
   const canSubmit =
     Boolean(text) &&
