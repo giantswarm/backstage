@@ -40,8 +40,10 @@ export type MusterInstance = {
   /** The same installations with the backend's endpoint, auth and reachability. */
   installationInfos: MusterInstallationInfo[];
   /**
-   * True while the backend's list or the inventory's home installation has not
-   * answered yet; there is no active installation and no default is written.
+   * True while the backend's list has not answered, while the inventory's home
+   * installation has not, and while the rest of the fleet is still probing with
+   * no muster known yet; there is no active installation and no default is
+   * written.
    */
   isLoadingInstallations: boolean;
   /** The single active muster instance every screen is scoped to. */
@@ -160,9 +162,9 @@ export const MusterInstanceProvider = ({
 
   // Which installations run muster at all comes from the installation
   // inventory (one `GET /apis` per installation, home first); the backend only
-  // knows where a muster *would* be. While the inventory is still loading
-  // (home not answered), the list is not known yet and there is no active
-  // installation, so a deep link is never replaced by a premature default.
+  // knows where a muster *would* be. While the inventory has not answered, the
+  // list is not known yet and there is no active installation, so a deep link
+  // is never replaced by a premature default.
   const inventory = useInstallationInventory();
 
   const installationInfos = useMemo(
@@ -175,7 +177,13 @@ export const MusterInstanceProvider = ({
     [installationInfos],
   );
 
-  const isLoadingInstallations = isLoadingBackend || inventory.isLoading;
+  // `inventory.isLoading` only covers the home installation's probe; `isProbing`
+  // covers the rest of the fleet. While no muster is known yet the list can
+  // still grow, so the views must not conclude there is none.
+  const isLoadingInstallations =
+    isLoadingBackend ||
+    inventory.isLoading ||
+    (installations.length === 0 && inventory.isProbing);
 
   const activeInstallation = useMemo(
     () =>

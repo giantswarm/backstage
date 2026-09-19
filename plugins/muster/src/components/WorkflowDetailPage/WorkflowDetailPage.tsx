@@ -5,7 +5,6 @@ import {
   Content,
   EmptyState,
   Link,
-  Progress,
   ResponseErrorPanel,
 } from '@backstage/core-components';
 import {
@@ -28,6 +27,7 @@ import { Alert } from '@material-ui/lab';
 import {
   DateComponent,
   GSMarkdownContent,
+  LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
@@ -235,7 +235,7 @@ function WorkflowDetailContent() {
     return (
       <Content>
         <ActiveInstallationNote />
-        <Progress />
+        <LoadingIndicator label="Reading the workflow…" />
       </Content>
     );
   }

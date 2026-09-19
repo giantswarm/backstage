@@ -1,11 +1,9 @@
-import {
-  Content,
-  EmptyState,
-  Link,
-  Progress,
-} from '@backstage/core-components';
+import { Content, EmptyState, Link } from '@backstage/core-components';
 import { Box, Typography } from '@material-ui/core';
-import { FiltersLayout } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  FiltersLayout,
+  LoadingIndicator,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { WorkflowsDataProvider } from './WorkflowsDataProvider';
@@ -19,7 +17,7 @@ export function WorkflowsListPage() {
     return (
       <Content>
         <ActiveInstallationNote />
-        <Progress />
+        <LoadingIndicator label="Reading the installation's workflows…" />
       </Content>
     );
   }

@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { makeStyles, Theme } from '@material-ui/core';
 import BuildIcon from '@material-ui/icons/Build';
-import { Content, EmptyState, Progress } from '@backstage/core-components';
+import { Content, EmptyState } from '@backstage/core-components';
 import { Alert, Box, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
@@ -196,7 +197,7 @@ export function ToolExplorerPage() {
 
   let body;
   if (isLoadingInstallations) {
-    body = <Progress />;
+    body = <LoadingIndicator label="Finding the installation's muster…" />;
   } else if (!activeInstallation) {
     body = (
       <EmptyState
