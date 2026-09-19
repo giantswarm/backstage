@@ -2506,8 +2506,11 @@ durable view of the same verdict.
   server of the bound name — a binding that reaches nothing. Both wait for the read
   to answer: while it is in flight the card says it is reading the toolset, because
   an unanswered read is not evidence of anything. `useAgentToolset` decides that
-  from the query's own answer (items or an error), not from `isLoading`, which is
-  still false on the render before a query starts fetching.
+  from the queries' own terminal state, and from neither `isLoading` (still false
+  on the render before a query starts fetching) nor `errors` (a `RejectedError` —
+  an installation nobody has authenticated with — is filtered out of it, so that
+  read would look unanswered forever). A chat-only agent waits for nothing: no
+  gateway binding is decided by the agent alone, and says **No tools** at once.
 - **Skills** — each `spec.skills[]` entry with its repository (or OCI reference, or
   bucket object), path and **pin** — the short commit or digest, the full value on
   hover — in the **same card grid the create flow's skill picker uses**, so an

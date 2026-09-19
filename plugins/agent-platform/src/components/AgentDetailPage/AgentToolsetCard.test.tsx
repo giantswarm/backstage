@@ -170,19 +170,30 @@ const resolvedAnswer =
     toolset_unmatched: unmatched,
   });
 
+/** One cluster's query, in the state a test needs it in. */
+function query(
+  state: Partial<Record<'isSuccess' | 'isError' | 'isPaused', boolean>>,
+) {
+  return [
+    {
+      cluster: 'gazelle',
+      query: { isSuccess: false, isError: false, isPaused: false, ...state },
+    },
+  ];
+}
+
 /**
- * One cluster's answer to a list: what `useResources` returns once the query
- * has produced items. An answered read is `clustersData` with an entry — the
- * card waits on that, not on `isLoading`.
+ * The read answered with a list. The card waits on the query's own terminal
+ * state, not on `isLoading` and not on `errors`.
  */
-const ANSWERED = [{ cluster: 'gazelle', data: [] }];
+const ANSWERED = query({ isSuccess: true });
 
 /** How the RemoteMCPServer read answers, when a test needs it unsettled or failed. */
 type CarrierRead = {
   resources?: unknown[];
   isLoading?: boolean;
   errors?: unknown[];
-  clustersData?: unknown[];
+  queries?: unknown[];
 };
 
 async function renderCard(
@@ -197,14 +208,14 @@ async function renderCard(
             resources: CARRIERS,
             isLoading: false,
             errors: [],
-            clustersData: ANSWERED,
+            queries: ANSWERED,
             ...carrierRead,
           }
         : {
             resources: SERVER_CRS,
             isLoading: false,
             errors: [],
-            clustersData: ANSWERED,
+            queries: ANSWERED,
           },
   );
   const queryClient = new QueryClient({
@@ -240,7 +251,7 @@ describe('AgentToolsetCard', () => {
     await renderCard(makeAgent([{ mcpServer: GATEWAY }]), undefined, {
       resources: [],
       isLoading: true,
-      clustersData: [],
+      queries: query({}),
     });
 
     // The flash this guards against: an unanswered read is not evidence that
@@ -257,6 +268,7 @@ describe('AgentToolsetCard', () => {
     await renderCard(makeAgent([{ mcpServer: GATEWAY }]), undefined, {
       resources: [],
       errors: buildResourceErrors({ failed: ['gazelle'] }),
+      queries: query({ isError: true }),
     });
 
     expect(screen.getByText('Toolset not readable')).toBeInTheDocument();
@@ -275,6 +287,25 @@ describe('AgentToolsetCard', () => {
       screen.getByText(/no server of that name exists in namespace kagent/),
     ).toBeInTheDocument();
     expect(screen.queryByText('Toolset not readable')).not.toBeInTheDocument();
+  });
+
+  it('says No tools at once for a chat-only agent, without waiting for the read', async () => {
+    await renderCard(
+      makeAgent([{ mcpServer: { name: 'grafana' } }]),
+      undefined,
+      {
+        resources: [],
+        isLoading: true,
+        queries: query({}),
+      },
+    );
+
+    // No gateway binding: decided by the agent alone, so the carrier read has
+    // no bearing on it.
+    expect(screen.getByText('No tools')).toBeInTheDocument();
+    expect(
+      screen.queryByText("Reading the agent's toolset…"),
+    ).not.toBeInTheDocument();
   });
 
   it('labels an agent without a toolset as implicit full access', async () => {

@@ -32,26 +32,37 @@ export type AgentToolset = {
  * "implicit full access"; `isReading` is what tells the two apart, so a caller
  * can wait rather than claim the carrier is unreadable.
  *
- * Settledness comes from the query's own answer (items or an error), not from
- * `isLoading`: an enabled query reports `fetchStatus: 'idle'` on the render
- * before it starts fetching, so `isLoading` is false with nothing read yet —
- * the same trap `usePreferredVersions` documents. Reading it this way also
- * keeps a background refetch from flipping a settled card back to reading.
+ * Settledness comes from the queries' own terminal state, and from neither
+ * `isLoading` nor `errors`. Not `isLoading`, because an enabled query reports
+ * `fetchStatus: 'idle'` on the render before it starts fetching, so it is
+ * false with nothing read yet — the trap `usePreferredVersions` documents. Not
+ * `errors`, because `useResources` filters a `RejectedError` (an installation
+ * the person has not authenticated with) out of it: that read is over, but it
+ * leaves neither items nor a reported error, and waiting on those would leave
+ * the caller waiting forever. Reading the queries also keeps a background
+ * refetch from flipping a settled card back to reading.
  */
 export function useAgentToolset(agent: Agent): AgentToolset {
   const installation = agent.cluster;
   const namespace = agent.getNamespace();
-  const { resources, errors, clustersData } = useResources(
+  const { resources, queries } = useResources(
     installation,
     RemoteMCPServer,
     { [installation]: { namespace } },
     { enableDiscovery: false },
   );
 
-  // No installation means no query at all, which would never settle; there is
-  // nothing to wait for either.
-  const settled = !installation || clustersData.length > 0 || errors.length > 0;
+  // Paused counts as done: offline, the query sits pending with nothing on the
+  // way, and the read has failed as far as this page is concerned.
+  const settled = queries.every(
+    ({ query }) => query.isSuccess || query.isError || query.isPaused,
+  );
+  const failed = queries.some(({ query }) => query.isError || query.isPaused);
 
+  // Booleans, not the arrays they come from: `errors` is a new array on every
+  // render (its own memo depends on the cluster list `useResources` rebuilds
+  // each time), and depending on it would give every render a new result —
+  // which the card's memos, keyed on this one, all hang off.
   return useMemo(
     () => ({
       declared: toolsetOfAgent(
@@ -60,8 +71,8 @@ export function useAgentToolset(agent: Agent): AgentToolset {
         settled ? resources : undefined,
       ),
       isReading: !settled,
-      isUnreadable: settled && errors.length > 0,
+      isUnreadable: settled && failed,
     }),
-    [agent, settled, resources, errors],
+    [agent, settled, failed, resources],
   );
 }

@@ -153,7 +153,17 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     : undefined;
 
   let body: React.ReactNode;
-  if (isReading) {
+  if (declared.state === 'no-gateway') {
+    // Decided by the agent's own bindings, so it is already final — a
+    // chat-only agent has nothing to wait for and says so at once.
+    body = (
+      <Alert
+        status="info"
+        title="No tools"
+        description="This agent has no gateway entry, so it has no tools beyond its own reasoning — what a toolset of preset:none renders to, and what a chat-only agent looks like."
+      />
+    );
+  } else if (isReading) {
     // Until the carrier read answers, nothing can be said — and saying it
     // cannot be read would be wrong on every healthy agent. The indicator
     // holds itself back for 250ms, so a read served from cache shows nothing
@@ -171,14 +181,6 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
         status="warning"
         title="Gateway server missing"
         description={`This agent binds the gateway through the RemoteMCPServer ${declared.carrier}, but no server of that name exists in namespace ${namespace}. The binding reaches nothing, and the toolset — declared on that server — cannot be read.`}
-      />
-    );
-  } else if (declared.state === 'no-gateway') {
-    body = (
-      <Alert
-        status="info"
-        title="No tools"
-        description="This agent has no gateway entry, so it has no tools beyond its own reasoning — what a toolset of preset:none renders to, and what a chat-only agent looks like."
       />
     );
   } else if (declared.state === 'implicit-full') {

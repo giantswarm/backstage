@@ -43,8 +43,22 @@ function carrier(toolset?: string) {
   );
 }
 
-/** What `useResources` returns once its query has produced items. */
-const ANSWERED = [{ cluster: 'gazelle', data: [] }];
+/** One cluster's query, in the state a test needs it in. */
+function query(
+  state: Partial<Record<'isSuccess' | 'isError' | 'isPaused', boolean>>,
+) {
+  return [
+    {
+      cluster: 'gazelle',
+      query: { isSuccess: false, isError: false, isPaused: false, ...state },
+    },
+  ];
+}
+
+/** The read answered with a list. */
+const ANSWERED = query({ isSuccess: true });
+/** The read has not started or is still in flight. */
+const PENDING = query({});
 
 describe('useAgentToolset', () => {
   beforeEach(() => mockUseResources.mockReset());
@@ -52,9 +66,7 @@ describe('useAgentToolset', () => {
   it('reads the carrier RemoteMCPServers of the agent’s own namespace', () => {
     mockUseResources.mockReturnValue({
       resources: [carrier('preset:read-only')],
-      isLoading: false,
-      errors: [],
-      clustersData: ANSWERED,
+      queries: ANSWERED,
     });
 
     const { result } = renderHook(() => useAgentToolset(agent));
@@ -79,12 +91,7 @@ describe('useAgentToolset', () => {
   // Never a premature "implicit full access": until the servers have answered
   // nothing can be said about the toolset.
   it('is unresolved, and says it is still reading, while the servers load', () => {
-    mockUseResources.mockReturnValue({
-      resources: [],
-      isLoading: true,
-      errors: [],
-      clustersData: [],
-    });
+    mockUseResources.mockReturnValue({ resources: [], queries: PENDING });
 
     const { result } = renderHook(() => useAgentToolset(agent));
 
@@ -102,9 +109,10 @@ describe('useAgentToolset', () => {
   it('is still reading when no query has answered, whatever isLoading says', () => {
     mockUseResources.mockReturnValue({
       resources: [],
+      // The render before an enabled query starts fetching: `isLoading` is
+      // already false, and nothing has been read.
       isLoading: false,
-      errors: [],
-      clustersData: [],
+      queries: PENDING,
     });
 
     const { result } = renderHook(() => useAgentToolset(agent));
@@ -115,9 +123,8 @@ describe('useAgentToolset', () => {
   it('reports the read as failed when the list errored', () => {
     mockUseResources.mockReturnValue({
       resources: [],
-      isLoading: false,
       errors: [{ cluster: 'gazelle', error: { name: 'ForbiddenError' } }],
-      clustersData: [],
+      queries: query({ isError: true }),
     });
 
     const { result } = renderHook(() => useAgentToolset(agent));
@@ -129,14 +136,43 @@ describe('useAgentToolset', () => {
     });
   });
 
+  // `useResources` filters a RejectedError — an installation the person has
+  // not authenticated with — out of `errors`. Waiting on `errors` would leave
+  // this read looking unanswered for as long as the page is open.
+  it('settles on a rejected read, which never reaches the errors array', () => {
+    mockUseResources.mockReturnValue({
+      resources: [],
+      errors: [],
+      queries: query({ isError: true }),
+    });
+
+    const { result } = renderHook(() => useAgentToolset(agent));
+
+    expect(result.current.isReading).toBe(false);
+    expect(result.current.isUnreadable).toBe(true);
+  });
+
+  // Offline the query is pending but paused: nothing is on its way.
+  it('settles on a paused read', () => {
+    mockUseResources.mockReturnValue({
+      resources: [],
+      errors: [],
+      queries: query({ isPaused: true }),
+    });
+
+    const { result } = renderHook(() => useAgentToolset(agent));
+
+    expect(result.current.isReading).toBe(false);
+    expect(result.current.isUnreadable).toBe(true);
+  });
+
   // A read that answered without the bound server is a missing carrier, not an
   // unreadable one — the card says so in its own words.
   it('separates a carrier that is absent from one that could not be read', () => {
     mockUseResources.mockReturnValue({
       resources: [],
-      isLoading: false,
       errors: [],
-      clustersData: ANSWERED,
+      queries: ANSWERED,
     });
 
     const { result } = renderHook(() => useAgentToolset(agent));
@@ -151,9 +187,7 @@ describe('useAgentToolset', () => {
   it('reports implicit full access once the carrier is read without a header', () => {
     mockUseResources.mockReturnValue({
       resources: [carrier()],
-      isLoading: false,
-      errors: [],
-      clustersData: ANSWERED,
+      queries: ANSWERED,
     });
 
     const { result } = renderHook(() => useAgentToolset(agent));
@@ -167,12 +201,14 @@ describe('useAgentToolset', () => {
 
   it('keeps the result’s identity across renders with the same inputs', () => {
     const resources = [carrier('preset:read-only')];
-    mockUseResources.mockReturnValue({
+    // `useResources` hands out a fresh `errors` array on every render, so the
+    // memo has to hang off booleans — the card's own memos are keyed on this
+    // result, and a new identity each render re-runs all of them.
+    mockUseResources.mockImplementation(() => ({
       resources,
-      isLoading: false,
       errors: [],
-      clustersData: ANSWERED,
-    });
+      queries: ANSWERED,
+    }));
 
     const { result, rerender } = renderHook(() => useAgentToolset(agent));
     const first = result.current;
