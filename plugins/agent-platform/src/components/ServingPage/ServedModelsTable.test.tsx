@@ -663,6 +663,23 @@ describe('ServedModelsTable', () => {
     expect(screen.getAllByText('No model config')).toHaveLength(2);
   });
 
+  it('lists the running models first, then the ones that need attention, then the available ones', async () => {
+    // Handed over in the reverse order, on one installation and backend.
+    await renderTable(
+      <ServedModelsTable
+        rows={[kserveManagerRows[1], rows[1], kserveManagerRows[0]]}
+      />,
+    );
+
+    const names = within(screen.getByRole('grid'))
+      .getAllByRole('rowheader')
+      .map(cell => cell.textContent);
+    expect(names).toHaveLength(3);
+    expect(names[0]).toMatch(/^qwen3-14b/);
+    expect(names[1]).toMatch(/^devstral/);
+    expect(names[2]).toMatch(/^mistralai\/Devstral-Small-2-24B-Instruct-2512/);
+  });
+
   it('renders the empty state without rows', async () => {
     await renderTable(<ServedModelsTable rows={[]} />);
 
@@ -803,7 +820,7 @@ describe('ServedModelsTable', () => {
   });
 
   describe('with a download among the rows', () => {
-    it('renders a pull in flight as a Downloading row sorted among its future neighbours, with the progress and a bar', async () => {
+    it('renders a pull in flight as a Downloading row between the running and the available models, with the progress and a bar', async () => {
       await renderTable(
         <ServedModelsTable rows={[...ollamaRows, downloading]} />,
       );
@@ -814,9 +831,9 @@ describe('ServedModelsTable', () => {
       const names = within(grid)
         .getAllByRole('rowheader')
         .map(cell => cell.textContent);
-      expect(names[0]).toMatch(/^gemma3:270m/);
+      expect(names[0]).toMatch(/^qwen3\.5:9b/);
       expect(names[1]).toMatch(/^qwen2\.5:0\.5b/);
-      expect(names[2]).toMatch(/^qwen3\.5:9b/);
+      expect(names[2]).toMatch(/^gemma3:270m/);
 
       expect(screen.getByText('Downloading')).toBeInTheDocument();
       expect(
@@ -981,16 +998,23 @@ describe('ServedModelsTable', () => {
 });
 
 describe('sortServedModelsBy', () => {
-  it('sorts by the requested column with a stable tiebreaker', () => {
+  it('sorts Status by what runs, what needs attention and what is not running, other columns by value, with a stable tiebreaker', () => {
     const byReadiness = sortServedModelsBy(rows, {
       column: 'readiness',
       direction: 'ascending',
     });
+    // Ready, then not ready, then pending — never the alphabet of the words.
     expect(byReadiness.map(row => row.name)).toEqual([
+      'qwen3-14b',
       'devstral',
       'fresh',
-      'qwen3-14b',
     ]);
+    expect(
+      sortServedModelsBy(rows, {
+        column: 'readiness',
+        direction: 'descending',
+      }).map(row => row.name),
+    ).toEqual(['fresh', 'devstral', 'qwen3-14b']);
 
     const byGpus = sortServedModelsBy(rows, {
       column: 'gpuCount',
