@@ -24,9 +24,20 @@ repository is what `devctl repo status` prints for it, from the same record.
   parameter, sent as typed (`fork` and `arm64` booleans, `inactiveDays` a
   number).
 - **Table** (`Table` of `@backstage/core-components`): repository, team,
-  lifecycle, set-up state, findings, last person commit, record age; sortable
-  by every column, by repository to begin with; the one-line summary above it
-  (shown / matched / total, last sweep).
+  lifecycle, set-up, findings, last person commit; sortable by every column,
+  by repository to begin with; the one-line summary above it (shown / matched
+  / total, last sweep). The set-up is one icon per row, the portal's marks
+  shared with the Installations page's capability columns: a green check
+  where the engine's check found the repository set up as declared (_in
+  sync_), an orange sync-problem where it found it off its declared set-up
+  (_not in sync_), a blue sync where it is declared but not reconciled yet
+  (no check has run through it, or an Align now waits for its run), an empty
+  circle where no declaration sets it up (_not installed_), a red error where
+  the engine refused the declaration or the check could not run (_failed_),
+  a question mark where GitHub no longer has it (_unknown_). The state in the
+  manager's words is the icon's tooltip and accessible name; the header's
+  tooltip is the legend. Sorting by set-up puts the repositories wanting a
+  look first.
 - **Row detail**: the full inventory record -- a header with the repository
   (linked), its set-up state and the actions; the facts grouped as Ownership
   (team, declaration, component type, flavours, CODEOWNERS, team mapping,

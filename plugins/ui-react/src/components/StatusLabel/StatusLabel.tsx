@@ -31,6 +31,13 @@ const INTENT_TOKEN: Record<StatusLabelIntent, string> = {
 };
 
 /**
+ * An intent's colour as a CSS value -- `var(--bui-fg-…)` -- for a component
+ * that colours its own glyph the way this label colours its icon.
+ */
+export const intentColor = (intent: StatusLabelIntent) =>
+  `var(${INTENT_TOKEN[intent]})`;
+
+/**
  * Default icon per intent. Each is a filled Material variant with a distinct
  * silhouette — tick, triangle, circle, and so on — so a status stays legible
  * when colour is unavailable or unreliable (colour blindness, greyscale print).
@@ -104,7 +111,7 @@ export const StatusLabel = ({
       <span
         style={{
           display: 'flex',
-          color: `var(${INTENT_TOKEN[intent]})`,
+          color: intentColor(intent),
           fontSize: ICON_SIZE,
         }}
       >

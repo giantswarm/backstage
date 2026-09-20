@@ -105,8 +105,13 @@ export interface RowCI {
 export interface RepositoryRowSetup {
   /** Absent when the checks could not run (`error` says why). */
   converged?: boolean;
+  /** The engine refused the entry: no step ran (findings `entry-refused`, `gen-circleci-refused`). */
+  refused?: boolean;
   checkedAt?: string;
+  /** The last reconciler run's URL. */
   lastRun?: string;
+  /** An Align now waiting for its run's artifact. */
+  pendingRun?: PendingRun;
   error?: string;
 }
 

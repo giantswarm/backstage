@@ -136,6 +136,32 @@ describe('RepositoriesPage', () => {
     ).not.toBeChecked();
   });
 
+  it('shows the set-up as one icon per row, the state in its name', async () => {
+    const api = fakeApi();
+    await openAll(api);
+
+    const setup = (name: string) => screen.getByTestId(`setup-${name}`);
+    expect(setup('present-service')).toHaveAttribute('data-mark', 'in sync');
+    expect(setup('present-service')).toHaveAttribute('data-state', 'converged');
+    expect(setup('present-service')).toHaveAccessibleName(
+      'converged · set up as declared',
+    );
+    expect(setup('new-service')).toHaveAttribute('data-mark', 'not in sync');
+    expect(setup('new-service')).toHaveAccessibleName(
+      'not converged · off its declared set-up',
+    );
+    expect(setup('stray-tool')).toHaveAttribute('data-mark', 'not installed');
+    expect(setup('stray-tool')).toHaveAccessibleName(
+      'undeclared · no declaration sets it up',
+    );
+    // The cell is the icon alone: no words in the column.
+    expect(setup('present-service')).toHaveTextContent('');
+    // The legend is the header's tooltip.
+    expect(
+      screen.getByRole('columnheader', { name: /Set-up/ }),
+    ).toBeInTheDocument();
+  });
+
   it('opens on Unassigned for a Planeteer, without a Team filter', async () => {
     const api = fakeApi({}, ['team-planeteers']);
     await renderPage(api);

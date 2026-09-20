@@ -579,8 +579,11 @@ export function rowOf(record: InventoryRecord, now = NOW): RepositoryRow {
     },
     setup: {
       converged: record.setup.checks?.converged,
+      // The engine refused the entry: its result has the entry step, no other.
+      refused: record.setup.checks?.steps.some(step => step.step === 'entry'),
       checkedAt: record.setup.checkedAt,
-      lastRun: record.setup.lastRun?.timestamp,
+      lastRun: record.setup.lastRun?.runUrl,
+      pendingRun: record.setup.pendingRun,
       error: record.setup.checkError,
     },
     age: record.age ?? '',
