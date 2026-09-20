@@ -172,6 +172,60 @@ export const NOT_OPTED_IN: Installation = installation({
   ],
 });
 
+/** An installation of the fixture set with the capability in one state. */
+function withState(
+  name: string,
+  capability: Installation['capabilities'][number],
+): Installation {
+  return installation({
+    name,
+    record: { ...RECORD, name, baseDomain: `${name}.example.test` },
+    capabilities: [
+      { ...capability, inputs: { installation: { ...RECORD, name } } },
+    ],
+  });
+}
+
+/** Enabled through the manager: its last action rolled out and verified. */
+export const ENABLED: Installation = withState('birch', {
+  name: 'agent-platform',
+  state: 'enabled',
+  enabled: true,
+  lastAction: { name: 'enable-agent-platform-birch-1', result: 'enabled' },
+});
+
+/** Enabled before the manager existed: the fileset is on record, no action is. */
+export const ENABLED_BY_HAND: Installation = withState('cedar', {
+  name: 'agent-platform',
+  state: 'enabled',
+  enabled: true,
+  lastAction: null,
+});
+
+/** The last verify found it off its definition. */
+export const DRIFTED: Installation = withState('elm', {
+  name: 'agent-platform',
+  state: 'drifted',
+  enabled: true,
+  lastAction: { name: 'reconcile-agent-platform-elm-3', result: 'drifted' },
+});
+
+/** The pull requests are merged and the rollout runs. */
+export const ROLLING_OUT: Installation = withState('fir', {
+  name: 'agent-platform',
+  state: 'rolling out',
+  enabled: true,
+  lastAction: { name: 'enable-agent-platform-fir-1', result: 'rolling out' },
+});
+
+/** The rollout's probe went red. */
+export const FAILED: Installation = withState('hazel', {
+  name: 'agent-platform',
+  state: 'failed',
+  enabled: true,
+  lastAction: { name: 'reconcile-agent-platform-hazel-2', result: 'failed' },
+});
+
 export const PLAN: CapabilityPlan = {
   tool: 'enable_capability',
   capability: 'agent-platform',
@@ -469,6 +523,8 @@ export interface FakeOptions {
   verified?: VerifyResult | ((installation: string) => VerifyResult);
   /** Installations whose verify fails, with the error. */
   verifyErrors?: Record<string, Error>;
+  /** Installations of the registry the person cannot read. */
+  unreadable?: string[];
 }
 
 export interface Write {
@@ -517,7 +573,7 @@ export class FakeApi implements PlatformCapabilitiesApi {
       hub: 'hazel',
       capabilities: ['agent-platform'],
       installations,
-      unreadable: [],
+      unreadable: this.options.unreadable ?? [],
     };
   }
 

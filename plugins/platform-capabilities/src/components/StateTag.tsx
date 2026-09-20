@@ -2,7 +2,8 @@ import { Text } from '@backstage/ui';
 import { CapabilityStateName } from '../apis';
 import { CellMark } from './consistency';
 
-const COLOR: Record<CapabilityStateName | CellMark, string> = {
+/** The colour of each state and verify mark, shared by the tag and the icon. */
+export const STATE_COLOR: Record<CapabilityStateName | CellMark, string> = {
   'not opted in': '#8a8a8a',
   'not enabled': '#8a8a8a',
   'pending approval': '#b8860b',
@@ -29,7 +30,8 @@ export function StateTag({
   state: CapabilityStateName | CellMark | string;
   testId?: string;
 }) {
-  const color = COLOR[state as keyof typeof COLOR] ?? COLOR.unknown;
+  const color =
+    STATE_COLOR[state as keyof typeof STATE_COLOR] ?? STATE_COLOR.unknown;
   return (
     <span
       data-testid={testId}
