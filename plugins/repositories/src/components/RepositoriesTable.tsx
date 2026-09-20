@@ -4,13 +4,15 @@ import { Box, Chip, Typography } from '@material-ui/core';
 import {
   DateComponent,
   NotAvailable,
-  StatusLabel,
+  SyncMarkIcon,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { RepositoryRow } from '../apis';
 import {
   lifecycleOf,
-  SETUP_INTENT,
-  SETUP_ORDER,
+  MARK_ORDER,
+  markOf,
+  SETUP_LEGEND,
+  setupLabel,
   setupState,
 } from '../lib/rows';
 import { RepositoryDetails } from './RepositoryDetails';
@@ -50,7 +52,7 @@ const columns: TableColumn<TableRow>[] = [
     field: 'repository',
     highlight: true,
     defaultSort: 'asc',
-    width: '30%',
+    width: '34%',
     cellStyle: ellipsis,
     customSort: byName,
     render: row => (
@@ -70,7 +72,7 @@ const columns: TableColumn<TableRow>[] = [
   {
     title: 'Team',
     field: 'team',
-    width: '18%',
+    width: '21%',
     cellStyle: ellipsis,
     customSort: byText(row => row.team ?? ''),
     render: row =>
@@ -89,16 +91,21 @@ const columns: TableColumn<TableRow>[] = [
     render: lifecycleOf,
   },
   {
+    // One icon per row, the portal's marks (the Installations page's
+    // capability columns use the same): the state in the manager's words is
+    // the tooltip, the legend is the header's.
     title: 'Set-up',
+    tooltip: SETUP_LEGEND,
     field: 'setup',
-    width: '15%',
+    width: '8%',
     cellStyle: oneLine,
-    customSort: byNumber(row => SETUP_ORDER[setupState(row)]),
+    customSort: byNumber(row => MARK_ORDER[markOf(row)]),
     render: row => (
-      <StatusLabel
-        label={setupState(row)}
-        intent={SETUP_INTENT[setupState(row)]}
-        title={row.setup.error}
+      <SyncMarkIcon
+        mark={markOf(row)}
+        state={setupState(row)}
+        label={setupLabel(row)}
+        testId={`setup-${nameOf(row)}`}
       />
     ),
   },

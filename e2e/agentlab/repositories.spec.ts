@@ -55,6 +55,18 @@ test.describe('repositories', () => {
     await expect(
       admin.getByRole('checkbox', { name: 'Show archived' }),
     ).not.toBeChecked();
+    // The Set-up column is one icon per row (the portal's marks, as the
+    // Installations page shows them): the state in the manager's words is
+    // the accessible name, the cell has no text of its own.
+    const first = rows(admin).first();
+    await expect(first).toBeVisible({ timeout: 60_000 });
+    const setup = first.locator('td').nth(4).getByRole('img');
+    await expect(setup).toHaveAttribute(
+      'data-mark',
+      /^(in sync|not in sync|not reconciled|not installed|failed|unknown)$/,
+    );
+    await expect(setup).toHaveAttribute('aria-label', / · /);
+    await expect(first.locator('td').nth(4)).toHaveText('');
   });
 
   test('hides the archived repositories until Show archived', async ({

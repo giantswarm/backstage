@@ -29,6 +29,7 @@ export * from './SingleSelect';
 export * from './Stat';
 export * from './StackedBarChart';
 export * from './StatusLabel';
+export * from './SyncMark';
 export * from './StructuredMetadataList';
 export * from './YamlEditor';
 export * from './YamlEditorFormField';
