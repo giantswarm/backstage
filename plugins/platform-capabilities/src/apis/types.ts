@@ -83,6 +83,12 @@ export interface InstallationListing {
 export interface ListInstallationsFilters {
   installations?: string[];
   customer?: string;
+  /**
+   * The states and the last actions alone, without the record, the inputs
+   * on record, the portals and the federation facts: a third of the
+   * manager's reads, for an overview. The default answer carries them all.
+   */
+  summary?: boolean;
 }
 
 /** A JSON schema as the manager publishes a definition's inputs. */

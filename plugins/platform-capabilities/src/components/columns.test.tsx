@@ -4,6 +4,7 @@ import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { screen, waitFor } from '@testing-library/react';
 import { platformCapabilitiesApiRef } from '../apis';
 import {
+  AGENT_PLATFORM_DEFINITION,
   DRIFTED,
   ENABLED,
   ENABLED_BY_HAND,
@@ -32,6 +33,7 @@ function Probe({ names }: { names: string[] }) {
       <div data-testid="titles">
         {columns.map(c => String(c.title)).join(',')}
       </div>
+      <div data-testid="widths">{columns.map(c => c.width).join(',')}</div>
       {names.map(name => (
         <div key={name} data-testid={`row-${name}`}>
           {columns.map(c => (
@@ -86,7 +88,74 @@ describe('useInstallationCapabilityColumns', () => {
     expect(cell('elm')).toHaveAttribute('data-state', 'drifted');
     expect(cell('elm')).toHaveAttribute('data-mark', 'not in sync');
     expect(cell('unknown-one')).toHaveTextContent('—');
-    expect(api.listFilters).toEqual([{}]);
+    // The columns ask for the states alone: the manager reads a third of the fleet.
+    expect(api.listFilters).toEqual([{ summary: true }]);
+  });
+
+  it('has its columns from the definitions before the listing arrives, each cell a skeleton', async () => {
+    const api = new FakeApi({
+      installations: [ENABLED],
+      definitions: [
+        AGENT_PLATFORM_DEFINITION,
+        { ...AGENT_PLATFORM_DEFINITION, name: 'customer-portal' },
+      ],
+      latency: 400,
+    });
+    await renderInTestApp(
+      <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+        <Probe names={['birch']} />
+      </TestApiProvider>,
+    );
+    // Both columns are there while the listing is still on its way.
+    await waitFor(() =>
+      expect(screen.getByTestId('titles')).toHaveTextContent(
+        'agent-platform,customer-portal',
+      ),
+    );
+    expect(
+      screen.getByTestId('capability-customer-portal-birch-pending'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('capability-agent-platform-birch')).toBeNull();
+    // Then the icons.
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId('capability-agent-platform-birch'),
+        ).toHaveAttribute('data-mark', 'in sync'),
+      { timeout: 3000 },
+    );
+    expect(
+      screen.queryByTestId('capability-customer-portal-birch-pending'),
+    ).toBeNull();
+    // Each column is as wide as one icon and its header, not a share of the table.
+    expect(screen.getByTestId('widths')).toHaveTextContent('120px,120px');
+  });
+
+  it("shows the manager's error above the table and no state in the cells", async () => {
+    const api = new FakeApi({ installations: [ENABLED] });
+    api.listInstallations = async () => {
+      const failure = new Error('the registry could not be read as you');
+      failure.name = 'ForbiddenError';
+      throw failure;
+    };
+    await renderInTestApp(
+      <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+        <Probe names={['birch']} />
+      </TestApiProvider>,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(/the registry could not be read as you/),
+      ).toBeInTheDocument(),
+    );
+    // The definitions still name the columns; a cell says nothing.
+    expect(screen.getByTestId('titles')).toHaveTextContent('agent-platform');
+    expect(
+      screen.getByTestId('capability-agent-platform-birch'),
+    ).toHaveTextContent('');
+    expect(
+      screen.getByTestId('capability-agent-platform-birch'),
+    ).not.toHaveAttribute('data-state');
   });
 
   it('adds nothing where the platform-capabilities api is not enabled', async () => {

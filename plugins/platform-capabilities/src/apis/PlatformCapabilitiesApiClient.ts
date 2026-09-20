@@ -78,6 +78,7 @@ export class PlatformCapabilitiesApiClient implements PlatformCapabilitiesApi {
       query: {
         installations: filters.installations?.join(','),
         customer: filters.customer,
+        summary: filters.summary,
       },
     });
   }

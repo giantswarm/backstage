@@ -247,6 +247,10 @@ describe('createRouter', () => {
       expect(() => listArguments({ installations: ['a', 'b'] })).toThrow(
         /at most once/,
       );
+      // The overview's summary is a boolean argument, from `true`/`false`.
+      expect(listArguments({ summary: 'true' })).toEqual({ summary: true });
+      expect(listArguments({ summary: 'false' })).toEqual({ summary: false });
+      expect(() => listArguments({ summary: 'yes' })).toThrow(/true or false/);
     });
 
     it('reads the action filters', () => {

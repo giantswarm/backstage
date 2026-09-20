@@ -411,6 +411,8 @@ export interface FakeOptions {
   verified?: VerifyResult;
   /** Installations of the registry the person cannot read. */
   unreadable?: string[];
+  /** How long the listing takes, in milliseconds: the manager reads a fleet. */
+  latency?: number;
 }
 
 export interface Write {
@@ -449,13 +451,18 @@ export class FakeApi implements PlatformCapabilitiesApi {
     filters: ListInstallationsFilters = {},
   ): Promise<InstallationListing> {
     this.listFilters.push(filters);
+    if (this.options.latency) {
+      await new Promise(resolve => setTimeout(resolve, this.options.latency));
+    }
     const all = this.options.installations ?? [installation()];
     const installations = filters.installations
       ? all.filter(i => filters.installations!.includes(i.name))
       : all;
     return {
       hub: 'hazel',
-      capabilities: ['agent-platform'],
+      capabilities: (
+        this.options.definitions ?? [AGENT_PLATFORM_DEFINITION]
+      ).map(d => d.name),
       installations,
       unreadable: this.options.unreadable ?? [],
     };
