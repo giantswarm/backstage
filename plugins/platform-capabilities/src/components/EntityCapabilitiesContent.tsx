@@ -64,10 +64,11 @@ function Capabilities({ name }: { name: string }) {
 }
 
 /**
- * The Capabilities tab of an installation: per platform capability the
- * state, the inputs on record and the last action from `list_installations`,
- * Enable/Reconcile with the dry run, Verify, and the action history --
- * everything through the manager's tools as the signed-in person.
+ * The Capabilities tab of an installation: one block per platform capability
+ * with its state from `list_installations`, the comparison with its
+ * definition run as the tab opens, and one button opening the dialog; then
+ * the action history -- everything through the manager's tools as the
+ * signed-in person.
  */
 export function EntityCapabilitiesContent() {
   const { entity } = useEntity();

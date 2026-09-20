@@ -7,7 +7,7 @@ import { PlatformCapabilitiesAuthApi } from './auth';
 import {
   Action,
   ActionListing,
-  CapabilityWriteArgs,
+  CapabilityArgs,
   ConnectionResponse,
   InstallationListing,
   ListInstallationsFilters,
@@ -86,7 +86,7 @@ export class PlatformCapabilitiesApiClient implements PlatformCapabilitiesApi {
   enableCapability<O extends WriteOptions>(
     installation: string,
     capability: string,
-    args: CapabilityWriteArgs,
+    args: CapabilityArgs,
     options: O,
   ): Promise<WriteResult<O>> {
     return this.write(installation, capability, 'enable', args, options);
@@ -95,7 +95,7 @@ export class PlatformCapabilitiesApiClient implements PlatformCapabilitiesApi {
   reconcileCapability<O extends WriteOptions>(
     installation: string,
     capability: string,
-    args: CapabilityWriteArgs,
+    args: CapabilityArgs,
     options: O,
   ): Promise<WriteResult<O>> {
     return this.write(installation, capability, 'reconcile', args, options);
@@ -104,12 +104,11 @@ export class PlatformCapabilitiesApiClient implements PlatformCapabilitiesApi {
   verifyCapability(
     installation: string,
     capability: string,
+    args: CapabilityArgs = {},
   ): Promise<VerifyResult> {
     return this.request(
       this.capabilityPath(installation, capability, 'verify'),
-      {
-        method: 'POST',
-      },
+      { method: 'POST', body: args },
     );
   }
 
@@ -139,7 +138,7 @@ export class PlatformCapabilitiesApiClient implements PlatformCapabilitiesApi {
     installation: string,
     capability: string,
     action: string,
-    args: CapabilityWriteArgs,
+    args: CapabilityArgs,
     options: WriteOptions,
   ): Promise<T> {
     return this.request(this.capabilityPath(installation, capability, action), {

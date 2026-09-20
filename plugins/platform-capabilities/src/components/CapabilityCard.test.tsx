@@ -1,0 +1,377 @@
+import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { TestApiProvider } from '@backstage/test-utils';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {
+  CapabilityState,
+  Installation,
+  platformCapabilitiesApiRef,
+  VerifyResult,
+} from '../apis';
+import {
+  AGENT_PLATFORM_DEFINITION,
+  ENABLED,
+  FakeApi,
+  FakeOptions,
+  installation,
+  NOT_OPTED_IN,
+  UP_TO_DATE,
+  VERIFIED,
+} from '../fixtures/fakeApi';
+import { CapabilityCard } from './CapabilityCard';
+import { CapabilityDialog } from './CapabilityDialog';
+import {
+  PlatformCapabilitiesProviders,
+  platformCapabilitiesQueryClient,
+} from './Providers';
+
+jest.mock('./connectBounce', () => ({
+  ...jest.requireActual('./connectBounce'),
+  bounceToConnect: jest.fn(),
+}));
+
+/** The words the page never shows on the tab. */
+const MANAGER_WORDS =
+  /opt-in|opted in|reconcile|verify|dry run|inputs on record/i;
+
+/** rowan with the capability in one state. */
+function withCapability(
+  capability: Partial<CapabilityState>,
+  overrides: Partial<Installation> = {},
+): Installation {
+  return installation({
+    capabilities: [
+      {
+        name: 'agent-platform',
+        state: 'not enabled',
+        enabled: false,
+        lastAction: null,
+        ...capability,
+      },
+    ],
+    ...overrides,
+  });
+}
+
+/** A comparison with a red probe. */
+const RED_PROBE: VerifyResult = {
+  ...VERIFIED,
+  features: [
+    {
+      id: 'identity',
+      title: 'Identity',
+      mark: 'drifted',
+      dimensions: [
+        {
+          id: 'dex-auth-request',
+          kind: 'probe',
+          mark: 'drifted',
+          probe: {
+            requests: [
+              {
+                url: 'https://dex.rowan.example.test/auth',
+                status: 500,
+                ok: false,
+              },
+            ],
+          },
+        },
+      ],
+    },
+  ],
+  summary: { drifted: 1 },
+};
+
+async function render(target: Installation, options: FakeOptions = {}) {
+  const api = new FakeApi(options);
+  await renderInTestApp(
+    <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+      <PlatformCapabilitiesProviders>
+        <CapabilityCard
+          installation={target}
+          capability={target.capabilities[0]}
+          definition={AGENT_PLATFORM_DEFINITION}
+        />
+      </PlatformCapabilitiesProviders>
+    </TestApiProvider>,
+  );
+  await waitFor(() => expect(screen.queryByTestId('comparing')).toBeNull());
+  return api;
+}
+
+/** The dialog alone, for the review's own cases. */
+async function renderDialog(api: FakeApi) {
+  const target = installation();
+  await renderInTestApp(
+    <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+      <PlatformCapabilitiesProviders>
+        <CapabilityDialog
+          kind="enable"
+          installation={target}
+          capability={target.capabilities[0]}
+          definition={AGENT_PLATFORM_DEFINITION}
+          isOpen
+          onClose={() => undefined}
+        />
+      </PlatformCapabilitiesProviders>
+    </TestApiProvider>,
+  );
+}
+
+const header = () => screen.getByTestId('capability-state');
+const card = () => screen.getByTestId('capability-agent-platform');
+
+describe('CapabilityCard', () => {
+  beforeEach(() => platformCapabilitiesQueryClient.clear());
+
+  it.each<[string, Partial<CapabilityState>, VerifyResult, string]>([
+    ['not installed', { state: 'not enabled' }, VERIFIED, 'Not installed'],
+    [
+      'installed with differences',
+      { state: 'enabled', enabled: true },
+      VERIFIED,
+      'Installed · 2 differences',
+    ],
+    [
+      'installed, up to date',
+      { state: 'enabled', enabled: true },
+      UP_TO_DATE,
+      'Installed · up to date',
+    ],
+    [
+      'drifted by the last check',
+      { state: 'drifted', enabled: true },
+      VERIFIED,
+      'Installed · 2 differences',
+    ],
+    [
+      'enabling, pending approval',
+      {
+        state: 'pending approval',
+        enabled: true,
+        lastAction: { name: 'enable-agent-platform-rowan-1' },
+      },
+      VERIFIED,
+      'Enabling · pending approval',
+    ],
+    [
+      'applying, rolling out',
+      {
+        state: 'rolling out',
+        enabled: true,
+        lastAction: { name: 'reconcile-agent-platform-rowan-2' },
+      },
+      VERIFIED,
+      'Applying · rolling out',
+    ],
+    [
+      'waiting for the customer',
+      { state: 'waiting for the customer', enabled: true },
+      VERIFIED,
+      'Waiting for the customer: Provide the model API key',
+    ],
+    [
+      'failed',
+      { state: 'failed', enabled: true },
+      RED_PROBE,
+      'Failed: dex-auth-request',
+    ],
+    ['unknown', { state: 'unknown' }, VERIFIED, 'Unknown'],
+  ])(
+    'the header of a capability %s',
+    async (_, capability, verified, words) => {
+      await render(withCapability(capability), { verified });
+      expect(header()).toHaveTextContent(words);
+      expect(header()).toHaveAttribute('data-state', capability.state!);
+    },
+  );
+
+  it('runs the comparison as it opens and shows one line per fact', async () => {
+    const api = await render(ENABLED);
+    expect(api.verifies).toEqual([
+      { installation: 'birch', capability: 'agent-platform', args: undefined },
+    ]);
+    // The person's one choice, from the comparison's inputs.
+    expect(screen.getByTestId('choice-modelServing.enabled')).toHaveTextContent(
+      'Model serving: off',
+    );
+    // Only the features with differences are listed, closed.
+    expect(screen.getByTestId('feature-secrets')).toHaveTextContent(
+      'Secrets — 1 difference',
+    );
+    expect(screen.getByTestId('feature-runtime')).toHaveTextContent(
+      'Runtime — 1 difference',
+    );
+    expect(screen.queryByTestId('feature-identity')).toBeNull();
+    expect(screen.getByTestId('as-defined')).toHaveTextContent(
+      'Identity, Tool access, Federation and tunnels, Portal section: as defined',
+    );
+    expect(screen.getByTestId('needs-session')).toHaveTextContent(
+      '2 checks need your session on birch',
+    );
+    expect(screen.getByTestId('not-run')).toHaveTextContent(
+      '1 check could not run: renders no file of this kind',
+    );
+    // A feature opens to its differing dimensions.
+    await userEvent.click(
+      within(screen.getByTestId('feature-runtime')).getByText(/Runtime/),
+    );
+    expect(
+      screen.getByTestId('dimension-patch-top-level-keys'),
+    ).toHaveTextContent('kagent.replicas');
+    expect(screen.queryByTestId('dimension-live-drift')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Apply changes' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Verify' })).toBeNull();
+    expect(card().textContent).not.toMatch(MANAGER_WORDS);
+  });
+
+  it('has no button when up to date, and a disabled one while an action runs', async () => {
+    await render(ENABLED, { verified: UP_TO_DATE });
+    expect(
+      screen.queryByRole('button', { name: /Enable|Apply changes/ }),
+    ).toBeNull();
+    expect(screen.queryByTestId('feature-identity')).toBeNull();
+
+    platformCapabilitiesQueryClient.clear();
+    await render(
+      withCapability({
+        state: 'rolling out',
+        enabled: true,
+        lastAction: { name: 'enable-agent-platform-rowan-1' },
+      }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Apply changes' }),
+    ).toBeDisabled();
+  });
+
+  it('names the file the owners add, once, with the button disabled', async () => {
+    await render(NOT_OPTED_IN);
+    expect(header()).toHaveTextContent('Not installed');
+    expect(screen.getByRole('button', { name: 'Enable' })).toBeDisabled();
+    const note = screen.getByTestId('needs-owners');
+    expect(note).toHaveTextContent(
+      'Needs example/example-management-clusters: management-clusters/alder/platform-manager.yaml with optIn: true from the owners.',
+    );
+    expect(within(note).getByRole('link')).toHaveAttribute(
+      'href',
+      NOT_OPTED_IN.optIn.howToOptIn,
+    );
+    expect(screen.queryByTestId('opt-in-note')).toBeNull();
+    expect(card().textContent).not.toMatch(MANAGER_WORDS);
+  });
+
+  it('shows the comparison error and no comparison lines', async () => {
+    const forbidden = new Error('no grant on birch as you');
+    forbidden.name = 'ForbiddenError';
+    await render(ENABLED, { verifyError: forbidden });
+    expect(screen.getByText('no grant on birch as you')).toBeVisible();
+    expect(header()).toHaveTextContent('Installed');
+    expect(screen.queryByTestId('comparison')).toBeNull();
+  });
+
+  it('Enable reviews the comparison with the form values, then opens the pull requests', async () => {
+    const api = await render(installation());
+    await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
+    const dialog = screen.getByRole('form', {
+      name: 'Enable agent-platform on rowan',
+    });
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Review' }),
+    );
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('plan')).toBeInTheDocument(),
+    );
+    // The review is the comparison computed with what the form holds.
+    expect(api.verifies[1]).toMatchObject({
+      installation: 'rowan',
+      capability: 'agent-platform',
+      args: {
+        inputs: {
+          installation: { baseDomain: 'rowan.example.test', chartLine: '4' },
+          modelServing: { enabled: false },
+        },
+      },
+    });
+    expect(api.writes).toHaveLength(0);
+    expect(within(dialog).getByTestId('feature-runtime')).toHaveTextContent(
+      'Runtime — 1 difference',
+    );
+    expect(within(dialog).getByTestId('plan-files')).toHaveTextContent(
+      'configmap-values.yaml.patch — create',
+    );
+    expect(within(dialog).getByTestId('plan-pull-requests')).toHaveTextContent(
+      'example/example-configs — 1 change(s)',
+    );
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Open pull requests' }),
+    );
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('committed')).toBeInTheDocument(),
+    );
+    expect(api.writes).toEqual([
+      expect.objectContaining({
+        tool: 'enable_capability',
+        installation: 'rowan',
+        options: { mode: 'commit' },
+        args: {
+          inputs: expect.objectContaining({ modelServing: { enabled: false } }),
+        },
+      }),
+    ]);
+  });
+
+  it('Apply changes reviews, then reconciles', async () => {
+    const api = await render(ENABLED);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Apply changes' }),
+    );
+    const dialog = screen.getByRole('form', {
+      name: 'Apply changes to agent-platform on birch',
+    });
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Review' }),
+    );
+    await waitFor(() =>
+      expect(within(dialog).getByTestId('plan')).toBeInTheDocument(),
+    );
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Open pull requests' }),
+    );
+    await waitFor(() => expect(api.writes).toHaveLength(1));
+    expect(api.writes[0]).toMatchObject({
+      tool: 'reconcile_capability',
+      installation: 'birch',
+      options: { mode: 'commit' },
+    });
+  });
+
+  it('the dialog has nothing to open when the review finds every file as defined', async () => {
+    await renderDialog(new FakeApi({ verified: UP_TO_DATE }));
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('plan-pull-requests')).toHaveTextContent(
+        'No pull request: every file is as defined.',
+      ),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Open pull requests' }),
+    ).toBeNull();
+  });
+
+  it('shows why the manager would refuse, without a commit button', async () => {
+    await renderDialog(
+      new FakeApi({
+        verified: { ...VERIFIED, commitRefused: 'rowan is not opted in' },
+      }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await waitFor(() =>
+      expect(screen.getByText('The manager would refuse this')).toBeVisible(),
+    );
+    expect(screen.getByText('rowan is not opted in')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull requests' }),
+    ).toBeNull();
+  });
+});

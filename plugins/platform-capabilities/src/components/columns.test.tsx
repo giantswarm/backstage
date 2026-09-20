@@ -75,7 +75,7 @@ describe('useInstallationCapabilityColumns', () => {
     );
     // The cell is the icon: the state is its name and its attribute, not text.
     expect(cell('rowan')).toHaveAttribute('data-mark', 'not installed');
-    expect(cell('rowan')).toHaveAccessibleName('not enabled · not installed');
+    expect(cell('rowan')).toHaveAccessibleName('Not installed');
     expect(cell('rowan')).toHaveTextContent('');
     expect(cell('alder')).toHaveAttribute('data-state', 'not opted in');
     expect(cell('alder')).toHaveAttribute('data-mark', 'not installed');
@@ -87,6 +87,9 @@ describe('useInstallationCapabilityColumns', () => {
     expect(cell('cedar')).toHaveAttribute('data-mark', 'not reconciled');
     expect(cell('elm')).toHaveAttribute('data-state', 'drifted');
     expect(cell('elm')).toHaveAttribute('data-mark', 'not in sync');
+    expect(cell('elm')).toHaveAccessibleName('Installed · differences');
+    // The listing alone decides the icon: no comparison runs on this page.
+    expect(api.verifies).toHaveLength(0);
     expect(cell('unknown-one')).toHaveTextContent('—');
     // The columns ask for the states alone: the manager reads a third of the fleet.
     expect(api.listFilters).toEqual([{ summary: true }]);

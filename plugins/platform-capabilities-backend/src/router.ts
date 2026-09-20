@@ -37,6 +37,12 @@ const WRITE_ARGUMENTS: Record<string, ArgumentKind> = {
   mode: 'string',
 };
 
+/** What `verify_capability` takes besides the names: the person's typed inputs and whether to return file content. */
+const VERIFY_ARGUMENTS: Record<string, ArgumentKind> = {
+  inputs: 'object',
+  content: 'boolean',
+};
+
 const CAPABILITY_TOOLS = {
   enable: 'enable_capability',
   reconcile: 'reconcile_capability',
@@ -63,11 +69,14 @@ function isKind(value: unknown, kind: ArgumentKind): boolean {
 }
 
 /**
- * Reads a write tool's arguments out of a request body, typed: an argument
- * the tool does not take or a value of the wrong type is refused; `null` and
+ * Reads a tool's arguments out of a request body, typed: an argument the
+ * tool does not take or a value of the wrong type is refused; `null` and
  * `undefined` are dropped. The values themselves are handed on unchanged.
  */
-export function writeArguments(body: unknown): Record<string, unknown> {
+export function writeArguments(
+  body: unknown,
+  takes: Record<string, ArgumentKind> = WRITE_ARGUMENTS,
+): Record<string, unknown> {
   if (!isKind(body, 'object')) {
     throw new InputError('expects a JSON object body');
   }
@@ -76,7 +85,7 @@ export function writeArguments(body: unknown): Record<string, unknown> {
     if (value === undefined || value === null) {
       continue;
     }
-    const kind = WRITE_ARGUMENTS[key];
+    const kind = takes[key];
     if (!kind) {
       throw new InputError(`the tool takes no argument '${key}'`);
     }
@@ -260,7 +269,9 @@ export async function createRouter(
     );
   }
 
-  // Read-only, but it reads every repository and runs the probes: a POST.
+  // The comparison: read-only, but it reads every repository and runs the
+  // probes, so a POST. With `inputs` it compares what the person typed, as
+  // the dialog's review; without, the record and what the files read back.
   router.post(
     '/installations/:installation/capabilities/:capability/verify',
     async (req, res) => {
@@ -268,6 +279,7 @@ export async function createRouter(
         await call(req, 'verify_capability', {
           installation: name(req.params.installation, 'an installation'),
           capability: name(req.params.capability, 'a capability'),
+          ...writeArguments(req.body ?? {}, VERIFY_ARGUMENTS),
         }),
       );
     },

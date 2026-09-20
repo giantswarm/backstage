@@ -2,7 +2,7 @@ import {
   Action,
   ActionListing,
   CapabilityPlan,
-  CapabilityWriteArgs,
+  CapabilityArgs,
   Committed,
   ConnectionResponse,
   Definition,
@@ -51,6 +51,13 @@ export const AGENT_PLATFORM_DEFINITION: Definition = {
         type: 'object',
         properties: {
           targets: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      modelServing: {
+        type: 'object',
+        description: 'The one choice: whether the installation serves models.',
+        properties: {
+          enabled: { type: 'boolean', default: false, 'x-source': 'person' },
         },
       },
     },
@@ -266,21 +273,24 @@ export const ACTION: Action = {
   },
 };
 
-const AUTHORITY_REASON =
-  "needs the person's authority on the installation: the live comparison comes with the read-side shape";
+const AUTHORITY_REASON = 'needs your session on the installation';
 
 /**
- * rowan verified: the three marks across the definition's six features, a
- * live dimension the manager does not check yet, a feature that renders no
- * file.
+ * rowan compared with its definition: the four marks across the definition's
+ * six features, two live dimensions that need the person's session, a feature
+ * that renders no file; and the plan the same inputs render.
  */
 export const VERIFIED: VerifyResult = {
   installation: 'rowan',
   capability: 'agent-platform',
   state: 'drifted',
   inputs: {
-    source: 'action enable-agent-platform-rowan-1',
-    values: { installation: RECORD, kagent: { enabled: true } },
+    source: 'record + read-back',
+    values: {
+      installation: RECORD,
+      kagent: { enabled: true },
+      modelServing: { enabled: false },
+    },
   },
   features: [
     {
@@ -394,11 +404,28 @@ export const VERIFIED: VerifyResult = {
     },
   ],
   summary: {
-    'as defined': 3,
+    'as defined': 4,
     'differs by input': 1,
     drifted: 1,
-    'not checked': 1,
+    'not checked': 3,
   },
+  files: PLAN.installations[0].files,
+  generatedSecrets: PLAN.installations[0].generatedSecrets,
+  dexClients: PLAN.installations[0].dexClients,
+  customerActions: PLAN.installations[0].customerActions,
+  diff: PLAN.installations[0].diff,
+  pullRequests: PLAN.pullRequests,
+};
+
+/** rowan as defined: no difference, nothing to change. */
+export const UP_TO_DATE: VerifyResult = {
+  ...VERIFIED,
+  state: 'enabled',
+  features: VERIFIED.features.filter(f => f.mark === 'as defined'),
+  summary: { 'as defined': 4 },
+  files: [],
+  diff: { unchanged: 2 },
+  pullRequests: [],
 };
 
 export interface FakeOptions {
@@ -413,13 +440,15 @@ export interface FakeOptions {
   unreadable?: string[];
   /** How long the listing takes, in milliseconds: the manager reads a fleet. */
   latency?: number;
+  /** The comparison fails with this, as when the person has no session at the manager. */
+  verifyError?: Error;
 }
 
 export interface Write {
   tool: 'enable_capability' | 'reconcile_capability';
   installation: string;
   capability: string;
-  args: CapabilityWriteArgs;
+  args: CapabilityArgs;
   options: WriteOptions;
 }
 
@@ -427,7 +456,12 @@ export interface Write {
 export class FakeApi implements PlatformCapabilitiesApi {
   writes: Write[] = [];
   listFilters: ListInstallationsFilters[] = [];
-  verified = 0;
+  /** Every comparison asked for, with its arguments. */
+  verifies: {
+    installation: string;
+    capability: string;
+    args?: CapabilityArgs;
+  }[] = [];
 
   constructor(private readonly options: FakeOptions = {}) {}
 
@@ -471,7 +505,7 @@ export class FakeApi implements PlatformCapabilitiesApi {
   enableCapability<O extends WriteOptions>(
     name: string,
     capability: string,
-    args: CapabilityWriteArgs,
+    args: CapabilityArgs,
     options: O,
   ): Promise<WriteResult<O>> {
     return this.write('enable_capability', name, capability, args, options);
@@ -480,15 +514,26 @@ export class FakeApi implements PlatformCapabilitiesApi {
   reconcileCapability<O extends WriteOptions>(
     name: string,
     capability: string,
-    args: CapabilityWriteArgs,
+    args: CapabilityArgs,
     options: O,
   ): Promise<WriteResult<O>> {
     return this.write('reconcile_capability', name, capability, args, options);
   }
 
-  async verifyCapability(): Promise<VerifyResult> {
-    this.verified++;
-    return this.options.verified ?? VERIFIED;
+  async verifyCapability(
+    name: string,
+    capability: string,
+    args?: CapabilityArgs,
+  ): Promise<VerifyResult> {
+    this.verifies.push({ installation: name, capability, args });
+    if (this.options.verifyError) {
+      throw this.options.verifyError;
+    }
+    return {
+      ...(this.options.verified ?? VERIFIED),
+      installation: name,
+      capability,
+    };
   }
 
   async listActions(): Promise<ActionListing> {
@@ -507,7 +552,7 @@ export class FakeApi implements PlatformCapabilitiesApi {
     tool: Write['tool'],
     name: string,
     capability: string,
-    args: CapabilityWriteArgs,
+    args: CapabilityArgs,
     options: O,
   ): Promise<WriteResult<O>> {
     this.writes.push({ tool, installation: name, capability, args, options });

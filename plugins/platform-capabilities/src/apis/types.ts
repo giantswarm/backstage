@@ -102,6 +102,8 @@ export interface JsonSchema {
   items?: JsonSchema;
   default?: unknown;
   additionalProperties?: boolean | JsonSchema;
+  /** Where a value comes from: `registry` (read), `generated`, `person` (a choice). */
+  'x-source'?: string;
 }
 
 export interface Definition {
@@ -165,6 +167,7 @@ export interface Probe {
   key?: string;
 }
 
+/** The plan of one installation: what a dry run's entry and the comparison both carry. */
 export interface PlanInstallation {
   name: string;
   state?: CapabilityStateName;
@@ -175,13 +178,16 @@ export interface PlanInstallation {
   /** Why a commit of this installation would be refused (not opted in). */
   commitRefused?: string;
   files?: PlanFile[];
-  includes?: string[];
+  includes?: unknown[];
   generatedSecrets?: GeneratedSecret[];
   suppliedSecrets?: string[];
   dexClients?: DexClient[];
   customerActions?: CustomerAction[];
   probes?: Probe[];
+  /** Files by change: `create`, `update`, `unchanged`, … */
   diff?: Record<string, number>;
+  features?: VerifyFeature[];
+  summary?: Partial<Record<VerifyMark, number>>;
 }
 
 export interface PlanPullRequest {
@@ -300,14 +306,31 @@ export interface VerifyFeature {
   dimensions?: VerifyDimension[];
 }
 
-export interface VerifyResult {
+/** Where the comparison's inputs came from: the record, the files read back, the person's typed values. */
+export interface VerifyInputs {
+  source: string;
+  values?: Record<string, unknown>;
+  readBack?: Record<string, unknown>;
+}
+
+/**
+ * `verify_capability`'s answer: the one comparison of an installation with
+ * its definition -- the features with their marks and the plan the same
+ * inputs render (files, pull requests, generated secrets, Dex clients,
+ * customer actions), so the dry run and the check are one call.
+ */
+export interface VerifyResult extends Omit<
+  PlanInstallation,
+  'name' | 'inputs'
+> {
+  caller?: string;
   installation: string;
   capability: string;
-  state?: CapabilityStateName;
-  inputs?: { source: string; values?: Record<string, unknown> };
-  refused?: string;
+  hub?: string;
+  liveCaller?: string;
+  inputs?: VerifyInputs;
   features: VerifyFeature[];
-  summary?: Partial<Record<VerifyMark, number>>;
+  pullRequests?: PlanPullRequest[];
 }
 
 export type WriteOptions = { dryRun: true } | { mode: 'commit' };
@@ -316,10 +339,11 @@ export type WriteResult<O extends WriteOptions> = O extends { dryRun: true }
   ? CapabilityPlan
   : Committed;
 
-export interface CapabilityWriteArgs {
+/** What enable, reconcile and verify take besides the names. */
+export interface CapabilityArgs {
   /** The definition's typed inputs; `installation.*` overrides the record. */
   inputs?: Record<string, unknown>;
-  /** false: paths and changes only, no file content. */
+  /** true: the files' content as well as their paths and changes. */
   content?: boolean;
 }
 
@@ -332,18 +356,19 @@ export interface PlatformCapabilitiesApi {
   enableCapability<O extends WriteOptions>(
     installation: string,
     capability: string,
-    args: CapabilityWriteArgs,
+    args: CapabilityArgs,
     options: O,
   ): Promise<WriteResult<O>>;
   reconcileCapability<O extends WriteOptions>(
     installation: string,
     capability: string,
-    args: CapabilityWriteArgs,
+    args: CapabilityArgs,
     options: O,
   ): Promise<WriteResult<O>>;
   verifyCapability(
     installation: string,
     capability: string,
+    args?: CapabilityArgs,
   ): Promise<VerifyResult>;
   listActions(filter: {
     installation?: string;

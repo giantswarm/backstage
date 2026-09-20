@@ -1,18 +1,23 @@
-import { useState } from 'react';
-import { Button, Flex, Text } from '@backstage/ui';
-import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { Button, Flex, Link, Text } from '@backstage/ui';
 import {
   CapabilityState,
   Definition,
   Installation,
-  platformCapabilitiesApiRef,
+  VerifyResult,
 } from '../apis';
+import { upToDate } from '../lib/comparison';
+import {
+  choiceLabel,
+  choiceValue,
+  getAt,
+  personChoices,
+} from '../lib/schemaForm';
 import { CapabilityDialog } from './CapabilityDialog';
+import { ComparisonView } from './ComparisonView';
 import { ErrorAlert } from './ErrorAlert';
-import { OptInNote } from './PlanView';
-import { StateTag } from './StateTag';
-import { VerifyView } from './VerifyView';
+import { useComparison } from './queries';
+import { StateTag, statusOf } from './StateTag';
 
 const CARD_STYLE = {
   border: '1px solid rgba(128,128,128,0.3)',
@@ -20,44 +25,80 @@ const CARD_STYLE = {
   padding: 16,
 };
 
-/** The inputs on record, as the manager lists them. */
-function InputsOnRecord({ inputs }: { inputs: Record<string, unknown> }) {
-  const entries = Object.entries(inputs).filter(([, v]) => v !== undefined);
-  if (entries.length === 0) {
-    return null;
+/** The one button: Enable when not installed, Apply changes while the comparison finds differences, none when up to date. */
+function buttonOf(
+  installed: boolean,
+  result?: VerifyResult,
+): 'Enable' | 'Apply changes' | undefined {
+  if (!installed) {
+    return 'Enable';
   }
+  return result && upToDate(result) ? undefined : 'Apply changes';
+}
+
+/** Whether the capability is on the installation, as the manager says; older managers say it through the state. */
+function isInstalled(capability: CapabilityState): boolean {
   return (
-    <dl
-      data-testid="inputs-on-record"
-      style={{
-        margin: 0,
-        display: 'grid',
-        gridTemplateColumns: 'max-content 1fr',
-        columnGap: 12,
-        rowGap: 2,
-      }}
-    >
-      {entries.map(([key, value]) => (
-        <div key={key} style={{ display: 'contents' }}>
-          <dt>
-            <Text variant="body-small" color="secondary">
-              installation.{key}
-            </Text>
-          </dt>
-          <dd style={{ margin: 0 }}>
-            <Text variant="body-small">{String(value)}</Text>
-          </dd>
-        </div>
+    capability.enabled ??
+    !['not enabled', 'not opted in'].includes(capability.state)
+  );
+}
+
+/** One line per choice the definition leaves to a person, with its value from the comparison. */
+function Choices({
+  definition,
+  comparison,
+}: {
+  definition?: Definition;
+  comparison?: VerifyResult;
+}) {
+  const choices = useMemo(
+    () => personChoices(definition?.inputSchema ?? {}),
+    [definition],
+  );
+  const values = comparison?.inputs?.values ?? {};
+  return (
+    <>
+      {choices.map(field => (
+        <Text
+          key={field.name}
+          variant="body-small"
+          data-testid={`choice-${field.name}`}
+        >
+          {choiceLabel(field)}:{' '}
+          {choiceValue(field, getAt(values, field.path) ?? field.default)}
+        </Text>
       ))}
-    </dl>
+    </>
+  );
+}
+
+/** The one line that names the file the owners add before the manager may act. */
+function NeedsOwners({ installation }: { installation: Installation }) {
+  const { repository, path, howToOptIn } = installation.optIn;
+  const where = [repository, path].filter(Boolean).join(': ');
+  const link = howToOptIn && /^https?:\/\//.test(howToOptIn);
+  return (
+    <Text variant="body-small" color="secondary" data-testid="needs-owners">
+      Needs{' '}
+      {link ? (
+        <Link href={howToOptIn} target="_blank" rel="noopener">
+          {where}
+        </Link>
+      ) : (
+        where
+      )}{' '}
+      with optIn: true from the owners.
+    </Text>
   );
 }
 
 /**
- * One capability of an installation: the state, the inputs on record, the
- * last action; Enable or Reconcile opening the dry run, Verify running the
- * check and showing the features with their marks. An installation not
- * opted in shows the file's path and the pull request that adds it.
+ * One capability of an installation as one block: the header line with the
+ * state and what the comparison found, the person's choices, the features
+ * with differences (opening to them), the features as defined, the checks
+ * that did not run, and one button -- Enable, or Apply changes -- opening
+ * the dialog. The comparison runs when the tab opens.
  */
 export function CapabilityCard({
   installation,
@@ -68,18 +109,21 @@ export function CapabilityCard({
   capability: CapabilityState;
   definition?: Definition;
 }) {
-  const api = useApi(platformCapabilitiesApiRef);
-  const [dialog, setDialog] = useState<'enable' | 'reconcile'>();
-  const verify = useMutation({
-    mutationFn: () => api.verifyCapability(installation.name, capability.name),
-  });
-  const notOptedIn = installation.optIn.state === 'not opted in';
-  const action = capability.enabled ? 'reconcile' : 'enable';
+  const [dialog, setDialog] = useState(false);
+  const comparison = useComparison(installation.name, capability.name);
+  const result = comparison.data;
+  const installed = isInstalled(capability);
+  const inFlight =
+    capability.state === 'pending approval' ||
+    capability.state === 'rolling out';
+  const needsOwners = installation.optIn.state === 'not opted in';
+  const status = statusOf(capability, result);
+  const button = buttonOf(installed, result);
 
   return (
     <Flex
       direction="column"
-      gap="3"
+      gap="2"
       style={CARD_STYLE}
       data-testid={`capability-${capability.name}`}
     >
@@ -88,60 +132,52 @@ export function CapabilityCard({
           <Text variant="title-small" as="h3">
             {capability.name}
           </Text>
-          <StateTag state={capability.state} testId="capability-state" />
+          <StateTag
+            state={capability.state}
+            status={status}
+            testId="capability-state"
+          />
         </Flex>
-        <Flex gap="2">
+        {button && (
           <Button
             variant="primary"
             size="small"
-            onPress={() => setDialog(action)}
+            onPress={() => setDialog(true)}
+            isDisabled={
+              inFlight || needsOwners || (installed && comparison.isPending)
+            }
           >
-            {action === 'enable' ? 'Enable' : 'Reconcile'}
+            {button}
           </Button>
-          <Button
-            variant="secondary"
-            size="small"
-            onPress={() => verify.mutate()}
-            isDisabled={verify.isPending}
-          >
-            {verify.isPending ? 'Verifying…' : 'Verify'}
-          </Button>
-        </Flex>
+        )}
       </Flex>
-      {definition?.description && (
-        <Text variant="body-small" color="secondary">
-          {definition.description}
+      {needsOwners && <NeedsOwners installation={installation} />}
+      <Choices definition={definition} comparison={result} />
+      {comparison.isPending && (
+        <Text variant="body-small" color="secondary" data-testid="comparing">
+          Comparing with the definition…
         </Text>
       )}
-      {notOptedIn && <OptInNote optIn={installation.optIn} />}
-      {capability.inputs?.installation && (
-        <InputsOnRecord
-          inputs={
-            capability.inputs.installation as unknown as Record<string, unknown>
-          }
+      {comparison.error && (
+        <ErrorAlert
+          title="The comparison did not run"
+          error={comparison.error as Error}
         />
       )}
-      <Text variant="body-small" color="secondary" data-testid="last-action">
-        {capability.lastAction
-          ? `Last action: ${capability.lastAction.name}${
-              capability.lastAction.result
-                ? ` — ${capability.lastAction.result}`
-                : ''
-            }`
-          : 'No action yet.'}
-      </Text>
-      {verify.error && (
-        <ErrorAlert title="Verify failed" error={verify.error as Error} />
+      {result?.refused && (
+        <Text variant="body-small" data-testid="refused">
+          {result.refused}
+        </Text>
       )}
-      {verify.data && <VerifyView result={verify.data} />}
+      {result && installed && <ComparisonView result={result} />}
       {dialog && (
         <CapabilityDialog
-          kind={dialog}
+          kind={installed ? 'reconcile' : 'enable'}
           installation={installation}
           capability={capability}
           definition={definition}
           isOpen
-          onClose={() => setDialog(undefined)}
+          onClose={() => setDialog(false)}
         />
       )}
     </Flex>

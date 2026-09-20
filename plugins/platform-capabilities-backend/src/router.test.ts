@@ -185,6 +185,14 @@ describe('createRouter', () => {
       .post('/installations/rowan/capabilities/agent-platform/verify')
       .expect(200);
     await request(app)
+      .post('/installations/rowan/capabilities/agent-platform/verify')
+      .send({ inputs: { modelServing: { enabled: true } }, content: false })
+      .expect(200);
+    await request(app)
+      .post('/installations/rowan/capabilities/agent-platform/verify')
+      .send({ mode: 'commit' })
+      .expect(400);
+    await request(app)
       .get('/actions?installation=rowan&capability=agent-platform')
       .expect(200);
     await request(app).get('/actions/a1').expect(200);
@@ -192,6 +200,15 @@ describe('createRouter', () => {
       [
         'verify_capability',
         { installation: 'rowan', capability: 'agent-platform' },
+      ],
+      [
+        'verify_capability',
+        {
+          installation: 'rowan',
+          capability: 'agent-platform',
+          inputs: { modelServing: { enabled: true } },
+          content: false,
+        },
       ],
       ['list_actions', { installation: 'rowan', capability: 'agent-platform' }],
       ['get_action', { name: 'a1' }],
