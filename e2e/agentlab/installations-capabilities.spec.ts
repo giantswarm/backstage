@@ -75,11 +75,23 @@ test.describe('installations: platform capabilities', () => {
     for (const cell of await cells.all()) {
       const state = await cell.getAttribute('data-state');
       const text = (await cell.innerText()).trim();
-      // Every cell is a state in the manager's words, or a dash for an
-      // installation the registry does not know.
+      // Every cell is one icon whose name and `data-state` are a state in
+      // the manager's words, or a dash for an installation the registry
+      // does not know.
       expect(state ?? text).toMatch(
         /^(not opted in|not enabled|pending approval|rolling out|waiting for the customer|enabled|drifted|failed|unknown|—)$/,
       );
+      if (state) {
+        expect(text).toBe('');
+        await expect(cell).toHaveAttribute(
+          'aria-label',
+          new RegExp(`^${state} · `),
+        );
+        await expect(cell).toHaveAttribute(
+          'data-mark',
+          /^(in sync|not in sync|not reconciled|not installed|failed|unknown)$/,
+        );
+      }
     }
     // Nothing of the automation happens from the list: no button in the cells.
     await expect(cells.first().getByRole('button')).toHaveCount(0);

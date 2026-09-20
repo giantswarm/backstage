@@ -4,11 +4,15 @@ import { useApiHolder } from '@backstage/frontend-plugin-api';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@backstage/ui';
-import { InstallationListing, platformCapabilitiesApiRef } from '../apis';
+import {
+  CapabilityState,
+  InstallationListing,
+  platformCapabilitiesApiRef,
+} from '../apis';
 import { ErrorAlert } from './ErrorAlert';
 import { platformCapabilitiesQueryClient } from './Providers';
 import { installationsKey } from './queries';
-import { StateTag } from './StateTag';
+import { MARK_LEGEND, StateIcon } from './StateIcon';
 
 export interface InstallationCapabilityColumns {
   /** One column per capability the manager knows; none until the listing arrived. */
@@ -21,22 +25,26 @@ export interface InstallationCapabilityColumns {
 
 const NONE: InstallationCapabilityColumns = { columns: [], capabilities: [] };
 
-function stateOf(
+/** The capability's entry for the installation; none for one the registry does not know. */
+function capabilityOf(
   listing: InstallationListing | undefined,
   installation: string,
   capability: string,
-): string | undefined {
+): Pick<CapabilityState, 'state' | 'lastAction'> | undefined {
   const entry = listing?.installations.find(i => i.name === installation);
   if (!entry) {
-    return listing?.unreadable?.includes(installation) ? 'unknown' : undefined;
+    return listing?.unreadable?.includes(installation)
+      ? { state: 'unknown' }
+      : undefined;
   }
-  return entry.capabilities.find(c => c.name === capability)?.state;
+  return entry.capabilities.find(c => c.name === capability);
 }
 
 /**
  * The Installations page's capability columns: one per platform capability,
- * each cell the state of that capability on the row's installation as
- * `list_installations` reports it. Usable from a page outside this plugin:
+ * each cell one icon for the state of that capability on the row's
+ * installation as `list_installations` reports it (the state itself in the
+ * tooltip). Usable from a page outside this plugin:
  * without the `api:platform-capabilities` extension (a customer portal) there
  * are no columns, and the queries run on this plugin's own client, so the
  * host page needs no provider.
@@ -66,17 +74,18 @@ export function useInstallationCapabilityColumns(): InstallationCapabilityColumn
     const columns = (listing?.capabilities ?? []).map(
       (capability): TableColumn<CatalogTableRow> => ({
         title: capability,
+        tooltip: MARK_LEGEND,
         field: `capabilities.${capability}`,
         sorting: false,
         render: row => {
           const name = row.entity.metadata.name;
-          const state = stateOf(listing, name, capability);
+          const entry = capabilityOf(listing, name, capability);
           if (isPending) {
-            return <Skeleton width={90} height={16} />;
+            return <Skeleton width={20} height={20} />;
           }
-          return state ? (
-            <StateTag
-              state={state}
+          return entry ? (
+            <StateIcon
+              capability={entry}
               testId={`capability-${capability}-${name}`}
             />
           ) : (

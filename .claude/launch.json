@@ -7,6 +7,17 @@
       "runtimeArgs": ["start"],
       "port": 3000,
       "url": "https://localhost:3000"
+    },
+    {
+      "name": "platform-capabilities-dev",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": [
+        "workspace",
+        "@giantswarm/backstage-plugin-platform-capabilities",
+        "start"
+      ],
+      "port": 3000,
+      "url": "http://localhost:3000"
     }
   ]
 }
