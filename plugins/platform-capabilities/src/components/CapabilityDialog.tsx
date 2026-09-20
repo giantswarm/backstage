@@ -177,11 +177,13 @@ export function CapabilityDialog({
             {reviewed && !done && (
               <>
                 {refused && (
-                  <Alert
-                    status="warning"
-                    title="The manager would refuse this"
-                    description={refused}
-                  />
+                  <div data-testid="refused">
+                    <Alert
+                      status="warning"
+                      title="The manager would refuse this"
+                      description={refused}
+                    />
+                  </div>
                 )}
                 {!refused && (
                   <>

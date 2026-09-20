@@ -40,8 +40,19 @@ async function openCapabilities(page: Page, row: Locator): Promise<void> {
   });
 }
 
-/** Opens Enable or Apply changes (whichever the block offers) and reviews the comparison. */
-async function review(page: Page): Promise<Locator> {
+/** What a review comes to: the plan, or the manager's refusal alone. */
+interface Review {
+  dialog: Locator;
+  outcome: 'plan' | 'refused';
+}
+
+/**
+ * Opens Enable or Apply changes (whichever the block offers) and reviews the
+ * comparison: the plan where the manager renders one, the refusal alone
+ * where it would refuse (a record the definition's schema rejects, an
+ * installation not opted in). Both are valid reviews.
+ */
+async function review(page: Page): Promise<Review> {
   const card = page.getByTestId(`capability-${CAPABILITY}`);
   await card.getByRole('button', { name: /^(Enable|Apply changes)$/ }).click();
   const dialog = page.getByRole('form', {
@@ -53,8 +64,10 @@ async function review(page: Page): Promise<Locator> {
   await expect(dialog.getByTestId('group-installation')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Review' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Review' }).click();
-  await expect(dialog.getByTestId('plan')).toBeVisible({ timeout: 120_000 });
-  return dialog;
+  const plan = dialog.getByTestId('plan');
+  const refused = dialog.getByTestId('refused');
+  await expect(plan.or(refused).first()).toBeVisible({ timeout: 120_000 });
+  return { dialog, outcome: (await plan.count()) > 0 ? 'plan' : 'refused' };
 }
 
 test.describe('installations: platform capabilities', () => {
@@ -117,15 +130,18 @@ test.describe('installations: platform capabilities', () => {
     );
     await expect(admin.getByTestId('action-history')).toBeVisible();
 
-    const dialog = await review(admin);
-    // The plan is the manager's: files by repository, or the reason it
-    // would refuse -- either is shown, nothing else.
-    await expect(
-      dialog
-        .getByTestId('plan-files')
-        .or(dialog.getByText('The manager would refuse this'))
-        .first(),
-    ).toBeVisible();
+    const { dialog, outcome } = await review(admin);
+    // The review is the manager's: the plan's files by repository, or the
+    // reason it would refuse -- one of the two is shown, nothing else.
+    if (outcome === 'plan') {
+      await expect(dialog.getByTestId('plan-files')).toBeVisible();
+      await expect(dialog.getByTestId('refused')).toHaveCount(0);
+    } else {
+      await expect(
+        dialog.getByText('The manager would refuse this'),
+      ).toBeVisible();
+      await expect(dialog.getByTestId('plan')).toHaveCount(0);
+    }
     await dialog.getByRole('button', { name: 'Cancel' }).click();
   });
 
@@ -149,19 +165,18 @@ test.describe('installations: platform capabilities', () => {
       const first = rows(admin).first();
       await expect(first).toBeVisible({ timeout: 120_000 });
       await openCapabilities(admin, first);
-      const dialog = await review(admin);
+      const { dialog, outcome } = await review(admin);
       const commit = dialog.getByRole('button', { name: 'Open pull requests' });
-      if ((await commit.count()) > 0) {
+      if (outcome === 'refused') {
+        // A commit the manager would refuse has no button at all.
+        await expect(commit).toHaveCount(0);
+      } else if ((await commit.count()) > 0) {
         await expect(commit).toBeDisabled();
         await expect(dialog.getByText('Needs your session')).toBeVisible();
       } else {
-        // A commit the manager would refuse anyway, or one with nothing to
-        // open, has no button at all; the dialog says which.
+        // A plan with nothing to open has no button either; the dialog says so.
         await expect(
-          dialog
-            .getByText('The manager would refuse this')
-            .or(dialog.getByText('No pull request: every file is as defined.'))
-            .first(),
+          dialog.getByText('No pull request: every file is as defined.'),
         ).toBeVisible();
       }
       await dialog.getByRole('button', { name: 'Cancel' }).click();

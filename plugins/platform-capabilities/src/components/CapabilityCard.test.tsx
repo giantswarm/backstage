@@ -459,6 +459,9 @@ describe('CapabilityCard', () => {
       await waitFor(() =>
         expect(screen.getByText('The manager would refuse this')).toBeVisible(),
       );
+      expect(screen.getByTestId('refused')).toHaveTextContent(
+        'installation.podCertificateRequest',
+      );
       expect(screen.queryByTestId('plan')).toBeNull();
       expect(screen.queryByTestId('comparison')).toBeNull();
       expect(screen.queryByText(/every file is as defined/)).toBeNull();
