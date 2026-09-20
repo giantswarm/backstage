@@ -32,6 +32,12 @@ function timestampValue(value: string | undefined): number | undefined {
 export function sortPullsBy(
   rows: PlanPullRow[],
   sort: { column: unknown; direction: 'ascending' | 'descending' },
+  /**
+   * The name the Author column actually shows for a login. Sorting the column
+   * by the hidden login instead would put rows in an order the reader cannot
+   * explain -- a login `zoe` displaying "Anna Zoe" sorting last ascending.
+   */
+  authorName: (login: string) => string = login => login,
 ): PlanPullRow[] {
   const column = String(sort.column);
   const factor = sort.direction === 'ascending' ? 1 : -1;
@@ -51,6 +57,12 @@ export function sortPullsBy(
         if (bTime === undefined) return -1;
         return (aTime - bTime) * factor;
       }
+
+      case 'author':
+        return (
+          authorName(a.author ?? '').localeCompare(authorName(b.author ?? '')) *
+          factor
+        );
 
       case 'draft':
         // Booleans, not the rendered label: the cell is empty for a ready PR,

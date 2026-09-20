@@ -15,6 +15,12 @@ export function userEntityRef(login: string): string {
   return `user:default/${login.toLowerCase()}`;
 }
 
+/**
+ * The fallback, hoisted: a fresh `new Map()` per render would give every render
+ * a new identity and defeat the `columnConfig` memo that consumes it.
+ */
+const NO_PROFILES: ReadonlyMap<string, AuthorProfile> = new Map();
+
 /** What the Author column needs about a person, beyond their login. */
 export interface AuthorProfile {
   displayName?: string;
@@ -33,14 +39,23 @@ export interface AuthorProfile {
  */
 export function useAuthorProfiles(
   logins: readonly (string | undefined)[],
-): Map<string, AuthorProfile> {
+): ReadonlyMap<string, AuthorProfile> {
   const catalogApi = useApi(catalogApiRef);
 
   // Sorted and de-duplicated so the query key is stable across re-renders and
   // across a reordering of the rows.
   const refs = useMemo(
     () =>
-      [...new Set(logins.filter((login): login is string => Boolean(login)))]
+      // De-duplicated on the lower-cased login, the same form the ref takes:
+      // `marians` and `Marians` on two pull requests are one person, and would
+      // otherwise be asked for twice in the same batch.
+      [
+        ...new Set(
+          logins
+            .filter((login): login is string => Boolean(login))
+            .map(login => login.toLowerCase()),
+        ),
+      ]
         .sort()
         .map(userEntityRef),
     [logins],
@@ -81,5 +96,5 @@ export function useAuthorProfiles(
     },
   });
 
-  return data ?? new Map();
+  return data ?? NO_PROFILES;
 }

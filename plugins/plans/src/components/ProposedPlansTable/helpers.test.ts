@@ -82,6 +82,31 @@ describe('sortPullsBy', () => {
     ).toEqual([7, 2, 10]);
   });
 
+  it('sorts authors by the name shown, not the login behind it', () => {
+    // `zoe` displays as "Anna Zoe": sorting on the login would put her last
+    // ascending, in a position the reader cannot explain from the screen.
+    const named = [
+      row({ number: 1, author: 'zoe' }),
+      row({ number: 2, author: 'adam' }),
+    ];
+    const displayName = (login: string) =>
+      ({ zoe: 'Anna Zoe', adam: 'Zach Adam' })[login] ?? login;
+
+    expect(
+      numbers(
+        sortPullsBy(
+          named,
+          { column: 'author', direction: 'ascending' },
+          displayName,
+        ),
+      ),
+    ).toEqual([1, 2]);
+    // Without the resolver it falls back to the login, so the order flips.
+    expect(
+      numbers(sortPullsBy(named, { column: 'author', direction: 'ascending' })),
+    ).toEqual([2, 1]);
+  });
+
   it('breaks ties on the pull number so the order is total', () => {
     const tied = [
       row({ number: 3, title: 'Same', updatedAt: '2026-09-01T00:00:00Z' }),

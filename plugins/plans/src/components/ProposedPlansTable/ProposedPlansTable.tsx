@@ -36,7 +36,7 @@ function Unknown() {
 
 function getColumnConfig(
   hrefFor: (row: PlanPullRow) => string | undefined,
-  profiles: Map<string, AuthorProfile>,
+  profiles: ReadonlyMap<string, AuthorProfile>,
 ): ColumnConfig<PlanPullRow>[] {
   return [
     {
@@ -195,13 +195,28 @@ export function ProposedPlansTable({
     [hrefFor, profiles],
   );
 
+  // Sort the Author column by the name the column shows, not the login behind
+  // it; every other column compares its own field.
+  const sortFn = useCallback(
+    (
+      sorted: PlanPullRow[],
+      sort: { column: unknown; direction: 'ascending' | 'descending' },
+    ) =>
+      sortPullsBy(
+        sorted,
+        sort,
+        login => profiles.get(login.toLowerCase())?.displayName ?? login,
+      ),
+    [profiles],
+  );
+
   const { tableProps } = useTable<PlanPullRow>({
     mode: 'complete',
     // `undefined` rather than `[]` while loading: an empty array renders the
     // empty state, so the skeleton would never show and "No proposed plans"
     // would flash before the first rows arrive.
     data: isLoading ? undefined : rows,
-    sortFn: sortPullsBy,
+    sortFn,
     initialSort: { column: 'updatedAt', direction: 'descending' },
     // `useCompletePagination` resets its offset on a page-size or query change
     // but never when the data shrinks, so a refetched shorter list can end up

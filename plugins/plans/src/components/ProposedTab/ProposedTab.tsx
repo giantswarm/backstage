@@ -60,5 +60,19 @@ export function ProposedTab({ repo }: { repo: string }) {
     );
   }
 
-  return <ProposedPlansTable rows={rows} repo={repo} isLoading={isLoading} />;
+  // Keyed by repository, so switching repositories builds a new table rather
+  // than reusing this one. bui's `useTable` holds the last non-empty rows in a
+  // ref and falls back to them whenever `data` is undefined -- and with the
+  // `data` (rather than `getData`) form it never puts itself back into its
+  // pending state -- so without this the previous repository's plans stay on
+  // screen, at full opacity, while their links already carry the new
+  // repository: a click would open the wrong plan, or none.
+  return (
+    <ProposedPlansTable
+      key={repo}
+      rows={rows}
+      repo={repo}
+      isLoading={isLoading}
+    />
+  );
 }
