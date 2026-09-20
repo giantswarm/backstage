@@ -105,7 +105,11 @@ function singleQueryValue(value: unknown, key: string): string | undefined {
   return value;
 }
 
-/** `list_installations`' arguments out of a query string: `installations` (comma-separated) and `customer`. */
+/**
+ * `list_installations`' arguments out of a query string: `installations`
+ * (comma-separated), `customer`, and `summary` (`true` for the states and
+ * the last actions alone, what the Installations page's columns ask for).
+ */
 export function listArguments(
   query: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -119,6 +123,13 @@ export function listArguments(
   const customer = singleQueryValue(query.customer, 'customer');
   if (customer) {
     args.customer = customer;
+  }
+  const summary = singleQueryValue(query.summary, 'summary');
+  if (summary !== undefined) {
+    if (summary !== 'true' && summary !== 'false') {
+      throw new InputError('summary must be true or false');
+    }
+    args.summary = summary === 'true';
   }
   return args;
 }
