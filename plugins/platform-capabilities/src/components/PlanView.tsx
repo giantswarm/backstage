@@ -1,5 +1,6 @@
 import { Flex, Text } from '@backstage/ui';
 import { PlanFile, VerifyResult } from '../apis';
+import { compared } from '../lib/comparison';
 import { LIST_STYLE } from './DimensionItem';
 
 function Section({
@@ -25,7 +26,8 @@ function Section({
  * The plan the comparison rendered from the inputs: the files by
  * repository, the generated secrets by name, the Dex clients with their
  * redirect URIs, the customer actions, and the pull requests in the order
- * they open. Nothing here is computed by the page.
+ * they open -- or, where the comparison ran and found every file as defined,
+ * that there is none. Nothing here is computed by the page.
  */
 export function PlanView({ plan }: { plan: VerifyResult }) {
   const byRepository = new Map<string, PlanFile[]>();
@@ -120,13 +122,15 @@ export function PlanView({ plan }: { plan: VerifyResult }) {
           </ol>
         </Section>
       ) : (
-        <Text
-          variant="body-small"
-          color="secondary"
-          data-testid="plan-pull-requests"
-        >
-          No pull request: every file is as defined.
-        </Text>
+        compared(plan) && (
+          <Text
+            variant="body-small"
+            color="secondary"
+            data-testid="plan-pull-requests"
+          >
+            No pull request: every file is as defined.
+          </Text>
+        )
       )}
     </Flex>
   );

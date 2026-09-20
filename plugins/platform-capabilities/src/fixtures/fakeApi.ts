@@ -8,6 +8,7 @@ import {
   Definition,
   Installation,
   InstallationListing,
+  VerifyFeature,
   ListInstallationsFilters,
   ManagerInfo,
   PlatformCapabilitiesApi,
@@ -417,6 +418,30 @@ export const VERIFIED: VerifyResult = {
   pullRequests: PLAN.pullRequests,
 };
 
+/** The runtime feature with the change a migration plans, not drift. */
+const PLANNED_RUNTIME: VerifyFeature = {
+  id: 'runtime',
+  title: 'Runtime',
+  mark: 'planned',
+  marks: { planned: 1 },
+  dimensions: [
+    {
+      id: 'patch-top-level-keys',
+      kind: 'configmap',
+      mark: 'planned',
+      differences: [
+        {
+          file: 'example/example-configs:installations/rowan/apps/agent-platform/configmap-values.yaml.patch',
+          path: 'kagent.apiVersion',
+          planned: 'migrates to kagent API v2 with the 4 chart line',
+          rendered: 'v2',
+          current: 'v1',
+        },
+      ],
+    },
+  ],
+};
+
 /** rowan as defined: no difference, nothing to change. */
 export const UP_TO_DATE: VerifyResult = {
   ...VERIFIED,
@@ -425,6 +450,77 @@ export const UP_TO_DATE: VerifyResult = {
   summary: { 'as defined': 4 },
   files: [],
   diff: { unchanged: 2 },
+  pullRequests: [],
+};
+
+/** rowan as defined but for one planned change: the pull request a migration opens. */
+export const PLANNED: VerifyResult = {
+  ...UP_TO_DATE,
+  features: [...UP_TO_DATE.features, PLANNED_RUNTIME],
+  summary: { 'as defined': 4, planned: 1 },
+  files: [{ ...PLAN.installations[0].files![0], change: 'update' }],
+  diff: { update: 1, unchanged: 1 },
+  pullRequests: [PLAN.pullRequests![0]],
+};
+
+/** rowan with differences and a planned change, one feature carrying both. */
+export const MIXED: VerifyResult = {
+  ...VERIFIED,
+  features: [
+    ...VERIFIED.features,
+    {
+      id: 'migrations',
+      title: 'Migrations',
+      mark: 'drifted',
+      marks: { drifted: 1, planned: 1 },
+      dimensions: [
+        {
+          id: 'chart-line',
+          kind: 'configmap',
+          mark: 'drifted',
+          differences: [
+            {
+              file: 'example/example-configs:installations/rowan/apps/agent-platform/configmap-values.yaml.patch',
+              path: 'chartLine',
+              rendered: '4',
+              current: '3',
+            },
+          ],
+        },
+        { ...PLANNED_RUNTIME.dimensions![0], id: 'kagent-api-version' },
+      ],
+    },
+  ],
+  summary: { ...VERIFIED.summary, drifted: 2, planned: 1 },
+};
+
+/**
+ * rowan not compared: the record failed the definition's schema, so the
+ * manager refused and checked nothing -- every dimension not checked.
+ */
+export const NOT_COMPARED: VerifyResult = {
+  ...VERIFIED,
+  state: 'enabled',
+  refused:
+    'installation.podCertificateRequest: the record does not say whether the cluster serves PodCertificateRequest',
+  features: VERIFIED.features.map(f => ({
+    ...f,
+    mark: 'not checked',
+    marks: undefined,
+    dimensions: f.dimensions?.map(d =>
+      d.mark === 'not checked'
+        ? d
+        : {
+            id: d.id,
+            kind: d.kind,
+            mark: 'not checked' as const,
+            reason: 'the record failed the schema',
+          },
+    ),
+  })),
+  summary: { 'not checked': 9 },
+  files: [],
+  diff: {},
   pullRequests: [],
 };
 

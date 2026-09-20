@@ -75,8 +75,8 @@ test.describe('installations: platform capabilities', () => {
     for (const cell of await cells.all()) {
       const state = await cell.getAttribute('data-state');
       const text = (await cell.innerText()).trim();
-      // Every cell is one icon whose name and `data-state` are a state in
-      // the manager's words, or a dash for an installation the registry
+      // Every cell is one icon: `data-state` is the manager's word, its name
+      // the tab's words for it; a dash for an installation the registry
       // does not know.
       expect(state ?? text).toMatch(
         /^(not opted in|not enabled|pending approval|rolling out|waiting for the customer|enabled|drifted|failed|unknown|—)$/,
@@ -85,7 +85,7 @@ test.describe('installations: platform capabilities', () => {
         expect(text).toBe('');
         await expect(cell).toHaveAttribute(
           'aria-label',
-          new RegExp(`^${state} · `),
+          /^(Installed( · differences)?|Not installed|(Enabling|Applying) · (pending approval|rolling out)|Waiting for the customer|Failed|Unknown)$/,
         );
         await expect(cell).toHaveAttribute(
           'data-mark',

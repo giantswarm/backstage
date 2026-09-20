@@ -66,7 +66,6 @@ describe('schemaForm', () => {
     expect(choiceLabel(serving)).toBe('Model serving');
     expect(choiceValue(serving, true)).toBe('on');
     expect(choiceValue(serving, false)).toBe('off');
-    expect(choiceValue(serving, undefined)).toBe('not chosen');
     expect(
       choiceLabel({ ...serving, path: ['gpu', 'nodes'], title: 'nodes' }),
     ).toBe('Nodes');

@@ -274,12 +274,15 @@ export interface Committed {
 }
 
 export type VerifyMark =
-  'as defined' | 'differs by input' | 'drifted' | 'not checked';
+  'as defined' | 'differs by input' | 'drifted' | 'planned' | 'not checked';
 
 export interface VerifyDifference {
   file?: string;
+  object?: string;
   path?: string;
   input?: string;
+  /** Why the change is planned rather than drift: the migration that carries it. */
+  planned?: string;
   rendered?: unknown;
   current?: unknown;
 }

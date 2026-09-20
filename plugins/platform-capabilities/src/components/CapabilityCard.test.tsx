@@ -14,7 +14,10 @@ import {
   FakeApi,
   FakeOptions,
   installation,
+  MIXED,
+  NOT_COMPARED,
   NOT_OPTED_IN,
+  PLANNED,
   UP_TO_DATE,
   VERIFIED,
 } from '../fixtures/fakeApi';
@@ -204,7 +207,7 @@ describe('CapabilityCard', () => {
     );
     expect(screen.queryByTestId('feature-identity')).toBeNull();
     expect(screen.getByTestId('as-defined')).toHaveTextContent(
-      'Identity, Tool access, Federation and tunnels, Portal section: as defined',
+      'Identity, Tool access, Portal section: as defined',
     );
     expect(screen.getByTestId('needs-session')).toHaveTextContent(
       '2 checks need your session on birch',
@@ -373,5 +376,136 @@ describe('CapabilityCard', () => {
     expect(
       screen.queryByRole('button', { name: 'Open pull requests' }),
     ).toBeNull();
+  });
+
+  describe('planned changes and a comparison that did not run', () => {
+    const enabled = (verified: VerifyResult) =>
+      render(withCapability({ state: 'enabled', enabled: true }), { verified });
+
+    it.each<[string, VerifyResult, string]>([
+      ['only planned changes', PLANNED, 'Installed · 1 planned change'],
+      [
+        'differences and planned changes',
+        MIXED,
+        'Installed · 3 differences · 1 planned change',
+      ],
+      ['the definition refused', NOT_COMPARED, 'Installed · not compared'],
+      [
+        'nothing checked',
+        { ...NOT_COMPARED, refused: undefined },
+        'Installed · not compared',
+      ],
+    ])('the header with %s', async (_, verified, words) => {
+      await enabled(verified);
+      expect(header()).toHaveTextContent(words);
+    });
+
+    it('collapses the features whose changes are all planned into one line', async () => {
+      await enabled(PLANNED);
+      expect(screen.getByTestId('planned')).toHaveTextContent(
+        'Runtime: planned changes (1)',
+      );
+      expect(screen.queryByTestId('feature-runtime')).toBeNull();
+      expect(screen.getByTestId('as-defined')).toHaveTextContent(
+        'Identity, Tool access, Portal section: as defined',
+      );
+      expect(
+        screen.getByRole('button', { name: 'Apply changes' }),
+      ).toBeEnabled();
+    });
+
+    it('opens a feature with differences to its planned change and its reason', async () => {
+      await enabled(MIXED);
+      const feature = screen.getByTestId('feature-migrations');
+      expect(feature).toHaveTextContent(
+        'Migrations — 1 difference · 1 planned change',
+      );
+      await userEvent.click(within(feature).getByText(/Migrations/));
+      const planned = within(feature).getByTestId(
+        'dimension-kagent-api-version',
+      );
+      expect(planned).toHaveTextContent(
+        'planned: migrates to kagent API v2 with the 4 chart line',
+      );
+      expect(planned).not.toHaveTextContent('rendered');
+      expect(
+        within(feature).getByTestId('dimension-chart-line'),
+      ).toHaveTextContent('rendered "4", current "3"');
+    });
+
+    it('says why the comparison did not run, first, and lists nothing else', async () => {
+      await enabled(NOT_COMPARED);
+      const note = screen.getByTestId('not-compared');
+      expect(note).toHaveTextContent(
+        'The comparison did not run: installation.podCertificateRequest: the record does not say',
+      );
+      // The first line under the header row.
+      expect(card().children[1]).toBe(note);
+      expect(screen.queryByTestId('comparison')).toBeNull();
+      expect(screen.queryByTestId('as-defined')).toBeNull();
+    });
+
+    it('reads Not installed · not compared where the definition refused', async () => {
+      await render(withCapability({ state: 'not enabled' }), {
+        verified: NOT_COMPARED,
+      });
+      expect(header()).toHaveTextContent('Not installed · not compared');
+      expect(screen.getByRole('button', { name: 'Enable' })).toBeEnabled();
+    });
+
+    it('the review shows the refusal alone', async () => {
+      await renderDialog(new FakeApi({ verified: NOT_COMPARED }));
+      await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+      await waitFor(() =>
+        expect(screen.getByText('The manager would refuse this')).toBeVisible(),
+      );
+      expect(screen.queryByTestId('plan')).toBeNull();
+      expect(screen.queryByTestId('comparison')).toBeNull();
+      expect(screen.queryByText(/every file is as defined/)).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Open pull requests' }),
+      ).toBeNull();
+    });
+  });
+
+  it('collapses the choices without a value into one line', async () => {
+    const schema = AGENT_PLATFORM_DEFINITION.inputSchema!;
+    const definition = {
+      ...AGENT_PLATFORM_DEFINITION,
+      inputSchema: {
+        ...schema,
+        properties: {
+          ...schema.properties,
+          gpu: {
+            type: 'object',
+            properties: {
+              nodes: { type: 'number', 'x-source': 'person' },
+              pool: { type: 'string', 'x-source': 'person' },
+            },
+          },
+        },
+      },
+    };
+    const api = new FakeApi();
+    await renderInTestApp(
+      <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+        <PlatformCapabilitiesProviders>
+          <CapabilityCard
+            installation={ENABLED}
+            capability={ENABLED.capabilities[0]}
+            definition={definition}
+          />
+        </PlatformCapabilitiesProviders>
+      </TestApiProvider>,
+    );
+    await waitFor(() => expect(screen.queryByTestId('comparing')).toBeNull());
+    expect(screen.getByTestId('choice-modelServing.enabled')).toHaveTextContent(
+      'Model serving: off',
+    );
+    expect(screen.queryByTestId('choice-gpu.nodes')).toBeNull();
+    expect(screen.getByTestId('choices-unset')).toHaveTextContent(
+      '2 choices not on record',
+    );
+    expect(card().textContent).not.toMatch(/not chosen/);
   });
 });

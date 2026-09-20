@@ -61,7 +61,8 @@ export interface CapabilityDialogProps {
  * secrets, Dex clients and customer actions. Open pull requests: the commit
  * as the signed-in person and the Action it started. The commit is disabled
  * without the person's session at the manager and absent where the manager
- * says it would refuse one.
+ * says it would refuse one, in which case the refusal is all the review
+ * shows.
  */
 export function CapabilityDialog({
   kind,
@@ -116,7 +117,8 @@ export function CapabilityDialog({
   const failure = (commit.error ?? review.error) as Error | null;
   const missing = missingRequired(form, values);
   const refused = reviewed?.commitRefused ?? reviewed?.refused;
-  const nothingToOpen = reviewed && (reviewed.pullRequests ?? []).length === 0;
+  const nothingToOpen =
+    reviewed && !refused && (reviewed.pullRequests ?? []).length === 0;
   const connected = connection.data?.connected === true;
   const title = `${kind === 'enable' ? 'Enable' : 'Apply changes to'} ${capability.name} on ${installation.name}`;
 
@@ -181,8 +183,12 @@ export function CapabilityDialog({
                     description={refused}
                   />
                 )}
-                <ComparisonView result={reviewed} />
-                <PlanView plan={reviewed} />
+                {!refused && (
+                  <>
+                    <ComparisonView result={reviewed} />
+                    <PlanView plan={reviewed} />
+                  </>
+                )}
                 {!connected && !refused && (
                   <Alert
                     status="warning"

@@ -131,11 +131,8 @@ export function choiceLabel(field: Field): string {
   return humanise(named);
 }
 
-/** A choice's value as one word: `on`/`off` for a switch, `not chosen` for none, else the value. */
+/** A choice's value as one word: `on`/`off` for a switch, else the value. */
 export function choiceValue(field: Field, value: unknown): string {
-  if (value === undefined || value === null) {
-    return 'not chosen';
-  }
   if (field.kind === 'boolean') {
     return value ? 'on' : 'off';
   }

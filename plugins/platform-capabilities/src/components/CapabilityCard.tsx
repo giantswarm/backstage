@@ -6,7 +6,7 @@ import {
   Installation,
   VerifyResult,
 } from '../apis';
-import { upToDate } from '../lib/comparison';
+import { count, upToDate } from '../lib/comparison';
 import {
   choiceLabel,
   choiceValue,
@@ -44,7 +44,11 @@ function isInstalled(capability: CapabilityState): boolean {
   );
 }
 
-/** One line per choice the definition leaves to a person, with its value from the comparison. */
+/**
+ * One line per choice the definition leaves to a person that has a value --
+ * read back, typed or the schema's default -- from the comparison's inputs;
+ * the choices without one as one line with their count.
+ */
 function Choices({
   definition,
   comparison,
@@ -57,18 +61,32 @@ function Choices({
     [definition],
   );
   const values = comparison?.inputs?.values ?? {};
+  const valued = choices.map(field => ({
+    field,
+    value: getAt(values, field.path) ?? field.default,
+  }));
+  const chosen = valued.filter(c => c.value !== undefined && c.value !== null);
+  const unset = valued.length - chosen.length;
   return (
     <>
-      {choices.map(field => (
+      {chosen.map(({ field, value }) => (
         <Text
           key={field.name}
           variant="body-small"
           data-testid={`choice-${field.name}`}
         >
-          {choiceLabel(field)}:{' '}
-          {choiceValue(field, getAt(values, field.path) ?? field.default)}
+          {choiceLabel(field)}: {choiceValue(field, value)}
         </Text>
       ))}
+      {unset > 0 && (
+        <Text
+          variant="body-small"
+          color="secondary"
+          data-testid="choices-unset"
+        >
+          {count(unset, 'choice')} not on record
+        </Text>
+      )}
     </>
   );
 }
@@ -95,10 +113,12 @@ function NeedsOwners({ installation }: { installation: Installation }) {
 
 /**
  * One capability of an installation as one block: the header line with the
- * state and what the comparison found, the person's choices, the features
- * with differences (opening to them), the features as defined, the checks
- * that did not run, and one button -- Enable, or Apply changes -- opening
- * the dialog. The comparison runs when the tab opens.
+ * state and what the comparison found, why the comparison did not run where
+ * the definition refused, the person's choices, the features with
+ * differences (opening to them), the features with planned changes, the
+ * features as defined, the checks that did not run, and one button --
+ * Enable, or Apply changes -- opening the dialog. The comparison runs when
+ * the tab opens.
  */
 export function CapabilityCard({
   installation,
@@ -152,6 +172,11 @@ export function CapabilityCard({
         )}
       </Flex>
       {needsOwners && <NeedsOwners installation={installation} />}
+      {result?.refused && (
+        <Text variant="body-small" data-testid="not-compared">
+          The comparison did not run: {result.refused}
+        </Text>
+      )}
       <Choices definition={definition} comparison={result} />
       {comparison.isPending && (
         <Text variant="body-small" color="secondary" data-testid="comparing">
@@ -164,12 +189,9 @@ export function CapabilityCard({
           error={comparison.error as Error}
         />
       )}
-      {result?.refused && (
-        <Text variant="body-small" data-testid="refused">
-          {result.refused}
-        </Text>
+      {result && installed && !result.refused && (
+        <ComparisonView result={result} />
       )}
-      {result && installed && <ComparisonView result={result} />}
       {dialog && (
         <CapabilityDialog
           kind={installed ? 'reconcile' : 'enable'}

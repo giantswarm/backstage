@@ -5,7 +5,7 @@ import {
   VerifyMark,
   VerifyResult,
 } from '../apis';
-import { count, differencesOf, redProbeOf } from '../lib/comparison';
+import { compared, countsOf, foundWords, redProbeOf } from '../lib/comparison';
 
 /** The colour of each state and comparison mark, shared by the tag and the icon. */
 export const STATE_COLOR: Record<CapabilityStateName | VerifyMark, string> = {
@@ -20,6 +20,7 @@ export const STATE_COLOR: Record<CapabilityStateName | VerifyMark, string> = {
   unknown: '#8a8a8a',
   'as defined': '#2e8b57',
   'differs by input': '#b8860b',
+  planned: '#1e7fd8',
   'not checked': '#8a8a8a',
 };
 
@@ -39,14 +40,15 @@ export const STATE_WORDS: Record<CapabilityStateName, string> = {
 /** What the page says about a capability, and the colour it says it in. */
 export interface Status {
   words: string;
-  tone: CapabilityStateName;
+  tone: CapabilityStateName | VerifyMark;
 }
 
 /**
  * The header line of a capability: its phase and, after the middle dot or
- * the colon, what the comparison found -- the differences, the customer's
- * action, the red probe. Without a comparison (the Installations page, the
- * comparison still running) the phase alone, in the same words.
+ * the colon, what the comparison found -- the differences and the planned
+ * changes, the customer's action, the red probe, or `not compared` where
+ * the comparison did not run. Without a comparison (the Installations page,
+ * the comparison still running) the phase alone, in the same words.
  */
 export function statusOf(
   capability: Pick<CapabilityState, 'state' | 'lastAction'>,
@@ -59,10 +61,18 @@ export function statusOf(
       if (!comparison) {
         return { words: STATE_WORDS[state], tone: state };
       }
-      const n = differencesOf(comparison);
-      return n === 0
-        ? { words: 'Installed · up to date', tone: 'enabled' }
-        : { words: `Installed · ${count(n, 'difference')}`, tone: 'drifted' };
+      if (!compared(comparison)) {
+        return { words: 'Installed · not compared', tone: 'unknown' };
+      }
+      const counts = countsOf(comparison);
+      const found = foundWords(counts);
+      if (found.length === 0) {
+        return { words: 'Installed · up to date', tone: 'enabled' };
+      }
+      return {
+        words: ['Installed', ...found].join(' · '),
+        tone: counts.differences > 0 ? 'drifted' : 'planned',
+      };
     }
     case 'pending approval':
     case 'rolling out': {
@@ -85,6 +95,11 @@ export function statusOf(
         tone: state,
       };
     }
+    case 'not enabled':
+    case 'not opted in':
+      return comparison?.refused
+        ? { words: 'Not installed · not compared', tone: 'unknown' }
+        : { words: STATE_WORDS[state], tone: state };
     default:
       return {
         words: STATE_WORDS[state] ?? STATE_WORDS.unknown,

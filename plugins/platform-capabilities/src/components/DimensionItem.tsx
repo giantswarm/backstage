@@ -6,7 +6,8 @@ export const LIST_STYLE = { margin: 0, paddingLeft: 16 };
 /**
  * One dimension of a feature as the comparison marked it: its mark and
  * reason, the differences (file, path, the input driving it, rendered against
- * current) and the probe's requests.
+ * current -- or, for a planned change, the migration that plans it) and the
+ * probe's requests.
  */
 export function DimensionItem({ dimension }: { dimension: VerifyDimension }) {
   return (
@@ -21,8 +22,10 @@ export function DimensionItem({ dimension }: { dimension: VerifyDimension }) {
                 {d.file}
                 {d.path ? ` ${d.path}` : ''}
               </code>
-              {d.input ? ` (input ${d.input})` : ''}: rendered{' '}
-              {JSON.stringify(d.rendered)}, current {JSON.stringify(d.current)}
+              {d.input ? ` (input ${d.input})` : ''}
+              {d.planned
+                ? ` — planned: ${d.planned}`
+                : `: rendered ${JSON.stringify(d.rendered)}, current ${JSON.stringify(d.current)}`}
             </li>
           ))}
         </ul>
