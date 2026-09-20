@@ -1,9 +1,8 @@
 import { Text } from '@backstage/ui';
-import { CapabilityStateName } from '../apis';
-import { CellMark } from './consistency';
+import { CapabilityStateName, VerifyMark } from '../apis';
 
 /** The colour of each state and verify mark, shared by the tag and the icon. */
-export const STATE_COLOR: Record<CapabilityStateName | CellMark, string> = {
+export const STATE_COLOR: Record<CapabilityStateName | VerifyMark, string> = {
   'not opted in': '#8a8a8a',
   'not enabled': '#8a8a8a',
   'pending approval': '#b8860b',
@@ -16,7 +15,6 @@ export const STATE_COLOR: Record<CapabilityStateName | CellMark, string> = {
   'as defined': '#2e8b57',
   'differs by input': '#b8860b',
   'not checked': '#8a8a8a',
-  'not readable': '#8a8a8a',
 };
 
 /**
@@ -27,7 +25,7 @@ export function StateTag({
   state,
   testId,
 }: {
-  state: CapabilityStateName | CellMark | string;
+  state: CapabilityStateName | VerifyMark | string;
   testId?: string;
 }) {
   const color =

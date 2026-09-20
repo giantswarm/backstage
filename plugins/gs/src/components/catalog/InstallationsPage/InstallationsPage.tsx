@@ -16,10 +16,7 @@ import {
   CatalogTableRow,
 } from '@backstage/plugin-catalog';
 import { ReactNode, useCallback } from 'react';
-import { Route, Routes } from 'react-router-dom';
-import { Box, Tab, TabList, Tabs } from '@backstage/ui';
 import { useInstallationCapabilityColumns } from '@giantswarm/backstage-plugin-platform-capabilities';
-import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
 import { CustomCatalogTable } from '../CustomCatalogTable';
 import { EntityProviderPicker } from '../EntityProviderPicker';
 import { EntityPipelinePicker } from '../EntityPipelinePicker';
@@ -30,7 +27,6 @@ import {
   hiddenColumn,
   noWrapColumn,
 } from '../columns';
-import { InstallationsConsistency } from './InstallationsConsistency';
 
 const baseColumns: CatalogTableColumnsFunc = () => {
   return [
@@ -51,10 +47,6 @@ export interface InstallationsPageProps {
   emptyContent?: ReactNode;
 }
 
-/** The Consistency view's path under the page, per capability. */
-export const consistencyPath = (capability: string) =>
-  `consistency/${encodeURIComponent(capability)}`;
-
 export function InstallationsPage(props: InstallationsPageProps) {
   const {
     tableOptions = {
@@ -68,74 +60,34 @@ export function InstallationsPage(props: InstallationsPageProps) {
   // One column per platform capability with its state on the installation,
   // from giantswarm-platform-manager through muster as the signed-in person;
   // none where the platform-capabilities api is not enabled (a customer
-  // portal). The Capabilities tab of an installation holds the actions; the
-  // Consistency view per capability, a tab of this page, holds the comparison
-  // of every installation with the definition.
+  // portal). The Capabilities tab of an installation holds the actions.
   const capabilities = useInstallationCapabilityColumns();
   const columnsFunc: CatalogTableColumnsFunc = useCallback(
     context => [...baseColumns(context), ...capabilities.columns],
     [capabilities.columns],
   );
-  const basePath = useSplatBasePath();
-
-  const list = (
-    <EntityListProvider>
-      <CatalogFilterLayout>
-        <CatalogFilterLayout.Filters>
-          <EntityKindPicker initialFilter="resource" hidden />
-          <EntityTypePicker initialFilter="installation" hidden />
-          <EntityCustomerPicker />
-          <EntityProviderPicker />
-          <EntityPipelinePicker />
-        </CatalogFilterLayout.Filters>
-        <CatalogFilterLayout.Content>
-          <CustomCatalogTable
-            columns={columnsFunc}
-            tableOptions={tableOptions}
-            emptyContent={emptyContent}
-          />
-        </CatalogFilterLayout.Content>
-      </CatalogFilterLayout>
-    </EntityListProvider>
-  );
 
   return (
     <Content>
       {capabilities.notice}
-      {/* The tab strip appears with the first capability the manager knows;
-          a customer portal, without the api, keeps the plain list. */}
-      {capabilities.capabilities.length > 0 && (
-        <Box mb="4">
-          <Tabs>
-            <TabList>
-              <Tab
-                id="installations"
-                href={basePath || '/'}
-                matchStrategy="exact"
-              >
-                Installations
-              </Tab>
-              {capabilities.capabilities.map(capability => (
-                <Tab
-                  key={capability}
-                  id={`consistency-${capability}`}
-                  href={`${basePath}/${consistencyPath(capability)}`}
-                  matchStrategy="prefix"
-                >
-                  Consistency: {capability}
-                </Tab>
-              ))}
-            </TabList>
-          </Tabs>
-        </Box>
-      )}
-      <Routes>
-        <Route
-          path="consistency/:capability"
-          element={<InstallationsConsistency />}
-        />
-        <Route path="*" element={list} />
-      </Routes>
+      <EntityListProvider>
+        <CatalogFilterLayout>
+          <CatalogFilterLayout.Filters>
+            <EntityKindPicker initialFilter="resource" hidden />
+            <EntityTypePicker initialFilter="installation" hidden />
+            <EntityCustomerPicker />
+            <EntityProviderPicker />
+            <EntityPipelinePicker />
+          </CatalogFilterLayout.Filters>
+          <CatalogFilterLayout.Content>
+            <CustomCatalogTable
+              columns={columnsFunc}
+              tableOptions={tableOptions}
+              emptyContent={emptyContent}
+            />
+          </CatalogFilterLayout.Content>
+        </CatalogFilterLayout>
+      </EntityListProvider>
     </Content>
   );
 }
