@@ -141,6 +141,20 @@ repo is therefore hand-rolled, using one of three strategies.
    whose body grows continuously (a streaming conversation, say).
    `plugins/flux-react/.../FluxOverview/ContentContainer`.
 
+A fourth shape is not a scroll container in the page at all but a **full-screen
+overlay over the content column**: `position: fixed` from `top: 0` to the
+bottom, `right: 0`, and `left` set to the sidebar's width so the app sidebar
+stays visible and usable. Read that width from `sidebarConfig` and
+`useSidebarPinState()` (both from `@backstage/core-components`):
+`drawerWidthOpen` when pinned, `drawerWidthClosed` otherwise, and on phones
+`left: 0` with `bottom: mobileSidebarHeight` for the bar the sidebar turns into.
+Give it `zIndex: theme.zIndex.appBar - 1` — under the sidebar, so its hover
+fly-out still opens over the overlay, above everything else on the page. Toggle
+the overlay as a class on the element that is already there rather than
+rendering a second tree, so the content stays mounted (form drafts survive).
+`plugins/plans/.../PullReviewPage` (the document panel's **Full screen**);
+`plugins/ai-chat/.../AiChatDrawer` is the right-anchored cousin.
+
 Two things that bite:
 
 - **Keep the flex container's default `align-items: stretch`.** A `flex-start`
