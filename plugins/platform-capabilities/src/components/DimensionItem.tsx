@@ -1,4 +1,4 @@
-import { CellDimension } from './consistency';
+import { VerifyDimension } from '../apis';
 import { StateTag } from './StateTag';
 
 export const LIST_STYLE = { margin: 0, paddingLeft: 16 };
@@ -8,7 +8,7 @@ export const LIST_STYLE = { margin: 0, paddingLeft: 16 };
  * reason, the differences (file, path, the input driving it, rendered against
  * current) and the probe's requests.
  */
-export function DimensionItem({ dimension }: { dimension: CellDimension }) {
+export function DimensionItem({ dimension }: { dimension: VerifyDimension }) {
   return (
     <li data-testid={`dimension-${dimension.id}`} data-mark={dimension.mark}>
       <code>{dimension.id}</code> — <StateTag state={dimension.mark} />

@@ -17,13 +17,11 @@ import { MARK_LEGEND, StateIcon } from './StateIcon';
 export interface InstallationCapabilityColumns {
   /** One column per capability the manager knows; none until the listing arrived. */
   columns: TableColumn<CatalogTableRow>[];
-  /** The capabilities the manager knows, in its order: one Consistency view each. */
-  capabilities: string[];
   /** What to show above the table: the connect on a missing grant, or the manager's error. */
   notice?: ReactNode;
 }
 
-const NONE: InstallationCapabilityColumns = { columns: [], capabilities: [] };
+const NONE: InstallationCapabilityColumns = { columns: [] };
 
 /** The capability's entry for the installation; none for one the registry does not know. */
 function capabilityOf(
@@ -94,6 +92,6 @@ export function useInstallationCapabilityColumns(): InstallationCapabilityColumn
         },
       }),
     );
-    return { columns, capabilities: listing?.capabilities ?? [], notice };
+    return { columns, notice };
   }, [api, listing, error, isPending]);
 }
