@@ -16,12 +16,14 @@ import { Link } from '@backstage/core-components';
 import { useTheme } from '@material-ui/core';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useNavigate } from 'react-router-dom';
-import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DateComponent,
+  stopRowPress,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { AvatarSize } from '../../lib/agentAvatar';
-import { stopRowPress } from '../../lib/rowPress';
 import { toneColor } from '../../lib/sessionStateTone';
 import {
   SessionRow,

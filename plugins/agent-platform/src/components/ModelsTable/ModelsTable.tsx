@@ -16,7 +16,7 @@ import type {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { modelDetailRouteRef } from '../../routes';
-import { stopRowPress } from '../../lib/rowPress';
+import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import {
   servingShortcutFor,
   summarizeClientServing,

@@ -8,7 +8,7 @@ import { Button, Flex, Text } from '@backstage/ui';
 
 import { usePullModel } from '../../hooks/usePullJobs';
 import { useServedModelAction } from '../../hooks/useServedModelAction';
-import { stopRowPress } from '../../lib/rowPress';
+import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import {
   SERVED_MODEL_READINESS,
   SERVING_BACKEND_LABEL,

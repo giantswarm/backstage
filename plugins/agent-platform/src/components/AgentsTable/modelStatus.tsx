@@ -2,7 +2,7 @@ import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Cell, CellText, Text } from '@backstage/ui';
 
-import { stopRowPress } from '../../lib/rowPress';
+import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import { servingRouteRef } from '../../routes';
 import { ServedReadinessLabel, servingTitle } from '../ModelServingStatus';
 import type { AgentRow } from '../AgentsDataProvider';

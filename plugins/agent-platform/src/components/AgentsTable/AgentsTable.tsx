@@ -16,7 +16,7 @@ import { AgentRow, sortAgentsBy } from '../AgentsDataProvider';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { agentDetailRouteRef } from '../../routes';
 import { AvatarSize } from '../../lib/agentAvatar';
-import { stopRowPress } from '../../lib/rowPress';
+import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import { describeToolset } from '../../lib/toolset';
 import {
   AgentModelCell,
