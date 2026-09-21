@@ -1,4 +1,4 @@
-import { ComponentType } from 'react';
+import { ComponentType, CSSProperties } from 'react';
 import Tooltip from '@material-ui/core/Tooltip';
 import { SvgIconProps } from '@material-ui/core/SvgIcon';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
@@ -7,6 +7,7 @@ import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 import SyncIcon from '@material-ui/icons/Sync';
 import SyncProblemIcon from '@material-ui/icons/SyncProblem';
+import { Skeleton } from '@backstage/ui';
 import { intentColor, StatusLabelIntent } from '../StatusLabel/StatusLabel';
 
 /**
@@ -61,6 +62,23 @@ const MARK_ICON: Record<
   unknown: { icon: HelpOutlineIcon, intent: 'neutral' },
 };
 
+/** The side of a mark's square: the `small` SvgIcon, 1.25rem at the app's 16px root. */
+const MARK_SIZE = 20;
+
+/**
+ * The one box a mark and its placeholder share: one icon wide and one line
+ * of the cell's text tall (`1lh`), laid out as a block so it adds no line box
+ * of its own. The glyph is centred in it and overhangs the line into the
+ * cell's padding, so a table row is as tall with the skeleton as with the
+ * icon, and as with text alone.
+ */
+const MARK_BOX: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  width: MARK_SIZE,
+  height: '1lh',
+};
+
 /**
  * The legend of the marks for a column header's tooltip: each mark with the
  * page's gloss of it, in {@link SYNC_MARKS} order, joined with middle dots.
@@ -102,14 +120,24 @@ export function SyncMarkIcon({
         data-testid={testId}
         data-state={state}
         data-mark={mark}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          color: intentColor(intent),
-        }}
+        style={{ ...MARK_BOX, color: intentColor(intent) }}
       >
         <Icon fontSize="small" color="inherit" />
       </span>
     </Tooltip>
+  );
+}
+
+/**
+ * A mark's place while the manager has not answered yet: a skeleton in the
+ * mark's own box, so the cell and its row keep their size when the icon
+ * takes over. `aria-busy` says the cell is loading; it has no mark and no
+ * state of its own.
+ */
+export function SyncMarkSkeleton({ testId }: { testId?: string }) {
+  return (
+    <span aria-busy="true" data-testid={testId} style={MARK_BOX}>
+      <Skeleton width={MARK_SIZE} height={MARK_SIZE} />
+    </span>
   );
 }
