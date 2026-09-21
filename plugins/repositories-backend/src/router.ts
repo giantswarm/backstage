@@ -81,7 +81,12 @@ const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
     reason: 'string',
     ...WRITE_OPTIONS,
   },
-  set_lifecycle: { lifecycle: 'string', reason: 'string', ...WRITE_OPTIONS },
+  set_lifecycle: {
+    lifecycle: 'string',
+    reason: 'string',
+    confirm: 'string',
+    ...WRITE_OPTIONS,
+  },
   align_repository: { team: 'string', ...WRITE_OPTIONS },
   // Read-only, a POST for the body: the pull request the creation opened and
   // how long one call may wait -- the manager bounds it (at most 150 s).

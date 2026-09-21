@@ -131,7 +131,7 @@ describe('parseEntry', () => {
 describe('RowActions', () => {
   it('offers only Align now for an undeclared repository', () => {
     renderActions({}, strayTool);
-    for (const name of ['Edit', 'Transfer', 'Deprecate', 'Archive']) {
+    for (const name of ['Edit', 'Transfer', 'Deprecate', 'Archive', 'Delete']) {
       expect(button(name)).toBeDisabled();
     }
     expect(button('Align now')).toBeEnabled();
@@ -202,6 +202,77 @@ describe('RowActions', () => {
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
     ).toBeNull();
+    await userEvent.click(closeButton());
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('Delete: stands apart from the group, needs the repository name typed, sends it as confirm, then the plan and the pull request', async () => {
+    const setLifecycle = jest
+      .fn()
+      .mockResolvedValueOnce(
+        planOf({
+          entry:
+            '- name: present-service\n  componentType: service\n  lifecycle: deleted\n  align: true\n',
+          pullRequest: {
+            ...planOf().pullRequest,
+            branch: 'reposetup/deleted-present-service',
+            title:
+              'chore(repositories): delete present-service (team-bumblebee)',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(committedOf());
+    const { onChanged } = renderActions({ setLifecycle });
+    const del = button('Delete');
+    // Apart from the ButtonGroup: the one action after which the repository is gone.
+    expect(del.closest('[role="group"]')).toBeNull();
+    await userEvent.click(del);
+
+    const form = dialog(/^Delete present-service/);
+    expect(form).toHaveTextContent(
+      'unfollows the repository on CircleCI and deletes it on GitHub',
+    );
+    expect(form).toHaveTextContent(
+      'The entry stays in the team file as the record of the deletion.',
+    );
+    expect(button('Review')).toBeDisabled();
+    const name = within(form).getByLabelText(/^Repository name/);
+    await userEvent.type(name, 'other-service');
+    expect(button('Review')).toBeDisabled();
+    await userEvent.clear(name);
+    await userEvent.type(name, 'giantswarm/Present-Service');
+    await userEvent.type(within(form).getByLabelText(/^Reason/), 'retired');
+    await userEvent.click(button('Review'));
+    expect(setLifecycle).toHaveBeenCalledWith(
+      'giantswarm/present-service',
+      {
+        lifecycle: 'deleted',
+        reason: 'retired',
+        confirm: 'giantswarm/Present-Service',
+      },
+      { dryRun: true },
+    );
+    const plan = await screen.findByTestId('plan');
+    expect(within(plan).getByTestId('entry-after')).toHaveTextContent(
+      'lifecycle: deleted',
+    );
+    expect(within(plan).getByTestId('planned-pull-request')).toHaveTextContent(
+      'chore(repositories): delete present-service',
+    );
+
+    await userEvent.click(button('Open pull request'));
+    expect(setLifecycle).toHaveBeenLastCalledWith(
+      'giantswarm/present-service',
+      {
+        lifecycle: 'deleted',
+        reason: 'retired',
+        confirm: 'giantswarm/Present-Service',
+      },
+      { mode: 'commit' },
+    );
+    await screen.findByTestId('pull-request-opened');
+    // The listing is re-read once the dialog closes, not while it shows the result.
+    expect(onChanged).not.toHaveBeenCalled();
     await userEvent.click(closeButton());
     expect(onChanged).toHaveBeenCalledTimes(1);
   });

@@ -598,6 +598,39 @@ test.describe('repositories: actions', () => {
     await expect(dialog).toBeHidden();
   });
 
+  test('Delete stands apart in another colour, names what it does, needs the repository name typed, and writes nothing on Cancel', async ({
+    admin,
+  }) => {
+    const { name, record } = await expandDeclared(admin);
+    const del = record.getByRole('button', { name: 'Delete' });
+    await expect(del).toBeEnabled();
+    // Apart from the group of the other actions, and not in their colour.
+    expect(await del.evaluate(el => el.closest('[role="group"]'))).toBeNull();
+    const [deleteColor, archiveColor] = await Promise.all([
+      del.evaluate(el => getComputedStyle(el).color),
+      record
+        .getByRole('button', { name: 'Archive' })
+        .evaluate(el => getComputedStyle(el).color),
+    ]);
+    expect(deleteColor).not.toBe(archiveColor);
+
+    await del.click();
+    const dialog = admin.getByRole('form', {
+      name: new RegExp(`^Delete ${name}`),
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      'unfollows the repository on CircleCI and deletes it on GitHub',
+    );
+    await expect(dialog).toContainText('record of the deletion');
+    const review = dialog.getByRole('button', { name: 'Review' });
+    await expect(review).toBeDisabled();
+    await dialog.getByLabel(/^Repository name/).fill(name);
+    await expect(review).toBeEnabled();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   /**
    * `align_repository`'s answer in the manager's shape (0.22.0 and later),
    * per mode: opted in (`align`), declared but not opted in (`opt-in`), a

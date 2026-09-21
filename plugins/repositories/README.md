@@ -105,6 +105,12 @@ commit` -- the repository and one scaffold commit as the person, then the
   person's own first, less the giving team; its member approves, the giving
   team is told), _Deprecate_ and
   _Archive_ (`set_lifecycle`, the team's review asked in its channel),
+  _Delete_ (`set_lifecycle` with `lifecycle: deleted` -- a red button apart
+  from the others; the dialog says what is deleted, the repository's name
+  typed by the person goes to the manager as `confirm`, which refuses the
+  deletion without it; the reconciler unfollows CircleCI and deletes the
+  repository on GitHub once the team has approved, and the entry stays in the
+  team file as the record),
   _Align now_ (`align_repository`: one dialog. A declared repository has
   nothing to fill in, so the manager's dry run starts as the dialog opens
   and the dialog says in one sentence what the commit does, links the
