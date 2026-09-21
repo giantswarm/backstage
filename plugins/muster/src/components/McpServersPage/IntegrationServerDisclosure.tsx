@@ -77,7 +77,11 @@ export function IntegrationServerDisclosure({
         {server.getSuspended() && (
           <StateBadge tone="neutral" label={DEACTIVATED_LABEL} />
         )}
-        <StateBadge tone={severityTone(severity)} label={state} />
+        <StateBadge
+          tone={severityTone(severity)}
+          label={state}
+          title={server.getStateExplanation()}
+        />
       </Flex>
     </Flex>
   );

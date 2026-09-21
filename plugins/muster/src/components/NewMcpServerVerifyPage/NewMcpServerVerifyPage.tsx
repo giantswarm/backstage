@@ -104,7 +104,9 @@ export function NewMcpServerVerifyPage() {
       const runtimeState = (query.state.data?.mcpServers ?? []).find(
         s => s.name === serverName,
       )?.state;
-      return runtimeState === 'Connected' || runtimeState === 'Running'
+      return runtimeState === 'Connected' ||
+        runtimeState === 'Running' ||
+        runtimeState === 'Awaiting Session'
         ? SETTLED_POLL_INTERVAL_MS
         : VERIFY_POLL_INTERVAL_MS;
     },
@@ -133,6 +135,11 @@ export function NewMcpServerVerifyPage() {
   // offering a login would send the user somewhere that cannot help.
   const authRequired =
     serverState === 'Auth Required' && state.authMode !== 'sigv4';
+  // `Awaiting Session`: the server is used with each caller's own identity
+  // (token forwarding or exchange), muster holds no connection of its own,
+  // and this person's session connects it when it uses it. Verified, with
+  // nothing to sign in to.
+  const awaitingSession = serverState === 'Awaiting Session';
   const connected = serverState === 'Connected' || serverState === 'Running';
   const failed = severity === 'error';
   const toolsCount = runtime?.toolsCount;
@@ -141,7 +148,11 @@ export function NewMcpServerVerifyPage() {
     {
       label: 'State',
       value: serverState ? (
-        <StateBadge tone={severityTone(severity)} label={serverState} />
+        <StateBadge
+          tone={severityTone(severity)}
+          label={serverState}
+          title={cr?.getStateExplanation()}
+        />
       ) : (
         'Waiting for the server to appear…'
       ),
@@ -266,6 +277,21 @@ export function NewMcpServerVerifyPage() {
             </Card>
           )}
 
+          {awaitingSession && (
+            <Card>
+              <CardBody>
+                <Alert
+                  status="info"
+                  title="This server connects per session — that's normal"
+                  description={
+                    cr?.getStateExplanation() ??
+                    'It is used with each person’s own identity: muster holds no connection of its own, and its tools appear in your session once muster has connected it for you.'
+                  }
+                />
+              </CardBody>
+            </Card>
+          )}
+
           {(failed || runtime?.error) && (
             <Card>
               <CardBody>
@@ -314,9 +340,13 @@ export function NewMcpServerVerifyPage() {
                   <ServerTools server={cr} />
                 ) : (
                   <Text variant="body-small" color="secondary">
-                    {authRequired
-                      ? 'Tools appear here after you sign in to the server.'
-                      : 'Tools appear here once the server is connected and discovery has run.'}
+                    {authRequired &&
+                      'Tools appear here after you sign in to the server.'}
+                    {awaitingSession &&
+                      'Tools appear here once your muster session has connected to the server.'}
+                    {!authRequired &&
+                      !awaitingSession &&
+                      'Tools appear here once the server is connected and discovery has run.'}
                   </Text>
                 )}
               </Flex>
