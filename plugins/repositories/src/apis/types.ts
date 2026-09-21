@@ -812,6 +812,17 @@ export interface RepositoriesApi {
     args: { entry: DeclarationEntry; reason?: string },
     options: O,
   ): Promise<WriteResult<O, Plan, Committed>>;
+  /**
+   * Declares a repository that exists on GitHub and no team file declares:
+   * the entry added to the team's file in a pull request the team reviews.
+   * A `lifecycle` in the entry ends the repository's life in the same pull
+   * request; the manager adds the opt-in it needs.
+   */
+  adoptRepository<O extends WriteOptions>(
+    name: string,
+    args: { team: string; entry: DeclarationEntry; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>>;
   /** Moves a declared repository to another team. */
   transferRepository<O extends WriteOptions>(
     name: string,

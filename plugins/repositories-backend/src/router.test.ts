@@ -309,6 +309,11 @@ describe('createRouter', () => {
 
     it.each([
       ['update', 'update_repository', { entry, reason: 'more flavours' }],
+      [
+        'adopt',
+        'adopt_repository',
+        { team: 'team-bumblebee', entry, reason: 'ours to keep' },
+      ],
       ['transfer', 'transfer_repository', { toTeam: 'team-planeteers' }],
       ['lifecycle', 'set_lifecycle', { lifecycle: 'archived', reason: 'done' }],
       ['align', 'align_repository', { team: 'team-bumblebee' }],

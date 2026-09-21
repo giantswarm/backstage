@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useId, useState } from 'react';
 import { Typography } from '@material-ui/core';
+import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import {
   Button,
   Checkbox,
@@ -49,6 +50,8 @@ const PRIVATE = VISIBILITIES[0].id;
  * the team and the name are fixed (Transfer moves a repository; a rename is
  * followed by the reconciler, not declared), the opt-in to alignment is on
  * the form, and the entry's fields the form does not carry are named as kept.
+ * A repository being adopted -- on GitHub, declared by no team file: the team
+ * is a choice, the name is the repository's, the opt-in is on the form.
  */
 export type DeclarationSubject =
   | { kind: 'new'; teams: TeamOption[]; teamsLoading: boolean }
@@ -59,10 +62,19 @@ export type DeclarationSubject =
       file: string;
       /** The entry's fields the form does not carry, dotted. */
       kept: string[];
+    }
+  | {
+      kind: 'adopt';
+      repository: string;
+      /** When the repository was created on GitHub. */
+      createdAt?: string;
+      teams: TeamOption[];
+      teamsLoading: boolean;
     };
 
 type NewRepository = Extract<DeclarationSubject, { kind: 'new' }>;
 type ExistingEntry = Extract<DeclarationSubject, { kind: 'existing' }>;
+type AdoptedRepository = Extract<DeclarationSubject, { kind: 'adopt' }>;
 
 export interface DeclarationFieldsProps {
   form: DeclarationForm;
@@ -382,6 +394,45 @@ function Declaration({
 }
 
 /**
+ * The team a declaration is filed for: a choice among the teams the manager
+ * knows, the caller's own first -- the owning team of a new repository, the
+ * adopting team of one that exists.
+ */
+export function TeamSelect({
+  form,
+  onChange,
+  teams,
+  teamsLoading,
+  description,
+  isDisabled = false,
+}: Pick<DeclarationFieldsProps, 'form' | 'onChange'> & {
+  teams: TeamOption[];
+  teamsLoading: boolean;
+  description: string;
+  isDisabled?: boolean;
+}) {
+  return (
+    <Select
+      label="Team"
+      isRequired
+      description={description}
+      placeholder={teamsLoading ? 'Reading your teams…' : 'Pick the team'}
+      options={teams.map(team => ({ id: team.id, label: team.label }))}
+      selectedKey={form.team || null}
+      onSelectionChange={key => key && onChange({ ...form, team: String(key) })}
+      isDisabled={isDisabled}
+    />
+  );
+}
+
+/** What the team choice says on the form of a new repository and of an adoption. */
+export const TEAM_DESCRIPTION = {
+  new: 'The owning team: its file repositories/<team>.yaml in giantswarm/github takes the entry.',
+  adopt:
+    'The adopting team: its file repositories/<team>.yaml in giantswarm/github takes the entry, and a member of it approves the pull request.',
+};
+
+/**
  * A new repository's team -- a choice, the caller's own first -- and name,
  * typed and checked against the engine's rule as typed; the manager's
  * verdict on the name (free, taken) shows once the dry run answers.
@@ -400,24 +451,14 @@ function NewRepositoryFields({
   const name = form.name.trim();
   const problem = nameProblem(name, form.flavours);
   const verdict = checking ? undefined : nameVerdict(name, validation);
-  const teamPlaceholder = subject.teamsLoading
-    ? 'Reading your teams…'
-    : 'Pick the owning team';
   return (
     <>
-      <Select
-        label="Team"
-        isRequired
-        description="The owning team: its file repositories/<team>.yaml in giantswarm/github takes the entry."
-        placeholder={teamPlaceholder}
-        options={subject.teams.map(team => ({
-          id: team.id,
-          label: team.label,
-        }))}
-        selectedKey={form.team || null}
-        onSelectionChange={key =>
-          key && onChange({ ...form, team: String(key) })
-        }
+      <TeamSelect
+        form={form}
+        onChange={onChange}
+        teams={subject.teams}
+        teamsLoading={subject.teamsLoading}
+        description={TEAM_DESCRIPTION.new}
         isDisabled={isDisabled}
       />
       <Flex direction="column" gap="1">
@@ -469,6 +510,48 @@ function ExistingEntryFields({ subject }: { subject: ExistingEntry }) {
   );
 }
 
+/**
+ * A repository being adopted: the team a choice, the name the repository's
+ * -- it is on GitHub, declared by no team file.
+ */
+function AdoptedRepositoryFields({
+  form,
+  onChange,
+  subject,
+  isDisabled,
+}: Pick<DeclarationFieldsProps, 'form' | 'onChange' | 'isDisabled'> & {
+  subject: AdoptedRepository;
+}) {
+  return (
+    <>
+      <TeamSelect
+        form={form}
+        onChange={onChange}
+        teams={subject.teams}
+        teamsLoading={subject.teamsLoading}
+        description={TEAM_DESCRIPTION.adopt}
+        isDisabled={isDisabled}
+      />
+      <Flex direction="column" gap="1" data-testid="adopted-repository">
+        <Text variant="body-medium" weight="bold">
+          {subject.repository}
+        </Text>
+        <Text variant="body-small" color="secondary">
+          On GitHub
+          {subject.createdAt && (
+            <>
+              {' '}
+              since <DateComponent value={subject.createdAt} />
+            </>
+          )}
+          , declared by no team file. The name is the repository's; the fields
+          below open on what GitHub knows of it.
+        </Text>
+      </Flex>
+    </>
+  );
+}
+
 /** The repository's opt-in to alignment, `align`, on an existing entry's form. */
 function AlignmentField({
   form,
@@ -507,8 +590,8 @@ function AlignmentField({
  * visibility); the one question -- what it is -- as a preset, one of the
  * shapes the org's team files declare, which fills the declaration; the
  * declaration itself (catalog type, language, flavours, the CircleCI switch)
- * as that preset's result, adjustable; for an existing entry the opt-in to
- * alignment; and the reason for the pull request. Every enumerated field is
+ * as that preset's result, adjustable; for an existing entry and an adoption
+ * the opt-in to alignment; and the reason for the pull request. Every enumerated field is
  * a choice, not a text: the values are the schema's.
  */
 export function DeclarationFields({
@@ -520,13 +603,18 @@ export function DeclarationFields({
   isDisabled,
 }: DeclarationFieldsProps) {
   const presetHintId = useId();
-  const existing = subject.kind === 'existing';
-  const question = existing ? 'What is it?' : 'What are you creating?';
+  const creating = subject.kind === 'new';
+  const question = creating ? 'What are you creating?' : 'What is it?';
+  const reasonHint = {
+    new: 'Why this repository — the pull request body carries it.',
+    existing: 'Why this change — the pull request body carries it.',
+    adopt: 'Why this adoption — the pull request body and the ask carry it.',
+  }[subject.kind];
 
   return (
     <Flex direction="column" gap="6">
       <Section title="Repository" testId="section-repository">
-        {subject.kind === 'new' ? (
+        {subject.kind === 'new' && (
           <NewRepositoryFields
             form={form}
             onChange={onChange}
@@ -535,8 +623,17 @@ export function DeclarationFields({
             checking={checking}
             isDisabled={isDisabled}
           />
-        ) : (
+        )}
+        {subject.kind === 'existing' && (
           <ExistingEntryFields subject={subject} />
+        )}
+        {subject.kind === 'adopt' && (
+          <AdoptedRepositoryFields
+            form={form}
+            onChange={onChange}
+            subject={subject}
+            isDisabled={isDisabled}
+          />
         )}
         <TextAreaField
           label="Description"
@@ -603,7 +700,7 @@ export function DeclarationFields({
         />
       </Section>
 
-      {existing && (
+      {!creating && (
         <Section title="Alignment" testId="section-alignment">
           <AlignmentField
             form={form}
@@ -617,11 +714,7 @@ export function DeclarationFields({
       <Section title="Pull request" testId="section-pull-request">
         <TextField
           label="Reason"
-          description={
-            existing
-              ? 'Why this change — the pull request body carries it.'
-              : 'Why this repository — the pull request body carries it.'
-          }
+          description={reasonHint}
           value={form.reason}
           onChange={value => onChange({ ...form, reason: value })}
           isDisabled={isDisabled}
