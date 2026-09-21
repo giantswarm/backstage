@@ -13,6 +13,7 @@ import {
   ListInstallationsFilters,
   ManagerInfo,
   PlatformCapabilitiesApi,
+  VerifyInputs,
   VerifyResult,
   WriteOptions,
   WriteResult,
@@ -108,6 +109,17 @@ export class PlatformCapabilitiesApiClient implements PlatformCapabilitiesApi {
   ): Promise<VerifyResult> {
     return this.request(
       this.capabilityPath(installation, capability, 'verify'),
+      { method: 'POST', body: args },
+    );
+  }
+
+  verifyInstallation(
+    installation: string,
+    capability: string,
+    args: { inputs?: VerifyInputs } = {},
+  ): Promise<VerifyResult> {
+    return this.request(
+      this.capabilityPath(installation, capability, 'verify-live'),
       { method: 'POST', body: args },
     );
   }

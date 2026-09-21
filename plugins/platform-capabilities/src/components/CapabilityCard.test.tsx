@@ -247,6 +247,72 @@ describe('CapabilityCard', () => {
     expect(card().textContent).not.toMatch(MANAGER_WORDS);
   });
 
+  it('names the checks that did not run and runs those needing the session as the viewer', async () => {
+    const api = await render(ENABLED);
+    const session = screen.getByTestId('needs-session');
+    expect(session).toHaveTextContent('2 checks need your session on birch');
+    expect(
+      within(session).getByTestId('check-live-dex-auth-per-client'),
+    ).toHaveTextContent('live-dex-auth-per-client');
+    expect(within(session).getByTestId('check-live-drift')).toHaveTextContent(
+      'live-drift',
+    );
+    const notRun = screen.getByTestId('not-run');
+    expect(notRun).toHaveTextContent(
+      '1 check could not run: renders no file of this kind',
+    );
+    expect(
+      within(notRun).getByTestId('check-federation-targets'),
+    ).toHaveTextContent('federation-targets');
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Run them as you' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('needs-session')).toBeNull(),
+    );
+    // The live half ran as the person from the comparison's own inputs.
+    expect(api.liveVerifies).toEqual([
+      {
+        installation: 'birch',
+        capability: 'agent-platform',
+        args: { inputs: VERIFIED.inputs },
+      },
+    ]);
+    // Its word on the live dimensions joins the comparison: the drift it
+    // found shows under its feature with the object and the check.
+    expect(screen.getByTestId('feature-runtime')).toHaveTextContent(
+      'Runtime — 2 checks differ',
+    );
+    expect(screen.getByTestId('dimension-live-drift')).toHaveTextContent(
+      'HelmRelease flux-giantswarm/agent-platform',
+    );
+    expect(screen.getByTestId('checks-live-drift')).toHaveTextContent(
+      '1 difference(s)',
+    );
+    expect(screen.getByTestId('not-run')).toHaveTextContent(
+      '1 check could not run',
+    );
+    expect(card().textContent).not.toMatch(MANAGER_WORDS);
+  });
+
+  it('shows why the live checks did not run and keeps the checks listed', async () => {
+    await render(ENABLED, {
+      liveError: new Error('forbidden for you: pods is forbidden'),
+    });
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Run them as you' }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText('forbidden for you: pods is forbidden'),
+      ).toBeVisible(),
+    );
+    expect(screen.getByTestId('needs-session')).toHaveTextContent(
+      '2 checks need your session on birch',
+    );
+  });
+
   it('has no button when up to date, and a disabled one while an action runs', async () => {
     await render(ENABLED, { verified: UP_TO_DATE });
     expect(

@@ -43,6 +43,11 @@ const VERIFY_ARGUMENTS: Record<string, ArgumentKind> = {
   content: 'boolean',
 };
 
+/** What `verify_installation` takes besides the names: the comparison's inputs object, so both halves render the same. */
+const LIVE_ARGUMENTS: Record<string, ArgumentKind> = {
+  inputs: 'object',
+};
+
 const CAPABILITY_TOOLS = {
   enable: 'enable_capability',
   reconcile: 'reconcile_capability',
@@ -53,6 +58,13 @@ export interface RouterOptions {
   httpAuth: HttpAuthService;
   /** giantswarm-platform-manager as the caller, through muster; undefined when unconfigured. */
   manager?: MusterServerGateway;
+  /**
+   * The manager's live surface (`giantswarm-platform-manager-live`), the
+   * registration muster forwards the person's own token to: its
+   * `verify_installation` reads the running installation as the person.
+   * Undefined when unconfigured; the live route answers 503 then.
+   */
+  live?: MusterServerGateway;
 }
 
 function isKind(value: unknown, kind: ArgumentKind): boolean {
@@ -160,7 +172,7 @@ export function actionsArguments(
 export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
-  const { logger, httpAuth, manager } = options;
+  const { logger, httpAuth, manager, live } = options;
 
   if (!manager) {
     logger.info(
@@ -175,6 +187,15 @@ export async function createRouter(
       );
     }
     return manager;
+  };
+
+  const liveGateway = (): MusterServerGateway => {
+    if (!live) {
+      throw new ServiceUnavailableError(
+        "giantswarm-platform-manager's live surface through muster is not configured. Set platformCapabilities.muster; liveServer names the registration (default: <server>-live).",
+      );
+    }
+    return live;
   };
 
   /**
@@ -194,16 +215,21 @@ export async function createRouter(
     return token;
   };
 
-  /** One tool call as the caller. */
-  const call = (
+  /** One tool call as the caller, on the manager or its live surface. */
+  const callOn = (
+    gw: MusterServerGateway,
     req: express.Request,
     tool: string,
     args: Record<string, unknown>,
   ) => {
-    const gw = gateway();
     const token = musterToken(req);
     return asConnected(gw, gw.server, token, () => gw.call(tool, args, token));
   };
+  const call = (
+    req: express.Request,
+    tool: string,
+    args: Record<string, unknown>,
+  ) => callOn(gateway(), req, tool, args);
 
   const router = Router();
   router.use(express.json());
@@ -280,6 +306,23 @@ export async function createRouter(
           installation: name(req.params.installation, 'an installation'),
           capability: name(req.params.capability, 'a capability'),
           ...writeArguments(req.body ?? {}, VERIFY_ARGUMENTS),
+        }),
+      );
+    },
+  );
+
+  // The live checks: the definition's probes of the running installation,
+  // read through muster as the signed-in person on the manager's live
+  // surface. `inputs` is the comparison's inputs object, so both halves
+  // render the same; the page merges the two.
+  router.post(
+    '/installations/:installation/capabilities/:capability/verify-live',
+    async (req, res) => {
+      res.json(
+        await callOn(liveGateway(), req, 'verify_installation', {
+          installation: name(req.params.installation, 'an installation'),
+          capability: name(req.params.capability, 'a capability'),
+          ...writeArguments(req.body ?? {}, LIVE_ARGUMENTS),
         }),
       );
     },

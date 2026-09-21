@@ -3,17 +3,16 @@ import { Flex, Text } from '@backstage/ui';
 import { VerifyFeature, VerifyResult } from '../apis';
 import {
   checkedDimensions,
-  count,
   differingDimensions,
   differs,
   fileGroups,
   foundWords,
   hasOwnFacts,
-  notChecked,
   splitGroups,
 } from '../lib/comparison';
 import { DimensionItem, LIST_STYLE } from './DimensionItem';
 import { FileGroup } from './FileDiff';
+import { NotRunChecks } from './NotRunChecks';
 
 const PLANNED_STYLE: CSSProperties = { paddingLeft: 16, marginTop: 4 };
 
@@ -34,7 +33,8 @@ function countsOfFeature(feature: VerifyFeature) {
  * features whose changes are all planned, as one line that opens to their
  * files' groups so every planned change is reachable; the dimensions with
  * facts of their own (a reason, a probe, an object); the features as
- * defined, as one line; the checks that did not run, by reason.
+ * defined, as one line; the checks that did not run, by name under their
+ * reason (NotRunChecks).
  */
 export function ComparisonView({ result }: { result: VerifyResult }) {
   const features = result.features ?? [];
@@ -50,7 +50,6 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
   const asDefined = features.filter(
     f => differingDimensions(f).length === 0 && checkedDimensions(f).length > 0,
   );
-  const pending = notChecked(features);
   const { toApply, planned } = splitGroups(fileGroups(result));
   const facts = features.flatMap(f =>
     differingDimensions(f).filter(hasOwnFacts),
@@ -99,28 +98,7 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
           {asDefined.map(title).join(', ')}: as defined
         </Text>
       )}
-      {pending.session > 0 && (
-        <Text
-          variant="body-small"
-          color="secondary"
-          data-testid="needs-session"
-        >
-          {pending.session === 1
-            ? '1 check needs'
-            : `${pending.session} checks need`}{' '}
-          your session on {result.installation}
-        </Text>
-      )}
-      {pending.other.map(([reason, n]) => (
-        <Text
-          key={reason}
-          variant="body-small"
-          color="secondary"
-          data-testid="not-run"
-        >
-          {count(n, 'check')} could not run: {reason}
-        </Text>
-      ))}
+      <NotRunChecks result={result} />
     </Flex>
   );
 }

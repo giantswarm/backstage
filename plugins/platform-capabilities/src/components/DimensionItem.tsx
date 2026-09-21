@@ -1,8 +1,19 @@
-import { VerifyDimension } from '../apis';
+import { LiveCheck, VerifyDimension } from '../apis';
 import { MarkedDifference, markOf, wordsOf } from '../lib/comparison';
 import { MarkTag } from './StateTag';
 
 export const LIST_STYLE = { margin: 0, paddingLeft: 16 };
+
+/** What a live check looked at: its URL, or the object by resource, namespace and name. */
+function target(check: LiveCheck): string {
+  if (check.url) {
+    return check.url;
+  }
+  const object = [check.resource, check.name].filter(Boolean).join(' ');
+  return check.namespace
+    ? `${check.resource} ${check.namespace}/${check.name}`
+    : object;
+}
 
 /**
  * One difference without its file, which the header above carries: the
@@ -30,8 +41,9 @@ export function DifferenceLine({
 
 /**
  * The facts of a dimension the file groups do not carry: its mark and
- * reason, its differences without a file (objects), and its probe's
- * requests. The differences on files are shown on the files' diffs.
+ * reason, its differences without a file (objects), its probe's requests
+ * and its live checks. The differences on files are shown on the files'
+ * diffs.
  */
 export function DimensionItem({ dimension }: { dimension: VerifyDimension }) {
   const objects = (dimension.differences ?? []).filter(d => !d.file);
@@ -55,6 +67,21 @@ export function DimensionItem({ dimension }: { dimension: VerifyDimension }) {
             <li key={r.url}>
               <code>{r.url}</code> — {r.status ?? r.error ?? '—'}
               {r.ok ? '' : ' (unexpected)'}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!!dimension.live?.checks?.length && (
+        <ul style={LIST_STYLE} data-testid={`checks-${dimension.id}`}>
+          {dimension.live.checks.map((check, i) => (
+            <li key={`${target(check)}-${i}`}>
+              <code>{target(check)}</code> —{' '}
+              <MarkTag
+                mark={check.mark}
+                words={
+                  check.message ? `${check.mark}: ${check.message}` : check.mark
+                }
+              />
             </li>
           ))}
         </ul>

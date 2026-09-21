@@ -302,18 +302,49 @@ export interface VerifyDifference {
   currentLine?: number;
 }
 
+/** One live check of a dimension: an object or URL of the installation, read as the person. */
+export interface LiveCheck {
+  kind: string;
+  namespace?: string;
+  resource?: string;
+  name?: string;
+  url?: string;
+  mark: VerifyMark;
+  /** What was seen, in one line: the condition, the status, the refusal. */
+  message?: string;
+  /** The definition's sentence next to the probe. */
+  note?: string;
+  revision?: string;
+}
+
+/** muster's answer when the person's session is not connected to the installation. */
+export interface LiveAuthRequired {
+  server: string;
+  authUrl?: string;
+  message: string;
+}
+
 export interface VerifyDimension {
   id: string;
   kind?: string;
   key?: string;
   mark: VerifyMark;
+  /** Why the dimension was not checked, in the manager's words. */
   reason?: string;
   files?: string[];
   differences?: VerifyDifference[];
   probe?: {
     expect?: number[];
-    requests?: { url: string; status?: number; error?: string; ok: boolean }[];
+    requests?: {
+      url: string;
+      client?: string;
+      status?: number;
+      error?: string;
+      ok: boolean;
+    }[];
   };
+  /** What a live dimension's checks answered (`verify_installation`). */
+  live?: { checks: LiveCheck[]; authRequired?: LiveAuthRequired };
 }
 
 export interface VerifyFeature {
@@ -329,6 +360,8 @@ export interface VerifyInputs {
   source: string;
   values?: Record<string, unknown>;
   readBack?: Record<string, unknown>;
+  /** The required choices no layer holds, by field; a commit refuses them. */
+  missing?: string[];
 }
 
 /**
@@ -387,6 +420,17 @@ export interface PlatformCapabilitiesApi {
     installation: string,
     capability: string,
     args?: CapabilityArgs,
+  ): Promise<VerifyResult>;
+  /**
+   * `verify_installation`: the definition's live checks of the running
+   * installation, read through muster as the signed-in person. `inputs` is
+   * the comparison's inputs object, so both halves render from the same;
+   * the answer is the live half alone, merged by the page (`mergeLive`).
+   */
+  verifyInstallation(
+    installation: string,
+    capability: string,
+    args?: { inputs?: VerifyInputs },
   ): Promise<VerifyResult>;
   listActions(filter: {
     installation?: string;
