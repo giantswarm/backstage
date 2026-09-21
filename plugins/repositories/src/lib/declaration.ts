@@ -1,6 +1,8 @@
 import {
   DeclarationEntry,
   DeclarationInput,
+  InventoryRecord,
+  LifecycleChange,
   Problem,
   Validation,
 } from '../apis';
@@ -473,6 +475,56 @@ export function toEntry(form: DeclarationForm): DeclarationEntry {
     ...(form.visibility.trim() && { visibility: form.visibility.trim() }),
     ...(form.align && { align: true }),
   };
+}
+
+/**
+ * GitHub's primary language as `gen.language`, for the ones devctl builds;
+ * anything else is generic.
+ */
+const GITHUB_LANGUAGES: Record<string, string> = {
+  Go: 'go',
+  Python: 'python',
+  TypeScript: 'node',
+  JavaScript: 'node',
+};
+
+/** The lifecycles an adoption may end a repository's life with. */
+export type AdoptedLifecycle = Exclude<LifecycleChange, 'deleted'>;
+
+/**
+ * The form for adopting a repository that exists and no team file declares:
+ * what GitHub knows of it as the declaration's start -- the description, the
+ * visibility (private, the org's default, left out), the language it is
+ * written in -- with the generic nature and the CircleCI generator off, since
+ * an adopted repository keeps the build it has; not opted in to alignment
+ * until the person says so. The team is the person's choice.
+ */
+export function fromReality(record: InventoryRecord): DeclarationForm {
+  const reality = record.reality;
+  return {
+    ...withGen(EMPTY, {
+      componentType: 'unspecified',
+      language: GITHUB_LANGUAGES[reality?.language ?? ''] ?? 'generic',
+      flavours: ['generic'],
+    }),
+    name: record.name,
+    description: reality?.description ?? '',
+    visibility: reality?.visibility.toLowerCase() === 'public' ? 'public' : '',
+    ciGenerate: false,
+    align: false,
+  };
+}
+
+/**
+ * The entry an adoption sends: the form's declaration and, when the
+ * adoption ends the repository's life, the lifecycle -- the manager adds the
+ * opt-in a lifecycle needs.
+ */
+export function adoptEntry(
+  form: DeclarationForm,
+  lifecycle?: AdoptedLifecycle,
+): DeclarationEntry {
+  return { ...toEntry(form), ...(lifecycle && { lifecycle }) };
 }
 
 /** The tools' arguments for the form: the same for the dry run and the commit. */

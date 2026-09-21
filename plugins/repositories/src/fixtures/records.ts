@@ -268,7 +268,9 @@ export const strayTool: InventoryRecord = {
   declaration: null,
   reality: {
     url: 'https://github.com/giantswarm/stray-tool',
+    description: 'A tool somebody forked and forgot',
     visibility: 'public',
+    language: 'Go',
     isArchived: false,
     isFork: true,
     isTemplate: false,

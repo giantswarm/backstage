@@ -14,6 +14,7 @@ export const unusedWrites: Pick<
   | 'validateRepository'
   | 'createRepository'
   | 'updateRepository'
+  | 'adoptRepository'
   | 'transferRepository'
   | 'setLifecycle'
   | 'alignRepository'
@@ -22,6 +23,7 @@ export const unusedWrites: Pick<
   validateRepository: unused('validate_repository'),
   createRepository: unused('create_repository'),
   updateRepository: unused('update_repository'),
+  adoptRepository: unused('adopt_repository'),
   transferRepository: unused('transfer_repository'),
   setLifecycle: unused('set_lifecycle'),
   alignRepository: unused('align_repository'),

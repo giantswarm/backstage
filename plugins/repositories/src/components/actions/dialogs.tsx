@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   ButtonLink,
@@ -21,9 +21,19 @@ import {
   Plan,
   repositoriesApiRef,
 } from '../../apis';
-import { EMPTY, flavourProblem } from '../../lib/declaration';
+import {
+  AdoptedLifecycle,
+  adoptEntry,
+  EMPTY,
+  flavourProblem,
+  fromReality,
+} from '../../lib/declaration';
 import { editedEntry, fromEntry, keptFields } from '../../lib/entry';
-import { DeclarationFields } from '../CreateRepositoryPage/DeclarationFields';
+import {
+  DeclarationFields,
+  TEAM_DESCRIPTION,
+  TeamSelect,
+} from '../CreateRepositoryPage/DeclarationFields';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
 import { useTeamOptions } from '../useTeamOptions';
 import { ActionDialog } from './ActionDialog';
@@ -324,6 +334,124 @@ export function LifecycleDialog({
       renderPlan={plan => <PlanView plan={plan} />}
       commit={() =>
         api.setLifecycle(record.repository, args(), { mode: 'commit' })
+      }
+      renderDone={result => <PullRequestOpened result={result} />}
+      commitLabel="Open pull request"
+      onDone={onDone}
+    />
+  );
+}
+
+/**
+ * Adopt: a repository that exists on GitHub and no team file declares gets
+ * its entry added to a team's file by `adopt_repository`; the team reviews
+ * the pull request. The form is the Create form opened on what GitHub knows
+ * of the repository -- the team the person's choice (their own first), the
+ * name the repository's, the description and visibility as they are, the
+ * language it is written in, the generic nature with the CircleCI generator
+ * off, not opted in until the checkbox says so, the reason. With a lifecycle
+ * (Deprecate or Archive on an undeclared row) the one pull request declares
+ * the repository and ends its life: the team and the reason are all there
+ * is to fill in, and the manager adds the opt-in the lifecycle needs.
+ */
+export function AdoptDialog({
+  record,
+  lifecycle,
+  isOpen,
+  onClose,
+  onDone,
+}: RowDialogProps & { lifecycle?: AdoptedLifecycle }) {
+  const api = useApi(repositoriesApiRef);
+  const [form, setForm] = useState(() => fromReality(record));
+  const { own, teams, loading, error } = useTeamOptions(form.team);
+  // The form opens on the person's team; the manager decides membership.
+  useEffect(() => {
+    const [team] = own;
+    if (team) {
+      setForm(current => (current.team ? current : { ...current, team }));
+    }
+  }, [own]);
+  const args = () => ({
+    team: form.team,
+    entry: adoptEntry(form, lifecycle),
+    reason: form.reason.trim() || undefined,
+  });
+  const undeclared = `${record.repository} exists on GitHub and no team file declares it.`;
+  const title = lifecycle
+    ? `${LIFECYCLE_VERB[lifecycle]} ${record.name}`
+    : `Adopt ${record.name}`;
+  const intro = lifecycle ? (
+    <>
+      {undeclared} One pull request, opened as you, declares it for the team
+      chosen below and sets <code>lifecycle: {lifecycle}</code>:{' '}
+      {LIFECYCLE_TEXT[lifecycle]} The entry also opts the repository in to
+      alignment, which the lifecycle needs. The ask goes to the team's channel,
+      where a member's Approve (or an approving review on GitHub) lands it.
+    </>
+  ) : (
+    <>
+      {undeclared} The declaration below is added to the chosen team's file
+      (repositories/&lt;team&gt;.yaml in giantswarm/github) in a pull request
+      opened as you; a member of the team approves it in its channel or on
+      GitHub. Opted in, the reconciler aligns the repository with the
+      declaration and the company baseline when it merges; not opted in, it
+      checks the repository and reports the drift. <DocsLink />
+    </>
+  );
+  return (
+    <ActionDialog<Plan, Committed>
+      title={title}
+      intro={intro}
+      isOpen={isOpen}
+      onClose={onClose}
+      ready={
+        form.team.length > 0 && !flavourProblem(form.language, form.flavours)
+      }
+      fields={
+        <>
+          {lifecycle ? (
+            <>
+              <TeamSelect
+                form={form}
+                onChange={setForm}
+                teams={teams}
+                teamsLoading={loading}
+                description={TEAM_DESCRIPTION.adopt}
+              />
+              <TextField
+                {...reasonField()}
+                value={form.reason}
+                onChange={reason => setForm({ ...form, reason })}
+              />
+            </>
+          ) : (
+            <DeclarationFields
+              form={form}
+              onChange={setForm}
+              subject={{
+                kind: 'adopt',
+                repository: record.repository,
+                createdAt: record.reality?.createdAt,
+                teams,
+                teamsLoading: loading,
+              }}
+              isDisabled={false}
+            />
+          )}
+          {error && (
+            <RepositoriesErrorAlert
+              title="The teams could not be read"
+              error={error}
+            />
+          )}
+        </>
+      }
+      dryRun={() =>
+        api.adoptRepository(record.repository, args(), { dryRun: true })
+      }
+      renderPlan={plan => <PlanView plan={plan} />}
+      commit={() =>
+        api.adoptRepository(record.repository, args(), { mode: 'commit' })
       }
       renderDone={result => <PullRequestOpened result={result} />}
       commitLabel="Open pull request"

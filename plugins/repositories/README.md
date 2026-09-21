@@ -95,7 +95,19 @@ commit` -- the repository and one scaffold commit as the person, then the
   the name. Once the reconciler has reported, the record with its set-up
   steps shows beneath, as the row shows it.
 - **Row actions** on the expanded record, each one tool call as the person
-  with the manager's plan reviewed first: _Edit_ (`update_repository`: the
+  with the manager's plan reviewed first. An undeclared repository -- on
+  GitHub, in no team file, the _Unassigned_ scope -- has no entry to edit,
+  move or delete: its row offers _Adopt_ (`adopt_repository`: the Create
+  form opened on what GitHub knows of the repository -- the team a choice,
+  the person's own first, the name the repository's, the description and
+  visibility as they are, the language it is written in, the generic nature
+  with the CircleCI generator off, the opt-in to alignment as the checkbox,
+  the reason -- and the entry added to the team's file in a pull request the
+  team reviews), _Deprecate_ and _Archive_ (the same call with the lifecycle
+  in the entry: the one pull request declares the repository and ends its
+  life; the team and the reason are all there is to fill in, the manager adds
+  the opt-in the lifecycle needs), _Align now_ (a check from a team), and a
+  line saying no team file declares it. A declared repository's row: _Edit_ (`update_repository`: the
   entry as the Create form shows it -- description, visibility, the preset
   with the declaration behind _Adjust_, the opt-in to alignment (`align`),
   the reason -- opened on the entry as it stands, the team and the name

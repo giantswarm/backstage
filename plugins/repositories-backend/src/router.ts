@@ -76,6 +76,12 @@ const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
     ...WRITE_OPTIONS,
   },
   update_repository: { entry: 'object', reason: 'string', ...WRITE_OPTIONS },
+  adopt_repository: {
+    team: 'string',
+    entry: 'object',
+    reason: 'string',
+    ...WRITE_OPTIONS,
+  },
   transfer_repository: {
     toTeam: 'string',
     reason: 'string',
@@ -335,6 +341,7 @@ export async function createRouter(
     });
 
   toolOfRepository('update', 'update_repository');
+  toolOfRepository('adopt', 'adopt_repository');
   toolOfRepository('transfer', 'transfer_repository');
   toolOfRepository('lifecycle', 'set_lifecycle');
   toolOfRepository('align', 'align_repository');
