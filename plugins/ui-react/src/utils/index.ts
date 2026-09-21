@@ -13,3 +13,4 @@ export {
   MAX_CATEGORICAL_SERIES,
   OTHER_SERIES_LABEL,
 } from './chartPalette';
+export { stopRowPress } from './rowPress';

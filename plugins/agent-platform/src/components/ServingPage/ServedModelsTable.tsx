@@ -15,7 +15,7 @@ import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { modelDetailRouteRef } from '../../routes';
-import { stopRowPress } from '../../lib/rowPress';
+import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
   formatBytes,

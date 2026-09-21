@@ -33,3 +33,4 @@ export * from './SyncMark';
 export * from './StructuredMetadataList';
 export * from './YamlEditor';
 export * from './YamlEditorFormField';
+export * from './UserEntityLink';

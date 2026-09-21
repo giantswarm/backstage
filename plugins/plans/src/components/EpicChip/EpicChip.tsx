@@ -1,6 +1,7 @@
 import { Tooltip } from '@material-ui/core';
 import { Badge } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
+import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import {
   discoveryApiRef,
   fetchApiRef,
@@ -19,11 +20,22 @@ interface BoardItem {
 }
 
 /**
- * Chip linking a plan to the roadmap epic it implements. When the roadmap
- * plugin can resolve the epic's board item, the chip shows its Status and
- * links to the epic detail view; otherwise it links to the GitHub issue.
+ * Links a plan to the roadmap epic it implements. When the roadmap plugin can
+ * resolve the epic's board item the link points at the epic detail view;
+ * otherwise it falls back to the GitHub issue.
+ *
+ * `variant` picks how much the link has to say for itself. As a `badge` it
+ * names itself ("Epic #123") because it sits among a list row's other
+ * content; as a `link` it is just the issue number, because it sits in a
+ * column already headed "Epic".
  */
-export function EpicChip({ epic }: { epic: EpicRef }) {
+export function EpicChip({
+  epic,
+  variant = 'badge',
+}: {
+  epic: EpicRef;
+  variant?: 'badge' | 'link';
+}) {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
   const itemLink = useRouteRef(roadmapItemExternalRouteRef);
@@ -49,13 +61,34 @@ export function EpicChip({ epic }: { epic: EpicRef }) {
 
   const status = item?.fields?.Status;
   const to = item && itemLink ? itemLink({ id: item.id }) : epic.url;
+  // The status only ever reached the badge's label, so as a plain link it
+  // would be lost; the tooltip carries it instead.
+  const tooltip = [
+    item?.title ?? `${epic.owner}/${epic.repo}#${epic.number}`,
+    status,
+  ]
+    .filter(Boolean)
+    .join(' \u00b7 ');
 
   return (
-    <Tooltip title={item?.title ?? `${epic.owner}/${epic.repo}#${epic.number}`}>
-      <Link to={to} underline="none">
-        <Badge size="small">
-          {status ? `Epic · ${status}` : `Epic #${epic.number}`}
-        </Badge>
+    <Tooltip title={tooltip}>
+      {/* The chip sits inside a table row and a list row, both of which act on
+          a press anywhere within them. Without this, clicking the chip would
+          open the epic *and* open (or re-select) the plan behind it. */}
+      <Link
+        to={to}
+        underline={variant === 'link' ? 'hover' : 'none'}
+        onPointerDown={stopRowPress}
+        onPointerUp={stopRowPress}
+        onClick={stopRowPress}
+      >
+        {variant === 'link' ? (
+          `#${epic.number}`
+        ) : (
+          <Badge size="small">
+            {status ? `Epic · ${status}` : `Epic #${epic.number}`}
+          </Badge>
+        )}
       </Link>
     </Tooltip>
   );
