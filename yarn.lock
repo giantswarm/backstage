@@ -351,15 +351,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@apidevtools/json-schema-ref-parser@npm:^15.3.1":
-  version: 15.5.2
-  resolution: "@apidevtools/json-schema-ref-parser@npm:15.5.2"
+"@apidevtools/json-schema-ref-parser@npm:^16.0.0":
+  version: 16.0.3
+  resolution: "@apidevtools/json-schema-ref-parser@npm:16.0.3"
   dependencies:
-    js-yaml: "npm:^5.2.2"
-    undici: "npm:^6.28.0"
+    js-yaml: "npm:^5.4.2"
+    undici: "npm:^8.10.2"
   peerDependencies:
     "@types/json-schema": ^7.0.15
-  checksum: 10c0/bf37d0c4f922a099232475c2b45cb18e1450751e1cea17744d6f36007796e527e79dc69a2ff4d2de377a7503a22457b7afd0fdcea6ae7d0b0bc771753c00a1c1
+  checksum: 10c0/ce69272ba4939ab98d6c9572cddc7d0854c29c8d90afa05bd6c3d43ab1b45e1d80f85fc7283ad792a894ef517fa3d99160e6e236d63b091627fdc841cc4a45f1
   languageName: node
   linkType: hard
 
@@ -7910,7 +7910,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs@workspace:plugins/gs"
   dependencies:
-    "@apidevtools/json-schema-ref-parser": "npm:^15.3.1"
+    "@apidevtools/json-schema-ref-parser": "npm:^16.0.0"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
@@ -29385,7 +29385,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"js-yaml@npm:^5.0.0, js-yaml@npm:^5.1.0, js-yaml@npm:^5.2.2":
+"js-yaml@npm:^5.0.0, js-yaml@npm:^5.1.0":
   version: 5.4.1
   resolution: "js-yaml@npm:5.4.1"
   dependencies:
@@ -29393,6 +29393,17 @@ __metadata:
   bin:
     js-yaml: bin/js-yaml.mjs
   checksum: 10c0/efe9dfaf222809694d375ad5ecca825561d2432eb55bc0f628911c0dfa4dbce98a71dcbc3252f630208bbdf5f4e9ac363847e4a7f49845b577ae2548b8fcf147
+  languageName: node
+  linkType: hard
+
+"js-yaml@npm:^5.4.2":
+  version: 5.4.2
+  resolution: "js-yaml@npm:5.4.2"
+  dependencies:
+    argparse: "npm:^2.0.1"
+  bin:
+    js-yaml: bin/js-yaml.mjs
+  checksum: 10c0/ba7e0f72c93c7a84eca2c3de45d2a9188b16a20e83f036df723a3ac29e841496382d0b0849592f63028d1c640bcc5b65f88800da342f47469b5b99bda5c75bfc
   languageName: node
   linkType: hard
 
@@ -40829,7 +40840,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici@npm:8.10.2, undici@npm:^8.7.0, undici@npm:^8.9.0":
+"undici@npm:8.10.2, undici@npm:^8.10.2, undici@npm:^8.7.0, undici@npm:^8.9.0":
   version: 8.10.2
   resolution: "undici@npm:8.10.2"
   checksum: 10c0/66d7fc69149207cab570d6abbc9e965b6afe1ae889a7d46945b431165c973d6a56f3dd8b70a856e7ae1e550b6366a1cde6f06e68640587f0dadca38de72995ee
