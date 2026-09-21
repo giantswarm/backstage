@@ -28,6 +28,7 @@
     "@backstage/core-components": "backstage:^",
     "@backstage/core-plugin-api": "backstage:^",
     "@backstage/frontend-plugin-api": "backstage:^",
+    "@backstage/plugin-auth-react": "backstage:^",
     "@backstage/plugin-catalog-react": "backstage:^",
     "@backstage/plugin-kubernetes-react": "backstage:^",
     "@backstage/ui": "backstage:^",

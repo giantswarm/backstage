@@ -17,7 +17,7 @@ import { dump } from 'js-yaml';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import {
@@ -333,10 +333,12 @@ export function NewAgentReviewPage() {
   const shape = toolsetShape(declared);
 
   // Persist the same deterministic avatar the UI renders onto the resource, as
-  // the size-agnostic canonical URL. Seeded by the technical name so it matches
-  // the created agent; undefined when the installation has no configured base
-  // domain (then the chart keeps its default).
-  const buildAvatarUrl = useAgentAvatarUrl();
+  // the size-agnostic canonical URL on the installation's own avatars host —
+  // what every A2A client loads, unlike the portal's backend-proxied `<img>`.
+  // Seeded by the technical name so it matches the created agent; undefined
+  // when the installation has no configured base domain (then the chart keeps
+  // its default).
+  const buildIconUrl = useAgentIconUrl();
 
   // The form as agent-manager's create contract. Memoized so the dry run is not
   // re-requested on every re-render — this page re-renders as the queries below
@@ -346,9 +348,9 @@ export function NewAgentReviewPage() {
     () =>
       agentSpecOf(state, {
         toolset: declared,
-        iconUrl: buildAvatarUrl(state.installation, state.slug),
+        iconUrl: buildIconUrl(state.installation, state.slug),
       }),
-    [state, declared, buildAvatarUrl],
+    [state, declared, buildIconUrl],
   );
   const namespace = spec.namespace;
 

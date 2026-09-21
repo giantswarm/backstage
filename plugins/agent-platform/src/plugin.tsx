@@ -66,6 +66,10 @@ const agentPlatformPage = PageBlueprint.make({
 // flow (`/agent-platform/agents/new`, `.../new/skills`, `.../new/tools` and
 // `.../new/review`),
 // all driven by an internal react-router in AgentsRouter.
+//
+// Wrapped, like the Sessions tab, in the backend's cookie auth: both render
+// agent avatars, `<img>` loads through the agent-platform backend that the
+// browser's user cookie authenticates (see AgentPlatformCookieAuth).
 const agentsSubPage = SubPageBlueprint.make({
   name: 'agents',
   params: {
@@ -73,8 +77,17 @@ const agentsSubPage = SubPageBlueprint.make({
     title: 'Agents',
     routeRef: agentsRouteRef,
     loader: async () => {
-      const { AgentsRouter } = await import('./components/AgentsRouter');
-      return <AgentsRouter />;
+      const [{ AgentsRouter }, { AgentPlatformCookieAuth }] = await Promise.all(
+        [
+          import('./components/AgentsRouter'),
+          import('./components/AgentPlatformCookieAuth'),
+        ],
+      );
+      return (
+        <AgentPlatformCookieAuth>
+          <AgentsRouter />
+        </AgentPlatformCookieAuth>
+      );
     },
   },
 });
@@ -94,8 +107,16 @@ const sessionsSubPage = SubPageBlueprint.make({
     title: 'Sessions',
     routeRef: sessionsRouteRef,
     loader: async () => {
-      const { SessionsRouter } = await import('./components/SessionsRouter');
-      return <SessionsRouter />;
+      const [{ SessionsRouter }, { AgentPlatformCookieAuth }] =
+        await Promise.all([
+          import('./components/SessionsRouter'),
+          import('./components/AgentPlatformCookieAuth'),
+        ]);
+      return (
+        <AgentPlatformCookieAuth>
+          <SessionsRouter />
+        </AgentPlatformCookieAuth>
+      );
     },
   },
 });
