@@ -7,6 +7,7 @@ describe('markOf', () => {
     ['enabled', 'enabled', 'in sync'],
     ['enabled', undefined, 'not reconciled'],
     ['enabled', 'denied', 'not reconciled'],
+    ['enabled, not opted in', undefined, 'not reconciled'],
     ['drifted', 'drifted', 'not in sync'],
     ['pending approval', 'pending approval', 'not reconciled'],
     ['rolling out', 'rolling out', 'not reconciled'],

@@ -10,6 +10,7 @@ import { compared, countsOf, foundWords, redProbeOf } from '../lib/comparison';
 /** The colour of each state and comparison mark, shared by the tag and the icon. */
 export const STATE_COLOR: Record<CapabilityStateName | VerifyMark, string> = {
   'not opted in': '#8a8a8a',
+  'enabled, not opted in': '#2e8b57',
   'not enabled': '#8a8a8a',
   'pending approval': '#b8860b',
   'rolling out': '#1e7fd8',
@@ -27,6 +28,7 @@ export const STATE_COLOR: Record<CapabilityStateName | VerifyMark, string> = {
 /** The page's word for each of the manager's states; the manager's own never appear. */
 export const STATE_WORDS: Record<CapabilityStateName, string> = {
   'not opted in': 'Not installed',
+  'enabled, not opted in': 'Installed',
   'not enabled': 'Not installed',
   'pending approval': 'Pending approval',
   'rolling out': 'Rolling out',
@@ -57,6 +59,7 @@ export function statusOf(
   const { state } = capability;
   switch (state) {
     case 'enabled':
+    case 'enabled, not opted in':
     case 'drifted': {
       if (!comparison) {
         return { words: STATE_WORDS[state], tone: state };

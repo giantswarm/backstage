@@ -29,6 +29,7 @@ import {
   DRIFTED,
   ENABLED,
   ENABLED_BY_HAND,
+  ENABLED_NOT_OPTED_IN,
   FAILED,
   FakeApi,
   installation,
@@ -46,6 +47,7 @@ import { platformCapabilitiesPlugin } from '../src/plugin';
 const INSTALLATIONS = [
   ENABLED,
   ENABLED_BY_HAND,
+  ENABLED_NOT_OPTED_IN,
   DRIFTED,
   ROLLING_OUT,
   FAILED,

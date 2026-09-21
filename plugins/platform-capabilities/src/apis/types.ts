@@ -6,6 +6,7 @@
 /** The state of a capability on an installation, in the manager's words. */
 export type CapabilityStateName =
   | 'not opted in'
+  | 'enabled, not opted in'
   | 'not enabled'
   | 'pending approval'
   | 'rolling out'
@@ -49,7 +50,10 @@ export interface CapabilityState {
   state: CapabilityStateName;
   inputs?: { installation?: InstallationRecord };
   enabledMarker?: string;
+  /** The capability's fileset is on record, whoever put it there. */
   enabled?: boolean;
+  /** The owners have declared the opt-in: the manager may write here. */
+  optedIn?: boolean;
   lastAction?: ActionRef | null;
 }
 

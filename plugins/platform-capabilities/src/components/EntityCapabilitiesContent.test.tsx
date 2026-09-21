@@ -7,6 +7,7 @@ import { platformCapabilitiesApiRef } from '../apis';
 import {
   ACTION,
   ENABLED,
+  ENABLED_NOT_OPTED_IN,
   FakeApi,
   FakeOptions,
   NOT_OPTED_IN,
@@ -180,5 +181,19 @@ describe('EntityCapabilitiesContent', () => {
     );
     expect(within(card).getByRole('button', { name: 'Enable' })).toBeDisabled();
     expect(within(card).queryByTestId('opt-in-note')).toBeNull();
+  });
+
+  it('an installation enabled by its owners without the opt-in reads Installed with its comparison, names the file, the button disabled', async () => {
+    await render('maple', { installations: [ENABLED_NOT_OPTED_IN] });
+    const card = screen.getByTestId('capability-agent-platform');
+    expect(within(card).getByTestId('capability-state')).toHaveTextContent(
+      'Installed · 2 differences',
+    );
+    expect(within(card).getByTestId('needs-owners')).toHaveTextContent(
+      'management-clusters/maple/platform-manager.yaml with optIn: true from the owners.',
+    );
+    expect(
+      within(card).getByRole('button', { name: 'Apply changes' }),
+    ).toBeDisabled();
   });
 });
