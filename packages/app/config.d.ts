@@ -195,29 +195,39 @@ export interface Config {
      * Sentry error reporting of the frontend. Initialised at app boot, before
      * anyone is signed in, so every field is public; the DSN is the public
      * client key Sentry issues for browsers.
+     *
+     * The fields are optional in the schema because deployments fill them
+     * from the environment (`${SENTRY_DSN_APP}`, `${VERSION}`), and the
+     * config loader drops a key whose variable is unset. The app-backend
+     * refuses to start on a missing *required* public field, so a required
+     * leaf here would turn an unset variable into an outage; the reporter
+     * itself needs the whole block and fails at boot without it.
      */
     errorReporter?: {
       sentry: {
         /** @visibility frontend */
-        dsn: string;
+        dsn?: string;
         /** @visibility frontend */
-        environment: string;
+        environment?: string;
         /** @visibility frontend */
-        releaseVersion: string;
+        releaseVersion?: string;
         /** @visibility frontend */
-        tracesSampleRate: number;
+        tracesSampleRate?: number;
       };
     };
 
     /**
      * TelemetryDeck page-view analytics of the frontend. Initialised at app
      * boot, so both fields are public; the salt only hashes the user id.
+     * Optional in the schema for the same reason as the Sentry fields: the
+     * salt comes from `${TELEMETRYDECK_SALT}`, unset on a deployment without
+     * analytics.
      */
     telemetrydeck?: {
       /** @visibility frontend */
-      appID: string;
+      appID?: string;
       /** @visibility frontend */
-      salt: string;
+      salt?: string;
     };
   };
 }
