@@ -108,14 +108,26 @@ export function count(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
-/** `2 differences`, `1 planned change`: the parts that are zero left out. */
-export function foundWords(counts: Counts): string[] {
+/**
+ * What a count counts: the manager's checks (one per dimension) on the
+ * header, the feature lines and the planned line; the values of a file
+ * (one per leaf that differs) on its group.
+ */
+export type Unit = 'check' | 'value';
+
+/**
+ * `1 check differs`, `3 checks differ · 16 checks planned`, `11 values
+ * differ`: the parts that are zero left out, the unit named so a count of
+ * checks is never read as one of values.
+ */
+export function foundWords(counts: Counts, unit: Unit): string[] {
   const words: string[] = [];
   if (counts.differences > 0) {
-    words.push(count(counts.differences, 'difference'));
+    const verb = counts.differences === 1 ? 'differs' : 'differ';
+    words.push(`${count(counts.differences, unit)} ${verb}`);
   }
   if (counts.planned > 0) {
-    words.push(count(counts.planned, 'planned change'));
+    words.push(`${count(counts.planned, unit)} planned`);
   }
   return words;
 }
@@ -155,6 +167,24 @@ export interface FileGroup {
   file: string;
   plan?: PlanFile;
   differences: MarkedDifference[];
+  /** The hub the file is on, where that is another installation than the one compared. */
+  hub?: string;
+}
+
+/**
+ * The hub a file is on: the comparison's hub, where it is another
+ * installation and a segment of the file's path names it (the manager
+ * renders `management-clusters/<name>/…` and `installations/<name>/…`).
+ * The portal of an installation lives on its hub, so the hub's files
+ * appear in the installation's comparison.
+ */
+export function hubOf(file: string, result: VerifyResult): string | undefined {
+  const { hub, installation } = result;
+  if (!hub || hub === installation) {
+    return undefined;
+  }
+  const path = file.slice(file.indexOf(':') + 1);
+  return path.split('/').includes(hub) ? hub : undefined;
 }
 
 /**
@@ -175,6 +205,7 @@ export function fileGroups(result: VerifyResult): FileGroup[] {
             f => `${f.repository}:${f.path}` === difference.file,
           ),
           differences: [],
+          hub: hubOf(difference.file, result),
         };
         group.differences.push({
           difference,
@@ -191,6 +222,17 @@ export function fileGroups(result: VerifyResult): FileGroup[] {
 export function countsOfDifferences(differences: MarkedDifference[]): Counts {
   const planned = differences.filter(d => d.mark === 'planned').length;
   return { differences: differences.length - planned, planned };
+}
+
+/** The file groups apart: those with a difference to apply, and those whose changes are all planned. */
+export function splitGroups(groups: FileGroup[]): {
+  toApply: FileGroup[];
+  planned: FileGroup[];
+} {
+  const toApply = groups.filter(
+    g => countsOfDifferences(g.differences).differences > 0,
+  );
+  return { toApply, planned: groups.filter(g => !toApply.includes(g)) };
 }
 
 /** Whether a differing dimension says something the file groups do not: a reason, a probe's requests, a difference without a file. */

@@ -1,3 +1,4 @@
+import { CSSProperties } from 'react';
 import { Flex, Text } from '@backstage/ui';
 import { VerifyFeature, VerifyResult } from '../apis';
 import {
@@ -9,14 +10,17 @@ import {
   foundWords,
   hasOwnFacts,
   notChecked,
+  splitGroups,
 } from '../lib/comparison';
 import { DimensionItem, LIST_STYLE } from './DimensionItem';
 import { FileGroup } from './FileDiff';
 
+const PLANNED_STYLE: CSSProperties = { paddingLeft: 16, marginTop: 4 };
+
 const title = (feature: { id: string; title?: string }) =>
   feature.title ?? feature.id;
 
-/** How a feature's differing dimensions split: differences to apply and planned changes. */
+/** How a feature's differing dimensions split: checks that differ, to apply, and checks whose change is planned. */
 function countsOfFeature(feature: VerifyFeature) {
   const dimensions = differingDimensions(feature);
   const differences = dimensions.filter(d => differs(d.mark)).length;
@@ -24,12 +28,13 @@ function countsOfFeature(feature: VerifyFeature) {
 }
 
 /**
- * What the comparison found, one line per fact: each feature with
- * differences; the features whose changes are all planned, as one line;
- * then one group per file that differs, headed by its path and opening to
- * its diff with every reason on its line; the dimensions with facts of
- * their own (a reason, a probe, an object); the features as defined, as
- * one line; the checks that did not run, by reason.
+ * What the comparison found, one line per fact: each feature with a check
+ * that differs; one group per file with a difference to apply, headed by
+ * its path and open to its diff with every reason on its line; the
+ * features whose changes are all planned, as one line that opens to their
+ * files' groups so every planned change is reachable; the dimensions with
+ * facts of their own (a reason, a probe, an object); the features as
+ * defined, as one line; the checks that did not run, by reason.
  */
 export function ComparisonView({ result }: { result: VerifyResult }) {
   const features = result.features ?? [];
@@ -46,7 +51,7 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
     f => differingDimensions(f).length === 0 && checkedDimensions(f).length > 0,
   );
   const pending = notChecked(features);
-  const groups = fileGroups(result);
+  const { toApply, planned } = splitGroups(fileGroups(result));
   const facts = features.flatMap(f =>
     differingDimensions(f).filter(hasOwnFacts),
   );
@@ -58,17 +63,30 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
           variant="body-small"
           data-testid={`feature-${feature.id}`}
         >
-          {title(feature)} — {foundWords(countsOfFeature(feature)).join(' · ')}
+          {title(feature)} —{' '}
+          {foundWords(countsOfFeature(feature), 'check').join(' · ')}
         </Text>
       ))}
-      {plannedOnly.length > 0 && (
-        <Text variant="body-small" color="secondary" data-testid="planned">
-          {plannedOnly.map(title).join(', ')}: planned changes ({plannedCount})
-        </Text>
-      )}
-      {groups.map(group => (
+      {toApply.map(group => (
         <FileGroup key={group.file} group={group} />
       ))}
+      {plannedOnly.length > 0 ? (
+        <details data-testid="planned">
+          <summary>
+            <Text as="span" variant="body-small" color="secondary">
+              {plannedOnly.map(title).join(', ')}:{' '}
+              {foundWords({ differences: 0, planned: plannedCount }, 'check')}
+            </Text>
+          </summary>
+          <Flex direction="column" gap="1" style={PLANNED_STYLE}>
+            {planned.map(group => (
+              <FileGroup key={group.file} group={group} />
+            ))}
+          </Flex>
+        </details>
+      ) : (
+        planned.map(group => <FileGroup key={group.file} group={group} />)
+      )}
       {facts.length > 0 && (
         <ul style={LIST_STYLE} data-testid="dimension-facts">
           {facts.map(dimension => (

@@ -574,6 +574,186 @@ export const MIXED: VerifyResult = {
   summary: { ...VERIFIED.summary, drifted: 2, planned: 1 },
 };
 
+/** The patch's file, `<repository>:<path>`, as a difference names it. */
+const PATCH_FILE = `${PLAN.installations[0].files![0].repository}:${
+  PLAN.installations[0].files![0].path
+}`;
+
+/**
+ * The patch as the definition renders it after a rewrite: a header
+ * comment, the components block new, kagent's replicas one.
+ */
+export const REWRITE_RENDERED = [
+  '# Rendered by the platform manager for rowan.',
+  'components:',
+  '  kagent:',
+  '    enabled: true',
+  '  postgres:',
+  '    enabled: true',
+  'kagent:',
+  '  replicas: 1',
+  'llmRouting:',
+  '  enabled: true',
+  '',
+].join('\n');
+
+/**
+ * The same patch as its owners wrote it by hand, read back with SOPS's
+ * four-space indentation: comment blocks, a gateway block the definition
+ * no longer renders (its `enabled: true` the same text as the components'),
+ * two replicas.
+ */
+export const REWRITE_ON_RECORD = [
+  '# Agent platform values for rowan.',
+  '# Edited by hand.',
+  'gateway:',
+  '    jwksEgress:',
+  '        enabled: true',
+  '',
+  '# kagent runs two replicas.',
+  'kagent:',
+  '    replicas: 2',
+  'llmRouting:',
+  '    # Routing stays on for the agents.',
+  '    # Do not turn this off.',
+  '    enabled: true',
+  '',
+].join('\n');
+
+/**
+ * rowan's patch rewritten by the definition: one check differs (the
+ * replicas), one carries the planned changes (the components block added,
+ * the gateway block removed).
+ */
+export const REWRITTEN: VerifyResult = {
+  ...UP_TO_DATE,
+  state: 'drifted',
+  features: [
+    ...UP_TO_DATE.features,
+    {
+      id: 'runtime',
+      title: 'Runtime',
+      mark: 'drifted',
+      marks: { drifted: 1, planned: 1 },
+      dimensions: [
+        {
+          id: 'patch-top-level-keys',
+          kind: 'configmap',
+          mark: 'drifted',
+          differences: [
+            {
+              file: PATCH_FILE,
+              path: 'kagent.replicas',
+              rendered: 1,
+              current: 2,
+              line: 8,
+              currentLine: 9,
+            },
+          ],
+        },
+        {
+          id: 'patch-components',
+          kind: 'configmap',
+          mark: 'planned',
+          differences: [
+            {
+              file: PATCH_FILE,
+              path: 'components.kagent.enabled',
+              planned:
+                'Added: components.kagent.enabled is written explicitly with the value this installation gets · M7',
+              rendered: true,
+              line: 4,
+            },
+            {
+              file: PATCH_FILE,
+              path: 'components.postgres.enabled',
+              planned:
+                'Added: postgres.enabled is written explicitly (on where kagent runs) · M7',
+              rendered: true,
+              line: 6,
+            },
+            {
+              file: PATCH_FILE,
+              path: 'gateway.jwksEgress.enabled',
+              planned:
+                'Removed: gateway.jwksEgress is the shared default here · M8',
+              current: true,
+              currentLine: 5,
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  summary: { 'as defined': 3, drifted: 1, planned: 1 },
+  files: [
+    {
+      ...PLAN.installations[0].files![0],
+      change: 'update',
+      content: REWRITE_RENDERED,
+      current: REWRITE_ON_RECORD,
+    },
+  ],
+  diff: { update: 1, unchanged: 1 },
+  pullRequests: [PLAN.pullRequests![0]],
+};
+
+/** The hub's file rowan's portal section lives in: hazel's Backstage serves rowan. */
+export const HUB_PORTAL_FILE =
+  'example/example-management-clusters:management-clusters/hazel/extras/backstage/agent-platform/kustomization.yaml';
+
+const MOVED =
+  "Moved: the portal's Agent Platform settings leave the main app-config for a kustomize Component the platform owns · M3";
+
+/**
+ * rowan with planned changes only, one feature of them on its hub hazel:
+ * the portal's component moves into a kustomization of hazel's Backstage.
+ */
+export const PLANNED_ON_HUB: VerifyResult = {
+  ...PLANNED,
+  hub: 'hazel',
+  features: [
+    ...PLANNED.features.filter(f => f.id !== 'portal'),
+    {
+      id: 'portal',
+      title: 'Portal section',
+      mark: 'planned',
+      marks: { planned: 1 },
+      dimensions: [
+        {
+          id: 'portal-extra-files',
+          kind: 'backstage',
+          mark: 'planned',
+          differences: [
+            {
+              file: HUB_PORTAL_FILE,
+              path: 'resources[app-config.yaml]',
+              planned: MOVED,
+              rendered: 'app-config.yaml',
+            },
+            {
+              file: HUB_PORTAL_FILE,
+              path: 'resources[values.yaml]',
+              planned: MOVED,
+              rendered: 'values.yaml',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  summary: { 'as defined': 3, planned: 2 },
+  files: [
+    ...PLANNED.files!,
+    {
+      repository: 'example/example-management-clusters',
+      path: 'management-clusters/hazel/extras/backstage/agent-platform/kustomization.yaml',
+      change: 'create',
+    },
+  ],
+  diff: { update: 1, create: 1, unchanged: 1 },
+};
+
 /**
  * rowan not compared: the record failed the definition's schema, so the
  * manager refused and checked nothing -- every dimension not checked.

@@ -15,11 +15,14 @@ import {
   ENABLED_NOT_OPTED_IN,
   FakeApi,
   FakeOptions,
+  HUB_PORTAL_FILE,
   installation,
   MIXED,
   NOT_COMPARED,
   NOT_OPTED_IN,
   PLANNED,
+  PLANNED_ON_HUB,
+  REWRITTEN,
   UP_TO_DATE,
   VERIFIED,
 } from '../fixtures/fakeApi';
@@ -150,7 +153,7 @@ describe('CapabilityCard', () => {
       'installed with differences',
       { state: 'enabled', enabled: true },
       VERIFIED,
-      'Installed · 2 differences',
+      'Installed · 2 checks differ',
     ],
     [
       'installed, up to date',
@@ -162,7 +165,7 @@ describe('CapabilityCard', () => {
       'drifted by the last check',
       { state: 'drifted', enabled: true },
       VERIFIED,
-      'Installed · 2 differences',
+      'Installed · 2 checks differ',
     ],
     [
       'enabling, pending approval',
@@ -221,10 +224,10 @@ describe('CapabilityCard', () => {
     );
     // Only the features with differences are listed, closed.
     expect(screen.getByTestId('feature-secrets')).toHaveTextContent(
-      'Secrets — 1 difference',
+      'Secrets — 1 check differs',
     );
     expect(screen.getByTestId('feature-runtime')).toHaveTextContent(
-      'Runtime — 1 difference',
+      'Runtime — 1 check differs',
     );
     expect(screen.queryByTestId('feature-identity')).toBeNull();
     expect(screen.getByTestId('as-defined')).toHaveTextContent(
@@ -284,7 +287,7 @@ describe('CapabilityCard', () => {
     await render(ENABLED_NOT_OPTED_IN, {
       verified: { ...VERIFIED, commitRefused: 'maple is not opted in' },
     });
-    expect(header()).toHaveTextContent('Installed · 2 differences');
+    expect(header()).toHaveTextContent('Installed · 2 checks differ');
     expect(
       screen.getByRole('button', { name: 'Apply changes' }),
     ).toBeDisabled();
@@ -349,7 +352,7 @@ describe('CapabilityCard', () => {
     });
     expect(api.writes).toHaveLength(0);
     expect(within(dialog).getByTestId('feature-runtime')).toHaveTextContent(
-      'Runtime — 1 difference',
+      'Runtime — 1 check differs',
     );
     expect(within(dialog).getByTestId('plan-files')).toHaveTextContent(
       'configmap-values.yaml.patch — update',
@@ -434,11 +437,11 @@ describe('CapabilityCard', () => {
       render(withCapability({ state: 'enabled', enabled: true }), { verified });
 
     it.each<[string, VerifyResult, string]>([
-      ['only planned changes', PLANNED, 'Installed · 1 planned change'],
+      ['only planned changes', PLANNED, 'Installed · 1 check planned'],
       [
         'differences and planned changes',
         MIXED,
-        'Installed · 3 differences · 1 planned change',
+        'Installed · 3 checks differ · 1 check planned',
       ],
       ['the definition refused', NOT_COMPARED, 'Installed · not compared'],
       [
@@ -451,11 +454,15 @@ describe('CapabilityCard', () => {
       expect(header()).toHaveTextContent(words);
     });
 
-    it('collapses the features whose changes are all planned into one line', async () => {
+    it('collapses the features whose changes are all planned into one line that opens to their files', async () => {
       await enabled(PLANNED);
-      expect(screen.getByTestId('planned')).toHaveTextContent(
-        'Runtime: planned changes (1)',
+      const planned = screen.getByTestId('planned');
+      expect(planned.querySelector('summary')).toHaveTextContent(
+        'Runtime: 1 check planned',
       );
+      expect(planned).not.toHaveAttribute('open');
+      // Every planned change is reachable: the file's group is inside the line.
+      expect(within(planned).getByTestId(`file-${PATCH}`)).toBeInTheDocument();
       expect(screen.queryByTestId('feature-runtime')).toBeNull();
       expect(screen.getByTestId('as-defined')).toHaveTextContent(
         'Identity, Tool access, Portal section: as defined',
@@ -468,13 +475,13 @@ describe('CapabilityCard', () => {
     it('shows one diff per file with every reason on its line', async () => {
       await enabled(MIXED);
       expect(screen.getByTestId('feature-migrations')).toHaveTextContent(
-        'Migrations — 1 difference · 1 planned change',
+        'Migrations — 1 check differs · 1 check planned',
       );
       // The patch, touched by two features, is one group, open: a difference is to apply.
       const patch = fileGroup(PATCH);
       expect(patch).toHaveAttribute('open');
       expect(patch.querySelector('summary')).toHaveTextContent(
-        `${PATCH} — 2 differences · 1 planned change`,
+        `${PATCH} — 2 values differ · 1 value planned`,
       );
       expect(within(patch).getAllByTestId('diff')).toHaveLength(1);
       const planned = within(rowOfLine(PATCH, 2)).getByTestId('annotation');
@@ -492,7 +499,7 @@ describe('CapabilityCard', () => {
       const patch = fileGroup(PATCH);
       expect(patch).not.toHaveAttribute('open');
       expect(patch.querySelector('summary')).toHaveTextContent(
-        `${PATCH} — 1 planned change`,
+        `${PATCH} — 1 value planned`,
       );
       expect(
         within(rowOfLine(PATCH, 2)).getByTestId('annotation'),
@@ -577,6 +584,83 @@ describe('CapabilityCard', () => {
       expect(
         within(screen.getByTestId('comparison')).getAllByText(KUSTOMIZATION),
       ).toHaveLength(1);
+    });
+
+    it('names the hub a file is on, inside the planned line', async () => {
+      await render(withCapability({ state: 'enabled', enabled: true }), {
+        verified: PLANNED_ON_HUB,
+      });
+      const planned = screen.getByTestId('planned');
+      expect(planned.querySelector('summary')).toHaveTextContent(
+        'Runtime, Portal section: 2 checks planned',
+      );
+      const onHub = within(planned).getByTestId(`file-${HUB_PORTAL_FILE}`);
+      expect(onHub.querySelector('summary')).toHaveTextContent(
+        `${HUB_PORTAL_FILE} on the hub hazel — 2 values planned`,
+      );
+      expect(fileGroup(PATCH).querySelector('summary')).not.toHaveTextContent(
+        'on the hub',
+      );
+    });
+
+    it('reads a rewrite as one removal then one addition, the comments folded, the indentation aligned', async () => {
+      await render(withCapability({ state: 'enabled', enabled: true }), {
+        verified: REWRITTEN,
+      });
+      expect(header()).toHaveTextContent(
+        'Installed · 1 check differs · 1 check planned',
+      );
+      expect(screen.getByTestId('feature-runtime')).toHaveTextContent(
+        'Runtime — 1 check differs · 1 check planned',
+      );
+      const patch = fileGroup(PATCH);
+      expect(patch.querySelector('summary')).toHaveTextContent(
+        `${PATCH} — 1 value differs · 3 values planned`,
+      );
+      expect(within(patch).getByTestId('reindented')).toHaveTextContent(
+        "the record's 4-space indentation shown as 2 spaces",
+      );
+      // The record's head (its comments, the gateway block) goes, then the
+      // render's head (its header, the components) comes: no `enabled: true`
+      // aligned across them.
+      const kinds = [
+        ...patch.querySelectorAll('[data-testid="diff-line"]'),
+      ].map(row => row.getAttribute('data-kind'));
+      expect(kinds.slice(0, 13)).toEqual([
+        ...Array(7).fill('removed'),
+        ...Array(6).fill('added'),
+      ]);
+      expect(kinds.slice(13)).toEqual([
+        'context',
+        'removed',
+        'added',
+        'context',
+        'removed',
+        'removed',
+        'context',
+      ]);
+      // The gateway's leaf removed with its reason, the components' added with theirs, the replicas drifted.
+      const gateway = patch.querySelector(
+        '[data-current-line="5"]',
+      ) as HTMLElement;
+      expect(gateway).toHaveAttribute('data-kind', 'removed');
+      expect(within(gateway).getByTestId('annotation')).toHaveTextContent(
+        'gateway.jwksEgress.enabled Removed: gateway.jwksEgress is the shared default here · M8',
+      );
+      expect(
+        within(rowOfLine(PATCH, 4)).getByTestId('annotation'),
+      ).toHaveTextContent('components.kagent.enabled Added:');
+      expect(
+        within(rowOfLine(PATCH, 8)).getByTestId('annotation'),
+      ).toHaveTextContent('kagent.replicas drifted');
+      // The record's comments in the routing block fold behind one line, closed.
+      const fold = within(patch).getByTestId('fold-comments');
+      expect(fold).not.toHaveAttribute('open');
+      expect(fold.querySelector('summary')).toHaveTextContent(
+        '… 2 comment lines removed',
+      );
+      expect(within(fold).getAllByTestId('diff-line')).toHaveLength(2);
+      expect(card().textContent).not.toMatch(MANAGER_WORDS);
     });
   });
 
