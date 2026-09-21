@@ -4334,7 +4334,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/plugin-auth-react@npm:^0.1.29":
+"@backstage/plugin-auth-react@backstage:^::backstage=1.53.0&npm=0.1.29, @backstage/plugin-auth-react@npm:^0.1.29":
   version: 0.1.29
   resolution: "@backstage/plugin-auth-react@npm:0.1.29"
   dependencies:
@@ -7512,6 +7512,7 @@ __metadata:
     "@backstage/errors": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
     "@backstage/frontend-test-utils": "backstage:^"
+    "@backstage/plugin-auth-react": "backstage:^"
     "@backstage/plugin-catalog-react": "backstage:^"
     "@backstage/plugin-kubernetes-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"

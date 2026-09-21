@@ -50,8 +50,8 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   useResources: () => ({ resources: [], isLoading: false, errors: [] }),
 }));
 
-jest.mock('../../hooks/useAgentAvatarUrl', () => ({
-  useAgentAvatarUrl: () => (installation: string, name: string) =>
+jest.mock('../../hooks/useAgentIconUrl', () => ({
+  useAgentIconUrl: () => (installation: string, name: string) =>
     `https://avatars.${installation}.example/v1/${name}.png`,
 }));
 

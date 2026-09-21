@@ -30,6 +30,7 @@ import {
 import { probeKagentGrpc } from './kagent/reachability';
 import { SessionStateReader } from './sessionStates';
 import { SessionUsageReader } from './sessionUsage';
+import { createAvatarRouter } from './avatarRouter';
 import { createTryRouter } from './tryRouter';
 
 export interface RouterOptions {
@@ -1052,6 +1053,11 @@ export async function createRouter(
   // served model against the installation's models Gateway (tryRouter.ts).
   // Everything else about models goes through muster as the person.
   router.use(createTryRouter({ config }));
+
+  // The agents' avatars, fetched from each installation's avatars host and
+  // served same-origin (avatarRouter.ts), so the page's Content-Security-Policy
+  // names no installation. Cookie-authenticated: see plugin.ts.
+  router.use(createAvatarRouter({ config, logger }));
 
   return router;
 }

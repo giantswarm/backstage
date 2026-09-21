@@ -2,6 +2,7 @@ import { Config } from '@backstage/config';
 import { AuthenticationError, InputError } from '@backstage/errors';
 import express from 'express';
 import Router from 'express-promise-router';
+import { readInstallationBaseDomain } from './installationDomain';
 import {
   completionsUrl,
   SERVED_MODEL_AUTH_HEADER,
@@ -76,11 +77,10 @@ export function createTryRouter(options: TryRouterOptions): express.Router {
       );
     }
 
-    const baseDomain = config
-      .getOptionalConfig('gs.installations')
-      ?.getOptionalConfig(installation)
-      ?.getOptionalString('baseDomain');
-    const url = completionsUrl(endpoint, baseDomain);
+    const url = completionsUrl(
+      endpoint,
+      readInstallationBaseDomain(config, installation),
+    );
     res.json(await tryServedModel({ url, model, userToken, fetchFn }));
   });
 

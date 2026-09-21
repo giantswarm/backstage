@@ -4,7 +4,7 @@
  * Every agent gets a deterministic identifying icon rendered by the self-hosted
  * DiceBear service that ships with the agent-platform bundle. The icon is a
  * pure function of the agent's technical (DNS-1123) name — no per-agent state,
- * nothing stored. Backstage just points an `<img>` at the canonical URL.
+ * nothing stored.
  *
  * Canonical URL contract (see giantswarm/giantswarm#37211):
  *   avatars.<baseDomain>/v1/<name>.png              (512, the default)
@@ -13,7 +13,15 @@
  *
  * The host mirrors the Grafana pattern (`grafana.<baseDomain>`): `baseDomain`
  * already includes the installation codename, so the host is
- * `avatars.<baseDomain>`.
+ * `avatars.<baseDomain>`. That canonical URL is what an agent's resource
+ * records as its `iconUrl`, for every A2A client to load.
+ *
+ * The portal's own `<img>`s do not load it: they load the same path through
+ * the agent-platform backend (`/api/agent-platform/avatars/<installation>/...`),
+ * which fetches it from the installation's host. Same-origin, so the page's
+ * Content-Security-Policy needs no per-installation `img-src` entry — the
+ * header is sent with the unauthenticated page, and an installation's base
+ * domain is not for everyone to read.
  */
 
 /** Sizes the avatar endpoint allowlists. Any other size is rejected at the edge. */
@@ -31,15 +39,8 @@ export type AgentAvatarUrlOptions = {
   preview?: boolean;
 };
 
-/**
- * Build the canonical avatar URL for an agent's technical name on a given
- * installation base domain.
- */
-export function buildAgentAvatarUrl(
-  baseDomain: string,
-  name: string,
-  opts: AgentAvatarUrlOptions = {},
-): string {
+/** The path below the avatars host: `v1[/preview][/<size>]/<name>.png`. */
+function avatarPath(name: string, opts: AgentAvatarUrlOptions): string {
   const segments = ['v1'];
   if (opts.preview) {
     segments.push('preview');
@@ -48,6 +49,33 @@ export function buildAgentAvatarUrl(
     segments.push(String(opts.size));
   }
   segments.push(`${encodeURIComponent(name)}.png`);
+  return segments.join('/');
+}
 
-  return `https://avatars.${baseDomain}/${segments.join('/')}`;
+/**
+ * Build the canonical avatar URL for an agent's technical name on a given
+ * installation base domain: the URL recorded on the agent for other clients.
+ */
+export function buildAgentAvatarUrl(
+  baseDomain: string,
+  name: string,
+  opts: AgentAvatarUrlOptions = {},
+): string {
+  return `https://avatars.${baseDomain}/${avatarPath(name, opts)}`;
+}
+
+/**
+ * Build the URL the portal's own `<img>` loads: the same path, served by the
+ * agent-platform backend for the installation, from the portal's origin.
+ */
+export function buildProxiedAgentAvatarUrl(
+  backendBaseUrl: string,
+  installation: string,
+  name: string,
+  opts: AgentAvatarUrlOptions = {},
+): string {
+  const backend = backendBaseUrl.replace(/\/+$/, '');
+  return `${backend}/api/agent-platform/avatars/${encodeURIComponent(
+    installation,
+  )}/${avatarPath(name, opts)}`;
 }
