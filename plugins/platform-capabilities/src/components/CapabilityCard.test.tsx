@@ -10,7 +10,9 @@ import {
 } from '../apis';
 import {
   AGENT_PLATFORM_DEFINITION,
+  COMMIT_REFUSED,
   ENABLED,
+  ENABLED_NOT_OPTED_IN,
   FakeApi,
   FakeOptions,
   installation,
@@ -263,6 +265,41 @@ describe('CapabilityCard', () => {
     expect(screen.queryByTestId('opt-in-note')).toBeNull();
     expect(card().textContent).not.toMatch(MANAGER_WORDS);
   });
+
+  it('keeps the owners line alone where the refusal is the opt-in, the button disabled', async () => {
+    await render(ENABLED_NOT_OPTED_IN, {
+      verified: { ...VERIFIED, commitRefused: 'maple is not opted in' },
+    });
+    expect(header()).toHaveTextContent('Installed · 2 differences');
+    expect(
+      screen.getByRole('button', { name: 'Apply changes' }),
+    ).toBeDisabled();
+    expect(screen.getByTestId('needs-owners')).toHaveTextContent(
+      'management-clusters/maple/platform-manager.yaml',
+    );
+    expect(screen.queryByTestId('commit-refused')).toBeNull();
+    expect(screen.getByTestId('comparison')).toBeInTheDocument();
+    expect(card().textContent).not.toMatch(MANAGER_WORDS);
+  });
+
+  it.each<[string, Installation, string]>([
+    ['installed', ENABLED, 'Apply changes'],
+    ['not installed', installation(), 'Enable'],
+  ])(
+    'disables the button and says why where the manager would refuse the commit, %s',
+    async (_, target, name) => {
+      await render(target, { verified: COMMIT_REFUSED });
+      const button = screen.getByRole('button', { name });
+      expect(button).toBeDisabled();
+      expect(screen.getByTestId('commit-refused')).toHaveTextContent(
+        COMMIT_REFUSED.commitRefused!,
+      );
+      expect(screen.queryByTestId('needs-owners')).toBeNull();
+      await userEvent.click(button);
+      expect(screen.queryByRole('form')).toBeNull();
+      expect(card().textContent).not.toMatch(MANAGER_WORDS);
+    },
+  );
 
   it('shows the comparison error and no comparison lines', async () => {
     const forbidden = new Error('no grant on birch as you');

@@ -111,14 +111,25 @@ function NeedsOwners({ installation }: { installation: Installation }) {
   );
 }
 
+/** The one line with the manager's reason a commit would be refused, in its words. */
+function CommitRefused({ reason }: { reason: string }) {
+  return (
+    <Text variant="body-small" color="secondary" data-testid="commit-refused">
+      {reason}
+    </Text>
+  );
+}
+
 /**
  * One capability of an installation as one block: the header line with the
  * state and what the comparison found, why the comparison did not run where
  * the definition refused, the person's choices, the features with
  * differences (opening to them), the features with planned changes, the
  * features as defined, the checks that did not run, and one button --
- * Enable, or Apply changes -- opening the dialog. The comparison runs when
- * the tab opens.
+ * Enable, or Apply changes -- opening the dialog. The button is disabled,
+ * with the reason on one line under it, while the owners have not opted in
+ * or the comparison says the manager would refuse the commit. The
+ * comparison runs when the tab opens.
  */
 export function CapabilityCard({
   installation,
@@ -137,6 +148,7 @@ export function CapabilityCard({
     capability.state === 'pending approval' ||
     capability.state === 'rolling out';
   const needsOwners = installation.optIn.state === 'not opted in';
+  const commitRefused = result?.commitRefused;
   const status = statusOf(capability, result);
   const button = buttonOf(installed, result);
 
@@ -164,14 +176,21 @@ export function CapabilityCard({
             size="small"
             onPress={() => setDialog(true)}
             isDisabled={
-              inFlight || needsOwners || (installed && comparison.isPending)
+              inFlight ||
+              needsOwners ||
+              Boolean(commitRefused) ||
+              (installed && comparison.isPending)
             }
           >
             {button}
           </Button>
         )}
       </Flex>
-      {needsOwners && <NeedsOwners installation={installation} />}
+      {needsOwners ? (
+        <NeedsOwners installation={installation} />
+      ) : (
+        commitRefused && <CommitRefused reason={commitRefused} />
+      )}
       {result?.refused && (
         <Text variant="body-small" data-testid="not-compared">
           The comparison did not run: {result.refused}
