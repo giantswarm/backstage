@@ -1,6 +1,9 @@
-import { configApiRef } from '@backstage/core-plugin-api';
-import { TestApiProvider, mockApis } from '@backstage/frontend-test-utils';
+import { mockApis } from '@backstage/frontend-test-utils';
 import { renderHook } from '@testing-library/react';
+import {
+  __resetSignedInConfigForTests,
+  setSignedInConfig,
+} from '@giantswarm/backstage-plugin-gs-react';
 import { useGitSourceLink } from './useGitSourceLink';
 
 const testDefaultBehaviour = (renderHookFn: any) => {
@@ -93,43 +96,38 @@ const testDefaultBehaviour = (renderHookFn: any) => {
 };
 
 describe('useGitSourceLink', () => {
+  afterEach(() => {
+    __resetSignedInConfigForTests();
+  });
+
+  const renderHookWithSignedInConfig = ({
+    url,
+    revision,
+    path,
+  }: {
+    url?: string;
+    revision?: string;
+    path?: string;
+  }) => {
+    return renderHook(() => {
+      return useGitSourceLink({ url, revision, path });
+    });
+  };
+
+  describe('while the signed-in config has not loaded', () => {
+    testDefaultBehaviour(renderHookWithSignedInConfig);
+  });
+
   describe('when configuration for Git repository URL patterns is not provided', () => {
-    const configApiMock = mockApis.config({
-      data: {},
+    beforeEach(() => {
+      setSignedInConfig(mockApis.config({ data: {} }));
     });
 
-    const wrapper = ({ children }: { children?: any }) => {
-      return (
-        <TestApiProvider apis={[[configApiRef, configApiMock]]}>
-          {children}
-        </TestApiProvider>
-      );
-    };
-
-    const renderHookWithWrapper = ({
-      url,
-      revision,
-      path,
-    }: {
-      url?: string;
-      revision?: string;
-      path?: string;
-    }) => {
-      return renderHook(
-        () => {
-          return useGitSourceLink({ url, revision, path });
-        },
-        {
-          wrapper,
-        },
-      );
-    };
-
-    testDefaultBehaviour(renderHookWithWrapper);
+    testDefaultBehaviour(renderHookWithSignedInConfig);
   });
 
   describe('when configuration for Git repository URL patterns is provided', () => {
-    const configApiMock = mockApis.config({
+    const signedInConfig = mockApis.config({
       data: {
         flux: {
           gitRepositoryPatterns: [
@@ -150,32 +148,11 @@ describe('useGitSourceLink', () => {
       },
     });
 
-    const wrapper = ({ children }: { children?: any }) => {
-      return (
-        <TestApiProvider apis={[[configApiRef, configApiMock]]}>
-          {children}
-        </TestApiProvider>
-      );
-    };
+    beforeEach(() => {
+      setSignedInConfig(signedInConfig);
+    });
 
-    const renderHookWithWrapper = ({
-      url,
-      revision,
-      path,
-    }: {
-      url?: string;
-      revision?: string;
-      path?: string;
-    }) => {
-      return renderHook(
-        () => {
-          return useGitSourceLink({ url, revision, path });
-        },
-        {
-          wrapper,
-        },
-      );
-    };
+    const renderHookWithWrapper = renderHookWithSignedInConfig;
 
     testDefaultBehaviour(renderHookWithWrapper);
 

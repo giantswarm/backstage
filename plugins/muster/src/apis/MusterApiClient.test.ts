@@ -3,6 +3,10 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
+import {
+  __resetSignedInConfigForTests,
+  setSignedInConfig,
+} from '@giantswarm/backstage-plugin-gs-react';
 import { MusterApiClient, toolErrorDetails } from './MusterApiClient';
 import { MusterAuthProvidersApi } from './types';
 
@@ -28,11 +32,19 @@ const CLUSTERS: Record<
   },
 };
 
-function configData(mainProvider: string | undefined, legacy: boolean) {
+/** The public config: the main provider alone. */
+function configData(mainProvider: string | undefined) {
+  return mainProvider ? { gs: { authProvider: mainProvider } } : {};
+}
+
+/**
+ * The signed-in config the client resolves auth providers from:
+ * `muster.installations[]` and, with `legacy`, the single-installation
+ * `aiChat.mcp` entry `resolveAuthProvider` falls back to when no installation
+ * is named (or the named one has no authProvider).
+ */
+function signedInConfigData(legacy: boolean) {
   return {
-    ...(mainProvider ? { gs: { authProvider: mainProvider } } : {}),
-    // The legacy single-installation entry `resolveAuthProvider` falls back to
-    // when no installation is named (or the named one has no authProvider).
     ...(legacy
       ? { aiChat: { mcp: [{ name: 'muster', authProvider: 'mcp-muster' }] } }
       : {}),
@@ -46,6 +58,10 @@ function configData(mainProvider: string | undefined, legacy: boolean) {
     },
   };
 }
+
+beforeEach(() => {
+  __resetSignedInConfigForTests();
+});
 
 function okResponse(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as Response;
@@ -128,6 +144,9 @@ function setup(options: SetupOptions = {}) {
     getCredentials: getBrokeredCredentials,
   } as unknown as KubernetesAuthProvidersApi;
 
+  setSignedInConfig(
+    mockApis.config({ data: signedInConfigData(options.legacy ?? false) }),
+  );
   const client = new MusterApiClient({
     discoveryApi: {
       getBaseUrl: jest.fn().mockResolvedValue('http://backend/api/muster'),
@@ -138,7 +157,6 @@ function setup(options: SetupOptions = {}) {
         options.mainProvider === null
           ? undefined
           : (options.mainProvider ?? 'oidc-gazelle'),
-        options.legacy ?? false,
       ),
     }),
     authProvidersApi,
