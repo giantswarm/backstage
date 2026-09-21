@@ -29,6 +29,7 @@ const APPLY_REFUSAL =
 type Writes = Pick<
   RepositoriesApi,
   | 'updateRepository'
+  | 'adoptRepository'
   | 'transferRepository'
   | 'setLifecycle'
   | 'alignRepository'
@@ -129,13 +130,234 @@ describe('parseEntry', () => {
 });
 
 describe('RowActions', () => {
-  it('offers only Align now for an undeclared repository', () => {
+  it('offers Adopt, Deprecate, Archive and Align now for an undeclared repository, none disabled, and says no team file declares it', () => {
     renderActions({}, strayTool);
-    for (const name of ['Edit', 'Transfer', 'Deprecate', 'Archive']) {
-      expect(button(name)).toBeDisabled();
+    for (const name of ['Adopt', 'Deprecate', 'Archive', 'Align now']) {
+      expect(button(name)).toBeEnabled();
     }
-    expect(button('Align now')).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Keep' })).toBeNull();
+    for (const name of ['Edit', 'Transfer', 'Delete', 'Keep']) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+    expect(screen.getByTestId('undeclared-note')).toHaveTextContent(
+      'No team file declares giantswarm/stray-tool. Adopt declares it for a team; Deprecate and Archive declare it and end its life in the one pull request.',
+    );
+  });
+
+  it('offers every action and no such line for a declared repository', () => {
+    renderActions({});
+    for (const name of [
+      'Edit',
+      'Transfer',
+      'Deprecate',
+      'Archive',
+      'Align now',
+      'Delete',
+    ]) {
+      expect(button(name)).toBeEnabled();
+    }
+    expect(screen.queryByRole('button', { name: 'Adopt' })).toBeNull();
+    expect(screen.queryByTestId('undeclared-note')).toBeNull();
+  });
+
+  /** The entry Adopt sends for stray-tool: what GitHub knows, the generic nature, the generator off. */
+  const adoptedStrayTool = {
+    name: 'stray-tool',
+    componentType: 'unspecified',
+    gen: { language: 'go', flavours: ['generic'], ci: { generate: false } },
+    description: 'A tool somebody forked and forgot',
+    visibility: 'public',
+  };
+
+  it('Adopt: opens the Create form on what GitHub knows -- the team a choice, the name fixed, the generator off, not opted in -- and sends the entry to the dry run and the commit', async () => {
+    const adoptRepository = jest
+      .fn()
+      .mockResolvedValueOnce(
+        planOf({
+          repository: 'giantswarm/stray-tool',
+          before: undefined,
+          entry:
+            '- name: stray-tool\n  componentType: unspecified\n  description: A tool somebody forked and forgot\n  visibility: public\n  gen:\n    language: go\n    flavours:\n      - generic\n    ci:\n      generate: false\n',
+          pullRequest: {
+            ...planOf().pullRequest,
+            branch: 'reposetup/adopt-stray-tool',
+            title: 'chore(repositories): adopt stray-tool into team-bumblebee',
+          },
+          ask: {
+            ...planOf().ask!,
+            text: 'alice asks to adopt `giantswarm/stray-tool` into team-bumblebee: the repository exists on GitHub and no team file declares it. A member of team-bumblebee other than alice approves.',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        committedOf({
+          pullRequest: {
+            ...committedOf().pullRequest!,
+            branch: 'reposetup/adopt-stray-tool',
+            title: 'chore(repositories): adopt stray-tool into team-bumblebee',
+          },
+        }),
+      );
+    const { onChanged } = renderActions({ adoptRepository }, strayTool);
+    await userEvent.click(button('Adopt'));
+
+    const form = dialog(/^Adopt stray-tool/);
+    expect(form).toHaveTextContent(
+      'giantswarm/stray-tool exists on GitHub and no team file declares it.',
+    );
+    expect(form).toHaveTextContent('a member of the team approves it');
+    expect(within(form).getByTestId('adopted-repository')).toHaveTextContent(
+      'giantswarm/stray-tool',
+    );
+    expect(within(form).getByTestId('adopted-repository')).toHaveTextContent(
+      'declared by no team file',
+    );
+    expect(within(form).queryByLabelText(/^Name/)).toBeNull();
+    // The team: the caller's own first, and the form opens on it.
+    await waitFor(() =>
+      expect(select(/Team$/)).toHaveTextContent('team-bumblebee (your team)'),
+    );
+    // What GitHub knows, as the declaration's start.
+    expect(within(form).getByLabelText(/^Description/)).toHaveValue(
+      'A tool somebody forked and forgot',
+    );
+    expect(within(form).getByRole('radio', { name: 'Public' })).toBeChecked();
+    expect(within(form).getByTestId('declaration-summary')).toHaveTextContent(
+      'unspecified · go · generic · CircleCI config not generated',
+    );
+    expect(
+      within(form).getByRole('checkbox', { name: 'Opted in to alignment' }),
+    ).not.toBeChecked();
+
+    await userEvent.type(within(form).getByLabelText(/^Reason/), 'ours');
+    await userEvent.click(button('Review'));
+    expect(adoptRepository).toHaveBeenCalledWith(
+      'giantswarm/stray-tool',
+      { team: 'team-bumblebee', entry: adoptedStrayTool, reason: 'ours' },
+      { dryRun: true },
+    );
+
+    const plan = await screen.findByTestId('plan');
+    expect(plan).toHaveTextContent(
+      'giantswarm/stray-tool (team-bumblebee) — accepted',
+    );
+    expect(within(plan).queryByTestId('entry-before')).toBeNull();
+    expect(within(plan).getByTestId('entry-after')).toHaveTextContent(
+      'name: stray-tool',
+    );
+    expect(plan).toHaveTextContent('no team file declares it');
+
+    await userEvent.click(button('Open pull request'));
+    expect(adoptRepository).toHaveBeenLastCalledWith(
+      'giantswarm/stray-tool',
+      { team: 'team-bumblebee', entry: adoptedStrayTool, reason: 'ours' },
+      { mode: 'commit' },
+    );
+    const opened = await screen.findByTestId('pull-request-opened');
+    expect(opened).toHaveTextContent(
+      '#4243 chore(repositories): adopt stray-tool into team-bumblebee',
+    );
+    expect(onChanged).not.toHaveBeenCalled();
+    await userEvent.click(closeButton());
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("Adopt: the team and the opt-in are the person's; the entry carries both", async () => {
+    const adoptRepository = jest
+      .fn()
+      .mockResolvedValue(planOf({ repository: 'giantswarm/stray-tool' }));
+    renderActions({ adoptRepository }, strayTool);
+    await userEvent.click(button('Adopt'));
+    const form = dialog(/^Adopt stray-tool/);
+    await waitFor(() =>
+      expect(select(/Team$/)).toHaveTextContent('team-bumblebee (your team)'),
+    );
+    await userEvent.click(select(/Team$/));
+    await userEvent.click(
+      (await screen.findAllByRole('option')).find(
+        option => option.textContent === 'team-planeteers',
+      )!,
+    );
+    await userEvent.click(
+      within(form).getByRole('checkbox', { name: 'Opted in to alignment' }),
+    );
+    await userEvent.click(button('Review'));
+    expect(adoptRepository).toHaveBeenCalledWith(
+      'giantswarm/stray-tool',
+      {
+        team: 'team-planeteers',
+        entry: { ...adoptedStrayTool, align: true },
+        reason: undefined,
+      },
+      { dryRun: true },
+    );
+  });
+
+  it('Archive on an undeclared repository: the one pull request declares it for the chosen team and archives it; the team and the reason are all there is to fill in', async () => {
+    const adoptRepository = jest.fn().mockResolvedValue(
+      planOf({
+        repository: 'giantswarm/stray-tool',
+        before: undefined,
+        entry:
+          '- name: stray-tool\n  componentType: unspecified\n  lifecycle: archived\n  align: true\n',
+      }),
+    );
+    renderActions({ adoptRepository }, strayTool);
+    await userEvent.click(button('Archive'));
+    const form = dialog(/^Archive stray-tool/);
+    expect(form).toHaveTextContent(
+      'giantswarm/stray-tool exists on GitHub and no team file declares it. One pull request, opened as you, declares it for the team chosen below and sets lifecycle: archived',
+    );
+    expect(form).toHaveTextContent(
+      'archives the repository on GitHub and unfollows it on CircleCI',
+    );
+    expect(form).toHaveTextContent(
+      'also opts the repository in to alignment, which the lifecycle needs',
+    );
+    expect(within(form).queryByTestId('declaration-summary')).toBeNull();
+    expect(within(form).queryByTestId('section-alignment')).toBeNull();
+    await waitFor(() =>
+      expect(select(/Team$/)).toHaveTextContent('team-bumblebee (your team)'),
+    );
+    await userEvent.type(within(form).getByLabelText(/^Reason/), 'over');
+    await userEvent.click(button('Review'));
+    expect(adoptRepository).toHaveBeenCalledWith(
+      'giantswarm/stray-tool',
+      {
+        team: 'team-bumblebee',
+        entry: { ...adoptedStrayTool, lifecycle: 'archived' },
+        reason: 'over',
+      },
+      { dryRun: true },
+    );
+    expect(await screen.findByTestId('entry-after')).toHaveTextContent(
+      'lifecycle: archived',
+    );
+  });
+
+  it('Deprecate on an undeclared repository declares it with lifecycle deprecated', async () => {
+    const adoptRepository = jest.fn().mockResolvedValue(
+      planOf({
+        repository: 'giantswarm/stray-tool',
+        entry: '- name: stray-tool\n  lifecycle: deprecated\n  align: true\n',
+      }),
+    );
+    renderActions({ adoptRepository }, strayTool);
+    await userEvent.click(button('Deprecate'));
+    expect(dialog(/^Deprecate stray-tool/)).toHaveTextContent(
+      'sets lifecycle: deprecated: security-only Renovate updates',
+    );
+    await waitFor(() =>
+      expect(select(/Team$/)).toHaveTextContent('team-bumblebee (your team)'),
+    );
+    await userEvent.click(button('Review'));
+    expect(adoptRepository).toHaveBeenCalledWith(
+      'giantswarm/stray-tool',
+      expect.objectContaining({
+        team: 'team-bumblebee',
+        entry: expect.objectContaining({ lifecycle: 'deprecated' }),
+      }),
+      { dryRun: true },
+    );
   });
 
   it('Archive: shows what it does and the review notice, the plan with its ask, then the pull request', async () => {
@@ -202,6 +424,77 @@ describe('RowActions', () => {
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
     ).toBeNull();
+    await userEvent.click(closeButton());
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('Delete: stands apart from the group, needs the repository name typed, sends it as confirm, then the plan and the pull request', async () => {
+    const setLifecycle = jest
+      .fn()
+      .mockResolvedValueOnce(
+        planOf({
+          entry:
+            '- name: present-service\n  componentType: service\n  lifecycle: deleted\n  align: true\n',
+          pullRequest: {
+            ...planOf().pullRequest,
+            branch: 'reposetup/deleted-present-service',
+            title:
+              'chore(repositories): delete present-service (team-bumblebee)',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(committedOf());
+    const { onChanged } = renderActions({ setLifecycle });
+    const del = button('Delete');
+    // Apart from the ButtonGroup: the one action after which the repository is gone.
+    expect(del.closest('[role="group"]')).toBeNull();
+    await userEvent.click(del);
+
+    const form = dialog(/^Delete present-service/);
+    expect(form).toHaveTextContent(
+      'unfollows the repository on CircleCI and deletes it on GitHub',
+    );
+    expect(form).toHaveTextContent(
+      'The entry stays in the team file as the record of the deletion.',
+    );
+    expect(button('Review')).toBeDisabled();
+    const name = within(form).getByLabelText(/^Repository name/);
+    await userEvent.type(name, 'other-service');
+    expect(button('Review')).toBeDisabled();
+    await userEvent.clear(name);
+    await userEvent.type(name, 'giantswarm/Present-Service');
+    await userEvent.type(within(form).getByLabelText(/^Reason/), 'retired');
+    await userEvent.click(button('Review'));
+    expect(setLifecycle).toHaveBeenCalledWith(
+      'giantswarm/present-service',
+      {
+        lifecycle: 'deleted',
+        reason: 'retired',
+        confirm: 'giantswarm/Present-Service',
+      },
+      { dryRun: true },
+    );
+    const plan = await screen.findByTestId('plan');
+    expect(within(plan).getByTestId('entry-after')).toHaveTextContent(
+      'lifecycle: deleted',
+    );
+    expect(within(plan).getByTestId('planned-pull-request')).toHaveTextContent(
+      'chore(repositories): delete present-service',
+    );
+
+    await userEvent.click(button('Open pull request'));
+    expect(setLifecycle).toHaveBeenLastCalledWith(
+      'giantswarm/present-service',
+      {
+        lifecycle: 'deleted',
+        reason: 'retired',
+        confirm: 'giantswarm/Present-Service',
+      },
+      { mode: 'commit' },
+    );
+    await screen.findByTestId('pull-request-opened');
+    // The listing is re-read once the dialog closes, not while it shows the result.
+    expect(onChanged).not.toHaveBeenCalled();
     await userEvent.click(closeButton());
     expect(onChanged).toHaveBeenCalledTimes(1);
   });

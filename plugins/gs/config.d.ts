@@ -92,10 +92,11 @@ export interface Config {
      */
     signInFallbackProvider?: {
       /**
-       * Dex connector id, e.g. `giantswarm-ad`.
+       * Dex connector id, e.g. `giantswarm-ad`. Optional as the login page
+       * treats it: without it the card is not shown.
        * @visibility frontend
        */
-      connectorId: string;
+      connectorId?: string;
       /**
        * Card title. Default: `Other identity provider`.
        * @visibility frontend

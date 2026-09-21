@@ -22,11 +22,8 @@ import {
   useAuiEvent,
 } from '@assistant-ui/react';
 import { flushTapSync } from '@assistant-ui/tap';
-import {
-  useApi,
-  configApiRef,
-  featureFlagsApiRef,
-} from '@backstage/core-plugin-api';
+import { useApi, featureFlagsApiRef } from '@backstage/core-plugin-api';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import IconButton from '@material-ui/core/IconButton';
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
@@ -70,23 +67,24 @@ const DEFAULT_WELCOME_SUGGESTIONS = [
 const ThreadWelcome = () => {
   const classes = useStyles();
   const api = useAui();
-  const configApi = useApi(configApiRef);
+  // The welcome copy is part of the signed-in config; the defaults hold
+  // while it loads and wherever it is not set.
+  const { config } = useSignedInConfig();
 
   const title =
-    configApi.getOptionalString('aiChat.welcome.title') ??
-    DEFAULT_WELCOME_TITLE;
+    config?.getOptionalString('aiChat.welcome.title') ?? DEFAULT_WELCOME_TITLE;
   const subtitle =
-    configApi.getOptionalString('aiChat.welcome.subtitle') ??
+    config?.getOptionalString('aiChat.welcome.subtitle') ??
     DEFAULT_WELCOME_SUBTITLE;
 
   const selectedQuestions = useMemo(() => {
-    const configured = configApi.getOptionalStringArray(
+    const configured = config?.getOptionalStringArray(
       'aiChat.welcome.suggestions',
     );
     const pool = configured ?? DEFAULT_WELCOME_SUGGESTIONS;
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, 3);
-  }, [configApi]);
+  }, [config]);
 
   const handleSuggestionClick = (question: string) => {
     api

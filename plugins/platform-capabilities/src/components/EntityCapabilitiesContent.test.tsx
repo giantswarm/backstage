@@ -115,7 +115,7 @@ describe('EntityCapabilitiesContent', () => {
 
     const plan = within(dialog()).getByTestId('plan');
     expect(within(plan).getByTestId('plan-files')).toHaveTextContent(
-      'configmap-values.yaml.patch — create',
+      'configmap-values.yaml.patch — update',
     );
     expect(within(plan).getByTestId('plan-secrets')).toHaveTextContent(
       'dex-client-kagent — client secret, 32 characters',

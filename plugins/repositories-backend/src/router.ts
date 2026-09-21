@@ -76,12 +76,23 @@ const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
     ...WRITE_OPTIONS,
   },
   update_repository: { entry: 'object', reason: 'string', ...WRITE_OPTIONS },
+  adopt_repository: {
+    team: 'string',
+    entry: 'object',
+    reason: 'string',
+    ...WRITE_OPTIONS,
+  },
   transfer_repository: {
     toTeam: 'string',
     reason: 'string',
     ...WRITE_OPTIONS,
   },
-  set_lifecycle: { lifecycle: 'string', reason: 'string', ...WRITE_OPTIONS },
+  set_lifecycle: {
+    lifecycle: 'string',
+    reason: 'string',
+    confirm: 'string',
+    ...WRITE_OPTIONS,
+  },
   align_repository: { team: 'string', ...WRITE_OPTIONS },
   // Read-only, a POST for the body: the pull request the creation opened and
   // how long one call may wait -- the manager bounds it (at most 150 s).
@@ -330,6 +341,7 @@ export async function createRouter(
     });
 
   toolOfRepository('update', 'update_repository');
+  toolOfRepository('adopt', 'adopt_repository');
   toolOfRepository('transfer', 'transfer_repository');
   toolOfRepository('lifecycle', 'set_lifecycle');
   toolOfRepository('align', 'align_repository');

@@ -253,6 +253,37 @@ async function expandDeclared(page: Page) {
   return { name, record };
 }
 
+/**
+ * The first undeclared repository of the Unassigned scope, expanded to its
+ * record with the row actions -- the rows read `unassigned` in place of a
+ * team. Skips the test when the lab's inventory has none.
+ */
+async function expandUndeclared(page: Page) {
+  await open(page, '/repositories?scope=unassigned');
+  await expect(page.getByTestId('listing-summary')).toContainText(
+    /matching repositories/,
+    { timeout: 60_000 },
+  );
+  const rows = page.locator('table').first().locator('tbody tr');
+  const undeclared = rows.filter({ has: page.getByText('unassigned') }).first();
+  test.skip(
+    (await undeclared.count()) === 0,
+    'the lab inventory has no undeclared repository',
+  );
+  const name = (await undeclared.locator('td').nth(1).innerText())
+    .trim()
+    .replace(/^[^/]+\//, '')
+    .split(/\s/)[0];
+  await undeclared
+    .getByRole('button', { name: 'Detail panel visiblity toggle' })
+    .click();
+  const record = page.getByTestId(`record-${name}`);
+  await expect(record.getByTestId('row-actions')).toBeVisible({
+    timeout: 60_000,
+  });
+  return { name, record };
+}
+
 test.describe('repositories: actions', () => {
   test.skip(
     !process.env.AGENTLAB_REPO_MANAGER,
@@ -493,6 +524,70 @@ test.describe('repositories: actions', () => {
     }
   });
 
+  test('an undeclared repository offers Adopt, Deprecate, Archive and Align now, none disabled, and says no team file declares it; Adopt opens the Create form on what GitHub knows and writes nothing on Cancel', async ({
+    admin,
+  }) => {
+    const { name, record } = await expandUndeclared(admin);
+    for (const action of ['Adopt', 'Deprecate', 'Archive', 'Align now']) {
+      await expect(record.getByRole('button', { name: action })).toBeEnabled();
+    }
+    for (const action of ['Edit', 'Transfer', 'Delete']) {
+      await expect(record.getByRole('button', { name: action })).toHaveCount(0);
+    }
+    await expect(record.getByTestId('undeclared-note')).toContainText(
+      `No team file declares giantswarm/${name}.`,
+    );
+
+    await record.getByRole('button', { name: 'Adopt' }).click();
+    const dialog = admin.getByRole('form', {
+      name: new RegExp(`^Adopt ${name}`),
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      `giantswarm/${name} exists on GitHub and no team file declares it.`,
+    );
+    // The Create form: the team a choice that opens on the person's own,
+    // the name the repository's (no name field), the description, the
+    // preset question, the declaration with the generator off, the opt-in
+    // unchecked, the reason.
+    await expect(dialog.getByRole('button', { name: /Team$/ })).toContainText(
+      /team-/,
+      { timeout: 60_000 },
+    );
+    await expect(dialog.getByTestId('adopted-repository')).toContainText(
+      `giantswarm/${name}`,
+    );
+    await expect(dialog.getByRole('textbox', { name: /^Name/ })).toHaveCount(0);
+    await expect(dialog.getByLabel(/^Description/)).toBeVisible();
+    await expect(
+      dialog.getByRole('radiogroup', { name: 'What is it?' }),
+    ).toBeVisible();
+    await expect(dialog.getByTestId('declaration-summary')).toContainText(
+      'CircleCI config not generated',
+    );
+    await expect(
+      dialog.getByRole('checkbox', { name: 'Opted in to alignment' }),
+    ).not.toBeChecked();
+    await expect(dialog.getByLabel(/^Reason/)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Review' })).toBeEnabled();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+
+    // Archive on the same row: the team and the reason only, the lifecycle named.
+    await record.getByRole('button', { name: 'Archive' }).click();
+    const archive = admin.getByRole('form', {
+      name: new RegExp(`^Archive ${name}`),
+    });
+    await expect(archive).toBeVisible();
+    await expect(archive).toContainText(
+      'declares it for the team chosen below and sets lifecycle: archived',
+    );
+    await expect(archive.getByTestId('declaration-summary')).toHaveCount(0);
+    await expect(archive.getByLabel(/^Reason/)).toBeVisible();
+    await archive.getByRole('button', { name: 'Cancel' }).click();
+    await expect(archive).toBeHidden();
+  });
+
   test('Archive names what it does and the team review it asks for, and writes nothing on Cancel', async ({
     admin,
   }) => {
@@ -594,6 +689,39 @@ test.describe('repositories: actions', () => {
     await options.first().click();
     await expect(receiving).toContainText(labels[0].split(/\s/)[0]);
     await expect(dialog.getByRole('button', { name: 'Review' })).toBeEnabled();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  test('Delete stands apart in another colour, names what it does, needs the repository name typed, and writes nothing on Cancel', async ({
+    admin,
+  }) => {
+    const { name, record } = await expandDeclared(admin);
+    const del = record.getByRole('button', { name: 'Delete' });
+    await expect(del).toBeEnabled();
+    // Apart from the group of the other actions, and not in their colour.
+    expect(await del.evaluate(el => el.closest('[role="group"]'))).toBeNull();
+    const [deleteColor, archiveColor] = await Promise.all([
+      del.evaluate(el => getComputedStyle(el).color),
+      record
+        .getByRole('button', { name: 'Archive' })
+        .evaluate(el => getComputedStyle(el).color),
+    ]);
+    expect(deleteColor).not.toBe(archiveColor);
+
+    await del.click();
+    const dialog = admin.getByRole('form', {
+      name: new RegExp(`^Delete ${name}`),
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      'unfollows the repository on CircleCI and deletes it on GitHub',
+    );
+    await expect(dialog).toContainText('record of the deletion');
+    const review = dialog.getByRole('button', { name: 'Review' });
+    await expect(review).toBeDisabled();
+    await dialog.getByLabel(/^Repository name/).fill(name);
+    await expect(review).toBeEnabled();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();
   });

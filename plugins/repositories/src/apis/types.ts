@@ -16,9 +16,17 @@ export type Scope = 'mine' | 'team' | 'unassigned' | 'all';
 export const LIST_LIMIT = 2000;
 
 /** The lifecycles `list_repositories` filters by, as the team files declare them. */
-export const LIFECYCLES = ['active', 'deprecated', 'archived'] as const;
+export const LIFECYCLES = [
+  'active',
+  'deprecated',
+  'archived',
+  'deleted',
+] as const;
 
 export type Lifecycle = (typeof LIFECYCLES)[number];
+
+/** The lifecycles `set_lifecycle` sets: the ways a repository's life ends. */
+export type LifecycleChange = Exclude<Lifecycle, 'active'>;
 
 /**
  * How a pipeline's images reach the China registry: `split` (the in-China
@@ -804,16 +812,31 @@ export interface RepositoriesApi {
     args: { entry: DeclarationEntry; reason?: string },
     options: O,
   ): Promise<WriteResult<O, Plan, Committed>>;
+  /**
+   * Declares a repository that exists on GitHub and no team file declares:
+   * the entry added to the team's file in a pull request the team reviews.
+   * A `lifecycle` in the entry ends the repository's life in the same pull
+   * request; the manager adds the opt-in it needs.
+   */
+  adoptRepository<O extends WriteOptions>(
+    name: string,
+    args: { team: string; entry: DeclarationEntry; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>>;
   /** Moves a declared repository to another team. */
   transferRepository<O extends WriteOptions>(
     name: string,
     args: { toTeam: string; reason?: string },
     options: O,
   ): Promise<WriteResult<O, Plan, Committed>>;
-  /** Deprecates or archives a declared repository. */
+  /**
+   * Deprecates, archives or deletes a declared repository. A deletion needs
+   * `confirm`, the repository's name as the person typed it; the manager
+   * refuses it otherwise.
+   */
   setLifecycle<O extends WriteOptions>(
     name: string,
-    args: { lifecycle: 'deprecated' | 'archived'; reason?: string },
+    args: { lifecycle: LifecycleChange; reason?: string; confirm?: string },
     options: O,
   ): Promise<WriteResult<O, Plan, Committed>>;
   /**

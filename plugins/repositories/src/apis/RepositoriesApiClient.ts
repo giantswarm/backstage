@@ -11,6 +11,7 @@ import {
   DeclarationEntry,
   DeclarationInput,
   InventoryRecord,
+  LifecycleChange,
   ListFilters,
   ManagerInfo,
   Plan,
@@ -125,6 +126,14 @@ export class RepositoriesApiClient implements RepositoriesApi {
     return this.write(name, 'update', args, options);
   }
 
+  adoptRepository<O extends WriteOptions>(
+    name: string,
+    args: { team: string; entry: DeclarationEntry; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>> {
+    return this.write(name, 'adopt', args, options);
+  }
+
   transferRepository<O extends WriteOptions>(
     name: string,
     args: { toTeam: string; reason?: string },
@@ -135,7 +144,7 @@ export class RepositoriesApiClient implements RepositoriesApi {
 
   setLifecycle<O extends WriteOptions>(
     name: string,
-    args: { lifecycle: 'deprecated' | 'archived'; reason?: string },
+    args: { lifecycle: LifecycleChange; reason?: string; confirm?: string },
     options: O,
   ): Promise<WriteResult<O, Plan, Committed>> {
     return this.write(name, 'lifecycle', args, options);

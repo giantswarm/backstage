@@ -4,9 +4,9 @@ import {
   useApiHolder,
   identityApiRef,
   discoveryApiRef,
-  configApiRef,
   featureFlagsApiRef,
 } from '@backstage/core-plugin-api';
+import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import {
   useChatRuntime,
   AssistantChatTransport,
@@ -65,10 +65,31 @@ export interface UseChatSetupOptions {
   conversationId?: string;
 }
 
+/**
+ * The distinct `authProvider` names of `aiChat.mcp` in the signed-in config:
+ * the providers whose tokens ride along with every chat request.
+ */
+async function mcpAuthProvidersFromConfig(): Promise<string[]> {
+  const config = await getSignedInConfig();
+  const mcpServers = config.getOptionalConfigArray('aiChat.mcp');
+  if (!mcpServers) {
+    return [];
+  }
+
+  const providers: string[] = [];
+  for (const serverConfig of mcpServers) {
+    const authProvider = serverConfig.getOptionalString('authProvider');
+    if (authProvider && !providers.includes(authProvider)) {
+      providers.push(authProvider);
+    }
+  }
+
+  return providers;
+}
+
 export function useChatSetup(options?: UseChatSetupOptions) {
   const identityApi = useApi(identityApiRef);
   const discoveryApi = useApi(discoveryApiRef);
-  const configApi = useApi(configApiRef);
   const mcpAuthProvidersApi = useApi(mcpAuthProvidersApiRef);
   const featureFlagsApi = useApi(featureFlagsApiRef);
   // Optional: the error reporter is only registered when
@@ -129,25 +150,13 @@ export function useChatSetup(options?: UseChatSetupOptions) {
     staleTime: Infinity,
   });
 
-  const mcpAuthProviders = useMemo(() => {
-    const mcpServers = configApi.getOptionalConfigArray('aiChat.mcp');
-    if (!mcpServers) {
-      return [];
-    }
-
-    const providers: string[] = [];
-    for (const serverConfig of mcpServers) {
-      const authProvider = serverConfig.getOptionalString('authProvider');
-      if (authProvider && !providers.includes(authProvider)) {
-        providers.push(authProvider);
-      }
-    }
-
-    return providers;
-  }, [configApi]);
-
   const getMCPAuthHeaders = useCallback(async () => {
     const mcpHeaders: { [key: string]: string } = {};
+
+    // The MCP server list is part of the signed-in config, which has loaded
+    // by the time a message is sent; awaiting it (rather than reading a
+    // snapshot) means the first message can never go out without its tokens.
+    const mcpAuthProviders = await mcpAuthProvidersFromConfig();
 
     const results = await Promise.allSettled(
       mcpAuthProviders.map(async authProvider => {
@@ -170,7 +179,7 @@ export function useChatSetup(options?: UseChatSetupOptions) {
     });
 
     return mcpHeaders;
-  }, [mcpAuthProviders, mcpAuthProvidersApi]);
+  }, [mcpAuthProvidersApi]);
 
   const getHeaders = useCallback(async () => {
     const { token } = await identityApi.getCredentials();

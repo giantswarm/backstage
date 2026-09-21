@@ -136,7 +136,14 @@ export interface PlanFile {
   repository: string;
   path: string;
   change: 'create' | 'update' | 'unchanged' | 'unknown';
+  /** The file as the plan writes it; only when the content was asked for. */
   content?: string;
+  /**
+   * The file on record as the caller reads it, an encrypted file with every
+   * secret leaf reading `<encrypted>`; absent when the record lacks the file
+   * or the content was not asked for.
+   */
+  current?: string;
   generated?: string[];
   error?: string;
 }
@@ -289,6 +296,10 @@ export interface VerifyDifference {
   planned?: string;
   rendered?: unknown;
   current?: unknown;
+  /** 1-based line of the leaf in the file's `content`; absent when the render lacks it. */
+  line?: number;
+  /** 1-based line of the leaf in the file's `current`; absent when the record lacks it. */
+  currentLine?: number;
 }
 
 export interface VerifyDimension {
