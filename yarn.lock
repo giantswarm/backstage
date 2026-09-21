@@ -7844,6 +7844,20 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-gs-react@workspace:^, @giantswarm/backstage-plugin-gs-react@workspace:plugins/gs-react":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-gs-react@workspace:plugins/gs-react"
+  dependencies:
+    "@backstage/cli": "backstage:^"
+    "@backstage/config": "backstage:^"
+    "@testing-library/jest-dom": "npm:^7.0.0"
+    "@testing-library/react": "npm:^16.0.0"
+    react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+  peerDependencies:
+    react: ^16.13.1 || ^17.0.0 || ^18.0.0
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-gs@workspace:^, @giantswarm/backstage-plugin-gs@workspace:plugins/gs":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-gs@workspace:plugins/gs"
@@ -7851,6 +7865,7 @@ __metadata:
     "@apidevtools/json-schema-ref-parser": "npm:^15.3.1"
     "@backstage/catalog-model": "backstage:^"
     "@backstage/cli": "backstage:^"
+    "@backstage/config": "backstage:^"
     "@backstage/core-app-api": "backstage:^"
     "@backstage/core-components": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
@@ -7873,6 +7888,7 @@ __metadata:
     "@giantswarm/backstage-plugin-flux": "workspace:^"
     "@giantswarm/backstage-plugin-flux-react": "npm:^0.14.2"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.21.1"
+    "@giantswarm/backstage-plugin-gs-react": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-platform-capabilities": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"

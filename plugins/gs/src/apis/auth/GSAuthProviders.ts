@@ -22,7 +22,8 @@ import {
   SignInConnectorMemory,
 } from './signInConnectorMemory';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
-import { getInstallationsConfig } from '../installations';
+import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
+import { InstallationConfig, readInstallationsConfig } from '../installations';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -84,10 +85,16 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private readonly oauthRequestApi: OAuthRequestApi;
 
   // Per-installation kubernetes auth providers/APIs are populated lazily by
-  // `ensureInitialized()` once installations load from the authenticated
-  // backend endpoint (post main sign-in). They start empty.
+  // `ensureInitialized()` once the signed-in config (with the installations)
+  // loads from the authenticated backend endpoint (post main sign-in). They
+  // start empty.
   private kubernetesAuthProviders: AuthProvider[] = [];
   private kubernetesAuthApis: { [providerName: string]: AuthApi } = {};
+  // Whether `gs.clusterTokenBroker.tokenUrl` is set: the silent broker path
+  // for every installation but the main provider's. Part of the signed-in
+  // config, so known once `ensureInitialized()` has run; false until then,
+  // when there are no per-installation providers to filter anyway.
+  private clusterTokenBrokerConfigured = false;
   private initialized = false;
   private initPromise: Promise<void> | undefined;
 
@@ -156,7 +163,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
   /**
    * Lazily builds the per-installation kubernetes auth providers/APIs once the
-   * installations config has loaded from the backend. Safe to call repeatedly;
+   * signed-in config has loaded from the backend. Safe to call repeatedly;
    * the work runs at most once.
    */
   async ensureInitialized(): Promise<void> {
@@ -166,9 +173,13 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     if (!this.initPromise) {
       this.initPromise = (async () => {
         try {
-          const installations = await getInstallationsConfig();
-          this.kubernetesAuthProviders =
-            this.buildKubernetesAuthProviders(installations);
+          const config = await getSignedInConfig();
+          this.clusterTokenBrokerConfigured = Boolean(
+            config.getOptionalString('gs.clusterTokenBroker.tokenUrl'),
+          );
+          this.kubernetesAuthProviders = this.buildKubernetesAuthProviders(
+            readInstallationsConfig(config),
+          );
           this.kubernetesAuthApis = this.buildKubernetesAuthApis(
             this.kubernetesAuthProviders,
           );
@@ -187,7 +198,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   }
 
   private buildKubernetesAuthProviders(
-    installations: Awaited<ReturnType<typeof getInstallationsConfig>>,
+    installations: InstallationConfig[],
   ): AuthProvider[] {
     // A single malformed installation entry must not take down auth for the
     // whole fleet: skip entries with a non-`oidc` auth provider or a
@@ -244,13 +255,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     if (!this.configApi) {
       return undefined;
     }
-    const brokerConfigured = Boolean(
-      this.configApi.getOptionalString('gs.clusterTokenBroker.tokenUrl'),
-    );
     const mainProviderName =
       this.configApi.getOptionalString('gs.authProvider');
     if (
-      !brokerConfigured ||
+      !this.clusterTokenBrokerConfigured ||
       !mainProviderName ||
       providerName === mainProviderName
     ) {
@@ -538,9 +546,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     // (clusterTokenAudience set) get their tokens silently through the main
     // login, so their separate provider entries disappear from the settings
     // page. The main login itself always stays.
-    const brokerConfigured = Boolean(
-      this.configApi?.getOptionalString('gs.clusterTokenBroker.tokenUrl'),
-    );
+    const brokerConfigured = this.clusterTokenBrokerConfigured;
     const mainProviderName =
       this.configApi?.getOptionalString('gs.authProvider');
 
@@ -557,10 +563,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   }
 
   getBrokerCoveredInstallations(): string[] {
-    const brokerConfigured = Boolean(
-      this.configApi?.getOptionalString('gs.clusterTokenBroker.tokenUrl'),
-    );
-    if (!brokerConfigured) {
+    if (!this.clusterTokenBrokerConfigured) {
       return [];
     }
     const mainProviderName =

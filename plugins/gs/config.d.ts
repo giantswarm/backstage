@@ -1,17 +1,37 @@
+/**
+ * Configuration of the Giant Swarm plugin.
+ *
+ * Two tiers reach the browser. `@visibility frontend` marks what the sign-in
+ * page needs before anyone is signed in; it is served to every visitor in the
+ * unauthenticated `index.html`, so it is the minimum: the main provider, the
+ * login scopes, the two sign-in cards. Everything else here keeps the default
+ * (backend) visibility and reaches the browser through the authenticated
+ * `GET /api/gs/config` after sign-in, listed in the gs-backend plugin's
+ * `SIGNED_IN_CONFIG_PATHS` and read through
+ * `@giantswarm/backstage-plugin-gs-react`. A new key that the browser reads
+ * goes there; `@visibility frontend` is only for what the sign-in needs.
+ */
 export interface Config {
-  /** @visibility frontend */
   gs?: {
-    /** @visibility frontend */
+    /**
+     * Groups whose members the portal treats as Giant Swarm staff (the
+     * cluster-access and SSH cards), matched against the installation
+     * token's `groups`. Signed-in config.
+     */
     adminGroups?: string[];
 
-    /** @visibility frontend */
+    /**
+     * Name of the main login provider under `auth.providers`; the sign-in
+     * page initiates its flow, so it is public.
+     * @visibility frontend
+     */
     authProvider: string;
 
     /**
      * Settings shared by the Giant Swarm OIDC login providers (the main sign-in
      * provider, the per-installation cluster-access providers and the `mcp-*`
-     * providers).
-     * @deepVisibility frontend
+     * providers). Both scope lists are requested by the sign-in itself, so
+     * they are public.
      */
     auth?: {
       /**
@@ -20,6 +40,7 @@ export interface Config {
        * don't know. Google fails the whole authorization request on
        * `groups`/`offline_access` and needs `[openid, profile, email]` here.
        * Unset keeps the default base set.
+       * @visibility frontend
        */
       scopes?: string[];
 
@@ -34,6 +55,7 @@ export interface Config {
        * a cross-client `audience:server:client_id:<client>` scope for every
        * client whose audience a forwarded token must satisfy. Keycloak and
        * Entra ID reject both, and need no extra scope at all.
+       * @visibility frontend
        */
       extraScopes?: string[];
     };
@@ -42,13 +64,19 @@ export interface Config {
      * Sign-in page card of the main login provider. The defaults name Dex,
      * the Giant Swarm fleet's IdP; a deployment backed by another OIDC
      * issuer (Google, Keycloak, Entra ID) overrides these so the card
-     * matches what actually handles the login.
-     * @deepVisibility frontend
+     * matches what actually handles the login. Rendered before sign-in, so
+     * public.
      */
     signInProvider?: {
-      /** Card title. Default: `Dex`. */
+      /**
+       * Card title. Default: `Dex`.
+       * @visibility frontend
+       */
       title?: string;
-      /** Card message. Default: `Sign in using Dex`. */
+      /**
+       * Card message. Default: `Sign in using Dex`.
+       * @visibility frontend
+       */
       message?: string;
     };
 
@@ -60,15 +88,23 @@ export interface Config {
      * `startUrlSearchParams.connector_id` -- and this card is the fallback for
      * people that connector cannot sign in. Both cards yield the same portal
      * session. Without `connectorId` the login page shows the main card alone
-     * and signs in automatically.
-     * @deepVisibility frontend
+     * and signs in automatically. Rendered before sign-in, so public.
      */
     signInFallbackProvider?: {
-      /** Dex connector id, e.g. `giantswarm-ad`. */
+      /**
+       * Dex connector id, e.g. `giantswarm-ad`.
+       * @visibility frontend
+       */
       connectorId: string;
-      /** Card title. Default: `Other identity provider`. */
+      /**
+       * Card title. Default: `Other identity provider`.
+       * @visibility frontend
+       */
       title?: string;
-      /** Card message. Default: `Sign in through another identity provider`. */
+      /**
+       * Card message. Default: `Sign in through another identity provider`.
+       * @visibility frontend
+       */
       message?: string;
     };
 
@@ -80,8 +116,8 @@ export interface Config {
     clusterTokenBroker?: {
       /**
        * OAuth token endpoint of the broker, e.g. https://muster.example.com/oauth/token.
-       * Its presence enables the silent broker path in the frontend.
-       * @visibility frontend
+       * Its presence enables the silent broker path in the frontend, which
+       * learns it from the signed-in config: the URL names an internal host.
        */
       tokenUrl: string;
       /**
@@ -120,7 +156,10 @@ export interface Config {
       /**
        * Audience of the broker grant target that releases the GitHub grant
        * (`tokenExchangeBroker.targets.<audience>.grantIssuer` in muster).
-       * Its presence switches the frontend's GitHub auth API to muster.
+       * Its presence switches the frontend's GitHub auth API to muster. The
+       * app decides that when it constructs its utility APIs, before anyone
+       * is signed in, so this stays public: an audience name, and the one
+       * key of this block the browser sees.
        * @visibility frontend
        */
       brokerAudience: string;
@@ -141,7 +180,10 @@ export interface Config {
       };
     };
 
-    /** @deepVisibility frontend */
+    /**
+     * Link templates on the cluster details page. They carry the fleet's
+     * hostnames, so they are signed-in config.
+     */
     clusterDetails?: {
       resources?: {
         label: string;
@@ -151,7 +193,7 @@ export interface Config {
       }[];
     };
 
-    /** @deepVisibility frontend */
+    /** Link templates on the deployment details page. Signed-in config. */
     deploymentDetails?: {
       resources?: {
         label: string;
@@ -160,7 +202,7 @@ export interface Config {
       }[];
     };
 
-    /** @deepVisibility frontend */
+    /** Links on the home page. Signed-in config. */
     homepage?: {
       resources?: {
         label: string;
@@ -172,8 +214,8 @@ export interface Config {
     /**
      * The full installations map is intentionally backend-only: shipping it to
      * the unauthenticated frontend config deanonymizes customers (via
-     * `baseDomain`) and leaks the installation topology. The SPA loads it from
-     * the authenticated `GET /api/gs/installations` endpoint after sign-in.
+     * `baseDomain`) and leaks the installation topology. The SPA reads it from
+     * the signed-in config after sign-in.
      * @visibility backend
      */
     installations: {
@@ -206,7 +248,11 @@ export interface Config {
         };
       };
     };
-    /** @deepVisibility frontend */
+
+    /**
+     * Which Kubernetes annotations the cluster and deployment pages show, and
+     * how. Signed-in config.
+     */
     friendlyAnnotations?: {
       selector: string;
       key?: string;
@@ -215,7 +261,10 @@ export interface Config {
       };
     }[];
 
-    /** @deepVisibility frontend */
+    /**
+     * Which Kubernetes labels the cluster and deployment pages show, and how.
+     * Signed-in config.
+     */
     friendlyLabels?: {
       selector: string;
       key?: string;
@@ -225,7 +274,7 @@ export interface Config {
       variant?: string;
     }[];
 
-    /** @deepVisibility frontend */
+    /** End-of-life dates per Kubernetes minor version. Signed-in config. */
     kubernetesVersions?: {
       [minorVersion: string]: {
         eolDate: string;
@@ -233,7 +282,7 @@ export interface Config {
       };
     };
 
-    /** @deepVisibility frontend */
+    /** Tuning of the frontend's Kubernetes proxy client. Signed-in config. */
     kubernetes?: {
       /**
        * Per-request timeout (in milliseconds) for the Kubernetes proxy. Bounds

@@ -1,12 +1,11 @@
 export {
   getInstallationsConfig,
   getInstallationsConfigSnapshot,
-  normalizeInstallationsConfig,
+  readInstallationsConfig,
   setInstallationsConfig,
   subscribeInstallationsConfig,
   __resetInstallationsConfigForTests,
   type InstallationConfig,
-  type InstallationsConfigResponse,
 } from './installationsConfig';
 export {
   useInstallations,

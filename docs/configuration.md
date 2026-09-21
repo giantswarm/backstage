@@ -1,5 +1,44 @@
 # Configuration
 
+## What the browser receives
+
+The portal ships two tiers of configuration to the browser.
+
+The **public config** is the `<script type="backstage.io/config">` block of the
+unauthenticated `index.html`: every path a `config.d.ts` marks
+`@visibility frontend`, served to anyone who can reach the portal, signed in or
+not. It is kept to what the sign-in page needs before anyone is signed in:
+
+| Path                                                                          | Why it is public                                                                             |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `app.*` (title, baseUrl, extensions, routes, branding, Sentry, TelemetryDeck) | the app shell and the sign-in page render from it                                            |
+| `backend.baseUrl`                                                             | where the sign-in flow and every request go                                                  |
+| `auth.environment`, `auth.providers.*`                                        | which providers exist (their secrets are `@visibility secret`)                               |
+| `gs.authProvider`                                                             | the provider the sign-in page initiates                                                      |
+| `gs.auth.scopes`, `gs.auth.extraScopes`                                       | the scopes the sign-in requests                                                              |
+| `gs.signInProvider.*`, `gs.signInFallbackProvider.*`                          | the two sign-in cards                                                                        |
+| `gs.github.brokerAudience`                                                    | picks the GitHub auth API when the app constructs its APIs, before sign-in; an audience name |
+| `organization.name`, `permission.enabled`                                     | Backstage core                                                                               |
+
+The **signed-in config** is served by the authenticated `GET /api/gs/config`,
+once, after the main sign-in, in app-config shape. Everything else a Giant
+Swarm plugin reads in the browser comes from here: the installations map
+(with the customer-identifying base domains), `gs.adminGroups`, the cluster
+token broker URL, the link templates of the cluster, deployment and home
+pages, the friendly labels and annotations, the Kubernetes end-of-life table,
+the proxy tuning knobs, the muster installations, the MCP server list and the
+chat's welcome copy, the skill repositories and the Flux Git host patterns.
+The complete list is `SIGNED_IN_CONFIG_PATHS` in the gs-backend plugin; the
+frontend reads it through `@giantswarm/backstage-plugin-gs-react`
+(`useSignedInConfig()` in components, `getSignedInConfig()` in the utility
+APIs constructed at app boot).
+
+To let the browser read a new key: leave its `config.d.ts` entry at the
+default (backend) visibility, add the path to `SIGNED_IN_CONFIG_PATHS` and read
+it through the signed-in config. `@visibility frontend` is only for what the
+sign-in page itself needs, per field: `@deepVisibility frontend` is not used,
+because it would ship every field later added under that key to every visitor.
+
 ## Cluster access (broker-only)
 
 Backstage reaches every management cluster through a single main Dex login. The

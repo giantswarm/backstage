@@ -42,7 +42,7 @@ import {
 import {
   GSDiscoveryApiClient,
   gsAuthProvidersApiRef,
-  InstallationsConfigLoader,
+  SignedInConfigLoader,
 } from '@giantswarm/backstage-plugin-gs';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
 import { grafanaPlugin } from '@backstage-community/plugin-grafana';
@@ -208,15 +208,16 @@ export const appOverrides = createFrontendModule({
       },
     }),
     /**
-     * Loads the `gs.installations` config from the authenticated backend
-     * endpoint once, after sign-in, and publishes it to the module-level source
-     * consumed by the boot-time APIs and UI. The block is no longer shipped in
-     * the unauthenticated frontend config (it deanonymized customers).
+     * Loads the signed-in config (`GET /api/gs/config`: the installations
+     * map, admin groups, link templates, the muster and MCP server lists, ...)
+     * once, after sign-in, and publishes it to the module-level source the
+     * boot-time APIs and the UI read. None of it is in the unauthenticated
+     * frontend config, which carries only what the sign-in page needs.
      */
     AppRootElementBlueprint.make({
-      name: 'installations-config-loader',
+      name: 'signed-in-config-loader',
       params: {
-        element: <InstallationsConfigLoader />,
+        element: <SignedInConfigLoader />,
       },
     }),
     /**

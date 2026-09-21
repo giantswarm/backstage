@@ -8,11 +8,12 @@ import {
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
-import { InstallationsConfigLoader } from './InstallationsConfigLoader';
 import {
-  __resetInstallationsConfigForTests,
-  getInstallationsConfig,
-} from '../../apis/installations';
+  __resetSignedInConfigForTests,
+  getSignedInConfig,
+} from '@giantswarm/backstage-plugin-gs-react';
+import { SignedInConfigLoader } from './SignedInConfigLoader';
+import { getInstallationsConfig } from '../../apis/installations';
 
 function fakeApis({
   getCredentials = jest.fn().mockResolvedValue({ token: 'id-token' }),
@@ -30,26 +31,26 @@ function fakeApis({
     [fetchApiRef, { fetch }],
     [errorApiRef, errorApi],
   ] as const;
-  return { apis: apis as any, errorApi };
+  return { apis: apis as any, errorApi, fetch };
 }
 
-describe('InstallationsConfigLoader', () => {
+describe('SignedInConfigLoader', () => {
   beforeEach(() => {
-    __resetInstallationsConfigForTests();
+    __resetSignedInConfigForTests();
   });
 
   afterEach(() => {
-    __resetInstallationsConfigForTests();
+    __resetSignedInConfigForTests();
   });
 
-  it('publishes an empty set (unblocking awaiters) and reports when getCredentials rejects', async () => {
+  it('publishes an empty config (unblocking awaiters) and reports when getCredentials rejects', async () => {
     const { apis, errorApi } = fakeApis({
       getCredentials: jest.fn().mockRejectedValue(new Error('not signed in')),
     });
 
     await renderInTestApp(
       <TestApiProvider apis={apis}>
-        <InstallationsConfigLoader />
+        <SignedInConfigLoader />
       </TestApiProvider>,
     );
 
@@ -58,14 +59,14 @@ describe('InstallationsConfigLoader', () => {
     expect(errorApi.post).toHaveBeenCalled();
   });
 
-  it('publishes an empty set and reports when getBaseUrl rejects', async () => {
+  it('publishes an empty config and reports when getBaseUrl rejects', async () => {
     const { apis, errorApi } = fakeApis({
       getBaseUrl: jest.fn().mockRejectedValue(new Error('discovery failed')),
     });
 
     await renderInTestApp(
       <TestApiProvider apis={apis}>
-        <InstallationsConfigLoader />
+        <SignedInConfigLoader />
       </TestApiProvider>,
     );
 
@@ -73,21 +74,30 @@ describe('InstallationsConfigLoader', () => {
     expect(errorApi.post).toHaveBeenCalled();
   });
 
-  it('publishes the normalized config on a successful fetch', async () => {
-    const { apis, errorApi } = fakeApis({
+  it('publishes the fetched config from GET /api/gs/config', async () => {
+    const { apis, errorApi, fetch } = fakeApis({
       fetch: jest.fn().mockResolvedValue(
-        new Response(JSON.stringify({ golem: { authProvider: 'oidc' } }), {
-          status: 200,
-        }),
+        new Response(
+          JSON.stringify({
+            gs: {
+              installations: { golem: { authProvider: 'oidc' } },
+              adminGroups: ['admins'],
+            },
+          }),
+          { status: 200 },
+        ),
       ),
     });
 
     await renderInTestApp(
       <TestApiProvider apis={apis}>
-        <InstallationsConfigLoader />
+        <SignedInConfigLoader />
       </TestApiProvider>,
     );
 
+    const config = await getSignedInConfig();
+    expect(fetch).toHaveBeenCalledWith('http://backend/api/gs/config');
+    expect(config.getStringArray('gs.adminGroups')).toEqual(['admins']);
     await expect(getInstallationsConfig()).resolves.toEqual([
       { name: 'golem', authProvider: 'oidc' },
     ]);
