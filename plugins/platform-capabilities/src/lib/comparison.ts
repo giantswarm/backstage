@@ -1,4 +1,6 @@
 import {
+  PlanFile,
+  VerifyDifference,
   VerifyDimension,
   VerifyFeature,
   VerifyMark,
@@ -116,4 +118,86 @@ export function foundWords(counts: Counts): string[] {
     words.push(count(counts.planned, 'planned change'));
   }
   return words;
+}
+
+/** A difference with its mark: `planned` where a migration plans it, `differs by input` where an input drives it, else its dimension's. */
+export interface MarkedDifference {
+  difference: VerifyDifference;
+  mark: VerifyMark;
+}
+
+export function markOf(
+  difference: VerifyDifference,
+  dimension: VerifyDimension,
+): VerifyMark {
+  if (difference.planned) {
+    return 'planned';
+  }
+  if (difference.input) {
+    return 'differs by input';
+  }
+  return dimension.mark;
+}
+
+/** The words on a difference: the sentence of a planned change, the input it follows, or its mark. */
+export function wordsOf({ difference, mark }: MarkedDifference): string {
+  if (difference.planned) {
+    return difference.planned;
+  }
+  if (difference.input) {
+    return `differs by input: ${difference.input}`;
+  }
+  return mark;
+}
+
+/** The differences of one file, `<repository>:<path>`, with the plan's file where the answer carries it. */
+export interface FileGroup {
+  file: string;
+  plan?: PlanFile;
+  differences: MarkedDifference[];
+}
+
+/**
+ * The differences of the differing dimensions by file, in the order the
+ * features name them, so each file is shown once with every reason on it.
+ */
+export function fileGroups(result: VerifyResult): FileGroup[] {
+  const groups = new Map<string, FileGroup>();
+  for (const feature of result.features ?? []) {
+    for (const dimension of differingDimensions(feature)) {
+      for (const difference of dimension.differences ?? []) {
+        if (!difference.file) {
+          continue;
+        }
+        const group = groups.get(difference.file) ?? {
+          file: difference.file,
+          plan: (result.files ?? []).find(
+            f => `${f.repository}:${f.path}` === difference.file,
+          ),
+          differences: [],
+        };
+        group.differences.push({
+          difference,
+          mark: markOf(difference, dimension),
+        });
+        groups.set(difference.file, group);
+      }
+    }
+  }
+  return [...groups.values()];
+}
+
+/** The differences to apply and the planned changes among a file's differences. */
+export function countsOfDifferences(differences: MarkedDifference[]): Counts {
+  const planned = differences.filter(d => d.mark === 'planned').length;
+  return { differences: differences.length - planned, planned };
+}
+
+/** Whether a differing dimension says something the file groups do not: a reason, a probe's requests, a difference without a file. */
+export function hasOwnFacts(dimension: VerifyDimension): boolean {
+  return (
+    Boolean(dimension.reason) ||
+    Boolean(dimension.probe?.requests?.length) ||
+    (dimension.differences ?? []).some(d => !d.file)
+  );
 }

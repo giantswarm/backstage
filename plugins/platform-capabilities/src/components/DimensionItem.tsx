@@ -1,32 +1,51 @@
 import { VerifyDimension } from '../apis';
+import { MarkedDifference, markOf, wordsOf } from '../lib/comparison';
 import { MarkTag } from './StateTag';
 
 export const LIST_STYLE = { margin: 0, paddingLeft: 16 };
 
 /**
- * One dimension of a feature as the comparison marked it: its mark and
- * reason, the differences (file, path, the input driving it, rendered against
- * current -- or, for a planned change, the migration that plans it) and the
- * probe's requests.
+ * One difference without its file, which the header above carries: the
+ * path (or the object), rendered against current where the change is not
+ * planned, and the reason in the mark's colour.
+ */
+export function DifferenceLine({
+  difference,
+}: {
+  difference: MarkedDifference;
+}) {
+  const { difference: d } = difference;
+  const where = d.path ?? d.object;
+  return (
+    <li>
+      {where ? <code>{where}</code> : null}
+      {d.planned
+        ? ''
+        : `: rendered ${JSON.stringify(d.rendered)}, current ${JSON.stringify(d.current)}`}
+      {' — '}
+      <MarkTag mark={difference.mark} words={wordsOf(difference)} />
+    </li>
+  );
+}
+
+/**
+ * The facts of a dimension the file groups do not carry: its mark and
+ * reason, its differences without a file (objects), and its probe's
+ * requests. The differences on files are shown on the files' diffs.
  */
 export function DimensionItem({ dimension }: { dimension: VerifyDimension }) {
+  const objects = (dimension.differences ?? []).filter(d => !d.file);
   return (
     <li data-testid={`dimension-${dimension.id}`} data-mark={dimension.mark}>
       <code>{dimension.id}</code> — <MarkTag mark={dimension.mark} />
       {dimension.reason ? `: ${dimension.reason}` : ''}
-      {!!dimension.differences?.length && (
+      {objects.length > 0 && (
         <ul style={LIST_STYLE}>
-          {dimension.differences.map((d, i) => (
-            <li key={`${d.file}-${d.path}-${i}`}>
-              <code>
-                {d.file}
-                {d.path ? ` ${d.path}` : ''}
-              </code>
-              {d.input ? ` (input ${d.input})` : ''}
-              {d.planned
-                ? ` — planned: ${d.planned}`
-                : `: rendered ${JSON.stringify(d.rendered)}, current ${JSON.stringify(d.current)}`}
-            </li>
+          {objects.map((d, i) => (
+            <DifferenceLine
+              key={`${d.object}-${d.path}-${i}`}
+              difference={{ difference: d, mark: markOf(d, dimension) }}
+            />
           ))}
         </ul>
       )}

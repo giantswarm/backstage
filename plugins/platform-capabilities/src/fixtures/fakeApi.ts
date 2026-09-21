@@ -11,6 +11,7 @@ import {
   VerifyFeature,
   ListInstallationsFilters,
   ManagerInfo,
+  PlanFile,
   PlatformCapabilitiesApi,
   VerifyResult,
   WriteOptions,
@@ -308,6 +309,44 @@ export const ACTION: Action = {
 
 const AUTHORITY_REASON = 'needs your session on the installation';
 
+/** The configmap patch as the definition renders it. */
+export const PATCH_RENDERED = [
+  'kagent:',
+  '  apiVersion: v2',
+  '  replicas: 1',
+  '  image:',
+  '    tag: 1.2.3',
+  '  resources:',
+  '    limits:',
+  '      memory: 512Mi',
+  'chartLine: "4"',
+  'portal:',
+  '  enabled: true',
+  '  baseUrl: https://portal.rowan.example.test',
+  '  title: Rowan',
+  'federation:',
+  '  targets: []',
+  '',
+].join('\n');
+
+/** The patch on record: replicas and the chart line hand-edited, the kagent API still v1. */
+export const PATCH_ON_RECORD = PATCH_RENDERED.replace(
+  'apiVersion: v2',
+  'apiVersion: v1',
+)
+  .replace('replicas: 1', 'replicas: 2')
+  .replace('chartLine: "4"', 'chartLine: "3"');
+
+/** The patch file of the comparison, to update, with the render and the record. */
+export function patchFile(current: string): PlanFile {
+  return {
+    ...PLAN.installations[0].files![0],
+    change: 'update',
+    content: PATCH_RENDERED,
+    current,
+  };
+}
+
 /**
  * rowan compared with its definition: the four marks across the definition's
  * six features, two live dimensions that need the person's session, a feature
@@ -391,6 +430,8 @@ export const VERIFIED: VerifyResult = {
               path: 'kagent.replicas',
               rendered: 1,
               current: 2,
+              line: 3,
+              currentLine: 3,
             },
           ],
         },
@@ -442,11 +483,11 @@ export const VERIFIED: VerifyResult = {
     drifted: 1,
     'not checked': 3,
   },
-  files: PLAN.installations[0].files,
+  files: [patchFile(PATCH_ON_RECORD), PLAN.installations[0].files![1]],
   generatedSecrets: PLAN.installations[0].generatedSecrets,
   dexClients: PLAN.installations[0].dexClients,
   customerActions: PLAN.installations[0].customerActions,
-  diff: PLAN.installations[0].diff,
+  diff: { update: 1, create: 1 },
   pullRequests: PLAN.pullRequests,
 };
 
@@ -465,9 +506,12 @@ const PLANNED_RUNTIME: VerifyFeature = {
         {
           file: 'example/example-configs:installations/rowan/apps/agent-platform/configmap-values.yaml.patch',
           path: 'kagent.apiVersion',
-          planned: 'migrates to kagent API v2 with the 4 chart line',
+          planned:
+            'The kagent API moves to v2 with the 4 chart line; the migration rewrites the patch. · M3',
           rendered: 'v2',
           current: 'v1',
+          line: 2,
+          currentLine: 2,
         },
       ],
     },
@@ -490,7 +534,9 @@ export const PLANNED: VerifyResult = {
   ...UP_TO_DATE,
   features: [...UP_TO_DATE.features, PLANNED_RUNTIME],
   summary: { 'as defined': 4, planned: 1 },
-  files: [{ ...PLAN.installations[0].files![0], change: 'update' }],
+  files: [
+    patchFile(PATCH_RENDERED.replace('apiVersion: v2', 'apiVersion: v1')),
+  ],
   diff: { update: 1, unchanged: 1 },
   pullRequests: [PLAN.pullRequests![0]],
 };
@@ -516,6 +562,8 @@ export const MIXED: VerifyResult = {
               path: 'chartLine',
               rendered: '4',
               current: '3',
+              line: 9,
+              currentLine: 9,
             },
           ],
         },

@@ -89,6 +89,7 @@ export function CapabilityDialog({
     mutationFn: () =>
       api.verifyCapability(installation.name, capability.name, {
         inputs: values,
+        content: true,
       }),
     onSuccess: setReviewed,
   });
