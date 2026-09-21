@@ -7456,14 +7456,14 @@ __metadata:
   linkType: hard
 
 "@fsegurai/codemirror-theme-vscode-light@npm:^6.2.2":
-  version: 6.2.6
-  resolution: "@fsegurai/codemirror-theme-vscode-light@npm:6.2.6"
+  version: 6.2.8
+  resolution: "@fsegurai/codemirror-theme-vscode-light@npm:6.2.8"
   peerDependencies:
     "@codemirror/language": ^6.0.0
     "@codemirror/state": ^6.0.0
     "@codemirror/view": ^6.0.0
     "@lezer/highlight": ^1.0.0
-  checksum: 10c0/bacb8201f5956d7f7d38ccc9bd3e47c84b7af2449797632affb72028a73e386f8861920369524800c63ce33d3e3ef445cfe4574427ce91010b3d095763d01423
+  checksum: 10c0/350f6f111a2369754a31b0a8c6236cd5c3a8df60b62fd7bd569a5ccd0b196df1a2fe1fb13ae65a11494703bd6b48ac5aabdea78fdfda3f3325679e2a8c738efd
   languageName: node
   linkType: hard
 
