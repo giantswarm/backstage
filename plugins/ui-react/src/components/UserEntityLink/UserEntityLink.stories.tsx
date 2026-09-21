@@ -34,7 +34,12 @@ const TITLES = {
 const meta = {
   title: 'Components/UserEntityLink',
   component: UserEntityLink,
+  tags: ['autodocs'],
   parameters: {
+    // The test app below mounts a router of its own, and react-router throws on
+    // a `<Router>` inside a `<Router>` -- so the global decorator's one stands
+    // down for this story.
+    router: { disable: true },
     docs: {
       description: {
         component:

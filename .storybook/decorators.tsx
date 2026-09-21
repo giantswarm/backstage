@@ -30,12 +30,15 @@ function Providers({
   children,
   themeName,
   initialEntries,
+  router,
 }: {
   children: ReactNode;
   themeName: 'light' | 'dark';
   initialEntries: string[];
+  router: boolean;
 }) {
   const theme = useMemo(() => themes[themeName] ?? themes.light, [themeName]);
+  const content = <div style={{ padding: 24 }}>{children}</div>;
   return (
     <TestApiProvider
       apis={[
@@ -44,9 +47,11 @@ function Providers({
       ]}
     >
       <UnifiedThemeProvider theme={theme}>
-        <MemoryRouter initialEntries={initialEntries}>
-          <div style={{ padding: 24 }}>{children}</div>
-        </MemoryRouter>
+        {router ? (
+          <MemoryRouter initialEntries={initialEntries}>{content}</MemoryRouter>
+        ) : (
+          content
+        )}
       </UnifiedThemeProvider>
     </TestApiProvider>
   );
@@ -58,12 +63,22 @@ function Providers({
  *
  * A story can seed the router (e.g. to open a URL-driven `DetailsPane`) with:
  *   parameters: { router: { initialEntries: ['/?pane=my-pane&...'] } }
+ *
+ * A story that brings its own app -- `wrapInTestApp`, for a component that
+ * resolves a route ref -- mounts a router of its own, and react-router throws
+ * on a `<Router>` inside a `<Router>`. Such a story opts out with:
+ *   parameters: { router: { disable: true } }
  */
 export const withGSProviders: Decorator = (Story, context) => {
   const themeName = (context.globals.theme as 'light' | 'dark') ?? 'light';
   const initialEntries = context.parameters?.router?.initialEntries ?? ['/'];
+  const router = context.parameters?.router?.disable !== true;
   return (
-    <Providers themeName={themeName} initialEntries={initialEntries}>
+    <Providers
+      themeName={themeName}
+      initialEntries={initialEntries}
+      router={router}
+    >
       <Story />
     </Providers>
   );
