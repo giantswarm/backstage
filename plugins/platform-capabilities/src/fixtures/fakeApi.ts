@@ -568,6 +568,8 @@ export interface FakeOptions {
   unreadable?: string[];
   /** How long the listing takes, in milliseconds: the manager reads a fleet. */
   latency?: number;
+  /** How long `get_info` takes, in milliseconds: the backend, muster and the manager answer in turn. */
+  infoLatency?: number;
   /** The comparison fails with this, as when the person has no session at the manager. */
   verifyError?: Error;
 }
@@ -598,6 +600,11 @@ export class FakeApi implements PlatformCapabilitiesApi {
   }
 
   async getInfo(): Promise<ManagerInfo> {
+    if (this.options.infoLatency) {
+      await new Promise(resolve =>
+        setTimeout(resolve, this.options.infoLatency),
+      );
+    }
     return {
       version: '0.7.0',
       definitions: this.options.definitions ?? [AGENT_PLATFORM_DEFINITION],

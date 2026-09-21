@@ -46,8 +46,94 @@ function Probe({ names }: { names: string[] }) {
   );
 }
 
+/** The layout box of a cell's mark or skeleton: what decides the row's height. */
+const box = (el: HTMLElement) =>
+  ['display', 'width', 'height', 'alignItems'].map(
+    property => el.style[property as 'display'],
+  );
+
 describe('useInstallationCapabilityColumns', () => {
   beforeEach(() => platformCapabilitiesQueryClient.clear());
+
+  it('has its columns on the first render, before the manager has answered anything', async () => {
+    const api = new FakeApi({
+      installations: [ENABLED],
+      definitions: [
+        AGENT_PLATFORM_DEFINITION,
+        { ...AGENT_PLATFORM_DEFINITION, name: 'customer-portal' },
+      ],
+      infoLatency: 400,
+      latency: 800,
+    });
+    await renderInTestApp(
+      <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+        <Probe names={['birch']} />
+      </TestApiProvider>,
+    );
+    // No waiting: the platform's capabilities are the columns of the first
+    // render, each cell a skeleton, with neither `get_info` nor the listing in.
+    expect(screen.getByTestId('titles')).toHaveTextContent(
+      'agent-platform,customer-portal',
+    );
+    expect(screen.getByTestId('widths')).toHaveTextContent('120px,120px');
+    expect(
+      screen.getByTestId('capability-agent-platform-birch-pending'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('capability-customer-portal-birch-pending'),
+    ).toBeInTheDocument();
+    // The definitions confirm the set; the listing brings the icons.
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId('capability-agent-platform-birch'),
+        ).toHaveAttribute('data-mark', 'in sync'),
+      { timeout: 3000 },
+    );
+    expect(screen.getByTestId('titles')).toHaveTextContent(
+      'agent-platform,customer-portal',
+    );
+  });
+
+  it("takes the manager's set once it answers, in name order whatever the source's", async () => {
+    const api = new FakeApi({
+      installations: [ENABLED],
+      definitions: [
+        { ...AGENT_PLATFORM_DEFINITION, name: 'observability' },
+        { ...AGENT_PLATFORM_DEFINITION, name: 'customer-portal' },
+        AGENT_PLATFORM_DEFINITION,
+      ],
+      latency: 400,
+    });
+    await renderInTestApp(
+      <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+        <Probe names={['birch']} />
+      </TestApiProvider>,
+    );
+    // A definition the plugin does not know joins the columns, in name order.
+    await waitFor(() =>
+      expect(screen.getByTestId('titles')).toHaveTextContent(
+        'agent-platform,customer-portal,observability',
+      ),
+    );
+    expect(
+      screen.getByTestId('capability-observability-birch-pending'),
+    ).toBeInTheDocument();
+    // The listing names the same set: the columns stay where they are.
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId('capability-agent-platform-birch'),
+        ).toHaveAttribute('data-mark', 'in sync'),
+      { timeout: 3000 },
+    );
+    expect(screen.getByTestId('titles')).toHaveTextContent(
+      'agent-platform,customer-portal,observability',
+    );
+    expect(
+      screen.getByTestId('capability-observability-birch'),
+    ).toHaveTextContent('—');
+  });
 
   it('adds one column per capability with one icon per installation', async () => {
     const api = new FakeApi({
@@ -112,7 +198,7 @@ describe('useInstallationCapabilityColumns', () => {
     expect(api.listFilters).toEqual([{ summary: true }]);
   });
 
-  it('has its columns from the definitions before the listing arrives, each cell a skeleton', async () => {
+  it("has its columns before the listing arrives, each cell a skeleton in the icon's box", async () => {
     const api = new FakeApi({
       installations: [ENABLED],
       definitions: [
@@ -132,9 +218,11 @@ describe('useInstallationCapabilityColumns', () => {
         'agent-platform,customer-portal',
       ),
     );
-    expect(
-      screen.getByTestId('capability-customer-portal-birch-pending'),
-    ).toBeInTheDocument();
+    const pending = screen.getByTestId(
+      'capability-agent-platform-birch-pending',
+    );
+    expect(pending).toHaveAttribute('aria-busy', 'true');
+    const pendingBox = box(pending);
     expect(screen.queryByTestId('capability-agent-platform-birch')).toBeNull();
     // Then the icons.
     await waitFor(
@@ -143,6 +231,10 @@ describe('useInstallationCapabilityColumns', () => {
           screen.getByTestId('capability-agent-platform-birch'),
         ).toHaveAttribute('data-mark', 'in sync'),
       { timeout: 3000 },
+    );
+    // In the box the skeleton held, so the row is as tall as before.
+    expect(box(screen.getByTestId('capability-agent-platform-birch'))).toEqual(
+      pendingBox,
     );
     expect(
       screen.queryByTestId('capability-customer-portal-birch-pending'),

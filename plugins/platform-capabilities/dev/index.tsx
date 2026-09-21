@@ -76,9 +76,12 @@ const fakeApi = ApiBlueprint.make({
             AGENT_PLATFORM_DEFINITION,
             { ...AGENT_PLATFORM_DEFINITION, name: 'customer-portal' },
           ],
-          // The manager reads the fleet's repositories: the columns are
-          // skeletons for a while, as on the real page.
-          latency: 2500,
+          // The manager answers `get_info` through the backend and muster
+          // in a second or two, and reads the fleet's repositories for the
+          // listing: the columns are the plugin's own first, skeletons for a
+          // while, as on the real page.
+          infoLatency: 1500,
+          latency: 4000,
         }),
     }),
 });
