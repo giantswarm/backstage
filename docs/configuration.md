@@ -37,7 +37,15 @@ To let the browser read a new key: leave its `config.d.ts` entry at the
 default (backend) visibility, add the path to `SIGNED_IN_CONFIG_PATHS` and read
 it through the signed-in config. `@visibility frontend` is only for what the
 sign-in page itself needs, per field: `@deepVisibility frontend` is not used,
-because it would ship every field later added under that key to every visitor.
+because it would ship every field later added under that key to every visitor,
+and a test refuses it in every `config.d.ts` of this repository.
+
+The public set is pinned: `packages/app/src/config/frontendVisiblePaths.golden.json`
+lists every frontend-visible path of the app's merged config schema, and
+`frontendVisibility.test.ts` (part of `ci:verify`) fails when the schema
+exposes anything else, whether from a new field, a new plugin or a dependency
+bump. Regenerate it, and review the diff, with
+`UPDATE_GOLDEN=1 yarn workspace app test src/config`.
 
 ## Cluster access (broker-only)
 
