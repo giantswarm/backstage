@@ -8,7 +8,7 @@ import { statusOf } from './StateTag';
 
 /**
  * What one glance at the Installations table says about a capability on an
- * installation: the manager's nine states folded into the portal's six marks
+ * installation: the manager's ten states folded into the portal's six marks
  * (the same icons the Repositories page uses for a repository's set-up).
  */
 export type CapabilityMark = SyncMark;
@@ -29,11 +29,16 @@ export function markOf(
     case 'pending approval':
     case 'rolling out':
     case 'waiting for the customer':
-      // An action still in flight, or an installation enabled by hand that no
-      // action has ever run through, so "as defined" cannot be claimed for it.
+      // An action still in flight, so "as defined" cannot be claimed yet.
+      return 'not reconciled';
+    case 'enabled, not opted in':
+      // On record, put there by the installation's owners themselves, and the
+      // manager may not reconcile it until they opt in: installed all the
+      // same, never the empty circle.
       return 'not reconciled';
     case 'not enabled':
     case 'not opted in':
+      // Nothing is on record.
       return 'not installed';
     case 'failed':
       return 'failed';

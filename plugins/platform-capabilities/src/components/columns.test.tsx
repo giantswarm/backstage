@@ -8,6 +8,7 @@ import {
   DRIFTED,
   ENABLED,
   ENABLED_BY_HAND,
+  ENABLED_NOT_OPTED_IN,
   FakeApi,
   installation,
   NOT_OPTED_IN,
@@ -55,13 +56,22 @@ describe('useInstallationCapabilityColumns', () => {
         NOT_OPTED_IN,
         ENABLED,
         ENABLED_BY_HAND,
+        ENABLED_NOT_OPTED_IN,
         DRIFTED,
       ],
     });
     await renderInTestApp(
       <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
         <Probe
-          names={['rowan', 'alder', 'birch', 'cedar', 'elm', 'unknown-one']}
+          names={[
+            'rowan',
+            'alder',
+            'birch',
+            'cedar',
+            'maple',
+            'elm',
+            'unknown-one',
+          ]}
         />
       </TestApiProvider>,
     );
@@ -85,6 +95,13 @@ describe('useInstallationCapabilityColumns', () => {
     // Enabled by hand, no action on record: installed, not reconciled.
     expect(cell('cedar')).toHaveAttribute('data-state', 'enabled');
     expect(cell('cedar')).toHaveAttribute('data-mark', 'not reconciled');
+    // Enabled by the owners without the opt-in: on record, not reconciled by
+    // the manager; never the empty circle.
+    expect(cell('maple')).toHaveAttribute(
+      'data-state',
+      'enabled, not opted in',
+    );
+    expect(cell('maple')).toHaveAttribute('data-mark', 'not reconciled');
     expect(cell('elm')).toHaveAttribute('data-state', 'drifted');
     expect(cell('elm')).toHaveAttribute('data-mark', 'not in sync');
     expect(cell('elm')).toHaveAccessibleName('Installed · differences');
