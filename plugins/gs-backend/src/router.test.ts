@@ -28,10 +28,12 @@ async function buildApp(config: RootConfigService) {
   return app;
 }
 
-describe('GET /installations', () => {
-  it('returns the full installations map with all fields', async () => {
+describe('GET /config', () => {
+  it('serves the signed-in config in app-config shape, without the secrets next to it', async () => {
     const config = makeConfig({
       gs: {
+        authProvider: 'oidc-golem',
+        adminGroups: ['admins'],
         installations: {
           golem: {
             pipeline: 'stable',
@@ -48,60 +50,61 @@ describe('GET /installations', () => {
             },
           },
         },
+        clusterTokenBroker: {
+          tokenUrl: 'https://muster.golem.example.com/oauth/token',
+          clientId: 'portal',
+          clientSecret: 'hunter2',
+        },
+      },
+      muster: {
+        installations: [
+          {
+            name: 'golem',
+            url: 'https://muster.golem.example.com/mcp',
+            authProvider: 'mcp-muster',
+          },
+        ],
       },
     });
 
     const app = await buildApp(config);
-    const response = await request(app).get('/installations');
+    const response = await request(app).get('/config');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
-      golem: {
-        pipeline: 'stable',
-        providers: ['capa'],
-        authProvider: 'oidc',
-        oidcTokenProvider: 'oidc-golem',
-        clusterTokenAudience: 'golem',
-        backendUrl: 'https://golem.example.com',
-        baseDomain: 'golem.example.com',
-        region: 'eu-central-1',
-        mimirEnabled: false,
-        apiVersionOverrides: {
-          clusters: 'v1beta1',
-        },
-      },
-    });
-  });
-
-  it('omits unset optional fields', async () => {
-    const config = makeConfig({
       gs: {
+        adminGroups: ['admins'],
         installations: {
-          minimal: {
-            pipeline: 'testing',
+          golem: {
+            pipeline: 'stable',
+            providers: ['capa'],
             authProvider: 'oidc',
+            oidcTokenProvider: 'oidc-golem',
+            clusterTokenAudience: 'golem',
+            backendUrl: 'https://golem.example.com',
+            baseDomain: 'golem.example.com',
+            region: 'eu-central-1',
+            mimirEnabled: false,
+            apiVersionOverrides: {
+              clusters: 'v1beta1',
+            },
           },
         },
+        clusterTokenBroker: {
+          tokenUrl: 'https://muster.golem.example.com/oauth/token',
+        },
       },
-    });
-
-    const app = await buildApp(config);
-    const response = await request(app).get('/installations');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      minimal: {
-        pipeline: 'testing',
-        authProvider: 'oidc',
+      muster: {
+        installations: [{ name: 'golem', authProvider: 'mcp-muster' }],
       },
     });
   });
 
-  it('returns an empty object when no installations are configured', async () => {
-    const config = makeConfig({ gs: {} });
+  it('serves an empty object when nothing of the signed-in config is set', async () => {
+    const config = makeConfig({ gs: { authProvider: 'oidc-golem' } });
 
     const app = await buildApp(config);
-    const response = await request(app).get('/installations');
+    const response = await request(app).get('/config');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({});

@@ -4,23 +4,36 @@ import { GSAuthProviders } from './GSAuthProviders';
 import { SIGN_IN_CONNECTOR_STORAGE_KEY } from './signInConnectorMemory';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { InstallationConfig } from '../installations';
+import { Config, ConfigReader } from '@backstage/config';
 
 jest.mock('@backstage/core-app-api', () => ({
   ...jest.requireActual('@backstage/core-app-api'),
   openLoginPopup: jest.fn(),
 }));
 
-// Replace the module-level async installations source so the test drives what
+// Replace the module-level signed-in config source so the test drives what
 // `ensureInitialized()` sees (and can make it reject on demand).
-jest.mock('../installations', () => {
-  const actual = jest.requireActual('../installations');
-  return { ...actual, getInstallationsConfig: jest.fn() };
+jest.mock('@giantswarm/backstage-plugin-gs-react', () => {
+  const actual = jest.requireActual('@giantswarm/backstage-plugin-gs-react');
+  return { ...actual, getSignedInConfig: jest.fn() };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { getInstallationsConfig } = require('../installations') as {
-  getInstallationsConfig: jest.Mock<Promise<InstallationConfig[]>>;
-};
+const { getSignedInConfig } =
+  require('@giantswarm/backstage-plugin-gs-react') as {
+    getSignedInConfig: jest.Mock<Promise<Config>>;
+  };
+
+/** A signed-in config that carries exactly these installations. */
+function signedInConfig(installations: InstallationConfig[]): Config {
+  return new ConfigReader({
+    gs: {
+      installations: Object.fromEntries(
+        installations.map(({ name, ...rest }) => [name, rest]),
+      ),
+    },
+  });
+}
 
 const configApi = {
   // No main provider, no broker: keeps getProviders returning exactly the
@@ -53,7 +66,7 @@ describe('GSAuthProviders.ensureInitialized', () => {
   let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    getInstallationsConfig.mockReset();
+    getSignedInConfig.mockReset();
     warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
@@ -62,15 +75,25 @@ describe('GSAuthProviders.ensureInitialized', () => {
   });
 
   it('skips malformed installation entries and still builds the valid ones', async () => {
-    getInstallationsConfig.mockResolvedValue([
-      { name: 'valid', authProvider: 'oidc', oidcTokenProvider: 'oidc-valid' },
-      // Non-oidc auth provider -> skipped.
-      { name: 'bad-auth', authProvider: 'saml', oidcTokenProvider: 'oidc-x' },
-      // Missing oidcTokenProvider -> skipped.
-      { name: 'bad-missing', authProvider: 'oidc' },
-      // oidcTokenProvider without the `oidc-` prefix -> skipped.
-      { name: 'bad-prefix', authProvider: 'oidc', oidcTokenProvider: 'weird' },
-    ]);
+    getSignedInConfig.mockResolvedValue(
+      signedInConfig([
+        {
+          name: 'valid',
+          authProvider: 'oidc',
+          oidcTokenProvider: 'oidc-valid',
+        },
+        // Non-oidc auth provider -> skipped.
+        { name: 'bad-auth', authProvider: 'saml', oidcTokenProvider: 'oidc-x' },
+        // Missing oidcTokenProvider -> skipped.
+        { name: 'bad-missing', authProvider: 'oidc' },
+        // oidcTokenProvider without the `oidc-` prefix -> skipped.
+        {
+          name: 'bad-prefix',
+          authProvider: 'oidc',
+          oidcTokenProvider: 'weird',
+        },
+      ]),
+    );
 
     const api = createApi();
     await api.ensureInitialized();
@@ -82,26 +105,28 @@ describe('GSAuthProviders.ensureInitialized', () => {
   });
 
   it('does not latch a rejected promise: a later call retries and succeeds', async () => {
-    getInstallationsConfig
-      .mockRejectedValueOnce(new Error('installations source failed'))
-      .mockResolvedValueOnce([
-        {
-          name: 'valid',
-          authProvider: 'oidc',
-          oidcTokenProvider: 'oidc-valid',
-        },
-      ]);
+    getSignedInConfig
+      .mockRejectedValueOnce(new Error('signed-in config source failed'))
+      .mockResolvedValueOnce(
+        signedInConfig([
+          {
+            name: 'valid',
+            authProvider: 'oidc',
+            oidcTokenProvider: 'oidc-valid',
+          },
+        ]),
+      );
 
     const api = createApi();
 
     // First init rejects (transient failure).
     await expect(api.ensureInitialized()).rejects.toThrow(
-      'installations source failed',
+      'signed-in config source failed',
     );
 
     // A later call must NOT re-await the cached rejection -- it retries.
     await expect(api.ensureInitialized()).resolves.toBeUndefined();
-    expect(getInstallationsConfig).toHaveBeenCalledTimes(2);
+    expect(getSignedInConfig).toHaveBeenCalledTimes(2);
     expect(api.getProviders().map(p => p.providerName)).toEqual(['oidc-valid']);
   });
 });
@@ -199,7 +224,7 @@ describe('GSAuthProviders sign-in connector memory', () => {
 
   beforeEach(() => {
     window.localStorage.clear();
-    getInstallationsConfig.mockReset();
+    getSignedInConfig.mockReset();
     (openLoginPopup as jest.Mock).mockReset();
     (openLoginPopup as jest.Mock).mockResolvedValue(popupPayload);
     // The refresh cookie is gone: every `/refresh` fails, sign-out succeeds.
@@ -284,9 +309,15 @@ describe('GSAuthProviders sign-in connector memory', () => {
 
   it('keeps per-installation providers out of it', async () => {
     window.localStorage.setItem(SIGN_IN_CONNECTOR_STORAGE_KEY, 'giantswarm-ad');
-    getInstallationsConfig.mockResolvedValue([
-      { name: 'golem', authProvider: 'oidc', oidcTokenProvider: 'oidc-golem' },
-    ]);
+    getSignedInConfig.mockResolvedValue(
+      signedInConfig([
+        {
+          name: 'golem',
+          authProvider: 'oidc',
+          oidcTokenProvider: 'oidc-golem',
+        },
+      ]),
+    );
     const api = createSignInApi({ 'gs.authProvider': 'oidc-gazelle' });
 
     // No broker configured: the installation signs in through its own popup.

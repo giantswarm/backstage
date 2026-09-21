@@ -24,7 +24,7 @@ export {
   type InstallationConfig,
   type UseInstallationsResult,
 } from './apis/installations';
-export { InstallationsConfigLoader } from './components/InstallationsConfigLoader';
+export { SignedInConfigLoader } from './components/SignedInConfigLoader';
 // One inventory of the Agent Platform components per installation (one
 // `GET /apis` each, home first), consumed by the agent-platform and muster
 // plugins to decide which installations to query.

@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@material-ui/core';
 import { Toolkit } from '../../UI';
-import { useApi, configApiRef } from '@backstage/core-plugin-api';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 const defaultLinks = [
   {
@@ -26,9 +26,15 @@ const defaultLinks = [
 ];
 
 export function ResourcesCard() {
-  const configApi = useApi(configApiRef);
+  const { config, isLoading } = useSignedInConfig();
+  if (isLoading) {
+    // The links are part of the signed-in config: show the configured set or
+    // the defaults, never the defaults first and the configured set a moment
+    // later.
+    return null;
+  }
 
-  const linksConfig = configApi.getOptionalConfigArray('gs.homepage.resources');
+  const linksConfig = config?.getOptionalConfigArray('gs.homepage.resources');
 
   const links = linksConfig
     ? linksConfig.map(link => ({

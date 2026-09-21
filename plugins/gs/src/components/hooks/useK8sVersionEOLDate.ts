@@ -1,22 +1,20 @@
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
-type K8sVersionsConfig = {
-  data: {
-    [key: string]: {
-      eolDate: string;
-      minorVersion: string;
-    };
+type K8sVersions = {
+  [minorVersion: string]: {
+    eolDate: string;
+    minorVersion: string;
   };
 };
 
+/**
+ * The end-of-life date of a Kubernetes version's minor line from
+ * `gs.kubernetesVersions` in the signed-in config; null when unknown.
+ */
 export function useK8sVersionEOLDate(version?: string) {
-  const configApi = useApi(configApiRef);
-  const k8sVersionsConfig = configApi.getOptionalConfig(
-    'gs.kubernetesVersions',
-  );
-  if (!k8sVersionsConfig || !version) return null;
-
-  const k8sVersions = (k8sVersionsConfig as unknown as K8sVersionsConfig).data;
+  const { config } = useSignedInConfig();
+  const k8sVersions = config?.getOptional<K8sVersions>('gs.kubernetesVersions');
+  if (!k8sVersions || !version) return null;
 
   const versionParts = version.split('.');
   if (versionParts.length < 2) return null;
