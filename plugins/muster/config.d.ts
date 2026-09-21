@@ -3,9 +3,8 @@ export interface Config {
   muster?: {
     /**
      * Name of the entry in the `aiChat.mcp` server list that points at the
-     * muster MCP server. Defaults to `muster`. Frontend-visible because the
-     * frontend resolves the entry's auth provider by this name.
-     * @visibility frontend
+     * muster MCP server. Defaults to `muster`. The frontend resolves the
+     * entry's auth provider by this name, from the signed-in config.
      */
     serverName?: string;
 
@@ -14,15 +13,13 @@ export interface Config {
      * `gs.installations` (`https://muster.<baseDomain>/mcp` per entry with a
      * `baseDomain`). The full schema lives in the muster-backend plugin; only
      * the fields the frontend needs to forward the right per-installation
-     * token are declared (and made visible) here. The picker itself lists the
-     * installations whose inventory has the `muster.giantswarm.io` API group,
-     * not this list.
+     * token are declared here, and it reads them from the signed-in config:
+     * the names enumerate the fleet, so they are not public. The picker itself
+     * lists the installations whose inventory has the `muster.giantswarm.io`
+     * API group, not this list.
      */
     installations?: Array<{
-      /**
-       * Stable installation id used for routing and as the client cache scope.
-       * @visibility frontend
-       */
+      /** Stable installation id used for routing and as the client cache scope. */
       name: string;
       /**
        * Marks the installation as requiring a per-user token. Only the home
@@ -33,7 +30,6 @@ export interface Config {
        * provider name, not a secret. A derived installation without an entry
        * here requires a token whenever the backend says so (`requiresAuth` on
        * `GET /api/muster/installations`).
-       * @visibility frontend
        */
       authProvider?: string;
     }>;

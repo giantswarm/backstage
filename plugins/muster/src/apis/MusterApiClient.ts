@@ -8,6 +8,7 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
+import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationOidcToken } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { isHomeInstallation, MusterTokenMintError } from './installationToken';
 import {
@@ -355,7 +356,7 @@ export class MusterApiClient implements MusterApi {
   private async requiresToken(
     installation?: string,
   ): Promise<{ authProvider: string } | undefined> {
-    const configured = this.resolveAuthProvider(installation);
+    const configured = await this.resolveAuthProvider(installation);
     if (configured) {
       return { authProvider: configured };
     }
@@ -396,13 +397,18 @@ export class MusterApiClient implements MusterApi {
    * requires a per-user token; which token depends on whether it is the home
    * installation (see {@link resolveToken}). A derived installation has no
    * entry here -- see {@link requiresToken}.
+   *
+   * Both lists are part of the signed-in config: the installation names
+   * enumerate the fleet, so they are not in the public `index.html`. Every
+   * muster request runs after sign-in, so awaiting the source here never
+   * stalls.
    */
-  private resolveAuthProvider(installation?: string): string | undefined {
-    if (!this.configApi) {
-      return undefined;
-    }
+  private async resolveAuthProvider(
+    installation?: string,
+  ): Promise<string | undefined> {
+    const config = await getSignedInConfig();
     if (installation) {
-      const installations = this.configApi.getOptionalConfigArray(
+      const installations = config.getOptionalConfigArray(
         'muster.installations',
       );
       const match = installations?.find(
@@ -414,8 +420,8 @@ export class MusterApiClient implements MusterApi {
       }
     }
     const serverName =
-      this.configApi.getOptionalString('muster.serverName') ?? 'muster';
-    const mcpConfigs = this.configApi.getOptionalConfigArray('aiChat.mcp');
+      config.getOptionalString('muster.serverName') ?? 'muster';
+    const mcpConfigs = config.getOptionalConfigArray('aiChat.mcp');
     const mcpConfig = mcpConfigs?.find(
       mcp => mcp.getOptionalString('name') === serverName,
     );

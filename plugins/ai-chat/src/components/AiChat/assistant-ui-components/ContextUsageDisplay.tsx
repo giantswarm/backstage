@@ -3,7 +3,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import Typography from '@material-ui/core/Typography';
 import LinearProgress from '@material-ui/core/LinearProgress';
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react';
-import { useApi, configApiRef } from '@backstage/core-plugin-api';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -176,9 +176,9 @@ const ContextUsageDisplayImpl: ToolCallMessagePartComponent<
   UsageResult
 > = ({ result }) => {
   const classes = useStyles();
-  const configApi = useApi(configApiRef);
+  const { config } = useSignedInConfig();
   const configuredContextWindow =
-    configApi.getOptionalNumber('aiChat.contextWindow') ?? null;
+    config?.getOptionalNumber('aiChat.contextWindow') ?? null;
 
   if (!result || !result.available) {
     return (

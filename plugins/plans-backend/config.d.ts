@@ -7,7 +7,6 @@ export interface Config {
      * repository via the `?repo=<owner/repo>` query parameter; when exactly
      * one repository is configured it is used by default. When unset, the
      * plans endpoints return 503 (the plugin is effectively disabled).
-     * @visibility frontend
      */
     repositories?: string[];
 
@@ -21,7 +20,6 @@ export interface Config {
     muster?: {
       /**
        * Name of the muster installation in `muster.installations`.
-       * @visibility frontend
        */
       installation: string;
       /**
