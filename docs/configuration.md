@@ -38,7 +38,10 @@ default (backend) visibility, add the path to `SIGNED_IN_CONFIG_PATHS` and read
 it through the signed-in config. `@visibility frontend` is only for what the
 sign-in page itself needs, per field: `@deepVisibility frontend` is not used,
 because it would ship every field later added under that key to every visitor,
-and a test refuses it in every `config.d.ts` of this repository.
+and a test refuses it in every `config.d.ts` of this repository. A public field
+is validated when the app-backend starts, and a missing required one stops the
+start, so a public leaf a deployment fills from the environment (the loader
+drops a key whose variable is unset) is declared optional.
 
 The public set is pinned: `packages/app/src/config/frontendVisiblePaths.golden.json`
 lists every frontend-visible path of the app's merged config schema, and
