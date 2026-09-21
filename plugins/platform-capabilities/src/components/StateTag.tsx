@@ -169,18 +169,24 @@ export function StateTag({
   );
 }
 
-/** A comparison mark with a dot in its colour: `as defined`, `differs by input`, `drifted`, `not checked`. */
+/**
+ * A comparison mark with a dot in its colour: `as defined`, `differs by
+ * input`, `drifted`, `not checked`. With `words`, those words in the mark's
+ * colour instead of the mark: a difference's reason.
+ */
 export function MarkTag({
   mark,
+  words = mark,
   testId,
 }: {
   mark: VerifyMark;
+  words?: string;
   testId?: string;
 }) {
   return (
     <Dot
       color={STATE_COLOR[mark] ?? STATE_COLOR.unknown}
-      words={mark}
+      words={words}
       state={mark}
       testId={testId}
     />

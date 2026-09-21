@@ -126,6 +126,21 @@ async function renderDialog(api: FakeApi) {
 const header = () => screen.getByTestId('capability-state');
 const card = () => screen.getByTestId('capability-agent-platform');
 
+const PATCH =
+  'example/example-configs:installations/rowan/apps/agent-platform/configmap-values.yaml.patch';
+const KUSTOMIZATION =
+  'example/example-management-clusters:management-clusters/rowan/extras/agent-platform/secrets/kustomization.yaml';
+
+/** The file's group on the tab. */
+const fileGroup = (file: string) => screen.getByTestId(`file-${file}`);
+
+/** The diff row of the rendered file's line `n`. */
+const rowOfLine = (file: string, n: number) => {
+  const row = fileGroup(file).querySelector(`[data-line="${n}"]`);
+  expect(row).not.toBeNull();
+  return row as HTMLElement;
+};
+
 describe('CapabilityCard', () => {
   beforeEach(() => platformCapabilitiesQueryClient.clear());
 
@@ -194,7 +209,11 @@ describe('CapabilityCard', () => {
   it('runs the comparison as it opens and shows one line per fact', async () => {
     const api = await render(ENABLED);
     expect(api.verifies).toEqual([
-      { installation: 'birch', capability: 'agent-platform', args: undefined },
+      {
+        installation: 'birch',
+        capability: 'agent-platform',
+        args: { content: true },
+      },
     ]);
     // The person's one choice, from the comparison's inputs.
     expect(screen.getByTestId('choice-modelServing.enabled')).toHaveTextContent(
@@ -217,13 +236,8 @@ describe('CapabilityCard', () => {
     expect(screen.getByTestId('not-run')).toHaveTextContent(
       '1 check could not run: renders no file of this kind',
     );
-    // A feature opens to its differing dimensions.
-    await userEvent.click(
-      within(screen.getByTestId('feature-runtime')).getByText(/Runtime/),
-    );
-    expect(
-      screen.getByTestId('dimension-patch-top-level-keys'),
-    ).toHaveTextContent('kagent.replicas');
+    // The dimensions say nothing the files do not.
+    expect(screen.queryByTestId('dimension-facts')).toBeNull();
     expect(screen.queryByTestId('dimension-live-drift')).toBeNull();
     expect(screen.getByRole('button', { name: 'Apply changes' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Verify' })).toBeNull();
@@ -338,7 +352,7 @@ describe('CapabilityCard', () => {
       'Runtime — 1 difference',
     );
     expect(within(dialog).getByTestId('plan-files')).toHaveTextContent(
-      'configmap-values.yaml.patch — create',
+      'configmap-values.yaml.patch — update',
     );
     expect(within(dialog).getByTestId('plan-pull-requests')).toHaveTextContent(
       'example/example-configs — 1 change(s)',
@@ -451,23 +465,39 @@ describe('CapabilityCard', () => {
       ).toBeEnabled();
     });
 
-    it('opens a feature with differences to its planned change and its reason', async () => {
+    it('shows one diff per file with every reason on its line', async () => {
       await enabled(MIXED);
-      const feature = screen.getByTestId('feature-migrations');
-      expect(feature).toHaveTextContent(
+      expect(screen.getByTestId('feature-migrations')).toHaveTextContent(
         'Migrations — 1 difference · 1 planned change',
       );
-      await userEvent.click(within(feature).getByText(/Migrations/));
-      const planned = within(feature).getByTestId(
-        'dimension-kagent-api-version',
+      // The patch, touched by two features, is one group, open: a difference is to apply.
+      const patch = fileGroup(PATCH);
+      expect(patch).toHaveAttribute('open');
+      expect(patch.querySelector('summary')).toHaveTextContent(
+        `${PATCH} — 2 differences · 1 planned change`,
       );
+      expect(within(patch).getAllByTestId('diff')).toHaveLength(1);
+      const planned = within(rowOfLine(PATCH, 2)).getByTestId('annotation');
       expect(planned).toHaveTextContent(
-        'planned: migrates to kagent API v2 with the 4 chart line',
+        'kagent.apiVersion The kagent API moves to v2 with the 4 chart line; the migration rewrites the patch. · M3',
       );
-      expect(planned).not.toHaveTextContent('rendered');
+      expect(planned).not.toHaveTextContent(/planned|rendered/);
       expect(
-        within(feature).getByTestId('dimension-chart-line'),
-      ).toHaveTextContent('rendered "4", current "3"');
+        within(rowOfLine(PATCH, 9)).getByTestId('annotation'),
+      ).toHaveTextContent('chartLine drifted');
+    });
+
+    it('keeps a group closed while every change in it is planned', async () => {
+      await enabled(PLANNED);
+      const patch = fileGroup(PATCH);
+      expect(patch).not.toHaveAttribute('open');
+      expect(patch.querySelector('summary')).toHaveTextContent(
+        `${PATCH} — 1 planned change`,
+      );
+      expect(
+        within(rowOfLine(PATCH, 2)).getByTestId('annotation'),
+      ).toHaveTextContent('The kagent API moves to v2');
+      expect(within(patch).getAllByTestId('annotation')).toHaveLength(1);
     });
 
     it('says why the comparison did not run, first, and lists nothing else', async () => {
@@ -505,6 +535,48 @@ describe('CapabilityCard', () => {
       expect(
         screen.queryByRole('button', { name: 'Open pull requests' }),
       ).toBeNull();
+    });
+  });
+
+  describe('the files', () => {
+    it('heads each file once and annotates the diff on the changed line', async () => {
+      await render(ENABLED);
+      const patch = fileGroup(PATCH);
+      expect(patch).toHaveAttribute('open');
+      expect(
+        within(screen.getByTestId('comparison')).getAllByText(PATCH),
+      ).toHaveLength(1);
+      // The record's line 3 removed, the render's line 3 added and annotated.
+      const removed = patch.querySelector('[data-current-line="3"]')!;
+      expect(removed).toHaveAttribute('data-kind', 'removed');
+      expect(removed).toHaveTextContent('replicas: 2');
+      expect(
+        within(removed as HTMLElement).queryByTestId('annotation'),
+      ).toBeNull();
+      const added = rowOfLine(PATCH, 3);
+      expect(added).toHaveAttribute('data-kind', 'added');
+      expect(added).toHaveTextContent('replicas: 1');
+      expect(within(added).getByTestId('annotation')).toHaveTextContent(
+        'kagent.replicas drifted',
+      );
+      // The unchanged tail of the file is folded.
+      expect(within(patch).getByText('… 4 unchanged lines')).toBeVisible();
+      expect(card().textContent).not.toMatch(MANAGER_WORDS);
+    });
+
+    it('lists the differences of a file without content, without its name', async () => {
+      await render(ENABLED);
+      const group = fileGroup(KUSTOMIZATION);
+      expect(group).toHaveAttribute('open');
+      expect(within(group).queryByTestId('diff')).toBeNull();
+      const [line] = within(group).getAllByRole('listitem');
+      expect(line).toHaveTextContent(
+        'resources: rendered ["a.yaml"], current ["a.yaml","b.yaml"] — differs by input: installation.private',
+      );
+      expect(line).not.toHaveTextContent('example-management-clusters');
+      expect(
+        within(screen.getByTestId('comparison')).getAllByText(KUSTOMIZATION),
+      ).toHaveLength(1);
     });
   });
 

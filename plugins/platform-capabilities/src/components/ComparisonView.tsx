@@ -5,10 +5,13 @@ import {
   count,
   differingDimensions,
   differs,
+  fileGroups,
   foundWords,
+  hasOwnFacts,
   notChecked,
 } from '../lib/comparison';
 import { DimensionItem, LIST_STYLE } from './DimensionItem';
+import { FileGroup } from './FileDiff';
 
 const title = (feature: { id: string; title?: string }) =>
   feature.title ?? feature.id;
@@ -22,9 +25,11 @@ function countsOfFeature(feature: VerifyFeature) {
 
 /**
  * What the comparison found, one line per fact: each feature with
- * differences, opening to the dimensions that differ; the features whose
- * changes are all planned, as one line; the features as defined, as one
- * line; the checks that did not run, by reason.
+ * differences; the features whose changes are all planned, as one line;
+ * then one group per file that differs, headed by its path and opening to
+ * its diff with every reason on its line; the dimensions with facts of
+ * their own (a reason, a probe, an object); the features as defined, as
+ * one line; the checks that did not run, by reason.
  */
 export function ComparisonView({ result }: { result: VerifyResult }) {
   const features = result.features ?? [];
@@ -41,27 +46,35 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
     f => differingDimensions(f).length === 0 && checkedDimensions(f).length > 0,
   );
   const pending = notChecked(features);
+  const groups = fileGroups(result);
+  const facts = features.flatMap(f =>
+    differingDimensions(f).filter(hasOwnFacts),
+  );
   return (
     <Flex direction="column" gap="1" data-testid="comparison">
       {differing.map(feature => (
-        <details key={feature.id} data-testid={`feature-${feature.id}`}>
-          <summary>
-            <Text as="span" variant="body-small">
-              {title(feature)} —{' '}
-              {foundWords(countsOfFeature(feature)).join(' · ')}
-            </Text>
-          </summary>
-          <ul style={LIST_STYLE}>
-            {differingDimensions(feature).map(dimension => (
-              <DimensionItem key={dimension.id} dimension={dimension} />
-            ))}
-          </ul>
-        </details>
+        <Text
+          key={feature.id}
+          variant="body-small"
+          data-testid={`feature-${feature.id}`}
+        >
+          {title(feature)} — {foundWords(countsOfFeature(feature)).join(' · ')}
+        </Text>
       ))}
       {plannedOnly.length > 0 && (
         <Text variant="body-small" color="secondary" data-testid="planned">
           {plannedOnly.map(title).join(', ')}: planned changes ({plannedCount})
         </Text>
+      )}
+      {groups.map(group => (
+        <FileGroup key={group.file} group={group} />
+      ))}
+      {facts.length > 0 && (
+        <ul style={LIST_STYLE} data-testid="dimension-facts">
+          {facts.map(dimension => (
+            <DimensionItem key={dimension.id} dimension={dimension} />
+          ))}
+        </ul>
       )}
       {asDefined.length > 0 && (
         <Text variant="body-small" color="secondary" data-testid="as-defined">

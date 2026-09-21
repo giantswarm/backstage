@@ -1,0 +1,177 @@
+import { CSSProperties } from 'react';
+import { Text } from '@backstage/ui';
+import {
+  count,
+  countsOfDifferences,
+  FileGroup as Group,
+  foundWords,
+  MarkedDifference,
+  wordsOf,
+} from '../lib/comparison';
+import { DiffLine, diffLines, foldContext } from '../lib/diff';
+import { DifferenceLine, LIST_STYLE } from './DimensionItem';
+import { MarkTag } from './StateTag';
+
+const DIFF_STYLE: CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 12,
+  lineHeight: 1.5,
+  whiteSpace: 'pre',
+  overflowX: 'auto',
+  margin: '4px 0',
+};
+
+const GUTTER_STYLE: CSSProperties = {
+  display: 'inline-block',
+  width: '4ch',
+  marginRight: '1ch',
+  textAlign: 'right',
+  opacity: 0.55,
+  userSelect: 'none',
+};
+
+const ANNOTATION_STYLE: CSSProperties = {
+  paddingLeft: '12ch',
+  whiteSpace: 'normal',
+};
+
+const ROW_BACKGROUND: Record<DiffLine['kind'], string | undefined> = {
+  context: undefined,
+  removed: 'rgba(198, 40, 40, 0.12)',
+  added: 'rgba(46, 139, 87, 0.14)',
+};
+
+const SIGN: Record<DiffLine['kind'], string> = {
+  context: ' ',
+  removed: '-',
+  added: '+',
+};
+
+/** Whether a difference sits on a line of the diff: by `line` on the rendered side, else by `currentLine` on the record's. */
+export function placed({ difference }: MarkedDifference): boolean {
+  return Boolean(difference.line || difference.currentLine);
+}
+
+/** The differences on this line of the diff. */
+function annotationsOn(
+  line: DiffLine,
+  differences: MarkedDifference[],
+): MarkedDifference[] {
+  return differences.filter(({ difference: d }) =>
+    d.line ? line.line === d.line : line.currentLine === d.currentLine,
+  );
+}
+
+function Row({
+  line,
+  differences,
+}: {
+  line: DiffLine;
+  differences: MarkedDifference[];
+}) {
+  return (
+    <div
+      data-testid="diff-line"
+      data-kind={line.kind}
+      data-line={line.line}
+      data-current-line={line.currentLine}
+      style={{ background: ROW_BACKGROUND[line.kind] }}
+    >
+      <span style={GUTTER_STYLE}>{line.currentLine ?? ''}</span>
+      <span style={GUTTER_STYLE}>{line.line ?? ''}</span>
+      {SIGN[line.kind]} {line.text}
+      {annotationsOn(line, differences).map((annotation, i) => (
+        <div key={i} style={ANNOTATION_STYLE} data-testid="annotation">
+          {annotation.difference.path ? (
+            <code>{annotation.difference.path} </code>
+          ) : null}
+          <MarkTag mark={annotation.mark} words={wordsOf(annotation)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The unified diff of the file on record against the file as rendered, the
+ * record's and the render's line numbers in the gutters, each difference
+ * annotated on its line with its reason in its mark's colour, and the
+ * unchanged stretches folded behind an expander.
+ */
+export function Diff({
+  current,
+  content,
+  differences,
+}: {
+  current: string;
+  content: string;
+  differences: MarkedDifference[];
+}) {
+  const runs = foldContext(diffLines(current, content));
+  return (
+    <div style={DIFF_STYLE} data-testid="diff">
+      {runs.map((run, i) =>
+        run.folded ? (
+          <details key={i}>
+            <summary style={{ cursor: 'pointer', opacity: 0.7 }}>
+              … {count(run.lines.length, 'unchanged line')}
+            </summary>
+            {run.lines.map(line => (
+              <Row
+                key={`${line.currentLine}-${line.line}`}
+                line={line}
+                differences={differences}
+              />
+            ))}
+          </details>
+        ) : (
+          run.lines.map(line => (
+            <Row
+              key={`${line.currentLine}-${line.line}`}
+              line={line}
+              differences={differences}
+            />
+          ))
+        ),
+      )}
+    </div>
+  );
+}
+
+/**
+ * One file of the comparison: its path as the header, once, with what
+ * differs in it; then the diff of the record against the render with the
+ * differences on their lines, where the answer carries the file's content,
+ * and the differences the diff cannot place as one line each. Open when a
+ * difference is to apply, closed when every change in it is planned.
+ */
+export function FileGroup({ group }: { group: Group }) {
+  const { plan, differences } = group;
+  const counts = countsOfDifferences(differences);
+  const content = plan?.content;
+  const onLines = content === undefined ? [] : differences.filter(placed);
+  const listed = differences.filter(d => !onLines.includes(d));
+  return (
+    <details data-testid={`file-${group.file}`} open={counts.differences > 0}>
+      <summary>
+        <Text as="span" variant="body-small">
+          <code>{group.file}</code> — {foundWords(counts).join(' · ')}
+        </Text>
+      </summary>
+      {content !== undefined && (
+        <Diff
+          current={plan?.current ?? ''}
+          content={content}
+          differences={onLines}
+        />
+      )}
+      {listed.length > 0 && (
+        <ul style={LIST_STYLE}>
+          {listed.map((difference, i) => (
+            <DifferenceLine key={i} difference={difference} />
+          ))}
+        </ul>
+      )}
+    </details>
+  );
+}
