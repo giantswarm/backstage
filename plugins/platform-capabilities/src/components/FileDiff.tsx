@@ -1,14 +1,20 @@
 import { CSSProperties } from 'react';
 import { Text } from '@backstage/ui';
 import {
-  count,
   countsOfDifferences,
   FileGroup as Group,
   foundWords,
   MarkedDifference,
   wordsOf,
 } from '../lib/comparison';
-import { DiffLine, diffLines, foldContext } from '../lib/diff';
+import {
+  alignIndentation,
+  DiffLine,
+  diffLines,
+  DiffRun,
+  foldContext,
+  foldLabel,
+} from '../lib/diff';
 import { DifferenceLine, LIST_STYLE } from './DimensionItem';
 import { MarkTag } from './StateTag';
 
@@ -33,6 +39,11 @@ const GUTTER_STYLE: CSSProperties = {
 const ANNOTATION_STYLE: CSSProperties = {
   paddingLeft: '12ch',
   whiteSpace: 'normal',
+};
+
+const NOTE_STYLE: CSSProperties = {
+  cursor: 'pointer',
+  opacity: 0.7,
 };
 
 const ROW_BACKGROUND: Record<DiffLine['kind'], string | undefined> = {
@@ -93,10 +104,42 @@ function Row({
 }
 
 /**
+ * A run folded behind its expander: an unchanged stretch, or the comment
+ * and blank lines a change consists of, tinted as removed or added so the
+ * reader knows which side they leave or join.
+ */
+function Fold({
+  run,
+  differences,
+}: {
+  run: DiffRun;
+  differences: MarkedDifference[];
+}) {
+  const tint =
+    run.fold === 'comments' ? ROW_BACKGROUND[run.lines[0].kind] : undefined;
+  return (
+    <details data-testid={`fold-${run.fold}`}>
+      <summary style={{ ...NOTE_STYLE, background: tint }}>
+        {foldLabel(run)}
+      </summary>
+      {run.lines.map(line => (
+        <Row
+          key={`${line.currentLine}-${line.line}`}
+          line={line}
+          differences={differences}
+        />
+      ))}
+    </details>
+  );
+}
+
+/**
  * The unified diff of the file on record against the file as rendered, the
  * record's and the render's line numbers in the gutters, each difference
- * annotated on its line with its reason in its mark's colour, and the
- * unchanged stretches folded behind an expander.
+ * annotated on its line with its reason in its mark's colour, the
+ * unchanged stretches and the comment-only changes folded behind an
+ * expander. Where one side indents deeper (a file SOPS wrote), its
+ * indentation is shown at the other's, and one line says so.
  */
 export function Diff({
   current,
@@ -107,23 +150,19 @@ export function Diff({
   content: string;
   differences: MarkedDifference[];
 }) {
-  const runs = foldContext(diffLines(current, content));
+  const aligned = alignIndentation(current, content);
+  const runs = foldContext(diffLines(aligned.current, aligned.content));
+  const { reindented } = aligned;
   return (
     <div style={DIFF_STYLE} data-testid="diff">
+      {reindented && (
+        <div style={NOTE_STYLE} data-testid="reindented">
+          {`… the ${reindented.side}'s ${reindented.from}-space indentation shown as ${reindented.to} spaces`}
+        </div>
+      )}
       {runs.map((run, i) =>
-        run.folded ? (
-          <details key={i}>
-            <summary style={{ cursor: 'pointer', opacity: 0.7 }}>
-              … {count(run.lines.length, 'unchanged line')}
-            </summary>
-            {run.lines.map(line => (
-              <Row
-                key={`${line.currentLine}-${line.line}`}
-                line={line}
-                differences={differences}
-              />
-            ))}
-          </details>
+        run.fold ? (
+          <Fold key={i} run={run} differences={differences} />
         ) : (
           run.lines.map(line => (
             <Row
@@ -139,11 +178,13 @@ export function Diff({
 }
 
 /**
- * One file of the comparison: its path as the header, once, with what
- * differs in it; then the diff of the record against the render with the
- * differences on their lines, where the answer carries the file's content,
- * and the differences the diff cannot place as one line each. Open when a
- * difference is to apply, closed when every change in it is planned.
+ * One file of the comparison: its path as the header, once, with the hub
+ * it is on where that is not the installation compared, and the values
+ * that differ in it; then the diff of the record against the render with
+ * the differences on their lines, where the answer carries the file's
+ * content, and the differences the diff cannot place as one line each.
+ * Open when a difference is to apply, closed when every change in it is
+ * planned.
  */
 export function FileGroup({ group }: { group: Group }) {
   const { plan, differences } = group;
@@ -155,7 +196,9 @@ export function FileGroup({ group }: { group: Group }) {
     <details data-testid={`file-${group.file}`} open={counts.differences > 0}>
       <summary>
         <Text as="span" variant="body-small">
-          <code>{group.file}</code> — {foundWords(counts).join(' · ')}
+          <code>{group.file}</code>
+          {group.hub ? ` on the hub ${group.hub}` : ''} —{' '}
+          {foundWords(counts, 'value').join(' · ')}
         </Text>
       </summary>
       {content !== undefined && (

@@ -68,7 +68,7 @@ export function statusOf(
         return { words: 'Installed · not compared', tone: 'unknown' };
       }
       const counts = countsOf(comparison);
-      const found = foundWords(counts);
+      const found = foundWords(counts, 'check');
       if (found.length === 0) {
         return { words: 'Installed · up to date', tone: 'enabled' };
       }

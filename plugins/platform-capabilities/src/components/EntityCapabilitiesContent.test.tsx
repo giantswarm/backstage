@@ -55,13 +55,13 @@ describe('EntityCapabilitiesContent', () => {
     });
     const card = screen.getByTestId('capability-agent-platform');
     expect(within(card).getByTestId('capability-state')).toHaveTextContent(
-      'Installed · 2 differences',
+      'Installed · 2 checks differ',
     );
     expect(
       within(card).getByTestId('choice-modelServing.enabled'),
     ).toHaveTextContent('Model serving: off');
     expect(within(card).getByTestId('feature-secrets')).toHaveTextContent(
-      'Secrets — 1 difference',
+      'Secrets — 1 check differs',
     );
     expect(
       within(card).getByRole('button', { name: 'Apply changes' }),
@@ -130,7 +130,7 @@ describe('EntityCapabilitiesContent', () => {
       'example/example-configs — 1 change(s)',
     );
     expect(within(dialog()).getByTestId('feature-runtime')).toHaveTextContent(
-      'Runtime — 1 difference',
+      'Runtime — 1 check differs',
     );
 
     const open = within(dialog()).getByRole('button', {
@@ -187,7 +187,7 @@ describe('EntityCapabilitiesContent', () => {
     await render('maple', { installations: [ENABLED_NOT_OPTED_IN] });
     const card = screen.getByTestId('capability-agent-platform');
     expect(within(card).getByTestId('capability-state')).toHaveTextContent(
-      'Installed · 2 differences',
+      'Installed · 2 checks differ',
     );
     expect(within(card).getByTestId('needs-owners')).toHaveTextContent(
       'management-clusters/maple/platform-manager.yaml with optIn: true from the owners.',
