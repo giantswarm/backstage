@@ -68,27 +68,96 @@ export function upToDate(result: VerifyResult): boolean {
   return compared(result) && differences === 0 && planned === 0;
 }
 
-/** The checks that did not run: those needing the person's session on the installation, the rest by reason. */
+/**
+ * The checks that did not run, by name: those needing the person's session
+ * on the installation, and the rest grouped by the manager's reason, in the
+ * order the features name them.
+ */
 export function notChecked(features: VerifyFeature[]): {
-  session: number;
-  other: [reason: string, count: number][];
+  session: VerifyDimension[];
+  other: [reason: string, dimensions: VerifyDimension[]][];
 } {
-  let session = 0;
-  const other = new Map<string, number>();
+  const session: VerifyDimension[] = [];
+  const other = new Map<string, VerifyDimension[]>();
   for (const feature of features) {
     for (const dimension of feature.dimensions ?? []) {
       if (dimension.mark !== 'not checked') {
         continue;
       }
       if (dimension.reason === SESSION_REASON) {
-        session++;
+        session.push(dimension);
       } else {
         const reason = dimension.reason ?? 'no reason given';
-        other.set(reason, (other.get(reason) ?? 0) + 1);
+        other.set(reason, [...(other.get(reason) ?? []), dimension]);
       }
     }
   }
   return { session, other: [...other.entries()] };
+}
+
+/** The marks in the order a feature rolls up from its dimensions. */
+const SEVERITY: VerifyMark[] = [
+  'drifted',
+  'differs by input',
+  'planned',
+  'as defined',
+];
+
+/** A feature's mark from its dimensions': the worst one checked, else not checked. */
+function rollUp(dimensions: VerifyDimension[]): VerifyMark {
+  const seen = new Set(dimensions.map(d => d.mark));
+  return SEVERITY.find(mark => seen.has(mark)) ?? 'not checked';
+}
+
+/**
+ * The repository comparison (`verify_capability`) and the live one
+ * (`verify_installation`) as the one result a person reads, the way the
+ * manager's own `Merge` joins them: per dimension the one that checked it,
+ * the live result's word on a live dimension; the marks and the summary
+ * counted again; drifted and waiting for the customer from either side;
+ * the live caller named.
+ */
+export function mergeLive(
+  repo: VerifyResult,
+  live: VerifyResult,
+): VerifyResult {
+  const byId = new Map<string, VerifyDimension>();
+  for (const feature of live.features ?? []) {
+    for (const dimension of feature.dimensions ?? []) {
+      byId.set(dimension.id, dimension);
+    }
+  }
+  const summary: Partial<Record<VerifyMark, number>> = {};
+  const features = (repo.features ?? []).map(feature => {
+    const dimensions = (feature.dimensions ?? []).map(dimension => {
+      const checked = byId.get(dimension.id);
+      const takeLive =
+        checked &&
+        dimension.mark === 'not checked' &&
+        (checked.mark !== 'not checked' || dimension.kind === 'live');
+      return takeLive ? checked : dimension;
+    });
+    const marks: Partial<Record<VerifyMark, number>> = {};
+    for (const dimension of dimensions) {
+      marks[dimension.mark] = (marks[dimension.mark] ?? 0) + 1;
+      summary[dimension.mark] = (summary[dimension.mark] ?? 0) + 1;
+    }
+    return { ...feature, dimensions, marks, mark: rollUp(dimensions) };
+  });
+  let state = repo.state;
+  if (live.state === 'drifted') {
+    state = 'drifted';
+  } else if (live.state === 'waiting for the customer' && state !== 'drifted') {
+    state = live.state;
+  }
+  return {
+    ...repo,
+    features,
+    summary,
+    state,
+    liveCaller: live.caller,
+    refused: repo.refused ?? live.refused,
+  };
 }
 
 /** The probe that went red: the first dimension with a request that was not ok. */
@@ -235,11 +304,12 @@ export function splitGroups(groups: FileGroup[]): {
   return { toApply, planned: groups.filter(g => !toApply.includes(g)) };
 }
 
-/** Whether a differing dimension says something the file groups do not: a reason, a probe's requests, a difference without a file. */
+/** Whether a differing dimension says something the file groups do not: a reason, a probe's requests, a live check, a difference without a file. */
 export function hasOwnFacts(dimension: VerifyDimension): boolean {
   return (
     Boolean(dimension.reason) ||
     Boolean(dimension.probe?.requests?.length) ||
+    Boolean(dimension.live?.checks?.length) ||
     (dimension.differences ?? []).some(d => !d.file)
   );
 }

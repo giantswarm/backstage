@@ -8,7 +8,10 @@ import {
   Definition,
   Installation,
   InstallationListing,
+  VerifyDimension,
   VerifyFeature,
+  VerifyInputs,
+  VerifyMark,
   ListInstallationsFilters,
   ManagerInfo,
   PlanFile,
@@ -491,6 +494,96 @@ export const VERIFIED: VerifyResult = {
   pullRequests: PLAN.pullRequests,
 };
 
+/** The live half's mark on a feature: its word on the one live dimension it checked, else nothing checked. */
+function liveMarkOf(feature: VerifyFeature): VerifyMark {
+  if (feature.dimensions?.some(d => d.id === 'live-drift')) {
+    return 'drifted';
+  }
+  if (feature.dimensions?.some(d => d.id === 'live-dex-auth-per-client')) {
+    return 'as defined';
+  }
+  return 'not checked';
+}
+
+/** The reason the live half gives every dimension the repository half checks. */
+const REPOSITORY_SIDE =
+  'compared against the repositories by verify_capability';
+
+/**
+ * rowan's live half (`verify_installation`), read as the person: the two
+ * dimensions that needed the session checked -- the Dex clients answer as
+ * defined, the live values drift on one leaf -- and every other dimension
+ * left to the repository half.
+ */
+export const LIVE: VerifyResult = {
+  installation: 'rowan',
+  capability: 'agent-platform',
+  caller: 'ada@example.test',
+  state: 'drifted',
+  inputs: VERIFIED.inputs,
+  features: VERIFIED.features.map((f): VerifyFeature => ({
+    id: f.id,
+    title: f.title,
+    mark: liveMarkOf(f),
+    dimensions: (f.dimensions ?? []).map((d): VerifyDimension => {
+      if (d.id === 'live-dex-auth-per-client') {
+        return {
+          id: d.id,
+          kind: 'live',
+          mark: 'as defined',
+          live: {
+            checks: [
+              {
+                kind: 'HTTP',
+                url: 'https://dex.rowan.example.test/auth?client_id=kagent',
+                mark: 'as defined',
+                message: '302',
+              },
+            ],
+          },
+        };
+      }
+      if (d.id === 'live-drift') {
+        return {
+          id: d.id,
+          kind: 'live',
+          mark: 'drifted',
+          differences: [
+            {
+              object: 'HelmRelease flux-giantswarm/agent-platform',
+              path: 'kagent.replicas',
+              rendered: 1,
+              current: 2,
+            },
+          ],
+          live: {
+            checks: [
+              {
+                kind: 'Drift',
+                namespace: 'flux-giantswarm',
+                resource: 'HelmRelease',
+                name: 'agent-platform',
+                mark: 'drifted',
+                message: '1 difference(s)',
+              },
+            ],
+          },
+        };
+      }
+      return {
+        id: d.id,
+        kind: d.kind,
+        mark: 'not checked',
+        reason: REPOSITORY_SIDE,
+      };
+    }),
+  })),
+  summary: { 'as defined': 1, drifted: 1, 'not checked': 7 },
+  files: [],
+  diff: {},
+  pullRequests: [],
+};
+
 /** The runtime feature with the change a migration plans, not drift. */
 const PLANNED_RUNTIME: VerifyFeature = {
   id: 'runtime',
@@ -810,6 +903,10 @@ export interface FakeOptions {
   infoLatency?: number;
   /** The comparison fails with this, as when the person has no session at the manager. */
   verifyError?: Error;
+  /** The live half `verify_installation` answers; LIVE by default. */
+  live?: VerifyResult;
+  /** The live checks fail with this, as when the person is not connected to the live surface. */
+  liveError?: Error;
 }
 
 export interface Write {
@@ -829,6 +926,12 @@ export class FakeApi implements PlatformCapabilitiesApi {
     installation: string;
     capability: string;
     args?: CapabilityArgs;
+  }[] = [];
+  /** Every live verify asked for, with the inputs handed over. */
+  liveVerifies: {
+    installation: string;
+    capability: string;
+    args?: { inputs?: VerifyInputs };
   }[] = [];
 
   constructor(private readonly options: FakeOptions = {}) {}
@@ -904,6 +1007,22 @@ export class FakeApi implements PlatformCapabilitiesApi {
     }
     return {
       ...(this.options.verified ?? VERIFIED),
+      installation: name,
+      capability,
+    };
+  }
+
+  async verifyInstallation(
+    name: string,
+    capability: string,
+    args?: { inputs?: VerifyInputs },
+  ): Promise<VerifyResult> {
+    this.liveVerifies.push({ installation: name, capability, args });
+    if (this.options.liveError) {
+      throw this.options.liveError;
+    }
+    return {
+      ...(this.options.live ?? LIVE),
       installation: name,
       capability,
     };
