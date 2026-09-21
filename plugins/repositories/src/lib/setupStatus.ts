@@ -4,14 +4,10 @@ import { SetupResult, SetupStep } from '../apis';
 /**
  * What `devctl repo status` prints for a set-up result, field by field, so
  * the page shows the same thing as the CLI for the same record
- * (`setup.checks` is that result): the header's converged state, one line
- * per step with its verdict and detail, then the findings with their fix.
+ * (`setup.checks` is that result): one line per step with its verdict and
+ * detail, then the findings with their fix. The state over them is the
+ * row's, from `rows.ts`.
  */
-
-/** The header state: `converged` | `not converged`. */
-export function convergedState(result: SetupResult): string {
-  return result.converged ? 'converged' : 'not converged';
-}
 
 /**
  * A step's detail as the CLI's DETAIL column: the summary, the changes

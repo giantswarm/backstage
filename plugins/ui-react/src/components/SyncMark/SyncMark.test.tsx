@@ -3,6 +3,7 @@ import {
   SYNC_MARKS,
   SyncMark,
   SyncMarkIcon,
+  syncMarkIntent,
   syncMarkLegend,
   SyncMarkSkeleton,
 } from './SyncMark';
@@ -53,6 +54,17 @@ describe('SyncMarkIcon', () => {
       return path;
     });
     expect(new Set(glyphs).size).toBe(SYNC_MARKS.length);
+  });
+
+  it('names the intent of each mark, for a label that stands beside the icon', () => {
+    expect(SYNC_MARKS.map(syncMarkIntent)).toEqual([
+      'positive',
+      'warning',
+      'info',
+      'neutral',
+      'negative',
+      'neutral',
+    ]);
   });
 });
 

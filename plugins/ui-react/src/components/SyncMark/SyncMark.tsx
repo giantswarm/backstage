@@ -62,6 +62,14 @@ const MARK_ICON: Record<
   unknown: { icon: HelpOutlineIcon, intent: 'neutral' },
 };
 
+/**
+ * The intent of a mark, for a status label that names the same state in
+ * words where a table shows the icon -- a detail panel's header over the
+ * row's cell -- so the two colour alike.
+ */
+export const syncMarkIntent = (mark: SyncMark): StatusLabelIntent =>
+  MARK_ICON[mark].intent;
+
 /** The side of a mark's square: the `small` SvgIcon, 1.25rem at the app's 16px root. */
 const MARK_SIZE = 20;
 

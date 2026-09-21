@@ -15,6 +15,7 @@ import {
 import { SignInPageBlueprint } from '@backstage/plugin-app-react';
 import { repositoriesApiRef } from '../src/apis';
 import { createInMemoryApi } from '../src/fixtures/inMemoryApi';
+import { records, refusedPlan } from '../src/fixtures/records';
 import { repositoriesPlugin } from '../src/plugin';
 
 /**
@@ -25,14 +26,19 @@ import { repositoriesPlugin } from '../src/plugin';
  * swaps its API for the in-memory one -- rather than `createDevApp`, which
  * cannot resolve their route refs. The caller is a Bumblebee member; the
  * inventory holds two teams, an undeclared repository, a deprecated one, a
- * declared-archived one and an undeclared fork GitHub archived.
+ * declared-archived one, an undeclared fork GitHub archived and one whose
+ * declaration the engine refused.
  */
 const inMemoryApi = ApiBlueprint.make({
   params: defineParams =>
     defineParams({
       api: repositoriesApiRef,
       deps: {},
-      factory: () => createInMemoryApi({ teams: ['team-bumblebee'] }),
+      factory: () =>
+        createInMemoryApi({
+          teams: ['team-bumblebee'],
+          records: { ...records, [refusedPlan.repository]: refusedPlan },
+        }),
     }),
 });
 
