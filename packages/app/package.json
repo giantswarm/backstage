@@ -84,7 +84,9 @@
   },
   "devDependencies": {
     "@backstage/config": "backstage:^",
+    "@backstage/config-loader": "backstage:^",
     "@backstage/frontend-test-utils": "backstage:^",
+    "@backstage/types": "backstage:^",
     "@playwright/test": "^1.32.3",
     "@testing-library/dom": "^10.0.0",
     "@testing-library/jest-dom": "^7.0.0",
