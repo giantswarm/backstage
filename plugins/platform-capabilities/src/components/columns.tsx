@@ -3,20 +3,24 @@ import { TableColumn } from '@backstage/core-components';
 import { useApiHolder } from '@backstage/frontend-plugin-api';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { Skeleton } from '@backstage/ui';
+import { SyncMarkSkeleton } from '@giantswarm/backstage-plugin-ui-react';
 import {
   CapabilityState,
   InstallationListing,
   ListInstallationsFilters,
   platformCapabilitiesApiRef,
 } from '../apis';
+import { KNOWN_CAPABILITIES, orderCapabilities } from '../lib/capabilities';
 import { ErrorAlert } from './ErrorAlert';
 import { platformCapabilitiesQueryClient } from './Providers';
 import { infoKey, installationsKey } from './queries';
 import { MARK_LEGEND, StateIcon } from './StateIcon';
 
 export interface InstallationCapabilityColumns {
-  /** One column per capability the manager knows; none until the definitions arrived. */
+  /**
+   * One column per capability: the platform's known ones from the first
+   * render, the manager's set once it has answered; none without the api.
+   */
   columns: TableColumn<CatalogTableRow>[];
   /** What to show above the table: the connect on a missing grant, or the manager's error. */
   notice?: ReactNode;
@@ -56,16 +60,20 @@ function capabilityOf(
 /**
  * The Installations page's capability columns: one per platform capability,
  * each cell one icon for the state of that capability on the row's
- * installation as `list_installations` reports it (the tab's words in the
- * tooltip; no comparison runs here).
+ * installation as `list_installations` reports it (the state itself in the
+ * tooltip).
  *
- * The column set is the manager's definitions (`get_info`, no repository
- * read), so the table has its columns from the first paint; each cell is a
- * skeleton until the listing arrives, which reads the fleet's repositories
- * as the person and takes its time. Usable from a page outside this plugin:
- * without the `api:platform-capabilities` extension (a customer portal) there
- * are no columns, and the queries run on this plugin's own client, so the
- * host page needs no provider.
+ * The table has its columns on its first render, before anything has been
+ * asked of the manager: the plugin knows the platform's capabilities by name.
+ * The manager's definitions (`get_info`, no repository read) and then the
+ * listing confirm the set -- a definition the plugin does not know joins it
+ * -- in name order, whatever the source, so no column moves. Each cell is a
+ * skeleton in the icon's own box until the listing arrives, which reads the
+ * fleet's repositories as the person and takes its time, so the rows keep
+ * their height when the icons take over. Usable from a page outside this
+ * plugin: without the `api:platform-capabilities` extension (a customer
+ * portal) there are no columns, and the queries run on this plugin's own
+ * client, so the host page needs no provider.
  */
 export function useInstallationCapabilityColumns(): InstallationCapabilityColumns {
   const api = useApiHolder().get(platformCapabilitiesApiRef);
@@ -98,9 +106,13 @@ export function useInstallationCapabilityColumns(): InstallationCapabilityColumn
         <ErrorAlert title="giantswarm-platform-manager" error={error} />
       </QueryClientProvider>
     ) : undefined;
-    // The listing's own set once it is in; the definitions' before that.
-    const capabilities =
-      listing?.capabilities ?? definitions?.map(d => d.name) ?? [];
+    // The listing's own set once it is in; the definitions' before that; the
+    // platform's known capabilities until the manager has answered at all.
+    const capabilities = orderCapabilities(
+      listing?.capabilities ??
+        definitions?.map(d => d.name) ??
+        KNOWN_CAPABILITIES,
+    );
     const columns = capabilities.map(
       (capability): TableColumn<CatalogTableRow> => ({
         title: capability,
@@ -113,13 +125,7 @@ export function useInstallationCapabilityColumns(): InstallationCapabilityColumn
           const name = row.entity.metadata.name;
           const testId = `capability-${capability}-${name}`;
           if (isPending) {
-            return (
-              <Skeleton
-                width={20}
-                height={20}
-                data-testid={`${testId}-pending`}
-              />
-            );
+            return <SyncMarkSkeleton testId={`${testId}-pending`} />;
           }
           if (!listing) {
             // The manager did not answer: the notice above says why.

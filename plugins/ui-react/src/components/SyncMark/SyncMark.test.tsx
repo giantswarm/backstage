@@ -1,5 +1,11 @@
 import { render, screen } from '@testing-library/react';
-import { SYNC_MARKS, SyncMark, SyncMarkIcon, syncMarkLegend } from './SyncMark';
+import {
+  SYNC_MARKS,
+  SyncMark,
+  SyncMarkIcon,
+  syncMarkLegend,
+  SyncMarkSkeleton,
+} from './SyncMark';
 
 const GLOSS: Record<SyncMark, string> = {
   'in sync': 'as defined',
@@ -47,6 +53,31 @@ describe('SyncMarkIcon', () => {
       return path;
     });
     expect(new Set(glyphs).size).toBe(SYNC_MARKS.length);
+  });
+});
+
+describe('SyncMarkSkeleton', () => {
+  it('takes the box of the icon it stands in for, and says it is loading', () => {
+    render(
+      <div>
+        <SyncMarkSkeleton testId="pending" />
+        <SyncMarkIcon mark="in sync" label="in sync" testId="icon" />
+      </div>,
+    );
+    const pending = screen.getByTestId('pending');
+    const icon = screen.getByTestId('icon');
+    // The same box: a table row is as tall with the one as with the other.
+    const box = (el: HTMLElement) =>
+      ['display', 'width', 'height', 'alignItems'].map(
+        property => el.style[property as 'display'],
+      );
+    expect(box(pending)).toEqual(box(icon));
+    // A block one line tall: the glyph overhangs the line, the row does not grow.
+    expect(pending.style.display).toBe('flex');
+    expect(pending.style.height).toBe('1lh');
+    expect(pending).toHaveAttribute('aria-busy', 'true');
+    expect(pending).not.toHaveAttribute('data-mark');
+    expect(pending).toHaveTextContent('');
   });
 });
 
