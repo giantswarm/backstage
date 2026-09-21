@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { TestApiProvider, wrapInTestApp } from '@backstage/test-utils';
+import { TestApiProvider } from '@backstage/test-utils';
 import {
   entityPresentationApiRef,
   entityRouteRef,
@@ -34,7 +34,16 @@ const TITLES = {
 const meta = {
   title: 'Components/UserEntityLink',
   component: UserEntityLink,
+  tags: ['autodocs'],
   parameters: {
+    // `EntityRefLink` resolves the entity page through the catalog plugin's
+    // route, which needs a real app around it -- the global decorator's plain
+    // MemoryRouter raises "Routing context is not available", and an app of our
+    // own on top of that router would make react-router throw. Asking for the
+    // app here lets the decorator mount it *instead of* the plain router.
+    testApp: {
+      mountedRoutes: { '/catalog/:namespace/:kind/:name': entityRouteRef },
+    },
     docs: {
       description: {
         component:
@@ -46,21 +55,16 @@ const meta = {
       },
     },
   },
-  // `EntityRefLink` resolves the entity page through the catalog plugin's route,
-  // so the story needs an app with that route mounted -- the global decorator's
-  // MemoryRouter alone raises "Routing context is not available".
+  // Inside the app the decorator mounts above, so this overrides the app's own
+  // registration of the presentation API rather than being overridden by it.
   decorators: [
-    Story =>
-      wrapInTestApp(
-        <TestApiProvider
-          apis={[[entityPresentationApiRef, presentationApi(TITLES)]]}
-        >
-          <Story />
-        </TestApiProvider>,
-        {
-          mountedRoutes: { '/catalog/:namespace/:kind/:name': entityRouteRef },
-        },
-      ),
+    Story => (
+      <TestApiProvider
+        apis={[[entityPresentationApiRef, presentationApi(TITLES)]]}
+      >
+        <Story />
+      </TestApiProvider>
+    ),
   ],
 } satisfies Meta<typeof UserEntityLink>;
 
