@@ -520,6 +520,95 @@ export const forgottenFork: InventoryRecord = {
   age: '1h5m4s',
 };
 
+/**
+ * Declared with a field the engine's schema does not know: the entry is
+ * refused, no step ran, and the engine's result says converged all the same
+ * -- the page reads it as refused. Not one of `records`, whose count and
+ * order the tests pin: a test or the dev app adds it to the inventory.
+ */
+export const refusedPlan: InventoryRecord = {
+  repository: 'giantswarm/refused-plan',
+  name: 'refused-plan',
+  declaration: {
+    team: 'team-bumblebee',
+    file: 'repositories/team-bumblebee.yaml',
+    componentType: 'configuration',
+    entry:
+      '- name: refused-plan\n  componentType: configuration\n  agentMerge: true\n',
+    accepted: false,
+    problems: ['agentMerge: not a field of the repositories schema'],
+  },
+  reality: {
+    url: 'https://github.com/giantswarm/refused-plan',
+    description: 'Plans, reviewed before they are merged',
+    visibility: 'private',
+    defaultBranch: 'main',
+    isArchived: false,
+    isFork: false,
+    isTemplate: false,
+    isEmpty: false,
+    createdAt: '2026-08-01T09:00:00Z',
+    pushedAt: '2026-09-16T15:00:00Z',
+    lastCommit: {
+      date: '2026-09-16T15:00:00Z',
+      author: 'alice',
+      message: 'Plan the week',
+    },
+    lastPersonCommit: {
+      date: '2026-09-16T15:00:00Z',
+      author: 'alice',
+      message: 'Plan the week',
+    },
+    historySampled: 30,
+    botCommits: 0,
+    openPullRequests: { total: 1, people: 1, bots: 0, renovate: 0 },
+    openIssues: 0,
+    codeownersTeams: ['team-bumblebee'],
+    has: { readme: true, codeowners: true },
+  },
+  renovate: { configured: false, enabled: false, preset: false },
+  catalog: { present: false },
+  mapping: { present: true, team: 'bumblebee' },
+  setup: {
+    checks: {
+      repository: 'giantswarm/refused-plan',
+      declared: 'refused-plan',
+      team: 'team-bumblebee',
+      mode: 'check',
+      added: false,
+      startedAt: '2026-09-16T22:00:00Z',
+      finishedAt: '2026-09-16T22:00:00Z',
+      steps: [
+        {
+          step: 'entry',
+          verdict: 'reported',
+          summary: 'entry refused',
+          findings: [
+            {
+              kind: 'entry-refused',
+              message: 'agentMerge: not a field of the repositories schema',
+              fix: 'fix the entry in repositories/team-bumblebee.yaml',
+            },
+          ],
+        },
+      ],
+      converged: true,
+    },
+    checkedAt: '2026-09-16T22:00:00Z',
+  },
+  findings: [
+    {
+      kind: 'entry-refused',
+      message: 'agentMerge: not a field of the repositories schema',
+      fix: 'fix the entry in repositories/team-bumblebee.yaml',
+      source: 'engine',
+    },
+  ],
+  refreshedAt: '2026-09-16T22:00:00Z',
+  source: 'sweep',
+  age: '5m7s',
+};
+
 export const records: Record<string, InventoryRecord> = {
   'giantswarm/present-service': presentService,
   'giantswarm/new-service': newService,

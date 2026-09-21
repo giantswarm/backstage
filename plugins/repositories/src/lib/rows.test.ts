@@ -4,6 +4,8 @@ import {
   newService,
   oldOperator,
   presentService,
+  records,
+  refusedPlan,
   rowOf,
   strayTool,
 } from '../fixtures/records';
@@ -11,7 +13,9 @@ import {
   lifecycleOf,
   markOf,
   SETUP_LEGEND,
+  setupIntent,
   setupLabel,
+  setupOf,
   setupState,
 } from './rows';
 
@@ -52,6 +56,12 @@ describe('setupState and markOf', () => {
       'failed',
     ],
     [
+      'the declaration refused, the engine result saying converged',
+      declared({ converged: true, refused: true }),
+      'refused',
+      'failed',
+    ],
+    [
       'gone from GitHub',
       { ...rowOf(presentService), gone: true },
       'gone',
@@ -60,6 +70,47 @@ describe('setupState and markOf', () => {
   ])('%s is %s, marked %s', (_, row, state, mark) => {
     expect(setupState(row)).toBe(state);
     expect(markOf(row)).toBe(mark);
+  });
+});
+
+describe('setupOf', () => {
+  it.each(Object.values({ ...records, refusedPlan }))(
+    'reads the state of $repository from the record as the manager row has it',
+    record => {
+      const fromRecord = setupOf(record);
+      const fromRow = rowOf(record);
+      expect(setupState(fromRecord)).toBe(setupState(fromRow));
+      expect(setupLabel(fromRecord)).toBe(setupLabel(fromRow));
+    },
+  );
+
+  it('reads a refused entry as refused, the run pending as pending and the record gone as gone', () => {
+    expect(setupState(setupOf(refusedPlan))).toBe('refused');
+    expect(
+      setupState(
+        setupOf({
+          ...presentService,
+          setup: { ...presentService.setup, pendingRun: PENDING },
+        }),
+      ),
+    ).toBe('run pending');
+    expect(setupState(setupOf({ ...presentService, reality: null }))).toBe(
+      'gone',
+    );
+  });
+});
+
+describe('setupIntent', () => {
+  it('colours the label as the icon colours the mark', () => {
+    expect(setupIntent(rowOf(presentService))).toBe('positive');
+    expect(setupIntent(rowOf(newService))).toBe('warning');
+    expect(setupIntent(declared({ pendingRun: PENDING }))).toBe('info');
+    expect(setupIntent(declared({}))).toBe('info');
+    expect(setupIntent(rowOf(strayTool))).toBe('neutral');
+    expect(setupIntent(rowOf(refusedPlan))).toBe('negative');
+    expect(setupIntent({ ...rowOf(presentService), gone: true })).toBe(
+      'neutral',
+    );
   });
 });
 
@@ -73,6 +124,9 @@ describe('setupLabel', () => {
     );
     expect(setupLabel(rowOf(strayTool))).toBe(
       'undeclared · no declaration sets it up',
+    );
+    expect(setupLabel(rowOf(refusedPlan))).toBe(
+      'refused · the last check failed',
     );
     expect(setupLabel(declared({}))).toBe('unchecked · not reconciled yet');
   });

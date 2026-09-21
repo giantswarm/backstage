@@ -1,6 +1,5 @@
 import { newService, presentService } from '../fixtures/records';
 import {
-  convergedState,
   resultFindings,
   stepDetail,
   stepsNotOk,
@@ -8,18 +7,13 @@ import {
 } from './setupStatus';
 
 /**
- * `devctl repo status` prints `setup.checks` as a header, a STEP / VERDICT /
- * DETAIL table and a Findings list (devctl's reconcile.Result.WriteTable).
+ * `devctl repo status` prints `setup.checks` as a STEP / VERDICT / DETAIL
+ * table and a Findings list (devctl's reconcile.Result.WriteTable).
  * The page shows the same record through these helpers; pinning their output
  * to the CLI's text for the fixture keeps the two equal field by field.
  */
 describe('set-up status, as devctl repo status prints it', () => {
   const checks = presentService.setup.checks!;
-
-  it('names the converged state of the header line', () => {
-    expect(convergedState(checks)).toBe('converged');
-    expect(convergedState(newService.setup.checks!)).toBe('not converged');
-  });
 
   it('renders each step line as STEP, VERDICT, DETAIL', () => {
     const lines = checks.steps.map(

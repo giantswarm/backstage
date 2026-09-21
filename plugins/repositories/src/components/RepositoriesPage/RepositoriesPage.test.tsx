@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { TestApiProvider } from '@backstage/test-utils';
 import { useLocation } from 'react-router-dom';
 import {
+  InventoryRecord,
   MusterServerNotConnectedError,
   RepositoriesApi,
   repositoriesApiRef,
@@ -12,7 +13,12 @@ import {
   createInMemoryApi,
   InMemoryRepositoriesApi,
 } from '../../fixtures/inMemoryApi';
-import { NOW } from '../../fixtures/records';
+import {
+  NOW,
+  presentService,
+  records,
+  refusedPlan,
+} from '../../fixtures/records';
 import {
   RepositoriesProviders,
   repositoriesQueryClient,
@@ -38,9 +44,19 @@ const LIMIT = 2000;
 function fakeApi(
   overrides: Partial<RepositoriesApi> = {},
   teams = ['team-bumblebee'],
+  inventory: Record<string, InventoryRecord> = records,
 ): InMemoryRepositoriesApi {
-  return { ...createInMemoryApi({ teams, now: NOW }), ...overrides };
+  return {
+    ...createInMemoryApi({ teams, now: NOW, records: inventory }),
+    ...overrides,
+  };
 }
+
+/** The fixtures' inventory with one more record in it, or one replaced. */
+const inventoryWith = (record: InventoryRecord) => ({
+  ...records,
+  [record.repository]: record,
+});
 
 /** Renders the page, at the URL given (a shared or reloaded view). */
 async function renderPage(api: RepositoriesApi, url = '/') {
@@ -545,7 +561,7 @@ describe('RepositoriesPage', () => {
       }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/present-service');
     expect(within(record).getByTestId('setup-state')).toHaveTextContent(
-      /^converged$/,
+      /^converged · set up as declared$/,
     );
     expect(
       within(record).getByText(/Record from sweep, 5m3s old/),
@@ -635,8 +651,9 @@ describe('RepositoriesPage', () => {
     await renderPage(api);
     const record = await expand('new-service');
     expect(within(record).getByTestId('setup-state')).toHaveTextContent(
-      'not converged',
+      /^not converged · off its declared set-up$/,
     );
+    expect(within(record).getByTitle('4 steps not ok')).toBeInTheDocument();
     const steps = within(record).getByTestId('setup-steps');
     expect(
       within(steps).getByRole('row', { name: /scaffold/ }),
@@ -656,6 +673,55 @@ describe('RepositoriesPage', () => {
     const refreshed = await screen.findByTestId('record-new-service');
     expect(
       await within(refreshed).findByText(/Record from refresh, 0s old/),
+    ).toBeInTheDocument();
+  });
+
+  it('reads a refused declaration as refused in the row and the header alike, whatever the engine result says', async () => {
+    await renderPage(fakeApi({}, undefined, inventoryWith(refusedPlan)));
+    await findRow('refused-plan');
+    // The engine's result of the refused entry says converged: the row does not.
+    const icon = screen.getByTestId('setup-refused-plan');
+    expect(icon).toHaveAttribute('data-state', 'refused');
+    expect(icon).toHaveAttribute('data-mark', 'failed');
+    expect(icon).toHaveAccessibleName('refused · the last check failed');
+
+    const record = await expand('refused-plan');
+    expect(within(record).getByTestId('setup-state')).toHaveTextContent(
+      /^refused · the last check failed$/,
+    );
+    expect(
+      within(record).getByTitle(
+        'agentMerge: not a field of the repositories schema',
+      ),
+    ).toBeInTheDocument();
+    expect(within(record).getByText('Declaration refused')).toBeInTheDocument();
+  });
+
+  it('reads a run pending in the header as the row does, with the dispatch behind it', async () => {
+    const pending: InventoryRecord = {
+      ...presentService,
+      setup: {
+        ...presentService.setup,
+        pendingRun: {
+          dispatchedAt: '2026-09-17T09:00:00Z',
+          by: 'alice',
+          kind: 'dispatched',
+        },
+      },
+    };
+    await renderPage(fakeApi({}, undefined, inventoryWith(pending)));
+    await findRow('present-service');
+    expect(screen.getByTestId('setup-present-service')).toHaveAttribute(
+      'data-state',
+      'run pending',
+    );
+
+    const record = await expand('present-service');
+    expect(within(record).getByTestId('setup-state')).toHaveTextContent(
+      /^run pending · not reconciled yet$/,
+    );
+    expect(
+      within(record).getByTitle('since 2026-09-17 09:00Z by alice'),
     ).toBeInTheDocument();
   });
 
