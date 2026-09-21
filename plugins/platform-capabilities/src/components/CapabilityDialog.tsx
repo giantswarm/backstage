@@ -12,14 +12,12 @@ import {
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  CapabilityPlan,
   CapabilityState,
   Committed,
   Definition,
   Installation,
   platformCapabilitiesApiRef,
-  WriteOptions,
-  WriteResult,
+  VerifyResult,
 } from '../apis';
 import {
   formOf,
@@ -28,8 +26,9 @@ import {
   Values,
 } from '../lib/schemaForm';
 import { ActionView } from './ActionView';
+import { ComparisonView } from './ComparisonView';
 import { ErrorAlert } from './ErrorAlert';
-import { OptInNote, PlanView } from './PlanView';
+import { PlanView } from './PlanView';
 import { QUERY_ROOT, useConnection } from './queries';
 import { SchemaForm } from './SchemaForm';
 
@@ -44,6 +43,7 @@ const FORM_STYLE = {
 };
 
 export interface CapabilityDialogProps {
+  /** `enable` installs the capability; `reconcile` applies changes to an installed one. */
   kind: 'enable' | 'reconcile';
   installation: Installation;
   capability: CapabilityState;
@@ -54,14 +54,15 @@ export interface CapabilityDialogProps {
 }
 
 /**
- * Enable or Reconcile of one capability on one installation: the inputs as
- * the form the definition's schema describes, prefilled from the record; the
- * manager's dry run of the change; the commit as the signed-in person; the
- * Action it started. Commit is disabled without the manager's grant (the
- * connect through muster) and absent where the manager says a commit would
- * be refused -- an installation not opted in shows the file's path and the
- * pull request that adds it instead. Decisions live on this form; every
- * step's result is shown underneath.
+ * Enable, or Apply changes to, one capability on one installation in two
+ * steps. Review: the inputs as the form the definition's schema describes,
+ * prefilled from the record, then the comparison computed with them -- the
+ * features with their marks and the plan's files, pull requests, generated
+ * secrets, Dex clients and customer actions. Open pull requests: the commit
+ * as the signed-in person and the Action it started. The commit is disabled
+ * without the person's session at the manager and absent where the manager
+ * says it would refuse one, in which case the refusal is all the review
+ * shows.
  */
 export function CapabilityDialog({
   kind,
@@ -81,32 +82,31 @@ export function CapabilityDialog({
       installation: capability.inputs?.installation ?? installation.record,
     }),
   );
-  const [plan, setPlan] = useState<CapabilityPlan>();
+  const [reviewed, setReviewed] = useState<VerifyResult>();
   const [done, setDone] = useState<Committed>();
 
-  const write = <O extends WriteOptions>(
-    options: O,
-  ): Promise<WriteResult<O>> =>
-    kind === 'enable'
-      ? api.enableCapability(
-          installation.name,
-          capability.name,
-          { inputs: values },
-          options,
-        )
-      : api.reconcileCapability(
-          installation.name,
-          capability.name,
-          { inputs: values },
-          options,
-        );
-
   const review = useMutation({
-    mutationFn: () => write({ dryRun: true }),
-    onSuccess: setPlan,
+    mutationFn: () =>
+      api.verifyCapability(installation.name, capability.name, {
+        inputs: values,
+      }),
+    onSuccess: setReviewed,
   });
   const commit = useMutation({
-    mutationFn: () => write({ mode: 'commit' }),
+    mutationFn: () =>
+      kind === 'enable'
+        ? api.enableCapability(
+            installation.name,
+            capability.name,
+            { inputs: values },
+            { mode: 'commit' },
+          )
+        : api.reconcileCapability(
+            installation.name,
+            capability.name,
+            { inputs: values },
+            { mode: 'commit' },
+          ),
     onSuccess: async result => {
       setDone(result);
       await queryClient.invalidateQueries({ queryKey: [QUERY_ROOT] });
@@ -116,25 +116,26 @@ export function CapabilityDialog({
   const busy = review.isPending || commit.isPending;
   const failure = (commit.error ?? review.error) as Error | null;
   const missing = missingRequired(form, values);
-  const planned = plan?.installations.find(i => i.name === installation.name);
-  const commitRefused = planned?.commitRefused ?? planned?.refused;
+  const refused = reviewed?.commitRefused ?? reviewed?.refused;
+  const nothingToOpen =
+    reviewed && !refused && (reviewed.pullRequests ?? []).length === 0;
   const connected = connection.data?.connected === true;
-  const title = `${kind === 'enable' ? 'Enable' : 'Reconcile'} ${capability.name} on ${installation.name}`;
+  const title = `${kind === 'enable' ? 'Enable' : 'Apply changes to'} ${capability.name} on ${installation.name}`;
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (busy) {
       return;
     }
-    if (!plan) {
+    if (!reviewed) {
       review.mutate();
-    } else if (connected && !commitRefused) {
+    } else if (connected && !refused && !nothingToOpen) {
       commit.mutate();
     }
   };
 
   const back = () => {
-    setPlan(undefined);
+    setReviewed(undefined);
     review.reset();
     commit.reset();
   };
@@ -157,13 +158,9 @@ export function CapabilityDialog({
         <DialogBody>
           <Flex direction="column" gap="4">
             <Text variant="body-small" color="secondary">
-              {definition?.description ??
-                'The manager renders the change from these inputs; Review shows the files, pull requests, secrets by name, Dex clients, customer actions and probes before anything is committed.'}
+              Nothing is written before Open pull requests.
             </Text>
-            {installation.optIn.state === 'not opted in' && (
-              <OptInNote optIn={installation.optIn} />
-            )}
-            {!plan && !done && (
+            {!reviewed && !done && (
               <>
                 <SchemaForm form={form} values={values} onChange={setValues} />
                 {missing.length > 0 && (
@@ -172,22 +169,39 @@ export function CapabilityDialog({
                     color="secondary"
                     data-testid="missing-required"
                   >
-                    Required, not chosen yet: {missing.join(', ')}. The manager
-                    refuses a review without them.
+                    Required, not chosen yet: {missing.join(', ')}.
                   </Text>
                 )}
               </>
             )}
-            {plan && !done && <PlanView plan={plan} />}
-            {plan && !done && !connected && !commitRefused && (
-              <Alert
-                status="warning"
-                title="Commit needs your grant"
-                description={
-                  connection.data?.message ??
-                  'Your muster session does not reach the platform manager yet; connect first.'
-                }
-              />
+            {reviewed && !done && (
+              <>
+                {refused && (
+                  <div data-testid="refused">
+                    <Alert
+                      status="warning"
+                      title="The manager would refuse this"
+                      description={refused}
+                    />
+                  </div>
+                )}
+                {!refused && (
+                  <>
+                    <ComparisonView result={reviewed} />
+                    <PlanView plan={reviewed} />
+                  </>
+                )}
+                {!connected && !refused && (
+                  <Alert
+                    status="warning"
+                    title="Needs your session"
+                    description={
+                      connection.data?.message ??
+                      'Connect to the platform manager first.'
+                    }
+                  />
+                )}
+              </>
             )}
             {done && (
               <Flex direction="column" gap="2" data-testid="committed">
@@ -205,23 +219,23 @@ export function CapabilityDialog({
             <Button variant="secondary" onPress={onClose} isDisabled={busy}>
               {done ? 'Close' : 'Cancel'}
             </Button>
-            {!done && !plan && (
+            {!done && !reviewed && (
               <Button type="submit" variant="primary" isDisabled={busy}>
-                {review.isPending ? 'Rendering…' : 'Review'}
+                {review.isPending ? 'Comparing…' : 'Review'}
               </Button>
             )}
-            {!done && plan && (
+            {!done && reviewed && (
               <Button variant="secondary" onPress={back} isDisabled={busy}>
                 Back
               </Button>
             )}
-            {!done && plan && !commitRefused && (
+            {!done && reviewed && !refused && !nothingToOpen && (
               <Button
                 type="submit"
                 variant="primary"
                 isDisabled={busy || !connected}
               >
-                {commit.isPending ? 'Committing…' : 'Commit'}
+                {commit.isPending ? 'Opening…' : 'Open pull requests'}
               </Button>
             )}
           </Flex>

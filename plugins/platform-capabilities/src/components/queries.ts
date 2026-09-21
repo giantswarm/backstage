@@ -16,6 +16,12 @@ export const actionsKey = (installation: string) => [
   'actions',
   installation,
 ];
+export const verifyKey = (installation: string, capability: string) => [
+  QUERY_ROOT,
+  'verify',
+  installation,
+  capability,
+];
 
 export function useInstallations(filters?: ListInstallationsFilters) {
   const api = useApi(platformCapabilitiesApiRef);
@@ -37,6 +43,20 @@ export function useConnection() {
     queryKey: connectionKey,
     queryFn: () => api.getConnection(),
     staleTime: 30_000,
+  });
+}
+
+/**
+ * The comparison of a capability with its definition, run once when the tab
+ * opens and kept until a commit invalidates it: it reads every repository and
+ * runs the probes, so it is not refetched on focus or remount.
+ */
+export function useComparison(installation: string, capability: string) {
+  const api = useApi(platformCapabilitiesApiRef);
+  return useQuery({
+    queryKey: verifyKey(installation, capability),
+    queryFn: () => api.verifyCapability(installation, capability),
+    staleTime: Infinity,
   });
 }
 

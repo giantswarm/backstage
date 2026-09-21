@@ -56,8 +56,8 @@ function capabilityOf(
 /**
  * The Installations page's capability columns: one per platform capability,
  * each cell one icon for the state of that capability on the row's
- * installation as `list_installations` reports it (the state itself in the
- * tooltip).
+ * installation as `list_installations` reports it (the tab's words in the
+ * tooltip; no comparison runs here).
  *
  * The column set is the manager's definitions (`get_info`, no repository
  * read), so the table has its columns from the first paint; each cell is a

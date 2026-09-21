@@ -4,6 +4,7 @@ import {
   syncMarkLegend,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { CapabilityState } from '../apis';
+import { statusOf } from './StateTag';
 
 /**
  * What one glance at the Installations table says about a capability on an
@@ -42,14 +43,14 @@ export function markOf(
   }
 }
 
-/** What each mark means for a capability, in the tooltip and the legend. */
+/** What each mark means for a capability, in the column's legend, in the page's words. */
 const GLOSS: Record<CapabilityMark, string> = {
-  'in sync': 'installed, as defined',
-  'not in sync': 'installed, off its definition',
-  'not reconciled': 'not reconciled yet',
-  'not installed': 'not installed',
-  failed: 'the last action or verify failed',
-  unknown: 'not readable as you',
+  'in sync': 'Installed',
+  'not in sync': 'Installed, with differences',
+  'not reconciled': 'Enabling, or not checked yet',
+  'not installed': 'Not installed',
+  failed: 'Failed',
+  unknown: 'Unknown',
 };
 
 /** The legend of the marks, for a column's header. */
@@ -57,9 +58,9 @@ export const MARK_LEGEND = syncMarkLegend(GLOSS);
 
 /**
  * A capability's state on an installation as one icon: the shape and colour
- * carry the mark, the tooltip and the accessible name carry the manager's
- * state in its own words. `data-state` stays the state, as the list's cells
- * have always exposed it.
+ * carry the mark, the tooltip and the accessible name carry the same words
+ * the Capabilities tab's header uses. `data-state` stays the manager's
+ * state, as the list's cells have always exposed it.
  */
 export function StateIcon({
   capability,
@@ -73,7 +74,7 @@ export function StateIcon({
     <SyncMarkIcon
       mark={mark}
       state={capability.state}
-      label={`${capability.state} · ${GLOSS[mark]}`}
+      label={statusOf(capability).words}
       testId={testId}
     />
   );

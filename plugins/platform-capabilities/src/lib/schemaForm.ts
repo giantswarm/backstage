@@ -21,6 +21,10 @@ export interface Field {
   required: boolean;
   /** The choices of an `enum` field, as strings. */
   options?: string[];
+  /** The schema's `x-source`: `person` marks a choice the person makes. */
+  source?: string;
+  /** The schema's default, what an unmade choice comes to. */
+  default?: unknown;
 }
 
 export interface Group {
@@ -87,6 +91,8 @@ export function formOf(schema: JsonSchema, path: string[] = []): Group {
       kind,
       required: required.has(name),
       options: property.enum?.map(String),
+      source: property['x-source'],
+      default: property.default,
     });
   }
   return group;
@@ -95,6 +101,42 @@ export function formOf(schema: JsonSchema, path: string[] = []): Group {
 /** Every field of the form, groups flattened, in order. */
 export function fieldsOf(group: Group): Field[] {
   return [...group.fields, ...group.groups.flatMap(fieldsOf)];
+}
+
+/** The choices a person makes: the schema's leaves marked `x-source: person`. */
+export function personChoices(schema: JsonSchema): Field[] {
+  return fieldsOf(formOf(schema)).filter(f => f.source === 'person');
+}
+
+/** `modelServing` as `Model serving`. */
+function humanise(key: string): string {
+  const words = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * What a choice is called on the page: the schema's title, else its key --
+ * `modelServing.enabled` is the choice "Model serving", the `enabled` leaf
+ * being the switch, not the name.
+ */
+export function choiceLabel(field: Field): string {
+  const key = field.path[field.path.length - 1];
+  if (field.title !== key) {
+    return field.title;
+  }
+  const named =
+    key === 'enabled' && field.path.length > 1
+      ? field.path[field.path.length - 2]
+      : key;
+  return humanise(named);
+}
+
+/** A choice's value as one word: `on`/`off` for a switch, else the value. */
+export function choiceValue(field: Field, value: unknown): string {
+  if (field.kind === 'boolean') {
+    return value ? 'on' : 'off';
+  }
+  return displayValue(field, value);
 }
 
 export function getAt(values: Values, path: string[]): unknown {

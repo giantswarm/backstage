@@ -22,7 +22,7 @@ describe('markOf', () => {
 });
 
 describe('StateIcon', () => {
-  it('names the state in the manager words and carries the mark', () => {
+  it('names the state in the page words and carries the mark', () => {
     render(
       <StateIcon
         capability={{ state: 'enabled', lastAction: null }}
@@ -32,7 +32,7 @@ describe('StateIcon', () => {
     const cell = screen.getByTestId('cell');
     expect(cell).toHaveAttribute('data-state', 'enabled');
     expect(cell).toHaveAttribute('data-mark', 'not reconciled');
-    expect(cell).toHaveAccessibleName('enabled · not reconciled yet');
+    expect(cell).toHaveAccessibleName('Installed');
     expect(cell).toHaveTextContent('');
   });
 });
