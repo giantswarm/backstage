@@ -556,6 +556,16 @@ export const NOT_COMPARED: VerifyResult = {
   pullRequests: [],
 };
 
+/**
+ * The comparison ran and found the differences, and the manager would
+ * refuse to commit them: a file on record needs a change first.
+ */
+export const COMMIT_REFUSED: VerifyResult = {
+  ...VERIFIED,
+  commitRefused:
+    'dex-app 2.2.3 on record (example/example-management-cluster-bases:bases/collections/shared/base/dex-app.yaml): the referenced Dex client secrets need dex-app 3.2.2 or later; pin it in management-clusters/birch/collections/kustomization.yaml first',
+};
+
 export interface FakeOptions {
   installations?: Installation[];
   definitions?: Definition[];
