@@ -333,32 +333,35 @@ describe('CapabilityCard', () => {
     ).toBeDisabled();
   });
 
-  it('names the file the owners add, once, with the button disabled', async () => {
+  it('offers Enable where nothing is on record, opted in or not: the opt-in protects what is on record', async () => {
     await render(NOT_OPTED_IN);
     expect(header()).toHaveTextContent('Not installed');
-    expect(screen.getByRole('button', { name: 'Enable' })).toBeDisabled();
-    const note = screen.getByTestId('needs-owners');
-    expect(note).toHaveTextContent(
-      'Needs example/example-management-clusters: management-clusters/alder/platform-manager.yaml with optIn: true from the owners.',
-    );
-    expect(within(note).getByRole('link')).toHaveAttribute(
-      'href',
-      NOT_OPTED_IN.optIn.howToOptIn,
-    );
+    expect(screen.getByRole('button', { name: 'Enable' })).toBeEnabled();
+    expect(screen.queryByTestId('needs-owners')).toBeNull();
+    expect(screen.queryByTestId('commit-refused')).toBeNull();
     expect(screen.queryByTestId('opt-in-note')).toBeNull();
     expect(card().textContent).not.toMatch(MANAGER_WORDS);
   });
 
-  it('keeps the owners line alone where the refusal is the opt-in, the button disabled', async () => {
+  it('names the file the owners add, once, with the button disabled, where they installed the capability without the opt-in', async () => {
     await render(ENABLED_NOT_OPTED_IN, {
-      verified: { ...VERIFIED, commitRefused: 'maple is not opted in' },
+      verified: {
+        ...VERIFIED,
+        commitRefused:
+          'agent-platform is on record on maple and maple is not opted in',
+      },
     });
     expect(header()).toHaveTextContent('Installed · 2 checks differ');
     expect(
       screen.getByRole('button', { name: 'Apply changes' }),
     ).toBeDisabled();
-    expect(screen.getByTestId('needs-owners')).toHaveTextContent(
-      'management-clusters/maple/platform-manager.yaml',
+    const note = screen.getByTestId('needs-owners');
+    expect(note).toHaveTextContent(
+      'Needs example/example-management-clusters: management-clusters/maple/platform-manager.yaml with optIn: true from the owners.',
+    );
+    expect(within(note).getByRole('link')).toHaveAttribute(
+      'href',
+      ENABLED_NOT_OPTED_IN.optIn.howToOptIn,
     );
     expect(screen.queryByTestId('commit-refused')).toBeNull();
     expect(screen.getByTestId('comparison')).toBeInTheDocument();

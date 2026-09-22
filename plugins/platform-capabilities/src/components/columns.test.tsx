@@ -173,7 +173,8 @@ describe('useInstallationCapabilityColumns', () => {
     expect(cell('rowan')).toHaveAttribute('data-mark', 'not installed');
     expect(cell('rowan')).toHaveAccessibleName('Not installed');
     expect(cell('rowan')).toHaveTextContent('');
-    expect(cell('alder')).toHaveAttribute('data-state', 'not opted in');
+    // Not opted in with nothing on record: not enabled like any other.
+    expect(cell('alder')).toHaveAttribute('data-state', 'not enabled');
     expect(cell('alder')).toHaveAttribute('data-mark', 'not installed');
     // Enabled and verified by the manager's last action: in sync.
     expect(cell('birch')).toHaveAttribute('data-state', 'enabled');

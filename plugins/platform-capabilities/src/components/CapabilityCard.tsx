@@ -36,7 +36,7 @@ function buttonOf(
   return result && upToDate(result) ? undefined : 'Apply changes';
 }
 
-/** Whether the capability is on the installation, as the manager says; older managers say it through the state. */
+/** Whether the capability is on the installation, as the manager says; older managers say it through the state (`not opted in` was their word for nothing on record without the opt-in). */
 function isInstalled(capability: CapabilityState): boolean {
   return (
     capability.enabled ??
@@ -91,7 +91,11 @@ function Choices({
   );
 }
 
-/** The one line that names the file the owners add before the manager may act. */
+/**
+ * The one line that names the file the owners add before the manager may
+ * change a capability they installed themselves. The opt-in protects what is
+ * on record; a fresh enable needs none.
+ */
 function NeedsOwners({ installation }: { installation: Installation }) {
   const { repository, path, howToOptIn } = installation.optIn;
   const where = [repository, path].filter(Boolean).join(': ');
@@ -127,9 +131,10 @@ function CommitRefused({ reason }: { reason: string }) {
  * differences (opening to them), the features with planned changes, the
  * features as defined, the checks that did not run, and one button --
  * Enable, or Apply changes -- opening the dialog. The button is disabled,
- * with the reason on one line under it, while the owners have not opted in
- * or the comparison says the manager would refuse the commit. The
- * comparison runs when the tab opens.
+ * with the reason on one line under it, while the capability is on record
+ * and the owners have not opted in (the opt-in protects what they installed;
+ * Enable on a fresh installation needs none) or the comparison says the
+ * manager would refuse the commit. The comparison runs when the tab opens.
  */
 export function CapabilityCard({
   installation,
@@ -147,7 +152,7 @@ export function CapabilityCard({
   const inFlight =
     capability.state === 'pending approval' ||
     capability.state === 'rolling out';
-  const needsOwners = installation.optIn.state === 'not opted in';
+  const needsOwners = installed && installation.optIn.state === 'not opted in';
   const commitRefused = result?.commitRefused;
   const status = statusOf(capability, result);
   const button = buttonOf(installed, result);

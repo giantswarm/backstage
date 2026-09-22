@@ -170,16 +170,14 @@ describe('EntityCapabilitiesContent', () => {
     expect(within(dialog()).getByText('Needs your session')).toBeVisible();
   });
 
-  it('an installation not opted in names the file the owners add, with the button disabled', async () => {
+  it('an installation not opted in with nothing on record offers Enable: the opt-in protects what is on record', async () => {
     await render('alder', { installations: [NOT_OPTED_IN] });
     const card = screen.getByTestId('capability-agent-platform');
     expect(within(card).getByTestId('capability-state')).toHaveTextContent(
       'Not installed',
     );
-    expect(within(card).getByTestId('needs-owners')).toHaveTextContent(
-      'Needs example/example-management-clusters: management-clusters/alder/platform-manager.yaml with optIn: true from the owners.',
-    );
-    expect(within(card).getByRole('button', { name: 'Enable' })).toBeDisabled();
+    expect(within(card).queryByTestId('needs-owners')).toBeNull();
+    expect(within(card).getByRole('button', { name: 'Enable' })).toBeEnabled();
     expect(within(card).queryByTestId('opt-in-note')).toBeNull();
   });
 

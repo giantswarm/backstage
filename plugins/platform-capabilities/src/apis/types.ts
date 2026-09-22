@@ -3,7 +3,11 @@
  * them. Nothing here is computed by the page; the names are the tools' own.
  */
 
-/** The state of a capability on an installation, in the manager's words. */
+/**
+ * The state of a capability on an installation, in the manager's words.
+ * `not opted in` is an older manager's word for nothing on record without
+ * the opt-in; the manager now says `not enabled` and carries the opt-in apart.
+ */
 export type CapabilityStateName =
   | 'not opted in'
   | 'enabled, not opted in'
