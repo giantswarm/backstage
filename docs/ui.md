@@ -77,6 +77,39 @@ you see it:
   want them to fail — worth doing on a package you are actively migrating,
   unusable repo-wide until the backlog is gone.
 
+## Toasts
+
+A toast (`toastApiRef` from `@backstage/frontend-plugin-api`) is an
+acknowledgement glanced at in passing, not a place to report. It renders in a
+narrow column over the page the user is already reading, so **keep it to two
+lines**:
+
+- **Title: one line, ~60 characters including any quoted name.** Say what
+  happened to what — `Model "gpt-oss-120b" deleted`, `Deleting agent "Qwentin"`.
+  Present participle when something is still settling behind the call (a
+  finalizer, a reconcile), past tense when it is done.
+- **Description: one sentence, ~140 characters.** Include it only when there is
+  something the person cannot see for themselves — most often that the list
+  they are being returned to will lag for a few seconds. If there is nothing
+  like that, leave it out; most of our toasts are title-only.
+
+Two things that do not belong in either:
+
+- **The signed-in person's own name or address.** They pressed the button; a
+  write running as them is the expected case, not news.
+- **A backend message interpolated raw**, and above all one that can grow
+  without bound — a list of the other releases referencing a shared resource, a
+  set of affected objects, a stack. It is unbounded by construction, so the
+  toast that fits in a test fixture is four lines in a busy namespace. Leave
+  the detail to the dialog, the page, or an error panel that can be read at
+  leisure, and keep the toast to the outcome. (`ToastApiMessage` also takes
+  `links`, for when the detail lives somewhere the user can go.)
+
+Always pass a `timeout` — a toast without one is permanent, and an
+acknowledgement should not have to be dismissed by hand. Failures usually want
+**no** toast at all: if the user is still looking at the dialog they pressed the
+button in, show the message there instead.
+
 ## Page headers and tabs (New Frontend System)
 
 Every NFS page header is rendered by a **custom `PageLayout` swappable
