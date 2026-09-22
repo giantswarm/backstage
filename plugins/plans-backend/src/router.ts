@@ -26,9 +26,13 @@ const REPO_SLUG_PATTERN = /^[\w.-]+\/[\w.-]+$/;
  */
 const EPICS_TTL_MS = 5 * 60_000;
 
-/** Directory walks stop here; a plan repository is a handful of folders deep. */
-const TREE_MAX_DEPTH = 8;
-const TREE_MAX_ENTRIES = 2000;
+/**
+ * A branch's tree describes the repository, not the caller, and the plans
+ * page asks for it twice per load (the listing and the epic chips): one
+ * fetch per repository and ref is shared, in-flight requests included, and
+ * kept as long as the frontend keeps its copy fresh.
+ */
+const TREE_TTL_MS = 60_000;
 
 /** Roadmap epic referenced by a plan's `**Epic:** [owner/repo#N](url)` header. */
 interface EpicRef {
@@ -401,60 +405,77 @@ export async function createRouter(
     size?: number;
   }
 
+  interface RepositoryTree {
+    truncated: boolean;
+    tree: TreeEntry[];
+  }
+
   /**
-   * The recursive tree of a ref, walked directory by directory: the GitHub
-   * MCP server lists one directory per call (trailing slash), the root as `/`.
+   * The recursive tree of a ref in one call: get_repository_tree, from the
+   * GitHub MCP server's `git` toolset. GitHub truncates the answer beyond
+   * 100,000 entries and says so. Submodule entries (type commit) are left out.
    */
-  const getTree = async (
+  const fetchTree = async (
     gh: GithubSession,
     repo: string,
     ref: string,
-  ): Promise<{ truncated: boolean; tree: TreeEntry[] }> => {
+  ): Promise<RepositoryTree> => {
+    const result = await gh.call<{
+      truncated?: boolean;
+      tree?: Array<{ path?: string; type?: string; size?: number }>;
+    }>('get_repository_tree', {
+      ...splitRepo(repo),
+      ...(gitRef(ref) && { tree_sha: gitRef(ref) }),
+      recursive: true,
+    });
     const tree: TreeEntry[] = [];
-    let truncated = false;
-    let dirs = [''];
-    for (let depth = 0; depth < TREE_MAX_DEPTH && dirs.length > 0; depth++) {
-      const listings = await Promise.all(
-        dirs.map(dir =>
-          gh.call<
-            Array<{
-              name?: string;
-              path?: string;
-              type?: string;
-              size?: number;
-            }>
-          >('get_file_contents', {
-            ...splitRepo(repo),
-            path: dir === '' ? '/' : `${dir}/`,
-            ...(gitRef(ref) && { ref: gitRef(ref) }),
-            fields: ['name', 'path', 'type', 'size'],
-          }),
-        ),
-      );
-      const next: string[] = [];
-      for (const entries of listings) {
-        for (const entry of Array.isArray(entries) ? entries : []) {
-          if (!entry.path) {
-            continue;
-          }
-          if (tree.length >= TREE_MAX_ENTRIES) {
-            truncated = true;
-            break;
-          }
-          if (entry.type === 'dir') {
-            tree.push({ path: entry.path, type: 'tree' });
-            next.push(entry.path);
-          } else {
-            tree.push({ path: entry.path, type: 'blob', size: entry.size });
-          }
-        }
+    for (const entry of result?.tree ?? []) {
+      if (!entry.path) {
+        continue;
       }
-      dirs = truncated ? [] : next;
+      if (entry.type === 'tree') {
+        tree.push({ path: entry.path, type: 'tree' });
+      } else if (entry.type === 'blob') {
+        tree.push({ path: entry.path, type: 'blob', size: entry.size });
+      }
     }
-    if (dirs.length > 0) {
-      truncated = true;
+    return { truncated: Boolean(result?.truncated), tree };
+  };
+
+  const treeCache = new Map<
+    string,
+    { expires: number; tree: Promise<RepositoryTree> }
+  >();
+
+  /**
+   * The tree of a ref, fetched once per repository and ref within
+   * TREE_TTL_MS and shared by every caller in that window, the concurrent
+   * ones included. A failed fetch is not kept: the next request asks again.
+   */
+  const getTree = (
+    gh: GithubSession,
+    repo: string,
+    ref: string,
+  ): Promise<RepositoryTree> => {
+    const now = Date.now();
+    const key = `${repo}@${ref}`;
+    const hit = treeCache.get(key);
+    if (hit && hit.expires > now) {
+      return hit.tree;
     }
-    return { truncated, tree };
+    for (const [cached, entry] of treeCache) {
+      if (entry.expires <= now) {
+        treeCache.delete(cached);
+      }
+    }
+    const tree = fetchTree(gh, repo, ref);
+    treeCache.set(key, { expires: now + TREE_TTL_MS, tree });
+    tree.catch(() => {
+      if (treeCache.get(key)?.tree === tree) {
+        treeCache.delete(key);
+      }
+    });
+    return tree;
   };
 
   const parsePullNumber = (raw: string): number => {
@@ -765,7 +786,8 @@ export async function createRouter(
 
   // A missing GitHub grant is a 401 that carries the sign-in URL; GitHub's
   // own refusals (no access to the repository, a permission the person's
-  // grant lacks) are 403s, so neither pages us as a server fault.
+  // grant lacks) are 403s and a refused pace is a 429, so none of them pages
+  // us as a server fault.
   router.use(
     (
       error: unknown,
@@ -781,6 +803,18 @@ export async function createRouter(
             server: error.server,
             authUrl: error.authUrl,
           },
+        });
+        return;
+      }
+      // GitHub refused the pace, not the person: the hosted MCP server answers
+      // a burst with 429 at the transport, the REST API's rate limit reads
+      // "rate limit exceeded" (a 403 there). Neither is a permission.
+      if (
+        error instanceof Error &&
+        /\b429\b|too many requests|rate limit/i.test(error.message)
+      ) {
+        res.status(429).json({
+          error: { name: 'TooManyRequestsError', message: error.message },
         });
         return;
       }

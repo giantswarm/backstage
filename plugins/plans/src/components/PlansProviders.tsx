@@ -12,6 +12,9 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       staleTime: 60_000,
+      // Refusals are final for this page: a retry would ask the same
+      // question again, and a rate-limit refusal (GitHub's 429) only deepens
+      // with every repeat.
       retry: (failureCount, error) => {
         const name = (error as Error).name;
         if (
@@ -19,6 +22,7 @@ const queryClient = new QueryClient({
           name === 'MusterServerNotConnectedError' ||
           name === 'UnauthorizedError' ||
           name === 'ForbiddenError' ||
+          name === 'TooManyRequestsError' ||
           name === 'ServiceUnavailableError'
         ) {
           return false;
