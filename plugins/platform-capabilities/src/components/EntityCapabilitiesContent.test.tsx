@@ -179,6 +179,28 @@ describe('EntityCapabilitiesContent', () => {
     expect(within(dialog()).getByText('Needs your session')).toBeVisible();
   });
 
+  it('shows the indicator while the installation loads', async () => {
+    const api = new FakeApi({ installations: [ENABLED], latency: 400 });
+    await renderInTestApp(
+      <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+        <EntityProvider entity={entityOf('birch')}>
+          <EntityCapabilitiesContent />
+        </EntityProvider>
+      </TestApiProvider>,
+    );
+    expect(
+      await within(screen.getByTestId('loading')).findByRole('progressbar', {
+        name: 'Loading capabilities…',
+      }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('capability-agent-platform'),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('loading')).toBeNull();
+  });
+
   it('an installation with nothing on record offers Enable', async () => {
     await render('alder', { installations: [NOT_ENABLED] });
     const card = screen.getByTestId('capability-agent-platform');
