@@ -23,9 +23,14 @@ const rejectedToken = /rejected the portal's token/;
 test('with a token the API server accepts, the muster dashboard renders without the inventory gate', async ({
   admin,
 }) => {
+  test.skip(
+    !!process.env.AGENTLAB_INVENTORY_REFUSED,
+    'the lab portal requests no audience the apiserver accepts, every probe is refused',
+  );
   await open(admin, dashboardPath);
   await expect(
-    admin.getByText('Fleet coverage'),
+    // Exact: the section's placeholder reads "Loading fleet coverage…".
+    admin.getByText('Fleet coverage', { exact: true }),
     'the dashboard renders its CRD-backed section',
   ).toBeVisible();
   await expect(admin.getByText(rejectedToken)).toHaveCount(0);
