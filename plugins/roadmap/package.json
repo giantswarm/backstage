@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-roadmap",
   "version": "0.0.0",
   "license": "Apache-2.0",
-  "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "publishConfig": {
@@ -12,7 +11,11 @@
   },
   "backstage": {
     "role": "frontend-plugin",
-    "pluginId": "roadmap"
+    "pluginId": "roadmap",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-roadmap",
+      "@giantswarm/backstage-plugin-roadmap-backend"
+    ]
   },
   "sideEffects": false,
   "scripts": {

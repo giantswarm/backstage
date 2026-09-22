@@ -33,6 +33,8 @@
     "storybook:build": "storybook build -o storybook-static",
     "storybook:coverage": "tsx scripts/check-story-coverage.mts",
     "typecheck:storybook": "tsc -p tsconfig.storybook.json",
+    "release:version": "changeset version && yarn install --mode=update-lockfile && prettier --write '{packages,plugins}/*/{package.json,CHANGELOG.md}'",
+    "release:publish": "yarn tsc && backstage-cli repo build && changeset publish",
     "postinstall": "yarn patch-package --error-on-fail",
     "prepare": "husky"
   },

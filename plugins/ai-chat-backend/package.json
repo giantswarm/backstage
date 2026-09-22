@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-ai-chat-backend",
   "version": "0.17.3",
   "license": "Apache-2.0",
-  "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "publishConfig": {
@@ -13,7 +12,12 @@
   "configSchema": "config.d.ts",
   "backstage": {
     "role": "backend-plugin",
-    "pluginId": "ai-chat"
+    "pluginId": "ai-chat",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-ai-chat",
+      "@giantswarm/backstage-plugin-ai-chat-backend",
+      "@giantswarm/backstage-plugin-ai-chat-react"
+    ]
   },
   "scripts": {
     "start": "backstage-cli package start",

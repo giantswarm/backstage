@@ -10,15 +10,17 @@
     "./package.json": "./package.json"
   },
   "license": "Apache-2.0",
-  "private": true,
   "publishConfig": {
-    "access": "public",
-    "main": "dist/index.cjs.js",
-    "module": "dist/index.esm.js",
-    "types": "dist/index.d.ts"
+    "access": "public"
   },
   "backstage": {
-    "role": "common-library"
+    "role": "common-library",
+    "pluginId": "agent-platform",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-agent-platform",
+      "@giantswarm/backstage-plugin-agent-platform-backend",
+      "@giantswarm/backstage-plugin-agent-platform-common"
+    ]
   },
   "sideEffects": false,
   "scripts": {
@@ -44,6 +46,9 @@
     "*": {
       "testFixtures": [
         "src/testFixtures.ts"
+      ],
+      "package.json": [
+        "package.json"
       ]
     }
   }
