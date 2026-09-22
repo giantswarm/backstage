@@ -362,6 +362,40 @@ The following optional features are available:
 - `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
 
+## Grafana dashboards card
+
+Team and component pages carrying the `grafana/dashboard-selector` annotation
+get the dashboards card of `@backstage-community/plugin-grafana` only on a
+portal that enables it:
+
+```yaml
+app:
+  extensions:
+    - entity-card:catalog/grafana-dashboards: true
+```
+
+The card is disabled by default because it works only where the plugin is
+wired: the `grafana` section names the host, and a `proxy.endpoints` entry at
+`/grafana/api` targets that host with a service-account token. The `grafana`
+section is required by the plugin's schema on every portal, so every
+deployment carries one, and the annotated entities reach every portal through
+the shared catalog. Without the switch an annotated entity shows neither the
+card nor the `404` it would report without the proxy entry.
+
+```yaml
+proxy:
+  endpoints:
+    /grafana/api:
+      target: https://grafana.example.com/
+      headers:
+        Authorization: Bearer ${GRAFANA_TOKEN}
+
+grafana:
+  hosts:
+    - id: grafana
+      domain: https://grafana.example.com
+```
+
 ## Component dependency fetching
 
 For the Giant Swarm devportal, we can enable asynchronous fetching of dependencies between components, based on the GitHub SBOM API. This will start updating dependency info once daily.
