@@ -1,8 +1,14 @@
+import { Text } from '@backstage/ui';
 import { LiveCheck, VerifyDimension } from '../apis';
 import { MarkedDifference, markOf, wordsOf } from '../lib/comparison';
 import { MarkTag } from './StateTag';
 
-export const LIST_STYLE = { margin: 0, paddingLeft: 16 };
+/** A nested list: one indent step per depth, leading 1.5 for the lines a mark's glyph sits in. */
+export const LIST_STYLE = {
+  margin: 0,
+  paddingLeft: 'var(--bui-space-4)',
+  lineHeight: 1.5,
+};
 
 /** What a live check looked at: its URL, or the object by resource, namespace and name. */
 function target(check: LiveCheck): string {
@@ -65,8 +71,10 @@ export function DimensionItem({ dimension }: { dimension: VerifyDimension }) {
         <ul style={LIST_STYLE}>
           {dimension.probe.requests.map(r => (
             <li key={r.url}>
-              <code>{r.url}</code> — {r.status ?? r.error ?? '—'}
-              {r.ok ? '' : ' (unexpected)'}
+              <Text as="span" variant="body-small">
+                <code>{r.url}</code> — {r.status ?? r.error ?? '—'}
+                {r.ok ? '' : ' (unexpected)'}
+              </Text>
             </li>
           ))}
         </ul>

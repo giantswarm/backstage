@@ -1,22 +1,36 @@
-import { useMemo, useState } from 'react';
-import { Alert, Button, Flex, Text } from '@backstage/ui';
+import { CSSProperties, ReactNode, useId, useMemo, useState } from 'react';
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Flex,
+  Text,
+} from '@backstage/ui';
 import RefreshIcon from '@material-ui/icons/Refresh';
+import {
+  Fact,
+  FactList,
+  SectionHeader,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   CapabilityState,
   Definition,
   Installation,
   VerifyResult,
 } from '../apis';
-import { count, upToDate } from '../lib/comparison';
+import { upToDate } from '../lib/comparison';
 import { reasonOf, refusalStatus } from '../lib/refusal';
 import {
-  choiceLabel,
+  choiceDescription,
   choiceValue,
+  Field,
   fieldsOf,
   formOf,
   getAt,
   labelOf,
-  personChoices,
+  personForm,
 } from '../lib/schemaForm';
 import { CapabilityDialog } from './CapabilityDialog';
 import { ComparisonView } from './ComparisonView';
@@ -25,11 +39,11 @@ import { Loading } from './Loading';
 import { useComparison, useRefreshComparison } from './queries';
 import { StateTag, statusOf } from './StateTag';
 
-const CARD_STYLE = {
-  border: '1px solid rgba(128,128,128,0.3)',
-  borderRadius: 6,
-  padding: 16,
-};
+/** The header's rows wrap under each other on a narrow screen instead of squeezing. */
+const WRAP: CSSProperties = { flexWrap: 'wrap' };
+
+/** The name stays one word: on a narrow screen the state wraps under it, the name does not break at its hyphen. */
+const NAME_STYLE: CSSProperties = { whiteSpace: 'nowrap' };
 
 /** The one button: Enable when not installed, Apply changes while the comparison finds differences, none when up to date. */
 function buttonOf(
@@ -47,56 +61,118 @@ function isInstalled(capability: CapabilityState): boolean {
   return capability.enabled ?? capability.state !== 'not enabled';
 }
 
+/** A region of the card, named by its header: the record, the comparison. */
+function Region({
+  title,
+  testId,
+  children,
+}: {
+  title: string;
+  testId: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} data-testid={testId}>
+      <SectionHeader id={id} title={title} as="h4" variant="title-x-small" />
+      {children}
+    </section>
+  );
+}
+
+/** A choice's value on the record, or the mark that it is not on it, with what the choice is about under it. */
+function Choice({
+  name,
+  value,
+  description,
+}: {
+  name: string;
+  value?: string;
+  description?: string;
+}) {
+  return (
+    <>
+      <Text
+        variant="body-medium"
+        color={value === undefined ? 'secondary' : undefined}
+        data-testid={`choice-${name}`}
+      >
+        {value ?? 'not on record'}
+      </Text>
+      {description && (
+        <Text variant="body-small" color="secondary">
+          {description}
+        </Text>
+      )}
+    </>
+  );
+}
+
 /**
- * One line per choice the definition leaves to a person that has a value on
- * the comparison's inputs -- read back from the record or given -- and never
- * the schema's default, which is what an unmade choice would come to, not
- * what is on record: no line shows a value the comparison later changes, and
- * without a comparison there is no record to show. The choices without a
- * value as one line naming each, as the manager names them (`inputs.unset`),
- * so a reader sees which choices the record lacks.
+ * What is on record, as a list of the choices the definition leaves to a
+ * person: each with its value on the comparison's inputs -- read back from
+ * the record or given -- and never the schema's default, which is what an
+ * unmade choice would come to, not what is on record; a choice without a
+ * value marked in place as not on record, as the manager names them
+ * (`inputs.unset`), so a reader sees which the record lacks; under each,
+ * what the choice is about, from the definition. No line shows a value the
+ * comparison later changes, and without a comparison there is no record to
+ * show.
  */
-function Choices({
+function Record({
   definition,
   comparison,
 }: {
   definition?: Definition;
   comparison?: VerifyResult;
 }) {
-  const choices = useMemo(
-    () => personChoices(definition?.inputSchema ?? {}),
-    [definition],
-  );
-  const values = comparison?.inputs?.values ?? {};
-  const chosen = choices
-    .map(field => ({
-      field,
-      value: getAt(values, field.path),
-    }))
-    .filter(c => c.value !== undefined && c.value !== null);
-  const unset = comparison?.inputs?.unset ?? [];
+  const schema = definition?.inputSchema;
+  const form = useMemo(() => personForm(formOf(schema ?? {})), [schema]);
+  const choices = useMemo(() => fieldsOf(form), [form]);
+  const values = comparison?.inputs?.values;
+  if (!values) {
+    return null;
+  }
+  const unset = comparison.inputs?.unset ?? [];
+  const facts: Fact[] = [];
+  const fact = (name: string, field?: Field, value?: unknown) => {
+    facts.push({
+      label: labelOf(name, choices),
+      value: (
+        <Choice
+          name={name}
+          value={
+            field && value !== undefined && value !== null
+              ? choiceValue(field, value)
+              : undefined
+          }
+          description={field && choiceDescription(field, form)}
+        />
+      ),
+    });
+  };
+  for (const field of choices) {
+    const value = getAt(values, field.path);
+    if (value !== undefined && value !== null) {
+      fact(field.name, field, value);
+    } else if (unset.includes(field.name)) {
+      fact(field.name, field);
+    }
+  }
+  // A choice the manager lists that no field of the form carries: a list of
+  // objects, or a field the schema does not know.
+  for (const name of unset) {
+    if (!choices.some(c => c.name === name)) {
+      fact(name);
+    }
+  }
+  if (facts.length === 0) {
+    return null;
+  }
   return (
-    <>
-      {chosen.map(({ field, value }) => (
-        <Text
-          key={field.name}
-          variant="body-small"
-          data-testid={`choice-${field.name}`}
-        >
-          {choiceLabel(field)}: {choiceValue(field, value)}
-        </Text>
-      ))}
-      {unset.length > 0 && (
-        <Text
-          variant="body-small"
-          color="secondary"
-          data-testid="choices-unset"
-        >
-          {count(unset.length, 'choice')} not on record:{' '}
-          {unset.map(name => labelOf(name, choices)).join(', ')}
-        </Text>
-      )}
-    </>
+    <Region title="On record" testId="record">
+      <FactList facts={facts} maxWidth={null} />
+    </Region>
   );
 }
 
@@ -110,17 +186,18 @@ function CommitRefused({ reason }: { reason: string }) {
 }
 
 /**
- * One capability of an installation as one block: the header line with the
+ * One capability of an installation as one card: the header line with the
  * state and what the comparison found; where the definition refused, the
  * manager's reason as an Alert -- `info` for an input the dialog supplies,
  * `warning` for something to fix first -- with *Comparing…* and a failed
- * request in the same place, above the record; the person's choices; the
- * features with differences (opening to them), the features with planned
- * changes, the features as defined, the checks that did not run; and one
- * button -- Enable, or Apply changes -- opening the dialog. The button is
- * disabled while the comparison says the manager would refuse the commit for
- * something to fix first, the reason on one line under it where the
- * definition itself did not refuse; a refusal for an input the dialog
+ * request in the same place, above the record; then two regions, *On
+ * record* -- the person's choices -- and *Compared with the definition* --
+ * the features with differences, the files with their diffs, the features
+ * with planned changes, the features as defined, the checks that did not
+ * run; and one button -- Enable, or Apply changes -- opening the dialog. The
+ * button is disabled while the comparison says the manager would refuse the
+ * commit for something to fix first, the reason on one line under it where
+ * the definition itself did not refuse; a refusal for an input the dialog
  * supplies -- the choices not on record, a value the reason names -- keeps
  * the button, the dialog being where it is given. The comparison runs when
  * the tab opens; while it runs -- then, and again after Refresh -- the card
@@ -161,66 +238,78 @@ export function CapabilityCard({
   const button = buttonOf(installed, result);
 
   return (
-    <Flex
-      direction="column"
-      gap="2"
-      style={CARD_STYLE}
-      data-testid={`capability-${capability.name}`}
-    >
-      <Flex gap="3" align="center" justify="between">
-        <Flex gap="2" align="center">
-          <Text variant="title-small" as="h3">
-            {capability.name}
-          </Text>
-          <StateTag
-            state={capability.state}
-            status={status}
-            testId="capability-state"
-          />
-        </Flex>
-        <Flex gap="2" align="center">
-          <Button
-            variant="tertiary"
-            size="small"
-            iconStart={<RefreshIcon />}
-            aria-label="Refresh comparison"
-            onPress={refresh}
-            isDisabled={comparing}
-          >
-            Refresh
-          </Button>
-          {button && (
+    <Card data-testid={`capability-${capability.name}`}>
+      <CardHeader>
+        <Flex gap="3" align="center" justify="between" style={WRAP}>
+          <Flex gap="2" align="center" style={WRAP}>
+            <Text variant="title-small" as="h3" style={NAME_STYLE}>
+              {capability.name}
+            </Text>
+            <StateTag
+              state={capability.state}
+              status={status}
+              testId="capability-state"
+            />
+          </Flex>
+          <Flex gap="2" align="center">
             <Button
-              variant="primary"
+              variant="tertiary"
               size="small"
-              onPress={() => setDialog(true)}
-              isDisabled={inFlight || refusedForNow || (installed && comparing)}
+              iconStart={<RefreshIcon />}
+              aria-label="Refresh comparison"
+              onPress={refresh}
+              isDisabled={comparing}
             >
-              {button}
+              Refresh
             </Button>
+            {button && (
+              <Button
+                variant="primary"
+                size="small"
+                onPress={() => setDialog(true)}
+                isDisabled={
+                  inFlight || refusedForNow || (installed && comparing)
+                }
+              >
+                {button}
+              </Button>
+            )}
+          </Flex>
+        </Flex>
+      </CardHeader>
+      <CardBody>
+        <Flex direction="column" gap="4">
+          {refused && refusal && (
+            <Alert
+              status={refusal}
+              icon
+              description={refused}
+              data-testid="refused"
+            />
+          )}
+          {comparing && (
+            <Loading
+              label="Comparing with the definition…"
+              testId="comparing"
+            />
+          )}
+          {!comparing && comparison.error && (
+            <ErrorAlert
+              title="The comparison did not run"
+              error={comparison.error as Error}
+            />
+          )}
+          {commitRefused && !refused && (
+            <CommitRefused reason={commitRefused} />
+          )}
+          <Record definition={definition} comparison={result} />
+          {result && installed && !refused && (
+            <Region title="Compared with the definition" testId="compared">
+              <ComparisonView result={result} />
+            </Region>
           )}
         </Flex>
-      </Flex>
-      {refused && refusal && (
-        <Alert
-          status={refusal}
-          icon
-          description={refused}
-          data-testid="refused"
-        />
-      )}
-      {comparing && (
-        <Loading label="Comparing with the definition…" testId="comparing" />
-      )}
-      {!comparing && comparison.error && (
-        <ErrorAlert
-          title="The comparison did not run"
-          error={comparison.error as Error}
-        />
-      )}
-      {commitRefused && !refused && <CommitRefused reason={commitRefused} />}
-      <Choices definition={definition} comparison={result} />
-      {result && installed && !refused && <ComparisonView result={result} />}
+      </CardBody>
       {dialog && (
         <CapabilityDialog
           kind={installed ? 'reconcile' : 'enable'}
@@ -232,6 +321,6 @@ export function CapabilityCard({
           onClose={() => setDialog(false)}
         />
       )}
-    </Flex>
+    </Card>
   );
 }

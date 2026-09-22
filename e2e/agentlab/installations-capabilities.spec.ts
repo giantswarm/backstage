@@ -126,10 +126,10 @@ test.describe('installations: platform capabilities', () => {
       /.+/,
     );
     // The comparison ran as the tab opened: no Verify button, the person's
-    // one choice on its line.
+    // one choice on its row of the record.
     await expect(card.getByRole('button', { name: 'Verify' })).toHaveCount(0);
     await expect(card.getByTestId('choice-modelServing.enabled')).toHaveText(
-      /^Model serving: (on|off)$/,
+      /^(on|off)$/,
     );
     await expect(admin.getByTestId('action-history')).toBeVisible();
 

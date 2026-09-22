@@ -150,6 +150,22 @@ const rowOfLine = (file: string, n: number) => {
   return row as HTMLElement;
 };
 
+/**
+ * The line a group opens from: the accordion's trigger, the group's first
+ * button, found inside a closed outer group too.
+ */
+const trigger = (group: HTMLElement) =>
+  within(group).getAllByRole('button', { hidden: true })[0];
+
+/** Opens a group closed until opened. */
+const open = (group: HTMLElement) => userEvent.click(trigger(group));
+
+/** A choice's value on the record. */
+const choice = (name: string) => screen.getByTestId(`choice-${name}`);
+
+/** The record: the region named On record, its choices a `dl`. */
+const record = () => screen.getByRole('region', { name: 'On record' });
+
 describe('CapabilityCard', () => {
   beforeEach(() => platformCapabilitiesQueryClient.clear());
 
@@ -215,6 +231,38 @@ describe('CapabilityCard', () => {
     },
   );
 
+  it('marks the header as the Installations page marks the cell, the legend on the tooltip', async () => {
+    await render(withCapability({ state: 'enabled', enabled: true }), {
+      verified: VERIFIED,
+    });
+    expect(header()).toHaveAttribute('data-mark', 'not in sync');
+    expect(header()).toHaveAttribute(
+      'title',
+      'not in sync: Installed, with differences',
+    );
+  });
+
+  it('lays the card out as two labelled regions, the record a definition list', async () => {
+    await render(withCapability({ state: 'enabled', enabled: true }), {
+      verified: VERIFIED,
+    });
+    expect(
+      within(card())
+        .getAllByRole('region')
+        .map(region => region.getAttribute('data-testid')),
+    ).toEqual(['record', 'compared']);
+    expect(record().querySelector('dl')).not.toBeNull();
+    expect(
+      screen.getByRole('region', { name: 'Compared with the definition' }),
+    ).toBeInTheDocument();
+    // What the choice is about, from the definition, under its value.
+    expect(
+      within(record()).getByText(
+        'The one choice: whether the installation serves models.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('runs the comparison as it opens and shows one line per fact', async () => {
     const api = await render(ENABLED);
     expect(api.verifies).toEqual([
@@ -225,9 +273,8 @@ describe('CapabilityCard', () => {
       },
     ]);
     // The person's one choice, from the comparison's inputs.
-    expect(screen.getByTestId('choice-modelServing.enabled')).toHaveTextContent(
-      'Model serving: off',
-    );
+    expect(choice('modelServing.enabled')).toHaveTextContent('off');
+    expect(within(record()).getByText('Model serving')).toBeInTheDocument();
     // Only the features with differences are listed, closed.
     expect(screen.getByTestId('feature-secrets')).toHaveTextContent(
       'Secrets — 1 check differs',
@@ -570,10 +617,8 @@ describe('CapabilityCard', () => {
     it('collapses the features whose changes are all planned into one line that opens to their files', async () => {
       await enabled(PLANNED);
       const planned = screen.getByTestId('planned');
-      expect(planned.querySelector('summary')).toHaveTextContent(
-        'Runtime: 1 check planned',
-      );
-      expect(planned).not.toHaveAttribute('open');
+      expect(trigger(planned)).toHaveTextContent('Runtime: 1 check planned');
+      expect(trigger(planned)).toHaveAttribute('aria-expanded', 'false');
       // Every planned change is reachable: the file's group is inside the line.
       expect(within(planned).getByTestId(`file-${PATCH}`)).toBeInTheDocument();
       expect(screen.queryByTestId('feature-runtime')).toBeNull();
@@ -590,12 +635,14 @@ describe('CapabilityCard', () => {
       expect(screen.getByTestId('feature-migrations')).toHaveTextContent(
         'Migrations — 1 check differs · 1 check planned',
       );
-      // The patch, touched by two features, is one group, open: a difference is to apply.
+      // The patch, touched by two features, is one group, closed until
+      // opened whatever it holds: its line says what is in it.
       const patch = fileGroup(PATCH);
-      expect(patch).toHaveAttribute('open');
-      expect(patch.querySelector('summary')).toHaveTextContent(
+      expect(trigger(patch)).toHaveTextContent(
         `${PATCH} — 2 values differ · 1 value planned`,
       );
+      expect(trigger(patch)).toHaveAttribute('aria-expanded', 'false');
+      await open(patch);
       expect(within(patch).getAllByTestId('diff')).toHaveLength(1);
       const planned = within(rowOfLine(PATCH, 2)).getByTestId('annotation');
       expect(planned).toHaveTextContent(
@@ -609,11 +656,11 @@ describe('CapabilityCard', () => {
 
     it('keeps a group closed while every change in it is planned', async () => {
       await enabled(PLANNED);
+      await open(screen.getByTestId('planned'));
       const patch = fileGroup(PATCH);
-      expect(patch).not.toHaveAttribute('open');
-      expect(patch.querySelector('summary')).toHaveTextContent(
-        `${PATCH} — 1 value planned`,
-      );
+      expect(trigger(patch)).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger(patch)).toHaveTextContent(`${PATCH} — 1 value planned`);
+      await open(patch);
       expect(
         within(rowOfLine(PATCH, 2)).getByTestId('annotation'),
       ).toHaveTextContent('The kagent API moves to v2');
@@ -627,9 +674,10 @@ describe('CapabilityCard', () => {
       expect(alert).toHaveAttribute('data-status', 'warning');
       // The reason alone: the header already says not compared.
       expect(alert).not.toHaveTextContent(/did not run|not compared/);
-      // The first thing under the header row; the commit's copy of the
-      // reason is not a second line.
-      expect(card().children[1]).toBe(alert);
+      // The first thing in the card's body, under the header row; the
+      // commit's copy of the reason is not a second line.
+      const [, body] = card().children;
+      expect(body.querySelector('[data-testid]')).toBe(alert);
       expect(screen.queryByTestId('commit-refused')).toBeNull();
       expect(
         screen.getByRole('button', { name: 'Apply changes' }),
@@ -674,7 +722,7 @@ describe('CapabilityCard', () => {
     it('heads each file once and annotates the diff on the changed line', async () => {
       await render(ENABLED);
       const patch = fileGroup(PATCH);
-      expect(patch).toHaveAttribute('open');
+      await open(patch);
       expect(
         within(screen.getByTestId('comparison')).getAllByText(PATCH),
       ).toHaveLength(1);
@@ -699,7 +747,7 @@ describe('CapabilityCard', () => {
     it('lists the differences of a file without content, without its name', async () => {
       await render(ENABLED);
       const group = fileGroup(KUSTOMIZATION);
-      expect(group).toHaveAttribute('open');
+      await open(group);
       expect(within(group).queryByTestId('diff')).toBeNull();
       const [line] = within(group).getAllByRole('listitem');
       expect(line).toHaveTextContent(
@@ -716,16 +764,14 @@ describe('CapabilityCard', () => {
         verified: PLANNED_ON_HUB,
       });
       const planned = screen.getByTestId('planned');
-      expect(planned.querySelector('summary')).toHaveTextContent(
+      expect(trigger(planned)).toHaveTextContent(
         'Runtime, Portal section: 2 checks planned',
       );
       const onHub = within(planned).getByTestId(`file-${HUB_PORTAL_FILE}`);
-      expect(onHub.querySelector('summary')).toHaveTextContent(
+      expect(trigger(onHub)).toHaveTextContent(
         `${HUB_PORTAL_FILE} on the hub hazel — 2 values planned`,
       );
-      expect(fileGroup(PATCH).querySelector('summary')).not.toHaveTextContent(
-        'on the hub',
-      );
+      expect(trigger(fileGroup(PATCH))).not.toHaveTextContent('on the hub');
     });
 
     it('reads a rewrite as one removal then one addition, the comments folded, the indentation aligned', async () => {
@@ -739,9 +785,10 @@ describe('CapabilityCard', () => {
         'Runtime — 1 check differs · 1 check planned',
       );
       const patch = fileGroup(PATCH);
-      expect(patch.querySelector('summary')).toHaveTextContent(
+      expect(trigger(patch)).toHaveTextContent(
         `${PATCH} — 1 value differs · 3 values planned`,
       );
+      await open(patch);
       expect(within(patch).getByTestId('reindented')).toHaveTextContent(
         "the record's 4-space indentation shown as 2 spaces",
       );
@@ -837,12 +884,23 @@ describe('CapabilityCard', () => {
       </TestApiProvider>,
     );
     await waitFor(() => expect(screen.queryByTestId('comparing')).toBeNull());
-    expect(screen.getByTestId('choice-modelServing.enabled')).toHaveTextContent(
-      'Model serving: off',
-    );
-    expect(screen.queryByTestId('choice-gpu.nodes')).toBeNull();
-    expect(screen.getByTestId('choices-unset')).toHaveTextContent(
-      '4 choices not on record: Nodes, Gpu domain, Grafana domain, Mode',
+    expect(choice('modelServing.enabled')).toHaveTextContent('off');
+    expect(within(record()).getByText('Model serving')).toBeInTheDocument();
+    // The choices the record lacks, marked in place under their labels.
+    expect(choice('gpu.nodes')).toHaveTextContent('not on record');
+    const terms = within(record())
+      .getAllByRole('term')
+      .map(term => term.textContent);
+    expect(terms).toHaveLength(6);
+    expect(terms).toEqual(
+      expect.arrayContaining([
+        'Kagent',
+        'Model serving',
+        'Nodes',
+        'Gpu domain',
+        'Grafana domain',
+        'Mode',
+      ]),
     );
     expect(card().textContent).not.toMatch(/not chosen/);
   });
@@ -861,10 +919,9 @@ describe('CapabilityCard', () => {
       </TestApiProvider>,
     );
     await waitFor(() => expect(screen.queryByTestId('comparing')).toBeNull());
-    expect(screen.getByTestId('choice-modelServing.enabled')).toHaveTextContent(
-      'Model serving: off',
-    );
-    expect(screen.queryByTestId('choices-unset')).toBeNull();
+    expect(choice('modelServing.enabled')).toHaveTextContent('off');
+    expect(within(record()).getByText('Model serving')).toBeInTheDocument();
+    expect(record().textContent).not.toMatch(/not on record/);
   });
 
   describe('while the comparison runs', () => {
@@ -915,9 +972,7 @@ describe('CapabilityCard', () => {
 
       await settle(api);
       expect(header()).toHaveTextContent('Installed · 2 checks differ');
-      expect(
-        screen.getByTestId('choice-modelServing.enabled'),
-      ).toHaveTextContent('Model serving: off');
+      expect(choice('modelServing.enabled')).toHaveTextContent('off');
       expect(screen.getByTestId('comparison')).toBeInTheDocument();
       expect(screen.queryByRole('progressbar')).toBeNull();
       expect(
@@ -948,9 +1003,7 @@ describe('CapabilityCard', () => {
 
       await settle(api);
       expect(header()).toHaveTextContent('Installed · 2 checks differ');
-      expect(
-        screen.getByTestId('choice-modelServing.enabled'),
-      ).toHaveTextContent('Model serving: off');
+      expect(choice('modelServing.enabled')).toHaveTextContent('off');
       expect(screen.getByTestId('comparison')).toBeInTheDocument();
       expect(refreshButton()).toBeEnabled();
     });

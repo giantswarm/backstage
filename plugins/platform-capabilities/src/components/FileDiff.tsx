@@ -1,5 +1,6 @@
 import { CSSProperties } from 'react';
 import { Text } from '@backstage/ui';
+import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
 import {
   countsOfDifferences,
   FileGroup as Group,
@@ -46,10 +47,11 @@ const NOTE_STYLE: CSSProperties = {
   opacity: 0.7,
 };
 
+/** The tint of a changed line: bui's danger and success surfaces, so the diff themes with the app. */
 const ROW_BACKGROUND: Record<DiffLine['kind'], string | undefined> = {
   context: undefined,
-  removed: 'rgba(198, 40, 40, 0.12)',
-  added: 'rgba(46, 139, 87, 0.14)',
+  removed: 'var(--bui-bg-danger)',
+  added: 'var(--bui-bg-success)',
 };
 
 const SIGN: Record<DiffLine['kind'], string> = {
@@ -178,13 +180,13 @@ export function Diff({
 }
 
 /**
- * One file of the comparison: its path as the header, once, with the hub
- * it is on where that is not the installation compared, and the values
- * that differ in it; then the diff of the record against the render with
- * the differences on their lines, where the answer carries the file's
- * content, and the differences the diff cannot place as one line each.
- * Open when a difference is to apply, closed when every change in it is
- * planned.
+ * One file of the comparison, collapsed to its summary line: its path, once,
+ * with the hub it is on where that is not the installation compared, and
+ * the values that differ in it; opened on request to the diff of the record
+ * against the render with the differences on their lines, where the answer
+ * carries the file's content, and the differences the diff cannot place as
+ * one line each. Closed until opened whatever it holds: a diff runs to
+ * thousands of lines, and the summary line says what is in it.
  */
 export function FileGroup({ group }: { group: Group }) {
   const { plan, differences } = group;
@@ -193,28 +195,31 @@ export function FileGroup({ group }: { group: Group }) {
   const onLines = content === undefined ? [] : differences.filter(placed);
   const listed = differences.filter(d => !onLines.includes(d));
   return (
-    <details data-testid={`file-${group.file}`} open={counts.differences > 0}>
-      <summary>
-        <Text as="span" variant="body-small">
-          <code>{group.file}</code>
-          {group.hub ? ` on the hub ${group.hub}` : ''} —{' '}
-          {foundWords(counts, 'value').join(' · ')}
-        </Text>
-      </summary>
-      {content !== undefined && (
-        <Diff
-          current={plan?.current ?? ''}
-          content={content}
-          differences={onLines}
-        />
-      )}
-      {listed.length > 0 && (
-        <ul style={LIST_STYLE}>
-          {listed.map((difference, i) => (
-            <DifferenceLine key={i} difference={difference} />
-          ))}
-        </ul>
-      )}
-    </details>
+    <div data-testid={`file-${group.file}`}>
+      <SimpleAccordion
+        title={
+          <Text as="span" variant="body-medium">
+            <code>{group.file}</code>
+            {group.hub ? ` on the hub ${group.hub}` : ''} —{' '}
+            {foundWords(counts, 'value').join(' · ')}
+          </Text>
+        }
+      >
+        {content !== undefined && (
+          <Diff
+            current={plan?.current ?? ''}
+            content={content}
+            differences={onLines}
+          />
+        )}
+        {listed.length > 0 && (
+          <ul style={LIST_STYLE}>
+            {listed.map((difference, i) => (
+              <DifferenceLine key={i} difference={difference} />
+            ))}
+          </ul>
+        )}
+      </SimpleAccordion>
+    </div>
   );
 }

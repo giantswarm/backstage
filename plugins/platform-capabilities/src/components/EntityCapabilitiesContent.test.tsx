@@ -58,7 +58,7 @@ describe('EntityCapabilitiesContent', () => {
     );
     expect(
       within(card).getByTestId('choice-modelServing.enabled'),
-    ).toHaveTextContent('Model serving: off');
+    ).toHaveTextContent('off');
     expect(within(card).getByTestId('feature-secrets')).toHaveTextContent(
       'Secrets — 1 check differs',
     );
