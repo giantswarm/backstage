@@ -1077,6 +1077,8 @@ export interface FakeOptions {
   infoLatency?: number;
   /** The comparison fails with this, as when the person has no session at the manager. */
   verifyError?: Error;
+  /** Every comparison waits until `settleComparisons` is called: a card in flight, then refreshed. */
+  heldComparison?: boolean;
   /** The live half `verify_installation` answers; LIVE by default. */
   live?: VerifyResult;
   /** The live checks fail with this, as when the person is not connected to the live surface. */
@@ -1108,7 +1110,14 @@ export class FakeApi implements PlatformCapabilitiesApi {
     args?: { inputs?: VerifyInputs };
   }[] = [];
 
+  private held: (() => void)[] = [];
+
   constructor(private readonly options: FakeOptions = {}) {}
+
+  /** Lets every comparison that is waiting answer, as the manager does when its probes return. */
+  settleComparisons() {
+    this.held.splice(0).forEach(release => release());
+  }
 
   async getConnection(): Promise<ConnectionResponse> {
     return this.options.connection ?? { connected: true };
@@ -1176,6 +1185,9 @@ export class FakeApi implements PlatformCapabilitiesApi {
     args?: CapabilityArgs,
   ): Promise<VerifyResult> {
     this.verifies.push({ installation: name, capability, args });
+    if (this.options.heldComparison) {
+      await new Promise<void>(resolve => this.held.push(resolve));
+    }
     if (this.options.verifyError) {
       throw this.options.verifyError;
     }

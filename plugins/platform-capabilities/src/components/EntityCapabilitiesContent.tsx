@@ -1,8 +1,9 @@
-import { Alert, Flex, Skeleton, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { ActionHistory } from './ActionHistory';
 import { CapabilityCard } from './CapabilityCard';
 import { ErrorAlert } from './ErrorAlert';
+import { Loading } from './Loading';
 import { PlatformCapabilitiesProviders } from './Providers';
 import { useInstallations, useManagerInfo } from './queries';
 
@@ -11,7 +12,7 @@ function Capabilities({ name }: { name: string }) {
   const info = useManagerInfo();
 
   if (listing.isPending) {
-    return <Skeleton width={320} height={80} />;
+    return <Loading label="Loading capabilities…" testId="loading" />;
   }
   if (listing.error) {
     return (

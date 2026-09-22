@@ -379,19 +379,19 @@ describe('CapabilityCard', () => {
     expect(card().textContent).not.toMatch(MANAGER_WORDS);
   });
 
-  it('shows the comparison error first, above the record, and no comparison lines', async () => {
+  it('shows the comparison error first under the header, and no record without a comparison', async () => {
     const forbidden = new Error('no grant on birch as you');
     forbidden.name = 'ForbiddenError';
     await render(ENABLED, { verifyError: forbidden });
     expect(screen.getByText('no grant on birch as you')).toBeVisible();
-    expect(header()).toHaveTextContent('Installed');
-    // The first thing under the header row; the choices come after it.
+    expect(header()).toHaveTextContent(/^Installed$/);
+    // The first thing under the header row; the record is the comparison's,
+    // so no choice is shown from the schema's default in its place.
     const children = Array.from(card().children);
     expect(children[1]).toHaveTextContent('no grant on birch as you');
-    expect(
-      children.indexOf(screen.getByTestId('choice-modelServing.enabled')),
-    ).toBeGreaterThan(1);
+    expect(screen.queryByTestId('choice-modelServing.enabled')).toBeNull();
     expect(screen.queryByTestId('comparison')).toBeNull();
+    expect(screen.queryByTestId('comparing')).toBeNull();
   });
 
   it('reads a refusal for an input the dialog supplies as info and keeps the way to the dialog', async () => {
@@ -865,5 +865,94 @@ describe('CapabilityCard', () => {
       'Model serving: off',
     );
     expect(screen.queryByTestId('choices-unset')).toBeNull();
+  });
+
+  describe('while the comparison runs', () => {
+    async function renderHeld() {
+      const api = new FakeApi({ heldComparison: true });
+      await renderInTestApp(
+        <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+          <PlatformCapabilitiesProviders>
+            <CapabilityCard
+              installation={ENABLED}
+              capability={ENABLED.capabilities[0]}
+              definition={AGENT_PLATFORM_DEFINITION}
+            />
+          </PlatformCapabilitiesProviders>
+        </TestApiProvider>,
+      );
+      return api;
+    }
+
+    /** The comparison lands. */
+    async function settle(api: FakeApi) {
+      api.settleComparisons();
+      await waitFor(() => expect(screen.queryByTestId('comparing')).toBeNull());
+    }
+
+    const refreshButton = () =>
+      screen.getByRole('button', { name: 'Refresh comparison' });
+
+    it('in flight: the header and the indicator alone; settled: the record once, complete', async () => {
+      const api = await renderHeld();
+      // The phase alone in the header, the bar with its label under it, and
+      // nothing the comparison could change: no choice from the schema's
+      // default, no feature; both buttons wait.
+      expect(header()).toHaveTextContent(/^Installed$/);
+      const comparing = screen.getByTestId('comparing');
+      expect(
+        await within(comparing).findByRole('progressbar', {
+          name: 'Comparing with the definition…',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('choice-modelServing.enabled')).toBeNull();
+      expect(screen.queryByTestId('comparison')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Apply changes' }),
+      ).toBeDisabled();
+      expect(refreshButton()).toBeDisabled();
+      expect(refreshButton()).toHaveTextContent('Refresh');
+
+      await settle(api);
+      expect(header()).toHaveTextContent('Installed · 2 checks differ');
+      expect(
+        screen.getByTestId('choice-modelServing.enabled'),
+      ).toHaveTextContent('Model serving: off');
+      expect(screen.getByTestId('comparison')).toBeInTheDocument();
+      expect(screen.queryByRole('progressbar')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Apply changes' }),
+      ).toBeEnabled();
+      expect(refreshButton()).toBeEnabled();
+      expect(api.verifies).toHaveLength(1);
+      expect(card().textContent).not.toMatch(MANAGER_WORDS);
+    });
+
+    it('Refresh runs the comparison again without a reload, the indicator in place of the record until it lands', async () => {
+      const api = await renderHeld();
+      await settle(api);
+
+      await userEvent.click(refreshButton());
+      await waitFor(() => expect(api.verifies).toHaveLength(2));
+      expect(api.verifies[1]).toEqual({
+        installation: 'birch',
+        capability: 'agent-platform',
+        args: { content: true },
+      });
+      // The card is as it was before the first comparison landed.
+      expect(screen.getByTestId('comparing')).toBeInTheDocument();
+      expect(screen.queryByTestId('choice-modelServing.enabled')).toBeNull();
+      expect(screen.queryByTestId('comparison')).toBeNull();
+      expect(header()).toHaveTextContent(/^Installed$/);
+      expect(refreshButton()).toBeDisabled();
+
+      await settle(api);
+      expect(header()).toHaveTextContent('Installed · 2 checks differ');
+      expect(
+        screen.getByTestId('choice-modelServing.enabled'),
+      ).toHaveTextContent('Model serving: off');
+      expect(screen.getByTestId('comparison')).toBeInTheDocument();
+      expect(refreshButton()).toBeEnabled();
+    });
   });
 });
