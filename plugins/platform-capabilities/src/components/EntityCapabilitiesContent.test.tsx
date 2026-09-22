@@ -73,44 +73,48 @@ describe('EntityCapabilitiesContent', () => {
     ).toHaveTextContent('enable agent-platform — someone');
   });
 
-  it('Enable opens the form from the definition schema, prefilled from the record, reviews with its values, then opens the pull requests', async () => {
+  it('Enable opens the form from the definition schema, prefilled from the comparison, reviews with its values, then opens the pull requests', async () => {
     const api = await render('rowan');
     await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
     const form = dialog();
-    // Groups and fields as the schema names them; the record is prefilled.
+    // The person's choices as the schema groups them, named by their groups
+    // (no control reads `enabled`); the record's facts are not asked.
     expect(within(form).getByTestId('group-kagent')).toBeInTheDocument();
-    expect(within(form).getByLabelText(/^baseDomain/)).toHaveValue(
-      'rowan.example.test',
-    );
-    // A choice per boolean: the two required ones unmade, the person's one at its default.
-    expect(within(form).getAllByText('enabled')).toHaveLength(3);
+    expect(within(form).queryByLabelText(/base domain/i)).toBeNull();
+    expect(within(form).queryAllByText('enabled')).toHaveLength(0);
+    const choice = (label: string) =>
+      within(form).getByRole('button', { name: n => n.endsWith(` ${label}`) });
+    // Kagent and Model serving are on record (the comparison read them
+    // back), Portal is not.
+    expect(choice('Kagent')).toHaveTextContent('yes');
+    expect(choice('Portal')).toHaveTextContent('Choose…');
+    expect(choice('Model serving')).toHaveTextContent('no');
     expect(within(form).getByTestId('missing-required')).toHaveTextContent(
-      'kagent.enabled, portal.enabled',
+      /Required, not chosen yet:\s*Portal$/,
     );
-    await userEvent.clear(within(form).getByLabelText(/^targets/));
-    await userEvent.type(
-      within(form).getByLabelText(/^targets/),
-      'hazel, birch',
-    );
+    await userEvent.click(choice('Portal'));
+    await userEvent.click(screen.getByRole('option', { name: 'yes' }));
+    expect(within(form).queryByTestId('missing-required')).toBeNull();
 
     await userEvent.click(within(form).getByRole('button', { name: 'Review' }));
     await waitFor(() =>
       expect(within(dialog()).getByTestId('plan')).toBeInTheDocument(),
     );
-    // The review is the comparison with the form's values; nothing is written.
+    // The review is the comparison with the form's values -- the choices,
+    // nothing the manager reads itself; nothing is written.
     expect(api.writes).toHaveLength(0);
     expect(api.verifies[1]).toMatchObject({
       installation: 'rowan',
       capability: 'agent-platform',
       args: {
         inputs: {
-          installation: { baseDomain: 'rowan.example.test', chartLine: '4' },
-          federation: { targets: ['hazel', 'birch'] },
+          kagent: { enabled: true },
+          portal: { enabled: true },
           modelServing: { enabled: false },
         },
       },
     });
-    expect((api.verifies[1].args?.inputs as any).kagent).toBeUndefined();
+    expect(api.verifies[1].args?.inputs).not.toHaveProperty('installation');
 
     const plan = within(dialog()).getByTestId('plan');
     expect(within(plan).getByTestId('plan-files')).toHaveTextContent(
@@ -145,7 +149,13 @@ describe('EntityCapabilitiesContent', () => {
       tool: 'enable_capability',
       installation: 'rowan',
       options: { mode: 'commit' },
-      args: { inputs: { federation: { targets: ['hazel', 'birch'] } } },
+      args: {
+        inputs: {
+          kagent: { enabled: true },
+          portal: { enabled: true },
+          modelServing: { enabled: false },
+        },
+      },
     });
     expect(
       within(dialog()).getByTestId('action-pull-requests'),

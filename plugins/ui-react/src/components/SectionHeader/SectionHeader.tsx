@@ -17,9 +17,10 @@ export type SectionHeaderProps = {
   /**
    * Prose, or prose with inline markup -- `<strong>` around the one word the
    * sentence is about, say. It is rendered inside the description's own `<p>`,
-   * so block elements do not belong here.
+   * so block elements do not belong here. Without one, the heading stands
+   * alone, as a form group named by its key alone does.
    */
-  description: ReactNode;
+  description?: ReactNode;
   /**
    * Heading level. Defaults to `h3`.
    *
@@ -32,7 +33,7 @@ export type SectionHeaderProps = {
   variant?: 'title-medium' | 'title-small' | 'title-x-small';
 };
 
-/** Title + description pair used to introduce a page or a card's contents. */
+/** Title + description pair used to introduce a page, a card's contents or a group of fields. */
 export function SectionHeader({
   title,
   description,
@@ -45,9 +46,11 @@ export function SectionHeader({
       <Text as={as} variant={variant} weight="bold" className={classes.title}>
         {title}
       </Text>
-      <Text as="p" color="secondary" className={classes.description}>
-        {description}
-      </Text>
+      {description !== undefined && description !== null && (
+        <Text as="p" color="secondary" className={classes.description}>
+          {description}
+        </Text>
+      )}
     </div>
   );
 }

@@ -34,28 +34,40 @@ export const AGENT_PLATFORM_DEFINITION: Definition = {
         type: 'object',
         description: 'The installation, from its record.',
         properties: {
-          name: { type: 'string' },
-          baseDomain: { type: 'string' },
-          private: { type: 'boolean' },
-          chartLine: { type: 'string', enum: ['3', '4'] },
+          name: { type: 'string', 'x-source': 'registry' },
+          baseDomain: { type: 'string', 'x-source': 'registry' },
+          private: { type: 'boolean', 'x-source': 'registry' },
+          chartLine: {
+            type: 'string',
+            enum: ['3', '4'],
+            'x-source': 'registry',
+          },
         },
       },
       kagent: {
         type: 'object',
         required: ['enabled'],
         properties: {
-          enabled: { type: 'boolean', description: 'Run kagent.' },
+          enabled: {
+            type: 'boolean',
+            description: 'Run kagent.',
+            'x-source': 'person',
+          },
         },
       },
       portal: {
         type: 'object',
         required: ['enabled'],
-        properties: { enabled: { type: 'boolean' } },
+        properties: { enabled: { type: 'boolean', 'x-source': 'person' } },
       },
       federation: {
         type: 'object',
         properties: {
-          targets: { type: 'array', items: { type: 'string' } },
+          targets: {
+            type: 'array',
+            items: { type: 'string' },
+            'x-source': 'registry',
+          },
         },
       },
       modelServing: {
@@ -63,6 +75,112 @@ export const AGENT_PLATFORM_DEFINITION: Definition = {
         description: 'The one choice: whether the installation serves models.',
         properties: {
           enabled: { type: 'boolean', default: false, 'x-source': 'person' },
+        },
+      },
+    },
+  },
+};
+
+/**
+ * The customer-portal definition's input schema, in the shape `get_info`
+ * publishes it: the portal's choices are the person's, the record's facts
+ * the registry's, a plugin's domain read, its app id supplied at commit.
+ */
+export const CUSTOMER_PORTAL_DEFINITION: Definition = {
+  name: 'customer-portal',
+  description: 'The Dev Portal of an installation.',
+  inputSchema: {
+    type: 'object',
+    required: ['installation', 'portal', 'chart', 'plugins', 'tunnel'],
+    properties: {
+      installation: {
+        type: 'object',
+        required: ['name', 'baseDomain', 'customer', 'pipeline'],
+        properties: {
+          name: { type: 'string', 'x-source': 'registry' },
+          baseDomain: { type: 'string', 'x-source': 'registry' },
+          customer: { type: 'string', 'x-source': 'registry' },
+          pipeline: { type: 'string', 'x-source': 'registry' },
+        },
+      },
+      portal: {
+        type: 'object',
+        required: ['domain', 'organization'],
+        properties: {
+          domain: {
+            type: 'string',
+            description: "The portal's hostname.",
+            'x-source': 'person',
+          },
+          title: {
+            type: 'string',
+            default: 'Dev Portal',
+            'x-source': 'person',
+          },
+          organization: { type: 'string', 'x-source': 'person' },
+          supportUrl: { type: 'string', 'x-source': 'person' },
+          friendlyLabels: {
+            type: 'array',
+            items: { type: 'object' },
+            'x-source': 'person',
+          },
+        },
+      },
+      chart: {
+        type: 'object',
+        required: ['line'],
+        properties: {
+          line: {
+            type: 'string',
+            description: "The semver range the portal's OCIRepository follows.",
+            'x-source': 'person',
+          },
+        },
+      },
+      plugins: {
+        type: 'object',
+        required: ['github', 'grafana', 'sentry'],
+        properties: {
+          github: {
+            type: 'object',
+            required: ['enabled'],
+            properties: {
+              enabled: { type: 'boolean', 'x-source': 'person' },
+              appId: { type: 'integer', 'x-source': 'supplied' },
+            },
+          },
+          grafana: {
+            type: 'object',
+            required: ['enabled'],
+            properties: {
+              enabled: { type: 'boolean', 'x-source': 'person' },
+              domain: { type: 'string', 'x-source': 'registry' },
+            },
+          },
+          sentry: {
+            type: 'object',
+            required: ['enabled'],
+            properties: {
+              enabled: { type: 'boolean', 'x-source': 'person' },
+            },
+          },
+        },
+      },
+      tunnel: {
+        type: 'object',
+        required: ['enabled'],
+        properties: {
+          enabled: { type: 'boolean', 'x-source': 'person' },
+        },
+      },
+      pluginKeys: {
+        type: 'object',
+        properties: {
+          keyId: {
+            type: 'string',
+            default: 'plugin-to-plugin',
+            'x-source': 'generated',
+          },
         },
       },
     },
@@ -833,6 +951,39 @@ export const NOT_COMPARED: VerifyResult = {
   files: [],
   diff: {},
   pullRequests: [],
+};
+
+/**
+ * rowan's customer-portal compared with its definition: every choice of the
+ * person read back from the portal's files, the record's facts next to
+ * them; the title reads `Backstage` where the schema's default says
+ * `Dev Portal`, and the tunnel is the one choice no layer holds.
+ */
+export const PORTAL_ON_RECORD: VerifyResult = {
+  ...VERIFIED,
+  capability: 'customer-portal',
+  inputs: {
+    source: 'record + read-back',
+    values: {
+      installation: RECORD,
+      portal: {
+        domain: 'portal.rowan.example.test',
+        title: 'Backstage',
+        organization: 'Example',
+      },
+      chart: { line: '>=1.0.0 <2.0.0' },
+      plugins: {
+        github: { enabled: true, appId: 4711 },
+        grafana: { enabled: false, domain: 'grafana.rowan.example.test' },
+        sentry: { enabled: true },
+      },
+      pluginKeys: { keyId: 'plugin-to-plugin' },
+    },
+    unset: ['tunnel.enabled'],
+    missing: ['tunnel.enabled'],
+  },
+  commitRefused:
+    'Choose tunnel.enabled (whether the portal reaches the installation through Teleport) before a commit.',
 };
 
 /**

@@ -59,9 +59,12 @@ async function review(page: Page): Promise<Review> {
     name: new RegExp(`${CAPABILITY} on`),
   });
   await expect(dialog).toBeVisible();
-  // The form is the definition's schema: its installation group is prefilled
-  // from the record, its choices are not made for the person.
-  await expect(dialog.getByTestId('group-installation')).toBeVisible();
+  // The form is the person's part of the definition's schema, opened with
+  // the choices on record: the registry's facts are not asked, no control
+  // is named after the `enabled` leaf alone.
+  await expect(dialog.getByTestId('group-root')).toBeVisible();
+  await expect(dialog.getByTestId('group-installation')).toHaveCount(0);
+  await expect(dialog.getByLabel(/^enabled/i)).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Review' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Review' }).click();
   const plan = dialog.getByTestId('plan');
