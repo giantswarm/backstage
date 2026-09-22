@@ -75,7 +75,7 @@ describe('schemaForm', () => {
     ).toBe('GPU node pool');
   });
 
-  it('labels a choice not on record by its group where two share a label, and keeps an unknown field', () => {
+  it('labels a choice not on record by its group where two share a label, a list or unknown field by its key', () => {
     const choices = personChoices({
       type: 'object',
       properties: {
@@ -84,6 +84,11 @@ describe('schemaForm', () => {
           properties: {
             domain: { type: 'string', 'x-source': 'person' },
             supportUrl: { type: 'string', 'x-source': 'person' },
+            friendlyLabels: {
+              type: 'array',
+              items: { type: 'object' },
+              'x-source': 'person',
+            },
           },
         },
         grafana: {
@@ -99,9 +104,14 @@ describe('schemaForm', () => {
     expect(unsetLabel('portal.domain', choices)).toBe('Portal domain');
     expect(unsetLabel('grafana.domain', choices)).toBe('Grafana domain');
     expect(unsetLabel('grafana.enabled', choices)).toBe('Grafana');
-    expect(unsetLabel('federation.tokenBroker', choices)).toBe(
-      'federation.tokenBroker',
+    // A list of objects is no field of the form; it is named by its key.
+    expect(unsetLabel('portal.friendlyLabels', choices)).toBe(
+      'Friendly labels',
     );
+    // So is a field the schema does not know; one whose key another choice
+    // is called by is qualified with its group too.
+    expect(unsetLabel('federation.tokenBroker', choices)).toBe('Token broker');
+    expect(unsetLabel('flux.domain', choices)).toBe('Flux domain');
   });
 
   it('sets and clears leaves, pruning empty groups', () => {

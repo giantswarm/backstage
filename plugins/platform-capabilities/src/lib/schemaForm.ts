@@ -134,20 +134,20 @@ export function choiceLabel(field: Field): string {
 /**
  * What a choice the manager names as not on record is called on the page:
  * its label, qualified with its group where another choice of the
- * definition shares the label (Grafana domain next to Portal domain); the
- * manager's own field where the schema does not know it.
+ * definition shares the label (Grafana domain next to Portal domain). A
+ * choice the form has no field for -- a list of objects such as the
+ * portal's friendly labels, or a field the schema does not know -- is
+ * named by its key the same way (Friendly labels).
  */
 export function unsetLabel(name: string, choices: Field[]): string {
+  const path = name.split('.');
   const field = choices.find(c => c.name === name);
-  if (!field) {
-    return name;
-  }
-  const label = choiceLabel(field);
+  const label = field ? choiceLabel(field) : humanise(path[path.length - 1]);
   const shared = choices.some(c => c !== field && choiceLabel(c) === label);
-  if (!shared || field.path.length < 2) {
+  if (!shared || path.length < 2) {
     return label;
   }
-  const group = humanise(field.path[field.path.length - 2]);
+  const group = humanise(path[path.length - 2]);
   return `${group} ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
 }
 
