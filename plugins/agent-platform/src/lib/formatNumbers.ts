@@ -3,7 +3,19 @@
  *
  * Domain formatters rather than UI primitives — tokens and call counts, not
  * generic display — which is why they live here and not in `ui-react`.
+ *
+ * **One fixed presentation, `en-US`, whatever the browser's locale.** The
+ * decimal mark is already fixed: `toFixed` writes `$4.50`, `1.5k` and `4.3%`
+ * with a point on every machine, so the thousands grouping has to be fixed to
+ * match. Left to the runtime's default locale, a German browser renders
+ * `$4.50` next to `$1.235` — one `.` a decimal mark, the other a grouping
+ * mark, in the same column. This is also how `ui-react` and `gs` present
+ * figures and dates (`d MMM yyyy, HH:mm UTC`): the portal's own notation, not
+ * the reader's.
  */
+
+/** Thousands grouping (`1,040`), the same on every machine. */
+const grouped = new Intl.NumberFormat('en-US');
 
 /** Format a token count compactly (`1.5k`, `1.2M`). */
 export function formatTokens(total: number): string {
@@ -24,7 +36,7 @@ export function formatTokens(total: number): string {
  * someone might reconcile against a list.
  */
 export function formatCount(value: number): string {
-  return Math.round(value).toLocaleString();
+  return grouped.format(Math.round(value));
 }
 
 /**
@@ -59,7 +71,7 @@ export function formatUsd(value: number | undefined): string {
   if (abs < 100) {
     return `${sign}$${abs.toFixed(2)}`;
   }
-  return `${sign}$${Math.round(abs).toLocaleString()}`;
+  return `${sign}$${grouped.format(Math.round(abs))}`;
 }
 
 /** Format a percentage, or `—`. One decimal below 10%, none above. */
@@ -96,7 +108,7 @@ export function formatTokensPerSecond(value: number | undefined): string {
   }
   const magnitude = 10 ** (Math.floor(Math.log10(value)) - 1);
   const rounded = Math.round(value / magnitude) * magnitude;
-  return `${rounded.toLocaleString()}/s`;
+  return `${grouped.format(rounded)}/s`;
 }
 
 /**
