@@ -68,6 +68,19 @@ export function useComparison(installation: string, capability: string) {
 }
 
 /**
+ * Runs the comparison again without a reload: the one the tab holds is
+ * marked stale and refetched, the card showing the indicator meanwhile;
+ * `staleTime: Infinity` stays, this is the one way to a fresh comparison.
+ */
+export function useRefreshComparison(installation: string, capability: string) {
+  const queryClient = useQueryClient();
+  return () =>
+    queryClient.invalidateQueries({
+      queryKey: verifyKey(installation, capability),
+    });
+}
+
+/**
  * The checks that need the person's session, run as the signed-in person
  * through muster's live registration of the manager, from the comparison's
  * own inputs so both halves render the same, and merged into the comparison

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
+import RefreshIcon from '@material-ui/icons/Refresh';
 import {
   CapabilityState,
   Definition,
@@ -20,7 +21,8 @@ import {
 import { CapabilityDialog } from './CapabilityDialog';
 import { ComparisonView } from './ComparisonView';
 import { ErrorAlert } from './ErrorAlert';
-import { useComparison } from './queries';
+import { Loading } from './Loading';
+import { useComparison, useRefreshComparison } from './queries';
 import { StateTag, statusOf } from './StateTag';
 
 const CARD_STYLE = {
@@ -46,10 +48,13 @@ function isInstalled(capability: CapabilityState): boolean {
 }
 
 /**
- * One line per choice the definition leaves to a person that has a value --
- * read back, typed or the schema's default -- from the comparison's inputs;
- * the choices without one as one line naming each, as the manager names
- * them (`inputs.unset`), so a reader sees which choices the record lacks.
+ * One line per choice the definition leaves to a person that has a value on
+ * the comparison's inputs -- read back from the record or given -- and never
+ * the schema's default, which is what an unmade choice would come to, not
+ * what is on record: no line shows a value the comparison later changes, and
+ * without a comparison there is no record to show. The choices without a
+ * value as one line naming each, as the manager names them (`inputs.unset`),
+ * so a reader sees which choices the record lacks.
  */
 function Choices({
   definition,
@@ -66,7 +71,7 @@ function Choices({
   const chosen = choices
     .map(field => ({
       field,
-      value: getAt(values, field.path) ?? field.default,
+      value: getAt(values, field.path),
     }))
     .filter(c => c.value !== undefined && c.value !== null);
   const unset = comparison?.inputs?.unset ?? [];
@@ -118,7 +123,9 @@ function CommitRefused({ reason }: { reason: string }) {
  * definition itself did not refuse; a refusal for an input the dialog
  * supplies -- the choices not on record, a value the reason names -- keeps
  * the button, the dialog being where it is given. The comparison runs when
- * the tab opens.
+ * the tab opens; while it runs -- then, and again after Refresh -- the card
+ * is the header and the indicator, the record appearing once, complete, when
+ * it lands, so no value flips and no line is inserted above one already read.
  */
 export function CapabilityCard({
   installation,
@@ -131,7 +138,11 @@ export function CapabilityCard({
 }) {
   const [dialog, setDialog] = useState(false);
   const comparison = useComparison(installation.name, capability.name);
-  const result = comparison.data;
+  const refresh = useRefreshComparison(installation.name, capability.name);
+  // In flight -- the first run and every refresh -- the card holds the record
+  // back rather than showing one the comparison is about to replace.
+  const comparing = comparison.isFetching;
+  const result = comparing ? undefined : comparison.data;
   const schema = definition?.inputSchema;
   const fields = useMemo(() => fieldsOf(formOf(schema ?? {})), [schema]);
   const installed = isInstalled(capability);
@@ -167,18 +178,28 @@ export function CapabilityCard({
             testId="capability-state"
           />
         </Flex>
-        {button && (
+        <Flex gap="2" align="center">
           <Button
-            variant="primary"
+            variant="tertiary"
             size="small"
-            onPress={() => setDialog(true)}
-            isDisabled={
-              inFlight || refusedForNow || (installed && comparison.isPending)
-            }
+            iconStart={<RefreshIcon />}
+            aria-label="Refresh comparison"
+            onPress={refresh}
+            isDisabled={comparing}
           >
-            {button}
+            Refresh
           </Button>
-        )}
+          {button && (
+            <Button
+              variant="primary"
+              size="small"
+              onPress={() => setDialog(true)}
+              isDisabled={inFlight || refusedForNow || (installed && comparing)}
+            >
+              {button}
+            </Button>
+          )}
+        </Flex>
       </Flex>
       {refused && refusal && (
         <Alert
@@ -188,12 +209,10 @@ export function CapabilityCard({
           data-testid="refused"
         />
       )}
-      {comparison.isPending && (
-        <Text variant="body-small" color="secondary" data-testid="comparing">
-          Comparing with the definition…
-        </Text>
+      {comparing && (
+        <Loading label="Comparing with the definition…" testId="comparing" />
       )}
-      {comparison.error && (
+      {!comparing && comparison.error && (
         <ErrorAlert
           title="The comparison did not run"
           error={comparison.error as Error}
