@@ -43,34 +43,35 @@ export function CostTotalsStrip({ usage }: { usage: LlmUsage }) {
   const classes = useStyles();
   const { totals } = usage;
 
-  const window = `over the last ${WINDOW_DAYS} days`;
+  // Not `window`: that shadows the DOM global for the whole component.
+  const windowNote = `over the last ${WINDOW_DAYS} days`;
 
   return (
     <div className={classes.strip}>
       <Stat
         label="Cost"
         value={formatUsd(totals.costUsd)}
-        hint={`What the gateway priced every model call at as it happened, summed ${window}. A model missing from its price catalogue contributes nothing.`}
+        hint={`What the gateway priced every model call at as it happened, summed ${windowNote}. A model missing from its price catalogue contributes nothing.`}
       />
       <Stat
         label="Tokens"
         value={formatTokens(totals.tokens)}
-        hint={`Every token the gateway proxied ${window} — input, output and both cache types added together.`}
+        hint={`Every token the gateway proxied ${windowNote} — input, output and both cache types added together.`}
       />
       <Stat
         label="Model calls"
         value={formatCount(totals.calls)}
-        hint={`Completions the gateway served ${window}, counted from the call-duration histogram. One agent turn is usually several.`}
+        hint={`Completions the gateway served ${windowNote}, counted from the call-duration histogram. One agent turn is usually several.`}
       />
       <Stat
         label="Agents active"
         value={formatCount(totals.agents)}
-        hint={`Distinct callers the gateway attributed a call to ${window}, including any it could not name.`}
+        hint={`Distinct callers the gateway attributed a call to ${windowNote}, including any it could not name.`}
       />
       <Stat
         label="Models used"
         value={formatCount(totals.models)}
-        hint={`Distinct models that answered a call ${window} — the model that replied, which need not be the one requested.`}
+        hint={`Distinct models that answered a call ${windowNote} — the model that replied, which need not be the one requested.`}
       />
       <Stat
         label="Blended $/1M tokens"

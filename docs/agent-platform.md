@@ -2854,6 +2854,18 @@ times the traffic, showed 197 tok/s by the mean and 200 by the median, so the
 defect is invisible there: an installation with enough well-behaved calls hides
 it, which is exactly why it reached a browser.
 
+**Read it as a rough rate.** agentgateway observes the histogram into coarse
+buckets — `0.001, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5,
+0.75, 1.0, 2.5` seconds per token — so the median is interpolated inside one of
+them. `gazelle`'s falls in `(0.001, 0.01]`, which is anywhere from 100 to 1000
+tok/s; `graveler`'s in `(0.01, 0.025]`, 40 to 100. That is why
+`formatTokensPerSecond` prints two significant figures: `200/s` rather than the
+`197/s` the arithmetic offers. The bucketing also bounds the figure at both
+ends — every observation in the first bucket gives 2000 tok/s and no more, and
+a median in the overflow bucket comes back as the top finite bound, 2.5 s per
+token, which the formatter renders `<1/s` rather than rounding to a `0/s` that
+would read as a broken page.
+
 Two things it still is not. It is not the speed of an agent: a turn spends most
 of its wall clock in tool calls, and this measures only the model's generation.
 And it does not cover every call — a reply the agent asked for in one piece

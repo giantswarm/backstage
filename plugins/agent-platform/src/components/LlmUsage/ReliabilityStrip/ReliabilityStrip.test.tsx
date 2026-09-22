@@ -17,7 +17,7 @@ describe('ReliabilityStrip', () => {
     render(<ReliabilityStrip reliability={RELIABILITY} />);
 
     expect(screen.getByText('Tokens per second')).toBeInTheDocument();
-    expect(screen.getByText('197/s')).toBeInTheDocument();
+    expect(screen.getByText('200/s')).toBeInTheDocument();
     expect(screen.getByText('1.5s')).toBeInTheDocument();
     expect(screen.getByText('12s')).toBeInTheDocument();
   });

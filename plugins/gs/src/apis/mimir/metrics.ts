@@ -294,12 +294,16 @@ export const KarpenterNodePoolsAllowedDisruptions = {
  * Registered as histogram/summary *families* under their base name; queries
  * interpolate the suffix (`${Metric.name}_sum`, `_count`, `_bucket`).
  *
- * Labels shared across the gen_ai metrics: `gateway`, `agent_namespace` and
- * `agent` (the calling pod's namespace and ServiceAccount, `unknown` when the
- * caller IP matched no known Pod), `gen_ai_request_model`,
- * `gen_ai_response_model` (what the provider answered with) and
- * `gen_ai_token_type`. Deliberately **no user and no session label** — these
- * cannot answer "who spent this" or "what did that conversation cost".
+ * Labels shared across the gen_ai metrics: `gateway`, `listener`, `route`,
+ * `agent_namespace` and `agent` (the calling pod's namespace and
+ * ServiceAccount, `unknown` when the caller IP matched no known Pod),
+ * `gen_ai_system`, `gen_ai_operation_name`, `gen_ai_request_model`,
+ * `gen_ai_response_model` (what the provider answered with),
+ * `gen_ai_token_type`, and `user` — the caller's email address, which the
+ * platform propagates on the model call. A gateway from before that label
+ * existed reports series without it, so a long window is only partly
+ * attributable. There is **no session label**, so these still cannot answer
+ * "what did that conversation cost".
  */
 export const AgentgatewayGenAiClientTokenUsage = {
   name: 'agentgateway_gen_ai_client_token_usage',

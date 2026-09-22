@@ -69,7 +69,7 @@ export function ReliabilityStrip({
       <Stat
         label="Tokens per second"
         value={formatTokensPerSecond(reliability.outputTokensPerSecond)}
-        hint={`The median streamed call's generation speed: the middle value of the gateway's seconds-per-output-token measurements over the last ${WINDOW_DAYS} days, inverted. Calls answered in one piece are not measured, and idle time is not counted.`}
+        hint={`The median streamed call's generation speed: the middle value of the gateway's seconds-per-output-token measurements over the last ${WINDOW_DAYS} days, inverted. Those measurements are bucketed coarsely, so read it as a rough rate. Calls answered in one piece are not measured, and idle time is not counted.`}
       />
       <Stat
         label="Error rate"
@@ -81,7 +81,7 @@ export function ReliabilityStrip({
         label="Rate limited (429)"
         value={formatCount(reliability.rateLimited)}
         tone={reliability.rateLimited > 0 ? 'warning' : undefined}
-        hint={`Requests the provider answered with 429 over the last ${WINDOW_DAYS} days — a quota to raise or a concurrency to lower, counted separately from the error rate it is part of.`}
+        hint={`Requests answered with 429 over the last ${WINDOW_DAYS} days, by the provider or by the gateway's own rate limit — a quota to raise or a concurrency to lower, counted separately from the error rate it is part of.`}
       />
     </div>
   );

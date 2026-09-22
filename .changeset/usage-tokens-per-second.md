@@ -16,7 +16,10 @@ long wait is seconds per token, and a handful of those pulled `graveler`'s
 63 tok/s median down to a reported 2 tok/s.
 
 Call duration already on the strip is the whole model call, so a long answer
-reads as a slow one; this is the figure that separates the two. It covers the
+reads as a slow one; this is the figure that separates the two. It is printed
+to two significant figures, because the gateway's buckets are coarse enough
+that a third digit would be invented, and a platform slower than a token a
+second reads `<1/s` rather than `0/s`. It covers the
 streamed calls only: a reply asked for in one piece observes no per-token time,
 and an installation where nothing streams shows `—` rather than a zero.
 

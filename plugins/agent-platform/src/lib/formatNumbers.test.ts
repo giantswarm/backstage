@@ -98,9 +98,22 @@ describe('formatSeconds', () => {
 });
 
 describe('formatTokensPerSecond', () => {
-  it('rounds to whole tokens and names the unit', () => {
-    expect(formatTokensPerSecond(196.82)).toBe('197/s');
-    expect(formatTokensPerSecond(1234.5)).toBe('1,235/s');
+  it("keeps two significant figures, not the histogram's false precision", () => {
+    // The source buckets are 0.001, 0.01, 0.025 … seconds per token, so a
+    // median inside the second bucket is only known to be 100–1000 tok/s.
+    // `197/s` would claim three digits of that.
+    expect(formatTokensPerSecond(196.82)).toBe('200/s');
+    expect(formatTokensPerSecond(62.6)).toBe('63/s');
+    expect(formatTokensPerSecond(1234.5)).toBe('1,200/s');
+  });
+
+  it('never rounds a slow platform down to zero', () => {
+    // A median in the overflow bucket comes back as the top finite bound,
+    // 2.5 s per token — 0.4 tok/s. Rounded, that is the "0/s" this whole
+    // figure exists to avoid, sitting next to a non-zero call count.
+    expect(formatTokensPerSecond(0.4)).toBe('<1/s');
+    expect(formatTokensPerSecond(0.99)).toBe('<1/s');
+    expect(formatTokensPerSecond(1)).toBe('1/s');
   });
 
   it('is an em dash when nothing streamed', () => {
