@@ -10,6 +10,7 @@ import {
 } from '@backstage/ui';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import {
+  DateComponent,
   Fact,
   FactList,
   SectionHeader,
@@ -20,6 +21,7 @@ import {
   Installation,
   VerifyResult,
 } from '../apis';
+import { kindOf, verbOf } from '../lib/actions';
 import { upToDate } from '../lib/comparison';
 import { reasonOf, refusalStatus } from '../lib/refusal';
 import {
@@ -36,8 +38,9 @@ import { CapabilityDialog } from './CapabilityDialog';
 import { ComparisonView } from './ComparisonView';
 import { ErrorAlert } from './ErrorAlert';
 import { Loading } from './Loading';
-import { useComparison, useRefreshComparison } from './queries';
+import { useActions, useComparison, useRefreshComparison } from './queries';
 import { StateTag, statusOf } from './StateTag';
+import { ActionStateTag } from './ActionStateTag';
 
 /** The header's rows wrap under each other on a narrow screen instead of squeezing. */
 const WRAP: CSSProperties = { flexWrap: 'wrap' };
@@ -176,6 +179,53 @@ function Record({
   );
 }
 
+/**
+ * The card's last line: the capability's last action as `list_installations`
+ * names it -- its verb from the action's name, the capability, its state --
+ * and when it was asked, from the installation's history, which the tab
+ * reads once for the cards and the log alike; or *No action yet*.
+ */
+function LastAction({
+  installation,
+  capability,
+}: {
+  installation: string;
+  capability: CapabilityState;
+}) {
+  const last = capability.lastAction;
+  const actions = useActions(installation);
+  const createdAt =
+    last && actions.data?.actions.find(a => a.name === last.name)?.createdAt;
+  return (
+    <Text variant="body-medium" data-testid="last-action">
+      {last ? (
+        <>
+          <Text as="span" variant="body-medium" color="secondary">
+            Last action:{' '}
+          </Text>
+          {verbOf(kindOf(last.name))} {capability.name}
+          {last.result && (
+            <>
+              {' · '}
+              <ActionStateTag state={last.result} />
+            </>
+          )}
+          {createdAt && (
+            <>
+              {' · '}
+              <DateComponent value={createdAt} relative />
+            </>
+          )}
+        </>
+      ) : (
+        <Text as="span" variant="body-medium" color="secondary">
+          No action yet
+        </Text>
+      )}
+    </Text>
+  );
+}
+
 /** The one line with the manager's reason a commit would be refused, in its words. */
 function CommitRefused({ reason }: { reason: string }) {
   return (
@@ -203,6 +253,7 @@ function CommitRefused({ reason }: { reason: string }) {
  * the tab opens; while it runs -- then, and again after Refresh -- the card
  * is the header and the indicator, the record appearing once, complete, when
  * it lands, so no value flips and no line is inserted above one already read.
+ * The last line names the capability's last action, or that there is none.
  */
 export function CapabilityCard({
   installation,
@@ -308,6 +359,10 @@ export function CapabilityCard({
               <ComparisonView result={result} />
             </Region>
           )}
+          <LastAction
+            installation={installation.name}
+            capability={capability}
+          />
         </Flex>
       </CardBody>
       {dialog && (

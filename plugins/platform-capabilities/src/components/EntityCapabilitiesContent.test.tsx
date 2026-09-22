@@ -10,6 +10,7 @@ import {
   FakeApi,
   FakeOptions,
   NOT_ENABLED,
+  REFUSED_ACTION,
 } from '../fixtures/fakeApi';
 import { EntityCapabilitiesContent } from './EntityCapabilitiesContent';
 import { platformCapabilitiesQueryClient } from './Providers';
@@ -67,10 +68,34 @@ describe('EntityCapabilitiesContent', () => {
     ).toBeEnabled();
     expect(within(card).queryByRole('button', { name: 'Verify' })).toBeNull();
     expect(api.verifies).toHaveLength(1);
-    const history = screen.getByTestId('action-history');
+    const history = screen.getByRole('region', { name: 'Action history' });
     expect(
       await within(history).findByTestId(`history-${ACTION.name}`),
-    ).toHaveTextContent('enable agent-platform — someone');
+    ).toHaveTextContent(
+      /^enable agent-platform by someone · Pending approval · .+ ago/,
+    );
+    // birch's last action is not in this listing, so the line has no date.
+    expect(within(card).getByTestId('last-action')).toHaveTextContent(
+      /^Last action: enable agent-platform · Installed$/,
+    );
+  });
+
+  it('a refused action reads Refused in the history, with what it asked for', async () => {
+    await render('rowan', { actions: [REFUSED_ACTION] });
+    const history = screen.getByRole('region', { name: 'Action history' });
+    const entry = await within(history).findByTestId(
+      `history-${REFUSED_ACTION.name}`,
+    );
+    expect(within(entry).getByTestId('action-line')).toHaveTextContent(
+      /^enable agent-platform by someone · Refused · .+ ago$/,
+    );
+    await userEvent.click(within(entry).getByTestId('action-line'));
+    expect(within(entry).getByTestId('action-inputs')).toHaveTextContent(
+      'Chart line3',
+    );
+    expect(screen.getByTestId('capability-agent-platform')).toHaveTextContent(
+      'No action yet',
+    );
   });
 
   it('Enable opens the form from the definition schema, prefilled from the comparison, reviews with its values, then opens the pull requests', async () => {
