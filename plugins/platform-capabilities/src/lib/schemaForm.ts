@@ -289,3 +289,31 @@ export function fieldsNamed(text: string, fields: Field[]): Field[] {
     new RegExp(`(?:^|[^\\w.])${literal(f.name)}(?!\\w|\\.\\w)`).test(text),
   );
 }
+
+/** The group at `path` in the form, none where the schema has no object there. */
+function groupAt(form: Group, path: string[]): Group | undefined {
+  return path.reduce<Group | undefined>(
+    (group, key) => group?.groups.find(g => g.path[g.path.length - 1] === key),
+    form,
+  );
+}
+
+/**
+ * What a choice is about, for the line under its value on the record: the
+ * field's own description, else -- where the choice is named after its
+ * group, `modelServing.enabled` being the choice "Model serving" -- the
+ * group's.
+ */
+export function choiceDescription(
+  field: Field,
+  form: Group,
+): string | undefined {
+  if (field.description) {
+    return field.description;
+  }
+  const key = field.path[field.path.length - 1];
+  if (field.title !== key || key !== 'enabled' || field.path.length < 2) {
+    return undefined;
+  }
+  return groupAt(form, field.path.slice(0, -1))?.description;
+}

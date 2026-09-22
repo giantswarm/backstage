@@ -1,4 +1,5 @@
 import { Button, Flex, Link, Text } from '@backstage/ui';
+import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { VerifyDimension, VerifyResult } from '../apis';
 import { count, notChecked } from '../lib/comparison';
@@ -6,7 +7,8 @@ import { LIST_STYLE } from './DimensionItem';
 import { ErrorAlert } from './ErrorAlert';
 import { useLiveVerify, verifyKey } from './queries';
 
-const SUMMARY_STYLE = { cursor: 'pointer' };
+/** The line a list of checks opens from takes the row's width beside the button. */
+const GROW = { flex: 1 };
 
 /**
  * One check by name: its id and the definition's key, and muster's sign-in
@@ -30,13 +32,12 @@ function CheckLine({ dimension }: { dimension: VerifyDimension }) {
   );
 }
 
-function Summary({ children }: { children: React.ReactNode }) {
+/** A skipped-check note: the line the checks open from, smaller than the record's lines. */
+function Note({ children }: { children: React.ReactNode }) {
   return (
-    <summary style={SUMMARY_STYLE}>
-      <Text as="span" variant="body-small" color="secondary">
-        {children}
-      </Text>
-    </summary>
+    <Text as="span" variant="body-small" color="secondary">
+      {children}
+    </Text>
   );
 }
 
@@ -64,19 +65,24 @@ export function NotRunChecks({ result }: { result: VerifyResult }) {
     <>
       {pending.session.length > 0 && (
         <Flex gap="2" align="start" justify="between">
-          <details data-testid="needs-session">
-            <Summary>
-              {pending.session.length === 1
-                ? '1 check needs'
-                : `${pending.session.length} checks need`}{' '}
-              your session on {result.installation}
-            </Summary>
-            <ul style={LIST_STYLE}>
-              {pending.session.map(d => (
-                <CheckLine key={d.id} dimension={d} />
-              ))}
-            </ul>
-          </details>
+          <div data-testid="needs-session" style={GROW}>
+            <SimpleAccordion
+              title={
+                <Note>
+                  {pending.session.length === 1
+                    ? '1 check needs'
+                    : `${pending.session.length} checks need`}{' '}
+                  your session on {result.installation}
+                </Note>
+              }
+            >
+              <ul style={LIST_STYLE}>
+                {pending.session.map(d => (
+                  <CheckLine key={d.id} dimension={d} />
+                ))}
+              </ul>
+            </SimpleAccordion>
+          </div>
           {held && (
             <Button
               variant="secondary"
@@ -96,16 +102,21 @@ export function NotRunChecks({ result }: { result: VerifyResult }) {
         />
       )}
       {pending.other.map(([reason, dimensions]) => (
-        <details key={reason} data-testid="not-run">
-          <Summary>
-            {count(dimensions.length, 'check')} could not run: {reason}
-          </Summary>
-          <ul style={LIST_STYLE}>
-            {dimensions.map(d => (
-              <CheckLine key={d.id} dimension={d} />
-            ))}
-          </ul>
-        </details>
+        <div key={reason} data-testid="not-run">
+          <SimpleAccordion
+            title={
+              <Note>
+                {count(dimensions.length, 'check')} could not run: {reason}
+              </Note>
+            }
+          >
+            <ul style={LIST_STYLE}>
+              {dimensions.map(d => (
+                <CheckLine key={d.id} dimension={d} />
+              ))}
+            </ul>
+          </SimpleAccordion>
+        </div>
       ))}
     </>
   );

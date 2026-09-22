@@ -8,7 +8,11 @@ import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 import SyncIcon from '@material-ui/icons/Sync';
 import SyncProblemIcon from '@material-ui/icons/SyncProblem';
 import { Skeleton } from '@backstage/ui';
-import { intentColor, StatusLabelIntent } from '../StatusLabel/StatusLabel';
+import {
+  intentColor,
+  StatusLabel,
+  StatusLabelIntent,
+} from '../StatusLabel/StatusLabel';
 
 /**
  * What one glance at a fleet table says about something a manager keeps to a
@@ -133,6 +137,54 @@ export function SyncMarkIcon({
         <Icon fontSize="small" color="inherit" />
       </span>
     </Tooltip>
+  );
+}
+
+export type SyncMarkLabelProps = {
+  mark: SyncMark;
+  /** The words, as text: what the page says about the thing, in its own words. */
+  label: string;
+  /**
+   * The tooltip: the mark and the page's gloss of it, as the legend of the
+   * table's column has them (`not in sync: Installed, with differences`), so
+   * the glyph next to the words means the same on every page.
+   */
+  title?: string;
+  /** The manager's state, exposed as `data-state` for tests and styling. */
+  state?: string;
+  testId?: string;
+};
+
+/**
+ * A mark with its words: the same glyph and colour {@link SyncMarkIcon}
+ * shows in a table cell, and the words as text beside it, laid out inline
+ * so it sits in a header line or a list item. The tooltip carries the
+ * legend's gloss; `data-mark` names the mark for tests.
+ */
+export function SyncMarkLabel({
+  mark,
+  label,
+  title,
+  state,
+  testId,
+}: SyncMarkLabelProps) {
+  const { icon, intent } = MARK_ICON[mark];
+  const words = (
+    <span
+      data-testid={testId}
+      data-state={state}
+      data-mark={mark}
+      style={{ display: 'inline-flex' }}
+    >
+      <StatusLabel label={label} intent={intent} icon={icon} inline />
+    </span>
+  );
+  return title ? (
+    <Tooltip title={title} placement="top" arrow>
+      {words}
+    </Tooltip>
+  ) : (
+    words
   );
 }
 

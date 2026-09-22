@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { CapabilityStateName } from '../apis';
-import { CapabilityMark, markOf, StateIcon } from './StateIcon';
+import { CapabilityMark, StateIcon } from './StateIcon';
+import { markOf } from './StateTag';
 
 describe('markOf', () => {
   it.each<[CapabilityStateName, string | undefined, CapabilityMark]>([
