@@ -110,6 +110,11 @@ export function installation(
   };
 }
 
+/**
+ * Not opted in, nothing on record: the manager may enable it all the same --
+ * the opt-in protects what is on record -- so the capability reads not enabled
+ * and the declaration is carried apart.
+ */
 export const NOT_OPTED_IN: Installation = installation({
   name: 'alder',
   record: { ...RECORD, name: 'alder', baseDomain: 'alder.example.test' },
@@ -123,7 +128,7 @@ export const NOT_OPTED_IN: Installation = installation({
   capabilities: [
     {
       name: 'agent-platform',
-      state: 'not opted in',
+      state: 'not enabled',
       inputs: {
         installation: { ...RECORD, name: 'alder' },
       },

@@ -185,13 +185,13 @@ test.describe('installations: platform capabilities', () => {
     }
   });
 
-  test('an installation not opted in names the file the owners add, and the button is disabled', async ({
+  test('an installation with nothing on record offers Enable, opted in or not', async ({
     admin,
   }) => {
     await open(admin, '/installations');
-    const notOptedIn = admin
+    const notEnabled = admin
       .locator(
-        `[data-testid^="capability-${CAPABILITY}-"][data-state="not opted in"]`,
+        `[data-testid^="capability-${CAPABILITY}-"][data-state="not enabled"]`,
       )
       .first();
     await expect(rows(admin).first()).toBeVisible({ timeout: 120_000 });
@@ -200,15 +200,45 @@ test.describe('installations: platform capabilities', () => {
       admin.locator(`[data-testid^="capability-${CAPABILITY}-"]`).first(),
     ).toBeVisible({ timeout: 120_000 });
     test.skip(
-      (await notOptedIn.count()) === 0,
-      'every installation of the lab registry is opted in; the not-opted-in state needs one that is not',
+      (await notEnabled.count()) === 0,
+      'every installation of the lab registry has the capability on record; Enable needs one without it',
     );
-    const row = rows(admin).filter({ has: notOptedIn }).first();
+    const row = rows(admin).filter({ has: notEnabled }).first();
+    await openCapabilities(admin, row);
+    const card = admin.getByTestId(`capability-${CAPABILITY}`);
+    // The opt-in protects what is on record: with nothing on record the owners'
+    // line is not shown and Enable is the person's to click.
+    await expect(card.getByTestId('needs-owners')).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Enable' })).toBeEnabled({
+      timeout: 120_000,
+    });
+  });
+
+  test('a capability the owners installed without the opt-in names the file they add, and the button is disabled', async ({
+    admin,
+  }) => {
+    await open(admin, '/installations');
+    const byOwners = admin
+      .locator(
+        `[data-testid^="capability-${CAPABILITY}-"][data-state="enabled, not opted in"]`,
+      )
+      .first();
+    await expect(rows(admin).first()).toBeVisible({ timeout: 120_000 });
+    await expect(
+      admin.locator(`[data-testid^="capability-${CAPABILITY}-"]`).first(),
+    ).toBeVisible({ timeout: 120_000 });
+    test.skip(
+      (await byOwners.count()) === 0,
+      'no installation of the lab registry carries the capability without the opt-in; the owners line needs one that does',
+    );
+    const row = rows(admin).filter({ has: byOwners }).first();
     await openCapabilities(admin, row);
     const card = admin.getByTestId(`capability-${CAPABILITY}`);
     const note = card.getByTestId('needs-owners');
     await expect(note).toContainText('platform-manager.yaml');
     await expect(note).toContainText('optIn: true from the owners');
-    await expect(card.getByRole('button', { name: 'Enable' })).toBeDisabled();
+    await expect(
+      card.getByRole('button', { name: 'Apply changes' }),
+    ).toBeDisabled();
   });
 });
