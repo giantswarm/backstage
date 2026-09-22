@@ -11,6 +11,7 @@ import {
 import {
   AGENT_PLATFORM_DEFINITION,
   COMMIT_REFUSED,
+  MISSING_CHOICES,
   ENABLED,
   FakeApi,
   FakeOptions,
@@ -356,6 +357,20 @@ describe('CapabilityCard', () => {
       expect(card().textContent).not.toMatch(MANAGER_WORDS);
     },
   );
+
+  it('keeps Enable clickable where the manager refuses only the choices not on record, and names them', async () => {
+    await render(installation(), { verified: MISSING_CHOICES });
+    const button = screen.getByRole('button', { name: 'Enable' });
+    expect(button).toBeEnabled();
+    expect(screen.getByTestId('commit-refused')).toHaveTextContent(
+      MISSING_CHOICES.commitRefused!,
+    );
+    await userEvent.click(button);
+    expect(
+      screen.getByRole('form', { name: 'Enable agent-platform on rowan' }),
+    ).toBeVisible();
+    expect(card().textContent).not.toMatch(MANAGER_WORDS);
+  });
 
   it('shows the comparison error and no comparison lines', async () => {
     const forbidden = new Error('no grant on birch as you');

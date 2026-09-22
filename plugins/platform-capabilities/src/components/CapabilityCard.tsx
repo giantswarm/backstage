@@ -109,7 +109,9 @@ function CommitRefused({ reason }: { reason: string }) {
  * features as defined, the checks that did not run, and one button --
  * Enable, or Apply changes -- opening the dialog. The button is disabled,
  * with the manager's reason on one line under it, while the comparison says
- * the manager would refuse the commit. The comparison runs when the tab opens.
+ * the manager would refuse the commit -- except where the only refusal is
+ * the choices not on record: the dialog is where they are made, so the
+ * button stays and the line says which. The comparison runs when the tab opens.
  */
 export function CapabilityCard({
   installation,
@@ -128,6 +130,13 @@ export function CapabilityCard({
     capability.state === 'pending approval' ||
     capability.state === 'rolling out';
   const commitRefused = result?.commitRefused;
+  // The manager refuses a commit without the required choices; the dialog
+  // collects them, so that refusal alone never disables the way to it.
+  const onlyMissingChoices =
+    Boolean(result) &&
+    !result?.refused &&
+    (result?.inputs?.missing?.length ?? 0) > 0;
+  const refusedForNow = Boolean(commitRefused) && !onlyMissingChoices;
   const status = statusOf(capability, result);
   const button = buttonOf(installed, result);
 
@@ -155,9 +164,7 @@ export function CapabilityCard({
             size="small"
             onPress={() => setDialog(true)}
             isDisabled={
-              inFlight ||
-              Boolean(commitRefused) ||
-              (installed && comparison.isPending)
+              inFlight || refusedForNow || (installed && comparison.isPending)
             }
           >
             {button}
