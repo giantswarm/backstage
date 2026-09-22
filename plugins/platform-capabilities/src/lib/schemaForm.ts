@@ -152,20 +152,36 @@ export function choiceLabel(field: Field): string {
   return humanise(named);
 }
 
+/** A name's label on its own: its field's, or its key humanised where no field carries it. */
+function leafLabel(name: string, fields: Field[]): string {
+  const field = fields.find(c => c.name === name);
+  return field ? choiceLabel(field) : humanise(name.split('.').pop() ?? name);
+}
+
 /**
  * What a field is called on the page among the fields of one definition --
  * the form's label, the name of a choice the manager lists as not on
- * record: its label, qualified with its group where another field shares it
- * (Grafana domain next to Portal domain). A name no field carries -- a list
- * of objects such as the portal's friendly labels, or a field the schema
+ * record: its label, qualified with its group where another field, or
+ * another of the names shown beside it (`among`: the record's rows),
+ * shares it (Grafana domain next to Portal domain), so no two rows read
+ * alike. A name no field carries -- a list of objects such as the portal's
+ * friendly labels, a leaf the manager reads itself, or a field the schema
  * does not know -- is named by its key the same way (Friendly labels).
  */
-export function labelOf(name: string, fields: Field[]): string {
+export function labelOf(
+  name: string,
+  fields: Field[],
+  among: readonly string[] = [],
+): string {
   const path = name.split('.');
-  const field = fields.find(c => c.name === name);
-  const label = field ? choiceLabel(field) : humanise(path[path.length - 1]);
-  const shared = fields.some(c => c !== field && choiceLabel(c) === label);
-  if (!shared || path.length < 2) {
+  const label = leafLabel(name, fields);
+  if (path.length < 2) {
+    return label;
+  }
+  const others = new Set([...fields.map(f => f.name), ...among]);
+  others.delete(name);
+  const shared = [...others].some(other => leafLabel(other, fields) === label);
+  if (!shared) {
     return label;
   }
   const group = humanise(path[path.length - 2]);

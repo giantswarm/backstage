@@ -26,11 +26,20 @@ function useElapsed(): number {
  * rather than a card that may be stuck. Mounted for as long as the wait
  * lasts, so the timer clears when it settles.
  */
-export function Loading({ label, testId }: { label: string; testId?: string }) {
+export function Loading({
+  label,
+  testId,
+  id,
+}: {
+  label: string;
+  testId?: string;
+  /** For an `aria-describedby` naming the wait as the reason a control is disabled. */
+  id?: string;
+}) {
   const elapsed = useElapsed();
   const text = elapsed >= COUNT_AFTER ? `${label} · ${elapsed} s` : label;
   return (
-    <div data-testid={testId}>
+    <div id={id} data-testid={testId}>
       <LoadingIndicator label={text} />
     </div>
   );

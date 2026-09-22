@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -8,6 +8,7 @@ import {
   DialogHeader,
   Flex,
   Text,
+  VisuallyHidden,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -19,6 +20,7 @@ import {
   platformCapabilitiesApiRef,
   VerifyResult,
 } from '../apis';
+import { reviewWords } from '../lib/comparison';
 import { reasonOf, refusalStatus } from '../lib/refusal';
 import {
   Field,
@@ -43,12 +45,18 @@ export const REFUSED_TITLE = 'giantswarm-platform-manager refused';
 /** What a field the manager's refusal names says under itself. */
 export const REFUSED_MESSAGE = "The manager's refusal names this choice.";
 
+/** The heading of the review's result, which takes the focus as the result lands. */
+export const RESULT_TITLE = 'Compared with your choices';
+
 const FORM_STYLE = {
   display: 'flex',
   flexDirection: 'column' as const,
   flex: 1,
   minHeight: 0,
 };
+
+/** The dialog's steps: the form, the review's result, the action started. */
+type Step = 'form' | 'review' | 'done';
 
 export interface CapabilityDialogProps {
   /** `enable` installs the capability; `reconcile` applies changes to an installed one. */
@@ -78,7 +86,11 @@ export interface CapabilityDialogProps {
  * the form kept editable: the fields the reason names are marked and led to
  * from the Alert, and Review runs the comparison again. Open pull requests:
  * the commit as the signed-in person and the Action it started. The commit
- * is disabled without the person's session at the manager.
+ * is disabled without the person's session at the manager. A status region
+ * announces each answer -- the result, the refusal, the action started, a
+ * failure -- and as a step changes the focus moves to what replaced the
+ * button pressed: the result's heading, the action's line, Review after
+ * Back; it never falls to the body.
  */
 export function CapabilityDialog({
   kind,
@@ -93,6 +105,9 @@ export function CapabilityDialog({
   const queryClient = useQueryClient();
   const connection = useConnection();
   const formRef = useRef<HTMLFormElement>(null);
+  const reviewRef = useRef<HTMLButtonElement>(null);
+  const resultRef = useRef<HTMLHeadingElement>(null);
+  const doneRef = useRef<HTMLParagraphElement>(null);
   const schema = definition?.inputSchema;
   const whole = useMemo(() => formOf(schema ?? {}), [schema]);
   const fields = useMemo(() => fieldsOf(whole), [whole]);
@@ -158,6 +173,46 @@ export function CapabilityDialog({
   const connected = connection.data?.connected === true;
   const title = `${kind === 'enable' ? 'Enable' : 'Apply changes to'} ${capability.name} on ${installation.name}`;
 
+  let step: Step = 'form';
+  if (done) {
+    step = 'done';
+  } else if (accepted) {
+    step = 'review';
+  }
+  // The button pressed leaves the DOM with its step, and the focus would
+  // fall to the body: what replaced it takes the focus instead. Not on
+  // opening, where the dialog places the focus itself.
+  const stepBefore = useRef(step);
+  useEffect(() => {
+    if (stepBefore.current === step) {
+      return;
+    }
+    stepBefore.current = step;
+    const targets: Record<Step, HTMLElement | null> = {
+      form: reviewRef.current,
+      review: resultRef.current,
+      done: doneRef.current,
+    };
+    targets[step]?.focus();
+  }, [step]);
+
+  // What the dialog announces: the manager's answer once it lands -- the
+  // result, the refusal, the action started, a failure -- and nothing while
+  // a request runs, so the next answer is announced even when it reads the
+  // same.
+  let announcement = '';
+  if (busy) {
+    announcement = '';
+  } else if (failure) {
+    announcement = `${REFUSED_TITLE}: ${failure.message}`;
+  } else if (done) {
+    announcement = done.message ?? 'Action started.';
+  } else if (reason && refusal) {
+    announcement = `The manager would refuse this: ${reason}`;
+  } else if (accepted) {
+    announcement = `Reviewed: ${reviewWords(accepted)}`;
+  }
+
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (busy) {
@@ -202,9 +257,12 @@ export function CapabilityDialog({
       >
         <DialogHeader>{title}</DialogHeader>
         <DialogBody>
+          <VisuallyHidden role="status" data-testid="review-outcome">
+            {announcement}
+          </VisuallyHidden>
           <Flex direction="column" gap="4">
             <Text variant="body-small" color="secondary">
-              Nothing is written before Open pull requests.
+              Nothing is written before you open the pull requests.
             </Text>
             {reason && refusal && !done && (
               <Alert
@@ -239,6 +297,16 @@ export function CapabilityDialog({
             )}
             {accepted && (
               <>
+                <Text
+                  as="h3"
+                  variant="title-x-small"
+                  weight="bold"
+                  tabIndex={-1}
+                  ref={resultRef}
+                  data-testid="review-result"
+                >
+                  {RESULT_TITLE}
+                </Text>
                 <ComparisonView result={accepted} />
                 <PlanView plan={accepted} />
                 {!connected && (
@@ -255,7 +323,7 @@ export function CapabilityDialog({
             )}
             {done && (
               <Flex direction="column" gap="2" data-testid="committed">
-                <Text variant="body-medium">
+                <Text variant="body-medium" tabIndex={-1} ref={doneRef}>
                   {done.message ?? 'Action started.'}
                 </Text>
                 {done.action && (
@@ -301,7 +369,12 @@ export function CapabilityDialog({
                 {done ? 'Close' : 'Cancel'}
               </Button>
               {editing && (
-                <Button type="submit" variant="primary" isDisabled={busy}>
+                <Button
+                  ref={reviewRef}
+                  type="submit"
+                  variant="primary"
+                  isDisabled={busy}
+                >
                   {review.isPending ? 'Comparing…' : 'Review'}
                 </Button>
               )}

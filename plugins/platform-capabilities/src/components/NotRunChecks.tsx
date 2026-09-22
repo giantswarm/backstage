@@ -2,7 +2,7 @@ import { Button, Flex, Link, Text } from '@backstage/ui';
 import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { VerifyDimension, VerifyResult } from '../apis';
-import { count, notChecked } from '../lib/comparison';
+import { count, notChecked, NotRun } from '../lib/comparison';
 import { LIST_STYLE } from './DimensionItem';
 import { ErrorAlert } from './ErrorAlert';
 import { useLiveVerify, verifyKey } from './queries';
@@ -41,14 +41,31 @@ function Note({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The checks of one endpoint that did not answer, under the manager's reason with the request's error. */
+function Endpoint({ notRun: [reason, dimensions] }: { notRun: NotRun }) {
+  return (
+    <div data-testid="endpoint">
+      <Text variant="body-small" color="secondary">
+        {reason}
+      </Text>
+      <ul style={LIST_STYLE}>
+        {dimensions.map(d => (
+          <CheckLine key={d.id} dimension={d} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /**
  * The checks the comparison did not run, each by name under an expandable
  * line: those that need the person's session on the installation, with the
  * button that runs them as the person through muster (the live half merged
  * into the comparison the tab holds, so the checks that answered leave this
- * list for the features), and the rest under the manager's reason. A
- * comparison the tab does not hold (a dialog's review) lists them without
- * the button.
+ * list for the features); those whose endpoint did not answer, as one line
+ * counting the endpoints with the manager's reason and the request's error
+ * behind it; and the rest under the manager's reason. A comparison the tab
+ * does not hold (a dialog's review) lists them without the button.
  */
 export function NotRunChecks({ result }: { result: VerifyResult }) {
   const pending = notChecked(result.features ?? []);
@@ -58,7 +75,11 @@ export function NotRunChecks({ result }: { result: VerifyResult }) {
     queryClient.getQueryData(
       verifyKey(result.installation, result.capability),
     ) === result;
-  if (pending.session.length === 0 && pending.other.length === 0) {
+  if (
+    pending.session.length === 0 &&
+    pending.unreachable.length === 0 &&
+    pending.other.length === 0
+  ) {
     return null;
   }
   return (
@@ -100,6 +121,23 @@ export function NotRunChecks({ result }: { result: VerifyResult }) {
           title="The checks did not run as you"
           error={live.error as Error}
         />
+      )}
+      {pending.unreachable.length > 0 && (
+        <div data-testid="unreachable">
+          <SimpleAccordion
+            title={
+              <Note>
+                {count(pending.unreachable.length, 'endpoint')} did not answer
+              </Note>
+            }
+          >
+            <Flex direction="column" gap="1">
+              {pending.unreachable.map(notRun => (
+                <Endpoint key={notRun[0]} notRun={notRun} />
+              ))}
+            </Flex>
+          </SimpleAccordion>
+        </div>
       )}
       {pending.other.map(([reason, dimensions]) => (
         <div key={reason} data-testid="not-run">

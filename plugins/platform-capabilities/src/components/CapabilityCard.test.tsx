@@ -25,6 +25,7 @@ import {
   NOT_ENABLED,
   PLANNED,
   PLANNED_ON_HUB,
+  PORTAL_ON_RECORD,
   REFUSED_ACTION,
   REWRITTEN,
   UP_TO_DATE,
@@ -135,6 +136,8 @@ async function renderDialog(api: FakeApi) {
 
 const header = () => screen.getByTestId('capability-state');
 const card = () => screen.getByTestId('capability-agent-platform');
+/** The status region announcing the comparison's outcome. */
+const outcome = () => screen.getByTestId('comparison-outcome');
 
 const PATCH =
   'example/example-configs:installations/rowan/apps/agent-platform/configmap-values.yaml.patch';
@@ -382,9 +385,93 @@ describe('CapabilityCard', () => {
         lastAction: { name: 'enable-agent-platform-rowan-1' },
       }),
     );
+    const button = screen.getByRole('button', { name: 'Apply changes' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription('Enabling · rolling out');
+  });
+
+  it('gives every row of the record a label of its own where two leaves share a name', async () => {
+    // wallaby-like: the portal's domain is on record and the manager lists
+    // the grafana plugin's domain, a leaf it reads itself, as not on record.
+    const portal = installation({
+      capabilities: [
+        {
+          name: 'customer-portal',
+          state: 'enabled',
+          enabled: true,
+          lastAction: null,
+        },
+      ],
+    });
+    await render(
+      portal,
+      {
+        verified: {
+          ...PORTAL_ON_RECORD,
+          inputs: {
+            ...PORTAL_ON_RECORD.inputs!,
+            unset: ['tunnel.enabled', 'plugins.grafana.domain'],
+          },
+        },
+      },
+      CUSTOMER_PORTAL_DEFINITION,
+    );
+    const terms = within(screen.getByRole('region', { name: 'On record' }))
+      .getAllByRole('term')
+      .map(term => term.textContent);
+    expect(terms).toEqual(
+      expect.arrayContaining(['Portal domain', 'Grafana domain', 'Tunnel']),
+    );
+    expect(terms).not.toContain('Domain');
+    expect(new Set(terms).size).toBe(terms.length);
+  });
+
+  it("counts the endpoints that did not answer on one line, the requests' errors behind it", async () => {
+    const dex =
+      'unreachable from the manager: Get "https://dex.birch.example.test/.well-known/openid-configuration": context deadline exceeded';
+    const grafana =
+      'unreachable from the manager: Get "https://grafana.birch.example.test/api/health": dial tcp: i/o timeout';
+    const probe = (id: string, reason: string) => ({
+      id,
+      kind: 'probe' as const,
+      mark: 'not checked' as const,
+      reason,
+    });
+    await render(ENABLED, {
+      verified: {
+        ...VERIFIED,
+        features: [
+          ...VERIFIED.features,
+          {
+            id: 'endpoints',
+            title: 'Endpoints',
+            mark: 'not checked',
+            dimensions: [
+              probe('dex-openid', dex),
+              probe('dex-auth', dex),
+              probe('grafana-health', grafana),
+            ],
+          },
+        ],
+      },
+    });
+    const unreachable = screen.getByTestId('unreachable');
+    // The line the checks open from counts the endpoints, no Go error on it.
+    expect(within(unreachable).getByRole('button')).toHaveTextContent(
+      /^2 endpoints did not answer$/,
+    );
+    const endpoints = within(unreachable).getAllByTestId('endpoint');
+    expect(endpoints).toHaveLength(2);
+    expect(endpoints[0]).toHaveTextContent(dex);
     expect(
-      screen.getByRole('button', { name: 'Apply changes' }),
-    ).toBeDisabled();
+      Array.from(endpoints[0].querySelectorAll('li')).map(li => li.textContent),
+    ).toEqual(['dex-openid', 'dex-auth']);
+    expect(endpoints[1]).toHaveTextContent(grafana);
+    // The other reasons keep their own lines.
+    expect(screen.getByTestId('not-run')).toHaveTextContent(
+      '1 check could not run: renders no file of this kind',
+    );
+    expect(card().textContent).not.toMatch(MANAGER_WORDS);
   });
 
   it('offers Enable where nothing is on record, with no line under it', async () => {
@@ -407,6 +494,8 @@ describe('CapabilityCard', () => {
       expect(screen.getByTestId('commit-refused')).toHaveTextContent(
         COMMIT_REFUSED.commitRefused!,
       );
+      // The reason under the button is the button's accessible description.
+      expect(button).toHaveAccessibleDescription(COMMIT_REFUSED.commitRefused!);
       await userEvent.click(button);
       expect(screen.queryByRole('form')).toBeNull();
       expect(card().textContent).not.toMatch(MANAGER_WORDS);
@@ -440,6 +529,10 @@ describe('CapabilityCard', () => {
     expect(screen.queryByTestId('choice-modelServing.enabled')).toBeNull();
     expect(screen.queryByTestId('comparison')).toBeNull();
     expect(screen.queryByTestId('comparing')).toBeNull();
+    // The status region says the comparison did not run.
+    expect(outcome()).toHaveTextContent(
+      'agent-platform: the comparison did not run',
+    );
   });
 
   it('reads a refusal for an input the dialog supplies as info and keeps the way to the dialog', async () => {
@@ -965,14 +1058,23 @@ describe('CapabilityCard', () => {
       ).toBeInTheDocument();
       expect(screen.queryByTestId('choice-modelServing.enabled')).toBeNull();
       expect(screen.queryByTestId('comparison')).toBeNull();
-      expect(
-        screen.getByRole('button', { name: 'Apply changes' }),
-      ).toBeDisabled();
+      const button = screen.getByRole('button', { name: 'Apply changes' });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAccessibleDescription(
+        'Comparing with the definition…',
+      );
       expect(refreshButton()).toBeDisabled();
       expect(refreshButton()).toHaveTextContent('Refresh');
+      // Nothing to announce yet.
+      expect(outcome()).toBeEmptyDOMElement();
 
       await settle(api);
       expect(header()).toHaveTextContent('Installed · 2 checks differ');
+      // The outcome, announced by the card's one status region.
+      expect(screen.getByRole('status')).toBe(outcome());
+      expect(outcome()).toHaveTextContent(
+        'agent-platform compared: Installed · 2 checks differ',
+      );
       expect(choice('modelServing.enabled')).toHaveTextContent('off');
       expect(screen.getByTestId('comparison')).toBeInTheDocument();
       expect(screen.queryByRole('progressbar')).toBeNull();
@@ -1001,12 +1103,17 @@ describe('CapabilityCard', () => {
       expect(screen.queryByTestId('comparison')).toBeNull();
       expect(header()).toHaveTextContent(/^Installed$/);
       expect(refreshButton()).toBeDisabled();
+      // The region empties, so the outcome is announced again as it lands.
+      expect(outcome()).toBeEmptyDOMElement();
 
       await settle(api);
       expect(header()).toHaveTextContent('Installed · 2 checks differ');
       expect(choice('modelServing.enabled')).toHaveTextContent('off');
       expect(screen.getByTestId('comparison')).toBeInTheDocument();
       expect(refreshButton()).toBeEnabled();
+      expect(outcome()).toHaveTextContent(
+        'agent-platform compared: Installed · 2 checks differ',
+      );
     });
   });
 

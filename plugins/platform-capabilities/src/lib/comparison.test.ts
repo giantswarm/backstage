@@ -1,6 +1,6 @@
-import { VerifyResult } from '../apis';
+import { VerifyDimension, VerifyResult } from '../apis';
 import { LIVE, VERIFIED } from '../fixtures/fakeApi';
-import { mergeLive, notChecked } from './comparison';
+import { mergeLive, notChecked, reviewWords } from './comparison';
 
 const federationTargets = (result: VerifyResult) =>
   result.features
@@ -21,6 +21,75 @@ describe('notChecked', () => {
     expect(
       pending.other.map(([reason, dims]) => [reason, dims.map(d => d.id)]),
     ).toEqual([['renders no file of this kind', ['federation-targets']]]);
+    expect(pending.unreachable).toEqual([]);
+  });
+
+  it('sets the checks whose endpoint did not answer apart, one entry per endpoint', () => {
+    const dex =
+      'unreachable from the manager: Get "https://dex.rowan.example.test/.well-known/openid-configuration": context deadline exceeded';
+    const grafana =
+      'unreachable from the manager: Get "https://grafana.rowan.example.test/api/health": dial tcp: i/o timeout';
+    const probe = (id: string, reason: string): VerifyDimension => ({
+      id,
+      kind: 'probe',
+      mark: 'not checked',
+      reason,
+    });
+    const pending = notChecked([
+      {
+        id: 'identity',
+        mark: 'not checked',
+        dimensions: [probe('dex-openid', dex), probe('dex-auth', dex)],
+      },
+      {
+        id: 'observability',
+        mark: 'not checked',
+        dimensions: [
+          probe('grafana-health', grafana),
+          probe('grafana-files', 'renders no file of this kind'),
+        ],
+      },
+    ]);
+    expect(
+      pending.unreachable.map(([reason, dims]) => [
+        reason,
+        dims.map(d => d.id),
+      ]),
+    ).toEqual([
+      [dex, ['dex-openid', 'dex-auth']],
+      [grafana, ['grafana-health']],
+    ]);
+    expect(
+      pending.other.map(([reason, dims]) => [reason, dims.map(d => d.id)]),
+    ).toEqual([['renders no file of this kind', ['grafana-files']]]);
+    expect(pending.session).toEqual([]);
+  });
+});
+
+describe('reviewWords', () => {
+  it('names what the review found and what the commit would open', () => {
+    expect(reviewWords(VERIFIED)).toBe(
+      `2 checks differ; ${VERIFIED.pullRequests!.length} pull request${VERIFIED.pullRequests!.length === 1 ? '' : 's'} to open`,
+    );
+    expect(reviewWords({ ...VERIFIED, pullRequests: [] })).toBe(
+      '2 checks differ; nothing to open',
+    );
+    expect(
+      reviewWords({
+        ...VERIFIED,
+        summary: { 'as defined': 4, planned: 2 },
+        diff: {},
+        pullRequests: [],
+      }),
+    ).toBe('2 checks planned; nothing to open');
+    expect(
+      reviewWords({
+        ...VERIFIED,
+        summary: { 'as defined': 4 },
+        diff: {},
+        pullRequests: [],
+      }),
+    ).toBe('up to date; nothing to open');
   });
 });
 

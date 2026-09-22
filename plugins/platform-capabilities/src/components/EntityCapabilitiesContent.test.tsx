@@ -12,7 +12,10 @@ import {
   NOT_ENABLED,
   REFUSED_ACTION,
 } from '../fixtures/fakeApi';
-import { EntityCapabilitiesContent } from './EntityCapabilitiesContent';
+import {
+  DOCS_URL,
+  EntityCapabilitiesContent,
+} from './EntityCapabilitiesContent';
 import { platformCapabilitiesQueryClient } from './Providers';
 
 jest.mock('./connectBounce', () => ({
@@ -53,6 +56,14 @@ describe('EntityCapabilitiesContent', () => {
       installations: [ENABLED],
       actions: [ACTION],
     });
+    // One line says what the tab is about and leads to the docs.
+    expect(screen.getByTestId('intro')).toHaveTextContent(
+      /^A platform capability is /,
+    );
+    expect(screen.getByRole('link', { name: 'How it works' })).toHaveAttribute(
+      'href',
+      DOCS_URL,
+    );
     const card = screen.getByTestId('capability-agent-platform');
     expect(within(card).getByTestId('capability-state')).toHaveTextContent(
       'Installed · 2 checks differ',
