@@ -14,7 +14,11 @@ import {
   PORTAL_ON_RECORD,
 } from '../fixtures/fakeApi';
 import { CapabilityCard } from './CapabilityCard';
-import { CapabilityDialog, REFUSED_MESSAGE } from './CapabilityDialog';
+import {
+  CapabilityDialog,
+  REFUSED_MESSAGE,
+  RESULT_TITLE,
+} from './CapabilityDialog';
 import {
   PlatformCapabilitiesProviders,
   platformCapabilitiesQueryClient,
@@ -145,6 +149,61 @@ describe('CapabilityDialog', () => {
         sentry: { enabled: true },
       },
     });
+  });
+
+  it('moves the focus with each step and announces each answer, never leaving it on the body', async () => {
+    const { form } = await renderDialog(
+      CUSTOMER_PORTAL_DEFINITION,
+      PORTAL_ON_RECORD,
+    );
+    expect(form).toHaveTextContent(
+      'Nothing is written before you open the pull requests.',
+    );
+    const outcome = screen.getByTestId('review-outcome');
+    expect(outcome).toHaveAttribute('role', 'status');
+    expect(outcome).toBeEmptyDOMElement();
+
+    // Review: its button leaves the DOM; the result's heading takes the
+    // focus and the status region says what the review found.
+    await userEvent.click(within(form).getByRole('button', { name: 'Review' }));
+    const result = await screen.findByRole('heading', { name: RESULT_TITLE });
+    expect(result).toHaveFocus();
+    expect(outcome).toHaveTextContent(
+      /^Reviewed: 2 checks differ; \d+ pull requests? to open$/,
+    );
+    expect(document.body).not.toHaveFocus();
+
+    // Back: the form again, the focus on Review, nothing announced.
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('button', { name: 'Review' })).toHaveFocus();
+    expect(outcome).toBeEmptyDOMElement();
+
+    // Open pull requests: the action's line takes the focus and is announced.
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Open pull requests' }),
+    );
+    const committed = await screen.findByTestId('committed');
+    const line = committed.firstElementChild as HTMLElement;
+    expect(line).toHaveFocus();
+    expect(line.textContent).not.toBe('');
+    expect(outcome).toHaveTextContent(line.textContent!);
+    expect(document.body).not.toHaveFocus();
+  });
+
+  it('announces a refusal and keeps the focus on Review', async () => {
+    const { form } = await renderDialog(
+      CUSTOMER_PORTAL_DEFINITION,
+      DOMAIN_REFUSED,
+      { verified: DOMAIN_REFUSED },
+    );
+    await userEvent.click(within(form).getByRole('button', { name: 'Review' }));
+    await screen.findByTestId('refused');
+    expect(screen.getByTestId('review-outcome')).toHaveTextContent(
+      `The manager would refuse this: ${DOMAIN_REFUSED.refused}`,
+    );
+    expect(screen.getByRole('button', { name: 'Review' })).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
   });
 
   it('shows a schema default as the placeholder of the empty field and submits nothing for it', async () => {

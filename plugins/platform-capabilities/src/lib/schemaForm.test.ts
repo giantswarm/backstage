@@ -165,6 +165,19 @@ describe('schemaForm', () => {
     expect(labelOf('flux.domain', choices)).toBe('Flux domain');
   });
 
+  it('qualifies a label another name shown beside it shares, so no two rows read alike', () => {
+    // The portal's domain is the one domain a person chooses; the grafana
+    // plugin's is read from the registry and no field of the form.
+    const choices = personChoices(CUSTOMER_PORTAL_DEFINITION.inputSchema!);
+    expect(labelOf('portal.domain', choices)).toBe('Domain');
+    const rows = ['portal.domain', 'portal.title', 'plugins.grafana.domain'];
+    expect(labelOf('portal.domain', choices, rows)).toBe('Portal domain');
+    expect(labelOf('plugins.grafana.domain', choices, rows)).toBe(
+      'Grafana domain',
+    );
+    expect(labelOf('portal.title', choices, rows)).toBe('Title');
+  });
+
   it('finds the fields a sentence names, by their whole key', () => {
     const fields = fieldsOf(formOf(CUSTOMER_PORTAL_DEFINITION.inputSchema!));
     const names = (text: string) => fieldsNamed(text, fields).map(f => f.name);
