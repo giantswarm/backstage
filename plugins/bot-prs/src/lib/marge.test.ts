@@ -1,6 +1,5 @@
 import {
   classifyMargeError,
-  confirmModeOf,
   dependencyOf,
   looksUnknownTeam,
   MargeNotConnectedError,
@@ -158,36 +157,6 @@ describe('dependencyOf', () => {
     ['Configure Renovate', ''],
   ])('%s -> %s', (title, dependency) => {
     expect(dependencyOf(title)).toBe(dependency);
-  });
-});
-
-describe('confirmModeOf', () => {
-  const policy = (confirm: string) => ({
-    sweep: true,
-    update_types: {},
-    rescue: {
-      enabled: false,
-      weekly: 0,
-      budget_enforced: false,
-      rescues_dispatched: false,
-      confirm,
-    },
-    concurrency: { per_team: 0, per_repo: 0 },
-  });
-
-  it('reads per-sweep off the entries', () => {
-    const result: MargeResult = {
-      summary,
-      skipped: [entry('a', 1, 't', { policy: policy('per-sweep') })],
-    };
-    expect(confirmModeOf(result)).toBe('per-sweep');
-  });
-
-  it('defaults to per-pr when no entry carries a policy (the stored read)', () => {
-    expect(confirmModeOf({ summary, skipped: [entry('a', 1, 't')] })).toBe(
-      'per-pr',
-    );
-    expect(confirmModeOf(undefined)).toBe('per-pr');
   });
 });
 

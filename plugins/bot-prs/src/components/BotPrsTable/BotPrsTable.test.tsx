@@ -43,12 +43,27 @@ const rowsWith = (extra: Partial<MargeEntry> = {}) =>
     'bumblebee',
   );
 
+const twoRows = () =>
+  rowsOf(
+    {
+      summary,
+      action_required: [entry(), entry({ repo: 'happa', number: 7 })],
+    } as MargeResult,
+    'bumblebee',
+  );
+
+const allOf = (rows: ReturnType<typeof rowsWith>) =>
+  new Set(rows.map(row => row.ref));
+
 const props = {
   showTeam: false,
   isLoading: false,
   canAct: true,
   onSweep: jest.fn(),
   onMarkBlocked: jest.fn(),
+  selectedRefs: new Set<string>(),
+  onToggle: jest.fn(),
+  onToggleAll: jest.fn(),
 };
 
 describe('BotPrsTable', () => {
@@ -100,5 +115,66 @@ describe('BotPrsTable', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: /Failed/ }));
     expect(onClassification).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('drops one PR from the selection without opening its record', async () => {
+    const rows = twoRows();
+    const onToggle = jest.fn();
+    await renderInTestApp(
+      <BotPrsTable
+        {...props}
+        rows={rows}
+        selectedRefs={allOf(rows)}
+        onToggle={onToggle}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Select giantswarm/agent-platform#548',
+      }),
+    );
+
+    expect(onToggle).toHaveBeenCalledWith(
+      'giantswarm/agent-platform#548',
+      false,
+    );
+    // The tick is not the row: it must not expand the record under it.
+    expect(
+      screen.queryByTestId('details-giantswarm/agent-platform#548'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers the whole view from the header, and says how many are left', async () => {
+    const rows = twoRows();
+    const onToggleAll = jest.fn();
+    const { rerender } = await renderInTestApp(
+      <BotPrsTable
+        {...props}
+        rows={rows}
+        selectedRefs={allOf(rows)}
+        onToggleAll={onToggleAll}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Deselect every PR' }),
+    );
+    expect(onToggleAll).toHaveBeenCalledWith(false);
+
+    // A ref keeps its tick when the queue hands back new row objects, which
+    // it does on every read.
+    rerender(
+      <BotPrsTable
+        {...props}
+        rows={twoRows()}
+        selectedRefs={new Set(['giantswarm/happa#7'])}
+        onToggleAll={onToggleAll}
+      />,
+    );
+    expect(
+      screen.getByRole('checkbox', { name: 'Select giantswarm/happa#7' }),
+    ).toBeChecked();
+    expect(screen.getByText(/Bot PRs \(2, 1 selected\)/)).toBeInTheDocument();
   });
 });

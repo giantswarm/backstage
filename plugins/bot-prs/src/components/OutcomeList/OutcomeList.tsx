@@ -1,22 +1,10 @@
-import { Checkbox, Flex, Link, Text } from '@backstage/ui';
+import { Flex, Link, Text } from '@backstage/ui';
 import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
 
-import {
-  rowsOf,
-  statusIntentOf,
-  type BotPrRow,
-  type MargeResult,
-} from '../../lib/marge';
+import { rowsOf, statusIntentOf, type MargeResult } from '../../lib/marge';
 
 export type OutcomeListProps = {
   result: MargeResult;
-  /**
-   * When set, every row carries a checkbox and the list reports the ticked
-   * refs: the per-PR confirmation the team's policy asks for on a whole-team
-   * Apply. Absent, the rows are read-only.
-   */
-  selected?: Set<string>;
-  onSelectedChange?: (selected: Set<string>) => void;
 };
 
 /**
@@ -59,27 +47,14 @@ function sentence(would: string): string {
  * or `Failed` with the guard's reason -- and nothing here offers a way around
  * it, because the engine has none. The failures no rule recognises come last,
  * under one heading.
+ *
+ * The engine answers in its own class order, which reads as no order at all
+ * past a screen, so the rows are grouped by repository and ordered by PR
+ * number inside it.
  */
-export function OutcomeList({
-  result,
-  selected,
-  onSelectedChange,
-}: OutcomeListProps) {
+export function OutcomeList({ result }: OutcomeListProps) {
   const rows = rowsOf(result);
-  const selectable = selected !== undefined && onSelectedChange !== undefined;
-
-  const toggle = (row: BotPrRow, checked: boolean) => {
-    if (!selectable) {
-      return;
-    }
-    const next = new Set(selected);
-    if (checked) {
-      next.add(row.ref);
-    } else {
-      next.delete(row.ref);
-    }
-    onSelectedChange(next);
-  };
+  const repositories = [...new Set(rows.map(row => row.repository))].sort();
 
   return (
     <Flex direction="column" gap="3">
@@ -88,47 +63,59 @@ export function OutcomeList({
           The engine reported no PR for this run.
         </Text>
       ) : null}
-      {rows.map(row => {
-        const { would, evidence } = splitDryRun(row.detail);
-        return (
-          <Flex key={row.ref} gap="2" align="start">
-            {selectable ? (
-              <Checkbox
-                aria-label={`Apply to ${row.ref}`}
-                isSelected={selected.has(row.ref)}
-                onChange={checked => toggle(row, checked)}
-              />
-            ) : null}
-            <Flex direction="column" gap="1" style={{ minWidth: 0, flex: 1 }}>
-              <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
-                <Link href={row.url} target="_blank" rel="noopener noreferrer">
-                  {row.ref}
-                </Link>
-                <Text variant="body-small" color="secondary" truncate>
-                  {row.title}
-                </Text>
-              </Flex>
-              {would ? (
-                <Text variant="body-medium" weight="bold">
-                  {sentence(would)}
-                </Text>
-              ) : null}
-              <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
-                <StatusLabel
-                  label={row.status}
-                  intent={statusIntentOf(row.group)}
-                  title={row.label}
-                />
-                {evidence ? (
-                  <Text variant="body-small" color="secondary">
-                    {evidence}
-                  </Text>
-                ) : null}
-              </Flex>
-            </Flex>
-          </Flex>
-        );
-      })}
+      {repositories.map(repository => (
+        <Flex key={repository} direction="column" gap="2">
+          {repositories.length > 1 ? (
+            <Text variant="body-small" weight="bold">
+              {repository}
+            </Text>
+          ) : null}
+          {rows
+            .filter(row => row.repository === repository)
+            .sort((a, b) => a.number - b.number)
+            .map(row => {
+              const { would, evidence } = splitDryRun(row.detail);
+              return (
+                <Flex
+                  key={row.ref}
+                  direction="column"
+                  gap="1"
+                  style={{ minWidth: 0 }}
+                >
+                  <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
+                    <Link
+                      href={row.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {row.ref}
+                    </Link>
+                    <Text variant="body-small" color="secondary" truncate>
+                      {row.title}
+                    </Text>
+                  </Flex>
+                  {would ? (
+                    <Text variant="body-medium" weight="bold">
+                      {sentence(would)}
+                    </Text>
+                  ) : null}
+                  <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
+                    <StatusLabel
+                      label={row.status}
+                      intent={statusIntentOf(row.group)}
+                      title={row.label}
+                    />
+                    {evidence ? (
+                      <Text variant="body-small" color="secondary">
+                        {evidence}
+                      </Text>
+                    ) : null}
+                  </Flex>
+                </Flex>
+              );
+            })}
+        </Flex>
+      ))}
       {(result.repositories_failed ?? []).map(failure => (
         <Text key={failure.repo} variant="body-small" color="danger">
           {failure.repo}: {failure.error}

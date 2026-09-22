@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Checkbox, Flex, Text } from '@backstage/ui';
+import { Alert, Checkbox, Flex, Text } from '@backstage/ui';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useMargeTeamSweeps } from '../../hooks/useMarge';
 import {
   actionsArgument,
-  confirmModeOf,
   rowsOf,
   SWEEP_STEPS,
-  type ConfirmMode,
   type SweepStep,
 } from '../../lib/marge';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
@@ -16,18 +14,14 @@ import { OutcomeList } from '../OutcomeList';
 
 export type SweepDialogProps = {
   installation: string;
-  /** The teams to sweep, each under its own policy. */
-  teams: string[];
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  /** One PR (`OWNER/REPO#NUMBER`) to narrow the sweep to; the whole team without. */
-  pr?: string;
   /**
-   * The confirm mode the team's policy asks for, when the page knows it from
-   * a live read. The preview's own entries carry the policy too and take
-   * precedence once they arrive.
+   * The PRs to sweep (`OWNER/REPO#NUMBER`), per team: what the person ticked
+   * on the page, or the one PR of an expanded row. A team is one call, so a
+   * key is a call.
    */
-  confirmMode?: ConfirmMode;
+  prsByTeam: Record<string, string[]>;
 };
 
 const ALL_STEPS: SweepStep[] = SWEEP_STEPS.map(step => step.id);
@@ -36,64 +30,61 @@ const plural = (count: number, word: string) =>
   `${count} ${word}${count === 1 ? '' : 's'}`;
 
 /**
- * Preview, then Apply, for one `x_marge_sweep` per team in view, or for one
- * PR.
+ * Preview, then Apply, for one `x_marge_sweep` per team of the selection.
  *
  * The steps are the engine's own, every one ticked to begin with, the way a
  * CLI sweep runs them; unticking one narrows `actions` the way `--actions`
  * does, and the preview runs again, because the answer depends on the steps.
- * The preview is the call with `dry_run: true`: a live classification of
- * every PR in scope and the step the engine would take on each. Apply
- * repeats the call without `dry_run`, narrowed with `prs` to exactly the PRs
- * the preview listed -- under a `per-pr` policy on a whole-team run, to the
- * ones the person ticked, none by default -- so a PR that appeared in between
- * is not swept unseen. A refusal is an outcome row with its reason; there is
- * no override to offer, because the engine has none.
+ * The preview is the call with `dry_run: true`: a live classification of the
+ * PRs the person picked on the page and the step the engine would take on
+ * each. Apply repeats the call without `dry_run`, narrowed with `prs` to
+ * exactly the PRs the preview listed, so a PR that appeared in between is not
+ * swept unseen. A refusal is an outcome row with its reason; there is no
+ * override to offer, because the engine has none.
+ *
+ * The PRs are picked in the table, so this dialog offers no picker of its
+ * own: it is the preview of a decision already taken.
  *
  * A team is its own call and its own outcome: one team's refusal leaves the
  * others alone, and the dialog reports each under its name.
  */
 export function SweepDialog({
   installation,
-  teams,
   isOpen,
   onOpenChange,
-  pr,
-  confirmMode,
+  prsByTeam,
 }: SweepDialogProps) {
   const sweeps = useMargeTeamSweeps(installation);
   const [steps, setSteps] = useState<SweepStep[]>(ALL_STEPS);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [applied, setApplied] = useState(false);
 
   const actions = actionsArgument(steps);
-  const teamsKey = teams.join(',');
-  const prsByTeam = useMemo(
-    () => (pr ? { [teams[0]]: [pr] } : undefined),
-    // Keyed on contents: a one-PR sweep is always one team's.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pr, teamsKey],
+  const teams = useMemo(() => Object.keys(prsByTeam), [prsByTeam]);
+  const targetCount = Object.values(prsByTeam).reduce(
+    (sum, refs) => sum + refs.length,
+    0,
   );
+  // Keyed on contents: the page derives the map fresh on every render.
+  const targetsKey = JSON.stringify(prsByTeam);
 
   useEffect(() => {
     if (!isOpen) {
       return;
     }
     setApplied(false);
-    setSelected(new Set());
     sweeps.reset();
     sweeps.run({ teams, prsByTeam, actions, dryRun: true }).catch(() => {
       // Shown by the dialog through the runs' own errors.
     });
     // A new open, or new steps, is a new preview.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, actions, installation, teamsKey, pr]);
+  }, [isOpen, actions, installation, targetsKey]);
 
   useEffect(() => {
     if (isOpen) {
       setSteps(ALL_STEPS);
     }
-  }, [isOpen, pr]);
+  }, [isOpen, targetsKey]);
 
   const runs = sweeps.runs;
   const isDryRun = sweeps.isDryRun;
@@ -108,44 +99,20 @@ export function SweepDialog({
   const failed = runs.filter(run => run.error);
   const notConnected = sweeps.notConnected;
 
-  // The strictest mode any team in view asks for decides for the dialog: a
-  // team that confirms per PR is not confirmed in bulk because another team
-  // does not.
-  const mode = useMemo(() => {
-    // A team that did not answer states no policy: it must not decide how
-    // the teams that did answer are confirmed.
-    const answered = preview.filter(run => run.result);
-    if (answered.length === 0) {
-      return confirmMode ?? 'per-pr';
-    }
-    return answered.some(run => confirmModeOf(run.result) === 'per-pr')
-      ? 'per-pr'
-      : 'per-sweep';
-  }, [preview, confirmMode]);
-  const wholeTeam = !pr;
-  const selectable = wholeTeam && mode === 'per-pr';
-
   // What Apply runs on: exactly the PRs the preview listed, per team.
   const applyTargets = useMemo(() => {
     const byTeam: Record<string, string[]> = {};
     for (const run of preview) {
-      const refs = rowsOf(run.result, run.team)
-        .map(row => row.ref)
-        .filter(ref => !selectable || selected.has(ref));
+      const refs = rowsOf(run.result, run.team).map(row => row.ref);
       if (refs.length > 0) {
         byTeam[run.team] = refs;
       }
     }
     return byTeam;
-  }, [preview, selectable, selected]);
+  }, [preview]);
   const applyCount = Object.values(applyTargets).reduce(
     (sum, refs) => sum + refs.length,
     0,
-  );
-  const previewRefs = useMemo(
-    () =>
-      preview.flatMap(run => rowsOf(run.result, run.team).map(row => row.ref)),
-    [preview],
   );
 
   const toggleStep = (step: SweepStep, checked: boolean) => {
@@ -174,16 +141,20 @@ export function SweepDialog({
     }
   };
 
-  let title = `Sweep team ${teams[0]}`;
-  if (pr) {
-    title = `Sweep ${pr}`;
+  const onePr = targetCount === 1 ? Object.values(prsByTeam)[0][0] : undefined;
+  let title = `Sweep ${plural(targetCount, 'PR')} of ${teams[0]}`;
+  if (onePr) {
+    title = `Sweep ${onePr}`;
   } else if (teams.length > 1) {
-    title = `Sweep ${plural(teams.length, 'team')}`;
+    title = `Sweep ${plural(targetCount, 'PR')} across ${plural(
+      teams.length,
+      'team',
+    )}`;
   }
   let confirmLabel = 'Apply sweep';
   if (applied) {
     confirmLabel = 'Close';
-  } else if (pr) {
+  } else if (onePr) {
     confirmLabel = 'Apply to this PR';
   }
 
@@ -240,9 +211,9 @@ export function SweepDialog({
       ) : null}
       {sweeps.isPending && sweeps.isDryRun ? (
         <Text variant="body-small" color="secondary">
-          {wholeTeam
-            ? `Classifying every PR of ${plural(teams.length, 'team')} and deciding what the sweep would do to each. One check read per PR; a whole team takes a few seconds.`
-            : 'Classifying the PR and deciding what the sweep would do to it.'}
+          {onePr
+            ? 'Classifying the PR and deciding what the sweep would do to it.'
+            : `Classifying the ${plural(targetCount, 'PR')} you picked and deciding what the sweep would do to each. One check read per PR.`}
         </Text>
       ) : null}
       {failed.length > 0 && !notConnected ? (
@@ -264,34 +235,12 @@ export function SweepDialog({
         />
       ) : null}
       {!applied && !sweeps.isPending && preview.length > 0 ? (
-        <>
-          <Text variant="body-small" color="secondary">
-            {wholeTeam
-              ? `What the sweep would do to each PR of ${teams.join(', ')} right now. `
-              : 'What the sweep would do to this PR right now. '}
-            {selectable
-              ? `The team's policy confirms per PR: tick the PRs the engine may act on. Apply runs on the ${applyCount} ticked.`
-              : `Apply runs exactly this, on the ${plural(applyCount, 'PR')} listed.`}
-          </Text>
-          {selectable ? (
-            <Flex gap="2">
-              <Button
-                variant="tertiary"
-                size="small"
-                onPress={() => setSelected(new Set(previewRefs))}
-              >
-                Select all
-              </Button>
-              <Button
-                variant="tertiary"
-                size="small"
-                onPress={() => setSelected(new Set())}
-              >
-                Select none
-              </Button>
-            </Flex>
-          ) : null}
-        </>
+        <Text variant="body-small" color="secondary">
+          {onePr
+            ? 'What the sweep would do to this PR right now. '
+            : 'What the sweep would do to each PR you picked, right now. '}
+          {`Apply runs exactly this, on the ${plural(applyCount, 'PR')} listed. To sweep another set, close this and change the ticks in the table.`}
+        </Text>
       ) : null}
       {(applied ? outcome : preview)
         .filter(run => run.result)
@@ -302,13 +251,7 @@ export function SweepDialog({
                 {run.team}
               </Text>
             ) : null}
-            <OutcomeList
-              result={run.result!}
-              selected={!applied && selectable ? selected : undefined}
-              onSelectedChange={
-                !applied && selectable ? setSelected : undefined
-              }
-            />
+            <OutcomeList result={run.result!} />
             {!applied && run.result?.rules ? (
               <Text variant="body-small" color="secondary">
                 Rule catalogue {run.result.rules.source}

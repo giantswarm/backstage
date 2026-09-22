@@ -7,6 +7,7 @@ import {
   filtersFromParams,
   formatAge,
   greenByTeam,
+  refsByTeam,
   groupRank,
   hasFilters,
   withFilter,
@@ -205,5 +206,12 @@ describe('countStats, greenByTeam and classificationOptions', () => {
       bumblebee: ['giantswarm/backstage#1'],
     });
     expect(greenByTeam(rows)).toEqual({});
+  });
+
+  it('groups every ref per team, whatever its class: a sweep is one call a team', () => {
+    expect(refsByTeam(rows)).toEqual({
+      bumblebee: rows.map(row => row.ref),
+    });
+    expect(refsByTeam([])).toEqual({});
   });
 });
