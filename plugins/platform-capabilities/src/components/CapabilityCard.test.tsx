@@ -758,8 +758,8 @@ describe('CapabilityCard', () => {
       },
     };
     // The manager names the choices not on record: two that share a label
-    // are told apart by their group, one the schema does not know keeps
-    // the manager's field.
+    // are told apart by their group, one the schema does not know is named
+    // by its key.
     const api = new FakeApi({
       verified: {
         ...VERIFIED,
@@ -786,7 +786,7 @@ describe('CapabilityCard', () => {
     );
     expect(screen.queryByTestId('choice-gpu.nodes')).toBeNull();
     expect(screen.getByTestId('choices-unset')).toHaveTextContent(
-      '4 choices not on record: Nodes, Gpu domain, Grafana domain, tunnel.mode',
+      '4 choices not on record: Nodes, Gpu domain, Grafana domain, Mode',
     );
     expect(card().textContent).not.toMatch(/not chosen/);
   });
