@@ -364,6 +364,8 @@ export interface VerifyInputs {
   source: string;
   values?: Record<string, unknown>;
   readBack?: Record<string, unknown>;
+  /** Every choice of the person no layer holds a value for, by field: the choices not on record. */
+  unset?: string[];
   /** The required choices no layer holds, by field; a commit refuses them. */
   missing?: string[];
 }

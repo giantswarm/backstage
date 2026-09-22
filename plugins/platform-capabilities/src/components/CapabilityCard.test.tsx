@@ -733,7 +733,7 @@ describe('CapabilityCard', () => {
     });
   });
 
-  it('collapses the choices without a value into one line', async () => {
+  it('names the choices without a value on one line, as the manager names them', async () => {
     const schema = AGENT_PLATFORM_DEFINITION.inputSchema!;
     const definition = {
       ...AGENT_PLATFORM_DEFINITION,
@@ -745,13 +745,30 @@ describe('CapabilityCard', () => {
             type: 'object',
             properties: {
               nodes: { type: 'number', 'x-source': 'person' },
-              pool: { type: 'string', 'x-source': 'person' },
+              domain: { type: 'string', 'x-source': 'person' },
+            },
+          },
+          grafana: {
+            type: 'object',
+            properties: {
+              domain: { type: 'string', 'x-source': 'person' },
             },
           },
         },
       },
     };
-    const api = new FakeApi();
+    // The manager names the choices not on record: two that share a label
+    // are told apart by their group, one the schema does not know keeps
+    // the manager's field.
+    const api = new FakeApi({
+      verified: {
+        ...VERIFIED,
+        inputs: {
+          ...VERIFIED.inputs!,
+          unset: ['gpu.nodes', 'gpu.domain', 'grafana.domain', 'tunnel.mode'],
+        },
+      },
+    });
     await renderInTestApp(
       <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
         <PlatformCapabilitiesProviders>
@@ -769,8 +786,28 @@ describe('CapabilityCard', () => {
     );
     expect(screen.queryByTestId('choice-gpu.nodes')).toBeNull();
     expect(screen.getByTestId('choices-unset')).toHaveTextContent(
-      '2 choices not on record',
+      '4 choices not on record: Nodes, Gpu domain, Grafana domain, tunnel.mode',
     );
     expect(card().textContent).not.toMatch(/not chosen/);
+  });
+
+  it('shows the chosen values alone while the manager names no choice as not on record', async () => {
+    const api = new FakeApi();
+    await renderInTestApp(
+      <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
+        <PlatformCapabilitiesProviders>
+          <CapabilityCard
+            installation={ENABLED}
+            capability={ENABLED.capabilities[0]}
+            definition={AGENT_PLATFORM_DEFINITION}
+          />
+        </PlatformCapabilitiesProviders>
+      </TestApiProvider>,
+    );
+    await waitFor(() => expect(screen.queryByTestId('comparing')).toBeNull());
+    expect(screen.getByTestId('choice-modelServing.enabled')).toHaveTextContent(
+      'Model serving: off',
+    );
+    expect(screen.queryByTestId('choices-unset')).toBeNull();
   });
 });
