@@ -19,8 +19,11 @@ import {
   platformCapabilitiesApiRef,
   VerifyResult,
 } from '../apis';
+import { reasonOf, refusalStatus } from '../lib/refusal';
 import {
   Field,
+  fieldsNamed,
+  fieldsOf,
   formOf,
   initialValues,
   missingRequired,
@@ -36,6 +39,9 @@ import { labelsOf, SchemaForm } from './SchemaForm';
 
 /** The manager's answer to a write it does not accept, shown as its own. */
 export const REFUSED_TITLE = 'giantswarm-platform-manager refused';
+
+/** What a field the manager's refusal names says under itself. */
+export const REFUSED_MESSAGE = "The manager's refusal names this choice.";
 
 const FORM_STYLE = {
   display: 'flex',
@@ -65,11 +71,14 @@ export interface CapabilityDialogProps {
  * comparison computed with them: the features with their marks and the
  * plan's files, pull requests, generated secrets, Dex clients and customer
  * actions. The required choices without a value are marked on their fields
- * and named next to the button, each name leading to its field. Open pull
- * requests: the commit as the signed-in person and the Action it started.
- * The commit is disabled without the person's session at the manager and
- * absent where the manager says it would refuse one, in which case the
- * refusal is all the review shows.
+ * and named next to the button, each name leading to its field. Where the
+ * manager refuses -- the definition's refusal of the inputs, or why it would
+ * refuse the commit -- the review shows the reason as an Alert, `info` for
+ * an input the dialog supplies and `warning` for something fixed first, over
+ * the form kept editable: the fields the reason names are marked and led to
+ * from the Alert, and Review runs the comparison again. Open pull requests:
+ * the commit as the signed-in person and the Action it started. The commit
+ * is disabled without the person's session at the manager.
  */
 export function CapabilityDialog({
   kind,
@@ -85,7 +94,9 @@ export function CapabilityDialog({
   const connection = useConnection();
   const formRef = useRef<HTMLFormElement>(null);
   const schema = definition?.inputSchema;
-  const form = useMemo(() => personForm(formOf(schema ?? {})), [schema]);
+  const whole = useMemo(() => formOf(schema ?? {}), [schema]);
+  const fields = useMemo(() => fieldsOf(whole), [whole]);
+  const form = useMemo(() => personForm(whole), [whole]);
   const labels = useMemo(() => labelsOf(form), [form]);
   const [values, setValues] = useState<Values>(() =>
     initialValues(form, comparison?.inputs?.values),
@@ -125,9 +136,25 @@ export function CapabilityDialog({
   const busy = review.isPending || commit.isPending;
   const failure = (commit.error ?? review.error) as Error | null;
   const missing = missingRequired(form, values);
-  const refused = reviewed?.commitRefused ?? reviewed?.refused;
+  // The definition's reason over the commit's copy of it.
+  const reason = reasonOf(reviewed);
+  const refusal =
+    reviewed && reason ? refusalStatus(reviewed, fields) : undefined;
+  // The form's fields the reason names: marked on the form, led to from the Alert.
+  const named = useMemo(
+    () => (reason ? fieldsNamed(reason, fieldsOf(form)) : []),
+    [reason, form],
+  );
+  const errors = useMemo(
+    () => new Map(named.map(field => [field.name, REFUSED_MESSAGE])),
+    [named],
+  );
+  // The form stays while the manager refuses: what the reason names is
+  // changed there and reviewed again.
+  const editing = !done && (!reviewed || Boolean(reason));
+  const accepted = reviewed && !reason && !done ? reviewed : undefined;
   const nothingToOpen =
-    reviewed && !refused && (reviewed.pullRequests ?? []).length === 0;
+    accepted !== undefined && (accepted.pullRequests ?? []).length === 0;
   const connected = connection.data?.connected === true;
   const title = `${kind === 'enable' ? 'Enable' : 'Apply changes to'} ${capability.name} on ${installation.name}`;
 
@@ -136,9 +163,9 @@ export function CapabilityDialog({
     if (busy) {
       return;
     }
-    if (!reviewed) {
+    if (editing) {
       review.mutate();
-    } else if (connected && !refused && !nothingToOpen) {
+    } else if (accepted && connected && !nothingToOpen) {
       commit.mutate();
     }
   };
@@ -179,27 +206,42 @@ export function CapabilityDialog({
             <Text variant="body-small" color="secondary">
               Nothing is written before Open pull requests.
             </Text>
-            {!reviewed && !done && (
-              <SchemaForm form={form} values={values} onChange={setValues} />
+            {reason && refusal && !done && (
+              <Alert
+                status={refusal}
+                icon
+                title="The manager would refuse this"
+                description={reason}
+                customActions={
+                  named.length > 0
+                    ? named.map(field => (
+                        <Button
+                          key={field.name}
+                          variant="tertiary"
+                          size="small"
+                          onPress={() => goTo(field)}
+                        >
+                          {labels.get(field.name)}
+                        </Button>
+                      ))
+                    : undefined
+                }
+                data-testid="refused"
+              />
             )}
-            {reviewed && !done && (
+            {editing && (
+              <SchemaForm
+                form={form}
+                values={values}
+                onChange={setValues}
+                errors={errors}
+              />
+            )}
+            {accepted && (
               <>
-                {refused && (
-                  <div data-testid="refused">
-                    <Alert
-                      status="warning"
-                      title="The manager would refuse this"
-                      description={refused}
-                    />
-                  </div>
-                )}
-                {!refused && (
-                  <>
-                    <ComparisonView result={reviewed} />
-                    <PlanView plan={reviewed} />
-                  </>
-                )}
-                {!connected && !refused && (
+                <ComparisonView result={accepted} />
+                <PlanView plan={accepted} />
+                {!connected && (
                   <Alert
                     status="warning"
                     title="Needs your session"
@@ -224,7 +266,7 @@ export function CapabilityDialog({
         </DialogBody>
         <DialogFooter>
           <Flex gap="4" justify="between" align="center">
-            {!reviewed && !done && missing.length > 0 ? (
+            {editing && missing.length > 0 ? (
               <Flex
                 gap="1"
                 align="center"
@@ -252,17 +294,17 @@ export function CapabilityDialog({
               <Button variant="secondary" onPress={onClose} isDisabled={busy}>
                 {done ? 'Close' : 'Cancel'}
               </Button>
-              {!done && !reviewed && (
+              {editing && (
                 <Button type="submit" variant="primary" isDisabled={busy}>
                   {review.isPending ? 'Comparing…' : 'Review'}
                 </Button>
               )}
-              {!done && reviewed && (
+              {accepted && (
                 <Button variant="secondary" onPress={back} isDisabled={busy}>
                   Back
                 </Button>
               )}
-              {!done && reviewed && !refused && !nothingToOpen && (
+              {accepted && !nothingToOpen && (
                 <Button
                   type="submit"
                   variant="primary"

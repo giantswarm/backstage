@@ -7,6 +7,7 @@ import {
 import {
   choiceLabel,
   choiceValue,
+  fieldsNamed,
   fieldsOf,
   formOf,
   initialValues,
@@ -162,6 +163,29 @@ describe('schemaForm', () => {
     // is called by is qualified with its group too.
     expect(labelOf('federation.tokenBroker', choices)).toBe('Token broker');
     expect(labelOf('flux.domain', choices)).toBe('Flux domain');
+  });
+
+  it('finds the fields a sentence names, by their whole key', () => {
+    const fields = fieldsOf(formOf(CUSTOMER_PORTAL_DEFINITION.inputSchema!));
+    const names = (text: string) => fieldsNamed(text, fields).map(f => f.name);
+    expect(
+      names(
+        "the portal's hostname (portal.domain) is not on record; supply it under Apply changes",
+      ),
+    ).toEqual(['portal.domain']);
+    expect(names('choose portal.domain and chart.line.')).toEqual([
+      'portal.domain',
+      'chart.line',
+    ]);
+    expect(names('plugins.github.appId is supplied at commit')).toEqual([
+      'plugins.github.appId',
+    ]);
+    // A longer key, or a leaf under it, is another key.
+    expect(names('portal.domainAlias and plugins.github.appId.tls')).toEqual(
+      [],
+    );
+    expect(names('domain and github.appId, unqualified')).toEqual([]);
+    expect(names('nothing named')).toEqual([]);
   });
 
   it('sets and clears leaves, pruning empty groups', () => {

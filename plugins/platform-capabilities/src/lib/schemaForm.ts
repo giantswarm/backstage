@@ -272,3 +272,20 @@ export function missingRequired(form: Group, values: Values): Field[] {
     f => f.required && getAt(values, f.path) === undefined,
   );
 }
+
+/** `text` as a regular expression matching it literally. */
+function literal(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The fields whose key the text names, as the manager's sentences name them
+ * -- "the portal's hostname (portal.domain) is not on record" -- the key as
+ * a whole: `portal.domain` names neither `portal.domainAlias` nor
+ * `portal.domain.tls`, and a full stop after it does not matter.
+ */
+export function fieldsNamed(text: string, fields: Field[]): Field[] {
+  return fields.filter(f =>
+    new RegExp(`(?:^|[^\\w.])${literal(f.name)}(?!\\w|\\.\\w)`).test(text),
+  );
+}

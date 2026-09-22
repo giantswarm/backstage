@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import {
   CapabilityState,
   Definition,
@@ -7,9 +7,12 @@ import {
   VerifyResult,
 } from '../apis';
 import { count, upToDate } from '../lib/comparison';
+import { reasonOf, refusalStatus } from '../lib/refusal';
 import {
   choiceLabel,
   choiceValue,
+  fieldsOf,
+  formOf,
   getAt,
   labelOf,
   personChoices,
@@ -103,15 +106,19 @@ function CommitRefused({ reason }: { reason: string }) {
 
 /**
  * One capability of an installation as one block: the header line with the
- * state and what the comparison found, why the comparison did not run where
- * the definition refused, the person's choices, the features with
- * differences (opening to them), the features with planned changes, the
- * features as defined, the checks that did not run, and one button --
- * Enable, or Apply changes -- opening the dialog. The button is disabled,
- * with the manager's reason on one line under it, while the comparison says
- * the manager would refuse the commit -- except where the only refusal is
- * the choices not on record: the dialog is where they are made, so the
- * button stays and the line says which. The comparison runs when the tab opens.
+ * state and what the comparison found; where the definition refused, the
+ * manager's reason as an Alert -- `info` for an input the dialog supplies,
+ * `warning` for something to fix first -- with *Comparing…* and a failed
+ * request in the same place, above the record; the person's choices; the
+ * features with differences (opening to them), the features with planned
+ * changes, the features as defined, the checks that did not run; and one
+ * button -- Enable, or Apply changes -- opening the dialog. The button is
+ * disabled while the comparison says the manager would refuse the commit for
+ * something to fix first, the reason on one line under it where the
+ * definition itself did not refuse; a refusal for an input the dialog
+ * supplies -- the choices not on record, a value the reason names -- keeps
+ * the button, the dialog being where it is given. The comparison runs when
+ * the tab opens.
  */
 export function CapabilityCard({
   installation,
@@ -125,18 +132,20 @@ export function CapabilityCard({
   const [dialog, setDialog] = useState(false);
   const comparison = useComparison(installation.name, capability.name);
   const result = comparison.data;
+  const schema = definition?.inputSchema;
+  const fields = useMemo(() => fieldsOf(formOf(schema ?? {})), [schema]);
   const installed = isInstalled(capability);
   const inFlight =
     capability.state === 'pending approval' ||
     capability.state === 'rolling out';
+  const refused = result?.refused;
   const commitRefused = result?.commitRefused;
-  // The manager refuses a commit without the required choices; the dialog
-  // collects them, so that refusal alone never disables the way to it.
-  const onlyMissingChoices =
-    Boolean(result) &&
-    !result?.refused &&
-    (result?.inputs?.missing?.length ?? 0) > 0;
-  const refusedForNow = Boolean(commitRefused) && !onlyMissingChoices;
+  // The manager copies the definition's refusal into commitRefused: one
+  // reason, read once -- the Alert where the definition refused, the line
+  // under the button where the commit alone would be.
+  const refusal =
+    result && reasonOf(result) ? refusalStatus(result, fields) : undefined;
+  const refusedForNow = refusal === 'warning';
   const status = statusOf(capability, result);
   const button = buttonOf(installed, result);
 
@@ -171,13 +180,14 @@ export function CapabilityCard({
           </Button>
         )}
       </Flex>
-      {commitRefused && <CommitRefused reason={commitRefused} />}
-      {result?.refused && (
-        <Text variant="body-small" data-testid="not-compared">
-          The comparison did not run: {result.refused}
-        </Text>
+      {refused && refusal && (
+        <Alert
+          status={refusal}
+          icon
+          description={refused}
+          data-testid="refused"
+        />
       )}
-      <Choices definition={definition} comparison={result} />
       {comparison.isPending && (
         <Text variant="body-small" color="secondary" data-testid="comparing">
           Comparing with the definition…
@@ -189,9 +199,9 @@ export function CapabilityCard({
           error={comparison.error as Error}
         />
       )}
-      {result && installed && !result.refused && (
-        <ComparisonView result={result} />
-      )}
+      {commitRefused && !refused && <CommitRefused reason={commitRefused} />}
+      <Choices definition={definition} comparison={result} />
+      {result && installed && !refused && <ComparisonView result={result} />}
       {dialog && (
         <CapabilityDialog
           kind={installed ? 'reconcile' : 'enable'}
