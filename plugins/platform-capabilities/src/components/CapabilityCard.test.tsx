@@ -12,14 +12,13 @@ import {
   AGENT_PLATFORM_DEFINITION,
   COMMIT_REFUSED,
   ENABLED,
-  ENABLED_NOT_OPTED_IN,
   FakeApi,
   FakeOptions,
   HUB_PORTAL_FILE,
   installation,
   MIXED,
   NOT_COMPARED,
-  NOT_OPTED_IN,
+  NOT_ENABLED,
   PLANNED,
   PLANNED_ON_HUB,
   REWRITTEN,
@@ -39,8 +38,7 @@ jest.mock('./connectBounce', () => ({
 }));
 
 /** The words the page never shows on the tab. */
-const MANAGER_WORDS =
-  /opt-in|opted in|reconcile|verify|dry run|inputs on record/i;
+const MANAGER_WORDS = /reconcile|verify|dry run|inputs on record/i;
 
 /** rowan with the capability in one state. */
 function withCapability(
@@ -333,38 +331,11 @@ describe('CapabilityCard', () => {
     ).toBeDisabled();
   });
 
-  it('offers Enable where nothing is on record, opted in or not: the opt-in protects what is on record', async () => {
-    await render(NOT_OPTED_IN);
+  it('offers Enable where nothing is on record, with no line under it', async () => {
+    await render(NOT_ENABLED);
     expect(header()).toHaveTextContent('Not installed');
     expect(screen.getByRole('button', { name: 'Enable' })).toBeEnabled();
-    expect(screen.queryByTestId('needs-owners')).toBeNull();
     expect(screen.queryByTestId('commit-refused')).toBeNull();
-    expect(screen.queryByTestId('opt-in-note')).toBeNull();
-    expect(card().textContent).not.toMatch(MANAGER_WORDS);
-  });
-
-  it('names the file the owners add, once, with the button disabled, where they installed the capability without the opt-in', async () => {
-    await render(ENABLED_NOT_OPTED_IN, {
-      verified: {
-        ...VERIFIED,
-        commitRefused:
-          'agent-platform is on record on maple and maple is not opted in',
-      },
-    });
-    expect(header()).toHaveTextContent('Installed · 2 checks differ');
-    expect(
-      screen.getByRole('button', { name: 'Apply changes' }),
-    ).toBeDisabled();
-    const note = screen.getByTestId('needs-owners');
-    expect(note).toHaveTextContent(
-      'Needs example/example-management-clusters: management-clusters/maple/platform-manager.yaml with optIn: true from the owners.',
-    );
-    expect(within(note).getByRole('link')).toHaveAttribute(
-      'href',
-      ENABLED_NOT_OPTED_IN.optIn.howToOptIn,
-    );
-    expect(screen.queryByTestId('commit-refused')).toBeNull();
-    expect(screen.getByTestId('comparison')).toBeInTheDocument();
     expect(card().textContent).not.toMatch(MANAGER_WORDS);
   });
 
@@ -380,7 +351,6 @@ describe('CapabilityCard', () => {
       expect(screen.getByTestId('commit-refused')).toHaveTextContent(
         COMMIT_REFUSED.commitRefused!,
       );
-      expect(screen.queryByTestId('needs-owners')).toBeNull();
       await userEvent.click(button);
       expect(screen.queryByRole('form')).toBeNull();
       expect(card().textContent).not.toMatch(MANAGER_WORDS);
@@ -488,14 +458,19 @@ describe('CapabilityCard', () => {
   it('shows why the manager would refuse, without a commit button', async () => {
     await renderDialog(
       new FakeApi({
-        verified: { ...VERIFIED, commitRefused: 'rowan is not opted in' },
+        verified: {
+          ...VERIFIED,
+          commitRefused: 'dex-app 2.2.3 on record: pin 3.2.2 first',
+        },
       }),
     );
     await userEvent.click(screen.getByRole('button', { name: 'Review' }));
     await waitFor(() =>
       expect(screen.getByText('The manager would refuse this')).toBeVisible(),
     );
-    expect(screen.getByText('rowan is not opted in')).toBeVisible();
+    expect(
+      screen.getByText('dex-app 2.2.3 on record: pin 3.2.2 first'),
+    ).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Open pull requests' }),
     ).toBeNull();

@@ -12,10 +12,10 @@ import { expect, open, test } from './fixtures';
  * it.
  *
  * What the tools answer is the lab's business: which installations the
- * registry lists, which are opted in, what the definition asks. The specs pin
+ * registry lists, what the definition asks. The specs pin
  * the page's behaviour on whatever the manager serves: a column per
  * capability, the tab's state and dry run, the form from the schema, Commit
- * disabled without a grant, the not-opted-in state.
+ * disabled without a grant, Enable where nothing is on record.
  */
 const CAPABILITY = process.env.AGENTLAB_CAPABILITY ?? 'agent-platform';
 
@@ -49,8 +49,8 @@ interface Review {
 /**
  * Opens Enable or Apply changes (whichever the block offers) and reviews the
  * comparison: the plan where the manager renders one, the refusal alone
- * where it would refuse (a record the definition's schema rejects, an
- * installation not opted in). Both are valid reviews.
+ * where it would refuse (a record the definition's schema rejects). Both are
+ * valid reviews.
  */
 async function review(page: Page): Promise<Review> {
   const card = page.getByTestId(`capability-${CAPABILITY}`);
@@ -92,7 +92,7 @@ test.describe('installations: platform capabilities', () => {
       // the tab's words for it; a dash for an installation the registry
       // does not know.
       expect(state ?? text).toMatch(
-        /^(not opted in|not enabled|pending approval|rolling out|waiting for the customer|enabled|drifted|failed|unknown|—)$/,
+        /^(not enabled|pending approval|rolling out|waiting for the customer|enabled|drifted|failed|unknown|—)$/,
       );
       if (state) {
         expect(text).toBe('');
@@ -185,7 +185,7 @@ test.describe('installations: platform capabilities', () => {
     }
   });
 
-  test('an installation with nothing on record offers Enable, opted in or not', async ({
+  test('an installation with nothing on record offers Enable', async ({
     admin,
   }) => {
     await open(admin, '/installations');
@@ -206,39 +206,9 @@ test.describe('installations: platform capabilities', () => {
     const row = rows(admin).filter({ has: notEnabled }).first();
     await openCapabilities(admin, row);
     const card = admin.getByTestId(`capability-${CAPABILITY}`);
-    // The opt-in protects what is on record: with nothing on record the owners'
-    // line is not shown and Enable is the person's to click.
-    await expect(card.getByTestId('needs-owners')).toHaveCount(0);
+    // Nothing on record: Enable is the person's to click.
     await expect(card.getByRole('button', { name: 'Enable' })).toBeEnabled({
       timeout: 120_000,
     });
-  });
-
-  test('a capability the owners installed without the opt-in names the file they add, and the button is disabled', async ({
-    admin,
-  }) => {
-    await open(admin, '/installations');
-    const byOwners = admin
-      .locator(
-        `[data-testid^="capability-${CAPABILITY}-"][data-state="enabled, not opted in"]`,
-      )
-      .first();
-    await expect(rows(admin).first()).toBeVisible({ timeout: 120_000 });
-    await expect(
-      admin.locator(`[data-testid^="capability-${CAPABILITY}-"]`).first(),
-    ).toBeVisible({ timeout: 120_000 });
-    test.skip(
-      (await byOwners.count()) === 0,
-      'no installation of the lab registry carries the capability without the opt-in; the owners line needs one that does',
-    );
-    const row = rows(admin).filter({ has: byOwners }).first();
-    await openCapabilities(admin, row);
-    const card = admin.getByTestId(`capability-${CAPABILITY}`);
-    const note = card.getByTestId('needs-owners');
-    await expect(note).toContainText('platform-manager.yaml');
-    await expect(note).toContainText('optIn: true from the owners');
-    await expect(
-      card.getByRole('button', { name: 'Apply changes' }),
-    ).toBeDisabled();
   });
 });

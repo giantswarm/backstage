@@ -88,20 +88,12 @@ export function installation(
     pipeline: 'testing',
     region: 'eu-west-1',
     record: RECORD,
-    optIn: {
-      state: 'opted in',
-      repository: 'example/example-management-clusters',
-      path: 'management-clusters/rowan/platform-manager.yaml',
-      present: true,
-      optIn: true,
-    },
     capabilities: [
       {
         name: 'agent-platform',
         state: 'not enabled',
         inputs: { installation: RECORD },
         enabled: false,
-        optedIn: true,
         lastAction: null,
       },
     ],
@@ -110,21 +102,10 @@ export function installation(
   };
 }
 
-/**
- * Not opted in, nothing on record: the manager may enable it all the same --
- * the opt-in protects what is on record -- so the capability reads not enabled
- * and the declaration is carried apart.
- */
-export const NOT_OPTED_IN: Installation = installation({
+/** A second installation with nothing on record. */
+export const NOT_ENABLED: Installation = installation({
   name: 'alder',
   record: { ...RECORD, name: 'alder', baseDomain: 'alder.example.test' },
-  optIn: {
-    state: 'not opted in',
-    repository: 'example/example-management-clusters',
-    path: 'management-clusters/alder/platform-manager.yaml',
-    present: false,
-    howToOptIn: 'https://github.com/example/example-management-clusters/pull/1',
-  },
   capabilities: [
     {
       name: 'agent-platform',
@@ -133,7 +114,6 @@ export const NOT_OPTED_IN: Installation = installation({
         installation: { ...RECORD, name: 'alder' },
       },
       enabled: false,
-      optedIn: false,
       lastAction: null,
     },
   ],
@@ -149,7 +129,6 @@ function withState(
     record: { ...RECORD, name, baseDomain: `${name}.example.test` },
     capabilities: [
       {
-        optedIn: true,
         ...capability,
         inputs: { installation: { ...RECORD, name } },
       },
@@ -171,32 +150,6 @@ export const ENABLED_BY_HAND: Installation = withState('cedar', {
   state: 'enabled',
   enabled: true,
   lastAction: null,
-});
-
-/**
- * Enabled by its owners, who never opted in: the fileset is on record and the
- * manager may not write to it.
- */
-export const ENABLED_NOT_OPTED_IN: Installation = installation({
-  name: 'maple',
-  record: { ...RECORD, name: 'maple', baseDomain: 'maple.example.test' },
-  optIn: {
-    state: 'not opted in',
-    repository: 'example/example-management-clusters',
-    path: 'management-clusters/maple/platform-manager.yaml',
-    present: false,
-    howToOptIn: 'https://github.com/example/example-management-clusters/pull/2',
-  },
-  capabilities: [
-    {
-      name: 'agent-platform',
-      state: 'enabled, not opted in',
-      inputs: { installation: { ...RECORD, name: 'maple' } },
-      enabled: true,
-      optedIn: false,
-      lastAction: null,
-    },
-  ],
 });
 
 /** The last verify found it off its definition. */

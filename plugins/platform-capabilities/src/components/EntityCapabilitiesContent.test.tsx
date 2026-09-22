@@ -7,10 +7,9 @@ import { platformCapabilitiesApiRef } from '../apis';
 import {
   ACTION,
   ENABLED,
-  ENABLED_NOT_OPTED_IN,
   FakeApi,
   FakeOptions,
-  NOT_OPTED_IN,
+  NOT_ENABLED,
 } from '../fixtures/fakeApi';
 import { EntityCapabilitiesContent } from './EntityCapabilitiesContent';
 import { platformCapabilitiesQueryClient } from './Providers';
@@ -170,28 +169,12 @@ describe('EntityCapabilitiesContent', () => {
     expect(within(dialog()).getByText('Needs your session')).toBeVisible();
   });
 
-  it('an installation not opted in with nothing on record offers Enable: the opt-in protects what is on record', async () => {
-    await render('alder', { installations: [NOT_OPTED_IN] });
+  it('an installation with nothing on record offers Enable', async () => {
+    await render('alder', { installations: [NOT_ENABLED] });
     const card = screen.getByTestId('capability-agent-platform');
     expect(within(card).getByTestId('capability-state')).toHaveTextContent(
       'Not installed',
     );
-    expect(within(card).queryByTestId('needs-owners')).toBeNull();
     expect(within(card).getByRole('button', { name: 'Enable' })).toBeEnabled();
-    expect(within(card).queryByTestId('opt-in-note')).toBeNull();
-  });
-
-  it('an installation enabled by its owners without the opt-in reads Installed with its comparison, names the file, the button disabled', async () => {
-    await render('maple', { installations: [ENABLED_NOT_OPTED_IN] });
-    const card = screen.getByTestId('capability-agent-platform');
-    expect(within(card).getByTestId('capability-state')).toHaveTextContent(
-      'Installed · 2 checks differ',
-    );
-    expect(within(card).getByTestId('needs-owners')).toHaveTextContent(
-      'management-clusters/maple/platform-manager.yaml with optIn: true from the owners.',
-    );
-    expect(
-      within(card).getByRole('button', { name: 'Apply changes' }),
-    ).toBeDisabled();
   });
 });

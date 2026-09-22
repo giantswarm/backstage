@@ -3,14 +3,8 @@
  * them. Nothing here is computed by the page; the names are the tools' own.
  */
 
-/**
- * The state of a capability on an installation, in the manager's words.
- * `not opted in` is an older manager's word for nothing on record without
- * the opt-in; the manager now says `not enabled` and carries the opt-in apart.
- */
+/** The state of a capability on an installation, in the manager's words. */
 export type CapabilityStateName =
-  | 'not opted in'
-  | 'enabled, not opted in'
   | 'not enabled'
   | 'pending approval'
   | 'rolling out'
@@ -19,19 +13,6 @@ export type CapabilityStateName =
   | 'drifted'
   | 'failed'
   | 'unknown';
-
-/** The installation's opt-in file in its management-clusters repository. */
-export interface OptIn {
-  state: 'opted in' | 'not opted in' | 'unreadable';
-  repository?: string;
-  /** `management-clusters/<name>/platform-manager.yaml` */
-  path?: string;
-  present?: boolean;
-  optIn?: boolean | null;
-  /** How the owners opt in: the pull request that adds the file. */
-  howToOptIn?: string;
-  error?: string;
-}
 
 /** The installation's record: the definitions' `installation.*` inputs. */
 export interface InstallationRecord {
@@ -56,8 +37,6 @@ export interface CapabilityState {
   enabledMarker?: string;
   /** The capability's fileset is on record, whoever put it there. */
   enabled?: boolean;
-  /** The owners have declared the opt-in: the manager may write here. */
-  optedIn?: boolean;
   lastAction?: ActionRef | null;
 }
 
@@ -74,7 +53,6 @@ export interface Installation {
   repositories?: { configs?: string; managementClusters?: string };
   sources?: string[];
   record?: InstallationRecord;
-  optIn: OptIn;
   capabilities: CapabilityState[];
   readable: boolean;
   errors?: string[];
@@ -186,11 +164,10 @@ export interface Probe {
 export interface PlanInstallation {
   name: string;
   state?: CapabilityStateName;
-  optIn?: OptIn;
   inputs?: Record<string, unknown>;
   /** The definition's refusal of the inputs: an answer, not a fault. */
   refused?: string;
-  /** Why a commit of this installation would be refused (not opted in). */
+  /** Why a commit of this installation would be refused, in the manager's words. */
   commitRefused?: string;
   files?: PlanFile[];
   includes?: unknown[];
@@ -217,7 +194,6 @@ export interface PlanPullRequest {
 export interface SkippedInstallation {
   name: string;
   reason: string;
-  optIn?: OptIn;
   errors?: string[];
 }
 

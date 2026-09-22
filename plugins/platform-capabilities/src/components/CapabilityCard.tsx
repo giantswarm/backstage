@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Flex, Link, Text } from '@backstage/ui';
+import { Button, Flex, Text } from '@backstage/ui';
 import {
   CapabilityState,
   Definition,
@@ -37,12 +37,9 @@ function buttonOf(
   return result && upToDate(result) ? undefined : 'Apply changes';
 }
 
-/** Whether the capability is on the installation, as the manager says; older managers say it through the state (`not opted in` was their word for nothing on record without the opt-in). */
+/** Whether the capability is on the installation, as the manager says; older managers say it through the state. */
 function isInstalled(capability: CapabilityState): boolean {
-  return (
-    capability.enabled ??
-    !['not enabled', 'not opted in'].includes(capability.state)
-  );
+  return capability.enabled ?? capability.state !== 'not enabled';
 }
 
 /**
@@ -95,30 +92,6 @@ function Choices({
   );
 }
 
-/**
- * The one line that names the file the owners add before the manager may
- * change a capability they installed themselves. The opt-in protects what is
- * on record; a fresh enable needs none.
- */
-function NeedsOwners({ installation }: { installation: Installation }) {
-  const { repository, path, howToOptIn } = installation.optIn;
-  const where = [repository, path].filter(Boolean).join(': ');
-  const link = howToOptIn && /^https?:\/\//.test(howToOptIn);
-  return (
-    <Text variant="body-small" color="secondary" data-testid="needs-owners">
-      Needs{' '}
-      {link ? (
-        <Link href={howToOptIn} target="_blank" rel="noopener">
-          {where}
-        </Link>
-      ) : (
-        where
-      )}{' '}
-      with optIn: true from the owners.
-    </Text>
-  );
-}
-
 /** The one line with the manager's reason a commit would be refused, in its words. */
 function CommitRefused({ reason }: { reason: string }) {
   return (
@@ -135,10 +108,8 @@ function CommitRefused({ reason }: { reason: string }) {
  * differences (opening to them), the features with planned changes, the
  * features as defined, the checks that did not run, and one button --
  * Enable, or Apply changes -- opening the dialog. The button is disabled,
- * with the reason on one line under it, while the capability is on record
- * and the owners have not opted in (the opt-in protects what they installed;
- * Enable on a fresh installation needs none) or the comparison says the
- * manager would refuse the commit. The comparison runs when the tab opens.
+ * with the manager's reason on one line under it, while the comparison says
+ * the manager would refuse the commit. The comparison runs when the tab opens.
  */
 export function CapabilityCard({
   installation,
@@ -156,7 +127,6 @@ export function CapabilityCard({
   const inFlight =
     capability.state === 'pending approval' ||
     capability.state === 'rolling out';
-  const needsOwners = installed && installation.optIn.state === 'not opted in';
   const commitRefused = result?.commitRefused;
   const status = statusOf(capability, result);
   const button = buttonOf(installed, result);
@@ -186,7 +156,6 @@ export function CapabilityCard({
             onPress={() => setDialog(true)}
             isDisabled={
               inFlight ||
-              needsOwners ||
               Boolean(commitRefused) ||
               (installed && comparison.isPending)
             }
@@ -195,11 +164,7 @@ export function CapabilityCard({
           </Button>
         )}
       </Flex>
-      {needsOwners ? (
-        <NeedsOwners installation={installation} />
-      ) : (
-        commitRefused && <CommitRefused reason={commitRefused} />
-      )}
+      {commitRefused && <CommitRefused reason={commitRefused} />}
       {result?.refused && (
         <Text variant="body-small" data-testid="not-compared">
           The comparison did not run: {result.refused}
