@@ -115,6 +115,7 @@ export {
   AgentgatewayGenAiClientTokenUsage,
   AgentgatewayGenAiClientCostUsdTotal,
   AgentgatewayGenAiServerRequestDuration,
+  AgentgatewayGenAiServerTimePerOutputToken,
   AgentgatewayRequestsTotal,
   AgentgatewayCostCatalogLookupsTotal,
 } from './apis/mimir/metrics';

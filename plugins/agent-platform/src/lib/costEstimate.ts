@@ -1,8 +1,8 @@
 /**
  * Turning observed spend into a per-token rate, and a rate into an estimate.
  *
- * The gateway prices whole model calls, and its metrics carry no session and
- * no user label — so a session's cost cannot be read, only estimated: take the
+ * The gateway prices whole model calls, and its metrics carry no session
+ * label — so a session's cost cannot be read, only estimated: take the
  * $/token the installation actually achieved over a window, and apply it to
  * the token counts kagent recorded for that session.
  *

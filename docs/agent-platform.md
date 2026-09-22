@@ -2814,15 +2814,18 @@ one thing to hold on to is which of them can answer what:
 | tokens, cost, models, latency, errors | exact, all users                    | tokens only, caller only |
 | per agent                             | exact                               | yes                      |
 | per model                             | exact — the model that _answered_   | no (see below)           |
-| **per user**                          | **impossible** — no `user` label    | implicitly, one user     |
+| **per user**                          | possible — `user` label, unread yet | implicitly, one user     |
 | **per session**                       | **impossible** — no `session` label | yes                      |
 | sessions, turns, tool calls           | not a concept                       | yes                      |
 
 The metrics carry `gateway`, `listener`, `agent_namespace`, `agent`,
-`gen_ai_request_model`, `gen_ai_response_model`, `gen_ai_token_type` and
-`status`. There is no user and no session dimension, and adding one is a
-platform-side change (kagent would have to propagate the caller's identity to
-the gateway on the model call) — not something the portal can work around.
+`gen_ai_request_model`, `gen_ai_response_model`, `gen_ai_token_type`, `status`
+and `user` — the caller's email address, which the platform propagates to the
+gateway on the model call. There is no session dimension, and adding one is a
+platform-side change, not something the portal can work around. The `user`
+label is recent: an installation whose gateway predates it reports series with
+no `user` at all, so a window that reaches back before the upgrade cannot be
+fully attributed.
 
 `agent` is the **ServiceAccount of the calling pod**, which is why the Cost
 tab's per-agent join matches `agent_namespace`/`agent` against each `Agent`
@@ -2833,6 +2836,52 @@ Deployment ServiceAccount after the agent, so the two agree; checked on
 as `namespace/agent`, unlinked, and its spend stays in the totals; the
 gateway's own `unknown` (no Pod matched the caller IP) reads as
 "Unattributed".
+
+### Tokens per second is the median call, not the mean
+
+The Gateway health strip's speed figure comes from
+`agentgateway_gen_ai_server_time_per_output_token`, which observes **one value
+per streamed call** — that call's own mean seconds per output token. The query
+inverts the median of those values, `1 / histogram_quantile(0.50, …)`.
+
+The obvious query, `_count / _sum`, is the one that does not work. That mean is
+unweighted by reply length, so a reply that emitted three tokens after a long
+wait counts as much as one that emitted three thousand — and a short reply's
+seconds-per-token is enormous, because a fixed cost is divided by almost
+nothing. Measured over 30 days on 2026-09-22: on `graveler` the median call ran
+at 16 ms/token (63 tok/s) while ~1% of calls sat at ≥ 2.5 s/token, which alone
+pulled the mean to 461 ms — the strip read **2 tok/s**. `gazelle`, with ten
+times the traffic, showed 197 tok/s by the mean and 200 by the median, so the
+defect is invisible there: an installation with enough well-behaved calls hides
+it, which is exactly why it reached a browser.
+
+**Read it as a rough rate.** agentgateway observes the histogram into coarse
+buckets — `0.001, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5,
+0.75, 1.0, 2.5` seconds per token — so the median is interpolated inside one of
+them. `gazelle`'s falls in `(0.001, 0.01]`, which is anywhere from 100 to 1000
+tok/s; `graveler`'s in `(0.01, 0.025]`, 40 to 100. That is why
+`formatTokensPerSecond` prints two significant figures: `200/s` rather than the
+`197/s` the arithmetic offers. The bucketing also bounds the figure at both
+ends — every observation in the first bucket gives 2000 tok/s and no more, and
+a median in the overflow bucket comes back as the top finite bound, 2.5 s per
+token, which the formatter renders `<1/s` rather than rounding to a `0/s` that
+would read as a broken page.
+
+Two things it still is not. It is not the speed of an agent: a turn spends most
+of its wall clock in tool calls, and this measures only the model's generation.
+And it does not cover every call — a reply the agent asked for in one piece
+observes nothing here, so the figure describes the streamed subset while call
+duration and the call count describe all of it. An installation where nothing
+streams has an empty histogram, whose quantile is `NaN`, and the strip shows
+`—` rather than a zero (a zero quantile would make the inversion `+Inf`, which
+`sampleValue` rejects the same way).
+
+A token-weighted throughput — output tokens over total call seconds — was the
+alternative: 38 tok/s on `graveler`, 81 on `gazelle`. It counts every token
+once, but its denominator is the whole call, so prefill and the wait for the
+first token are billed as generation time and it reads slower than the model
+generates. The median answers "how fast does a call run", which is the question
+next to two duration quantiles.
 
 ### One cost is measured, the other is estimated — and the labels say which
 
@@ -3171,11 +3220,12 @@ exported from an `alpha` entry point, mirroring
 
 ### What it cannot show
 
-**Per-user anything.** Neither source can do it. kagent's session list is one
-user's by construction, and the gateway metrics carry no user label at all — so
-"which team is spending this" has no answer here, and getting one needs kagent
-to propagate the caller's identity to agentgateway on the model call. A
-platform-side change, not a portal one.
+**Per-user spend, today.** Nothing here breaks spend down by person: kagent's
+session list is one user's by construction, and the gateway views deliberately
+sum across everyone. The gateway metrics _do_ carry a `user` label, so
+"which team is spending this" is answerable from them — it is unbuilt, and it
+is a decision about showing one colleague's spend to another rather than a
+missing measurement.
 
 **Per-session cost, exactly.** The gateway metrics carry no session label
 either, so the session figures are estimates by construction — see [Cost is an
@@ -3191,16 +3241,20 @@ still appear on Your sessions, which is the one place such an agent is visible
 any version: every provider adapter populates only `promptTokenCount` and
 `candidatesTokenCount`, and a repo-wide search for cached-input or
 thinking-token fields finds nothing. (The gateway _does_ split input from cache
-reads and writes, which is why the token-type chart exists — but only for calls
-that went through it.) `totalTokens` is carried on the kagent wire anyway,
+reads and writes, which is why the token-type chart exists, and its
+per-output-token histogram is where the Overview's Tokens per second comes
+from — but both cover only the calls that went through it, so neither can be
+shown against one session.) `totalTokens` is carried on the kagent wire anyway,
 because a reported total can legitimately exceed its parts when a model bills
 thinking tokens separately — summing the two would under-report such a model
 with no way to notice.
 
-**Time to first token, or time per output token.** The gateway emits both only
-for a streamed response, and a kagent agent turn asks for a whole completion —
-so they are permanently empty here and are deliberately not registered as
-metrics. Call duration is the latency figure that works.
+**Time to first token.** The gateway emits it only for a streamed response,
+and it answers the same question as the per-output-token histogram behind the
+Tokens per second figure, less directly — so it is deliberately not registered
+as a metric. That figure has the same blind spot: a reply the agent asked for
+in one piece observes no per-token time and is missing from it, while call
+duration covers every call.
 
 One thing to know per installation: kagent 0.10 can prune sessions older than a
 configured number of days, **deleting them outright**. If that is ever set below
