@@ -11,8 +11,8 @@ import {
   choiceLabel,
   choiceValue,
   getAt,
+  labelOf,
   personChoices,
-  unsetLabel,
 } from '../lib/schemaForm';
 import { CapabilityDialog } from './CapabilityDialog';
 import { ComparisonView } from './ComparisonView';
@@ -85,7 +85,7 @@ function Choices({
           data-testid="choices-unset"
         >
           {count(unset.length, 'choice')} not on record:{' '}
-          {unset.map(name => unsetLabel(name, choices)).join(', ')}
+          {unset.map(name => labelOf(name, choices)).join(', ')}
         </Text>
       )}
     </>
@@ -198,6 +198,7 @@ export function CapabilityCard({
           installation={installation}
           capability={capability}
           definition={definition}
+          comparison={result}
           isOpen
           onClose={() => setDialog(false)}
         />

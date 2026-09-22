@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -20,9 +20,11 @@ import {
   VerifyResult,
 } from '../apis';
 import {
+  Field,
   formOf,
   initialValues,
   missingRequired,
+  personForm,
   Values,
 } from '../lib/schemaForm';
 import { ActionView } from './ActionView';
@@ -30,7 +32,7 @@ import { ComparisonView } from './ComparisonView';
 import { ErrorAlert } from './ErrorAlert';
 import { PlanView } from './PlanView';
 import { QUERY_ROOT, useConnection } from './queries';
-import { SchemaForm } from './SchemaForm';
+import { labelsOf, SchemaForm } from './SchemaForm';
 
 /** The manager's answer to a write it does not accept, shown as its own. */
 export const REFUSED_TITLE = 'giantswarm-platform-manager refused';
@@ -49,38 +51,44 @@ export interface CapabilityDialogProps {
   capability: CapabilityState;
   /** The capability's definition from `get_info`; its schema is the form. */
   definition?: Definition;
+  /** The card's comparison; its inputs are what the form opens with. */
+  comparison?: VerifyResult;
   isOpen: boolean;
   onClose: () => void;
 }
 
 /**
  * Enable, or Apply changes to, one capability on one installation in two
- * steps. Review: the inputs as the form the definition's schema describes,
- * prefilled from the record, then the comparison computed with them -- the
- * features with their marks and the plan's files, pull requests, generated
- * secrets, Dex clients and customer actions. Open pull requests: the commit
- * as the signed-in person and the Action it started. The commit is disabled
- * without the person's session at the manager and absent where the manager
- * says it would refuse one, in which case the refusal is all the review
- * shows.
+ * steps. Review: the choices the definition leaves to a person as the form
+ * its schema describes, opening with the comparison's inputs -- every choice
+ * on record or read back from the files, no schema default -- then the
+ * comparison computed with them: the features with their marks and the
+ * plan's files, pull requests, generated secrets, Dex clients and customer
+ * actions. The required choices without a value are marked on their fields
+ * and named next to the button, each name leading to its field. Open pull
+ * requests: the commit as the signed-in person and the Action it started.
+ * The commit is disabled without the person's session at the manager and
+ * absent where the manager says it would refuse one, in which case the
+ * refusal is all the review shows.
  */
 export function CapabilityDialog({
   kind,
   installation,
   capability,
   definition,
+  comparison,
   isOpen,
   onClose,
 }: CapabilityDialogProps) {
   const api = useApi(platformCapabilitiesApiRef);
   const queryClient = useQueryClient();
   const connection = useConnection();
+  const formRef = useRef<HTMLFormElement>(null);
   const schema = definition?.inputSchema;
-  const form = useMemo(() => formOf(schema ?? {}), [schema]);
+  const form = useMemo(() => personForm(formOf(schema ?? {})), [schema]);
+  const labels = useMemo(() => labelsOf(form), [form]);
   const [values, setValues] = useState<Values>(() =>
-    initialValues(form, schema ?? {}, {
-      installation: capability.inputs?.installation ?? installation.record,
-    }),
+    initialValues(form, comparison?.inputs?.values),
   );
   const [reviewed, setReviewed] = useState<VerifyResult>();
   const [done, setDone] = useState<Committed>();
@@ -141,6 +149,15 @@ export function CapabilityDialog({
     commit.reset();
   };
 
+  /** Brings the field into view and gives it the focus. */
+  const goTo = (field: Field) => {
+    const control = formRef.current
+      ?.querySelector(`[data-field="${field.name}"]`)
+      ?.querySelector<HTMLElement>('input:not([type="hidden"]), button');
+    control?.scrollIntoView?.({ block: 'center' });
+    control?.focus();
+  };
+
   return (
     <Dialog
       isOpen={isOpen}
@@ -150,6 +167,7 @@ export function CapabilityDialog({
       width="min(90vw, 900px)"
     >
       <form
+        ref={formRef}
         noValidate
         onSubmit={onSubmit}
         style={FORM_STYLE}
@@ -162,18 +180,7 @@ export function CapabilityDialog({
               Nothing is written before Open pull requests.
             </Text>
             {!reviewed && !done && (
-              <>
-                <SchemaForm form={form} values={values} onChange={setValues} />
-                {missing.length > 0 && (
-                  <Text
-                    variant="body-small"
-                    color="secondary"
-                    data-testid="missing-required"
-                  >
-                    Required, not chosen yet: {missing.join(', ')}.
-                  </Text>
-                )}
-              </>
+              <SchemaForm form={form} values={values} onChange={setValues} />
             )}
             {reviewed && !done && (
               <>
@@ -216,29 +223,55 @@ export function CapabilityDialog({
           </Flex>
         </DialogBody>
         <DialogFooter>
-          <Flex gap="2" justify="end">
-            <Button variant="secondary" onPress={onClose} isDisabled={busy}>
-              {done ? 'Close' : 'Cancel'}
-            </Button>
-            {!done && !reviewed && (
-              <Button type="submit" variant="primary" isDisabled={busy}>
-                {review.isPending ? 'Comparing…' : 'Review'}
-              </Button>
-            )}
-            {!done && reviewed && (
-              <Button variant="secondary" onPress={back} isDisabled={busy}>
-                Back
-              </Button>
-            )}
-            {!done && reviewed && !refused && !nothingToOpen && (
-              <Button
-                type="submit"
-                variant="primary"
-                isDisabled={busy || !connected}
+          <Flex gap="4" justify="between" align="center">
+            {!reviewed && !done && missing.length > 0 ? (
+              <Flex
+                gap="1"
+                align="center"
+                style={{ flexWrap: 'wrap' }}
+                data-testid="missing-required"
               >
-                {commit.isPending ? 'Opening…' : 'Open pull requests'}
-              </Button>
+                <Text variant="body-small" color="secondary">
+                  Required, not chosen yet:
+                </Text>
+                {missing.map(field => (
+                  <Button
+                    key={field.name}
+                    variant="tertiary"
+                    size="small"
+                    onPress={() => goTo(field)}
+                  >
+                    {labels.get(field.name)}
+                  </Button>
+                ))}
+              </Flex>
+            ) : (
+              <span />
             )}
+            <Flex gap="2" justify="end">
+              <Button variant="secondary" onPress={onClose} isDisabled={busy}>
+                {done ? 'Close' : 'Cancel'}
+              </Button>
+              {!done && !reviewed && (
+                <Button type="submit" variant="primary" isDisabled={busy}>
+                  {review.isPending ? 'Comparing…' : 'Review'}
+                </Button>
+              )}
+              {!done && reviewed && (
+                <Button variant="secondary" onPress={back} isDisabled={busy}>
+                  Back
+                </Button>
+              )}
+              {!done && reviewed && !refused && !nothingToOpen && (
+                <Button
+                  type="submit"
+                  variant="primary"
+                  isDisabled={busy || !connected}
+                >
+                  {commit.isPending ? 'Opening…' : 'Open pull requests'}
+                </Button>
+              )}
+            </Flex>
           </Flex>
         </DialogFooter>
       </form>

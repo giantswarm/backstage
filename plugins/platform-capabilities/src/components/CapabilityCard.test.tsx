@@ -393,17 +393,19 @@ describe('CapabilityCard', () => {
     await waitFor(() =>
       expect(within(dialog).getByTestId('plan')).toBeInTheDocument(),
     );
-    // The review is the comparison computed with what the form holds.
+    // The review is the comparison computed with what the form holds: the
+    // person's choices from the card's comparison, nothing of the record.
     expect(api.verifies[1]).toMatchObject({
       installation: 'rowan',
       capability: 'agent-platform',
       args: {
         inputs: {
-          installation: { baseDomain: 'rowan.example.test', chartLine: '4' },
+          kagent: { enabled: true },
           modelServing: { enabled: false },
         },
       },
     });
+    expect(api.verifies[1].args?.inputs).not.toHaveProperty('installation');
     expect(api.writes).toHaveLength(0);
     expect(within(dialog).getByTestId('feature-runtime')).toHaveTextContent(
       'Runtime — 1 check differs',
