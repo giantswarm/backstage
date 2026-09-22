@@ -9,6 +9,7 @@ import {
   parseValue,
   personChoices,
   setAt,
+  unsetLabel,
 } from './schemaForm';
 
 const schema = AGENT_PLATFORM_DEFINITION.inputSchema!;
@@ -72,6 +73,35 @@ describe('schemaForm', () => {
     expect(
       choiceLabel({ ...serving, path: ['gpu'], title: 'GPU node pool' }),
     ).toBe('GPU node pool');
+  });
+
+  it('labels a choice not on record by its group where two share a label, and keeps an unknown field', () => {
+    const choices = personChoices({
+      type: 'object',
+      properties: {
+        portal: {
+          type: 'object',
+          properties: {
+            domain: { type: 'string', 'x-source': 'person' },
+            supportUrl: { type: 'string', 'x-source': 'person' },
+          },
+        },
+        grafana: {
+          type: 'object',
+          properties: {
+            enabled: { type: 'boolean', 'x-source': 'person' },
+            domain: { type: 'string', 'x-source': 'person' },
+          },
+        },
+      },
+    });
+    expect(unsetLabel('portal.supportUrl', choices)).toBe('Support url');
+    expect(unsetLabel('portal.domain', choices)).toBe('Portal domain');
+    expect(unsetLabel('grafana.domain', choices)).toBe('Grafana domain');
+    expect(unsetLabel('grafana.enabled', choices)).toBe('Grafana');
+    expect(unsetLabel('federation.tokenBroker', choices)).toBe(
+      'federation.tokenBroker',
+    );
   });
 
   it('sets and clears leaves, pruning empty groups', () => {

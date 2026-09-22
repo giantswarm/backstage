@@ -12,6 +12,7 @@ import {
   choiceValue,
   getAt,
   personChoices,
+  unsetLabel,
 } from '../lib/schemaForm';
 import { CapabilityDialog } from './CapabilityDialog';
 import { ComparisonView } from './ComparisonView';
@@ -47,7 +48,8 @@ function isInstalled(capability: CapabilityState): boolean {
 /**
  * One line per choice the definition leaves to a person that has a value --
  * read back, typed or the schema's default -- from the comparison's inputs;
- * the choices without one as one line with their count.
+ * the choices without one as one line naming each, as the manager names
+ * them (`inputs.unset`), so a reader sees which choices the record lacks.
  */
 function Choices({
   definition,
@@ -61,12 +63,13 @@ function Choices({
     [definition],
   );
   const values = comparison?.inputs?.values ?? {};
-  const valued = choices.map(field => ({
-    field,
-    value: getAt(values, field.path) ?? field.default,
-  }));
-  const chosen = valued.filter(c => c.value !== undefined && c.value !== null);
-  const unset = valued.length - chosen.length;
+  const chosen = choices
+    .map(field => ({
+      field,
+      value: getAt(values, field.path) ?? field.default,
+    }))
+    .filter(c => c.value !== undefined && c.value !== null);
+  const unset = comparison?.inputs?.unset ?? [];
   return (
     <>
       {chosen.map(({ field, value }) => (
@@ -78,13 +81,14 @@ function Choices({
           {choiceLabel(field)}: {choiceValue(field, value)}
         </Text>
       ))}
-      {unset > 0 && (
+      {unset.length > 0 && (
         <Text
           variant="body-small"
           color="secondary"
           data-testid="choices-unset"
         >
-          {count(unset, 'choice')} not on record
+          {count(unset.length, 'choice')} not on record:{' '}
+          {unset.map(name => unsetLabel(name, choices)).join(', ')}
         </Text>
       )}
     </>
