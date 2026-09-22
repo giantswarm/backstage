@@ -123,15 +123,48 @@ describe('NewSessionComposer', () => {
       expect(startButton()).toBeDisabled();
     });
 
-    it('is disabled with a prompt but no agent selected', async () => {
+    it('says an agent is missing rather than starting without one', async () => {
       // Unlike the prototype there is no canonical default agent, and a wrong
       // guess starts a paid turn against something that can act on a cluster.
+      // But a refusal has to be said: Start stays pressable, and pressing it
+      // names the gap and moves focus to the picker.
       // Two agents, because a sole agent is preselected — see the picker tests.
       renderComposer({ agents: [sre, issues] });
 
       await userEvent.type(field(), 'why is the ingress failing?');
+      expect(startButton()).toBeEnabled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-      expect(startButton()).toBeDisabled();
+      await userEvent.click(startButton());
+
+      expect(onStart).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Choose an agent to start.',
+      );
+      expect(agentPicker()).toHaveFocus();
+    });
+
+    it('says an agent is missing on Enter too', async () => {
+      renderComposer({ agents: [sre, issues] });
+
+      await userEvent.type(field(), 'why is the ingress failing?{Enter}');
+
+      expect(onStart).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Choose an agent to start.',
+      );
+    });
+
+    it('drops the message once an agent is chosen', async () => {
+      renderComposer({ agents: [sre, issues] });
+
+      await userEvent.type(field(), 'check{Enter}');
+      await userEvent.click(agentPicker());
+      await userEvent.click(
+        screen.getByRole('option', { name: /Issue Tracker/ }),
+      );
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('is disabled for a prompt of pure whitespace', async () => {
@@ -248,9 +281,10 @@ describe('NewSessionComposer', () => {
       renderComposer({ agents: [sre, issues], defaultAgent: platform });
 
       await userEvent.type(field(), 'check');
+      await userEvent.click(startButton());
 
       expect(agentPicker()).toHaveTextContent('Select an agent');
-      expect(startButton()).toBeDisabled();
+      expect(onStart).not.toHaveBeenCalled();
     });
 
     it('falls back to a sole agent when the default is not on offer', async () => {
@@ -365,9 +399,10 @@ describe('NewSessionComposer', () => {
       renderComposer({ agents: [broken] });
 
       await userEvent.type(field(), 'check');
+      await userEvent.click(startButton());
 
       expect(agentPicker()).toHaveTextContent('Select an agent');
-      expect(startButton()).toBeDisabled();
+      expect(onStart).not.toHaveBeenCalled();
     });
 
     describe('a picker with nothing to choose', () => {

@@ -64,8 +64,8 @@ const STATE_UNKNOWN_TITLE =
 const STATE_IDLE_LABEL = 'No activity yet';
 const STATE_IDLE_TITLE =
   'This session was started and has no turn that reported a state.';
-const STATE_UNEVALUATED_TITLE =
-  'This session\u2019s state was not read: it is past the summary\u2019s activity window or its per-pass cap. Open the session to see its state.';
+const STATE_UNEVALUATED_LABEL = 'Not loaded';
+const STATE_UNEVALUATED_TITLE = 'Open the session to see its state.';
 
 /**
  * The State column's cell: the state of the session's newest turn.
@@ -96,9 +96,13 @@ function StateCell({
     }
     return (
       <Cell>
-        <span title={STATE_UNEVALUATED_TITLE}>
-          <Unknown />
-        </span>
+        <Text
+          variant="body-medium"
+          color="secondary"
+          title={STATE_UNEVALUATED_TITLE}
+        >
+          {STATE_UNEVALUATED_LABEL}
+        </Text>
       </Cell>
     );
   }
@@ -253,6 +257,8 @@ function getColumnConfig(
       isSortable: true,
       cell: row => <CellText title={row.installation} />,
     },
+    // No "Last activity": kagent API v2 never moves an instance's `updated_at`
+    // after it is ready, so it only repeated Started. kagent-dev/kagent#2397.
     {
       id: 'createdAt',
       label: 'Started',
@@ -261,20 +267,6 @@ function getColumnConfig(
         <Cell>
           {row.createdAt ? (
             <DateComponent value={row.createdAt} relative />
-          ) : (
-            <Unknown />
-          )}
-        </Cell>
-      ),
-    },
-    {
-      id: 'updatedAt',
-      label: 'Last activity',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          {row.updatedAt ? (
-            <DateComponent value={row.updatedAt} relative />
           ) : (
             <Unknown />
           )}
@@ -413,11 +405,13 @@ export function SessionsTable({
     searchFn: sessionSearchFn,
     searchDebounceMs,
     sortFn,
-    initialSort: { column: 'updatedAt', direction: 'descending' },
+    initialSort: { column: 'createdAt', direction: 'descending' },
     paginationOptions: showPagination
       ? { pageSize: 25, pageSizeOptions: [25, 50, 100] }
       : { type: 'none' },
   });
+
+  const searchTerm = search.value.trim();
 
   return (
     <Flex direction="column" gap="3">
@@ -445,7 +439,7 @@ export function SessionsTable({
         }}
         emptyState={
           <Text variant="body-medium" color="secondary">
-            {emptyMessage}
+            {searchTerm ? `No sessions match "${searchTerm}".` : emptyMessage}
           </Text>
         }
       />

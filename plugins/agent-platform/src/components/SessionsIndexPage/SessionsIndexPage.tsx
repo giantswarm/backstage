@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Box, Flex, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
@@ -276,7 +276,7 @@ function SessionsIndexPageContent() {
           <Text color="secondary">
             {notUserScopedInstallations.length > 0
               ? 'Agent chat sessions across the management clusters.'
-              : 'Your agent chat sessions across the management clusters. kagent scopes sessions to the signed-in user, so only your own are listed.'}
+              : 'Your agent chat sessions across the management clusters. Only your own are shown.'}
           </Text>
         )}
 
@@ -316,13 +316,19 @@ function SessionsIndexPageContent() {
 
             {/* One flat table under every scope. Under "All installations" the
                 Installation column tells the rows apart; the table's initial
-                sort is last activity, newest first, which is the order to read
-                one's own sessions in whatever installation they ran on. An
-                installation without sessions simply has no row, and one that
-                could not be read is called out below. */}
-            <Box>
+                sort is newest first, whatever installation a session ran on.
+                An installation without sessions simply has no row, and one
+                that could not be read is called out below. The heading, and
+                the extra room above it, keep the search box from reading as
+                part of "Start a new session". */}
+            <Flex direction="column" gap="2" mt="4">
+              <Text as="h2" variant="title-x-small">
+                {notUserScopedInstallations.length > 0
+                  ? 'Sessions'
+                  : 'Your sessions'}
+              </Text>
               <SessionsTable rows={rows} sessionStates={sessionStates} />
-            </Box>
+            </Flex>
           </>
         )}
 

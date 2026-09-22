@@ -175,8 +175,9 @@ function timestampValue(value: string | undefined): number | undefined {
 
 /**
  * Default ordering: the home installation's sessions first, then everyone
- * else's; within that, most recent activity first, then title. Without a
- * `home` it is recency alone.
+ * else's; within that, newest first, then title. Without a `home` it is
+ * newest first alone. By start rather than by `updatedAt`, which kagent API v2
+ * does not move on a turn (kagent-dev/kagent#2397).
  */
 export function sortSessionRows(
   rows: SessionRow[],
@@ -189,8 +190,8 @@ export function sortSessionRows(
     if (byHome !== 0) {
       return byHome;
     }
-    const aTime = timestampValue(a.updatedAt);
-    const bTime = timestampValue(b.updatedAt);
+    const aTime = timestampValue(a.createdAt);
+    const bTime = timestampValue(b.createdAt);
     if (aTime !== bTime) {
       // Rows with no timestamp sort last regardless of direction.
       if (aTime === undefined) return 1;

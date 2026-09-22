@@ -192,6 +192,14 @@ describe('SessionsIndexPage', () => {
     expect(prompt()).toBeInTheDocument();
   });
 
+  it('gives the list a heading of its own, separate from the composer', async () => {
+    await render();
+
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Your sessions' }),
+    ).toBeInTheDocument();
+  });
+
   it('starts collapsed, expanding on focus', async () => {
     await render();
 

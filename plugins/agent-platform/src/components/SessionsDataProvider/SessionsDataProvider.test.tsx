@@ -128,14 +128,14 @@ beforeEach(() => {
 });
 
 describe('SessionsDataProvider', () => {
-  it('aggregates rows across installations, most recent first', async () => {
+  it('aggregates rows across installations, newest first', async () => {
     listSessions.mockImplementation((installation: string) =>
       Promise.resolve(
         installation === 'gazelle'
           ? [
               session({
                 id: 'gazelle/old',
-                updatedAt: '2026-07-20T10:00:00Z',
+                createdAt: '2026-07-20T10:00:00Z',
                 title: 'older',
               }),
             ]
@@ -143,7 +143,7 @@ describe('SessionsDataProvider', () => {
               session({
                 id: 'golem/new',
                 installation: 'golem',
-                updatedAt: '2026-07-23T10:00:00Z',
+                createdAt: '2026-07-23T10:00:00Z',
                 title: 'newer',
               }),
             ],

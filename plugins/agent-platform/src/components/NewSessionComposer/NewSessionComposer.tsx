@@ -160,8 +160,10 @@ function describeAgent(agent: AgentRow): string | undefined {
  * The prompt is the only required input in the spec's sense — but an agent has to
  * be chosen too, because unlike the prototype we have no canonical
  * "general purpose" agent to fall back on, and a wrong guess here starts a paid
- * turn against an agent that can act on a cluster. So Start stays disabled until
- * both are in hand.
+ * turn against an agent that can act on a cluster. So nothing starts until both
+ * are in hand — but a missing agent is said, not just refused: Start stays
+ * pressable, and pressing it (or Enter) names the gap and moves focus to the
+ * picker, which a disabled button could not.
  *
  * Expansion is deliberately **one-way**: once focused, the toolbar stays. A
  * composer that collapsed on blur would hide the agent the user just picked, and
@@ -188,6 +190,8 @@ export function NewSessionComposer({
   const buildAvatarUrl = useAgentAvatarUrl();
   const [prompt, setPrompt] = useState('');
   const [expanded, setExpanded] = useState(!collapsible);
+  const [agentMissing, setAgentMissing] = useState(false);
+  const agentSelectRef = useRef<HTMLDivElement>(null);
   // Filtered once; every decision below reads the filtered list — what is offered,
   // what counts as a sole option, and whether a default is still valid.
   const offered = useMemo(() => agents.filter(isStartableAgent), [agents]);
@@ -297,11 +301,15 @@ export function NewSessionComposer({
 
   const text = prompt.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
-  const canStart =
-    Boolean(text) && !isTooLong && Boolean(selectedAgent) && !isStarting;
+  const canSubmit = Boolean(text) && !isTooLong && !isStarting;
 
   const submit = () => {
-    if (!canStart || !selectedAgent) {
+    if (!canSubmit) {
+      return;
+    }
+    if (!selectedAgent) {
+      setAgentMissing(true);
+      agentSelectRef.current?.querySelector('button')?.focus();
       return;
     }
     onStart(selectedAgent, text);
@@ -387,8 +395,10 @@ export function NewSessionComposer({
           <Flex direction="column" gap="2">
             <Flex align="center" justify="between" gap="2">
               <Select
+                ref={agentSelectRef}
                 aria-label="Agent"
                 className={classes.agentSelect}
+                isInvalid={agentMissing}
                 // `leadingIcon` only reaches the options; the trigger has its own
                 // slot, and without this the chosen agent loses the avatar it had
                 // in the list.
@@ -398,18 +408,27 @@ export function NewSessionComposer({
                 onSelectionChange={key => {
                   touched.current = true;
                   setSelectedId(key ? String(key) : undefined);
+                  if (key) {
+                    setAgentMissing(false);
+                  }
                 }}
                 placeholder="Select an agent"
                 searchable={offered.length > SEARCHABLE_THRESHOLD}
                 isDisabled={isStarting || Boolean(soleAgent)}
               />
-              <Button type="submit" isDisabled={!canStart}>
+              <Button type="submit" isDisabled={!canSubmit}>
                 {isStarting ? 'Starting…' : 'Start'}
               </Button>
             </Flex>
-            <Text variant="body-small" color="secondary">
-              {caption}
-            </Text>
+            {agentMissing && !isTooLong ? (
+              <Text variant="body-small" color="danger" role="alert">
+                Choose an agent to start.
+              </Text>
+            ) : (
+              <Text variant="body-small" color="secondary">
+                {caption}
+              </Text>
+            )}
           </Flex>
         )}
       </Flex>

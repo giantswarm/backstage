@@ -406,12 +406,14 @@ describe('SessionDetailPage', () => {
     expect(screen.getByText('Output tokens')).toBeInTheDocument();
   });
 
-  it('shows the wall-clock duration', async () => {
-    // kagent records no per-turn durations, so this is updated_at - created_at:
-    // the session's span, including time the user was away.
+  it('shows the start but no last activity or duration', async () => {
+    // kagent API v2 does not move updated_at on a turn, so both would only
+    // restate the start (kagent-dev/kagent#2397).
     await render();
 
-    expect(screen.getByText('Duration')).toBeInTheDocument();
+    expect(screen.getByText(/^Started/)).toBeInTheDocument();
+    expect(screen.queryByText(/last activity/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Duration')).not.toBeInTheDocument();
   });
 
   it('renders the timeline', async () => {

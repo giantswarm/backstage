@@ -67,7 +67,6 @@ import {
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
 import {
-  formatDuration,
   formatTokens,
   SessionTimeline,
   StreamLossPhase,
@@ -1138,29 +1137,18 @@ export function SessionDetailPage() {
             </Flex>
           </Flex>
 
-          {/* Absolute, not relative. Both ends of a session are frequently within
-              the same day, so the relative form rendered "1 day ago · 1 day ago" —
-              identical for two timestamps 34 minutes apart, which told the reader
-              nothing. The Duration stat below now carries the span, so an exact
-              start time is the more useful thing to show here. The list keeps the
-              relative form, where scanning for recency is the point. */}
+          {/* Absolute, not relative: the list keeps the relative form, where
+              scanning for recency is the point. No last activity and no
+              duration: kagent API v2 does not move `updated_at` on a turn, so
+              both would only restate the start (kagent-dev/kagent#2397). */}
           <Text variant="body-small" color="secondary">
             Started{' '}
             {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
-            {' · last activity '}
-            {row.updatedAt ? <DateComponent value={row.updatedAt} /> : '—'}
           </Text>
         </Flex>
 
         <Box className={classes.stats}>
           <Stat label="Turns" value={String(taskCount)} />
-          {/* Wall-clock span, not compute time — kagent records no per-turn
-              durations, so this includes however long the user was away between
-              turns. */}
-          <Stat
-            label="Duration"
-            value={formatDuration(row.createdAt, row.updatedAt) ?? '—'}
-          />
           {/* Labelled "billed", because the raw number is startling: every model
               call re-sends the whole context, so a 4-turn session with a large tool
               catalogue reached 1.4M prompt tokens across 14 calls. That is genuine
