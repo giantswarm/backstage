@@ -845,6 +845,22 @@ export const COMMIT_REFUSED: VerifyResult = {
     'dex-app 2.2.3 on record (example/example-management-cluster-bases:bases/collections/shared/base/dex-app.yaml): the referenced Dex client secrets need dex-app 3.2.2 or later; pin it in management-clusters/birch/collections/kustomization.yaml first',
 };
 
+/**
+ * The comparison ran and the manager would refuse a commit for the choices
+ * not on record alone: the dialog asks for them.
+ */
+export const MISSING_CHOICES: VerifyResult = {
+  ...VERIFIED,
+  state: 'not enabled',
+  inputs: {
+    ...VERIFIED.inputs!,
+    unset: ['portal.domain', 'chart.line'],
+    missing: ['portal.domain', 'chart.line'],
+  },
+  commitRefused:
+    "Choose chart.line (the semver range the portal's OCIRepository follows); portal.domain (the portal's hostname) before a commit.",
+};
+
 export interface FakeOptions {
   installations?: Installation[];
   definitions?: Definition[];
