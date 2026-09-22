@@ -3,6 +3,7 @@ import {
   formatPercent,
   formatSeconds,
   formatTokens,
+  formatTokensPerSecond,
   formatUsd,
 } from './formatNumbers';
 
@@ -93,5 +94,19 @@ describe('formatSeconds', () => {
     // answer on an idle installation — not an error, and not 0ms.
     expect(formatSeconds(Number.NaN)).toBe('—');
     expect(formatSeconds(undefined)).toBe('—');
+  });
+});
+
+describe('formatTokensPerSecond', () => {
+  it('rounds to whole tokens and names the unit', () => {
+    expect(formatTokensPerSecond(196.82)).toBe('197/s');
+    expect(formatTokensPerSecond(1234.5)).toBe('1,235/s');
+  });
+
+  it('is an em dash when nothing streamed', () => {
+    // No streamed call means no observation, so the ratio has no series and
+    // Mimir can also answer the division as NaN — neither is "0 tokens/s".
+    expect(formatTokensPerSecond(undefined)).toBe('—');
+    expect(formatTokensPerSecond(Number.NaN)).toBe('—');
   });
 });

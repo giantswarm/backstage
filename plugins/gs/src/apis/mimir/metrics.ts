@@ -320,7 +320,15 @@ export const AgentgatewayGenAiClientCostUsdTotal = {
 export const AgentgatewayGenAiServerRequestDuration = {
   name: 'agentgateway_gen_ai_server_request_duration',
   description:
-    'Whole model call, first byte of the request to last byte of the response. `_count` doubles as the number of model calls. Streamed completions run long by design. (The gateway also exports `_time_to_first_token` and `_time_per_output_token`, deliberately not registered: both are streaming-only and a kagent agent turn asks for a whole completion, so they are permanently empty for this platform.)',
+    'Whole model call, first byte of the request to last byte of the response. `_count` doubles as the number of model calls. Streamed completions run long by design, which is why this is not a speed figure — `agentgateway_gen_ai_server_time_per_output_token` is. (The gateway also exports `_time_to_first_token`, not registered: it answers the same question as the per-output-token histogram less directly, and only for the streamed subset.)',
+  type: 'histogram',
+  source: 'agentgateway',
+} as const satisfies PrometheusMetric;
+
+export const AgentgatewayGenAiServerTimePerOutputToken = {
+  name: 'agentgateway_gen_ai_server_time_per_output_token',
+  description:
+    "Seconds per output token, one observation per **streamed** model call carrying that call's own average. Invert a quantile of it for a generation speed — not `_count / _sum`, whose mean weights a three-token reply like a three-thousand-token one, so a few short replies read as seconds per token and collapse the figure. Only a streamed reply is observed, so it covers a subset of `agentgateway_gen_ai_server_request_duration` and is empty on an installation whose agents ask for whole completions.",
   type: 'histogram',
   source: 'agentgateway',
 } as const satisfies PrometheusMetric;
@@ -384,6 +392,7 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   AgentgatewayGenAiClientTokenUsage,
   AgentgatewayGenAiClientCostUsdTotal,
   AgentgatewayGenAiServerRequestDuration,
+  AgentgatewayGenAiServerTimePerOutputToken,
   AgentgatewayRequestsTotal,
   AgentgatewayCostCatalogLookupsTotal,
 ];

@@ -13,7 +13,7 @@ const meta = {
           summary:
             'One labelled number: an uppercase muted label over a large tabular-nums value.',
           whenToUse:
-            'The primitive a stats strip is built from — a figure a reader scans rather than acts on. Give a `tone` only to a value that is good or bad; a plain count takes none.',
+            'The primitive a stats strip is built from — a figure a reader scans rather than acts on. Give a `tone` only to a value that is good or bad; a plain count takes none. Give a `hint` when the arithmetic behind the number is not obvious from its label.',
           migration: 'mui-v4',
         }),
       },
@@ -56,4 +56,12 @@ export const InAStrip: Story = {
       <Stat label="Tool calls" value="231" />
     </div>
   ),
+};
+
+export const WithHint: Story = {
+  args: {
+    label: 'Tokens per second',
+    value: '63/s',
+    hint: "The median streamed call's generation speed over the last 30 days. Calls answered in one piece are not measured, and idle time is not counted.",
+  },
 };

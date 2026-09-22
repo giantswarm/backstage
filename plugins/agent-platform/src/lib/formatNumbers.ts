@@ -73,6 +73,19 @@ export function formatPercent(value: number | undefined): string {
 }
 
 /**
+ * Format a generation speed in tokens per second, or `—`.
+ *
+ * Whole tokens: the figure is an average over thousands of calls and a decimal
+ * on it would suggest a precision the window does not have.
+ */
+export function formatTokensPerSecond(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) {
+    return '—';
+  }
+  return `${Math.round(value).toLocaleString()}/s`;
+}
+
+/**
  * Format a latency in seconds, or `—`.
  *
  * `undefined` is the normal answer for an idle installation, not an error:

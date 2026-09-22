@@ -3,6 +3,7 @@ import {
   AgentgatewayGenAiClientCostUsdTotal as Cost,
   AgentgatewayGenAiClientTokenUsage as TokenUsage,
   AgentgatewayGenAiServerRequestDuration as RequestDuration,
+  AgentgatewayGenAiServerTimePerOutputToken as TimePerOutputToken,
   AgentgatewayRequestsTotal as Requests,
 } from '@giantswarm/backstage-plugin-gs';
 
@@ -53,6 +54,28 @@ export const llmUsageQueries = {
   tokens: `sum by (${BY_AGENT_MODEL_TYPE}) (increase(${TokenUsage.name}_sum[${WINDOW}]))`,
   /** Model calls, from the duration histogram's count. */
   calls: `sum by (${BY_AGENT_MODEL}) (increase(${RequestDuration.name}_count[${WINDOW}]))`,
+  /**
+   * Output speed of the **median** streamed call, as tokens per second.
+   *
+   * The histogram observes one value per streamed call — that call's own mean
+   * seconds per output token — so the window's mean (`_count / _sum`) weights
+   * a three-token reply exactly like a three-thousand-token one, and a reply
+   * that emitted a handful of tokens after a long wait is seconds *per token*.
+   * On `graveler` that put ~1% of calls at ≥ 2.5 s/token, which alone dragged
+   * the mean from the median's 16 ms to 461 ms: 63 tok/s reported as 2 tok/s.
+   * The median is the speed a call actually runs at, and it is the same idiom
+   * as the two duration quantiles beside it on the strip.
+   *
+   * Inverted in PromQL rather than in the reducer so the metric and its unit
+   * stay in one place. Both failure modes stay honest: an empty histogram
+   * quantile is `NaN`, a zero quantile makes this `+Inf`, and `sampleValue`
+   * rejects either, so the figure degrades to "—".
+   *
+   * Ungrouped, because it is one figure about the platform rather than a
+   * breakdown. A call that was not streamed observes nothing, so this
+   * describes the streamed subset of {@link llmUsageQueries.calls}.
+   */
+  outputTokensPerSecond: `1 / histogram_quantile(0.50, sum by (le) (rate(${TimePerOutputToken.name}_bucket[${WINDOW}])))`,
   durationP50: `histogram_quantile(0.50, sum by (le) (rate(${RequestDuration.name}_bucket[${WINDOW}])))`,
   durationP95: `histogram_quantile(0.95, sum by (le) (rate(${RequestDuration.name}_bucket[${WINDOW}])))`,
   requestsByStatus: `sum by (status) (increase(${Requests.name}{listener="${LLM_LISTENER}"}[${WINDOW}]))`,

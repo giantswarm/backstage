@@ -36,7 +36,7 @@ const UNKNOWN_MODEL = 'Unknown model';
 /**
  * Everything the Overview and Cost views read, for one installation.
  *
- * Eleven queries: nine instant and two range, written out one call at a time.
+ * Twelve queries: ten instant and two range, written out one call at a time.
  * A *fixed* list of hook calls rather than `useQueries` — the same shape
  * `useMimirResourceUsage` uses for its four — and not wrapped in a local
  * helper either, because a helper that calls a hook is unverifiable by
@@ -69,7 +69,7 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
   // Memoised on `start`, which is already midnight-snapped and so a stable
   // per-day key. Without this both are fresh values every render, and since
   // they are dependencies of the `usage` memo below, that memo could never hit
-  // — re-running eleven vector reductions, two 30-day series and the agent
+  // — re-running ten vector reductions, two 30-day series and the agent
   // join on every render, and re-keying every downstream memo with a new
   // `usage` object.
   const days = useMemo(
@@ -112,6 +112,11 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
   const p95 = useMimirQuery({
     installationName,
     query: llmUsageQueries.durationP95,
+    enabled,
+  });
+  const outputTokensPerSecond = useMimirQuery({
+    installationName,
+    query: llmUsageQueries.outputTokensPerSecond,
     enabled,
   });
   const requestsByStatus = useMimirQuery({
@@ -183,6 +188,7 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     calls.isLoading ||
     p50.isLoading ||
     p95.isLoading ||
+    outputTokensPerSecond.isLoading ||
     requestsByStatus.isLoading ||
     unpricedLookups.isLoading ||
     costPerDay.isLoading ||
@@ -216,6 +222,7 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
       requestsByStatus: requestsByStatus.data?.data?.result,
       p50: p50.data?.data?.result,
       p95: p95.data?.data?.result,
+      outputTokensPerSecond: outputTokensPerSecond.data?.data?.result,
       unpricedLookups: unpricedLookups.data?.data?.result,
       costPerDay: costPerDay.data?.data?.result,
       tokensPerDay: tokensPerDay.data?.data?.result,
@@ -239,6 +246,7 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     requestsByStatus.data,
     p50.data,
     p95.data,
+    outputTokensPerSecond.data,
     unpricedLookups.data,
     costPerDay.data,
     tokensPerDay.data,
