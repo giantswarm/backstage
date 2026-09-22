@@ -119,7 +119,10 @@ function RefusalDetails({
  * accepted Remove closes into the pool's teardown in the lifecycle panel; a
  * Remove cut short (`partial`) stays open with the pending objects and
  * **Continue**, the same call again. With the cluster's last pool the operator
- * release cluster-manager created and the registered backend go too.
+ * release cluster-manager created, the registered backend and — under Remove
+ * anyway — the models model-manager serves go too: cluster-manager removes
+ * them with the controller's finalizer taken off, so none is left stopping
+ * for good once the controller is gone.
  */
 export function RemoveGpuNodePoolDialog({
   row,
@@ -254,8 +257,10 @@ export function RemoveGpuNodePoolDialog({
                 </div>
                 {refused && (
                   <Checkbox isSelected={force} onChange={setForce}>
-                    Remove anyway — the nodes go with the pool and the workloads
-                    on them are evicted.
+                    Remove anyway — the nodes go with the pool, the workloads on
+                    them are evicted, and with the cluster's last pool the
+                    models the platform serves on it are removed, their weights
+                    kept in the cache.
                   </Checkbox>
                 )}
               </Flex>
