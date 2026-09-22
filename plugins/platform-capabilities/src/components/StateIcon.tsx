@@ -31,13 +31,7 @@ export function markOf(
     case 'waiting for the customer':
       // An action still in flight, so "as defined" cannot be claimed yet.
       return 'not reconciled';
-    case 'enabled, not opted in':
-      // On record, put there by the installation's owners themselves, and the
-      // manager may not reconcile it until they opt in: installed all the
-      // same, never the empty circle.
-      return 'not reconciled';
     case 'not enabled':
-    case 'not opted in':
       // Nothing is on record.
       return 'not installed';
     case 'failed':

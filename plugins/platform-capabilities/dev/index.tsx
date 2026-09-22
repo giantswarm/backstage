@@ -29,11 +29,10 @@ import {
   DRIFTED,
   ENABLED,
   ENABLED_BY_HAND,
-  ENABLED_NOT_OPTED_IN,
   FAILED,
   FakeApi,
   installation,
-  NOT_OPTED_IN,
+  NOT_ENABLED,
   ROLLING_OUT,
 } from '../src/fixtures/fakeApi';
 import { platformCapabilitiesPlugin } from '../src/plugin';
@@ -47,12 +46,11 @@ import { platformCapabilitiesPlugin } from '../src/plugin';
 const INSTALLATIONS = [
   ENABLED,
   ENABLED_BY_HAND,
-  ENABLED_NOT_OPTED_IN,
   DRIFTED,
   ROLLING_OUT,
   FAILED,
   installation(),
-  NOT_OPTED_IN,
+  NOT_ENABLED,
 ];
 
 const fakeApi = ApiBlueprint.make({
