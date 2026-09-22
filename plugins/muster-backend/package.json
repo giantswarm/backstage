@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-muster-backend",
   "version": "0.2.3",
   "license": "Apache-2.0",
-  "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "publishConfig": {
@@ -13,7 +12,11 @@
   "configSchema": "config.d.ts",
   "backstage": {
     "role": "backend-plugin",
-    "pluginId": "muster"
+    "pluginId": "muster",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-muster",
+      "@giantswarm/backstage-plugin-muster-backend"
+    ]
   },
   "scripts": {
     "start": "backstage-cli package start",

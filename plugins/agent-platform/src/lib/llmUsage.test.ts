@@ -304,6 +304,7 @@ describe('reduceReliability', () => {
       ],
       p50: [sample({}, '1.5')],
       p95: [sample({}, '12')],
+      outputTokensPerSecond: [sample({}, '196.8')],
     });
 
     expect(reliability).toEqual({
@@ -313,6 +314,7 @@ describe('reduceReliability', () => {
       rateLimited: 80,
       p50Seconds: 1.5,
       p95Seconds: 12,
+      outputTokensPerSecond: 196.8,
     });
   });
 
@@ -325,6 +327,7 @@ describe('reduceReliability', () => {
       requestsByStatus: [sample({}, '500'), sample({ status: '200' }, '500')],
       p50: undefined,
       p95: undefined,
+      outputTokensPerSecond: undefined,
     });
 
     expect(reliability.totalRequests).toBe(1000);
@@ -340,6 +343,7 @@ describe('reduceReliability', () => {
       ],
       p50: undefined,
       p95: undefined,
+      outputTokensPerSecond: undefined,
     });
 
     expect(reliability.errorRequests).toBe(0);
@@ -354,6 +358,7 @@ describe('reduceReliability', () => {
       ],
       p50: undefined,
       p95: undefined,
+      outputTokensPerSecond: undefined,
     });
 
     expect(reliability.errorRequests).toBe(20);
@@ -367,11 +372,39 @@ describe('reduceReliability', () => {
       requestsByStatus: undefined,
       p50: [sample({}, 'NaN')],
       p95: [],
+      outputTokensPerSecond: undefined,
     });
 
     expect(reliability.p50Seconds).toBeUndefined();
     expect(reliability.p95Seconds).toBeUndefined();
     expect(reliability.errorRatePct).toBeUndefined();
+  });
+
+  it('reports no output speed when nothing streamed', () => {
+    // A call answered in one piece observes no per-output-token time, so the
+    // ratio has no series at all — which must not read as "0 tokens/s".
+    const reliability = reduceReliability({
+      requestsByStatus: [sample({ status: '200' }, '40')],
+      p50: [sample({}, '2')],
+      p95: [sample({}, '9')],
+      outputTokensPerSecond: [],
+    });
+
+    expect(reliability.outputTokensPerSecond).toBeUndefined();
+    // The calls themselves are still counted: the speed is the streamed
+    // subset, the requests are all of them.
+    expect(reliability.totalRequests).toBe(40);
+  });
+
+  it('reports no output speed for a division Mimir answered as NaN', () => {
+    const reliability = reduceReliability({
+      requestsByStatus: undefined,
+      p50: undefined,
+      p95: undefined,
+      outputTokensPerSecond: [sample({}, 'NaN')],
+    });
+
+    expect(reliability.outputTokensPerSecond).toBeUndefined();
   });
 });
 
@@ -600,6 +633,7 @@ describe('buildLlmUsage', () => {
     requestsByStatus: [sample({ status: '200' }, '10')],
     p50: [sample({}, '2')],
     p95: [sample({}, '9')],
+    outputTokensPerSecond: [sample({}, '196.8')],
     unpricedLookups: [],
     costPerDay: [],
     tokensPerDay: [],

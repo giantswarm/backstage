@@ -31,6 +31,11 @@ export type SectionHeaderProps = {
   as?: 'h2' | 'h3' | 'h4';
   /** Type scale. Defaults to `title-small`. */
   variant?: 'title-medium' | 'title-small' | 'title-x-small';
+  /**
+   * The heading's `id`, for a `<section aria-labelledby>` the header names:
+   * the region takes its accessible name from the title alone.
+   */
+  id?: string;
 };
 
 /** Title + description pair used to introduce a page, a card's contents or a group of fields. */
@@ -39,11 +44,18 @@ export function SectionHeader({
   description,
   as = 'h3',
   variant = 'title-small',
+  id,
 }: SectionHeaderProps) {
   const classes = useStyles();
   return (
     <div>
-      <Text as={as} variant={variant} weight="bold" className={classes.title}>
+      <Text
+        as={as}
+        id={id}
+        variant={variant}
+        weight="bold"
+        className={classes.title}
+      >
         {title}
       </Text>
       {description !== undefined && description !== null && (

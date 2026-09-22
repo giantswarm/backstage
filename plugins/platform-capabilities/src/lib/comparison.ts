@@ -69,15 +69,30 @@ export function upToDate(result: VerifyResult): boolean {
 }
 
 /**
+ * The manager's reason where an endpoint it probes did not answer:
+ * `unreachable from the manager: Get "https://…": context deadline
+ * exceeded`, the request's error after the colon.
+ */
+export function unreachable(reason: string): boolean {
+  return /^unreachable\b/.test(reason);
+}
+
+/** The checks that did not run for one reason, in the manager's words. */
+export type NotRun = [reason: string, dimensions: VerifyDimension[]];
+
+/**
  * The checks that did not run, by name: those needing the person's session
- * on the installation, and the rest grouped by the manager's reason, in the
- * order the features name them.
+ * on the installation; those whose endpoint did not answer, one entry per
+ * endpoint; and the rest grouped by the manager's reason, in the order the
+ * features name them.
  */
 export function notChecked(features: VerifyFeature[]): {
   session: VerifyDimension[];
-  other: [reason: string, dimensions: VerifyDimension[]][];
+  unreachable: NotRun[];
+  other: NotRun[];
 } {
   const session: VerifyDimension[] = [];
+  const endpoints = new Map<string, VerifyDimension[]>();
   const other = new Map<string, VerifyDimension[]>();
   for (const feature of features) {
     for (const dimension of feature.dimensions ?? []) {
@@ -86,13 +101,18 @@ export function notChecked(features: VerifyFeature[]): {
       }
       if (dimension.reason === SESSION_REASON) {
         session.push(dimension);
-      } else {
-        const reason = dimension.reason ?? 'no reason given';
-        other.set(reason, [...(other.get(reason) ?? []), dimension]);
+        continue;
       }
+      const reason = dimension.reason ?? 'no reason given';
+      const group = unreachable(reason) ? endpoints : other;
+      group.set(reason, [...(group.get(reason) ?? []), dimension]);
     }
   }
-  return { session, other: [...other.entries()] };
+  return {
+    session,
+    unreachable: [...endpoints.entries()],
+    other: [...other.entries()],
+  };
 }
 
 /** The marks in the order a feature rolls up from its dimensions. */
@@ -199,6 +219,28 @@ export function foundWords(counts: Counts, unit: Unit): string[] {
     words.push(`${count(counts.planned, unit)} planned`);
   }
   return words;
+}
+
+/**
+ * What a review found, as one sentence: the checks that differ and the
+ * changes planned, or that the installation is up to date (or was not
+ * compared), and the pull requests the commit would open -- `2 checks
+ * differ · 1 check planned; 1 pull request to open`.
+ */
+export function reviewWords(result: VerifyResult): string {
+  const found = foundWords(countsOf(result), 'check');
+  let outcome = 'not compared';
+  if (found.length > 0) {
+    outcome = found.join(' · ');
+  } else if (compared(result)) {
+    outcome = 'up to date';
+  }
+  const pullRequests = result.pullRequests?.length ?? 0;
+  const toOpen =
+    pullRequests > 0
+      ? `${count(pullRequests, 'pull request')} to open`
+      : 'nothing to open';
+  return `${outcome}; ${toOpen}`;
 }
 
 /** A difference with its mark: `planned` where a migration plans it, `differs by input` where an input drives it, else its dimension's. */

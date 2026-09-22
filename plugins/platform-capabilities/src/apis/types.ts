@@ -14,6 +14,15 @@ export type CapabilityStateName =
   | 'failed'
   | 'unknown';
 
+/**
+ * The state of an Action, in the manager's words: the installation's states
+ * an action produces, plus the three that are the action's own -- the gate
+ * refused it before any write, a member of the team denied it, or the files
+ * it wrote left the repositories' default branch again (removed).
+ */
+export type ActionStateName =
+  CapabilityStateName | 'refused' | 'denied' | 'removed';
+
 /** The installation's record: the definitions' `installation.*` inputs. */
 export interface InstallationRecord {
   name: string;
@@ -25,9 +34,10 @@ export interface InstallationRecord {
   musterClientId?: string;
 }
 
+/** The last Action on a capability: its name and its state, as `list_installations` names them. */
 export interface ActionRef {
   name: string;
-  result?: string;
+  result?: ActionStateName;
 }
 
 export interface CapabilityState {
@@ -241,7 +251,7 @@ export interface Action {
     inputs?: Record<string, unknown>;
   };
   status?: {
-    state?: CapabilityStateName;
+    state?: ActionStateName;
     pullRequests?: ActionPullRequest[];
     approval?: ActionApproval;
     rollout?: {
@@ -249,7 +259,7 @@ export interface Action {
       finishedAt?: string;
       installations?: { name: string; state?: string; message?: string }[];
     };
-    result?: { state?: string; message?: string; at?: string };
+    result?: { state?: ActionStateName; message?: string; at?: string };
   };
 }
 

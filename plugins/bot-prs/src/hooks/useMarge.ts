@@ -10,7 +10,6 @@ import {
 import {
   MargeClient,
   type MargeMarkArgs,
-  type MargeRemedyArgs,
   type MargeSweepArgs,
 } from '../apis/MargeClient';
 import {
@@ -171,11 +170,11 @@ export type BotPrsState = {
   /** The stored reads again: cheap, and what a write leaves behind. */
   reload: () => void;
   /**
-   * Classify every PR in scope now and write the class to its label, one
+   * Classify the given PRs now and write the class to each label, one
    * `x_marge_sweep` per team with `classify` as the only step. An explicit
-   * action, never automatic.
+   * action, never automatic. Without a map, every PR of every team in scope.
    */
-  classify: () => void;
+  classify: (prsByTeam?: Record<string, string[]>) => void;
 };
 
 type QueueData = {
@@ -224,12 +223,18 @@ export function useBotPrs(
   // write cannot.
   const [classifying, setClassifying] = useState<string[]>([]);
   const classifyRun = useMutation({
-    mutationFn: async () => {
-      setClassifying(teams);
+    mutationFn: async (prsByTeam?: Record<string, string[]>) => {
+      const named = prsByTeam ? Object.keys(prsByTeam) : teams;
+      setClassifying(named);
       const answers = await Promise.allSettled(
-        teams.map(team =>
+        named.map(team =>
           client!
-            .sweep({ team, actions: CLASSIFY_ACTIONS, dry_run: false })
+            .sweep({
+              team,
+              prs: prsByTeam?.[team],
+              actions: CLASSIFY_ACTIONS,
+              dry_run: false,
+            })
             .finally(() =>
               setClassifying(current =>
                 current.filter(pending => pending !== team),
@@ -295,9 +300,9 @@ export function useBotPrs(
       classifyError instanceof MargeNotConnectedError ? null : classifyError,
     notConnected,
     reload,
-    classify: () => {
+    classify: (prsByTeam?: Record<string, string[]>) => {
       if (enabled && !classifyRun.isPending) {
-        classifyRun.mutate();
+        classifyRun.mutate(prsByTeam);
       }
     },
   };
@@ -460,56 +465,6 @@ export function useMargeTeamSweeps(
     isDryRun,
     isPending: mutation.isPending,
     notConnected,
-    run: mutation.mutateAsync,
-    reset: mutation.reset,
-  };
-}
-
-export type MargeRemedyState = {
-  result: MargeResult | undefined;
-  isDryRun: boolean;
-  isPending: boolean;
-  error: Error | null;
-  run: (args: Omit<MargeRemedyArgs, 'team'>) => Promise<MargeResult>;
-  reset: () => void;
-};
-
-/**
- * `x_marge_remedy` on one PR: the catalogue rule that matches it, applied
- * through that rule's action and its guards. The dry run says which rule
- * would apply and writes nothing; the real run is the engine's classify,
- * remedy and mark steps on that PR.
- */
-export function useMargeRemedy(
-  installation: string | undefined,
-  team: string | undefined,
-): MargeRemedyState {
-  const client = useMargeClient(installation);
-  const queryClient = useQueryClient();
-  const [isDryRun, setIsDryRun] = useState(true);
-
-  const mutation = useMutation({
-    mutationFn: async (args: Omit<MargeRemedyArgs, 'team'>) => {
-      if (!client || !team) {
-        throw new Error('marge is not reachable on this installation');
-      }
-      setIsDryRun(Boolean(args.dry_run));
-      return client.remedy({ ...args, team });
-    },
-    onSuccess: (_result, args) => {
-      if (!args.dry_run) {
-        queryClient.invalidateQueries({
-          queryKey: musterMargeListScopeKey(installation ?? ''),
-        });
-      }
-    },
-  });
-
-  return {
-    result: mutation.data,
-    isDryRun,
-    isPending: mutation.isPending,
-    error: (mutation.error as Error | null) ?? null,
     run: mutation.mutateAsync,
     reset: mutation.reset,
   };

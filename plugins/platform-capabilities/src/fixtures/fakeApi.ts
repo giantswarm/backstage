@@ -205,6 +205,10 @@ export function installation(
     provider: 'capa',
     pipeline: 'testing',
     region: 'eu-west-1',
+    repositories: {
+      configs: 'example/example-configs',
+      managementClusters: 'example/example-management-clusters',
+    },
     record: RECORD,
     capabilities: [
       {
@@ -383,6 +387,110 @@ export const ACTION: Action = {
       },
     ],
     approval: { channel: '#platform', decision: 'pending' },
+  },
+};
+
+/** What the person asked for, as the dialog sends it: the record's chart line read back, the choices made. */
+const ASKED = {
+  installation: { chartLine: '3' },
+  kagent: { enabled: true },
+  portal: { enabled: false },
+};
+
+/** Refused at the gate: the installation's record could not be read as the person, so nothing was written. */
+export const REFUSED_ACTION: Action = {
+  name: 'enable-rowan-q7m2xa',
+  createdAt: '2026-09-17T09:30:00Z',
+  spec: {
+    actor: { login: 'someone' },
+    capability: 'agent-platform',
+    kind: 'enable',
+    installations: ['rowan'],
+    inputs: ASKED,
+  },
+  status: {
+    state: 'refused',
+    result: {
+      state: 'refused',
+      message:
+        'rowan is unreadable as you (installations/rowan/config.yaml.patch in example/example-configs: not found); the record is read before any write and nothing is written blind',
+      at: '2026-09-17T09:30:01Z',
+    },
+  },
+};
+
+/** Denied: a member of the team withdrew it in the review; its pull request was closed unmerged. */
+export const DENIED_ACTION: Action = {
+  name: 'reconcile-rowan-b4k9zt',
+  createdAt: '2026-09-16T14:00:00Z',
+  spec: {
+    actor: { login: 'someone' },
+    capability: 'agent-platform',
+    kind: 'reconcile',
+    installations: ['rowan'],
+    inputs: { kagent: { enabled: true }, portal: { enabled: true } },
+  },
+  status: {
+    state: 'denied',
+    pullRequests: [
+      {
+        repository: 'example/example-configs',
+        number: 9,
+        url: 'https://github.com/example/example-configs/pull/9',
+        state: 'closed',
+      },
+    ],
+    approval: {
+      channel: '#platform',
+      decision: 'denied',
+      decidedBy: 'reviewer',
+      reason: 'not during the freeze',
+    },
+    result: {
+      state: 'denied',
+      message: 'denied by reviewer: not during the freeze',
+      at: '2026-09-16T15:00:00Z',
+    },
+  },
+};
+
+/** Removed: the fileset it merged left the default branch again, so the action is reverted. */
+export const REMOVED_ACTION: Action = {
+  name: 'enable-rowan-c1d8pe',
+  createdAt: '2026-09-10T08:00:00Z',
+  spec: {
+    actor: { login: 'someone' },
+    capability: 'agent-platform',
+    kind: 'enable',
+    installations: ['rowan'],
+    inputs: ASKED,
+  },
+  status: {
+    state: 'removed',
+    pullRequests: [
+      {
+        repository: 'example/example-configs',
+        number: 5,
+        url: 'https://github.com/example/example-configs/pull/5',
+        state: 'merged',
+      },
+    ],
+    rollout: {
+      installations: [
+        {
+          name: 'rowan',
+          state: 'removed',
+          message:
+            'installations/rowan/config.yaml.patch is gone from the default branch of example/example-configs again',
+        },
+      ],
+    },
+    result: {
+      state: 'removed',
+      message:
+        'the fileset is gone from the default branch again: rowan (installations/rowan/config.yaml.patch in example/example-configs); Flux prunes what the tree applied',
+      at: '2026-09-12T08:00:00Z',
+    },
   },
 };
 
