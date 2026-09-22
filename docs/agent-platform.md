@@ -2598,11 +2598,12 @@ an agent is idle. Nothing mechanical is in it.
 **On success** the person lands back on the agents list with a toast
 (`toastApiRef`) that says "Deleting", not "Deleted": the `HelmRelease` has a
 finalizer, so all that is certain is that agent-manager's delete was accepted
-and helm-controller has started uninstalling. The toast names who the delete
-ran as (`requestedBy`) and, when agent-manager kept the shared chart source,
-its reason (`ociRepositoryKept`, e.g. "still referenced by 2 other
-HelmRelease(s): sre-agent, docs-bot"). On failure the dialog stays open and
-shows the message.
+and helm-controller has started uninstalling. Its one line of body says just
+that — the row may linger for a few seconds — because that is the only thing
+the list itself does not show. `requestedBy` and `ociRepositoryKept` come back
+in the result but are not rendered: the first names the person to themselves,
+the second grows with every release in the namespace (see the toast rule in
+`docs/ui.md`). On failure the dialog stays open and shows the message.
 
 **Commit** (`delete_agent` with `mode: commit`, giantswarm/agent-manager#24 — a
 pull request that removes the agent's files from the owning GitOps repository,
