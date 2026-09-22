@@ -1,9 +1,9 @@
 /**
  * marge's tool contract, as the portal calls it through muster.
  *
- * marge is the bot PR sweep engine (giantswarm/marge). It serves four MCP
- * tools, and the portal reaches them as the signed-in person through the
- * installation's muster, where they appear as `x_marge_<tool>`. The shapes
+ * marge is the bot PR sweep engine (giantswarm/marge). The portal reaches its
+ * tools as the signed-in person through the installation's muster, where they
+ * appear as `x_marge_<tool>`. The shapes
  * here mirror `cmd/serve.go` of giantswarm/marge: the portal decides nothing
  * about a PR, it renders what the engine reports and fires the engine's own
  * steps.
@@ -16,7 +16,6 @@ export const MARGE_SERVER = 'marge';
 export const MARGE_TOOLS = {
   list: 'list',
   sweep: 'sweep',
-  remedy: 'remedy',
   mark: 'mark',
 } as const;
 
@@ -40,6 +39,12 @@ export const MARGE_MARK_TOOL = 'developer-portal';
  * that attributes a step to the caller, so neither is a choice on the page.
  */
 export const SWEEP_STEPS = [
+  {
+    id: 'changelog',
+    label: 'Changelog',
+    description:
+      'Commit the team’s changelog entry on a PR that will merge, before it is approved. The commit starts CI again, so that PR merges on the next sweep. A repository that generates its release notes from its commits earns no entry, and neither does a PR whose title names no version.',
+  },
   {
     id: 'approve',
     label: 'Approve',
@@ -108,7 +113,7 @@ export const MERGE_GREEN_STEPS = [
 /**
  * The per-PR actions of the page, each one sweep step narrowed to the PR.
  * Merge carries approve with it, because the engine merges only what it has
- * approved. Remedy and Mark blocked are their own tools and not listed here.
+ * approved. Mark blocked is its own tool and not listed here.
  */
 export const PR_ACTIONS = [
   { id: 'approve', label: 'Approve', steps: ['approve'] },
@@ -416,27 +421,6 @@ export function versionOf(row: Pick<BotPrRow, 'versionFrom' | 'versionTo'>) {
   return row.versionFrom
     ? `${row.versionFrom} → ${row.versionTo}`
     : row.versionTo;
-}
-
-/**
- * The confirm mode the team's policy asks for, read off the entries of a
- * result: `per-pr` means every PR is confirmed on its own, `per-sweep` that
- * one confirmation covers the run. The engine's company default is `per-pr`,
- * and a stored read carries no policy, so that is also what an unknown reads
- * as.
- */
-export type ConfirmMode = 'per-pr' | 'per-sweep';
-
-export function confirmModeOf(result: MargeResult | undefined): ConfirmMode {
-  for (const row of rowsOf(result)) {
-    if (row.policy?.rescue?.confirm === 'per-sweep') {
-      return 'per-sweep';
-    }
-    if (row.policy?.rescue?.confirm === 'per-pr') {
-      return 'per-pr';
-    }
-  }
-  return 'per-pr';
 }
 
 /**

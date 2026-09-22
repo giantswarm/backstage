@@ -1,12 +1,14 @@
 import { Button, Flex, Link, Text } from '@backstage/ui';
+import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { VerifyDimension, VerifyResult } from '../apis';
-import { count, notChecked } from '../lib/comparison';
+import { count, notChecked, NotRun } from '../lib/comparison';
 import { LIST_STYLE } from './DimensionItem';
 import { ErrorAlert } from './ErrorAlert';
 import { useLiveVerify, verifyKey } from './queries';
 
-const SUMMARY_STYLE = { cursor: 'pointer' };
+/** The line a list of checks opens from takes the row's width beside the button. */
+const GROW = { flex: 1 };
 
 /**
  * One check by name: its id and the definition's key, and muster's sign-in
@@ -30,13 +32,28 @@ function CheckLine({ dimension }: { dimension: VerifyDimension }) {
   );
 }
 
-function Summary({ children }: { children: React.ReactNode }) {
+/** A skipped-check note: the line the checks open from, smaller than the record's lines. */
+function Note({ children }: { children: React.ReactNode }) {
   return (
-    <summary style={SUMMARY_STYLE}>
-      <Text as="span" variant="body-small" color="secondary">
-        {children}
+    <Text as="span" variant="body-small" color="secondary">
+      {children}
+    </Text>
+  );
+}
+
+/** The checks of one endpoint that did not answer, under the manager's reason with the request's error. */
+function Endpoint({ notRun: [reason, dimensions] }: { notRun: NotRun }) {
+  return (
+    <div data-testid="endpoint">
+      <Text variant="body-small" color="secondary">
+        {reason}
       </Text>
-    </summary>
+      <ul style={LIST_STYLE}>
+        {dimensions.map(d => (
+          <CheckLine key={d.id} dimension={d} />
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -45,9 +62,10 @@ function Summary({ children }: { children: React.ReactNode }) {
  * line: those that need the person's session on the installation, with the
  * button that runs them as the person through muster (the live half merged
  * into the comparison the tab holds, so the checks that answered leave this
- * list for the features), and the rest under the manager's reason. A
- * comparison the tab does not hold (a dialog's review) lists them without
- * the button.
+ * list for the features); those whose endpoint did not answer, as one line
+ * counting the endpoints with the manager's reason and the request's error
+ * behind it; and the rest under the manager's reason. A comparison the tab
+ * does not hold (a dialog's review) lists them without the button.
  */
 export function NotRunChecks({ result }: { result: VerifyResult }) {
   const pending = notChecked(result.features ?? []);
@@ -57,26 +75,35 @@ export function NotRunChecks({ result }: { result: VerifyResult }) {
     queryClient.getQueryData(
       verifyKey(result.installation, result.capability),
     ) === result;
-  if (pending.session.length === 0 && pending.other.length === 0) {
+  if (
+    pending.session.length === 0 &&
+    pending.unreachable.length === 0 &&
+    pending.other.length === 0
+  ) {
     return null;
   }
   return (
     <>
       {pending.session.length > 0 && (
         <Flex gap="2" align="start" justify="between">
-          <details data-testid="needs-session">
-            <Summary>
-              {pending.session.length === 1
-                ? '1 check needs'
-                : `${pending.session.length} checks need`}{' '}
-              your session on {result.installation}
-            </Summary>
-            <ul style={LIST_STYLE}>
-              {pending.session.map(d => (
-                <CheckLine key={d.id} dimension={d} />
-              ))}
-            </ul>
-          </details>
+          <div data-testid="needs-session" style={GROW}>
+            <SimpleAccordion
+              title={
+                <Note>
+                  {pending.session.length === 1
+                    ? '1 check needs'
+                    : `${pending.session.length} checks need`}{' '}
+                  your session on {result.installation}
+                </Note>
+              }
+            >
+              <ul style={LIST_STYLE}>
+                {pending.session.map(d => (
+                  <CheckLine key={d.id} dimension={d} />
+                ))}
+              </ul>
+            </SimpleAccordion>
+          </div>
           {held && (
             <Button
               variant="secondary"
@@ -95,17 +122,39 @@ export function NotRunChecks({ result }: { result: VerifyResult }) {
           error={live.error as Error}
         />
       )}
+      {pending.unreachable.length > 0 && (
+        <div data-testid="unreachable">
+          <SimpleAccordion
+            title={
+              <Note>
+                {count(pending.unreachable.length, 'endpoint')} did not answer
+              </Note>
+            }
+          >
+            <Flex direction="column" gap="1">
+              {pending.unreachable.map(notRun => (
+                <Endpoint key={notRun[0]} notRun={notRun} />
+              ))}
+            </Flex>
+          </SimpleAccordion>
+        </div>
+      )}
       {pending.other.map(([reason, dimensions]) => (
-        <details key={reason} data-testid="not-run">
-          <Summary>
-            {count(dimensions.length, 'check')} could not run: {reason}
-          </Summary>
-          <ul style={LIST_STYLE}>
-            {dimensions.map(d => (
-              <CheckLine key={d.id} dimension={d} />
-            ))}
-          </ul>
-        </details>
+        <div key={reason} data-testid="not-run">
+          <SimpleAccordion
+            title={
+              <Note>
+                {count(dimensions.length, 'check')} could not run: {reason}
+              </Note>
+            }
+          >
+            <ul style={LIST_STYLE}>
+              {dimensions.map(d => (
+                <CheckLine key={d.id} dimension={d} />
+              ))}
+            </ul>
+          </SimpleAccordion>
+        </div>
       ))}
     </>
   );

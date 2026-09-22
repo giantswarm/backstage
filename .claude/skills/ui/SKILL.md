@@ -199,6 +199,19 @@ inside is sized separately and renders larger than body text, so shrink it with 
 nested rule: `'& svg': { width: '1rem', height: '1rem' }`. `CodeBlock.tsx` is a
 worked example of both.
 
+### Toasts: two lines, and nothing from the backend verbatim
+
+A toast (`toastApiRef`) renders in a narrow column over the page in passing.
+**Title one line (~60 chars including a quoted name); description one sentence
+(~140 chars), and only when the person cannot see the thing for themselves** —
+typically that the list they are returned to lags for a few seconds. Most of our
+toasts are title-only. Never put the signed-in person's own address in one, and
+never interpolate a backend message that can grow without bound (the other
+releases referencing a shared resource, a set of affected objects): it fits in a
+fixture and is four lines in a real namespace. Leave that to the dialog or an
+error panel, and always pass a `timeout` — without one the toast is permanent.
+`docs/ui.md` has the full rule.
+
 ### Tables: see the `tables` skill
 
 The bui `Table` (data-driven `columnConfig` + `data`, cells must return

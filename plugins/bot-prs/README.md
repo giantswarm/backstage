@@ -28,33 +28,43 @@ a PR is what `marge list` and `marge sweep --dry-run` print for it.
   team filter reads nothing: the team is already in the queue. A `?team=` a
   person shared that the scope does not hold is read on its own.
 - **Table**: the `Table` of `@backstage/core-components`, sortable by every
-  column and expandable per row; classification first, worst first.
+  column and expandable per row; classification first, worst first. Each row
+  carries a tick, and every row of the view is ticked to begin with: the page
+  holds the refs the person ticked off, so a filter change and a reload need
+  no re-seeding, and what the buttons act on is what the table shows minus
+  those. The header tick clears or restores the whole view.
 - **Row expansion**: the engine's record -- classification and evidence, the
   `marge/<class>` label, bot and update type, the policy the PR was decided
   under (sweep on or off, the update types that merge when green, the confirm
   mode), the prior rescue marker -- and the two per-PR actions.
-- **Refresh classification**: `x_marge_list` with `refresh: true` on every
-  team in view. The table is otherwise the **stored** read: the label the
+- **Classify now**: one `x_marge_sweep` per team with `classify` as the only
+  step, narrowed with `prs` to the selected PRs. It writes each PR's
+  `marge/<class>` label and nothing else. The table is otherwise the
+  **stored** read: the label the
   last sweep left on each PR, which costs the discovery of the scope and
   nothing more, and says what the last sweep decided, not what a sweep would
   decide now. A PR no sweep has labelled reads `Unclassified`. Nothing on the
   page classifies on mount, on focus or on a timer.
-- **Preview sweep** and **Apply**: `x_marge_sweep` with `dry_run: true` on
-  one team, the engine's steps (approve, merge, refresh, retry, remedy) as
-  checkboxes all ticked to begin with, the way a CLI sweep runs them; Apply
-  repeats the call without `dry_run` and with `prs` set to exactly the PRs the
-  preview listed. Under a team policy with `rescue.confirm: per-pr` (the
-  company default) the rows carry checkboxes and Apply runs on the ticked
-  ones, none by default; under `per-sweep` one confirmation covers the run.
+- **Preview sweep** and **Apply**: one `x_marge_sweep` per team with
+  `dry_run: true`, narrowed with `prs` to the selected PRs, so a filtered view
+  is previewed as it reads and not as the whole team. The engine's steps
+  (changelog, approve, merge, refresh, retry, remedy) are checkboxes all ticked to begin
+  with, the way a CLI sweep runs them; Apply repeats the call without
+  `dry_run` and with `prs` set to exactly the PRs the preview listed. The PRs
+  are picked in the table, so the dialog offers no picker of its own: it is
+  the preview of a decision already taken. Its rows are grouped by repository
+  and ordered by PR number.
 - **Approve and merge the green PRs**: one `x_marge_sweep` per team with
   `actions: approve,merge,mark`, narrowed with `prs` to the PRs the engine
-  filed as `eligible` in the current view -- green, and of an update type the
+  filed as `eligible` among the selected rows -- green, and of an update type the
   team policy merges. The dialog previews with `dry_run: true` first, so the
   list is a live classification and not the stored label; one confirmation
   then applies to exactly the PRs it listed. Each step keeps its own guards:
   a pending check waits, a failing security check is never merged past, an
-  update type the policy does not merge is held. The per-PR confirmation of
-  the sweep dialog is the rescue path's and does not apply here.
+  update type the policy does not merge is held. The changelog step is not one
+  of its steps: the entry is a commit that starts CI again, so a PR that took
+  one merges on a later sweep, which is not what this button promises. Use
+  **Preview sweep** for a team that writes entries.
 - **Sweep this PR**: the sweep dialog narrowed to one PR, from the expanded
   row. There is no separate refresh or rerun button: each is a step the
   engine takes or refuses on its own terms, and a rerun is a remedy action a

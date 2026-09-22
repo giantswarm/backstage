@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react';
-import { CapabilityStateName } from '../apis';
-import { CapabilityMark, markOf, StateIcon } from './StateIcon';
+import { ActionStateName, CapabilityStateName } from '../apis';
+import { CapabilityMark, StateIcon } from './StateIcon';
+import { markOf } from './StateTag';
 
 describe('markOf', () => {
-  it.each<[CapabilityStateName, string | undefined, CapabilityMark]>([
+  it.each<[CapabilityStateName, ActionStateName | undefined, CapabilityMark]>([
     ['enabled', 'enabled', 'in sync'],
     ['enabled', undefined, 'not reconciled'],
     ['enabled', 'denied', 'not reconciled'],

@@ -63,7 +63,7 @@ const previewOf = (repo: string, number: number): MargeResult => ({
   ],
 });
 
-function renderDialog(teams: string[]) {
+function renderDialog(prsByTeam: Record<string, string[]>) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -75,7 +75,7 @@ function renderDialog(teams: string[]) {
   render(
     <SweepDialog
       installation="gazelle"
-      teams={teams}
+      prsByTeam={prsByTeam}
       isOpen
       onOpenChange={jest.fn()}
     />,
@@ -98,19 +98,32 @@ describe('SweepDialog', () => {
       ),
     );
 
-    renderDialog(['bumblebee', 'planeteers']);
+    renderDialog({
+      bumblebee: ['giantswarm/backstage#2250'],
+      planeteers: ['giantswarm/happa#7'],
+    });
 
     // A person in two teams gets both previewed: a sweep runs under one
     // team's policy, so two teams are two calls.
     await waitFor(() => expect(callTool).toHaveBeenCalledTimes(2));
+    // The preview is narrowed to the PRs the page handed over, so a filtered
+    // view is previewed as it reads and not as the whole team.
     expect(callTool).toHaveBeenCalledWith(
       'x_marge_sweep',
-      expect.objectContaining({ team: 'bumblebee', dry_run: true }),
+      expect.objectContaining({
+        team: 'bumblebee',
+        prs: ['giantswarm/backstage#2250'],
+        dry_run: true,
+      }),
       'gazelle',
     );
     expect(callTool).toHaveBeenCalledWith(
       'x_marge_sweep',
-      expect.objectContaining({ team: 'planeteers', dry_run: true }),
+      expect.objectContaining({
+        team: 'planeteers',
+        prs: ['giantswarm/happa#7'],
+        dry_run: true,
+      }),
       'gazelle',
     );
     expect(await screen.findByText('bumblebee')).toBeInTheDocument();
@@ -141,7 +154,10 @@ describe('SweepDialog', () => {
         : Promise.resolve(previewOf('backstage', 2250)),
     );
 
-    renderDialog(['bumblebee', 'planeteers']);
+    renderDialog({
+      bumblebee: ['giantswarm/backstage#2250'],
+      planeteers: ['giantswarm/happa#7'],
+    });
 
     expect(
       await screen.findByText('marge refused the run for planeteers'),

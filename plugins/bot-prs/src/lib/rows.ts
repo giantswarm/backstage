@@ -198,13 +198,18 @@ export function greenRows(rows: BotPrRow[]): BotPrRow[] {
   return rows.filter(row => row.group === GREEN_GROUP);
 }
 
-/** The green rows of each team, keyed by team: marge sweeps one team a call. */
-export function greenByTeam(rows: BotPrRow[]): Record<string, string[]> {
+/** The refs of each team, keyed by team: marge sweeps one team a call. */
+export function refsByTeam(rows: BotPrRow[]): Record<string, string[]> {
   const byTeam: Record<string, string[]> = {};
-  for (const row of greenRows(rows)) {
+  for (const row of rows) {
     byTeam[row.team] = [...(byTeam[row.team] ?? []), row.ref];
   }
   return byTeam;
+}
+
+/** The green rows of each team: what **Approve and merge** sweeps. */
+export function greenByTeam(rows: BotPrRow[]): Record<string, string[]> {
+  return refsByTeam(greenRows(rows));
 }
 
 /** The distinct values of a column over the rows, sorted, for a filter's options. */

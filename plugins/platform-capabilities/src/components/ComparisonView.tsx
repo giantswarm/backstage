@@ -1,5 +1,5 @@
-import { CSSProperties } from 'react';
 import { Flex, Text } from '@backstage/ui';
+import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
 import { VerifyFeature, VerifyResult } from '../apis';
 import {
   checkedDimensions,
@@ -14,8 +14,6 @@ import { DimensionItem, LIST_STYLE } from './DimensionItem';
 import { FileGroup } from './FileDiff';
 import { NotRunChecks } from './NotRunChecks';
 
-const PLANNED_STYLE: CSSProperties = { paddingLeft: 16, marginTop: 4 };
-
 const title = (feature: { id: string; title?: string }) =>
   feature.title ?? feature.id;
 
@@ -29,7 +27,7 @@ function countsOfFeature(feature: VerifyFeature) {
 /**
  * What the comparison found, one line per fact: each feature with a check
  * that differs; one group per file with a difference to apply, headed by
- * its path and open to its diff with every reason on its line; the
+ * its path and opening to its diff with every reason on its line; the
  * features whose changes are all planned, as one line that opens to their
  * files' groups so every planned change is reachable; the dimensions with
  * facts of their own (a reason, a probe, an object); the features as
@@ -59,7 +57,7 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
       {differing.map(feature => (
         <Text
           key={feature.id}
-          variant="body-small"
+          variant="body-medium"
           data-testid={`feature-${feature.id}`}
         >
           {title(feature)} —{' '}
@@ -70,19 +68,22 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
         <FileGroup key={group.file} group={group} />
       ))}
       {plannedOnly.length > 0 ? (
-        <details data-testid="planned">
-          <summary>
-            <Text as="span" variant="body-small" color="secondary">
-              {plannedOnly.map(title).join(', ')}:{' '}
-              {foundWords({ differences: 0, planned: plannedCount }, 'check')}
-            </Text>
-          </summary>
-          <Flex direction="column" gap="1" style={PLANNED_STYLE}>
-            {planned.map(group => (
-              <FileGroup key={group.file} group={group} />
-            ))}
-          </Flex>
-        </details>
+        <div data-testid="planned">
+          <SimpleAccordion
+            title={
+              <Text as="span" variant="body-medium" color="secondary">
+                {plannedOnly.map(title).join(', ')}:{' '}
+                {foundWords({ differences: 0, planned: plannedCount }, 'check')}
+              </Text>
+            }
+          >
+            <Flex direction="column" gap="1">
+              {planned.map(group => (
+                <FileGroup key={group.file} group={group} />
+              ))}
+            </Flex>
+          </SimpleAccordion>
+        </div>
       ) : (
         planned.map(group => <FileGroup key={group.file} group={group} />)
       )}
@@ -94,7 +95,7 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
         </ul>
       )}
       {asDefined.length > 0 && (
-        <Text variant="body-small" color="secondary" data-testid="as-defined">
+        <Text variant="body-medium" color="secondary" data-testid="as-defined">
           {asDefined.map(title).join(', ')}: as defined
         </Text>
       )}
