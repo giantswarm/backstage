@@ -5,14 +5,16 @@ import userEvent from '@testing-library/user-event';
 import { Definition, platformCapabilitiesApiRef, VerifyResult } from '../apis';
 import {
   AGENT_PLATFORM_DEFINITION,
+  APP_ID_NOT_ON_RECORD,
   CUSTOMER_PORTAL_DEFINITION,
+  DOMAIN_REFUSED,
   FakeApi,
   FakeOptions,
   installation,
   PORTAL_ON_RECORD,
 } from '../fixtures/fakeApi';
 import { CapabilityCard } from './CapabilityCard';
-import { CapabilityDialog } from './CapabilityDialog';
+import { CapabilityDialog, REFUSED_MESSAGE } from './CapabilityDialog';
 import {
   PlatformCapabilitiesProviders,
   platformCapabilitiesQueryClient,
@@ -227,5 +229,67 @@ describe('CapabilityDialog', () => {
     await userEvent.click(screen.getByRole('option', { name: 'yes' }));
     expect(tunnel).not.toHaveTextContent(REQUIRED_MESSAGE);
     expect(summary).not.toHaveTextContent('Tunnel');
+  });
+
+  it('keeps the form under a refusal, marks the choice the reason names, leads to it and reviews again', async () => {
+    const { api, form } = await renderDialog(
+      CUSTOMER_PORTAL_DEFINITION,
+      DOMAIN_REFUSED,
+      { verified: DOMAIN_REFUSED },
+    );
+    await userEvent.click(within(form).getByRole('button', { name: 'Review' }));
+    const alert = await screen.findByTestId('refused');
+    expect(alert).toHaveAttribute('data-status', 'info');
+    expect(alert).toHaveTextContent(DOMAIN_REFUSED.refused!);
+    // The form stays, editable, the named field marked and no other.
+    const domain = textbox('Domain');
+    expect(domain).toBeEnabled();
+    expect(domain).toBeInvalid();
+    expect(
+      form.querySelector('[data-field="portal.domain"]'),
+    ).toHaveTextContent(REFUSED_MESSAGE);
+    expect(textbox('Title')).not.toBeInvalid();
+    expect(screen.getAllByTestId('field-error')).toHaveLength(1);
+    // The Alert names the field in the page's words and leads to it.
+    await userEvent.click(
+      within(alert).getByRole('button', { name: 'Domain' }),
+    );
+    expect(domain).toHaveFocus();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull requests' }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+    expect(screen.queryByTestId('plan')).toBeNull();
+    // Another hostname, reviewed again with the form's values.
+    await userEvent.clear(domain);
+    await userEvent.type(domain, 'devportal.rowan.example.test');
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await waitFor(() => expect(api.verifies).toHaveLength(2));
+    expect(api.verifies[1].args?.inputs).toMatchObject({
+      portal: { domain: 'devportal.rowan.example.test' },
+    });
+  });
+
+  it('reads a refusal for a value supplied at commit as info, the sentence naming it, the form editable', async () => {
+    const { form } = await renderDialog(
+      CUSTOMER_PORTAL_DEFINITION,
+      APP_ID_NOT_ON_RECORD,
+      { verified: APP_ID_NOT_ON_RECORD },
+    );
+    await userEvent.click(within(form).getByRole('button', { name: 'Review' }));
+    const alert = await screen.findByTestId('refused');
+    expect(alert).toHaveAttribute('data-status', 'info');
+    expect(alert).toHaveTextContent(
+      "the GitHub App's id (plugins.github.appId) is not on record; supply it under Apply changes",
+    );
+    // The id is no field of the form: nothing is marked, nothing led to.
+    expect(within(alert).queryByRole('button')).toBeNull();
+    expect(screen.queryByTestId('field-error')).toBeNull();
+    expect(textbox('Domain')).toBeEnabled();
+    expect(select('Github')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull requests' }),
+    ).toBeNull();
   });
 });

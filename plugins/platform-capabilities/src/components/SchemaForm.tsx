@@ -27,6 +27,8 @@ export interface SchemaFormProps {
   values: Values;
   onChange: (values: Values) => void;
   isDisabled?: boolean;
+  /** A line under a field, by name, that marks it invalid: what the manager said about it. */
+  errors?: ReadonlyMap<string, string>;
 }
 
 /** Every field's label, qualified where two fields of the form share one. */
@@ -68,6 +70,7 @@ function FieldInput({
   values,
   onChange,
   isDisabled,
+  errors,
 }: FieldInputProps) {
   // The input keeps what the person typed (a trailing comma, a half-typed
   // number); the form holds the typed value parsed from it.
@@ -79,8 +82,10 @@ function FieldInput({
     onChange(setAt(values, field.path, parseValue(field, input)));
   };
   // A required field without a value is marked on the field itself, as
-  // soon as the form opens, with the form's own line under it.
+  // soon as the form opens, with the form's own line under it; a field the
+  // manager's refusal names, with the line the form was given for it.
   const missing = field.required && getAt(values, field.path) === undefined;
+  const error = missing ? REQUIRED_MESSAGE : errors?.get(field.name);
   const errorId = useId();
   const control =
     field.kind === 'enum' || field.kind === 'boolean' ? (
@@ -98,8 +103,8 @@ function FieldInput({
         }
         selectedKey={text === '' ? null : text}
         onSelectionChange={key => set(key === null ? '' : String(key))}
-        isInvalid={missing}
-        aria-describedby={missing ? errorId : undefined}
+        isInvalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
       />
     ) : (
       <TextField
@@ -115,21 +120,21 @@ function FieldInput({
         placeholder={placeholderOf(field)}
         value={text}
         onChange={set}
-        isInvalid={missing}
-        aria-describedby={missing ? errorId : undefined}
+        isInvalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
       />
     );
   return (
     <div data-field={field.name}>
       {control}
-      {missing && (
+      {error && (
         <Text
           id={errorId}
           variant="body-small"
           color="danger"
           data-testid="field-error"
         >
-          {REQUIRED_MESSAGE}
+          {error}
         </Text>
       )}
     </div>
@@ -185,7 +190,8 @@ function GroupFields(
  * group of them, in the schema's order. A choice (an enum, a boolean) is a
  * select with nothing preselected; a schema default is the empty field's
  * placeholder, marked as the default; a field left empty is left out of the
- * inputs; a required field without a value is marked on the field. Labels
+ * inputs; a required field without a value is marked on the field, as is a
+ * field the caller hands a line for (`errors`). Labels
  * are the schema's titles, else the keys in words, qualified with the group
  * where two fields share one. The schema decides what is asked, the manager
  * decides what is accepted -- the form composes nothing.

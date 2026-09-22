@@ -924,17 +924,17 @@ export const PLANNED_ON_HUB: VerifyResult = {
 };
 
 /**
- * rowan not compared: the record failed the definition's schema, so the
- * manager refused and checked nothing -- every dimension not checked.
+ * A comparison the definition refused: the manager checked nothing -- every
+ * dimension not checked -- rendered no file and, as it does, copied the
+ * refusal into why a commit would be refused.
  */
-export const NOT_COMPARED: VerifyResult = {
-  ...VERIFIED,
-  state: 'enabled',
-  refused:
-    'installation.podCertificateRequest: the record does not say whether the cluster serves PodCertificateRequest',
-  features: VERIFIED.features.map(f => ({
+export function refusedComparison(
+  base: VerifyResult,
+  refused: string,
+): VerifyResult {
+  const features = base.features.map(f => ({
     ...f,
-    mark: 'not checked',
+    mark: 'not checked' as const,
     marks: undefined,
     dimensions: f.dimensions?.map(d =>
       d.mark === 'not checked'
@@ -943,15 +943,36 @@ export const NOT_COMPARED: VerifyResult = {
             id: d.id,
             kind: d.kind,
             mark: 'not checked' as const,
-            reason: 'the record failed the schema',
+            reason: 'the definition refused the inputs',
           },
     ),
-  })),
-  summary: { 'not checked': 9 },
-  files: [],
-  diff: {},
-  pullRequests: [],
-};
+  }));
+  return {
+    ...base,
+    refused,
+    commitRefused: refused,
+    features,
+    summary: {
+      'not checked': features.reduce(
+        (n, f) => n + (f.dimensions?.length ?? 0),
+        0,
+      ),
+    },
+    files: [],
+    diff: {},
+    pullRequests: [],
+  };
+}
+
+/**
+ * rowan not compared: its record selects the 3 chart line and kagent needs
+ * the 4 -- a fact of the record to change first -- so the manager refused
+ * and checked nothing.
+ */
+export const NOT_COMPARED: VerifyResult = refusedComparison(
+  { ...VERIFIED, state: 'enabled' },
+  "the installation's chart line (installation.chartLine) selects the 3 line, and kagent needs the platform's 4 chart line; agentPlatform.kagentApiV2: true in installations/rowan/config.yaml.patch selects 4",
+);
 
 /**
  * rowan's customer-portal compared with its definition: every choice of the
@@ -985,6 +1006,34 @@ export const PORTAL_ON_RECORD: VerifyResult = {
   commitRefused:
     'Choose tunnel.enabled (whether the portal reaches the installation through Teleport) before a commit.',
 };
+
+/** rowan's portal with every choice on record: PORTAL_ON_RECORD with the tunnel chosen. */
+const PORTAL_CHOSEN: VerifyResult = {
+  ...PORTAL_ON_RECORD,
+  inputs: {
+    ...PORTAL_ON_RECORD.inputs!,
+    values: { ...PORTAL_ON_RECORD.inputs!.values, tunnel: { enabled: true } },
+    unset: [],
+    missing: [],
+  },
+  commitRefused: undefined,
+};
+
+/**
+ * rowan's portal not compared: the GitHub App's id lives in the encrypted
+ * Secret alone, so no read-back recovers it and the manager refused until it
+ * is supplied -- an input a person gives, not a fact to fix first.
+ */
+export const APP_ID_NOT_ON_RECORD: VerifyResult = refusedComparison(
+  PORTAL_CHOSEN,
+  "the GitHub App's id (plugins.github.appId) is not on record; supply it under Apply changes",
+);
+
+/** rowan's portal refused for a choice of the form: the hostname, changed in the dialog. */
+export const DOMAIN_REFUSED: VerifyResult = refusedComparison(
+  PORTAL_CHOSEN,
+  "the portal's hostname (portal.domain) is the hub's; choose another under rowan.example.test",
+);
 
 /**
  * The comparison ran and found the differences, and the manager would

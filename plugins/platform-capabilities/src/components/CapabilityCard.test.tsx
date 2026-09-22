@@ -4,13 +4,16 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   CapabilityState,
+  Definition,
   Installation,
   platformCapabilitiesApiRef,
   VerifyResult,
 } from '../apis';
 import {
   AGENT_PLATFORM_DEFINITION,
+  APP_ID_NOT_ON_RECORD,
   COMMIT_REFUSED,
+  CUSTOMER_PORTAL_DEFINITION,
   MISSING_CHOICES,
   ENABLED,
   FakeApi,
@@ -89,7 +92,11 @@ const RED_PROBE: VerifyResult = {
   summary: { drifted: 1 },
 };
 
-async function render(target: Installation, options: FakeOptions = {}) {
+async function render(
+  target: Installation,
+  options: FakeOptions = {},
+  definition: Definition = AGENT_PLATFORM_DEFINITION,
+) {
   const api = new FakeApi(options);
   await renderInTestApp(
     <TestApiProvider apis={[[platformCapabilitiesApiRef, api]]}>
@@ -97,7 +104,7 @@ async function render(target: Installation, options: FakeOptions = {}) {
         <CapabilityCard
           installation={target}
           capability={target.capabilities[0]}
-          definition={AGENT_PLATFORM_DEFINITION}
+          definition={definition}
         />
       </PlatformCapabilitiesProviders>
     </TestApiProvider>,
@@ -372,13 +379,54 @@ describe('CapabilityCard', () => {
     expect(card().textContent).not.toMatch(MANAGER_WORDS);
   });
 
-  it('shows the comparison error and no comparison lines', async () => {
+  it('shows the comparison error first, above the record, and no comparison lines', async () => {
     const forbidden = new Error('no grant on birch as you');
     forbidden.name = 'ForbiddenError';
     await render(ENABLED, { verifyError: forbidden });
     expect(screen.getByText('no grant on birch as you')).toBeVisible();
     expect(header()).toHaveTextContent('Installed');
+    // The first thing under the header row; the choices come after it.
+    const children = Array.from(card().children);
+    expect(children[1]).toHaveTextContent('no grant on birch as you');
+    expect(
+      children.indexOf(screen.getByTestId('choice-modelServing.enabled')),
+    ).toBeGreaterThan(1);
     expect(screen.queryByTestId('comparison')).toBeNull();
+  });
+
+  it('reads a refusal for an input the dialog supplies as info and keeps the way to the dialog', async () => {
+    const portal = installation({
+      capabilities: [
+        {
+          name: 'customer-portal',
+          state: 'enabled',
+          enabled: true,
+          lastAction: null,
+        },
+      ],
+    });
+    await render(
+      portal,
+      { verified: APP_ID_NOT_ON_RECORD },
+      CUSTOMER_PORTAL_DEFINITION,
+    );
+    const alert = within(
+      screen.getByTestId('capability-customer-portal'),
+    ).getByTestId('refused');
+    expect(alert).toHaveAttribute('data-status', 'info');
+    expect(alert).toHaveTextContent(
+      "the GitHub App's id (plugins.github.appId) is not on record; supply it under Apply changes",
+    );
+    expect(header()).toHaveTextContent('Installed · not compared');
+    expect(screen.queryByTestId('commit-refused')).toBeNull();
+    const button = screen.getByRole('button', { name: 'Apply changes' });
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+    expect(
+      screen.getByRole('form', {
+        name: 'Apply changes to customer-portal on rowan',
+      }),
+    ).toBeVisible();
   });
 
   it('Enable reviews the comparison with the form values, then opens the pull requests', async () => {
@@ -488,6 +536,10 @@ describe('CapabilityCard', () => {
     expect(
       screen.getByText('dex-app 2.2.3 on record: pin 3.2.2 first'),
     ).toBeVisible();
+    expect(screen.getByTestId('refused')).toHaveAttribute(
+      'data-status',
+      'warning',
+    );
     expect(
       screen.queryByRole('button', { name: 'Open pull requests' }),
     ).toBeNull();
@@ -568,35 +620,47 @@ describe('CapabilityCard', () => {
       expect(within(patch).getAllByTestId('annotation')).toHaveLength(1);
     });
 
-    it('says why the comparison did not run, first, and lists nothing else', async () => {
+    it('leads with the refusal as one warning Alert carrying the reason, and lists nothing else', async () => {
       await enabled(NOT_COMPARED);
-      const note = screen.getByTestId('not-compared');
-      expect(note).toHaveTextContent(
-        'The comparison did not run: installation.podCertificateRequest: the record does not say',
-      );
-      // The first line under the header row.
-      expect(card().children[1]).toBe(note);
+      const alert = screen.getByTestId('refused');
+      expect(alert).toHaveTextContent(NOT_COMPARED.refused!);
+      expect(alert).toHaveAttribute('data-status', 'warning');
+      // The reason alone: the header already says not compared.
+      expect(alert).not.toHaveTextContent(/did not run|not compared/);
+      // The first thing under the header row; the commit's copy of the
+      // reason is not a second line.
+      expect(card().children[1]).toBe(alert);
+      expect(screen.queryByTestId('commit-refused')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Apply changes' }),
+      ).toBeDisabled();
       expect(screen.queryByTestId('comparison')).toBeNull();
       expect(screen.queryByTestId('as-defined')).toBeNull();
+      expect(card().textContent).not.toMatch(MANAGER_WORDS);
     });
 
-    it('reads Not installed · not compared where the definition refused', async () => {
+    it('reads Not installed · not compared where the definition refused, the button waiting on the fix', async () => {
       await render(withCapability({ state: 'not enabled' }), {
         verified: NOT_COMPARED,
       });
       expect(header()).toHaveTextContent('Not installed · not compared');
-      expect(screen.getByRole('button', { name: 'Enable' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Enable' })).toBeDisabled();
     });
 
-    it('the review shows the refusal alone', async () => {
+    it('the review shows the refusal over the form kept editable, without a commit button', async () => {
       await renderDialog(new FakeApi({ verified: NOT_COMPARED }));
       await userEvent.click(screen.getByRole('button', { name: 'Review' }));
       await waitFor(() =>
         expect(screen.getByText('The manager would refuse this')).toBeVisible(),
       );
-      expect(screen.getByTestId('refused')).toHaveTextContent(
-        'installation.podCertificateRequest',
-      );
+      const alert = screen.getByTestId('refused');
+      expect(alert).toHaveTextContent('installation.chartLine');
+      expect(alert).toHaveAttribute('data-status', 'warning');
+      // A fact of the record is no field of the form: nothing is led to.
+      expect(within(alert).queryByRole('button')).toBeNull();
+      expect(screen.getByTestId('group-root')).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
       expect(screen.queryByTestId('plan')).toBeNull();
       expect(screen.queryByTestId('comparison')).toBeNull();
       expect(screen.queryByText(/every file is as defined/)).toBeNull();
