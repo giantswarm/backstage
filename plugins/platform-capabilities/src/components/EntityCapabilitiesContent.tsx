@@ -59,7 +59,10 @@ function Capabilities({ name }: { name: string }) {
           The manager defines no capability.
         </Text>
       )}
-      <ActionHistory installation={name} />
+      <ActionHistory
+        installation={installation}
+        definitions={info.data?.definitions ?? []}
+      />
     </Flex>
   );
 }

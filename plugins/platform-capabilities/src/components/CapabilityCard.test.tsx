@@ -25,6 +25,7 @@ import {
   NOT_ENABLED,
   PLANNED,
   PLANNED_ON_HUB,
+  REFUSED_ACTION,
   REWRITTEN,
   UP_TO_DATE,
   VERIFIED,
@@ -1006,6 +1007,33 @@ describe('CapabilityCard', () => {
       expect(choice('modelServing.enabled')).toHaveTextContent('off');
       expect(screen.getByTestId('comparison')).toBeInTheDocument();
       expect(refreshButton()).toBeEnabled();
+    });
+  });
+
+  describe('the last action', () => {
+    it('names it with its own state and when it was asked', async () => {
+      await render(
+        withCapability({
+          lastAction: { name: REFUSED_ACTION.name, result: 'refused' },
+        }),
+        { actions: [REFUSED_ACTION] },
+      );
+      const line = screen.getByTestId('last-action');
+      await waitFor(() => expect(line).toHaveTextContent(/ago$/));
+      expect(line).toHaveTextContent(
+        /^Last action: enable agent-platform · Refused · .+ ago$/,
+      );
+      expect(within(line).getByTestId('action-state')).toHaveAttribute(
+        'data-state',
+        'refused',
+      );
+    });
+
+    it('says so when there is none', async () => {
+      await render(withCapability({ lastAction: null }));
+      expect(screen.getByTestId('last-action')).toHaveTextContent(
+        'No action yet',
+      );
     });
   });
 });

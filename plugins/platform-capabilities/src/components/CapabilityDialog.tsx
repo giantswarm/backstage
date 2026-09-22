@@ -258,7 +258,13 @@ export function CapabilityDialog({
                 <Text variant="body-medium">
                   {done.message ?? 'Action started.'}
                 </Text>
-                {done.action && <ActionView action={done.action} />}
+                {done.action && (
+                  <ActionView
+                    action={done.action}
+                    installation={installation}
+                    definition={definition}
+                  />
+                )}
               </Flex>
             )}
             {failure && <ErrorAlert title={REFUSED_TITLE} error={failure} />}
