@@ -30,7 +30,14 @@ describe('formatCount', () => {
     // may reconcile it against a list.
     expect(formatCount(0)).toBe('0');
     expect(formatCount(231)).toBe('231');
-    expect(formatCount(1_040)).toBe((1040).toLocaleString());
+    expect(formatCount(1_040)).toBe('1,040');
+  });
+
+  it('groups the en-US way on every machine', () => {
+    // The literal, not `(1040).toLocaleString()`: the grouping is pinned to
+    // en-US so the figure matches the point `toFixed` writes elsewhere, and a
+    // de-DE runtime must not turn this into "1.040".
+    expect(formatCount(1_234_567)).toBe('1,234,567');
   });
 
   it('rounds a fractional value', () => {
