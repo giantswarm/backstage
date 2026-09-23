@@ -74,8 +74,6 @@ describe('repositoriesPlugin gating', () => {
     // A button, not getByLabelText: the preset list also offers "Team
     // plans", so /Team$/ is needed to tell the two apart, and getByLabelText
     // reads this custom Select's accessible name as label + placeholder.
-    expect(
-      screen.getByRole('button', { name: /Team$/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Team$/ })).toBeInTheDocument();
   }, 30_000);
 });
