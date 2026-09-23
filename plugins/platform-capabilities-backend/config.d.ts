@@ -16,8 +16,9 @@ export interface Config {
       installation: string;
       /**
        * Name of the manager's MCPServer in that muster
-       * (`giantswarm-platform-manager`) -- the target of `core_auth_login`
-       * when the person has no grant yet.
+       * (`giantswarm-platform-manager`), the one registration every call
+       * goes to, the live checks of the running installation included --
+       * the target of `core_auth_login` when the person has no grant yet.
        */
       server: string;
       /**
@@ -25,15 +26,6 @@ export interface Config {
        * `x_<prefix>_<tool>`). Default: the server name.
        */
       toolPrefix?: string;
-      /**
-       * Name of the manager's live registration in that muster
-       * (`giantswarm-platform-manager-live`): the second MCPServer muster
-       * forwards the person's own token to, whose `verify_installation`
-       * reads the running installation as the person -- the checks the
-       * comparison marks as needing the person's session. Its tools are
-       * `x_<liveServer>_<tool>`. Default: `<server>-live`.
-       */
-      liveServer?: string;
     };
   };
 }
