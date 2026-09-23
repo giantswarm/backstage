@@ -30,8 +30,19 @@ jest.mock('../SessionsDataProvider', () => ({
 // The table is not what these tests are about, and it mounts a bui Table with its
 // own machinery.
 jest.mock('../SessionsTable', () => ({
-  SessionsTable: ({ rows }: { rows: unknown[] }) => (
-    <div data-testid="sessions-table">{rows.length}</div>
+  SessionsTable: ({
+    rows,
+    hideColumns,
+  }: {
+    rows: unknown[];
+    hideColumns?: string[];
+  }) => (
+    <div
+      data-testid="sessions-table"
+      data-hidden={hideColumns?.join(',') ?? ''}
+    >
+      {rows.length}
+    </div>
   ),
 }));
 
@@ -634,6 +645,18 @@ describe('SessionsIndexPage under "All installations" on a multi-installation po
     expect(screen.queryByText('not reachable from this portal')).toBeNull();
   });
 
+  it('keeps the Installation column and names no installation', async () => {
+    await render();
+
+    expect(screen.getByTestId('sessions-table')).toHaveAttribute(
+      'data-hidden',
+      '',
+    );
+    expect(
+      screen.getByText(/across all management clusters/i),
+    ).toBeInTheDocument();
+  });
+
   it('leaves searching to the table', async () => {
     // The page carried a field of its own only to search across the groups at
     // once. With one table, search belongs to the table (stubbed here), and a
@@ -644,4 +667,49 @@ describe('SessionsIndexPage under "All installations" on a multi-installation po
       screen.queryByRole('searchbox', { name: 'Search sessions' }),
     ).not.toBeInTheDocument();
   });
+});
+
+describe('SessionsIndexPage with one installation to list from', () => {
+  const gazelleSession = {
+    id: 'gazelle/s1',
+    sessionId: 's1',
+    installation: 'gazelle',
+    title: 'Triage the incident',
+    agentName: 'SRE Agent',
+  };
+
+  it.each([
+    ['pinned in the header', { scope: 'gazelle', installations: ['gazelle'] }],
+    [
+      'the only one running kagent',
+      { scope: 'all', installations: ['gazelle'] },
+    ],
+    [
+      'the only one reachable',
+      {
+        scope: 'all',
+        installations: ['gazelle', 'golem'],
+        notReachableInstallations: ['golem'],
+      },
+    ],
+  ])(
+    'names it and drops the Installation column when it is %s',
+    async (_, overrides) => {
+      mockUseSessions.mockReturnValue({
+        ...loadedSessions,
+        rows: [gazelleSession],
+        ...overrides,
+      });
+      await render();
+
+      expect(screen.getByTestId('sessions-table')).toHaveAttribute(
+        'data-hidden',
+        'installation',
+      );
+      expect(screen.getByText('gazelle')).toBeInTheDocument();
+      expect(
+        screen.queryByText(/across all management clusters/i),
+      ).not.toBeInTheDocument();
+    },
+  );
 });

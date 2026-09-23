@@ -4,7 +4,10 @@ import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
-import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
+import {
+  ALL_INSTALLATIONS,
+  InstallationInventoryGate,
+} from '@giantswarm/backstage-plugin-gs';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCreateSession } from '../../hooks/useCreateSession';
@@ -187,6 +190,7 @@ function StartNewSession({ firstRun }: { firstRun: boolean }) {
 function SessionsIndexPageContent() {
   const {
     rows,
+    scope,
     installations,
     isLoading,
     isLoadingMore,
@@ -234,6 +238,16 @@ function SessionsIndexPageContent() {
   const queriedInstallations = installations.filter(
     installation => !notReachableInstallations.includes(installation),
   );
+
+  // The one installation the list can come from: the pinned one, or the only
+  // one asked. The Installation column would repeat it on every row, so it is
+  // named once above the table instead.
+  let soleInstallation: string | undefined;
+  if (scope !== ALL_INSTALLATIONS) {
+    soleInstallation = scope;
+  } else if (queriedInstallations.length === 1) {
+    soleInstallation = queriedInstallations[0];
+  }
 
   // "You have never started a session" needs more than an empty list. A read
   // that failed is not an empty fleet -- the same line the Agents tab draws --
@@ -317,11 +331,26 @@ function SessionsIndexPageContent() {
                   that its kagent does not identify individual users, or the
                   page would contradict itself in the warning below. */}
               <Text color="secondary">
+                {soleInstallation ? (
+                  <>
+                    On{' '}
+                    <Text as="span" weight="bold">
+                      {soleInstallation}
+                    </Text>
+                    .
+                  </>
+                ) : (
+                  'Across all management clusters.'
+                )}
                 {notUserScopedInstallations.length > 0
-                  ? 'Across all management clusters.'
-                  : 'Across all management clusters. Only your own are shown.'}
+                  ? ''
+                  : ' Only your own are shown.'}
               </Text>
-              <SessionsTable rows={rows} sessionStates={sessionStates} />
+              <SessionsTable
+                rows={rows}
+                sessionStates={sessionStates}
+                hideColumns={soleInstallation ? ['installation'] : undefined}
+              />
             </Flex>
           </>
         )}
