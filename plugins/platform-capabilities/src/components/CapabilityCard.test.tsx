@@ -299,7 +299,12 @@ describe('CapabilityCard', () => {
     // The dimensions say nothing the files do not.
     expect(screen.queryByTestId('dimension-facts')).toBeNull();
     expect(screen.queryByTestId('dimension-live-drift')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Apply changes' })).toBeEnabled();
+    // The button names the outcome in the card's own count, and can be pressed.
+    const button = screen.getByRole('button', {
+      name: 'Apply changes · 2 files',
+    });
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute('data-variant', 'primary');
     expect(screen.queryByRole('button', { name: 'Verify' })).toBeNull();
     expect(card().textContent).not.toMatch(MANAGER_WORDS);
   });
@@ -385,9 +390,13 @@ describe('CapabilityCard', () => {
         lastAction: { name: 'enable-agent-platform-rowan-1' },
       }),
     );
-    const button = screen.getByRole('button', { name: 'Apply changes' });
+    const button = screen.getByRole('button', {
+      name: 'Apply changes · 2 files',
+    });
     expect(button).toBeDisabled();
     expect(button).toHaveAccessibleDescription('Enabling · rolling out');
+    // A button that cannot be pressed takes no primary fill.
+    expect(button).toHaveAttribute('data-variant', 'secondary');
   });
 
   it('gives every row of the record a label of its own where two leaves share a name', async () => {
@@ -477,20 +486,23 @@ describe('CapabilityCard', () => {
   it('offers Enable where nothing is on record, with no line under it', async () => {
     await render(NOT_ENABLED);
     expect(header()).toHaveTextContent('Not installed');
-    expect(screen.getByRole('button', { name: 'Enable' })).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'Enable · 2 files' }),
+    ).toBeEnabled();
     expect(screen.queryByTestId('commit-refused')).toBeNull();
     expect(card().textContent).not.toMatch(MANAGER_WORDS);
   });
 
   it.each<[string, Installation, string]>([
-    ['installed', ENABLED, 'Apply changes'],
-    ['not installed', installation(), 'Enable'],
+    ['installed', ENABLED, 'Apply changes · 2 files'],
+    ['not installed', installation(), 'Enable · 2 files'],
   ])(
     'disables the button and says why where the manager would refuse the commit, %s',
     async (_, target, name) => {
       await render(target, { verified: COMMIT_REFUSED });
       const button = screen.getByRole('button', { name });
       expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('data-variant', 'secondary');
       expect(screen.getByTestId('commit-refused')).toHaveTextContent(
         COMMIT_REFUSED.commitRefused!,
       );
@@ -504,8 +516,9 @@ describe('CapabilityCard', () => {
 
   it('keeps Enable clickable where the manager refuses only the choices not on record, and names them', async () => {
     await render(installation(), { verified: MISSING_CHOICES });
-    const button = screen.getByRole('button', { name: 'Enable' });
+    const button = screen.getByRole('button', { name: 'Enable · 2 files' });
     expect(button).toBeEnabled();
+    expect(button).toHaveAttribute('data-variant', 'primary');
     expect(screen.getByTestId('commit-refused')).toHaveTextContent(
       MISSING_CHOICES.commitRefused!,
     );
@@ -572,7 +585,9 @@ describe('CapabilityCard', () => {
 
   it('Enable reviews the comparison with the form values, then opens the pull requests', async () => {
     const api = await render(installation());
-    await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Enable · 2 files' }),
+    );
     const dialog = screen.getByRole('form', {
       name: 'Enable agent-platform on rowan',
     });
@@ -605,8 +620,9 @@ describe('CapabilityCard', () => {
     expect(within(dialog).getByTestId('plan-pull-requests')).toHaveTextContent(
       'example/example-configs — 1 change(s)',
     );
+    // The last step names what it opens, in the plan's own count.
     await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Open pull requests' }),
+      within(dialog).getByRole('button', { name: 'Open 2 pull requests' }),
     );
     await waitFor(() =>
       expect(within(dialog).getByTestId('committed')).toBeInTheDocument(),
@@ -626,7 +642,7 @@ describe('CapabilityCard', () => {
   it('Apply changes reviews, then reconciles', async () => {
     const api = await render(ENABLED);
     await userEvent.click(
-      screen.getByRole('button', { name: 'Apply changes' }),
+      screen.getByRole('button', { name: 'Apply changes · 2 files' }),
     );
     const dialog = screen.getByRole('form', {
       name: 'Apply changes to agent-platform on birch',
@@ -638,7 +654,7 @@ describe('CapabilityCard', () => {
       expect(within(dialog).getByTestId('plan')).toBeInTheDocument(),
     );
     await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Open pull requests' }),
+      within(dialog).getByRole('button', { name: 'Open 2 pull requests' }),
     );
     await waitFor(() => expect(api.writes).toHaveLength(1));
     expect(api.writes[0]).toMatchObject({
@@ -657,7 +673,7 @@ describe('CapabilityCard', () => {
       ),
     );
     expect(
-      screen.queryByRole('button', { name: 'Open pull requests' }),
+      screen.queryByRole('button', { name: /^Open .*pull requests?$/ }),
     ).toBeNull();
   });
 
@@ -682,7 +698,7 @@ describe('CapabilityCard', () => {
       'warning',
     );
     expect(
-      screen.queryByRole('button', { name: 'Open pull requests' }),
+      screen.queryByRole('button', { name: /^Open .*pull requests?$/ }),
     ).toBeNull();
   });
 
@@ -720,7 +736,7 @@ describe('CapabilityCard', () => {
         'Identity, Tool access, Portal section: as defined',
       );
       expect(
-        screen.getByRole('button', { name: 'Apply changes' }),
+        screen.getByRole('button', { name: 'Apply changes · 1 file' }),
       ).toBeEnabled();
     });
 
@@ -773,9 +789,17 @@ describe('CapabilityCard', () => {
       const [, body] = card().children;
       expect(body.querySelector('[data-testid]')).toBe(alert);
       expect(screen.queryByTestId('commit-refused')).toBeNull();
-      expect(
-        screen.getByRole('button', { name: 'Apply changes' }),
-      ).toBeDisabled();
+      // Nothing rendered to count: the verb alone, quiet, the Alert its description.
+      const button = screen.getByRole('button', { name: 'Apply changes' });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('data-variant', 'secondary');
+      expect(button).toHaveAccessibleDescription(NOT_COMPARED.refused!);
+      // The mark stays the listing's, its gloss saying why nothing was compared.
+      expect(header()).toHaveAttribute('data-mark', 'not reconciled');
+      expect(header()).toHaveAttribute(
+        'title',
+        `not reconciled: Enabling, or not checked yet, not compared: ${NOT_COMPARED.refused}`,
+      );
       expect(screen.queryByTestId('comparison')).toBeNull();
       expect(screen.queryByTestId('as-defined')).toBeNull();
       expect(card().textContent).not.toMatch(MANAGER_WORDS);
@@ -786,7 +810,17 @@ describe('CapabilityCard', () => {
         verified: NOT_COMPARED,
       });
       expect(header()).toHaveTextContent('Not installed · not compared');
-      expect(screen.getByRole('button', { name: 'Enable' })).toBeDisabled();
+      // The mark the Installations page shows for it, the tooltip in the
+      // header's words with the manager's reason; nothing reads Unknown.
+      expect(header()).toHaveAttribute('data-mark', 'not installed');
+      expect(header()).toHaveAttribute(
+        'title',
+        `not installed: Not installed, not compared: ${NOT_COMPARED.refused}`,
+      );
+      expect(card().textContent).not.toMatch(/unknown/i);
+      const button = screen.getByRole('button', { name: 'Enable' });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('data-variant', 'secondary');
     });
 
     it('the review shows the refusal over the form kept editable, without a commit button', async () => {
@@ -807,7 +841,7 @@ describe('CapabilityCard', () => {
       expect(screen.queryByTestId('comparison')).toBeNull();
       expect(screen.queryByText(/every file is as defined/)).toBeNull();
       expect(
-        screen.queryByRole('button', { name: 'Open pull requests' }),
+        screen.queryByRole('button', { name: /^Open .*pull requests?$/ }),
       ).toBeNull();
     });
   });
@@ -1063,6 +1097,7 @@ describe('CapabilityCard', () => {
       expect(button).toHaveAccessibleDescription(
         'Comparing with the definition…',
       );
+      expect(button).toHaveAttribute('data-variant', 'secondary');
       expect(refreshButton()).toBeDisabled();
       expect(refreshButton()).toHaveTextContent('Refresh');
       // Nothing to announce yet.
@@ -1078,9 +1113,12 @@ describe('CapabilityCard', () => {
       expect(choice('modelServing.enabled')).toHaveTextContent('off');
       expect(screen.getByTestId('comparison')).toBeInTheDocument();
       expect(screen.queryByRole('progressbar')).toBeNull();
-      expect(
-        screen.getByRole('button', { name: 'Apply changes' }),
-      ).toBeEnabled();
+      // Landed: the label carries the files, and the fill returns.
+      const apply = screen.getByRole('button', {
+        name: 'Apply changes · 2 files',
+      });
+      expect(apply).toBeEnabled();
+      expect(apply).toHaveAttribute('data-variant', 'primary');
       expect(refreshButton()).toBeEnabled();
       expect(api.verifies).toHaveLength(1);
       expect(card().textContent).not.toMatch(MANAGER_WORDS);

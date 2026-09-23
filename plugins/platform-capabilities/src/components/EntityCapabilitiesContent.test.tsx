@@ -75,7 +75,7 @@ describe('EntityCapabilitiesContent', () => {
       'Secrets — 1 check differs',
     );
     expect(
-      within(card).getByRole('button', { name: 'Apply changes' }),
+      within(card).getByRole('button', { name: 'Apply changes · 2 files' }),
     ).toBeEnabled();
     expect(within(card).queryByRole('button', { name: 'Verify' })).toBeNull();
     expect(api.verifies).toHaveLength(1);
@@ -111,7 +111,9 @@ describe('EntityCapabilitiesContent', () => {
 
   it('Enable opens the form from the definition schema, prefilled from the comparison, reviews with its values, then opens the pull requests', async () => {
     const api = await render('rowan');
-    await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Enable · 2 files' }),
+    );
     const form = dialog();
     // The person's choices as the schema groups them, named by their groups
     // (no control reads `enabled`); the record's facts are not asked.
@@ -173,7 +175,7 @@ describe('EntityCapabilitiesContent', () => {
     );
 
     const open = within(dialog()).getByRole('button', {
-      name: 'Open pull requests',
+      name: 'Open 2 pull requests',
     });
     expect(open).toBeEnabled();
     await userEvent.click(open);
@@ -202,7 +204,9 @@ describe('EntityCapabilitiesContent', () => {
     await render('rowan', {
       connection: { connected: false, authUrl: 'https://muster.test/connect' },
     });
-    await userEvent.click(screen.getByRole('button', { name: 'Enable' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Enable · 2 files' }),
+    );
     await userEvent.click(
       within(dialog()).getByRole('button', { name: 'Review' }),
     );
@@ -210,7 +214,7 @@ describe('EntityCapabilitiesContent', () => {
       expect(within(dialog()).getByTestId('plan')).toBeInTheDocument(),
     );
     expect(
-      within(dialog()).getByRole('button', { name: 'Open pull requests' }),
+      within(dialog()).getByRole('button', { name: 'Open 2 pull requests' }),
     ).toBeDisabled();
     expect(within(dialog()).getByText('Needs your session')).toBeVisible();
   });
@@ -243,6 +247,8 @@ describe('EntityCapabilitiesContent', () => {
     expect(within(card).getByTestId('capability-state')).toHaveTextContent(
       'Not installed',
     );
-    expect(within(card).getByRole('button', { name: 'Enable' })).toBeEnabled();
+    expect(
+      within(card).getByRole('button', { name: 'Enable · 2 files' }),
+    ).toBeEnabled();
   });
 });

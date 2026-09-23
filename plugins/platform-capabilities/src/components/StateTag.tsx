@@ -5,7 +5,13 @@ import {
   VerifyMark,
   VerifyResult,
 } from '../apis';
-import { compared, countsOf, foundWords, redProbeOf } from '../lib/comparison';
+import {
+  compared,
+  countsOf,
+  foundWords,
+  notComparedReason,
+  redProbeOf,
+} from '../lib/comparison';
 
 /** The page's word for each of the manager's states; the manager's own never appear. */
 export const STATE_WORDS: Record<CapabilityStateName, string> = {
@@ -94,19 +100,51 @@ export function markOf(
   }
 }
 
-/** What the page says about a capability, and the mark it says it under. */
+/** What the page says about a capability, the mark it says it under, and what the mark means here. */
 export interface Status {
   words: string;
   mark: SyncMark;
+  /**
+   * The mark's tooltip: its line of the legend and, where the header says
+   * `not compared`, that the comparison did not run and why, in the
+   * manager's words.
+   */
+  gloss: string;
+}
+
+/** The words under a mark, the legend's line for the mark on the gloss. */
+export function under(words: string, mark: SyncMark): Status {
+  return { words, mark, gloss: glossOf(mark) };
+}
+
+/**
+ * The header where the comparison did not run: the phase with `not
+ * compared`, under the mark the listing gives the capability -- the one the
+ * Installations page's cell shows -- the gloss saying it was not compared
+ * and why. Never `unknown`: the manager did say what is on record.
+ */
+function notCompared(
+  phase: string,
+  capability: Pick<CapabilityState, 'state' | 'lastAction'>,
+  comparison: VerifyResult,
+): Status {
+  const mark = markOf(capability);
+  const reason = notComparedReason(comparison);
+  return {
+    words: `${phase} · not compared`,
+    mark,
+    gloss: `${glossOf(mark)}, not compared${reason ? `: ${reason}` : ''}`,
+  };
 }
 
 /**
  * The header line of a capability: its phase and, after the middle dot or
  * the colon, what the comparison found -- the differences and the planned
  * changes, the customer's action, the red probe, or `not compared` where
- * the comparison did not run. Without a comparison (the Installations page,
- * the comparison still running) the phase alone, in the same words, under
- * the mark the Installations page shows.
+ * the comparison did not run, the mark then the listing's and its gloss
+ * carrying the manager's reason. Without a comparison (the Installations
+ * page, the comparison still running) the phase alone, in the same words,
+ * under the mark the Installations page shows.
  */
 export function statusOf(
   capability: Pick<CapabilityState, 'state' | 'lastAction'>,
@@ -117,59 +155,57 @@ export function statusOf(
     case 'enabled':
     case 'drifted': {
       if (!comparison) {
-        return { words: STATE_WORDS[state], mark: markOf(capability) };
+        return under(STATE_WORDS[state], markOf(capability));
       }
       if (!compared(comparison)) {
-        return { words: 'Installed · not compared', mark: 'unknown' };
+        return notCompared('Installed', capability, comparison);
       }
       const counts = countsOf(comparison);
       const found = foundWords(counts, 'check');
       if (found.length === 0) {
-        return { words: 'Installed · up to date', mark: 'in sync' };
+        return under('Installed · up to date', 'in sync');
       }
-      return {
-        words: ['Installed', ...found].join(' · '),
-        mark: counts.differences > 0 ? 'not in sync' : 'not reconciled',
-      };
+      return under(
+        ['Installed', ...found].join(' · '),
+        counts.differences > 0 ? 'not in sync' : 'not reconciled',
+      );
     }
     case 'pending approval':
     case 'rolling out': {
       const verb = capability.lastAction?.name.startsWith('reconcile')
         ? 'Applying'
         : 'Enabling';
-      return { words: `${verb} · ${state}`, mark: 'not reconciled' };
+      return under(`${verb} · ${state}`, 'not reconciled');
     }
     case 'waiting for the customer': {
       const action = comparison?.customerActions?.[0]?.action;
-      return {
-        words: action ? `${STATE_WORDS[state]}: ${action}` : STATE_WORDS[state],
-        mark: 'not reconciled',
-      };
+      return under(
+        action ? `${STATE_WORDS[state]}: ${action}` : STATE_WORDS[state],
+        'not reconciled',
+      );
     }
     case 'failed': {
       const probe = redProbeOf(comparison);
-      return {
-        words: probe ? `${STATE_WORDS[state]}: ${probe}` : STATE_WORDS[state],
-        mark: 'failed',
-      };
+      return under(
+        probe ? `${STATE_WORDS[state]}: ${probe}` : STATE_WORDS[state],
+        'failed',
+      );
     }
     case 'not enabled':
       return comparison?.refused
-        ? { words: 'Not installed · not compared', mark: 'unknown' }
-        : { words: STATE_WORDS[state], mark: 'not installed' };
+        ? notCompared('Not installed', capability, comparison)
+        : under(STATE_WORDS[state], 'not installed');
     default:
-      return {
-        words: STATE_WORDS[state] ?? STATE_WORDS.unknown,
-        mark: 'unknown',
-      };
+      return under(STATE_WORDS[state] ?? STATE_WORDS.unknown, 'unknown');
   }
 }
 
 /**
  * A capability's state in the page's words next to its mark's glyph, the
- * legend's line for the mark on the tooltip; `data-state` keeps the
- * manager's state for tests. With a `status` the tag carries the header
- * line the comparison produced instead.
+ * mark's gloss on the tooltip -- the legend's line, with why the comparison
+ * did not run where it did not; `data-state` keeps the manager's state for
+ * tests. With a `status` the tag carries the header line the comparison
+ * produced instead.
  */
 export function StateTag({
   state,
@@ -184,7 +220,7 @@ export function StateTag({
     <SyncMarkLabel
       mark={status.mark}
       label={status.words}
-      title={glossOf(status.mark)}
+      title={status.gloss}
       state={state}
       testId={testId}
     />
