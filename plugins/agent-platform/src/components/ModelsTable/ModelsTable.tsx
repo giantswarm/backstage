@@ -150,6 +150,9 @@ function getColumnConfig(
       label: 'Model config',
       isSortable: true,
       isRowHeader: true,
+      // What a row is found by, so it takes the room the short columns give up.
+      defaultWidth: '3fr',
+      minWidth: 220,
       cell: row => {
         const href = hrefFor(row);
 
@@ -203,12 +206,17 @@ function getColumnConfig(
       id: 'readiness',
       label: 'Status',
       isSortable: true,
+      // Sized for the longest label, "Not accepted".
+      defaultWidth: '1fr',
+      minWidth: 140,
       cell: row => <ModelReadinessCell row={row} />,
     },
     {
       id: 'provider',
       label: 'Provider',
       isSortable: true,
+      defaultWidth: '0.75fr',
+      minWidth: 110,
       cell: row => (
         <CellText
           title={row.provider || '—'}
@@ -220,6 +228,8 @@ function getColumnConfig(
       id: 'model',
       label: 'Model',
       isSortable: true,
+      defaultWidth: '1.5fr',
+      minWidth: 140,
       cell: row => (
         <CellText
           title={row.model || '—'}
@@ -231,6 +241,8 @@ function getColumnConfig(
       id: 'endpoint',
       label: 'Endpoint',
       isSortable: true,
+      defaultWidth: '2fr',
+      minWidth: 180,
       // Empty means the provider's own default endpoint, which is worth saying
       // rather than leaving a blank that reads as "unknown". When the endpoint
       // is the serving layer's, say which model answers there and whether it
@@ -261,6 +273,9 @@ function getColumnConfig(
       id: 'installation',
       label: 'Installation',
       isSortable: true,
+      // Room for the label beside the sort arrow: it is the initial sort.
+      defaultWidth: '0.75fr',
+      minWidth: 130,
       cell: row => (
         <CellText
           title={row.installation}
