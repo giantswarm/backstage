@@ -1,7 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { useVisibleSort } from './useVisibleSort';
 
-const byInstallation = { column: 'installation', direction: 'ascending' } as const;
+const byInstallation = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
 const byName = { column: 'name', direction: 'ascending' } as const;
 
 describe('useVisibleSort', () => {
