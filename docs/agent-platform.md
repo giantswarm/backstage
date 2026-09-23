@@ -537,8 +537,11 @@ a context could not cross the boundary. The store is the contract.
   column — Agents, Sessions, Model configs, and the GPU node pools, model
   cache and GPU capacity tables — drops it when the rows can only come from
   one installation (`isSoleInstallation` in `lib/soleInstallation.ts`): one
-  pinned in the header, or only one of those asked answered once all have. `sortAgentRows` / `sortSessionRows`
-  put the home installation's rows first in the flat lists.
+  pinned in the header, or only one of those asked answered once all have.
+  Those that sort by Installation by default then sort by name instead
+  (`useVisibleSort` in ui-react), so the order always follows a visible
+  header. `sortAgentRows` / `sortSessionRows` put the home installation's
+  rows first in the flat lists.
 - **Pinning** narrows every tab (`applyInstallationScope` over the inventory's
   installations in each provider, `ServingProvider` included). Under `'all'`
   the MCP Servers tab shows the home muster — one muster is one aggregator —

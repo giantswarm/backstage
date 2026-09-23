@@ -10,7 +10,10 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  useVisibleSort,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ModelCacheRow } from '../../hooks/useClusterManager';
 import {
@@ -19,6 +22,13 @@ import {
   describeMonthlyPrice,
   describePriceSource,
 } from '../../lib/clusterManager';
+
+/** The default order, and the one while the Installation column is hidden. */
+const BY_INSTALLATION = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
+const BY_CLAIM = { column: 'claim', direction: 'ascending' } as const;
 
 export type ModelCachePanelProps = {
   rows: ModelCacheRow[];
@@ -257,11 +267,17 @@ export function ModelCachePanel({
       ),
     [removable, onRemove, hideColumns],
   );
+  const { sort, onSortChange } = useVisibleSort(
+    BY_INSTALLATION,
+    BY_CLAIM,
+    hideColumns,
+  );
   const { tableProps } = useTable<ModelCacheRow>({
     mode: 'complete',
     data: rows,
     sortFn: sortModelCacheRowsBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
+    sort,
+    onSortChange,
     paginationOptions: { type: 'none' },
   });
   const total = useMemo(() => describeTotal(rows), [rows]);

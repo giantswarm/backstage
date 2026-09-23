@@ -13,7 +13,10 @@ import {
 } from '@backstage/ui';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  useVisibleSort,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
@@ -23,6 +26,13 @@ import {
   type OpenedPool,
   type PoolServeState,
 } from './PoolLifecyclePanel';
+
+/** The default order, and the one while the Installation column is hidden. */
+const BY_INSTALLATION = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
+const BY_NAME = { column: 'name', direction: 'ascending' } as const;
 
 export type GpuNodePoolsPanelProps = {
   rows: GpuNodePoolRow[];
@@ -191,11 +201,17 @@ export function GpuNodePoolsPanel({
       ),
     [onRemove, opened?.id, onToggleLifecycle, hideColumns],
   );
+  const { sort, onSortChange } = useVisibleSort(
+    BY_INSTALLATION,
+    BY_NAME,
+    hideColumns,
+  );
   const { tableProps } = useTable<GpuNodePoolRow>({
     mode: 'complete',
     data: rows,
     sortFn: sortGpuNodePoolsBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
+    sort,
+    onSortChange,
     paginationOptions: { type: 'none' },
   });
   const openedRow = opened ? rows.find(row => row.id === opened.id) : undefined;

@@ -61,6 +61,9 @@ describe('GpuCapacityPage', () => {
     await renderInTestApp(<GpuCapacityPage />);
 
     expect(
+      screen.getByRole('columnheader', { name: 'Node' }),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole('columnheader', { name: 'Installation' }),
     ).not.toBeInTheDocument();
   });

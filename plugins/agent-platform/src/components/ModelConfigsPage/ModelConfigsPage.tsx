@@ -12,16 +12,16 @@ import { InstallationScopeNote } from '../InstallationScopeNote';
 import {
   ModelsTable,
   ModelRow,
-  type HideableModelColumn,
   toModelRow,
   toModelServedBy,
 } from '../ModelsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { useServing } from '../ServingProvider';
 import { clientLookupOf } from '../../lib/serving';
-import { isSoleInstallation } from '../../lib/soleInstallation';
-
-const HIDE_INSTALLATION: ReadonlyArray<HideableModelColumn> = ['installation'];
+import {
+  HIDE_INSTALLATION,
+  isSoleInstallation,
+} from '../../lib/soleInstallation';
 
 // The "Model configs" view of the Models tab: every kagent ModelConfig across
 // the installations in scope, and the entry point for adding one. The section

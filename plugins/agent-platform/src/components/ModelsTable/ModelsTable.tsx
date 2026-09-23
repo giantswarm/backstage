@@ -16,7 +16,10 @@ import type {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { modelDetailRouteRef } from '../../routes';
-import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  stopRowPress,
+  useVisibleSort,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   servingShortcutFor,
   summarizeClientServing,
@@ -28,6 +31,13 @@ import {
 } from '../../lib/serving';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { ModelReadinessCell } from './readinessStatus';
+
+/** The default order, and the one while the Installation column is hidden. */
+const BY_INSTALLATION = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
+const BY_NAME = { column: 'name', direction: 'ascending' } as const;
 
 /**
  * What the serving layer says about the model a ModelConfig's endpoint points
@@ -326,11 +336,17 @@ export function ModelsTable({ rows, hideColumns }: ModelsTableProps) {
     [hrefFor, hideColumns],
   );
 
+  const { sort, onSortChange } = useVisibleSort(
+    BY_INSTALLATION,
+    BY_NAME,
+    hideColumns,
+  );
   const { tableProps } = useTable<ModelRow>({
     mode: 'complete',
     data: rows,
     sortFn: sortModelsBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
+    sort,
+    onSortChange,
     paginationOptions: { type: 'none' },
   });
 

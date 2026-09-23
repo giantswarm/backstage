@@ -24,15 +24,16 @@ import {
   type ServeChoice,
 } from '../../lib/serveIntent';
 import type { ServedModel } from '../../lib/serving';
-import { isSoleInstallation } from '../../lib/soleInstallation';
+import {
+  HIDE_INSTALLATION,
+  isSoleInstallation,
+} from '../../lib/soleInstallation';
 import { AddGpuNodePoolDialog } from './AddGpuNodePoolDialog';
 import { GpuNodePoolsPanel } from './GpuNodePoolsPanel';
 import { ModelCachePanel } from './ModelCachePanel';
 import type { OpenedPool, PoolServeState } from './PoolLifecyclePanel';
 import { RemoveGpuNodePoolDialog } from './RemoveGpuNodePoolDialog';
 import { RemoveModelCacheDialog } from './RemoveModelCacheDialog';
-
-const HIDE_INSTALLATION = ['installation'] as const;
 
 export type GpuNodePoolControls = {
   /** Some reachable installation's muster lists cluster-manager. */
@@ -176,10 +177,15 @@ export function useGpuNodePoolControls(
   // and moves the page (giantswarm/backstage#2501).
   const shown = available || availability.isLoading;
   const reading = availability.isLoading || pools.isLoading;
+  // An installation whose cluster-manager serves no Cluster API can hold no
+  // pool or cache claim, so it does not count towards showing the column.
   const hideColumns = isSoleInstallation({
     scope,
     isLoading: reading,
-    installations: availability.available,
+    installations: availability.available.filter(
+      installation =>
+        !pools.notes.some(entry => entry.installation === installation),
+    ),
     unreachableInstallations: pools.errors.map(entry => entry.installation),
   })
     ? HIDE_INSTALLATION

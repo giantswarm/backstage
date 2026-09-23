@@ -10,7 +10,10 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  useVisibleSort,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { formatBytes, formatTime } from '../../lib/modelManagerServing';
 import {
   gpuFree,
@@ -20,6 +23,13 @@ import {
   type GpuNode,
 } from '../../lib/serving';
 import { backendServerName } from '../../lib/modelManagerServing';
+
+/** The default order, and the one while the Installation column is hidden. */
+const BY_INSTALLATION = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
+const BY_NAME = { column: 'name', direction: 'ascending' } as const;
 
 /** MiB → a short GiB figure, e.g. 122880 → "120 GiB". */
 export function formatGpuMemory(memoryMiB: number | undefined): string {
@@ -544,11 +554,17 @@ export function GpuCapacityPanel({
     () => nodes.some(node => node.eligible === false),
     [nodes],
   );
+  const { sort, onSortChange } = useVisibleSort(
+    BY_INSTALLATION,
+    BY_NAME,
+    hideColumns,
+  );
   const { tableProps } = useTable<GpuNode>({
     mode: 'complete',
     data: nodes,
     sortFn: sortGpuNodesBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
+    sort,
+    onSortChange,
     paginationOptions: { type: 'none' },
   });
 

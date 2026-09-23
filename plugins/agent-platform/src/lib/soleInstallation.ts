@@ -3,6 +3,11 @@ import {
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 
+/** The hide list for a table whose rows can only come from one installation. */
+export const HIDE_INSTALLATION: ReadonlyArray<'installation'> = [
+  'installation',
+];
+
 export type SoleInstallationInput = {
   scope: InstallationScope;
   /** Some installation asked has not answered yet. */

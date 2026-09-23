@@ -11,7 +11,10 @@ import { useCreateSession } from '../../hooks/useCreateSession';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
-import { isSoleInstallation } from '../../lib/soleInstallation';
+import {
+  HIDE_INSTALLATION,
+  isSoleInstallation,
+} from '../../lib/soleInstallation';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
@@ -323,7 +326,7 @@ function SessionsIndexPageContent() {
               <SessionsTable
                 rows={rows}
                 sessionStates={sessionStates}
-                hideColumns={soleInstallation ? ['installation'] : undefined}
+                hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
               />
             </Flex>
           </>

@@ -4,7 +4,10 @@ import { Flex, Text } from '@backstage/ui';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { NO_SERVING_CAPABILITIES, backendsOn } from '../../lib/serving';
-import { isSoleInstallation } from '../../lib/soleInstallation';
+import {
+  HIDE_INSTALLATION,
+  isSoleInstallation,
+} from '../../lib/soleInstallation';
 import { useGpuNodePoolControls } from '../GpuNodePools';
 import { useServing } from '../ServingProvider';
 import { GpuCapacityPanel } from './GpuCapacityPanel';
@@ -38,8 +41,6 @@ function emptyStateDescription(
   return 'The serving layers this portal can see do not report their nodes. GPU capacity is read per node from installations whose serving layer reports one: the nodes of a KServe-backed serving layer, or the host an Ollama-backed model-manager proxies (from model-manager 0.7 on — an older one reports no nodes).';
 }
 
-const HIDE_INSTALLATION = ['installation'] as const;
-
 export function GpuCapacityPage() {
   const serving = useServing();
   const pools = useGpuNodePoolControls(
@@ -68,9 +69,11 @@ export function GpuCapacityPage() {
   // cards while reading, the empty state only when there is nothing to list
   // — never one, then the other (giantswarm/backstage#2501).
   const reading = serving.isLoading || pools.isLoading;
+  // Decided on the serving read alone: the node inventory comes from it, and
+  // the cluster-manager reads behind the pools above can take much longer.
   const soleInstallation = isSoleInstallation({
     scope: serving.scope,
-    isLoading: reading,
+    isLoading: serving.isLoading,
     installations: nodeInventoryInstallations,
     unreachableInstallations: Object.keys(serving.gpuCapacityUnavailable),
   });
