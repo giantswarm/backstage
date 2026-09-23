@@ -7,6 +7,7 @@ import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { agentDetailRouteRef } from '../../routes';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { useTokenRates } from '../../hooks/useTokenRates';
+import { describeCostBasis } from '../../lib/costBasis';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useAgents } from '../AgentsDataProvider';
@@ -290,8 +291,16 @@ export function AgentUsageSection() {
       <>
         <TotalsStrip
           totals={usage.totals}
+          windowDays={windowDays}
           rates={rates}
           isRateLoading={isRateLoading}
+          costBasis={describeCostBasis({
+            tier: rateTier,
+            model: undefined,
+            installation: installation ?? '',
+            window: rateWindow,
+            tokens: usage.totals.inputTokens + usage.totals.outputTokens,
+          })}
         />
         <div className={classes.row}>
           <TokensPerDayCard

@@ -127,7 +127,7 @@ const useStyles = makeStyles(theme => ({
   stats: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: theme.spacing(4),
+    gap: theme.spacing(2, 5),
     paddingTop: theme.spacing(1.5),
     paddingBottom: theme.spacing(1.5),
     borderTop: `1px solid ${theme.palette.divider}`,
@@ -1148,7 +1148,11 @@ export function SessionDetailPage() {
         </Flex>
 
         <Box className={classes.stats}>
-          <Stat label="Turns" value={String(taskCount)} />
+          <Stat
+            label="Turns"
+            value={String(taskCount)}
+            hint="One per message sent to the agent. A turn counts once however many model and tool calls the answer took."
+          />
           {/* Labelled "billed", because the raw number is startling: every model
               call re-sends the whole context, so a 4-turn session with a large tool
               catalogue reached 1.4M prompt tokens across 14 calls. That is genuine
@@ -1159,12 +1163,14 @@ export function SessionDetailPage() {
           <Stat
             label="Input tokens (billed)"
             value={formatTokens(timeline.tokens.prompt)}
+            hint="Every token sent to a model in this session, summed over each call, delegated agents' included."
           />
           <Stat
             label="Output tokens"
             value={formatTokens(timeline.tokens.completion)}
+            hint="Every token a model generated in this session, delegated agents' included."
           />
-          {/* Estimated, not billed, and the tooltip has to say *how*: the
+          {/* Estimated, not billed, and the hint has to say *how*: the
               gateway prices whole model calls and its metrics carry no session
               label, so a session's cost can only ever be its tokens times an
               observed rate. Which rate that is decides whether the figure is
@@ -1172,19 +1178,17 @@ export function SessionDetailPage() {
               leaving the reader to assume the best case. Reads "—" rather than
               "$0.00" when there is no rate to apply — zero spend and unpriced
               spend are different facts. */}
-          <Tooltip
-            title={describeCostBasis({
+          <Stat
+            label="Est. cost"
+            value={formatUsd(estimatedCostUsd)}
+            hint={describeCostBasis({
               tier: rateTier,
               model: row.agentModel,
               installation: row.installation,
               window: rateWindow,
               tokens: timeline.tokens.total,
             })}
-          >
-            <span>
-              <Stat label="Est. cost" value={formatUsd(estimatedCostUsd)} />
-            </span>
-          </Tooltip>
+          />
         </Box>
 
         <SessionTimeline

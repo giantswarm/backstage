@@ -33,7 +33,7 @@ export type CostBasis = {
  */
 export function describeCostBasis(basis: CostBasis): string {
   const { tier, model, installation, window, tokens } = basis;
-  const applied = `applied to the ${formatCount(tokens)} tokens above`;
+  const applied = `applied to the ${formatCount(tokens)} tokens beside it`;
 
   switch (tier) {
     case 'model':
