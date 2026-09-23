@@ -677,10 +677,12 @@ it is true forever and interesting once.
 
 A kagent `Session` carries only `id`, `name?`, `user_id`, `created_at`,
 `updated_at`, `deleted_at?`, `agent_id?` and `source?`. So the columns are
-Session, Agent, Installation and Started — and the prototype's
-status, trigger, duration, cost, tokens, team, linked task, results and evaluation
-columns have no backing data at all. The nine-stat summary band derives from those
-same absent fields, so it is out too.
+Session, Agent, State, Installation and Started, and the prototype's status,
+trigger, duration, cost, tokens, team, linked task, results and evaluation
+columns have no backing data at all. The nine-stat summary band derives from
+those same absent fields, so it is out too. Installation is left out when the
+list can only come from one installation (one pinned in the header, or only one
+running kagent), where it would repeat the same name on every row.
 
 There is **no Last activity column**, and the list sorts by Started. On the
 kagent API v2 line `AgentInstance.updated_at` moves only at creation and on
