@@ -480,6 +480,26 @@ describe('Agent', () => {
       );
     });
 
+    it('keeps the rejection reason when the reference check is still unknown', () => {
+      const agent = withHarnesses([
+        harness('kagent', [
+          accepted(),
+          condition('ResolvedRefs', 'Unknown', 'Resolving', 'resolving refs'),
+          condition(
+            'Compatible',
+            'False',
+            'Incompatible',
+            'Dedicated sub-agents are not supported by this Harness',
+          ),
+        ]),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notAccepted');
+      expect(agent.getReadinessMessage()).toBe(
+        'Dedicated sub-agents are not supported by this Harness',
+      );
+    });
+
     // The state of its own: nothing changes without a spec edit, so it must
     // never look like a `pending` that will resolve.
     it('is notAdmitted when the controller has seen the spec and no Harness admits it', () => {

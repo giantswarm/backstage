@@ -133,6 +133,22 @@ describe('AgentsTable', () => {
     );
   });
 
+  it('names the warnings, not the state, when only warnings explain a non-ready agent', async () => {
+    await renderTable(
+      <AgentsTable
+        rows={[
+          { ...rows[0], readiness: 'pending', warnings: ['no sub-agents'] },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Harness warnings for Incident triager',
+      }),
+    ).toBeInTheDocument();
+  });
+
   it('does not open the agent when the info icon is pressed', async () => {
     await renderTable(<AgentsTable rows={rows} />);
 

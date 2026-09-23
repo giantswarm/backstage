@@ -2,25 +2,22 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
-import { Box, Button, ButtonLink, Flex } from '@backstage/ui';
+import { Box, Button, Flex } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
 import {
   ALL_INSTALLATIONS,
   InstallationInventoryGate,
-  PLATFORM_COMPONENT_LABELS,
   useInstallationInventory,
 } from '@giantswarm/backstage-plugin-gs';
-import {
-  EmptyStateCard,
-  useProvidePageHeaderActions,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { installationsExternalRouteRef, newAgentRouteRef } from '../../routes';
+import { newAgentRouteRef } from '../../routes';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { AgentsTable, type HideableAgentColumn } from '../AgentsTable';
 import { FirstAgentCard } from '../FirstAgentCard';
+import { KagentMissingCard } from '../KagentMissingCard';
 import { InstallationScopeNote } from '../InstallationScopeNote';
 import { ServingProvider } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -31,30 +28,6 @@ import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert'
  * the table.
  */
 const LOADING_BAR_SLOT_HEIGHT = '4px';
-
-/**
- * The pinned installation answered its inventory probe without kagent: no
- * agent can be listed or created there. Says so in place of an empty table,
- * and points to where the Agent Platform is enabled.
- */
-function KagentMissingCard({ installation }: { installation: string }) {
-  const installationsLink = useRouteRef(installationsExternalRouteRef);
-  const kagent = PLATFORM_COMPONENT_LABELS.kagent;
-
-  return (
-    <EmptyStateCard
-      title={`${kagent} is not installed on ${installation}`}
-      description={`Agents run on installations with ${kagent}. Choose another installation above, or enable the Agent Platform on ${installation}.`}
-      actions={
-        installationsLink ? (
-          <ButtonLink variant="secondary" href={installationsLink()}>
-            Go to Installations
-          </ButtonLink>
-        ) : undefined
-      }
-    />
-  );
-}
 
 // Content of the "Agents" tab. The section header + tabs are provided by the
 // Agent Platform page (GSPageLayout), so this renders content only — no
@@ -128,9 +101,9 @@ function AgentsIndexPageContent() {
   //
   // And there must be somewhere to deploy to. `installations` is the scoped
   // set that runs kagent and is reachable, so an empty one means the create
-  // flow has no target -- and under a pinned scope `InstallationScopeNote`
-  // above already says kagent is not installed there. Inviting anyway would
-  // contradict that note and dead-end in the form.
+  // flow has no target -- and under a pinned scope without kagent the card
+  // above already says so. Inviting anyway would contradict it and dead-end in
+  // the form.
   const invitesFirstAgent =
     isEmpty && !nothingCouldBeRead && installations.length > 0;
   // Everything else keeps the table -- except a pinned installation without
@@ -173,7 +146,9 @@ function AgentsIndexPageContent() {
         <InstallationInventoryGate context="Which installations run kagent is read through their Kubernetes API." />
 
         {/* No rows yet — show activity instead of an empty table skeleton. */}
-        {isLoading && <Progress aria-label="Loading agents" />}
+        {isLoading && !kagentMissing && (
+          <Progress aria-label="Loading agents" />
+        )}
 
         {invitesFirstAgent && <FirstAgentCard />}
 

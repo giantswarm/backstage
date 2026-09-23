@@ -396,10 +396,13 @@ describe('AgentsIndexPage', () => {
         components: { kagent: false, muster: true, kserve: false, capi: true },
       },
     ];
+    // Still loading: the rest of the fleet may be probing, but the card is
+    // already the whole answer for this installation.
     mockUseAgents.mockReturnValue({
       ...baseValue,
       scope: 'dingo',
       installations: [],
+      isLoading: true,
     });
 
     await renderPage();
@@ -408,6 +411,7 @@ describe('AgentsIndexPage', () => {
       screen.getByRole('heading', { name: 'kagent is not installed on dingo' }),
     ).toBeInTheDocument();
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
     // Nothing can be created there, so the header's button is withheld.
     expect(headerButton().props.isDisabled).toBe(true);
   });

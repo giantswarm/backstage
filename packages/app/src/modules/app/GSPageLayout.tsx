@@ -37,24 +37,34 @@ import {
  * which the classic `Header` does for classic pages and nothing does for these.
  */
 export function GSPageLayout(props: PageLayoutProps) {
+  const appTitle =
+    useApi(configApiRef).getOptionalString('app.title') ?? 'Backstage';
+
   // Pages that render their own header (clusters/deployments/ai-chat/home)
-  // opt out; skip the header (and its actions slot) entirely for them.
+  // opt out; skip the header (and its actions slot) entirely for them. They
+  // still get the app title as a fallback: react-helmet leaves the title alone
+  // when no mounted Helmet sets one, so a page without a header of its own
+  // would keep the previous page's. A classic `Header` inside overrides it.
   if (props.noHeader) {
-    return <>{props.children}</>;
+    return (
+      <>
+        <Helmet defaultTitle={appTitle} />
+        {props.children}
+      </>
+    );
   }
 
   return (
     <PageHeaderActionsProvider>
-      <PageLayoutWithHeader {...props} />
+      <PageLayoutWithHeader {...props} appTitle={appTitle} />
     </PageHeaderActionsProvider>
   );
 }
 
-function PageLayoutWithHeader(props: PageLayoutProps) {
-  const { title, icon, titleLink, headerActions, tabs, children } = props;
+function PageLayoutWithHeader(props: PageLayoutProps & { appTitle: string }) {
+  const { title, icon, titleLink, headerActions, tabs, children, appTitle } =
+    props;
   const { pathname } = useLocation();
-  const appTitle =
-    useApi(configApiRef).getOptionalString('app.title') ?? 'Backstage';
 
   // Two kinds of actions share the header's action area. The page's own
   // (`PluginHeaderActionBlueprint`, e.g. the Agent Platform's installation

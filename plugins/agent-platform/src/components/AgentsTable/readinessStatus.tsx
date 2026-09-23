@@ -74,9 +74,9 @@ export function AgentReadinessCell({ row }: { row: AgentRow }) {
           <InfoHint
             size="medium"
             label={
-              row.readiness === 'ready'
-                ? `Harness warnings for ${row.name}`
-                : `Why ${row.name} is ${label.toLowerCase()}`
+              row.readinessMessage
+                ? `Why ${row.name} is ${label.toLowerCase()}`
+                : `Harness warnings for ${row.name}`
             }
           >
             {hint}

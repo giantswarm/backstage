@@ -103,6 +103,17 @@ describe('GSPageLayout', () => {
     );
   });
 
+  it('falls back to the app title on a page without a header of its own', async () => {
+    document.title = 'Agents · Agent Platform | Backstage';
+    await renderInTestApp(
+      <GSPageLayout title="Home" noHeader>
+        <div>content</div>
+      </GSPageLayout>,
+    );
+
+    await waitFor(() => expect(document.title).toBe('Backstage'));
+  });
+
   it('renders only the content when noHeader is set', async () => {
     await renderInTestApp(
       <GSPageLayout title="Flux" tabs={tabs} noHeader>
