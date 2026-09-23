@@ -240,8 +240,7 @@ function SessionsIndexPageContent() {
   );
 
   // The one installation the list can come from: the pinned one, or the only
-  // one asked. The Installation column would repeat it on every row, so it is
-  // named once above the table instead.
+  // one asked. The Installation column would repeat it on every row.
   let soleInstallation: string | undefined;
   if (scope !== ALL_INSTALLATIONS) {
     soleInstallation = scope;
@@ -324,27 +323,6 @@ function SessionsIndexPageContent() {
                 {notUserScopedInstallations.length > 0
                   ? 'Sessions'
                   : 'Your sessions'}
-              </Text>
-              {/* Describes the list, so it sits with it and goes with it:
-                  there is none on first run or on an empty fleet. The "only
-                  your own" reassurance is dropped when any installation reports
-                  that its kagent does not identify individual users, or the
-                  page would contradict itself in the warning below. */}
-              <Text color="secondary">
-                {soleInstallation ? (
-                  <>
-                    On{' '}
-                    <Text as="span" weight="bold">
-                      {soleInstallation}
-                    </Text>
-                    .
-                  </>
-                ) : (
-                  'Across all management clusters.'
-                )}
-                {notUserScopedInstallations.length > 0
-                  ? ''
-                  : ' Only your own are shown.'}
               </Text>
               <SessionsTable
                 rows={rows}

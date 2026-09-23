@@ -346,10 +346,6 @@ describe('SessionsIndexPage', () => {
       expect(
         screen.queryByRole('searchbox', { name: 'Search sessions' }),
       ).not.toBeInTheDocument();
-      // The blurb describes a list that isn't there.
-      expect(
-        screen.queryByText(/across all management clusters/i),
-      ).not.toBeInTheDocument();
     });
 
     it('says nothing per installation under "All installations" either', async () => {
@@ -645,16 +641,13 @@ describe('SessionsIndexPage under "All installations" on a multi-installation po
     expect(screen.queryByText('not reachable from this portal')).toBeNull();
   });
 
-  it('keeps the Installation column and names no installation', async () => {
+  it('keeps the Installation column', async () => {
     await render();
 
     expect(screen.getByTestId('sessions-table')).toHaveAttribute(
       'data-hidden',
       '',
     );
-    expect(
-      screen.getByText(/across all management clusters/i),
-    ).toBeInTheDocument();
   });
 
   it('leaves searching to the table', async () => {
@@ -692,24 +685,17 @@ describe('SessionsIndexPage with one installation to list from', () => {
         notReachableInstallations: ['golem'],
       },
     ],
-  ])(
-    'names it and drops the Installation column when it is %s',
-    async (_, overrides) => {
-      mockUseSessions.mockReturnValue({
-        ...loadedSessions,
-        rows: [gazelleSession],
-        ...overrides,
-      });
-      await render();
+  ])('drops the Installation column when it is %s', async (_, overrides) => {
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      rows: [gazelleSession],
+      ...overrides,
+    });
+    await render();
 
-      expect(screen.getByTestId('sessions-table')).toHaveAttribute(
-        'data-hidden',
-        'installation',
-      );
-      expect(screen.getByText('gazelle')).toBeInTheDocument();
-      expect(
-        screen.queryByText(/across all management clusters/i),
-      ).not.toBeInTheDocument();
-    },
-  );
+    expect(screen.getByTestId('sessions-table')).toHaveAttribute(
+      'data-hidden',
+      'installation',
+    );
+  });
 });
