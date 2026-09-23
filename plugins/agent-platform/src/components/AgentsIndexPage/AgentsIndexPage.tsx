@@ -5,6 +5,7 @@ import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { Box, Button, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
+import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { newAgentRouteRef } from '../../routes';
@@ -102,6 +103,12 @@ function AgentsIndexPageContent() {
         )}
 
         <InstallationScopeNote component="kagent" />
+
+        {/* The installation this tab reads could not be asked whether it runs
+            kagent (its API server rejected the token, refused the read, or
+            did not answer): say so once, with the remedy, instead of listing
+            nothing. Renders nothing otherwise. */}
+        <InstallationInventoryGate context="Which installations run kagent is read through their Kubernetes API." />
 
         {/* No rows yet — show activity instead of an empty table skeleton. */}
         {isLoading && <Progress aria-label="Loading agents" />}

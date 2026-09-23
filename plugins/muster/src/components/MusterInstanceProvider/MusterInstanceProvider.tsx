@@ -7,9 +7,11 @@ import {
 } from 'react';
 import {
   ALL_INSTALLATIONS,
+  selectInventoryFailure,
   useInstallationInventory,
   useInstallationScope,
   type InstallationScope,
+  type InventoryFailure,
 } from '@giantswarm/backstage-plugin-gs';
 import {
   useResources,
@@ -58,6 +60,18 @@ export type MusterInstance = {
   scope: InstallationScope;
   /** The home installation's name, once the installations config is known. */
   homeInstallation: string | undefined;
+  /**
+   * Why the installation this section would show -- the pinned one, else the
+   * home installation -- could not be asked whether it runs muster: its
+   * inventory probe failed (gs `selectInventoryFailure`), with a 401 the
+   * person's token cannot repair, a 403 or another error. When that leaves the
+   * section without an installation, `MusterSection` renders the gate that
+   * explains it instead of a view. Undefined while the probe is pending or
+   * once it answered.
+   */
+  inventoryFailure?: InventoryFailure;
+  /** Re-runs the inventory probes (the gate's retry). */
+  refreshInventory: () => void;
   /**
    * The portal knows one installation: the header shows no selector and the
    * section behaves as it did before it had a scope.
@@ -177,6 +191,17 @@ export const MusterInstanceProvider = ({
     [installationInfos],
   );
 
+  // The failure to explain when the list above comes out empty: a pinned
+  // installation's own, else the home's -- the section falls back to the home
+  // when the pinned installation runs no muster, so the home's failure is the
+  // reason there is nothing to show then.
+  const inventoryFailure = useMemo(
+    () =>
+      selectInventoryFailure(inventory, preferred, { fallBackToHome: true }),
+    [inventory, preferred],
+  );
+  const refreshInventory = inventory.refresh;
+
   // `inventory.isLoading` only covers the home installation's probe; `isProbing`
   // covers the rest of the fleet. While no muster is known yet the list can
   // still grow, so the views must not conclude there is none.
@@ -288,6 +313,8 @@ export const MusterInstanceProvider = ({
       activeInstallation,
       scope,
       homeInstallation: home,
+      inventoryFailure,
+      refreshInventory,
       isSingleInstallation,
       activeInstallationInfo,
       setActiveInstallation,
@@ -312,6 +339,8 @@ export const MusterInstanceProvider = ({
       activeInstallation,
       scope,
       home,
+      inventoryFailure,
+      refreshInventory,
       isSingleInstallation,
       activeInstallationInfo,
       setActiveInstallation,

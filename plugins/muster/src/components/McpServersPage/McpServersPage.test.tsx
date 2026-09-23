@@ -59,6 +59,7 @@ jest.mock('../MusterInstanceProvider', () => ({
     dataUpdatedAt: Date.now(),
     isRefreshing: false,
     retry: jest.fn(),
+    refreshInventory: jest.fn(),
     ...instanceOverrides,
   }),
   // Unauthenticated: the core row shows its gate instead of loading the core
