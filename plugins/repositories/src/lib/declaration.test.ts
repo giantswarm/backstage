@@ -1,4 +1,6 @@
 import {
+  ADDONS,
+  addonAllowed,
   addonsOf,
   DeclarationForm,
   EMPTY,
@@ -165,6 +167,7 @@ describe('flavours', () => {
       'fleet',
       'cluster-app',
       'k8sapi',
+      'plans',
     ]);
   });
 
@@ -187,6 +190,15 @@ describe('flavours', () => {
     expect(
       withNature(withGen(app, { language: 'generic' }), 'customer'),
     ).toMatchObject({ flavours: ['customer', 'k8sapi'], ciGenerate: false });
+  });
+
+  it('holds the plans add-on to the generic nature', () => {
+    const plans = ADDONS.find(addon => addon.id === 'plans')!;
+    expect(addonAllowed(plans, 'generic')).toBe(true);
+    expect(addonAllowed(plans, 'app')).toBe(false);
+    const generic = withAddons(withNature(EMPTY, 'generic'), ['plans']);
+    expect(generic.flavours).toEqual(['generic', 'plans']);
+    expect(withNature(generic, 'app').flavours).toEqual(['app']);
   });
 
   it('withAddons sets the add-ons after the nature and re-derives the CircleCI switch', () => {
@@ -222,6 +234,12 @@ describe('presets', () => {
     });
     expect(withPreset(EMPTY, 'go-library').ciGenerate).toBe(true);
     expect(withPreset(EMPTY, 'customer').ciGenerate).toBe(false);
+    expect(withPreset(EMPTY, 'plans')).toMatchObject({
+      componentType: 'unspecified',
+      language: 'generic',
+      flavours: ['generic', 'plans'],
+      ciGenerate: false,
+    });
   });
 
   it('withPreset with an unknown id changes nothing', () => {
