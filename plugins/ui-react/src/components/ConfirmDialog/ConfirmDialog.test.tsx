@@ -67,6 +67,23 @@ describe('ConfirmDialog', () => {
     expect(screen.getByRole('button', { name: 'Keep it' })).toBeInTheDocument();
   });
 
+  it('offers only Close once the action is done', async () => {
+    const { onConfirm, onOpenChange } = renderDialog({
+      isDone: true,
+      confirmLabel: 'Delete',
+    });
+
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    // The header's X is a Close too; the footer's is the last one.
+    const closes = screen.getAllByRole('button', { name: 'Close' });
+    expect(closes).toHaveLength(2);
+    await userEvent.click(closes[closes.length - 1]);
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it('locks both buttons while the action is in flight', async () => {
     const { onConfirm, onOpenChange } = renderDialog({
       isBusy: true,

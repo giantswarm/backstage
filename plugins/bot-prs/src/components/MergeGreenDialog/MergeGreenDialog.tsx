@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Flex, Text } from '@backstage/ui';
+import { Alert, Text } from '@backstage/ui';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useMargeTeamSweeps } from '../../hooks/useMarge';
+import { useMargeTeamSweeps, type TeamSweepRun } from '../../hooks/useMarge';
 import {
   actionsArgument,
+  GREEN_GROUP,
   MERGE_GREEN_STEPS,
   rowsOf,
   type BotPrRow,
 } from '../../lib/marge';
-import { greenByTeam } from '../../lib/rows';
+import { greenByTeam, refsByTeam } from '../../lib/rows';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
-import { OutcomeList } from '../OutcomeList';
+import { OutcomeTable } from '../OutcomeTable';
 
 export type MergeGreenDialogProps = {
   installation: string;
@@ -26,6 +27,9 @@ const ACTIONS = actionsArgument(MERGE_GREEN_STEPS);
 const plural = (count: number, word: string) =>
   `${count} ${word}${count === 1 ? '' : 's'}`;
 
+const sumOf = (byTeam: Record<string, string[]>) =>
+  Object.values(byTeam).reduce((sum, refs) => sum + refs.length, 0);
+
 /**
  * Approve and merge every green PR in view, in one confirmation.
  *
@@ -33,12 +37,14 @@ const plural = (count: number, word: string) =>
  * policy, and only those: one `x_marge_sweep` per team, narrowed with `prs`,
  * with `approve` and `merge` as the steps. The preview is the same calls with
  * `dry_run`, so what the dialog lists is a live classification, not the
- * stored label the table shows; a PR that stopped being green in between is
- * held by the engine's own guards and says so.
+ * stored label the table shows.
  *
- * The preview is the review, so one confirmation covers every PR it lists:
- * these are the steps a scheduled sweep runs unattended, under the team
- * policy's own update types and every required check. The per-PR
+ * The preview is the review, so one confirmation covers every PR it still
+ * found green, and only those: a PR that stopped being green in between is
+ * listed with the engine's reason and left out of the apply, so the button's
+ * count is what gets merged and nothing the preview showed as held is merged
+ * behind it. These are the steps a scheduled sweep runs unattended, under the
+ * team policy's own update types and every required check; the per-PR
  * confirmation of the sweep dialog belongs to the rescue path, where an agent
  * writes code, and not here. Every call goes through muster as the signed-in
  * person, so the approval and the merge are theirs.
@@ -51,65 +57,59 @@ export function MergeGreenDialog({
 }: MergeGreenDialogProps) {
   const sweeps = useMargeTeamSweeps(installation);
   const [applied, setApplied] = useState(false);
+  // Held apart from the hook's runs, which the apply call replaces the
+  // moment it starts: the preview stays readable while the apply is in
+  // flight, and it is what the apply acts on.
+  const [preview, setPreview] = useState<TeamSweepRun[]>([]);
 
   const targets = useMemo(() => greenByTeam(rows), [rows]);
   const targetsKey = JSON.stringify(targets);
   const teams = Object.keys(targets);
-  const count = Object.values(targets).reduce(
-    (sum, refs) => sum + refs.length,
-    0,
-  );
+  const count = sumOf(targets);
 
   useEffect(() => {
     if (!isOpen) {
-      return;
+      return undefined;
     }
+    let isCurrent = true;
     setApplied(false);
+    setPreview([]);
     sweeps.reset();
     sweeps
       .run({ teams, prsByTeam: targets, actions: ACTIONS, dryRun: true })
+      .then(answer => {
+        if (isCurrent) {
+          setPreview(answer);
+        }
+      })
       .catch(() => {
         // Shown by the dialog through the runs' own errors.
       });
+    return () => {
+      isCurrent = false;
+    };
     // A new open, or a new set of targets, is a new preview.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, targetsKey, installation]);
 
   const runs = sweeps.runs;
-  const isDryRun = sweeps.isDryRun;
-  const preview = useMemo(
-    () => (isDryRun ? runs : []),
-    // Keyed on the runs themselves: react-query hands back the same array
-    // until the next call settles.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isDryRun, runs],
+  const isPreviewing = sweeps.isPending && sweeps.isDryRun;
+  const isApplying = sweeps.isPending && !sweeps.isDryRun;
+  const previewRows = useMemo(
+    () => preview.flatMap(run => rowsOf(run.result, run.team)),
+    [preview],
   );
-  const outcome = isDryRun ? [] : runs;
-  // Exactly the PRs the preview listed, so one that appeared in between is
-  // not swept unseen.
-  const applyTargets = useMemo(() => {
-    const byTeam: Record<string, string[]> = {};
-    for (const run of preview) {
-      const refs = rowsOf(run.result, run.team).map(row => row.ref);
-      if (refs.length > 0) {
-        byTeam[run.team] = refs;
-      }
-    }
-    return byTeam;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preview]);
-  const applyCount = Object.values(applyTargets).reduce(
-    (sum, refs) => sum + refs.length,
-    0,
+  // What Apply runs on: the PRs the preview still found green, per team.
+  const applyTargets = useMemo(
+    () => refsByTeam(previewRows.filter(row => row.group === GREEN_GROUP)),
+    [previewRows],
   );
+  const applyCount = sumOf(applyTargets);
+  const notGreen = previewRows.length - applyCount;
   const failed = runs.filter(run => run.error);
   const notConnected = sweeps.notConnected;
 
   const onConfirm = async () => {
-    if (applied) {
-      onOpenChange(false);
-      return;
-    }
     try {
       await sweeps.run({
         teams: Object.keys(applyTargets),
@@ -123,84 +123,96 @@ export function MergeGreenDialog({
     }
   };
 
-  let confirmLabel = `Approve and merge ${plural(applyCount, 'PR')}`;
-  if (applied) {
-    confirmLabel = 'Close';
-  }
+  const outcomeCount = applied
+    ? runs.flatMap(run => rowsOf(run.result, run.team)).length
+    : 0;
+  const confirmCount = isPreviewing ? count : applyCount;
+  const confirmLabel =
+    confirmCount > 0
+      ? `Approve and merge ${plural(confirmCount, 'PR')}`
+      : 'Approve and merge';
+  const shown = applied ? runs : preview;
 
   return (
     <ConfirmDialog
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      title="Approve and merge the green PRs"
+      title={`Approve and merge ${plural(count, 'green PR')}`}
       confirmLabel={confirmLabel}
-      busyLabel={sweeps.isDryRun ? 'Previewing…' : 'Applying…'}
-      isBusy={sweeps.isPending}
+      busyLabel="Approving and merging…"
+      isBusy={isApplying}
+      isDone={applied}
       isConfirmDisabled={
-        !applied &&
-        (sweeps.isPending || applyCount === 0 || Boolean(notConnected))
+        isPreviewing || applyCount === 0 || Boolean(notConnected)
       }
       onConfirm={onConfirm}
-      width="min(90vw, 760px)"
+      width="min(92vw, 880px)"
     >
-      {!applied ? (
-        <Text variant="body-small" color="secondary">
-          {`The ${plural(count, 'PR')} the last read filed as green across ${plural(
-            teams.length,
-            'team',
-          )}. The engine approves what its team policy approves, then merges
-          what it approved, under the same guards a sweep runs: a pending
-          check is a wait, a failing security check is never merged past, and
-          a major update is never merged unless the policy says so.`}
+      {applied ? null : (
+        <Text variant="body-medium" color="secondary">
+          marge checks each PR again, then approves and merges it as you under
+          its team&apos;s policy. A PR that is no longer green is left alone.
         </Text>
-      ) : null}
+      )}
       {notConnected ? (
         <ConnectMargeAlert
           installation={installation}
           message={notConnected.message}
         />
       ) : null}
-      {sweeps.isPending && sweeps.isDryRun ? (
-        <Text variant="body-small" color="secondary">
-          Classifying every green PR again and deciding what the run would do to
-          each.
-        </Text>
-      ) : null}
       {failed.length > 0 && !notConnected ? (
         <Alert
           status="danger"
+          icon
           title={`marge refused the run for ${failed
             .map(run => run.team)
             .join(', ')}`}
-          description={[
+          description={`${[
             ...new Set(failed.map(run => run.error?.message ?? '')),
-          ].join(' ')}
+          ].join(' ')} Nothing was approved or merged for ${
+            failed.length === 1 ? 'it' : 'them'
+          }.`}
         />
       ) : null}
-      {applied && outcome.length > 0 ? (
+      {!applied && !isPreviewing && notGreen > 0 ? (
+        <Alert
+          status="warning"
+          icon
+          title={
+            applyCount === 0
+              ? 'None of the PRs is green any more'
+              : `${notGreen} of ${plural(previewRows.length, 'PR')} ${
+                  notGreen === 1 ? 'is' : 'are'
+                } no longer green`
+          }
+          description={
+            applyCount === 0
+              ? 'There is nothing to approve and merge. The Result column says why for each PR.'
+              : `marge leaves ${
+                  notGreen === 1 ? 'it' : 'them'
+                } alone and says why in the Result column. Approve and merge acts on the other ${plural(
+                  applyCount,
+                  'PR',
+                )}.`
+          }
+        />
+      ) : null}
+      {applied && runs.some(run => run.result) ? (
         <Alert
           status="success"
-          title="Applied"
-          description="The engine ran approve and merge as you. What it did to each PR is below, and in each PR's evidence comment."
+          icon
+          title={`Approve and merge ran on ${plural(outcomeCount, 'PR')}`}
+          description="The result for each PR is below, and in its evidence comment on GitHub."
         />
       ) : null}
-      {!applied && !sweeps.isPending && preview.length > 0 ? (
-        <Text variant="body-small" color="secondary">
-          {`Apply runs exactly this, on the ${plural(applyCount, 'PR')} listed.`}
-        </Text>
+      {isPreviewing || shown.some(run => run.result) ? (
+        <OutcomeTable
+          runs={shown}
+          isPending={isPreviewing}
+          pendingLabel={`Checking ${plural(count, 'PR')}…`}
+          showTeam={teams.length > 1}
+        />
       ) : null}
-      {(applied ? outcome : preview)
-        .filter(run => run.result)
-        .map(run => (
-          <Flex key={run.team} direction="column" gap="2">
-            {teams.length > 1 ? (
-              <Text variant="body-medium" weight="bold">
-                {run.team}
-              </Text>
-            ) : null}
-            <OutcomeList result={run.result!} />
-          </Flex>
-        ))}
     </ConfirmDialog>
   );
 }

@@ -47,8 +47,7 @@ export function MarkBlockedDialog({
   const notConnected = mark.error instanceof MargeNotConnectedError;
 
   const onConfirm = async () => {
-    if (applied || !row) {
-      onOpenChange(false);
+    if (!row) {
       return;
     }
     try {
@@ -70,10 +69,11 @@ export function MarkBlockedDialog({
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       title={row ? `Mark ${row.ref} blocked` : 'Mark blocked'}
-      confirmLabel={applied ? 'Close' : 'Mark blocked'}
+      confirmLabel="Mark blocked"
       busyLabel="Writing…"
       isBusy={mark.isPending}
-      isConfirmDisabled={!applied && (reason.trim() === '' || notConnected)}
+      isDone={applied}
+      isConfirmDisabled={reason.trim() === '' || notConnected}
       error={mark.error && !notConnected ? mark.error.message : undefined}
       onConfirm={onConfirm}
     >

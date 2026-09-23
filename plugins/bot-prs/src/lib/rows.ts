@@ -212,6 +212,10 @@ export function greenByTeam(rows: BotPrRow[]): Record<string, string[]> {
   return refsByTeam(greenRows(rows));
 }
 
+/** The repository without its org: nearly every row of the queue shares it. */
+export const nameOf = (row: Pick<BotPrRow, 'repository'>) =>
+  row.repository.replace(/^[^/]+\//, '');
+
 /** The distinct values of a column over the rows, sorted, for a filter's options. */
 export function optionsOf(
   rows: BotPrRow[],
