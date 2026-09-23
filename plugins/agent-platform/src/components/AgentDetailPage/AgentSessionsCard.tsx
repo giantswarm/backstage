@@ -53,7 +53,7 @@ export function AgentSessionsCard({
             sessionStates={sessionStates}
             isLoading={isLoading}
             hideColumns={['agentName', 'installation']}
-            emptyMessage="No sessions with this agent yet. Conversations from before the move to kagent API v2 are not available."
+            emptyMessage="No sessions with this agent yet. Sessions from before this installation's agent runtime was upgraded are no longer available."
           />
         )}
       </Flex>

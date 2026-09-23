@@ -2,9 +2,12 @@ import { useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Box, Flex, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
-import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
+import {
+  ALL_INSTALLATIONS,
+  InstallationInventoryGate,
+} from '@giantswarm/backstage-plugin-gs';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCreateSession } from '../../hooks/useCreateSession';
@@ -187,6 +190,7 @@ function StartNewSession({ firstRun }: { firstRun: boolean }) {
 function SessionsIndexPageContent() {
   const {
     rows,
+    scope,
     installations,
     isLoading,
     isLoadingMore,
@@ -235,6 +239,20 @@ function SessionsIndexPageContent() {
     installation => !notReachableInstallations.includes(installation),
   );
 
+  // The one installation the list can come from: the pinned one, or the only
+  // one that answered. The Installation column would repeat it on every row.
+  // Not decided while more installations are still resolving: the first to
+  // answer would hide the column and the next would bring it back.
+  const answeredInstallations = queriedInstallations.filter(
+    installation => !unreachableInstallations.includes(installation),
+  );
+  let soleInstallation: string | undefined;
+  if (scope !== ALL_INSTALLATIONS) {
+    soleInstallation = scope;
+  } else if (!isLoadingMore && answeredInstallations.length === 1) {
+    soleInstallation = answeredInstallations[0];
+  }
+
   // "You have never started a session" needs more than an empty list. A read
   // that failed is not an empty fleet -- the same line the Agents tab draws --
   // and neither is a scope whose every kagent endpoint is unreachable from this
@@ -264,22 +282,6 @@ function SessionsIndexPageContent() {
   return (
     <Content>
       <Flex direction="column" gap="3">
-        {/* The "only your own" reassurance is dropped when any installation
-            reports that its kagent does not identify individual users —
-            otherwise the page would promise it at the top and contradict itself
-            in the warning below the table, and the reassuring claim is the one
-            read first.
-
-            Dropped entirely on first run: describing a list that isn't there
-            competes with the invitation, which is the whole screen then. */}
-        {!invitesFirstSession && (
-          <Text color="secondary">
-            {notUserScopedInstallations.length > 0
-              ? 'Agent chat sessions across the management clusters.'
-              : 'Your agent chat sessions across the management clusters. kagent scopes sessions to the signed-in user, so only your own are listed.'}
-          </Text>
-        )}
-
         {/* Conversations from before the move to kagent API v2 are not here
             (plan decision D9). Said before the list, so an empty or short one
             is explained rather than puzzled over; dismissible, because it is
@@ -316,13 +318,23 @@ function SessionsIndexPageContent() {
 
             {/* One flat table under every scope. Under "All installations" the
                 Installation column tells the rows apart; the table's initial
-                sort is last activity, newest first, which is the order to read
-                one's own sessions in whatever installation they ran on. An
-                installation without sessions simply has no row, and one that
-                could not be read is called out below. */}
-            <Box>
-              <SessionsTable rows={rows} sessionStates={sessionStates} />
-            </Box>
+                sort is newest first, whatever installation a session ran on.
+                An installation without sessions simply has no row, and one
+                that could not be read is called out below. The heading, and
+                the extra room above it, keep the search box from reading as
+                part of "Start a new session". */}
+            <Flex direction="column" gap="2" mt="4">
+              <Text as="h2" variant="title-x-small">
+                {notUserScopedInstallations.length > 0
+                  ? 'Sessions'
+                  : 'Your sessions'}
+              </Text>
+              <SessionsTable
+                rows={rows}
+                sessionStates={sessionStates}
+                hideColumns={soleInstallation ? ['installation'] : undefined}
+              />
+            </Flex>
           </>
         )}
 

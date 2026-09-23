@@ -65,7 +65,6 @@ export type SessionRow = {
    */
   agentModel?: string;
   createdAt?: string;
-  updatedAt?: string;
   /**
    * kagent reported this session's runtime lost: the agent's working state
    * went with the platform node it was paused on, and no message can reach it
@@ -159,7 +158,6 @@ export function toSessionRow(
     agentNamespace: match?.namespace,
     agentModel: match?.modelName,
     createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
     runtimeLost: readReportedRuntimeLoss(session) !== undefined,
   };
 }
@@ -175,8 +173,9 @@ function timestampValue(value: string | undefined): number | undefined {
 
 /**
  * Default ordering: the home installation's sessions first, then everyone
- * else's; within that, most recent activity first, then title. Without a
- * `home` it is recency alone.
+ * else's; within that, newest first, then title. Without a `home` it is
+ * newest first alone. By start rather than by `updatedAt`, which kagent API v2
+ * does not move on a turn (kagent-dev/kagent#2397).
  */
 export function sortSessionRows(
   rows: SessionRow[],
@@ -189,8 +188,8 @@ export function sortSessionRows(
     if (byHome !== 0) {
       return byHome;
     }
-    const aTime = timestampValue(a.updatedAt);
-    const bTime = timestampValue(b.updatedAt);
+    const aTime = timestampValue(a.createdAt);
+    const bTime = timestampValue(b.createdAt);
     if (aTime !== bTime) {
       // Rows with no timestamp sort last regardless of direction.
       if (aTime === undefined) return 1;
@@ -216,7 +215,7 @@ export function sortSessionsBy<T extends SessionRow>(
   const factor = sort.direction === 'ascending' ? 1 : -1;
 
   return [...rows].sort((a, b) => {
-    if (column === 'createdAt' || column === 'updatedAt') {
+    if (column === 'createdAt') {
       const aTime = timestampValue(a[column]);
       const bTime = timestampValue(b[column]);
       if (aTime === bTime) {

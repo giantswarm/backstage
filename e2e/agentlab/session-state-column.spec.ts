@@ -250,9 +250,9 @@ test('the list distinguishes the three ways a state can be missing', async ({
     admin
       .getByRole('row')
       .filter({ hasText: 'Never evaluated' })
-      .getByTitle(/activity window/),
-    'a session nobody asked about explains itself instead of claiming anything',
-  ).toBeVisible();
+      .getByText('Not loaded'),
+    'a session nobody asked about says so in words instead of claiming anything',
+  ).toHaveAttribute('title', 'Open the session to see its state.');
 
   await snapshot(admin, 'state-column-missing-states');
 

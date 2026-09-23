@@ -35,7 +35,6 @@ const rows: SessionRow[] = [
     agentName: 'Issue tracker',
     agentTechnicalName: 'issue-tracker',
     createdAt: '2026-07-23T16:04:28.586641Z',
-    updatedAt: '2026-07-23T16:09:58.162014Z',
   },
   {
     id: 'golem/def',
@@ -44,7 +43,6 @@ const rows: SessionRow[] = [
     title: 'Chat',
     agentName: '',
     createdAt: undefined,
-    updatedAt: undefined,
   },
 ];
 
@@ -61,15 +59,11 @@ describe('SessionsTable', () => {
       mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
     });
 
-    for (const header of [
-      'Session',
-      'Agent',
-      'Installation',
-      'Started',
-      'Last activity',
-    ]) {
+    for (const header of ['Session', 'Agent', 'Installation', 'Started']) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
+    // kagent API v2 does not move updated_at on a turn (kagent-dev/kagent#2397).
+    expect(screen.queryByText('Last activity')).not.toBeInTheDocument();
   });
 
   it('links each row to its session, carrying both installation and id', async () => {
@@ -176,10 +170,9 @@ describe('SessionsTable', () => {
       mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
     });
 
-    // Missing agent, missing created/updated timestamps: three dashes. Explicit
-    // because DateComponent renders null for a falsy value, which would leave the
-    // cell blank.
-    expect(screen.getAllByText('—')).toHaveLength(3);
+    // Missing agent, missing start: two dashes. Explicit because DateComponent
+    // renders null for a falsy value, which would leave the cell blank.
+    expect(screen.getAllByText('—')).toHaveLength(2);
   });
 
   it('renders the empty state when there are no rows', async () => {
@@ -266,7 +259,7 @@ describe('SessionsTable', () => {
       expect(screen.queryByText('Chat')).not.toBeInTheDocument();
     });
 
-    it('shows the empty state when nothing matches', async () => {
+    it('names the search term when nothing matches', async () => {
       await renderInTestApp(
         <SessionsTable rows={rows} searchDebounceMs={0} />,
         {
@@ -281,7 +274,9 @@ describe('SessionsTable', () => {
         'nothing matches this',
       );
 
-      expect(screen.getByText('No sessions found.')).toBeInTheDocument();
+      expect(
+        await screen.findByText('No sessions match "nothing matches this".'),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -384,9 +379,12 @@ describe('SessionsTable — the State column', () => {
     );
 
     expect(screen.getByText('No activity yet')).toBeInTheDocument();
-    // The second row was never evaluated, so its cell explains itself rather
-    // than claiming anything.
-    expect(screen.getByTitle(/activity window/)).toBeInTheDocument();
+    // The second row was never evaluated, so its cell says so in words rather
+    // than a bare dash, and points at where the state is.
+    expect(screen.getByText('Not loaded')).toHaveAttribute(
+      'title',
+      'Open the session to see its state.',
+    );
   });
 
   it('sorts what needs a person to the top', async () => {

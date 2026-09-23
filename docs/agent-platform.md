@@ -677,10 +677,20 @@ it is true forever and interesting once.
 
 A kagent `Session` carries only `id`, `name?`, `user_id`, `created_at`,
 `updated_at`, `deleted_at?`, `agent_id?` and `source?`. So the columns are
-Session, Agent, Installation, Started, and Last activity — and the prototype's
-status, trigger, duration, cost, tokens, team, linked task, results and evaluation
-columns have no backing data at all. The nine-stat summary band derives from those
-same absent fields, so it is out too.
+Session, Agent, State, Installation and Started, and the prototype's status,
+trigger, duration, cost, tokens, team, linked task, results and evaluation
+columns have no backing data at all. The nine-stat summary band derives from
+those same absent fields, so it is out too. Installation is left out when the
+list can only come from one installation (one pinned in the header, or only one
+running kagent), where it would repeat the same name on every row.
+
+There is **no Last activity column**, and the list sorts by Started. On the
+kagent API v2 line `AgentInstance.updated_at` moves only at creation and on
+`CREATING` → `READY`; sending a message never touches it, so the column only
+repeated Started, and a resumed session did not move up. The session detail
+page drops "last activity" and the Duration stat for the same reason. Restore
+them once kagent-dev/kagent#2397 exposes the newest task's time on
+`ListAgentInstances`.
 
 Two consequences worth knowing:
 
@@ -1146,8 +1156,9 @@ session still shows its live state immediately.
 
 **Four outcomes per cell, never a blank.** A state; `No activity yet` for a
 session that reported none; `Unknown` for one the backend could not read, or for
-every row of an installation whose whole summary failed; and a dash that says in
-its tooltip that nothing asked — past the activity window or the per-pass cap.
+every row of an installation whose whole summary failed; and `Not loaded` for
+one nothing asked about — past the activity window or the per-pass cap — whose
+tooltip points at the session page, where the state is.
 Collapsing the last three into one cell would let "we could not tell" read as
 "nothing is waiting on you", which is the opposite answer.
 
@@ -1277,10 +1288,8 @@ Not bui `List`/`ListRow`, and not `Card` with `onPress`:
 Hand-rolling also means no additions to `packages/app/src/bui-overrides.css` —
 `RecentConversations` needed five `.bui-*` overrides for a _single-line_ row.
 
-Each card is three lines: a compact single-unit age (`2h`, never `2h 5m` — the
-stats strip's `formatDuration` and the rail's `formatCompactAge` are separate
-functions in `lib/duration` for exactly this reason), the title clamped to two
-lines, and the agent's avatar and name. The prototype's `team` line has no kagent
+Each card is three lines: a compact single-unit age (`2h`, never `2h 5m`, from
+`formatCompactAge` in `lib/duration`), the title clamped to two lines, and the agent's avatar and name. The prototype's `team` line has no kagent
 equivalent, and its trigger icon has no backing data at all. The group heading
 carries the status, so cards show no badge — in a 280 px column that would cost
 the title a line. The current card is marked by an accent bar, a background and a
@@ -1411,7 +1420,7 @@ session's id, and subagent sessions are filtered out of the list anyway.
 
 ### The stats strip
 
-`Turns · Duration · Input tokens (billed) · Output tokens · Est. cost`.
+`Turns · Input tokens (billed) · Output tokens · Est. cost`.
 
 **Input tokens are labelled "billed" on purpose.** Every model call re-sends the
 whole context, so a 4-turn session with a large tool catalogue reached **1.4M
@@ -1430,9 +1439,6 @@ is derived from the parts when kagent reports none. A reported total still wins,
 since a model billing thinking tokens separately counts them in the total but in
 neither part.
 
-**Duration is wall-clock**, `updated_at − created_at`: kagent records no per-turn
-durations, so it includes however long the user was away between turns.
-
 **Est. cost is an estimate and cannot be anything else.** The gateway prices
 whole model calls and its metrics carry no session label, so this is the tokens
 beside it multiplied by the $/token this agent (or, failing that, this
@@ -1446,10 +1452,9 @@ the page.
 ### Timestamps are absolute here, relative in the list
 
 The detail header and the turn markers show `28 Jul 2026, 10:07 UTC`, not "1 day
-ago". Both ends of a session usually fall on the same day, so the relative form
-rendered "Started 1 day ago · last activity 1 day ago" for a session that took
-three minutes, and printed "1 day ago" identically on every turn marker — hiding
-the progression the timeline exists to show. The list keeps the relative form,
+ago". The relative form printed "1 day ago" identically on every turn marker of
+a session that took three minutes, hiding the progression the timeline exists to
+show. The list keeps the relative form,
 where scanning for recency is the point.
 
 ### Renaming a session
