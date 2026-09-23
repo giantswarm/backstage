@@ -2,16 +2,24 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
-import { Box, Button, Flex, Text } from '@backstage/ui';
+import { Box, Button, ButtonLink, Flex } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
-import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ALL_INSTALLATIONS,
+  InstallationInventoryGate,
+  PLATFORM_COMPONENT_LABELS,
+  useInstallationInventory,
+} from '@giantswarm/backstage-plugin-gs';
+import {
+  EmptyStateCard,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-import { newAgentRouteRef } from '../../routes';
+import { installationsExternalRouteRef, newAgentRouteRef } from '../../routes';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
-import { AgentsTable } from '../AgentsTable';
+import { AgentsTable, type HideableAgentColumn } from '../AgentsTable';
 import { FirstAgentCard } from '../FirstAgentCard';
 import { InstallationScopeNote } from '../InstallationScopeNote';
 import { ServingProvider } from '../ServingProvider';
@@ -24,6 +32,30 @@ import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert'
  */
 const LOADING_BAR_SLOT_HEIGHT = '4px';
 
+/**
+ * The pinned installation answered its inventory probe without kagent: no
+ * agent can be listed or created there. Says so in place of an empty table,
+ * and points to where the Agent Platform is enabled.
+ */
+function KagentMissingCard({ installation }: { installation: string }) {
+  const installationsLink = useRouteRef(installationsExternalRouteRef);
+  const kagent = PLATFORM_COMPONENT_LABELS.kagent;
+
+  return (
+    <EmptyStateCard
+      title={`${kagent} is not installed on ${installation}`}
+      description={`Agents run on installations with ${kagent}. Choose another installation above, or enable the Agent Platform on ${installation}.`}
+      actions={
+        installationsLink ? (
+          <ButtonLink variant="secondary" href={installationsLink()}>
+            Go to Installations
+          </ButtonLink>
+        ) : undefined
+      }
+    />
+  );
+}
+
 // Content of the "Agents" tab. The section header + tabs are provided by the
 // Agent Platform page (GSPageLayout), so this renders content only — no
 // PluginHeader of its own, and the "New agent" action is surfaced in that shared
@@ -33,25 +65,39 @@ function AgentsIndexPageContent() {
   const newAgentLink = useRouteRef(newAgentRouteRef);
   const {
     rows,
+    scope,
     installations,
     isLoading,
     isLoadingMore,
     hasInstallations,
     unreachableInstallations,
   } = useAgents();
+  const { entries } = useInstallationInventory();
+
+  // A pinned installation whose inventory answered without kagent. Read off
+  // the inventory rather than an empty `installations`, which also covers a
+  // kagent this portal cannot reach -- a different story.
+  const scopeEntry =
+    scope === ALL_INSTALLATIONS
+      ? undefined
+      : entries.find(entry => entry.installation === scope);
+  const kagentMissing =
+    scopeEntry?.probe === 'answered' && !scopeEntry.components.kagent;
 
   // Memoized so the header actions slot only updates when the handler changes.
+  // Disabled where no agent can be created; the card below says why.
   const actions = useMemo(
     () => (
       <Button
         variant="primary"
         iconStart={<AddIcon />}
+        isDisabled={kagentMissing}
         onPress={() => newAgentLink && navigate(newAgentLink())}
       >
         New agent
       </Button>
     ),
-    [newAgentLink, navigate],
+    [newAgentLink, navigate, kagentMissing],
   );
   useProvidePageHeaderActions(actions);
 
@@ -87,22 +133,38 @@ function AgentsIndexPageContent() {
   // contradict that note and dead-end in the form.
   const invitesFirstAgent =
     isEmpty && !nothingCouldBeRead && installations.length > 0;
-  // Everything else keeps the table, including a scope that runs kagent
-  // nowhere: its own empty state is the honest answer there.
-  const showsTable = !isLoading && !invitesFirstAgent && !nothingCouldBeRead;
+  // Everything else keeps the table -- except a pinned installation without
+  // kagent, where the card says there is nothing to list instead.
+  const showsTable =
+    !isLoading && !invitesFirstAgent && !nothingCouldBeRead && !kagentMissing;
+
+  // The one installation the list can come from: the pinned one, or the only
+  // one that answered. The Installation column would repeat it on every row.
+  // Not decided while more installations are still resolving: the first to
+  // answer would hide the column and the next would bring it back.
+  const answeredInstallations = installations.filter(
+    installation => !unreachableInstallations.includes(installation),
+  );
+  const soleInstallation =
+    scope !== ALL_INSTALLATIONS ||
+    (!isLoadingMore && answeredInstallations.length === 1);
+  // Decided on the rows alone: nearly every agent lives in one namespace, so
+  // the column appears only once a second one shows up, rather than showing
+  // while the fleet loads and vanishing once it settles.
+  const singleNamespace = new Set(rows.map(row => row.namespace)).size <= 1;
+  const hideColumns: HideableAgentColumn[] = [
+    ...(soleInstallation ? (['installation'] as const) : []),
+    ...(singleNamespace ? (['namespace'] as const) : []),
+  ];
 
   return (
     <Content>
       <Flex direction="column" gap="3">
-        {/* Dropped for the first-run card, which is the whole message then --
-            a blurb about agents running across the fleet contradicts it. */}
-        {!invitesFirstAgent && (
-          <Text color="secondary">
-            Agents running across your management clusters.
-          </Text>
+        {kagentMissing ? (
+          <KagentMissingCard installation={scope} />
+        ) : (
+          <InstallationScopeNote component="kagent" />
         )}
-
-        <InstallationScopeNote component="kagent" />
 
         {/* The installation this tab reads could not be asked whether it runs
             kagent (its API server rejected the token, refused the read, or
@@ -135,7 +197,7 @@ function AgentsIndexPageContent() {
                 tells the rows apart; an installation without agents has no
                 row, and one that could not be read is called out below. */}
             <Box>
-              <AgentsTable rows={rows} />
+              <AgentsTable rows={rows} hideColumns={hideColumns} />
             </Box>
           </>
         )}

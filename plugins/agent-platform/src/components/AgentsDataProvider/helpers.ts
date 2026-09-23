@@ -176,15 +176,9 @@ export type AgentRow = {
   /** Readiness derived from the template's Harness entries. */
   readiness: AgentReadiness;
   /**
-   * The Harness whose verdict `readiness` is — the platform Harness named by the
-   * admission label when it reports. `undefined` while no Harness admits the
-   * template.
-   */
-  harness?: string;
-  /**
    * Detail explaining a non-ready readiness (the Harness's reconcile error, the
-   * unresolved reference, or why no Harness admits the template), for a
-   * tooltip. `undefined` when there is nothing to explain.
+   * unresolved reference, or why no Harness admits the template), for the
+   * status's info icon. `undefined` when there is nothing to explain.
    */
   readinessMessage?: string;
   /**
@@ -289,7 +283,6 @@ export function toAgentRow(
     modelName: modelConfig?.getModel(),
     skillCount: agent.getSkillCount(),
     readiness: agent.getReadiness(),
-    harness: agent.getDecidingHarness()?.name,
     readinessMessage: agent.getReadinessMessage(),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
@@ -374,4 +367,20 @@ export function sortAgentsBy(
       aValue.localeCompare(bValue) * factor || a.name.localeCompare(b.name)
     );
   });
+}
+
+/**
+ * Free-text search over what a reader looks an agent up by: its display and
+ * technical name, what it is for, and the installation it runs on.
+ */
+export function agentSearchFn(rows: AgentRow[], search: string): AgentRow[] {
+  const needle = search.trim().toLowerCase();
+  if (!needle) {
+    return rows;
+  }
+  return rows.filter(row =>
+    [row.name, row.technicalName, row.description, row.installation].some(
+      field => field.toLowerCase().includes(needle),
+    ),
+  );
 }

@@ -1,4 +1,10 @@
-import type { PageLayoutProps } from '@backstage/frontend-plugin-api';
+import { Helmet } from 'react-helmet';
+import { useLocation } from 'react-router-dom';
+import {
+  configApiRef,
+  useApi,
+  type PageLayoutProps,
+} from '@backstage/frontend-plugin-api';
 import { PluginHeader } from '@backstage/ui';
 import type { HeaderTab } from '@backstage/ui';
 import {
@@ -26,6 +32,9 @@ import {
  * context-specific header buttons — e.g. the agent-platform create flow's
  * Cancel / Review buttons — into this single header instead of rendering a
  * second header of its own.
+ *
+ * It also sets the document title — "Agents · Agent Platform | Dev Portal" —
+ * which the classic `Header` does for classic pages and nothing does for these.
  */
 export function GSPageLayout(props: PageLayoutProps) {
   // Pages that render their own header (clusters/deployments/ai-chat/home)
@@ -43,6 +52,9 @@ export function GSPageLayout(props: PageLayoutProps) {
 
 function PageLayoutWithHeader(props: PageLayoutProps) {
   const { title, icon, titleLink, headerActions, tabs, children } = props;
+  const { pathname } = useLocation();
+  const appTitle =
+    useApi(configApiRef).getOptionalString('app.title') ?? 'Backstage';
 
   // Two kinds of actions share the header's action area. The page's own
   // (`PluginHeaderActionBlueprint`, e.g. the Agent Platform's installation
@@ -74,8 +86,20 @@ function PageLayoutWithHeader(props: PageLayoutProps) {
     };
   });
 
+  // The tab the location is under; the longest match, since a tab at the base
+  // path prefixes every other.
+  const activeTab = headerTabs
+    ?.filter(
+      tab => pathname === tab.href || pathname.startsWith(`${tab.href}/`),
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  const documentTitle = [activeTab?.label, title].filter(Boolean).join(' · ');
+
   return (
     <>
+      {documentTitle && (
+        <Helmet title={documentTitle} titleTemplate={`%s | ${appTitle}`} />
+      )}
       <PluginHeader
         title={title}
         icon={icon}

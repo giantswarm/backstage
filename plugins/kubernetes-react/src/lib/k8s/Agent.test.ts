@@ -455,6 +455,31 @@ describe('Agent', () => {
       );
     });
 
+    it('explains a rejection blocked by an unresolved reference with that reference', () => {
+      const agent = withHarnesses([
+        harness('kagent', [
+          accepted(),
+          condition(
+            'ResolvedRefs',
+            'False',
+            'ModelConfigNotFound',
+            'resolve ModelConfig "qwen3-4b-instruct": not found',
+          ),
+          condition(
+            'Compatible',
+            'False',
+            'Blocked',
+            'blocked by ResolvedRefs',
+          ),
+        ]),
+      ]);
+
+      expect(agent.getReadiness()).toBe('notAccepted');
+      expect(agent.getReadinessMessage()).toBe(
+        'resolve ModelConfig "qwen3-4b-instruct": not found',
+      );
+    });
+
     // The state of its own: nothing changes without a spec edit, so it must
     // never look like a `pending` that will resolve.
     it('is notAdmitted when the controller has seen the spec and no Harness admits it', () => {

@@ -17,6 +17,7 @@ export * from './Gate';
 export * from './GitOpsManagedLabel';
 export * from './GSMarkdownContent';
 export * from './InfoCard';
+export * from './InfoHint';
 export * from './JsonHighlight';
 export * from './LoadingIndicator';
 export * from './MenuArrowIcons';

@@ -1,6 +1,7 @@
 export { AgentsDataProvider, useAgents } from './AgentsDataProvider';
 export type { AgentsContextValue } from './AgentsDataProvider';
 export {
+  agentSearchFn,
   getAgentRefetchInterval,
   TRANSITIONAL_REFETCH_INTERVAL_MS,
   resolveModelConfig,

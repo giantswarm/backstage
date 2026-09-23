@@ -1,8 +1,9 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { AgentsContextValue } from '../AgentsDataProvider';
+import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 import { agentsRouteRef } from '../../routes';
 import { AgentsIndexPage } from './AgentsIndexPage';
 
@@ -36,10 +37,15 @@ jest.mock('../InstallationScopeNote', () => ({
 
 // The inventory gate reads the installation inventory and the section scope
 // from gs (kubernetes proxy, cluster-access status); it is covered by its own
-// tests there and renders nothing in this page's state branches.
+// tests there and renders nothing in this page's state branches. The page reads
+// the inventory itself only to tell a pinned installation without kagent.
+// Loosely typed: this suite only needs the fields the page reads.
+let mockInventoryEntries: Array<Record<string, unknown>> = [];
+
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   InstallationInventoryGate: () => null,
+  useInstallationInventory: () => ({ entries: mockInventoryEntries }),
 }));
 
 // Stub the two ui-react pieces this suite doesn't want, keeping the rest real —
@@ -101,10 +107,24 @@ const reviewer = {
   readiness: 'ready' as const,
 };
 
+/** The "New agent" button the page registered in the header. */
+function headerButton() {
+  const calls = jest.mocked(useProvidePageHeaderActions).mock.calls;
+  return calls[calls.length - 1][0] as JSX.Element;
+}
+
+const grid = () => screen.getByRole('grid');
+const columnHeaders = () =>
+  within(grid())
+    .getAllByRole('columnheader')
+    .map(header => header.textContent);
+
 describe('AgentsIndexPage', () => {
   beforeEach(() => {
     mockUseAgents.mockReset();
     mockNavigate.mockReset();
+    jest.mocked(useProvidePageHeaderActions).mockClear();
+    mockInventoryEntries = [];
   });
 
   it('renders one flat table with the installation on every row under "All installations"', async () => {
@@ -158,14 +178,9 @@ describe('AgentsIndexPage', () => {
     expect(
       screen.getByRole('button', { name: /Create your first agent/ }),
     ).toBeInTheDocument();
-    // The table, and its bare "No agents found.", is gone entirely — as is the
-    // blurb about agents running across the fleet, which would contradict the
-    // card.
+    // The table, and its bare "No agents found.", is gone entirely.
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
     expect(screen.queryByText('No agents found.')).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('Agents running across your management clusters.'),
-    ).not.toBeInTheDocument();
   });
 
   it('goes to the create flow from the invitation', async () => {
@@ -295,5 +310,113 @@ describe('AgentsIndexPage', () => {
     expect(
       screen.getByText("Couldn't read 1 installation"),
     ).toBeInTheDocument();
+  });
+
+  it('keeps the Installation and Namespace columns when the rows differ in both', async () => {
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      rows: [triager, reviewer],
+      installations: ['inst-1', 'inst-2'],
+    });
+
+    await renderPage();
+
+    expect(columnHeaders()).toEqual([
+      'Agent',
+      'Status',
+      'Installation',
+      'Namespace',
+      'Model',
+      'Toolset',
+      'Skills',
+    ]);
+  });
+
+  it('keeps the Installation column while more installations are still loading', async () => {
+    // The first to answer would otherwise hide it, and the next bring it back.
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      rows: [triager],
+      installations: ['inst-1', 'inst-2'],
+      isLoadingMore: true,
+    });
+
+    await renderPage();
+
+    expect(columnHeaders()).toContain('Installation');
+  });
+
+  it.each([
+    ['pinned in the header', { scope: 'inst-1', installations: ['inst-1'] }],
+    [
+      'the only one running kagent',
+      { scope: 'all', installations: ['inst-1'] },
+    ],
+    [
+      'the only one that answered',
+      {
+        scope: 'all',
+        installations: ['inst-1', 'inst-2'],
+        unreachableInstallations: ['inst-2'],
+      },
+    ],
+  ])('drops the Installation column when it is %s', async (_, overrides) => {
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      rows: [triager],
+      ...overrides,
+    });
+
+    await renderPage();
+
+    expect(columnHeaders()).not.toContain('Installation');
+  });
+
+  it('drops the Namespace column while every agent shares one', async () => {
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      rows: [triager, { ...reviewer, namespace: 'sre' }],
+      installations: ['inst-1', 'inst-2'],
+    });
+
+    await renderPage();
+
+    expect(columnHeaders()).not.toContain('Namespace');
+    expect(columnHeaders()).toContain('Installation');
+  });
+
+  it('says a pinned installation has no kagent, instead of an empty table', async () => {
+    mockInventoryEntries = [
+      {
+        installation: 'dingo',
+        home: false,
+        accessState: 'healthy',
+        muted: false,
+        probe: 'answered',
+        components: { kagent: false, muster: true, kserve: false, capi: true },
+      },
+    ];
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      scope: 'dingo',
+      installations: [],
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole('heading', { name: 'kagent is not installed on dingo' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    // Nothing can be created there, so the header's button is withheld.
+    expect(headerButton().props.isDisabled).toBe(true);
+  });
+
+  it('offers creating an agent wherever kagent runs', async () => {
+    mockUseAgents.mockReturnValue({ ...baseValue, rows: [triager] });
+
+    await renderPage();
+
+    expect(headerButton().props.isDisabled).toBe(false);
   });
 });

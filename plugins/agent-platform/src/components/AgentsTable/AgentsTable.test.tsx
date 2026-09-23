@@ -1,5 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AgentRow } from '../AgentsDataProvider';
 import { agentsRouteRef, modelsRouteRef } from '../../routes';
@@ -24,6 +24,23 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
+// The real InfoHint (its button, and that pressing it leaves the row alone),
+// with its tooltip text also rendered alongside: opening a bui tooltip by hover
+// in jsdom works only once another one has warmed up, so each test would
+// depend on the ones before it. InfoHint's own tests cover the opening.
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => {
+  const actual = jest.requireActual('@giantswarm/backstage-plugin-ui-react');
+  return {
+    ...actual,
+    InfoHint: (props: { label: string; children: React.ReactNode }) => (
+      <>
+        <actual.InfoHint {...props} />
+        <span data-testid="info-hint">{props.children}</span>
+      </>
+    ),
+  };
+});
+
 // Only the parent RouteRef is mountable — `mountedRoutes` rejects a SubRouteRef —
 // and the detail sub-route resolves relative to it.
 const renderTable = (element: React.ReactElement) =>
@@ -42,7 +59,6 @@ const rows: AgentRow[] = [
     model: 'Claude Sonnet 4.6',
     skillCount: 3,
     readiness: 'ready',
-    harness: 'kagent',
     toolset: {
       state: 'declared',
       selectors: ['preset:read-only', 'workflow:incident-triage'],
@@ -59,7 +75,6 @@ const rows: AgentRow[] = [
     model: undefined,
     skillCount: 0,
     readiness: 'notReady',
-    harness: 'kagent',
     readinessMessage: 'Compiling revision rev-2',
     toolset: { state: 'no-gateway' },
   },
@@ -82,29 +97,59 @@ describe('AgentsTable', () => {
     expect(screen.getByText('Status')).toBeInTheDocument();
   });
 
-  it('renders each row readiness, explaining a non-ready one on hover', async () => {
+  it('renders each row readiness, explaining a non-ready one behind an info icon', async () => {
     await renderTable(<AgentsTable rows={rows} />);
 
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.getByText('Not ready')).toBeInTheDocument();
-    expect(screen.getByTitle('Compiling revision rev-2')).toBeInTheDocument();
+    // Only the row with something to explain carries the icon.
+    expect(screen.getAllByRole('button', { name: /^Why / })).toHaveLength(1);
+    expect(
+      screen.getByRole('button', { name: 'Why Chat-only agent is not ready' }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('info-hint')).toHaveTextContent(
+      'Compiling revision rev-2',
+    );
   });
 
-  // The Harness whose verdict the readiness is — where the agent's sessions run.
-  it('names the admitting Harness under the readiness', async () => {
+  it('does not repeat the Harness under every readiness', async () => {
     await renderTable(<AgentsTable rows={rows} />);
 
-    expect(screen.getAllByText('on kagent')).toHaveLength(2);
+    expect(screen.queryByText(/^on /)).not.toBeInTheDocument();
   });
 
-  it('labels a template no Harness admits distinctly, with the reason on hover', async () => {
+  it('explains Harness warnings on a ready agent behind the same icon', async () => {
+    await renderTable(
+      <AgentsTable rows={[{ ...rows[0], warnings: ['no sub-agents'] }]} />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Harness warnings for Incident triager',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('info-hint')).toHaveTextContent(
+      'Harness warning: no sub-agents',
+    );
+  });
+
+  it('does not open the agent when the info icon is pressed', async () => {
+    await renderTable(<AgentsTable rows={rows} />);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Why Chat-only agent is not ready' }),
+    );
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('labels a template no Harness admits distinctly, with the reason', async () => {
     await renderTable(
       <AgentsTable
         rows={[
           {
             ...rows[0],
             readiness: 'notAdmitted',
-            harness: undefined,
             readinessMessage:
               'No Harness admits this agent: it carries no agent-platform.giantswarm.io/harness label.',
           },
@@ -113,8 +158,14 @@ describe('AgentsTable', () => {
     );
 
     expect(screen.getByText('Not admitted')).toBeInTheDocument();
-    expect(screen.getByTitle(/carries no .*harness label/)).toBeInTheDocument();
-    expect(screen.queryByText(/^on /)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: 'Why Incident triager is not admitted',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('info-hint')).toHaveTextContent(
+      /carries no .*harness label/,
+    );
   });
 
   it('shows the declared toolset, and the two loud states, in the Toolset column', async () => {
@@ -143,8 +194,15 @@ describe('AgentsTable', () => {
     expect(
       screen.getByText('preset:read-only, workflow:incident-triage'),
     ).toBeInTheDocument();
-    expect(screen.getByText('No tools')).toBeInTheDocument();
-    expect(screen.getByText('Full gateway access')).toBeInTheDocument();
+    // An absence, not a value: it steps back like the Sessions "Not loaded".
+    expect(screen.getByText('No tools')).toHaveAttribute(
+      'data-color',
+      'secondary',
+    );
+    expect(screen.getByText('Full gateway access')).not.toHaveAttribute(
+      'data-color',
+      'secondary',
+    );
     expect(screen.getByText('no toolset declared')).toBeInTheDocument();
     expect(screen.getByText('unread not readable')).toBeInTheDocument();
   });
@@ -163,7 +221,11 @@ describe('AgentsTable', () => {
     );
 
     expect(screen.getByText('Not accepted')).toBeInTheDocument();
-    expect(screen.getByTitle('bad spec')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: 'Why Incident triager is not accepted',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('shows an unreconciled agent as pending', async () => {
@@ -188,6 +250,48 @@ describe('AgentsTable', () => {
 
     expect(screen.getByText('Chat-only agent')).toBeInTheDocument();
     expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
+  it('leaves out the columns the page hides', async () => {
+    await renderTable(
+      <AgentsTable rows={rows} hideColumns={['installation', 'namespace']} />,
+    );
+
+    expect(
+      screen.getAllByRole('columnheader').map(header => header.textContent),
+    ).toEqual(['Agent', 'Status', 'Model', 'Toolset', 'Skills']);
+    expect(
+      screen.getByRole('searchbox', { name: 'Search agents' }),
+    ).toHaveAttribute('placeholder', 'Search by name or description');
+  });
+
+  it('searches by name and description', async () => {
+    await renderTable(<AgentsTable rows={rows} searchDebounceMs={0} />);
+
+    const search = screen.getByRole('searchbox', { name: 'Search agents' });
+    expect(search).toHaveAttribute(
+      'placeholder',
+      'Search by name, description or installation',
+    );
+    await userEvent.type(search, 'triages');
+
+    const body = screen.getAllByRole('rowgroup')[1];
+    expect(within(body).getAllByRole('row')).toHaveLength(1);
+    expect(screen.getByText('Incident triager')).toBeInTheDocument();
+    expect(screen.queryByText('Chat-only agent')).not.toBeInTheDocument();
+  });
+
+  it('says when nothing matches the search', async () => {
+    await renderTable(<AgentsTable rows={rows} searchDebounceMs={0} />);
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search agents' }),
+      'kyverno',
+    );
+
+    expect(
+      await screen.findByText('No agents match "kyverno".'),
+    ).toBeInTheDocument();
   });
 
   it('shows the empty state when there are no agents', async () => {

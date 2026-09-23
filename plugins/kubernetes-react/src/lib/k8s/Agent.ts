@@ -516,9 +516,12 @@ export class Agent extends KubeObject<AgentInterface> {
           ? `No Harness admits this agent: the label ${HARNESS_LABEL}=${label} selects none.`
           : `No Harness admits this agent: it carries no ${HARNESS_LABEL} label.`;
       }
+      // ResolvedRefs ahead of Compatible: a Compatible=False that only reads
+      // "blocked by ResolvedRefs" defers to the reference that did not resolve.
       case 'notAccepted':
         return this.firstFailingMessage([
           AgentConditionType.Accepted,
+          AgentConditionType.ResolvedRefs,
           AgentConditionType.Compatible,
         ]);
       case 'notReady':
