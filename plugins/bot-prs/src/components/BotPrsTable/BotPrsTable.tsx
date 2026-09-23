@@ -16,7 +16,7 @@ import {
   type BotPrRow,
   type MargeGroup,
 } from '../../lib/marge';
-import { groupRank } from '../../lib/rows';
+import { groupRank, nameOf } from '../../lib/rows';
 import { BotPrDetails } from '../BotPrDetails';
 
 const byRef = (a: BotPrRow, b: BotPrRow) => a.ref.localeCompare(b.ref, 'en');
@@ -34,9 +34,6 @@ const ellipsis = {
   overflow: 'hidden' as const,
   textOverflow: 'ellipsis' as const,
 };
-
-/** The repository without its org: nearly every row of the queue shares it. */
-const nameOf = (row: BotPrRow) => row.repository.replace(/^[^/]+\//, '');
 
 /**
  * The tick that keeps a PR in what the buttons act on. The selection is the

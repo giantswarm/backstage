@@ -382,6 +382,15 @@ export function rowsOf(
 }
 
 /**
+ * A PR title without its conventional-commit type, which every bot PR of a
+ * queue shares: `chore(deps): update dependency x to v2` reads `update
+ * dependency x to v2`.
+ */
+export function withoutCommitType(title: string): string {
+  return title.replace(/^[a-z]+(\([^)]*\))?!?:\s*/i, '').trim();
+}
+
+/**
  * The dependency a bot PR updates, as the bots title them: Renovate's
  * `Update dependency X to v2` / `Update X Docker tag to v2` / `Update module
  * X to v2` / `Update vendir X to v2` / `Update ocm component X to v2`, Dependabot's `Bump X from 1 to 2`, with or without a conventional
@@ -395,7 +404,7 @@ export function rowsOf(
  * into the column says otherwise.
  */
 export function dependencyOf(title: string): string {
-  const text = title.replace(/^[a-z]+(\([^)]*\))?!?:\s*/i, '').trim();
+  const text = withoutCommitType(title);
   const renovate = text.match(
     /^update\s+(?:(?:dependency|module|helm release|plugin|vendir|ocm component|github action)\s+)?(.+?)(?:\s+(?:docker tag|action|digest|orb|image))?\s+to\s+\S+/i,
   );

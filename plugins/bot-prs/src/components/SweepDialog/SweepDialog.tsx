@@ -10,7 +10,7 @@ import {
   type SweepStep,
 } from '../../lib/marge';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
-import { OutcomeList } from '../OutcomeList';
+import { OutcomeTable } from '../OutcomeTable';
 
 export type SweepDialogProps = {
   installation: string;
@@ -124,10 +124,6 @@ export function SweepDialog({
   };
 
   const onConfirm = async () => {
-    if (applied) {
-      onOpenChange(false);
-      return;
-    }
     try {
       await sweeps.run({
         teams: Object.keys(applyTargets),
@@ -151,12 +147,9 @@ export function SweepDialog({
       'team',
     )}`;
   }
-  let confirmLabel = 'Apply sweep';
-  if (applied) {
-    confirmLabel = 'Close';
-  } else if (onePr) {
-    confirmLabel = 'Apply to this PR';
-  }
+  const confirmLabel = onePr ? 'Apply to this PR' : 'Apply sweep';
+  const isPreviewing = sweeps.isPending && sweeps.isDryRun;
+  const shown = applied ? outcome : preview;
 
   return (
     <ConfirmDialog
@@ -164,17 +157,17 @@ export function SweepDialog({
       onOpenChange={onOpenChange}
       title={title}
       confirmLabel={confirmLabel}
-      busyLabel={sweeps.isDryRun ? 'Previewing…' : 'Applying…'}
-      isBusy={sweeps.isPending}
+      busyLabel="Applying…"
+      isBusy={sweeps.isPending && !sweeps.isDryRun}
+      isDone={applied}
       isConfirmDisabled={
-        !applied &&
-        (sweeps.isPending ||
-          applyCount === 0 ||
-          steps.length === 0 ||
-          Boolean(notConnected))
+        sweeps.isPending ||
+        applyCount === 0 ||
+        steps.length === 0 ||
+        Boolean(notConnected)
       }
       onConfirm={onConfirm}
-      width="min(90vw, 760px)"
+      width="min(92vw, 880px)"
     >
       {!applied ? (
         <Flex direction="column" gap="2">
@@ -209,13 +202,6 @@ export function SweepDialog({
           message={notConnected.message}
         />
       ) : null}
-      {sweeps.isPending && sweeps.isDryRun ? (
-        <Text variant="body-small" color="secondary">
-          {onePr
-            ? 'Classifying the PR and deciding what the sweep would do to it.'
-            : `Classifying the ${plural(targetCount, 'PR')} you picked and deciding what the sweep would do to each. One check read per PR.`}
-        </Text>
-      ) : null}
       {failed.length > 0 && !notConnected ? (
         <Alert
           status="danger"
@@ -242,26 +228,30 @@ export function SweepDialog({
           {`Apply runs exactly this, on the ${plural(applyCount, 'PR')} listed. To sweep another set, close this and change the ticks in the table.`}
         </Text>
       ) : null}
-      {(applied ? outcome : preview)
-        .filter(run => run.result)
-        .map(run => (
-          <Flex key={run.team} direction="column" gap="2">
-            {teams.length > 1 ? (
-              <Text variant="body-medium" weight="bold">
-                {run.team}
+      {isPreviewing || shown.some(run => run.result) ? (
+        <OutcomeTable
+          runs={shown}
+          isPending={isPreviewing}
+          pendingLabel={
+            onePr
+              ? 'Classifying the PR and deciding what the sweep would do to it.'
+              : `Classifying the ${plural(targetCount, 'PR')} you picked.`
+          }
+          showTeam={teams.length > 1}
+        />
+      ) : null}
+      {applied
+        ? null
+        : preview.map(({ team, result }) =>
+            result?.rules ? (
+              <Text key={team} variant="body-small" color="secondary">
+                {teams.length > 1 ? `${team}: rule` : 'Rule'} catalogue{' '}
+                {result.rules.source}
+                {result.rules.digest ? ` (${result.rules.digest})` : ''},{' '}
+                {plural(result.rules.loaded, 'rule')} loaded.
               </Text>
-            ) : null}
-            <OutcomeList result={run.result!} />
-            {!applied && run.result?.rules ? (
-              <Text variant="body-small" color="secondary">
-                Rule catalogue {run.result.rules.source}
-                {run.result.rules.digest ? ` (${run.result.rules.digest})` : ''}
-                , {run.result.rules.loaded} rule
-                {run.result.rules.loaded === 1 ? '' : 's'} loaded.
-              </Text>
-            ) : null}
-          </Flex>
-        ))}
+            ) : null,
+          )}
       {!applied &&
       !sweeps.isPending &&
       preview.length === 0 &&

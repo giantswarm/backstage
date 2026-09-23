@@ -52,14 +52,16 @@ a PR is what `marge list` and `marge sweep --dry-run` print for it.
   with, the way a CLI sweep runs them; Apply repeats the call without
   `dry_run` and with `prs` set to exactly the PRs the preview listed. The PRs
   are picked in the table, so the dialog offers no picker of its own: it is
-  the preview of a decision already taken. Its rows are grouped by repository
-  and ordered by PR number.
+  the preview of a decision already taken. Its rows are a table, one row per
+  PR, ordered by team, repository and PR number.
 - **Approve and merge the green PRs**: one `x_marge_sweep` per team with
   `actions: approve,merge,mark`, narrowed with `prs` to the PRs the engine
   filed as `eligible` among the selected rows -- green, and of an update type the
   team policy merges. The dialog previews with `dry_run: true` first, so the
   list is a live classification and not the stored label; one confirmation
-  then applies to exactly the PRs it listed. Each step keeps its own guards:
+  then applies to exactly the PRs the preview still found green, and a PR that
+  stopped being green in between is listed with the engine's reason and left
+  out of the apply. Each step keeps its own guards:
   a pending check waits, a failing security check is never merged past, an
   update type the policy does not merge is held. The changelog step is not one
   of its steps: the entry is a commit that starts CI again, so a PR that took
