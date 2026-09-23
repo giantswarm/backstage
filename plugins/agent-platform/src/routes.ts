@@ -153,3 +153,12 @@ export const deploymentDetailsExternalRouteRef = createExternalRouteRef({
   params: ['installationName', 'kind', 'namespace', 'name'],
   defaultTarget: 'gs.deploymentDetails',
 });
+
+/**
+ * The gs plugin's Installations page, where a platform capability such as the
+ * Agent Platform is enabled on an installation. The Agents tab links to it
+ * when the pinned installation does not run kagent.
+ */
+export const installationsExternalRouteRef = createExternalRouteRef({
+  defaultTarget: 'gs.installationsPage',
+});

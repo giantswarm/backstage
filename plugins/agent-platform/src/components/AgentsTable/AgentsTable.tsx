@@ -1,10 +1,12 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import useDebounce from 'react-use/esm/useDebounce';
 import {
   Avatar,
   Cell,
   CellText,
   ColumnConfig,
   Flex,
+  SearchField,
   Table,
   Text,
   useTable,
@@ -12,7 +14,7 @@ import {
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useNavigate } from 'react-router-dom';
-import { AgentRow, sortAgentsBy } from '../AgentsDataProvider';
+import { AgentRow, agentSearchFn, sortAgentsBy } from '../AgentsDataProvider';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { agentDetailRouteRef } from '../../routes';
 import { AvatarSize } from '../../lib/agentAvatar';
@@ -41,6 +43,10 @@ function getColumnConfig(
       label: 'Agent',
       isSortable: true,
       isRowHeader: true,
+      // The widest column: the name is what a reader scans the list for, and
+      // the description under it is only useful at some length.
+      defaultWidth: '3fr',
+      minWidth: 240,
       // Hand-rolled (rather than CellProfile) so the avatar can be larger than
       // CellProfile's fixed x-small and stay top-aligned, and so it always
       // renders — the bui Avatar shows name-derived initials when the image is
@@ -123,12 +129,16 @@ function getColumnConfig(
       id: 'readiness',
       label: 'Status',
       isSortable: true,
+      defaultWidth: '1.25fr',
+      minWidth: 150,
       cell: row => <AgentReadinessCell row={row} />,
     },
     {
       id: 'installation',
       label: 'Installation',
       isSortable: true,
+      defaultWidth: '1fr',
+      minWidth: 110,
       cell: row => (
         <CellText
           title={row.installation}
@@ -140,6 +150,8 @@ function getColumnConfig(
       id: 'namespace',
       label: 'Namespace',
       isSortable: true,
+      defaultWidth: '1fr',
+      minWidth: 110,
       cell: row => (
         <CellText
           title={row.namespace || '—'}
@@ -151,21 +163,29 @@ function getColumnConfig(
       id: 'model',
       label: 'Model',
       isSortable: true,
+      defaultWidth: '1.5fr',
+      minWidth: 140,
       cell: row => <AgentModelCell row={row} />,
     },
     {
       id: 'toolset',
       label: 'Toolset',
       isSortable: false,
+      defaultWidth: '1.5fr',
+      minWidth: 150,
       // The declaration as the agent's carrier RemoteMCPServer carries it, in a
       // few words — the detail page's Toolset card resolves it for the viewer.
+      // "No tools" is an absence, so it steps back like the Sessions table's
+      // "Not loaded".
       cell: row => {
         const toolset = describeToolset(row.toolset);
         return (
           <CellText
             title={toolset.summary}
             description={toolset.detail}
-            color={isAgentRowMuted(row) ? 'secondary' : undefined}
+            color={
+              toolset.inactive || isAgentRowMuted(row) ? 'secondary' : undefined
+            }
           />
         );
       },
@@ -174,7 +194,9 @@ function getColumnConfig(
       id: 'skills',
       label: 'Skills',
       isSortable: true,
-      width: '10%',
+      defaultWidth: '0.6fr',
+      // Room for the header and its sort arrow, not only the digits.
+      minWidth: 100,
       cell: row => (
         <Cell>
           <Text style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -186,17 +208,28 @@ function getColumnConfig(
   ];
 }
 
+/** Columns the page may drop because every row would repeat the same value. */
+export type HideableAgentColumn = 'installation' | 'namespace';
+
 export type AgentsTableProps = {
   rows: AgentRow[];
+  /** Columns to leave out. */
+  hideColumns?: ReadonlyArray<HideableAgentColumn>;
+  /** Search debounce; set to 0 in tests so typing takes effect immediately. */
+  searchDebounceMs?: number;
 };
 
 /**
- * Presentational table of agents. The page owns loading (it shows a progress
- * bar and hides the table until the first agents arrive) and the
- * unreachable-installations notice; this only renders the rows and the
- * "no agents" empty state.
+ * Presentational table of agents, with client-side search and sorting. The page
+ * owns loading (it shows a progress bar and hides the table until the first
+ * agents arrive) and the unreachable-installations notice; this renders the
+ * search field, the rows and the "no agents" empty state.
  */
-export function AgentsTable({ rows }: AgentsTableProps) {
+export function AgentsTable({
+  rows,
+  hideColumns,
+  searchDebounceMs = 150,
+}: AgentsTableProps) {
   const buildAvatarUrl = useAgentAvatarUrl();
   const navigate = useNavigate();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
@@ -214,10 +247,19 @@ export function AgentsTable({ rows }: AgentsTableProps) {
     [agentDetailRoute],
   );
 
-  const columnConfig = useMemo(
-    () => getColumnConfig(buildAvatarUrl, hrefFor),
-    [buildAvatarUrl, hrefFor],
-  );
+  const hiddenKey = hideColumns?.join(',') ?? '';
+  const columnConfig = useMemo(() => {
+    const hidden = new Set<string>(hiddenKey ? hiddenKey.split(',') : []);
+    return getColumnConfig(buildAvatarUrl, hrefFor).filter(
+      column => !hidden.has(String(column.id)),
+    );
+  }, [buildAvatarUrl, hrefFor, hiddenKey]);
+
+  // `agentSearchFn` matches the installation whether or not its column shows;
+  // the placeholder only offers it where the reader can see it.
+  const searchPlaceholder = hiddenKey.split(',').includes('installation')
+    ? 'Search by name or description'
+    : 'Search by name, description or installation';
 
   // Client-side sorting. The initial sort is installation-then-name, which is the
   // ordering this list had before it was sortable (see `sortAgentsBy`), so
@@ -231,34 +273,53 @@ export function AgentsTable({ rows }: AgentsTableProps) {
   // cached rows) could leave the offset past the end of a shrunken list, slicing
   // to nothing and showing "No agents found." while agents exist, recoverable
   // only by paging back. `type: 'none'` skips the slice entirely.
-  const { tableProps } = useTable<AgentRow>({
+  const { tableProps, search } = useTable<AgentRow>({
     mode: 'complete',
     data: rows,
+    searchFn: agentSearchFn,
+    searchDebounceMs,
     sortFn: sortAgentsBy,
     initialSort: { column: 'installation', direction: 'ascending' },
     paginationOptions: { type: 'none' },
   });
 
+  // The term the rows are filtered by: `useTable` debounces the search and
+  // does not hand the debounced value back, so the empty state keeps its own.
+  const [searchTerm, setSearchTerm] = useState('');
+  useDebounce(() => setSearchTerm(search.value.trim()), searchDebounceMs, [
+    search.value,
+  ]);
+
   return (
-    <Table<AgentRow>
-      {...tableProps}
-      columnConfig={columnConfig}
-      rowConfig={{
-        // Whole-row click as a convenience, on top of the anchor on the name.
-        // `onClick` + navigate rather than `getHref`, because without BUIProvider
-        // a bui href does a full page reload (see the name cell).
-        onClick: row => {
-          const href = hrefFor(row);
-          if (href) {
-            navigate(href);
-          }
-        },
-      }}
-      emptyState={
-        <Text variant="body-medium" color="secondary">
-          No agents found.
-        </Text>
-      }
-    />
+    <Flex direction="column" gap="3">
+      <SearchField
+        aria-label="Search agents"
+        placeholder={searchPlaceholder}
+        value={search.value}
+        onChange={search.onChange}
+      />
+      <Table<AgentRow>
+        {...tableProps}
+        columnConfig={columnConfig}
+        rowConfig={{
+          // Whole-row click as a convenience, on top of the anchor on the name.
+          // `onClick` + navigate rather than `getHref`, because without BUIProvider
+          // a bui href does a full page reload (see the name cell).
+          onClick: row => {
+            const href = hrefFor(row);
+            if (href) {
+              navigate(href);
+            }
+          },
+        }}
+        emptyState={
+          <Text variant="body-medium" color="secondary">
+            {searchTerm
+              ? `No agents match "${searchTerm}".`
+              : 'No agents found.'}
+          </Text>
+        }
+      />
+    </Flex>
   );
 }

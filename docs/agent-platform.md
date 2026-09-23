@@ -531,7 +531,8 @@ a context could not cross the boundary. The store is the contract.
   installation — or its token — is asked for. On a repeat visit the home's
   answer comes from the persisted cache and the others follow at once. Every
   list is one flat table under every scope — Agents, Sessions and Models
-  alike: the Installation column tells the rows apart, an installation with
+  alike: the Installation column tells the rows apart (Agents and Sessions
+  drop it when the list comes from one installation), an installation with
   nothing to show simply has no row, and one that could not be read is named
   in the warning card below the table. `sortAgentRows` / `sortSessionRows`
   put the home installation's rows first in the flat lists.
@@ -2348,12 +2349,19 @@ Harness on API v2, not an agent.
 
 ### Columns
 
-Agent (display name, description, avatar from the technical name), **Status** with
-the admitting Harness underneath ("on kagent"), Installation, Namespace, Model
-(resolved by name in the agent's namespace), **Toolset** (the declaration as the
-carrier carries it: the selectors, `No tools`, `Full gateway access`, or a dash while
-the carrier is not readable) and Skills (count). The status column sorts by severity,
-not admitted first.
+Agent (display name, description, avatar from the technical name), **Status** (with
+an info icon whose tooltip gives the readiness message and any Harness warnings),
+Installation, Namespace, Model (resolved by name in the agent's namespace),
+**Toolset** (the declaration as the carrier carries it: the selectors, `No tools` in
+secondary text, `Full gateway access`, or a dash while the carrier is not readable)
+and Skills (count). The status column sorts by severity, not admitted first.
+
+Installation is dropped when the list comes from one installation — the pinned one,
+or the only one that answered once loading settles — and Namespace while every row
+shares one namespace. A search field above the table matches the name, the
+description and the installation. A pinned installation without kagent gets a card
+linking to the Installations page instead of an empty table, and "New agent" is
+disabled there.
 
 ### Readiness
 

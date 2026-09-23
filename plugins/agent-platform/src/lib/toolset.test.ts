@@ -274,6 +274,7 @@ describe('describeToolset', () => {
     });
     expect(describeToolset({ state: 'no-gateway' })).toEqual({
       summary: 'No tools',
+      inactive: true,
     });
     expect(describeToolset({ state: 'implicit-full', carrier: 'a' })).toEqual({
       summary: 'Full gateway access',
@@ -285,7 +286,7 @@ describe('describeToolset', () => {
         selectors: ['preset:none'],
         carrier: 'a',
       }),
-    ).toEqual({ summary: 'No tools', detail: 'preset:none' });
+    ).toEqual({ summary: 'No tools', detail: 'preset:none', inactive: true });
     expect(
       describeToolset({
         state: 'declared',

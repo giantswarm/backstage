@@ -272,12 +272,11 @@ describe('toAgentRow', () => {
       skillCount: 3,
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
-      harness: undefined,
       readinessMessage: undefined,
     });
   });
 
-  it('carries readiness, the deciding Harness and the explanation through', () => {
+  it('carries readiness and the explanation through', () => {
     const agent = makeAgent({
       name: 'triager',
       harnesses: [
@@ -299,7 +298,6 @@ describe('toAgentRow', () => {
 
     const row = toAgentRow(agent, []);
     expect(row.readiness).toBe('notReady');
-    expect(row.harness).toBe('kagent');
     expect(row.readinessMessage).toBe('Compiling revision rev-2');
   });
 
@@ -310,7 +308,6 @@ describe('toAgentRow', () => {
     );
 
     expect(row.readiness).toBe('notAdmitted');
-    expect(row.harness).toBeUndefined();
     expect(row.readinessMessage).toContain(`no ${HARNESS_LABEL} label`);
   });
 

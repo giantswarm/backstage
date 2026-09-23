@@ -385,12 +385,15 @@ export function toolsetOfAgent(
 
 /**
  * The declared toolset in a few words, for a table cell: the summary is the
- * cell's text, the detail its second line. The card on the detail page does the
- * resolving; this only says what the carrier declares.
+ * cell's text, the detail its second line, and `inactive` marks an agent with
+ * no tools at all, which the cell shows as an absence rather than a value. The
+ * card on the detail page does the resolving; this only says what the carrier
+ * declares.
  */
 export function describeToolset(toolset: DeclaredToolset | undefined): {
   summary: string;
   detail?: string;
+  inactive?: boolean;
 } {
   if (!toolset || toolset.state === 'unresolved') {
     return {
@@ -400,13 +403,13 @@ export function describeToolset(toolset: DeclaredToolset | undefined): {
   }
   switch (toolset.state) {
     case 'no-gateway':
-      return { summary: 'No tools' };
+      return { summary: 'No tools', inactive: true };
     case 'implicit-full':
       return { summary: 'Full gateway access', detail: 'no toolset declared' };
     default: {
       const shape = toolsetShape(toolset.selectors);
       if (shape === 'none') {
-        return { summary: 'No tools', detail: PRESET_NONE };
+        return { summary: 'No tools', detail: PRESET_NONE, inactive: true };
       }
       if (shape === 'full') {
         return { summary: 'Full gateway access', detail: PRESET_FULL };

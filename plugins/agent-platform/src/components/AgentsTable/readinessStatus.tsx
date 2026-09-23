@@ -3,8 +3,9 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import ErrorIcon from '@material-ui/icons/Error';
 import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
-import { Cell, Flex, Text } from '@backstage/ui';
+import { Cell, Flex } from '@backstage/ui';
 import {
+  InfoHint,
   StatusLabel,
   type StatusLabelIntent,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -23,7 +24,7 @@ import type { AgentRow } from '../AgentsDataProvider';
  * `pending` is deliberately `neutral` rather than a warning: it means the
  * controller has not caught up with the current spec yet, which is "not known
  * yet", not "broken". `notAdmitted` is negative: no Harness will ever run this
- * agent until its labels change, and the tooltip says which label is missing.
+ * agent until its labels change, and the info icon says which label is missing.
  */
 /** How one readiness is shown: its label, the label's intent and its icon. */
 export type ReadinessPresentation = {
@@ -44,11 +45,11 @@ export const READINESS_PRESENTATION: Record<
 };
 
 /**
- * Tooltip for the readiness cell: the controller's own explanation for the
- * state, plus any Harness warnings. The warnings are independent of readiness,
- * so a ready agent can still have some.
+ * Explanation behind the readiness cell's info icon: the controller's own
+ * reason for the state, plus any Harness warnings. The warnings are independent
+ * of readiness, so a ready agent can still have some.
  */
-function getReadinessTitle(row: AgentRow): string | undefined {
+function getReadinessHint(row: AgentRow): string | undefined {
   const lines = [
     row.readinessMessage,
     ...(row.warnings ?? []).map(warning => `Harness warning: ${warning}`),
@@ -58,30 +59,28 @@ function getReadinessTitle(row: AgentRow): string | undefined {
 }
 
 /**
- * The readiness label and, underneath, the Harness whose verdict it is — the
- * one the agent's sessions run on. Nothing underneath while no Harness admits
- * the agent: the label and its tooltip already say so.
+ * The readiness label and, when there is something to explain, an info icon
+ * whose tooltip says why.
  */
 export function AgentReadinessCell({ row }: { row: AgentRow }) {
   const { label, intent, icon } = READINESS_PRESENTATION[row.readiness];
+  const hint = getReadinessHint(row);
 
   return (
     <Cell>
-      <Flex direction="column" gap="1">
-        <StatusLabel
-          label={label}
-          intent={intent}
-          icon={icon}
-          title={getReadinessTitle(row)}
-        />
-        {row.harness && (
-          <Text
-            variant="body-x-small"
-            color="secondary"
-            title={`Admitted by the Harness ${row.harness}`}
+      <Flex align="center" gap="1">
+        <StatusLabel label={label} intent={intent} icon={icon} />
+        {hint && (
+          <InfoHint
+            size="medium"
+            label={
+              row.readinessMessage
+                ? `Why ${row.name} is ${label.toLowerCase()}`
+                : `Harness warnings for ${row.name}`
+            }
           >
-            on {row.harness}
-          </Text>
+            {hint}
+          </InfoHint>
         )}
       </Flex>
     </Cell>
