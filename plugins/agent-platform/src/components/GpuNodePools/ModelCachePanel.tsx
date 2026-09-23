@@ -26,6 +26,8 @@ export type ModelCachePanelProps = {
   /** The installations whose cluster-manager offers `remove_model_cache` (0.17+). */
   removable: string[];
   onRemove: (row: ModelCacheRow) => void;
+  /** Columns to leave out: the page drops Installation where it would repeat. */
+  hideColumns?: ReadonlyArray<'installation'>;
 };
 
 /** The empty state: no claim stands, nothing is billed. */
@@ -246,10 +248,14 @@ export function ModelCachePanel({
   isLoading,
   removable,
   onRemove,
+  hideColumns,
 }: ModelCachePanelProps) {
   const columnConfig = useMemo(
-    () => getColumnConfig(removable, onRemove),
-    [removable, onRemove],
+    () =>
+      getColumnConfig(removable, onRemove).filter(
+        column => !hideColumns?.includes(column.id as 'installation'),
+      ),
+    [removable, onRemove, hideColumns],
   );
   const { tableProps } = useTable<ModelCacheRow>({
     mode: 'complete',

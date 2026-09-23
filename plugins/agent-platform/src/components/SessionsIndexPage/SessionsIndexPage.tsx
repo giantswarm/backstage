@@ -4,16 +4,14 @@ import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
-import {
-  ALL_INSTALLATIONS,
-  InstallationInventoryGate,
-} from '@giantswarm/backstage-plugin-gs';
+import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import { isSoleInstallation } from '../../lib/soleInstallation';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
@@ -239,19 +237,12 @@ function SessionsIndexPageContent() {
     installation => !notReachableInstallations.includes(installation),
   );
 
-  // The one installation the list can come from: the pinned one, or the only
-  // one that answered. The Installation column would repeat it on every row.
-  // Not decided while more installations are still resolving: the first to
-  // answer would hide the column and the next would bring it back.
-  const answeredInstallations = queriedInstallations.filter(
-    installation => !unreachableInstallations.includes(installation),
-  );
-  let soleInstallation: string | undefined;
-  if (scope !== ALL_INSTALLATIONS) {
-    soleInstallation = scope;
-  } else if (!isLoadingMore && answeredInstallations.length === 1) {
-    soleInstallation = answeredInstallations[0];
-  }
+  const soleInstallation = isSoleInstallation({
+    scope,
+    isLoading: isLoadingMore,
+    installations: queriedInstallations,
+    unreachableInstallations,
+  });
 
   // "You have never started a session" needs more than an empty list. A read
   // that failed is not an empty fleet -- the same line the Agents tab draws --

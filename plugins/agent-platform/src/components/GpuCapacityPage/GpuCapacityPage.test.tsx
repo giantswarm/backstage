@@ -22,6 +22,7 @@ jest.mock('../ServingProvider', () => ({
 }));
 
 const kserveServing: Partial<ServingContextValue> = {
+  scope: 'all',
   isLoading: false,
   installations: ['inst-1'],
   backends: { 'inst-1': 'kserve' },
@@ -54,6 +55,32 @@ describe('GpuCapacityPage', () => {
     expect(screen.getByText('GPU capacity')).toBeInTheDocument();
     expect(screen.getByText('NVIDIA-GB10')).toBeInTheDocument();
     expect(screen.queryByText('No GPU inventory')).not.toBeInTheDocument();
+  });
+
+  it('drops the Installation column when the nodes can only come from one installation', async () => {
+    await renderInTestApp(<GpuCapacityPage />);
+
+    expect(
+      screen.queryByRole('columnheader', { name: 'Installation' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the Installation column when several installations report nodes', async () => {
+    mockUseServing.mockReturnValue({
+      ...kserveServing,
+      installations: ['inst-1', 'inst-2'],
+      backends: { 'inst-1': 'kserve', 'inst-2': 'kserve' },
+      capabilities: {
+        'inst-1': KSERVE_CR_CAPABILITIES,
+        'inst-2': KSERVE_CR_CAPABILITIES,
+      },
+    });
+
+    await renderInTestApp(<GpuCapacityPage />);
+
+    expect(
+      screen.getByRole('columnheader', { name: 'Installation' }),
+    ).toBeInTheDocument();
   });
 
   it('explains the empty state on a fleet without a serving layer', async () => {

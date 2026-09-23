@@ -38,6 +38,8 @@ export type GpuNodePoolsPanelProps = {
   /** The row's chevron: open this pool's lifecycle, or close it when it is the open one. */
   onToggleLifecycle: (row: GpuNodePoolRow) => void;
   onCloseLifecycle: () => void;
+  /** Columns to leave out: the page drops Installation where it would repeat. */
+  hideColumns?: ReadonlyArray<'installation'>;
 };
 
 export function sortGpuNodePoolsBy(
@@ -180,10 +182,14 @@ export function GpuNodePoolsPanel({
   serve,
   onToggleLifecycle,
   onCloseLifecycle,
+  hideColumns,
 }: GpuNodePoolsPanelProps) {
   const columnConfig = useMemo(
-    () => getColumnConfig(onRemove, opened?.id, onToggleLifecycle),
-    [onRemove, opened?.id, onToggleLifecycle],
+    () =>
+      getColumnConfig(onRemove, opened?.id, onToggleLifecycle).filter(
+        column => !hideColumns?.includes(column.id as 'installation'),
+      ),
+    [onRemove, opened?.id, onToggleLifecycle, hideColumns],
   );
   const { tableProps } = useTable<GpuNodePoolRow>({
     mode: 'complete',

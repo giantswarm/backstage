@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Button } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
+import type { InstallationScope } from '@giantswarm/backstage-plugin-gs';
 
 import {
   useClusterManagerAvailability,
@@ -23,12 +24,15 @@ import {
   type ServeChoice,
 } from '../../lib/serveIntent';
 import type { ServedModel } from '../../lib/serving';
+import { isSoleInstallation } from '../../lib/soleInstallation';
 import { AddGpuNodePoolDialog } from './AddGpuNodePoolDialog';
 import { GpuNodePoolsPanel } from './GpuNodePoolsPanel';
 import { ModelCachePanel } from './ModelCachePanel';
 import type { OpenedPool, PoolServeState } from './PoolLifecyclePanel';
 import { RemoveGpuNodePoolDialog } from './RemoveGpuNodePoolDialog';
 import { RemoveModelCacheDialog } from './RemoveModelCacheDialog';
+
+const HIDE_INSTALLATION = ['installation'] as const;
 
 export type GpuNodePoolControls = {
   /** Some reachable installation's muster lists cluster-manager. */
@@ -75,6 +79,7 @@ export function openedPoolOf(
 export function useGpuNodePoolControls(
   installations: string[],
   servedModels: ServedModel[],
+  scope: InstallationScope,
 ): GpuNodePoolControls {
   const availability = useClusterManagerAvailability(installations);
   const pools = useGpuNodePools(availability.available);
@@ -171,6 +176,14 @@ export function useGpuNodePoolControls(
   // and moves the page (giantswarm/backstage#2501).
   const shown = available || availability.isLoading;
   const reading = availability.isLoading || pools.isLoading;
+  const hideColumns = isSoleInstallation({
+    scope,
+    isLoading: reading,
+    installations: availability.available,
+    unreachableInstallations: pools.errors.map(entry => entry.installation),
+  })
+    ? HIDE_INSTALLATION
+    : undefined;
 
   // The opened pool's intent, as the panel shows it.
   const serve = useMemo<PoolServeState | undefined>(() => {
@@ -248,6 +261,7 @@ export function useGpuNodePoolControls(
         serve={serve}
         onToggleLifecycle={onToggleLifecycle}
         onCloseLifecycle={onCloseLifecycle}
+        hideColumns={hideColumns}
       />
     ) : undefined,
     cachePanel: shown ? (
@@ -256,6 +270,7 @@ export function useGpuNodePoolControls(
         isLoading={reading}
         removable={cacheRemovable}
         onRemove={onRemoveCache}
+        hideColumns={hideColumns}
       />
     ) : undefined,
   };

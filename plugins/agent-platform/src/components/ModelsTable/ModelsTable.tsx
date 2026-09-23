@@ -271,8 +271,13 @@ function getColumnConfig(
   ];
 }
 
+/** Columns the page may drop because every row would repeat the same value. */
+export type HideableModelColumn = 'installation';
+
 export type ModelsTableProps = {
   rows: ModelRow[];
+  /** Columns to leave out. */
+  hideColumns?: ReadonlyArray<HideableModelColumn>;
 };
 
 /**
@@ -280,7 +285,7 @@ export type ModelsTableProps = {
  * unreachable-installations notice; this only renders the rows and the empty
  * state. Pagination stays off for the same reason as AgentsTable.
  */
-export function ModelsTable({ rows }: ModelsTableProps) {
+export function ModelsTable({ rows, hideColumns }: ModelsTableProps) {
   const navigate = useNavigate();
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
 
@@ -297,7 +302,14 @@ export function ModelsTable({ rows }: ModelsTableProps) {
     [modelDetailRoute],
   );
 
-  const columnConfig = useMemo(() => getColumnConfig(hrefFor), [hrefFor]);
+  const columnConfig = useMemo(
+    () =>
+      getColumnConfig(hrefFor).filter(
+        column =>
+          !hideColumns?.includes(String(column.id) as HideableModelColumn),
+      ),
+    [hrefFor, hideColumns],
+  );
 
   const { tableProps } = useTable<ModelRow>({
     mode: 'complete',

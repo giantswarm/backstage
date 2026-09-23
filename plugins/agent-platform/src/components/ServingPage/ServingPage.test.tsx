@@ -188,6 +188,7 @@ const qwen: ServedModel = {
 };
 
 const baseServing: ServingContextValue = {
+  scope: 'all',
   isLoading: false,
   installations: ['inst-1'],
   backends: { 'inst-1': 'kserve' },

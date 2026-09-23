@@ -497,6 +497,8 @@ export type GpuCapacityPanelProps = {
   installations: string[];
   unavailable: Record<string, GpuCapacityUnavailableReason>;
   isLoading: boolean;
+  /** Columns to leave out: the page drops Installation where it would repeat. */
+  hideColumns?: ReadonlyArray<'installation'>;
 };
 
 /**
@@ -518,6 +520,7 @@ export function GpuCapacityPanel({
   installations,
   unavailable,
   isLoading,
+  hideColumns,
 }: GpuCapacityPanelProps) {
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
   const noCacheHints = useMemo(
@@ -530,8 +533,11 @@ export function GpuCapacityPanel({
     [nodes],
   );
   const columnConfig = useMemo(
-    () => getColumnConfig(columns, noCacheHints),
-    [columns, noCacheHints],
+    () =>
+      getColumnConfig(columns, noCacheHints).filter(
+        column => !hideColumns?.includes(column.id as 'installation'),
+      ),
+    [columns, noCacheHints, hideColumns],
   );
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
   const hasIneligible = useMemo(

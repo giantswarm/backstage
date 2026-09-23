@@ -12,12 +12,16 @@ import { InstallationScopeNote } from '../InstallationScopeNote';
 import {
   ModelsTable,
   ModelRow,
+  type HideableModelColumn,
   toModelRow,
   toModelServedBy,
 } from '../ModelsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { useServing } from '../ServingProvider';
 import { clientLookupOf } from '../../lib/serving';
+import { isSoleInstallation } from '../../lib/soleInstallation';
+
+const HIDE_INSTALLATION: ReadonlyArray<HideableModelColumn> = ['installation'];
 
 // The "Model configs" view of the Models tab: every kagent ModelConfig across
 // the installations in scope, and the entry point for adding one. The section
@@ -32,6 +36,7 @@ export function ModelConfigsPage() {
   const {
     isLoading,
     hasInstallations,
+    scope,
     installations: kagentInstallations,
     modelConfigsFor,
     unreachableInstallations,
@@ -89,6 +94,13 @@ export function ModelConfigsPage() {
   );
   useProvidePageHeaderActions(actions);
 
+  const soleInstallation = isSoleInstallation({
+    scope,
+    isLoading,
+    installations: kagentInstallations,
+    unreachableInstallations,
+  });
+
   if (!isLoading && !hasInstallations) {
     return (
       <Content>
@@ -114,11 +126,16 @@ export function ModelConfigsPage() {
         {isLoading && rows.length === 0 && (
           <Progress aria-label="Loading models" />
         )}
-        {/* One flat table under every scope. Under "All installations" the
-            Installation column — the table's initial sort — tells the rows
+        {/* One flat table under every scope. With more than one installation
+            the Installation column — the table's initial sort — tells the rows
             apart; an installation with no ModelConfig simply has no row, and
             one that could not be read is called out below. */}
-        {!(isLoading && rows.length === 0) && <ModelsTable rows={rows} />}
+        {!(isLoading && rows.length === 0) && (
+          <ModelsTable
+            rows={rows}
+            hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
+          />
+        )}
 
         {/* Rendered regardless of the loading branch so a fleet where every
             reachable installation errors still surfaces the failure instead of

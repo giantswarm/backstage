@@ -86,6 +86,15 @@ describe('ModelsTable', () => {
     expect(screen.getByText('Installation')).toBeInTheDocument();
   });
 
+  it('leaves out the columns it is asked to hide', async () => {
+    await renderTable(
+      <ModelsTable rows={rows} hideColumns={['installation']} />,
+    );
+
+    expect(screen.getByText('Model config')).toBeInTheDocument();
+    expect(screen.queryByText('Installation')).not.toBeInTheDocument();
+  });
+
   it('renders each row with status and endpoint fallback', async () => {
     await renderTable(<ModelsTable rows={rows} />);
 

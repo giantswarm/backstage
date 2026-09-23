@@ -531,10 +531,13 @@ a context could not cross the boundary. The store is the contract.
   installation — or its token — is asked for. On a repeat visit the home's
   answer comes from the persisted cache and the others follow at once. Every
   list is one flat table under every scope — Agents, Sessions and Models
-  alike: the Installation column tells the rows apart (Agents and Sessions
-  drop it when the list comes from one installation), an installation with
+  alike: the Installation column tells the rows apart, an installation with
   nothing to show simply has no row, and one that could not be read is named
-  in the warning card below the table. `sortAgentRows` / `sortSessionRows`
+  in the warning card below the table. Every table with an Installation
+  column — Agents, Sessions, Model configs, and the GPU node pools, model
+  cache and GPU capacity tables — drops it when the rows can only come from
+  one installation (`isSoleInstallation` in `lib/soleInstallation.ts`): one
+  pinned in the header, or only one of those asked answered once all have. `sortAgentRows` / `sortSessionRows`
   put the home installation's rows first in the flat lists.
 - **Pinning** narrows every tab (`applyInstallationScope` over the inventory's
   installations in each provider, `ServingProvider` included). Under `'all'`
