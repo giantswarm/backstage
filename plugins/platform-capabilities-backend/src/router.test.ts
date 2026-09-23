@@ -22,7 +22,7 @@ const AUTH_URL = 'https://muster/oauth/proxy/start?state=abc';
 type Call = { tool: string; args: Record<string, unknown>; authToken: string };
 
 class FakeGateway implements MusterServerGateway {
-  constructor(readonly server = 'giantswarm-platform-manager') {}
+  readonly server = 'giantswarm-platform-manager';
   calls: Call[] = [];
   answers = new Map<string, unknown>();
   loginResult: AuthLoginResult = {
@@ -254,53 +254,52 @@ describe('createRouter', () => {
     expect(manager.calls).toHaveLength(0);
   });
 
-  it('runs the live checks on the live surface with the inputs as given', async () => {
-    const live = new FakeGateway('giantswarm-platform-manager-live');
-    live.answers.set('verify_installation', { features: [], caller: 'ada' });
-    const withLive = await buildApp({ live });
+  it('runs the live checks on the manager with the inputs as given', async () => {
+    manager.answers.set('verify_installation', {
+      features: [],
+      caller: 'ada',
+    });
     const inputs = { source: 'record', values: { kagent: { enabled: true } } };
-    const res = await request(withLive)
+    const res = await request(app)
       .post('/installations/rowan/capabilities/agent-platform/verify-live')
       .send({ inputs })
       .expect(200);
     expect(res.body).toEqual({ features: [], caller: 'ada' });
-    await request(withLive)
+    await request(app)
       .post('/installations/rowan/capabilities/agent-platform/verify-live')
       .send({ content: true })
       .expect(400);
-    expect(live.calls).toEqual([
+    expect(manager.calls).toEqual([
       {
         tool: 'verify_installation',
         args: { installation: 'rowan', capability: 'agent-platform', inputs },
         authToken: 'dex-id-token',
       },
     ]);
-    expect(manager.calls).toEqual([]);
   });
 
-  it('answers 503 for the live checks while the live surface is not configured', async () => {
-    const res = await request(app)
+  it('answers 503 for the live checks while the manager is not configured', async () => {
+    const res = await request(await buildApp({ manager: undefined }))
       .post('/installations/rowan/capabilities/agent-platform/verify-live')
       .send({});
     expect(res.status).toBe(503);
-    expect(res.body.error.message).toMatch(/liveServer/);
+    expect(res.body.error.message).toMatch(/platformCapabilities\.muster/);
   });
 
-  it('answers a missing grant on the live surface with 401 and its sign-in URL', async () => {
-    const live = new FakeGateway('giantswarm-platform-manager-live');
-    live.failNextCallWith = new Error('tool not found');
-    live.loginResult = {
+  it('answers a missing grant for the live checks with 401 and the sign-in URL', async () => {
+    manager.failNextCallWith = new Error('tool not found');
+    manager.loginResult = {
       status: 'auth_required',
       message: 'Connect first',
       authUrl: AUTH_URL,
     };
-    const res = await request(await buildApp({ live }))
+    const res = await request(app)
       .post('/installations/rowan/capabilities/agent-platform/verify-live')
       .send({});
     expect(res.status).toBe(401);
     expect(res.body.error).toMatchObject({
       name: 'MusterServerNotConnectedError',
-      server: 'giantswarm-platform-manager-live',
+      server: 'giantswarm-platform-manager',
       authUrl: AUTH_URL,
     });
   });

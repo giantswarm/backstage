@@ -1189,7 +1189,7 @@ export interface FakeOptions {
   heldComparison?: boolean;
   /** The live half `verify_installation` answers; LIVE by default. */
   live?: VerifyResult;
-  /** The live checks fail with this, as when the person is not connected to the live surface. */
+  /** The live checks fail with this, as when the person has no session at the manager. */
   liveError?: Error;
 }
 

@@ -82,9 +82,9 @@ export function useRefreshComparison(installation: string, capability: string) {
 
 /**
  * The checks that need the person's session, run as the signed-in person
- * through muster's live registration of the manager, from the comparison's
- * own inputs so both halves render the same, and merged into the comparison
- * the tab holds: the checks that answered take their marks, the rest stays.
+ * by the manager through muster, from the comparison's own inputs so both
+ * halves render the same, and merged into the comparison the tab holds: the
+ * checks that answered take their marks, the rest stays.
  */
 export function useLiveVerify(installation: string, capability: string) {
   const api = useApi(platformCapabilitiesApiRef);
