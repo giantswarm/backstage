@@ -318,8 +318,8 @@ function SessionsIndexPageContent() {
                   page would contradict itself in the warning below. */}
               <Text color="secondary">
                 {notUserScopedInstallations.length > 0
-                  ? 'Agent chat sessions across the management clusters.'
-                  : 'Your agent chat sessions across the management clusters. Only your own are shown.'}
+                  ? 'Across all management clusters.'
+                  : 'Across all management clusters. Only your own are shown.'}
               </Text>
               <SessionsTable rows={rows} sessionStates={sessionStates} />
             </Flex>

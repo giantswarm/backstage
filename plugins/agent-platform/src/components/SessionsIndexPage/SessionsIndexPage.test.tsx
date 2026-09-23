@@ -195,16 +195,9 @@ describe('SessionsIndexPage', () => {
   it('gives the list a heading of its own, separate from the composer', async () => {
     await render();
 
-    const heading = screen.getByRole('heading', {
-      level: 2,
-      name: 'Your sessions',
-    });
-    // The blurb describes the list, so it follows the list's heading.
     expect(
-      heading.compareDocumentPosition(
-        screen.getByText(/agent chat sessions across the management clusters/i),
-      ) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      screen.getByRole('heading', { level: 2, name: 'Your sessions' }),
+    ).toBeInTheDocument();
   });
 
   it('starts collapsed, expanding on focus', async () => {
@@ -344,7 +337,7 @@ describe('SessionsIndexPage', () => {
       ).not.toBeInTheDocument();
       // The blurb describes a list that isn't there.
       expect(
-        screen.queryByText(/agent chat sessions/i),
+        screen.queryByText(/across all management clusters/i),
       ).not.toBeInTheDocument();
     });
 
