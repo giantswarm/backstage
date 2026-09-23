@@ -10,7 +10,7 @@ import {
   SyncMark,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ActionStateName, CapabilityStateName } from '../apis';
-import { StateTag, STATE_WORDS } from './StateTag';
+import { STATE_WORDS, StateTag, under } from './StateTag';
 
 /** The states an action has and an installation has not. */
 type OwnState = Exclude<ActionStateName, CapabilityStateName>;
@@ -110,7 +110,7 @@ export function ActionStateTag({
   return (
     <StateTag
       state={state}
-      status={{ words: STATE_WORDS[state], mark: MARK[state] }}
+      status={under(STATE_WORDS[state], MARK[state])}
       testId={testId}
     />
   );

@@ -62,6 +62,29 @@ export function compared(result: VerifyResult): boolean {
   );
 }
 
+/**
+ * Why the comparison did not run, in the manager's words: the definition's
+ * refusal of the inputs, else the reasons its checks did not run, each once,
+ * in the order the features name them; nothing where it ran.
+ */
+export function notComparedReason(result: VerifyResult): string | undefined {
+  if (result.refused) {
+    return result.refused;
+  }
+  if (compared(result)) {
+    return undefined;
+  }
+  const reasons = new Set<string>();
+  for (const feature of result.features ?? []) {
+    for (const dimension of feature.dimensions ?? []) {
+      if (dimension.mark === 'not checked' && dimension.reason) {
+        reasons.add(dimension.reason);
+      }
+    }
+  }
+  return reasons.size > 0 ? [...reasons].join('; ') : undefined;
+}
+
 /** The comparison ran and found nothing to apply and nothing planned. */
 export function upToDate(result: VerifyResult): boolean {
   const { differences, planned } = countsOf(result);

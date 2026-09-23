@@ -23,7 +23,7 @@ import {
   VerifyResult,
 } from '../apis';
 import { kindOf, verbOf } from '../lib/actions';
-import { upToDate } from '../lib/comparison';
+import { count, filesToChange, upToDate } from '../lib/comparison';
 import { reasonOf, refusalStatus } from '../lib/refusal';
 import {
   choiceDescription,
@@ -56,8 +56,13 @@ const CONTENTS: CSSProperties = { display: 'contents' };
 interface CardStatus extends Status {
   /** Whether the capability is on the installation, as the manager says; older managers say it through the state. */
   installed: boolean;
-  /** The one button: Enable when not installed, Apply changes while the comparison finds differences, none when up to date. */
-  button?: 'Enable' | 'Apply changes';
+  /**
+   * The one button's label: Enable when not installed, Apply changes while
+   * the comparison finds differences, none when up to date -- naming the
+   * outcome, the files a commit would change, once the comparison has
+   * landed and rendered any (`Apply changes · 2 files`).
+   */
+  button?: string;
 }
 
 /**
@@ -71,12 +76,13 @@ function cardStatusOf(
 ): CardStatus {
   const installed = capability.enabled ?? capability.state !== 'not enabled';
   const status = statusOf(capability, result);
-  let button: CardStatus['button'] = 'Apply changes';
-  if (!installed) {
-    button = 'Enable';
-  } else if (result && upToDate(result)) {
-    button = undefined;
+  if (installed && result && upToDate(result)) {
+    return { ...status, installed };
   }
+  const verb = installed ? 'Apply changes' : 'Enable';
+  // A refused comparison rendered nothing to name.
+  const files = result && !result.refused ? filesToChange(result) : 0;
+  const button = files > 0 ? `${verb} · ${count(files, 'file')}` : verb;
   return { ...status, installed, button };
 }
 
@@ -272,14 +278,17 @@ function CommitRefused({ id, reason }: { id: string; reason: string }) {
  * record* -- the person's choices -- and *Compared with the definition* --
  * the features with differences, the files with their diffs, the features
  * with planned changes, the features as defined, the checks that did not
- * run; and one button -- Enable, or Apply changes -- opening the dialog. The
+ * run; and one button -- Enable, or Apply changes, with the files a commit
+ * would change once the comparison has landed -- opening the dialog. The
  * button is disabled while the comparison says the manager would refuse the
  * commit for something to fix first, the reason on one line under it where
  * the definition itself did not refuse; a refusal for an input the dialog
  * supplies -- the choices not on record, a value the reason names -- keeps
  * the button, the dialog being where it is given. Whatever disables the
  * button -- the reason, the phase in flight, the comparison running -- is
- * the button's accessible description. The comparison runs when the tab
+ * the button's accessible description, and the disabled button is the
+ * secondary variant: the primary fill is the one that can be pressed. The
+ * comparison runs when the tab
  * opens; while it runs -- then, and again after Refresh -- the card is the
  * header and the indicator, the record appearing once, complete, when it
  * lands, so no value flips and no line is inserted above one already read;
@@ -369,7 +378,7 @@ export function CapabilityCard({
             </Button>
             {button && (
               <Button
-                variant="primary"
+                variant={disabledBy ? 'secondary' : 'primary'}
                 size="small"
                 onPress={() => setDialog(true)}
                 isDisabled={disabledBy !== undefined}
