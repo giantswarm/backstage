@@ -68,6 +68,15 @@ jobs:
           # would never report and the Version Packages pull request could
           # not be merged.
           github-token: ${{ secrets.TAYLORBOT_GITHUB_ACTION }}
+          # Push with the Git CLI. The GitHub API mode (the default) stages
+          # every commit on a temporary branch changesets-ghcommit-temp/<branch>
+          # that is pushed at main's HEAD first; CircleCI builds that branch like
+          # any other, so every release commit also gets a branch pipeline whose
+          # image jobs compute the release tag from the git state and push it a
+          # second time from a non-release job (or hang and leave the release
+          # commit red). The Git CLI pushes changeset-release/main directly. The
+          # commits are the bot's and unsigned; the pull request is squash-merged.
+          push-with-git-cli: true
           version-script: yarn release:version
           publish-script: yarn release:publish
           commit-message: 'chore(release): version packages'
