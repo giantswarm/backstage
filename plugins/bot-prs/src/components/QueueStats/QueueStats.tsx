@@ -1,7 +1,7 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Stat } from '@giantswarm/backstage-plugin-ui-react';
 
-import type { BotPrRow } from '../../lib/marge';
+import { GREEN_GROUP, GROUP_MEANING, type BotPrRow } from '../../lib/marge';
 import { countStats } from '../../lib/rows';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -28,20 +28,40 @@ export function QueueStats({ rows }: { rows: BotPrRow[] }) {
   const stats = countStats(rows);
   return (
     <div className={classes.strip} data-testid="queue-stats">
-      <Stat label="Open" value={stats.total} />
-      <Stat label="Green" value={stats.green} tone="ok" />
-      <Stat label="Waiting" value={stats.waiting} tone="info" />
+      <Stat
+        label="Open"
+        value={stats.total}
+        hint="The open bot PRs the filters leave in view. The figures beside it count five of their classes; the classification legend lists the rest."
+      />
+      <Stat
+        label="Green"
+        value={stats.green}
+        tone="ok"
+        hint={GROUP_MEANING[GREEN_GROUP]}
+      />
+      <Stat
+        label="Waiting"
+        value={stats.waiting}
+        tone="info"
+        hint={GROUP_MEANING.waiting}
+      />
       <Stat
         label="Action required"
         value={stats.actionRequired}
         tone={stats.actionRequired > 0 ? 'warning' : undefined}
+        hint={GROUP_MEANING.action_required}
       />
       <Stat
         label="Security failures"
         value={stats.securityFailures}
         tone={stats.securityFailures > 0 ? 'error' : undefined}
+        hint={GROUP_MEANING.security_failures}
       />
-      <Stat label="Unclassified" value={stats.unclassified} />
+      <Stat
+        label="Unclassified"
+        value={stats.unclassified}
+        hint={GROUP_MEANING.unclassified}
+      />
     </div>
   );
 }

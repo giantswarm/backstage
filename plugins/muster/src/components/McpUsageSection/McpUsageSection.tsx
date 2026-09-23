@@ -192,6 +192,7 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
   const errorColor = theme.palette.error.main;
   // One fixed window now, so the label is derived rather than looked up.
   const rangeLabel = `${Math.round(hours / 24)}d`;
+  const windowNote = `over the last ${Math.round(hours / 24)} days`;
 
   /**
    * The data bars' hues, one per measure.
@@ -231,14 +232,27 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
   return (
     <>
       <Box className={classes.statRow}>
-        <Stat label="Tool calls" value={formatCount(totals.calls)} />
+        <Stat
+          label="Tool calls"
+          value={formatCount(totals.calls)}
+          hint={`Calls muster dispatched to its servers ${windowNote}, from every client, not only yours.`}
+        />
         <Stat
           label="Error ratio"
           value={errorPct !== null ? `${errorPct}%` : '—'}
           tone={errorTone}
+          hint="Calls that could not be dispatched or came back as an error result, as a share of all of them. Amber above 5%."
         />
-        <Stat label="p95 latency" value={formatSeconds(totals.p95_seconds)} />
-        <Stat label="Distinct tools" value={totals.distinct_tools} />
+        <Stat
+          label="p95 latency"
+          value={formatSeconds(totals.p95_seconds)}
+          hint={`How long a server took to answer, at the 95th percentile of every call ${windowNote}. Estimated from muster's latency histogram, so read it as a range rather than an exact figure.`}
+        />
+        <Stat
+          label="Distinct tools"
+          value={totals.distinct_tools}
+          hint={`Tools called at least once ${windowNote}.`}
+        />
       </Box>
 
       {totals.calls === 0 ? (
