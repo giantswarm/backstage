@@ -48,6 +48,15 @@ export const RUNTIME_LOST_LABEL = 'Runtime lost';
 export const RUNTIME_LOST_TITLE =
   'kagent cannot bring this session’s agent back; the transcript stays readable. Start a new session to carry on.';
 
+/** One line, cut with an ellipsis at the width of its container. */
+const TRUNCATE = {
+  display: 'block',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+} as const;
+
 /** Dash shown where a value is genuinely unknown. */
 function Unknown() {
   return (
@@ -159,13 +168,14 @@ function getColumnConfig(
 ): ColumnConfig<SessionTableRow>[] {
   return [
     {
-      // kagent truncates titles to 20 characters when deriving them from the
-      // first message, so these are short and lossy by nature — nothing to gain
-      // from a wide column.
       id: 'title',
       label: 'Session',
       isRowHeader: true,
       isSortable: true,
+      // One line, cut to the column: the title is what a row is found by, so
+      // it takes the room the short columns give up.
+      defaultWidth: '3fr',
+      minWidth: 200,
       cell: row => {
         const href = hrefFor(row);
         // A real anchor in the row-header cell, *as well as* the whole-row
@@ -180,10 +190,12 @@ function getColumnConfig(
         // {@link stopRowPress}.
         return (
           <Cell>
-            <Flex align="center" gap="2">
+            <Flex align="center" gap="2" style={{ minWidth: 0 }}>
               {href ? (
                 <Link
                   to={href}
+                  title={row.title}
+                  style={TRUNCATE}
                   onPointerDown={stopRowPress}
                   onPointerUp={stopRowPress}
                   onClick={stopRowPress}
@@ -191,13 +203,24 @@ function getColumnConfig(
                   {row.title}
                 </Link>
               ) : (
-                <Text variant="body-medium">{row.title}</Text>
+                <Text
+                  variant="body-medium"
+                  truncate
+                  title={row.title}
+                  style={{ minWidth: 0 }}
+                >
+                  {row.title}
+                </Text>
               )}
               {/* Said in the list, before the person opens it and types: a
                   session kagent reports lost takes no message any more. The
                   page explains and offers the way on. */}
               {row.runtimeLost && (
-                <Badge size="small" title={RUNTIME_LOST_TITLE}>
+                <Badge
+                  size="small"
+                  title={RUNTIME_LOST_TITLE}
+                  style={{ flexShrink: 0 }}
+                >
                   {RUNTIME_LOST_LABEL}
                 </Badge>
               )}
@@ -210,6 +233,8 @@ function getColumnConfig(
       id: 'agentName',
       label: 'Agent',
       isSortable: true,
+      defaultWidth: '1.5fr',
+      minWidth: 160,
       cell: row => (
         <Cell>
           {row.agentName ? (
@@ -249,12 +274,17 @@ function getColumnConfig(
       id: 'state',
       label: 'State',
       isSortable: true,
+      // Sized for the longest label, "Waiting for input".
+      defaultWidth: '1fr',
+      minWidth: 150,
       cell: row => <StateCell row={row} isLoading={isLoadingStates} />,
     },
     {
       id: 'installation',
       label: 'Installation',
       isSortable: true,
+      defaultWidth: '0.75fr',
+      minWidth: 110,
       cell: row => <CellText title={row.installation} />,
     },
     // No "Last activity": kagent API v2 never moves an instance's `updated_at`
@@ -263,6 +293,8 @@ function getColumnConfig(
       id: 'createdAt',
       label: 'Started',
       isSortable: true,
+      defaultWidth: '1fr',
+      minWidth: 130,
       cell: row => (
         <Cell>
           {row.createdAt ? (
