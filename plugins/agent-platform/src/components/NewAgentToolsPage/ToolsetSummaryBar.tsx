@@ -2,7 +2,13 @@ import { Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 
 import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
-import { countNoun, declaredToolset, toolsetShape } from '../../lib/toolset';
+import {
+  countNoun,
+  declaredToolset,
+  presetNameOf,
+  selectorLabel,
+  toolsetShape,
+} from '../../lib/toolset';
 
 const useStyles = makeStyles(theme => ({
   bar: {
@@ -24,11 +30,13 @@ const useStyles = makeStyles(theme => ({
     display: 'inline-flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    fontFamily: 'monospace',
     fontSize: 13,
     padding: theme.spacing(0.25, 1),
     borderRadius: 999,
     border: `1px solid ${theme.palette.divider}`,
+  },
+  selectorCode: {
+    fontFamily: 'monospace',
   },
   removeSelector: {
     border: 0,
@@ -198,23 +206,31 @@ export function ToolsetSummaryBar({
             </Text>
           ) : (
             <div className={classes.selectors} role="list" aria-label="Toolset">
-              {selectors.map(selector => (
-                <span
-                  key={selector}
-                  className={classes.selector}
-                  role="listitem"
-                >
-                  {selector}
-                  <button
-                    type="button"
-                    className={classes.removeSelector}
-                    aria-label={`Remove ${selector}`}
-                    onClick={() => onRemove(selector)}
+              {selectors.map(selector => {
+                const label = selectorLabel(selector);
+                return (
+                  <span
+                    key={selector}
+                    className={
+                      presetNameOf(selector) === undefined
+                        ? `${classes.selector} ${classes.selectorCode}`
+                        : classes.selector
+                    }
+                    role="listitem"
+                    title={selector}
                   >
-                    ×
-                  </button>
-                </span>
-              ))}
+                    {label}
+                    <button
+                      type="button"
+                      className={classes.removeSelector}
+                      aria-label={`Remove ${label}`}
+                      onClick={() => onRemove(selector)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           )}
         </Flex>

@@ -332,8 +332,9 @@ describe('AgentToolsetCard', () => {
     const { api, filterTools } = makeApi(resolvedAnswer());
     await renderCard(withToolset('preset:none'), api);
 
-    expect(screen.getByText('No tools')).toBeInTheDocument();
-    expect(screen.getByText('preset:none')).toBeInTheDocument();
+    // The chip and the alert both say so; the chip keeps the selector.
+    expect(screen.getAllByText('No tools')).toHaveLength(2);
+    expect(screen.getByTitle('preset:none')).toHaveTextContent('No tools');
     expect(filterTools).not.toHaveBeenCalled();
   });
 
@@ -359,7 +360,10 @@ describe('AgentToolsetCard', () => {
       within(declared)
         .getAllByRole('listitem')
         .map(item => item.textContent),
-    ).toEqual(['preset:read-only', 'workflow:incident-triage']);
+    ).toEqual(['Read-only tools', 'workflow:incident-triage']);
+    expect(within(declared).getByTitle('preset:read-only')).toHaveTextContent(
+      'Read-only tools',
+    );
 
     expect(
       await screen.findByText('x_kubernetes_get_pods'),
@@ -450,7 +454,7 @@ describe('AgentToolsetCard', () => {
   it('shows the declaration without a resolution where the muster plugin is not installed', async () => {
     await renderCard(withToolset('preset:read-only,server:pro'));
 
-    expect(screen.getByText('preset:read-only')).toBeInTheDocument();
+    expect(screen.getByText('Read-only tools')).toBeInTheDocument();
     expect(
       screen.getByText('Resolution not available in this portal'),
     ).toBeInTheDocument();

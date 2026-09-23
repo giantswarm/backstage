@@ -279,7 +279,7 @@ describe('EditAgentPage', () => {
     expect(card).toHaveTextContent(`pinned at ${HEAD.slice(0, 12)}`);
     // The toolset arrives as selected.
     expect(
-      screen.getByRole('checkbox', { name: 'Preset read-only' }),
+      screen.getByRole('checkbox', { name: 'Preset Read-only tools' }),
     ).toHaveAttribute('aria-checked', 'true');
     expect(screen.queryByLabelText(/runtime/i)).not.toBeInTheDocument();
     expect(screen.getByText('Nothing changed yet.')).toBeInTheDocument();

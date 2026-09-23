@@ -16,6 +16,7 @@ import {
   parseSelector,
   parseToolsetHeader,
   presetLabel,
+  selectorLabel,
   selectorForTool,
   selectorProblem,
   serverOfTool,
@@ -146,6 +147,13 @@ describe('presets', () => {
     expect(presetLabel('none')).toBe('No tools');
     expect(presetLabel('full')).toBe('Full gateway');
     expect(presetLabel('custom-thing')).toBe('custom-thing');
+  });
+
+  it('shows a preset selector by its label and any other as written', () => {
+    expect(selectorLabel('preset:read-only')).toBe('Read-only tools');
+    expect(selectorLabel('preset:custom-thing')).toBe('custom-thing');
+    expect(selectorLabel('server:pro')).toBe('server:pro');
+    expect(selectorLabel('not a selector')).toBe('not a selector');
   });
 
   it('keeps full exclusive when toggling, and none clears the selection', () => {
@@ -301,9 +309,23 @@ describe('describeToolset', () => {
         carrier: 'a',
       }),
     ).toEqual({
-      summary: 'preset:read-only, server:pro',
+      summary: 'Read-only tools, server:pro',
       detail: '2 selectors',
     });
+    expect(
+      describeToolset({
+        state: 'declared',
+        selectors: ['preset:read-only'],
+        carrier: 'a',
+      }),
+    ).toEqual({ summary: 'Read-only tools', detail: 'preset:read-only' });
+    expect(
+      describeToolset({
+        state: 'declared',
+        selectors: ['server:pro'],
+        carrier: 'a',
+      }),
+    ).toEqual({ summary: 'server:pro', detail: '1 selector' });
   });
 });
 

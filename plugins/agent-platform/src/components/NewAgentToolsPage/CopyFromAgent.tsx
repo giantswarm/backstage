@@ -9,6 +9,7 @@ import {
 import {
   declaredToolset,
   MUSTER_MCP_SERVER_NAME,
+  selectorLabel,
   toolsetOfAgent,
   type ToolsetCarrier,
 } from '../../lib/toolset';
@@ -124,8 +125,12 @@ export function CopyFromAgent({
               {source.namespace}/{source.name}
             </span>
           </Text>
-          <Text variant="body-small" color="secondary">
-            <span className={classes.code}>{source.selectors.join(', ')}</span>
+          <Text
+            variant="body-small"
+            color="secondary"
+            title={source.selectors.join(', ')}
+          >
+            {source.selectors.map(selectorLabel).join(', ')}
           </Text>
         </SelectableCard>
       ))}

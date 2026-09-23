@@ -485,7 +485,7 @@ describe('NewAgentToolsPage', () => {
       within(summaryBar()).queryByText('No tools'),
     ).not.toBeInTheDocument();
     await user.click(
-      screen.getByRole('button', { name: 'Remove preset:read-only' }),
+      screen.getByRole('button', { name: 'Remove Read-only tools' }),
     );
     expect(toolsetOutput()).toBe('');
     expect(continueButton()).toBeEnabled();
@@ -667,8 +667,8 @@ describe('NewAgentToolsPage', () => {
       await within(summaryBar()).findByText('Resolves to 2 tools for you'),
     ).toBeInTheDocument();
     expect(
-      within(summaryBar()).getByRole('listitem', { name: '' }),
-    ).toHaveTextContent('preset:read-only');
+      within(summaryBar()).getByRole('listitem', { name: 'preset:read-only' }),
+    ).toHaveTextContent('Read-only tools');
 
     const resolved = within(toolsetCard());
     await resolved.findByText('x_kubernetes_get_pods');

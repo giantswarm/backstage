@@ -170,6 +170,15 @@ export function presetLabel(name: string): string {
   }
 }
 
+/**
+ * The text a selector is shown by: a preset's label, any other selector as
+ * written — a server, workflow or tool goes by its own name.
+ */
+export function selectorLabel(selector: string): string {
+  const preset = presetNameOf(selector);
+  return preset === undefined ? selector : presetLabel(preset);
+}
+
 // Presets lead with the safe choices and end with the powerful one: the
 // constrained agent is one click, the unbounded one takes deliberate effort
 // past everything else. Installation-defined presets sit between the shipped
@@ -407,18 +416,22 @@ export function describeToolset(toolset: DeclaredToolset | undefined): {
     case 'implicit-full':
       return { summary: 'Full gateway access', detail: 'no toolset declared' };
     default: {
-      const shape = toolsetShape(toolset.selectors);
+      const { selectors } = toolset;
+      const shape = toolsetShape(selectors);
       if (shape === 'none') {
         return { summary: 'No tools', detail: PRESET_NONE, inactive: true };
       }
       if (shape === 'full') {
         return { summary: 'Full gateway access', detail: PRESET_FULL };
       }
+      const summary = selectors.map(selectorLabel).join(', ');
+      // A lone preset keeps its selector in view, as `none` and `full` do.
       return {
-        summary: toolset.selectors.join(', '),
-        detail: `${toolset.selectors.length} selector${
-          toolset.selectors.length === 1 ? '' : 's'
-        }`,
+        summary,
+        detail:
+          selectors.length === 1 && summary !== selectors[0]
+            ? selectors[0]
+            : countNoun(selectors.length, 'selector'),
       };
     }
   }
