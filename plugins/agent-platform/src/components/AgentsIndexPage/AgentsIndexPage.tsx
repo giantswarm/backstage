@@ -12,6 +12,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
+import { isSoleInstallation } from '../../lib/soleInstallation';
 import { newAgentRouteRef } from '../../routes';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
@@ -111,16 +112,12 @@ function AgentsIndexPageContent() {
   const showsTable =
     !isLoading && !invitesFirstAgent && !nothingCouldBeRead && !kagentMissing;
 
-  // The one installation the list can come from: the pinned one, or the only
-  // one that answered. The Installation column would repeat it on every row.
-  // Not decided while more installations are still resolving: the first to
-  // answer would hide the column and the next would bring it back.
-  const answeredInstallations = installations.filter(
-    installation => !unreachableInstallations.includes(installation),
-  );
-  const soleInstallation =
-    scope !== ALL_INSTALLATIONS ||
-    (!isLoadingMore && answeredInstallations.length === 1);
+  const soleInstallation = isSoleInstallation({
+    scope,
+    isLoading: isLoadingMore,
+    installations,
+    unreachableInstallations,
+  });
   // Decided on the rows alone: nearly every agent lives in one namespace, so
   // the column appears only once a second one shows up, rather than showing
   // while the fleet loads and vanishing once it settles.

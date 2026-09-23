@@ -4,3 +4,4 @@ export * from './useFilters';
 export * from './useIsTruncated';
 export * from './useSplatBasePath';
 export * from './useTableColumns';
+export * from './useVisibleSort';

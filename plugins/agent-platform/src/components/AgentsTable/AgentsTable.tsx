@@ -18,7 +18,10 @@ import { AgentRow, agentSearchFn, sortAgentsBy } from '../AgentsDataProvider';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { agentDetailRouteRef } from '../../routes';
 import { AvatarSize } from '../../lib/agentAvatar';
-import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  stopRowPress,
+  useVisibleSort,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { describeToolset } from '../../lib/toolset';
 import {
   AgentModelCell,
@@ -26,6 +29,13 @@ import {
   MUTED_ROW_STYLE,
 } from './modelStatus';
 import { AgentReadinessCell } from './readinessStatus';
+
+/** The default order, and the one while the Installation column is hidden. */
+const BY_INSTALLATION = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
+const BY_NAME = { column: 'name', direction: 'ascending' } as const;
 
 /**
  * The avatar spans roughly two lines of text (`large` = 40px). Request 2× that
@@ -273,13 +283,19 @@ export function AgentsTable({
   // cached rows) could leave the offset past the end of a shrunken list, slicing
   // to nothing and showing "No agents found." while agents exist, recoverable
   // only by paging back. `type: 'none'` skips the slice entirely.
+  const { sort, onSortChange } = useVisibleSort(
+    BY_INSTALLATION,
+    BY_NAME,
+    hideColumns,
+  );
   const { tableProps, search } = useTable<AgentRow>({
     mode: 'complete',
     data: rows,
     searchFn: agentSearchFn,
     searchDebounceMs,
     sortFn: sortAgentsBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
+    sort,
+    onSortChange,
     paginationOptions: { type: 'none' },
   });
 

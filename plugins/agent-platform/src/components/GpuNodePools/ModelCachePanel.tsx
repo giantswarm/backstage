@@ -10,7 +10,10 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  useVisibleSort,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ModelCacheRow } from '../../hooks/useClusterManager';
 import {
@@ -20,12 +23,21 @@ import {
   describePriceSource,
 } from '../../lib/clusterManager';
 
+/** The default order, and the one while the Installation column is hidden. */
+const BY_INSTALLATION = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
+const BY_CLAIM = { column: 'claim', direction: 'ascending' } as const;
+
 export type ModelCachePanelProps = {
   rows: ModelCacheRow[];
   isLoading: boolean;
   /** The installations whose cluster-manager offers `remove_model_cache` (0.17+). */
   removable: string[];
   onRemove: (row: ModelCacheRow) => void;
+  /** Columns to leave out: the page drops Installation where it would repeat. */
+  hideColumns?: ReadonlyArray<'installation'>;
 };
 
 /** The empty state: no claim stands, nothing is billed. */
@@ -246,16 +258,26 @@ export function ModelCachePanel({
   isLoading,
   removable,
   onRemove,
+  hideColumns,
 }: ModelCachePanelProps) {
   const columnConfig = useMemo(
-    () => getColumnConfig(removable, onRemove),
-    [removable, onRemove],
+    () =>
+      getColumnConfig(removable, onRemove).filter(
+        column => !hideColumns?.includes(column.id as 'installation'),
+      ),
+    [removable, onRemove, hideColumns],
+  );
+  const { sort, onSortChange } = useVisibleSort(
+    BY_INSTALLATION,
+    BY_CLAIM,
+    hideColumns,
   );
   const { tableProps } = useTable<ModelCacheRow>({
     mode: 'complete',
     data: rows,
     sortFn: sortModelCacheRowsBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
+    sort,
+    onSortChange,
     paginationOptions: { type: 'none' },
   });
   const total = useMemo(() => describeTotal(rows), [rows]);

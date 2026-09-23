@@ -131,6 +131,24 @@ describe('ModelCachePanel', () => {
     expect(onRemove).toHaveBeenCalledWith(row(CLAIM));
   });
 
+  it('leaves out the Installation column when asked to', async () => {
+    await renderInTestApp(
+      <ModelCachePanel
+        rows={[row(CLAIM)]}
+        isLoading={false}
+        removable={['inst-1']}
+        onRemove={jest.fn()}
+        hideColumns={['installation']}
+      />,
+    );
+    expect(
+      screen.getByRole('columnheader', { name: 'Claim' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: 'Installation' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('says nothing stands when there is no claim', async () => {
     await renderInTestApp(
       <ModelCachePanel

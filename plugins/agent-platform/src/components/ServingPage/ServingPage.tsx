@@ -120,6 +120,7 @@ export function ServingPage() {
   const pools = useGpuNodePoolControls(
     serving.reachableInstallations,
     servedModels,
+    serving.scope,
   );
   const toastApi = useApi(toastApiRef);
   const [isPullOpen, setPullOpen] = useState(false);
