@@ -264,22 +264,6 @@ function SessionsIndexPageContent() {
   return (
     <Content>
       <Flex direction="column" gap="3">
-        {/* The "only your own" reassurance is dropped when any installation
-            reports that its kagent does not identify individual users —
-            otherwise the page would promise it at the top and contradict itself
-            in the warning below the table, and the reassuring claim is the one
-            read first.
-
-            Dropped entirely on first run: describing a list that isn't there
-            competes with the invitation, which is the whole screen then. */}
-        {!invitesFirstSession && (
-          <Text color="secondary">
-            {notUserScopedInstallations.length > 0
-              ? 'Agent chat sessions across the management clusters.'
-              : 'Your agent chat sessions across the management clusters. Only your own are shown.'}
-          </Text>
-        )}
-
         {/* Conversations from before the move to kagent API v2 are not here
             (plan decision D9). Said before the list, so an empty or short one
             is explained rather than puzzled over; dismissible, because it is
@@ -326,6 +310,16 @@ function SessionsIndexPageContent() {
                 {notUserScopedInstallations.length > 0
                   ? 'Sessions'
                   : 'Your sessions'}
+              </Text>
+              {/* Describes the list, so it sits with it and goes with it:
+                  there is none on first run or on an empty fleet. The "only
+                  your own" reassurance is dropped when any installation reports
+                  that its kagent does not identify individual users, or the
+                  page would contradict itself in the warning below. */}
+              <Text color="secondary">
+                {notUserScopedInstallations.length > 0
+                  ? 'Agent chat sessions across the management clusters.'
+                  : 'Your agent chat sessions across the management clusters. Only your own are shown.'}
               </Text>
               <SessionsTable rows={rows} sessionStates={sessionStates} />
             </Flex>
