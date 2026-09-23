@@ -107,8 +107,9 @@ describe('CapabilityDialog', () => {
       </TestApiProvider>,
     );
     await waitFor(() => expect(screen.queryByTestId('comparing')).toBeNull());
+    // The verb, with or without the files the comparison rendered.
     await userEvent.click(
-      screen.getByRole('button', { name: 'Apply changes' }),
+      screen.getByRole('button', { name: /^Apply changes/ }),
     );
     const dialog = screen.getByRole('form', {
       name: 'Apply changes to customer-portal on rowan',
@@ -178,10 +179,11 @@ describe('CapabilityDialog', () => {
     expect(screen.getByRole('button', { name: 'Review' })).toHaveFocus();
     expect(outcome).toBeEmptyDOMElement();
 
-    // Open pull requests: the action's line takes the focus and is announced.
+    // Open pull requests, named by their number: the action's line takes
+    // the focus and is announced.
     await userEvent.click(screen.getByRole('button', { name: 'Review' }));
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Open pull requests' }),
+      await screen.findByRole('button', { name: 'Open 2 pull requests' }),
     );
     const committed = await screen.findByTestId('committed');
     const line = committed.firstElementChild as HTMLElement;
@@ -315,7 +317,7 @@ describe('CapabilityDialog', () => {
     );
     expect(domain).toHaveFocus();
     expect(
-      screen.queryByRole('button', { name: 'Open pull requests' }),
+      screen.queryByRole('button', { name: /^Open .*pull requests?$/ }),
     ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
     expect(screen.queryByTestId('plan')).toBeNull();
@@ -348,7 +350,7 @@ describe('CapabilityDialog', () => {
     expect(select('Github')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled();
     expect(
-      screen.queryByRole('button', { name: 'Open pull requests' }),
+      screen.queryByRole('button', { name: /^Open .*pull requests?$/ }),
     ).toBeNull();
   });
 });

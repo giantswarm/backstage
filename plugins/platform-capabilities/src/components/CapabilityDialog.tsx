@@ -20,7 +20,7 @@ import {
   platformCapabilitiesApiRef,
   VerifyResult,
 } from '../apis';
-import { reviewWords } from '../lib/comparison';
+import { count, reviewWords } from '../lib/comparison';
 import { reasonOf, refusalStatus } from '../lib/refusal';
 import {
   Field,
@@ -84,9 +84,10 @@ export interface CapabilityDialogProps {
  * refuse the commit -- the review shows the reason as an Alert, `info` for
  * an input the dialog supplies and `warning` for something fixed first, over
  * the form kept editable: the fields the reason names are marked and led to
- * from the Alert, and Review runs the comparison again. Open pull requests:
- * the commit as the signed-in person and the Action it started. The commit
- * is disabled without the person's session at the manager. A status region
+ * from the Alert, and Review runs the comparison again. Open pull requests,
+ * the button naming how many (*Open 1 pull request*): the commit as the
+ * signed-in person and the Action it started. The commit is disabled
+ * without the person's session at the manager. A status region
  * announces each answer -- the result, the refusal, the action started, a
  * failure -- and as a step changes the focus moves to what replaced the
  * button pressed: the result's heading, the action's line, Review after
@@ -168,8 +169,9 @@ export function CapabilityDialog({
   // changed there and reviewed again.
   const editing = !done && (!reviewed || Boolean(reason));
   const accepted = reviewed && !reason && !done ? reviewed : undefined;
-  const nothingToOpen =
-    accepted !== undefined && (accepted.pullRequests ?? []).length === 0;
+  // The pull requests the commit opens: the button names their number.
+  const toOpen = (accepted?.pullRequests ?? []).length;
+  const nothingToOpen = accepted !== undefined && toOpen === 0;
   const connected = connection.data?.connected === true;
   const title = `${kind === 'enable' ? 'Enable' : 'Apply changes to'} ${capability.name} on ${installation.name}`;
 
@@ -389,7 +391,9 @@ export function CapabilityDialog({
                   variant="primary"
                   isDisabled={busy || !connected}
                 >
-                  {commit.isPending ? 'Opening…' : 'Open pull requests'}
+                  {commit.isPending
+                    ? 'Opening…'
+                    : `Open ${count(toOpen, 'pull request')}`}
                 </Button>
               )}
             </Flex>
