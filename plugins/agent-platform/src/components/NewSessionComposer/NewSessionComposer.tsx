@@ -246,6 +246,9 @@ export function NewSessionComposer({
     () => offered.find(agent => agent.id === selectedId),
     [offered, selectedId],
   );
+  // Derived rather than cleared on pick: an agent can also arrive by adopting a
+  // late default, which the picker's change handler never sees.
+  const showAgentMissing = agentMissing && !selectedAgent;
 
   // The same deterministic avatar the sessions table and the agent's own page
   // show, so one agent looks the same everywhere. Seeded from the technical name,
@@ -398,7 +401,7 @@ export function NewSessionComposer({
                 ref={agentSelectRef}
                 aria-label="Agent"
                 className={classes.agentSelect}
-                isInvalid={agentMissing}
+                isInvalid={showAgentMissing}
                 // `leadingIcon` only reaches the options; the trigger has its own
                 // slot, and without this the chosen agent loses the avatar it had
                 // in the list.
@@ -408,9 +411,6 @@ export function NewSessionComposer({
                 onSelectionChange={key => {
                   touched.current = true;
                   setSelectedId(key ? String(key) : undefined);
-                  if (key) {
-                    setAgentMissing(false);
-                  }
                 }}
                 placeholder="Select an agent"
                 searchable={offered.length > SEARCHABLE_THRESHOLD}
@@ -420,7 +420,7 @@ export function NewSessionComposer({
                 {isStarting ? 'Starting…' : 'Start'}
               </Button>
             </Flex>
-            {agentMissing && !isTooLong ? (
+            {showAgentMissing && !isTooLong ? (
               <Text variant="body-small" color="danger" role="alert">
                 Choose an agent to start.
               </Text>

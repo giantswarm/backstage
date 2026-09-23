@@ -240,12 +240,17 @@ function SessionsIndexPageContent() {
   );
 
   // The one installation the list can come from: the pinned one, or the only
-  // one asked. The Installation column would repeat it on every row.
+  // one that answered. The Installation column would repeat it on every row.
+  // Not decided while more installations are still resolving: the first to
+  // answer would hide the column and the next would bring it back.
+  const answeredInstallations = queriedInstallations.filter(
+    installation => !unreachableInstallations.includes(installation),
+  );
   let soleInstallation: string | undefined;
   if (scope !== ALL_INSTALLATIONS) {
     soleInstallation = scope;
-  } else if (queriedInstallations.length === 1) {
-    soleInstallation = queriedInstallations[0];
+  } else if (!isLoadingMore && answeredInstallations.length === 1) {
+    soleInstallation = answeredInstallations[0];
   }
 
   // "You have never started a session" needs more than an empty list. A read

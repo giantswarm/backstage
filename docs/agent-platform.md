@@ -1288,10 +1288,8 @@ Not bui `List`/`ListRow`, and not `Card` with `onPress`:
 Hand-rolling also means no additions to `packages/app/src/bui-overrides.css` —
 `RecentConversations` needed five `.bui-*` overrides for a _single-line_ row.
 
-Each card is three lines: a compact single-unit age (`2h`, never `2h 5m` — the
-stats strip's `formatDuration` and the rail's `formatCompactAge` are separate
-functions in `lib/duration` for exactly this reason), the title clamped to two
-lines, and the agent's avatar and name. The prototype's `team` line has no kagent
+Each card is three lines: a compact single-unit age (`2h`, never `2h 5m`, from
+`formatCompactAge` in `lib/duration`), the title clamped to two lines, and the agent's avatar and name. The prototype's `team` line has no kagent
 equivalent, and its trigger icon has no backing data at all. The group heading
 carries the status, so cards show no badge — in a 280 px column that would cost
 the title a line. The current card is marked by an accent bar, a background and a

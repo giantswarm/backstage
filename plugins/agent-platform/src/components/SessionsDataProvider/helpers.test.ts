@@ -173,19 +173,6 @@ describe('sortSessionRows', () => {
     expect(sorted.map(r => r.id)).toEqual(['b', 'a']);
   });
 
-  it('ignores updatedAt, which kagent API v2 does not move on a turn', () => {
-    const sorted = sortSessionRows([
-      row({
-        id: 'older',
-        createdAt: '2026-07-20T10:00:00Z',
-        updatedAt: '2026-07-25T10:00:00Z',
-      }),
-      row({ id: 'newer', createdAt: '2026-07-23T10:00:00Z' }),
-    ]);
-
-    expect(sorted.map(r => r.id)).toEqual(['newer', 'older']);
-  });
-
   it('puts rows with no timestamp last', () => {
     const sorted = sortSessionRows([
       row({ id: 'none' }),

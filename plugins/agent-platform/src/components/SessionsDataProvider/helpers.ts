@@ -65,7 +65,6 @@ export type SessionRow = {
    */
   agentModel?: string;
   createdAt?: string;
-  updatedAt?: string;
   /**
    * kagent reported this session's runtime lost: the agent's working state
    * went with the platform node it was paused on, and no message can reach it
@@ -159,7 +158,6 @@ export function toSessionRow(
     agentNamespace: match?.namespace,
     agentModel: match?.modelName,
     createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
     runtimeLost: readReportedRuntimeLoss(session) !== undefined,
   };
 }
@@ -217,7 +215,7 @@ export function sortSessionsBy<T extends SessionRow>(
   const factor = sort.direction === 'ascending' ? 1 : -1;
 
   return [...rows].sort((a, b) => {
-    if (column === 'createdAt' || column === 'updatedAt') {
+    if (column === 'createdAt') {
       const aTime = timestampValue(a[column]);
       const bTime = timestampValue(b[column]);
       if (aTime === bTime) {

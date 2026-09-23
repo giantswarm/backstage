@@ -155,6 +155,27 @@ describe('NewSessionComposer', () => {
       );
     });
 
+    it('drops the message once a late default is adopted', async () => {
+      // The remembered agent can arrive after the user has already pressed
+      // Enter; adopting it is not a pick, but it answers the message all the same.
+      const { rerender } = renderComposer({ agents: [sre, issues] });
+
+      await userEvent.type(field(), 'check{Enter}');
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+
+      rerender(
+        <NewSessionComposer
+          agents={[sre, issues]}
+          defaultAgent={issues}
+          isStarting={false}
+          onStart={onStart}
+        />,
+      );
+
+      expect(agentPicker()).toHaveTextContent('Issue Tracker');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('drops the message once an agent is chosen', async () => {
       renderComposer({ agents: [sre, issues] });
 

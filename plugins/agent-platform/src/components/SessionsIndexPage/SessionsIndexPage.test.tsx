@@ -650,6 +650,22 @@ describe('SessionsIndexPage under "All installations" on a multi-installation po
     );
   });
 
+  it('keeps it while more installations are still loading', async () => {
+    // The first to answer would otherwise hide it, and the next bring it back.
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      rows: [gazelleSession],
+      installations: ['gazelle', 'golem'],
+      isLoadingMore: true,
+    });
+    await render();
+
+    expect(screen.getByTestId('sessions-table')).toHaveAttribute(
+      'data-hidden',
+      '',
+    );
+  });
+
   it('leaves searching to the table', async () => {
     // The page carried a field of its own only to search across the groups at
     // once. With one table, search belongs to the table (stubbed here), and a
@@ -683,6 +699,14 @@ describe('SessionsIndexPage with one installation to list from', () => {
         scope: 'all',
         installations: ['gazelle', 'golem'],
         notReachableInstallations: ['golem'],
+      },
+    ],
+    [
+      'the only one that answered',
+      {
+        scope: 'all',
+        installations: ['gazelle', 'golem'],
+        unreachableInstallations: ['golem'],
       },
     ],
   ])('drops the Installation column when it is %s', async (_, overrides) => {

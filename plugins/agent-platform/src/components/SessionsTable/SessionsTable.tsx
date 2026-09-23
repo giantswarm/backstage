@@ -1,4 +1,5 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import useDebounce from 'react-use/esm/useDebounce';
 import {
   Avatar,
   Badge,
@@ -443,7 +444,12 @@ export function SessionsTable({
       : { type: 'none' },
   });
 
-  const searchTerm = search.value.trim();
+  // The term the rows are filtered by: `useTable` debounces the search and
+  // does not hand the debounced value back, so the empty state keeps its own.
+  const [searchTerm, setSearchTerm] = useState('');
+  useDebounce(() => setSearchTerm(search.value.trim()), searchDebounceMs, [
+    search.value,
+  ]);
 
   return (
     <Flex direction="column" gap="3">

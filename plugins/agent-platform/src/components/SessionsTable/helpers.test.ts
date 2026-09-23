@@ -188,11 +188,11 @@ describe('sortSessionsByState', () => {
     expect(rows.map(r => r.sessionId)).toEqual(order);
   });
 
-  it('falls back to last activity when no state says when it moved', () => {
+  it('falls back to the start when no state says when it moved', () => {
     const undated = withSessionStates(
       [
-        row('gazelle/older', { updatedAt: '2026-09-01T00:00:00Z' }),
-        row('gazelle/newer', { updatedAt: '2026-09-08T00:00:00Z' }),
+        row('gazelle/older', { createdAt: '2026-09-01T00:00:00Z' }),
+        row('gazelle/newer', { createdAt: '2026-09-08T00:00:00Z' }),
       ],
       view(),
     );

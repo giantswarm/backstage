@@ -35,7 +35,6 @@ const rows: SessionRow[] = [
     agentName: 'Issue tracker',
     agentTechnicalName: 'issue-tracker',
     createdAt: '2026-07-23T16:04:28.586641Z',
-    updatedAt: '2026-07-23T16:09:58.162014Z',
   },
   {
     id: 'golem/def',
@@ -44,7 +43,6 @@ const rows: SessionRow[] = [
     title: 'Chat',
     agentName: '',
     createdAt: undefined,
-    updatedAt: undefined,
   },
 ];
 
@@ -277,7 +275,7 @@ describe('SessionsTable', () => {
       );
 
       expect(
-        screen.getByText('No sessions match "nothing matches this".'),
+        await screen.findByText('No sessions match "nothing matches this".'),
       ).toBeInTheDocument();
     });
   });
