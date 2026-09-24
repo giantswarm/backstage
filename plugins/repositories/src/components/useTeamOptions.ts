@@ -3,6 +3,7 @@ import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { LIST_LIMIT, ListFilters, repositoriesApiRef } from '../apis';
 import { callerTeams, TeamOption, teamOptions } from '../lib/scope';
+import { useManagerInfo } from './useManagerInfo';
 
 /** The whole inventory, for the teams a declaration can be filed for. */
 const INVENTORY: ListFilters = { scope: 'all', limit: LIST_LIMIT };
@@ -39,10 +40,7 @@ export interface TeamOptions {
  */
 export function useTeamOptions(current = ''): TeamOptions {
   const api = useApi(repositoriesApiRef);
-  const info = useQuery({
-    queryKey: ['repositories', 'info'],
-    queryFn: () => api.getInfo(),
-  });
+  const info = useManagerInfo();
   const inventory = useQuery({
     queryKey: ['repositories', 'list', INVENTORY],
     queryFn: () => api.listRepositories(INVENTORY),

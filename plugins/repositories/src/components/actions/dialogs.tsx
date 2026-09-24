@@ -35,6 +35,7 @@ import {
   TeamSelect,
 } from '../CreateRepositoryPage/DeclarationFields';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
+import { useVocabulary } from '../useManagerInfo';
 import { useTeamOptions } from '../useTeamOptions';
 import { ActionDialog } from './ActionDialog';
 import { LiveAlignment } from './LiveAlignment';
@@ -106,6 +107,7 @@ export function EditDialog({
   const [form, setForm] = useState(() =>
     entry ? fromEntry(entry, team) : EMPTY,
   );
+  const vocabulary = useVocabulary();
   const change = () => {
     if (!entry) {
       throw new Error(`${file}: the entry of ${record.name} could not be read`);
@@ -121,7 +123,11 @@ export function EditDialog({
       intro={`The team-file entry of ${record.repository} is replaced by the declaration below, the fields as Create repository asks them. The manager validates the entry against the repositories schema; the reconciler applies the change after ${team}'s review of the pull request.`}
       isOpen={isOpen}
       onClose={onClose}
-      ready={!!entry && !flavourProblem(form.language, form.flavours)}
+      ready={
+        !!entry &&
+        vocabulary.status === 'ready' &&
+        !flavourProblem(form.language, form.flavours)
+      }
       fields={
         entry ? (
           <DeclarationFields
@@ -134,6 +140,7 @@ export function EditDialog({
               file,
               kept: keptFields(entry),
             }}
+            vocabulary={vocabulary}
             isDisabled={false}
           />
         ) : (
@@ -364,6 +371,7 @@ export function AdoptDialog({
   const api = useApi(repositoriesApiRef);
   const [form, setForm] = useState(() => fromReality(record));
   const { own, teams, loading, error } = useTeamOptions(form.team);
+  const vocabulary = useVocabulary();
   // The form opens on the person's team; the manager decides membership.
   useEffect(() => {
     const [team] = own;
@@ -405,7 +413,9 @@ export function AdoptDialog({
       isOpen={isOpen}
       onClose={onClose}
       ready={
-        form.team.length > 0 && !flavourProblem(form.language, form.flavours)
+        form.team.length > 0 &&
+        (!!lifecycle || vocabulary.status === 'ready') &&
+        !flavourProblem(form.language, form.flavours)
       }
       fields={
         <>
@@ -435,6 +445,7 @@ export function AdoptDialog({
                 teams,
                 teamsLoading: loading,
               }}
+              vocabulary={vocabulary}
               isDisabled={false}
             />
           )}

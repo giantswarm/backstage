@@ -1,11 +1,12 @@
+import { ManagerSchema } from '../apis';
+import { schema } from '../fixtures/records';
 import {
-  ADDONS,
+  Addon,
   addonAllowed,
   addonsOf,
   DeclarationForm,
   EMPTY,
   fixOf,
-  FLAVOURS,
   flavourProblem,
   hasCIJob,
   isComplete,
@@ -13,12 +14,30 @@ import {
   natureOf,
   presetOf,
   PRESETS,
+  presetsOf,
   toEntry,
+  Vocabulary,
+  vocabularyOf,
   withAddons,
   withGen,
   withNature,
   withPreset,
 } from './declaration';
+
+/** The vocabulary a manager reporting this schema offers. */
+function vocabularyFor(reported: Partial<ManagerSchema> = {}): Vocabulary {
+  const result = vocabularyOf({
+    version: 'v0.30.0',
+    schema: { ...schema, ...reported },
+  });
+  if (!('vocabulary' in result)) {
+    throw new Error(result.problem);
+  }
+  return result.vocabulary;
+}
+
+const reported = vocabularyFor();
+const ids = (choices: { id: string }[]) => choices.map(choice => choice.id);
 
 const form = (changes: Partial<DeclarationForm> = {}): DeclarationForm => ({
   ...EMPTY,
@@ -157,61 +176,154 @@ describe('isComplete', () => {
   });
 });
 
-describe('flavours', () => {
-  it('offers the natures and the add-ons, not helmchart, which devctl’s generators refuse', () => {
-    expect(FLAVOURS.map(flavour => flavour.id)).toEqual([
+describe('vocabularyOf', () => {
+  it('offers the reported values, the described ones in the presentation’s order', () => {
+    expect(ids(reported.componentTypes)).toEqual([
+      'service',
+      'library',
+      'cli',
+      'configuration',
+      'customer',
+      'template',
+      'appcatalog',
+      'unspecified',
+    ]);
+    expect(ids(reported.languages)).toEqual([
+      'generic',
+      'go',
+      'python',
+      'node',
+      'kyverno-policy',
+    ]);
+    expect(ids(reported.visibilities)).toEqual(['private', 'public']);
+  });
+
+  it('groups the flavours into natures and add-ons, not fork, which a new repository cannot be', () => {
+    expect(ids(reported.natures)).toEqual([
       'app',
       'generic',
       'cli',
       'customer',
       'fleet',
-      'cluster-app',
-      'k8sapi',
-      'plans',
     ]);
+    expect(ids(reported.addons)).toEqual(['cluster-app', 'k8sapi', 'plans']);
   });
 
+  it('offers a reported value it has no text for under its own id, and drops one no longer reported', () => {
+    const vocabulary = vocabularyFor({
+      languages: ['go', 'rust'],
+      flavours: ['app', 'generic', 'wasm'],
+    });
+    expect(ids(vocabulary.languages)).toEqual(['go', 'rust']);
+    expect(vocabulary.languages[1]).toMatchObject({
+      id: 'rust',
+      label: 'rust',
+    });
+    expect(ids(vocabulary.natures)).toEqual(['app', 'generic']);
+    expect(ids(vocabulary.addons)).toEqual(['wasm']);
+  });
+
+  it('says why without a schema, with the manager’s error, or with a list missing; it has no fallback', () => {
+    expect(vocabularyOf({ version: 'v0.29.0' })).toEqual({
+      problem: expect.stringContaining(
+        'giantswarm-repo-manager v0.29.0 does not report the repositories schema',
+      ),
+    });
+    expect(
+      vocabularyOf({
+        version: 'v0.30.0',
+        schema: { origin: 'embedded', error: 'no gen.flavours enum' },
+      }),
+    ).toEqual({
+      problem:
+        'giantswarm-repo-manager could not read the repositories schema (embedded): no gen.flavours enum',
+    });
+    expect(
+      vocabularyOf({
+        version: 'v0.30.0',
+        schema: { ...schema, languages: [] },
+      }),
+    ).toEqual({ problem: expect.stringContaining('reports no languages') });
+  });
+});
+
+describe('flavours', () => {
   it('reads the nature and the add-ons off the flavours in any order', () => {
-    expect(natureOf(['cluster-app', 'app'])).toBe('app');
-    expect(natureOf(['k8sapi'])).toBeUndefined();
-    expect(addonsOf(['app', 'cluster-app', 'k8sapi'])).toEqual([
+    expect(natureOf(['cluster-app', 'app'], reported)).toBe('app');
+    expect(natureOf(['k8sapi'], reported)).toBeUndefined();
+    expect(addonsOf(['app', 'cluster-app', 'k8sapi'], reported)).toEqual([
       'cluster-app',
       'k8sapi',
     ]);
   });
 
   it('withNature keeps the add-ons that go with the new nature and drops the rest', () => {
-    const app = withAddons(withNature(EMPTY, 'app'), ['cluster-app', 'k8sapi']);
+    const app = withAddons(
+      withNature(EMPTY, 'app', reported),
+      ['cluster-app', 'k8sapi'],
+      reported,
+    );
     expect(app.flavours).toEqual(['app', 'cluster-app', 'k8sapi']);
-    expect(withNature(app, 'generic')).toMatchObject({
+    expect(withNature(app, 'generic', reported)).toMatchObject({
       flavours: ['generic', 'k8sapi'],
       ciGenerate: true,
     });
     expect(
-      withNature(withGen(app, { language: 'generic' }), 'customer'),
+      withNature(withGen(app, { language: 'generic' }), 'customer', reported),
     ).toMatchObject({ flavours: ['customer', 'k8sapi'], ciGenerate: false });
   });
 
   it('holds the plans add-on to the generic nature', () => {
-    const plans = ADDONS.find(addon => addon.id === 'plans')!;
+    const plans = reported.addons.find(addon => addon.id === 'plans') as Addon;
     expect(addonAllowed(plans, 'generic')).toBe(true);
     expect(addonAllowed(plans, 'app')).toBe(false);
-    const generic = withAddons(withNature(EMPTY, 'generic'), ['plans']);
+    const generic = withAddons(
+      withNature(EMPTY, 'generic', reported),
+      ['plans'],
+      reported,
+    );
     expect(generic.flavours).toEqual(['generic', 'plans']);
-    expect(withNature(generic, 'app').flavours).toEqual(['app']);
+    expect(withNature(generic, 'app', reported).flavours).toEqual(['app']);
   });
 
   it('withAddons sets the add-ons after the nature and re-derives the CircleCI switch', () => {
     const configuration = withPreset(EMPTY, 'configuration');
-    expect(withAddons(configuration, ['k8sapi'])).toMatchObject({
+    expect(withAddons(configuration, ['k8sapi'], reported)).toMatchObject({
       flavours: ['generic', 'k8sapi'],
       ciGenerate: false,
     });
-    expect(withAddons(configuration, []).flavours).toEqual(['generic']);
+    expect(withAddons(configuration, [], reported).flavours).toEqual([
+      'generic',
+    ]);
+  });
+
+  it('keeps a fork line’s fork flavour, which the form does not offer', () => {
+    const fork = form({ flavours: ['generic', 'fork'] });
+    expect(withAddons(fork, ['k8sapi'], reported).flavours).toEqual([
+      'generic',
+      'k8sapi',
+      'fork',
+    ]);
+    expect(withNature(fork, 'app', reported).flavours).toEqual(['app', 'fork']);
   });
 });
 
 describe('presets', () => {
+  it('offers every preset the report can declare', () => {
+    expect(ids(presetsOf(reported))).toEqual(ids(PRESETS));
+  });
+
+  it('does not offer a preset whose values the manager does not report', () => {
+    const withoutPlans = presetsOf(
+      vocabularyFor({ flavours: ['app', 'cli', 'customer', 'generic'] }),
+    );
+    expect(ids(withoutPlans)).not.toContain('plans');
+    expect(ids(withoutPlans)).toContain('other');
+    expect(
+      ids(presetsOf(vocabularyFor({ languages: ['generic'] }))),
+    ).not.toContain('go-service');
+  });
+
   it('every preset is recognised from its own fields', () => {
     PRESETS.forEach(preset => {
       expect(presetOf(withPreset(EMPTY, preset.id))).toBe(preset.id);

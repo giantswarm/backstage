@@ -16,6 +16,7 @@ import {
 import { REFUSED_TITLE } from '../actions/ActionDialog';
 import { ProblemFix } from '../actions/PlanView';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
+import { useVocabulary } from '../useManagerInfo';
 import { useTeamOptions } from '../useTeamOptions';
 import { rootRouteRef } from '../../routes';
 import { CI_GENERATE_LABEL, DeclarationFields } from './DeclarationFields';
@@ -67,6 +68,10 @@ export function CreateRepositoryPage() {
     }
   }, [own]);
 
+  // The enumerated fields' choices: the manager's report, or nothing to declare.
+  const vocabulary = useVocabulary();
+  const declarable = vocabulary.status === 'ready';
+
   const create = useMutation({
     mutationFn: () => api.createRepository(toInput(form), { mode: 'commit' }),
   });
@@ -82,12 +87,12 @@ export function CreateRepositoryPage() {
   const dryRun = useQuery({
     queryKey: ['repositories', 'validate', input],
     queryFn: () => api.validateRepository(input),
-    enabled: isComplete(settled) && !created,
+    enabled: declarable && isComplete(settled) && !created,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
 
-  const complete = isComplete(form);
+  const complete = declarable && isComplete(form);
   // The manager's answer stands for the form as it is once the form has
   // settled and the answer is for it -- not the previous one kept on screen.
   const checking =
@@ -151,6 +156,7 @@ export function CreateRepositoryPage() {
                 form={form}
                 onChange={setForm}
                 subject={{ kind: 'new', teams, teamsLoading }}
+                vocabulary={vocabulary}
                 validation={validation}
                 checking={checking}
                 isDisabled={!!created}
@@ -173,9 +179,9 @@ export function CreateRepositoryPage() {
                     color="secondary"
                     data-testid="review-hint"
                   >
-                    Pick the team and a name: giantswarm-repo-manager renders
-                    the entry with the schema's defaults, checks the name on
-                    GitHub and plans the creation as you — here, while you type.
+                    {declarable
+                      ? "Pick the team and a name: giantswarm-repo-manager renders the entry with the schema's defaults, checks the name on GitHub and plans the creation as you — here, while you type."
+                      : 'Create waits for the declaration’s choices: giantswarm-repo-manager reports them, and the form offers no others.'}
                   </Text>
                 )}
                 {checking && (

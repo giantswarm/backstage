@@ -3,6 +3,7 @@ import {
   DeclarationInput,
   InventoryRecord,
   LifecycleChange,
+  ManagerInfo,
   Problem,
   Validation,
 } from '../apis';
@@ -10,11 +11,11 @@ import {
 /**
  * The declaration as a form -- Create repository's, and Edit's for an
  * existing entry: the declaration's fields as the manager's tools name them.
- * The choices offered for the enumerated fields mirror the repositories
- * schema of giantswarm/github and the engine's creation rules (devctl's
- * reposetup package and its generators) so a person picks instead of
- * typing; the manager's dry run stays the verdict on whatever the form
- * sends.
+ * The enumerated fields offer the values the manager reports in `get_info`'s
+ * `schema` (`vocabularyOf`), so a person picks instead of typing; the
+ * presets and the name and flavour rules mirror the engine's creation rules
+ * (devctl's reposetup package and its generators). The manager's dry run
+ * stays the verdict on whatever the form sends.
  */
 export interface DeclarationForm {
   /** The owning team's file, as its GitHub team slug: `team-bumblebee`. */
@@ -48,86 +49,8 @@ export interface Choice {
   description?: string;
 }
 
-/** `componentType`, as the schema enumerates it, the common ones first. */
-export const COMPONENT_TYPES: Choice[] = [
-  {
-    id: 'service',
-    label: 'service',
-    description: 'Runs somewhere: an operator, an API, a packaged app',
-  },
-  { id: 'library', label: 'library', description: 'Imported by other code' },
-  { id: 'cli', label: 'cli', description: 'A command-line tool' },
-  {
-    id: 'configuration',
-    label: 'configuration',
-    description: 'GitOps and configuration files',
-  },
-  {
-    id: 'customer',
-    label: 'customer',
-    description: 'A customer project repository',
-  },
-  {
-    id: 'template',
-    label: 'template',
-    description: 'Repositories are created from it',
-  },
-  { id: 'appcatalog', label: 'appcatalog', description: 'An app catalog' },
-  { id: 'unspecified', label: 'unspecified', description: 'Anything else' },
-];
-
-/** `gen.language`, as the schema enumerates it. */
-export const LANGUAGES: Choice[] = [
-  {
-    id: 'generic',
-    label: 'generic',
-    description: 'No language build: a chart, configuration, documents',
-  },
-  { id: 'go', label: 'go', description: 'Built and tested with go-build' },
-  { id: 'python', label: 'python' },
-  { id: 'node', label: 'node', description: 'Built with the Node job' },
-  { id: 'kyverno-policy', label: 'kyverno-policy' },
-];
-
-/** The language devctl builds a CLI for: `gen makefile` refuses the cli flavour with any other. */
-const CLI_LANGUAGE = 'go';
-
-/**
- * `gen.flavours`, the nature of the repository: what devctl generates for it.
- * The org's repositories declare one of these each; the add-ons come on top.
- */
-export const NATURES: Choice[] = [
-  {
-    id: 'app',
-    label: 'app',
-    description:
-      'A Helm chart under helm/<name>: the chart pipeline and the values-schema check. The repository is named after its chart.',
-  },
-  {
-    id: 'generic',
-    label: 'generic',
-    description:
-      'Nothing specific: the shared Makefile, workflows and Renovate config only.',
-  },
-  {
-    id: 'cli',
-    label: 'cli',
-    description:
-      'A command-line tool: its binaries are built and put on the GitHub release. Go only.',
-  },
-  {
-    id: 'customer',
-    label: 'customer',
-    description:
-      'A customer project: the customer board automation and Renovate, no CircleCI, the minimal scaffold.',
-  },
-  {
-    id: 'fleet',
-    label: 'fleet',
-    description:
-      'A GitOps repository with clusters: the cluster values validation.',
-  },
-];
+/** How the form shows a value the manager reports: its label and meaning. */
+type Presentation = Omit<Choice, 'id'>;
 
 /** An add-on flavour: generated on top of the nature, some only with one. */
 export interface Addon extends Choice {
@@ -136,49 +59,217 @@ export interface Addon extends Choice {
 }
 
 /**
- * `gen.flavours`, the add-ons. The schema also enumerates `helmchart`, which
- * devctl's generators refuse -- it is a pre-commit flavour (`gen.preCommit`)
- * -- so a repository declaring it cannot be aligned; it is not offered.
+ * `componentType`, keyed by the value the manager reports, the common ones
+ * first.
  */
-export const ADDONS: Addon[] = [
-  {
-    id: 'cluster-app',
+const COMPONENT_TYPE_TEXT: Record<string, Presentation> = {
+  service: {
+    label: 'service',
+    description: 'Runs somewhere: an operator, an API, a packaged app',
+  },
+  library: { label: 'library', description: 'Imported by other code' },
+  cli: { label: 'cli', description: 'A command-line tool' },
+  configuration: {
+    label: 'configuration',
+    description: 'GitOps and configuration files',
+  },
+  customer: { label: 'customer', description: 'A customer project repository' },
+  template: {
+    label: 'template',
+    description: 'Repositories are created from it',
+  },
+  appcatalog: { label: 'appcatalog', description: 'An app catalog' },
+  unspecified: { label: 'unspecified', description: 'Anything else' },
+};
+
+/** `gen.language`, keyed by the value the manager reports. */
+const LANGUAGE_TEXT: Record<string, Presentation> = {
+  generic: {
+    label: 'generic',
+    description: 'No language build: a chart, configuration, documents',
+  },
+  go: { label: 'go', description: 'Built and tested with go-build' },
+  python: { label: 'python' },
+  node: { label: 'node', description: 'Built with the Node job' },
+  'kyverno-policy': { label: 'kyverno-policy' },
+};
+
+/** The language devctl builds a CLI for: `gen makefile` refuses the cli flavour with any other. */
+const CLI_LANGUAGE = 'go';
+
+/**
+ * `gen.flavours`, the nature of the repository: what devctl generates for
+ * it. The org's repositories declare one of these each; the add-ons come on
+ * top. A reported flavour that is neither a nature here nor an add-on below
+ * is offered as an add-on under its own id.
+ */
+const NATURE_TEXT: Record<string, Presentation> = {
+  app: {
+    label: 'app',
+    description:
+      'A Helm chart under helm/<name>: the chart pipeline and the values-schema check. The repository is named after its chart.',
+  },
+  generic: {
+    label: 'generic',
+    description:
+      'Nothing specific: the shared Makefile, workflows and Renovate config only.',
+  },
+  cli: {
+    label: 'cli',
+    description:
+      'A command-line tool: its binaries are built and put on the GitHub release. Go only.',
+  },
+  customer: {
+    label: 'customer',
+    description:
+      'A customer project: the customer board automation and Renovate, no CircleCI, the minimal scaffold.',
+  },
+  fleet: {
+    label: 'fleet',
+    description:
+      'A GitOps repository with clusters: the cluster values validation.',
+  },
+};
+
+/** `gen.flavours`, the add-ons, keyed by the value the manager reports. */
+const ADDON_TEXT: Record<string, Omit<Addon, 'id'>> = {
+  'cluster-app': {
     label: 'cluster-app',
     description:
       'A cluster chart with the RFC 55 values schema: the schema and docs validation and the render-diff workflows.',
     needs: 'app',
   },
-  {
-    id: 'k8sapi',
+  k8sapi: {
     label: 'k8sapi',
     description:
       'Provides a Kubernetes API: the Makefile targets for its custom resource definitions.',
   },
-  {
-    id: 'plans',
+  plans: {
     label: 'plans',
     description:
       'A team plans repository: PRDs, their companion websites and the plan-workflow agent skills, from giantswarm/template-plans.',
     needs: 'generic',
   },
-];
+};
 
-/** Every flavour the form offers: the natures and the add-ons. */
-export const FLAVOURS: Choice[] = [...NATURES, ...ADDONS];
+/**
+ * The reported flavours the form does not offer, on purpose:
+ * - `fork` declares a fork line, an upstream's history with carried patches
+ *   on the branch the entry declares as `defaultBranch`; nothing is
+ *   generated for it. A repository the reconciler creates empty is not one,
+ *   and the form carries no `defaultBranch`.
+ * - `helmchart` is a pre-commit flavour (`gen.preCommit`) that devctl's
+ *   generators refuse in `gen.flavours`: a repository declaring it could not
+ *   be aligned.
+ * An existing entry that declares one keeps it (`withNature`, `withAddons`).
+ */
+const UNOFFERED_FLAVOURS = ['fork', 'helmchart'];
 
-/** `visibility`: the org's default (private) is left out of the entry, as the team files do. */
-export const VISIBILITIES: Choice[] = [
-  {
-    id: 'private',
+/** `visibility`, keyed by the value the manager reports. */
+const VISIBILITY_TEXT: Record<string, Presentation> = {
+  private: {
     label: 'Private',
     description: 'The org’s default; not written into the entry',
   },
-  {
-    id: 'public',
+  public: {
     label: 'Public',
     description: 'On the internet: nothing internal goes in',
   },
-];
+};
+
+/** The org's default visibility: the form's empty value, left out of the entry. */
+export const DEFAULT_VISIBILITY = 'private';
+
+/** What the form says of a reported value it has no presentation for. */
+const UNDESCRIBED =
+  'Reported by giantswarm-repo-manager; the Dev Portal has no description of it yet.';
+
+/**
+ * The declaration's vocabulary: the values the manager reports in
+ * `get_info`'s `schema`, with the form's presentation of them. The form
+ * offers these and no others.
+ */
+export interface Vocabulary {
+  componentTypes: Choice[];
+  languages: Choice[];
+  natures: Choice[];
+  addons: Addon[];
+  visibilities: Choice[];
+}
+
+/**
+ * The reported values as choices: the ones with a presentation in its
+ * order, then the others as reported, under their own id.
+ */
+function choicesOf<T extends Presentation>(
+  values: string[],
+  text: Record<string, T>,
+): (T & { id: string })[] {
+  const known = Object.keys(text).filter(id => values.includes(id));
+  const unknown = values.filter(id => !(id in text));
+  return [
+    ...known.map(id => ({ ...text[id], id })),
+    ...unknown.map(
+      id => ({ label: id, description: UNDESCRIBED, id }) as T & { id: string },
+    ),
+  ];
+}
+
+/** The schema lists the form needs, by the name `get_info` gives them. */
+const REQUIRED_LISTS = [
+  'componentTypes',
+  'languages',
+  'flavours',
+  'visibilities',
+] as const;
+
+/**
+ * The vocabulary the manager reports, or why there is none: an older
+ * manager reports no schema, and one that could not read it says why.
+ * There is no fallback -- without the report the form offers nothing.
+ */
+export function vocabularyOf(
+  info: Pick<ManagerInfo, 'version' | 'schema'>,
+): { vocabulary: Vocabulary } | { problem: string } {
+  const schema = info.schema;
+  if (!schema) {
+    return {
+      problem: `giantswarm-repo-manager ${info.version} does not report the repositories schema; the form needs a version that does.`,
+    };
+  }
+  if (schema.error) {
+    return {
+      problem: `giantswarm-repo-manager could not read the repositories schema (${schema.origin}): ${schema.error}`,
+    };
+  }
+  const missing = REQUIRED_LISTS.filter(list => !schema[list]?.length);
+  if (missing.length > 0) {
+    return {
+      problem: `giantswarm-repo-manager reports no ${missing.join(', ')} in the repositories schema (${schema.origin}).`,
+    };
+  }
+  const flavours = (schema.flavours as string[]).filter(
+    id => !UNOFFERED_FLAVOURS.includes(id),
+  );
+  return {
+    vocabulary: {
+      componentTypes: choicesOf(
+        schema.componentTypes as string[],
+        COMPONENT_TYPE_TEXT,
+      ),
+      languages: choicesOf(schema.languages as string[], LANGUAGE_TEXT),
+      natures: choicesOf(
+        flavours.filter(id => id in NATURE_TEXT),
+        NATURE_TEXT,
+      ),
+      addons: choicesOf(
+        flavours.filter(id => !(id in NATURE_TEXT)),
+        ADDON_TEXT,
+      ),
+      visibilities: choicesOf(schema.visibilities as string[], VISIBILITY_TEXT),
+    },
+  };
+}
 
 /** The flavours whose repositories carry a Helm chart named after them. */
 const CHART_FLAVOURS = ['app', 'cluster-app'];
@@ -351,16 +442,21 @@ export function isComplete(form: DeclarationForm): boolean {
   );
 }
 
-/** The nature among the flavours, if one is declared. */
-export function natureOf(flavours: string[]): string | undefined {
+/** The nature among the flavours, if the vocabulary offers it. */
+export function natureOf(
+  flavours: string[],
+  vocabulary: Vocabulary,
+): string | undefined {
   return flavours.find(flavour =>
-    NATURES.some(nature => nature.id === flavour),
+    vocabulary.natures.some(nature => nature.id === flavour),
   );
 }
 
-/** The add-ons among the flavours. */
-export function addonsOf(flavours: string[]): string[] {
-  return flavours.filter(flavour => ADDONS.some(addon => addon.id === flavour));
+/** The add-ons among the flavours that the vocabulary offers. */
+export function addonsOf(flavours: string[], vocabulary: Vocabulary): string[] {
+  return flavours.filter(flavour =>
+    vocabulary.addons.some(addon => addon.id === flavour),
+  );
 }
 
 /** Whether an add-on goes with the nature: the one it needs, or any. */
@@ -371,26 +467,57 @@ export function addonAllowed(
   return !addon.needs || addon.needs === nature;
 }
 
+/** The flavours the form does not offer on purpose, kept as the entry declares them. */
+function unofferedOf(flavours: string[]): string[] {
+  return flavours.filter(flavour => UNOFFERED_FLAVOURS.includes(flavour));
+}
+
 /** The form with the nature, keeping the add-ons that go with it. */
 export function withNature(
   form: DeclarationForm,
   nature: string,
+  vocabulary: Vocabulary,
 ): DeclarationForm {
-  const addons = addonsOf(form.flavours).filter(id =>
-    addonAllowed(ADDONS.find(addon => addon.id === id) as Addon, nature),
-  );
-  return withGen(form, { flavours: [nature, ...addons] });
+  const addons = vocabulary.addons
+    .filter(addon => form.flavours.includes(addon.id))
+    .filter(addon => addonAllowed(addon, nature))
+    .map(addon => addon.id);
+  return withGen(form, {
+    flavours: [nature, ...addons, ...unofferedOf(form.flavours)],
+  });
 }
 
 /** The form with these add-ons, the nature staying first. */
 export function withAddons(
   form: DeclarationForm,
   addons: string[],
+  vocabulary: Vocabulary,
 ): DeclarationForm {
-  const nature = natureOf(form.flavours);
+  const nature = natureOf(form.flavours, vocabulary);
   return withGen(form, {
-    flavours: [...(nature ? [nature] : []), ...addons],
+    flavours: [
+      ...(nature ? [nature] : []),
+      ...addons,
+      ...unofferedOf(form.flavours),
+    ],
   });
+}
+
+/**
+ * The presets the vocabulary can declare: one whose catalog type, language
+ * or flavours the manager does not report would be refused, so it is not
+ * offered.
+ */
+export function presetsOf(vocabulary: Vocabulary): Preset[] {
+  const offers = (choices: Choice[], id: string) =>
+    choices.some(choice => choice.id === id);
+  const flavours = [...vocabulary.natures, ...vocabulary.addons];
+  return PRESETS.filter(
+    preset =>
+      offers(vocabulary.componentTypes, preset.componentType) &&
+      offers(vocabulary.languages, preset.language) &&
+      preset.flavours.every(flavour => offers(flavours, flavour)),
+  );
 }
 
 /** The preset the form's fields match, or nothing: adjusted by hand. */

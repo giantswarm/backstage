@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useId, useState } from 'react';
 import { Typography } from '@material-ui/core';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import {
+  Alert,
   Button,
   Checkbox,
   CheckboxGroup,
@@ -17,32 +18,30 @@ import { Validation } from '../../apis';
 import {
   Addon,
   addonAllowed,
-  ADDONS,
   addonsOf,
-  COMPONENT_TYPES,
   DECLARATION_FIELDS,
+  DEFAULT_VISIBILITY,
   DeclarationForm,
   flavourProblem,
-  LANGUAGES,
   nameProblem,
   natureOf,
-  NATURES,
   presetOf,
-  PRESETS,
+  presetsOf,
   refused,
-  VISIBILITIES,
+  Vocabulary,
   withAddons,
   withGen,
   withNature,
   withPreset,
 } from '../../lib/declaration';
 import { TeamOption } from '../../lib/scope';
+import { VocabularyState } from '../useManagerInfo';
 
 export const CI_GENERATE_LABEL = 'Generate CircleCI config';
 export const ALIGN_LABEL = 'Opted in to alignment';
 
-/** The choice whose id is `private`: the org's default, left out of the entry. */
-const PRIVATE = VISIBILITIES[0].id;
+/** The vocabulary while there is none to offer. */
+type Unready = Exclude<VocabularyState, { status: 'ready' }>;
 
 /**
  * Whose declaration the form holds. A new repository's: the team is a choice
@@ -80,6 +79,8 @@ export interface DeclarationFieldsProps {
   form: DeclarationForm;
   onChange: (form: DeclarationForm) => void;
   subject: DeclarationSubject;
+  /** The enumerated fields' choices, as the manager reports them (`useVocabulary`). */
+  vocabulary: VocabularyState;
   /**
    * The manager's dry run of the form as it stands: the fields it refused
    * are marked, the name's verdict shows under the name.
@@ -246,14 +247,17 @@ function Declaration({
   onChange,
   validation,
   isDisabled,
+  vocabulary,
 }: Pick<
   DeclarationFieldsProps,
   'form' | 'onChange' | 'validation' | 'isDisabled'
->) {
+> & { vocabulary: Vocabulary }) {
   const panelId = useId();
   const [adjusting, setAdjusting] = useState(false);
-  const preset = PRESETS.find(candidate => candidate.id === presetOf(form));
-  const nature = natureOf(form.flavours);
+  const preset = presetsOf(vocabulary).find(
+    candidate => candidate.id === presetOf(form),
+  );
+  const nature = natureOf(form.flavours, vocabulary);
   const rule = flavourProblem(form.language, form.flavours);
   const marked =
     !!rule || DECLARATION_FIELDS.some(field => refused(validation, field));
@@ -307,7 +311,7 @@ function Declaration({
               label="Catalog type"
               isRequired
               description="componentType: how the Dev Portal's catalog shows the repository; with the language and flavours it picks the template."
-              options={COMPONENT_TYPES}
+              options={vocabulary.componentTypes}
               selectedKey={form.componentType || null}
               onSelectionChange={key =>
                 key && onChange(withGen(form, { componentType: String(key) }))
@@ -320,7 +324,7 @@ function Declaration({
               label="Language"
               isRequired
               description="gen.language: the template and the build job."
-              options={LANGUAGES}
+              options={vocabulary.languages}
               selectedKey={form.language || null}
               onSelectionChange={key =>
                 key && onChange(withGen(form, { language: String(key) }))
@@ -336,11 +340,11 @@ function Declaration({
               isRequired
               description="gen.flavours: what devctl generates for the repository. One nature each; the add-ons come on top."
               value={nature ?? null}
-              onChange={value => onChange(withNature(form, value))}
+              onChange={value => onChange(withNature(form, value, vocabulary))}
               isInvalid={!!rule || refused(validation, 'flavours')}
               isDisabled={isDisabled}
             >
-              {NATURES.map(choice => (
+              {vocabulary.natures.map(choice => (
                 <ChoiceRadio key={choice.id} value={choice.id} {...choice} />
               ))}
             </RadioGroup>
@@ -357,12 +361,12 @@ function Declaration({
           <CheckboxGroup
             label="Add-ons"
             description="gen.flavours, on top of the nature."
-            value={addonsOf(form.flavours)}
-            onChange={addons => onChange(withAddons(form, addons))}
+            value={addonsOf(form.flavours, vocabulary)}
+            onChange={addons => onChange(withAddons(form, addons, vocabulary))}
             isInvalid={refused(validation, 'flavours')}
             isDisabled={isDisabled}
           >
-            {ADDONS.map(addon => (
+            {vocabulary.addons.map(addon => (
               <AddonCheckbox
                 key={addon.id}
                 addon={addon}
@@ -390,6 +394,35 @@ function Declaration({
         </Flex>
       )}
     </Flex>
+  );
+}
+
+/**
+ * The declaration's choices while there are none to offer: the manager is
+ * being asked, or it did not report them -- then its reason, and nothing can
+ * be declared; the form has no values of its own to fall back on.
+ */
+function VocabularyStatus({ state }: { state: Unready }) {
+  if (state.status === 'loading') {
+    return (
+      <Text
+        variant="body-small"
+        color="secondary"
+        role="status"
+        data-testid="vocabulary-loading"
+      >
+        Reading the declaration’s choices from giantswarm-repo-manager…
+      </Text>
+    );
+  }
+  return (
+    <div data-testid="vocabulary-unavailable">
+      <Alert
+        status="danger"
+        title="The declaration’s choices could not be read"
+        description={`${state.problem} The catalog type, language, flavours and visibility are the ones the manager reports; until it reports them, nothing can be declared here.`}
+      />
+    </div>
   );
 }
 
@@ -592,17 +625,20 @@ function AlignmentField({
  * declaration itself (catalog type, language, flavours, the CircleCI switch)
  * as that preset's result, adjustable; for an existing entry and an adoption
  * the opt-in to alignment; and the reason for the pull request. Every enumerated field is
- * a choice, not a text: the values are the schema's.
+ * a choice, not a text: the values are the ones the manager reports.
  */
 export function DeclarationFields({
   form,
   onChange,
   subject,
+  vocabulary,
   validation,
   checking = false,
   isDisabled,
 }: DeclarationFieldsProps) {
   const presetHintId = useId();
+  const choices =
+    vocabulary.status === 'ready' ? vocabulary.vocabulary : undefined;
   const creating = subject.kind === 'new';
   const question = creating ? 'What are you creating?' : 'What is it?';
   const reasonHint = {
@@ -644,61 +680,75 @@ export function DeclarationFields({
           isDisabled={isDisabled}
           rows={2}
         />
-        <RadioGroup
-          label="Visibility"
-          orientation="horizontal"
-          value={form.visibility || PRIVATE}
-          onChange={value =>
-            onChange({ ...form, visibility: value === PRIVATE ? '' : value })
-          }
-          isInvalid={refused(validation, 'visibility')}
-          isDisabled={isDisabled}
-        >
-          {VISIBILITIES.map(choice => (
-            <ChoiceRadio key={choice.id} value={choice.id} {...choice} />
-          ))}
-        </RadioGroup>
+        {choices && (
+          <RadioGroup
+            label="Visibility"
+            orientation="horizontal"
+            value={form.visibility || DEFAULT_VISIBILITY}
+            onChange={value =>
+              onChange({
+                ...form,
+                visibility: value === DEFAULT_VISIBILITY ? '' : value,
+              })
+            }
+            isInvalid={refused(validation, 'visibility')}
+            isDisabled={isDisabled}
+          >
+            {choices.visibilities.map(choice => (
+              <ChoiceRadio key={choice.id} value={choice.id} {...choice} />
+            ))}
+          </RadioGroup>
+        )}
       </Section>
 
       <Section title={question} testId="section-preset">
-        <Text variant="body-small" color="secondary" id={presetHintId}>
-          A preset: it fills the declaration below the way the team files
-          declare that shape. Adjust the declaration for a shape none fits.
-        </Text>
-        <RadioGroup
-          aria-label={question}
-          aria-describedby={presetHintId}
-          value={presetOf(form) ?? null}
-          onChange={id => onChange(withPreset(form, id))}
-          isDisabled={isDisabled}
-        >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-              gap: '8px 16px',
-            }}
-          >
-            {PRESETS.map(preset => (
-              <ChoiceRadio
-                key={preset.id}
-                value={preset.id}
-                label={preset.label}
-                description={preset.description}
-              />
-            ))}
-          </div>
-        </RadioGroup>
+        {choices ? (
+          <>
+            <Text variant="body-small" color="secondary" id={presetHintId}>
+              A preset: it fills the declaration below the way the team files
+              declare that shape. Adjust the declaration for a shape none fits.
+            </Text>
+            <RadioGroup
+              aria-label={question}
+              aria-describedby={presetHintId}
+              value={presetOf(form) ?? null}
+              onChange={id => onChange(withPreset(form, id))}
+              isDisabled={isDisabled}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                  gap: '8px 16px',
+                }}
+              >
+                {presetsOf(choices).map(preset => (
+                  <ChoiceRadio
+                    key={preset.id}
+                    value={preset.id}
+                    label={preset.label}
+                    description={preset.description}
+                  />
+                ))}
+              </div>
+            </RadioGroup>
+          </>
+        ) : (
+          <VocabularyStatus state={vocabulary as Unready} />
+        )}
       </Section>
 
-      <Section title="Declaration" testId="section-declaration">
-        <Declaration
-          form={form}
-          onChange={onChange}
-          validation={validation}
-          isDisabled={isDisabled}
-        />
-      </Section>
+      {choices && (
+        <Section title="Declaration" testId="section-declaration">
+          <Declaration
+            form={form}
+            onChange={onChange}
+            validation={validation}
+            isDisabled={isDisabled}
+            vocabulary={choices}
+          />
+        </Section>
+      )}
 
       {!creating && (
         <Section title="Alignment" testId="section-alignment">
