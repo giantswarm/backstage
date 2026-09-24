@@ -32,6 +32,11 @@ export type SimpleAccordionProps = {
   children: ReactNode;
   /** Open on first render. Only applies on mount — see the note below. */
   defaultExpanded?: boolean;
+  /**
+   * Heading level of the trigger, which bui renders as a heading wrapping the
+   * button. Set it to sit one below the surrounding section's heading.
+   */
+  headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
 };
 
 /**
@@ -54,6 +59,7 @@ export const SimpleAccordion = ({
   title,
   children,
   defaultExpanded,
+  headingLevel = 3,
 }: SimpleAccordionProps) => {
   const classes = useStyles();
   // bui identifies an accordion within its group by id, and this component owns
@@ -67,7 +73,7 @@ export const SimpleAccordion = ({
       defaultExpandedKeys={defaultExpanded ? new Set([id]) : undefined}
     >
       <Accordion id={id}>
-        <AccordionTrigger>{title}</AccordionTrigger>
+        <AccordionTrigger level={headingLevel}>{title}</AccordionTrigger>
         <AccordionPanel>{children}</AccordionPanel>
       </Accordion>
     </AccordionGroup>
