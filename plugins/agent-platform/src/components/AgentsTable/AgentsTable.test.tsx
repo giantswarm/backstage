@@ -208,7 +208,7 @@ describe('AgentsTable', () => {
     );
 
     expect(
-      screen.getByText('preset:read-only, workflow:incident-triage'),
+      screen.getByText('Read-only tools, workflow:incident-triage'),
     ).toBeInTheDocument();
     // An absence, not a value: it steps back like the Sessions "Not loaded".
     expect(screen.getByText('No tools')).toHaveAttribute(

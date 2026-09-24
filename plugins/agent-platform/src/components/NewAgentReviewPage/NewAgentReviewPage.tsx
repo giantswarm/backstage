@@ -39,6 +39,7 @@ import { shortCommit } from '../../lib/skills';
 import {
   buildCatalogue,
   declaredToolset,
+  selectorLabel,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
@@ -117,10 +118,10 @@ const useStyles = makeStyles(theme => ({
 // lineWidth: -1 keeps prompts and URLs unfolded; noRefs avoids YAML anchors.
 const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
 
-/** The one-line Tools summary: the loud labels, or a selector count. */
+/** The one-line Tools summary: the loud labels, or the selectors by their labels. */
 function toolsetSummaryLabel(
   shape: 'none' | 'full' | 'composed',
-  count: number,
+  declared: string[],
 ): string {
   if (shape === 'none') {
     return 'No tools';
@@ -128,7 +129,7 @@ function toolsetSummaryLabel(
   if (shape === 'full') {
     return 'Full gateway access';
   }
-  return `${count} selector${count === 1 ? '' : 's'}`;
+  return declared.map(selectorLabel).join(', ');
 }
 
 function SummaryItem({
@@ -572,7 +573,7 @@ export function NewAgentReviewPage() {
           </SummaryItem>
           <SummaryItem label="Tools">
             <Text variant="body-small">
-              {toolsetSummaryLabel(shape, declared.length)}
+              {toolsetSummaryLabel(shape, declared)}
             </Text>
             <Text variant="body-x-small" color="secondary">
               <span className={classes.code}>{declared.join(', ')}</span>
