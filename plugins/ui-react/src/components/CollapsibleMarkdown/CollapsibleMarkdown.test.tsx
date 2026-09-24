@@ -3,23 +3,35 @@ import { CollapsibleMarkdown } from './CollapsibleMarkdown';
 
 const TOGGLE_LABELS = { expand: 'Show all', collapse: 'Show less' };
 
-// jsdom lays nothing out, so every element reports a scrollHeight of 0. Stub it
-// to decide whether the rendered content overflows the collapsed height.
-function stubScrollHeight(height: number) {
-  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
-    configurable: true,
-    get: () => height,
-  });
+// jsdom lays nothing out and has no ResizeObserver. The stub reports this
+// height for every observed element, as the observer's first notification.
+let contentHeight = 0;
+
+function stubContentHeight(height: number) {
+  contentHeight = height;
+}
+
+function stubBottom(element: Element, bottom: number) {
+  element.getBoundingClientRect = () => ({ top: 0, bottom }) as DOMRect;
 }
 
 describe('CollapsibleMarkdown', () => {
   const RealResizeObserver = globalThis.ResizeObserver;
 
   beforeAll(() => {
-    // jsdom has no ResizeObserver; the initial measurement is all these tests
-    // need.
     globalThis.ResizeObserver = class {
-      observe() {}
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        this.callback(
+          [
+            {
+              target,
+              contentRect: { width: 600, height: contentHeight },
+            } as unknown as ResizeObserverEntry,
+          ],
+          this as unknown as ResizeObserver,
+        );
+      }
       unobserve() {}
       disconnect() {}
     } as unknown as typeof ResizeObserver;
@@ -29,13 +41,8 @@ describe('CollapsibleMarkdown', () => {
     globalThis.ResizeObserver = RealResizeObserver;
   });
 
-  afterEach(() => {
-    // Removing the own property restores the inherited Element getter.
-    delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
-  });
-
   it('renders the markdown', () => {
-    stubScrollHeight(100);
+    stubContentHeight(100);
 
     render(
       <CollapsibleMarkdown
@@ -51,7 +58,7 @@ describe('CollapsibleMarkdown', () => {
   });
 
   it('shows short content whole, without a toggle', () => {
-    stubScrollHeight(100);
+    stubContentHeight(100);
 
     render(
       <CollapsibleMarkdown
@@ -65,7 +72,7 @@ describe('CollapsibleMarkdown', () => {
   });
 
   it('collapses long content behind a toggle', () => {
-    stubScrollHeight(1000);
+    stubContentHeight(1000);
 
     render(
       <CollapsibleMarkdown
@@ -84,7 +91,7 @@ describe('CollapsibleMarkdown', () => {
   });
 
   it('expands and collapses again on the toggle', () => {
-    stubScrollHeight(1000);
+    stubContentHeight(1000);
 
     render(
       <CollapsibleMarkdown
@@ -108,5 +115,54 @@ describe('CollapsibleMarkdown', () => {
       'aria-expanded',
       'false',
     );
+  });
+
+  it('expands when keyboard focus reaches a link past the cut', () => {
+    stubContentHeight(1000);
+
+    render(
+      <CollapsibleMarkdown
+        content={'Intro.\n\nSee [the runbook](https://example.com/runbook).'}
+        toggleLabels={TOGGLE_LABELS}
+      />,
+    );
+
+    const toggle = screen.getByRole('button', { name: 'Show all' });
+    const region = document.getElementById(
+      toggle.getAttribute('aria-controls')!,
+    )!;
+    const link = screen.getByRole('link', { name: 'the runbook' });
+    stubBottom(region, 250);
+    stubBottom(link, 400);
+
+    fireEvent.focusIn(link);
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
+  it('stays collapsed when keyboard focus lands on a visible link', () => {
+    stubContentHeight(1000);
+
+    render(
+      <CollapsibleMarkdown
+        content="See [the runbook](https://example.com/runbook) first."
+        toggleLabels={TOGGLE_LABELS}
+      />,
+    );
+
+    const toggle = screen.getByRole('button', { name: 'Show all' });
+    const region = document.getElementById(
+      toggle.getAttribute('aria-controls')!,
+    )!;
+    const link = screen.getByRole('link', { name: 'the runbook' });
+    stubBottom(region, 250);
+    stubBottom(link, 40);
+
+    fireEvent.focusIn(link);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 });

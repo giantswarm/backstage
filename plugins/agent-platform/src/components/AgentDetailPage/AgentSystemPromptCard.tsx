@@ -22,7 +22,11 @@ export function AgentSystemPromptCard({ agent }: { agent: Agent }) {
       title="System prompt"
       headerActions={
         systemMessage && (
-          <CopyButton text={systemMessage} label="Copy system prompt" />
+          <CopyButton
+            text={systemMessage}
+            label="Copy system prompt"
+            size="compact"
+          />
         )
       }
     >

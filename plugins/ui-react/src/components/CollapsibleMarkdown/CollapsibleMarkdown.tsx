@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { FocusEvent, useId, useState } from 'react';
 import { Button, Flex } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import { GSMarkdownContent } from '../GSMarkdownContent';
+import { useContainerDimensions } from '../../hooks';
 
 const DEFAULT_COLLAPSED_HEIGHT = 250;
 
@@ -43,31 +44,29 @@ export const CollapsibleMarkdown = ({
   const classes = useStyles();
   const contentId = useId();
   const [expanded, setExpanded] = useState(false);
-  const [overflows, setOverflows] = useState(false);
-  const [node, setNode] = useState<HTMLElement | null>(null);
-
-  // A callback ref, so the effect runs once the element is actually mounted.
-  const contentRef = useCallback((element: HTMLElement | null) => {
-    setNode(element);
-  }, []);
-
-  // The inner element is never height-limited, so it resizes whenever the
-  // rendered markdown or the available width changes.
-  useEffect(() => {
-    if (!node) {
-      return undefined;
-    }
-
-    const measure = () => setOverflows(node.scrollHeight > collapsedHeight + 1);
-
-    measure();
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [node, collapsedHeight, content]);
-
+  // The inner element is never height-limited, so its height is the rendered
+  // markdown's at the available width.
+  const [contentRef, { height }] = useContainerDimensions();
+  const overflows = height > collapsedHeight + 1;
   const collapsed = overflows && !expanded;
+
+  // Keyboard focus on a link past the cut would land on something hidden under
+  // the fade; show everything instead. The browser may already have scrolled
+  // the clipped viewport to the link, so its offset adds `scrollTop` back.
+  const revealFocused = (event: FocusEvent<HTMLDivElement>) => {
+    if (!collapsed) {
+      return;
+    }
+    const viewport = event.currentTarget;
+    const offset =
+      event.target.getBoundingClientRect().bottom -
+      viewport.getBoundingClientRect().top +
+      viewport.scrollTop;
+    if (offset > collapsedHeight) {
+      viewport.scrollTop = 0;
+      setExpanded(true);
+    }
+  };
 
   return (
     <Flex direction="column" gap="2">
@@ -75,6 +74,7 @@ export const CollapsibleMarkdown = ({
         id={contentId}
         className={classes.viewport}
         style={collapsed ? { maxHeight: collapsedHeight } : undefined}
+        onFocus={revealFocused}
       >
         <div ref={contentRef}>
           <GSMarkdownContent content={content} />

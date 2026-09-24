@@ -3,6 +3,8 @@
 ---
 
 Add `CollapsibleMarkdown`: markdown cut to a fixed height behind a fade, with a
-bui toggle button (`aria-expanded`, `aria-controls`) that shows all of it.
+bui toggle button (`aria-expanded`, `aria-controls`) that shows all of it; it
+expands when keyboard focus reaches a link past the cut.
 `CollapsibleMarkdownCard` moves here from the gs plugin and is built on it, and
-the copy button of `CodeBlock` is available on its own as `CopyButton`.
+the copy button of `CodeBlock` is available on its own as `CopyButton`, with a
+`compact` size for card headers and code blocks.

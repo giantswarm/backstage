@@ -1067,7 +1067,7 @@ export function SessionDetailPage() {
                 MUI's tooltip rather than bui's: bui wraps react-aria's
                 `TooltipTrigger`, which only wires up its own focusable components,
                 and this trigger is a bare <button> so it can inherit the heading's
-                typography. Same fallback the plugin's `CopyButton` makes. */}
+                typography. */}
             <Tooltip title="Rename session">
               <button
                 type="button"

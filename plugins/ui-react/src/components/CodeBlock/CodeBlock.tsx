@@ -27,18 +27,6 @@ const useStyles = makeStyles(theme => ({
     position: 'absolute',
     top: theme.spacing(0.5),
     right: theme.spacing(0.5),
-    // bui's small ButtonIcon is 32px square — oversized next to a text-sized
-    // icon, and taller than a single-line code block (so its hover background
-    // pokes past the bottom edge). Shrink the whole button so it sits tidily
-    // inside the block; `!important` overrides bui's own height/width rules.
-    width: '1.5rem !important',
-    height: '1.5rem !important',
-    // Shrink the icon itself to roughly body-text size.
-    '& svg': {
-      width: '1rem',
-      height: '1rem',
-      fontSize: '1rem',
-    },
   },
 }));
 
@@ -69,7 +57,9 @@ export const CodeBlock = ({
       >
         {text}
       </pre>
-      {copyEnabled && <CopyButton text={text} className={classes.copyButton} />}
+      {copyEnabled && (
+        <CopyButton text={text} size="compact" className={classes.copyButton} />
+      )}
     </div>
   );
 };
