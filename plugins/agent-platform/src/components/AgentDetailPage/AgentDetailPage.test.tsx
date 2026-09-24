@@ -304,7 +304,10 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
   );
 }
 
-function makeModelConfig() {
+/** The model the fixture agent references; `displayName: null` omits the annotation. */
+function makeModelConfig({
+  displayName = 'Claude Opus 4.7',
+}: { displayName?: string | null } = {}) {
   return new ModelConfig(
     {
       apiVersion: 'kagent.dev/v1alpha3',
@@ -312,7 +315,9 @@ function makeModelConfig() {
       metadata: {
         name: 'opus-4-7',
         namespace: 'agent-platform',
-        annotations: { 'ui.giantswarm.io/display-name': 'Claude Opus 4.7' },
+        annotations: displayName
+          ? { 'ui.giantswarm.io/display-name': displayName }
+          : undefined,
       },
       spec: { model: 'claude-opus-4-7', provider: 'Anthropic' },
     },
@@ -755,6 +760,77 @@ describe('AgentDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(`sha256:${'f'.repeat(12)}`)).toBeInTheDocument();
   });
+
+  it('names the agent in the document title and as the page heading', async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+
+    // The app layout appends " | <app title>"; the page sets the rest.
+    await waitFor(() =>
+      expect(document.title).toBe('PR reviewer · Agents · Agent Platform'),
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'PR reviewer' }),
+    ).toBeInTheDocument();
+  });
+
+  it('titles the page with the technical name when the agent has no display name', async () => {
+    stubResources(
+      { resource: makeAgent({ metadata: { annotations: {} } }) },
+      { resource: makeModelConfig() },
+    );
+
+    await renderPage();
+
+    await waitFor(() =>
+      expect(document.title).toBe('pr-reviewer · Agents · Agent Platform'),
+    );
+  });
+
+  it('lists the configuration as terms and descriptions, not headings', async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+
+    const terms = Array.from(document.querySelectorAll('dt')).map(
+      term => term.textContent,
+    );
+    expect(terms).toEqual(expect.arrayContaining(['Harness', 'Model']));
+    expect(screen.queryByRole('heading', { name: 'Model' })).toBeNull();
+  });
+
+  it('heads each condition one level below the Status card', async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole('heading', { level: 4, name: /^Accepted/ }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ['no', null],
+    ['a blank', '  '],
+  ])(
+    'leads with the model when the ModelConfig has %s display name',
+    async (_, displayName) => {
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig({ displayName }) },
+      );
+
+      await renderPage();
+
+      // The first line is the model, not the resource name the ModelConfig
+      // line already shows, and in monospace like the other identifiers.
+      const modelLine = screen.getByText('claude-opus-4-7 · Anthropic');
+      expect(modelLine).toHaveAttribute('data-variant', 'body-medium');
+      expect(modelLine).toHaveStyle({ fontFamily: 'monospace' });
+      expect(screen.queryByText('opus-4-7')).toBeNull();
+    },
+  );
 
   it('falls back to the bare ModelConfig reference when it cannot be read', async () => {
     // Normal for a non-admin: ModelConfigs live in namespaces they may not read.

@@ -7,6 +7,7 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
+import { Helmet } from 'react-helmet';
 import {
   Content,
   EmptyState,
@@ -100,6 +101,8 @@ const DEPLOYING_PRESENTATION: ReadinessPresentation = {
 /**
  * The page header: avatar, name, the derived readiness, where the agent runs,
  * and — once the template exists — when it was created and what it is for.
+ * It also names the agent in the document title; `GSPageLayout` appends the
+ * app title.
  */
 function AgentHeader({
   displayName,
@@ -122,6 +125,7 @@ function AgentHeader({
 }) {
   return (
     <Flex direction="column" gap="2">
+      <Helmet title={`${displayName} · Agents · Agent Platform`} />
       <BackToAgents>← Agents</BackToAgents>
 
       <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
@@ -133,7 +137,9 @@ function AgentHeader({
         />
         <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            <Text variant="title-medium">{displayName}</Text>
+            <Text as="h2" variant="title-medium">
+              {displayName}
+            </Text>
             {/* Tagged because the derived readiness and the condition it came
                 from share a label ("Ready", "Ready") — this is the derived
                 one, distinct from the entries in the conditions list. */}

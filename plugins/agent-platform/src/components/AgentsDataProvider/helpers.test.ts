@@ -208,11 +208,11 @@ describe('resolveModelLabel', () => {
     expect(resolveModelLabel(agent, modelConfigs)).toBe('Claude Sonnet 4.6');
   });
 
-  it('falls back to the ModelConfig resource name when it has no display-name annotation', () => {
+  it('falls back to the model when the ModelConfig has no display-name annotation', () => {
     const agent = makeAgent({ modelConfig: 'sonnet-4-6' });
     const modelConfigs = [makeModelConfig({ name: 'sonnet-4-6' })];
 
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('sonnet-4-6');
+    expect(resolveModelLabel(agent, modelConfigs)).toBe('claude-sonnet-4-6');
   });
 
   it('falls back to the raw reference when no ModelConfig matches', () => {
@@ -688,22 +688,39 @@ describe('toAgentRow with a serving resolver', () => {
 
 describe('toAgentRow model fields', () => {
   it('keeps the display label and the model string apart', () => {
-    // `model` is for a reader and falls back to the ModelConfig's own resource
-    // name; `modelName` is `spec.model` verbatim, because it has to match the
-    // gateway's `gen_ai_response_model` to price anything.
+    // `model` is for a reader; `modelName` is `spec.model` verbatim, because it
+    // has to match the gateway's `gen_ai_response_model` to price anything.
     const row = toAgentRow(
       makeAgent({ name: 'chef', modelConfig: 'anthropic-opus-5' }),
       [
         makeModelConfig({
           name: 'anthropic-opus-5',
           namespace: 'team-a',
+          displayName: 'Claude Opus 5',
           model: 'claude-opus-5',
         }),
       ],
     );
 
-    expect(row.model).toBe('anthropic-opus-5');
+    expect(row.model).toBe('Claude Opus 5');
     expect(row.modelName).toBe('claude-opus-5');
+  });
+
+  it('labels the model by spec.model when the ModelConfig has no display name', () => {
+    // Without the annotation `getDisplayName()` is the resource name
+    // (`default-model-config`), which says nothing about the model.
+    const row = toAgentRow(
+      makeAgent({ name: 'chef', modelConfig: 'default-model-config' }),
+      [
+        makeModelConfig({
+          name: 'default-model-config',
+          namespace: 'team-a',
+          model: 'claude-sonnet-4-6',
+        }),
+      ],
+    );
+
+    expect(row.model).toBe('claude-sonnet-4-6');
   });
 
   it('has no model string when the ModelConfig is not in view', () => {
