@@ -224,6 +224,27 @@ export const modelManagerServeStepSchema = z.looseObject({
 export type ModelManagerServeStep = z.infer<typeof modelManagerServeStepSchema>;
 
 /** One entry of `GET /api/v1/loaded`, and `Model.running`. */
+/** KServe (model-manager 1.1.0 on) — the runtime serving a Ready model, as its server reports it. */
+export const modelManagerRuntimeSchema = z.looseObject({
+  /** `vllm`, what the llm-d template starts. */
+  name: z.string(),
+  /** The server's `GET /version`, as it answers (a source build: `0.1.dev1+g<commit>`). */
+  version: wireString,
+});
+
+/**
+ * KServe (model-manager 1.1.0 on) — one API a served model answers: a route
+ * its running server registered, in agentgateway's format vocabulary.
+ */
+export const modelManagerInterfaceSchema = z.looseObject({
+  /** `Completions` (chat completions), `Responses`, `Messages`, `AnthropicTokenCount`, `Embeddings`. */
+  type: z.string(),
+  /** The route, relative to the model's `endpoint` (`/v1/chat/completions`). */
+  path: z.string(),
+});
+
+export type ModelManagerInterface = z.infer<typeof modelManagerInterfaceSchema>;
+
 export const modelManagerLoadedModelSchema = z.looseObject({
   name: z.string(),
   digest: wireString,
@@ -283,6 +304,41 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   phase: wireString,
   /** KServe (0.24.0 on) — the whole timeline, one step per phase in order. */
   steps: z.array(modelManagerServeStepSchema).optional(),
+  /** KServe (1.1.0 on) — the runtime of a Ready model, as its server reports it. */
+  runtime: z
+    .unknown()
+    .transform(value => {
+      const parsed = modelManagerRuntimeSchema.safeParse(value);
+      return parsed.success ? parsed.data : undefined;
+    })
+    .optional(),
+  /**
+   * KServe (1.1.0 on) — the API interfaces the Ready model's server
+   * registered; absent before the model is Ready, empty with
+   * `interfacesReason` when the read found none. An entry that is no
+   * interface is dropped.
+   */
+  interfaces: z
+    .unknown()
+    .transform(value =>
+      Array.isArray(value)
+        ? value.flatMap(item => {
+            const parsed = modelManagerInterfaceSchema.safeParse(item);
+            return parsed.success ? [parsed.data] : [];
+          })
+        : undefined,
+    )
+    .optional(),
+  /** KServe (1.1.0 on) — why `interfaces` is empty on a Ready model. */
+  interfacesReason: wireString,
+  /**
+   * KServe (1.2.0 on), on an installation with the platform's LLM endpoint —
+   * the model's name there, what a client sends as `model`; `endpoint` is
+   * then the endpoint's URL.
+   */
+  publicName: wireString,
+  /** KServe (1.2.0 on) — why a served model is not on the LLM endpoint. */
+  publicNameReason: wireString,
 });
 
 export type ModelManagerLoadedModel = z.infer<

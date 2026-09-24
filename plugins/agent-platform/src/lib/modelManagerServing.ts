@@ -194,6 +194,18 @@ function toStepState(state: string | undefined): ServedModelStepState {
     : 'pending';
 }
 
+/** How the portal names a runtime a model's server reports. */
+const RUNTIME_NAMES: Record<string, string> = { vllm: 'vLLM' };
+
+/** The runtime a served model's server reports, as a row shows it: `vLLM 0.23.0`. */
+export function runtimeLabel(runtime: {
+  name: string;
+  version?: string;
+}): string {
+  const name = RUNTIME_NAMES[runtime.name] ?? runtime.name;
+  return runtime.version ? `${name} ${runtime.version}` : name;
+}
+
 /**
  * One model of a model-manager inventory as a served model.
  *
@@ -330,11 +342,11 @@ export function toServedModelFromManager(
     ),
   );
 
-  // Ollama says which server it is; on KServe the runtime is the well-known
-  // template's, which nothing names per model.
+  // Ollama says which server it is; on KServe the model's own server does,
+  // once Ready (model-manager 1.1.0 on: vLLM and its version).
   let runtime: string | undefined = backend.backend;
   if (kserve) {
-    runtime = undefined;
+    runtime = running?.runtime ? runtimeLabel(running.runtime) : undefined;
   } else if (backend.version) {
     runtime = `${backend.backend} ${backend.version}`;
   }
@@ -372,6 +384,10 @@ export function toServedModelFromManager(
     nodeSource: kserve && running?.node ? 'pod' : undefined,
     gpuCount: running?.gpus,
     internalUrl: running?.endpoint ?? clientEndpoint,
+    interfaces: running?.interfaces,
+    interfacesReason: running?.interfacesReason,
+    publicName: running?.publicName,
+    publicNameReason: running?.publicNameReason,
     endpointHosts,
     preset: model.preset ?? running?.preset,
     sizeBytes: model.sizeBytes,

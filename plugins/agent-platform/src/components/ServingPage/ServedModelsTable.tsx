@@ -32,6 +32,7 @@ import {
   type ServingBackend,
 } from '../../lib/serving';
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
+import { interfaceLabel, sortInterfaces } from '../../lib/servedModelApi';
 import { ServedReadinessLabel } from '../ModelServingStatus';
 import {
   CopyEndpointButton,
@@ -260,6 +261,12 @@ export type ServedModelColumns = {
   runtime: boolean;
   /** Model features (tools, vision, …). */
   capabilities: boolean;
+  /**
+   * The APIs a served model answers (chat completions, Messages, …) — shown
+   * once a row's server reported at least one; a group whose models report
+   * none has no API column and no empty chip row.
+   */
+  api: boolean;
 };
 
 /** Derive the optional columns from what the rows carry. */
@@ -278,6 +285,7 @@ export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
     capabilities: rows.some(
       row => row.capabilities !== undefined || row.engine !== undefined,
     ),
+    api: rows.some(row => (row.interfaces?.length ?? 0) > 0),
   };
 }
 
@@ -607,6 +615,40 @@ export function ModelFeaturesCell({ row }: { row: ServedModelRow }) {
 }
 
 /**
+ * The APIs a served model answers, one chip per interface in a fixed order
+ * with the route in its tooltip; empty with the reason on hover when its
+ * server reported none.
+ */
+export function ModelInterfacesCell({ row }: { row: ServedModelRow }) {
+  const interfaces = sortInterfaces(row.interfaces ?? []);
+  if (interfaces.length === 0) {
+    return (
+      <Cell>
+        <Text
+          as="p"
+          variant="body-medium"
+          color="secondary"
+          title={row.interfacesReason}
+        >
+          {row.interfaces ? '—' : null}
+        </Text>
+      </Cell>
+    );
+  }
+  return (
+    <Cell>
+      <Flex align="center" gap="1" style={{ flexWrap: 'wrap' }}>
+        {interfaces.map(api => (
+          <span key={api.type} title={api.path}>
+            <Badge size="small">{interfaceLabel(api.type)}</Badge>
+          </span>
+        ))}
+      </Flex>
+    </Cell>
+  );
+}
+
+/**
  * The "Used by" cell of a model no ModelConfig points at (yet). Empty on a
  * download row: nothing points at a pull in flight, the model it produces is
  * the row that gets a "Used by".
@@ -786,6 +828,10 @@ function getColumnConfig(
       cell: row => (
         <CellText
           title={row.modelSource === row.name ? '' : (row.modelSource ?? '—')}
+          // On the LLM endpoint a client sends the public name, not the id.
+          description={
+            row.publicName ? `model name ${row.publicName}` : undefined
+          }
         />
       ),
     });
@@ -805,6 +851,14 @@ function getColumnConfig(
       id: 'capabilities',
       label: 'Features',
       cell: row => <ModelFeaturesCell row={row} />,
+    });
+  }
+
+  if (columns.api) {
+    config.push({
+      id: 'api',
+      label: 'API',
+      cell: row => <ModelInterfacesCell row={row} />,
     });
   }
 

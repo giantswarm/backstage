@@ -44,11 +44,20 @@ export function describeGroup(
 }
 
 /**
- * Icon-only "copy this endpoint" control. The URL is what a client base URL
- * is set to, so it is worth a click, not a column: a group of Ollama models
- * shares one, an LLMInferenceService has its own.
+ * Icon-only copy control: the text goes to the clipboard, the button shows a
+ * tick for a moment. Refused clipboard access (an insecure context, a
+ * permission) leaves the text in the tooltip to copy by hand.
  */
-export function CopyEndpointButton({ url }: { url: string }) {
+export function CopyTextButton({
+  text,
+  label,
+  copiedLabel,
+}: {
+  text: string;
+  /** What the button copies, for its accessible name (`Copy endpoint`). */
+  label: string;
+  copiedLabel: string;
+}) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number>();
 
@@ -56,30 +65,43 @@ export function CopyEndpointButton({ url }: { url: string }) {
 
   const copy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(text);
     } catch {
-      // Clipboard access refused (insecure context, permission): the URL is
-      // in the tooltip to copy by hand.
       return;
     }
     setCopied(true);
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setCopied(false), COPIED_MS);
-  }, [url]);
+  }, [text]);
 
   return (
     <span
-      title={copied ? 'Copied' : `Copy ${url}`}
+      title={copied ? 'Copied' : `Copy ${text}`}
       style={{ display: 'inline-flex' }}
     >
       <ButtonIcon
         size="small"
         variant="tertiary"
-        aria-label={copied ? 'Endpoint copied' : 'Copy endpoint'}
+        aria-label={copied ? copiedLabel : label}
         icon={copied ? <CheckIcon /> : <FileCopyOutlinedIcon />}
         onPress={copy}
       />
     </span>
+  );
+}
+
+/**
+ * Icon-only "copy this endpoint" control. The URL is what a client base URL
+ * is set to, so it is worth a click, not a column: a group of Ollama models
+ * shares one, an LLMInferenceService has its own.
+ */
+export function CopyEndpointButton({ url }: { url: string }) {
+  return (
+    <CopyTextButton
+      text={url}
+      label="Copy endpoint"
+      copiedLabel="Endpoint copied"
+    />
   );
 }
 

@@ -9,9 +9,13 @@ import { useMutation } from '@tanstack/react-query';
 import { modelManagerApiRef, type TryServedModelResult } from '../../apis';
 import { formatSeconds } from '../../lib/lifecycle';
 import { modelLifecycleSteps, modelPhaseLabel } from '../../lib/modelLifecycle';
-import { tryModelIdOf } from '../../lib/modelManagerServe';
+import {
+  requestAuthOf,
+  requestExamples,
+  requestModelOf,
+} from '../../lib/servedModelApi';
 import { LifecycleSteps } from '../LifecycleSteps';
-import { CopyEndpointButton } from './ServedModelsGroupHeader';
+import { CopyEndpointButton, CopyTextButton } from './ServedModelsGroupHeader';
 import type { ServedModelRow } from './ServedModelsTable';
 
 /** The served model whose step timeline is open: Serve's answer, or a row's chevron. */
@@ -66,8 +70,15 @@ export type ServedModelLifecyclePanelProps = {
   onClose: () => void;
 };
 
-/** What the person reads of a try: both calls' outcomes, the answer, the URL. */
-export function describeTry(result: TryServedModelResult): {
+/**
+ * What the person reads of a try: both calls' outcomes, the answer, the URL.
+ * `tokenRequired` says the endpoint must refuse a call without a token (the
+ * models Gateway); an in-cluster LLM endpoint checks none.
+ */
+export function describeTry(
+  result: TryServedModelResult,
+  tokenRequired = true,
+): {
   summary: string;
   ok: boolean;
 } {
@@ -89,14 +100,70 @@ export function describeTry(result: TryServedModelResult): {
   }
   return {
     summary: `${without} · ${asPerson}`,
-    ok: result.with.status === 200 && result.without.status === 401,
+    ok:
+      result.with.status === 200 &&
+      (!tokenRequired || result.without.status === 401),
   };
+}
+
+/**
+ * One copy-able request per interface the model reports, filled with its
+ * endpoint and the name to send, and how the endpoint authenticates.
+ */
+function RequestExamples({
+  row,
+  endpoint,
+}: {
+  row: ServedModelRow;
+  endpoint: string;
+}) {
+  const examples = requestExamples(row, endpoint);
+  if (examples.length === 0) {
+    return null;
+  }
+  return (
+    <Flex direction="column" gap="1" data-testid="served-model-examples">
+      <Text as="p" variant="body-small" color="secondary">
+        Requests · {requestAuthOf(row, endpoint).note}
+      </Text>
+      {examples.map(example => (
+        <Flex
+          key={example.type}
+          direction="column"
+          gap="1"
+          data-testid={`served-model-example-${example.type}`}
+        >
+          <Flex gap="1" align="center">
+            <Text as="span" variant="body-small">
+              {example.label}
+            </Text>
+            <CopyTextButton
+              text={example.command}
+              label={`Copy the ${example.label} request`}
+              copiedLabel={`${example.label} request copied`}
+            />
+          </Flex>
+          <pre
+            style={{
+              margin: 0,
+              fontSize: 12,
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            <code>{example.command}</code>
+          </pre>
+        </Flex>
+      ))}
+    </Flex>
+  );
 }
 
 /**
  * What the served model is ready with: its endpoint, the ModelConfig agents
  * use, and **Try it** — one chat completion for the model id the ModelConfig
- * sends ({@link tryModelIdOf}), sent by the portal's backend without a token
+ * sends ({@link requestModelOf}: the public name on the LLM endpoint, else what
+ * the ModelConfig sends), sent by the portal's backend without a token
  * and as the signed-in person, both outcomes shown, so the gateway's
  * passthrough enforcement is seen, not assumed.
  */
@@ -111,11 +178,16 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
   const attempt = useMutation({
     mutationFn: () =>
       modelManagerApi.tryModel(row.installation, {
-        model: tryModelIdOf(row),
+        model: requestModelOf(row),
         url: endpoint!,
       }),
   });
-  const tried = attempt.data ? describeTry(attempt.data) : undefined;
+  // The models Gateway refuses a call without a token; the in-cluster LLM
+  // endpoint checks none.
+  const tokenRequired = !row.publicName;
+  const tried = attempt.data
+    ? describeTry(attempt.data, tokenRequired)
+    : undefined;
   return (
     <Flex direction="column" gap="2" data-testid="served-model-ready">
       {endpoint ? (
@@ -132,6 +204,16 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
             <code>{endpoint}</code>
           </Text>
           <CopyEndpointButton url={endpoint} />
+          {row.publicName && (
+            <Text
+              as="span"
+              variant="body-small"
+              color="secondary"
+              data-testid="served-model-public-name"
+            >
+              · model <code>{row.publicName}</code> on the LLM endpoint
+            </Text>
+          )}
         </Flex>
       ) : (
         <Text as="p" variant="body-small" color="secondary">
@@ -145,7 +227,11 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
         data-testid="served-model-config"
       >
         {modelConfig
-          ? `ModelConfig ${modelConfig.namespace ?? ''}/${modelConfig.name} — what agents use; the models Gateway checks the person’s token on every call.`
+          ? `ModelConfig ${modelConfig.namespace ?? ''}/${modelConfig.name} — what agents use; ${
+              row.publicName
+                ? `it reaches the model on the LLM endpoint as ${row.publicName}, metered with the provider models.`
+                : 'the models Gateway checks the person’s token on every call.'
+            }`
           : 'No ModelConfig yet — model-manager wires one for the served model.'}
       </Text>
       <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
@@ -186,6 +272,7 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
           POST {attempt.data.url} · model {attempt.data.model}
         </Text>
       )}
+      {endpoint && <RequestExamples row={row} endpoint={endpoint} />}
     </Flex>
   );
 }
