@@ -17,13 +17,14 @@ import {
  * per interface filled with that URL and the name to send.
  *
  * **model-manager's answers are stubbed at the browser** in model-manager
- * 1.2.0's shapes (`runtime`, `interfaces`, `publicName`); the lab's own
- * CPU-served model reports the same once that release runs there. Nothing is
- * written.
+ * 1.2.0's shapes (`runtime`, `interfaces`, `publicName`), for a model of a
+ * name nothing in the lab serves, so a served model the lab's own KServe CRs
+ * list beside it never takes its place; the lab's own CPU-served model reports
+ * the same shapes once that release runs there. Nothing is written.
  */
 
 const SERVING = '/agent-platform/models/serving';
-const GATEWAY = 'https://models.lab.example/model-serving/qwen2-5-0-5b-cpu';
+const GATEWAY = 'https://models.lab.example/model-serving/qwen-stub-api';
 const LLM_ENDPOINT = 'http://agentgateway.agent-platform.svc:8081';
 
 const backends = {
@@ -68,32 +69,39 @@ function models(onEndpoint: boolean) {
         backend: 'kserve',
         format: 'vLLM',
         downloaded: false,
-        path: 'qwen2-5-0-5b-cpu',
-        preset: 'qwen2-5-0-5b-cpu',
+        path: 'qwen-stub-api',
+        preset: 'qwen-stub-api',
         capabilities: ['chat', 'tools'],
         loaded: true,
         running: {
           name: 'Qwen/Qwen2.5-0.5B-Instruct',
           backend: 'kserve',
-          resource: 'qwen2-5-0-5b-cpu',
+          resource: 'qwen-stub-api',
           kind: 'LLMInferenceService',
-          preset: 'qwen2-5-0-5b-cpu',
+          preset: 'qwen-stub-api',
           managedBy: 'model-manager',
           status: 'Ready',
           phase: 'ready',
-          steps: [{ name: 'ready', state: 'done' }],
+          steps: [
+            {
+              name: 'ready',
+              state: 'done',
+              since: '2026-09-24T18:00:00Z',
+              finishedAt: '2026-09-24T18:00:05Z',
+            },
+          ],
           endpoint: onEndpoint ? LLM_ENDPOINT : GATEWAY,
           runtime: { name: 'vllm', version: '0.1.dev1+g51f799c1a' },
           interfaces: generate,
-          ...(onEndpoint && { publicName: 'qwen2-5-0-5b-cpu' }),
+          ...(onEndpoint && { publicName: 'qwen-stub-api' }),
         },
         modelConfig: {
-          name: 'qwen2-5-0-5b-cpu',
+          name: 'qwen-stub-api',
           namespace: 'kagent',
           managed: true,
           ready: true,
           providerModel: onEndpoint
-            ? 'qwen2-5-0-5b-cpu'
+            ? 'qwen-stub-api'
             : 'Qwen/Qwen2.5-0.5B-Instruct',
           endpoint: `${onEndpoint ? LLM_ENDPOINT : GATEWAY}/v1`,
         },
@@ -131,7 +139,7 @@ test.describe('serving: the APIs a served model answers', () => {
       await expect(
         grid.getByRole('columnheader', { name: 'API' }),
       ).toBeVisible();
-      const row = grid.getByRole('row', { name: /qwen2-5-0-5b-cpu/ });
+      const row = grid.getByRole('row', { name: /qwen-stub-api/ });
       for (const chip of [
         'Chat completions',
         'Responses',
@@ -146,7 +154,7 @@ test.describe('serving: the APIs a served model answers', () => {
       ).toBeVisible();
 
       await row
-        .getByRole('button', { name: 'Show steps of model qwen2-5-0-5b-cpu' })
+        .getByRole('button', { name: 'Show steps of model qwen-stub-api' })
         .click();
       const panel = admin.getByTestId('served-model-lifecycle');
       await expect(panel.getByTestId('served-model-endpoint')).toHaveText(
@@ -181,9 +189,9 @@ test.describe('serving: the APIs a served model answers', () => {
       await open(admin, SERVING);
 
       const grid = admin.getByRole('grid');
-      const row = grid.getByRole('row', { name: /qwen2-5-0-5b-cpu/ });
+      const row = grid.getByRole('row', { name: /qwen-stub-api/ });
       await expect(
-        row.getByText('model name qwen2-5-0-5b-cpu'),
+        row.getByText('model name qwen-stub-api'),
         'the public name next to the served id',
       ).toBeVisible();
       await admin
@@ -196,21 +204,21 @@ test.describe('serving: the APIs a served model answers', () => {
       ).toBe(LLM_ENDPOINT);
 
       await row
-        .getByRole('button', { name: 'Show steps of model qwen2-5-0-5b-cpu' })
+        .getByRole('button', { name: 'Show steps of model qwen-stub-api' })
         .click();
       const panel = admin.getByTestId('served-model-lifecycle');
       await expect(panel.getByTestId('served-model-public-name')).toContainText(
-        'model qwen2-5-0-5b-cpu on the LLM endpoint',
+        'model qwen-stub-api on the LLM endpoint',
       );
       await expect(panel.getByTestId('served-model-config')).toContainText(
-        'it reaches the model on the LLM endpoint as qwen2-5-0-5b-cpu',
+        'it reaches the model on the LLM endpoint as qwen-stub-api',
       );
       await panel
         .getByRole('button', { name: 'Copy the Chat completions request' })
         .click();
       const chat = await clipboard(admin);
       expect(chat).toContain(`curl -sS ${LLM_ENDPOINT}/v1/chat/completions`);
-      expect(chat).toContain('"model":"qwen2-5-0-5b-cpu"');
+      expect(chat).toContain('"model":"qwen-stub-api"');
       expect(chat, 'the in-cluster listener checks no key').not.toContain(
         'Authorization',
       );
