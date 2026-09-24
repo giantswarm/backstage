@@ -19,7 +19,7 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Avatar, Button, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import {
   Agent,
   ErrorsProvider,
@@ -80,6 +80,7 @@ import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentSkillsCard } from './AgentSkillsCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
+import { AgentAvatar } from '../AgentAvatar';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 8000;
@@ -129,7 +130,7 @@ function AgentHeader({
       <BackToAgents>← Agents</BackToAgents>
 
       <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
-        <Avatar
+        <AgentAvatar
           size="large"
           purpose="decoration"
           name={displayName}
