@@ -253,18 +253,18 @@ export type ResolveModelServing = (
 ) => ClientServingState | undefined;
 
 /**
- * What a reader calls the model: the ModelConfig's display name, or — when it
- * has none and `getDisplayName()` is just the resource name — the model it
- * configures.
+ * What a reader calls the model: the ModelConfig's display name, else the
+ * model it configures, else its resource name.
  */
 function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
   if (!modelConfig) {
     return undefined;
   }
-  const displayName = modelConfig.getDisplayName();
-  return displayName !== modelConfig.getName()
-    ? displayName
-    : (modelConfig.getModel() ?? displayName);
+  return (
+    modelConfig.getDisplayNameAnnotation() ??
+    modelConfig.getModel() ??
+    modelConfig.getName()
+  );
 }
 
 /**

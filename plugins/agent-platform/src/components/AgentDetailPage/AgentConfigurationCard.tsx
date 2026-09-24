@@ -62,19 +62,20 @@ function ModelValue({
   const modelLine = [modelConfig?.getModel(), modelConfig?.getProvider()]
     .filter(Boolean)
     .join(' · ');
-  // Without the display-name annotation, `getDisplayName()` is the resource
-  // name, which the ModelConfig line below already shows. The model itself
-  // leads instead.
-  const displayName =
-    modelConfig && modelConfig.getDisplayName() !== modelConfig.getName()
-      ? modelConfig.getDisplayName()
-      : undefined;
+  // Without a display name the resource name is all there is, and the
+  // ModelConfig line below already shows it. The model itself leads instead,
+  // still in monospace like every identifier here.
+  const displayName = modelConfig?.getDisplayNameAnnotation();
 
   return (
     <Flex direction="column" gap="1">
-      <Text variant="body-medium">
-        {displayName ?? (modelLine || modelConfigName)}
-      </Text>
+      {displayName ? (
+        <Text variant="body-medium">{displayName}</Text>
+      ) : (
+        <Text variant="body-medium" style={MONO}>
+          {modelLine || modelConfigName}
+        </Text>
+      )}
       {displayName && modelLine && (
         <Text variant="body-small" color="secondary" style={MONO}>
           {modelLine}

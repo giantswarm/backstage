@@ -2,14 +2,18 @@ import { render, screen } from '@testing-library/react';
 import { StructuredMetadataList } from './StructuredMetadataList';
 
 // jsdom has no ResizeObserver, which the container-width layout switch uses.
+const RealResizeObserver = globalThis.ResizeObserver;
+
 beforeAll(() => {
-  if (!('ResizeObserver' in globalThis)) {
-    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
-  }
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
+
+afterAll(() => {
+  globalThis.ResizeObserver = RealResizeObserver;
 });
 
 describe('StructuredMetadataList', () => {

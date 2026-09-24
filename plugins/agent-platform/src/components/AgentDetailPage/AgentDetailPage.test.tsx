@@ -810,20 +810,27 @@ describe('AgentDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('leads with the model when the ModelConfig has no display name', async () => {
-    stubResources(
-      { resource: makeAgent() },
-      { resource: makeModelConfig({ displayName: null }) },
-    );
+  it.each([
+    ['no', null],
+    ['a blank', '  '],
+  ])(
+    'leads with the model when the ModelConfig has %s display name',
+    async (_, displayName) => {
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig({ displayName }) },
+      );
 
-    await renderPage();
+      await renderPage();
 
-    // The first line is the model, not the resource name the ModelConfig line
-    // already shows.
-    const modelLine = screen.getByText('claude-opus-4-7 · Anthropic');
-    expect(modelLine).toHaveAttribute('data-variant', 'body-medium');
-    expect(screen.queryByText('opus-4-7')).toBeNull();
-  });
+      // The first line is the model, not the resource name the ModelConfig
+      // line already shows, and in monospace like the other identifiers.
+      const modelLine = screen.getByText('claude-opus-4-7 · Anthropic');
+      expect(modelLine).toHaveAttribute('data-variant', 'body-medium');
+      expect(modelLine).toHaveStyle({ fontFamily: 'monospace' });
+      expect(screen.queryByText('opus-4-7')).toBeNull();
+    },
+  );
 
   it('falls back to the bare ModelConfig reference when it cannot be read', async () => {
     // Normal for a non-admin: ModelConfigs live in namespaces they may not read.

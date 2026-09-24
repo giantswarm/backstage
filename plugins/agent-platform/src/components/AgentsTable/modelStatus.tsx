@@ -20,7 +20,8 @@ export function isAgentRowMuted(row: AgentRow): boolean {
 export const MUTED_ROW_STYLE = { opacity: 0.55 } as const;
 
 /**
- * The Model column: the ModelConfig's name and, where the serving layer has a
+ * The Model column: the row's model label (the ModelConfig's display name,
+ * else its model, else its resource name) and, where the serving layer has a
  * word on the model behind it, that model's readiness in the shared
  * vocabulary of `lib/serving.ts` — the same label the Model configs and
  * Serving views show for it. `Not serving` links to the Serving view, where
