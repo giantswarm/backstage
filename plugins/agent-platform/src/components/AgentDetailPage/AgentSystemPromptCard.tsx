@@ -1,22 +1,40 @@
 import { Flex, Text } from '@backstage/ui';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { CodeBlock, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  CollapsibleMarkdown,
+  CopyButton,
+  InfoCard,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * The agent's system prompt (`spec.systemPrompt`).
  *
- * Rendered as a copyable code block rather than prose: it is a configured value
- * someone may want to lift verbatim into a review or a chart change, and the
- * monospace framing makes clear where it starts and ends.
+ * Rendered as Markdown, which is how prompts are usually written, and cut to a
+ * preview when long. The copy button copies the source verbatim, for a review
+ * or a chart change.
  */
 export function AgentSystemPromptCard({ agent }: { agent: Agent }) {
   const systemMessage = agent.getSystemMessage();
   const source = agent.getSystemMessageSource();
 
   return (
-    <InfoCard title="System prompt">
+    <InfoCard
+      title="System prompt"
+      headerActions={
+        systemMessage && (
+          <CopyButton
+            text={systemMessage}
+            label="Copy system prompt"
+            size="compact"
+          />
+        )
+      }
+    >
       {systemMessage ? (
-        <CodeBlock text={systemMessage} />
+        <CollapsibleMarkdown
+          content={systemMessage}
+          toggleLabels={{ expand: 'Show full prompt', collapse: 'Show less' }}
+        />
       ) : (
         <Flex direction="column" gap="1">
           <Text variant="body-medium" color="secondary">

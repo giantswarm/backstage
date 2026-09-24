@@ -1,8 +1,9 @@
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { JsonHighlight } from '@giantswarm/backstage-plugin-ui-react';
-
-import { CopyButton } from '../CodeBlock';
+import {
+  CopyButton,
+  JsonHighlight,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -115,7 +116,7 @@ export function PayloadBlock({ label, content }: PayloadBlockProps) {
         <Text variant="body-small" color="secondary">
           {label}
         </Text>
-        <CopyButton text={display} />
+        <CopyButton text={display} size="compact" />
       </Flex>
       <div className={classes.scroll}>
         {highlight ? (
