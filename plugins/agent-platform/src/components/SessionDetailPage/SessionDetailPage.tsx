@@ -14,7 +14,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Avatar, Badge, Box, Button, Flex, Text } from '@backstage/ui';
+import { Alert, Badge, Box, Button, Flex, Text } from '@backstage/ui';
 import {
   makeStyles,
   Tooltip,
@@ -75,6 +75,7 @@ import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
 import { formatUsd } from '../../lib/formatNumbers';
 import { useTokenRates } from '../../hooks/useTokenRates';
+import { AgentAvatar } from '../AgentAvatar';
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
@@ -1102,7 +1103,7 @@ export function SessionDetailPage() {
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
             {row.agentName && (
               <Flex align="center" gap="2">
-                <Avatar
+                <AgentAvatar
                   size="small"
                   purpose="decoration"
                   name={row.agentName}

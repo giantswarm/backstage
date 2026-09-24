@@ -1,6 +1,6 @@
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Avatar, Badge, Text } from '@backstage/ui';
+import { Badge, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
@@ -9,6 +9,7 @@ import { sessionDetailRouteRef } from '../../routes';
 import { SESSION_TITLE_FALLBACK } from '../SessionsDataProvider/helpers';
 import { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE } from '../SessionsTable';
 import { RailSession } from './helpers';
+import { AgentAvatar } from '../AgentAvatar';
 
 /** Requested at 2× the ~24px render, matching the list and detail page. */
 const AVATAR_SIZE: AvatarSize = 48;
@@ -139,7 +140,7 @@ export function SessionSwitcherCard({
       </span>
       {row.agentName && (
         <span className={classes.agent}>
-          <Avatar
+          <AgentAvatar
             size="x-small"
             purpose="decoration"
             name={row.agentName}

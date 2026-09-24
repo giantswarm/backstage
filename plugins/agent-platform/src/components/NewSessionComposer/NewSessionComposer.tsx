@@ -8,7 +8,6 @@ import {
 } from 'react';
 import {
   Alert,
-  Avatar,
   Button,
   Flex,
   Select,
@@ -27,6 +26,7 @@ import {
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import { isSendKey } from '../../lib/sendKey';
+import { AgentAvatar } from '../AgentAvatar';
 
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
@@ -256,7 +256,7 @@ export function NewSessionComposer({
   const renderAvatar = useCallback(
     (agent: AgentRow) => (
       <span className={classes.agentAvatar}>
-        <Avatar
+        <AgentAvatar
           size="small"
           purpose="decoration"
           name={agent.name}
