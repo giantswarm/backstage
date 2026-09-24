@@ -610,10 +610,8 @@ describe('createRouter', () => {
 
   it('passes more selectors than qs keeps parameters (1000) through whole', async () => {
     filterTools.mockResolvedValue({ tools: [] });
-    const selectors = Array.from(
-      { length: 1100 },
-      (_, i) => `tool:x_tool_${i}`,
-    );
+    // Short selectors keep the URL under Node's 16 KiB header limit.
+    const selectors = Array.from({ length: 1005 }, (_, i) => `t${i}`);
 
     const response = await request(app).get(
       `/tools/filter?${selectors.map(s => `toolset=${s}`).join('&')}`,
