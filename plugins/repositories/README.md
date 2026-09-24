@@ -12,6 +12,8 @@ repository is what `devctl repo status` prints for it, from the same record.
 
 - **Scopes**: _My team_ (default; _Unassigned_ for a Planeteer), _Unassigned_,
   _All repositories_ -- `list_repositories`' `scope`, kept in the URL.
+- **Set-up docs**: the header links the intranet page on repository set-up
+  (_Repository set-up docs_, in a new tab), the page _Align now_ links too.
 - **Archived hidden by default**: the listing asks for `archived=false` until
   the person switches _Show archived_ on (`archived=true` in the URL) or asks
   for the archived lifecycle.

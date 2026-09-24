@@ -20,7 +20,8 @@ import {
   RepositoriesProviders,
   repositoriesQueryClient,
 } from '../RepositoriesProviders';
-import { parseEntry, REPOSITORY_SETUP_DOCS_URL } from './dialogs';
+import { REPOSITORY_SETUP_DOCS_URL } from '../../lib/docs';
+import { parseEntry } from './dialogs';
 import { RowActions } from './RowActions';
 
 const APPLY_REFUSAL =

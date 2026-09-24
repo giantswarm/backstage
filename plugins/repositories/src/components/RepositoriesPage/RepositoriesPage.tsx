@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Content, LinkButton } from '@backstage/core-components';
+import { Content, Link, LinkButton } from '@backstage/core-components';
 import { Box, Tab, Tabs, Typography } from '@material-ui/core';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import {
   showsArchived,
   withFilter,
 } from '../../lib/filters';
+import { REPOSITORY_SETUP_DOCS_URL } from '../../lib/docs';
 import { defaultScope } from '../../lib/scope';
 import { createRepositoryRouteRef } from '../../routes';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
@@ -41,7 +42,8 @@ const distinct = (values: (string | undefined)[]) =>
  * manager's filters in the column the Clusters page uses, the sortable table
  * with a row's full record in its detail panel. Archived repositories are
  * hidden until asked for. Every value is what `list_repositories` and
- * `get_repository` return.
+ * `get_repository` return. The header links the intranet page on repository
+ * set-up beside Create repository.
  */
 export function RepositoriesPage() {
   const api = useApi(repositoriesApiRef);
@@ -125,6 +127,11 @@ export function RepositoriesPage() {
               <Tab key={tab.id} value={tab.id} label={tab.label} />
             ))}
           </Tabs>
+        </Box>
+        <Box mr={2}>
+          <Link to={REPOSITORY_SETUP_DOCS_URL} externalLinkIcon>
+            Repository set-up docs
+          </Link>
         </Box>
         <LinkButton
           to={createLink?.() ?? 'create'}
