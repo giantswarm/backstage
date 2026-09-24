@@ -26,6 +26,18 @@ function reachableEverywhere() {
   });
 }
 
+/**
+ * An app that parses queries like the backend's root HTTP router: Express 4's
+ * `qs` parser, which turns bracket syntax into objects and a parameter
+ * repeated more than 20 times into an index-keyed object. Express 5's default
+ * parser does neither.
+ */
+function expressApp() {
+  const app = express();
+  app.set('query parser', 'extended');
+  return app;
+}
+
 describe('createRouter', () => {
   const callTool = jest.fn();
   const callToolWithStructured = jest.fn();
@@ -62,7 +74,7 @@ describe('createRouter', () => {
       reachability: reachableEverywhere(),
       ...options,
     });
-    const app = express();
+    const app = expressApp();
     app.use(router);
     app.use(MiddlewareFactory.create({ logger, config }).error());
     return app;
@@ -85,7 +97,7 @@ describe('createRouter', () => {
       reachability: reachableEverywhere(),
       ...options,
     });
-    const app = express();
+    const app = expressApp();
     app.use(router);
     app.use(MiddlewareFactory.create({ logger, config }).error());
     return app;
@@ -228,7 +240,7 @@ describe('createRouter', () => {
       config,
       reachability: reachableEverywhere(),
     });
-    const unconfiguredApp = express();
+    const unconfiguredApp = expressApp();
     unconfiguredApp.use(router);
     unconfiguredApp.use(MiddlewareFactory.create({ logger, config }).error());
 
@@ -417,7 +429,7 @@ describe('createRouter', () => {
         client: mockClient,
         reachability: reachableEverywhere(),
       });
-      const fleetApp = express();
+      const fleetApp = expressApp();
       fleetApp.use(router);
       fleetApp.use(MiddlewareFactory.create({ logger, config }).error());
       return { fleetApp, logger };
@@ -571,15 +583,28 @@ describe('createRouter', () => {
     expect(filterTools).toHaveBeenCalledWith({ toolset: ['preset:none'] }, {});
   });
 
-  it('does not read bracket syntax as a toolset (the simple query parser leaves it unexpanded)', async () => {
+  it('passes more than 20 toolset= parameters through as a selector list, in order', async () => {
     filterTools.mockResolvedValue({ tools: [] });
+    const selectors = Array.from({ length: 25 }, (_, i) => `tool:x_tool_${i}`);
 
+    const response = await request(app).get(
+      `/tools/filter?${selectors.map(s => `toolset=${s}`).join('&')}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith({ toolset: selectors }, {});
+  });
+
+  it('refuses bracket syntax as a toolset', async () => {
     const response = await request(app).get(
       '/tools/filter?toolset[x]=preset:none',
     );
 
-    expect(response.status).toBe(200);
-    expect(filterTools).toHaveBeenCalledWith({}, {});
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe(
+      'toolset must be a string or a list of strings',
+    );
+    expect(filterTools).not.toHaveBeenCalled();
   });
 
   it("surfaces muster's unknown-preset refusal as the request error", async () => {
@@ -1108,7 +1133,7 @@ describe('createRouter', () => {
         config,
         client: { callTool } as unknown as MusterMcpClient,
       });
-      const authApp = express();
+      const authApp = expressApp();
       authApp.use(router);
       authApp.use(MiddlewareFactory.create({ logger, config }).error());
       return authApp;

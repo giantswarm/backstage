@@ -104,9 +104,27 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
 }
 
 /**
+ * The values of an object the root router's query parser (`qs`) builds when a
+ * parameter repeats more than its `arrayLimit` (20) times: `{0: …, 1: …}`
+ * rather than an array. Anything else, like `toolset[x]=` bracket syntax, is
+ * not a list.
+ */
+function overflowedListValues(value: object): unknown[] | undefined {
+  const keys = Object.keys(value);
+  if (keys.length === 0 || !keys.every(key => /^(0|[1-9]\d*)$/.test(key))) {
+    return undefined;
+  }
+  return keys
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map(index => (value as Record<number, unknown>)[index]);
+}
+
+/**
  * A query parameter that may repeat (`?toolset=a&toolset=b`): one value is a
- * string, several an array. Anything else (an object from `toolset[x]=`
- * bracket syntax) is refused rather than forwarded.
+ * string, several an array (or, past `qs`'s array limit, an index-keyed
+ * object). Anything else (an object from `toolset[x]=` bracket syntax) is
+ * refused rather than forwarded.
  */
 function repeatedQueryValues(
   value: unknown,
@@ -115,7 +133,12 @@ function repeatedQueryValues(
   if (value === undefined) {
     return undefined;
   }
-  const values = Array.isArray(value) ? value : [value];
+  let values: unknown[] = [value];
+  if (Array.isArray(value)) {
+    values = value;
+  } else if (value !== null && typeof value === 'object') {
+    values = overflowedListValues(value) ?? values;
+  }
   if (!values.every(entry => typeof entry === 'string')) {
     throw new InputError(`${name} must be a string or a list of strings`);
   }
