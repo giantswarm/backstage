@@ -1224,6 +1224,27 @@ describe('AgentDetailPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the system prompt as Markdown, with a button that copies its source', async () => {
+    stubResources({
+      resource: makeAgent({
+        spec: {
+          modelConfig: { name: 'opus-4-7' },
+          systemPrompt: '## How you work\n\nLook **before** you answer.',
+        },
+      } as Partial<AgentInterface>),
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole('heading', { name: 'How you work' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('before').tagName).toBe('STRONG');
+    expect(
+      screen.getByRole('button', { name: 'Copy system prompt' }),
+    ).toBeInTheDocument();
+  });
+
   describe('sessions', () => {
     it('describes the list as the user’s own', async () => {
       stubResources({ resource: makeAgent() });
