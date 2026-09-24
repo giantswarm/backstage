@@ -97,6 +97,27 @@ describe('MusterApiClient tool errors', () => {
   });
 });
 
+describe('MusterApiClient response status', () => {
+  it("keeps the status of an answer that is not muster-backend's own", async () => {
+    const { client, fetchMock } = setup();
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 504,
+      json: async () => {
+        throw new SyntaxError('upstream request timeout');
+      },
+    } as unknown as Response);
+
+    const error: unknown = await client
+      .callTool('x_marge_sweep', {}, 'open')
+      .catch(e => e);
+    expect((error as Error).message).toBe(
+      'Muster request failed with status 504',
+    );
+    expect((error as Error & { status?: number }).status).toBe(504);
+  });
+});
+
 describe('toolErrorDetails', () => {
   it('reads the further text blocks a tool error carries, else none', () => {
     expect(

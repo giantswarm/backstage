@@ -2,6 +2,7 @@ import {
   classifyMargeError,
   dependencyOf,
   looksUnknownTeam,
+  MargeAnswerLostError,
   MargeNotConnectedError,
   margeToolName,
   rowsOf,
@@ -201,7 +202,40 @@ describe('classifyMargeError', () => {
   it('passes any other refusal on verbatim', () => {
     const error = classifyMargeError(new Error('no team file for "bumblebee"'));
     expect(error).not.toBeInstanceOf(MargeNotConnectedError);
+    expect(error).not.toBeInstanceOf(MargeAnswerLostError);
     expect(error.message).toBe('no team file for "bumblebee"');
+  });
+
+  it.each([
+    'Failed to fetch (devportal.giantswarm.io)',
+    'Failed to fetch: POST https://devportal.giantswarm.io/api/muster/call',
+    'NetworkError when attempting to fetch resource.',
+    'Load failed',
+  ])("reads fetch's %j as an answer that never arrived", message => {
+    const cause = new TypeError(message);
+    const error = classifyMargeError(cause);
+    expect(error).toBeInstanceOf(MargeAnswerLostError);
+    expect(error.message).toBe(message);
+    expect(error.cause).toBe(cause);
+  });
+
+  it.each([502, 503, 504])(
+    "reads the portal edge's %i as an answer that never arrived",
+    status => {
+      const error = Object.assign(
+        new Error(`Muster request failed with status ${status}`),
+        { status },
+      );
+      expect(classifyMargeError(error)).toBeInstanceOf(MargeAnswerLostError);
+    },
+  );
+
+  it.each([
+    Object.assign(new Error('marge: GitHub answered 500'), { status: 500 }),
+    new Error('network error talking to api.github.com'),
+    new TypeError("Cannot read properties of undefined (reading 'teams')"),
+  ])('keeps an answer that did arrive as one: %s', error => {
+    expect(classifyMargeError(error)).not.toBeInstanceOf(MargeAnswerLostError);
   });
 });
 

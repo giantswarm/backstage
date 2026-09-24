@@ -514,12 +514,66 @@ export class MargeNotConnectedError extends Error {
   readonly name = 'MargeNotConnectedError';
 }
 
-/** What a tool call threw, as the page tells the two cases apart. */
+/**
+ * The call's answer never reached the page, so nothing is known about what
+ * marge did with the call: the browser's connection closed under the request,
+ * or the portal's edge answered in marge's place. It is not a refusal. marge
+ * may have run the call in full and may still be running it, so a dry run
+ * changed nothing and a write's outcome is unknown until the queue is read
+ * again.
+ */
+export class MargeAnswerLostError extends Error {
+  readonly name = 'MargeAnswerLostError';
+}
+
+/**
+ * What fetch rejects with when the connection closes under it: a `TypeError`
+ * reading "Failed to fetch" in Chrome (with the host appended), "NetworkError
+ * when attempting to fetch resource." in Firefox, "Load failed" in Safari.
+ */
+const NETWORK_FAILURE_PATTERNS = [
+  /failed to fetch/i,
+  /network ?error/i,
+  /load failed/i,
+];
+
+/**
+ * What the portal's edge answers when the backend's answer does not reach it:
+ * a closed upstream connection, no healthy backend, a timeout. The muster
+ * client keeps the status on the error it throws.
+ */
+const EDGE_FAILURE_STATUSES = [502, 503, 504];
+
+function messageOf(error: unknown): string {
+  const message = (error as { message?: unknown } | null)?.message;
+  return typeof message === 'string' ? message : String(error);
+}
+
+export function looksAnswerLost(error: unknown): boolean {
+  if (error instanceof TypeError) {
+    return NETWORK_FAILURE_PATTERNS.some(pattern =>
+      pattern.test(error.message),
+    );
+  }
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === 'number' && EDGE_FAILURE_STATUSES.includes(status);
+}
+
+/**
+ * What a tool call threw, as the page tells the cases apart: no connection
+ * to marge, an answer that never arrived, and marge's own refusal.
+ */
 export function classifyMargeError(error: unknown): Error {
-  if (error instanceof MargeNotConnectedError) {
+  if (
+    error instanceof MargeNotConnectedError ||
+    error instanceof MargeAnswerLostError
+  ) {
     return error;
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = messageOf(error);
+  if (looksAnswerLost(error)) {
+    return new MargeAnswerLostError(message, { cause: error });
+  }
   if (looksNotConnected(message)) {
     return new MargeNotConnectedError(message);
   }

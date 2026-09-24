@@ -9,6 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { rowsOf, type MargeResult } from '../../lib/marge';
+import { musterMargeListScopeKey } from '../../lib/queryKeys';
 import { MergeGreenDialog } from './MergeGreenDialog';
 
 const callTool = jest.fn();
@@ -75,6 +76,10 @@ const preview: MargeResult = {
 
 const queueRows = rowsOf(queue, 'bumblebee');
 
+/** What Chrome's fetch rejects with when the connection closes under it. */
+const connectionLost = () =>
+  new TypeError('Failed to fetch (devportal.giantswarm.io)');
+
 function renderDialog(rows: ReturnType<typeof rowsOf> = queueRows) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -94,7 +99,7 @@ function renderDialog(rows: ReturnType<typeof rowsOf> = queueRows) {
     />,
     { wrapper },
   );
-  return { onOpenChange };
+  return { onOpenChange, queryClient };
 }
 
 beforeEach(() => {
@@ -189,6 +194,87 @@ describe('MergeGreenDialog', () => {
         'gazelle',
       ),
     );
+  });
+
+  it('tells a preview whose answer was lost from a refusal, and previews again', async () => {
+    callTool.mockRejectedValueOnce(connectionLost());
+    renderDialog();
+
+    expect(
+      await screen.findByText(
+        'The connection dropped before marge answered for bumblebee',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('It was only a preview, so nothing changed.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/marge refused/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Approve and merge' }),
+    ).toBeDisabled();
+
+    callTool.mockResolvedValue(preview);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Preview again' }),
+    );
+
+    expect(callTool).toHaveBeenCalledTimes(2);
+    expect(callTool).toHaveBeenLastCalledWith(
+      'x_marge_sweep',
+      {
+        team: 'bumblebee',
+        prs: ['giantswarm/backstage#2250'],
+        actions: 'approve,merge,mark',
+        dry_run: true,
+      },
+      'gazelle',
+    );
+    const confirm = await screen.findByRole('button', {
+      name: 'Approve and merge 1 PR',
+    });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    expect(
+      screen.queryByText(/The connection dropped/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('reports an apply whose answer was lost as an unknown outcome, never as nothing merged', async () => {
+    callTool.mockResolvedValueOnce(preview);
+    const { queryClient } = renderDialog();
+    const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
+
+    const confirm = await screen.findByRole('button', {
+      name: 'Approve and merge 1 PR',
+    });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    callTool.mockRejectedValueOnce(
+      Object.assign(new Error('Muster request failed with status 504'), {
+        status: 504,
+      }),
+    );
+    await userEvent.click(confirm);
+
+    expect(
+      await screen.findByText(
+        'The connection dropped before marge answered for bumblebee',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/The outcome is unknown/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing was approved/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/nothing changed/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Preview again' }),
+    ).not.toBeInTheDocument();
+    // The PR's evidence comment on GitHub is the record of what marge did.
+    expect(
+      screen.getByRole('link', { name: 'giantswarm/backstage#2250' }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/backstage/pull/2250',
+    );
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: musterMargeListScopeKey('gazelle'),
+    });
   });
 
   it('reports the engine’s refusal and offers nothing to apply', async () => {

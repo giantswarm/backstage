@@ -5,11 +5,15 @@ import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 import { useMargeTeamSweeps } from '../../hooks/useMarge';
 import {
   actionsArgument,
+  MargeAnswerLostError,
   rowsOf,
   SWEEP_STEPS,
+  type BotPrRow,
   type SweepStep,
 } from '../../lib/marge';
+import { refsByTeam } from '../../lib/rows';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
+import { LostAnswerAlert } from '../LostAnswerAlert';
 import { OutcomeTable } from '../OutcomeTable';
 
 export type SweepDialogProps = {
@@ -46,7 +50,9 @@ const plural = (count: number, word: string) =>
  * own: it is the preview of a decision already taken.
  *
  * A team is its own call and its own outcome: one team's refusal leaves the
- * others alone, and the dialog reports each under its name.
+ * others alone, and the dialog reports each under its name. A team whose
+ * answer was lost on the way back is not refused: its preview runs again on
+ * its own, and a lost apply is reported as an unknown outcome.
  */
 export function SweepDialog({
   installation,
@@ -57,6 +63,9 @@ export function SweepDialog({
   const sweeps = useMargeTeamSweeps(installation);
   const [steps, setSteps] = useState<SweepStep[]>(ALL_STEPS);
   const [applied, setApplied] = useState(false);
+  // The PRs the apply asked marge to act on: the preview they came from is
+  // gone once the apply answers.
+  const [asked, setAsked] = useState<BotPrRow[]>([]);
 
   const actions = actionsArgument(steps);
   const teams = useMemo(() => Object.keys(prsByTeam), [prsByTeam]);
@@ -72,6 +81,7 @@ export function SweepDialog({
       return;
     }
     setApplied(false);
+    setAsked([]);
     sweeps.reset();
     sweeps.run({ teams, prsByTeam, actions, dryRun: true }).catch(() => {
       // Shown by the dialog through the runs' own errors.
@@ -97,19 +107,18 @@ export function SweepDialog({
   );
   const outcome = isDryRun ? [] : runs;
   const failed = runs.filter(run => run.error);
+  const lost = failed
+    .filter(run => run.error instanceof MargeAnswerLostError)
+    .map(run => run.team);
+  const refused = failed.filter(run => !lost.includes(run.team));
   const notConnected = sweeps.notConnected;
 
   // What Apply runs on: exactly the PRs the preview listed, per team.
-  const applyTargets = useMemo(() => {
-    const byTeam: Record<string, string[]> = {};
-    for (const run of preview) {
-      const refs = rowsOf(run.result, run.team).map(row => row.ref);
-      if (refs.length > 0) {
-        byTeam[run.team] = refs;
-      }
-    }
-    return byTeam;
-  }, [preview]);
+  const previewRows = useMemo(
+    () => preview.flatMap(run => rowsOf(run.result, run.team)),
+    [preview],
+  );
+  const applyTargets = useMemo(() => refsByTeam(previewRows), [previewRows]);
   const applyCount = Object.values(applyTargets).reduce(
     (sum, refs) => sum + refs.length,
     0,
@@ -124,6 +133,7 @@ export function SweepDialog({
   };
 
   const onConfirm = async () => {
+    setAsked(previewRows);
     try {
       await sweeps.run({
         teams: Object.keys(applyTargets),
@@ -150,6 +160,7 @@ export function SweepDialog({
   const confirmLabel = onePr ? 'Apply to this PR' : 'Apply sweep';
   const isPreviewing = sweeps.isPending && sweeps.isDryRun;
   const shown = applied ? outcome : preview;
+  const hasPreview = preview.some(run => run.result);
 
   return (
     <ConfirmDialog
@@ -202,25 +213,39 @@ export function SweepDialog({
           message={notConnected.message}
         />
       ) : null}
-      {failed.length > 0 && !notConnected ? (
+      {refused.length > 0 && !notConnected ? (
         <Alert
           status="danger"
-          title={`marge refused the run for ${failed
+          title={`marge refused the run for ${refused
             .map(run => run.team)
             .join(', ')}`}
           description={[
-            ...new Set(failed.map(run => run.error?.message ?? '')),
+            ...new Set(refused.map(run => run.error?.message ?? '')),
           ].join(' ')}
         />
       ) : null}
-      {applied && outcome.length > 0 ? (
+      {lost.length > 0 ? (
+        <LostAnswerAlert
+          teams={lost}
+          isDryRun={isDryRun}
+          onPreviewAgain={() => {
+            sweeps.retry(lost).catch(() => {
+              // Shown by the dialog through the runs' own errors.
+            });
+          }}
+          isPreviewingAgain={isPreviewing}
+          asked="acted on"
+          prs={asked.filter(row => lost.includes(row.team))}
+        />
+      ) : null}
+      {applied && outcome.some(run => run.result) ? (
         <Alert
           status="success"
           title="Applied"
           description="The engine ran the sweep as you. What it did to each PR is below, and in each PR's evidence comment."
         />
       ) : null}
-      {!applied && !sweeps.isPending && preview.length > 0 ? (
+      {!applied && !sweeps.isPending && hasPreview ? (
         <Text variant="body-small" color="secondary">
           {onePr
             ? 'What the sweep would do to this PR right now. '
@@ -231,7 +256,8 @@ export function SweepDialog({
       {isPreviewing || shown.some(run => run.result) ? (
         <OutcomeTable
           runs={shown}
-          isPending={isPreviewing}
+          // A preview run again for one team keeps the other teams' rows.
+          isPending={isPreviewing && !hasPreview}
           pendingLabel={
             onePr
               ? 'Classifying the PR and deciding what the sweep would do to it.'
@@ -252,10 +278,7 @@ export function SweepDialog({
               </Text>
             ) : null,
           )}
-      {!applied &&
-      !sweeps.isPending &&
-      preview.length === 0 &&
-      failed.length > 0 ? (
+      {!applied && !sweeps.isPending && !hasPreview && refused.length > 0 ? (
         <Text variant="body-small" color="secondary">
           The engine refused the preview. Its reason is above; nothing was
           written.
