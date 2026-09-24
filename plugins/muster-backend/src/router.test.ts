@@ -27,10 +27,10 @@ function reachableEverywhere() {
 }
 
 /**
- * An app that parses queries like the backend's root HTTP router: Express 4's
- * `qs` parser, which turns bracket syntax into objects and a parameter
- * repeated more than 20 times into an index-keyed object. Express 5's default
- * parser does neither.
+ * An app in the root HTTP router's query parser mode, `extended` (`qs`), which
+ * turns bracket syntax into objects and more than 20 repeats of a parameter
+ * into an index-keyed object. Express 5's default, `simple`, does neither. The
+ * `qs` here is the hoisted copy, not the one inside backend-defaults.
  */
 function expressApp() {
   const app = express();
@@ -199,6 +199,19 @@ describe('createRouter', () => {
     expect(response.body.error.message).toContain('at most once');
     expect(callTool).not.toHaveBeenCalled();
   });
+
+  it.each([['workflow_name=a&workflow_name=b'], ['workflow_name[x]=a']])(
+    'rejects a workflow_name that is not one string (%s)',
+    async query => {
+      const response = await request(app).get(`/executions?${query}`);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toBe(
+        'workflow_name must be provided at most once',
+      );
+      expect(callTool).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a non-numeric limit', async () => {
     const response = await request(app).get('/executions?limit=abc');
@@ -595,16 +608,46 @@ describe('createRouter', () => {
     expect(filterTools).toHaveBeenCalledWith({ toolset: selectors }, {});
   });
 
-  it('refuses bracket syntax as a toolset', async () => {
-    const response = await request(app).get(
-      '/tools/filter?toolset[x]=preset:none',
+  it('passes more selectors than qs keeps parameters (1000) through whole', async () => {
+    filterTools.mockResolvedValue({ tools: [] });
+    const selectors = Array.from(
+      { length: 1100 },
+      (_, i) => `tool:x_tool_${i}`,
     );
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.message).toBe(
-      'toolset must be a string or a list of strings',
+    const response = await request(app).get(
+      `/tools/filter?${selectors.map(s => `toolset=${s}`).join('&')}`,
     );
-    expect(filterTools).not.toHaveBeenCalled();
+
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith({ toolset: selectors }, {});
+  });
+
+  it.each([
+    ['toolset[x]=preset:full'],
+    ['toolset[25]=preset:full'],
+    ['toolset[0]=preset:full&toolset[100]=preset:none'],
+  ])('ignores bracket syntax as a toolset (%s)', async query => {
+    filterTools.mockResolvedValue({ tools: [] });
+
+    const response = await request(app).get(`/tools/filter?${query}`);
+
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith({}, {});
+  });
+
+  it('forwards only the plain toolset= values when bracket syntax is mixed in', async () => {
+    filterTools.mockResolvedValue({ tools: [] });
+    const selectors = Array.from({ length: 25 }, (_, i) => `tool:x_tool_${i}`);
+
+    const response = await request(app).get(
+      `/tools/filter?${selectors
+        .map(s => `toolset=${s}`)
+        .join('&')}&toolset[x]=preset:full&toolset[3]=preset:full`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith({ toolset: selectors }, {});
   });
 
   it("surfaces muster's unknown-preset refusal as the request error", async () => {

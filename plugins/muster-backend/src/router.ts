@@ -104,45 +104,21 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
 }
 
 /**
- * The values of an object the root router's query parser (`qs`) builds when a
- * parameter repeats more than its `arrayLimit` (20) times: `{0: …, 1: …}`
- * rather than an array. Anything else, like `toolset[x]=` bracket syntax, is
- * not a list.
- */
-function overflowedListValues(value: object): unknown[] | undefined {
-  const keys = Object.keys(value);
-  if (keys.length === 0 || !keys.every(key => /^(0|[1-9]\d*)$/.test(key))) {
-    return undefined;
-  }
-  return keys
-    .map(Number)
-    .sort((a, b) => a - b)
-    .map(index => (value as Record<number, unknown>)[index]);
-}
-
-/**
- * A query parameter that may repeat (`?toolset=a&toolset=b`): one value is a
- * string, several an array (or, past `qs`'s array limit, an index-keyed
- * object). Anything else (an object from `toolset[x]=` bracket syntax) is
- * refused rather than forwarded.
+ * Every value of a query parameter that may repeat (`?toolset=a&toolset=b`),
+ * in order, read from the raw query string. `req.query` is the root router's
+ * `qs` parse, which turns more than 20 repeats into an index-keyed object and
+ * drops everything past 1000 parameters; bracket syntax (`toolset[x]=`) is a
+ * different key and is ignored.
  */
 function repeatedQueryValues(
-  value: unknown,
+  req: express.Request,
   name: string,
 ): string[] | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  let values: unknown[] = [value];
-  if (Array.isArray(value)) {
-    values = value;
-  } else if (value !== null && typeof value === 'object') {
-    values = overflowedListValues(value) ?? values;
-  }
-  if (!values.every(entry => typeof entry === 'string')) {
-    throw new InputError(`${name} must be a string or a list of strings`);
-  }
-  return values as string[];
+  const values = new URL(
+    req.originalUrl,
+    'http://localhost',
+  ).searchParams.getAll(name);
+  return values.length > 0 ? values : undefined;
 }
 
 export async function createRouter(
@@ -362,7 +338,7 @@ export async function createRouter(
     // contains a comma or whitespace). Passed through verbatim: muster owns the
     // grammar and answers an unknown preset or a malformed selector with its
     // own message, which the frontend shows as is.
-    const toolset = repeatedQueryValues(req.query.toolset, 'toolset');
+    const toolset = repeatedQueryValues(req, 'toolset');
     if (toolset !== undefined) {
       args.toolset = toolset;
     }
@@ -797,11 +773,12 @@ export async function createRouter(
 
   router.get('/executions', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const { workflow_name: workflowName, status } = req.query;
+    const workflowName = singleQueryValue(
+      req.query.workflow_name,
+      'workflow_name',
+    );
+    const status = singleQueryValue(req.query.status, 'status');
 
-    if (status !== undefined && typeof status !== 'string') {
-      throw new InputError('status must be provided at most once');
-    }
     if (
       status !== undefined &&
       !EXECUTION_STATUSES.includes(
@@ -814,10 +791,10 @@ export async function createRouter(
     }
 
     const args: Record<string, unknown> = {};
-    if (typeof workflowName === 'string' && workflowName !== '') {
+    if (workflowName) {
       args.workflow_name = workflowName;
     }
-    if (typeof status === 'string') {
+    if (status !== undefined) {
       args.status = status;
     }
     const limit = parseOptionalInt(req.query.limit, 'limit');
