@@ -152,31 +152,38 @@ export function presetNameOf(selector: string): string | undefined {
   return parsed?.kind === 'preset' ? parsed.name : undefined;
 }
 
-/** The label the step and the detail card show for a preset. */
+const PRESET_LABELS: ReadonlyMap<string, string> = new Map([
+  ['read-only', 'Read-only tools'],
+  ['none', 'No tools'],
+  ['full', 'Full gateway'],
+  ['infrastructure', 'Infrastructure'],
+  ['agent-platform', 'Agent Platform'],
+]);
+
+/**
+ * The label a preset card or row shows: the preset's own label, else its name
+ * — the selector beside it says it is a preset.
+ */
 export function presetLabel(name: string): string {
-  switch (name) {
-    case 'read-only':
-      return 'Read-only tools';
-    case 'none':
-      return 'No tools';
-    case 'full':
-      return 'Full gateway';
-    case 'infrastructure':
-      return 'Infrastructure';
-    case 'agent-platform':
-      return 'Agent Platform';
-    default:
-      return name;
-  }
+  return PRESET_LABELS.get(name) ?? name;
 }
 
 /**
- * The text a selector is shown by: a preset's label, any other selector as
- * written — a server, workflow or tool goes by its own name.
+ * The label of a `preset:` selector naming a preset that has one, else
+ * `undefined`. An installation's own preset has no label: muster reports no
+ * display name, and its bare name would hide that it is a preset.
+ */
+export function labelOfPresetSelector(selector: string): string | undefined {
+  const preset = presetNameOf(selector);
+  return preset === undefined ? undefined : PRESET_LABELS.get(preset);
+}
+
+/**
+ * The text a selector is shown by where it stands alone: a labelled preset by
+ * its label, any other selector as written.
  */
 export function selectorLabel(selector: string): string {
-  const preset = presetNameOf(selector);
-  return preset === undefined ? selector : presetLabel(preset);
+  return labelOfPresetSelector(selector) ?? selector;
 }
 
 // Presets lead with the safe choices and end with the powerful one: the
@@ -424,12 +431,13 @@ export function describeToolset(toolset: DeclaredToolset | undefined): {
       if (shape === 'full') {
         return { summary: 'Full gateway access', detail: PRESET_FULL };
       }
-      const summary = selectors.map(selectorLabel).join(', ');
-      // A lone preset keeps its selector in view, as `none` and `full` do.
+      // A lone labelled preset keeps its selector in view, as `none` and
+      // `full` do.
       return {
-        summary,
+        summary: selectors.map(selectorLabel).join(', '),
         detail:
-          selectors.length === 1 && summary !== selectors[0]
+          selectors.length === 1 &&
+          labelOfPresetSelector(selectors[0]) !== undefined
             ? selectors[0]
             : countNoun(selectors.length, 'selector'),
       };

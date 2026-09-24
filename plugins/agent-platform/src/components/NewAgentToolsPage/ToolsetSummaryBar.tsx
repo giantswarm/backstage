@@ -5,7 +5,7 @@ import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
   countNoun,
   declaredToolset,
-  presetNameOf,
+  labelOfPresetSelector,
   selectorLabel,
   toolsetShape,
 } from '../../lib/toolset';
@@ -212,14 +212,15 @@ export function ToolsetSummaryBar({
                   <span
                     key={selector}
                     className={
-                      presetNameOf(selector) === undefined
+                      labelOfPresetSelector(selector) === undefined
                         ? `${classes.selector} ${classes.selectorCode}`
                         : classes.selector
                     }
                     role="listitem"
-                    title={selector}
                   >
-                    {label}
+                    {/* On the label, not the chip: the remove button would
+                        otherwise show the selector as its own hint. */}
+                    <span title={selector}>{label}</span>
                     <button
                       type="button"
                       className={classes.removeSelector}

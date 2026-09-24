@@ -15,6 +15,7 @@ import {
   OTHER_WORKFLOWS_KEY,
   parseSelector,
   parseToolsetHeader,
+  labelOfPresetSelector,
   presetLabel,
   selectorLabel,
   selectorForTool,
@@ -149,11 +150,20 @@ describe('presets', () => {
     expect(presetLabel('custom-thing')).toBe('custom-thing');
   });
 
-  it('shows a preset selector by its label and any other as written', () => {
+  it('shows a labelled preset selector by its label and any other as written', () => {
     expect(selectorLabel('preset:read-only')).toBe('Read-only tools');
-    expect(selectorLabel('preset:custom-thing')).toBe('custom-thing');
     expect(selectorLabel('server:pro')).toBe('server:pro');
     expect(selectorLabel('not a selector')).toBe('not a selector');
+    // An installation's own preset stays recognisable as a preset.
+    expect(selectorLabel('preset:custom-thing')).toBe('preset:custom-thing');
+    expect(selectorLabel('preset:Read-only')).toBe('preset:Read-only');
+    expect(selectorLabel('preset:server:pro')).toBe('preset:server:pro');
+  });
+
+  it('labels only the preset selectors that have a label', () => {
+    expect(labelOfPresetSelector('preset:full')).toBe('Full gateway');
+    expect(labelOfPresetSelector('preset:custom-thing')).toBeUndefined();
+    expect(labelOfPresetSelector('server:pro')).toBeUndefined();
   });
 
   it('keeps full exclusive when toggling, and none clears the selection', () => {
@@ -326,6 +336,13 @@ describe('describeToolset', () => {
         carrier: 'a',
       }),
     ).toEqual({ summary: 'server:pro', detail: '1 selector' });
+    expect(
+      describeToolset({
+        state: 'declared',
+        selectors: ['preset:ops'],
+        carrier: 'a',
+      }),
+    ).toEqual({ summary: 'preset:ops', detail: '1 selector' });
   });
 });
 

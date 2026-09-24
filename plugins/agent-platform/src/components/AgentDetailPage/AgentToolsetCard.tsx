@@ -17,7 +17,7 @@ import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
   buildCatalogue,
   parseSelector,
-  presetNameOf,
+  labelOfPresetSelector,
   selectorLabel,
   toolsetShape,
   unsignedServerSelectors,
@@ -83,7 +83,9 @@ function DeclaredSelectors({
             role="listitem"
             className={[
               classes.selector,
-              presetNameOf(selector) === undefined ? classes.selectorCode : '',
+              labelOfPresetSelector(selector) === undefined
+                ? classes.selectorCode
+                : '',
               isUnmatched ? classes.selectorUnmatched : '',
             ].join(' ')}
             title={selectorTitle(selector, isUnmatched)}

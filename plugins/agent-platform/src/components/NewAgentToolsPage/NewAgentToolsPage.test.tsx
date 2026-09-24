@@ -667,7 +667,7 @@ describe('NewAgentToolsPage', () => {
       await within(summaryBar()).findByText('Resolves to 2 tools for you'),
     ).toBeInTheDocument();
     expect(
-      within(summaryBar()).getByRole('listitem', { name: 'preset:read-only' }),
+      within(summaryBar()).getByTitle('preset:read-only'),
     ).toHaveTextContent('Read-only tools');
 
     const resolved = within(toolsetCard());
