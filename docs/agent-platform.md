@@ -578,7 +578,7 @@ via `FirstAgentCard` and `EmptyStateCard` (the latter in `ui-react`):
   than explaining itself.
 - **Agents but no sessions.** The Sessions tab drops the table, the search field
   and the "your sessions across the fleet" blurb, and puts the composer —
-  expanded, not its collapsed strip — inside the card under "Start your first
+  grown, not its single-line strip — inside the card under "Start your first
   session". The prompt box _is_ the invitation; there is no list below it to make
   room for.
 - **Nothing could be read.** Deliberately _not_ an invitation. An empty list
@@ -2177,12 +2177,19 @@ would be submitting a guess about what was asked.
 
 ### Starting a session
 
-A session is started from a **composer**: a prompt, an agent, and "Start". There is
+A session is started from a **composer**: a prompt, an agent, and Start. There is
 deliberately no new-session _screen_ — that is the prototype's shape, and the prompt
 is the only thing the spec treats as required.
 
-It appears in two places. **Inline above the sessions list**, collapsed to a single
-line and expanding on focus, because that list is the prototype's "Mine" scope, where
+Both composers — this one and the reply box on a session's page — are the same box,
+`ComposerFrame` from `ui-react`: a text field that grows with its content, with the
+controls inside the same border underneath it. Here the agent picker sits
+bottom-left and Start is a right-pointing arrow bottom-right; on a session's page the
+arrow points up (Send) and Stop takes its slot while a turn runs. The caption goes
+under the box.
+
+It appears in two places. **Inline above the sessions list**, with a single-line
+text field that grows on focus (the picker and Start show throughout), because that list is the prototype's "Mine" scope, where
 creating is the job of the view rather than a secondary action — and kagent scoping
 sessions to the signed-in user is exactly what makes our one list that scope. And in a
 **dialog on the agent detail page**, opened by "Start a session" in the header, with
@@ -2191,9 +2198,8 @@ button in the shared page header for anything but opening the dialog: that slot 
 outside the plugin's `QueryClientProvider`, so the create mutation would have no client
 there.
 
-Expansion is **one-way**. Nothing collapses the inline composer again, because
-collapsing on blur would hide the agent just chosen, and re-collapsing under the cursor
-reads as a glitch. **Enter starts** and Shift+Enter inserts a newline, matching the
+The growth is **one-way**. Nothing shrinks the inline composer again, because
+shrinking on blur would move the controls under the cursor, which reads as a glitch. **Enter starts** and Shift+Enter inserts a newline, matching the
 reply composer.
 
 #### Create, navigate, then send — in that order

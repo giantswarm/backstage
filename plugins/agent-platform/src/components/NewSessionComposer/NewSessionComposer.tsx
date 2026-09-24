@@ -8,13 +8,15 @@ import {
 } from 'react';
 import {
   Alert,
-  Button,
+  ButtonIcon,
   Flex,
   Select,
   Text,
   TextAreaField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
+import { ComposerFrame } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
 import {
@@ -30,7 +32,8 @@ import { AgentAvatar } from '../AgentAvatar';
 
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
-const EXPANDED_ROWS = 4;
+const EXPANDED_ROWS = 3;
+const MAX_ROWS = 12;
 
 /** Above this many agents the picker gets a search box. */
 const SEARCHABLE_THRESHOLD = 8;
@@ -100,9 +103,9 @@ export type NewSessionComposerProps = {
    */
   defaultAgent?: AgentRow;
   /**
-   * Start as a single line and expand on focus. The inline placement uses this so
-   * the list below stays the main event; the dialog does not, since it is already
-   * a deliberate act.
+   * Start with a single-line text field and grow it on focus. The inline
+   * placement uses this so the list below stays the main event; the dialog does
+   * not, since it is already a deliberate act.
    */
   collapsible?: boolean;
   autoFocus?: boolean;
@@ -165,9 +168,8 @@ function describeAgent(agent: AgentRow): string | undefined {
  * pressable, and pressing it (or Enter) names the gap and moves focus to the
  * picker, which a disabled button could not.
  *
- * Expansion is deliberately **one-way**: once focused, the toolbar stays. A
- * composer that collapsed on blur would hide the agent the user just picked, and
- * re-collapsing under the cursor reads as a glitch.
+ * The textarea's growth on focus is deliberately **one-way**: shrinking it on
+ * blur would move the controls under the cursor, which reads as a glitch.
  *
  * Not built on {@link SessionComposer}, which sends into an existing session.
  * Both axes that component takes (`isAgentWorking`, `isFinished`) and all three
@@ -346,8 +348,8 @@ export function NewSessionComposer({
       'Enter starts a session and sends this as the first message. Shift+Enter for a new line.';
   }
 
-  // Shown whether or not the composer is expanded: a preselected agent whose
-  // model is gone is exactly what to know before typing a prompt at it.
+  // A preselected agent whose model is gone is exactly what to know before
+  // typing a prompt at it.
   const modelWarning = modelWarningFor(selectedAgent);
 
   return (
@@ -374,62 +376,70 @@ export function NewSessionComposer({
           />
         )}
 
-        <TextAreaField
-          aria-label="Prompt"
-          placeholder="What should the agent do?"
-          value={prompt}
-          onChange={setPrompt}
-          onFocus={() => setExpanded(true)}
-          onKeyDown={handleKeyDown}
-          // The rule guards against stealing focus on page load, which is why the
-          // inline placement leaves this off. It is opt-in for the dialog, where
-          // the user has just deliberately opened a box in order to type — and
-          // react-aria focuses the dialog container rather than the field, so
-          // without it the cursor is nowhere and the field has to be clicked
-          // first. Focusing the first meaningful control is what the ARIA dialog
-          // pattern asks for. Same exception, same reason, as
-          // `SessionRenameDialog`.
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus={autoFocus}
-          rows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
+        <ComposerFrame
+          minRows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
+          maxRows={MAX_ROWS}
+          input={
+            <TextAreaField
+              aria-label="Prompt"
+              placeholder="What should the agent do?"
+              value={prompt}
+              onChange={setPrompt}
+              onFocus={() => setExpanded(true)}
+              onKeyDown={handleKeyDown}
+              // The rule guards against stealing focus on page load, which is why the
+              // inline placement leaves this off. It is opt-in for the dialog, where
+              // the user has just deliberately opened a box in order to type — and
+              // react-aria focuses the dialog container rather than the field, so
+              // without it the cursor is nowhere and the field has to be clicked
+              // first. Focusing the first meaningful control is what the ARIA dialog
+              // pattern asks for. Same exception, same reason, as
+              // `SessionRenameDialog`.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus={autoFocus}
+              rows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
+            />
+          }
+          leading={
+            <Select
+              ref={agentSelectRef}
+              aria-label="Agent"
+              className={classes.agentSelect}
+              isInvalid={showAgentMissing}
+              // `leadingIcon` only reaches the options; the trigger has its own
+              // slot, and without this the chosen agent loses the avatar it had
+              // in the list.
+              icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
+              options={options}
+              selectedKey={selectedId ?? null}
+              onSelectionChange={key => {
+                touched.current = true;
+                setSelectedId(key ? String(key) : undefined);
+              }}
+              placeholder="Select an agent"
+              searchable={offered.length > SEARCHABLE_THRESHOLD}
+              isDisabled={isStarting || Boolean(soleAgent)}
+            />
+          }
+          trailing={
+            <ButtonIcon
+              type="submit"
+              aria-label="Start"
+              icon={<ArrowForwardIcon />}
+              isDisabled={!canSubmit}
+              isPending={isStarting}
+            />
+          }
         />
 
-        {expanded && (
-          <Flex direction="column" gap="2">
-            <Flex align="center" justify="between" gap="2">
-              <Select
-                ref={agentSelectRef}
-                aria-label="Agent"
-                className={classes.agentSelect}
-                isInvalid={showAgentMissing}
-                // `leadingIcon` only reaches the options; the trigger has its own
-                // slot, and without this the chosen agent loses the avatar it had
-                // in the list.
-                icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
-                options={options}
-                selectedKey={selectedId ?? null}
-                onSelectionChange={key => {
-                  touched.current = true;
-                  setSelectedId(key ? String(key) : undefined);
-                }}
-                placeholder="Select an agent"
-                searchable={offered.length > SEARCHABLE_THRESHOLD}
-                isDisabled={isStarting || Boolean(soleAgent)}
-              />
-              <Button type="submit" isDisabled={!canSubmit}>
-                {isStarting ? 'Starting…' : 'Start'}
-              </Button>
-            </Flex>
-            {showAgentMissing && !isTooLong ? (
-              <Text variant="body-small" color="danger" role="alert">
-                Choose an agent to start.
-              </Text>
-            ) : (
-              <Text variant="body-small" color="secondary">
-                {caption}
-              </Text>
-            )}
-          </Flex>
+        {showAgentMissing && !isTooLong ? (
+          <Text variant="body-small" color="danger" role="alert">
+            Choose an agent to start.
+          </Text>
+        ) : (
+          <Text variant="body-small" color="secondary">
+            {caption}
+          </Text>
         )}
       </Flex>
     </form>

@@ -80,39 +80,37 @@ beforeEach(() => {
 
 describe('NewSessionComposer', () => {
   describe('collapsing', () => {
-    it('shows only the prompt until it is focused', () => {
+    it('shows the agent picker and Start before it is focused', () => {
       renderComposer({ collapsible: true });
-
-      expect(field()).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: 'Start' }),
-      ).not.toBeInTheDocument();
-    });
-
-    it('reveals the agent picker and Start on focus', async () => {
-      renderComposer({ collapsible: true });
-
-      await userEvent.click(field());
 
       expect(startButton()).toBeInTheDocument();
       expect(agentPicker()).toBeInTheDocument();
     });
 
-    it('stays expanded after losing focus', async () => {
-      // One-way on purpose: collapsing on blur would hide the agent just picked,
-      // and re-collapsing under the cursor reads as a glitch.
+    it('shows a single line until focused, then grows', async () => {
+      renderComposer({ collapsible: true });
+      expect(field()).toHaveAttribute('rows', '1');
+
+      await userEvent.click(field());
+
+      expect(field()).toHaveAttribute('rows', '3');
+    });
+
+    it('stays grown after losing focus', async () => {
+      // One-way on purpose: shrinking on blur would move the controls under
+      // the cursor, which reads as a glitch.
       renderComposer({ collapsible: true });
 
       await userEvent.click(field());
       await userEvent.tab();
 
-      expect(startButton()).toBeInTheDocument();
+      expect(field()).toHaveAttribute('rows', '3');
     });
 
-    it('starts expanded when not collapsible, as the dialog uses it', () => {
+    it('starts grown when not collapsible, as the dialog uses it', () => {
       renderComposer();
 
-      expect(startButton()).toBeInTheDocument();
+      expect(field()).toHaveAttribute('rows', '3');
     });
   });
 
@@ -207,7 +205,11 @@ describe('NewSessionComposer', () => {
     it('is disabled while a create is in flight', () => {
       renderComposer({ defaultAgent: sre, isStarting: true });
 
-      expect(screen.getByRole('button', { name: 'Starting…' })).toBeDisabled();
+      // Pending, react-aria names the button "Start Loading".
+      expect(screen.getByRole('button', { name: /^Start\b/ })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
     });
   });
 

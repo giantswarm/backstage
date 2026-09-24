@@ -211,16 +211,15 @@ describe('SessionsIndexPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('starts collapsed, expanding on focus', async () => {
+  it('starts collapsed, growing on focus', async () => {
     await render();
 
-    expect(
-      screen.queryByRole('button', { name: 'Start' }),
-    ).not.toBeInTheDocument();
+    expect(prompt()).toHaveAttribute('rows', '1');
+    expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
 
     await userEvent.click(prompt());
 
-    expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
+    expect(prompt()).toHaveAttribute('rows', '3');
   });
 
   describe('when there is no agent to start a session with', () => {

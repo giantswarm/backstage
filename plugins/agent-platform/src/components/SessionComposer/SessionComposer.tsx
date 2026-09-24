@@ -1,13 +1,15 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Flex } from '@backstage/ui';
 import {
-  CircularProgress,
-  IconButton,
-  InputBase,
-  makeStyles,
-} from '@material-ui/core';
+  Alert,
+  Button,
+  ButtonIcon,
+  Flex,
+  Text,
+  TextAreaField,
+} from '@backstage/ui';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import StopIcon from '@material-ui/icons/Stop';
+import { ComposerFrame } from '@giantswarm/backstage-plugin-ui-react';
 import { isSendKey } from '../../lib/sendKey';
 
 /**
@@ -24,81 +26,9 @@ import { isSendKey } from '../../lib/sendKey';
  */
 export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
 
-const useStyles = makeStyles(theme => ({
-  card: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1.5, 1.5, 1, 1.5),
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: 'var(--bui-radius-3)',
-    backgroundColor: theme.palette.background.paper,
-    transition: theme.transitions.create(['border-color', 'box-shadow']),
-    '&:focus-within': {
-      borderColor: theme.palette.primary.main,
-    },
-  },
-  cardDisabled: {
-    opacity: 0.7,
-  },
-  input: {
-    fontSize: '0.875rem',
-    lineHeight: 1.6,
-    padding: 0,
-  },
-  controls: {
-    display: 'flex',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: theme.spacing(2),
-  },
-  // Send, or Stop while a turn runs.
-  actions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    flexShrink: 0,
-  },
-  caption: {
-    fontSize: '0.75rem',
-    color: theme.palette.text.secondary,
-    lineHeight: 1.5,
-  },
-  captionError: {
-    color: theme.palette.error.main,
-  },
-  send: {
-    flexShrink: 0,
-    width: 32,
-    height: 32,
-    color: theme.palette.primary.contrastText,
-    backgroundColor: theme.palette.primary.main,
-    '&:hover': {
-      backgroundColor: theme.palette.primary.dark,
-    },
-    '&.Mui-disabled': {
-      color: theme.palette.action.disabled,
-      backgroundColor: theme.palette.action.disabledBackground,
-    },
-  },
-  // Same footprint as Send, so the control does not jump when the turn ends;
-  // a neutral fill rather than the primary one, because stopping is not the
-  // action this box invites.
-  stop: {
-    flexShrink: 0,
-    width: 32,
-    height: 32,
-    color: theme.palette.text.primary,
-    backgroundColor: theme.palette.action.selected,
-    '&:hover': {
-      backgroundColor: theme.palette.action.focus,
-    },
-    '&.Mui-disabled': {
-      color: theme.palette.action.disabled,
-      backgroundColor: theme.palette.action.disabledBackground,
-    },
-  },
-}));
+/** Rows the box shows when empty, and grows to before it scrolls. */
+const MIN_ROWS = 2;
+const MAX_ROWS = 12;
 
 export type SessionComposerProps = {
   /**
@@ -243,9 +173,10 @@ export function SessionComposer({
   isStopping = false,
   newSession,
 }: SessionComposerProps) {
-  const classes = useStyles();
   const [value, setValue] = useState('');
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // bui's field forwards its ref to the wrapper, not the textarea.
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const focusInput = () => fieldRef.current?.querySelector('textarea')?.focus();
 
   // Put a failed message's text back, once per attempt. Tracked by id rather than
   // by comparing text so that a second failure of the same text restores it again,
@@ -279,7 +210,7 @@ export function SessionComposer({
 
   useEffect(() => {
     if (autoFocus) {
-      inputRef.current?.focus();
+      focusInput();
     }
     // On mount only: this is where a navigation dropped the focus, not a
     // subscription to the prop.
@@ -300,7 +231,7 @@ export function SessionComposer({
     }
     const active = document.activeElement;
     if (!active || active === document.body) {
-      inputRef.current?.focus();
+      focusInput();
     }
   }, [isDisabled]);
 
@@ -382,62 +313,53 @@ export function SessionComposer({
           <Alert status="danger" title="Stop failed" description={stopError} />
         )}
 
-        <div
-          className={`${classes.card} ${isDisabled ? classes.cardDisabled : ''}`}
+        <ComposerFrame
+          minRows={MIN_ROWS}
+          maxRows={MAX_ROWS}
+          isDisabled={isDisabled}
           data-testid="composer-card"
-        >
-          <InputBase
-            className={classes.input}
-            fullWidth
-            multiline
-            minRows={2}
-            maxRows={12}
-            placeholder={placeholder}
-            value={value}
-            onChange={event => setValue(event.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isDisabled}
-            inputRef={inputRef}
-            inputProps={{ 'aria-label': 'Message' }}
-          />
-          <div className={classes.controls}>
-            <span
-              className={`${classes.caption} ${isTooLong ? classes.captionError : ''}`}
-            >
-              {isTooLong
-                ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
-                : caption}
-            </span>
-            <div className={classes.actions}>
-              {showStop ? (
-                <IconButton
-                  type="button"
-                  aria-label="Stop"
-                  className={classes.stop}
-                  disabled={isStopping}
-                  onClick={onStop}
-                >
-                  {isStopping ? (
-                    <CircularProgress size={16} color="inherit" />
-                  ) : (
-                    <StopIcon fontSize="small" />
-                  )}
-                </IconButton>
-              ) : (
-                !newSessionReplacesSend && (
-                  <IconButton
-                    type="submit"
-                    aria-label="Send"
-                    className={classes.send}
-                    disabled={!canSubmit}
-                  >
-                    <ArrowUpwardIcon fontSize="small" />
-                  </IconButton>
-                )
-              )}
-            </div>
-          </div>
-        </div>
+          input={
+            <TextAreaField
+              ref={fieldRef}
+              aria-label="Message"
+              placeholder={placeholder}
+              value={value}
+              onChange={setValue}
+              onKeyDown={handleKeyDown}
+              isDisabled={isDisabled}
+              rows={MIN_ROWS}
+            />
+          }
+          trailing={
+            showStop ? (
+              // Secondary rather than primary: stopping is not the action
+              // this box invites.
+              <ButtonIcon
+                type="button"
+                aria-label="Stop"
+                variant="secondary"
+                icon={<StopIcon />}
+                isPending={isStopping}
+                onPress={onStop}
+              />
+            ) : (
+              !newSessionReplacesSend && (
+                <ButtonIcon
+                  type="submit"
+                  aria-label="Send"
+                  icon={<ArrowUpwardIcon />}
+                  isDisabled={!canSubmit}
+                />
+              )
+            )
+          }
+        />
+
+        <Text variant="body-small" color={isTooLong ? 'danger' : 'secondary'}>
+          {isTooLong
+            ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
+            : caption}
+        </Text>
 
         {newSession && (
           // Under the box, not in it: it is a way out of this session, not one
