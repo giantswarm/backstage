@@ -131,7 +131,7 @@ describe('CollapsibleMarkdown', () => {
     const region = document.getElementById(
       toggle.getAttribute('aria-controls')!,
     )!;
-    const link = screen.getByRole('link', { name: 'the runbook' });
+    const link = screen.getByRole('link', { name: /^the runbook/ });
     stubBottom(region, 250);
     stubBottom(link, 400);
 
@@ -157,7 +157,7 @@ describe('CollapsibleMarkdown', () => {
     const region = document.getElementById(
       toggle.getAttribute('aria-controls')!,
     )!;
-    const link = screen.getByRole('link', { name: 'the runbook' });
+    const link = screen.getByRole('link', { name: /^the runbook/ });
     stubBottom(region, 250);
     stubBottom(link, 40);
 
