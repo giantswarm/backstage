@@ -1,3 +1,4 @@
+export * from './useAutosizeTextarea';
 export * from './useContainerDimensions';
 export * from './useDetailsPane';
 export * from './useFilters';

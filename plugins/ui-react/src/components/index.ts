@@ -5,6 +5,7 @@ export * from './Autocomplete';
 export * from './CodeBlock';
 export * from './CollapsibleMarkdown';
 export * from './CollapsibleMarkdownCard';
+export * from './ComposerFrame';
 export * from './ConditionsList';
 export * from './ConfirmDialog';
 export * from './ContentRow';

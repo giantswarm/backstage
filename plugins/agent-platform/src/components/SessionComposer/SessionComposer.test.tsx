@@ -405,7 +405,11 @@ describe('SessionComposer — Stop', () => {
       isStopping: true,
     });
 
-    expect(stopButton()).toBeDisabled();
+    // Pending, react-aria names the button "Stop Loading".
+    expect(screen.getByRole('button', { name: /^Stop\b/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     expect(screen.getByText('Stopping the agent…')).toBeInTheDocument();
   });
 
