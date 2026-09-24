@@ -121,7 +121,7 @@
     "form-data@npm:^4.0.0": "4.0.6",
     "form-data@npm:^4.0.4": "4.0.6",
     "form-data@npm:^4.0.5": "4.0.6",
-    "@ai-sdk/provider-utils@npm:4.0.41": "4.0.50",
+    "@ai-sdk/provider-utils@npm:4.0.41": "4.0.51",
     "undici@npm:^5.28.2": "8.10.2",
     "undici@npm:^5.29.0": "8.10.2",
     "undici@npm:7.24.7": "8.10.2",
