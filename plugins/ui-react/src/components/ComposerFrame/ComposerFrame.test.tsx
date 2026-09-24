@@ -94,5 +94,22 @@ describe('ComposerFrame', () => {
       expect(style.height).toBe('80px');
       expect(style.overflowY).toBe('auto');
     });
+
+    it('grows on typing into an uncontrolled field', () => {
+      contentHeight = 20;
+      render(
+        <ComposerFrame
+          minRows={2}
+          maxRows={4}
+          input={<textarea aria-label="Message" />}
+        />,
+      );
+      expect(screen.getByRole('textbox').style.height).toBe('40px');
+
+      contentHeight = 60;
+      fireEvent.input(screen.getByRole('textbox'));
+
+      expect(screen.getByRole('textbox').style.height).toBe('60px');
+    });
   });
 });
