@@ -2,21 +2,18 @@ import {
   Created,
   DeclarationEntry,
   DeclarationInput,
+  ManagerSchema,
   Notice,
   Problem,
   Validation,
   ValidationEntry,
 } from '../apis';
-import {
-  COMPONENT_TYPES,
-  FLAVOURS,
-  hasCIJob,
-  LANGUAGES,
-  nameProblem,
-} from '../lib/declaration';
+import { hasCIJob, nameProblem } from '../lib/declaration';
 
 /** What the in-memory validator knows of the world. */
 export interface ValidatorWorld {
+  /** The vocabulary the manager reports in `get_info`: what an entry's values must be one of. */
+  schema: Pick<ManagerSchema, 'componentTypes' | 'languages' | 'flavours'>;
   /** Whether `giantswarm/<name>` exists on GitHub. */
   taken: (name: string) => boolean;
   /** The caller's team slugs, as GitHub reports them. */
@@ -112,13 +109,12 @@ function judge(
   const flavours = gen.flavours ?? [];
   const language = gen.language ?? '';
 
-  if (
-    componentType &&
-    !COMPONENT_TYPES.some(choice => choice.id === componentType)
-  ) {
+  const { componentTypes = [], languages = [] } = world.schema;
+  const reportedFlavours = world.schema.flavours ?? [];
+  if (componentType && !componentTypes.includes(componentType)) {
     problems.push({
       field: 'componentType',
-      message: `value must be one of ${oneOf(COMPONENT_TYPES.map(c => c.id))}`,
+      message: `value must be one of ${oneOf(componentTypes)}`,
     });
   }
   if (flavours.length === 0) {
@@ -128,10 +124,10 @@ function judge(
     });
   }
   flavours.forEach((flavour, index) => {
-    if (!FLAVOURS.some(choice => choice.id === flavour)) {
+    if (!reportedFlavours.includes(flavour)) {
       problems.push({
         field: `gen.flavours[${index}]`,
-        message: `value must be one of ${oneOf(FLAVOURS.map(c => c.id))}`,
+        message: `value must be one of ${oneOf(reportedFlavours)}`,
       });
     }
   });
@@ -140,10 +136,10 @@ function judge(
       field: 'gen.language',
       message: 'required for a repository the reconciler creates',
     });
-  } else if (!LANGUAGES.some(choice => choice.id === language)) {
+  } else if (!languages.includes(language)) {
     problems.push({
       field: 'gen.language',
-      message: `value must be one of ${oneOf(LANGUAGES.map(c => c.id))}`,
+      message: `value must be one of ${oneOf(languages)}`,
     });
   }
 

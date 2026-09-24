@@ -445,6 +445,26 @@ export interface ManagerInfo {
      */
     source: string;
   };
+  /**
+   * The vocabulary the manager validates declarations against, read from
+   * the repositories schema it embeds; the declaration form offers these
+   * values and no others. Absent from a manager that predates it; with
+   * `error` and no lists when the schema could not be read.
+   */
+  schema?: ManagerSchema;
+}
+
+/** `get_info`'s `schema`: the enumerated values of a team-file entry. */
+export interface ManagerSchema {
+  /** Where the schema comes from: `embedded (github.com/giantswarm/devctl/v8 v8.98.1)`. */
+  origin: string;
+  /** Why the schema could not be read; the lists are absent then. */
+  error?: string;
+  componentTypes?: string[];
+  languages?: string[];
+  flavours?: string[];
+  visibilities?: string[];
+  lifecycles?: string[];
 }
 
 export interface RepositoriesConnectionResponse {

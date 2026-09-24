@@ -17,6 +17,7 @@ import { createRepositoryRouteRef } from '../../routes';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
 import { RepositoriesFilters } from '../RepositoriesFilters';
 import { RepositoriesTable } from '../RepositoriesTable';
+import { useManagerInfo } from '../useManagerInfo';
 
 const SCOPES: { id: Scope; label: string }[] = [
   { id: 'mine', label: 'My team' },
@@ -49,10 +50,7 @@ export function RepositoriesPage() {
 
   // Who the caller is decides the scope the page opens on; the tabs and
   // filters then live in the URL.
-  const info = useQuery({
-    queryKey: ['repositories', 'info'],
-    queryFn: () => api.getInfo(),
-  });
+  const info = useManagerInfo();
 
   const urlFilters = useMemo(
     () => filtersFromParams(searchParams),

@@ -21,6 +21,7 @@ import {
   records as fixtureRecords,
   renovateStateOf,
   rowOf,
+  schema as fixtureSchema,
   watchOf,
 } from './records';
 import { createInMemory, validateInMemory } from './validate';
@@ -31,6 +32,8 @@ export interface InMemoryApiOptions {
   records?: Record<string, InventoryRecord>;
   /** The moment activity is judged against; the fixtures' `NOW` by default. */
   now?: Date;
+  /** `get_info`'s `schema`, the vocabulary the form offers; the fixtures' `schema` by default. */
+  schema?: ManagerInfo['schema'];
 }
 
 export interface InMemoryRepositoriesApi extends RepositoriesApi {
@@ -205,6 +208,7 @@ export function createInMemoryApi(
     },
     inventory: { connected: true, records: records.size },
     circleci: { source: 'statuses+artifact' },
+    schema: 'schema' in options ? options.schema : fixtureSchema,
   };
 
   const record = (name: string): InventoryRecord => {
@@ -219,6 +223,7 @@ export function createInMemoryApi(
   };
 
   const world = {
+    schema: info.schema ?? {},
     taken: (name: string) => records.has(`giantswarm/${name}`),
     callerTeams: teams,
     login: 'alice',

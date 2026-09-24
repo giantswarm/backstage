@@ -22,6 +22,7 @@ import {
   refusedValidation,
   rowOf,
   records,
+  schema,
   watchOf,
   watchReady,
   watchRedRelease,
@@ -50,6 +51,7 @@ const info: ManagerInfo = {
   },
   inventory: { connected: true, records: 3 },
   circleci: { source: 'statuses+artifact' },
+  schema,
 };
 
 /** The inventory the Team choice reads the other teams off. */
@@ -79,7 +81,14 @@ function notFound() {
   return error;
 }
 
-async function renderPage(writes: Partial<RepositoriesApi>) {
+/**
+ * The page against the manager's answers; the declaration's choices read
+ * before the test goes on, unless it looks at the page while they are not.
+ */
+async function renderPage(
+  writes: Partial<RepositoriesApi>,
+  { choicesRead = true } = {},
+) {
   const api = {
     ...unusedWrites,
     getConnection: async () => ({ connected: true }),
@@ -99,7 +108,15 @@ async function renderPage(writes: Partial<RepositoriesApi>) {
     </TestApiProvider>,
   );
   await screen.findByRole('heading', { name: 'Create repository' });
+  if (choicesRead) {
+    await screen.findByRole('radiogroup', { name: 'What are you creating?' });
+  }
 }
+
+/** A manager reporting this schema instead of the fixtures'. */
+const reporting = (reported: ManagerInfo['schema']) => ({
+  getInfo: async (): Promise<ManagerInfo> => ({ ...info, schema: reported }),
+});
 
 const field = (name: RegExp) => screen.getByLabelText(name);
 const button = (name: string) => screen.getByRole('button', { name });
@@ -706,5 +723,121 @@ describe('CreateRepositoryPage', () => {
       }),
     );
     expect(button('Create')).toBeEnabled();
+  });
+});
+
+describe('CreateRepositoryPage: the declaration’s choices', () => {
+  it('offers the values the manager reports: one it adds shows under its own id, one it stops reporting is gone', async () => {
+    await renderPage(
+      reporting({
+        ...schema,
+        languages: ['generic', 'go', 'node', 'rust'],
+        flavours: ['app', 'cli', 'cluster-app', 'generic', 'k8sapi', 'wasm'],
+        visibilities: ['private'],
+      }),
+    );
+    await adjust();
+    await userEvent.click(select(/Language$/));
+    // Each option is its value, then what it means.
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([
+      expect.stringMatching(/^generic/),
+      expect.stringMatching(/^go/),
+      expect.stringMatching(/^node/),
+      'rustReported by giantswarm-repo-manager; the Dev Portal has no description of it yet.',
+    ]);
+    await userEvent.keyboard('{Escape}');
+    const nature = screen.getByRole('radiogroup', { name: /^Nature/ });
+    expect(
+      within(nature)
+        .getAllByRole('radio')
+        .map(choice => choice.getAttribute('aria-label')),
+    ).toEqual(['app', 'generic', 'cli']);
+    expect(screen.getByRole('checkbox', { name: 'wasm' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'plans' })).toBeNull();
+    expect(radio(/^Private/)).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /^Public/ })).toBeNull();
+  });
+
+  it('offers the fixtures’ report in full, fork excepted: a new repository is not a fork line', async () => {
+    await renderPage({});
+    await adjust();
+    const nature = screen.getByRole('radiogroup', { name: /^Nature/ });
+    expect(within(nature).getAllByRole('radio')).toHaveLength(5);
+    ['cluster-app', 'k8sapi', 'plans'].forEach(addon =>
+      expect(screen.getByRole('checkbox', { name: addon })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('checkbox', { name: 'fork' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'fork' })).toBeNull();
+  });
+
+  it('does not offer a preset whose values the manager does not report', async () => {
+    await renderPage(
+      reporting({ ...schema, flavours: ['app', 'cli', 'customer', 'generic'] }),
+    );
+    const presets = screen.getByRole('radiogroup', {
+      name: 'What are you creating?',
+    });
+    expect(
+      within(presets).queryByRole('radio', { name: /^Team plans/ }),
+    ).toBeNull();
+    expect(
+      within(presets).getByRole('radio', { name: /^Go service/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('says so while the manager is asked, and offers nothing yet', async () => {
+    await renderPage(
+      { getInfo: () => new Promise<ManagerInfo>(() => {}) },
+      { choicesRead: false },
+    );
+    expect(screen.getByTestId('vocabulary-loading')).toHaveTextContent(
+      'Reading the declaration’s choices from giantswarm-repo-manager…',
+    );
+    expect(
+      screen.queryByRole('radiogroup', { name: 'What are you creating?' }),
+    ).toBeNull();
+    expect(screen.queryByTestId('section-declaration')).toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: 'Visibility' })).toBeNull();
+    expect(button('Create')).toBeDisabled();
+  });
+
+  it('shows the manager’s reason when it could not read the schema, and Create stays disabled', async () => {
+    const validateRepository = jest.fn().mockResolvedValue(acceptedValidation);
+    await renderPage(
+      {
+        ...reporting({
+          origin: 'embedded (github.com/giantswarm/devctl/v8 v8.98.1)',
+          error: 'gen.flavours: no enum in the schema',
+        }),
+        validateRepository,
+      },
+      { choicesRead: false },
+    );
+    const alert = await screen.findByTestId('vocabulary-unavailable');
+    expect(alert).toHaveTextContent(
+      'giantswarm-repo-manager could not read the repositories schema (embedded (github.com/giantswarm/devctl/v8 v8.98.1)): gen.flavours: no enum in the schema',
+    );
+    await userEvent.type(field(/^Name/), 'shiny-service');
+    expect(
+      screen.queryByRole('radiogroup', { name: 'What are you creating?' }),
+    ).toBeNull();
+    expect(screen.getByTestId('review-hint')).toHaveTextContent(
+      'Create waits for the declaration’s choices',
+    );
+    expect(button('Create')).toBeDisabled();
+    expect(validateRepository).not.toHaveBeenCalled();
+  });
+
+  it('an older manager without a schema: the reason names its version, and there is no fallback', async () => {
+    await renderPage(reporting(undefined), { choicesRead: false });
+    expect(
+      await screen.findByTestId('vocabulary-unavailable'),
+    ).toHaveTextContent(
+      'giantswarm-repo-manager v0.9.4 does not report the repositories schema',
+    );
+    expect(screen.queryByTestId('section-declaration')).toBeNull();
+    expect(button('Create')).toBeDisabled();
   });
 });

@@ -3,6 +3,7 @@ import {
   Committed,
   Created,
   InventoryRecord,
+  ManagerSchema,
   Plan,
   PullRequest,
   RenovateState,
@@ -14,6 +15,39 @@ import {
   WATCH_PHASES,
   WatchPhaseName,
 } from '../apis';
+
+/**
+ * `get_info`'s `schema`, as giantswarm-repo-manager reports the repositories
+ * schema it embeds: the vocabulary the form offers and the in-memory
+ * validator judges against.
+ */
+export const schema: ManagerSchema = {
+  componentTypes: [
+    'appcatalog',
+    'cli',
+    'configuration',
+    'customer',
+    'library',
+    'service',
+    'template',
+    'unspecified',
+  ],
+  flavours: [
+    'app',
+    'cli',
+    'cluster-app',
+    'customer',
+    'fleet',
+    'fork',
+    'generic',
+    'k8sapi',
+    'plans',
+  ],
+  languages: ['generic', 'go', 'node', 'python', 'kyverno-policy'],
+  lifecycles: ['archived', 'deleted', 'deprecated', 'production'],
+  origin: 'embedded (github.com/giantswarm/devctl/v8 v8.98.1)',
+  visibilities: ['private', 'public'],
+};
 
 /**
  * Inventory records in the shape giantswarm-repo-manager stores them

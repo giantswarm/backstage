@@ -19,6 +19,7 @@ export type {
   Lifecycle,
   ListFilters,
   ManagerInfo,
+  ManagerSchema,
   Scope,
   SetupResult,
   SetupStep,
