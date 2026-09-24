@@ -35,7 +35,8 @@ const MONO: React.CSSProperties = { fontFamily: 'monospace' };
 
 /**
  * How the model is described: the ModelConfig's friendly name, with the model id
- * and provider underneath — and, where the serving layer has a word on the
+ * and provider underneath (or leading, when the ModelConfig has no display
+ * name) — and, where the serving layer has a word on the
  * model behind it, whether that model is serving (the same label the Model
  * configs and Agents views show; `Not serving` links to the Serving view).
  *
@@ -58,17 +59,25 @@ function ModelValue({
     return <NotAvailable />;
   }
 
-  const modelId = modelConfig?.getModel();
-  const provider = modelConfig?.getProvider();
+  const modelLine = [modelConfig?.getModel(), modelConfig?.getProvider()]
+    .filter(Boolean)
+    .join(' · ');
+  // Without the display-name annotation, `getDisplayName()` is the resource
+  // name, which the ModelConfig line below already shows. The model itself
+  // leads instead.
+  const displayName =
+    modelConfig && modelConfig.getDisplayName() !== modelConfig.getName()
+      ? modelConfig.getDisplayName()
+      : undefined;
 
   return (
     <Flex direction="column" gap="1">
       <Text variant="body-medium">
-        {modelConfig?.getDisplayName() ?? modelConfigName}
+        {displayName ?? (modelLine || modelConfigName)}
       </Text>
-      {(modelId || provider) && (
+      {displayName && modelLine && (
         <Text variant="body-small" color="secondary" style={MONO}>
-          {[modelId, provider].filter(Boolean).join(' · ')}
+          {modelLine}
         </Text>
       )}
       <Text variant="body-small" color="secondary">
