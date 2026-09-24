@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import {
-  Avatar,
   Badge,
   Cell,
   CellText,
@@ -36,6 +35,7 @@ import {
   sortSessionsByState,
   withSessionStates,
 } from './helpers';
+import { AgentAvatar } from '../AgentAvatar';
 
 /** The avatar is one line of text tall; request 2× for hi-dpi crispness. */
 const ROW_AVATAR_SIZE: AvatarSize = 48;
@@ -240,7 +240,7 @@ function getColumnConfig(
         <Cell>
           {row.agentName ? (
             <Flex align="center" gap="2">
-              <Avatar
+              <AgentAvatar
                 size="small"
                 purpose="decoration"
                 name={row.agentName}

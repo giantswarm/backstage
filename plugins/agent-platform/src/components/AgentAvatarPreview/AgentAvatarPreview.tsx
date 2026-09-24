@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
-import { Avatar } from '@backstage/ui';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
+import { AgentAvatar } from '../AgentAvatar';
 
 /**
  * ~72px preview slot — larger than bui's biggest token (x-large = 48px), so the
@@ -46,7 +46,7 @@ export function AgentAvatarPreview() {
   });
 
   return (
-    <Avatar
+    <AgentAvatar
       // The name is shown in the adjacent field, so keep the avatar decorative.
       purpose="decoration"
       name={state.name || state.slug}

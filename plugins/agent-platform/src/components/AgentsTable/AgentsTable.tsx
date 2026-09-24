@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import {
-  Avatar,
   Cell,
   CellText,
   ColumnConfig,
@@ -29,6 +28,7 @@ import {
   MUTED_ROW_STYLE,
 } from './modelStatus';
 import { AgentReadinessCell } from './readinessStatus';
+import { AgentAvatar } from '../AgentAvatar';
 
 /** The default order, and the one while the Installation column is hidden. */
 const BY_INSTALLATION = {
@@ -80,7 +80,7 @@ function getColumnConfig(
         return (
           <Cell style={isAgentRowMuted(row) ? MUTED_ROW_STYLE : undefined}>
             <Flex align="start" gap="3">
-              <Avatar
+              <AgentAvatar
                 size="large"
                 purpose="decoration"
                 name={row.name}
