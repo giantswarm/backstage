@@ -23,6 +23,7 @@ import {
   RepositoriesProviders,
   repositoriesQueryClient,
 } from '../RepositoriesProviders';
+import { REPOSITORY_SETUP_DOCS_URL } from '../../lib/docs';
 import { bounceToConnect } from '../connectBounce';
 import { RepositoriesPage } from './RepositoriesPage';
 
@@ -150,6 +151,19 @@ describe('RepositoriesPage', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Show archived' }),
     ).not.toBeChecked();
+  });
+
+  it('links the repository set-up docs from the header, in a new tab', async () => {
+    await renderPage(fakeApi());
+
+    // The label says where it goes; the portal's Link adds the new-window
+    // notice for screen readers and the external-link icon.
+    const docs = await screen.findByRole('link', {
+      name: /^Repository set-up docs\s*, Opens in a new window$/,
+    });
+    expect(docs).toHaveAttribute('href', REPOSITORY_SETUP_DOCS_URL);
+    expect(docs).toHaveAttribute('target', '_blank');
+    expect(docs).toHaveAttribute('rel', expect.stringContaining('noopener'));
   });
 
   it('shows the set-up as one icon per row, the state in its name', async () => {
