@@ -4,6 +4,7 @@ import {
   SidebarGroup,
   SidebarItem,
   SidebarSpace,
+  useSidebarPinState,
 } from '@backstage/core-components';
 import { compatWrapper } from '@backstage/core-compat-api';
 import { useApiHolder } from '@backstage/core-plugin-api';
@@ -57,6 +58,16 @@ function AiChatSidebarItem() {
   }
 
   return null;
+}
+
+/**
+ * The mobile sidebar is a bottom bar that renders only `SidebarGroup`s, so an
+ * item outside a group is not shown there at all. On mobile the Cluster access
+ * item goes into the Menu group; elsewhere it sits above Settings.
+ */
+function ClusterAccessSidebarItem({ mobile }: { mobile: boolean }) {
+  const { isMobile = false } = useSidebarPinState();
+  return isMobile === mobile ? <ClusterAccessStatusSidebarItem /> : null;
 }
 
 /**
@@ -124,33 +135,36 @@ export const SidebarContent = NavContentBlueprint.make({
       const menuGroups = [group1, group2, group3].filter(g => g.length > 0);
 
       return compatWrapper(
-        <Sidebar>
-          <SidebarLogo />
-
-          {searchItem && (
-            <SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
-              <SidebarSearchModal />
-            </SidebarGroup>
-          )}
-          <SidebarGroup label="Menu" icon={<MenuIcon />}>
-            {menuGroups.flatMap((group, i) => [
-              <SidebarDivider key={`divider-${i}`} />,
-              ...group,
-            ])}
-          </SidebarGroup>
-          <SidebarSpace />
-          <SidebarDivider />
+        <>
           <ClusterAccessConnector />
-          <ClusterAccessStatusSidebarItem />
-          <SidebarDivider />
-          <SidebarGroup
-            label="Settings"
-            icon={<UserSettingsSignInAvatar />}
-            to="/settings"
-          >
-            <SidebarSettings />
-          </SidebarGroup>
-        </Sidebar>,
+          <Sidebar>
+            <SidebarLogo />
+
+            {searchItem && (
+              <SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
+                <SidebarSearchModal />
+              </SidebarGroup>
+            )}
+            <SidebarGroup label="Menu" icon={<MenuIcon />}>
+              {menuGroups.flatMap((group, i) => [
+                <SidebarDivider key={`divider-${i}`} />,
+                ...group,
+              ])}
+              <ClusterAccessSidebarItem mobile />
+            </SidebarGroup>
+            <SidebarSpace />
+            <SidebarDivider />
+            <ClusterAccessSidebarItem mobile={false} />
+            <SidebarDivider />
+            <SidebarGroup
+              label="Settings"
+              icon={<UserSettingsSignInAvatar />}
+              to="/settings"
+            >
+              <SidebarSettings />
+            </SidebarGroup>
+          </Sidebar>
+        </>,
       );
     },
   },

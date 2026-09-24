@@ -1,5 +1,5 @@
 import { MouseEvent, useEffect, useMemo, useState } from 'react';
-import { SidebarItem } from '@backstage/core-components';
+import { SidebarItem, useSidebarPinState } from '@backstage/core-components';
 import { useApi, errorApiRef } from '@backstage/core-plugin-api';
 import { Switch } from '@backstage/ui';
 import {
@@ -169,6 +169,9 @@ export function ClusterAccessStatusSidebarItem() {
   const mutedApi = useApi(mutedInstallationsApiRef);
   const mainAuthApi = useApi(gsAuthApiRef);
   const errorApi = useApi(errorApiRef);
+  // In the mobile sidebar the item is a full-width row in the Menu overlay, so
+  // the popover opens above it instead of to its right.
+  const { isMobile } = useSidebarPinState();
 
   const [entries, setEntries] = useState<ClusterAccessStatusEntry[]>(
     statusApi.getSnapshot(),
@@ -256,8 +259,16 @@ export function ClusterAccessStatusSidebarItem() {
         open={Boolean(anchorEl)}
         anchorEl={anchorEl}
         onClose={() => setAnchorEl(null)}
-        anchorOrigin={{ vertical: 'center', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'center', horizontal: 'left' }}
+        anchorOrigin={
+          isMobile
+            ? { vertical: 'top', horizontal: 'center' }
+            : { vertical: 'center', horizontal: 'right' }
+        }
+        transformOrigin={
+          isMobile
+            ? { vertical: 'bottom', horizontal: 'center' }
+            : { vertical: 'center', horizontal: 'left' }
+        }
         classes={{ paper: classes.popover }}
       >
         <div className={classes.header}>
