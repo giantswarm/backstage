@@ -28,6 +28,7 @@ import {
   getWorkloadPodPrefix,
 } from '../utils/getWorkloadIdentifiers';
 import { EditDeploymentButton } from './EditDeploymentButton';
+import { DeleteDeploymentButton } from './DeleteDeploymentButton';
 
 export type DeploymentLayoutRouteProps = {
   path: string;
@@ -198,10 +199,16 @@ export const DeploymentLayout = ({ children }: DeploymentLayoutProps) => {
         customActions={
           <>
             {deployment && deployment instanceof HelmRelease && (
-              <EditDeploymentButton
-                deployment={deployment}
-                installationName={installationName}
-              />
+              <>
+                <EditDeploymentButton
+                  deployment={deployment}
+                  installationName={installationName}
+                />
+                <DeleteDeploymentButton
+                  deployment={deployment}
+                  installationName={installationName}
+                />
+              </>
             )}
             {deployment &&
               (() => {
