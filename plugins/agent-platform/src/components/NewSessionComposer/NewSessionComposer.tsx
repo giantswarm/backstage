@@ -397,7 +397,6 @@ export function NewSessionComposer({
               // `SessionRenameDialog`.
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={autoFocus}
-              rows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
             />
           }
           leading={
@@ -426,7 +425,9 @@ export function NewSessionComposer({
               type="submit"
               aria-label="Start"
               icon={<ArrowForwardIcon />}
-              isDisabled={!canSubmit}
+              // Not disabled while starting: pending keeps the button focused,
+              // so the wait is announced and a failure leaves focus in place.
+              isDisabled={!canSubmit && !isStarting}
               isPending={isStarting}
             />
           }

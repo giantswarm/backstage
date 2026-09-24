@@ -15,7 +15,6 @@ const meta = {
       <TextAreaField
         aria-label="Prompt"
         placeholder="What should the agent do?"
-        rows={3}
       />
     ),
     leading: (
@@ -82,7 +81,6 @@ export const Reply: Story = {
       <TextAreaField
         aria-label="Message"
         placeholder="Send a message to this session…"
-        rows={2}
       />
     ),
     leading: undefined,
@@ -131,7 +129,6 @@ export const Disabled: Story = {
       <TextAreaField
         aria-label="Message"
         placeholder="Answer the question above to continue."
-        rows={2}
         isDisabled
       />
     ),

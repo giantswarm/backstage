@@ -2,7 +2,7 @@ import { MouseEvent, ReactNode, useRef } from 'react';
 import { Box } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import classNames from 'classnames';
-import { useAutosizeTextarea } from './useAutosizeTextarea';
+import { useAutosizeTextarea } from '../../hooks/useAutosizeTextarea';
 
 // The controls keep bui's field radius rather than a strictly concentric one
 // (the frame's minus its padding): at 32px, 4px corners read as square.
@@ -34,6 +34,11 @@ const useStyles = makeStyles({
       resize: 'none',
       '&[data-focused]': {
         boxShadow: 'none',
+      },
+      // The frame dims the whole box; dimming the text again would take it
+      // below readable contrast.
+      '&[data-disabled]': {
+        opacity: 1,
       },
     },
 

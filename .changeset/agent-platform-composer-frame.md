@@ -1,5 +1,5 @@
 ---
-'@giantswarm/backstage-plugin-agent-platform': patch
+'@giantswarm/backstage-plugin-agent-platform': minor
 ---
 
 Composers: starting a session and replying in one use the same box. The agent

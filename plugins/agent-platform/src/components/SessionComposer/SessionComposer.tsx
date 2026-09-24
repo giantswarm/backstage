@@ -327,7 +327,6 @@ export function SessionComposer({
               onChange={setValue}
               onKeyDown={handleKeyDown}
               isDisabled={isDisabled}
-              rows={MIN_ROWS}
             />
           }
           trailing={

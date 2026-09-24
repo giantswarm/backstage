@@ -2188,19 +2188,19 @@ bottom-left and Start is a right-pointing arrow bottom-right; on a session's pag
 arrow points up (Send) and Stop takes its slot while a turn runs. The caption goes
 under the box.
 
-It appears in two places. **Inline above the sessions list**, with a single-line
-text field that grows on focus (the picker and Start show throughout), because that list is the prototype's "Mine" scope, where
-creating is the job of the view rather than a secondary action — and kagent scoping
-sessions to the signed-in user is exactly what makes our one list that scope. And in a
-**dialog on the agent detail page**, opened by "Start a session" in the header, with
-that agent preselected and the picker offering only it. Neither placement puts a
-button in the shared page header for anything but opening the dialog: that slot renders
-outside the plugin's `QueryClientProvider`, so the create mutation would have no client
-there.
+It appears in two places. **Inline above the sessions list**, with a single-line text
+field that grows on focus (the picker and Start show throughout), because that list is
+the prototype's "Mine" scope, where creating is the job of the view rather than a
+secondary action — and kagent scoping sessions to the signed-in user is exactly what
+makes our one list that scope. And in a **dialog on the agent detail page**, opened by
+"Start a session" in the header, with that agent preselected and the picker offering
+only it. Neither placement puts a button in the shared page header for anything but
+opening the dialog: that slot renders outside the plugin's `QueryClientProvider`, so
+the create mutation would have no client there.
 
-The growth is **one-way**. Nothing shrinks the inline composer again, because
-shrinking on blur would move the controls under the cursor, which reads as a glitch. **Enter starts** and Shift+Enter inserts a newline, matching the
-reply composer.
+The growth is **one-way**. Nothing shrinks the inline composer again, because shrinking
+on blur would move the controls under the cursor, which reads as a glitch. **Enter
+starts** and Shift+Enter inserts a newline, matching the reply composer.
 
 #### Create, navigate, then send — in that order
 

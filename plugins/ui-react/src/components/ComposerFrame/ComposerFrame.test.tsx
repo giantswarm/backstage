@@ -107,7 +107,9 @@ describe('ComposerFrame', () => {
       expect(screen.getByRole('textbox').style.height).toBe('40px');
 
       contentHeight = 60;
-      fireEvent.input(screen.getByRole('textbox'));
+      fireEvent.input(screen.getByRole('textbox'), {
+        target: { value: 'three\nlines\nhere' },
+      });
 
       expect(screen.getByRole('textbox').style.height).toBe('60px');
     });
