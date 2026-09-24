@@ -27,6 +27,7 @@ import {
   toServingBackend,
   toServingCapabilities,
   toServingLoading,
+  runtimeLabel,
   validateModelRef,
 } from './modelManagerServing';
 import { findServedModel } from './serving';
@@ -76,6 +77,52 @@ describe('toServingBackend / toServingCapabilities', () => {
       nodeInventory: false,
       search: false,
     });
+  });
+});
+
+describe('toServedModelFromManager · API interfaces', () => {
+  const running = kserveModels.find(model => model.running)!;
+  const withInterfaces = modelManagerModelSchema.parse({
+    ...modelsKserve.models.find(model => model.running),
+    running: {
+      ...modelsKserve.models.find(model => model.running)!.running,
+      endpoint: 'http://agentgateway.agent-platform.svc:8081',
+      runtime: { name: 'vllm', version: '0.23.0' },
+      interfaces: [
+        { type: 'Completions', path: '/v1/chat/completions' },
+        { type: 'Messages', path: '/v1/messages' },
+        { bogus: true },
+      ],
+      publicName: 'qwen3-14b',
+    },
+  });
+
+  it('carries the runtime, the interfaces and the public name model-manager reports', () => {
+    const served = toServedModelFromManager('lab', kserve, withInterfaces);
+    expect(served.runtime).toBe('vLLM 0.23.0');
+    expect(served.interfaces).toEqual([
+      { type: 'Completions', path: '/v1/chat/completions' },
+      { type: 'Messages', path: '/v1/messages' },
+    ]);
+    expect(served.publicName).toBe('qwen3-14b');
+    expect(served.internalUrl).toBe(
+      'http://agentgateway.agent-platform.svc:8081',
+    );
+  });
+
+  it('reports none of it for a model-manager that says nothing', () => {
+    const served = toServedModelFromManager('lab', kserve, running);
+    expect(served.runtime).toBeUndefined();
+    expect(served.interfaces).toBeUndefined();
+    expect(served.publicName).toBeUndefined();
+  });
+
+  it('names the runtime with its version as the server reports it', () => {
+    expect(runtimeLabel({ name: 'vllm', version: '0.1.dev1+g51f799c1a' })).toBe(
+      'vLLM 0.1.dev1+g51f799c1a',
+    );
+    expect(runtimeLabel({ name: 'vllm' })).toBe('vLLM');
+    expect(runtimeLabel({ name: 'sglang', version: '0.5' })).toBe('sglang 0.5');
   });
 });
 

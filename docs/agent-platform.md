@@ -227,6 +227,22 @@ Ollama loads it on the first request anyway), `notReady`, `pending`. A model's
 **features** (`tools`, `vision`, `thinking`, …) are shown, with a warning where
 `tools` is missing: agents cannot use such a model.
 
+**The APIs a served model answers** (KServe, model-manager 1.1.0 on): a Ready
+model reports the interfaces its running server registered, read from vLLM's
+route list, and the runtime with its version. The row shows an **API** column
+— one chip per interface in a fixed order (Chat completions, Responses,
+Messages, count_tokens, Embeddings), the route on hover — only when a row of
+the group reports one, and the runtime version in the group header (`KServe ·
+vLLM 0.23.0`). On an installation with the platform's LLM endpoint
+(model-manager 1.2.0 on) a model on it reports its **public name** — what a
+client sends as `model` there — and the endpoint's URL: the Model column shows
+the name under the served id, the copy action yields that URL, and the
+ModelConfig reaches the model there. At Ready the step timeline adds one
+copy-able `curl` per interface, filled with the URL, the name to send and the
+auth the endpoint checks (the person's Dex token on the models Gateway, an API
+key of the LLM endpoint outside the cluster, none on an in-cluster address;
+`lib/servedModelApi.ts`); _Try it_ sends the same name.
+
 **Pulling** starts a job (`pull_model` answers with it) that
 the downloads panel polls every 2 s while running (`list_jobs`), showing
 bytes and percent, then the outcome — including the kagent ModelConfig the job

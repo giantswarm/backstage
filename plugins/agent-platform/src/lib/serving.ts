@@ -292,6 +292,16 @@ export function notLoadedReadiness(
   return 'available';
 }
 
+/**
+ * One API a served model answers, as its running server registered it
+ * (model-manager 1.1.0 on, KServe): agentgateway's format name and the
+ * route, relative to the model's `internalUrl`.
+ */
+export type ServedModelInterface = {
+  type: string;
+  path: string;
+};
+
 export type ServedModel = {
   /** Stable unique key: installation + backend + namespace + name. */
   id: string;
@@ -351,6 +361,20 @@ export type ServedModel = {
   gpuCount?: number;
   /** URL in-cluster clients (a kagent ModelConfig) use. */
   internalUrl?: string;
+  /**
+   * The APIs the model answers (KServe, model-manager 1.1.0 on), read from
+   * its running server. `undefined` when the backend does not say; empty
+   * with `interfacesReason` when it read none.
+   */
+  interfaces?: ServedModelInterface[];
+  interfacesReason?: string;
+  /**
+   * The model's name on the platform's LLM endpoint — what a client sends as
+   * `model` there (model-manager 1.2.0 on); `internalUrl` is then the
+   * endpoint. `publicNameReason` says why a served model is not on it.
+   */
+  publicName?: string;
+  publicNameReason?: string;
   /** Published URL, when the backend exposes one. */
   externalUrl?: string;
   /**

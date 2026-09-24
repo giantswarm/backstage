@@ -200,12 +200,14 @@ describe('columnsForRows', () => {
       model: true,
       runtime: false,
       capabilities: false,
+      api: false,
     });
     expect(columnsForRows(ollamaRows)).toEqual({
       placement: false,
       model: false,
       runtime: false,
       capabilities: true,
+      api: false,
     });
     // A fresh LLMInferenceService alone: nothing placed, nothing to show yet.
     expect(columnsForRows([rows[2]])).toEqual({
@@ -213,6 +215,7 @@ describe('columnsForRows', () => {
       model: false,
       runtime: false,
       capabilities: false,
+      api: false,
     });
   });
 
@@ -544,6 +547,69 @@ describe('downloadLine, downloadPercent and servedModelStatusLines on a download
     expect(servedModelStatusLines({ ...downloading, loaded: false })).toEqual([
       'pulling 6f7f… · 30 % · 114 MiB / 381 MiB',
     ]);
+  });
+});
+
+describe('ServedModelsTable · API interfaces', () => {
+  const generate = [
+    { type: 'Messages', path: '/v1/messages' },
+    { type: 'Completions', path: '/v1/chat/completions' },
+    { type: 'Responses', path: '/v1/responses' },
+    { type: 'AnthropicTokenCount', path: '/v1/messages/count_tokens' },
+  ];
+  const served: ServedModelRow = {
+    ...rows[0],
+    id: 'lab/kserve/model-serving/qwen2-5-0-5b-cpu',
+    installation: 'lab',
+    name: 'qwen2-5-0-5b-cpu',
+    modelSource: 'Qwen/Qwen2.5-0.5B-Instruct',
+    runtime: 'vLLM 0.23.0',
+    interfaces: generate,
+    publicName: 'qwen2-5-0-5b-cpu',
+    internalUrl: 'http://agentgateway.agent-platform.svc:8081',
+    externalUrl: undefined,
+  };
+
+  it('shows one chip per interface in the fixed order, the route on hover, and the public name', async () => {
+    await renderTable(<ServedModelsTable rows={[served]} />);
+    expect(
+      screen.getByRole('columnheader', { name: 'API' }),
+    ).toBeInTheDocument();
+    const chips = ['Chat completions', 'Responses', 'Messages', 'count_tokens'];
+    const cell = screen
+      .getByText('Chat completions')
+      .closest('[role="gridcell"]') as HTMLElement;
+    expect(
+      within(cell)
+        .getAllByText(/./)
+        .map(node => node.textContent),
+    ).toEqual(chips);
+    expect(screen.getByText('Messages').closest('span[title]')).toHaveAttribute(
+      'title',
+      '/v1/messages',
+    );
+    expect(screen.getByText('model name qwen2-5-0-5b-cpu')).toBeInTheDocument();
+    expect(screen.getByText('KServe · vLLM 0.23.0')).toBeInTheDocument();
+  });
+
+  it('shows no API column when no row of the group reports interfaces', async () => {
+    await renderTable(
+      <ServedModelsTable
+        rows={[
+          {
+            ...served,
+            interfaces: [],
+            interfacesReason: 'no route list',
+            publicName: undefined,
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByRole('columnheader', { name: 'API' })).toBeNull();
+    expect(columnsForRows([{ ...served, interfaces: undefined }]).api).toBe(
+      false,
+    );
+    expect(columnsForRows([served]).api).toBe(true);
   });
 });
 
