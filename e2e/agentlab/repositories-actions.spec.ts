@@ -226,6 +226,109 @@ async function answered(page: Page) {
 const ciGenerate = (page: Page) =>
   page.getByRole('checkbox', { name: 'Generate CircleCI config' });
 
+/** `get_info` as the page reads it: the manager's version and its `schema`. */
+interface Info {
+  version: string;
+  schema?: {
+    origin: string;
+    error?: string;
+    componentTypes?: string[];
+    languages?: string[];
+    flavours?: string[];
+    visibilities?: string[];
+  };
+}
+
+/** The backend's `get_info` route, as the page calls it. */
+const isInfo = (url: URL) => url.pathname.endsWith('/api/repositories/info');
+
+/**
+ * The flavours the form does not offer on purpose: `fork` declares a fork
+ * line, `helmchart` is a pre-commit flavour devctl refuses in `gen.flavours`.
+ */
+const UNOFFERED_FLAVOURS = ['fork', 'helmchart'];
+
+/** Opens Create repository and returns the page's own `get_info` answer. */
+async function openCreate(page: Page): Promise<Info> {
+  const answer = page.waitForResponse(
+    response => isInfo(new URL(response.url())) && response.ok(),
+    { timeout: 60_000 },
+  );
+  await open(page, '/repositories/create');
+  return (await answer).json();
+}
+
+/**
+ * The page reloaded on a `get_info` whose answer is the manager's, rewritten;
+ * the stub is removed again after `check`.
+ */
+async function withInfo(
+  page: Page,
+  rewrite: (info: Info) => Info,
+  check: (info: Info) => Promise<void>,
+) {
+  let rewritten: (answer: Info) => void = () => {};
+  const answered = new Promise<Info>(resolve => {
+    rewritten = resolve;
+  });
+  const stub = async (route: Route) => {
+    const response = await route.fetch();
+    const answer = rewrite(await response.json());
+    await route.fulfill({ response, json: answer });
+    rewritten(answer);
+  };
+  await page.route(isInfo, stub);
+  try {
+    await page.reload();
+    const answer = await answered;
+    await expect(page.getByTestId('vocabulary-loading')).toHaveCount(0, {
+      timeout: 60_000,
+    });
+    await check(answer);
+  } finally {
+    await page.unroute(isInfo, stub);
+  }
+}
+
+/** A Select's options are exactly `values`, by name; the list closes again. */
+async function expectOptions(page: Page, label: string, values: string[]) {
+  await page.getByRole('button', { name: new RegExp(`${label}$`) }).click();
+  const listbox = page.getByRole('listbox');
+  await expect(listbox.getByRole('option')).toHaveCount(values.length);
+  for (const value of values) {
+    await expect(
+      listbox.getByRole('option', { name: value, exact: true }),
+    ).toHaveCount(1);
+  }
+  await page.keyboard.press('Escape');
+  await expect(listbox).toHaveCount(0);
+}
+
+/** The values of a group's radios or checkboxes, sorted. */
+const valuesOf = (controls: Locator) =>
+  controls
+    .evaluateAll(inputs =>
+      inputs.map(input => (input as HTMLInputElement).value),
+    )
+    .then(values => values.sort());
+
+const sorted = (values: string[]) => [...values].sort();
+
+/** The schema's lists the form offers, empty where the answer has none. */
+function listsOf(info: Info) {
+  const {
+    componentTypes = [],
+    languages = [],
+    flavours = [],
+    visibilities = [],
+  } = info.schema ?? {};
+  return { componentTypes, languages, flavours, visibilities };
+}
+
+/** The preset question's radio group: absent while nothing can be declared. */
+const presets = (page: Page) =>
+  page.getByRole('radiogroup', { name: 'What are you creating?' });
+
 /**
  * The first declared repository of the All scope with its row expanded --
  * the team-file actions need an entry: its name as the row shows it, and the
@@ -417,6 +520,145 @@ test.describe('repositories: actions', () => {
     await expect(admin.getByRole('button', { name: 'Create' })).toBeVisible();
   });
 
+  test('the declaration offers exactly what giantswarm-repo-manager reports in get_info’s schema: the catalog types, languages, flavours and visibilities', async ({
+    admin,
+  }) => {
+    const info = await openCreate(admin);
+    // The lab's manager reports its schema, readable and with every list.
+    expect(
+      info.schema,
+      `giantswarm-repo-manager ${info.version} reports the repositories schema`,
+    ).toBeDefined();
+    expect(info.schema?.error).toBeUndefined();
+    const schema = listsOf(info);
+    for (const [list, values] of Object.entries(schema)) {
+      expect(values.length, `schema.${list}`).toBeGreaterThan(0);
+    }
+    await expect(presets(admin)).toBeVisible();
+    await expect(admin.getByTestId('vocabulary-unavailable')).toHaveCount(0);
+
+    // The visibility: one radio per reported value.
+    const visibility = admin
+      .getByRole('radiogroup', { name: /^Visibility/ })
+      .getByRole('radio');
+    await expect(visibility).toHaveCount(schema.visibilities.length);
+    expect(await valuesOf(visibility)).toEqual(sorted(schema.visibilities));
+    // The Team plans preset declares the plans flavour: offered iff reported.
+    await expect(admin.getByRole('radio', { name: /^Team plans/ })).toHaveCount(
+      schema.flavours.includes('plans') ? 1 : 0,
+    );
+
+    // Behind Adjust: the catalog type and the language as reported; the
+    // nature and the add-ons together are the reported flavours but the two
+    // the form does not offer.
+    await adjust(admin);
+    await expect(admin.getByTestId('declaration-fields')).toBeVisible();
+    await expectOptions(admin, 'Catalog type', schema.componentTypes);
+    await expectOptions(admin, 'Language', schema.languages);
+    const natures = await valuesOf(
+      admin.getByRole('radiogroup', { name: /^Nature/ }).getByRole('radio'),
+    );
+    const addons = await valuesOf(
+      admin.getByRole('group', { name: /^Add-ons/ }).getByRole('checkbox'),
+    );
+    expect(natures.length).toBeGreaterThan(0);
+    expect(sorted([...natures, ...addons])).toEqual(
+      sorted(schema.flavours.filter(id => !UNOFFERED_FLAVOURS.includes(id))),
+    );
+
+    const shot = test.info().outputPath('create-form-adjusted.png');
+    await admin.screenshot({ path: shot, fullPage: true });
+    await test.info().attach('Create repository after Adjust', {
+      path: shot,
+      contentType: 'image/png',
+    });
+  });
+
+  test('without the manager’s schema the form says why and declares nothing: a schema it could not read, a manager that reports none', async ({
+    admin,
+  }) => {
+    await openCreate(admin);
+    const unavailable = admin.getByTestId('vocabulary-unavailable');
+    const create = admin.getByRole('button', { name: 'Create' });
+    const nothingToDeclare = async () => {
+      await expect(presets(admin)).toHaveCount(0);
+      await expect(
+        admin.getByRole('radiogroup', { name: /^Visibility/ }),
+      ).toHaveCount(0);
+      await expect(admin.getByTestId('section-declaration')).toHaveCount(0);
+      await expect(create).toBeDisabled();
+    };
+
+    const error = 'e2e: repositories.schema.json is not valid JSON';
+    await withInfo(
+      admin,
+      info => ({
+        ...info,
+        schema: { origin: info.schema?.origin ?? 'embedded', error },
+      }),
+      async info => {
+        await expect(unavailable).toContainText(
+          `could not read the repositories schema (${info.schema?.origin}): ${error}`,
+        );
+        await nothingToDeclare();
+      },
+    );
+
+    await withInfo(
+      admin,
+      info => ({ ...info, schema: undefined }),
+      async info => {
+        await expect(unavailable).toContainText(
+          `giantswarm-repo-manager ${info.version} does not report the repositories schema`,
+        );
+        await nothingToDeclare();
+      },
+    );
+  });
+
+  test('a value the manager adds to its schema is offered and one it drops is not: the choices follow get_info, not the Dev Portal', async ({
+    admin,
+  }) => {
+    await openCreate(admin);
+    await withInfo(
+      admin,
+      info => {
+        const { languages, flavours } = listsOf(info);
+        return {
+          ...info,
+          schema: {
+            ...(info.schema as NonNullable<Info['schema']>),
+            languages: [...languages.filter(id => id !== 'python'), 'rust'],
+            flavours: flavours.filter(id => id !== 'plans'),
+          },
+        };
+      },
+      async info => {
+        await expect(presets(admin)).toBeVisible();
+        // Without the plans flavour there is no Team plans preset.
+        await expect(
+          admin.getByRole('radio', { name: /^Team plans/ }),
+        ).toHaveCount(0);
+        await adjust(admin);
+        await admin.getByRole('button', { name: /Language$/ }).click();
+        const listbox = admin.getByRole('listbox');
+        await expect(
+          listbox.getByRole('option', { name: 'rust', exact: true }),
+        ).toHaveCount(1);
+        await expect(
+          listbox.getByRole('option', { name: 'python', exact: true }),
+        ).toHaveCount(0);
+        await expect(listbox.getByRole('option')).toHaveCount(
+          listsOf(info).languages.length,
+        );
+        await admin.keyboard.press('Escape');
+        await expect(
+          admin.getByRole('checkbox', { name: 'plans', exact: true }),
+        ).toHaveCount(0);
+      },
+    );
+  });
+
   test('Create names the repository, its scaffold commit and the pull request as the person, follows the phases to readiness and marks the repository ready only then', async ({
     admin,
   }) => {
@@ -510,7 +752,10 @@ test.describe('repositories: actions', () => {
         result.getByRole('link', { name: `giantswarm/${NAME}` }),
       ).toHaveAttribute('href', `https://github.com/giantswarm/${NAME}`);
       await expect(result).toContainText('ready');
-      await expect(live.getByTestId('setup-state')).toHaveText('not converged');
+      // The state and what it means: drift steps are off the declared set-up.
+      await expect(live.getByTestId('setup-state')).toHaveText(
+        'not converged · off its declared set-up',
+      );
       const steps = live.getByTestId('setup-steps');
       await expect(steps.getByText('scaffold')).toBeVisible();
       await expect(steps.getByRole('row', { name: /scaffold/ })).toContainText(
