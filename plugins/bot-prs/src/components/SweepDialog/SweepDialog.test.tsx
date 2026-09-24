@@ -63,6 +63,13 @@ const previewOf = (repo: string, number: number): MargeResult => ({
   ],
 });
 
+/** What Chrome's fetch rejects with when the connection closes under it. */
+const connectionLost = () =>
+  new TypeError('Failed to fetch (devportal.giantswarm.io)');
+
+const sweepsOf = (team: string) =>
+  callTool.mock.calls.filter(([, args]) => args.team === team);
+
 function renderDialog(prsByTeam: Record<string, string[]>) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -165,5 +172,82 @@ describe('SweepDialog', () => {
     // The team that answered is still previewed and still applicable.
     const confirm = await screen.findByRole('button', { name: 'Apply sweep' });
     await waitFor(() => expect(confirm).toBeEnabled());
+  });
+
+  it('previews again only the team whose answer was lost', async () => {
+    let lost = true;
+    callTool.mockImplementation((_tool, args: { team: string }) => {
+      if (args.team === 'planeteers' && lost) {
+        lost = false;
+        return Promise.reject(connectionLost());
+      }
+      return Promise.resolve(
+        args.team === 'bumblebee'
+          ? previewOf('backstage', 2250)
+          : previewOf('happa', 7),
+      );
+    });
+
+    renderDialog({
+      bumblebee: ['giantswarm/backstage#2250'],
+      planeteers: ['giantswarm/happa#7'],
+    });
+
+    expect(
+      await screen.findByText(
+        'The connection dropped before marge answered for planeteers',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('It was only a preview, so nothing changed.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/marge refused/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '#2250' })).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Preview again' }),
+    );
+
+    expect(await screen.findByRole('link', { name: '#7' })).toBeInTheDocument();
+    expect(sweepsOf('planeteers')).toHaveLength(2);
+    expect(sweepsOf('bumblebee')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: '#2250' })).toBeInTheDocument();
+    expect(
+      screen.queryByText(/The connection dropped/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Apply runs exactly this, on the 2 PRs listed/),
+    ).toBeInTheDocument();
+  });
+
+  it('reports an apply whose answer was lost as an unknown outcome', async () => {
+    callTool.mockImplementation((_tool, args: { dry_run: boolean }) =>
+      args.dry_run
+        ? Promise.resolve(previewOf('backstage', 2250))
+        : Promise.reject(connectionLost()),
+    );
+
+    renderDialog({ bumblebee: ['giantswarm/backstage#2250'] });
+
+    const confirm = await screen.findByRole('button', {
+      name: 'Apply to this PR',
+    });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await userEvent.click(confirm);
+
+    expect(
+      await screen.findByText(
+        'The connection dropped before marge answered for bumblebee',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/The outcome is unknown/)).toBeInTheDocument();
+    expect(screen.queryByText('Applied')).not.toBeInTheDocument();
+    expect(screen.queryByText(/nothing changed/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'giantswarm/backstage#2250' }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/backstage/pull/2250',
+    );
   });
 });

@@ -7,14 +7,11 @@ import {
   useInstallations,
 } from '@giantswarm/backstage-plugin-gs';
 
-import {
-  MargeClient,
-  type MargeMarkArgs,
-  type MargeSweepArgs,
-} from '../apis/MargeClient';
+import { MargeClient, type MargeMarkArgs } from '../apis/MargeClient';
 import {
   CLASSIFY_ACTIONS,
   MARGE_SERVER,
+  MargeAnswerLostError,
   MargeNotConnectedError,
   type MargeMarkResult,
   type MargeResult,
@@ -163,7 +160,11 @@ export type BotPrsState = {
   isClassifying: boolean;
   /** The teams whose classification has not answered yet. */
   classifying: string[];
-  /** Why the classification failed, when it did. */
+  /**
+   * Why the classification failed, when it did: marge's refusal, or a
+   * `MargeAnswerLostError` when its answer never arrived and the labels hold
+   * whatever it wrote.
+   */
   classifyError: Error | null;
   /** The first not-connected refusal, when one team's read met one. */
   notConnected: MargeNotConnectedError | undefined;
@@ -242,18 +243,26 @@ export function useBotPrs(
             ),
         ),
       );
-      const failed = answers.find(
-        (answer): answer is PromiseRejectedResult =>
-          answer.status === 'rejected',
-      );
-      if (failed) {
-        throw failed.reason;
+      const failed = answers
+        .filter(
+          (answer): answer is PromiseRejectedResult =>
+            answer.status === 'rejected',
+        )
+        .map(answer => answer.reason);
+      // A refusal is the one a person acts on; a lost answer only means the
+      // table has to show what was written.
+      const reason =
+        failed.find(error => !(error instanceof MargeAnswerLostError)) ??
+        failed[0];
+      if (reason) {
+        throw reason;
       }
     },
     onSettled: () => {
       setClassifying([]);
       // Whatever the run wrote is in the labels now, so the stored read is
-      // the answer -- including for a team whose own call failed.
+      // the answer -- including for a team whose own call failed or whose
+      // answer was lost on the way back.
       queryClient.invalidateQueries({
         queryKey: musterMargeListScopeKey(installation ?? ''),
       });
@@ -308,57 +317,6 @@ export function useBotPrs(
   };
 }
 
-export type MargeRunState = {
-  /** What the engine answered, dry run or not. */
-  result: MargeResult | undefined;
-  /** Whether `result` came from a dry run. */
-  isDryRun: boolean;
-  isPending: boolean;
-  error: Error | null;
-  run: (args: Omit<MargeSweepArgs, 'team'>) => Promise<MargeResult>;
-  reset: () => void;
-};
-
-/**
- * One `x_marge_sweep` call on the team: the Preview (`dry_run: true`) and the
- * Apply, and a per-PR merge or refresh narrowed with `prs`. A run that wrote
- * invalidates the stored queue, because its mark step moved the labels.
- */
-export function useMargeSweep(
-  installation: string | undefined,
-  team: string | undefined,
-): MargeRunState {
-  const client = useMargeClient(installation);
-  const queryClient = useQueryClient();
-  const [isDryRun, setIsDryRun] = useState(true);
-
-  const mutation = useMutation({
-    mutationFn: async (args: Omit<MargeSweepArgs, 'team'>) => {
-      if (!client || !team) {
-        throw new Error('marge is not reachable on this installation');
-      }
-      setIsDryRun(Boolean(args.dry_run));
-      return client.sweep({ ...args, team });
-    },
-    onSuccess: (_result, args) => {
-      if (!args.dry_run) {
-        queryClient.invalidateQueries({
-          queryKey: musterMargeListScopeKey(installation ?? ''),
-        });
-      }
-    },
-  });
-
-  return {
-    result: mutation.data,
-    isDryRun,
-    isPending: mutation.isPending,
-    error: (mutation.error as Error | null) ?? null,
-    run: mutation.mutateAsync,
-    reset: mutation.reset,
-  };
-}
-
 /** One team's answer inside a run that covered several teams. */
 export type TeamSweepRun = {
   team: string;
@@ -367,7 +325,10 @@ export type TeamSweepRun = {
 };
 
 export type MargeTeamSweepsState = {
-  /** One entry per team the last run covered, in the order given. */
+  /**
+   * One entry per team the last run covered, in the order given. While a
+   * retry is in flight, the answers it is about to replace stay here.
+   */
   runs: TeamSweepRun[];
   /** Whether `runs` came from a dry run. */
   isDryRun: boolean;
@@ -375,6 +336,11 @@ export type MargeTeamSweepsState = {
   /** The first not-connected refusal, when one team's call met one. */
   notConnected: MargeNotConnectedError | undefined;
   run: (args: TeamSweepArgs) => Promise<TeamSweepRun[]>;
+  /**
+   * The last run again, for the given teams only: every other team keeps the
+   * answer it has. For a preview whose answer was lost on the way back.
+   */
+  retry: (teams: string[]) => Promise<TeamSweepRun[]>;
   reset: () => void;
 };
 
@@ -391,29 +357,39 @@ export type TeamSweepArgs = {
   dryRun: boolean;
 };
 
+const NO_RUNS: TeamSweepRun[] = [];
+
+/** One call of the hook: the run, and the answers a retry leaves standing. */
+type TeamSweepCall = {
+  args: TeamSweepArgs;
+  kept: TeamSweepRun[];
+};
+
 /**
  * One `x_marge_sweep` per team, as one action of the page.
  *
  * A team file decides what its PRs may become, so a run over several teams
  * is several calls, one per team, each narrowed with `prs` when the caller
- * named PRs. One team's refusal is that team's own
+ * named PRs. One team's refusal, or its lost answer, is that team's own
  * outcome and leaves the others alone, so the dialog reports per team. A run
- * that wrote invalidates every team it touched: its mark step moved the
- * labels the stored read shows.
+ * that wrote invalidates every team it touched, a team whose answer was lost
+ * included: its mark step moved the labels the stored read shows, and a lost
+ * answer says nothing about how far it got.
  */
 export function useMargeTeamSweeps(
   installation: string | undefined,
 ): MargeTeamSweepsState {
   const client = useMargeClient(installation);
   const queryClient = useQueryClient();
-  const [isDryRun, setIsDryRun] = useState(true);
 
   const mutation = useMutation({
-    mutationFn: async (args: TeamSweepArgs): Promise<TeamSweepRun[]> => {
+    mutationFn: async ({
+      args,
+      kept,
+    }: TeamSweepCall): Promise<TeamSweepRun[]> => {
       if (!client) {
         throw new Error('marge is not reachable on this installation');
       }
-      setIsDryRun(args.dryRun);
       const narrowed = args.prsByTeam;
       const teams = args.teams.filter(
         team => !narrowed || (narrowed[team]?.length ?? 0) > 0,
@@ -428,7 +404,7 @@ export function useMargeTeamSweeps(
           }),
         ),
       );
-      return teams.map((team, index) => {
+      const fresh = teams.map((team, index) => {
         const answer = answers[index];
         return {
           team,
@@ -440,8 +416,13 @@ export function useMargeTeamSweeps(
               : null,
         };
       });
+      const freshOf = new Map(fresh.map(run => [run.team, run]));
+      return [
+        ...kept.map(run => freshOf.get(run.team) ?? run),
+        ...fresh.filter(run => !kept.some(old => old.team === run.team)),
+      ];
     },
-    onSuccess: (_runs, args) => {
+    onSuccess: (_runs, { args }) => {
       if (args.dryRun) {
         return;
       }
@@ -451,7 +432,9 @@ export function useMargeTeamSweeps(
     },
   });
 
-  const runs = (mutation.data as TeamSweepRun[] | undefined) ?? [];
+  const { mutateAsync } = mutation;
+  const last = mutation.variables;
+  const runs = mutation.data ?? last?.kept ?? NO_RUNS;
   const notConnected = [
     mutation.error as Error | null,
     ...runs.map(run => run.error),
@@ -460,12 +443,28 @@ export function useMargeTeamSweeps(
       error instanceof MargeNotConnectedError,
   );
 
+  const run = useCallback(
+    (args: TeamSweepArgs) => mutateAsync({ args, kept: [] }),
+    [mutateAsync],
+  );
+  const retry = (teams: string[]) =>
+    last && !mutation.isPending
+      ? mutateAsync({
+          args: {
+            ...last.args,
+            teams: last.args.teams.filter(team => teams.includes(team)),
+          },
+          kept: runs,
+        })
+      : Promise.resolve(runs);
+
   return {
     runs,
-    isDryRun,
+    isDryRun: last?.args.dryRun ?? true,
     isPending: mutation.isPending,
     notConnected,
-    run: mutation.mutateAsync,
+    run,
+    retry,
     reset: mutation.reset,
   };
 }

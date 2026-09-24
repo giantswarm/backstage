@@ -29,6 +29,7 @@ import {
 import { useTeams } from '../../hooks/useTeams';
 import {
   looksUnknownTeam,
+  MargeAnswerLostError,
   MargeNotConnectedError,
   rowsOf,
   type BotPrRow,
@@ -227,10 +228,16 @@ function Queue({
   const unknownTeams = queue.queues
     .filter(entry => looksUnknownTeam(entry.error))
     .map(entry => entry.team);
+  // A read whose answer never arrived failed for every team at once, and
+  // marge refused nothing: it is reported once, as the connection's.
+  const isReadLost = queue.queues.some(
+    entry => entry.error instanceof MargeAnswerLostError,
+  );
   const refused = queue.queues.filter(
     entry =>
       entry.error &&
       !(entry.error instanceof MargeNotConnectedError) &&
+      !(entry.error instanceof MargeAnswerLostError) &&
       !isSessionExpiredError(entry.error) &&
       !looksUnknownTeam(entry.error),
   );
@@ -393,12 +400,33 @@ function Queue({
           />
         </Box>
       ) : null}
-      {queue.classifyError ? (
+      {queue.classifyError instanceof MargeAnswerLostError ? (
+        <Box pt={2}>
+          <Alert
+            status="warning"
+            icon
+            title="The connection dropped before marge answered the classification"
+            description="marge may have classified some of the PRs or all of them, and may still be at it. The table below is read again and shows each PR's label as it stands; press Refresh in a minute if one looks unchanged."
+          />
+        </Box>
+      ) : null}
+      {queue.classifyError &&
+      !(queue.classifyError instanceof MargeAnswerLostError) ? (
         <Box pt={2}>
           <Alert
             status="danger"
             title="The classification failed"
             description={`${queue.classifyError.message} Whatever it wrote before the failure is in the labels; the table below shows that.`}
+          />
+        </Box>
+      ) : null}
+      {isReadLost ? (
+        <Box pt={2}>
+          <Alert
+            status="warning"
+            icon
+            title="The connection dropped before marge sent the queue"
+            description="Reading the queue changes nothing. Press Refresh to read it again."
           />
         </Box>
       ) : null}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Text } from '@backstage/ui';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -6,12 +6,14 @@ import { useMargeTeamSweeps, type TeamSweepRun } from '../../hooks/useMarge';
 import {
   actionsArgument,
   GREEN_GROUP,
+  MargeAnswerLostError,
   MERGE_GREEN_STEPS,
   rowsOf,
   type BotPrRow,
 } from '../../lib/marge';
 import { greenByTeam, refsByTeam } from '../../lib/rows';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
+import { LostAnswerAlert } from '../LostAnswerAlert';
 import { OutcomeTable } from '../OutcomeTable';
 
 export type MergeGreenDialogProps = {
@@ -48,6 +50,10 @@ const sumOf = (byTeam: Record<string, string[]>) =>
  * confirmation of the sweep dialog belongs to the rescue path, where an agent
  * writes code, and not here. Every call goes through muster as the signed-in
  * person, so the approval and the merge are theirs.
+ *
+ * A team whose answer was lost on the way back is not a team marge refused:
+ * its preview runs again on its own, and a lost apply is reported as an
+ * unknown outcome, never as nothing merged.
  */
 export function MergeGreenDialog({
   installation,
@@ -61,33 +67,39 @@ export function MergeGreenDialog({
   // moment it starts: the preview stays readable while the apply is in
   // flight, and it is what the apply acts on.
   const [preview, setPreview] = useState<TeamSweepRun[]>([]);
+  // Which open of the dialog an answer belongs to: a preview that answers
+  // after a close, or after the next open, is dropped.
+  const openCount = useRef(0);
 
   const targets = useMemo(() => greenByTeam(rows), [rows]);
   const targetsKey = JSON.stringify(targets);
   const teams = Object.keys(targets);
   const count = sumOf(targets);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-    let isCurrent = true;
-    setApplied(false);
-    setPreview([]);
-    sweeps.reset();
-    sweeps
-      .run({ teams, prsByTeam: targets, actions: ACTIONS, dryRun: true })
+  const keepPreview = (answering: Promise<TeamSweepRun[]>) => {
+    const open = openCount.current;
+    answering
       .then(answer => {
-        if (isCurrent) {
+        if (openCount.current === open) {
           setPreview(answer);
         }
       })
       .catch(() => {
         // Shown by the dialog through the runs' own errors.
       });
-    return () => {
-      isCurrent = false;
-    };
+  };
+
+  useEffect(() => {
+    openCount.current += 1;
+    if (!isOpen) {
+      return;
+    }
+    setApplied(false);
+    setPreview([]);
+    sweeps.reset();
+    keepPreview(
+      sweeps.run({ teams, prsByTeam: targets, actions: ACTIONS, dryRun: true }),
+    );
     // A new open, or a new set of targets, is a new preview.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, targetsKey, installation]);
@@ -100,13 +112,18 @@ export function MergeGreenDialog({
     [preview],
   );
   // What Apply runs on: the PRs the preview still found green, per team.
-  const applyTargets = useMemo(
-    () => refsByTeam(previewRows.filter(row => row.group === GREEN_GROUP)),
+  const applyRows = useMemo(
+    () => previewRows.filter(row => row.group === GREEN_GROUP),
     [previewRows],
   );
+  const applyTargets = useMemo(() => refsByTeam(applyRows), [applyRows]);
   const applyCount = sumOf(applyTargets);
   const notGreen = previewRows.length - applyCount;
   const failed = runs.filter(run => run.error);
+  const lost = failed
+    .filter(run => run.error instanceof MargeAnswerLostError)
+    .map(run => run.team);
+  const refused = failed.filter(run => !lost.includes(run.team));
   const notConnected = sweeps.notConnected;
 
   const onConfirm = async () => {
@@ -132,6 +149,8 @@ export function MergeGreenDialog({
       ? `Approve and merge ${plural(confirmCount, 'PR')}`
       : 'Approve and merge';
   const shown = applied ? runs : preview;
+  // A preview run again for one team keeps the other teams' rows in view.
+  const isTablePending = isPreviewing && !shown.some(run => run.result);
 
   return (
     <ConfirmDialog
@@ -160,18 +179,28 @@ export function MergeGreenDialog({
           message={notConnected.message}
         />
       ) : null}
-      {failed.length > 0 && !notConnected ? (
+      {refused.length > 0 && !notConnected ? (
         <Alert
           status="danger"
           icon
-          title={`marge refused the run for ${failed
+          title={`marge refused the run for ${refused
             .map(run => run.team)
             .join(', ')}`}
           description={`${[
-            ...new Set(failed.map(run => run.error?.message ?? '')),
+            ...new Set(refused.map(run => run.error?.message ?? '')),
           ].join(' ')} Nothing was approved or merged for ${
-            failed.length === 1 ? 'it' : 'them'
+            refused.length === 1 ? 'it' : 'them'
           }.`}
+        />
+      ) : null}
+      {lost.length > 0 ? (
+        <LostAnswerAlert
+          teams={lost}
+          isDryRun={sweeps.isDryRun}
+          onPreviewAgain={() => keepPreview(sweeps.retry(lost))}
+          isPreviewingAgain={isPreviewing}
+          asked="approved and merged"
+          prs={applyRows.filter(row => lost.includes(row.team))}
         />
       ) : null}
       {!applied && !isPreviewing && notGreen > 0 ? (
@@ -208,7 +237,7 @@ export function MergeGreenDialog({
       {isPreviewing || shown.some(run => run.result) ? (
         <OutcomeTable
           runs={shown}
-          isPending={isPreviewing}
+          isPending={isTablePending}
           pendingLabel={`Checking ${plural(count, 'PR')}…`}
           showTeam={teams.length > 1}
         />

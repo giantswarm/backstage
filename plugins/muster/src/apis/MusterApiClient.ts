@@ -570,6 +570,10 @@ export class MusterApiClient implements MusterApi {
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';
       if (response.status === 503) error.name = 'ServiceUnavailableError';
+      // The status stays with it: a 502, 503 or 504 is the portal's edge
+      // answering in the backend's place, and a caller that wrote something
+      // cannot tell from it how far the write got.
+      (error as Error & { status: number }).status = response.status;
       // A tool-level error's further text blocks (gs-node's MusterToolError
       // `details`) stay with it: cluster-manager's structured refusal rides there.
       if (isStringArray(details)) {
