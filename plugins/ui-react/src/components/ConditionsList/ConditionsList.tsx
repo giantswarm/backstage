@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Box, Flex, Text } from '@backstage/ui';
 import { ConditionMessage } from '../display/ConditionMessage';
 import { DateComponent } from '../DateComponent';
-import { SimpleAccordion } from '../SimpleAccordion';
+import { SimpleAccordion, type SimpleAccordionProps } from '../SimpleAccordion';
 import { StatusLabel, StatusLabelIntent } from '../StatusLabel';
 
 /**
@@ -42,6 +42,8 @@ export type ConditionsListProps = {
   renderActions?: (condition: ConditionLike) => ReactNode;
   /** Shown instead of the list when there are no conditions at all. */
   emptyContent?: ReactNode;
+  /** Heading level of each condition's trigger; see `SimpleAccordion`. */
+  headingLevel?: SimpleAccordionProps['headingLevel'];
 };
 
 function defaultIsFailing(condition: ConditionLike): boolean {
@@ -108,6 +110,7 @@ export const ConditionsList = ({
   isFailing = defaultIsFailing,
   renderActions,
   emptyContent,
+  headingLevel,
 }: ConditionsListProps) => {
   if (conditions.length === 0) {
     return <>{emptyContent}</>;
@@ -128,6 +131,7 @@ export const ConditionsList = ({
             // that flips re-mounts and `defaultExpanded` is re-seeded.
             key={`${condition.type}-${condition.lastTransitionTime ?? ''}`}
             defaultExpanded={condition === firstFailing}
+            headingLevel={headingLevel}
             title={
               <Box grow>
                 <Flex align="center" justify="between" gap="2">

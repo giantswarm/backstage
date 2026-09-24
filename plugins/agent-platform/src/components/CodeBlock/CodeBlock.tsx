@@ -1,9 +1,7 @@
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles, useTheme } from '@material-ui/core';
 import CodeIcon from '@material-ui/icons/Code';
-import { YamlEditor } from '@giantswarm/backstage-plugin-ui-react';
-
-import { CopyButton } from './CopyButton';
+import { CopyButton, YamlEditor } from '@giantswarm/backstage-plugin-ui-react';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -70,7 +68,7 @@ export function CodeBlock({
             </Text>
           )}
         </Flex>
-        <CopyButton text={content} />
+        <CopyButton text={content} size="compact" />
       </Flex>
 
       {language === 'yaml' ? (

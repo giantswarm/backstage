@@ -34,6 +34,40 @@ function makeModelConfig(
 }
 
 describe('ModelConfig', () => {
+  describe('display name', () => {
+    const withAnnotation = (value?: string) =>
+      new ModelConfig(
+        {
+          apiVersion: 'kagent.dev/v1alpha3',
+          kind: 'ModelConfig',
+          metadata: {
+            name: 'opus',
+            namespace: 'kagent',
+            ...(value === undefined
+              ? {}
+              : { annotations: { 'ui.giantswarm.io/display-name': value } }),
+          },
+          spec: { provider: 'Anthropic', model: 'claude-opus-4-7' },
+        } as ModelConfigInterface,
+        'gazelle',
+      );
+
+    it('prefers the annotation', () => {
+      const config = withAnnotation('Claude Opus 4.7');
+      expect(config.getDisplayNameAnnotation()).toBe('Claude Opus 4.7');
+      expect(config.getDisplayName()).toBe('Claude Opus 4.7');
+    });
+
+    it.each([[undefined], [''], ['  ']])(
+      'falls back to the resource name when the annotation is %p',
+      value => {
+        const config = withAnnotation(value);
+        expect(config.getDisplayNameAnnotation()).toBeUndefined();
+        expect(config.getDisplayName()).toBe('opus');
+      },
+    );
+  });
+
   it('is the v1alpha3 ModelConfig, single version', () => {
     expect(ModelConfig.group).toBe('kagent.dev');
     expect(ModelConfig.plural).toBe('modelconfigs');

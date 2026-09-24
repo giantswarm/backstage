@@ -7,15 +7,22 @@ import {
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
-import { MargeNotConnectedError, type MargeResult } from '../lib/marge';
+import {
+  MargeAnswerLostError,
+  MargeNotConnectedError,
+  type MargeResult,
+} from '../lib/marge';
 import { musterMargeListScopeKey } from '../lib/queryKeys';
 import {
   useBotPrs,
   useMargeMark,
   useMargeServerName,
-  useMargeSweep,
   useMargeTeamSweeps,
 } from './useMarge';
+
+/** What Chrome's fetch rejects with when the connection closes under it. */
+const connectionLost = () =>
+  new TypeError('Failed to fetch (devportal.giantswarm.io)');
 
 /** The several-team answer of `list`, from one result per team. */
 const queuesOf = (byTeam: Record<string, MargeResult | string>) => ({
@@ -187,6 +194,53 @@ describe('useBotPrs', () => {
     expect(result.current.isClassifying).toBe(false);
   });
 
+  it('reports a lost classification as lost, and reads the labels again', async () => {
+    callTool
+      .mockResolvedValueOnce(queuesOf({ bumblebee: stored }))
+      .mockRejectedValueOnce(connectionLost())
+      .mockResolvedValue(queuesOf({ bumblebee: live }));
+    const { result } = renderHook(() => useBotPrs('gazelle', ['bumblebee']), {
+      wrapper: wrapperWith(client()),
+    });
+    await waitFor(() =>
+      expect(result.current.queues[0].result).toEqual(stored),
+    );
+
+    act(() => result.current.classify());
+
+    await waitFor(() =>
+      expect(result.current.classifyError).toBeInstanceOf(MargeAnswerLostError),
+    );
+    // marge may have written the labels before the answer was lost, so the
+    // stored read is the answer.
+    await waitFor(() => expect(result.current.queues[0].result).toEqual(live));
+  });
+
+  it('reports a refusal ahead of a lost answer when two teams fail apart', async () => {
+    callTool.mockImplementation((tool: string, args: { team?: string }) => {
+      if (tool === 'x_marge_list') {
+        return Promise.resolve(queuesOf({ bumblebee: stored, atlas: stored }));
+      }
+      return Promise.reject(
+        args.team === 'bumblebee'
+          ? connectionLost()
+          : new Error('marge refused: rate limited'),
+      );
+    });
+    const { result } = renderHook(
+      () => useBotPrs('gazelle', ['bumblebee', 'atlas']),
+      { wrapper: wrapperWith(client()) },
+    );
+    await waitFor(() =>
+      expect(result.current.queues[0].result).toEqual(stored),
+    );
+
+    act(() => result.current.classify());
+
+    await waitFor(() => expect(result.current.classifyError).toBeTruthy());
+    expect(result.current.classifyError?.message).toMatch(/rate limited/);
+  });
+
   it("reports muster's not-connected answer as such, for the sign-in gate", async () => {
     callTool.mockRejectedValue(new Error('tool not found: x_marge_list'));
     const { result } = renderHook(() => useBotPrs('gazelle', ['bumblebee']), {
@@ -220,48 +274,6 @@ describe('useBotPrs', () => {
     });
     expect(result.current.isLoading).toBe(false);
     expect(callTool).not.toHaveBeenCalled();
-  });
-});
-
-describe('useMargeSweep', () => {
-  it('previews with dry_run and applies without it, invalidating the stored queue only on a write', async () => {
-    callTool.mockResolvedValue(live);
-    const queryClient = client();
-    const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
-    const { result } = renderHook(() => useMargeSweep('gazelle', 'bumblebee'), {
-      wrapper: wrapperWith(queryClient),
-    });
-
-    await act(async () => {
-      await result.current.run({ dry_run: true, actions: 'approve,mark' });
-    });
-    expect(callTool).toHaveBeenLastCalledWith(
-      'x_marge_sweep',
-      { team: 'bumblebee', dry_run: true, actions: 'approve,mark' },
-      'gazelle',
-    );
-    expect(result.current.isDryRun).toBe(true);
-    expect(invalidateQueries).not.toHaveBeenCalled();
-
-    await act(async () => {
-      await result.current.run({
-        prs: ['giantswarm/backstage#2250'],
-        actions: 'approve,merge,mark',
-      });
-    });
-    expect(callTool).toHaveBeenLastCalledWith(
-      'x_marge_sweep',
-      {
-        team: 'bumblebee',
-        prs: ['giantswarm/backstage#2250'],
-        actions: 'approve,merge,mark',
-      },
-      'gazelle',
-    );
-    expect(result.current.isDryRun).toBe(false);
-    expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: musterMargeListScopeKey('gazelle'),
-    });
   });
 });
 
@@ -316,7 +328,7 @@ describe('useMargeTeamSweeps', () => {
         dryRun: false,
       });
     });
-    expect(result.current.isDryRun).toBe(false);
+    await waitFor(() => expect(result.current.isDryRun).toBe(false));
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: musterMargeListScopeKey('gazelle'),
     });
@@ -349,6 +361,85 @@ describe('useMargeTeamSweeps', () => {
     expect(result.current.runs[0].error).toBeNull();
     expect(result.current.runs[1].result).toBeUndefined();
     expect(result.current.notConnected).toBeInstanceOf(MargeNotConnectedError);
+  });
+
+  it('runs a lost preview again for its team alone, keeping every other answer', async () => {
+    callTool.mockImplementation((_tool, args: { team: string }) =>
+      args.team === 'atlas'
+        ? Promise.reject(connectionLost())
+        : Promise.resolve(live),
+    );
+    const { result } = renderHook(() => useMargeTeamSweeps('gazelle'), {
+      wrapper: wrapperWith(client()),
+    });
+
+    await act(async () => {
+      await result.current.run({
+        teams: ['bumblebee', 'atlas'],
+        prsByTeam: {
+          bumblebee: ['giantswarm/backstage#2250'],
+          atlas: ['giantswarm/mimir#7'],
+        },
+        actions: 'approve,merge,mark',
+        dryRun: true,
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.runs[1].error).toBeInstanceOf(MargeAnswerLostError),
+    );
+
+    callTool.mockClear();
+    callTool.mockResolvedValue(stored);
+    await act(async () => {
+      await result.current.retry(['atlas']);
+    });
+
+    expect(callTool).toHaveBeenCalledTimes(1);
+    expect(callTool).toHaveBeenCalledWith(
+      'x_marge_sweep',
+      {
+        team: 'atlas',
+        prs: ['giantswarm/mimir#7'],
+        actions: 'approve,merge,mark',
+        dry_run: true,
+      },
+      'gazelle',
+    );
+    await waitFor(() =>
+      expect(result.current.runs).toEqual([
+        { team: 'bumblebee', result: live, error: null },
+        { team: 'atlas', result: stored, error: null },
+      ]),
+    );
+    expect(result.current.isDryRun).toBe(true);
+  });
+
+  it('reads the stored queue again after an apply whose answer was lost', async () => {
+    callTool.mockRejectedValue(connectionLost());
+    const queryClient = client();
+    const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useMargeTeamSweeps('gazelle'), {
+      wrapper: wrapperWith(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.run({
+        teams: ['bumblebee'],
+        prsByTeam: { bumblebee: ['giantswarm/backstage#2250'] },
+        actions: 'approve,merge,mark',
+        dryRun: false,
+      });
+    });
+
+    await waitFor(() =>
+      expect(result.current.runs[0]?.error).toBeInstanceOf(
+        MargeAnswerLostError,
+      ),
+    );
+    expect(result.current.isDryRun).toBe(false);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: musterMargeListScopeKey('gazelle'),
+    });
   });
 });
 

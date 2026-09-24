@@ -1,5 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { errorApiRef } from '@backstage/core-plugin-api';
+import { TestApiProvider } from '@backstage/test-utils';
 
 import type { BackendWriteState } from '../../hooks/useModelManagerBackends';
 import type { AddBackendResult } from '../../lib/modelManagerBackends';
@@ -95,14 +97,17 @@ const review: AddBackendResult = {
 const onDeployed = jest.fn();
 
 function renderDialog(registered: Array<'ollama' | 'kserve'> = []) {
+  // The review's copy button reports a failed copy through the errorApi.
   return render(
-    <AddModelBackendDialog
-      installations={['inst-1']}
-      registeredKinds={() => registered}
-      isOpen
-      onOpenChange={jest.fn()}
-      onDeployed={onDeployed}
-    />,
+    <TestApiProvider apis={[[errorApiRef, { post: jest.fn() }]]}>
+      <AddModelBackendDialog
+        installations={['inst-1']}
+        registeredKinds={() => registered}
+        isOpen
+        onOpenChange={jest.fn()}
+        onDeployed={onDeployed}
+      />
+    </TestApiProvider>,
   );
 }
 

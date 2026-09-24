@@ -157,8 +157,9 @@ export type AgentRow = {
   technicalName: string;
   description: string;
   /**
-   * Human-readable model label resolved from the referenced ModelConfig, or
-   * `undefined` when the template references no model.
+   * Human-readable model label resolved from the referenced ModelConfig: its
+   * display name, else its `spec.model`, else its resource name. `undefined`
+   * when the template references no model.
    */
   model?: string;
   /**
@@ -166,7 +167,7 @@ export type AgentRow = {
    * label.
    *
    * Distinct from {@link model} on purpose. That one is for a reader and falls
-   * back to the ModelConfig's own resource name; this one has to match what a
+   * back to other labels; this one has to match what a
    * provider and the gateway call the model (`gen_ai_response_model`), so it
    * is the ModelConfig's field verbatim or nothing. Pricing a session needs
    * this; a table column wants the other.
@@ -240,7 +241,7 @@ export function resolveModelLabel(
   if (!ref) {
     return undefined;
   }
-  return resolveModelConfig(agent, modelConfigs)?.getDisplayName() ?? ref;
+  return modelLabel(resolveModelConfig(agent, modelConfigs)) ?? ref;
 }
 
 /**
@@ -250,6 +251,21 @@ export function resolveModelLabel(
 export type ResolveModelServing = (
   modelConfig: ModelConfig,
 ) => ClientServingState | undefined;
+
+/**
+ * What a reader calls the model: the ModelConfig's display name, else the
+ * model it configures, else its resource name.
+ */
+function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
+  if (!modelConfig) {
+    return undefined;
+  }
+  return (
+    modelConfig.getDisplayNameAnnotation() ??
+    modelConfig.getModel() ??
+    modelConfig.getName()
+  );
+}
 
 /**
  * Flatten an `AgentTemplate` into a plain {@link AgentRow}. With a
@@ -279,7 +295,7 @@ export function toAgentRow(
     name: agent.getDisplayName(),
     technicalName: name,
     description: agent.getDescription() ?? '',
-    model: modelConfig?.getDisplayName() ?? agent.getModelConfigName(),
+    model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
     skillCount: agent.getSkillCount(),
     readiness: agent.getReadiness(),

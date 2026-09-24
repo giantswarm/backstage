@@ -26,6 +26,18 @@ function reachableEverywhere() {
   });
 }
 
+/**
+ * An app in the root HTTP router's query parser mode, `extended` (`qs`), which
+ * turns bracket syntax into objects and more than 20 repeats of a parameter
+ * into an index-keyed object. Express 5's default, `simple`, does neither. The
+ * `qs` here is the hoisted copy, not the one inside backend-defaults.
+ */
+function expressApp() {
+  const app = express();
+  app.set('query parser', 'extended');
+  return app;
+}
+
 describe('createRouter', () => {
   const callTool = jest.fn();
   const callToolWithStructured = jest.fn();
@@ -62,7 +74,7 @@ describe('createRouter', () => {
       reachability: reachableEverywhere(),
       ...options,
     });
-    const app = express();
+    const app = expressApp();
     app.use(router);
     app.use(MiddlewareFactory.create({ logger, config }).error());
     return app;
@@ -85,7 +97,7 @@ describe('createRouter', () => {
       reachability: reachableEverywhere(),
       ...options,
     });
-    const app = express();
+    const app = expressApp();
     app.use(router);
     app.use(MiddlewareFactory.create({ logger, config }).error());
     return app;
@@ -188,6 +200,19 @@ describe('createRouter', () => {
     expect(callTool).not.toHaveBeenCalled();
   });
 
+  it.each([['workflow_name=a&workflow_name=b'], ['workflow_name[x]=a']])(
+    'rejects a workflow_name that is not one string (%s)',
+    async query => {
+      const response = await request(app).get(`/executions?${query}`);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toBe(
+        'workflow_name must be provided at most once',
+      );
+      expect(callTool).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects a non-numeric limit', async () => {
     const response = await request(app).get('/executions?limit=abc');
 
@@ -228,7 +253,7 @@ describe('createRouter', () => {
       config,
       reachability: reachableEverywhere(),
     });
-    const unconfiguredApp = express();
+    const unconfiguredApp = expressApp();
     unconfiguredApp.use(router);
     unconfiguredApp.use(MiddlewareFactory.create({ logger, config }).error());
 
@@ -417,7 +442,7 @@ describe('createRouter', () => {
         client: mockClient,
         reachability: reachableEverywhere(),
       });
-      const fleetApp = express();
+      const fleetApp = expressApp();
       fleetApp.use(router);
       fleetApp.use(MiddlewareFactory.create({ logger, config }).error());
       return { fleetApp, logger };
@@ -571,15 +596,56 @@ describe('createRouter', () => {
     expect(filterTools).toHaveBeenCalledWith({ toolset: ['preset:none'] }, {});
   });
 
-  it('does not read bracket syntax as a toolset (the simple query parser leaves it unexpanded)', async () => {
+  it('passes more than 20 toolset= parameters through as a selector list, in order', async () => {
     filterTools.mockResolvedValue({ tools: [] });
+    const selectors = Array.from({ length: 25 }, (_, i) => `tool:x_tool_${i}`);
 
     const response = await request(app).get(
-      '/tools/filter?toolset[x]=preset:none',
+      `/tools/filter?${selectors.map(s => `toolset=${s}`).join('&')}`,
     );
 
     expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith({ toolset: selectors }, {});
+  });
+
+  it('passes more selectors than qs keeps parameters (1000) through whole', async () => {
+    filterTools.mockResolvedValue({ tools: [] });
+    // Short selectors keep the URL under Node's 16 KiB header limit.
+    const selectors = Array.from({ length: 1005 }, (_, i) => `t${i}`);
+
+    const response = await request(app).get(
+      `/tools/filter?${selectors.map(s => `toolset=${s}`).join('&')}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith({ toolset: selectors }, {});
+  });
+
+  it.each([
+    ['toolset[x]=preset:full'],
+    ['toolset[25]=preset:full'],
+    ['toolset[0]=preset:full&toolset[100]=preset:none'],
+  ])('ignores bracket syntax as a toolset (%s)', async query => {
+    filterTools.mockResolvedValue({ tools: [] });
+
+    const response = await request(app).get(`/tools/filter?${query}`);
+
+    expect(response.status).toBe(200);
     expect(filterTools).toHaveBeenCalledWith({}, {});
+  });
+
+  it('forwards only the plain toolset= values when bracket syntax is mixed in', async () => {
+    filterTools.mockResolvedValue({ tools: [] });
+    const selectors = Array.from({ length: 25 }, (_, i) => `tool:x_tool_${i}`);
+
+    const response = await request(app).get(
+      `/tools/filter?${selectors
+        .map(s => `toolset=${s}`)
+        .join('&')}&toolset[x]=preset:full&toolset[3]=preset:full`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith({ toolset: selectors }, {});
   });
 
   it("surfaces muster's unknown-preset refusal as the request error", async () => {
@@ -1108,7 +1174,7 @@ describe('createRouter', () => {
         config,
         client: { callTool } as unknown as MusterMcpClient,
       });
-      const authApp = express();
+      const authApp = expressApp();
       authApp.use(router);
       authApp.use(MiddlewareFactory.create({ logger, config }).error());
       return authApp;
