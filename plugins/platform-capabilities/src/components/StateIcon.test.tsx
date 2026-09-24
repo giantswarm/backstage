@@ -1,19 +1,18 @@
 import { render, screen } from '@testing-library/react';
-import { CapabilityStateName } from '../apis';
-import { CapabilityMark, markOf, StateIcon } from './StateIcon';
+import { ActionStateName, CapabilityStateName } from '../apis';
+import { CapabilityMark, StateIcon } from './StateIcon';
+import { markOf } from './StateTag';
 
 describe('markOf', () => {
-  it.each<[CapabilityStateName, string | undefined, CapabilityMark]>([
+  it.each<[CapabilityStateName, ActionStateName | undefined, CapabilityMark]>([
     ['enabled', 'enabled', 'in sync'],
     ['enabled', undefined, 'not reconciled'],
     ['enabled', 'denied', 'not reconciled'],
-    ['enabled, not opted in', undefined, 'not reconciled'],
     ['drifted', 'drifted', 'not in sync'],
     ['pending approval', 'pending approval', 'not reconciled'],
     ['rolling out', 'rolling out', 'not reconciled'],
     ['waiting for the customer', 'waiting for the customer', 'not reconciled'],
     ['not enabled', undefined, 'not installed'],
-    ['not opted in', undefined, 'not installed'],
     ['failed', 'failed', 'failed'],
     ['unknown', undefined, 'unknown'],
   ])('%s with last action %s is %s', (state, result, mark) => {

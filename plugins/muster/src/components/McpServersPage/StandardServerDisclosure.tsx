@@ -172,6 +172,7 @@ export function StandardServerDisclosure({
             name={p.mc}
             severity={p.severity}
             state={p.state}
+            detail={p.server.getStateExplanation()}
           />
         ))}
         {folded > 0 && <span className={classes.more}>+{folded} more</span>}
@@ -209,6 +210,7 @@ export function StandardServerDisclosure({
               name={p.mc}
               severity={p.severity}
               state={p.state}
+              detail={p.server.getStateExplanation()}
             />
           ))}
         </Flex>

@@ -154,7 +154,7 @@ heap already follows the limit; it would also have to repeat the image's
 | backstage | object | `{"appConfig":{},"args":[],"command":["node","packages/backend"],"extraAppConfig":[],"extraEnvVars":[],"extraEnvVarsCM":[],"extraEnvVarsSecrets":[],"extraVolumeMounts":[],"extraVolumes":[],"initContainers":[]}` | Backstage application parameters |
 | backstage.command | list | `["node","packages/backend"]` | Container command to start the Backstage backend |
 | backstage.args | list | `[]` | Additional command arguments passed to the Backstage container |
-| backstage.extraAppConfig | list | `[]` | Extra app configuration files to inline into command arguments, each referencing a ConfigMap |
+| backstage.extraAppConfig | list | `[]` | Extra app configuration files to inline into command arguments, each referencing a ConfigMap. Backstage reads them at start and the chart does not render the ConfigMaps, so a change to one rolls the pod only through the entry's optional `checksum`: whoever renders the ConfigMap sets it to a hash of the ConfigMap's data, and the pod template's `checksum/extra-app-config` annotation changes with it |
 | backstage.appConfig | object | `{}` | Inline Backstage app configuration that generates a ConfigMap automatically. Do not use for sensitive data |
 | backstage.extraEnvVars | list | `[]` | Extra environment variables for the Backstage container |
 | backstage.extraEnvVarsCM | list | `[]` | Names of existing ConfigMaps to mount as envFrom sources in the Backstage container |

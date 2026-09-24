@@ -1,8 +1,8 @@
 import { Button, CircularProgress } from '@material-ui/core';
 import Lock from '@material-ui/icons/Lock';
+import { Gate } from '@giantswarm/backstage-plugin-ui-react';
 import type { MusterSession } from '../MusterInstanceProvider/useMusterSession';
 import { sessionGateCopy } from '../MusterInstanceProvider/sessionCopy';
-import { Gate } from './Gate';
 
 export interface SessionGateProps {
   session: MusterSession;

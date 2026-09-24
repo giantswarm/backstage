@@ -1,22 +1,23 @@
 import { Flex, Text } from '@backstage/ui';
+import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
 import { VerifyFeature, VerifyResult } from '../apis';
 import {
   checkedDimensions,
-  count,
   differingDimensions,
   differs,
   fileGroups,
   foundWords,
   hasOwnFacts,
-  notChecked,
+  splitGroups,
 } from '../lib/comparison';
 import { DimensionItem, LIST_STYLE } from './DimensionItem';
 import { FileGroup } from './FileDiff';
+import { NotRunChecks } from './NotRunChecks';
 
 const title = (feature: { id: string; title?: string }) =>
   feature.title ?? feature.id;
 
-/** How a feature's differing dimensions split: differences to apply and planned changes. */
+/** How a feature's differing dimensions split: checks that differ, to apply, and checks whose change is planned. */
 function countsOfFeature(feature: VerifyFeature) {
   const dimensions = differingDimensions(feature);
   const differences = dimensions.filter(d => differs(d.mark)).length;
@@ -24,12 +25,14 @@ function countsOfFeature(feature: VerifyFeature) {
 }
 
 /**
- * What the comparison found, one line per fact: each feature with
- * differences; the features whose changes are all planned, as one line;
- * then one group per file that differs, headed by its path and opening to
- * its diff with every reason on its line; the dimensions with facts of
- * their own (a reason, a probe, an object); the features as defined, as
- * one line; the checks that did not run, by reason.
+ * What the comparison found, one line per fact: each feature with a check
+ * that differs; one group per file with a difference to apply, headed by
+ * its path and opening to its diff with every reason on its line; the
+ * features whose changes are all planned, as one line that opens to their
+ * files' groups so every planned change is reachable; the dimensions with
+ * facts of their own (a reason, a probe, an object); the features as
+ * defined, as one line; the checks that did not run, by name under their
+ * reason (NotRunChecks).
  */
 export function ComparisonView({ result }: { result: VerifyResult }) {
   const features = result.features ?? [];
@@ -45,8 +48,7 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
   const asDefined = features.filter(
     f => differingDimensions(f).length === 0 && checkedDimensions(f).length > 0,
   );
-  const pending = notChecked(features);
-  const groups = fileGroups(result);
+  const { toApply, planned } = splitGroups(fileGroups(result));
   const facts = features.flatMap(f =>
     differingDimensions(f).filter(hasOwnFacts),
   );
@@ -55,20 +57,36 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
       {differing.map(feature => (
         <Text
           key={feature.id}
-          variant="body-small"
+          variant="body-medium"
           data-testid={`feature-${feature.id}`}
         >
-          {title(feature)} — {foundWords(countsOfFeature(feature)).join(' · ')}
+          {title(feature)} —{' '}
+          {foundWords(countsOfFeature(feature), 'check').join(' · ')}
         </Text>
       ))}
-      {plannedOnly.length > 0 && (
-        <Text variant="body-small" color="secondary" data-testid="planned">
-          {plannedOnly.map(title).join(', ')}: planned changes ({plannedCount})
-        </Text>
-      )}
-      {groups.map(group => (
+      {toApply.map(group => (
         <FileGroup key={group.file} group={group} />
       ))}
+      {plannedOnly.length > 0 ? (
+        <div data-testid="planned">
+          <SimpleAccordion
+            title={
+              <Text as="span" variant="body-medium" color="secondary">
+                {plannedOnly.map(title).join(', ')}:{' '}
+                {foundWords({ differences: 0, planned: plannedCount }, 'check')}
+              </Text>
+            }
+          >
+            <Flex direction="column" gap="1">
+              {planned.map(group => (
+                <FileGroup key={group.file} group={group} />
+              ))}
+            </Flex>
+          </SimpleAccordion>
+        </div>
+      ) : (
+        planned.map(group => <FileGroup key={group.file} group={group} />)
+      )}
       {facts.length > 0 && (
         <ul style={LIST_STYLE} data-testid="dimension-facts">
           {facts.map(dimension => (
@@ -77,32 +95,11 @@ export function ComparisonView({ result }: { result: VerifyResult }) {
         </ul>
       )}
       {asDefined.length > 0 && (
-        <Text variant="body-small" color="secondary" data-testid="as-defined">
+        <Text variant="body-medium" color="secondary" data-testid="as-defined">
           {asDefined.map(title).join(', ')}: as defined
         </Text>
       )}
-      {pending.session > 0 && (
-        <Text
-          variant="body-small"
-          color="secondary"
-          data-testid="needs-session"
-        >
-          {pending.session === 1
-            ? '1 check needs'
-            : `${pending.session} checks need`}{' '}
-          your session on {result.installation}
-        </Text>
-      )}
-      {pending.other.map(([reason, n]) => (
-        <Text
-          key={reason}
-          variant="body-small"
-          color="secondary"
-          data-testid="not-run"
-        >
-          {count(n, 'check')} could not run: {reason}
-        </Text>
-      ))}
+      <NotRunChecks result={result} />
     </Flex>
   );
 }

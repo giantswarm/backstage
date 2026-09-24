@@ -316,8 +316,8 @@ backstage:
   # -- Additional command arguments passed to the Backstage container
   args: []
 
-  # @schema item:object;itemProperties:{"filename":{"type":"string"},"configMapRef":{"type":"string"}}
-  # -- Extra app configuration files to inline into command arguments, each referencing a ConfigMap
+  # @schema item:object;itemProperties:{"filename":{"type":"string"},"configMapRef":{"type":"string"},"checksum":{"type":"string"}}
+  # -- Extra app configuration files to inline into command arguments, each referencing a ConfigMap. Backstage reads them at start and the chart does not render the ConfigMaps, so a change to one rolls the pod only through the entry's optional `checksum`: whoever renders the ConfigMap sets it to a hash of the ConfigMap's data, and the pod template's `checksum/extra-app-config` annotation changes with it
   extraAppConfig: []
 
   # @schema type:[object, string]

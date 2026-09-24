@@ -20,12 +20,6 @@ export type MargeSweepArgs = {
   dry_run?: boolean;
 };
 
-export type MargeRemedyArgs = {
-  pr_url: string;
-  team: string;
-  dry_run?: boolean;
-};
-
 export type MargeMarkArgs = {
   pr_url: string;
   outcome: 'failed' | 'blocked';
@@ -108,11 +102,6 @@ export class MargeClient {
   /** The sweep, whole team or narrowed; `dry_run` is the preview. */
   sweep(args: MargeSweepArgs): Promise<MargeResult> {
     return this.call<MargeResult>(MARGE_TOOLS.sweep, { ...args });
-  }
-
-  /** The catalogue rule that matches one PR, applied through its own guards. */
-  remedy(args: MargeRemedyArgs): Promise<MargeResult> {
-    return this.call<MargeResult>(MARGE_TOOLS.remedy, { ...args });
   }
 
   /** An ai-rescue marker on one PR, as the person. */

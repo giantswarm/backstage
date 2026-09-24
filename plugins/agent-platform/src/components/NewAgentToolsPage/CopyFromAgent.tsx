@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { Text } from '@backstage/ui';
 import {
   Agent,
@@ -8,7 +8,9 @@ import {
 
 import {
   declaredToolset,
+  labelOfPresetSelector,
   MUSTER_MCP_SERVER_NAME,
+  selectorLabel,
   toolsetOfAgent,
   type ToolsetCarrier,
 } from '../../lib/toolset';
@@ -124,8 +126,21 @@ export function CopyFromAgent({
               {source.namespace}/{source.name}
             </span>
           </Text>
-          <Text variant="body-small" color="secondary">
-            <span className={classes.code}>{source.selectors.join(', ')}</span>
+          <Text
+            variant="body-small"
+            color="secondary"
+            title={source.selectors.join(', ')}
+          >
+            {source.selectors.map((selector, index) => (
+              <Fragment key={selector}>
+                {index > 0 && ', '}
+                {labelOfPresetSelector(selector) === undefined ? (
+                  <span className={classes.code}>{selector}</span>
+                ) : (
+                  selectorLabel(selector)
+                )}
+              </Fragment>
+            ))}
           </Text>
         </SelectableCard>
       ))}

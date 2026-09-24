@@ -5,8 +5,6 @@
 
 /** The state of a capability on an installation, in the manager's words. */
 export type CapabilityStateName =
-  | 'not opted in'
-  | 'enabled, not opted in'
   | 'not enabled'
   | 'pending approval'
   | 'rolling out'
@@ -16,18 +14,14 @@ export type CapabilityStateName =
   | 'failed'
   | 'unknown';
 
-/** The installation's opt-in file in its management-clusters repository. */
-export interface OptIn {
-  state: 'opted in' | 'not opted in' | 'unreadable';
-  repository?: string;
-  /** `management-clusters/<name>/platform-manager.yaml` */
-  path?: string;
-  present?: boolean;
-  optIn?: boolean | null;
-  /** How the owners opt in: the pull request that adds the file. */
-  howToOptIn?: string;
-  error?: string;
-}
+/**
+ * The state of an Action, in the manager's words: the installation's states
+ * an action produces, plus the three that are the action's own -- the gate
+ * refused it before any write, a member of the team denied it, or the files
+ * it wrote left the repositories' default branch again (removed).
+ */
+export type ActionStateName =
+  CapabilityStateName | 'refused' | 'denied' | 'removed';
 
 /** The installation's record: the definitions' `installation.*` inputs. */
 export interface InstallationRecord {
@@ -40,9 +34,10 @@ export interface InstallationRecord {
   musterClientId?: string;
 }
 
+/** The last Action on a capability: its name and its state, as `list_installations` names them. */
 export interface ActionRef {
   name: string;
-  result?: string;
+  result?: ActionStateName;
 }
 
 export interface CapabilityState {
@@ -52,8 +47,6 @@ export interface CapabilityState {
   enabledMarker?: string;
   /** The capability's fileset is on record, whoever put it there. */
   enabled?: boolean;
-  /** The owners have declared the opt-in: the manager may write here. */
-  optedIn?: boolean;
   lastAction?: ActionRef | null;
 }
 
@@ -70,7 +63,6 @@ export interface Installation {
   repositories?: { configs?: string; managementClusters?: string };
   sources?: string[];
   record?: InstallationRecord;
-  optIn: OptIn;
   capabilities: CapabilityState[];
   readable: boolean;
   errors?: string[];
@@ -182,11 +174,10 @@ export interface Probe {
 export interface PlanInstallation {
   name: string;
   state?: CapabilityStateName;
-  optIn?: OptIn;
   inputs?: Record<string, unknown>;
   /** The definition's refusal of the inputs: an answer, not a fault. */
   refused?: string;
-  /** Why a commit of this installation would be refused (not opted in). */
+  /** Why a commit of this installation would be refused, in the manager's words. */
   commitRefused?: string;
   files?: PlanFile[];
   includes?: unknown[];
@@ -213,7 +204,6 @@ export interface PlanPullRequest {
 export interface SkippedInstallation {
   name: string;
   reason: string;
-  optIn?: OptIn;
   errors?: string[];
 }
 
@@ -261,7 +251,7 @@ export interface Action {
     inputs?: Record<string, unknown>;
   };
   status?: {
-    state?: CapabilityStateName;
+    state?: ActionStateName;
     pullRequests?: ActionPullRequest[];
     approval?: ActionApproval;
     rollout?: {
@@ -269,7 +259,7 @@ export interface Action {
       finishedAt?: string;
       installations?: { name: string; state?: string; message?: string }[];
     };
-    result?: { state?: string; message?: string; at?: string };
+    result?: { state?: ActionStateName; message?: string; at?: string };
   };
 }
 
@@ -302,18 +292,49 @@ export interface VerifyDifference {
   currentLine?: number;
 }
 
+/** One live check of a dimension: an object or URL of the installation, read as the person. */
+export interface LiveCheck {
+  kind: string;
+  namespace?: string;
+  resource?: string;
+  name?: string;
+  url?: string;
+  mark: VerifyMark;
+  /** What was seen, in one line: the condition, the status, the refusal. */
+  message?: string;
+  /** The definition's sentence next to the probe. */
+  note?: string;
+  revision?: string;
+}
+
+/** muster's answer when the person's session is not connected to the installation. */
+export interface LiveAuthRequired {
+  server: string;
+  authUrl?: string;
+  message: string;
+}
+
 export interface VerifyDimension {
   id: string;
   kind?: string;
   key?: string;
   mark: VerifyMark;
+  /** Why the dimension was not checked, in the manager's words. */
   reason?: string;
   files?: string[];
   differences?: VerifyDifference[];
   probe?: {
     expect?: number[];
-    requests?: { url: string; status?: number; error?: string; ok: boolean }[];
+    requests?: {
+      url: string;
+      client?: string;
+      status?: number;
+      error?: string;
+      ok: boolean;
+    }[];
   };
+  /** What a live dimension's checks answered (`verify_installation`). */
+  live?: { checks: LiveCheck[]; authRequired?: LiveAuthRequired };
 }
 
 export interface VerifyFeature {
@@ -329,6 +350,10 @@ export interface VerifyInputs {
   source: string;
   values?: Record<string, unknown>;
   readBack?: Record<string, unknown>;
+  /** Every choice of the person no layer holds a value for, by field: the choices not on record. */
+  unset?: string[];
+  /** The required choices no layer holds, by field; a commit refuses them. */
+  missing?: string[];
 }
 
 /**
@@ -387,6 +412,17 @@ export interface PlatformCapabilitiesApi {
     installation: string,
     capability: string,
     args?: CapabilityArgs,
+  ): Promise<VerifyResult>;
+  /**
+   * `verify_installation`: the definition's live checks of the running
+   * installation, read through muster as the signed-in person. `inputs` is
+   * the comparison's inputs object, so both halves render from the same;
+   * the answer is the live half alone, merged by the page (`mergeLive`).
+   */
+  verifyInstallation(
+    installation: string,
+    capability: string,
+    args?: { inputs?: VerifyInputs },
   ): Promise<VerifyResult>;
   listActions(filter: {
     installation?: string;

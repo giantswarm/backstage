@@ -8,7 +8,10 @@ import {
   Definition,
   Installation,
   InstallationListing,
+  VerifyDimension,
   VerifyFeature,
+  VerifyInputs,
+  VerifyMark,
   ListInstallationsFilters,
   ManagerInfo,
   PlanFile,
@@ -31,28 +34,40 @@ export const AGENT_PLATFORM_DEFINITION: Definition = {
         type: 'object',
         description: 'The installation, from its record.',
         properties: {
-          name: { type: 'string' },
-          baseDomain: { type: 'string' },
-          private: { type: 'boolean' },
-          chartLine: { type: 'string', enum: ['3', '4'] },
+          name: { type: 'string', 'x-source': 'registry' },
+          baseDomain: { type: 'string', 'x-source': 'registry' },
+          private: { type: 'boolean', 'x-source': 'registry' },
+          chartLine: {
+            type: 'string',
+            enum: ['3', '4'],
+            'x-source': 'registry',
+          },
         },
       },
       kagent: {
         type: 'object',
         required: ['enabled'],
         properties: {
-          enabled: { type: 'boolean', description: 'Run kagent.' },
+          enabled: {
+            type: 'boolean',
+            description: 'Run kagent.',
+            'x-source': 'person',
+          },
         },
       },
       portal: {
         type: 'object',
         required: ['enabled'],
-        properties: { enabled: { type: 'boolean' } },
+        properties: { enabled: { type: 'boolean', 'x-source': 'person' } },
       },
       federation: {
         type: 'object',
         properties: {
-          targets: { type: 'array', items: { type: 'string' } },
+          targets: {
+            type: 'array',
+            items: { type: 'string' },
+            'x-source': 'registry',
+          },
         },
       },
       modelServing: {
@@ -60,6 +75,112 @@ export const AGENT_PLATFORM_DEFINITION: Definition = {
         description: 'The one choice: whether the installation serves models.',
         properties: {
           enabled: { type: 'boolean', default: false, 'x-source': 'person' },
+        },
+      },
+    },
+  },
+};
+
+/**
+ * The customer-portal definition's input schema, in the shape `get_info`
+ * publishes it: the portal's choices are the person's, the record's facts
+ * the registry's, a plugin's domain read, its app id supplied at commit.
+ */
+export const CUSTOMER_PORTAL_DEFINITION: Definition = {
+  name: 'customer-portal',
+  description: 'The Dev Portal of an installation.',
+  inputSchema: {
+    type: 'object',
+    required: ['installation', 'portal', 'chart', 'plugins', 'tunnel'],
+    properties: {
+      installation: {
+        type: 'object',
+        required: ['name', 'baseDomain', 'customer', 'pipeline'],
+        properties: {
+          name: { type: 'string', 'x-source': 'registry' },
+          baseDomain: { type: 'string', 'x-source': 'registry' },
+          customer: { type: 'string', 'x-source': 'registry' },
+          pipeline: { type: 'string', 'x-source': 'registry' },
+        },
+      },
+      portal: {
+        type: 'object',
+        required: ['domain', 'organization'],
+        properties: {
+          domain: {
+            type: 'string',
+            description: "The portal's hostname.",
+            'x-source': 'person',
+          },
+          title: {
+            type: 'string',
+            default: 'Dev Portal',
+            'x-source': 'person',
+          },
+          organization: { type: 'string', 'x-source': 'person' },
+          supportUrl: { type: 'string', 'x-source': 'person' },
+          friendlyLabels: {
+            type: 'array',
+            items: { type: 'object' },
+            'x-source': 'person',
+          },
+        },
+      },
+      chart: {
+        type: 'object',
+        required: ['line'],
+        properties: {
+          line: {
+            type: 'string',
+            description: "The semver range the portal's OCIRepository follows.",
+            'x-source': 'person',
+          },
+        },
+      },
+      plugins: {
+        type: 'object',
+        required: ['github', 'grafana', 'sentry'],
+        properties: {
+          github: {
+            type: 'object',
+            required: ['enabled'],
+            properties: {
+              enabled: { type: 'boolean', 'x-source': 'person' },
+              appId: { type: 'integer', 'x-source': 'supplied' },
+            },
+          },
+          grafana: {
+            type: 'object',
+            required: ['enabled'],
+            properties: {
+              enabled: { type: 'boolean', 'x-source': 'person' },
+              domain: { type: 'string', 'x-source': 'registry' },
+            },
+          },
+          sentry: {
+            type: 'object',
+            required: ['enabled'],
+            properties: {
+              enabled: { type: 'boolean', 'x-source': 'person' },
+            },
+          },
+        },
+      },
+      tunnel: {
+        type: 'object',
+        required: ['enabled'],
+        properties: {
+          enabled: { type: 'boolean', 'x-source': 'person' },
+        },
+      },
+      pluginKeys: {
+        type: 'object',
+        properties: {
+          keyId: {
+            type: 'string',
+            default: 'plugin-to-plugin',
+            'x-source': 'generated',
+          },
         },
       },
     },
@@ -84,21 +205,17 @@ export function installation(
     provider: 'capa',
     pipeline: 'testing',
     region: 'eu-west-1',
-    record: RECORD,
-    optIn: {
-      state: 'opted in',
-      repository: 'example/example-management-clusters',
-      path: 'management-clusters/rowan/platform-manager.yaml',
-      present: true,
-      optIn: true,
+    repositories: {
+      configs: 'example/example-configs',
+      managementClusters: 'example/example-management-clusters',
     },
+    record: RECORD,
     capabilities: [
       {
         name: 'agent-platform',
         state: 'not enabled',
         inputs: { installation: RECORD },
         enabled: false,
-        optedIn: true,
         lastAction: null,
       },
     ],
@@ -107,25 +224,18 @@ export function installation(
   };
 }
 
-export const NOT_OPTED_IN: Installation = installation({
+/** A second installation with nothing on record. */
+export const NOT_ENABLED: Installation = installation({
   name: 'alder',
   record: { ...RECORD, name: 'alder', baseDomain: 'alder.example.test' },
-  optIn: {
-    state: 'not opted in',
-    repository: 'example/example-management-clusters',
-    path: 'management-clusters/alder/platform-manager.yaml',
-    present: false,
-    howToOptIn: 'https://github.com/example/example-management-clusters/pull/1',
-  },
   capabilities: [
     {
       name: 'agent-platform',
-      state: 'not opted in',
+      state: 'not enabled',
       inputs: {
         installation: { ...RECORD, name: 'alder' },
       },
       enabled: false,
-      optedIn: false,
       lastAction: null,
     },
   ],
@@ -141,7 +251,6 @@ function withState(
     record: { ...RECORD, name, baseDomain: `${name}.example.test` },
     capabilities: [
       {
-        optedIn: true,
         ...capability,
         inputs: { installation: { ...RECORD, name } },
       },
@@ -163,32 +272,6 @@ export const ENABLED_BY_HAND: Installation = withState('cedar', {
   state: 'enabled',
   enabled: true,
   lastAction: null,
-});
-
-/**
- * Enabled by its owners, who never opted in: the fileset is on record and the
- * manager may not write to it.
- */
-export const ENABLED_NOT_OPTED_IN: Installation = installation({
-  name: 'maple',
-  record: { ...RECORD, name: 'maple', baseDomain: 'maple.example.test' },
-  optIn: {
-    state: 'not opted in',
-    repository: 'example/example-management-clusters',
-    path: 'management-clusters/maple/platform-manager.yaml',
-    present: false,
-    howToOptIn: 'https://github.com/example/example-management-clusters/pull/2',
-  },
-  capabilities: [
-    {
-      name: 'agent-platform',
-      state: 'enabled, not opted in',
-      inputs: { installation: { ...RECORD, name: 'maple' } },
-      enabled: true,
-      optedIn: false,
-      lastAction: null,
-    },
-  ],
 });
 
 /** The last verify found it off its definition. */
@@ -304,6 +387,110 @@ export const ACTION: Action = {
       },
     ],
     approval: { channel: '#platform', decision: 'pending' },
+  },
+};
+
+/** What the person asked for, as the dialog sends it: the record's chart line read back, the choices made. */
+const ASKED = {
+  installation: { chartLine: '3' },
+  kagent: { enabled: true },
+  portal: { enabled: false },
+};
+
+/** Refused at the gate: the installation's record could not be read as the person, so nothing was written. */
+export const REFUSED_ACTION: Action = {
+  name: 'enable-rowan-q7m2xa',
+  createdAt: '2026-09-17T09:30:00Z',
+  spec: {
+    actor: { login: 'someone' },
+    capability: 'agent-platform',
+    kind: 'enable',
+    installations: ['rowan'],
+    inputs: ASKED,
+  },
+  status: {
+    state: 'refused',
+    result: {
+      state: 'refused',
+      message:
+        'rowan is unreadable as you (installations/rowan/config.yaml.patch in example/example-configs: not found); the record is read before any write and nothing is written blind',
+      at: '2026-09-17T09:30:01Z',
+    },
+  },
+};
+
+/** Denied: a member of the team withdrew it in the review; its pull request was closed unmerged. */
+export const DENIED_ACTION: Action = {
+  name: 'reconcile-rowan-b4k9zt',
+  createdAt: '2026-09-16T14:00:00Z',
+  spec: {
+    actor: { login: 'someone' },
+    capability: 'agent-platform',
+    kind: 'reconcile',
+    installations: ['rowan'],
+    inputs: { kagent: { enabled: true }, portal: { enabled: true } },
+  },
+  status: {
+    state: 'denied',
+    pullRequests: [
+      {
+        repository: 'example/example-configs',
+        number: 9,
+        url: 'https://github.com/example/example-configs/pull/9',
+        state: 'closed',
+      },
+    ],
+    approval: {
+      channel: '#platform',
+      decision: 'denied',
+      decidedBy: 'reviewer',
+      reason: 'not during the freeze',
+    },
+    result: {
+      state: 'denied',
+      message: 'denied by reviewer: not during the freeze',
+      at: '2026-09-16T15:00:00Z',
+    },
+  },
+};
+
+/** Removed: the fileset it merged left the default branch again, so the action is reverted. */
+export const REMOVED_ACTION: Action = {
+  name: 'enable-rowan-c1d8pe',
+  createdAt: '2026-09-10T08:00:00Z',
+  spec: {
+    actor: { login: 'someone' },
+    capability: 'agent-platform',
+    kind: 'enable',
+    installations: ['rowan'],
+    inputs: ASKED,
+  },
+  status: {
+    state: 'removed',
+    pullRequests: [
+      {
+        repository: 'example/example-configs',
+        number: 5,
+        url: 'https://github.com/example/example-configs/pull/5',
+        state: 'merged',
+      },
+    ],
+    rollout: {
+      installations: [
+        {
+          name: 'rowan',
+          state: 'removed',
+          message:
+            'installations/rowan/config.yaml.patch is gone from the default branch of example/example-configs again',
+        },
+      ],
+    },
+    result: {
+      state: 'removed',
+      message:
+        'the fileset is gone from the default branch again: rowan (installations/rowan/config.yaml.patch in example/example-configs); Flux prunes what the tree applied',
+      at: '2026-09-12T08:00:00Z',
+    },
   },
 };
 
@@ -491,6 +678,96 @@ export const VERIFIED: VerifyResult = {
   pullRequests: PLAN.pullRequests,
 };
 
+/** The live half's mark on a feature: its word on the one live dimension it checked, else nothing checked. */
+function liveMarkOf(feature: VerifyFeature): VerifyMark {
+  if (feature.dimensions?.some(d => d.id === 'live-drift')) {
+    return 'drifted';
+  }
+  if (feature.dimensions?.some(d => d.id === 'live-dex-auth-per-client')) {
+    return 'as defined';
+  }
+  return 'not checked';
+}
+
+/** The reason the live half gives every dimension the repository half checks. */
+const REPOSITORY_SIDE =
+  'compared against the repositories by verify_capability';
+
+/**
+ * rowan's live half (`verify_installation`), read as the person: the two
+ * dimensions that needed the session checked -- the Dex clients answer as
+ * defined, the live values drift on one leaf -- and every other dimension
+ * left to the repository half.
+ */
+export const LIVE: VerifyResult = {
+  installation: 'rowan',
+  capability: 'agent-platform',
+  caller: 'ada@example.test',
+  state: 'drifted',
+  inputs: VERIFIED.inputs,
+  features: VERIFIED.features.map((f): VerifyFeature => ({
+    id: f.id,
+    title: f.title,
+    mark: liveMarkOf(f),
+    dimensions: (f.dimensions ?? []).map((d): VerifyDimension => {
+      if (d.id === 'live-dex-auth-per-client') {
+        return {
+          id: d.id,
+          kind: 'live',
+          mark: 'as defined',
+          live: {
+            checks: [
+              {
+                kind: 'HTTP',
+                url: 'https://dex.rowan.example.test/auth?client_id=kagent',
+                mark: 'as defined',
+                message: '302',
+              },
+            ],
+          },
+        };
+      }
+      if (d.id === 'live-drift') {
+        return {
+          id: d.id,
+          kind: 'live',
+          mark: 'drifted',
+          differences: [
+            {
+              object: 'HelmRelease flux-giantswarm/agent-platform',
+              path: 'kagent.replicas',
+              rendered: 1,
+              current: 2,
+            },
+          ],
+          live: {
+            checks: [
+              {
+                kind: 'Drift',
+                namespace: 'flux-giantswarm',
+                resource: 'HelmRelease',
+                name: 'agent-platform',
+                mark: 'drifted',
+                message: '1 difference(s)',
+              },
+            ],
+          },
+        };
+      }
+      return {
+        id: d.id,
+        kind: d.kind,
+        mark: 'not checked',
+        reason: REPOSITORY_SIDE,
+      };
+    }),
+  })),
+  summary: { 'as defined': 1, drifted: 1, 'not checked': 7 },
+  files: [],
+  diff: {},
+  pullRequests: [],
+};
+
 /** The runtime feature with the change a migration plans, not drift. */
 const PLANNED_RUNTIME: VerifyFeature = {
   id: 'runtime',
@@ -574,18 +851,198 @@ export const MIXED: VerifyResult = {
   summary: { ...VERIFIED.summary, drifted: 2, planned: 1 },
 };
 
+/** The patch's file, `<repository>:<path>`, as a difference names it. */
+const PATCH_FILE = `${PLAN.installations[0].files![0].repository}:${
+  PLAN.installations[0].files![0].path
+}`;
+
 /**
- * rowan not compared: the record failed the definition's schema, so the
- * manager refused and checked nothing -- every dimension not checked.
+ * The patch as the definition renders it after a rewrite: a header
+ * comment, the components block new, kagent's replicas one.
  */
-export const NOT_COMPARED: VerifyResult = {
-  ...VERIFIED,
-  state: 'enabled',
-  refused:
-    'installation.podCertificateRequest: the record does not say whether the cluster serves PodCertificateRequest',
-  features: VERIFIED.features.map(f => ({
+export const REWRITE_RENDERED = [
+  '# Rendered by the platform manager for rowan.',
+  'components:',
+  '  kagent:',
+  '    enabled: true',
+  '  postgres:',
+  '    enabled: true',
+  'kagent:',
+  '  replicas: 1',
+  'llmRouting:',
+  '  enabled: true',
+  '',
+].join('\n');
+
+/**
+ * The same patch as its owners wrote it by hand, read back with SOPS's
+ * four-space indentation: comment blocks, a gateway block the definition
+ * no longer renders (its `enabled: true` the same text as the components'),
+ * two replicas.
+ */
+export const REWRITE_ON_RECORD = [
+  '# Agent platform values for rowan.',
+  '# Edited by hand.',
+  'gateway:',
+  '    jwksEgress:',
+  '        enabled: true',
+  '',
+  '# kagent runs two replicas.',
+  'kagent:',
+  '    replicas: 2',
+  'llmRouting:',
+  '    # Routing stays on for the agents.',
+  '    # Do not turn this off.',
+  '    enabled: true',
+  '',
+].join('\n');
+
+/**
+ * rowan's patch rewritten by the definition: one check differs (the
+ * replicas), one carries the planned changes (the components block added,
+ * the gateway block removed).
+ */
+export const REWRITTEN: VerifyResult = {
+  ...UP_TO_DATE,
+  state: 'drifted',
+  features: [
+    ...UP_TO_DATE.features,
+    {
+      id: 'runtime',
+      title: 'Runtime',
+      mark: 'drifted',
+      marks: { drifted: 1, planned: 1 },
+      dimensions: [
+        {
+          id: 'patch-top-level-keys',
+          kind: 'configmap',
+          mark: 'drifted',
+          differences: [
+            {
+              file: PATCH_FILE,
+              path: 'kagent.replicas',
+              rendered: 1,
+              current: 2,
+              line: 8,
+              currentLine: 9,
+            },
+          ],
+        },
+        {
+          id: 'patch-components',
+          kind: 'configmap',
+          mark: 'planned',
+          differences: [
+            {
+              file: PATCH_FILE,
+              path: 'components.kagent.enabled',
+              planned:
+                'Added: components.kagent.enabled is written explicitly with the value this installation gets · M7',
+              rendered: true,
+              line: 4,
+            },
+            {
+              file: PATCH_FILE,
+              path: 'components.postgres.enabled',
+              planned:
+                'Added: postgres.enabled is written explicitly (on where kagent runs) · M7',
+              rendered: true,
+              line: 6,
+            },
+            {
+              file: PATCH_FILE,
+              path: 'gateway.jwksEgress.enabled',
+              planned:
+                'Removed: gateway.jwksEgress is the shared default here · M8',
+              current: true,
+              currentLine: 5,
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  summary: { 'as defined': 3, drifted: 1, planned: 1 },
+  files: [
+    {
+      ...PLAN.installations[0].files![0],
+      change: 'update',
+      content: REWRITE_RENDERED,
+      current: REWRITE_ON_RECORD,
+    },
+  ],
+  diff: { update: 1, unchanged: 1 },
+  pullRequests: [PLAN.pullRequests![0]],
+};
+
+/** The hub's file rowan's portal section lives in: hazel's Backstage serves rowan. */
+export const HUB_PORTAL_FILE =
+  'example/example-management-clusters:management-clusters/hazel/extras/backstage/agent-platform/kustomization.yaml';
+
+const MOVED =
+  "Moved: the portal's Agent Platform settings leave the main app-config for a kustomize Component the platform owns · M3";
+
+/**
+ * rowan with planned changes only, one feature of them on its hub hazel:
+ * the portal's component moves into a kustomization of hazel's Backstage.
+ */
+export const PLANNED_ON_HUB: VerifyResult = {
+  ...PLANNED,
+  hub: 'hazel',
+  features: [
+    ...PLANNED.features.filter(f => f.id !== 'portal'),
+    {
+      id: 'portal',
+      title: 'Portal section',
+      mark: 'planned',
+      marks: { planned: 1 },
+      dimensions: [
+        {
+          id: 'portal-extra-files',
+          kind: 'backstage',
+          mark: 'planned',
+          differences: [
+            {
+              file: HUB_PORTAL_FILE,
+              path: 'resources[app-config.yaml]',
+              planned: MOVED,
+              rendered: 'app-config.yaml',
+            },
+            {
+              file: HUB_PORTAL_FILE,
+              path: 'resources[values.yaml]',
+              planned: MOVED,
+              rendered: 'values.yaml',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  summary: { 'as defined': 3, planned: 2 },
+  files: [
+    ...PLANNED.files!,
+    {
+      repository: 'example/example-management-clusters',
+      path: 'management-clusters/hazel/extras/backstage/agent-platform/kustomization.yaml',
+      change: 'create',
+    },
+  ],
+  diff: { update: 1, create: 1, unchanged: 1 },
+};
+
+/**
+ * A comparison the definition refused: the manager checked nothing -- every
+ * dimension not checked -- rendered no file and, as it does, copied the
+ * refusal into why a commit would be refused.
+ */
+export function refusedComparison(
+  base: VerifyResult,
+  refused: string,
+): VerifyResult {
+  const features = base.features.map(f => ({
     ...f,
-    mark: 'not checked',
+    mark: 'not checked' as const,
     marks: undefined,
     dimensions: f.dimensions?.map(d =>
       d.mark === 'not checked'
@@ -594,15 +1051,97 @@ export const NOT_COMPARED: VerifyResult = {
             id: d.id,
             kind: d.kind,
             mark: 'not checked' as const,
-            reason: 'the record failed the schema',
+            reason: 'the definition refused the inputs',
           },
     ),
-  })),
-  summary: { 'not checked': 9 },
-  files: [],
-  diff: {},
-  pullRequests: [],
+  }));
+  return {
+    ...base,
+    refused,
+    commitRefused: refused,
+    features,
+    summary: {
+      'not checked': features.reduce(
+        (n, f) => n + (f.dimensions?.length ?? 0),
+        0,
+      ),
+    },
+    files: [],
+    diff: {},
+    pullRequests: [],
+  };
+}
+
+/**
+ * rowan not compared: its record selects the 3 chart line and kagent needs
+ * the 4 -- a fact of the record to change first -- so the manager refused
+ * and checked nothing.
+ */
+export const NOT_COMPARED: VerifyResult = refusedComparison(
+  { ...VERIFIED, state: 'enabled' },
+  "the installation's chart line (installation.chartLine) selects the 3 line, and kagent needs the platform's 4 chart line; agentPlatform.kagentApiV2: true in installations/rowan/config.yaml.patch selects 4",
+);
+
+/**
+ * rowan's customer-portal compared with its definition: every choice of the
+ * person read back from the portal's files, the record's facts next to
+ * them; the title reads `Backstage` where the schema's default says
+ * `Dev Portal`, and the tunnel is the one choice no layer holds.
+ */
+export const PORTAL_ON_RECORD: VerifyResult = {
+  ...VERIFIED,
+  capability: 'customer-portal',
+  inputs: {
+    source: 'record + read-back',
+    values: {
+      installation: RECORD,
+      portal: {
+        domain: 'portal.rowan.example.test',
+        title: 'Backstage',
+        organization: 'Example',
+      },
+      chart: { line: '>=1.0.0 <2.0.0' },
+      plugins: {
+        github: { enabled: true, appId: 4711 },
+        grafana: { enabled: false, domain: 'grafana.rowan.example.test' },
+        sentry: { enabled: true },
+      },
+      pluginKeys: { keyId: 'plugin-to-plugin' },
+    },
+    unset: ['tunnel.enabled'],
+    missing: ['tunnel.enabled'],
+  },
+  commitRefused:
+    'Choose tunnel.enabled (whether the portal reaches the installation through Teleport) before a commit.',
 };
+
+/** rowan's portal with every choice on record: PORTAL_ON_RECORD with the tunnel chosen. */
+const PORTAL_CHOSEN: VerifyResult = {
+  ...PORTAL_ON_RECORD,
+  inputs: {
+    ...PORTAL_ON_RECORD.inputs!,
+    values: { ...PORTAL_ON_RECORD.inputs!.values, tunnel: { enabled: true } },
+    unset: [],
+    missing: [],
+  },
+  commitRefused: undefined,
+};
+
+/**
+ * rowan's portal not compared: the GitHub App's id lives in the encrypted
+ * Secret alone, so no read-back recovers it and the manager refused until it
+ * is supplied -- an input a person gives, not a fact to fix first.
+ */
+export const APP_ID_NOT_ON_RECORD: VerifyResult = refusedComparison(
+  PORTAL_CHOSEN,
+  "the GitHub App's id (plugins.github.appId) is not on record; supply it under Apply changes",
+);
+
+/** rowan's portal refused for a choice of the form: the hostname, changed in the dialog. */
+export const DOMAIN_REFUSED: VerifyResult = refusedComparison(
+  PORTAL_CHOSEN,
+  "the portal's hostname (portal.domain) is the hub's; choose another under rowan.example.test",
+);
 
 /**
  * The comparison ran and found the differences, and the manager would
@@ -612,6 +1151,22 @@ export const COMMIT_REFUSED: VerifyResult = {
   ...VERIFIED,
   commitRefused:
     'dex-app 2.2.3 on record (example/example-management-cluster-bases:bases/collections/shared/base/dex-app.yaml): the referenced Dex client secrets need dex-app 3.2.2 or later; pin it in management-clusters/birch/collections/kustomization.yaml first',
+};
+
+/**
+ * The comparison ran and the manager would refuse a commit for the choices
+ * not on record alone: the dialog asks for them.
+ */
+export const MISSING_CHOICES: VerifyResult = {
+  ...VERIFIED,
+  state: 'not enabled',
+  inputs: {
+    ...VERIFIED.inputs!,
+    unset: ['portal.domain', 'chart.line'],
+    missing: ['portal.domain', 'chart.line'],
+  },
+  commitRefused:
+    "Choose chart.line (the semver range the portal's OCIRepository follows); portal.domain (the portal's hostname) before a commit.",
 };
 
 export interface FakeOptions {
@@ -630,6 +1185,12 @@ export interface FakeOptions {
   infoLatency?: number;
   /** The comparison fails with this, as when the person has no session at the manager. */
   verifyError?: Error;
+  /** Every comparison waits until `settleComparisons` is called: a card in flight, then refreshed. */
+  heldComparison?: boolean;
+  /** The live half `verify_installation` answers; LIVE by default. */
+  live?: VerifyResult;
+  /** The live checks fail with this, as when the person has no session at the manager. */
+  liveError?: Error;
 }
 
 export interface Write {
@@ -650,8 +1211,21 @@ export class FakeApi implements PlatformCapabilitiesApi {
     capability: string;
     args?: CapabilityArgs;
   }[] = [];
+  /** Every live verify asked for, with the inputs handed over. */
+  liveVerifies: {
+    installation: string;
+    capability: string;
+    args?: { inputs?: VerifyInputs };
+  }[] = [];
+
+  private held: (() => void)[] = [];
 
   constructor(private readonly options: FakeOptions = {}) {}
+
+  /** Lets every comparison that is waiting answer, as the manager does when its probes return. */
+  settleComparisons() {
+    this.held.splice(0).forEach(release => release());
+  }
 
   async getConnection(): Promise<ConnectionResponse> {
     return this.options.connection ?? { connected: true };
@@ -719,11 +1293,30 @@ export class FakeApi implements PlatformCapabilitiesApi {
     args?: CapabilityArgs,
   ): Promise<VerifyResult> {
     this.verifies.push({ installation: name, capability, args });
+    if (this.options.heldComparison) {
+      await new Promise<void>(resolve => this.held.push(resolve));
+    }
     if (this.options.verifyError) {
       throw this.options.verifyError;
     }
     return {
       ...(this.options.verified ?? VERIFIED),
+      installation: name,
+      capability,
+    };
+  }
+
+  async verifyInstallation(
+    name: string,
+    capability: string,
+    args?: { inputs?: VerifyInputs },
+  ): Promise<VerifyResult> {
+    this.liveVerifies.push({ installation: name, capability, args });
+    if (this.options.liveError) {
+      throw this.options.liveError;
+    }
+    return {
+      ...(this.options.live ?? LIVE),
       installation: name,
       capability,
     };

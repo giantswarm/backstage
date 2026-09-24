@@ -17,7 +17,8 @@ import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
   buildCatalogue,
   parseSelector,
-  presetLabel,
+  labelOfPresetSelector,
+  selectorLabel,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
@@ -31,11 +32,13 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1),
   },
   selector: {
-    fontFamily: 'monospace',
     fontSize: 13,
     padding: theme.spacing(0.25, 1),
     borderRadius: 999,
     border: `1px solid ${theme.palette.divider}`,
+  },
+  selectorCode: {
+    fontFamily: 'monospace',
   },
   selectorUnmatched: {
     borderStyle: 'dashed',
@@ -48,14 +51,15 @@ const useStyles = makeStyles(theme => ({
 }));
 
 function selectorTitle(selector: string, isUnmatched: boolean) {
-  if (isUnmatched) {
-    return 'Matches nothing for you right now';
-  }
-  const parsed = parseSelector(selector);
-  return parsed?.kind === 'preset' ? presetLabel(parsed.name) : undefined;
+  return isUnmatched
+    ? `${selector} — matches nothing for you right now`
+    : selector;
 }
 
-/** The declared selectors as chips, the ones matching nothing for the viewer struck through. */
+/**
+ * The declared selectors as chips — a preset by its label, anything else as
+ * written — the ones matching nothing for the viewer struck through.
+ */
 function DeclaredSelectors({
   selectors,
   unmatched,
@@ -77,12 +81,16 @@ function DeclaredSelectors({
           <span
             key={selector}
             role="listitem"
-            className={`${classes.selector} ${
-              isUnmatched ? classes.selectorUnmatched : ''
-            }`}
+            className={[
+              classes.selector,
+              labelOfPresetSelector(selector) === undefined
+                ? classes.selectorCode
+                : '',
+              isUnmatched ? classes.selectorUnmatched : '',
+            ].join(' ')}
             title={selectorTitle(selector, isUnmatched)}
           >
-            {selector}
+            {selectorLabel(selector)}
             {isUnmatched ? ' (matches nothing for you)' : ''}
           </span>
         );

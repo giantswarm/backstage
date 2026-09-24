@@ -13,13 +13,15 @@ import { createRouter } from './router';
  * capability (`list_installations`), the dry run and the commit of enabling
  * or reconciling a capability (`enable_capability`, `reconcile_capability`),
  * the check of an installation against its inputs on record
- * (`verify_capability`), the action records (`get_action`, `list_actions`)
- * and the manager's report of itself and the capability definitions with
- * their input schemas (`get_info`). Every call runs as the signed-in person:
- * the frontend forwards the caller's Dex ID token, muster forwards it to the
- * manager, which obtains the person's GitHub grant from muster's token broker
- * (`platformCapabilities.muster`). Nothing is composed here -- the page shows
- * what the tools return.
+ * (`verify_capability`), the live checks of the running installation
+ * (`verify_installation`), the action records (`get_action`,
+ * `list_actions`) and the manager's report of itself and the capability
+ * definitions with their input schemas (`get_info`), all on the manager's
+ * one muster registration (`platformCapabilities.muster`). Every call runs
+ * as the signed-in person: the frontend forwards the caller's Dex ID token,
+ * muster forwards it to the manager, which obtains the person's GitHub grant
+ * from muster's token broker and reads the running installation as the
+ * person. Nothing is composed here -- the page shows what the tools return.
  *
  * @public
  */

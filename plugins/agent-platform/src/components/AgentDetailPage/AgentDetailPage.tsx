@@ -392,9 +392,8 @@ function AgentDetailPageContent() {
 
   const { deleteAgent, commit: commitDeletion } = deletion;
   const confirmDelete = useCallback(async () => {
-    let result;
     try {
-      result = await deleteAgent();
+      await deleteAgent();
     } catch {
       // Left to the dialog, which stays open and shows agent-manager's message
       // — a GitOps-owned or suspended release, a viewer's Forbidden. No toast:
@@ -402,18 +401,14 @@ function AgentDetailPageContent() {
       return;
     }
     setDeleteOpen(false);
-    const as = result.requestedBy ? ` as ${result.requestedBy}` : '';
     toastApi.post({
       // Deliberately not "Agent deleted": the HelmRelease has a finalizer, so
       // all that is certain here is that agent-manager's delete was accepted
       // and helm-controller has started uninstalling. The agent can still be in
       // the list for a few seconds.
       title: `Deleting agent "${agent?.getDisplayName() ?? name}"`,
-      description: `agent-manager deleted its Helm release${as}; Flux is uninstalling it, so it may take a moment to disappear from the list.${
-        result.ociRepositoryKept
-          ? ` The namespace's shared chart source stays: ${result.ociRepositoryKept}.`
-          : ''
-      }`,
+      description:
+        'Flux is uninstalling it, so it may take a moment to disappear from the list.',
       status: 'success',
       // A ToastApi toast without a timeout is permanent, and this is an
       // acknowledgement, not something to dismiss by hand.
@@ -441,9 +436,7 @@ function AgentDetailPageContent() {
     (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
       toastApi.post({
         title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
-        description: `agent-manager re-pinned the git skills${
-          requestedBy ? ` as ${requestedBy}` : ''
-        }; the platform Harness compiles a new revision.`,
+        description: 'The platform Harness compiles a new revision.',
         status: 'success',
         timeout: TOAST_TIMEOUT_MS,
       });

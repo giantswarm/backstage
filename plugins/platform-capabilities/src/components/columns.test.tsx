@@ -8,10 +8,9 @@ import {
   DRIFTED,
   ENABLED,
   ENABLED_BY_HAND,
-  ENABLED_NOT_OPTED_IN,
   FakeApi,
   installation,
-  NOT_OPTED_IN,
+  NOT_ENABLED,
 } from '../fixtures/fakeApi';
 import { useInstallationCapabilityColumns } from './columns';
 import { platformCapabilitiesQueryClient } from './Providers';
@@ -139,10 +138,9 @@ describe('useInstallationCapabilityColumns', () => {
     const api = new FakeApi({
       installations: [
         installation(),
-        NOT_OPTED_IN,
+        NOT_ENABLED,
         ENABLED,
         ENABLED_BY_HAND,
-        ENABLED_NOT_OPTED_IN,
         DRIFTED,
       ],
     });
@@ -173,7 +171,7 @@ describe('useInstallationCapabilityColumns', () => {
     expect(cell('rowan')).toHaveAttribute('data-mark', 'not installed');
     expect(cell('rowan')).toHaveAccessibleName('Not installed');
     expect(cell('rowan')).toHaveTextContent('');
-    expect(cell('alder')).toHaveAttribute('data-state', 'not opted in');
+    expect(cell('alder')).toHaveAttribute('data-state', 'not enabled');
     expect(cell('alder')).toHaveAttribute('data-mark', 'not installed');
     // Enabled and verified by the manager's last action: in sync.
     expect(cell('birch')).toHaveAttribute('data-state', 'enabled');
@@ -181,13 +179,6 @@ describe('useInstallationCapabilityColumns', () => {
     // Enabled by hand, no action on record: installed, not reconciled.
     expect(cell('cedar')).toHaveAttribute('data-state', 'enabled');
     expect(cell('cedar')).toHaveAttribute('data-mark', 'not reconciled');
-    // Enabled by the owners without the opt-in: on record, not reconciled by
-    // the manager; never the empty circle.
-    expect(cell('maple')).toHaveAttribute(
-      'data-state',
-      'enabled, not opted in',
-    );
-    expect(cell('maple')).toHaveAttribute('data-mark', 'not reconciled');
     expect(cell('elm')).toHaveAttribute('data-state', 'drifted');
     expect(cell('elm')).toHaveAttribute('data-mark', 'not in sync');
     expect(cell('elm')).toHaveAccessibleName('Installed · differences');

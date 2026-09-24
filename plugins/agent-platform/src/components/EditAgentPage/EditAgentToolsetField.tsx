@@ -20,7 +20,9 @@ import { useToolsetPresets } from '../../hooks/useToolsetPresets';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
   declaredToolset,
+  presetLabel,
   presetSelector,
+  selectorLabel,
   selectorProblem,
   toggleSelector,
   toolsetProblems,
@@ -95,17 +97,23 @@ export function EditAgentToolsetField({
         description="Which of the gateway's tools the agent can discover and call, within whatever the person using it may reach. Nothing selected means no tools."
       />
 
-      {/* A preset is named by its selector — `preset:read-only` — which is
-          what goes into the toolset, and what the rows below it resolve to. */}
+      {/* A preset by its label, with the selector that goes into the toolset
+          — `preset:read-only` — as the meta. */}
       <ToolTable
         role="group"
         ariaLabel="Presets"
         items={presets.presets.map((preset): ToolTableItem => {
           const selector = presetSelector(preset.name);
+          const label = presetLabel(preset.name);
           return {
             key: selector,
-            name: selector,
-            ariaLabel: `Preset ${preset.name}`,
+            name: label,
+            ariaLabel: `Preset ${label}`,
+            meta: (
+              <Text variant="body-x-small" color="secondary">
+                <span style={{ fontFamily: 'monospace' }}>{selector}</span>
+              </Text>
+            ),
             description: preset.description,
             mode: {
               kind: 'select',
@@ -170,7 +178,7 @@ export function EditAgentToolsetField({
           >
             {value.map(selector => (
               <Tag key={selector} id={selector}>
-                {selector}
+                {selectorLabel(selector)}
               </Tag>
             ))}
           </TagGroup>

@@ -43,6 +43,11 @@ const VERIFY_ARGUMENTS: Record<string, ArgumentKind> = {
   content: 'boolean',
 };
 
+/** What `verify_installation` takes besides the names: the comparison's inputs object, so both halves render the same. */
+const LIVE_ARGUMENTS: Record<string, ArgumentKind> = {
+  inputs: 'object',
+};
+
 const CAPABILITY_TOOLS = {
   enable: 'enable_capability',
   reconcile: 'reconcile_capability',
@@ -194,7 +199,10 @@ export async function createRouter(
     return token;
   };
 
-  /** One tool call as the caller. */
+  /**
+   * One tool call on the manager as the caller; a missing grant becomes the
+   * sign-in bounce through muster's connect.
+   */
   const call = (
     req: express.Request,
     tool: string,
@@ -280,6 +288,23 @@ export async function createRouter(
           installation: name(req.params.installation, 'an installation'),
           capability: name(req.params.capability, 'a capability'),
           ...writeArguments(req.body ?? {}, VERIFY_ARGUMENTS),
+        }),
+      );
+    },
+  );
+
+  // The live checks: the definition's probes of the running installation,
+  // read by the manager as the signed-in person. `inputs` is the
+  // comparison's inputs object, so both halves render the same; the page
+  // merges the two.
+  router.post(
+    '/installations/:installation/capabilities/:capability/verify-live',
+    async (req, res) => {
+      res.json(
+        await call(req, 'verify_installation', {
+          installation: name(req.params.installation, 'an installation'),
+          capability: name(req.params.capability, 'a capability'),
+          ...writeArguments(req.body ?? {}, LIVE_ARGUMENTS),
         }),
       );
     },

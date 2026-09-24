@@ -5,7 +5,9 @@
 # * the legs of the CNPG network policy, which a default-deny cluster drops
 #   without an event;
 # * the BackendTrafficPolicy on the Gateway API route, without which Envoy
-#   Gateway's default 15 s route timeout cuts every streamed response.
+#   Gateway's default 15 s route timeout cuts every streamed response;
+# * the pod template's checksum over the extraAppConfig entries, without which
+#   a changed app-config fragment never reaches the running portal.
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -40,6 +42,12 @@ expect() {
     echo "FAIL: ${name}: the render does not contain ${pattern}"
     failed=1
   fi
+}
+
+# The value of a pod template annotation, empty when it does not render.
+annotation() {
+  local name=$1 key=$2
+  sed -n "s|^ *${key}: \"\(.*\)\"$|\1|p" "${work_dir}/${name}.yaml"
 }
 
 refute() {
@@ -115,7 +123,30 @@ render route-disabled
 refute route-disabled 'kind: HTTPRoute'
 refute route-disabled 'kind: BackendTrafficPolicy'
 
+echo "--> extraAppConfig: a changed entry checksum changes the pod template annotation"
+fragment=(--set 'backstage.extraAppConfig[0].filename=app-config.fragment.yaml' --set 'backstage.extraAppConfig[0].configMapRef=fragment')
+render fragment-a "${fragment[@]}" --set 'backstage.extraAppConfig[0].checksum=sha256:aaaa'
+render fragment-a-again "${fragment[@]}" --set 'backstage.extraAppConfig[0].checksum=sha256:aaaa'
+render fragment-b "${fragment[@]}" --set 'backstage.extraAppConfig[0].checksum=sha256:bbbb'
+checksum_a=$(annotation fragment-a checksum/extra-app-config)
+checksum_a_again=$(annotation fragment-a-again checksum/extra-app-config)
+checksum_b=$(annotation fragment-b checksum/extra-app-config)
+if [ -z "${checksum_a}" ] || [ -z "${checksum_b}" ]; then
+  echo "FAIL: fragment: the pod template carries no checksum/extra-app-config annotation"
+  failed=1
+elif [ "${checksum_a}" != "${checksum_a_again}" ]; then
+  echo "FAIL: fragment: the annotation changes between two renders of the same values"
+  failed=1
+elif [ "${checksum_a}" = "${checksum_b}" ]; then
+  echo "FAIL: fragment: the annotation does not change with the entry's checksum"
+  failed=1
+fi
+
+echo "--> no extraAppConfig: no annotation"
+render no-fragment
+refute no-fragment 'checksum/extra-app-config'
+
 if [ "${failed}" -ne 0 ]; then
   exit 1
 fi
-echo "ok: every policy leg renders"
+echo "ok: every assertion holds"

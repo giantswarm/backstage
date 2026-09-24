@@ -294,6 +294,21 @@ export function HealthDetails({ server }: { server: MCPServer }) {
   const lastError = server.getLastError();
 
   const facts: Fact[] = [];
+  // muster's one condition, `Ready`: the state in one word and the sentence
+  // behind it -- how a per-session server is reached and when its exchange
+  // last worked, or which part of a token exchange fails for every caller.
+  const ready = server.getReadyCondition();
+  if (ready?.message) {
+    facts.push({
+      label: 'Ready',
+      value: (
+        <>
+          {ready.status === 'True' ? 'yes' : 'no'}
+          {ready.reason ? ` (${ready.reason})` : ''} — {ready.message}
+        </>
+      ),
+    });
+  }
   if (lastConnected) {
     facts.push({
       label: 'Last connected',
@@ -385,6 +400,10 @@ export function RuntimeState({ server }: { server: MCPServer }) {
         <StateBadge
           tone={severityTone(mcpServerStateSeverity(runtime.state as never))}
           label={runtime.state}
+          // The CR's Ready condition explains the state (what Awaiting
+          // Session means for this server, why it is Failed); the runtime
+          // list carries the state alone.
+          title={server.getStateExplanation()}
         />
       ) : (
         '-'
@@ -461,11 +480,16 @@ export function RuntimeState({ server }: { server: MCPServer }) {
  * Why a server's tool list is empty, most deliberate cause first.
  *
  * Deactivated wins over everything: muster keeps the server disconnected on
- * purpose, so neither "down" nor "sign in" is the remedy. `Auth Required` is a
- * session state, not a degraded one (ADR D3): the server exposes no tools
- * because this user's session lacks the audience, not because it "may be
- * down" -- and only where a sign-in exists to point at: a sigv4 server signs
- * as muster itself, so "sign in" would be advice nobody can act on.
+ * purpose, so neither "down" nor "sign in" is the remedy. `Awaiting Session`
+ * names a server used with each caller's own identity: its tools appear in
+ * this person's session once muster has connected it for them, and there is
+ * no sign-in to point at. `Auth Required` is a session state, not a degraded
+ * one (ADR D3): the server exposes no tools because this user's session
+ * lacks the audience, not because it "may be down" -- and only where a
+ * sign-in exists to point at: a sigv4 server signs as muster itself, so "sign
+ * in" would be advice nobody can act on. A `Failed` server says what muster's
+ * Ready condition says about it (a token exchange broken for every caller
+ * reads differently from an endpoint that does not answer).
  */
 function noToolsExplanation(server: MCPServer): string {
   if (server.getSuspended()) {
@@ -473,12 +497,20 @@ function noToolsExplanation(server: MCPServer): string {
       server,
     )}`;
   }
+  const state = server.getState();
+  if (state === 'Awaiting Session') {
+    return 'No tools exposed yet — this server connects per session with your own identity; its tools appear here once your muster session has connected to it.';
+  }
   const authGated =
-    server.getState() === 'Auth Required' &&
-    server.canAuthenticateInteractively();
-  return authGated
-    ? 'No tools exposed — your muster session is not authenticated to this server. Use “Sign in” in the actions below.'
-    : 'No tools exposed (the server may be down or unreachable).';
+    state === 'Auth Required' && server.canAuthenticateInteractively();
+  if (authGated) {
+    return 'No tools exposed — your muster session is not authenticated to this server. Use “Sign in” in the actions below.';
+  }
+  const explanation = server.getStateExplanation();
+  if (state === 'Failed' && explanation) {
+    return `No tools exposed — ${explanation}`;
+  }
+  return 'No tools exposed (the server may be down or unreachable).';
 }
 
 /**

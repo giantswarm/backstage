@@ -154,6 +154,13 @@ export const ADDONS: Addon[] = [
     description:
       'Provides a Kubernetes API: the Makefile targets for its custom resource definitions.',
   },
+  {
+    id: 'plans',
+    label: 'plans',
+    description:
+      'A team plans repository: PRDs, their companion websites and the plan-workflow agent skills, from giantswarm/template-plans.',
+    needs: 'generic',
+  },
 ];
 
 /** Every flavour the form offers: the natures and the add-ons. */
@@ -190,8 +197,8 @@ export interface Preset extends Choice {
 /**
  * The shapes the org's team files declare, the most common first: a Go
  * service with its chart, a chart-only app (a packaged upstream component),
- * a Go CLI, a Go library, a configuration repository, a customer project,
- * and anything else on the minimal scaffold.
+ * a Go CLI, a Go library, a configuration repository, a customer project, a
+ * team plans repository, and anything else on the minimal scaffold.
  */
 export const PRESETS: Preset[] = [
   {
@@ -242,6 +249,15 @@ export const PRESETS: Preset[] = [
     componentType: 'customer',
     language: 'generic',
     flavours: ['customer'],
+  },
+  {
+    id: 'plans',
+    label: 'Team plans',
+    description:
+      'PRDs, their companion websites and the plan-workflow agent skills; no CircleCI.',
+    componentType: 'unspecified',
+    language: 'generic',
+    flavours: ['generic', 'plans'],
   },
   {
     id: 'other',

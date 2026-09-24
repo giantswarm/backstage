@@ -115,6 +115,15 @@ export type LlmReliability = {
   rateLimited: number;
   p50Seconds: number | undefined;
   p95Seconds: number | undefined;
+  /**
+   * Output speed of the median streamed call, from the per-output-token
+   * histogram.
+   *
+   * `undefined` when nothing streamed: the quantile of an empty histogram is
+   * `NaN`, and a gateway that observed no token cannot be said to have
+   * produced them at any rate.
+   */
+  outputTokensPerSecond: number | undefined;
 };
 
 export type LlmUsageTotals = {
@@ -459,18 +468,21 @@ export function reduceUnpricedModels(
 }
 
 /**
- * Requests and errors on the LLM listener, plus the two latency quantiles.
+ * Requests and errors on the LLM listener, plus the latency quantiles and the
+ * output speed.
  *
  * `histogram_quantile` answers `NaN` for a histogram with no observations, so
  * both quantiles come back `undefined` on a quiet installation rather than as
- * a confident zero.
+ * a confident zero. The speed ratio answers nothing at all there — no series —
+ * which `instantValue` reports the same way.
  */
 export function reduceReliability(options: {
   requestsByStatus: MimirMetricSample[] | undefined;
   p50: MimirMetricSample[] | undefined;
   p95: MimirMetricSample[] | undefined;
+  outputTokensPerSecond: MimirMetricSample[] | undefined;
 }): LlmReliability {
-  const { requestsByStatus, p50, p95 } = options;
+  const { requestsByStatus, p50, p95, outputTokensPerSecond } = options;
 
   const byStatus = sumBy(requestsByStatus, labels => labels.status ?? '');
   const totalRequests = sumValues(byStatus);
@@ -500,6 +512,9 @@ export function reduceReliability(options: {
     rateLimited,
     p50Seconds: p50?.length ? instantValue(p50[0]) : undefined,
     p95Seconds: p95?.length ? instantValue(p95[0]) : undefined,
+    outputTokensPerSecond: outputTokensPerSecond?.length
+      ? instantValue(outputTokensPerSecond[0])
+      : undefined,
   };
 }
 
@@ -612,6 +627,7 @@ export function buildLlmUsage(options: {
   requestsByStatus: MimirMetricSample[] | undefined;
   p50: MimirMetricSample[] | undefined;
   p95: MimirMetricSample[] | undefined;
+  outputTokensPerSecond: MimirMetricSample[] | undefined;
   unpricedLookups: MimirMetricSample[] | undefined;
   costPerDay: MimirMatrixSample[] | undefined;
   tokensPerDay: MimirMatrixSample[] | undefined;
@@ -697,6 +713,7 @@ export function buildLlmUsage(options: {
       requestsByStatus: options.requestsByStatus,
       p50: options.p50,
       p95: options.p95,
+      outputTokensPerSecond: options.outputTokensPerSecond,
     }),
     unpricedModels: reduceUnpricedModels(options.unpricedLookups),
     rates: deriveTokenRates(costByType, tokensByType),

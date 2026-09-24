@@ -16,8 +16,9 @@ export interface Config {
       installation: string;
       /**
        * Name of the manager's MCPServer in that muster
-       * (`giantswarm-platform-manager`) -- the target of `core_auth_login`
-       * when the person has no grant yet.
+       * (`giantswarm-platform-manager`), the one registration every call
+       * goes to, the live checks of the running installation included --
+       * the target of `core_auth_login` when the person has no grant yet.
        */
       server: string;
       /**

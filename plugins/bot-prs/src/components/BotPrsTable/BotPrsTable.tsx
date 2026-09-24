@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
 import { Box, Link, Typography } from '@material-ui/core';
+import { Checkbox } from '@backstage/ui';
 import {
   DateComponent,
   NotAvailable,
@@ -15,7 +16,7 @@ import {
   type BotPrRow,
   type MargeGroup,
 } from '../../lib/marge';
-import { groupRank } from '../../lib/rows';
+import { groupRank, nameOf } from '../../lib/rows';
 import { BotPrDetails } from '../BotPrDetails';
 
 const byRef = (a: BotPrRow, b: BotPrRow) => a.ref.localeCompare(b.ref, 'en');
@@ -34,8 +35,50 @@ const ellipsis = {
   textOverflow: 'ellipsis' as const,
 };
 
-/** The repository without its org: nearly every row of the queue shares it. */
-const nameOf = (row: BotPrRow) => row.repository.replace(/^[^/]+\//, '');
+/**
+ * The tick that keeps a PR in what the buttons act on. The selection is the
+ * page's own, keyed by ref: material-table keeps its own on the row objects,
+ * which the queue builds again on every read, so a tick would not survive a
+ * reload and would not follow the PR.
+ */
+function selectionColumn(
+  rows: BotPrRow[],
+  selectedRefs: Set<string>,
+  onToggle: (ref: string, isSelected: boolean) => void,
+  onToggleAll: (isSelected: boolean) => void,
+): TableColumn<BotPrRow> {
+  const selected = rows.filter(row => selectedRefs.has(row.ref)).length;
+  return {
+    title: (
+      <Checkbox
+        aria-label={
+          selected === rows.length ? 'Deselect every PR' : 'Select every PR'
+        }
+        isSelected={rows.length > 0 && selected === rows.length}
+        isIndeterminate={selected > 0 && selected < rows.length}
+        onChange={onToggleAll}
+      />
+    ),
+    field: 'id',
+    width: '48px',
+    sorting: false,
+    cellStyle: oneLine,
+    render: row => (
+      // The row itself opens the record; this click keeps or drops the PR.
+      <span
+        onClick={event => event.stopPropagation()}
+        onKeyDown={event => event.stopPropagation()}
+        role="presentation"
+      >
+        <Checkbox
+          aria-label={`Select ${row.ref}`}
+          isSelected={selectedRefs.has(row.ref)}
+          onChange={isSelected => onToggle(row.ref, isSelected)}
+        />
+      </span>
+    ),
+  };
+}
 
 const TEAM_COLUMN: TableColumn<BotPrRow> = {
   title: 'Team',
@@ -264,6 +307,10 @@ export type BotPrsTableProps = {
   onClassification?: (group: MargeGroup | undefined) => void;
   onSweep: (row: BotPrRow) => void;
   onMarkBlocked: (row: BotPrRow) => void;
+  /** The PRs the buttons act on; every row of the view to begin with. */
+  selectedRefs: Set<string>;
+  onToggle: (ref: string, isSelected: boolean) => void;
+  onToggleAll: (isSelected: boolean) => void;
 };
 
 /**
@@ -271,7 +318,8 @@ export type BotPrsTableProps = {
  * full record and the per-PR actions -- the Table of
  * `@backstage/core-components` with its detail panel, as the Repositories and
  * cluster tables use it. Sorted worst first to begin with: what failed, then
- * what waits, then what the engine would merge.
+ * what waits, then what the engine would merge. The leading tick is what the
+ * page's buttons act on.
  */
 export function BotPrsTable({
   rows,
@@ -282,14 +330,29 @@ export function BotPrsTable({
   onClassification,
   onSweep,
   onMarkBlocked,
+  selectedRefs,
+  onToggle,
+  onToggleAll,
 }: BotPrsTableProps) {
   const columns = useMemo(() => {
     const listed = withValues(
       columnsOf(classification, onClassification),
       rows,
     );
-    return showTeam ? [TEAM_COLUMN, ...listed] : listed;
-  }, [showTeam, classification, onClassification, rows]);
+    return [
+      selectionColumn(rows, selectedRefs, onToggle, onToggleAll),
+      ...(showTeam ? [TEAM_COLUMN] : []),
+      ...listed,
+    ];
+  }, [
+    showTeam,
+    classification,
+    onClassification,
+    rows,
+    selectedRefs,
+    onToggle,
+    onToggleAll,
+  ]);
   return (
     <Table<BotPrRow>
       isLoading={isLoading}
@@ -307,7 +370,11 @@ export function BotPrsTable({
       // The toolbar wraps the title in an h2 already.
       title={
         <Typography variant="h6" component="span">
-          Bot PRs ({rows.length})
+          Bot PRs ({rows.length}
+          {selectedRefs.size < rows.length
+            ? `, ${rows.filter(row => selectedRefs.has(row.ref)).length} selected`
+            : ''}
+          )
         </Typography>
       }
       columns={columns}

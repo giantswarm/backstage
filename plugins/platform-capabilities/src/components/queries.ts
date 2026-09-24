@@ -1,6 +1,11 @@
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useQuery } from '@tanstack/react-query';
-import { ListInstallationsFilters, platformCapabilitiesApiRef } from '../apis';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ListInstallationsFilters,
+  platformCapabilitiesApiRef,
+  VerifyResult,
+} from '../apis';
+import { mergeLive } from '../lib/comparison';
 
 export const QUERY_ROOT = 'platform-capabilities';
 
@@ -59,6 +64,41 @@ export function useComparison(installation: string, capability: string) {
     queryFn: () =>
       api.verifyCapability(installation, capability, { content: true }),
     staleTime: Infinity,
+  });
+}
+
+/**
+ * Runs the comparison again without a reload: the one the tab holds is
+ * marked stale and refetched, the card showing the indicator meanwhile;
+ * `staleTime: Infinity` stays, this is the one way to a fresh comparison.
+ */
+export function useRefreshComparison(installation: string, capability: string) {
+  const queryClient = useQueryClient();
+  return () =>
+    queryClient.invalidateQueries({
+      queryKey: verifyKey(installation, capability),
+    });
+}
+
+/**
+ * The checks that need the person's session, run as the signed-in person
+ * by the manager through muster, from the comparison's own inputs so both
+ * halves render the same, and merged into the comparison the tab holds: the
+ * checks that answered take their marks, the rest stays.
+ */
+export function useLiveVerify(installation: string, capability: string) {
+  const api = useApi(platformCapabilitiesApiRef);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (comparison: VerifyResult) => {
+      const live = await api.verifyInstallation(installation, capability, {
+        inputs: comparison.inputs,
+      });
+      return mergeLive(comparison, live);
+    },
+    onSuccess: merged => {
+      queryClient.setQueryData(verifyKey(installation, capability), merged);
+    },
   });
 }
 

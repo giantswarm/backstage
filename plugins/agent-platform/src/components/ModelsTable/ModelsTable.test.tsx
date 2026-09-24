@@ -86,6 +86,43 @@ describe('ModelsTable', () => {
     expect(screen.getByText('Installation')).toBeInTheDocument();
   });
 
+  it('leaves out the columns it is asked to hide', async () => {
+    await renderTable(
+      <ModelsTable rows={rows} hideColumns={['installation']} />,
+    );
+
+    expect(screen.getByText('Model config')).toBeInTheDocument();
+    expect(screen.queryByText('Installation')).not.toBeInTheDocument();
+  });
+
+  it('sorts by name instead of the hidden Installation column', async () => {
+    const zeta = {
+      ...rows[0],
+      id: 'inst-1/kagent/a-model',
+      name: 'a-model',
+      displayName: 'Zeta',
+    };
+    const alpha = {
+      ...rows[0],
+      id: 'inst-1/kagent/b-model',
+      name: 'b-model',
+      displayName: 'Alpha',
+    };
+    const names = () =>
+      screen
+        .getAllByRole('rowheader')
+        .map(cell => cell.querySelector('p')?.textContent);
+
+    const { unmount } = await renderTable(<ModelsTable rows={[zeta, alpha]} />);
+    expect(names()).toEqual(['Zeta', 'Alpha']);
+    unmount();
+
+    await renderTable(
+      <ModelsTable rows={[zeta, alpha]} hideColumns={['installation']} />,
+    );
+    expect(names()).toEqual(['Alpha', 'Zeta']);
+  });
+
   it('renders each row with status and endpoint fallback', async () => {
     await renderTable(<ModelsTable rows={rows} />);
 

@@ -22,6 +22,12 @@ spec:
       annotations:
           checksum/configmaps: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum | quote }}
           checksum/secrets: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum | quote }}
+          {{- /* The extraAppConfig ConfigMaps are not the chart's: their content
+          reaches this checksum through each entry's checksum, set by whoever
+          renders the ConfigMap. */}}
+          {{- with .Values.backstage.extraAppConfig }}
+          checksum/extra-app-config: {{ toJson . | sha256sum | quote }}
+          {{- end }}
       labels:
         app: {{ .Values.name }}
         component: backstage

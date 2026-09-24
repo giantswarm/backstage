@@ -209,8 +209,8 @@ export function useStreamedTurn(installation: string, sessionId: string) {
         queryKey: sessionTasksQueryKey(installation, sessionId),
       });
 
-      // The session object too: a turn moves `updated_at`, which the header shows
-      // as the last activity.
+      // The session object too: a turn can change its lifecycle `state` and
+      // `failure`, which is how kagent reports a lost runtime.
       await queryClient.invalidateQueries({
         queryKey: sessionQueryKey(installation, sessionId),
       });

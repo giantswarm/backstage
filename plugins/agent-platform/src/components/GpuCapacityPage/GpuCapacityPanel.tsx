@@ -10,7 +10,10 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  useVisibleSort,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { formatBytes, formatTime } from '../../lib/modelManagerServing';
 import {
   gpuFree,
@@ -20,6 +23,13 @@ import {
   type GpuNode,
 } from '../../lib/serving';
 import { backendServerName } from '../../lib/modelManagerServing';
+
+/** The default order, and the one while the Installation column is hidden. */
+const BY_INSTALLATION = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
+const BY_NAME = { column: 'name', direction: 'ascending' } as const;
 
 /** MiB → a short GiB figure, e.g. 122880 → "120 GiB". */
 export function formatGpuMemory(memoryMiB: number | undefined): string {
@@ -497,6 +507,8 @@ export type GpuCapacityPanelProps = {
   installations: string[];
   unavailable: Record<string, GpuCapacityUnavailableReason>;
   isLoading: boolean;
+  /** Columns to leave out: the page drops Installation where it would repeat. */
+  hideColumns?: ReadonlyArray<'installation'>;
 };
 
 /**
@@ -518,6 +530,7 @@ export function GpuCapacityPanel({
   installations,
   unavailable,
   isLoading,
+  hideColumns,
 }: GpuCapacityPanelProps) {
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
   const noCacheHints = useMemo(
@@ -530,19 +543,28 @@ export function GpuCapacityPanel({
     [nodes],
   );
   const columnConfig = useMemo(
-    () => getColumnConfig(columns, noCacheHints),
-    [columns, noCacheHints],
+    () =>
+      getColumnConfig(columns, noCacheHints).filter(
+        column => !hideColumns?.includes(column.id as 'installation'),
+      ),
+    [columns, noCacheHints, hideColumns],
   );
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
   const hasIneligible = useMemo(
     () => nodes.some(node => node.eligible === false),
     [nodes],
   );
+  const { sort, onSortChange } = useVisibleSort(
+    BY_INSTALLATION,
+    BY_NAME,
+    hideColumns,
+  );
   const { tableProps } = useTable<GpuNode>({
     mode: 'complete',
     data: nodes,
     sortFn: sortGpuNodesBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
+    sort,
+    onSortChange,
     paginationOptions: { type: 'none' },
   });
 

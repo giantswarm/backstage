@@ -25,17 +25,17 @@ All routes except `/repos` take `?repo=<owner/repo>`, which must be one of the
 configured repositories. When exactly one repository is configured, the
 parameter can be omitted.
 
-| Route                                             | Purpose                                               |
-| ------------------------------------------------- | ----------------------------------------------------- |
-| `GET /api/plans/repos`                            | Configured plan repositories                          |
-| `GET /api/plans/connection`                       | Whether the caller can reach GitHub, else the sign-in |
-| `GET /api/plans/pulls`                            | Open PRs (number, title, author, draft, branch, ...)  |
-| `GET /api/plans/pulls/:number/files`              | Changed files of a PR, with the GitHub `patch` text   |
-| `GET /api/plans/tree?ref=<branch>`                | Recursive git tree of a branch (defaults to `HEAD`)   |
-| `GET /api/plans/content?ref=<branch>&path=<file>` | File content, base64-decoded                          |
-| `GET /api/plans/pulls/:number/comments`           | PR discussion comments; `POST` adds one as the caller |
-| `GET /api/plans/pulls/:number/review-comments`    | Inline review comments; `POST` adds one as the caller |
-| `GET /api/plans/epics`                            | Epic references of merged and proposed plans          |
+| Route                                             | Purpose                                                                                                                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/plans/repos`                            | Configured plan repositories                                                                                                            |
+| `GET /api/plans/connection`                       | Whether the caller can reach GitHub, else the sign-in                                                                                   |
+| `GET /api/plans/pulls`                            | Open PRs (number, title, author, draft, branch, ...)                                                                                    |
+| `GET /api/plans/pulls/:number/files`              | Changed files of a PR, with the GitHub `patch` text                                                                                     |
+| `GET /api/plans/tree?ref=<branch>`                | Recursive git tree of a branch (defaults to `HEAD`), one `get_repository_tree` call, shared by concurrent callers and kept for a minute |
+| `GET /api/plans/content?ref=<branch>&path=<file>` | File content, base64-decoded                                                                                                            |
+| `GET /api/plans/pulls/:number/comments`           | PR discussion comments; `POST` adds one as the caller                                                                                   |
+| `GET /api/plans/pulls/:number/review-comments`    | Inline review comments; `POST` adds one as the caller                                                                                   |
+| `GET /api/plans/epics`                            | Epic references of merged and proposed plans                                                                                            |
 
 ## Configuration
 
@@ -56,3 +56,9 @@ behind muster is the hosted one (`https://api.githubcopilot.com/mcp/`) or any
 server exposing the same tools, connected to GitHub with muster's GitHub
 connector (`spec.auth.authorizationServer` with a pre-registered client and
 `grantScope: subject`), so one consent serves every session of the person.
+The tree route needs `get_repository_tree` from the server's `git` toolset,
+which the hosted server serves next to its default toolset when the
+MCPServer sends the header `X-MCP-Toolsets: default,git` (`spec.headers`);
+without it the route fails with "tool not found". A refused pace (GitHub's
+429, or its REST rate limit) is answered as `429` with
+`error.name: TooManyRequestsError`, and the frontend does not retry it.

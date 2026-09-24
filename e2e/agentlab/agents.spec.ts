@@ -9,14 +9,14 @@ import { expect, open, test } from './fixtures';
 test('the roster shows the agent table with its columns', async ({ admin }) => {
   await open(admin, '/agent-platform/agents');
   await expect(
-    admin.getByText('Agents running across your management clusters.'),
+    admin.getByRole('searchbox', { name: 'Search agents' }),
   ).toBeVisible();
   const grid = admin.getByRole('grid', { name: 'Data table' });
+  // The lab is one installation with its agents in one namespace, so neither
+  // column would tell a row apart.
   await expect(grid.getByRole('columnheader')).toHaveText([
     'Agent',
     'Status',
-    'Installation',
-    'Namespace',
     'Model',
     'Toolset',
     'Skills',

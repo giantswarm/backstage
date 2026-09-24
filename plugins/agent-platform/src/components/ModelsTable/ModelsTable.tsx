@@ -16,7 +16,10 @@ import type {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { modelDetailRouteRef } from '../../routes';
-import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  stopRowPress,
+  useVisibleSort,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   servingShortcutFor,
   summarizeClientServing,
@@ -28,6 +31,13 @@ import {
 } from '../../lib/serving';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { ModelReadinessCell } from './readinessStatus';
+
+/** The default order, and the one while the Installation column is hidden. */
+const BY_INSTALLATION = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
+const BY_NAME = { column: 'name', direction: 'ascending' } as const;
 
 /**
  * What the serving layer says about the model a ModelConfig's endpoint points
@@ -150,6 +160,9 @@ function getColumnConfig(
       label: 'Model config',
       isSortable: true,
       isRowHeader: true,
+      // What a row is found by, so it takes the room the short columns give up.
+      defaultWidth: '3fr',
+      minWidth: 220,
       cell: row => {
         const href = hrefFor(row);
 
@@ -203,12 +216,17 @@ function getColumnConfig(
       id: 'readiness',
       label: 'Status',
       isSortable: true,
+      // Sized for the longest label, "Not accepted".
+      defaultWidth: '1fr',
+      minWidth: 140,
       cell: row => <ModelReadinessCell row={row} />,
     },
     {
       id: 'provider',
       label: 'Provider',
       isSortable: true,
+      defaultWidth: '0.75fr',
+      minWidth: 110,
       cell: row => (
         <CellText
           title={row.provider || '—'}
@@ -220,6 +238,8 @@ function getColumnConfig(
       id: 'model',
       label: 'Model',
       isSortable: true,
+      defaultWidth: '1.5fr',
+      minWidth: 140,
       cell: row => (
         <CellText
           title={row.model || '—'}
@@ -231,6 +251,8 @@ function getColumnConfig(
       id: 'endpoint',
       label: 'Endpoint',
       isSortable: true,
+      defaultWidth: '2fr',
+      minWidth: 180,
       // Empty means the provider's own default endpoint, which is worth saying
       // rather than leaving a blank that reads as "unknown". When the endpoint
       // is the serving layer's, say which model answers there and whether it
@@ -261,6 +283,9 @@ function getColumnConfig(
       id: 'installation',
       label: 'Installation',
       isSortable: true,
+      // Room for the label beside the sort arrow: it is the initial sort.
+      defaultWidth: '0.75fr',
+      minWidth: 130,
       cell: row => (
         <CellText
           title={row.installation}
@@ -271,8 +296,13 @@ function getColumnConfig(
   ];
 }
 
+/** Columns the page may drop because every row would repeat the same value. */
+export type HideableModelColumn = 'installation';
+
 export type ModelsTableProps = {
   rows: ModelRow[];
+  /** Columns to leave out. */
+  hideColumns?: ReadonlyArray<HideableModelColumn>;
 };
 
 /**
@@ -280,7 +310,7 @@ export type ModelsTableProps = {
  * unreachable-installations notice; this only renders the rows and the empty
  * state. Pagination stays off for the same reason as AgentsTable.
  */
-export function ModelsTable({ rows }: ModelsTableProps) {
+export function ModelsTable({ rows, hideColumns }: ModelsTableProps) {
   const navigate = useNavigate();
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
 
@@ -297,13 +327,26 @@ export function ModelsTable({ rows }: ModelsTableProps) {
     [modelDetailRoute],
   );
 
-  const columnConfig = useMemo(() => getColumnConfig(hrefFor), [hrefFor]);
+  const columnConfig = useMemo(
+    () =>
+      getColumnConfig(hrefFor).filter(
+        column =>
+          !hideColumns?.includes(String(column.id) as HideableModelColumn),
+      ),
+    [hrefFor, hideColumns],
+  );
 
+  const { sort, onSortChange } = useVisibleSort(
+    BY_INSTALLATION,
+    BY_NAME,
+    hideColumns,
+  );
   const { tableProps } = useTable<ModelRow>({
     mode: 'complete',
     data: rows,
     sortFn: sortModelsBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
+    sort,
+    onSortChange,
     paginationOptions: { type: 'none' },
   });
 

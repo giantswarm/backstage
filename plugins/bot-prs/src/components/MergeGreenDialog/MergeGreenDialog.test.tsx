@@ -73,9 +73,9 @@ const preview: MargeResult = {
   ],
 };
 
-const rows = rowsOf(queue, 'bumblebee');
+const queueRows = rowsOf(queue, 'bumblebee');
 
-function renderDialog() {
+function renderDialog(rows: ReturnType<typeof rowsOf> = queueRows) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -137,7 +137,58 @@ describe('MergeGreenDialog', () => {
         'gazelle',
       ),
     );
-    expect(await screen.findByText('Applied')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Approve and merge ran on 1 PR'),
+    ).toBeInTheDocument();
+    // Done: nothing is left to confirm or to cancel, only the header's X
+    // and the footer's Close.
+    expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(2);
+    expect(
+      screen.queryByRole('button', { name: /Approve and merge/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('leaves a PR that is no longer green out of the apply, and says so', async () => {
+    const second = {
+      ...queue.eligible![0],
+      repo: 'happa',
+      number: 7,
+      url: 'https://github.com/giantswarm/happa/pull/7',
+    };
+    callTool.mockResolvedValue({
+      summary,
+      eligible: [preview.eligible![0]],
+      waiting: [
+        {
+          ...second,
+          status: 'Waiting',
+          detail: 'required checks pending: go-build',
+        },
+      ],
+    } satisfies MargeResult);
+    renderDialog(
+      rowsOf({ ...queue, eligible: [...queue.eligible!, second] }, 'bumblebee'),
+    );
+
+    expect(
+      await screen.findByText('1 of 2 PRs is no longer green'),
+    ).toBeInTheDocument();
+    const confirm = screen.getByRole('button', {
+      name: 'Approve and merge 1 PR',
+    });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await userEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(callTool).toHaveBeenLastCalledWith(
+        'x_marge_sweep',
+        expect.objectContaining({
+          prs: ['giantswarm/backstage#2250'],
+          dry_run: false,
+        }),
+        'gazelle',
+      ),
+    );
   });
 
   it('reports the engine’s refusal and offers nothing to apply', async () => {
@@ -148,7 +199,7 @@ describe('MergeGreenDialog', () => {
       await screen.findByText('marge refused the run for bumblebee'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Approve and merge 0 PRs' }),
+      screen.getByRole('button', { name: 'Approve and merge' }),
     ).toBeDisabled();
   });
 });

@@ -37,8 +37,9 @@ const oneOf = (ids: string[]) => ids.map(id => `"${id}"`).join(', ');
 
 /**
  * The template the engine derives -- there is no template field: language
- * go → giantswarm/template, generic with the app flavour → template-app, the
- * customer shape and the rest → the minimal scaffold. Node has none yet.
+ * go → giantswarm/template, generic with the app flavour → template-app,
+ * generic with the plans flavour → template-plans, the customer shape and
+ * the rest → the minimal scaffold. Node has none yet.
  */
 function deriveTemplate(
   componentType: string | undefined,
@@ -58,11 +59,13 @@ function deriveTemplate(
         },
       };
     case 'generic':
-      return {
-        template: gen.flavours?.includes('app')
-          ? 'giantswarm/template-app'
-          : 'minimal',
-      };
+      if (gen.flavours?.includes('app')) {
+        return { template: 'giantswarm/template-app' };
+      }
+      if (gen.flavours?.includes('plans')) {
+        return { template: 'giantswarm/template-plans' };
+      }
+      return { template: 'minimal' };
     default:
       return { template: 'minimal' };
   }

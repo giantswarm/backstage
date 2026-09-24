@@ -1,17 +1,37 @@
-import { Alert, Flex, Skeleton, Text } from '@backstage/ui';
+import { Alert, Flex, Link, Text } from '@backstage/ui';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { ActionHistory } from './ActionHistory';
 import { CapabilityCard } from './CapabilityCard';
 import { ErrorAlert } from './ErrorAlert';
+import { Loading } from './Loading';
 import { PlatformCapabilitiesProviders } from './Providers';
 import { useInstallations, useManagerInfo } from './queries';
+
+/** Where the tab is explained: the plugin's page in the repository's docs. */
+export const DOCS_URL =
+  'https://github.com/giantswarm/backstage/blob/main/docs/platform-capabilities.md';
+
+/** The one line saying what the tab is about, for a person who has not met a platform capability before, leading to the docs. */
+function Intro() {
+  return (
+    <Text variant="body-small" color="secondary" data-testid="intro">
+      A platform capability is a set of features, such as the agent platform or
+      the Dev Portal, that the platform manager installs on an installation
+      through pull requests to its repositories and compares with its
+      definition.{' '}
+      <Link href={DOCS_URL} target="_blank" rel="noopener">
+        How it works
+      </Link>
+    </Text>
+  );
+}
 
 function Capabilities({ name }: { name: string }) {
   const listing = useInstallations({ installations: [name] });
   const info = useManagerInfo();
 
   if (listing.isPending) {
-    return <Skeleton width={320} height={80} />;
+    return <Loading label="Loading capabilities…" testId="loading" />;
   }
   if (listing.error) {
     return (
@@ -58,23 +78,30 @@ function Capabilities({ name }: { name: string }) {
           The manager defines no capability.
         </Text>
       )}
-      <ActionHistory installation={name} />
+      <ActionHistory
+        installation={installation}
+        definitions={info.data?.definitions ?? []}
+      />
     </Flex>
   );
 }
 
 /**
- * The Capabilities tab of an installation: one block per platform capability
- * with its state from `list_installations`, the comparison with its
- * definition run as the tab opens, and one button opening the dialog; then
- * the action history -- everything through the manager's tools as the
+ * The Capabilities tab of an installation: one line on what a platform
+ * capability is, leading to the docs; then one block per platform
+ * capability with its state from `list_installations`, the comparison with
+ * its definition run as the tab opens, and one button opening the dialog;
+ * then the action history -- everything through the manager's tools as the
  * signed-in person.
  */
 export function EntityCapabilitiesContent() {
   const { entity } = useEntity();
   return (
     <PlatformCapabilitiesProviders>
-      <Capabilities name={entity.metadata.name} />
+      <Flex direction="column" gap="4">
+        <Intro />
+        <Capabilities name={entity.metadata.name} />
+      </Flex>
     </PlatformCapabilitiesProviders>
   );
 }

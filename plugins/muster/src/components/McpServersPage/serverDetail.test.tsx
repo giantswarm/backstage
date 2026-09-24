@@ -19,6 +19,8 @@ function makeServer(
   state?: MCPServerState,
   /** CR labels; `app.kubernetes.io/managed-by: Helm` marks it GitOps-managed. */
   labels?: Record<string, string>,
+  /** The muster `Ready` condition, when the test needs the explanation. */
+  ready?: { status: 'True' | 'False'; reason: string; message: string },
 ): MCPServer {
   return new MCPServer(
     {
@@ -26,11 +28,31 @@ function makeServer(
       kind: 'MCPServer',
       metadata: { name: 'aws-root', ...(labels ? { labels } : {}) },
       spec,
-      ...(state ? { status: { state } } : {}),
+      ...(state
+        ? {
+            status: {
+              state,
+              ...(ready ? { conditions: [{ type: 'Ready', ...ready }] } : {}),
+            },
+          }
+        : {}),
     } as never,
     'gazelle',
   );
 }
+
+const EXCHANGE_SPEC = {
+  type: 'streamable-http',
+  url: 'https://mcp-kubernetes.remote.example.test/mcp',
+  auth: {
+    type: 'oauth',
+    tokenExchange: {
+      enabled: true,
+      dexTokenEndpoint: 'https://dex.remote.example.test/token',
+      connectorId: 'remote-oidc',
+    },
+  },
+};
 
 const OAUTH_SPEC = { type: 'streamable-http', auth: { type: 'oauth' } };
 const HELM_MANAGED = { 'app.kubernetes.io/managed-by': 'Helm' };
@@ -233,6 +255,41 @@ describe('ServerTools with no tools to show', () => {
     expect(
       await screen.findByText(/Use “Sign in” in the actions below/),
     ).toBeInTheDocument();
+  });
+
+  it('says a per-session server connects with the person’s own identity, not a sign-in', async () => {
+    // Awaiting Session: muster holds no connection of its own, the tools
+    // appear once this session has connected the server. Neither "down" nor
+    // "Sign in" is true here.
+    await renderTools(makeServer(EXCHANGE_SPEC, 'Awaiting Session'));
+
+    expect(
+      await screen.findByText(
+        /connects per session with your own identity; its tools appear here once your muster session has connected to it/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Use “Sign in”/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
+  });
+
+  it('explains a Failed token exchange with muster’s own sentence', async () => {
+    // The Ready condition tells a broken exchange from an endpoint that does
+    // not answer; the generic "may be down" would hide the Secret to fix.
+    await renderTools(
+      makeServer(EXCHANGE_SPEC, 'Failed', undefined, {
+        status: 'False',
+        reason: 'TokenExchangeCredentials',
+        message:
+          'token exchange credentials from Secret agent-platform/remote-token-exchange-credentials: secrets "remote-token-exchange-credentials" not found',
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        /No tools exposed — token exchange credentials from Secret agent-platform\/remote-token-exchange-credentials/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
   });
 
   it('says a deactivated server is deactivated, not down and not unauthenticated', async () => {

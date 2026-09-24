@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-flux-react",
   "version": "0.14.2",
   "license": "Apache-2.0",
-  "private": true,
   "description": "Web library for the Flux plugin",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -15,18 +14,23 @@
     "*": {
       "alpha": [
         "src/alpha/index.ts"
+      ],
+      "package.json": [
+        "package.json"
       ]
     }
   },
   "publishConfig": {
-    "access": "public",
-    "main": "dist/index.esm.js",
-    "types": "dist/index.d.ts"
+    "access": "public"
   },
   "configSchema": "config.d.ts",
   "backstage": {
     "role": "web-library",
-    "pluginId": "flux"
+    "pluginId": "flux",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-flux",
+      "@giantswarm/backstage-plugin-flux-react"
+    ]
   },
   "sideEffects": false,
   "scripts": {

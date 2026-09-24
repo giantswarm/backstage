@@ -1,4 +1,5 @@
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   renderInTestApp,
@@ -14,6 +15,10 @@ import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
 function makeServer(options: {
   state: MCPServerState;
   suspended?: boolean;
+  /** muster's Ready condition message, the state badge's tooltip. */
+  explanation?: string;
+  /** The Ready condition's status and reason; defaults to a healthy one. */
+  ready?: { status: 'True' | 'False'; reason: string };
 }): MCPServer {
   return new MCPServer(
     {
@@ -29,6 +34,18 @@ function makeServer(options: {
       status: {
         state: options.state,
         lastConnected: '2026-08-31T18:40:00Z',
+        ...(options.explanation
+          ? {
+              conditions: [
+                {
+                  type: 'Ready',
+                  status: options.ready?.status ?? 'True',
+                  reason: options.ready?.reason ?? 'AwaitingSession',
+                  message: options.explanation,
+                },
+              ],
+            }
+          : {}),
       },
     } as never,
     'gazelle',
@@ -147,5 +164,50 @@ describe('IntegrationServerDisclosure for a deactivated server', () => {
     expect(
       await screen.findByRole('button', { name: 'Sign in' }),
     ).toBeEnabled();
+  });
+});
+
+/**
+ * The state badge explains itself: muster's Ready condition message is the
+ * badge's tooltip, and the Health block carries it as a row, so a person can
+ * tell "Awaiting Session" (served per session, nobody connected) from a
+ * broken server without leaving the page.
+ */
+describe('IntegrationServerDisclosure state explanation', () => {
+  const EXPLANATION =
+    "Served per session: each caller's own token is forwarded to the server; muster holds no connection of its own. No session is connected.";
+
+  it('puts the Ready condition message on the state badge as its tooltip', async () => {
+    await render(
+      makeServer({ state: 'Awaiting Session', explanation: EXPLANATION }),
+    );
+
+    const header = await screen.findByRole('button', { expanded: true });
+    const badge = within(header).getByText('Awaiting Session');
+    await userEvent.hover(badge);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(EXPLANATION);
+    // A healthy server has no Diagnostics block to repeat it in.
+    expect(screen.queryByText('Diagnostics')).not.toBeInTheDocument();
+  });
+
+  it('shows the Ready condition as a diagnostics row on a failed server', async () => {
+    // A token exchange broken for every caller: the reason names the class,
+    // the message the Secret to fix -- next to the last error muster kept.
+    await render(
+      makeServer({
+        state: 'Failed',
+        explanation:
+          'token exchange credentials from Secret agent-platform/miro-token-exchange-credentials: secrets "miro-token-exchange-credentials" not found',
+        ready: { status: 'False', reason: 'TokenExchangeCredentials' },
+      }),
+    );
+
+    expect(await screen.findByText('Diagnostics')).toBeInTheDocument();
+    expect(screen.getByText('Ready')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /no \(TokenExchangeCredentials\) — token exchange credentials from Secret/,
+      ),
+    ).toBeInTheDocument();
   });
 });

@@ -27,6 +27,7 @@ import {
   agentsRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
+  installationsExternalRouteRef,
   modelDetailRouteRef,
   modelsRouteRef,
   musterToolExplorerExternalRouteRef,
@@ -267,11 +268,12 @@ export const agentPlatformPlugin = createFrontendPlugin({
     serving: servingRouteRef,
     gpuCapacity: gpuCapacityRouteRef,
   },
-  // Both carry a `defaultTarget`, so they resolve without an app-config binding
+  // All carry a `defaultTarget`, so they resolve without an app-config binding
   // and are simply unbound when the target plugin is disabled. Every call site
   // must handle `useRouteRef` returning undefined.
   externalRoutes: {
     musterToolExplorer: musterToolExplorerExternalRouteRef,
     deploymentDetails: deploymentDetailsExternalRouteRef,
+    installations: installationsExternalRouteRef,
   },
 });

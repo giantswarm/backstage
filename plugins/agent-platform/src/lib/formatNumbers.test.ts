@@ -3,6 +3,7 @@ import {
   formatPercent,
   formatSeconds,
   formatTokens,
+  formatTokensPerSecond,
   formatUsd,
 } from './formatNumbers';
 
@@ -29,7 +30,14 @@ describe('formatCount', () => {
     // may reconcile it against a list.
     expect(formatCount(0)).toBe('0');
     expect(formatCount(231)).toBe('231');
-    expect(formatCount(1_040)).toBe((1040).toLocaleString());
+    expect(formatCount(1_040)).toBe('1,040');
+  });
+
+  it('groups the en-US way on every machine', () => {
+    // The literal, not `(1040).toLocaleString()`: the grouping is pinned to
+    // en-US so the figure matches the point `toFixed` writes elsewhere, and a
+    // de-DE runtime must not turn this into "1.040".
+    expect(formatCount(1_234_567)).toBe('1,234,567');
   });
 
   it('rounds a fractional value', () => {
@@ -93,5 +101,32 @@ describe('formatSeconds', () => {
     // answer on an idle installation — not an error, and not 0ms.
     expect(formatSeconds(Number.NaN)).toBe('—');
     expect(formatSeconds(undefined)).toBe('—');
+  });
+});
+
+describe('formatTokensPerSecond', () => {
+  it("keeps two significant figures, not the histogram's false precision", () => {
+    // The source buckets are 0.001, 0.01, 0.025 … seconds per token, so a
+    // median inside the second bucket is only known to be 100–1000 tok/s.
+    // `197/s` would claim three digits of that.
+    expect(formatTokensPerSecond(196.82)).toBe('200/s');
+    expect(formatTokensPerSecond(62.6)).toBe('63/s');
+    expect(formatTokensPerSecond(1234.5)).toBe('1,200/s');
+  });
+
+  it('never rounds a slow platform down to zero', () => {
+    // A median in the overflow bucket comes back as the top finite bound,
+    // 2.5 s per token — 0.4 tok/s. Rounded, that is the "0/s" this whole
+    // figure exists to avoid, sitting next to a non-zero call count.
+    expect(formatTokensPerSecond(0.4)).toBe('<1/s');
+    expect(formatTokensPerSecond(0.99)).toBe('<1/s');
+    expect(formatTokensPerSecond(1)).toBe('1/s');
+  });
+
+  it('is an em dash when nothing streamed', () => {
+    // No streamed call means no observation, so the ratio has no series and
+    // Mimir can also answer the division as NaN — neither is "0 tokens/s".
+    expect(formatTokensPerSecond(undefined)).toBe('—');
+    expect(formatTokensPerSecond(Number.NaN)).toBe('—');
   });
 });

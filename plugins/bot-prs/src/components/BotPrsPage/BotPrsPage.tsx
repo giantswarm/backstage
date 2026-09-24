@@ -10,6 +10,7 @@ import {
   Tooltip,
   Typography,
 } from '@material-ui/core';
+import RefreshIcon from '@material-ui/icons/Refresh';
 import { Alert } from '@backstage/ui';
 import {
   isSessionExpiredError,
@@ -27,12 +28,10 @@ import {
 } from '../../hooks/useMarge';
 import { useTeams } from '../../hooks/useTeams';
 import {
-  confirmModeOf,
   looksUnknownTeam,
   MargeNotConnectedError,
   rowsOf,
   type BotPrRow,
-  type MargeResult,
 } from '../../lib/marge';
 import {
   applyFilters,
@@ -41,6 +40,7 @@ import {
   greenRows,
   hasFilters,
   optionsOf,
+  refsByTeam,
   withFilter,
   type QueueFilters,
   type Scope,
@@ -118,7 +118,7 @@ const SCOPES: { id: Scope; label: string }[] = [
 ];
 
 type OpenDialog =
-  | { kind: 'sweep'; teams: string[]; pr?: string }
+  | { kind: 'sweep'; prsByTeam: Record<string, string[]> }
   | { kind: 'mark'; row: BotPrRow }
   | { kind: 'merge-green' }
   | undefined;
@@ -131,10 +131,15 @@ function formatReadAt(readAt: number | undefined): string {
  * The queues of the teams in scope through one installation's marge: the
  * stats strip, the filters column, the summary line and the table, the same
  * shape as the Repositories page. The table is the stored classification, what the last
- * sweep decided; **Refresh classification** is the only live read, and a
+ * sweep decided; **Classify now** is the only live read, and a
  * click. **Preview sweep** and the per-PR **Sweep this PR** show what the
  * engine would do before it does it. Every call runs through muster as the
  * signed-in person with their own GitHub grant.
+ *
+ * Every row of the view is picked to begin with and a tick drops one, so the
+ * page holds the refs the person ticked off rather than the ones they kept: a
+ * filter change and a reload then need no re-seeding, and what the buttons
+ * act on is always what the table shows, minus those.
  */
 function Queue({
   installation,
@@ -157,6 +162,7 @@ function Queue({
   const margeServerName = useMargeServerName(installation);
   const signIn = useServerSignIn(margeServerName, installation);
   const [open, setOpen] = useState<OpenDialog>(undefined);
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
 
   // A completed sign-in flips the server's auth status to connected. The
   // muster plugin invalidates its own reads then, and the queue is keyed
@@ -176,9 +182,45 @@ function Queue({
     [queue.queues],
   );
   const filtered = useMemo(() => applyFilters(rows, filters), [rows, filters]);
-  // What Approve and merge acts on: the green rows of the filtered view, so
-  // the button acts on exactly what the table shows.
-  const green = useMemo(() => greenRows(filtered), [filtered]);
+  // What every button acts on: the rows in view the person kept.
+  const selected = useMemo(
+    () => filtered.filter(row => !excluded.has(row.ref)),
+    [filtered, excluded],
+  );
+  const selectedRefs = useMemo(
+    () => new Set(selected.map(row => row.ref)),
+    [selected],
+  );
+  const green = useMemo(() => greenRows(selected), [selected]);
+  const sweepTargets = useMemo(() => refsByTeam(selected), [selected]);
+
+  // A PR the queue no longer holds was merged, closed or swept away; its
+  // exclusion would otherwise outlive it and drop a PR the same ref names
+  // later.
+  useEffect(() => {
+    setExcluded(current => {
+      if (current.size === 0) {
+        return current;
+      }
+      const live = new Set(rows.map(row => row.ref));
+      const next = new Set([...current].filter(ref => live.has(ref)));
+      return next.size === current.size ? current : next;
+    });
+  }, [rows]);
+
+  const onToggle = useCallback(
+    (ref: string, isSelected: boolean) =>
+      setExcluded(current => {
+        const next = new Set(current);
+        if (isSelected) {
+          next.delete(ref);
+        } else {
+          next.add(ref);
+        }
+        return next;
+      }),
+    [],
+  );
   const answered = queue.queues.filter(entry => entry.result);
   // Teams the catalog names and giantswarm/github does not: one gap, listed
   // once. Anything else marge refused is a real failure per team.
@@ -203,24 +245,25 @@ function Queue({
   const readAt = Math.max(0, ...answered.map(entry => entry.readAt ?? 0));
   const canAct = !queue.notConnected && answered.length > 0;
 
-  // A sweep runs under one team's policy, so a scope of several teams is
-  // several sweeps: the ones in view, or the one the filter picked.
-  const sweepTeams = filters.team ? [filters.team] : teams;
-  const confirmModeOfTeams = (named: string[]) =>
-    named
-      .map(team =>
-        confirmModeOf(
-          queue.queues.find(entry => entry.team === team)?.result as
-            MargeResult | undefined,
-        ),
-      )
-      .some(mode => mode === 'per-pr')
-      ? ('per-pr' as const)
-      : ('per-sweep' as const);
+  const onToggleAll = useCallback(
+    (isSelected: boolean) =>
+      setExcluded(current => {
+        const next = new Set(current);
+        for (const row of filtered) {
+          if (isSelected) {
+            next.delete(row.ref);
+          } else {
+            next.add(row.ref);
+          }
+        }
+        return next;
+      }),
+    [filtered],
+  );
 
   const onSweep = useCallback(
     (row: BotPrRow) =>
-      setOpen({ kind: 'sweep', teams: [row.team], pr: row.ref }),
+      setOpen({ kind: 'sweep', prsByTeam: { [row.team]: [row.ref] } }),
     [],
   );
   const onMarkBlocked = useCallback(
@@ -272,13 +315,30 @@ function Queue({
           ) : null}
         </Box>
         <Box mr={1}>
-          <Tooltip title="Classify every PR in view now and write the class to its label, so this page, a teammate's and the CLI all report it. One check read per PR; nothing is approved, merged or commented on.">
+          <Tooltip title="Read every team's queue again, without a page reload. This is the stored read: the label the last sweep or classification left on each PR.">
             <span>
               <Button
                 size="small"
                 variant="outlined"
-                disabled={!canAct || queue.isClassifying}
-                onClick={queue.classify}
+                startIcon={<RefreshIcon />}
+                disabled={queue.isLoading}
+                onClick={queue.reload}
+              >
+                {queue.isLoading ? 'Reading…' : 'Refresh'}
+              </Button>
+            </span>
+          </Tooltip>
+        </Box>
+        <Box mr={1}>
+          <Tooltip title="Classify the selected PRs now and write the class to each label, so this page, a teammate's and the CLI all report it. One check read per PR; nothing is approved, merged or commented on.">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={
+                  !canAct || queue.isClassifying || selected.length === 0
+                }
+                onClick={() => queue.classify(sweepTargets)}
               >
                 {queue.isClassifying ? 'Classifying…' : 'Classify now'}
               </Button>
@@ -286,19 +346,17 @@ function Queue({
           </Tooltip>
         </Box>
         <Box mr={1}>
-          <Tooltip
-            title={`Show what a sweep would do to each PR of ${sweepTeams.join(
-              ', ',
-            )}, step by step, before applying it. Each team is decided under its own policy.`}
-          >
+          <Tooltip title="Show what a sweep would do to each selected PR, step by step, before applying it. Each team is decided under its own policy. Untick a row in the table to leave it out.">
             <span>
               <Button
                 size="small"
                 variant="outlined"
-                disabled={!canAct || sweepTeams.length === 0}
-                onClick={() => setOpen({ kind: 'sweep', teams: sweepTeams })}
+                disabled={!canAct || selected.length === 0}
+                onClick={() =>
+                  setOpen({ kind: 'sweep', prsByTeam: sweepTargets })
+                }
               >
-                Preview sweep
+                {`Preview sweep (${selected.length})`}
               </Button>
             </span>
           </Tooltip>
@@ -306,8 +364,8 @@ function Queue({
         <Tooltip
           title={
             green.length > 0
-              ? 'Approve and merge every PR in view the engine filed as green, under the same guards a sweep runs. You confirm once, after a preview.'
-              : 'No PR in view is green: there is nothing to approve and merge.'
+              ? 'Approve and merge every selected PR the engine filed as green, under the same guards a sweep runs. You confirm once, after a preview.'
+              : 'No selected PR is green: there is nothing to approve and merge.'
           }
         >
           <span>
@@ -405,7 +463,11 @@ function Queue({
                     total === 1 ? '' : 's'
                   }${hasFilters(filters) ? ' (filtered)' : ''} across ${
                     answered.length
-                  } team${answered.length === 1 ? '' : 's'}; `}
+                  } team${answered.length === 1 ? '' : 's'}${
+                    selected.length < filtered.length
+                      ? `, ${selected.length} selected`
+                      : ''
+                  }; `}
                   {`classification as the last sweep or classification run stored it on each PR, read at ${formatReadAt(
                     readAt,
                   )}`}
@@ -416,6 +478,24 @@ function Queue({
                     : ''}
                   .
                 </Typography>
+              </Box>
+              <Box pb={1} pl={{ lg: 2 }} display="flex" gridGap={8}>
+                <Button
+                  size="small"
+                  variant="text"
+                  disabled={selected.length === filtered.length}
+                  onClick={() => onToggleAll(true)}
+                >
+                  Select all
+                </Button>
+                <Button
+                  size="small"
+                  variant="text"
+                  disabled={selected.length === 0}
+                  onClick={() => onToggleAll(false)}
+                >
+                  Select none
+                </Button>
               </Box>
               <Box pb={1} pl={{ lg: 2 }}>
                 <ClassificationLegend
@@ -434,6 +514,9 @@ function Queue({
                   onClassification={group => setFilter('classification', group)}
                   onSweep={onSweep}
                   onMarkBlocked={onMarkBlocked}
+                  selectedRefs={selectedRefs}
+                  onToggle={onToggle}
+                  onToggleAll={onToggleAll}
                 />
               </Box>
             </FiltersLayout.Content>
@@ -444,17 +527,15 @@ function Queue({
       {open?.kind === 'sweep' ? (
         <SweepDialog
           installation={installation}
-          teams={open.teams}
+          prsByTeam={open.prsByTeam}
           isOpen
           onOpenChange={close}
-          pr={open.pr}
-          confirmMode={confirmModeOfTeams(open.teams)}
         />
       ) : null}
       {open?.kind === 'merge-green' ? (
         <MergeGreenDialog
           installation={installation}
-          rows={filtered}
+          rows={selected}
           isOpen
           onOpenChange={close}
         />

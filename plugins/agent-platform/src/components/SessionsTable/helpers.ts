@@ -78,9 +78,9 @@ export function stateRank(cell: SessionStateCell): number {
 }
 
 /**
- * Sort by the State column: by {@link stateRank}, then by the same last-activity
- * order the rest of the table falls back to, so two waiting sessions still read
- * newest first instead of in whatever order the fleet answered in.
+ * Sort by the State column: by {@link stateRank}, then newest first -- by when
+ * the state last changed where the summary says, otherwise by start -- so two
+ * waiting sessions do not read in whatever order the fleet answered in.
  */
 export function sortSessionsByState(
   rows: SessionTableRow[],
@@ -107,10 +107,10 @@ function changedAtOf(row: SessionTableRow): number | undefined {
   if (row.stateCell.kind === 'state' && row.stateCell.changedAt !== undefined) {
     return row.stateCell.changedAt;
   }
-  if (!row.updatedAt) {
+  if (!row.createdAt) {
     return undefined;
   }
-  const parsed = Date.parse(row.updatedAt);
+  const parsed = Date.parse(row.createdAt);
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 

@@ -206,6 +206,24 @@ Keycloak and Entra ID need no extra scope. They reject both scopes above with
 `invalid_scope` and show no login page, so leave `gs.auth.extraScopes` unset or
 set it to `[]`.
 
+### Changing the scopes on a running instance
+
+Widening `gs.auth.extraScopes` (or `gs.auth.scopes`) signs everyone in again.
+An existing session was granted the previous scope set, and a token refresh
+cannot add a scope to that grant: the issuer re-issues the tokens with the
+scopes the sign-in consented to, whatever the refresh asks for. The login
+provider therefore refuses to refresh a session with fewer scopes than the
+configuration now requests, and the portal starts a fresh sign-in (a popup) on
+the person's next page load, asking for the new set. No manual sign-out is
+needed. Until that sign-in completes, the Agent Platform section explains any
+`401` an installation's API server answers with, and offers the sign-out.
+
+Without the refusal an instance that gained the `dex-k8s-authenticator` audience
+scope kept refreshing the old grant: the backend answered the wider refresh
+request with a token that still lacked the audience, reported the requested
+scopes as granted, and every Kubernetes proxy read failed with `401 oidc:
+expected audience "dex-k8s-authenticator"` until the person signed out by hand.
+
 Keycloak needs one more step, on the IdP side: it has no built-in `groups`
 scope. Add a client scope named `groups` with a Group Membership mapper (claim
 `groups`, full path off) and attach it to the client as a default scope, or the
@@ -361,6 +379,40 @@ The following optional features are available:
 - `deploymentsPage`: Enable the Deployments page, which lists all the deployments -- `HelmRelease` and `App CR` resources -- in the installations the user has access to via the Backstage instance.
 - `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
+
+## Grafana dashboards card
+
+Team and component pages carrying the `grafana/dashboard-selector` annotation
+get the dashboards card of `@backstage-community/plugin-grafana` only on a
+portal that enables it:
+
+```yaml
+app:
+  extensions:
+    - entity-card:catalog/grafana-dashboards: true
+```
+
+The card is disabled by default because it works only where the plugin is
+wired: the `grafana` section names the host, and a `proxy.endpoints` entry at
+`/grafana/api` targets that host with a service-account token. The `grafana`
+section is required by the plugin's schema on every portal, so every
+deployment carries one, and the annotated entities reach every portal through
+the shared catalog. Without the switch an annotated entity shows neither the
+card nor the `404` it would report without the proxy entry.
+
+```yaml
+proxy:
+  endpoints:
+    /grafana/api:
+      target: https://grafana.example.com/
+      headers:
+        Authorization: Bearer ${GRAFANA_TOKEN}
+
+grafana:
+  hosts:
+    - id: grafana
+      domain: https://grafana.example.com
+```
 
 ## Component dependency fetching
 

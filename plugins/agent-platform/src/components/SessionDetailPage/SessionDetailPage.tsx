@@ -67,7 +67,6 @@ import {
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
 import {
-  formatDuration,
   formatTokens,
   SessionTimeline,
   StreamLossPhase,
@@ -128,7 +127,7 @@ const useStyles = makeStyles(theme => ({
   stats: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: theme.spacing(4),
+    gap: theme.spacing(2, 5),
     paddingTop: theme.spacing(1.5),
     paddingBottom: theme.spacing(1.5),
     borderTop: `1px solid ${theme.palette.divider}`,
@@ -1138,28 +1137,21 @@ export function SessionDetailPage() {
             </Flex>
           </Flex>
 
-          {/* Absolute, not relative. Both ends of a session are frequently within
-              the same day, so the relative form rendered "1 day ago · 1 day ago" —
-              identical for two timestamps 34 minutes apart, which told the reader
-              nothing. The Duration stat below now carries the span, so an exact
-              start time is the more useful thing to show here. The list keeps the
-              relative form, where scanning for recency is the point. */}
+          {/* Absolute, not relative: the list keeps the relative form, where
+              scanning for recency is the point. No last activity and no
+              duration: kagent API v2 does not move `updated_at` on a turn, so
+              both would only restate the start (kagent-dev/kagent#2397). */}
           <Text variant="body-small" color="secondary">
             Started{' '}
             {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
-            {' · last activity '}
-            {row.updatedAt ? <DateComponent value={row.updatedAt} /> : '—'}
           </Text>
         </Flex>
 
         <Box className={classes.stats}>
-          <Stat label="Turns" value={String(taskCount)} />
-          {/* Wall-clock span, not compute time — kagent records no per-turn
-              durations, so this includes however long the user was away between
-              turns. */}
           <Stat
-            label="Duration"
-            value={formatDuration(row.createdAt, row.updatedAt) ?? '—'}
+            label="Turns"
+            value={String(taskCount)}
+            hint="One per message sent to the agent. A turn counts once however many model and tool calls the answer took."
           />
           {/* Labelled "billed", because the raw number is startling: every model
               call re-sends the whole context, so a 4-turn session with a large tool
@@ -1171,12 +1163,14 @@ export function SessionDetailPage() {
           <Stat
             label="Input tokens (billed)"
             value={formatTokens(timeline.tokens.prompt)}
+            hint="Every token sent to a model in this session, summed over each call, delegated agents' included."
           />
           <Stat
             label="Output tokens"
             value={formatTokens(timeline.tokens.completion)}
+            hint="Every token a model generated in this session, delegated agents' included."
           />
-          {/* Estimated, not billed, and the tooltip has to say *how*: the
+          {/* Estimated, not billed, and the hint has to say *how*: the
               gateway prices whole model calls and its metrics carry no session
               label, so a session's cost can only ever be its tokens times an
               observed rate. Which rate that is decides whether the figure is
@@ -1184,19 +1178,17 @@ export function SessionDetailPage() {
               leaving the reader to assume the best case. Reads "—" rather than
               "$0.00" when there is no rate to apply — zero spend and unpriced
               spend are different facts. */}
-          <Tooltip
-            title={describeCostBasis({
+          <Stat
+            label="Est. cost"
+            value={formatUsd(estimatedCostUsd)}
+            hint={describeCostBasis({
               tier: rateTier,
               model: row.agentModel,
               installation: row.installation,
               window: rateWindow,
               tokens: timeline.tokens.total,
             })}
-          >
-            <span>
-              <Stat label="Est. cost" value={formatUsd(estimatedCostUsd)} />
-            </span>
-          </Tooltip>
+          />
         </Box>
 
         <SessionTimeline

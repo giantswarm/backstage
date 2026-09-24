@@ -3,7 +3,6 @@ import { decodeAgentIdLabel } from '../SessionsDataProvider/helpers';
 
 // Lives in `lib/duration` beside the rail's compact-age formatter; re-exported
 // here so this directory's public surface is unchanged.
-export { formatDuration } from '../../lib/duration';
 
 /**
  * How much of the agent's internal work the timeline shows.

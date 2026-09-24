@@ -1,8 +1,10 @@
 import {
+  StatusLabelIntent,
   SyncMark,
+  syncMarkIntent,
   syncMarkLegend,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { Lifecycle, RepositoryRow } from '../apis';
+import { InventoryRecord, Lifecycle, RepositoryRow } from '../apis';
 
 /**
  * A row's set-up state as the page names it: the engine's converged state in
@@ -21,7 +23,45 @@ export type SetupState =
   | 'undeclared'
   | 'gone';
 
-export function setupState(row: RepositoryRow): SetupState {
+/**
+ * What the set-up state is read from: the fields of a `list_repositories`
+ * row it depends on. A record (`get_repository`) folds into the same fields
+ * through {@link setupOf}, so the row's icon and the expanded panel's header
+ * read one state from one function.
+ */
+export type SetupSource = Pick<RepositoryRow, 'team' | 'gone' | 'setup'>;
+
+/**
+ * A record's set-up as the manager's listing carries it in a row: converged
+ * from the engine's checks; refused where the engine's result is the entry
+ * step, an entry the schema refused and no other step ran; the run pending
+ * and the check's error as they are; gone where GitHub has no repository;
+ * undeclared where no team file has an entry.
+ */
+export function setupOf(record: InventoryRecord): SetupSource {
+  const { checks, checkedAt, checkError, lastRun, pendingRun } = record.setup;
+  return {
+    team: record.declaration?.team,
+    gone: record.reality === null,
+    setup: {
+      converged: checks?.converged,
+      refused: checks?.steps.some(step => step.step === 'entry'),
+      checkedAt,
+      lastRun: lastRun?.runUrl,
+      pendingRun,
+      error: checkError,
+    },
+  };
+}
+
+/**
+ * The state, decided in this order: gone and undeclared have no set-up to
+ * judge; a run pending is about to change the rest; a refused entry is never
+ * converged, whatever the engine's result says (its result for a refused
+ * entry carries `converged: true` over the entry step alone); then the
+ * engine's verdict, and unchecked without one.
+ */
+export function setupState(row: SetupSource): SetupState {
   if (row.gone) {
     return 'gone';
   }
@@ -31,11 +71,14 @@ export function setupState(row: RepositoryRow): SetupState {
   if (row.setup.pendingRun) {
     return 'run pending';
   }
+  if (row.setup.refused) {
+    return 'refused';
+  }
   if (row.setup.converged === true) {
     return 'converged';
   }
   if (row.setup.converged === false) {
-    return row.setup.refused ? 'refused' : 'not converged';
+    return 'not converged';
   }
   return 'unchecked';
 }
@@ -50,7 +93,7 @@ export type SetupMark = SyncMark;
  * installed); a refused declaration or a check that could not run is failed;
  * a repository gone from GitHub is unknown.
  */
-export function markOf(row: RepositoryRow): SetupMark {
+export function markOf(row: SetupSource): SetupMark {
   switch (setupState(row)) {
     case 'converged':
       return 'in sync';
@@ -69,6 +112,13 @@ export function markOf(row: RepositoryRow): SetupMark {
   }
 }
 
+/**
+ * The intent of a row's set-up where it is a label rather than an icon, the
+ * expanded panel's header: coloured as the row's mark.
+ */
+export const setupIntent = (row: SetupSource): StatusLabelIntent =>
+  syncMarkIntent(markOf(row));
+
 /** What each mark means for a repository's set-up, in the tooltip and the legend. */
 export const SETUP_GLOSS: Record<SetupMark, string> = {
   'in sync': 'set up as declared',
@@ -83,10 +133,11 @@ export const SETUP_GLOSS: Record<SetupMark, string> = {
 export const SETUP_LEGEND = syncMarkLegend(SETUP_GLOSS);
 
 /**
- * The words behind a row's icon: the state in the manager's words, the
- * gloss, and the manager's reason where the check could not run.
+ * The words behind a row's icon, and of the panel's header: the state in the
+ * manager's words, the gloss, and the manager's reason where the check could
+ * not run.
  */
-export function setupLabel(row: RepositoryRow): string {
+export function setupLabel(row: SetupSource): string {
   const state = setupState(row);
   const label = `${state} · ${SETUP_GLOSS[markOf(row)]}`;
   return state === 'unchecked' && row.setup.error

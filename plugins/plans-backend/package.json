@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-plans-backend",
   "version": "0.0.0",
   "license": "Apache-2.0",
-  "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "publishConfig": {
@@ -13,7 +12,11 @@
   "configSchema": "config.d.ts",
   "backstage": {
     "role": "backend-plugin",
-    "pluginId": "plans"
+    "pluginId": "plans",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-plans",
+      "@giantswarm/backstage-plugin-plans-backend"
+    ]
   },
   "scripts": {
     "start": "backstage-cli package start",

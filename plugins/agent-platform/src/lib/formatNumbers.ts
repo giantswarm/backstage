@@ -3,7 +3,19 @@
  *
  * Domain formatters rather than UI primitives — tokens and call counts, not
  * generic display — which is why they live here and not in `ui-react`.
+ *
+ * **One fixed presentation, `en-US`, whatever the browser's locale.** The
+ * decimal mark is already fixed: `toFixed` writes `$4.50`, `1.5k` and `4.3%`
+ * with a point on every machine, so the thousands grouping has to be fixed to
+ * match. Left to the runtime's default locale, a German browser renders
+ * `$4.50` next to `$1.235` — one `.` a decimal mark, the other a grouping
+ * mark, in the same column. This is also how `ui-react` and `gs` present
+ * figures and dates (`d MMM yyyy, HH:mm UTC`): the portal's own notation, not
+ * the reader's.
  */
+
+/** Thousands grouping (`1,040`), the same on every machine. */
+const grouped = new Intl.NumberFormat('en-US');
 
 /** Format a token count compactly (`1.5k`, `1.2M`). */
 export function formatTokens(total: number): string {
@@ -24,7 +36,7 @@ export function formatTokens(total: number): string {
  * someone might reconcile against a list.
  */
 export function formatCount(value: number): string {
-  return Math.round(value).toLocaleString();
+  return grouped.format(Math.round(value));
 }
 
 /**
@@ -59,7 +71,7 @@ export function formatUsd(value: number | undefined): string {
   if (abs < 100) {
     return `${sign}$${abs.toFixed(2)}`;
   }
-  return `${sign}$${Math.round(abs).toLocaleString()}`;
+  return `${sign}$${grouped.format(Math.round(abs))}`;
 }
 
 /** Format a percentage, or `—`. One decimal below 10%, none above. */
@@ -70,6 +82,33 @@ export function formatPercent(value: number | undefined): string {
   return Math.abs(value) < 10
     ? `${value.toFixed(1)}%`
     : `${Math.round(value)}%`;
+}
+
+/**
+ * Format a generation speed in tokens per second, or `—`.
+ *
+ * **Two significant figures, because the source histogram is coarse.** Its
+ * buckets are `0.001, 0.01, 0.025, 0.05, …, 1.0, 2.5` seconds per token, so a
+ * median is interpolated *inside* one of them: a value in the `(0.001, 0.01]`
+ * bucket is somewhere between 100 and 1000 tok/s, and printing it as `197/s`
+ * claims three digits of a measurement that has barely one. `200/s` is the
+ * same number without the false precision.
+ *
+ * Below 1 the figure is not rounded but named, for the same reason `—` is not
+ * `0`: a median that lands in the overflow bucket comes back as the top finite
+ * bound, 2.5 s per token, which is 0.4 tok/s — and `0/s` next to a non-zero
+ * call count reads as a broken page rather than as a very slow one.
+ */
+export function formatTokensPerSecond(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) {
+    return '—';
+  }
+  if (value < 1) {
+    return '<1/s';
+  }
+  const magnitude = 10 ** (Math.floor(Math.log10(value)) - 1);
+  const rounded = Math.round(value / magnitude) * magnitude;
+  return `${grouped.format(rounded)}/s`;
 }
 
 /**

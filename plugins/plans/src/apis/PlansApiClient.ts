@@ -204,6 +204,7 @@ export class PlansApiClient implements PlansApi {
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';
+      if (response.status === 429) error.name = 'TooManyRequestsError';
       if (response.status === 503) error.name = 'ServiceUnavailableError';
       throw error;
     }

@@ -533,8 +533,15 @@ a context could not cross the boundary. The store is the contract.
   list is one flat table under every scope — Agents, Sessions and Models
   alike: the Installation column tells the rows apart, an installation with
   nothing to show simply has no row, and one that could not be read is named
-  in the warning card below the table. `sortAgentRows` / `sortSessionRows`
-  put the home installation's rows first in the flat lists.
+  in the warning card below the table. Every table with an Installation
+  column — Agents, Sessions, Model configs, and the GPU node pools, model
+  cache and GPU capacity tables — drops it when the rows can only come from
+  one installation (`isSoleInstallation` in `lib/soleInstallation.ts`): one
+  pinned in the header, or only one of those asked answered once all have.
+  Those that sort by Installation by default then sort by name instead
+  (`useVisibleSort` in ui-react), so the order always follows a visible
+  header. `sortAgentRows` / `sortSessionRows` put the home installation's
+  rows first in the flat lists.
 - **Pinning** narrows every tab (`applyInstallationScope` over the inventory's
   installations in each provider, `ServingProvider` included). Under `'all'`
   the MCP Servers tab shows the home muster — one muster is one aggregator —
@@ -677,10 +684,20 @@ it is true forever and interesting once.
 
 A kagent `Session` carries only `id`, `name?`, `user_id`, `created_at`,
 `updated_at`, `deleted_at?`, `agent_id?` and `source?`. So the columns are
-Session, Agent, Installation, Started, and Last activity — and the prototype's
-status, trigger, duration, cost, tokens, team, linked task, results and evaluation
-columns have no backing data at all. The nine-stat summary band derives from those
-same absent fields, so it is out too.
+Session, Agent, State, Installation and Started, and the prototype's status,
+trigger, duration, cost, tokens, team, linked task, results and evaluation
+columns have no backing data at all. The nine-stat summary band derives from
+those same absent fields, so it is out too. Installation is left out when the
+list can only come from one installation (one pinned in the header, or only one
+running kagent), where it would repeat the same name on every row.
+
+There is **no Last activity column**, and the list sorts by Started. On the
+kagent API v2 line `AgentInstance.updated_at` moves only at creation and on
+`CREATING` → `READY`; sending a message never touches it, so the column only
+repeated Started, and a resumed session did not move up. The session detail
+page drops "last activity" and the Duration stat for the same reason. Restore
+them once kagent-dev/kagent#2397 exposes the newest task's time on
+`ListAgentInstances`.
 
 Two consequences worth knowing:
 
@@ -1146,8 +1163,9 @@ session still shows its live state immediately.
 
 **Four outcomes per cell, never a blank.** A state; `No activity yet` for a
 session that reported none; `Unknown` for one the backend could not read, or for
-every row of an installation whose whole summary failed; and a dash that says in
-its tooltip that nothing asked — past the activity window or the per-pass cap.
+every row of an installation whose whole summary failed; and `Not loaded` for
+one nothing asked about — past the activity window or the per-pass cap — whose
+tooltip points at the session page, where the state is.
 Collapsing the last three into one cell would let "we could not tell" read as
 "nothing is waiting on you", which is the opposite answer.
 
@@ -1277,10 +1295,8 @@ Not bui `List`/`ListRow`, and not `Card` with `onPress`:
 Hand-rolling also means no additions to `packages/app/src/bui-overrides.css` —
 `RecentConversations` needed five `.bui-*` overrides for a _single-line_ row.
 
-Each card is three lines: a compact single-unit age (`2h`, never `2h 5m` — the
-stats strip's `formatDuration` and the rail's `formatCompactAge` are separate
-functions in `lib/duration` for exactly this reason), the title clamped to two
-lines, and the agent's avatar and name. The prototype's `team` line has no kagent
+Each card is three lines: a compact single-unit age (`2h`, never `2h 5m`, from
+`formatCompactAge` in `lib/duration`), the title clamped to two lines, and the agent's avatar and name. The prototype's `team` line has no kagent
 equivalent, and its trigger icon has no backing data at all. The group heading
 carries the status, so cards show no badge — in a 280 px column that would cost
 the title a line. The current card is marked by an accent bar, a background and a
@@ -1411,7 +1427,7 @@ session's id, and subagent sessions are filtered out of the list anyway.
 
 ### The stats strip
 
-`Turns · Duration · Input tokens (billed) · Output tokens · Est. cost`.
+`Turns · Input tokens (billed) · Output tokens · Est. cost`.
 
 **Input tokens are labelled "billed" on purpose.** Every model call re-sends the
 whole context, so a 4-turn session with a large tool catalogue reached **1.4M
@@ -1430,9 +1446,6 @@ is derived from the parts when kagent reports none. A reported total still wins,
 since a model billing thinking tokens separately counts them in the total but in
 neither part.
 
-**Duration is wall-clock**, `updated_at − created_at`: kagent records no per-turn
-durations, so it includes however long the user was away between turns.
-
 **Est. cost is an estimate and cannot be anything else.** The gateway prices
 whole model calls and its metrics carry no session label, so this is the tokens
 beside it multiplied by the $/token this agent (or, failing that, this
@@ -1446,10 +1459,9 @@ the page.
 ### Timestamps are absolute here, relative in the list
 
 The detail header and the turn markers show `28 Jul 2026, 10:07 UTC`, not "1 day
-ago". Both ends of a session usually fall on the same day, so the relative form
-rendered "Started 1 day ago · last activity 1 day ago" for a session that took
-three minutes, and printed "1 day ago" identically on every turn marker — hiding
-the progression the timeline exists to show. The list keeps the relative form,
+ago". The relative form printed "1 day ago" identically on every turn marker of
+a session that took three minutes, hiding the progression the timeline exists to
+show. The list keeps the relative form,
 where scanning for recency is the point.
 
 ### Renaming a session
@@ -2343,12 +2355,19 @@ Harness on API v2, not an agent.
 
 ### Columns
 
-Agent (display name, description, avatar from the technical name), **Status** with
-the admitting Harness underneath ("on kagent"), Installation, Namespace, Model
-(resolved by name in the agent's namespace), **Toolset** (the declaration as the
-carrier carries it: the selectors, `No tools`, `Full gateway access`, or a dash while
-the carrier is not readable) and Skills (count). The status column sorts by severity,
-not admitted first.
+Agent (display name, description, avatar from the technical name), **Status** (with
+an info icon whose tooltip gives the readiness message and any Harness warnings),
+Installation, Namespace, Model (resolved by name in the agent's namespace),
+**Toolset** (the declaration as the carrier carries it: the selectors, `No tools` in
+secondary text, `Full gateway access`, or a dash while the carrier is not readable)
+and Skills (count). The status column sorts by severity, not admitted first.
+
+Installation is dropped when the list comes from one installation — the pinned one,
+or the only one that answered once loading settles — and Namespace while every row
+shares one namespace. A search field above the table matches the name, the
+description and the installation. A pinned installation without kagent gets a card
+linking to the Installations page instead of an empty table, and "New agent" is
+disabled there.
 
 ### Readiness
 
@@ -2598,11 +2617,12 @@ an agent is idle. Nothing mechanical is in it.
 **On success** the person lands back on the agents list with a toast
 (`toastApiRef`) that says "Deleting", not "Deleted": the `HelmRelease` has a
 finalizer, so all that is certain is that agent-manager's delete was accepted
-and helm-controller has started uninstalling. The toast names who the delete
-ran as (`requestedBy`) and, when agent-manager kept the shared chart source,
-its reason (`ociRepositoryKept`, e.g. "still referenced by 2 other
-HelmRelease(s): sre-agent, docs-bot"). On failure the dialog stays open and
-shows the message.
+and helm-controller has started uninstalling. Its one line of body says just
+that — the row may linger for a few seconds — because that is the only thing
+the list itself does not show. `requestedBy` and `ociRepositoryKept` come back
+in the result but are not rendered: the first names the person to themselves,
+the second grows with every release in the namespace (see the toast rule in
+`docs/ui.md`). On failure the dialog stays open and shows the message.
 
 **Commit** (`delete_agent` with `mode: commit`, giantswarm/agent-manager#24 — a
 pull request that removes the agent's files from the owning GitOps repository,
@@ -2813,15 +2833,18 @@ one thing to hold on to is which of them can answer what:
 | tokens, cost, models, latency, errors | exact, all users                    | tokens only, caller only |
 | per agent                             | exact                               | yes                      |
 | per model                             | exact — the model that _answered_   | no (see below)           |
-| **per user**                          | **impossible** — no `user` label    | implicitly, one user     |
+| **per user**                          | possible — `user` label, unread yet | implicitly, one user     |
 | **per session**                       | **impossible** — no `session` label | yes                      |
 | sessions, turns, tool calls           | not a concept                       | yes                      |
 
 The metrics carry `gateway`, `listener`, `agent_namespace`, `agent`,
-`gen_ai_request_model`, `gen_ai_response_model`, `gen_ai_token_type` and
-`status`. There is no user and no session dimension, and adding one is a
-platform-side change (kagent would have to propagate the caller's identity to
-the gateway on the model call) — not something the portal can work around.
+`gen_ai_request_model`, `gen_ai_response_model`, `gen_ai_token_type`, `status`
+and `user` — the caller's email address, which the platform propagates to the
+gateway on the model call. There is no session dimension, and adding one is a
+platform-side change, not something the portal can work around. The `user`
+label is recent: an installation whose gateway predates it reports series with
+no `user` at all, so a window that reaches back before the upgrade cannot be
+fully attributed.
 
 `agent` is the **ServiceAccount of the calling pod**, which is why the Cost
 tab's per-agent join matches `agent_namespace`/`agent` against each `Agent`
@@ -2832,6 +2855,52 @@ Deployment ServiceAccount after the agent, so the two agree; checked on
 as `namespace/agent`, unlinked, and its spend stays in the totals; the
 gateway's own `unknown` (no Pod matched the caller IP) reads as
 "Unattributed".
+
+### Tokens per second is the median call, not the mean
+
+The Gateway health strip's speed figure comes from
+`agentgateway_gen_ai_server_time_per_output_token`, which observes **one value
+per streamed call** — that call's own mean seconds per output token. The query
+inverts the median of those values, `1 / histogram_quantile(0.50, …)`.
+
+The obvious query, `_count / _sum`, is the one that does not work. That mean is
+unweighted by reply length, so a reply that emitted three tokens after a long
+wait counts as much as one that emitted three thousand — and a short reply's
+seconds-per-token is enormous, because a fixed cost is divided by almost
+nothing. Measured over 30 days on 2026-09-22: on `graveler` the median call ran
+at 16 ms/token (63 tok/s) while ~1% of calls sat at ≥ 2.5 s/token, which alone
+pulled the mean to 461 ms — the strip read **2 tok/s**. `gazelle`, with ten
+times the traffic, showed 197 tok/s by the mean and 200 by the median, so the
+defect is invisible there: an installation with enough well-behaved calls hides
+it, which is exactly why it reached a browser.
+
+**Read it as a rough rate.** agentgateway observes the histogram into coarse
+buckets — `0.001, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5,
+0.75, 1.0, 2.5` seconds per token — so the median is interpolated inside one of
+them. `gazelle`'s falls in `(0.001, 0.01]`, which is anywhere from 100 to 1000
+tok/s; `graveler`'s in `(0.01, 0.025]`, 40 to 100. That is why
+`formatTokensPerSecond` prints two significant figures: `200/s` rather than the
+`197/s` the arithmetic offers. The bucketing also bounds the figure at both
+ends — every observation in the first bucket gives 2000 tok/s and no more, and
+a median in the overflow bucket comes back as the top finite bound, 2.5 s per
+token, which the formatter renders `<1/s` rather than rounding to a `0/s` that
+would read as a broken page.
+
+Two things it still is not. It is not the speed of an agent: a turn spends most
+of its wall clock in tool calls, and this measures only the model's generation.
+And it does not cover every call — a reply the agent asked for in one piece
+observes nothing here, so the figure describes the streamed subset while call
+duration and the call count describe all of it. An installation where nothing
+streams has an empty histogram, whose quantile is `NaN`, and the strip shows
+`—` rather than a zero (a zero quantile would make the inversion `+Inf`, which
+`sampleValue` rejects the same way).
+
+A token-weighted throughput — output tokens over total call seconds — was the
+alternative: 38 tok/s on `graveler`, 81 on `gazelle`. It counts every token
+once, but its denominator is the whole call, so prefill and the wait for the
+first token are billed as generation time and it reads slower than the model
+generates. The median answers "how fast does a call run", which is the question
+next to two duration quantiles.
 
 ### One cost is measured, the other is estimated — and the labels say which
 
@@ -3170,11 +3239,12 @@ exported from an `alpha` entry point, mirroring
 
 ### What it cannot show
 
-**Per-user anything.** Neither source can do it. kagent's session list is one
-user's by construction, and the gateway metrics carry no user label at all — so
-"which team is spending this" has no answer here, and getting one needs kagent
-to propagate the caller's identity to agentgateway on the model call. A
-platform-side change, not a portal one.
+**Per-user spend, today.** Nothing here breaks spend down by person: kagent's
+session list is one user's by construction, and the gateway views deliberately
+sum across everyone. The gateway metrics _do_ carry a `user` label, so
+"which team is spending this" is answerable from them — it is unbuilt, and it
+is a decision about showing one colleague's spend to another rather than a
+missing measurement.
 
 **Per-session cost, exactly.** The gateway metrics carry no session label
 either, so the session figures are estimates by construction — see [Cost is an
@@ -3190,16 +3260,20 @@ still appear on Your sessions, which is the one place such an agent is visible
 any version: every provider adapter populates only `promptTokenCount` and
 `candidatesTokenCount`, and a repo-wide search for cached-input or
 thinking-token fields finds nothing. (The gateway _does_ split input from cache
-reads and writes, which is why the token-type chart exists — but only for calls
-that went through it.) `totalTokens` is carried on the kagent wire anyway,
+reads and writes, which is why the token-type chart exists, and its
+per-output-token histogram is where the Overview's Tokens per second comes
+from — but both cover only the calls that went through it, so neither can be
+shown against one session.) `totalTokens` is carried on the kagent wire anyway,
 because a reported total can legitimately exceed its parts when a model bills
 thinking tokens separately — summing the two would under-report such a model
 with no way to notice.
 
-**Time to first token, or time per output token.** The gateway emits both only
-for a streamed response, and a kagent agent turn asks for a whole completion —
-so they are permanently empty here and are deliberately not registered as
-metrics. Call duration is the latency figure that works.
+**Time to first token.** The gateway emits it only for a streamed response,
+and it answers the same question as the per-output-token histogram behind the
+Tokens per second figure, less directly — so it is deliberately not registered
+as a metric. That figure has the same blind spot: a reply the agent asked for
+in one piece observes no per-token time and is missing from it, while call
+duration covers every call.
 
 One thing to know per installation: kagent 0.10 can prune sessions older than a
 configured number of days, **deleting them outright**. If that is ever set below

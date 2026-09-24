@@ -35,13 +35,12 @@ export function SessionsMigrationNotice() {
   return (
     <Alert
       status="info"
-      title="Earlier conversations are not shown here"
+      title="Earlier sessions are not shown here"
       description={
         <Flex direction="column" gap="2" align="start">
           <span>
-            This installation moved to kagent API v2, and conversations from
-            before the move were not carried over. Sessions you start now are
-            listed here; the earlier ones are gone.
+            Sessions from before this installation's agent runtime was upgraded
+            are no longer available. New sessions appear here.
           </span>
           <Button size="small" variant="secondary" onPress={dismiss}>
             Got it

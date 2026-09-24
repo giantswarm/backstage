@@ -152,22 +152,38 @@ export function presetNameOf(selector: string): string | undefined {
   return parsed?.kind === 'preset' ? parsed.name : undefined;
 }
 
-/** The label the step and the detail card show for a preset. */
+const PRESET_LABELS: ReadonlyMap<string, string> = new Map([
+  ['read-only', 'Read-only tools'],
+  ['none', 'No tools'],
+  ['full', 'Full gateway'],
+  ['infrastructure', 'Infrastructure'],
+  ['agent-platform', 'Agent Platform'],
+]);
+
+/**
+ * The label a preset card or row shows: the preset's own label, else its name
+ * — the selector beside it says it is a preset.
+ */
 export function presetLabel(name: string): string {
-  switch (name) {
-    case 'read-only':
-      return 'Read-only tools';
-    case 'none':
-      return 'No tools';
-    case 'full':
-      return 'Full gateway';
-    case 'infrastructure':
-      return 'Infrastructure';
-    case 'agent-platform':
-      return 'Agent Platform';
-    default:
-      return name;
-  }
+  return PRESET_LABELS.get(name) ?? name;
+}
+
+/**
+ * The label of a `preset:` selector naming a preset that has one, else
+ * `undefined`. An installation's own preset has no label: muster reports no
+ * display name, and its bare name would hide that it is a preset.
+ */
+export function labelOfPresetSelector(selector: string): string | undefined {
+  const preset = presetNameOf(selector);
+  return preset === undefined ? undefined : PRESET_LABELS.get(preset);
+}
+
+/**
+ * The text a selector is shown by where it stands alone: a labelled preset by
+ * its label, any other selector as written.
+ */
+export function selectorLabel(selector: string): string {
+  return labelOfPresetSelector(selector) ?? selector;
 }
 
 // Presets lead with the safe choices and end with the powerful one: the
@@ -385,12 +401,15 @@ export function toolsetOfAgent(
 
 /**
  * The declared toolset in a few words, for a table cell: the summary is the
- * cell's text, the detail its second line. The card on the detail page does the
- * resolving; this only says what the carrier declares.
+ * cell's text, the detail its second line, and `inactive` marks an agent with
+ * no tools at all, which the cell shows as an absence rather than a value. The
+ * card on the detail page does the resolving; this only says what the carrier
+ * declares.
  */
 export function describeToolset(toolset: DeclaredToolset | undefined): {
   summary: string;
   detail?: string;
+  inactive?: boolean;
 } {
   if (!toolset || toolset.state === 'unresolved') {
     return {
@@ -400,22 +419,27 @@ export function describeToolset(toolset: DeclaredToolset | undefined): {
   }
   switch (toolset.state) {
     case 'no-gateway':
-      return { summary: 'No tools' };
+      return { summary: 'No tools', inactive: true };
     case 'implicit-full':
       return { summary: 'Full gateway access', detail: 'no toolset declared' };
     default: {
-      const shape = toolsetShape(toolset.selectors);
+      const { selectors } = toolset;
+      const shape = toolsetShape(selectors);
       if (shape === 'none') {
-        return { summary: 'No tools', detail: PRESET_NONE };
+        return { summary: 'No tools', detail: PRESET_NONE, inactive: true };
       }
       if (shape === 'full') {
         return { summary: 'Full gateway access', detail: PRESET_FULL };
       }
+      // A lone labelled preset keeps its selector in view, as `none` and
+      // `full` do.
       return {
-        summary: toolset.selectors.join(', '),
-        detail: `${toolset.selectors.length} selector${
-          toolset.selectors.length === 1 ? '' : 's'
-        }`,
+        summary: selectors.map(selectorLabel).join(', '),
+        detail:
+          selectors.length === 1 &&
+          labelOfPresetSelector(selectors[0]) !== undefined
+            ? selectors[0]
+            : countNoun(selectors.length, 'selector'),
       };
     }
   }

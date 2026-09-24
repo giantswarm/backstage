@@ -4,6 +4,7 @@ import {
   useInstallationInventory,
   useInstallations,
   useInstallationScope,
+  type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import {
@@ -26,6 +27,8 @@ import {
 import { useModelManagerServingSource } from './useModelManagerServingSource';
 
 export type ServingContextValue = ServingSourceSnapshot & {
+  /** The section's installation scope the reads are narrowed to. */
+  scope: InstallationScope;
   /**
    * Every reachable installation in scope, with or without a serving layer —
    * what a control that adds one (Add GPU node pool) is offered for.
@@ -204,6 +207,7 @@ export function ServingProvider({ children }: { children: ReactNode }) {
     };
     return {
       ...snapshot,
+      scope,
       reachableInstallations,
       servedModelFor,
       servedModelForEndpoint: (installation, endpoint) =>
@@ -220,7 +224,7 @@ export function ServingProvider({ children }: { children: ReactNode }) {
           ? snapshot.backendLoading?.[installation]?.[backend]
           : undefined) ?? snapshot.loading?.[installation],
     };
-  }, [kserve, modelManager, reachableInstallations]);
+  }, [kserve, modelManager, reachableInstallations, scope]);
 
   return (
     <ServingContext.Provider value={value}>{children}</ServingContext.Provider>

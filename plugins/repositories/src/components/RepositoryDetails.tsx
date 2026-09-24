@@ -12,14 +12,27 @@ import {
   StatusLabel,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { CI, HeadStatus, InventoryRecord, repositoriesApiRef } from '../apis';
-import { convergedState } from '../lib/setupStatus';
+import {
+  setupIntent,
+  setupLabel,
+  setupOf,
+  SetupState,
+  setupState,
+} from '../lib/rows';
+import { stepsNotOk } from '../lib/setupStatus';
 import { RowActions } from './actions/RowActions';
 import { FindingsList } from './FindingsList';
 import { RepositoriesErrorAlert } from './RepositoriesErrorAlert';
 import { SetupSteps } from './SetupSteps';
 
-/** A set-up still converging is re-read this often: the steps update live. */
+/**
+ * A set-up still converging -- not converged, or a run pending -- is re-read
+ * this often: the steps update live, and the run's report ends the pending.
+ */
 const CONVERGING_POLL_MS = 15_000;
+
+const converging = (record: InventoryRecord) =>
+  ['not converged', 'run pending'].includes(setupState(setupOf(record)));
 
 const catalogEntityPath = (name: string) =>
   `/catalog/default/component/${name}`;
@@ -105,23 +118,44 @@ function FactsCard({ title, items }: { title: string; items: Fact[] }) {
   );
 }
 
-/** The set-up state of a record, as the header and the row show it. */
-function SetupState({ record }: { record: InventoryRecord }) {
-  const { checks, checkError } = record.setup;
-  if (!checks) {
-    return (
-      <StatusLabel label="unchecked" intent="neutral" title={checkError} />
-    );
+/**
+ * The detail behind the header's state, on hover: the steps not ok of a
+ * set-up that has not converged, the dispatch a pending run waits on, the
+ * schema's problems with a refused entry.
+ */
+function setupTitle(
+  record: InventoryRecord,
+  state: SetupState,
+): string | undefined {
+  const { checks, pendingRun } = record.setup;
+  switch (state) {
+    case 'not converged': {
+      const count = checks ? stepsNotOk(checks).length : 0;
+      return `${count} ${count === 1 ? 'step' : 'steps'} not ok`;
+    }
+    case 'run pending':
+      return (
+        pendingRun &&
+        `since ${dateTime(pendingRun.dispatchedAt)} by ${pendingRun.by}`
+      );
+    case 'refused':
+      return record.declaration?.problems?.join('; ');
+    default:
+      return undefined;
   }
+}
+
+/**
+ * The set-up state of a record in the header: the words of the row's icon,
+ * from the same fields, coloured as its mark.
+ */
+function SetupStateLabel({ record }: { record: InventoryRecord }) {
+  const source = setupOf(record);
   return (
     <StatusLabel
-      label={convergedState(checks)}
-      intent={checks.converged ? 'positive' : 'warning'}
-      title={
-        checks.converged
-          ? undefined
-          : `${checks.steps.filter(step => step.verdict !== 'ok' && step.verdict !== 'skipped').length} steps not ok`
-      }
+      label={setupLabel(source)}
+      intent={setupIntent(source)}
+      title={setupTitle(record, setupState(source))}
     />
   );
 }
@@ -145,7 +179,7 @@ export function RepositoryDetails({ repository }: { repository: string }) {
     queryKey,
     queryFn: () => api.getRepository(repository),
     refetchInterval: query =>
-      query.state.data?.setup.checks?.converged === false
+      query.state.data && converging(query.state.data)
         ? CONVERGING_POLL_MS
         : false,
   });
@@ -304,7 +338,7 @@ export function RepositoryDetails({ repository }: { repository: string }) {
               )}
             </Typography>
             <div data-testid="setup-state">
-              <SetupState record={record} />
+              <SetupStateLabel record={record} />
             </div>
           </Box>
           <Typography variant="body2" color="textSecondary">

@@ -15,7 +15,7 @@ import {
  *
  * The two breakdowns and the Overview's tiles are reductions of the same two
  * Mimir answers, so they cannot disagree — and because both views run the same
- * nine queries through react-query's cache, switching between them costs
+ * twelve queries through react-query's cache, switching between them costs
  * nothing.
  *
  * Both tables are also the **table view** the charts on Overview require:
