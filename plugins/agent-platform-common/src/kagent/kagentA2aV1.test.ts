@@ -2,6 +2,7 @@ import stream from './__fixtures__/stream.kagent-4a91c273.json';
 import canceled from './__fixtures__/task.canceled.kagent-4a91c273.json';
 import hitlApproval from './__fixtures__/tasks.hitl-approval.kagent-4a91c273.json';
 import tasks from './__fixtures__/tasks.kagent-4a91c273.json';
+import canonicalTasks from './__fixtures__/tasks.kagent-a2a-canonical.json';
 import v0Tasks from './__fixtures__/tasks.v0-9-9.json';
 import {
   HITL_EXTENSION_URI,
@@ -225,6 +226,45 @@ describe('tasks recorded on kagent-4a91c273', () => {
     expect(
       describeSessionState((task.status as Wire).state as string)?.isActive,
     ).toBe(false);
+  });
+});
+
+describe('tasks in kagent.dev/a2a metadata', () => {
+  // The recorded conversation above, with its metadata as kagent's canonical
+  // contract spells it: part-type, usage, timeline-position and
+  // task-created-at under kagent.dev/a2a/, and no adk_ keys.
+  const reference = normalizeTaskList(tasks).tasks;
+  const canonical = normalizeTaskList(canonicalTasks).tasks;
+
+  const toolCalls = (normalized: typeof reference) =>
+    (normalized[0].history as Wire[])
+      .flatMap(entry => (entry.parts as unknown[]) ?? [])
+      .map(parsePart)
+      .filter(part => part && isFunctionCallPart(part))
+      .map(part => readFunctionCall(part!).name);
+
+  it('orders the history exactly as under the legacy keys', () => {
+    const ids = (normalized: typeof reference) =>
+      (normalized[0].history as Wire[]).map(
+        entry => entry.messageId ?? entry.artifactId,
+      );
+    expect(ids(canonical)).toEqual(ids(reference));
+  });
+
+  it('reads the same tool calls', () => {
+    expect(toolCalls(canonical)).toEqual(toolCalls(reference));
+    expect(toolCalls(canonical)).toContain('call_tool');
+  });
+
+  it('sums the same usage', () => {
+    const window = {
+      startMs: Date.parse('2026-09-01T00:00:00Z'),
+      endMs: Date.parse('2026-12-01T00:00:00Z'),
+    };
+    const { tally } = reduceSessionUsage(canonical, window);
+    expect(tally).toEqual(reduceSessionUsage(reference, window).tally);
+    expect(tally.inputTokens).toBeGreaterThan(0);
+    expect(tally.toolCalls).toBe(2);
   });
 });
 
