@@ -7,9 +7,9 @@ import { lab } from './lab';
  * `add_backend` / `remove_backend` reached through muster as the signed-in
  * person. The lab runs model-manager with no backend of its own, so the
  * lab's Ollama is registered from the portal and removed again, and a KServe
- * that serves nothing yet (the lab has no InferenceService API) is listed
- * under Backends without models and removed from its row. Serial: both
- * tests write the same model-manager's backend documents.
+ * that serves nothing yet (the lab has no InferenceService API) gets a card
+ * of its own and is removed from it. Serial: both tests write the same
+ * model-manager's backend documents.
  */
 test.describe.serial('model backends', () => {
   test('Add model backend registers the lab Ollama as a Serving group, Remove backend removes it', async ({
@@ -75,9 +75,14 @@ test.describe.serial('model backends', () => {
 
     const row = admin.getByTestId('backend-without-models-kserve');
     await expect(
-      admin.getByRole('heading', { name: 'Backends without models' }),
-      'a backend that serves nothing yet gets a row of its own',
+      row,
+      'a backend that serves nothing yet gets a card of its own',
     ).toBeVisible({ timeout: 60_000 });
+    await expect(
+      row.getByText(
+        'No models served yet — serve or pull one, or remove the backend.',
+      ),
+    ).toBeVisible();
     await expect(row.getByText('Registered from the portal')).toBeVisible();
 
     await removeBackend(row, 'KServe', 'kserve', admin);

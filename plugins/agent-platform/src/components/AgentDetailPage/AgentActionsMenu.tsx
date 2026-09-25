@@ -5,6 +5,7 @@ import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import UpdateIcon from '@material-ui/icons/Update';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentManagerPresence } from '../../hooks/useAgentManager';
 import { AgentManifestDialog } from './AgentManifestDialog';
@@ -62,23 +63,6 @@ export function agentManagerAbsenceReason(
   }
   return undefined;
 }
-
-/**
- * A definite width for the menu, which is not cosmetic — the same fix, and the
- * same reason, as `SessionActionsMenu`'s `MENU_WIDTH`.
- *
- * Without it bui writes the literal string `"undefined"` as the menu's `width`,
- * the browser discards it, and the popover lays out at its natural width before
- * settling back to `.bui-MenuContent`'s `min-width: 150px`. That second pass
- * makes the browser report "ResizeObserver loop completed with undelivered
- * notifications" from react-aria's popover observer, which trips the dev-server
- * error overlay.
- *
- * Note bui applies `maxWidth` as CSS `width` despite the name, so this is the
- * definite width — keep it comfortably above the longest item ("Update
- * skills…" plus its icon) rather than trimmed to fit.
- */
-const MENU_WIDTH = '12rem';
 
 /**
  * The agent details page's header actions.

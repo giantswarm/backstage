@@ -34,10 +34,8 @@ import {
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
 import { interfaceLabel, sortInterfaces } from '../../lib/servedModelApi';
 import { ServedReadinessLabel } from '../ModelServingStatus';
-import {
-  CopyEndpointButton,
-  ServedModelsGroupHeader,
-} from './ServedModelsGroupHeader';
+import { CopyEndpointButton } from './ServedModelsGroupHeader';
+import { ServedModelsGroupCard } from './ServedModelsGroupCard';
 
 /** A kagent ModelConfig that fronts a served model. */
 export type ServedModelConsumer = {
@@ -1001,6 +999,10 @@ function ServedModelsGroupTable({
   return <Table<ServedModelRow> {...tableProps} columnConfig={columnConfig} />;
 }
 
+/** What the Serving page says when no serving layer in view lists a model. */
+export const NO_SERVED_MODELS =
+  'No models yet — none running, downloaded or being pulled.';
+
 export type ServedModelsTableProps = {
   rows: ServedModelRow[];
   /**
@@ -1015,6 +1017,8 @@ export type ServedModelsTableProps = {
    * for a backend registered with a model-manager. Absent = plain headers.
    */
   renderGroupActions?: (group: ServedModelGroup) => ReactNode;
+  /** What goes under a group's table, inside its card: the opened row's steps. */
+  renderGroupDetail?: (group: ServedModelGroup) => ReactNode;
 };
 
 /**
@@ -1037,6 +1041,7 @@ export function ServedModelsTable({
   rows,
   renderActions,
   renderGroupActions,
+  renderGroupDetail,
 }: ServedModelsTableProps) {
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
 
@@ -1056,26 +1061,30 @@ export function ServedModelsTable({
   if (groups.length === 0) {
     return (
       <Text variant="body-medium" color="secondary">
-        No models are being served.
+        {NO_SERVED_MODELS}
       </Text>
     );
   }
 
   return (
-    <Flex direction="column" gap="4">
+    <Flex direction="column" gap="3">
       {groups.map(group => (
-        <Flex key={group.key} direction="column" gap="2">
-          <ServedModelsGroupHeader
-            group={group}
-            showInstallation={installations > 1}
-            actions={renderGroupActions?.(group)}
-          />
-          <ServedModelsGroupTable
-            group={group}
-            hrefFor={hrefFor}
-            renderActions={renderActions}
-          />
-        </Flex>
+        <ServedModelsGroupCard
+          key={group.key}
+          data-testid={`served-models-group-${group.key}`}
+          group={group}
+          showInstallation={installations > 1}
+          actions={renderGroupActions?.(group)}
+        >
+          <Flex direction="column" gap="3">
+            <ServedModelsGroupTable
+              group={group}
+              hrefFor={hrefFor}
+              renderActions={renderActions}
+            />
+            {renderGroupDetail?.(group)}
+          </Flex>
+        </ServedModelsGroupCard>
       ))}
     </Flex>
   );

@@ -10,6 +10,7 @@ import {
   groupServedModelRows,
   memoryLine,
   memoryLineTitle,
+  NO_SERVED_MODELS,
   ServedModelDownloadRow,
   ServedModelRow,
   ServedModelsTable,
@@ -749,7 +750,7 @@ describe('ServedModelsTable', () => {
   it('renders the empty state without rows', async () => {
     await renderTable(<ServedModelsTable rows={[]} />);
 
-    expect(screen.getByText('No models are being served.')).toBeInTheDocument();
+    expect(screen.getByText(NO_SERVED_MODELS)).toBeInTheDocument();
     expect(screen.queryByRole('grid')).toBeNull();
   });
 

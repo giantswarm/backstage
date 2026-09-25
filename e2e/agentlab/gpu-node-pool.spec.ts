@@ -89,9 +89,10 @@ test.describe('models: GPU node pools', () => {
     await signIn(page, lab.users.admin);
     await open(page, '/agent-platform/models/capacity');
 
-    const panel = page.getByText('GPU node pools', { exact: true });
+    const panel = page.getByTestId('gpu-node-pools-panel');
     await expect(panel).toBeVisible();
-    await expect(page.getByText('No GPU node pools yet.')).toBeVisible();
+    await expect(panel.getByText('No GPU node pools yet.')).toBeVisible();
+    await expect(panel.getByRole('table')).toHaveCount(0);
     const note = page.getByTestId('cluster-api-note');
     await expect(note).toBeVisible({ timeout: 60_000 });
     await expect(note).toContainText(

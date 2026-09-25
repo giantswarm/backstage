@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Flex, Text } from '@backstage/ui';
 
 import type { RegisteredBackend } from '../../hooks/useModelManagerBackends';
-import { ServedModelsGroupHeader } from '../ServingPage/ServedModelsGroupHeader';
+import { ServedModelsGroupCard } from '../ServingPage/ServedModelsGroupCard';
 
 export type BackendsWithoutModelsProps = {
   /** Registered backends the Serving table has no group for. */
@@ -15,8 +15,8 @@ export type BackendsWithoutModelsProps = {
 
 /**
  * The registered backends that serve nothing yet — a KServe without a pool,
- * an Ollama before its first pull — as rows of their own below the served
- * models, each with the same header a group has (backend and version,
+ * an Ollama before its first pull — as cards of their own below the served
+ * models' ones, each with the same header a group has (backend and version,
  * endpoint, source, Remove backend), so a backend that never gets a model
  * can still be removed from where it was registered.
  */
@@ -30,36 +30,29 @@ export function BackendsWithoutModels({
   }
   return (
     <Flex direction="column" gap="3" data-testid="backends-without-models">
-      <Text as="h2" variant="title-small" weight="bold">
-        Backends without models
-      </Text>
       {backends.map(backend => (
-        <Flex
+        <ServedModelsGroupCard
           key={`${backend.installation}/${backend.kind}`}
-          direction="column"
-          gap="1"
           data-testid={`backend-without-models-${backend.kind}`}
+          group={{
+            key: `${backend.installation}/${backend.kind}`,
+            installation: backend.installation,
+            backend: backend.kind,
+            rows: [],
+            runtime: backend.version
+              ? `${backend.kind} ${backend.version}`
+              : undefined,
+            endpoint: backend.endpoint,
+          }}
+          showInstallation={showInstallation}
+          actions={renderActions(backend)}
         >
-          <ServedModelsGroupHeader
-            group={{
-              key: `${backend.installation}/${backend.kind}`,
-              installation: backend.installation,
-              backend: backend.kind,
-              rows: [],
-              runtime: backend.version
-                ? `${backend.kind} ${backend.version}`
-                : undefined,
-              endpoint: backend.endpoint,
-            }}
-            showInstallation={showInstallation}
-            actions={renderActions(backend)}
-          />
-          <Text as="p" variant="body-small" color="secondary">
+          <Text as="p" variant="body-medium" color="secondary">
             {backend.healthy === false && backend.message
               ? `Not healthy: ${backend.message}`
               : 'No models served yet — serve or pull one, or remove the backend.'}
           </Text>
-        </Flex>
+        </ServedModelsGroupCard>
       ))}
     </Flex>
   );

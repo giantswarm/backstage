@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Content, EmptyState, Progress } from '@backstage/core-components';
+import { Content, EmptyState } from '@backstage/core-components';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import CloudDownloadIcon from '@material-ui/icons/CloudDownload';
@@ -16,7 +16,10 @@ import {
   LLMInferenceService,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  LoadingIndicator,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
@@ -67,7 +70,9 @@ import {
   isDownloadRow,
   isServableDownload,
   isStoppable,
+  NO_SERVED_MODELS,
   ServedModelsTable,
+  type ServedModelGroup,
   type ServedModelRow,
 } from './ServedModelsTable';
 import { StopServedModelDialog } from './StopServedModelDialog';
@@ -422,6 +427,18 @@ export function ServingPage() {
     [openedModel, rows],
   );
 
+  // The opened model's steps sit in its group's card, under the table; until
+  // its row arrives (right after Serve), or once it is gone, under the cards.
+  const lifecyclePanel = openedModel ? (
+    <ServedModelLifecyclePanel
+      opened={openedModel}
+      row={openedRow}
+      onClose={closeOpenedModel}
+    />
+  ) : null;
+  const renderGroupDetail = (group: ServedModelGroup) =>
+    openedRow && group.rows.includes(openedRow) ? lifecyclePanel : null;
+
   const stoppingVia = stopping ? stopVia(stopping) : 'llminferenceservice';
 
   // The user's own RBAC matters only when the CR is deleted directly; through
@@ -552,7 +569,7 @@ export function ServingPage() {
     installations.every(name => backendsOn(serving, name).length === 0);
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
-    emptyBody = <Progress aria-label="Looking for a serving layer" />;
+    emptyBody = <LoadingIndicator label="Looking for a serving layer" />;
   } else if (noServingLayer) {
     emptyBody = backendsWithoutModels ?? (
       <EmptyState
@@ -572,6 +589,30 @@ export function ServingPage() {
         )} is running with no backend registered, so nothing is served here yet. Register a backend you already run — Ollama, LM Studio, Lemonade or KServe — and its models appear on this page; a GPU node pool brings model serving to a cluster along with the capacity for it.`}
         action={addActions}
       />
+    );
+  }
+
+  // A registered backend without models says so in its own row, so the
+  // empty line would only repeat it.
+  let servedModelsBody: ReactNode;
+  if (rows.length > 0) {
+    servedModelsBody = (
+      <ServedModelsTable
+        rows={rows}
+        renderActions={hasActions || hasTimelines ? renderActions : undefined}
+        renderGroupActions={
+          backends.available ? backends.renderGroupActions : undefined
+        }
+        renderGroupDetail={renderGroupDetail}
+      />
+    );
+  } else if (serving.isLoading) {
+    servedModelsBody = <LoadingIndicator label="Loading served models" />;
+  } else if (!backendsWithoutModels) {
+    servedModelsBody = (
+      <Text variant="body-medium" color="secondary">
+        {NO_SERVED_MODELS}
+      </Text>
     );
   }
 
@@ -605,30 +646,9 @@ export function ServingPage() {
         <Flex direction="column" gap="3">
           <Text color="secondary">{description}</Text>
 
-          {serving.isLoading && rows.length === 0 ? (
-            <Progress aria-label="Loading served models" />
-          ) : (
-            <ServedModelsTable
-              rows={rows}
-              renderActions={
-                hasActions || hasTimelines ? renderActions : undefined
-              }
-              renderGroupActions={
-                backends.available ? backends.renderGroupActions : undefined
-              }
-            />
-          )}
-          {openedModel && (
-            <ServedModelLifecyclePanel
-              opened={openedModel}
-              row={openedRow}
-              onClose={closeOpenedModel}
-            />
-          )}
-
+          {servedModelsBody}
+          {!openedRow && lifecyclePanel}
           {backendsWithoutModels}
-
-          {pools.cachePanel}
 
           <UnreachableInstallationsAlert
             installations={serving.unreachableInstallations}

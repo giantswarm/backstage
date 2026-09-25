@@ -14,3 +14,4 @@ export {
   OTHER_SERIES_LABEL,
 } from './chartPalette';
 export { stopRowPress } from './rowPress';
+export { MENU_WIDTH } from './menuWidth';

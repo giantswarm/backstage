@@ -149,7 +149,7 @@ describe('ModelCachePanel', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('says nothing stands when there is no claim', async () => {
+  it('says nothing stands when there is no claim, without an empty table', async () => {
     await renderInTestApp(
       <ModelCachePanel
         rows={[]}
@@ -159,7 +159,24 @@ describe('ModelCachePanel', () => {
       />,
     );
     expect(screen.getByText(NO_MODEL_CACHE)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.queryByTestId('cache-read-only')).not.toBeInTheDocument();
+  });
+
+  it('shows a loading indicator, not an empty table, while the claims are read', async () => {
+    await renderInTestApp(
+      <ModelCachePanel
+        rows={[]}
+        isLoading
+        removable={[]}
+        onRemove={jest.fn()}
+      />,
+    );
+    expect(
+      await screen.findByRole('progressbar', { name: 'Reading model caches…' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText(NO_MODEL_CACHE)).not.toBeInTheDocument();
   });
 });
 
