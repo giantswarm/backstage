@@ -30,6 +30,10 @@ import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { TextAreaField } from './TextAreaField';
+import {
+  MAX_SYSTEM_MESSAGE_LENGTH,
+  systemMessageProblem,
+} from '../../lib/systemMessage';
 
 const useStyles = makeStyles(theme => ({
   column: {
@@ -218,7 +222,9 @@ function NewAgentPageContent() {
                   rows={10}
                   mono
                   placeholder="Leave empty to use the chart's default prompt."
-                  description="The agent's system message. Write one to fit the role, or leave it empty: agent-manager then keeps the chart's default prompt."
+                  description="The agent's system message. Write one to fit the role, or leave it empty: agent-manager then keeps the chart's default prompt. Put long reference material in a skill; the prompt is limited in length."
+                  maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
+                  error={systemMessageProblem(state.systemMessage)}
                 />
                 <ModelConfigPicker />
               </Flex>

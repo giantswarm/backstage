@@ -53,6 +53,10 @@ import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { TextAreaField } from '../NewAgentPage/TextAreaField';
+import {
+  MAX_SYSTEM_MESSAGE_LENGTH,
+  systemMessageProblem,
+} from '../../lib/systemMessage';
 import { isMounted, SkillPicker } from '../SkillPicker';
 import { agentManagerAbsenceReason } from '../AgentDetailPage/AgentActionsMenu';
 import { EditAgentToolsetField } from './EditAgentToolsetField';
@@ -239,8 +243,10 @@ function EditAgentForm({
     dirty ? update : undefined,
   );
   const violations = dryRun.result?.errors ?? [];
+  const promptProblem = systemMessageProblem(edit.systemMessage);
   const canWrite =
     dirty &&
+    !promptProblem &&
     Boolean(dryRun.result) &&
     violations.length === 0 &&
     !dryRun.failure;
@@ -387,11 +393,13 @@ function EditAgentForm({
               />
               <TextAreaField
                 label="System prompt"
-                description="Empty restores the chart's default prompt."
+                description="Empty restores the chart's default prompt. Put long reference material in a skill; the prompt is limited in length."
                 value={edit.systemMessage}
                 onChange={value => set('systemMessage', value)}
                 rows={10}
                 mono
+                maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
+                error={promptProblem}
               />
               <Flex direction="column" gap="2">
                 <FieldLabel

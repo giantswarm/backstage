@@ -1,6 +1,8 @@
 import { useId, type ChangeEvent } from 'react';
 import { FieldLabel } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import { characterCount } from '../../lib/systemMessage';
+import { formatCount } from '../../lib/formatNumbers';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -35,6 +37,20 @@ const useStyles = makeStyles(theme => ({
     fontFamily: 'monospace',
     fontSize: '0.8rem',
   },
+  invalid: {
+    outline: `2px solid ${theme.palette.error.main}`,
+    outlineOffset: -1,
+  },
+  counter: {
+    fontSize: '0.75rem',
+    color: theme.palette.text.secondary,
+    alignSelf: 'flex-end',
+  },
+  error: {
+    fontSize: '0.75rem',
+    color: theme.palette.error.main,
+    margin: 0,
+  },
 }));
 
 export type TextAreaFieldProps = {
@@ -46,6 +62,10 @@ export type TextAreaFieldProps = {
   placeholder?: string;
   rows?: number;
   mono?: boolean;
+  /** Shows a live character count against this limit (in code points). */
+  maxLength?: number;
+  /** Marks the field invalid and says why, right under it. */
+  error?: string;
 };
 
 export function TextAreaField(props: TextAreaFieldProps) {
@@ -60,7 +80,15 @@ export function TextAreaField(props: TextAreaFieldProps) {
     placeholder,
     rows = 4,
     mono = false,
+    maxLength,
+    error,
   } = props;
+  const counterId = `${id}-counter`;
+  const errorId = `${id}-error`;
+  const describedBy =
+    [maxLength !== undefined && counterId, error && errorId]
+      .filter(Boolean)
+      .join(' ') || undefined;
 
   return (
     <div className={classes.root}>
@@ -72,7 +100,11 @@ export function TextAreaField(props: TextAreaFieldProps) {
       />
       <textarea
         id={id}
-        className={`${classes.textarea} ${mono ? classes.mono : ''}`}
+        className={`${classes.textarea} ${mono ? classes.mono : ''} ${
+          error ? classes.invalid : ''
+        }`}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy}
         value={value}
         rows={rows}
         placeholder={placeholder}
@@ -80,6 +112,17 @@ export function TextAreaField(props: TextAreaFieldProps) {
           onChange(e.target.value)
         }
       />
+      {error && (
+        <p id={errorId} className={classes.error} role="alert">
+          {error}
+        </p>
+      )}
+      {maxLength !== undefined && (
+        <span id={counterId} className={classes.counter}>
+          {formatCount(characterCount(value))} / {formatCount(maxLength)}{' '}
+          characters
+        </span>
+      )}
     </div>
   );
 }
