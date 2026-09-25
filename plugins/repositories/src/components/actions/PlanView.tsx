@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { Plan, PlannedMessage, PlannedPullRequest, Problem } from '../../apis';
+import { messageTarget } from './channel';
 
 const PRE_STYLE = {
   margin: 0,
@@ -103,9 +104,7 @@ export function PlannedPullRequestView({
 }
 
 function Message({ kind, message }: { kind: string; message: PlannedMessage }) {
-  const where = message.channel
-    ? `${message.channel} (${message.team})`
-    : message.team;
+  const where = messageTarget(message);
   return (
     <Alert
       status={message.deliverable ? 'info' : 'warning'}

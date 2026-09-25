@@ -1,5 +1,6 @@
 import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
 import { Committed, Delivery } from '../../apis';
+import { messageTarget } from './channel';
 
 function DeliveryLine({
   kind,
@@ -8,9 +9,7 @@ function DeliveryLine({
   kind: string;
   delivery: Delivery;
 }) {
-  const where = delivery.channel
-    ? `${delivery.channel} (${delivery.team})`
-    : delivery.team;
+  const where = messageTarget(delivery);
   return (
     <Text variant="body-small" color="secondary">
       {delivery.delivered

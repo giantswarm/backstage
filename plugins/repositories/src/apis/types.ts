@@ -584,7 +584,10 @@ export interface PlannedPullRequest {
 /** An ask (approval) or notice to a team's channel, before it is posted. */
 export interface PlannedMessage {
   team: string;
+  /** The Slack channel ID the message goes to. */
   channel?: string;
+  /** That channel's name as the team's channel file carries it, for display. */
+  channelName?: string;
   text: string;
   deliverable: boolean;
   reason?: string;
@@ -619,7 +622,10 @@ export interface PullRequest {
 /** What became of an ask or notice. */
 export interface Delivery {
   team: string;
+  /** The Slack channel ID posted to (the debug channel under a redirect). */
   channel?: string;
+  /** The team's channel's name, for display, also under a debug redirect. */
+  channelName?: string;
   delivered: boolean;
   reviewId?: string;
   error?: string;
