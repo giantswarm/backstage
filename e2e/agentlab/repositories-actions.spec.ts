@@ -853,6 +853,28 @@ test.describe('repositories: actions', () => {
     await expect(dialog).toBeHidden();
   });
 
+  test("Archive's dry run names the ask's channel as the team's channel file does, never by its Slack ID", async ({
+    admin,
+  }) => {
+    const { name, record } = await expandDeclared(admin);
+    await record.getByRole('button', { name: 'Archive' }).click();
+    const dialog = admin.getByRole('form', {
+      name: new RegExp(`^Archive ${name}`),
+    });
+    await dialog.getByLabel(/^Reason/).fill('the e2e proof');
+    await dialog.getByRole('button', { name: 'Review' }).click();
+    // The manager's dry run: with a review endpoint the ask resolves the
+    // team's asks channel and the page shows its name (lower case; a Slack
+    // ID is upper case); without one it names the team alone.
+    const ask = dialog.getByText(/^Approval asked to /);
+    await expect(ask).toBeVisible({ timeout: 60_000 });
+    await expect(ask).toHaveText(
+      /^Approval asked to (#[a-z0-9-]+ \(team-[a-z0-9-]+\)|team-[a-z0-9-]+)$/,
+    );
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test('Edit opens on the entry as the Create form shows it -- the team and the name fixed, the preset, the declaration, the opt-in, the reason -- and writes nothing on Cancel', async ({
     admin,
   }) => {
@@ -1024,7 +1046,8 @@ test.describe('repositories: actions', () => {
             },
             ask: {
               team: 'team-bumblebee',
-              channel: '#team-bumblebee',
+              channel: 'C0ALXPMB1PW',
+              channelName: 'team-bumblebee',
               text: `admin asks to align giantswarm/${name}`,
               deliverable: true,
             },
@@ -1040,7 +1063,8 @@ test.describe('repositories: actions', () => {
                 },
                 ask: {
                   team: 'team-bumblebee',
-                  channel: '#team-bumblebee',
+                  channel: 'C0ALXPMB1PW',
+                  channelName: 'team-bumblebee',
                   delivered: true,
                   reviewId: 'rev-1',
                 },

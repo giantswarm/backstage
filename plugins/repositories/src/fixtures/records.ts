@@ -954,7 +954,8 @@ export function planOf(overrides: Partial<Plan> = {}): Plan {
     },
     ask: {
       team: 'team-bumblebee',
-      channel: '#team-bumblebee',
+      channel: 'C0ALXPMB1PW',
+      channelName: 'team-bumblebee',
       text: 'alice asks to archive giantswarm/present-service — Approve lands it',
       deliverable: true,
     },
@@ -973,7 +974,8 @@ export function committedOf(overrides: Partial<Committed> = {}): Committed {
     },
     ask: {
       team: 'team-bumblebee',
-      channel: '#team-bumblebee',
+      channel: 'C0ALXPMB1PW',
+      channelName: 'team-bumblebee',
       delivered: true,
       reviewId: 'rev-1',
     },
@@ -1132,7 +1134,8 @@ export function optInAlignmentOf(committed: boolean): Alignment {
         },
         ask: {
           team: 'team-bumblebee',
-          channel: '#team-bumblebee',
+          channel: 'C0ALXPMB1PW',
+          channelName: 'team-bumblebee',
           text: 'alice asks to align `giantswarm/present-service` (owned by team-bumblebee): the change opts it in to alignment (`align: true`) and the reconciler applies 3 planned changes once merged — protection, circleci. A member of team-bumblebee other than alice approves.',
           deliverable: true,
         },
