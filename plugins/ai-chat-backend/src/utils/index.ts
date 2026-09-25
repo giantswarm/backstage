@@ -9,3 +9,4 @@ export {
   buildAnthropicProviderOptions,
   DEFAULT_ANTHROPIC_EFFORT,
 } from './anthropicProviderOptions';
+export { describeChatError } from './describeChatError';

@@ -43,6 +43,7 @@ import {
   usesAdaptiveThinking,
   buildAnthropicProviderOptions,
   DEFAULT_ANTHROPIC_EFFORT,
+  describeChatError,
 } from './utils';
 import { ConversationStore } from './services/ConversationStore';
 import { createConversationRoutes } from './routes/conversationRoutes';
@@ -678,6 +679,10 @@ export async function createRouter(
       result.pipeUIMessageStreamToResponse(res, {
         originalMessages: messages as UIMessage[],
         generateMessageId: () => crypto.randomUUID(),
+        // Without this the SDK masks every error as "An error occurred.";
+        // the conversation shows the provider's reason (e.g. "Overloaded")
+        // and the user retries from the error message.
+        onError: describeChatError,
         onFinish({ messages: allMessages }) {
           modelFinished = true;
           // Fire-and-forget: update the conversation row created up-front
