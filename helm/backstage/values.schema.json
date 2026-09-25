@@ -2480,7 +2480,7 @@
                 },
                 "command": {
                     "type": "array",
-                    "description": "Container command to start the Backstage backend. `--require ./instrumentation.js` starts the OpenTelemetry SDK before the backend; keep it in an override for `observability.otel` to export anything",
+                    "description": "Container command to start the Backstage backend",
                     "items": {
                         "type": "string"
                     }

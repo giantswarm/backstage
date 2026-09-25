@@ -8,8 +8,7 @@
 #   Gateway's default 15 s route timeout cuts every streamed response;
 # * the pod template's checksum over the extraAppConfig entries, without which
 #   a changed app-config fragment never reaches the running portal;
-# * the OTLP variables and the instrumentation preload, without either of which
-#   the backend starts and exports no trace.
+# * the OTLP variables, without which the backend starts and exports no trace.
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -148,9 +147,8 @@ echo "--> no extraAppConfig: no annotation"
 render no-fragment
 refute no-fragment 'checksum/extra-app-config'
 
-echo "--> observability.otel.endpoint set: the OTLP variables render and the SDK is preloaded"
+echo "--> observability.otel.endpoint set: the OTLP variables render"
 render otel --set observability.otel.endpoint=http://otlp-gateway.kube-system.svc:4317 --set observability.otel.headers=X-Scope-OrgID=giantswarm
-expect otel './instrumentation.js'
 expect otel 'value: "http://otlp-gateway.kube-system.svc:4317"'
 expect otel 'value: "grpc"'
 expect otel 'value: "X-Scope-OrgID=giantswarm"'

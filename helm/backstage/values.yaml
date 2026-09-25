@@ -331,8 +331,8 @@ branding:
 # -- Backstage application parameters
 backstage:
   # @schema item:string
-  # -- Container command to start the Backstage backend. `--require ./instrumentation.js` starts the OpenTelemetry SDK before the backend; keep it in an override for `observability.otel` to export anything
-  command: ['node', '--require', './instrumentation.js', 'packages/backend']
+  # -- Container command to start the Backstage backend
+  command: ['node', 'packages/backend']
 
   # @schema item:string
   # -- Additional command arguments passed to the Backstage container
