@@ -201,6 +201,14 @@ export const useStyles = makeStyles((theme: Theme) =>
       padding: theme.spacing(1.5, 2),
       borderRadius: 'var(--bui-radius-3)',
       marginTop: theme.spacing(2),
+      display: 'flex',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: theme.spacing(1.5),
+    },
+    errorRetryButton: {
+      marginLeft: 'auto',
+      flexShrink: 0,
     },
   }),
 );
