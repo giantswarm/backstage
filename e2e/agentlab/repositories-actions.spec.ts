@@ -1024,7 +1024,8 @@ test.describe('repositories: actions', () => {
             },
             ask: {
               team: 'team-bumblebee',
-              channel: '#team-bumblebee',
+              channel: 'C0ALXPMB1PW',
+              channelName: 'team-bumblebee',
               text: `admin asks to align giantswarm/${name}`,
               deliverable: true,
             },
@@ -1040,7 +1041,8 @@ test.describe('repositories: actions', () => {
                 },
                 ask: {
                   team: 'team-bumblebee',
-                  channel: '#team-bumblebee',
+                  channel: 'C0ALXPMB1PW',
+                  channelName: 'team-bumblebee',
                   delivered: true,
                   reviewId: 'rev-1',
                 },
