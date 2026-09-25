@@ -368,6 +368,22 @@ describe('EditAgentPage', () => {
     });
   });
 
+  it('counts the system prompt and keeps Save locked past the limit', async () => {
+    await renderPage();
+    const prompt = await screen.findByDisplayValue('You review pull requests.');
+    expect(screen.getByText('25 / 20,000 characters')).toBeInTheDocument();
+
+    await userEvent.clear(prompt);
+    await userEvent.click(prompt);
+    await userEvent.paste('é'.repeat(20001));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'System prompt is 20,001 characters; the limit is 20,000. Move long reference material into a skill',
+    );
+    expect(prompt).toHaveAttribute('aria-invalid', 'true');
+    expect(saveButton()).toBeDisabled();
+  });
+
   it('adds a skill pinned to the head commit its card shows', async () => {
     const { callTool } = await renderPage();
     await screen.findByDisplayValue('PR reviewer');
