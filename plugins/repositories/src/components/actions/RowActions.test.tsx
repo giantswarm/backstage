@@ -529,7 +529,8 @@ describe('RowActions', () => {
         fromTeam: 'team-bumblebee',
         ask: {
           team: 'team-planeteers',
-          channel: '#team-planeteers',
+          channel: 'C07N9PVV97S',
+          channelName: 'team-planeteers',
           text: 'alice asks team-planeteers to take giantswarm/present-service',
           deliverable: true,
         },
