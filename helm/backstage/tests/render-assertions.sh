@@ -7,7 +7,9 @@
 # * the BackendTrafficPolicy on the Gateway API route, without which Envoy
 #   Gateway's default 15 s route timeout cuts every streamed response;
 # * the pod template's checksum over the extraAppConfig entries, without which
-#   a changed app-config fragment never reaches the running portal.
+#   a changed app-config fragment never reaches the running portal;
+# * the OTLP variables and the instrumentation preload, without either of which
+#   the backend starts and exports no trace.
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -145,6 +147,19 @@ fi
 echo "--> no extraAppConfig: no annotation"
 render no-fragment
 refute no-fragment 'checksum/extra-app-config'
+
+echo "--> observability.otel.endpoint set: the OTLP variables render and the SDK is preloaded"
+render otel --set observability.otel.endpoint=http://otlp-gateway.kube-system.svc:4317 --set observability.otel.headers=X-Scope-OrgID=giantswarm
+expect otel './instrumentation.js'
+expect otel 'value: "http://otlp-gateway.kube-system.svc:4317"'
+expect otel 'value: "grpc"'
+expect otel 'value: "X-Scope-OrgID=giantswarm"'
+expect otel 'value: "parentbased_traceidratio"'
+expect otel 'k8s.pod.name=$(OTEL_POD_NAME)'
+
+echo "--> no observability.otel.endpoint: no OTLP variable"
+render no-otel
+refute no-otel 'OTEL_'
 
 if [ "${failed}" -ne 0 ]; then
   exit 1

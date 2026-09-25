@@ -145,4 +145,10 @@ ENV NODE_OPTIONS="--no-node-snapshot"
 
 COPY --from=build --chown=node:node /app /app
 
-CMD ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]
+# The OpenTelemetry SDK starts before the backend loads so its
+# instrumentations patch the modules they trace; it exports only when an
+# OTEL_* variable names an exporter (the chart's observability.otel).
+# https://backstage.io/docs/tutorials/setup-opentelemetry
+COPY --chown=node:node packages/backend/src/instrumentation.js ./
+
+CMD ["node", "--require", "./instrumentation.js", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]

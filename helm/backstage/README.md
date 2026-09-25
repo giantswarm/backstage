@@ -131,6 +131,13 @@ heap already follows the limit; it would also have to repeat the image's
 | pagerduty | object | `{"apiToken":""}` | PagerDuty integration settings |
 | pagerduty.apiToken | string | `""` | PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var) |
 | sharedConfig | object | `{}` | Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword |
+| observability | object | `{"otel":{"endpoint":"","headers":"","protocol":"grpc","resourceAttributes":"","sampler":"parentbased_traceidratio","samplerArg":"0.1"}}` | OpenTelemetry trace export from the backend, as the standard OTEL_* variables. Nothing is exported while `endpoint` is empty. |
+| observability.otel.endpoint | string | `""` | OTLP collector URL (OTEL_EXPORTER_OTLP_ENDPOINT), e.g. `http://otlp-gateway.kube-system.svc:4317` for gRPC. Empty: no export and none of the variables below is set. |
+| observability.otel.protocol | string | `"grpc"` | OTLP protocol (OTEL_EXPORTER_OTLP_PROTOCOL). |
+| observability.otel.headers | string | `""` | OTLP headers as `key=value` pairs separated by commas (OTEL_EXPORTER_OTLP_HEADERS), e.g. `X-Scope-OrgID=giantswarm` for the collector's tenant. |
+| observability.otel.resourceAttributes | string | `""` | Resource attributes as `key=value` pairs separated by commas, appended to the pod's `k8s.pod.name`, `k8s.namespace.name` and `k8s.node.name` (OTEL_RESOURCE_ATTRIBUTES). |
+| observability.otel.sampler | string | `"parentbased_traceidratio"` | Trace sampler (OTEL_TRACES_SAMPLER). The parent-based default follows the sampling decision of an incoming `traceparent` and samples root spans by `samplerArg`. |
+| observability.otel.samplerArg | string | `"0.1"` | Sampler argument (OTEL_TRACES_SAMPLER_ARG): the ratio of root spans sampled for the `traceidratio` samplers. |
 | nodeSelector | object | `{}` | Node selector labels to constrain pod scheduling to specific nodes |
 | strategy | object | `{}` | Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume. |
 | networkPolicy | object | `{"enabled":true,"flavor":"cilium"}` | Network policy settings |
@@ -151,8 +158,8 @@ heap already follows the limit; it would also have to repeat the image's
 | branding.assetsPath | string | `"/app/branding-assets"` | Filesystem path inside the container where branding assets are mounted |
 | branding.volume | object | `{"configMap":{}}` | Volume source for the branding assets. Currently only the `configMap` source is supported; the volume `name` is supplied by the chart. |
 | branding.volume.configMap | object | `{}` | ConfigMap volume source. At minimum, set `.name` to the name of the ConfigMap holding the assets |
-| backstage | object | `{"appConfig":{},"args":[],"command":["node","packages/backend"],"extraAppConfig":[],"extraEnvVars":[],"extraEnvVarsCM":[],"extraEnvVarsSecrets":[],"extraVolumeMounts":[],"extraVolumes":[],"initContainers":[]}` | Backstage application parameters |
-| backstage.command | list | `["node","packages/backend"]` | Container command to start the Backstage backend |
+| backstage | object | `{"appConfig":{},"args":[],"command":["node","--require","./instrumentation.js","packages/backend"],"extraAppConfig":[],"extraEnvVars":[],"extraEnvVarsCM":[],"extraEnvVarsSecrets":[],"extraVolumeMounts":[],"extraVolumes":[],"initContainers":[]}` | Backstage application parameters |
+| backstage.command | list | `["node","--require","./instrumentation.js","packages/backend"]` | Container command to start the Backstage backend. `--require ./instrumentation.js` starts the OpenTelemetry SDK before the backend; keep it in an override for `observability.otel` to export anything |
 | backstage.args | list | `[]` | Additional command arguments passed to the Backstage container |
 | backstage.extraAppConfig | list | `[]` | Extra app configuration files to inline into command arguments, each referencing a ConfigMap. Backstage reads them at start and the chart does not render the ConfigMaps, so a change to one rolls the pod only through the entry's optional `checksum`: whoever renders the ConfigMap sets it to a hash of the ConfigMap's data, and the pod template's `checksum/extra-app-config` annotation changes with it |
 | backstage.appConfig | object | `{}` | Inline Backstage app configuration that generates a ConfigMap automatically. Do not use for sensitive data |

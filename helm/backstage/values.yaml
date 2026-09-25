@@ -232,6 +232,28 @@ pagerduty:
 # -- Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword
 sharedConfig: {}
 
+# -- OpenTelemetry trace export from the backend, as the standard OTEL_* variables. Nothing is exported while `endpoint` is empty.
+observability:
+  otel:
+    # @schema type:string
+    # -- OTLP collector URL (OTEL_EXPORTER_OTLP_ENDPOINT), e.g. `http://otlp-gateway.kube-system.svc:4317` for gRPC. Empty: no export and none of the variables below is set.
+    endpoint: ''
+    # @schema type:string;enum:[grpc, http/protobuf]
+    # -- OTLP protocol (OTEL_EXPORTER_OTLP_PROTOCOL).
+    protocol: grpc
+    # @schema type:string
+    # -- OTLP headers as `key=value` pairs separated by commas (OTEL_EXPORTER_OTLP_HEADERS), e.g. `X-Scope-OrgID=giantswarm` for the collector's tenant.
+    headers: ''
+    # @schema type:string
+    # -- Resource attributes as `key=value` pairs separated by commas, appended to the pod's `k8s.pod.name`, `k8s.namespace.name` and `k8s.node.name` (OTEL_RESOURCE_ATTRIBUTES).
+    resourceAttributes: ''
+    # @schema type:string
+    # -- Trace sampler (OTEL_TRACES_SAMPLER). The parent-based default follows the sampling decision of an incoming `traceparent` and samples root spans by `samplerArg`.
+    sampler: parentbased_traceidratio
+    # @schema type:string
+    # -- Sampler argument (OTEL_TRACES_SAMPLER_ARG): the ratio of root spans sampled for the `traceidratio` samplers.
+    samplerArg: '0.1'
+
 # @schema type:object;additionalProperties:true
 # -- Node selector labels to constrain pod scheduling to specific nodes
 nodeSelector: {}
@@ -309,8 +331,8 @@ branding:
 # -- Backstage application parameters
 backstage:
   # @schema item:string
-  # -- Container command to start the Backstage backend
-  command: ['node', 'packages/backend']
+  # -- Container command to start the Backstage backend. `--require ./instrumentation.js` starts the OpenTelemetry SDK before the backend; keep it in an override for `observability.otel` to export anything
+  command: ['node', '--require', './instrumentation.js', 'packages/backend']
 
   # @schema item:string
   # -- Additional command arguments passed to the Backstage container
