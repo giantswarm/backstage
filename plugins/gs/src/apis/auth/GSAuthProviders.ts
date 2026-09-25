@@ -45,12 +45,15 @@ const CLUSTER_TOKEN_ERROR_MESSAGES: Record<ClusterTokenErrorReason, string> = {
   'session-expired': 'Your session expired -- sign in again',
   subject_invalid: 'Your session was rejected -- sign in again',
   broker_unreachable: 'Token broker is unreachable',
+  broker_unavailable:
+    'Token broker is briefly unavailable -- try again shortly',
   exchange_failed: 'Token exchange failed',
   unknown: 'Cluster access failed',
 };
 
 const CLUSTER_TOKEN_ERROR_REASONS: ReadonlySet<string> = new Set([
   'broker_unreachable',
+  'broker_unavailable',
   'exchange_failed',
   'subject_invalid',
 ]);
