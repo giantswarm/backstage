@@ -2914,6 +2914,47 @@
             "description": "Node selector labels to constrain pod scheduling to specific nodes",
             "additionalProperties": true
         },
+        "observability": {
+            "type": "object",
+            "description": "OpenTelemetry trace export from the backend, as the standard OTEL_* variables. Nothing is exported while `endpoint` is empty.",
+            "additionalProperties": false,
+            "properties": {
+                "otel": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "endpoint": {
+                            "type": "string",
+                            "description": "OTLP collector URL (OTEL_EXPORTER_OTLP_ENDPOINT), e.g. `http://otlp-gateway.kube-system.svc:4317` for gRPC. Empty: no export and none of the variables below is set."
+                        },
+                        "headers": {
+                            "type": "string",
+                            "description": "OTLP headers as `key=value` pairs separated by commas (OTEL_EXPORTER_OTLP_HEADERS), e.g. `X-Scope-OrgID=giantswarm` for the collector's tenant."
+                        },
+                        "protocol": {
+                            "type": "string",
+                            "description": "OTLP protocol (OTEL_EXPORTER_OTLP_PROTOCOL).",
+                            "enum": [
+                                "grpc",
+                                "http/protobuf"
+                            ]
+                        },
+                        "resourceAttributes": {
+                            "type": "string",
+                            "description": "Resource attributes as `key=value` pairs separated by commas, appended to the pod's `k8s.pod.name`, `k8s.namespace.name` and `k8s.node.name` (OTEL_RESOURCE_ATTRIBUTES)."
+                        },
+                        "sampler": {
+                            "type": "string",
+                            "description": "Trace sampler (OTEL_TRACES_SAMPLER). The parent-based default follows the sampling decision of an incoming `traceparent` and samples root spans by `samplerArg`."
+                        },
+                        "samplerArg": {
+                            "type": "string",
+                            "description": "Sampler argument (OTEL_TRACES_SAMPLER_ARG): the ratio of root spans sampled for the `traceidratio` samplers."
+                        }
+                    }
+                }
+            }
+        },
         "ociRegistryCredentials": {
             "type": "object",
             "description": "Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig",
