@@ -213,6 +213,29 @@ export function createClusterTokenRouter(
           return;
         }
 
+        // A 503, or the RFC 6749 `temporarily_unavailable` / muster's
+        // `service_unavailable`, means the broker could not serve the request
+        // for a moment (its token store unreachable, OIDC discovery pending
+        // after a restart), not that it rejected the exchange. It hits every
+        // installation at once and clears by itself, so it gets its own
+        // message: one Sentry issue per broker outage, apart from genuine
+        // rejections.
+        const brokerUnavailable =
+          response.status === 503 ||
+          oauthError === 'temporarily_unavailable' ||
+          oauthError === 'service_unavailable';
+        if (brokerUnavailable) {
+          logger.warn(
+            'Cluster token exchange failed: token broker temporarily unavailable',
+            meta,
+          );
+          res.status(502).json({
+            error: 'Token broker is temporarily unavailable',
+            reason: 'broker_unavailable',
+          });
+          return;
+        }
+
         // An OAuth invalid_grant/invalid_token/invalid_request (or a bare 401
         // that is not invalid_client) means the forwarded subject token was
         // rejected -- i.e. the user's main session, not the cluster, is the
