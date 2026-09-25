@@ -120,4 +120,71 @@ describe('<EntityAppReadinessCard />', () => {
 
     expect(screen.getByText('Incomplete')).toBeInTheDocument();
   });
+
+  it('attributes BUILD-RED to the build, not to the release or the chart', async () => {
+    // Releasable, compliant chart, red main: three different answers to three
+    // different questions, and the card must not merge them.
+    await renderCard(
+      {
+        'giantswarm.io/readiness': 'releasable',
+        'giantswarm.io/readiness-standards': 'ok',
+        'giantswarm.io/build-status': 'failing',
+      },
+      {
+        'giantswarm.io/readiness-flags': 'BUILD-RED',
+        'giantswarm.io/build-failing-checks': 'ci/circleci: build',
+        'giantswarm.io/default-branch': 'main',
+      },
+    );
+
+    expect(screen.getByText('Releasable')).toBeInTheDocument();
+    expect(screen.getByText('Build on main')).toBeInTheDocument();
+    expect(screen.getByText('Failing')).toBeInTheDocument();
+    expect(screen.getByText('BUILD-RED')).toBeInTheDocument();
+    expect(screen.getByText(/ci\/circleci: build/)).toBeInTheDocument();
+    expect(screen.queryByText('Blocking the release')).not.toBeInTheDocument();
+    expect(screen.queryByText('Fails a build today')).not.toBeInTheDocument();
+  });
+
+  it('shows the declared toolchain and says it is declared', async () => {
+    await renderCard(
+      {
+        'giantswarm.io/readiness-standards': 'ok',
+        'giantswarm.io/architect-orb-version': '10.3.0',
+        'giantswarm.io/app-build-suite-version': '2.3.0',
+        'giantswarm.io/app-test-suite-version': '0.15.0',
+      },
+      { 'giantswarm.io/app-test-suite-version-source': 'repo' },
+    );
+
+    expect(screen.getByText('Architect orb')).toBeInTheDocument();
+    expect(screen.getByText('10.3.0')).toBeInTheDocument();
+    expect(screen.getByText('2.3.0')).toBeInTheDocument();
+    expect(screen.getByText('0.15.0 (repo override)')).toBeInTheDocument();
+    // No processor ran, so no branch name: the wording still says declared.
+    expect(
+      screen.getByText(/declared on the default branch/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Build on main')).not.toBeInTheDocument();
+  });
+
+  it('shows a non-release orb pin as such', async () => {
+    await renderCard(
+      { 'giantswarm.io/readiness-standards': 'ok' },
+      { 'giantswarm.io/architect-orb-ref': 'dev:abc123' },
+    );
+
+    expect(screen.getByText('dev:abc123 (not a release)')).toBeInTheDocument();
+  });
+
+  it('renders the card for a build verdict alone', async () => {
+    await renderCard(
+      { 'giantswarm.io/build-status': 'passing' },
+      { 'giantswarm.io/default-branch': 'main' },
+    );
+
+    expect(screen.getByText('Build on main')).toBeInTheDocument();
+    expect(screen.getByText('Passing')).toBeInTheDocument();
+    expect(screen.queryByText('Chart metadata')).not.toBeInTheDocument();
+  });
 });
