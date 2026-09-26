@@ -28,6 +28,12 @@ if (isMainThread && exporting) {
         '@opentelemetry/instrumentation-fs': { enabled: false },
         '@opentelemetry/instrumentation-dns': { enabled: false },
         '@opentelemetry/instrumentation-net': { enabled: false },
+        // The kubelet's readiness and liveness probes, a request every few
+        // seconds that would otherwise each start a trace.
+        '@opentelemetry/instrumentation-http': {
+          ignoreIncomingRequestHook: req =>
+            (req.url ?? '').startsWith('/.backstage/health/'),
+        },
       }),
     ],
   }).start();
