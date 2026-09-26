@@ -138,6 +138,38 @@ describe('GpuCapacityPanel', () => {
     expect(
       screen.getByText('No GPU nodes found on inst-1.'),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('shows no empty table when every installation is unavailable', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={['inst-1']}
+        unavailable={{ 'inst-1': 'error' }}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText('No GPU nodes found.')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('shows a loading indicator, not an empty table, while the nodes are read', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={['inst-1']}
+        unavailable={{}}
+        isLoading
+      />,
+    );
+
+    expect(
+      await screen.findByRole('progressbar', { name: 'Reading nodes…' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No GPU nodes found/)).not.toBeInTheDocument();
   });
 });
 

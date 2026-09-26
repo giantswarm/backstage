@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, type ReactElement, type ReactNode } from 'react';
 import {
   Alert,
   Badge,
@@ -12,6 +12,7 @@ import {
 } from '@backstage/ui';
 import {
   InfoCard,
+  LoadingIndicator,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { formatBytes, formatTime } from '../../lib/modelManagerServing';
@@ -175,8 +176,8 @@ export type GpuCapacityColumns = {
 
 export function columnsForNodes(nodes: GpuNode[]): GpuCapacityColumns {
   return {
-    // Kept while nothing is listed yet, so the header does not jump once the
-    // nodes arrive.
+    // Kept while nothing is listed yet, so the card's explanation does not
+    // jump once cluster nodes arrive.
     gpu: nodes.length === 0 || nodes.some(node => !isHostMemoryNode(node)),
     budget: nodes.some(node => node.memoryBudgetBytes !== undefined),
     cache: nodes.some(node => node.cache !== undefined),
@@ -575,6 +576,21 @@ export function GpuCapacityPanel({
     installation => !(installation in unavailable),
   );
 
+  let body: ReactNode;
+  if (nodes.length > 0) {
+    body = <Table<GpuNode> {...tableProps} columnConfig={columnConfig} />;
+  } else if (isLoading) {
+    body = <LoadingIndicator label="Reading nodes…" />;
+  } else {
+    body = (
+      <Text variant="body-medium" color="secondary">
+        {readableInstallations.length > 0
+          ? `No GPU nodes found on ${readableInstallations.join(', ')}.`
+          : 'No GPU nodes found.'}
+      </Text>
+    );
+  }
+
   return (
     <InfoCard title="GPU capacity">
       <Flex direction="column" gap="3">
@@ -591,21 +607,7 @@ export function GpuCapacityPanel({
             ' A node marked not a serving target is one the serving layer will not place a model on — outside its node selector, or unable to mount the model cache; the reason is on hover.'}
         </Text>
 
-        {nodes.length > 0 || isLoading || readableInstallations.length === 0 ? (
-          <Table<GpuNode>
-            {...tableProps}
-            columnConfig={columnConfig}
-            emptyState={
-              <Text variant="body-medium" color="secondary">
-                {isLoading ? 'Reading nodes…' : 'No GPU nodes found.'}
-              </Text>
-            }
-          />
-        ) : (
-          <Text variant="body-medium" color="secondary">
-            No GPU nodes found on {readableInstallations.join(', ')}.
-          </Text>
-        )}
+        {body}
 
         {unavailableEntries.length > 0 && (
           <Alert

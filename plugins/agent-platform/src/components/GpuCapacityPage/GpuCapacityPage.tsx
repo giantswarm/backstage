@@ -82,7 +82,6 @@ export function GpuCapacityPage() {
       <Content>
         {pools.dialogs}
         {pools.panel}
-        {pools.cachePanel}
         <EmptyState
           missing="data"
           title={noBackendYet ? 'No GPU node pools yet' : 'No GPU inventory'}
@@ -92,6 +91,7 @@ export function GpuCapacityPage() {
           )}
           action={pools.addButton}
         />
+        {pools.cachePanel}
       </Content>
     );
   }
@@ -101,7 +101,6 @@ export function GpuCapacityPage() {
       <Flex direction="column" gap="3">
         {pools.dialogs}
         {pools.panel}
-        {pools.cachePanel}
         <Text color="secondary">
           The nodes the served models run on, per installation: for a cluster
           node the product and memory from the node labels, what the device
@@ -116,6 +115,7 @@ export function GpuCapacityPage() {
           isLoading={reading}
           hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
         />
+        {pools.cachePanel}
       </Flex>
     </Content>
   );

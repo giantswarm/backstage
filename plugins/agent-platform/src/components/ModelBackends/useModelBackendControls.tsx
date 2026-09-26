@@ -12,10 +12,7 @@ import {
 import { useModelManagerInstallations } from '../../hooks/useModelManagerInstallations';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
-import {
-  useRegisteredBackends,
-  type RegisteredBackend,
-} from '../../hooks/useModelManagerBackends';
+import { useRegisteredBackends } from '../../hooks/useModelManagerBackends';
 import {
   backendsWithoutModels,
   describeBackendSource,
@@ -23,8 +20,11 @@ import {
   type BackendKind,
 } from '../../lib/modelManagerBackends';
 import type { ServedModel, ServingBackend } from '../../lib/serving';
+import {
+  groupOfBackend,
+  type ServedModelGroup,
+} from '../ServingPage/ServedModelsTable';
 import { AddModelBackendDialog } from './AddModelBackendDialog';
-import { BackendsWithoutModels } from './BackendsWithoutModels';
 import { RemoveModelBackendDialog } from './RemoveModelBackendDialog';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -49,13 +49,15 @@ export type ModelBackendControls = {
   }) => ReactNode;
   /**
    * The registered backends that have no group among `present` (the table's
-   * (installation, backend) pairs) as rows of their own — a KServe without a
-   * pool, an Ollama before its first pull — each with its source and Remove
-   * backend; `null` when every registered backend serves something.
+   * (installation, backend) pairs) — a KServe without a pool, an Ollama
+   * before its first pull — as groups without rows ({@link groupOfBackend});
+   * their headers get the source and Remove backend from
+   * `renderGroupActions`. Empty when every registered backend serves
+   * something.
    */
-  renderBackendsWithoutModels: (
+  groupsWithoutModels: (
     present: readonly { installation: string; backend: string }[],
-  ) => ReactNode;
+  ) => ServedModelGroup[];
 };
 
 /**
@@ -200,32 +202,16 @@ export function useModelBackendControls(): ModelBackendControls {
     [available, registered],
   );
 
-  const renderBackendsWithoutModels = useCallback<
-    ModelBackendControls['renderBackendsWithoutModels']
+  const groupsWithoutModels = useCallback<
+    ModelBackendControls['groupsWithoutModels']
   >(
-    present => {
-      if (!available) {
-        return null;
-      }
-      const backends = backendsWithoutModels(registered.backends, present);
-      if (backends.length === 0) {
-        return null;
-      }
-      return (
-        <BackendsWithoutModels
-          backends={backends}
-          showInstallation={installations.length > 1}
-          renderActions={(backend: RegisteredBackend) =>
-            renderGroupActions({
-              installation: backend.installation,
-              backend: backend.kind,
-              rows: [],
-            })
-          }
-        />
-      );
-    },
-    [available, installations.length, registered.backends, renderGroupActions],
+    present =>
+      available
+        ? backendsWithoutModels(registered.backends, present).map(
+            groupOfBackend,
+          )
+        : [],
+    [available, registered.backends],
   );
 
   return {
@@ -233,6 +219,6 @@ export function useModelBackendControls(): ModelBackendControls {
     addButton,
     dialogs,
     renderGroupActions,
-    renderBackendsWithoutModels,
+    groupsWithoutModels,
   };
 }

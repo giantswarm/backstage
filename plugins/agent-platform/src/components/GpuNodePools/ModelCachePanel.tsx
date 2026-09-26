@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import {
   Alert,
   Button,
@@ -12,6 +12,7 @@ import {
 } from '@backstage/ui';
 import {
   InfoCard,
+  LoadingIndicator,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -289,6 +290,19 @@ export function ModelCachePanel({
     [rows, removable],
   );
 
+  let body: ReactNode;
+  if (rows.length > 0) {
+    body = <Table<ModelCacheRow> {...tableProps} columnConfig={columnConfig} />;
+  } else if (isLoading) {
+    body = <LoadingIndicator label="Reading model caches…" />;
+  } else {
+    body = (
+      <Text variant="body-medium" color="secondary">
+        {NO_MODEL_CACHE}
+      </Text>
+    );
+  }
+
   return (
     <div data-testid="model-cache-panel">
       <InfoCard title="Model cache">
@@ -301,15 +315,7 @@ export function ModelCachePanel({
             here. Every pool of a cluster serves from the cluster's cache.
             {total ? ` Standing: ${total}.` : ''}
           </Text>
-          <Table<ModelCacheRow>
-            {...tableProps}
-            columnConfig={columnConfig}
-            emptyState={
-              <Text variant="body-medium" color="secondary">
-                {isLoading ? 'Reading model caches…' : NO_MODEL_CACHE}
-              </Text>
-            }
-          />
+          {body}
           {readOnly.length > 0 && (
             <Alert
               status="info"

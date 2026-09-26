@@ -6,6 +6,7 @@ export {
   downloadLine,
   downloadPercent,
   FEATURE_CHIPS,
+  groupOfBackend,
   groupServedModelRows,
   isActiveDownload,
   isDownloadRow,
@@ -35,6 +36,10 @@ export {
   ServedModelsGroupHeader,
   type ServedModelsGroupHeaderProps,
 } from './ServedModelsGroupHeader';
+export {
+  ServedModelsGroupCard,
+  type ServedModelsGroupCardProps,
+} from './ServedModelsGroupCard';
 export {
   StopServedModelDialog,
   type StopServedModelDialogProps,
