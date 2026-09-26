@@ -38,6 +38,7 @@ Package specific changes (for packages from `packages/*` and `plugins/*`) can be
 
 ### Fixed
 
+- The backend no longer traces the `/.backstage/health/` requests, the kubelet's readiness and liveness probes (giantswarm/giantswarm#36711).
 - Chart: a changed `backstage.extraAppConfig` ConfigMap can roll the portal. Each entry takes an optional `checksum`, and the pod template carries a `checksum/extra-app-config` annotation over the entries, so whoever renders the ConfigMap sets `checksum` to a hash of its data and a change to the fragment rolls the pod the way a change to the chart's own app-config does. Before, those ConfigMaps were referenced by name only: Flux applied a changed fragment, the HelmRelease saw no change and the pod kept serving the configuration it started with. The chart does not read the ConfigMap itself (`lookup`): helm-controller renders only when the chart or its values change, so a lookup would not run on the change it is meant to catch (#2577).
 - Chart: the CNPG image is now pinned by the digest of its manifest list instead of the digest of its amd64 manifest. The per-architecture pin defeated platform resolution, so an instance pod on an arm64 node pulled the amd64 image and exited with `exec format error` (#2342).
 - Chart: the CNPG network policy now allows DNS egress to CoreDNS in `kube-system` (53 and 1053, UDP and TCP). Without it a replica could not resolve `<cluster>-rw` on a default-deny cluster, so the join pod retried the lookup forever and the `Cluster` stayed at one instance with no event to explain it (#2340).
