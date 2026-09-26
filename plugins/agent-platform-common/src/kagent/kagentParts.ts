@@ -8,6 +8,7 @@ import {
   isKagentMetadataFlagSet,
   readKagentMetadata,
   readKagentMetadataString,
+  readKagentSubagentUsage,
 } from './kagentMetadata';
 
 /**
@@ -242,7 +243,7 @@ export function isInternalToolName(name: string | undefined): boolean {
 }
 
 /**
- * Token usage from a metadata bag, under either prefix.
+ * Token usage from a metadata bag, under any of kagent's spellings.
  *
  * The field names are Gemini's (`promptTokenCount` / `candidatesTokenCount`),
  * which is what ADK passes through. A partial bag yields zeros for the missing
@@ -261,7 +262,25 @@ export function isInternalToolName(name: string | undefined): boolean {
  * counts them in the total but in neither part.
  */
 export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
-  const usage = asRecord(readKagentMetadata(metadata, 'usage_metadata'));
+  return tokenUsageOf(readKagentMetadata(metadata, 'usage_metadata'));
+}
+
+/**
+ * A delegated agent's own usage, which rides inside the tool *response* rather
+ * than in message metadata.
+ *
+ * A subagent runs in its own session, so its messages are not in this session's
+ * tasks — the parent only ever sees the response. Counting this is therefore not
+ * double counting; it is the only place the child's cost appears here.
+ */
+export function readNestedTokenUsage(
+  response: unknown,
+): TokenUsage | undefined {
+  return tokenUsageOf(readKagentSubagentUsage(response));
+}
+
+function tokenUsageOf(value: unknown): TokenUsage | undefined {
+  const usage = asRecord(value);
   if (!usage) {
     return undefined;
   }
@@ -277,20 +296,6 @@ export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
     completion,
   };
 }
-
-/**
- * A delegated agent's own usage, which rides inside the tool *response* rather
- * than in message metadata.
- *
- * A subagent runs in its own session, so its messages are not in this session's
- * tasks — the parent only ever sees the response. Counting this is therefore not
- * double counting; it is the only place the child's cost appears here.
- *
- * The response object is keyed exactly like a metadata bag
- * (`kagent_usage_metadata`), so {@link readTokenUsage} reads it as-is. This
- * wrapper exists to name the distinction at the call site, not to add logic.
- */
-export const readNestedTokenUsage = readTokenUsage;
 
 export function addTokenUsage(
   left: TokenUsage,

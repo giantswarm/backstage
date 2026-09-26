@@ -2,9 +2,37 @@ import {
   isKagentMetadataFlagSet,
   readKagentMetadata,
   readKagentMetadataString,
+  readKagentSubagentUsage,
+  readKagentTimelinePosition,
 } from './kagentMetadata';
 
 describe('readKagentMetadata', () => {
+  it.each([
+    ['type', 'kagent.dev/a2a/part-type', 'function_call'],
+    ['usage_metadata', 'kagent.dev/a2a/usage', { promptTokenCount: 1 }],
+  ])('reads %s under its canonical key %s', (key, canonical, value) => {
+    expect(readKagentMetadata({ [canonical]: value }, key)).toEqual(value);
+  });
+
+  it('prefers the canonical key over both legacy prefixes', () => {
+    expect(
+      readKagentMetadata(
+        {
+          'kagent.dev/a2a/part-type': 'function_response',
+          adk_type: 'function_call',
+          kagent_type: 'function_call',
+        },
+        'type',
+      ),
+    ).toBe('function_response');
+  });
+
+  it('reads a key without a canonical name under the prefixes only', () => {
+    expect(
+      readKagentMetadata({ 'kagent.dev/a2a/thought': true }, 'thought'),
+    ).toBeUndefined();
+  });
+
   it('prefers the adk_ prefix over kagent_', () => {
     // Mirrors kagent's own getMetadataValue: upstream ADK writes adk_, kagent
     // writes kagent_, and a session can contain both.
@@ -69,5 +97,47 @@ describe('isKagentMetadataFlagSet', () => {
     expect(isKagentMetadataFlagSet({ adk_thought: value }, 'thought')).toBe(
       false,
     );
+  });
+});
+
+describe('readKagentTimelinePosition', () => {
+  it('reads the canonical key first', () => {
+    expect(
+      readKagentTimelinePosition({
+        'kagent.dev/a2a/timeline-position': '2026-09-25T10:00:00Z',
+        'kagent.dev/timeline-position': '2026-09-11T03:02:56Z',
+      }),
+    ).toBe('2026-09-25T10:00:00Z');
+  });
+
+  it('falls back to the key older controllers wrote', () => {
+    expect(
+      readKagentTimelinePosition({
+        'kagent.dev/timeline-position': '2026-09-11T03:02:56Z',
+      }),
+    ).toBe('2026-09-11T03:02:56Z');
+  });
+
+  it.each([undefined, {}, { 'kagent.dev/a2a/timeline-position': 3 }])(
+    'returns undefined for %p',
+    input => {
+      expect(readKagentTimelinePosition(input)).toBeUndefined();
+    },
+  );
+});
+
+describe('readKagentSubagentUsage', () => {
+  it("reads the usage field of a delegated agent's response", () => {
+    expect(
+      readKagentSubagentUsage({ result: 'ok', usage: { promptTokenCount: 5 } }),
+    ).toEqual({ promptTokenCount: 5 });
+  });
+
+  it('falls back to the metadata-style key', () => {
+    expect(
+      readKagentSubagentUsage({
+        kagent_usage_metadata: { promptTokenCount: 7 },
+      }),
+    ).toEqual({ promptTokenCount: 7 });
   });
 });

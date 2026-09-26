@@ -155,7 +155,7 @@ const DEFAULT_USERS = {
   'other-token': 'other@lab.local',
 };
 
-const TIMELINE_POSITION_KEY = 'kagent.dev/timeline-position';
+const TIMELINE_POSITION_KEY = 'kagent.dev/a2a/timeline-position';
 const TERMINAL = new Set([
   TaskState.COMPLETED,
   TaskState.FAILED,

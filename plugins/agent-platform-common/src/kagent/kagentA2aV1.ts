@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ASK_USER_TOOL_NAME, CONFIRMATION_TOOL_NAME } from './kagentParts';
+import { readKagentTimelinePosition } from './kagentMetadata';
 import { wireString } from './kagentSchema';
 
 /**
@@ -78,9 +79,6 @@ const TERMINAL_STATES = new Set([
  * which the backend does on every turn.
  */
 export const HITL_EXTENSION_URI = 'https://kagent.dev/extensions/hitl/v1';
-
-/** The instant kagent stamps on a history entry, as RFC 3339 in its metadata. */
-const TIMELINE_POSITION_KEY = 'kagent.dev/timeline-position';
 
 // --- Wire schemas ----------------------------------------------------------
 
@@ -460,8 +458,8 @@ function toWireStatus(raw: unknown): Wire | undefined {
  * the entry keeps its relative order.
  */
 function timelinePosition(entry: Wire): number | undefined {
-  const raw = asRecord(entry.metadata)?.[TIMELINE_POSITION_KEY];
-  if (typeof raw !== 'string') {
+  const raw = readKagentTimelinePosition(entry.metadata);
+  if (raw === undefined) {
     return undefined;
   }
   const parsed = Date.parse(raw);

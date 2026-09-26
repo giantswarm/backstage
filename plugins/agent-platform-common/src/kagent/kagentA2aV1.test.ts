@@ -1,7 +1,9 @@
+import claudeStream from './__fixtures__/stream.claude-harness-1.1.json';
 import stream from './__fixtures__/stream.kagent-4a91c273.json';
 import canceled from './__fixtures__/task.canceled.kagent-4a91c273.json';
 import hitlApproval from './__fixtures__/tasks.hitl-approval.kagent-4a91c273.json';
 import tasks from './__fixtures__/tasks.kagent-4a91c273.json';
+import canonicalTasks from './__fixtures__/tasks.kagent-a2a-canonical.json';
 import v0Tasks from './__fixtures__/tasks.v0-9-9.json';
 import {
   HITL_EXTENSION_URI,
@@ -228,6 +230,45 @@ describe('tasks recorded on kagent-4a91c273', () => {
   });
 });
 
+describe('tasks in kagent.dev/a2a metadata', () => {
+  // The recorded conversation above, with its metadata as kagent's canonical
+  // contract spells it: part-type, usage, timeline-position and
+  // task-created-at under kagent.dev/a2a/, and no adk_ keys.
+  const reference = normalizeTaskList(tasks).tasks;
+  const canonical = normalizeTaskList(canonicalTasks).tasks;
+
+  const toolCalls = (normalized: typeof reference) =>
+    (normalized[0].history as Wire[])
+      .flatMap(entry => (entry.parts as unknown[]) ?? [])
+      .map(parsePart)
+      .filter(part => part && isFunctionCallPart(part))
+      .map(part => readFunctionCall(part!).name);
+
+  it('orders the history exactly as under the legacy keys', () => {
+    const ids = (normalized: typeof reference) =>
+      (normalized[0].history as Wire[]).map(
+        entry => entry.messageId ?? entry.artifactId,
+      );
+    expect(ids(canonical)).toEqual(ids(reference));
+  });
+
+  it('reads the same tool calls', () => {
+    expect(toolCalls(canonical)).toEqual(toolCalls(reference));
+    expect(toolCalls(canonical)).toContain('call_tool');
+  });
+
+  it('sums the same usage', () => {
+    const window = {
+      startMs: Date.parse('2026-09-01T00:00:00Z'),
+      endMs: Date.parse('2026-12-01T00:00:00Z'),
+    };
+    const { tally } = reduceSessionUsage(canonical, window);
+    expect(tally).toEqual(reduceSessionUsage(reference, window).tally);
+    expect(tally.inputTokens).toBeGreaterThan(0);
+    expect(tally.toolCalls).toBe(2);
+  });
+});
+
 describe('human in the loop on the v1 wire', () => {
   it('turns a typed approval request into the confirmation call the readers render', () => {
     const { tasks: normalized } = normalizeTaskList(hitlApproval);
@@ -424,5 +465,41 @@ describe('stream recorded on kagent-4a91c273', () => {
   it('reports a frame it cannot read as undefined, never throwing', () => {
     expect(toWireStreamEvent({ something: 'else' })).toBeUndefined();
     expect(toWireStreamEvent(null)).toBeUndefined();
+  });
+});
+
+describe('stream recorded on the claude Harness (kagent 1.1)', () => {
+  // A Claude Code turn with a Bash call and a muster tool call, recorded from
+  // the controller: only canonical kagent.dev/a2a/ keys, no adk_ or kagent_.
+  const events = claudeStream.map(toWireStreamEvent) as Wire[];
+  const parts = events
+    .filter(event => event.kind === 'artifact-update')
+    .flatMap(event => ((event.artifact as Wire).parts as unknown[]) ?? [])
+    .map(parsePart);
+
+  it('reads every tool call and its result', () => {
+    const calls = parts
+      .filter(part => part && isFunctionCallPart(part))
+      .map(part => readFunctionCall(part!).name);
+    expect(calls).toEqual([
+      'Bash',
+      'ToolSearch',
+      'mcp__coding-poc__list_core_tools',
+    ]);
+    expect(
+      parts.filter(part => part && isFunctionResponsePart(part)),
+    ).toHaveLength(3);
+  });
+
+  it("ends completed with the turn's usage", () => {
+    const last = events[events.length - 1];
+    expect(last.kind).toBe('status-update');
+    const status = last.status as Wire;
+    expect(status).toEqual(expect.objectContaining({ state: 'completed' }));
+    expect(readTokenUsage((status.message as Wire).metadata)).toEqual({
+      total: 71338,
+      prompt: 70958,
+      completion: 380,
+    });
   });
 });

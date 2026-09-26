@@ -3,6 +3,7 @@ import {
   isFunctionCallPart,
   isInternalToolName,
   MUSTER_PROXY_LABEL,
+  readNestedTokenUsage,
   readTokenUsage,
   unwrapProxiedCall,
 } from './kagentParts';
@@ -56,6 +57,17 @@ describe('unwrapProxiedCall', () => {
 });
 
 describe('readTokenUsage', () => {
+  it('reads usage written under kagent.dev/a2a/usage', () => {
+    expect(
+      readTokenUsage({
+        'kagent.dev/a2a/usage': {
+          promptTokenCount: 2_900,
+          candidatesTokenCount: 58,
+        },
+      }),
+    ).toEqual({ total: 2_958, prompt: 2_900, completion: 58 });
+  });
+
   it('reads usage written under the kagent_ prefix', () => {
     expect(
       readTokenUsage({
@@ -121,6 +133,29 @@ describe('readTokenUsage', () => {
         },
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('readNestedTokenUsage', () => {
+  it("reads the usage field of a delegated agent's response", () => {
+    expect(
+      readNestedTokenUsage({
+        result: 'done',
+        usage: { promptTokenCount: 40, candidatesTokenCount: 2 },
+      }),
+    ).toEqual({ total: 42, prompt: 40, completion: 2 });
+  });
+
+  it('reads the kagent_usage_metadata key older runtimes wrote', () => {
+    expect(
+      readNestedTokenUsage({
+        result: 'done',
+        kagent_usage_metadata: {
+          promptTokenCount: 40,
+          candidatesTokenCount: 2,
+        },
+      }),
+    ).toEqual({ total: 42, prompt: 40, completion: 2 });
   });
 });
 
