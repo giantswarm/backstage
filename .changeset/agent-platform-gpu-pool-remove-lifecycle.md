@@ -1,5 +1,0 @@
----
-'@giantswarm/backstage-plugin-agent-platform': minor
----
-
-GPU node pools: after **Remove** the row reads _removing…_ and the lifecycle panel shows the teardown — the serving controllers, the well-known configs, the GPU operator release, the backend registration, the serving slice release and the pool release going, from `delete_node_pool`'s answer and the pending objects `list_node_pools` still lists — until cluster-manager no longer lists the pool. A refused Remove is rendered from cluster-manager 0.8.1's structured `refused` block: the nodes the pool still runs, the models to unload first (links to the Serving page) and the hint that explains the wait (Karpenter removes an empty node about 10 minutes after its last pod), with **Check again** re-running the same call without force; **Remove anyway** (`force`) is a second, deliberate choice. An answer without the block (an older cluster-manager) is shown as it is, with Check again. A Remove cut short (`partial: true`) stays in the dialog with the pending objects and **Continue**. The replicas-guard regex on the refusal text is gone.

@@ -1,5 +1,113 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.16.0
+
+### Minor Changes
+
+- a1292a5: The login page signs in through the main OIDC login provider only; the
+  `gs.signInProviders` list and its GitHub-provider card are gone. Which Dex
+  connector a sign-in lands on is now a deployment choice: the provider's
+  `startUrlSearchParams.connector_id` pins the default connector, and
+  `gs.signInFallbackProvider` adds a second card that signs in through the same
+  provider pinned to another connector (for people the default one cannot
+  authenticate). The Giant Swarm OIDC authenticator forwards a `connector_id`
+  passed on `/start` to Dex for that request; `gsFallbackSignInAuthApiRef`
+  exposes the fallback sign-in API.
+- 8967f50: Backstage's standard GitHub auth API (`githubAuthApiRef`) runs on the person's own
+  GitHub grant in muster when `gs.github` is configured -- no GitHub App and no GitHub
+  login in the portal. The GitHub Actions and Pull Requests tabs, `ScmAuth` and the
+  scaffolder pickers work unchanged with their own GitHub clients; only the token
+  source changed.
+
+  - `plugins/gs`: `GSAuthProviders.getGithubAuthApi()` builds `OAuth2` over a
+    `GithubGrantAuthConnector` that mints from `POST /api/auth/github-token` with the
+    Backstage token and the main Dex ID token, echoes the requested scopes as granted
+    (a GitHub App user token carries none) and sets `expiresAt` from the token's
+    remaining lifetime, so the session re-mints three minutes before it ends while
+    muster refreshes the grant underneath. A person without a grant is sent through
+    muster's connect once -- a full-page bounce with `redirect=<current page>` that
+    GitHub answers without a prompt for the App already authorized at the Dex login
+    -- never the "Login Required" dialog; a bounce that comes back without a grant is
+    not repeated. Signing out (`removeSession`) revokes the grant in muster for every
+    session and every server of that issuer. `gs.github.brokerAudience` (frontend
+    visible) switches the API on; `gs.github.muster` names the installation and
+    MCPServer.
+  - `plugins/auth-backend-module-gs`: `POST /api/auth/github-token` exchanges the
+    caller's Dex ID token through the muster token broker (`gs.clusterTokenBroker`
+    credentials, RFC 8693, audience `gs.github.brokerAudience`) for the grant's access
+    token, cached per user with 240 s skew; `invalid_target` is disambiguated through
+    muster's `core_auth_login` on `gs.github.muster`: a connect that succeeds retries
+    the exchange, `auth_required` answers 401 with `reason: no_grant` and muster's
+    connect URL, anything else is 502 like the cluster-token route.
+    `POST /api/auth/github-token/logout` runs `core_auth_logout`.
+  - `plugins/gs-node`: `MusterServerGateway.logout()` (`core_auth_logout`).
+  - `packages/app`: the `github-auth` factory uses the GS API when `gs.github` is
+    configured and upstream `GithubAuth.create` otherwise; customer portals are
+    unchanged.
+  - `plans`, `roadmap`: a missing GitHub grant bounces the page through muster's connect
+    on its own instead of showing a "Connect GitHub" button and polling a popup; the
+    button remains as the fallback when a bounce comes back without a grant.
+
+### Patch Changes
+
+- 9c3a9c4: Retry OIDC issuer metadata discovery for the main login provider, fail backend
+  startup if it stays unreachable, and stop caching a failed discovery for the
+  lifetime of the process.
+
+  Previously a transient Dex outage during backend startup made the module skip
+  registering the main login provider entirely: the portal came up healthy but
+  every login returned `404 Unknown auth provider` until the pod was manually
+  restarted.
+
+  - Metadata discovery is now checked at startup through openid-client's
+    `Issuer.discover` — the same code path and validation the oidc authenticator
+    uses, bounded by its built-in HTTP timeout — and retried with exponential
+    backoff (5 attempts over ~15s). If the issuer is still unreachable the
+    module throws so the backend exits and the orchestrator restarts it until
+    Dex is reachable again — the portal self-heals instead of silently serving
+    without login. A malformed `metadataUrl` fails immediately without retries.
+  - The registered provider now uses `gsOidcAuthenticator`, a wrapper around the
+    upstream oidc authenticator that memoizes issuer discovery only on success.
+    If Dex becomes unreachable after startup, each login attempt triggers a
+    fresh discovery instead of the upstream behaviour of caching the first
+    rejection until the process restarts.
+  - Note on scope: configuration errors for the main login provider (missing
+    environment block or `metadataUrl`) now also fail startup instead of
+    starting the portal without login — broken required-login config should be
+    loud.
+
+- 0a10f54: Refuse to refresh an OIDC session with fewer scopes than the refresh asks for.
+
+  A token refresh never widens a grant: Dex re-issues the tokens with the scopes
+  the sign-in consented to. When `gs.auth.extraScopes` gained a scope on a running
+  instance (for example the `audience:server:client_id:dex-k8s-authenticator`
+  audience the Giant Swarm apiservers require), the frontend refreshed with the
+  wider set, the backend answered with a token that still lacked the new scopes
+  and reported the requested set as granted, and every Kubernetes proxy read
+  failed with `401` until the person signed out by hand.
+
+  The Giant Swarm OIDC authenticator now fails such a refresh (the OAuth adapter
+  already knows, from the persisted granted-scope cookie, that the request exceeds
+  the grant). The frontend's session manager drops the session and starts a fresh
+  sign-in that asks for the widened set, so a widened `gs.auth.extraScopes` makes
+  existing sessions re-authenticate on their next page load. The config schema and
+  `docs/configuration.md` say so.
+
+- 9fd228e: Cluster access: a token broker that answers 503 (`temporarily_unavailable`, `service_unavailable` or an empty body) is reported as `broker_unavailable` -- "Token broker is briefly unavailable" in the cluster-access status -- and logged as `Cluster token exchange failed: token broker temporarily unavailable`, apart from the broker's genuine rejections (`exchange_failed`). A broker outage hits every installation at once and clears by itself; it was reported as a rejected exchange for each of them.
+- e9a6141: Sign in a user by the email of the token when it carries no `federated_claims`. The claim is Dex-specific, and reading it unconditionally made every login against another issuer fail with a `TypeError` in the sign-in resolver.
+- Updated dependencies [71317f9]
+- Updated dependencies [85e7d8c]
+- Updated dependencies [8967f50]
+- Updated dependencies [9a71810]
+- Updated dependencies [32f943c]
+- Updated dependencies [e2958de]
+- Updated dependencies [5851bba]
+- Updated dependencies [d817adf]
+- Updated dependencies [0bba1e6]
+- Updated dependencies [cad8b48]
+- Updated dependencies [d7b3983]
+  - @giantswarm/backstage-plugin-gs-node@0.4.0
+
 ## 0.15.0
 
 ### Minor Changes

@@ -1,5 +1,0 @@
----
-'@giantswarm/backstage-plugin-agent-platform': minor
----
-
-Add GPU node pool: the review shows **What this pool can serve** before Deploy — cluster-manager's `sizes` as the picker of the instance sizes Karpenter may choose from, each with what it leaves a predictor (vCPU, memory, GPUs); the serving presets published on the cluster with the smallest size hosting each or why none does (`presetFit`); and `warnings` for presets the accelerator could serve but no size of the pool hosts, naming the size that would, with **Add _size_** and **Choose sizes** at hand. Changing the sizes re-runs the dry run. An optional **I want to serve** picks one preset: the sizes hosting it are marked, and a preset this pool cannot host blocks Deploy with the reason; other presets' warnings stand out and do not block. A cluster without presets shows cluster-manager's note instead of an empty table. A Deploy cluster-manager cut short (`partial`) lists the pending objects and `nextStep` with **Continue**, which re-runs the same call; `PartialWriteOutcome` is one piece for every node-pool write.

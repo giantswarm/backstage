@@ -1,5 +1,101 @@
 # @giantswarm/backstage-plugin-flux
 
+## 0.10.0
+
+### Minor Changes
+
+- b2c5996: Roll up failing descendant status in the Flux resources tree and add a "Failing only" status filter. Parent nodes now show a warning indicator when any resource beneath them has `Ready=False` (visible while collapsed), and the new Status filter prunes the tree to only the paths that lead to failing resources — the UI equivalent of `flux get kustomizations --status-selector ready=false`.
+
+### Patch Changes
+
+- c81464c: Give each plugin's persisted react-query cache its own localStorage key, with a
+  size guard.
+
+  The gs, flux and agent-platform `QueryClientProvider`s all persisted under the
+  library's default key `REACT_QUERY_OFFLINE_CACHE`. Every client rehydrated the
+  others' entries on restore and wrote them back on its next save, so the three
+  caches merged into one blob — 4.9 MB on the Dev Portal, 3.6 MB of it flux
+  Kustomization lists — against a per-origin localStorage budget of roughly 5 MB,
+  where one quota error would have silently ended persistence for all of them.
+
+  - `kubernetes-react`: new `createPluginQueryPersister({ key, throttleTime?, maxChars? })`.
+    Writes under the plugin's key, removes the legacy shared blob, keeps the
+    persisted copy under 2 MB by leaving out the oldest queries first
+    (`trimPersistedClient`), retries a quota error with the client halved, and
+    reads garbage under the key as "nothing persisted" instead of an error per
+    mount (`deserializePersistedClient`). The rule from #2264 stands: a new data
+    shape needs a new _query_ key, and what is iterated from the cache is guarded.
+  - `gs` persists under `gs-react-query-cache`, `agent-platform` under
+    `agent-platform-react-query-cache`, `flux` under `flux-react-query-cache`.
+    The first load after the upgrade refetches once; reloads after that rehydrate
+    as before.
+
+- Updated dependencies [6c096fb]
+- Updated dependencies [5859267]
+- Updated dependencies [d7b570d]
+- Updated dependencies [e62dd24]
+- Updated dependencies [2494c9a]
+- Updated dependencies [85b1ac8]
+- Updated dependencies [c5b9c46]
+- Updated dependencies [1a05f26]
+- Updated dependencies [7a49e7f]
+- Updated dependencies [a036f84]
+- Updated dependencies [a776d8b]
+- Updated dependencies [5b5d408]
+- Updated dependencies [d6bec76]
+- Updated dependencies [c4f3eca]
+- Updated dependencies [fedd5d8]
+- Updated dependencies [281d787]
+- Updated dependencies [ef01d42]
+- Updated dependencies [9602074]
+- Updated dependencies [d87fd9d]
+- Updated dependencies [67a32ef]
+- Updated dependencies [86eec55]
+- Updated dependencies [23bfca0]
+- Updated dependencies [87b1c2e]
+- Updated dependencies [6822ed1]
+- Updated dependencies [d29ac2a]
+- Updated dependencies [573b34d]
+- Updated dependencies [526dd01]
+- Updated dependencies [2c383a6]
+- Updated dependencies [b431a04]
+- Updated dependencies [5c82125]
+- Updated dependencies [c25dd0b]
+- Updated dependencies [4f6d765]
+- Updated dependencies [322e58c]
+- Updated dependencies [b2c5996]
+- Updated dependencies [94a61cb]
+- Updated dependencies [c604256]
+- Updated dependencies [6b3ac77]
+- Updated dependencies [b8afa37]
+- Updated dependencies [ca6ffd8]
+- Updated dependencies [398c4b1]
+- Updated dependencies [fd7799f]
+- Updated dependencies [582faca]
+- Updated dependencies [ce9e155]
+- Updated dependencies [e8c6d73]
+- Updated dependencies [c81464c]
+- Updated dependencies [ba553f1]
+- Updated dependencies [14e878c]
+- Updated dependencies [14e878c]
+- Updated dependencies [1893681]
+- Updated dependencies [e807fa6]
+- Updated dependencies [b097034]
+- Updated dependencies [6e0bd9d]
+- Updated dependencies [b9433d4]
+- Updated dependencies [322e58c]
+- Updated dependencies [b990251]
+- Updated dependencies [9e57736]
+- Updated dependencies [a8bb5a6]
+- Updated dependencies [1ec7387]
+- Updated dependencies [d63665c]
+- Updated dependencies [6ce4a71]
+- Updated dependencies [600a4c3]
+- Updated dependencies [e6ced92]
+  - @giantswarm/backstage-plugin-kubernetes-react@1.0.0
+  - @giantswarm/backstage-plugin-ui-react@0.9.0
+  - @giantswarm/backstage-plugin-flux-react@0.15.0
+
 ## 0.9.2
 
 ### Patch Changes

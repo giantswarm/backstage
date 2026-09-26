@@ -1,5 +1,78 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.15.0
+
+### Minor Changes
+
+- ba553f1: Read the muster, ai-chat, agent-platform and flux frontend config from the
+  signed-in config (`GET /api/gs/config`) instead of the public `index.html`.
+
+  `muster.serverName` and `muster.installations[].name/authProvider` (the
+  fleet's codenames), `aiChat.welcome.*`, `aiChat.mcp[].name/authProvider`,
+  `aiChat.contextWindow`, `agentPlatform.skills.repositories` and
+  `flux.gitRepositoryPatterns` keep the default (backend) visibility and reach
+  the browser after sign-in through `@giantswarm/backstage-plugin-gs-react`.
+  The plans, platform-capabilities, repositories and roadmap backends drop the
+  `@visibility frontend` markers no frontend read, so the public config no
+  longer names their muster installation, repositories, board or teams. No
+  `@visibility frontend` is left in these plugins.
+
+### Patch Changes
+
+- b30a7fc: Support the Claude 5 model family in the AI chat.
+
+  `claude-sonnet-5`, `claude-opus-5` and `claude-fable-5`/`-5-1` use adaptive thinking plus `output_config.effort`; the legacy `thinking: { type: 'enabled', budgetTokens }` shape they were previously sent is rejected with a 400, as are `temperature`, `topP` and `topK`. Adding them to `ADAPTIVE_THINKING_MODEL_PREFIXES` fixes both, because the same predicate also gates the sampling-parameter strip.
+
+  Adaptive-thinking models now also ask for `thinking.display: summarized`. That default is not stable across model generations — Opus 4.6 and Sonnet 4.6 default to `summarized`, Opus 4.7+ and the Claude 5 family to `omitted` — so the reasoning pane rendered empty blocks on the newer models. Thinking is billed the same either way.
+
+  The frontend context-usage display learns their context windows (1M each) and prices, along with the `claude-opus-4-7`, `claude-opus-4-8` and `claude-haiku-4-5` entries that were missing — those models showed no context bar and no cost estimate at all.
+
+- 408bdfe: A failed chat reply says why, instead of "An error occurred.": an error from the model provider shows its reason and whether it was already retried ("The model provider reports an error: Overloaded. The request was already tried 3 times. Please try again in a moment."), and any other failure a generic message without internal details. The error box has a "Try again" button that retries the last message, so nothing needs retyping.
+- Updated dependencies [6c096fb]
+- Updated dependencies [5859267]
+- Updated dependencies [e62dd24]
+- Updated dependencies [2494c9a]
+- Updated dependencies [c5b9c46]
+- Updated dependencies [d6bec76]
+- Updated dependencies [c4f3eca]
+- Updated dependencies [fedd5d8]
+- Updated dependencies [281d787]
+- Updated dependencies [ef01d42]
+- Updated dependencies [9602074]
+- Updated dependencies [464f5ad]
+- Updated dependencies [86eec55]
+- Updated dependencies [23bfca0]
+- Updated dependencies [b431a04]
+- Updated dependencies [5c82125]
+- Updated dependencies [4f6d765]
+- Updated dependencies [94a61cb]
+- Updated dependencies [6b3ac77]
+- Updated dependencies [b8afa37]
+- Updated dependencies [398c4b1]
+- Updated dependencies [fd7799f]
+- Updated dependencies [582faca]
+- Updated dependencies [ce9e155]
+- Updated dependencies [eb337fb]
+- Updated dependencies [14e878c]
+- Updated dependencies [14e878c]
+- Updated dependencies [1893681]
+- Updated dependencies [e807fa6]
+- Updated dependencies [b097034]
+- Updated dependencies [6e0bd9d]
+- Updated dependencies [b9433d4]
+- Updated dependencies [322e58c]
+- Updated dependencies [b990251]
+- Updated dependencies [9e57736]
+- Updated dependencies [a8bb5a6]
+- Updated dependencies [1ec7387]
+- Updated dependencies [d63665c]
+- Updated dependencies [6ce4a71]
+- Updated dependencies [600a4c3]
+- Updated dependencies [e6ced92]
+  - @giantswarm/backstage-plugin-ui-react@0.9.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.6.0
+  - @giantswarm/backstage-plugin-gs-react@0.1.0
+
 ## 0.14.0
 
 ### Minor Changes

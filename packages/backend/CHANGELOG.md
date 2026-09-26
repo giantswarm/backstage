@@ -1,5 +1,136 @@
 # backend
 
+## 0.21.0
+
+### Minor Changes
+
+- 8e0d7ab: The backend exports OpenTelemetry traces over OTLP. `packages/backend/src/instrumentation.js`, loaded with `--require` ahead of the backend (the image's `NODE_OPTIONS` and `yarn start`), starts the OpenTelemetry Node SDK with the auto-instrumentations (HTTP, Express, undici, pg, Knex and the rest, without `fs`, `dns` and `net`) when an OTEL_* variable names an exporter: `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_TRACES_EXPORTER`. Every setting is a standard OTEL_* variable; `service.name` defaults to `backstage`, and metrics and logs stay off unless their own variable is set. Without any of them the SDK is not loaded.
+
+### Patch Changes
+
+- 5861ae8: OTLP trace export: the knex instrumentation is off. It named its spans after the connection's database, which a `pg` connection in `pluginDivisionMode: schema` does not set, so spans read `raw undefined`, and a schema-builder query produced a span without a name. That span failed the exporter's serializer and dropped the whole batch as an unhandled rejection. The pg instrumentation traces the same queries under proper names.
+- db58c71: Replace the `@devangelista/backstage-scaffolder-kubernetes` and
+  `@aws/aws-core-plugin-for-backstage-scaffolder-actions` scaffolder plugins with
+  an in-repo `kube:apply` action in the GS scaffolder backend module.
+
+  - `kube:apply` keeps the exact action ID and input schema
+    (`manifest`, `namespaced`, `clusterName`, `token`), so existing templates —
+    including the hidden `agent-deployment` template driven by the Agent Platform
+    create flow — keep working unchanged. It resolves clusters from
+    `kubernetes.clusterLocatorMethods` (type `config`) the same way as before:
+    OIDC clusters use the per-task user token, `serviceAccount` clusters their
+    static token, with a fallback to the default kubeconfig.
+  - The other actions from those plugins (`kube:delete`, `kube:job:wait`,
+    `aws:cloudcontrol:create`, `aws:codecommit:publish`, `aws:eventbridge:event`,
+    `aws:s3:cp`) have no usage in any template and are dropped.
+  - The devangelista plugin pinned old `@backstage/*` and
+    `@kubernetes/client-node` ranges, nesting ~185MB of duplicate dependencies
+    (including the deprecated `@backstage/backend-common`, which is now gone
+    entirely); the AWS plugin nested another ~80MB of duplicate `@aws-sdk`
+    clients. Together with a `yarn dedupe`, `node_modules` shrinks by roughly
+    850MB, most of which was shipped in the backend image.
+
+- 7e1ab9f: Stop serving the frontend source maps. The backend image now deletes
+  `packages/app/dist/**/*.map` after unpacking the bundle, so `/static/*.js.map`
+  returns 404 instead of the un-minified app source and anything inlined into it
+  at build time. Backend source maps are untouched.
+- 40e0039: Raise the transitive-dependency CVE `resolutions` to the currently-fixed versions so the High count in the published image is cut substantially (the previous pass cleared all fixable Critical findings but pinned to point-in-time versions that newer CVEs have since flagged). Updated/added pins: `tar` 7.5.11, `undici` v5 line to 6.27.0 and v7 lines to 7.28.0, `axios` v1 line to 1.16.0 and v0 line to 0.32.0, `protobufjs` 7.6.1, `basic-ftp` 5.3.1, `form-data` v2 to 2.5.6 and v4 to 4.0.6, `multer` 2.2.0, `node-forge` 1.4.0, `ws` 8.21.0, `fast-xml-builder` 1.1.7, and `minimatch` (3.x→3.1.4, 5.x→5.1.8, 7.4.x→7.4.8, 9.x→9.0.7, 10.x→10.2.3).
+- dcdc3ec: Force fixed versions of vulnerable transitive npm dependencies via yarn `resolutions` to remediate the Critical/High CVEs that dominate the published `giantswarm/backstage` image scan. The OS base (`node:24-trixie-slim`) was already clean; every finding was in the bundled Node.js dependency layer. Pinned: `vm2` 3.11.5, `sha.js` 2.4.12, `protobufjs` 7.5.5, `basic-ftp` 5.2.0, `jsonpath-plus` 10.3.0; `fast-xml-parser` v4 line to 4.5.4 (v5 consumers untouched), `form-data` v2 line to 2.5.4 (v4 already fixed), `path-to-regexp` `~0.1.12` to 0.1.13, `axios` v1 line to 1.8.2, `tar` v6 line to 7.5.3, `undici` v5 line to 6.21.2, and `minimatch` `^10.0.0` to 10.0.3.
+- Updated dependencies [2c4e7eb]
+- Updated dependencies [f3ab798]
+- Updated dependencies [66a96ae]
+- Updated dependencies [1c9a904]
+- Updated dependencies [343d4b2]
+- Updated dependencies [6b1e119]
+- Updated dependencies [0395e2d]
+- Updated dependencies [be7ef02]
+- Updated dependencies [ab3560e]
+- Updated dependencies [7273a37]
+- Updated dependencies [5804cd2]
+- Updated dependencies [c1b3690]
+- Updated dependencies [2aaf08d]
+- Updated dependencies [d6bec76]
+- Updated dependencies [f47e1e7]
+- Updated dependencies [fedd5d8]
+- Updated dependencies [b30a7fc]
+- Updated dependencies [b30a7fc]
+- Updated dependencies [d0e8ef4]
+- Updated dependencies [408bdfe]
+- Updated dependencies [c691e06]
+- Updated dependencies [71317f9]
+- Updated dependencies [21ae39b]
+- Updated dependencies [9c3a9c4]
+- Updated dependencies [85e7d8c]
+- Updated dependencies [0a10f54]
+- Updated dependencies [2c105cc]
+- Updated dependencies [9fd228e]
+- Updated dependencies [db58c71]
+- Updated dependencies [a1292a5]
+- Updated dependencies [8967f50]
+- Updated dependencies [37c3eb0]
+- Updated dependencies [e2958de]
+- Updated dependencies [e9a6141]
+- Updated dependencies [0b2fa7f]
+- Updated dependencies [8402eee]
+- Updated dependencies [5c82125]
+- Updated dependencies [87b1c2e]
+- Updated dependencies [69eaff0]
+- Updated dependencies [3b465ec]
+- Updated dependencies [d200952]
+- Updated dependencies [c8743f8]
+- Updated dependencies [5851bba]
+- Updated dependencies [6205cca]
+- Updated dependencies [7ff288f]
+- Updated dependencies [5f09b20]
+- Updated dependencies [c604256]
+- Updated dependencies [6b18a17]
+- Updated dependencies [70eeb29]
+- Updated dependencies [92f025f]
+- Updated dependencies [954a810]
+- Updated dependencies [54ea033]
+- Updated dependencies [28aada8]
+- Updated dependencies [02f726e]
+- Updated dependencies [5d8b87b]
+- Updated dependencies [8fe23f0]
+- Updated dependencies [d419735]
+- Updated dependencies [cd1b0b0]
+- Updated dependencies [d817adf]
+- Updated dependencies [0987634]
+- Updated dependencies [0bba1e6]
+- Updated dependencies [f2af09f]
+- Updated dependencies [6909d96]
+- Updated dependencies [90ddd8d]
+- Updated dependencies [cad8b48]
+- Updated dependencies [34d161d]
+- Updated dependencies [f46a45f]
+- Updated dependencies [beda76b]
+- Updated dependencies [b863d7c]
+- Updated dependencies [b6a5641]
+- Updated dependencies [7a5904a]
+- Updated dependencies [6ead0ab]
+- Updated dependencies [3c8bcd0]
+- Updated dependencies [406698c]
+- Updated dependencies [5337c75]
+- Updated dependencies [2950a35]
+- Updated dependencies [d7b3983]
+- Updated dependencies [0814404]
+- Updated dependencies [4785d59]
+- Updated dependencies [ba553f1]
+- Updated dependencies [eb337fb]
+- Updated dependencies [6662c03]
+  - @giantswarm/backstage-plugin-agent-platform-backend@1.0.0
+  - @giantswarm/backstage-plugin-gs-backend@0.11.0
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.18.0
+  - @giantswarm/backstage-plugin-muster-backend@0.3.0
+  - @giantswarm/backstage-plugin-catalog-backend-module-gs@0.7.0
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.16.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.13.0
+  - @giantswarm/backstage-plugin-plans-backend@0.1.0
+  - @giantswarm/backstage-plugin-roadmap-backend@0.1.0
+  - @giantswarm/backstage-plugin-platform-capabilities-backend@0.1.0
+  - @giantswarm/backstage-plugin-repositories-backend@0.1.0
+  - @giantswarm/backstage-plugin-techdocs-backend-module-gs@0.10.1
+
 ## 0.20.7
 
 ### Patch Changes
