@@ -1,5 +1,0 @@
----
-'@giantswarm/backstage-plugin-agent-platform': minor
----
-
-GPU node pools: a lifecycle panel per pool shows what happens underneath after **Deploy** — pool release Ready, Karpenter pool ready (`0 nodes, launches on demand` at scale-to-zero), GPU operator operational, serving stack operational, backend registered with model-manager — each with its state, when it began or how long it took, what it usually takes and the manager's message, ending in **Serve your first model** (a link to the Serving page with the pool preselected). Deploy closes into the panel; a chevron on the row opens it later. The row reads the pool's phase (`creating`, `ready · 0 nodes`, `scaling`, `removing`, `failed · <reason>`) instead of `0 / 0`. The pools are re-read every 10 s while a pool is unsettled and every minute otherwise. The data is `list_node_pools` (`phase`, `steps[]`) and `list_clusters` (`readiness`) of cluster-manager 0.8; an older cluster-manager gets the panel with fewer steps from `poolReleases[].ready` and the components' `status`. The step list is the new shared `LifecycleSteps` component.

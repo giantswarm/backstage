@@ -1,5 +1,455 @@
 # app
 
+## 0.41.0
+
+### Minor Changes
+
+- e9a6141: Add the optional `app.rootRedirect` key. When set, `/` redirects to that in-app path (for example `/agent-platform`) instead of rendering the home page; unset keeps the home page, and so does a value that does not start with `/` or that is `/` itself. It lets a single-product deployment land on that product's page without a code change. The home page extension (`page:home`) must stay enabled, since it owns the `/` route.
+- a1292a5: The login page signs in through the main OIDC login provider only; the
+  `gs.signInProviders` list and its GitHub-provider card are gone. Which Dex
+  connector a sign-in lands on is now a deployment choice: the provider's
+  `startUrlSearchParams.connector_id` pins the default connector, and
+  `gs.signInFallbackProvider` adds a second card that signs in through the same
+  provider pinned to another connector (for people the default one cannot
+  authenticate). The Giant Swarm OIDC authenticator forwards a `connector_id`
+  passed on `/start` to Dex for that request; `gsFallbackSignInAuthApiRef`
+  exposes the fallback sign-in API.
+- 364fd54: Pin the public frontend config: `frontendVisibility.test.ts` enumerates every
+  frontend-visible path of the app's merged config schema and compares it with
+  the committed `frontendVisiblePaths.golden.json`, so a new field, plugin or
+  dependency bump that widens what the unauthenticated `index.html` carries
+  fails CI until the golden file is regenerated and the diff reviewed. The same
+  test refuses `@deepVisibility frontend` in every `config.d.ts` of the
+  repository; the app's own schema annotates the theme colors, the Sentry and
+  the TelemetryDeck fields one by one instead.
+- 8967f50: Backstage's standard GitHub auth API (`githubAuthApiRef`) runs on the person's own
+  GitHub grant in muster when `gs.github` is configured -- no GitHub App and no GitHub
+  login in the portal. The GitHub Actions and Pull Requests tabs, `ScmAuth` and the
+  scaffolder pickers work unchanged with their own GitHub clients; only the token
+  source changed.
+
+  - `plugins/gs`: `GSAuthProviders.getGithubAuthApi()` builds `OAuth2` over a
+    `GithubGrantAuthConnector` that mints from `POST /api/auth/github-token` with the
+    Backstage token and the main Dex ID token, echoes the requested scopes as granted
+    (a GitHub App user token carries none) and sets `expiresAt` from the token's
+    remaining lifetime, so the session re-mints three minutes before it ends while
+    muster refreshes the grant underneath. A person without a grant is sent through
+    muster's connect once -- a full-page bounce with `redirect=<current page>` that
+    GitHub answers without a prompt for the App already authorized at the Dex login
+    -- never the "Login Required" dialog; a bounce that comes back without a grant is
+    not repeated. Signing out (`removeSession`) revokes the grant in muster for every
+    session and every server of that issuer. `gs.github.brokerAudience` (frontend
+    visible) switches the API on; `gs.github.muster` names the installation and
+    MCPServer.
+  - `plugins/auth-backend-module-gs`: `POST /api/auth/github-token` exchanges the
+    caller's Dex ID token through the muster token broker (`gs.clusterTokenBroker`
+    credentials, RFC 8693, audience `gs.github.brokerAudience`) for the grant's access
+    token, cached per user with 240 s skew; `invalid_target` is disambiguated through
+    muster's `core_auth_login` on `gs.github.muster`: a connect that succeeds retries
+    the exchange, `auth_required` answers 401 with `reason: no_grant` and muster's
+    connect URL, anything else is 502 like the cluster-token route.
+    `POST /api/auth/github-token/logout` runs `core_auth_logout`.
+  - `plugins/gs-node`: `MusterServerGateway.logout()` (`core_auth_logout`).
+  - `packages/app`: the `github-auth` factory uses the GS API when `gs.github` is
+    configured and upstream `GithubAuth.create` otherwise; customer portals are
+    unchanged.
+  - `plans`, `roadmap`: a missing GitHub grant bounces the page through muster's connect
+    on its own instead of showing a "Connect GitHub" button and polling a popup; the
+    button remains as the fallback when a bounce comes back without a grant.
+
+- 0a21beb: The Grafana dashboards card on entities carrying `grafana/dashboard-selector`
+  is disabled by default and enabled per portal through `app.extensions`
+  (`entity-card:catalog/grafana-dashboards: true`). The card works only where the
+  plugin is wired, a `proxy.endpoints` entry at `/grafana/api` with a
+  service-account token for the `grafana` host; the section itself is required
+  by the plugin's schema on every portal and the annotated team Groups reach every
+  portal through the shared catalog, so until now every portal without the proxy
+  entry showed `Request failed with 404 Not Found` on every team page. Portals
+  that wire the plugin add the switch; everywhere else the team pages show
+  neither the card nor the error. Documented in `docs/configuration.md`.
+- d817adf: The plans plugin reaches GitHub through muster as the signed-in person; the
+  portal holds no GitHub credential. The frontend forwards the user's main
+  login (Dex) ID token in `backstage-muster-authorization`, and the plans
+  backend runs the GitHub MCP server's tools through muster with it
+  (`plans.muster: { installation, server, toolPrefix? }`), which holds the
+  person's GitHub grant. A person without a grant gets a "Connect GitHub" step
+  (`GET /api/plans/connection`, a 401 `GithubNotConnectedError` carrying
+  muster's sign-in URL) instead of a GitHub App login; inline review comments
+  are written through a pending review. The `X-GitHub-Token` header and the
+  Backstage `github` auth provider are no longer used by plans. The app wires
+  `plansAuthApiRef` to the main login provider (`PlansMainAuth`).
+
+  The muster MCP client and its auth-tool parsing move from
+  `@giantswarm/backstage-plugin-muster-backend` to
+  `@giantswarm/backstage-plugin-gs-node` (`MusterMcpClient`,
+  `readMusterInstallationsFromConfig`, `parseAuthLoginResult`,
+  `MUSTER_AUTH_HEADER`, new `callToolContent`), so every backend plugin that
+  calls muster on the user's behalf shares one implementation.
+
+- d7b3983: The roadmap plugin reads and changes the board through muster as the
+  signed-in person; the portal holds no GitHub credential and no bot reads the
+  board on the user's behalf. The frontend forwards the user's main login (Dex)
+  ID token in `backstage-muster-authorization` on every request, and the
+  roadmap backend runs pro's board tools (`list_issues`, `get_board_schema`,
+  `get_item_by_issue`, `get_issue_details`, sub-issue and field tools) through
+  muster with it (`roadmap.muster: { installation, server, toolPrefix? }`),
+  which holds the person's GitHub grant. Board reads are cached per person. A
+  person without a grant gets a "Connect GitHub" step (`GET
+/api/roadmap/connection`, a 401 `MusterServerNotConnectedError` carrying
+  muster's sign-in URL). The `X-GitHub-Token` header, the Backstage `github`
+  auth provider and the GitHub App installation token are no longer used by
+  the roadmap plugin; the pro library dependency is gone.
+
+  `@giantswarm/backstage-plugin-gs-node` gains the shared
+  `MusterServerGateway`/`MusterServerClient`, `readMusterServerRef`,
+  `asConnected` and `MusterServerNotConnectedError` for backend plugins that
+  run one MCP server's tools through muster on the user's behalf.
+
+- eb337fb: Serve the config the signed-in frontend reads from the authenticated
+  `GET /api/gs/config` instead of the public `index.html`.
+
+  The unauthenticated page carried every `@visibility frontend` path, and the gs
+  plugin marked whole blocks `@deepVisibility frontend`: the admin groups, the
+  cluster token broker URL, the link templates with the fleet's hostnames, the
+  friendly labels and annotations, the Kubernetes end-of-life table and the proxy
+  knobs were readable by anyone who could reach the portal. They now keep the
+  default (backend) visibility and reach the browser once, after sign-in, as one
+  payload in app-config shape: `GET /api/gs/config` replaces
+  `GET /api/gs/installations` and serves the paths listed in the gs-backend's
+  `SIGNED_IN_CONFIG_PATHS`.
+
+  - New `@giantswarm/backstage-plugin-gs-react`: the module-level source of the
+    signed-in config, `useSignedInConfig()` for components and
+    `getSignedInConfig()` for the utility APIs built at app boot.
+  - The gs plugin's `SignedInConfigLoader` (replacing `InstallationsConfigLoader`)
+    publishes the payload; `useInstallations` and the boot-time APIs read the
+    installations from it; the cluster-access, tools, resources, labels and
+    Kubernetes-version views read their keys from it.
+  - `@visibility frontend` stays, per field, only on what the sign-in page needs:
+    `gs.authProvider`, `gs.auth.scopes`, `gs.auth.extraScopes`, the two sign-in
+    cards and `gs.github.brokerAudience` (read when the app constructs its
+    GitHub auth API, before sign-in). `@deepVisibility frontend` is gone from
+    the gs plugin.
+
+### Patch Changes
+
+- 40e0039: Raise the transitive-dependency CVE `resolutions` to the currently-fixed versions so the High count in the published image is cut substantially (the previous pass cleared all fixable Critical findings but pinned to point-in-time versions that newer CVEs have since flagged). Updated/added pins: `tar` 7.5.11, `undici` v5 line to 6.27.0 and v7 lines to 7.28.0, `axios` v1 line to 1.16.0 and v0 line to 0.32.0, `protobufjs` 7.6.1, `basic-ftp` 5.3.1, `form-data` v2 to 2.5.6 and v4 to 4.0.6, `multer` 2.2.0, `node-forge` 1.4.0, `ws` 8.21.0, `fast-xml-builder` 1.1.7, and `minimatch` (3.x→3.1.4, 5.x→5.1.8, 7.4.x→7.4.8, 9.x→9.0.7, 10.x→10.2.3).
+- dcdc3ec: Force fixed versions of vulnerable transitive npm dependencies via yarn `resolutions` to remediate the Critical/High CVEs that dominate the published `giantswarm/backstage` image scan. The OS base (`node:24-trixie-slim`) was already clean; every finding was in the bundled Node.js dependency layer. Pinned: `vm2` 3.11.5, `sha.js` 2.4.12, `protobufjs` 7.5.5, `basic-ftp` 5.2.0, `jsonpath-plus` 10.3.0; `fast-xml-parser` v4 line to 4.5.4 (v5 consumers untouched), `form-data` v2 line to 2.5.4 (v4 already fixed), `path-to-regexp` `~0.1.12` to 0.1.13, `axios` v1 line to 1.8.2, `tar` v6 line to 7.5.3, `undici` v5 line to 6.21.2, and `minimatch` `^10.0.0` to 10.0.3.
+- Updated dependencies [b2a4e74]
+- Updated dependencies [d93da36]
+- Updated dependencies [6c82397]
+- Updated dependencies [6c096fb]
+- Updated dependencies [60b2c76]
+- Updated dependencies [322e58c]
+- Updated dependencies [004bdfe]
+- Updated dependencies [5859267]
+- Updated dependencies [d7b570d]
+- Updated dependencies [e62dd24]
+- Updated dependencies [f3ab798]
+- Updated dependencies [343d4b2]
+- Updated dependencies [7b43a16]
+- Updated dependencies [244719a]
+- Updated dependencies [d6bec76]
+- Updated dependencies [e59a84c]
+- Updated dependencies [b097034]
+- Updated dependencies [dc97358]
+- Updated dependencies [37c3eb0]
+- Updated dependencies [2494c9a]
+- Updated dependencies [0395e2d]
+- Updated dependencies [86f7998]
+- Updated dependencies [1f3fb8f]
+- Updated dependencies [6e0bd9d]
+- Updated dependencies [fb7354b]
+- Updated dependencies [986b054]
+- Updated dependencies [b9433d4]
+- Updated dependencies [a1e3699]
+- Updated dependencies [b02b541]
+- Updated dependencies [b6f72fb]
+- Updated dependencies [1698bc1]
+- Updated dependencies [91c421b]
+- Updated dependencies [2d333a6]
+- Updated dependencies [32f943c]
+- Updated dependencies [f335a7f]
+- Updated dependencies [19d8e11]
+- Updated dependencies [48cf35b]
+- Updated dependencies [55b2dd9]
+- Updated dependencies [247709d]
+- Updated dependencies [757d619]
+- Updated dependencies [85b1ac8]
+- Updated dependencies [9a71810]
+- Updated dependencies [551e5d5]
+- Updated dependencies [c5b9c46]
+- Updated dependencies [7654695]
+- Updated dependencies [1a05f26]
+- Updated dependencies [7a49e7f]
+- Updated dependencies [bff30cb]
+- Updated dependencies [a036f84]
+- Updated dependencies [335f7fe]
+- Updated dependencies [335f7fe]
+- Updated dependencies [ab3560e]
+- Updated dependencies [7273a37]
+- Updated dependencies [3373287]
+- Updated dependencies [a776d8b]
+- Updated dependencies [c65731d]
+- Updated dependencies [30e503d]
+- Updated dependencies [bf367f1]
+- Updated dependencies [5804cd2]
+- Updated dependencies [052624a]
+- Updated dependencies [cb06b6c]
+- Updated dependencies [e80ae14]
+- Updated dependencies [6052701]
+- Updated dependencies [fe372f7]
+- Updated dependencies [2e38e0b]
+- Updated dependencies [4dfd71d]
+- Updated dependencies [6b1e119]
+- Updated dependencies [573c689]
+- Updated dependencies [42f645b]
+- Updated dependencies [5b5d408]
+- Updated dependencies [335f7fe]
+- Updated dependencies [6ab4cbf]
+- Updated dependencies [befc0c2]
+- Updated dependencies [aa77803]
+- Updated dependencies [dfce475]
+- Updated dependencies [2aaf08d]
+- Updated dependencies [d6bec76]
+- Updated dependencies [d6bec76]
+- Updated dependencies [e5a5106]
+- Updated dependencies [335f7fe]
+- Updated dependencies [328ebcb]
+- Updated dependencies [6fe3050]
+- Updated dependencies [335f7fe]
+- Updated dependencies [7715042]
+- Updated dependencies [9ea8cf0]
+- Updated dependencies [6ce4a71]
+- Updated dependencies [c4f3eca]
+- Updated dependencies [2c4e7eb]
+- Updated dependencies [a021ef9]
+- Updated dependencies [e1f1c38]
+- Updated dependencies [839cf0a]
+- Updated dependencies [f47e1e7]
+- Updated dependencies [8bcea5e]
+- Updated dependencies [e807fa6]
+- Updated dependencies [9e57736]
+- Updated dependencies [4f45e35]
+- Updated dependencies [88d2fa8]
+- Updated dependencies [69eaff0]
+- Updated dependencies [54925ab]
+- Updated dependencies [3980275]
+- Updated dependencies [83cc49a]
+- Updated dependencies [fedd5d8]
+- Updated dependencies [b30a7fc]
+- Updated dependencies [408bdfe]
+- Updated dependencies [281d787]
+- Updated dependencies [ef01d42]
+- Updated dependencies [85e7d8c]
+- Updated dependencies [bf3b759]
+- Updated dependencies [3a5d5e3]
+- Updated dependencies [293e889]
+- Updated dependencies [be7bd04]
+- Updated dependencies [8f3cd85]
+- Updated dependencies [9602074]
+- Updated dependencies [8425eed]
+- Updated dependencies [73bc416]
+- Updated dependencies [f90366e]
+- Updated dependencies [f6f1d50]
+- Updated dependencies [464f5ad]
+- Updated dependencies [d87fd9d]
+- Updated dependencies [4f6d765]
+- Updated dependencies [600a4c3]
+- Updated dependencies [d0bf6da]
+- Updated dependencies [c3409fb]
+- Updated dependencies [67a32ef]
+- Updated dependencies [9fd228e]
+- Updated dependencies [4bcdf2e]
+- Updated dependencies [86eec55]
+- Updated dependencies [23bfca0]
+- Updated dependencies [bebda60]
+- Updated dependencies [d82c4c6]
+- Updated dependencies [87b1c2e]
+- Updated dependencies [3dbde6e]
+- Updated dependencies [a1292a5]
+- Updated dependencies [6822ed1]
+- Updated dependencies [d29ac2a]
+- Updated dependencies [573b34d]
+- Updated dependencies [526dd01]
+- Updated dependencies [2c383a6]
+- Updated dependencies [8967f50]
+- Updated dependencies [d14ebda]
+- Updated dependencies [e807fa6]
+- Updated dependencies [e9a6141]
+- Updated dependencies [b79cf20]
+- Updated dependencies [5e54675]
+- Updated dependencies [1f1b881]
+- Updated dependencies [faaf78e]
+- Updated dependencies [bbb9e16]
+- Updated dependencies [0b2fa7f]
+- Updated dependencies [b431a04]
+- Updated dependencies [8402eee]
+- Updated dependencies [5c82125]
+- Updated dependencies [c25dd0b]
+- Updated dependencies [4f6d765]
+- Updated dependencies [322e58c]
+- Updated dependencies [b2c5996]
+- Updated dependencies [4f6d765]
+- Updated dependencies [87b1c2e]
+- Updated dependencies [b990251]
+- Updated dependencies [9e57736]
+- Updated dependencies [578b163]
+- Updated dependencies [2b14d41]
+- Updated dependencies [607d514]
+- Updated dependencies [d200952]
+- Updated dependencies [578b163]
+- Updated dependencies [94a61cb]
+- Updated dependencies [28aada8]
+- Updated dependencies [ee800aa]
+- Updated dependencies [578b163]
+- Updated dependencies [7c9e6d6]
+- Updated dependencies [c8743f8]
+- Updated dependencies [f2cc1f8]
+- Updated dependencies [5851bba]
+- Updated dependencies [69eaff0]
+- Updated dependencies [1642eed]
+- Updated dependencies [578b163]
+- Updated dependencies [c4a1640]
+- Updated dependencies [9a71810]
+- Updated dependencies [c1c65ee]
+- Updated dependencies [f9644fb]
+- Updated dependencies [6205cca]
+- Updated dependencies [578b163]
+- Updated dependencies [7ff288f]
+- Updated dependencies [ff6278b]
+- Updated dependencies [578b163]
+- Updated dependencies [28aada8]
+- Updated dependencies [5f09b20]
+- Updated dependencies [e97558c]
+- Updated dependencies [c3a9998]
+- Updated dependencies [ab9b7a0]
+- Updated dependencies [1305e9e]
+- Updated dependencies [c604256]
+- Updated dependencies [6b18a17]
+- Updated dependencies [70eeb29]
+- Updated dependencies [92f025f]
+- Updated dependencies [65d8d60]
+- Updated dependencies [6b3ac77]
+- Updated dependencies [2995471]
+- Updated dependencies [954a810]
+- Updated dependencies [8d67e83]
+- Updated dependencies [f90366e]
+- Updated dependencies [54ea033]
+- Updated dependencies [728d50e]
+- Updated dependencies [c482453]
+- Updated dependencies [5e9b874]
+- Updated dependencies [32f943c]
+- Updated dependencies [71d7a44]
+- Updated dependencies [5cf5f33]
+- Updated dependencies [3383e35]
+- Updated dependencies [578b163]
+- Updated dependencies [578b163]
+- Updated dependencies [f47797c]
+- Updated dependencies [28aada8]
+- Updated dependencies [28aada8]
+- Updated dependencies [b8afa37]
+- Updated dependencies [578b163]
+- Updated dependencies [578b163]
+- Updated dependencies [ca6ffd8]
+- Updated dependencies [398c4b1]
+- Updated dependencies [d419735]
+- Updated dependencies [cd1b0b0]
+- Updated dependencies [f14f7ab]
+- Updated dependencies [8fe23f0]
+- Updated dependencies [d817adf]
+- Updated dependencies [fd7799f]
+- Updated dependencies [0987634]
+- Updated dependencies [0bba1e6]
+- Updated dependencies [f2af09f]
+- Updated dependencies [aed0b9c]
+- Updated dependencies [1ed9e31]
+- Updated dependencies [7c5e287]
+- Updated dependencies [d63665c]
+- Updated dependencies [6909d96]
+- Updated dependencies [582faca]
+- Updated dependencies [f73f82e]
+- Updated dependencies [33a02dc]
+- Updated dependencies [221d872]
+- Updated dependencies [a69dadf]
+- Updated dependencies [ce9e155]
+- Updated dependencies [7edb60f]
+- Updated dependencies [104f638]
+- Updated dependencies [1f00656]
+- Updated dependencies [7e92eb9]
+- Updated dependencies [5c843a9]
+- Updated dependencies [a8bb5a6]
+- Updated dependencies [5b036fc]
+- Updated dependencies [e8c6d73]
+- Updated dependencies [c81464c]
+- Updated dependencies [a6c427b]
+- Updated dependencies [741669e]
+- Updated dependencies [7a6b30e]
+- Updated dependencies [564456f]
+- Updated dependencies [34d161d]
+- Updated dependencies [a7a9a6e]
+- Updated dependencies [bfa597e]
+- Updated dependencies [f46a45f]
+- Updated dependencies [3199a67]
+- Updated dependencies [ea1324f]
+- Updated dependencies [b6a5641]
+- Updated dependencies [93210e4]
+- Updated dependencies [f6f1d50]
+- Updated dependencies [6ead0ab]
+- Updated dependencies [bb9134b]
+- Updated dependencies [3c8bcd0]
+- Updated dependencies [7a5904a]
+- Updated dependencies [b863d7c]
+- Updated dependencies [bfe6914]
+- Updated dependencies [beda76b]
+- Updated dependencies [296a1e0]
+- Updated dependencies [d3378b3]
+- Updated dependencies [92d42d6]
+- Updated dependencies [a8bb5a6]
+- Updated dependencies [1ec7387]
+- Updated dependencies [bddd1c9]
+- Updated dependencies [389a40b]
+- Updated dependencies [13e335e]
+- Updated dependencies [d7b3983]
+- Updated dependencies [4f6d765]
+- Updated dependencies [ba553f1]
+- Updated dependencies [eb337fb]
+- Updated dependencies [14e878c]
+- Updated dependencies [90f37c4]
+- Updated dependencies [14e878c]
+- Updated dependencies [14e878c]
+- Updated dependencies [a5ec0eb]
+- Updated dependencies [1893681]
+- Updated dependencies [e807fa6]
+- Updated dependencies [b097034]
+- Updated dependencies [6e0bd9d]
+- Updated dependencies [b9433d4]
+- Updated dependencies [322e58c]
+- Updated dependencies [b990251]
+- Updated dependencies [9e57736]
+- Updated dependencies [a8bb5a6]
+- Updated dependencies [1ec7387]
+- Updated dependencies [d63665c]
+- Updated dependencies [6ce4a71]
+- Updated dependencies [9fab6b1]
+- Updated dependencies [600a4c3]
+- Updated dependencies [e6ced92]
+- Updated dependencies [d400274]
+  - @giantswarm/backstage-plugin-agent-platform@1.0.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.0.0
+  - @giantswarm/backstage-plugin-ui-react@0.9.0
+  - @giantswarm/backstage-plugin-flux-react@0.15.0
+  - @giantswarm/backstage-plugin-muster@0.4.0
+  - @giantswarm/backstage-plugin-gs@0.71.0
+  - @giantswarm/backstage-plugin-ai-chat@0.15.0
+  - @giantswarm/backstage-plugin-bot-prs@0.1.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.6.0
+  - @giantswarm/backstage-plugin-plans@0.1.0
+  - @giantswarm/backstage-plugin-roadmap@0.1.0
+  - @giantswarm/backstage-plugin-flux@0.10.0
+  - @giantswarm/backstage-plugin-platform-capabilities@0.1.0
+  - @giantswarm/backstage-plugin-repositories@0.1.0
+
 ## 0.40.7
 
 ### Patch Changes

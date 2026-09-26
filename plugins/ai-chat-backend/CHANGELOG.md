@@ -1,5 +1,75 @@
 # @giantswarm/backstage-plugin-ai-chat-backend
 
+## 0.18.0
+
+### Minor Changes
+
+- b30a7fc: Serve Claude models from Google Vertex AI.
+
+  `aiChat.anthropic.provider: vertex` routes `claude-*` models through the Anthropic publisher on Google Vertex AI instead of Anthropic's own API, so an installation can run Claude on its own GCP project with no Anthropic API key. Authentication reuses the existing `aiChat.google` block: `@ai-sdk/google-vertex` reads the mounted service-account JSON and google-auth-library mints and auto-refreshes the short-lived OAuth2 tokens. Streaming, tool calling, adaptive thinking, `aiChat.anthropic.effort` and prompt caching behave as they do on the direct Anthropic path.
+
+  The key defaults to `api`, so installations configured with `aiChat.anthropic.apiKey` are unaffected — the provider is never switched implicitly by the presence or absence of credentials. `GET /api/ai-chat/health` reports `provider: google-vertex-anthropic` and takes `configured` from the Google configuration.
+
+- d0e8ef4: Add Google Vertex AI (Gemini) as an AI chat provider.
+
+  A `gemini-*` model in `aiChat.model` now routes chat through Google Vertex AI via the first-class `@ai-sdk/google-vertex` provider. Vertex is not authenticated with a static API key: the provider uses `google-auth-library` to read a mounted service-account JSON and mint + auto-refresh short-lived OAuth2 access tokens, so no custom token-refresh code is needed. Streaming and tool-calling work exactly like the existing providers.
+
+  Configure via a new `aiChat.google` block (`project`, `location`, `keyFilename`); `gemini-` takes precedence ahead of the Azure/OpenAI selection, and `GET /api/ai-chat/health` reports `provider: google-vertex`.
+
+- 71317f9: Migrate the AI chat backend from the `ai@6` generation of the Vercel AI SDK to
+  `ai@7` and the matching `v4` providers.
+
+  - Bump `ai` → `^7`, `@ai-sdk/anthropic`/`@ai-sdk/openai`/`@ai-sdk/azure` → `^4`,
+    `@ai-sdk/google-vertex` → `^5`, `@ai-sdk/openai-compatible` → `^3`, and
+    `@ai-sdk/mcp` → `^2` (in `ai-chat-backend`, `gs-node`, and `muster-backend`).
+  - Drop the `@ai-sdk/mcp` SSE transport patch: the fix (treating an `undefined`
+    SSE `event` field the same as `event: "message"`) is upstreamed in
+    `@ai-sdk/mcp@2`.
+  - `ai@7` rejects `role: "system"` messages inside `messages`/`prompt` by
+    default; the Anthropic prompt-caching path deliberately puts a system message
+    in the array, so it now opts back in via `allowSystemInMessages: true`.
+  - `ai@7`'s `ToolExecutionOptions` gained a required `context` field; the muster
+    meta-tool executor passes `context: undefined`.
+
+  The frontend (`ai-chat`) stays on `ai@6` because `@assistant-ui/react-ai-sdk`
+  has no `ai@7` release yet. The UI-message-stream wire protocol is unchanged
+  between v6 and v7, so the `ai@7` backend streams to the `ai@6` frontend
+  unchanged. Root `package.json` pins only the backend to 7.x via a scoped
+  `resolutions` override (`.../ai-chat-backend/ai`); there is no unscoped `ai`
+  resolution (an unscoped pin would override the scoped one in Yarn 4). The
+  frontend stays on 6.x via its own `ai@^6` range, kept there by the Renovate
+  `ai`/`@ai-sdk/*` major-hold.
+
+### Patch Changes
+
+- b30a7fc: Support the Claude 5 model family in the AI chat.
+
+  `claude-sonnet-5`, `claude-opus-5` and `claude-fable-5`/`-5-1` use adaptive thinking plus `output_config.effort`; the legacy `thinking: { type: 'enabled', budgetTokens }` shape they were previously sent is rejected with a 400, as are `temperature`, `topP` and `topK`. Adding them to `ADAPTIVE_THINKING_MODEL_PREFIXES` fixes both, because the same predicate also gates the sampling-parameter strip.
+
+  Adaptive-thinking models now also ask for `thinking.display: summarized`. That default is not stable across model generations — Opus 4.6 and Sonnet 4.6 default to `summarized`, Opus 4.7+ and the Claude 5 family to `omitted` — so the reasoning pane rendered empty blocks on the newer models. Thinking is billed the same either way.
+
+  The frontend context-usage display learns their context windows (1M each) and prices, along with the `claude-opus-4-7`, `claude-opus-4-8` and `claude-haiku-4-5` entries that were missing — those models showed no context bar and no cost estimate at all.
+
+- 408bdfe: A failed chat reply says why, instead of "An error occurred.": an error from the model provider shows its reason and whether it was already retried ("The model provider reports an error: Overloaded. The request was already tried 3 times. Please try again in a moment."), and any other failure a generic message without internal details. The error box has a "Try again" button that retries the last message, so nothing needs retyping.
+- c691e06: Fix AI chat being unavailable for every provider at runtime.
+
+  PR #1926 bumped the `@ai-sdk/*` providers a full major (anthropic/azure/openai to `^4`, openai-compatible to `^3`) while the `ai` core stayed on `^6`. The major-4 providers emit language-model specification `v4`, but the entire `ai@6` line only accepts `v2`/`v3` — so every chat request threw `AI_UnsupportedModelVersionError` before reaching the model. The unit tests didn't catch it because they mock the services and never resolve a model through `streamText`.
+
+  Revert the providers to the major line compatible with `ai@6` (anthropic `^3.0.76`, azure `^3.0.64`, openai `^3.0.63`, openai-compatible `^2.0.47`), which emit spec `v3`.
+
+- Updated dependencies [71317f9]
+- Updated dependencies [85e7d8c]
+- Updated dependencies [8967f50]
+- Updated dependencies [9a71810]
+- Updated dependencies [32f943c]
+- Updated dependencies [e2958de]
+- Updated dependencies [5851bba]
+- Updated dependencies [d817adf]
+- Updated dependencies [0bba1e6]
+- Updated dependencies [cad8b48]
+- Updated dependencies [d7b3983]
+  - @giantswarm/backstage-plugin-gs-node@0.4.0
+
 ## 0.17.3
 
 ### Patch Changes

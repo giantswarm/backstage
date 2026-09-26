@@ -1,5 +1,41 @@
 # backend-headless-service
 
+## 0.7.3
+
+### Patch Changes
+
+- db58c71: Replace the `@devangelista/backstage-scaffolder-kubernetes` and
+  `@aws/aws-core-plugin-for-backstage-scaffolder-actions` scaffolder plugins with
+  an in-repo `kube:apply` action in the GS scaffolder backend module.
+
+  - `kube:apply` keeps the exact action ID and input schema
+    (`manifest`, `namespaced`, `clusterName`, `token`), so existing templates —
+    including the hidden `agent-deployment` template driven by the Agent Platform
+    create flow — keep working unchanged. It resolves clusters from
+    `kubernetes.clusterLocatorMethods` (type `config`) the same way as before:
+    OIDC clusters use the per-task user token, `serviceAccount` clusters their
+    static token, with a fallback to the default kubeconfig.
+  - The other actions from those plugins (`kube:delete`, `kube:job:wait`,
+    `aws:cloudcontrol:create`, `aws:codecommit:publish`, `aws:eventbridge:event`,
+    `aws:s3:cp`) have no usage in any template and are dropped.
+  - The devangelista plugin pinned old `@backstage/*` and
+    `@kubernetes/client-node` ranges, nesting ~185MB of duplicate dependencies
+    (including the deprecated `@backstage/backend-common`, which is now gone
+    entirely); the AWS plugin nested another ~80MB of duplicate `@aws-sdk`
+    clients. Together with a `yarn dedupe`, `node_modules` shrinks by roughly
+    850MB, most of which was shipped in the backend image.
+
+- Updated dependencies [9c3a9c4]
+- Updated dependencies [0a10f54]
+- Updated dependencies [9fd228e]
+- Updated dependencies [db58c71]
+- Updated dependencies [a1292a5]
+- Updated dependencies [8967f50]
+- Updated dependencies [e9a6141]
+- Updated dependencies [4785d59]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.16.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.13.0
+
 ## 0.7.2
 
 ### Patch Changes

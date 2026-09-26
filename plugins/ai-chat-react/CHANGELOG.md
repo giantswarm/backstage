@@ -1,5 +1,28 @@
 # @giantswarm/backstage-plugin-ai-chat-react
 
+## 0.6.0
+
+### Minor Changes
+
+- 464f5ad: Migrate the cluster and deployment pages to a single BUI `PluginHeader`.
+
+  - Replace the classic `<Page>`/`<Header>` (blue banner) on the cluster and
+    deployment list and detail pages with the BUI `PluginHeader`, and suppress the
+    app-shell header (`noHeader`) so the two headers no longer stack.
+  - Detail-page tabs move from the classic `RoutedTabs` strip to BUI tabs rendered
+    in the plugin header (via a shared `useLayoutTabs` hook), matching the muster
+    and flux sections.
+  - Header actions are now BUI buttons: the new `AIChatButtonBui` variant and a
+    BUI-converted "Edit deployment" button. The troubleshoot state uses BUI's
+    `destructive` styling.
+  - The dropped header "type" line and the cluster description subtitle now live in
+    the respective "About" cards.
+
+  `ai-chat-react` gains a new exported `AIChatButtonBui` component for use in BUI
+  contexts; the existing Material UI `AIChatButton` is unchanged.
+
+- b431a04: Let users ask the AI chat to explain Flux error messages. ai-chat-react exports a new `buildExplainErrorMessage` prompt builder that embeds a resource's failing condition message plus context (kind, name, namespace, cluster, reason, revision). The Flux resource card's "Troubleshoot with AI" button now sends the actual error message instead of asking the AI to look the resource up, and the HelmRelease conditions card on the deployment details page gets an "Explain this error" button on failing conditions. The buttons render nothing on installations without ai-chat enabled.
+
 ## 0.5.0
 
 ### Minor Changes
