@@ -117,26 +117,70 @@ export interface Config {
     };
 
     /**
-     * Cluster token broker (muster) used to silently mint per-management-cluster
+     * Cluster token broker used to silently mint per-management-cluster
      * tokens from the user's main Dex session, replacing the per-cluster OAuth
-     * popups for covered installations.
+     * popups for covered installations: muster (`tokenUrl`) for every
+     * installation, an installation's own Dex (`targets`) for the ones listed
+     * there, or both, the targets winning for their installations. At least
+     * one of the two is required.
      */
     clusterTokenBroker?: {
       /**
-       * OAuth token endpoint of the broker, e.g. https://muster.example.com/oauth/token.
-       * Its presence enables the silent broker path in the frontend, which
-       * learns it from the signed-in config: the URL names an internal host.
+       * OAuth token endpoint of the muster broker, e.g.
+       * https://muster.example.com/oauth/token. Its presence enables the silent
+       * broker path for every installation in the frontend, which learns it
+       * from the signed-in config: the URL names an internal host.
        */
-      tokenUrl: string;
+      tokenUrl?: string;
       /**
-       * Confidential client ID registered with the broker.
+       * Confidential client ID registered with the muster broker; required
+       * with `tokenUrl`.
        * @visibility backend
        */
-      clientId: string;
+      clientId?: string;
       /**
+       * Required with `tokenUrl`.
        * @visibility secret
        */
-      clientSecret: string;
+      clientSecret?: string;
+      /**
+       * Installations whose own Dex mints their cluster token, for a portal
+       * without muster: the RFC 8693 exchange with Dex's `connector_id`
+       * extension. The installation is broker-covered without
+       * `clusterTokenAudience`. The frontend learns only the installation
+       * names (signed-in config); every field is required.
+       */
+      targets?: {
+        [installationName: string]: {
+          /**
+           * The installation's Dex token endpoint, e.g.
+           * https://dex.example.gigantic.io/token.
+           * @visibility backend
+           */
+          tokenUrl: string;
+          /**
+           * Confidential client on that Dex the portal exchanges as.
+           * @visibility backend
+           */
+          clientId: string;
+          /**
+           * @visibility secret
+           */
+          clientSecret: string;
+          /**
+           * The Dex OIDC connector that trusts the portal's main Dex issuer.
+           * @visibility backend
+           */
+          connectorId: string;
+          /**
+           * Scope of the issued id_token, including Dex's cross-client scope
+           * for the apiserver's client, e.g.
+           * `openid email groups audience:server:client_id:dex-k8s-authenticator`.
+           * @visibility backend
+           */
+          scopes: string;
+        };
+      };
       /**
        * Optional scope sent with the RFC 8693 exchange request. Usually unset:
        * the broker's per-audience configuration owns the scope set.
