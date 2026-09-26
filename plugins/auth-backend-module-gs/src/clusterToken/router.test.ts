@@ -216,6 +216,47 @@ describe('createClusterTokenRouter', () => {
     expect(logger.debug).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      'a token store outage',
+      JSON.stringify({
+        error: 'temporarily_unavailable',
+        error_description: 'The server could not reach its token store',
+      }),
+    ],
+    [
+      'pending OIDC discovery',
+      JSON.stringify({
+        error: 'service_unavailable',
+        error_description: 'OIDC discovery in progress, please retry',
+      }),
+    ],
+    ['an empty body', ''],
+  ])(
+    'maps a 503 for %s to a broker_unavailable reason',
+    async (_case, body) => {
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response(body, { status: 503 }));
+
+      const res = await request(buildApp()!)
+        .post('/cluster-token/golem')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+      expect(res.status).toBe(502);
+      expect(res.body).toEqual({
+        error: 'Token broker is temporarily unavailable',
+        reason: 'broker_unavailable',
+      });
+      // One constant message per broker outage, the installation in metadata.
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Cluster token exchange failed: token broker temporarily unavailable',
+        expect.objectContaining({ installation: 'golem', status: 503 }),
+      );
+    },
+  );
+
   it('maps a rejected subject token to a subject_invalid reason', async () => {
     mockBrokerResponse(
       { error: 'invalid_grant', error_description: 'subject token expired' },

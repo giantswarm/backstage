@@ -34,10 +34,8 @@ import {
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
 import { interfaceLabel, sortInterfaces } from '../../lib/servedModelApi';
 import { ServedReadinessLabel } from '../ModelServingStatus';
-import {
-  CopyEndpointButton,
-  ServedModelsGroupHeader,
-} from './ServedModelsGroupHeader';
+import { CopyEndpointButton } from './ServedModelsGroupHeader';
+import { ServedModelsGroupCard } from './ServedModelsGroupCard';
 
 /** A kagent ModelConfig that fronts a served model. */
 export type ServedModelConsumer = {
@@ -180,7 +178,49 @@ export type ServedModelGroup = {
   runtime?: string;
   /** The one endpoint every row of the group answers on, else `undefined`. */
   endpoint?: string;
+  /** What its card says in place of a table: a backend without models. */
+  note?: string;
 };
+
+/** What the card of a backend without models says, while it is healthy. */
+export const NO_MODELS_ON_BACKEND =
+  'No models served yet — serve or pull one, or remove the backend.';
+
+/**
+ * A backend registered with a model-manager that serves nothing yet — a
+ * KServe without a pool, an Ollama before its first pull — as a group of its
+ * own: no rows, the header a group with rows would have, and the note its
+ * card shows instead of a table.
+ */
+export function groupOfBackend(backend: {
+  installation: string;
+  kind: ServingBackend;
+  version?: string;
+  endpoint?: string;
+  healthy?: boolean;
+  message?: string;
+}): ServedModelGroup {
+  return {
+    key: `${backend.installation}/${backend.kind}`,
+    installation: backend.installation,
+    backend: backend.kind,
+    rows: [],
+    runtime: backend.version ? `${backend.kind} ${backend.version}` : undefined,
+    endpoint: backend.endpoint,
+    note:
+      backend.healthy === false && backend.message
+        ? `Not healthy: ${backend.message}`
+        : NO_MODELS_ON_BACKEND,
+  };
+}
+
+/** Installation order, then backend. */
+function compareGroups(a: ServedModelGroup, b: ServedModelGroup): number {
+  return (
+    a.installation.localeCompare(b.installation) ||
+    a.backend.localeCompare(b.backend)
+  );
+}
 
 /** The one value the rows share; `undefined` when they carry none, or differ. */
 function sharedValue(values: (string | undefined)[]): string | undefined {
@@ -226,11 +266,7 @@ export function groupServedModelRows(
       runtime: sharedValue(group.rows.map(row => row.runtime)),
       endpoint: sharedValue(group.rows.map(endpointOf)),
     }))
-    .sort(
-      (a, b) =>
-        a.installation.localeCompare(b.installation) ||
-        a.backend.localeCompare(b.backend),
-    );
+    .sort(compareGroups);
 }
 
 /**
@@ -1001,6 +1037,10 @@ function ServedModelsGroupTable({
   return <Table<ServedModelRow> {...tableProps} columnConfig={columnConfig} />;
 }
 
+/** What the Serving page says when no serving layer in view lists a model. */
+export const NO_SERVED_MODELS =
+  'No models yet — none running, downloaded or being pulled.';
+
 export type ServedModelsTableProps = {
   rows: ServedModelRow[];
   /**
@@ -1015,15 +1055,24 @@ export type ServedModelsTableProps = {
    * for a backend registered with a model-manager. Absent = plain headers.
    */
   renderGroupActions?: (group: ServedModelGroup) => ReactNode;
+  /** What goes under a group's table, inside its card: the opened row's steps. */
+  renderGroupDetail?: (group: ServedModelGroup) => ReactNode;
+  /**
+   * Groups without rows ({@link groupOfBackend}), each a card with its note,
+   * in order among the others.
+   */
+  emptyGroups?: ServedModelGroup[];
 };
 
 /**
  * Presentational table of served models, grouped by installation and backend
- * ({@link groupServedModelRows}): one header per group with what its rows
- * share — backend, runtime version, the endpoint they answer on — and one
- * table under it whose columns follow those rows ({@link columnsForRows}) and
+ * ({@link groupServedModelRows}): one card per group, its header what the rows
+ * share — backend, runtime version, the endpoint they answer on — and its
+ * body a table whose columns follow those rows ({@link columnsForRows}) and
  * whose rows open with the running models, then the ones that need
  * attention, then the ones not running ({@link sortServedModelsBy}). A
+ * registered backend without models ({@link groupOfBackend}) is a card in the
+ * same order, its note in place of a table. A
  * backend that schedules onto nodes gets Node and GPUs, one whose weights
  * come from somewhere other than the served name gets Model, one that
  * reports features gets Features; an Ollama installation next to a KServe
@@ -1037,6 +1086,8 @@ export function ServedModelsTable({
   rows,
   renderActions,
   renderGroupActions,
+  renderGroupDetail,
+  emptyGroups,
 }: ServedModelsTableProps) {
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
 
@@ -1050,32 +1101,48 @@ export function ServedModelsTable({
     [modelDetailRoute],
   );
 
-  const groups = useMemo(() => groupServedModelRows(rows), [rows]);
+  const groups = useMemo(
+    () =>
+      [...groupServedModelRows(rows), ...(emptyGroups ?? [])].sort(
+        compareGroups,
+      ),
+    [rows, emptyGroups],
+  );
   const installations = new Set(groups.map(group => group.installation)).size;
 
   if (groups.length === 0) {
     return (
       <Text variant="body-medium" color="secondary">
-        No models are being served.
+        {NO_SERVED_MODELS}
       </Text>
     );
   }
 
   return (
-    <Flex direction="column" gap="4">
+    <Flex direction="column" gap="3">
       {groups.map(group => (
-        <Flex key={group.key} direction="column" gap="2">
-          <ServedModelsGroupHeader
-            group={group}
-            showInstallation={installations > 1}
-            actions={renderGroupActions?.(group)}
-          />
-          <ServedModelsGroupTable
-            group={group}
-            hrefFor={hrefFor}
-            renderActions={renderActions}
-          />
-        </Flex>
+        <ServedModelsGroupCard
+          key={group.key}
+          data-testid={`served-models-group-${group.key}`}
+          group={group}
+          showInstallation={installations > 1}
+          actions={renderGroupActions?.(group)}
+        >
+          {group.rows.length > 0 ? (
+            <Flex direction="column" gap="3">
+              <ServedModelsGroupTable
+                group={group}
+                hrefFor={hrefFor}
+                renderActions={renderActions}
+              />
+              {renderGroupDetail?.(group)}
+            </Flex>
+          ) : (
+            <Text as="p" variant="body-medium" color="secondary">
+              {group.note}
+            </Text>
+          )}
+        </ServedModelsGroupCard>
       ))}
     </Flex>
   );

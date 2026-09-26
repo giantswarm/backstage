@@ -7,7 +7,13 @@ import type { ServingContextValue } from '../ServingProvider';
 import type { ModelConfigsContextValue } from '../ModelConfigsProvider';
 import type { ServedModel } from '../../lib/serving';
 import type { PullJob, PullJobs } from '../../hooks/usePullJobs';
-import type { ServedModelDownloadRow } from './ServedModelsTable';
+import {
+  groupOfBackend,
+  NO_MODELS_ON_BACKEND,
+  NO_SERVED_MODELS,
+  type ServedModelDownloadRow,
+  type ServedModelGroup,
+} from './ServedModelsTable';
 import {
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
@@ -33,6 +39,7 @@ jest.mock('../GpuNodePools', () => ({
   }),
 }));
 
+const mockGroupsWithoutModels = jest.fn<ServedModelGroup[], []>(() => []);
 jest.mock('../ModelBackends', () => ({
   // No model-manager the person can write to on these fleets: the controls
   // render nothing.
@@ -41,7 +48,7 @@ jest.mock('../ModelBackends', () => ({
     addButton: undefined,
     dialogs: null,
     renderGroupActions: () => null,
-    renderBackendsWithoutModels: () => null,
+    groupsWithoutModels: () => mockGroupsWithoutModels(),
   }),
 }));
 
@@ -312,6 +319,8 @@ describe('ServingPage', () => {
     mockCancelDownload.mockReset();
     mockUseMusterPluginApi.mockReset();
     mockUseMusterPluginApi.mockReturnValue(undefined);
+    mockGroupsWithoutModels.mockReset();
+    mockGroupsWithoutModels.mockReturnValue([]);
     window.sessionStorage.clear();
     mockUsePullJobs.mockReturnValue(noJobs);
     mockUseServing.mockReturnValue(baseServing);
@@ -663,7 +672,11 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
-    expect(screen.getByTestId('progress')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('progressbar', {
+        name: 'Looking for a serving layer',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('lists the served models once a backend is found, without the GPU capacity (its own view)', async () => {
@@ -702,7 +715,7 @@ describe('ServingPage', () => {
     expect(screen.queryByText('other-vllm')).not.toBeInTheDocument();
   });
 
-  it('shows a progress bar while the first models load', async () => {
+  it('shows a loading indicator while the first models load', async () => {
     mockUseServing.mockReturnValue({
       ...baseServing,
       isLoading: true,
@@ -711,7 +724,75 @@ describe('ServingPage', () => {
 
     await renderSection();
 
-    expect(screen.getByTestId('progress')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('progressbar', { name: 'Loading served models' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(NO_SERVED_MODELS)).not.toBeInTheDocument();
+  });
+
+  it('says so when a serving layer lists no models', async () => {
+    mockUseServing.mockReturnValue({ ...baseServing, servedModels: [] });
+
+    await renderSection();
+
+    expect(screen.getByText(NO_SERVED_MODELS)).toBeInTheDocument();
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+  });
+
+  it('opens a model’s steps inside its backend’s card', async () => {
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      servedModels: [{ ...qwen, readiness: 'pending', phase: 'starting' }],
+    });
+
+    await renderSection();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show steps of model qwen3-14b' }),
+    );
+
+    const panel = screen.getByTestId('served-model-lifecycle');
+    const card = screen.getByTestId('served-models-group-inst-1/kserve');
+    expect(card).toContainElement(panel);
+  });
+
+  it('says a model it had listed is gone once the inventory drops it', async () => {
+    const starting: ServedModel = {
+      ...qwen,
+      readiness: 'pending',
+      phase: 'starting',
+    };
+    let servedModels = [starting];
+    mockUseServing.mockImplementation(() => ({ ...baseServing, servedModels }));
+
+    await renderSection();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show steps of model qwen3-14b' }),
+    );
+    expect(screen.getByTestId('served-model-lifecycle')).toBeInTheDocument();
+
+    // The panel moves from the model's card to below the cards, and still
+    // knows the model was there.
+    servedModels = [];
+    act(() => rerenderSection());
+
+    expect(await screen.findByTestId('served-model-gone')).toBeInTheDocument();
+    expect(screen.queryByTestId('served-model-awaited')).toBeNull();
+  });
+
+  it('gives a backend without models a card with its note instead of the empty line', async () => {
+    mockGroupsWithoutModels.mockReturnValue([
+      groupOfBackend({ installation: 'inst-1', kind: 'ollama' }),
+    ]);
+    mockUseServing.mockReturnValue({ ...baseServing, servedModels: [] });
+
+    await renderSection();
+
+    expect(
+      within(screen.getByTestId('served-models-group-inst-1/ollama')).getByText(
+        NO_MODELS_ON_BACKEND,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(NO_SERVED_MODELS)).not.toBeInTheDocument();
   });
 
   it('surfaces installations whose LLMInferenceServices could not be read', async () => {

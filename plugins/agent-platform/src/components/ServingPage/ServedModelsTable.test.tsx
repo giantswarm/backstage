@@ -7,9 +7,11 @@ import {
   columnsForRows,
   downloadLine,
   downloadPercent,
+  groupOfBackend,
   groupServedModelRows,
   memoryLine,
   memoryLineTitle,
+  NO_SERVED_MODELS,
   ServedModelDownloadRow,
   ServedModelRow,
   ServedModelsTable,
@@ -614,6 +616,32 @@ describe('ServedModelsTable · API interfaces', () => {
 });
 
 describe('ServedModelsTable', () => {
+  it('orders a backend without models among the groups, with its note in place of a table', async () => {
+    await renderTable(
+      <ServedModelsTable
+        rows={rows}
+        emptyGroups={[
+          groupOfBackend({
+            installation: 'inst-0',
+            kind: 'ollama',
+            healthy: false,
+            message: 'connection refused',
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent),
+    ).toEqual(['inst-0', 'inst-1', 'inst-2']);
+    expect(
+      within(screen.getByTestId('served-models-group-inst-0/ollama')).getByText(
+        'Not healthy: connection refused',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('grid')).toHaveLength(2);
+  });
+
   it('renders one group per installation, named when there is more than one', async () => {
     await renderTable(<ServedModelsTable rows={rows} />);
 
@@ -749,7 +777,7 @@ describe('ServedModelsTable', () => {
   it('renders the empty state without rows', async () => {
     await renderTable(<ServedModelsTable rows={[]} />);
 
-    expect(screen.getByText('No models are being served.')).toBeInTheDocument();
+    expect(screen.getByText(NO_SERVED_MODELS)).toBeInTheDocument();
     expect(screen.queryByRole('grid')).toBeNull();
   });
 

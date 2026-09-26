@@ -1,5 +1,3 @@
-export { BackendsWithoutModels } from './BackendsWithoutModels';
-export type { BackendsWithoutModelsProps } from './BackendsWithoutModels';
 export { AddModelBackendDialog } from './AddModelBackendDialog';
 export type { AddModelBackendDialogProps } from './AddModelBackendDialog';
 export { RemoveModelBackendDialog } from './RemoveModelBackendDialog';

@@ -249,6 +249,18 @@ const AssistantMessage = () => {
         <MessagePrimitive.Error>
           <ErrorPrimitive.Root className={classes.errorMessage}>
             <ErrorPrimitive.Message />
+            {/* Retries the user's last message, so nothing needs retyping. */}
+            <ActionBarPrimitive.Reload asChild>
+              <Button
+                size="small"
+                variant="outlined"
+                color="inherit"
+                startIcon={<RefreshIcon fontSize="small" />}
+                className={classes.errorRetryButton}
+              >
+                Try again
+              </Button>
+            </ActionBarPrimitive.Reload>
           </ErrorPrimitive.Root>
         </MessagePrimitive.Error>
       </div>

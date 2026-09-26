@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Content, EmptyState, Progress } from '@backstage/core-components';
+import { Content, EmptyState } from '@backstage/core-components';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import CloudDownloadIcon from '@material-ui/icons/CloudDownload';
@@ -16,7 +16,10 @@ import {
   LLMInferenceService,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  LoadingIndicator,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
@@ -68,6 +71,7 @@ import {
   isServableDownload,
   isStoppable,
   ServedModelsTable,
+  type ServedModelGroup,
   type ServedModelRow,
 } from './ServedModelsTable';
 import { StopServedModelDialog } from './StopServedModelDialog';
@@ -422,6 +426,30 @@ export function ServingPage() {
     [openedModel, rows],
   );
 
+  // Which opened model model-manager has listed: once it no longer does, its
+  // panel says it is gone rather than not there yet.
+  const [seenModel, setSeenModel] = useState<OpenedServedModel>();
+  useEffect(() => {
+    if (openedModel && openedRow) {
+      setSeenModel(openedModel);
+    }
+  }, [openedModel, openedRow]);
+
+  // The opened model's steps sit in its group's card, under the table; until
+  // its row arrives (right after Serve), or once it is gone, under the cards.
+  const lifecyclePanel = openedModel ? (
+    <ServedModelLifecyclePanel
+      opened={openedModel}
+      row={openedRow}
+      seen={
+        seenModel !== undefined && isOpenedServedModel(openedModel, seenModel)
+      }
+      onClose={closeOpenedModel}
+    />
+  ) : null;
+  const renderGroupDetail = (group: ServedModelGroup) =>
+    openedRow && group.rows.includes(openedRow) ? lifecyclePanel : null;
+
   const stoppingVia = stopping ? stopVia(stopping) : 'llminferenceservice';
 
   // The user's own RBAC matters only when the CR is deleted directly; through
@@ -520,8 +548,24 @@ export function ServingPage() {
   useProvidePageHeaderActions(headerActions);
 
   // A backend registered with a model-manager but serving nothing yet has no
-  // group in the table; it gets a row of its own so it can be removed.
-  const backendsWithoutModels = backends.renderBackendsWithoutModels(rows);
+  // rows; it gets a card of its own, in order among the others, so it can be
+  // removed.
+  const { groupsWithoutModels } = backends;
+  const emptyGroups = useMemo(
+    () => groupsWithoutModels(rows),
+    [groupsWithoutModels, rows],
+  );
+  const servedModelsTable = (
+    <ServedModelsTable
+      rows={rows}
+      emptyGroups={emptyGroups}
+      renderActions={hasActions || hasTimelines ? renderActions : undefined}
+      renderGroupActions={
+        backends.available ? backends.renderGroupActions : undefined
+      }
+      renderGroupDetail={renderGroupDetail}
+    />
+  );
 
   // The controls that bring a backend or a serving layer to an installation,
   // side by side wherever the page has nothing to show yet.
@@ -547,21 +591,24 @@ export function ServingPage() {
     !noServingLayer &&
     !serving.isLoading &&
     rows.length === 0 &&
-    !backendsWithoutModels &&
+    emptyGroups.length === 0 &&
     serving.unreachableInstallations.length === 0 &&
     installations.every(name => backendsOn(serving, name).length === 0);
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
-    emptyBody = <Progress aria-label="Looking for a serving layer" />;
+    emptyBody = <LoadingIndicator label="Looking for a serving layer" />;
   } else if (noServingLayer) {
-    emptyBody = backendsWithoutModels ?? (
-      <EmptyState
-        missing="data"
-        title="No serving layer"
-        description="None of the reachable installations has a serving layer this portal can see — KServe LLMInferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
-        action={addActions}
-      />
-    );
+    emptyBody =
+      emptyGroups.length > 0 ? (
+        servedModelsTable
+      ) : (
+        <EmptyState
+          missing="data"
+          title="No serving layer"
+          description="None of the reachable installations has a serving layer this portal can see — KServe LLMInferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
+          action={addActions}
+        />
+      );
   } else if (noBackendYet) {
     emptyBody = (
       <EmptyState
@@ -606,29 +653,11 @@ export function ServingPage() {
           <Text color="secondary">{description}</Text>
 
           {serving.isLoading && rows.length === 0 ? (
-            <Progress aria-label="Loading served models" />
+            <LoadingIndicator label="Loading served models" />
           ) : (
-            <ServedModelsTable
-              rows={rows}
-              renderActions={
-                hasActions || hasTimelines ? renderActions : undefined
-              }
-              renderGroupActions={
-                backends.available ? backends.renderGroupActions : undefined
-              }
-            />
+            servedModelsTable
           )}
-          {openedModel && (
-            <ServedModelLifecyclePanel
-              opened={openedModel}
-              row={openedRow}
-              onClose={closeOpenedModel}
-            />
-          )}
-
-          {backendsWithoutModels}
-
-          {pools.cachePanel}
+          {!openedRow && lifecyclePanel}
 
           <UnreachableInstallationsAlert
             installations={serving.unreachableInstallations}

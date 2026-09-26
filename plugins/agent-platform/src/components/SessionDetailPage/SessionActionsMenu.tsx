@@ -9,6 +9,7 @@ import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
+import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
@@ -20,26 +21,6 @@ import {
 
 /** Long enough to read one line, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
-
-/**
- * An explicit width for the menu, which is not cosmetic.
- *
- * bui gives `.bui-MenuContent` `min-width: 150px` and otherwise leaves the width
- * to the content — its own `width` fallback is the string `"undefined"`, which the
- * browser discards. A `MenuItem` is a flex row with `gap: var(--bui-space-6)`
- * (24px) between label and trailing slot, so "Delete session…" plus its icon wants
- * ~155px: just over the minimum. The popover then renders at the natural width,
- * settles back to the 150px minimum, and that second layout pass makes the browser
- * report "ResizeObserver loop completed with undelivered notifications" from
- * react-aria's popover observer — twice, on every open. Harmless (Sentry filters
- * that message by default) but it trips the dev-server error overlay, which is very
- * much not harmless to work with.
- *
- * Sizing it up front means one layout pass and no warning. Note bui applies this
- * prop as CSS `width`, despite the name, so it is the definite width — keep it
- * comfortably above the longest item rather than trimmed to fit.
- */
-const MENU_WIDTH = '12rem';
 
 /**
  * The session details page's header actions.

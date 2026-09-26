@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import {
   Alert,
   Button,
@@ -15,6 +15,7 @@ import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import {
   InfoCard,
+  LoadingIndicator,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
@@ -216,54 +217,63 @@ export function GpuNodePoolsPanel({
   });
   const openedRow = opened ? rows.find(row => row.id === opened.id) : undefined;
 
+  let body: ReactNode;
+  if (rows.length > 0) {
+    body = (
+      <Table<GpuNodePoolRow> {...tableProps} columnConfig={columnConfig} />
+    );
+  } else if (isLoading) {
+    body = <LoadingIndicator label="Reading node pools…" />;
+  } else {
+    body = (
+      <Text variant="body-medium" color="secondary">
+        No GPU node pools yet.
+      </Text>
+    );
+  }
+
   return (
-    <InfoCard title="GPU node pools">
-      <Flex direction="column" gap="3">
-        <Text as="p" variant="body-small" color="secondary">
-          The GPU pools cluster-manager created for the models served here, per
-          cluster. A pool runs nodes exactly while something is scheduled on
-          them; removing a pool that still runs nodes is refused until the
-          models on it are stopped.
-        </Text>
-        <Table<GpuNodePoolRow>
-          {...tableProps}
-          columnConfig={columnConfig}
-          emptyState={
-            <Text variant="body-medium" color="secondary">
-              {isLoading ? 'Reading node pools…' : 'No GPU node pools yet.'}
-            </Text>
-          }
-        />
-        {opened && (
-          <PoolLifecyclePanel
-            opened={opened}
-            row={openedRow}
-            serve={serve}
-            onClose={onCloseLifecycle}
-          />
-        )}
-        {notes.length > 0 && (
-          <Alert
-            status="info"
-            title="No clusters to list on some installations"
-            description={notes
-              .map(({ installation, note }) => `${installation}: ${note}`)
-              .join('; ')}
-            data-testid="cluster-api-note"
-          />
-        )}
-        {errors.length > 0 && (
-          <Alert
-            status="info"
-            title="Node pools could not be read for some installations"
-            description={errors
-              .map(({ installation, error }) =>
-                installationErrorLine(installation, error),
-              )
-              .join('; ')}
-          />
-        )}
-      </Flex>
-    </InfoCard>
+    <div data-testid="gpu-node-pools-panel">
+      <InfoCard title="GPU node pools">
+        <Flex direction="column" gap="3">
+          <Text as="p" variant="body-small" color="secondary">
+            The GPU pools cluster-manager created for the models served here,
+            per cluster. A pool runs nodes exactly while something is scheduled
+            on them; removing a pool that still runs nodes is refused until the
+            models on it are stopped.
+          </Text>
+          {body}
+          {opened && (
+            <PoolLifecyclePanel
+              opened={opened}
+              row={openedRow}
+              serve={serve}
+              onClose={onCloseLifecycle}
+            />
+          )}
+          {notes.length > 0 && (
+            <Alert
+              status="info"
+              title="No clusters to list on some installations"
+              description={notes
+                .map(({ installation, note }) => `${installation}: ${note}`)
+                .join('; ')}
+              data-testid="cluster-api-note"
+            />
+          )}
+          {errors.length > 0 && (
+            <Alert
+              status="info"
+              title="Node pools could not be read for some installations"
+              description={errors
+                .map(({ installation, error }) =>
+                  installationErrorLine(installation, error),
+                )
+                .join('; ')}
+            />
+          )}
+        </Flex>
+      </InfoCard>
+    </div>
   );
 }

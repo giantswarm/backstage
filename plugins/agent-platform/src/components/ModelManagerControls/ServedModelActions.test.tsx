@@ -7,6 +7,7 @@ import { toastApiRef } from '@backstage/frontend-plugin-api';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 import { modelManagerApiRef } from '../../apis';
 import type { ModelManagerApi } from '../../apis/ModelManagerApi';
 import {
@@ -161,6 +162,15 @@ beforeEach(() => {
 });
 
 describe('ServedModelActions', () => {
+  it('gives the menu a definite width', async () => {
+    // See MENU_WIDTH: without it the popover lays out twice and trips the
+    // browser's ResizeObserver loop warning, and the dev-server overlay with it.
+    await render(loadedWired);
+    const menu = await openMenu('qwen3.5:9b');
+
+    expect(menu.style.width).toBe(MENU_WIDTH);
+  });
+
   it('offers Load and Create model config for an unloaded, unwired model', async () => {
     await render(unloadedUnwired);
     const menu = await openMenu('qwen3:0.6b');

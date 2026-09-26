@@ -16,7 +16,10 @@ import LinkOffIcon from '@material-ui/icons/LinkOff';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
 import StopIcon from '@material-ui/icons/Stop';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  MENU_WIDTH,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   SERVED_MODEL_ACTION_LABEL,
@@ -321,7 +324,7 @@ export function ServedModelActions({
           size="small"
           isDisabled={isPending}
         />
-        <Menu>
+        <Menu maxWidth={MENU_WIDTH}>
           {entries.map(({ key, label, icon: Icon, color, run: onAction }) => (
             <MenuItem
               key={key}
