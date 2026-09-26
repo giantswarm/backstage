@@ -41,8 +41,10 @@ export type AuthProvider = {
   providerDisplayName: string;
   installationName: string;
   /**
-   * Audience requested from the cluster token broker for this installation.
-   * When set, the installation is considered fully covered by the broker.
+   * Audience requested from the muster cluster token broker for this
+   * installation. When set, the installation is considered fully covered by
+   * the broker; an installation with a Dex target
+   * (`gs.clusterTokenBroker.targets`) is covered without it.
    */
   clusterTokenAudience?: string;
 };
@@ -80,8 +82,8 @@ export type GSAuthProvidersApi = {
   getKubernetesAuthApi: (providerName: string) => Promise<AuthApi | undefined>;
   /**
    * Names of installations whose cluster access is fully covered by the token
-   * broker (broker configured, `clusterTokenAudience` set, not the main
-   * provider). These can be connected to silently -- without a per-cluster
+   * broker (a Dex target, or muster with `clusterTokenAudience` set; never
+   * the main provider). These can be connected to silently -- without a per-cluster
    * login popup -- so they are the set the global cluster-access connector
    * probes on startup.
    */

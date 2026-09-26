@@ -5,6 +5,7 @@ import {
   LoggerService,
   RootConfigService,
 } from '@backstage/backend-plugin-api';
+import { Config } from '@backstage/config';
 import { InputError, NotFoundError } from '@backstage/errors';
 
 /**
@@ -36,6 +37,49 @@ type CachedToken = {
 };
 
 /**
+ * One RFC 8693 token endpoint and the confidential client the portal
+ * authenticates to it with. `muster` is the broker behind
+ * `gs.clusterTokenBroker.tokenUrl`, `dex` an installation's own Dex under
+ * `gs.clusterTokenBroker.targets.<installation>`.
+ */
+type TokenEndpoint = {
+  kind: 'muster' | 'dex';
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+};
+
+/**
+ * A Dex that mints an installation's cluster token itself, for a portal
+ * without a muster broker. Its `connectorId` names the Dex OIDC connector
+ * that trusts the portal's main Dex issuer, and `scopes` the scope set of the
+ * issued id_token, including Dex's cross-client scope for the apiserver's
+ * client (`audience:server:client_id:<client>`).
+ */
+type DexTarget = TokenEndpoint & {
+  kind: 'dex';
+  connectorId: string;
+  scopes: string;
+};
+
+function readDexTargets(brokerConfig: Config): Map<string, DexTarget> {
+  const targetsConfig = brokerConfig.getOptionalConfig('targets');
+  const targets = new Map<string, DexTarget>();
+  for (const installation of targetsConfig?.keys() ?? []) {
+    const target = targetsConfig!.getConfig(installation);
+    targets.set(installation, {
+      kind: 'dex',
+      tokenUrl: target.getString('tokenUrl'),
+      clientId: target.getString('clientId'),
+      clientSecret: target.getString('clientSecret'),
+      connectorId: target.getString('connectorId'),
+      scopes: target.getString('scopes'),
+    });
+  }
+  return targets;
+}
+
+/**
  * Extracts the OAuth 2.0 `error` code (RFC 6749 section 5.2) from a broker
  * error response body. Returns undefined for non-JSON bodies (e.g. an HTML
  * error page from a proxy sitting in front of the broker).
@@ -61,10 +105,12 @@ export interface ClusterTokenRouterOptions {
  *
  * Given the caller's authenticated Backstage session and their main Dex ID
  * token (forwarded in the `gs-subject-token` header), it mints a short-lived
- * per-management-cluster token through the muster token broker (RFC 8693
- * token exchange) and caches it per (user, installation) with expiry-aware
- * re-exchange. Exchanged tokens are returned to the frontend as short-lived
- * credentials and are never persisted.
+ * per-management-cluster token (RFC 8693 token exchange) and caches it per
+ * (user, installation) with expiry-aware re-exchange. An installation with an
+ * entry under `gs.clusterTokenBroker.targets` is exchanged at its own Dex;
+ * every other one at the muster broker (`gs.clusterTokenBroker.tokenUrl`),
+ * when one is configured. Exchanged tokens are returned to the frontend as
+ * short-lived credentials and are never persisted.
  *
  * Returns undefined when no broker is configured (`gs.clusterTokenBroker`).
  */
@@ -78,10 +124,22 @@ export function createClusterTokenRouter(
     return undefined;
   }
 
-  const tokenUrl = brokerConfig.getString('tokenUrl');
-  const clientId = brokerConfig.getString('clientId');
-  const clientSecret = brokerConfig.getString('clientSecret');
+  const musterTokenUrl = brokerConfig.getOptionalString('tokenUrl');
+  const muster: TokenEndpoint | undefined = musterTokenUrl
+    ? {
+        kind: 'muster',
+        tokenUrl: musterTokenUrl,
+        clientId: brokerConfig.getString('clientId'),
+        clientSecret: brokerConfig.getString('clientSecret'),
+      }
+    : undefined;
   const scope = brokerConfig.getOptionalString('scope');
+  const dexTargets = readDexTargets(brokerConfig);
+  if (!muster && dexTargets.size === 0) {
+    throw new Error(
+      'gs.clusterTokenBroker needs a tokenUrl (the muster broker) or at least one entry under targets (an installation\'s own Dex)',
+    );
+  }
 
   const tokenCache = new Map<string, CachedToken>();
 
@@ -114,6 +172,14 @@ export function createClusterTokenRouter(
           .getConfig(installation)
           .getOptionalString('clusterTokenAudience') ?? installation;
 
+      const dexTarget = dexTargets.get(installation);
+      const endpoint = dexTarget ?? muster;
+      if (!endpoint) {
+        throw new NotFoundError(
+          `Installation "${installation}" has no cluster token broker target`,
+        );
+      }
+
       const subjectToken = req.header(SUBJECT_TOKEN_HEADER);
       if (!subjectToken) {
         throw new InputError(`Missing ${SUBJECT_TOKEN_HEADER} header`);
@@ -138,20 +204,30 @@ export function createClusterTokenRouter(
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         subject_token: subjectToken,
         subject_token_type: ID_TOKEN_TYPE,
-        audience,
       });
-      if (scope) {
-        params.set('scope', scope);
+      if (dexTarget) {
+        // Dex picks the upstream by connector_id and ignores `audience`; the
+        // audience of the issued id_token comes from the cross-client scope.
+        // An id_token, since Dex's default access token is opaque to the
+        // kube-apiserver.
+        params.set('connector_id', dexTarget.connectorId);
+        params.set('scope', dexTarget.scopes);
+        params.set('requested_token_type', ID_TOKEN_TYPE);
+      } else {
+        params.set('audience', audience);
+        if (scope) {
+          params.set('scope', scope);
+        }
       }
 
       let response: Response;
       try {
-        response = await fetch(tokenUrl, {
+        response = await fetch(endpoint.tokenUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             Authorization: `Basic ${Buffer.from(
-              `${clientId}:${clientSecret}`,
+              `${endpoint.clientId}:${endpoint.clientSecret}`,
             ).toString('base64')}`,
           },
           body: params.toString(),
@@ -162,6 +238,7 @@ export function createClusterTokenRouter(
         // outage into a single issue instead of one per installation.
         logger.warn('Cluster token exchange failed: token broker unreachable', {
           installation,
+          broker: endpoint.kind,
           error: String(error),
           // undici puts the actionable code (ECONNREFUSED/ENOTFOUND) on
           // error.cause; String(error) alone collapses to "TypeError: fetch
@@ -191,19 +268,21 @@ export function createClusterTokenRouter(
         // per installation.
         const meta = {
           installation,
+          broker: endpoint.kind,
           status: response.status,
           oauthError: oauthError ?? null,
           body,
         };
 
-        // OAuth `invalid_client` means the broker could not authenticate
-        // ITSELF to muster (e.g. its confidential client record was wiped),
+        // OAuth `invalid_client` means the portal could not authenticate
+        // ITSELF to the broker (e.g. its confidential client record in muster
+        // was wiped, or the Dex target's client secret is wrong),
         // not that the user's subject token was rejected. This is a broker
         // outage that hits every cluster at once and must not be reported to
         // users as an expired session. Genuinely actionable -> stays at `warn`.
         if (oauthError === 'invalid_client') {
           logger.warn(
-            'Cluster token exchange failed: broker could not authenticate to muster (invalid_client)',
+            'Cluster token exchange failed: portal could not authenticate to the broker (invalid_client)',
             meta,
           );
           res.status(502).json({
@@ -279,7 +358,7 @@ export function createClusterTokenRouter(
       if (!tokenResponse.access_token) {
         logger.warn(
           'Cluster token exchange failed: broker returned no access_token',
-          { installation },
+          { installation, broker: endpoint.kind },
         );
         res
           .status(502)
@@ -295,7 +374,9 @@ export function createClusterTokenRouter(
       });
 
       logger.debug(
-        `Minted cluster token for ${userEntityRef} on installation "${installation}" (audience "${audience}", expires in ${expiresInSeconds}s)`,
+        `Minted cluster token for ${userEntityRef} on installation "${installation}" (${
+          dexTarget ? `Dex ${dexTarget.tokenUrl}` : `audience "${audience}"`
+        }, expires in ${expiresInSeconds}s)`,
       );
 
       res.json({ token: tokenResponse.access_token, expiresInSeconds });

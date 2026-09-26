@@ -68,8 +68,9 @@ gs:
 
 ### `gs.clusterTokenBroker`
 
-Setting `tokenUrl` enables the silent per-cluster token path. Without it,
-Backstage falls back to per-cluster OIDC popups.
+Setting `tokenUrl` (muster) or at least one entry under `targets` (an
+installation's own Dex, see below) enables the silent per-cluster token path.
+Without either, Backstage falls back to per-cluster OIDC popups.
 
 ```yaml
 gs:
@@ -82,6 +83,42 @@ gs:
     # Optional. Usually unset -- the broker's per-audience config owns the scope.
     # scope: ...
 ```
+
+### Without muster: a Dex target per installation
+
+A portal whose management cluster runs no muster exchanges the main session at
+each other installation's own Dex instead. Dex implements the RFC 8693 grant
+with its `connector_id` extension: the installation's Dex needs an OIDC
+connector that trusts the portal's main Dex issuer (with `getUserInfo: false`;
+the portal's main client id as its `clientID`, the audience of the subject
+token) and a confidential client for the portal, listed in the apiserver
+client's `trustedPeers` so the cross-client scope below is granted. The issued
+token is an id_token of the installation's Dex with the apiserver's client as
+its audience, the same token a per-cluster login would have given.
+
+```yaml
+gs:
+  clusterTokenBroker:
+    # tokenUrl, clientId and clientSecret (muster) are optional once a target
+    # exists; with both, the targets win for their installations and muster
+    # serves the rest.
+    targets:
+      example-b: # an installation name under gs.installations
+        tokenUrl: https://dex.example-b.gigantic.io/token
+        # Confidential client on that Dex (backend-only).
+        clientId: ${CLUSTER_TOKEN_EXAMPLE_B_CLIENT_ID}
+        clientSecret: ${CLUSTER_TOKEN_EXAMPLE_B_CLIENT_SECRET}
+        # The Dex OIDC connector that trusts the portal's main Dex issuer.
+        connectorId: portal
+        # Scope of the issued id_token; the cross-client scope sets its
+        # audience to the apiserver's client.
+        scopes: openid email groups audience:server:client_id:dex-k8s-authenticator
+```
+
+An installation with a target is broker-covered without `clusterTokenAudience`.
+The browser learns only the installation names under `targets`; the endpoints
+and clients stay with the backend. Every field is required: a target without
+one fails the backend's startup.
 
 ### Broker-covered installations
 
