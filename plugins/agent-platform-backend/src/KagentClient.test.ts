@@ -200,6 +200,7 @@ describe('KagentClient against a fake controller', () => {
         client.listSessions({ userToken: 'nope' }),
       ).rejects.toMatchObject({
         name: 'AuthenticationError',
+        message: expect.stringContaining(': token missing or invalid'),
       });
       await expect(client.getMe({})).rejects.toMatchObject({
         name: 'AuthenticationError',
