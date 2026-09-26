@@ -372,7 +372,7 @@ describe('createClusterTokenRouter', () => {
     );
   });
   describe('with a Dex target', () => {
-    it('exchanges at the installation\'s Dex for an id_token', async () => {
+    it("exchanges at the installation's Dex for an id_token", async () => {
       const fetchSpy = mockBrokerResponse({
         access_token: 'dex-id-token',
         issued_token_type: 'urn:ietf:params:oauth:token-type:id_token',

@@ -137,7 +137,7 @@ export function createClusterTokenRouter(
   const dexTargets = readDexTargets(brokerConfig);
   if (!muster && dexTargets.size === 0) {
     throw new Error(
-      'gs.clusterTokenBroker needs a tokenUrl (the muster broker) or at least one entry under targets (an installation\'s own Dex)',
+      "gs.clusterTokenBroker needs a tokenUrl (the muster broker) or at least one entry under targets (an installation's own Dex)",
     );
   }
 
