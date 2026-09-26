@@ -491,11 +491,15 @@ describe('stream recorded on the claude Harness (kagent 1.1)', () => {
     ).toHaveLength(3);
   });
 
-  it('ends completed', () => {
+  it("ends completed with the turn's usage", () => {
     const last = events[events.length - 1];
     expect(last.kind).toBe('status-update');
-    expect(last.status).toEqual(
-      expect.objectContaining({ state: 'completed' }),
-    );
+    const status = last.status as Wire;
+    expect(status).toEqual(expect.objectContaining({ state: 'completed' }));
+    expect(readTokenUsage((status.message as Wire).metadata)).toEqual({
+      total: 71338,
+      prompt: 70958,
+      completion: 380,
+    });
   });
 });

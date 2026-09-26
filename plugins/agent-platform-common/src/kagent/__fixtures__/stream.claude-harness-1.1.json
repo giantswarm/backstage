@@ -1,14 +1,14 @@
 [
   {
     "task": {
-      "id": "01a0dd58-5af7-7327-90c0-0016a1911ad9",
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "id": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34",
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
       "history": [
         {
-          "messageId": "01a0dd58-5af6-7266-a03b-107974eba882",
-          "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+          "messageId": "01a0ddeb-0f2e-759a-b870-69cf2c8eeef9",
+          "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
           "metadata": {
-            "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:30.327198986Z"
+            "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:44.719868677Z"
           },
           "parts": [
             {
@@ -16,11 +16,11 @@
             }
           ],
           "role": "ROLE_USER",
-          "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+          "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
         }
       ],
       "metadata": {
-        "kagent.dev/a2a/task-created-at": "2026-09-26T10:52:30.327198986Z"
+        "kagent.dev/a2a/task-created-at": "2026-09-26T13:32:44.719868677Z"
       },
       "status": {
         "state": "TASK_STATE_SUBMITTED"
@@ -29,20 +29,20 @@
   },
   {
     "statusUpdate": {
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
       "status": {
         "state": "TASK_STATE_WORKING",
-        "timestamp": "2026-09-26T10:52:30.532699671Z"
+        "timestamp": "2026-09-26T13:32:44.909132123Z"
       },
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "artifact": {
-        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "artifactId": "01a0ddeb-23be-75b5-a658-ffbf0aadfb39",
         "metadata": {
-          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:34.485105554Z"
+          "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:49.98237578Z"
         },
         "parts": [
           {
@@ -50,121 +50,61 @@
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "artifactId": "01a0ddeb-23be-75b5-a658-ffbf0aadfb39",
         "parts": [
           {
-            "text": "'ll run the"
+            "text": "'ll run both"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
-        "parts": [
-          {
-            "text": " Bash command and"
-          }
-        ]
-      },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
-    }
-  },
-  {
-    "artifactUpdate": {
-      "append": true,
-      "artifact": {
-        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
-        "parts": [
-          {
-            "text": " load"
-          }
-        ]
-      },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
-    }
-  },
-  {
-    "artifactUpdate": {
-      "append": true,
-      "artifact": {
-        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
-        "parts": [
-          {
-            "text": " the `"
-          }
-        ]
-      },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
-    }
-  },
-  {
-    "artifactUpdate": {
-      "append": true,
-      "artifact": {
-        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
-        "parts": [
-          {
-            "text": "list_core_tools` schema"
-          }
-        ]
-      },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
-    }
-  },
-  {
-    "artifactUpdate": {
-      "append": true,
-      "artifact": {
-        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "artifactId": "01a0ddeb-23be-75b5-a658-ffbf0aadfb39",
         "parts": [
           {
             "text": " in"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "artifactId": "01a0ddeb-23be-75b5-a658-ffbf0aadfb39",
         "parts": [
           {
             "text": " parallel."
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "artifact": {
-        "artifactId": "01a0dd58-6f45-724f-a687-456c326ed77c",
+        "artifactId": "01a0ddeb-26f3-7175-9ba9-90590d732fb3",
         "metadata": {
-          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:35.525154325Z"
+          "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:50.803098273Z"
         },
         "parts": [
           {
@@ -173,7 +113,7 @@
                 "command": "echo hello-from-bash",
                 "description": "Echo hello-from-bash"
               },
-              "id": "toolu_01B52zWZ31kprTJBjeNLEb9k",
+              "id": "toolu_01VmADfeAxXVfwWyY7JHvYKg",
               "name": "Bash"
             },
             "metadata": {
@@ -182,22 +122,22 @@
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
       "lastChunk": true,
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "artifact": {
-        "artifactId": "01a0dd58-6fa0-78d0-b7e5-fa493443ed8f",
+        "artifactId": "01a0ddeb-272c-75cc-9542-dafed041f679",
         "metadata": {
-          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:35.616580049Z"
+          "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:50.860382271Z"
         },
         "parts": [
           {
             "data": {
-              "id": "toolu_01B52zWZ31kprTJBjeNLEb9k",
+              "id": "toolu_01VmADfeAxXVfwWyY7JHvYKg",
               "name": "Bash",
               "response": {
                 "result": "hello-from-bash"
@@ -209,17 +149,17 @@
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
       "lastChunk": true,
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "artifact": {
-        "artifactId": "01a0dd58-7172-70cb-8b39-e6980db2365d",
+        "artifactId": "01a0ddeb-2986-7e9c-9ac9-2c34aacc3564",
         "metadata": {
-          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:36.082056218Z"
+          "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:51.462961709Z"
         },
         "parts": [
           {
@@ -228,7 +168,7 @@
                 "max_results": 1,
                 "query": "select:mcp__coding-poc__list_core_tools"
               },
-              "id": "toolu_01V5AEsTFDaTzHAW3bKidJfG",
+              "id": "toolu_011tWXJpK8S5BnP8nU83SZhn",
               "name": "ToolSearch"
             },
             "metadata": {
@@ -237,22 +177,22 @@
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
       "lastChunk": true,
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "artifact": {
-        "artifactId": "01a0dd58-717a-78c8-a3da-b0c8cd38992d",
+        "artifactId": "01a0ddeb-298a-7cd7-8ee0-da68776df573",
         "metadata": {
-          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:36.09057891Z"
+          "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:51.466843121Z"
         },
         "parts": [
           {
             "data": {
-              "id": "toolu_01V5AEsTFDaTzHAW3bKidJfG",
+              "id": "toolu_011tWXJpK8S5BnP8nU83SZhn",
               "name": "ToolSearch",
               "response": {
                 "result": [
@@ -269,23 +209,23 @@
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
       "lastChunk": true,
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "artifact": {
-        "artifactId": "01a0dd58-78b7-75f5-a413-0a5cdfeeab08",
+        "artifactId": "01a0ddeb-30b3-757e-8df6-04a61198daa3",
         "metadata": {
-          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:37.943394537Z"
+          "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:53.299366005Z"
         },
         "parts": [
           {
             "data": {
               "args": {},
-              "id": "toolu_01S17e3XXYTcBT3QhGoGVcqZ",
+              "id": "toolu_01Xx1RmG4n2HYeAxCy82PCta",
               "name": "mcp__coding-poc__list_core_tools"
             },
             "metadata": {
@@ -294,22 +234,22 @@
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
       "lastChunk": true,
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "artifact": {
-        "artifactId": "01a0dd58-78ce-78ac-909b-c9b162f67b27",
+        "artifactId": "01a0ddeb-30c6-7518-8959-26afd277044a",
         "metadata": {
-          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:37.966572687Z"
+          "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:53.318335578Z"
         },
         "parts": [
           {
             "data": {
-              "id": "toolu_01S17e3XXYTcBT3QhGoGVcqZ",
+              "id": "toolu_01Xx1RmG4n2HYeAxCy82PCta",
               "name": "mcp__coding-poc__list_core_tools",
               "response": {
                 "result": [
@@ -326,508 +266,509 @@
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
       "lastChunk": true,
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "metadata": {
-          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:39.152820973Z"
+          "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:55.7124772Z"
         },
         "parts": [
           {
-            "text": "Bash"
+            "text": "The"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
-            "text": " returned"
+            "text": " Bash"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
-            "text": " `"
+            "text": " command"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
+        "parts": [
+          {
+            "text": " returned `"
+          }
+        ]
+      },
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "hello"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "-from"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "-bash`,"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": " and"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": " `"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "list"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "_core"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "_tools"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "` returned"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": " "
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "16"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": " core"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": " m"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
-            "text": "uster tools ("
+            "text": "uster"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
+        "parts": [
+          {
+            "text": " tools ("
+          }
+        ]
+      },
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "out"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
-            "text": " of 48"
+            "text": " of "
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
+        "parts": [
+          {
+            "text": "48"
+          }
+        ]
+      },
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": " total),"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": " including"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": " workflow"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": ","
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": " service"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": ", config"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": ", M"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
             "text": "CP server, events"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
-            "text": ", and"
+            "text": ", and auth management"
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "artifactUpdate": {
       "append": true,
       "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "artifactId": "01a0ddeb-3a20-773a-a721-d5b75261df31",
         "parts": [
           {
-            "text": " auth tools,"
+            "text": " tools."
           }
         ]
       },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
-    }
-  },
-  {
-    "artifactUpdate": {
-      "append": true,
-      "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
-        "parts": [
-          {
-            "text": " all"
-          }
-        ]
-      },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
-    }
-  },
-  {
-    "artifactUpdate": {
-      "append": true,
-      "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
-        "parts": [
-          {
-            "text": " read"
-          }
-        ]
-      },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
-    }
-  },
-  {
-    "artifactUpdate": {
-      "append": true,
-      "artifact": {
-        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
-        "parts": [
-          {
-            "text": "-only."
-          }
-        ]
-      },
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   },
   {
     "statusUpdate": {
-      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
       "status": {
         "message": {
-          "messageId": "01a0dd58-83ab-777b-a5e3-9d53bc20e2f7",
-          "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+          "messageId": "01a0ddeb-4052-7e3f-bfdb-88f17c0581cd",
+          "contextId": "c30d35c5-8420-4e67-8b4e-8f24964dba88",
           "metadata": {
-            "kagent.dev/a2a/part-type": "turn_usage",
-            "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:40.747499792Z",
-            "kagent_usage": {
-              "input_tokens": 9,
-              "num_turns": 4,
-              "output_tokens": 414,
-              "total_cost_usd": 0.13212075
+            "kagent.dev/a2a/timeline-position": "2026-09-26T13:32:57.298939845Z",
+            "kagent.dev/a2a/usage": {
+              "cachedContentTokenCount": 40668,
+              "candidatesTokenCount": 380,
+              "costUsd": 0.13148115,
+              "numTurns": 4,
+              "promptTokenCount": 70958,
+              "totalTokenCount": 71338
             }
           },
           "parts": [
@@ -836,12 +777,12 @@
             }
           ],
           "role": "ROLE_AGENT",
-          "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+          "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
         },
         "state": "TASK_STATE_COMPLETED",
-        "timestamp": "2026-09-26T10:52:40.747506715Z"
+        "timestamp": "2026-09-26T13:32:57.298943482Z"
       },
-      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+      "taskId": "01a0ddeb-0f2f-7d55-b0c8-9c93570dca34"
     }
   }
 ]
