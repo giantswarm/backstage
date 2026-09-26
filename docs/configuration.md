@@ -89,10 +89,10 @@ gs:
 A portal whose management cluster runs no muster exchanges the main session at
 each other installation's own Dex instead. Dex implements the RFC 8693 grant
 with its `connector_id` extension: the installation's Dex needs an OIDC
-connector that trusts the portal's main Dex issuer (with `getUserInfo: false`;
-the portal's main client id as its `clientID`, the audience of the subject
-token) and a confidential client for the portal, listed in the apiserver
-client's `trustedPeers` so the cross-client scope below is granted. The issued
+connector whose `issuer` is the portal's main Dex (`getUserInfo: false`, and
+the CA of that issuer in `rootCAs` when it is not publicly trusted) and a
+confidential client for the portal, listed in the apiserver client's
+`trustedPeers` so the cross-client scope below is granted. The issued
 token is an id_token of the installation's Dex with the apiserver's client as
 its audience, the same token a per-cluster login would have given.
 
