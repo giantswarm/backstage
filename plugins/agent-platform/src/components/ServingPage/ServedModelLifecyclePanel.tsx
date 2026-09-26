@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { Button, ButtonIcon, Flex, Text } from '@backstage/ui';
 import CloseIcon from '@material-ui/icons/Close';
@@ -67,6 +67,12 @@ export type ServedModelLifecyclePanelProps = {
   opened: OpenedServedModel;
   /** The model's row, while model-manager lists it. */
   row: ServedModelRow | undefined;
+  /**
+   * Whether model-manager has listed the model since it was opened: without a
+   * row, the difference between not there yet and gone. The page keeps it,
+   * since the panel moves between the model's card and below the cards.
+   */
+  seen: boolean;
   onClose: () => void;
 };
 
@@ -291,14 +297,9 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
 export function ServedModelLifecyclePanel({
   opened,
   row,
+  seen,
   onClose,
 }: ServedModelLifecyclePanelProps) {
-  const [seen, setSeen] = useState(false);
-  useEffect(() => {
-    if (row) {
-      setSeen(true);
-    }
-  }, [row]);
   const steps = useMemo(() => (row ? modelLifecycleSteps(row) : []), [row]);
   const phase = row ? modelPhaseLabel(row) : undefined;
   const isReady = row?.phase === 'ready' || row?.readiness === 'ready';

@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react';
+import { useState } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -8,8 +8,11 @@ import type { ModelConfigsContextValue } from '../ModelConfigsProvider';
 import type { ServedModel } from '../../lib/serving';
 import type { PullJob, PullJobs } from '../../hooks/usePullJobs';
 import {
+  groupOfBackend,
+  NO_MODELS_ON_BACKEND,
   NO_SERVED_MODELS,
   type ServedModelDownloadRow,
+  type ServedModelGroup,
 } from './ServedModelsTable';
 import {
   PageHeaderActionsProvider,
@@ -36,7 +39,7 @@ jest.mock('../GpuNodePools', () => ({
   }),
 }));
 
-const mockBackendsWithoutModels = jest.fn<ReactNode, []>(() => null);
+const mockGroupsWithoutModels = jest.fn<ServedModelGroup[], []>(() => []);
 jest.mock('../ModelBackends', () => ({
   // No model-manager the person can write to on these fleets: the controls
   // render nothing.
@@ -45,7 +48,7 @@ jest.mock('../ModelBackends', () => ({
     addButton: undefined,
     dialogs: null,
     renderGroupActions: () => null,
-    renderBackendsWithoutModels: () => mockBackendsWithoutModels(),
+    groupsWithoutModels: () => mockGroupsWithoutModels(),
   }),
 }));
 
@@ -316,8 +319,8 @@ describe('ServingPage', () => {
     mockCancelDownload.mockReset();
     mockUseMusterPluginApi.mockReset();
     mockUseMusterPluginApi.mockReturnValue(undefined);
-    mockBackendsWithoutModels.mockReset();
-    mockBackendsWithoutModels.mockReturnValue(null);
+    mockGroupsWithoutModels.mockReset();
+    mockGroupsWithoutModels.mockReturnValue([]);
     window.sessionStorage.clear();
     mockUsePullJobs.mockReturnValue(noJobs);
     mockUseServing.mockReturnValue(baseServing);
@@ -752,15 +755,43 @@ describe('ServingPage', () => {
     expect(card).toContainElement(panel);
   });
 
-  it('leaves the empty line to the backends without models', async () => {
-    mockBackendsWithoutModels.mockReturnValue(
-      <div data-testid="backends-without-models" />,
+  it('says a model it had listed is gone once the inventory drops it', async () => {
+    const starting: ServedModel = {
+      ...qwen,
+      readiness: 'pending',
+      phase: 'starting',
+    };
+    let servedModels = [starting];
+    mockUseServing.mockImplementation(() => ({ ...baseServing, servedModels }));
+
+    await renderSection();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show steps of model qwen3-14b' }),
     );
+    expect(screen.getByTestId('served-model-lifecycle')).toBeInTheDocument();
+
+    // The panel moves from the model's card to below the cards, and still
+    // knows the model was there.
+    servedModels = [];
+    act(() => rerenderSection());
+
+    expect(await screen.findByTestId('served-model-gone')).toBeInTheDocument();
+    expect(screen.queryByTestId('served-model-awaited')).toBeNull();
+  });
+
+  it('gives a backend without models a card with its note instead of the empty line', async () => {
+    mockGroupsWithoutModels.mockReturnValue([
+      groupOfBackend({ installation: 'inst-1', kind: 'ollama' }),
+    ]);
     mockUseServing.mockReturnValue({ ...baseServing, servedModels: [] });
 
     await renderSection();
 
-    expect(screen.getByTestId('backends-without-models')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('served-models-group-inst-1/ollama')).getByText(
+        NO_MODELS_ON_BACKEND,
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(NO_SERVED_MODELS)).not.toBeInTheDocument();
   });
 

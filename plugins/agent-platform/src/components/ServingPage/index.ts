@@ -6,6 +6,7 @@ export {
   downloadLine,
   downloadPercent,
   FEATURE_CHIPS,
+  groupOfBackend,
   groupServedModelRows,
   isActiveDownload,
   isDownloadRow,

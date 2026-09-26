@@ -52,7 +52,7 @@ test.describe.serial('model backends', () => {
     await expect(admin.getByText('Registered from the portal')).toBeHidden();
   });
 
-  test('a registered backend without models is listed and removed from its own row', async ({
+  test('a registered backend without models gets a card of its own and is removed from it', async ({
     admin,
   }) => {
     test.setTimeout(180_000);
@@ -73,20 +73,17 @@ test.describe.serial('model backends', () => {
     ).toBeVisible({ timeout: 30_000 });
     await dialog.getByRole('button', { name: 'Close' }).first().click();
 
-    const row = admin.getByTestId('backend-without-models-kserve');
+    const card = admin.getByTestId(
+      `served-models-group-${lab.installation}/kserve`,
+    );
     await expect(
-      row,
+      card,
       'a backend that serves nothing yet gets a card of its own',
     ).toBeVisible({ timeout: 60_000 });
-    await expect(
-      row.getByText(
-        'No models served yet — serve or pull one, or remove the backend.',
-      ),
-    ).toBeVisible();
-    await expect(row.getByText('Registered from the portal')).toBeVisible();
+    await expect(card.getByText('Registered from the portal')).toBeVisible();
 
-    await removeBackend(row, 'KServe', 'kserve', admin);
-    await expect(row, 'the row is gone').toBeHidden({ timeout: 60_000 });
+    await removeBackend(card, 'KServe', 'kserve', admin);
+    await expect(card, 'the card is gone').toBeHidden({ timeout: 60_000 });
   });
 });
 

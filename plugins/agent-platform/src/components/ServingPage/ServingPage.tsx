@@ -70,7 +70,6 @@ import {
   isDownloadRow,
   isServableDownload,
   isStoppable,
-  NO_SERVED_MODELS,
   ServedModelsTable,
   type ServedModelGroup,
   type ServedModelRow,
@@ -427,12 +426,24 @@ export function ServingPage() {
     [openedModel, rows],
   );
 
+  // Which opened model model-manager has listed: once it no longer does, its
+  // panel says it is gone rather than not there yet.
+  const [seenModel, setSeenModel] = useState<OpenedServedModel>();
+  useEffect(() => {
+    if (openedModel && openedRow) {
+      setSeenModel(openedModel);
+    }
+  }, [openedModel, openedRow]);
+
   // The opened model's steps sit in its group's card, under the table; until
   // its row arrives (right after Serve), or once it is gone, under the cards.
   const lifecyclePanel = openedModel ? (
     <ServedModelLifecyclePanel
       opened={openedModel}
       row={openedRow}
+      seen={
+        seenModel !== undefined && isOpenedServedModel(openedModel, seenModel)
+      }
       onClose={closeOpenedModel}
     />
   ) : null;
@@ -537,8 +548,24 @@ export function ServingPage() {
   useProvidePageHeaderActions(headerActions);
 
   // A backend registered with a model-manager but serving nothing yet has no
-  // group in the table; it gets a row of its own so it can be removed.
-  const backendsWithoutModels = backends.renderBackendsWithoutModels(rows);
+  // rows; it gets a card of its own, in order among the others, so it can be
+  // removed.
+  const { groupsWithoutModels } = backends;
+  const emptyGroups = useMemo(
+    () => groupsWithoutModels(rows),
+    [groupsWithoutModels, rows],
+  );
+  const servedModelsTable = (
+    <ServedModelsTable
+      rows={rows}
+      emptyGroups={emptyGroups}
+      renderActions={hasActions || hasTimelines ? renderActions : undefined}
+      renderGroupActions={
+        backends.available ? backends.renderGroupActions : undefined
+      }
+      renderGroupDetail={renderGroupDetail}
+    />
+  );
 
   // The controls that bring a backend or a serving layer to an installation,
   // side by side wherever the page has nothing to show yet.
@@ -564,21 +591,24 @@ export function ServingPage() {
     !noServingLayer &&
     !serving.isLoading &&
     rows.length === 0 &&
-    !backendsWithoutModels &&
+    emptyGroups.length === 0 &&
     serving.unreachableInstallations.length === 0 &&
     installations.every(name => backendsOn(serving, name).length === 0);
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
     emptyBody = <LoadingIndicator label="Looking for a serving layer" />;
   } else if (noServingLayer) {
-    emptyBody = backendsWithoutModels ?? (
-      <EmptyState
-        missing="data"
-        title="No serving layer"
-        description="None of the reachable installations has a serving layer this portal can see — KServe LLMInferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
-        action={addActions}
-      />
-    );
+    emptyBody =
+      emptyGroups.length > 0 ? (
+        servedModelsTable
+      ) : (
+        <EmptyState
+          missing="data"
+          title="No serving layer"
+          description="None of the reachable installations has a serving layer this portal can see — KServe LLMInferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
+          action={addActions}
+        />
+      );
   } else if (noBackendYet) {
     emptyBody = (
       <EmptyState
@@ -589,30 +619,6 @@ export function ServingPage() {
         )} is running with no backend registered, so nothing is served here yet. Register a backend you already run — Ollama, LM Studio, Lemonade or KServe — and its models appear on this page; a GPU node pool brings model serving to a cluster along with the capacity for it.`}
         action={addActions}
       />
-    );
-  }
-
-  // A registered backend without models says so in its own row, so the
-  // empty line would only repeat it.
-  let servedModelsBody: ReactNode;
-  if (rows.length > 0) {
-    servedModelsBody = (
-      <ServedModelsTable
-        rows={rows}
-        renderActions={hasActions || hasTimelines ? renderActions : undefined}
-        renderGroupActions={
-          backends.available ? backends.renderGroupActions : undefined
-        }
-        renderGroupDetail={renderGroupDetail}
-      />
-    );
-  } else if (serving.isLoading) {
-    servedModelsBody = <LoadingIndicator label="Loading served models" />;
-  } else if (!backendsWithoutModels) {
-    servedModelsBody = (
-      <Text variant="body-medium" color="secondary">
-        {NO_SERVED_MODELS}
-      </Text>
     );
   }
 
@@ -646,9 +652,12 @@ export function ServingPage() {
         <Flex direction="column" gap="3">
           <Text color="secondary">{description}</Text>
 
-          {servedModelsBody}
+          {serving.isLoading && rows.length === 0 ? (
+            <LoadingIndicator label="Loading served models" />
+          ) : (
+            servedModelsTable
+          )}
           {!openedRow && lifecyclePanel}
-          {backendsWithoutModels}
 
           <UnreachableInstallationsAlert
             installations={serving.unreachableInstallations}
