@@ -1,0 +1,847 @@
+[
+  {
+    "task": {
+      "id": "01a0dd58-5af7-7327-90c0-0016a1911ad9",
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "history": [
+        {
+          "messageId": "01a0dd58-5af6-7266-a03b-107974eba882",
+          "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+          "metadata": {
+            "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:30.327198986Z"
+          },
+          "parts": [
+            {
+              "text": "Run `echo hello-from-bash` with Bash, then call the muster tool list_core_tools once, then answer in one sentence with both results."
+            }
+          ],
+          "role": "ROLE_USER",
+          "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+        }
+      ],
+      "metadata": {
+        "kagent.dev/a2a/task-created-at": "2026-09-26T10:52:30.327198986Z"
+      },
+      "status": {
+        "state": "TASK_STATE_SUBMITTED"
+      }
+    }
+  },
+  {
+    "statusUpdate": {
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "status": {
+        "state": "TASK_STATE_WORKING",
+        "timestamp": "2026-09-26T10:52:30.532699671Z"
+      },
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "artifact": {
+        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "metadata": {
+          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:34.485105554Z"
+        },
+        "parts": [
+          {
+            "text": "I"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "parts": [
+          {
+            "text": "'ll run the"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "parts": [
+          {
+            "text": " Bash command and"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "parts": [
+          {
+            "text": " load"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "parts": [
+          {
+            "text": " the `"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "parts": [
+          {
+            "text": "list_core_tools` schema"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "parts": [
+          {
+            "text": " in"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-6b35-718d-add9-d7e71319643c",
+        "parts": [
+          {
+            "text": " parallel."
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "artifact": {
+        "artifactId": "01a0dd58-6f45-724f-a687-456c326ed77c",
+        "metadata": {
+          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:35.525154325Z"
+        },
+        "parts": [
+          {
+            "data": {
+              "args": {
+                "command": "echo hello-from-bash",
+                "description": "Echo hello-from-bash"
+              },
+              "id": "toolu_01B52zWZ31kprTJBjeNLEb9k",
+              "name": "Bash"
+            },
+            "metadata": {
+              "kagent.dev/a2a/part-type": "function_call"
+            }
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "lastChunk": true,
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "artifact": {
+        "artifactId": "01a0dd58-6fa0-78d0-b7e5-fa493443ed8f",
+        "metadata": {
+          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:35.616580049Z"
+        },
+        "parts": [
+          {
+            "data": {
+              "id": "toolu_01B52zWZ31kprTJBjeNLEb9k",
+              "name": "Bash",
+              "response": {
+                "result": "hello-from-bash"
+              }
+            },
+            "metadata": {
+              "kagent.dev/a2a/part-type": "function_response"
+            }
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "lastChunk": true,
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "artifact": {
+        "artifactId": "01a0dd58-7172-70cb-8b39-e6980db2365d",
+        "metadata": {
+          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:36.082056218Z"
+        },
+        "parts": [
+          {
+            "data": {
+              "args": {
+                "max_results": 1,
+                "query": "select:mcp__coding-poc__list_core_tools"
+              },
+              "id": "toolu_01V5AEsTFDaTzHAW3bKidJfG",
+              "name": "ToolSearch"
+            },
+            "metadata": {
+              "kagent.dev/a2a/part-type": "function_call"
+            }
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "lastChunk": true,
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "artifact": {
+        "artifactId": "01a0dd58-717a-78c8-a3da-b0c8cd38992d",
+        "metadata": {
+          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:36.09057891Z"
+        },
+        "parts": [
+          {
+            "data": {
+              "id": "toolu_01V5AEsTFDaTzHAW3bKidJfG",
+              "name": "ToolSearch",
+              "response": {
+                "result": [
+                  {
+                    "tool_name": "mcp__coding-poc__list_core_tools",
+                    "type": "tool_reference"
+                  }
+                ]
+              }
+            },
+            "metadata": {
+              "kagent.dev/a2a/part-type": "function_response"
+            }
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "lastChunk": true,
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "artifact": {
+        "artifactId": "01a0dd58-78b7-75f5-a413-0a5cdfeeab08",
+        "metadata": {
+          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:37.943394537Z"
+        },
+        "parts": [
+          {
+            "data": {
+              "args": {},
+              "id": "toolu_01S17e3XXYTcBT3QhGoGVcqZ",
+              "name": "mcp__coding-poc__list_core_tools"
+            },
+            "metadata": {
+              "kagent.dev/a2a/part-type": "function_call"
+            }
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "lastChunk": true,
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "artifact": {
+        "artifactId": "01a0dd58-78ce-78ac-909b-c9b162f67b27",
+        "metadata": {
+          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:37.966572687Z"
+        },
+        "parts": [
+          {
+            "data": {
+              "id": "toolu_01S17e3XXYTcBT3QhGoGVcqZ",
+              "name": "mcp__coding-poc__list_core_tools",
+              "response": {
+                "result": [
+                  {
+                    "text": "{\n  \"filters\": {\n    \"pattern\": \"core*\",\n    \"case_sensitive\": false,\n    \"include_schema\": true,\n    \"limit\": 0,\n    \"offset\": 0\n  },\n  \"total_tools\": 48,\n  \"filtered_count\": 16,\n  \"total\": 16,\n  \"truncated\": false,\n  \"tools\": [\n    {\n      \"name\": \"core_workflow_list\",\n      \"description\": \"List all workflows\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"include_system\": {\n            \"default\": true,\n            \"description\": \"Include system-defined workflows\",\n            \"type\": \"boolean\"\n          }\n        },\n        \"required\": [],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_workflow_get\",\n      \"description\": \"Get workflow details\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"name\": {\n            \"description\": \"Name of the workflow\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"name\"\n        ],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_workflow_validate\",\n      \"description\": \"Validate a workflow definition\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"args\": {\n            \"additionalProperties\": {\n              \"additionalProperties\": false,\n              \"description\": \"Argument definition with validation rules\",\n              \"properties\": {\n                \"default\": {\n                  \"description\": \"Default value if argument is not provided\"\n                },\n                \"description\": {\n                  \"description\": \"Human-readable documentation for this argument\",\n                  \"type\": \"string\"\n                },\n                \"required\": {\n                  \"description\": \"Whether this argument is required\",\n                  \"type\": \"boolean\"\n                },\n                \"type\": {\n                  \"description\": \"Expected data type for validation\",\n                  \"enum\": [\n                    \"string\",\n                    \"integer\",\n                    \"boolean\",\n                    \"number\",\n                    \"object\",\n                    \"array\"\n                  ],\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"type\"\n              ],\n              \"type\": \"object\"\n            },\n            \"description\": \"Workflow arguments definition\",\n            \"type\": \"object\"\n          },\n          \"description\": {\n            \"description\": \"Description of the workflow\",\n            \"type\": \"string\"\n          },\n          \"name\": {\n            \"description\": \"Name of the workflow\",\n            \"type\": \"string\"\n          },\n          \"onFailure\": {\n            \"description\": \"Cleanup/rollback steps run when the workflow fails\",\n            \"items\": {\n              \"additionalProperties\": false,\n              \"description\": \"A tool-call sub-step\",\n              \"properties\": {\n                \"allowFailure\": {\n                  \"description\": \"Whether this sub-step is allowed to fail\",\n                  \"type\": \"boolean\"\n                },\n                \"args\": {\n                  \"description\": \"Arguments to pass to the tool (supports templating)\",\n                  \"type\": \"object\"\n                },\n                \"condition\": {\n                  \"additionalProperties\": false,\n                  \"description\": \"Optional condition that determines whether this step should execute. Set exactly one of template, tool, or fromStep; a tool/fromStep condition requires expect or expectNot.\",\n                  \"properties\": {\n                    \"args\": {\n                      \"description\": \"Arguments for the condition tool\",\n                      \"type\": \"object\"\n                    },\n                    \"expect\": {\n                      \"description\": \"Expected results for condition evaluation\",\n                      \"properties\": {\n                        \"jsonPath\": {\n                          \"additionalProperties\": {\n                            \"description\": \"Expected value for the JSON path\"\n                          },\n                          \"description\": \"JSON path expressions to evaluate against tool result\",\n                          \"type\": \"object\"\n                        },\n                        \"success\": {\n                          \"description\": \"Whether the tool call should succeed\",\n                          \"type\": \"boolean\"\n                        }\n                      },\n                      \"type\": \"object\"\n                    },\n                    \"expectNot\": {\n                      \"description\": \"Negated expected results for condition evaluation\",\n                      \"type\": \"object\"\n                    },\n                    \"fromStep\": {\n                      \"description\": \"Reference a previous step's result for condition evaluation\",\n                      \"type\": \"string\"\n                    },\n                    \"template\": {\n                      \"description\": \"Boolean Go-template gate, e.g. \\\"{{ eq .input.env \\\\\\\"production\\\\\\\" }}\\\"\",\n                      \"type\": \"string\"\n                    },\n                    \"tool\": {\n                      \"description\": \"Tool to call for condition evaluation\",\n                      \"type\": \"string\"\n                    }\n                  },\n                  \"type\": \"object\"\n                },\n                \"description\": {\n                  \"description\": \"Human-readable documentation for this sub-step\",\n                  \"type\": \"string\"\n                },\n                \"id\": {\n                  \"description\": \"Unique identifier for this sub-step\",\n                  \"type\": \"string\"\n                },\n                \"output\": {\n                  \"description\": \"Whether this sub-step's result is included in the returned document. Results are always referenceable by later steps regardless of this flag.\",\n                  \"type\": \"boolean\"\n                },\n                \"store\": {\n                  \"description\": \"Deprecated alias for output; kept for backwards compatibility\",\n                  \"type\": \"boolean\"\n                },\n                \"tool\": {\n                  \"description\": \"Name of the tool to execute\",\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"id\",\n                \"tool\"\n              ],\n              \"type\": \"object\"\n            },\n            \"type\": \"array\"\n          },\n          \"output\": {\n            \"additionalProperties\": true,\n            \"description\": \"Optional output template that shapes the returned document\",\n            \"type\": \"object\"\n          },\n          \"steps\": {\n            \"description\": \"Workflow steps\",\n            \"items\": {\n              \"additionalProperties\": false,\n              \"description\": \"Individual workflow step configuration\",\n              \"properties\": {\n                \"allowFailure\": {\n                  \"description\": \"Whether this step is allowed to fail without failing the workflow. On a forEach or parallel step this tolerates a failure of the whole group.\",\n                  \"type\": \"boolean\"\n                },\n                \"args\": {\n                  \"description\": \"Arguments to pass to the tool, supporting templating with {{.input.argName}} for workflow args and {{.results.stepId.field}} for stored step results\",\n                  \"type\": \"object\"\n                },\n                \"condition\": {\n                  \"additionalProperties\": false,\n                  \"description\": \"Optional condition that determines whether this step should execute. Set exactly one of template, tool, or fromStep; a tool/fromStep condition requires expect or expectNot.\",\n                  \"properties\": {\n                    \"args\": {\n                      \"description\": \"Arguments for the condition tool\",\n                      \"type\": \"object\"\n                    },\n                    \"expect\": {\n                      \"description\": \"Expected results for condition evaluation\",\n                      \"properties\": {\n                        \"jsonPath\": {\n                          \"additionalProperties\": {\n                            \"description\": \"Expected value for the JSON path\"\n                          },\n                          \"description\": \"JSON path expressions to evaluate against tool result\",\n                          \"type\": \"object\"\n                        },\n                        \"success\": {\n                          \"description\": \"Whether the tool call should succeed\",\n                          \"type\": \"boolean\"\n                        }\n                      },\n                      \"type\": \"object\"\n                    },\n                    \"expectNot\": {\n                      \"description\": \"Negated expected results for condition evaluation\",\n                      \"type\": \"object\"\n                    },\n                    \"fromStep\": {\n                      \"description\": \"Reference a previous step's result for condition evaluation\",\n                      \"type\": \"string\"\n                    },\n                    \"template\": {\n                      \"description\": \"Boolean Go-template gate, e.g. \\\"{{ eq .input.env \\\\\\\"production\\\\\\\" }}\\\"\",\n                      \"type\": \"string\"\n                    },\n                    \"tool\": {\n                      \"description\": \"Tool to call for condition evaluation\",\n                      \"type\": \"string\"\n                    }\n                  },\n                  \"type\": \"object\"\n                },\n                \"description\": {\n                  \"description\": \"Human-readable documentation for this step's purpose\",\n                  \"type\": \"string\"\n                },\n                \"forEach\": {\n                  \"additionalProperties\": false,\n                  \"description\": \"Run a body of sub-steps once per item of a list\",\n                  \"properties\": {\n                    \"as\": {\n                      \"description\": \"Loop variable name exposed as {{ .vars.\\u003cas\\u003e }} (default \\\"item\\\")\",\n                      \"type\": \"string\"\n                    },\n                    \"items\": {\n                      \"description\": \"Template expression resolving to a list, e.g. \\\"{{ .input.clusters }}\\\"\",\n                      \"type\": \"string\"\n                    },\n                    \"steps\": {\n                      \"description\": \"Body executed for each item\",\n                      \"items\": {\n                        \"additionalProperties\": false,\n                        \"description\": \"A tool-call sub-step\",\n                        \"properties\": {\n                          \"allowFailure\": {\n                            \"description\": \"Whether this sub-step is allowed to fail\",\n                            \"type\": \"boolean\"\n                          },\n                          \"args\": {\n                            \"description\": \"Arguments to pass to the tool (supports templating)\",\n                            \"type\": \"object\"\n                          },\n                          \"condition\": {\n                            \"additionalProperties\": false,\n                            \"description\": \"Optional condition that determines whether this step should execute. Set exactly one of template, tool, or fromStep; a tool/fromStep condition requires expect or expectNot.\",\n                            \"properties\": {\n                              \"args\": {\n                                \"description\": \"Arguments for the condition tool\",\n                                \"type\": \"object\"\n                              },\n                              \"expect\": {\n                                \"description\": \"Expected results for condition evaluation\",\n                                \"properties\": {\n                                  \"jsonPath\": {\n                                    \"additionalProperties\": {\n                                      \"description\": \"Expected value for the JSON path\"\n                                    },\n                                    \"description\": \"JSON path expressions to evaluate against tool result\",\n                                    \"type\": \"object\"\n                                  },\n                                  \"success\": {\n                                    \"description\": \"Whether the tool call should succeed\",\n                                    \"type\": \"boolean\"\n                                  }\n                                },\n                                \"type\": \"object\"\n                              },\n                              \"expectNot\": {\n                                \"description\": \"Negated expected results for condition evaluation\",\n                                \"type\": \"object\"\n                              },\n                              \"fromStep\": {\n                                \"description\": \"Reference a previous step's result for condition evaluation\",\n                                \"type\": \"string\"\n                              },\n                              \"template\": {\n                                \"description\": \"Boolean Go-template gate, e.g. \\\"{{ eq .input.env \\\\\\\"production\\\\\\\" }}\\\"\",\n                                \"type\": \"string\"\n                              },\n                              \"tool\": {\n                                \"description\": \"Tool to call for condition evaluation\",\n                                \"type\": \"string\"\n                              }\n                            },\n                            \"type\": \"object\"\n                          },\n                          \"description\": {\n                            \"description\": \"Human-readable documentation for this sub-step\",\n                            \"type\": \"string\"\n                          },\n                          \"id\": {\n                            \"description\": \"Unique identifier for this sub-step\",\n                            \"type\": \"string\"\n                          },\n                          \"output\": {\n                            \"description\": \"Whether this sub-step's result is included in the returned document. Results are always referenceable by later steps regardless of this flag.\",\n                            \"type\": \"boolean\"\n                          },\n                          \"store\": {\n                            \"description\": \"Deprecated alias for output; kept for backwards compatibility\",\n                            \"type\": \"boolean\"\n                          },\n                          \"tool\": {\n                            \"description\": \"Name of the tool to execute\",\n                            \"type\": \"string\"\n                          }\n                        },\n                        \"required\": [\n                          \"id\",\n                          \"tool\"\n                        ],\n                        \"type\": \"object\"\n                      },\n                      \"minItems\": 1,\n                      \"type\": \"array\"\n                    }\n                  },\n                  \"required\": [\n                    \"items\",\n                    \"steps\"\n                  ],\n                  \"type\": \"object\"\n                },\n                \"id\": {\n                  \"description\": \"Unique identifier for this step within the workflow\",\n                  \"type\": \"string\"\n                },\n                \"output\": {\n                  \"description\": \"Whether this step's result is included in the workflow's returned document. Every step result is always referenceable by later steps via {{.results.stepId.field}} regardless of this flag.\",\n                  \"type\": \"boolean\"\n                },\n                \"parallel\": {\n                  \"description\": \"Sub-steps to execute concurrently (mutually exclusive with tool/forEach)\",\n                  \"items\": {\n                    \"additionalProperties\": false,\n                    \"description\": \"A tool-call sub-step\",\n                    \"properties\": {\n                      \"allowFailure\": {\n                        \"description\": \"Whether this sub-step is allowed to fail\",\n                        \"type\": \"boolean\"\n                      },\n                      \"args\": {\n                        \"description\": \"Arguments to pass to the tool (supports templating)\",\n                        \"type\": \"object\"\n                      },\n                      \"condition\": {\n                        \"additionalProperties\": false,\n                        \"description\": \"Optional condition that determines whether this step should execute. Set exactly one of template, tool, or fromStep; a tool/fromStep condition requires expect or expectNot.\",\n                        \"properties\": {\n                          \"args\": {\n                            \"description\": \"Arguments for the condition tool\",\n                            \"type\": \"object\"\n                          },\n                          \"expect\": {\n                            \"description\": \"Expected results for condition evaluation\",\n                            \"properties\": {\n                              \"jsonPath\": {\n                                \"additionalProperties\": {\n                                  \"description\": \"Expected value for the JSON path\"\n                                },\n                                \"description\": \"JSON path expressions to evaluate against tool result\",\n                                \"type\": \"object\"\n                              },\n                              \"success\": {\n                                \"description\": \"Whether the tool call should succeed\",\n                                \"type\": \"boolean\"\n                              }\n                            },\n                            \"type\": \"object\"\n                          },\n                          \"expectNot\": {\n                            \"description\": \"Negated expected results for condition evaluation\",\n                            \"type\": \"object\"\n                          },\n                          \"fromStep\": {\n                            \"description\": \"Reference a previous step's result for condition evaluation\",\n                            \"type\": \"string\"\n                          },\n                          \"template\": {\n                            \"description\": \"Boolean Go-template gate, e.g. \\\"{{ eq .input.env \\\\\\\"production\\\\\\\" }}\\\"\",\n                            \"type\": \"string\"\n                          },\n                          \"tool\": {\n                            \"description\": \"Tool to call for condition evaluation\",\n                            \"type\": \"string\"\n                          }\n                        },\n                        \"type\": \"object\"\n                      },\n                      \"description\": {\n                        \"description\": \"Human-readable documentation for this sub-step\",\n                        \"type\": \"string\"\n                      },\n                      \"id\": {\n                        \"description\": \"Unique identifier for this sub-step\",\n                        \"type\": \"string\"\n                      },\n                      \"output\": {\n                        \"description\": \"Whether this sub-step's result is included in the returned document. Results are always referenceable by later steps regardless of this flag.\",\n                        \"type\": \"boolean\"\n                      },\n                      \"store\": {\n                        \"description\": \"Deprecated alias for output; kept for backwards compatibility\",\n                        \"type\": \"boolean\"\n                      },\n                      \"tool\": {\n                        \"description\": \"Name of the tool to execute\",\n                        \"type\": \"string\"\n                      }\n                    },\n                    \"required\": [\n                      \"id\",\n                      \"tool\"\n                    ],\n                    \"type\": \"object\"\n                  },\n                  \"minItems\": 1,\n                  \"type\": \"array\"\n                },\n                \"store\": {\n                  \"description\": \"Deprecated alias for output; kept for backwards compatibility\",\n                  \"type\": \"boolean\"\n                },\n                \"tool\": {\n                  \"description\": \"Name of the tool to execute for this step (mutually exclusive with forEach/parallel)\",\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"id\"\n              ],\n              \"type\": \"object\"\n            },\n            \"minItems\": 1,\n            \"type\": \"array\"\n          }\n        },\n        \"required\": [\n          \"name\",\n          \"steps\"\n        ],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_workflow_available\",\n      \"description\": \"Check if a workflow is available\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"name\": {\n            \"description\": \"Name of the workflow\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"name\"\n        ],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_workflow_execution_list\",\n      \"description\": \"List workflow executions\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"limit\": {\n            \"default\": 50,\n            \"description\": \"Maximum number of executions to return\",\n            \"type\": \"number\"\n          },\n          \"offset\": {\n            \"default\": 0,\n            \"description\": \"Number of executions to skip\",\n            \"type\": \"number\"\n          },\n          \"status\": {\n            \"description\": \"Filter by execution status\",\n            \"type\": \"string\"\n          },\n          \"workflow_name\": {\n            \"description\": \"Filter by workflow name\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_workflow_execution_get\",\n      \"description\": \"Get workflow execution details\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"execution_id\": {\n            \"description\": \"ID of the execution\",\n            \"type\": \"string\"\n          },\n          \"include_steps\": {\n            \"default\": true,\n            \"description\": \"Include step details\",\n            \"type\": \"boolean\"\n          },\n          \"step_id\": {\n            \"description\": \"Get specific step details\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"execution_id\"\n        ],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_service_list\",\n      \"description\": \"List all services with their current status\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {},\n        \"required\": [],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_service_status\",\n      \"description\": \"Get status of a specific service\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"name\": {\n            \"description\": \"Service name to get status for\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"name\"\n        ],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_config_get\",\n      \"description\": \"Get the current muster configuration\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {},\n        \"required\": [],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_config_get_aggregator\",\n      \"description\": \"Get aggregator configuration\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {},\n        \"required\": [],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_mcpserver_list\",\n      \"description\": \"List all MCP server definitions with their status. By default, unreachable servers are hidden.\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"showAll\": {\n            \"description\": \"Show all servers including unreachable ones (default: false)\",\n            \"type\": \"boolean\"\n          },\n          \"verbose\": {\n            \"description\": \"Show detailed error information for failed/unreachable servers (default: false)\",\n            \"type\": \"boolean\"\n          }\n        },\n        \"required\": [],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_mcpserver_get\",\n      \"description\": \"Get detailed information about a specific MCP server definition\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"name\": {\n            \"description\": \"Name of the MCP server to retrieve\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"name\"\n        ],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_mcpserver_validate\",\n      \"description\": \"Validate an mcpserver definition\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"args\": {\n            \"description\": \"Command arguments (stdio only)\",\n            \"items\": {\n              \"type\": \"string\"\n            },\n            \"type\": \"array\"\n          },\n          \"auth\": {\n            \"description\": \"Authentication configuration for remote servers\",\n            \"properties\": {\n              \"authorizationServer\": {\n                \"description\": \"Pins the OAuth authorization server when the MCP server does not publish RFC 9728 Protected Resource Metadata; skips PRM probing. With authorizationEndpoint/tokenEndpoint, clientCredentialsSecretRef and grantScope it also describes an authorization server muster cannot discover or register with (GitHub).\",\n                \"properties\": {\n                  \"authorizationEndpoint\": {\n                    \"description\": \"Authorization endpoint of an authorization server without an RFC 8414 discovery document; set together with tokenEndpoint (muster then performs no discovery and assumes S256 PKCE)\",\n                    \"type\": \"string\"\n                  },\n                  \"clientCredentialsSecretRef\": {\n                    \"description\": \"Secret holding a client registered with the authorization server out of band (a GitHub App or OAuth App); used instead of muster's CIMD URL or a dynamic registration\",\n                    \"properties\": {\n                      \"clientIdKey\": {\n                        \"description\": \"Secret key holding the client ID (default: client-id)\",\n                        \"type\": \"string\"\n                      },\n                      \"clientSecretKey\": {\n                        \"description\": \"Secret key holding the client secret (default: client-secret)\",\n                        \"type\": \"string\"\n                      },\n                      \"name\": {\n                        \"description\": \"Name of the Kubernetes Secret\",\n                        \"type\": \"string\"\n                      },\n                      \"namespace\": {\n                        \"description\": \"Namespace of the Secret (defaults to the MCPServer's namespace)\",\n                        \"type\": \"string\"\n                      }\n                    },\n                    \"required\": [\n                      \"name\"\n                    ],\n                    \"type\": \"object\"\n                  },\n                  \"expectedIssuer\": {\n                    \"description\": \"Issuer identifier the authorization server puts in the RFC 9207 iss parameter of its authorization responses when that differs from issuer, which stays the identity the grants are filed under (two GitHub Apps: each pinned under https://github.com/apps/\\u003cslug\\u003e with expectedIssuer https://github.com/login/oauth); needs authorizationEndpoint and tokenEndpoint; default: issuer\",\n                    \"type\": \"string\"\n                  },\n                  \"grantScope\": {\n                    \"description\": \"Whom a token from this authorization server belongs to: session (default; bound to the login session that obtained it) or subject (filed under the person's identity too, so any later session of the same person reuses it until core_auth_logout on this server or sign out everywhere)\",\n                    \"enum\": [\n                      \"session\",\n                      \"subject\"\n                    ],\n                    \"type\": \"string\"\n                  },\n                  \"issuer\": {\n                    \"description\": \"OAuth 2.0 / OIDC issuer URL (HTTPS, no trailing slash) of the authorization server the sign-in runs against and the grants are filed under; takes precedence over the one the endpoint's RFC 9728 metadata names\",\n                    \"type\": \"string\"\n                  },\n                  \"scopes\": {\n                    \"description\": \"OAuth scope parameter value (space-separated scope tokens)\",\n                    \"type\": \"string\"\n                  },\n                  \"tokenEndpoint\": {\n                    \"description\": \"Token endpoint of an authorization server without an RFC 8414 discovery document; set together with authorizationEndpoint\",\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [\n                  \"issuer\"\n                ],\n                \"type\": \"object\"\n              },\n              \"forwardIdentity\": {\n                \"description\": \"Send the session's ID token in the X-Muster-Id-Token header next to the pinned grant (needs type oauth and authorizationServer); like forwardToken, the token is not audience-scoped to the server\",\n                \"type\": \"boolean\"\n              },\n              \"forwardToken\": {\n                \"description\": \"Enable SSO token forwarding (oauth only)\",\n                \"type\": \"boolean\"\n              },\n              \"requiredAudiences\": {\n                \"description\": \"Additional audiences to request from IdP for token or identity forwarding (e.g., dex-k8s-authenticator for Kubernetes OIDC)\",\n                \"items\": {\n                  \"type\": \"string\"\n                },\n                \"type\": \"array\"\n              },\n              \"sigv4\": {\n                \"description\": \"AWS Signature Version 4 request signing, using muster's own machine identity. Required when type is sigv4, and rejected otherwise. Only valid with type streamable-http.\",\n                \"properties\": {\n                  \"region\": {\n                    \"description\": \"SigV4 signing region; must match the region in the server URL\",\n                    \"type\": \"string\"\n                  },\n                  \"roleArn\": {\n                    \"description\": \"IAM role assumed from the pod's base credentials before signing; empty signs as the pod's own identity\",\n                    \"type\": \"string\"\n                  },\n                  \"service\": {\n                    \"description\": \"SigV4 signing service name; defaults to the first hostname label of the server URL\",\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [\n                  \"region\"\n                ],\n                \"type\": \"object\"\n              },\n              \"tokenExchange\": {\n                \"description\": \"RFC 8693 Token Exchange for cross-cluster SSO; exchanges muster's local token for one issued by the remote cluster's IdP (takes precedence over forwardToken)\",\n                \"properties\": {\n                  \"clientCredentialsSecretRef\": {\n                    \"description\": \"Kubernetes Secret with client credentials for the remote Dex token endpoint\",\n                    \"properties\": {\n                      \"clientIdKey\": {\n                        \"description\": \"Key in the secret containing the client ID (default: client-id)\",\n                        \"type\": \"string\"\n                      },\n                      \"clientSecretKey\": {\n                        \"description\": \"Key in the secret containing the client secret (default: client-secret)\",\n                        \"type\": \"string\"\n                      },\n                      \"name\": {\n                        \"description\": \"Secret name\",\n                        \"type\": \"string\"\n                      },\n                      \"namespace\": {\n                        \"description\": \"Secret namespace (defaults to the MCPServer's namespace)\",\n                        \"type\": \"string\"\n                      }\n                    },\n                    \"required\": [\n                      \"name\"\n                    ],\n                    \"type\": \"object\"\n                  },\n                  \"connectorId\": {\n                    \"description\": \"ID of the OIDC connector on the remote Dex that trusts the local Dex (required when enabled)\",\n                    \"type\": \"string\"\n                  },\n                  \"dexTokenEndpoint\": {\n                    \"description\": \"URL of the remote cluster's Dex token endpoint (required when enabled)\",\n                    \"type\": \"string\"\n                  },\n                  \"enabled\": {\n                    \"description\": \"Whether token exchange should be attempted\",\n                    \"type\": \"boolean\"\n                  },\n                  \"expectedIssuer\": {\n                    \"description\": \"Expected issuer URL in the exchanged token's iss claim; derived from dexTokenEndpoint if not set\",\n                    \"type\": \"string\"\n                  },\n                  \"scopes\": {\n                    \"description\": \"Scopes to request for the exchanged token (default: openid profile email groups)\",\n                    \"type\": \"string\"\n                  }\n                },\n                \"type\": \"object\"\n              },\n              \"type\": {\n                \"description\": \"Authentication type: oauth, none or sigv4\",\n                \"enum\": [\n                  \"oauth\",\n                  \"none\",\n                  \"sigv4\"\n                ],\n                \"type\": \"string\"\n              }\n            },\n            \"type\": \"object\"\n          },\n          \"autoStart\": {\n            \"description\": \"Whether server should auto-start\",\n            \"type\": \"boolean\"\n          },\n          \"command\": {\n            \"description\": \"Command executable path (required for stdio)\",\n            \"type\": \"string\"\n          },\n          \"description\": {\n            \"description\": \"MCP server description\",\n            \"type\": \"string\"\n          },\n          \"env\": {\n            \"additionalProperties\": {\n              \"type\": \"string\"\n            },\n            \"description\": \"Environment variables\",\n            \"type\": \"object\"\n          },\n          \"family\": {\n            \"description\": \"Family that this MCP server instance belongs to (groups equivalent servers under a single tool name)\",\n            \"properties\": {\n              \"instanceArg\": {\n                \"description\": \"Name of the required parameter the LLM uses to select which family member handles a call (e.g. management_cluster, country, model)\",\n                \"type\": \"string\"\n              },\n              \"name\": {\n                \"description\": \"Family identifier shared across instances\",\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"name\",\n              \"instanceArg\"\n            ],\n            \"type\": \"object\"\n          },\n          \"headers\": {\n            \"additionalProperties\": {\n              \"type\": \"string\"\n            },\n            \"description\": \"HTTP headers (streamable-http and sse only)\",\n            \"type\": \"object\"\n          },\n          \"meta\": {\n            \"additionalProperties\": {\n              \"type\": \"string\"\n            },\n            \"description\": \"Entries merged into the params._meta object of every outbound JSON-RPC request that carries params (applied by the sigv4 transport only)\",\n            \"type\": \"object\"\n          },\n          \"name\": {\n            \"description\": \"MCP server name\",\n            \"type\": \"string\"\n          },\n          \"timeout\": {\n            \"description\": \"Connection timeout in seconds\",\n            \"type\": \"integer\"\n          },\n          \"toolPrefix\": {\n            \"description\": \"Tool prefix for namespacing\",\n            \"type\": \"string\"\n          },\n          \"type\": {\n            \"description\": \"MCP server type (stdio, streamable-http, or sse)\",\n            \"type\": \"string\"\n          },\n          \"url\": {\n            \"description\": \"Server endpoint URL (required for streamable-http and sse)\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"name\",\n          \"type\"\n        ],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_mcpserver_detect\",\n      \"description\": \"Probe a remote MCP server URL to detect its transport (streamable-http or sse). Detection never fails on unreachable servers: the result reports transport \\\"unknown\\\" instead, so callers can fall back to manual selection.\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": true\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"headers\": {\n            \"additionalProperties\": {\n              \"type\": \"string\"\n            },\n            \"description\": \"HTTP headers to send with the probe requests\",\n            \"type\": \"object\"\n          },\n          \"timeout\": {\n            \"description\": \"Overall detection timeout in seconds (default 10)\",\n            \"type\": \"integer\"\n          },\n          \"url\": {\n            \"description\": \"Server endpoint URL to probe\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"url\"\n        ],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_events\",\n      \"description\": \"List and filter events for muster resources\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": false\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"eventType\": {\n            \"description\": \"Filter by event type (Normal, Warning)\",\n            \"type\": \"string\"\n          },\n          \"follow\": {\n            \"default\": false,\n            \"description\": \"Stream new events as they occur (follow mode)\",\n            \"type\": \"boolean\"\n          },\n          \"limit\": {\n            \"default\": 50,\n            \"description\": \"Maximum number of events to return\",\n            \"type\": \"number\"\n          },\n          \"namespace\": {\n            \"description\": \"Filter by namespace\",\n            \"type\": \"string\"\n          },\n          \"resourceName\": {\n            \"description\": \"Filter by resource name\",\n            \"type\": \"string\"\n          },\n          \"resourceType\": {\n            \"description\": \"Filter by resource type (MCPServer, Workflow)\",\n            \"type\": \"string\"\n          },\n          \"since\": {\n            \"description\": \"Show events after this time (duration like '1h' or RFC3339 timestamp)\",\n            \"type\": \"string\"\n          },\n          \"until\": {\n            \"description\": \"Show events before this time (RFC3339 timestamp)\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [],\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"core_auth_login\",\n      \"description\": \"Authenticate to an OAuth-protected MCP server\",\n      \"kind\": \"core\",\n      \"annotations\": {\n        \"readOnlyHint\": true,\n        \"destructiveHint\": false,\n        \"idempotentHint\": true,\n        \"openWorldHint\": true\n      },\n      \"inputSchema\": {\n        \"properties\": {\n          \"reset_client_registration\": {\n            \"description\": \"Discard muster's stored dynamic client registration (RFC 7591) with this server's authorization server and register anew before issuing the sign-in link. Use when sign-ins fail with invalid_client although muster reports a stored registration; other users' tokens from that authorization server may need a fresh sign-in afterwards.\",\n            \"type\": \"boolean\"\n          },\n          \"server\": {\n            \"description\": \"Name of the MCP server to authenticate to\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"server\"\n        ],\n        \"type\": \"object\"\n      }\n    }\n  ],\n  \"toolset\": [\n    \"preset:read-only\"\n  ]\n}",
+                    "type": "text"
+                  }
+                ]
+              }
+            },
+            "metadata": {
+              "kagent.dev/a2a/part-type": "function_response"
+            }
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "lastChunk": true,
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "metadata": {
+          "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:39.152820973Z"
+        },
+        "parts": [
+          {
+            "text": "Bash"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " returned"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " `"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "hello"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "-from"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "-bash`,"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " and"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " `"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "list"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "_core"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "_tools"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "` returned"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " "
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "16"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " core"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " m"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "uster tools ("
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "out"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " of 48"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " total),"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " including"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " workflow"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": ","
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " service"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": ", config"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": ", M"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "CP server, events"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": ", and"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " auth tools,"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " all"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": " read"
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "artifactUpdate": {
+      "append": true,
+      "artifact": {
+        "artifactId": "01a0dd58-7d70-7c6e-9188-3e3ca1b6a3f4",
+        "parts": [
+          {
+            "text": "-only."
+          }
+        ]
+      },
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  },
+  {
+    "statusUpdate": {
+      "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+      "status": {
+        "message": {
+          "messageId": "01a0dd58-83ab-777b-a5e3-9d53bc20e2f7",
+          "contextId": "8e7008b4-beca-485b-a39e-1283fd52111b",
+          "metadata": {
+            "kagent.dev/a2a/part-type": "turn_usage",
+            "kagent.dev/a2a/timeline-position": "2026-09-26T10:52:40.747499792Z",
+            "kagent_usage": {
+              "input_tokens": 9,
+              "num_turns": 4,
+              "output_tokens": 414,
+              "total_cost_usd": 0.13212075
+            }
+          },
+          "parts": [
+            {
+              "text": ""
+            }
+          ],
+          "role": "ROLE_AGENT",
+          "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+        },
+        "state": "TASK_STATE_COMPLETED",
+        "timestamp": "2026-09-26T10:52:40.747506715Z"
+      },
+      "taskId": "01a0dd58-5af7-7327-90c0-0016a1911ad9"
+    }
+  }
+]

@@ -1,3 +1,4 @@
+import claudeStream from './__fixtures__/stream.claude-harness-1.1.json';
 import stream from './__fixtures__/stream.kagent-4a91c273.json';
 import canceled from './__fixtures__/task.canceled.kagent-4a91c273.json';
 import hitlApproval from './__fixtures__/tasks.hitl-approval.kagent-4a91c273.json';
@@ -464,5 +465,37 @@ describe('stream recorded on kagent-4a91c273', () => {
   it('reports a frame it cannot read as undefined, never throwing', () => {
     expect(toWireStreamEvent({ something: 'else' })).toBeUndefined();
     expect(toWireStreamEvent(null)).toBeUndefined();
+  });
+});
+
+describe('stream recorded on the claude Harness (kagent 1.1)', () => {
+  // A Claude Code turn with a Bash call and a muster tool call, recorded from
+  // the controller: only canonical kagent.dev/a2a/ keys, no adk_ or kagent_.
+  const events = claudeStream.map(toWireStreamEvent) as Wire[];
+  const parts = events
+    .filter(event => event.kind === 'artifact-update')
+    .flatMap(event => ((event.artifact as Wire).parts as unknown[]) ?? [])
+    .map(parsePart);
+
+  it('reads every tool call and its result', () => {
+    const calls = parts
+      .filter(part => part && isFunctionCallPart(part))
+      .map(part => readFunctionCall(part!).name);
+    expect(calls).toEqual([
+      'Bash',
+      'ToolSearch',
+      'mcp__coding-poc__list_core_tools',
+    ]);
+    expect(
+      parts.filter(part => part && isFunctionResponsePart(part)),
+    ).toHaveLength(3);
+  });
+
+  it('ends completed', () => {
+    const last = events[events.length - 1];
+    expect(last.kind).toBe('status-update');
+    expect(last.status).toEqual(
+      expect.objectContaining({ state: 'completed' }),
+    );
   });
 });
