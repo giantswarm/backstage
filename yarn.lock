@@ -500,14 +500,14 @@ __metadata:
   linkType: hard
 
 "@assistant-ui/react-devtools@npm:^1.0.0":
-  version: 1.2.17
-  resolution: "@assistant-ui/react-devtools@npm:1.2.17"
+  version: 1.2.21
+  resolution: "@assistant-ui/react-devtools@npm:1.2.21"
   dependencies:
     clsx: "npm:^2.1.1"
-    zod: "npm:^4.5.4"
+    zod: "npm:^4.6.5"
   peerDependencies:
     "@assistant-ui/react": ^0.15.0
-    "@assistant-ui/tap": ^0.9.16
+    "@assistant-ui/tap": ^0.9.19
     "@types/react": "*"
     "@types/react-dom": "*"
     react: ^18 || ^19
@@ -517,7 +517,7 @@ __metadata:
       optional: true
     "@types/react-dom":
       optional: true
-  checksum: 10c0/6b1e122766f48ead60f9672973b70148329206ec597a2b184ced7135af8b5fffac27c92ac89c4a69ab46c3f381b17c2440e7d6490d5ebfa0f455dd70741fdfb3
+  checksum: 10c0/9c9393199298673abf59d46e6429ef6c032f823c95a980967c096a9f745cee0afb9ae64800e7fb9cb5130e94de7b4bc02eeb753e8f67fa5e291c35dc617488cc
   languageName: node
   linkType: hard
 
@@ -43834,10 +43834,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^4.5.4":
-  version: 4.6.0
-  resolution: "zod@npm:4.6.0"
-  checksum: 10c0/845b7f375010b57153e4602bf6fd3bb18cf86818fbcf738f7852c8a2dddebc6221f645ec01856ea9cb5b9904bca7a138a57c5c5ff9757217dcaab022dc837df2
+"zod@npm:^4.6.5":
+  version: 4.6.5
+  resolution: "zod@npm:4.6.5"
+  checksum: 10c0/32eb6c5e98becbe045675b2141c3611451c16ba567f9779231d79af41c4d651ca1c22f154aef7e6c6e77b929f23e43f1154ca05b82e119e922353725d6776af5
   languageName: node
   linkType: hard
 
