@@ -236,6 +236,123 @@ describe('LoadModelDialog', () => {
     expect(loadModel).not.toHaveBeenCalled();
   });
 
+  it('preselects the recommended split across fast-linked nodes and serves it there', async () => {
+    const sparkFit: ModelManagerFitResult = {
+      ...fits,
+      instanceType: undefined,
+      node: 'spark-a',
+      placement: 'copies',
+      recommended: 'split',
+      recommendedNodes: ['spark-a', 'spark-b'],
+    };
+    const splitFit: ModelManagerFitResult = {
+      ...sparkFit,
+      placement: 'split',
+      nodes: ['spark-a', 'spark-b'],
+      fastLink: 'sparks',
+    };
+    checkFit.mockImplementation(
+      async ({ placement }: { placement?: string }) =>
+        placement === 'split' ? splitFit : sparkFit,
+    );
+    await render();
+
+    const split = await screen.findByRole('radio', {
+      name: /Split across spark-a and spark-b.*\(recommended\)/,
+    });
+    await waitFor(() => expect(split).toBeChecked());
+    const verdict = screen.getByTestId('serve-fit-verdict');
+    await waitFor(() =>
+      expect(verdict).toHaveTextContent(
+        'Fits — split across spark-a and spark-b (fast link sparks)',
+      ),
+    );
+    await waitFor(() => expect(serveButton()).toBeEnabled());
+    await userEvent.click(serveButton());
+
+    await waitFor(() =>
+      expect(loadModel).toHaveBeenCalledWith({
+        model: 'qwen3-4b-instruct',
+        backend: 'kserve',
+        placement: 'split',
+        nodes: ['spark-a', 'spark-b'],
+      }),
+    );
+  });
+
+  it('serves one copy when the person picks it over the recommended split', async () => {
+    const sparkFit: ModelManagerFitResult = {
+      ...fits,
+      instanceType: undefined,
+      node: 'spark-a',
+      placement: 'copies',
+      recommended: 'split',
+    };
+    checkFit.mockImplementation(
+      async ({ placement }: { placement?: string }) =>
+        placement === 'split'
+          ? { ...sparkFit, placement: 'split', nodes: ['spark-a', 'spark-b'] }
+          : sparkFit,
+    );
+    await render();
+
+    await userEvent.click(
+      await screen.findByRole('radio', { name: /One copy on spark-a/ }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('serve-fit-verdict')).toHaveTextContent(
+        'Fits — on spark-a',
+      ),
+    );
+    await userEvent.click(serveButton());
+    await waitFor(() =>
+      expect(loadModel).toHaveBeenCalledWith({
+        model: 'qwen3-4b-instruct',
+        backend: 'kserve',
+      }),
+    );
+  });
+
+  it('disables split with model-manager’s reason where no nodes share a fast link', async () => {
+    const poolFit: ModelManagerFitResult = {
+      ...fits,
+      placement: 'copies',
+      recommended: 'copies',
+    };
+    checkFit.mockImplementation(
+      async ({ placement }: { placement?: string }) =>
+        placement === 'split'
+          ? {
+              ...poolFit,
+              fits: false,
+              placement: 'split',
+              reason: 'no fast link joins nodes on this cluster',
+            }
+          : poolFit,
+    );
+    await render();
+
+    const split = await screen.findByRole('radio', {
+      name: /Split across fast-linked nodes/,
+    });
+    await waitFor(() => expect(split).toBeDisabled());
+    expect(
+      screen.getByText('no fast link joins nodes on this cluster'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('radio', { name: /One copy.*\(recommended\)/ }),
+    ).toBeChecked();
+  });
+
+  it('offers no placement where model-manager recommends none', async () => {
+    await render();
+    await screen.findByTestId('serve-fit-verdict');
+    expect(screen.queryByTestId('serve-placement')).not.toBeInTheDocument();
+    expect(checkFit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ placement: 'split' }),
+    );
+  });
+
   it('blocks Serve while the fit check is pending or failed — never a guess', async () => {
     checkFit.mockRejectedValue(new Error('model-manager: deadline exceeded'));
     await render();

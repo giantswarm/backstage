@@ -7,6 +7,8 @@ import {
   describeCache,
   describeFitVerdict,
   describeLoadAnswer,
+  describeSplit,
+  placementChoices,
   parseServeRoute,
   withoutServeRoute,
   tryModelIdOf,
@@ -210,5 +212,55 @@ describe('tryModelIdOf', () => {
     expect(tryModelIdOf({ name: 'llama3', modelSource: undefined })).toBe(
       'llama3',
     );
+  });
+});
+
+describe('placementChoices', () => {
+  const base = {
+    model: 'm',
+    fits: true,
+    presets: [],
+  } as unknown as ModelManagerFitResult;
+
+  it('offers nothing when model-manager recommends no placement', () => {
+    expect(placementChoices(base, undefined)).toBeUndefined();
+  });
+
+  it('keeps a recommended split choosable while its check is pending', () => {
+    const choices = placementChoices(
+      { ...base, recommended: 'split' },
+      undefined,
+    )!;
+    expect(choices.find(c => c.id === 'split')).toMatchObject({
+      recommended: true,
+      disabled: false,
+    });
+  });
+
+  it('disables a split that does not fit, with its reason', () => {
+    const choices = placementChoices(
+      { ...base, recommended: 'copies', node: 'gpu1' },
+      { ...base, fits: false, reason: 'no fast link' },
+    )!;
+    expect(choices).toEqual([
+      expect.objectContaining({
+        id: 'split',
+        disabled: true,
+        description: 'no fast link',
+      }),
+      expect.objectContaining({
+        id: 'copies',
+        label: 'One copy on gpu1',
+        recommended: true,
+        disabled: false,
+      }),
+    ]);
+  });
+});
+
+describe('describeSplit', () => {
+  it('names the nodes', () => {
+    expect(describeSplit(['a', 'b'])).toBe('Split across a and b');
+    expect(describeSplit(['a', 'b', 'c'])).toBe('Split across a, b and c');
   });
 });

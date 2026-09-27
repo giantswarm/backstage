@@ -43,6 +43,34 @@ const wireOptionalBoolean = z
   .transform(value => (typeof value === 'boolean' ? value : undefined))
   .optional();
 
+/** The non-empty strings of an array, else `undefined`. */
+const wireStringList = z
+  .unknown()
+  .transform(value =>
+    Array.isArray(value)
+      ? value.filter(
+          (item): item is string => typeof item === 'string' && item !== '',
+        )
+      : undefined,
+  )
+  .optional();
+
+/**
+ * How a model is placed on kserve (model-manager#190): `split` — one model
+ * across the nodes of a fast link, tensor parallel over it — or `copies`,
+ * one copy per node.
+ */
+export type ModelManagerPlacement = 'split' | 'copies';
+
+const wirePlacement = z
+  .unknown()
+  .transform(value =>
+    value === 'split' || value === 'copies'
+      ? (value as ModelManagerPlacement)
+      : undefined,
+  )
+  .optional();
+
 /**
  * The capability flags `GET /api/v1/backend` reports. A false flag means the
  * matching operation answers `501 unsupported` on this installation, so the
@@ -257,6 +285,10 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   /** Inference URL (KServe). */
   endpoint: wireString,
   node: wireString,
+  /** KServe — how the model is placed: `split` across `nodes`, or `copies`. */
+  placement: wirePlacement,
+  /** KServe — the nodes of a split, in rank order (the first serves the API). */
+  nodes: wireStringList,
   /**
    * Ollama `loaded`; KServe — the serving object's state: `Ready`,
    * `NotReady` (a condition says so), `Pending` (no verdict yet, or — from
@@ -590,6 +622,16 @@ export const modelManagerFitResultSchema = z.looseObject({
   cacheSource: wireString,
   /** The instance type the pool's node comes as when the load scales it from zero. */
   instanceType: wireString,
+  /** The placement judged: `copies`, or `split` across `nodes` (`node` their first, the figures the tightest node's). */
+  placement: wirePlacement,
+  /** A split's nodes, in rank order. */
+  nodes: wireStringList,
+  /** The fast link a split runs over. */
+  fastLink: wireString,
+  /** The placement model-manager recommends for the model here; absent before model-manager#190. */
+  recommended: wirePlacement,
+  /** The nodes of the recommendation. */
+  recommendedNodes: wireStringList,
 });
 
 export type ModelManagerFitResult = z.infer<typeof modelManagerFitResultSchema>;
@@ -660,6 +702,8 @@ export const modelManagerNodeSchema = z.looseObject({
   eligible: wireOptionalBoolean,
   /** Why not, when `eligible` is false. */
   eligibilityReason: wireString,
+  /** The fast link the node belongs to (kserve): a model can be split across its nodes. */
+  fastLink: wireString,
   /** The download cache on this node; absent when the node holds none. */
   cache: z
     .unknown()

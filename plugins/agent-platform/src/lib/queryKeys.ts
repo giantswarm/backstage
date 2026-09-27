@@ -111,6 +111,7 @@ export function modelManagerFitQueryKey(
   installation: string,
   backend: string | undefined,
   model: string,
+  placement: string = '',
 ) {
   return [
     'agent-platform',
@@ -119,6 +120,7 @@ export function modelManagerFitQueryKey(
     installation,
     backend ?? '',
     model,
+    placement,
   ] as const;
 }
 

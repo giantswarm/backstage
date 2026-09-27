@@ -382,6 +382,7 @@ export function toServedModelFromManager(
     steps: toServedModelSteps(running?.steps),
     node: running?.node ?? model.node,
     nodeSource: kserve && running?.node ? 'pod' : undefined,
+    splitNodes: running?.placement === 'split' ? running.nodes : undefined,
     gpuCount: running?.gpus,
     internalUrl: running?.endpoint ?? clientEndpoint,
     interfaces: running?.interfaces,
