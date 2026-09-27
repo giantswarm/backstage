@@ -8,6 +8,8 @@ import {
   DialogFooter,
   DialogHeader,
   Flex,
+  Radio,
+  RadioGroup,
   Select,
   Text,
 } from '@backstage/ui';
@@ -17,9 +19,13 @@ import { useModelManagerToolsClient } from '../../hooks/useModelManagerBackends'
 import { useInvalidateModelManagerReads } from '../../hooks/useServedModelAction';
 import type {
   ModelManagerLoadAnswer,
+  ModelManagerPlacement,
   ModelManagerPreset,
 } from '../../lib/modelManager';
-import { describeFitVerdict } from '../../lib/modelManagerServe';
+import {
+  describeFitVerdict,
+  placementChoices,
+} from '../../lib/modelManagerServe';
 import { formatBytes } from '../../lib/modelManagerServing';
 import {
   modelManagerFitQueryKey,
@@ -149,7 +155,10 @@ function targetForSeed(
  * pool (kserve) the choice is one of the presets model-manager publishes for
  * the cluster and `check_fit`'s verdict stands before the button — whether it
  * fits, the instance type the node comes as, whether the weights are cached,
- * or why not; a preset no size of the pool hosts cannot be served. On a host
+ * or why not; a preset no size of the pool hosts cannot be served. Where
+ * model-manager recommends a placement, the person chooses it — split across
+ * fast-linked nodes or one copy — the recommendation preselected and the
+ * verdict the chosen placement's. On a host
  * backend the choice is a cached model. Serve is one `load_model` over
  * muster: model-manager composes the serving object (an `LLMInferenceService`
  * on a pool) and answers with what it created, the fit it judged by and the
@@ -238,11 +247,50 @@ export function LoadModelDialog({
     staleTime: 30_000,
     retry: false,
   });
-  const verdict = fit.data ? describeFitVerdict(fit.data) : undefined;
+  // model-manager recommends a placement from #190 on; the split is judged
+  // by a second check only then.
+  const offersPlacement = Boolean(fit.data?.recommended);
+  const splitFit = useQuery({
+    queryKey: modelManagerFitQueryKey(installation, backend, model, 'split'),
+    queryFn: () =>
+      client!.checkFit({
+        model,
+        placement: 'split',
+        ...(backend ? { backend } : {}),
+      }),
+    enabled: isOpen && Boolean(client && choice) && offersPlacement,
+    staleTime: 30_000,
+    retry: false,
+  });
+  const placements = placementChoices(fit.data, splitFit.data);
+
+  // The recommendation stands until the person picks; a new model or a
+  // disabled pick falls back to it.
+  const [picked, setPicked] = useState<ModelManagerPlacement | undefined>();
+  useEffect(() => setPicked(undefined), [model, targetKey, isOpen]);
+  const recommendedChoice = placements?.find(
+    option => option.recommended && !option.disabled,
+  );
+  const placement = placements
+    ? (
+        placements.find(option => option.id === picked && !option.disabled) ??
+        recommendedChoice
+      )?.id
+    : undefined;
+  const activeFit = placement === 'split' ? splitFit : fit;
+  const verdict = activeFit.data
+    ? describeFitVerdict(activeFit.data)
+    : undefined;
 
   const load = useMutation({
     mutationFn: () =>
-      client!.loadModel({ model, ...(backend ? { backend } : {}) }),
+      client!.loadModel({
+        model,
+        ...(backend ? { backend } : {}),
+        ...(placement === 'split'
+          ? { placement, nodes: splitFit.data?.nodes }
+          : {}),
+      }),
     onSuccess: () => invalidate(),
   });
   const { reset } = load;
@@ -268,7 +316,8 @@ export function LoadModelDialog({
 
   const isBusy = load.isPending;
   const fitBlocks =
-    needsFit && (fit.isPending || fit.isError || verdict?.fits === false);
+    needsFit &&
+    (activeFit.isPending || activeFit.isError || verdict?.fits === false);
   const canServe = Boolean(client && target && choice) && !isBusy && !fitBlocks;
 
   return (
@@ -374,18 +423,48 @@ export function LoadModelDialog({
             </Text>
           )}
 
+          {placements && (
+            <RadioGroup
+              label="Placement"
+              data-testid="serve-placement"
+              value={placement ?? null}
+              onChange={value => setPicked(value as ModelManagerPlacement)}
+              isDisabled={isBusy}
+            >
+              {placements.map(option => (
+                <Radio
+                  key={option.id}
+                  value={option.id}
+                  isDisabled={option.disabled}
+                >
+                  <Flex direction="column" gap="0">
+                    <Text variant="body-medium">
+                      {option.label}
+                      {option.recommended ? ' (recommended)' : ''}
+                    </Text>
+                    {option.description && (
+                      <Text variant="body-small" color="secondary">
+                        {option.description}
+                      </Text>
+                    )}
+                  </Flex>
+                </Radio>
+              ))}
+            </RadioGroup>
+          )}
+
           {needsFit && choice && (
             <div data-testid="serve-fit-verdict">
-              {fit.isPending && (
+              {activeFit.isPending && (
                 <Text variant="body-medium" color="secondary">
                   Checking whether {choice.label} fits the pool…
                 </Text>
               )}
-              {fit.isError && (
+              {activeFit.isError && (
                 <Alert
                   status="danger"
                   title="Fit check failed"
-                  description={fit.error.message}
+                  description={activeFit.error.message}
                 />
               )}
               {verdict && (
