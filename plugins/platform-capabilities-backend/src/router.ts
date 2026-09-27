@@ -35,6 +35,7 @@ const WRITE_ARGUMENTS: Record<string, ArgumentKind> = {
   content: 'boolean',
   dryRun: 'boolean',
   mode: 'string',
+  reason: 'string',
 };
 
 /** What `verify_capability` takes besides the names: the person's typed inputs and whether to return file content. */

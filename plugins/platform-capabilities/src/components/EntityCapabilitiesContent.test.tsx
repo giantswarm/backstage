@@ -177,6 +177,10 @@ describe('EntityCapabilitiesContent', () => {
     const open = within(dialog()).getByRole('button', {
       name: 'Open 2 pull requests',
     });
+    await userEvent.type(
+      within(dialog()).getByRole('textbox', { name: /Why this change/ }),
+      'the portal for the customer',
+    );
     expect(open).toBeEnabled();
     await userEvent.click(open);
     await waitFor(() =>
@@ -193,6 +197,7 @@ describe('EntityCapabilitiesContent', () => {
           portal: { enabled: true },
           modelServing: { enabled: false },
         },
+        reason: 'the portal for the customer',
       },
     });
     expect(

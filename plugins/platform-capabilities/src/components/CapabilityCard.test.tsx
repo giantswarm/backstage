@@ -620,10 +620,18 @@ describe('CapabilityCard', () => {
     expect(within(dialog).getByTestId('plan-pull-requests')).toHaveTextContent(
       'example/example-configs — 1 change(s)',
     );
-    // The last step names what it opens, in the plan's own count.
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Open 2 pull requests' }),
+    // The last step names what it opens, in the plan's own count, and
+    // opens nothing before the person says why.
+    const open = within(dialog).getByRole('button', {
+      name: 'Open 2 pull requests',
+    });
+    expect(open).toBeDisabled();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /Why this change/ }),
+      'kagent needs the new model',
     );
+    expect(open).toBeEnabled();
+    await userEvent.click(open);
     await waitFor(() =>
       expect(within(dialog).getByTestId('committed')).toBeInTheDocument(),
     );
@@ -634,6 +642,7 @@ describe('CapabilityCard', () => {
         options: { mode: 'commit' },
         args: {
           inputs: expect.objectContaining({ modelServing: { enabled: false } }),
+          reason: 'kagent needs the new model',
         },
       }),
     ]);
@@ -653,6 +662,10 @@ describe('CapabilityCard', () => {
     await waitFor(() =>
       expect(within(dialog).getByTestId('plan')).toBeInTheDocument(),
     );
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /Why this change/ }),
+      '  the chart moved  ',
+    );
     await userEvent.click(
       within(dialog).getByRole('button', { name: 'Open 2 pull requests' }),
     );
@@ -661,6 +674,7 @@ describe('CapabilityCard', () => {
       tool: 'reconcile_capability',
       installation: 'birch',
       options: { mode: 'commit' },
+      args: { reason: 'the chart moved' },
     });
   });
 

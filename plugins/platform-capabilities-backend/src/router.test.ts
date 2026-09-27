@@ -157,17 +157,18 @@ describe('createRouter', () => {
     });
   });
 
-  it('hands the commit mode on to reconcile and refuses an argument the tool does not take', async () => {
+  it('hands the commit mode and reason on to reconcile and refuses an argument the tool does not take', async () => {
     manager.answers.set('reconcile_capability', { action: {} });
     const ok = await request(app)
       .post('/installations/rowan/capabilities/agent-platform/reconcile')
-      .send({ mode: 'commit', content: false });
+      .send({ mode: 'commit', content: false, reason: 'the chart moved' });
     expect(ok.status).toBe(200);
     expect(manager.calls[0].args).toEqual({
       installation: 'rowan',
       capability: 'agent-platform',
       mode: 'commit',
       content: false,
+      reason: 'the chart moved',
     });
 
     const refused = await request(app)
