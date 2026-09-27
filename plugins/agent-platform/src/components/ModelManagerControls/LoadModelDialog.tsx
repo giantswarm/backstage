@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
   Alert,
@@ -179,15 +179,20 @@ export function LoadModelDialog({
   const [targetKey, setTargetKey] = useState('');
   const [model, setModel] = useState('');
 
-  // Opening seeds the target and the model; a target that went away falls
-  // back to the first.
+  // Opening seeds the target and the model, and so does a new seed or a
+  // change in which targets exist; a refetch that returns the same targets
+  // (the served list polls) keeps the person's choice. A target that went
+  // away falls back to the first.
+  const targetKeys = targets.map(loadTargetKey).join('\n');
+  const targetsRef = useRef(targets);
+  targetsRef.current = targets;
   useEffect(() => {
     if (isOpen) {
-      const seeded = targetForSeed(targets, seed);
+      const seeded = targetForSeed(targetsRef.current, seed);
       setTargetKey(seeded ? loadTargetKey(seeded) : '');
       setModel(seed?.model ?? '');
     }
-  }, [isOpen, seed, targets]);
+  }, [isOpen, seed, targetKeys]);
   useEffect(() => {
     if (targetKey && !targets.some(t => loadTargetKey(t) === targetKey)) {
       setTargetKey(targets[0] ? loadTargetKey(targets[0]) : '');
