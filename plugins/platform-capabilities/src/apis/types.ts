@@ -388,6 +388,8 @@ export interface CapabilityArgs {
   inputs?: Record<string, unknown>;
   /** true: the files' content as well as their paths and changes. */
   content?: boolean;
+  /** Why the person makes the change: required on a commit, shown in the team's review. */
+  reason?: string;
 }
 
 export interface PlatformCapabilitiesApi {
