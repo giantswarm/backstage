@@ -5,6 +5,7 @@ import type {
 import {
   currentStep,
   describeCache,
+  describeFit,
   describeFitVerdict,
   describeLoadAnswer,
   describeSplit,
@@ -262,5 +263,23 @@ describe('describeSplit', () => {
   it('names the nodes', () => {
     expect(describeSplit(['a', 'b'])).toBe('Split across a and b');
     expect(describeSplit(['a', 'b', 'c'])).toBe('Split across a, b and c');
+  });
+});
+
+describe('describeFit of a split', () => {
+  it('says the requirement is per node', () => {
+    const fit = {
+      model: 'm',
+      fits: true,
+      presets: [],
+      placement: 'split',
+      nodes: ['a', 'b'],
+      weightsBytes: 100 * 1024 ** 3,
+      overheadBytes: 20 * 1024 ** 3,
+      requiredBytes: 70 * 1024 ** 3,
+    } as unknown as ModelManagerFitResult;
+    expect(describeFit(fit)).toContain(
+      'needs 70.0 GiB on each of 2 nodes (100 GiB of weights split 2 ways + 20.0 GiB of serving headroom)',
+    );
   });
 });
