@@ -20,14 +20,28 @@ export function describeFit(fit: ModelManagerFitResult): string {
   if (fit.downloadBytes !== undefined) {
     parts.push(`Download ${formatBytes(fit.downloadBytes)}`);
   }
+  const splitWays =
+    fit.placement === 'split' && fit.nodes && fit.nodes.length > 1
+      ? fit.nodes.length
+      : undefined;
   if (fit.requiredBytes !== undefined) {
+    // A split's requirement is per node: its share of the weights and the
+    // headroom (model-manager reports the whole model's weights).
+    const weights =
+      fit.weightsBytes !== undefined
+        ? `${formatBytes(fit.weightsBytes)} of weights${
+            splitWays ? ` split ${splitWays} ways` : ''
+          }${fit.weightsSource ? ` per ${fit.weightsSource}` : ''}`
+        : undefined;
     const breakdown =
-      fit.weightsBytes !== undefined && fit.overheadBytes !== undefined
-        ? ` (${formatBytes(fit.weightsBytes)} of weights${
-            fit.weightsSource ? ` per ${fit.weightsSource}` : ''
-          } + ${formatBytes(fit.overheadBytes)} of serving headroom)`
+      weights && fit.overheadBytes !== undefined
+        ? ` (${weights} + ${formatBytes(fit.overheadBytes)} of serving headroom)`
         : '';
-    parts.push(`needs ${formatBytes(fit.requiredBytes)}${breakdown}`);
+    parts.push(
+      `needs ${formatBytes(fit.requiredBytes)}${
+        splitWays ? ` on each of ${splitWays} nodes` : ''
+      }${breakdown}`,
+    );
   }
   if (fit.node && fit.budgetBytes !== undefined) {
     const free =

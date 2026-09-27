@@ -1,9 +1,9 @@
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, useState } from 'react';
 import {
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { modelManagerApiRef } from '../../apis';
@@ -350,6 +350,48 @@ describe('LoadModelDialog', () => {
     expect(screen.queryByTestId('serve-placement')).not.toBeInTheDocument();
     expect(checkFit).not.toHaveBeenCalledWith(
       expect.objectContaining({ placement: 'split' }),
+    );
+  });
+
+  it('keeps the chosen preset when the served list refetches the same targets', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    // The Serving page passes a new targets array on every poll.
+    let refetch = () => {};
+    const Harness = () => {
+      const [targets, setTargets] = useState<LoadTarget[]>([pool]);
+      refetch = () => setTargets([{ ...pool }]);
+      return (
+        <TestApiProvider apis={[[modelManagerApiRef, modelManagerApi]]}>
+          <QueryClientProvider client={queryClient}>
+            <LoadModelDialog
+              isOpen
+              onOpenChange={onOpenChange}
+              targets={targets}
+              models={[]}
+            />
+          </QueryClientProvider>
+        </TestApiProvider>
+      );
+    };
+    await renderInTestApp(<Harness />);
+    await screen.findByTestId('serve-fit-verdict');
+
+    await userEvent.click(screen.getByRole('button', { name: /Preset/ }));
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Qwen3 8B FP8' }),
+    );
+    await waitFor(() =>
+      expect(checkFit).toHaveBeenCalledWith({
+        model: 'qwen3-8b-fp8',
+        backend: 'kserve',
+      }),
+    );
+    act(() => refetch());
+
+    expect(screen.getByRole('button', { name: /Preset/ })).toHaveTextContent(
+      'Qwen3 8B FP8',
     );
   });
 
