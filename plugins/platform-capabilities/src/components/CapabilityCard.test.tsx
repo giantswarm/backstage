@@ -622,16 +622,16 @@ describe('CapabilityCard', () => {
     );
     // The last step names what it opens, in the plan's own count, and
     // opens nothing before the person says why.
-    const open = within(dialog).getByRole('button', {
+    const openButton = within(dialog).getByRole('button', {
       name: 'Open 2 pull requests',
     });
-    expect(open).toBeDisabled();
+    expect(openButton).toBeDisabled();
     await userEvent.type(
       within(dialog).getByRole('textbox', { name: /Why this change/ }),
       'kagent needs the new model',
     );
-    expect(open).toBeEnabled();
-    await userEvent.click(open);
+    expect(openButton).toBeEnabled();
+    await userEvent.click(openButton);
     await waitFor(() =>
       expect(within(dialog).getByTestId('committed')).toBeInTheDocument(),
     );
