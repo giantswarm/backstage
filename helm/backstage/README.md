@@ -141,13 +141,16 @@ names the value. `githubAppCredentials`, `google.credentialsJson` and
 | pagerduty | object | `{"apiToken":""}` | PagerDuty integration settings |
 | pagerduty.apiToken | string | `""` | PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | sharedConfig | object | `{}` | Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword |
-| observability | object | `{"otel":{"endpoint":"","headers":"","protocol":"grpc","resourceAttributes":"","sampler":"parentbased_traceidratio","samplerArg":"0.1"}}` | OpenTelemetry trace export from the backend, as the standard OTEL_* variables. Nothing is exported while `endpoint` is empty. |
+| observability | object | `{"metrics":{"enabled":false,"port":9464},"otel":{"endpoint":"","headers":"","protocol":"grpc","resourceAttributes":"","sampler":"parentbased_traceidratio","samplerArg":"0.1"}}` | OpenTelemetry trace export from the backend, as the standard OTEL_* variables. Nothing is exported while `endpoint` is empty. |
 | observability.otel.endpoint | string | `""` | OTLP collector URL (OTEL_EXPORTER_OTLP_ENDPOINT), e.g. `http://otlp-gateway.kube-system.svc:4317` for gRPC. Empty: no export and none of the variables below is set. |
 | observability.otel.protocol | string | `"grpc"` | OTLP protocol (OTEL_EXPORTER_OTLP_PROTOCOL). |
 | observability.otel.headers | string | `""` | OTLP headers as `key=value` pairs separated by commas (OTEL_EXPORTER_OTLP_HEADERS), e.g. `X-Scope-OrgID=giantswarm` for the collector's tenant. |
 | observability.otel.resourceAttributes | string | `""` | Resource attributes as `key=value` pairs separated by commas, appended to the pod's `k8s.pod.name`, `k8s.namespace.name` and `k8s.node.name` (OTEL_RESOURCE_ATTRIBUTES). |
 | observability.otel.sampler | string | `"parentbased_traceidratio"` | Trace sampler (OTEL_TRACES_SAMPLER). The parent-based default follows the sampling decision of an incoming `traceparent` and samples root spans by `samplerArg`. |
 | observability.otel.samplerArg | string | `"0.1"` | Sampler argument (OTEL_TRACES_SAMPLER_ARG): the ratio of root spans sampled for the `traceidratio` samplers. |
+| observability.metrics | object | `{"enabled":false,"port":9464}` | Prometheus metrics export from the backend, on a `metrics` container port and Service port. Off by default: enabling it changes the pod's ports. The chart's network policies select the database pods only, so the scrape needs no policy of its own. |
+| observability.metrics.enabled | bool | `false` | Start the OpenTelemetry SDK's Prometheus exporter (OTEL_METRICS_EXPORTER=prometheus) and serve `/metrics` on `port`. |
+| observability.metrics.port | int | `9464` | Port the Prometheus exporter listens on (OTEL_EXPORTER_PROMETHEUS_PORT), also the `metrics` container port and Service port. |
 | nodeSelector | object | `{}` | Node selector labels to constrain pod scheduling to specific nodes |
 | strategy | object | `{}` | Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume. |
 | networkPolicy | object | `{"enabled":true,"flavor":"cilium"}` | Network policy settings |
@@ -212,3 +215,7 @@ names the value. `githubAppCredentials`, `google.credentialsJson` and
 | route.backendTrafficPolicy.spec | object | `{}`, rendered as the streaming-safe timeouts above | BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically. Empty, the chart renders `timeout.http` `{requestTimeout: 0s, maxStreamDuration: 0s, connectionIdleTimeout: 1h}`, `timeout.tcp.connectTimeout: 10s` and `tcpKeepalive` `{idleTime: 60s, interval: 30s, probes: 3}`. A spec set here replaces that default wholesale, so carry the timeouts over if the portal streams |
 | ociRegistryCredentials | object | `{}` | Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig. Both values of an entry are base64-encoded: the chart writes them into the Secret's `data` as is |
 | pluginKeys | list | `[]` | Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/ |
+| serviceMonitor | object | `{"enabled":false,"interval":"","labels":{}}` | ServiceMonitor for the backend's Prometheus metrics endpoint. Has no effect unless observability.metrics.enabled is also true. |
+| serviceMonitor.enabled | bool | `false` | Render the ServiceMonitor. |
+| serviceMonitor.interval | string | `""` | Scrape interval, e.g. `60s`. Empty uses the Prometheus Operator default. |
+| serviceMonitor.labels | object | `{}` | Extra labels on the ServiceMonitor. The Giant Swarm observability platform routes a scrape to a Mimir tenant by the `observability.giantswarm.io/tenant` label here. |

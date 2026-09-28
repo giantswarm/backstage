@@ -11,6 +11,8 @@ import {
   describeServedWhere,
   describeSplit,
   loadAnswerNodes,
+  nodeCandidates,
+  nodeChoices,
   placementChoices,
   parseServeRoute,
   withoutServeRoute,
@@ -65,6 +67,25 @@ describe('describeCache', () => {
     );
     expect(describeCache({ cached: false })).toBe('cache state unknown');
   });
+
+  it('says a model-image preset is served from its image', () => {
+    expect(describeCache({ cached: false, cacheSource: 'oci-image' })).toBe(
+      'served from the model image',
+    );
+  });
+});
+
+describe('describeFit of a model image', () => {
+  it('names no download where the node holds the image', () => {
+    const fit = {
+      model: 'm',
+      fits: true,
+      presets: [],
+      downloadBytes: 0,
+      prePulledNodes: ['a'],
+    } as unknown as ModelManagerFitResult;
+    expect(describeFit(fit)).not.toMatch(/Download/);
+  });
 });
 
 describe('describeFitVerdict', () => {
@@ -78,14 +99,24 @@ describe('describeFitVerdict', () => {
     );
   });
 
-  it('falls back to the node when there is no instance type', () => {
+  it('never names the one node an unpinned check judged', () => {
     expect(
       describeFitVerdict({ ...fits, instanceType: undefined, node: 'spark' })
         .summary,
-    ).toBe('Fits — on spark');
+    ).toBe('Fits');
     expect(
       describeFitVerdict({ ...fits, instanceType: undefined }).summary,
     ).toBe('Fits');
+  });
+
+  it('names the nodes an unpinned copy may land on, or the one it is pinned to', () => {
+    const copy = { ...fits, instanceType: undefined, node: 'b' };
+    expect(describeFitVerdict(copy, { fittingNodes: ['a', 'b'] }).summary).toBe(
+      'Fits on a and b',
+    );
+    expect(describeFitVerdict(copy, { node: 'a' }).summary).toBe(
+      'Fits — will be placed on a',
+    );
   });
 
   it('gives the reason when no size of the pool hosts the preset', () => {
@@ -255,11 +286,82 @@ describe('placementChoices', () => {
       }),
       expect.objectContaining({
         id: 'copies',
-        label: 'One copy on gpu1',
+        label: 'One copy',
         recommended: true,
         disabled: false,
       }),
     ]);
+  });
+
+  it('names the node a copy is pinned to', () => {
+    const choices = placementChoices(
+      { ...base, recommended: 'copies', node: 'gpu1' },
+      undefined,
+      'gpu2',
+    )!;
+    expect(choices.find(c => c.id === 'copies')?.label).toBe(
+      'One copy on gpu2',
+    );
+  });
+});
+
+describe('the Node field', () => {
+  const GIB = 1024 ** 3;
+  const node = (name: string, extra: object = {}) =>
+    ({
+      name,
+      ready: true,
+      eligible: true,
+      gpuCount: 1,
+      budgetBytes: 110 * GIB,
+      freeBytes: 90 * GIB,
+      ...extra,
+    }) as any;
+  const pinnedOut = node('c', {
+    eligible: false,
+    modelImageEligible: true,
+    eligibilityReason: 'cannot mount the cache claim',
+  });
+  const worker = node('w', {
+    eligible: false,
+    gpuCount: 0,
+    eligibilityReason: 'outside the node selector',
+  });
+
+  it('lists the GPU nodes, not the plain workers', () => {
+    expect(
+      nodeCandidates([node('a'), pinnedOut, worker], false).map(n => n.name),
+    ).toEqual(['a', 'c']);
+  });
+
+  it('offers any node first, each node with its budget, and disables the ones the preset cannot land on', () => {
+    const choices = nodeChoices(
+      [node('a'), node('b'), pinnedOut, node('d', { ready: false })],
+      { b: { model: 'm', fits: false, reason: 'needs 120 GiB' } as any },
+      { modelImage: false, prePulledNodes: ['a'] },
+    );
+    expect(choices).toEqual([
+      { id: 'any', label: 'Any node that fits', disabled: false },
+      {
+        id: 'a',
+        label: 'a',
+        description: '90.0 GiB free of 110 GiB · model image pulled',
+        disabled: false,
+      },
+      { id: 'b', label: 'b', description: 'needs 120 GiB', disabled: true },
+      {
+        id: 'c',
+        label: 'c',
+        description: 'not a serving target: cannot mount the cache claim',
+        disabled: true,
+      },
+      { id: 'd', label: 'd', description: 'not ready', disabled: true },
+    ]);
+  });
+
+  it('offers a node pinned out by the cache claim for a model-image preset', () => {
+    const [, c] = nodeChoices([pinnedOut], {}, { modelImage: true });
+    expect(c).toMatchObject({ id: 'c', disabled: false });
   });
 });
 

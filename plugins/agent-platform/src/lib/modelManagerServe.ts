@@ -1,6 +1,7 @@
 import type {
   ModelManagerFitResult,
   ModelManagerLoadAnswer,
+  ModelManagerNode,
   ModelManagerPlacement,
   ModelManagerServeStep,
 } from './modelManager';
@@ -17,7 +18,8 @@ import type { ServedModel } from './serving';
 /** The sizes of a fit verdict in words: download, requirement, the node's budget. */
 export function describeFit(fit: ModelManagerFitResult): string {
   const parts: string[] = [];
-  if (fit.downloadBytes !== undefined) {
+  // 0 is nothing to fetch: a model image the node holds already.
+  if (fit.downloadBytes) {
     parts.push(`Download ${formatBytes(fit.downloadBytes)}`);
   }
   const splitWays =
@@ -65,6 +67,9 @@ export function describeFit(fit: ModelManagerFitResult): string {
 export function describeCache(
   fit: Pick<ModelManagerFitResult, 'cached' | 'cacheSource'>,
 ): string {
+  if (fit.cacheSource === 'oci-image') {
+    return 'served from the model image';
+  }
   if (fit.cached) {
     return `weights cached${fit.cacheSource ? ` (${fit.cacheSource})` : ''}`;
   }
@@ -82,32 +87,62 @@ export type FitVerdict = {
   details: string[];
 };
 
+/** "A, B and C". */
+function listNames(names: string[]): string {
+  return names.length === 1
+    ? names[0]
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 /** "Split across A and B", the words for a split's nodes. */
 export function describeSplit(nodes: string[] | undefined): string {
   if (!nodes || nodes.length === 0) {
     return 'Split across nodes';
   }
-  const list =
-    nodes.length === 1
-      ? nodes[0]
-      : `${nodes.slice(0, -1).join(', ')} and ${nodes[nodes.length - 1]}`;
-  return `Split across ${list}`;
+  return `Split across ${listNames(nodes)}`;
 }
 
-/** Where a fitting model runs: across a split's nodes, the instance type the node comes as, else the node it is on. */
-function describeWhere(fit: ModelManagerFitResult): string | undefined {
+/**
+ * What the Serve request pins a copy to: the node the person chose, or none
+ * — then the nodes any of which it may land on, when they are known.
+ */
+export type FitPlacement = {
+  /** The node `load_model` pins the predictor to. */
+  node?: string;
+  /** Unpinned: the nodes that host the model, one of which the scheduler picks. */
+  fittingNodes?: string[];
+};
+
+/**
+ * Where a fitting model runs: across a split's nodes, the instance type the
+ * node comes as, the node the request pins, else the nodes it may land on.
+ * An unpinned copy never names the one node `check_fit` happened to judge:
+ * the scheduler, not the check, places it.
+ */
+function describeWhere(
+  fit: ModelManagerFitResult,
+  { node, fittingNodes }: FitPlacement,
+): string | undefined {
   if (fit.placement === 'split') {
     const where = describeSplit(fit.nodes).replace(/^Split/, 'split');
-    return fit.fastLink ? `${where} (fast link ${fit.fastLink})` : where;
+    return fit.fastLink
+      ? `— ${where} (fast link ${fit.fastLink})`
+      : `— ${where}`;
   }
   if (fit.instanceType) {
-    return `the node comes as ${fit.instanceType}`;
+    return `— the node comes as ${fit.instanceType}`;
   }
-  return fit.node ? `on ${fit.node}` : undefined;
+  if (node) {
+    return `— will be placed on ${node}`;
+  }
+  return fittingNodes?.length ? `on ${listNames(fittingNodes)}` : undefined;
 }
 
 /** `check_fit`'s answer as the dialog shows it before the Serve button. */
-export function describeFitVerdict(fit: ModelManagerFitResult): FitVerdict {
+export function describeFitVerdict(
+  fit: ModelManagerFitResult,
+  placement: FitPlacement = {},
+): FitVerdict {
   const sizes = describeFit(fit);
   if (!fit.fits) {
     return {
@@ -116,10 +151,10 @@ export function describeFitVerdict(fit: ModelManagerFitResult): FitVerdict {
       details: sizes ? [sizes] : [],
     };
   }
-  const where = describeWhere(fit);
+  const where = describeWhere(fit, placement);
   return {
     fits: true,
-    summary: where ? `Fits — ${where}` : 'Fits',
+    summary: where ? `Fits ${where}` : 'Fits',
     details: [describeCache(fit), sizes].filter(Boolean),
   };
 }
@@ -156,6 +191,8 @@ function describeSplitChoice(
 export function placementChoices(
   copies: ModelManagerFitResult | undefined,
   split: ModelManagerFitResult | undefined,
+  /** The node the person pinned the copy to, if any. */
+  node?: string,
 ): PlacementChoice[] | undefined {
   const recommended = copies?.recommended;
   if (!recommended) {
@@ -176,10 +213,116 @@ export function placementChoices(
     },
     {
       id: 'copies',
-      label: copies?.node ? `One copy on ${copies.node}` : 'One copy',
+      label: node ? `One copy on ${node}` : 'One copy',
       recommended: recommended === 'copies',
       disabled: copies?.fits !== true,
     },
+  ];
+}
+
+/** The Node field's first option: model-manager and the scheduler pick. */
+export const ANY_NODE = 'any';
+
+/** One option of the Serve dialog's Node field. */
+export type NodeChoice = {
+  id: string;
+  label: string;
+  /** The free budget, or why the preset cannot land there. */
+  description?: string;
+  /** Not ready, not a serving target for this preset, or it does not fit. */
+  disabled: boolean;
+};
+
+/** A preset served from a model image (`oci://`) rather than Hugging Face weights. */
+export function isModelImagePreset(storageUri: string | undefined): boolean {
+  return Boolean(storageUri?.startsWith('oci://'));
+}
+
+/**
+ * Whether the backend places this preset on the node: an eligible node, or
+ * for a model-image preset one whose only failing rule is the cache-claim
+ * pin (`modelImageEligible`).
+ */
+export function servesPresetOn(
+  node: Pick<ModelManagerNode, 'ready' | 'eligible' | 'modelImageEligible'>,
+  modelImage: boolean,
+): boolean {
+  return (
+    node.ready &&
+    (node.eligible !== false ||
+      (modelImage && node.modelImageEligible === true))
+  );
+}
+
+/**
+ * The nodes the Node field lists: every node the preset can serve on, and
+ * the GPU nodes it cannot (disabled, with the reason) — not the cluster's
+ * plain workers, which only a node selector would ever change.
+ */
+export function nodeCandidates(
+  nodes: ModelManagerNode[],
+  modelImage: boolean,
+): ModelManagerNode[] {
+  return nodes.filter(
+    node => servesPresetOn(node, modelImage) || (node.gpuCount ?? 0) > 0,
+  );
+}
+
+function whyNotOn(
+  node: ModelManagerNode,
+  fit: ModelManagerFitResult | undefined,
+  modelImage: boolean,
+): string | undefined {
+  if (!node.ready) {
+    return 'not ready';
+  }
+  if (!servesPresetOn(node, modelImage)) {
+    return `not a serving target: ${
+      node.eligibilityReason ?? 'the serving layer gave no reason'
+    }`;
+  }
+  if (fit && !fit.fits) {
+    return fit.reason ?? 'does not fit';
+  }
+  return undefined;
+}
+
+/**
+ * The Node field: "Any node that fits", then each candidate with its free
+ * budget — or, disabled, why the preset cannot land there. `fits` is
+ * `check_fit` pinned to each node; a node still being judged is offered.
+ */
+export function nodeChoices(
+  nodes: ModelManagerNode[],
+  fits: Record<string, ModelManagerFitResult | undefined>,
+  options: { modelImage: boolean; prePulledNodes?: string[] },
+): NodeChoice[] {
+  return [
+    { id: ANY_NODE, label: 'Any node that fits', disabled: false },
+    ...nodes.map(node => {
+      const why = whyNotOn(node, fits[node.name], options.modelImage);
+      if (why) {
+        return {
+          id: node.name,
+          label: node.name,
+          description: why,
+          disabled: true,
+        };
+      }
+      const free =
+        node.freeBytes !== undefined && node.budgetBytes !== undefined
+          ? `${formatBytes(node.freeBytes)} free of ${formatBytes(node.budgetBytes)}`
+          : undefined;
+      const pulled = options.prePulledNodes?.includes(node.name)
+        ? 'model image pulled'
+        : undefined;
+      return {
+        id: node.name,
+        label: node.name,
+        description: [free, pulled].filter(Boolean).join(' · ') || undefined,
+        disabled: false,
+      };
+    }),
   ];
 }
 
