@@ -497,6 +497,7 @@ export function toGpuNodeFromManager(
     accelerated: node.accelerated,
     eligible: node.eligible,
     eligibilityReason: node.eligibilityReason,
+    modelImageEligible: node.modelImageEligible,
     cache: node.cache
       ? {
           claim: node.cache.claim,

@@ -602,8 +602,12 @@ export const modelManagerFitResultSchema = z.looseObject({
   weightsSource: wireString,
   overheadBytes: wireNumber,
   requiredBytes: wireNumber,
-  /** What a pull fetches (all repository files). */
+  /** What a pull fetches (all repository files; a model image's layers, 0 on a node that holds it). */
   downloadBytes: wireNumber,
+  /** oci:// presets: the nodes whose kubelet holds the model image already. */
+  prePulledNodes: wireStringList,
+  /** The nodes the preset serves on already. */
+  servingNodes: wireStringList,
   /** Node the check was made against. */
   node: wireString,
   budgetBytes: wireNumber,
@@ -618,7 +622,7 @@ export const modelManagerFitResultSchema = z.looseObject({
   tokenConfigured: wireBoolean(false),
   /** The model is already in the node's cache. */
   cached: wireBoolean(false),
-  /** How `cached` was decided (model-manager 0.24.0): `scan`, `index`, or `unknown` — then `cached: false` is no verdict. */
+  /** How `cached` was decided (model-manager 0.24.0): `scan`, `index`, `unknown` — then `cached: false` is no verdict — or `oci-image`, a preset served from its model image. */
   cacheSource: wireString,
   /** The instance type the pool's node comes as when the load scales it from zero. */
   instanceType: wireString,
@@ -706,6 +710,11 @@ export const modelManagerNodeSchema = z.looseObject({
   eligible: wireOptionalBoolean,
   /** Why not, when `eligible` is false. */
   eligibilityReason: wireString,
+  /**
+   * `eligible` false only for the cache-claim pin: the node still serves a
+   * preset from its model image (oci://), just not a Hugging Face one.
+   */
+  modelImageEligible: wireOptionalBoolean,
   /** The fast link the node belongs to (kserve): a model can be split across its nodes. */
   fastLink: wireString,
   /** The download cache on this node; absent when the node holds none. */

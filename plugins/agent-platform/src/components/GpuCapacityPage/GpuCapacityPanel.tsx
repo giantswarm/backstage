@@ -97,6 +97,13 @@ export function hostNodeDescription(node: GpuNode): string {
 /** What the node name's description says for a node the serving layer will not place a model on. */
 export const NOT_SERVING_TARGET_DESCRIPTION = 'Not a serving target';
 const NOT_SERVING_TARGET_NO_REASON = 'the serving layer gave no reason';
+/** The same for a node that is a serving target for model-image presets only. */
+export const MODEL_IMAGE_TARGET_DESCRIPTION = 'Model-image presets only';
+
+/** Not a serving target for Hugging Face presets, but for model-image (oci://) ones. */
+function servesModelImagesOnly(node: GpuNode): boolean {
+  return node.eligible === false && node.modelImageEligible === true;
+}
 
 /** The hint in an empty cache cell when another node of the installation holds the cache. */
 export const NO_CACHE_ON_NODE_HINT = 'no model cache on this node';
@@ -105,14 +112,17 @@ const NO_CACHE_ON_NODE_TITLE =
 
 /**
  * "Not a serving target: <reason>" for a node the serving layer will not
- * place a model on — the node cell's and the budget cell's tooltip.
+ * place a model on — the node cell's and the budget cell's tooltip; for a
+ * node only model-image presets can land on, that it serves those.
  */
 function eligibilityDetail(node: GpuNode): string | undefined {
-  return node.eligible === false
-    ? `${NOT_SERVING_TARGET_DESCRIPTION}: ${
-        node.eligibilityReason ?? NOT_SERVING_TARGET_NO_REASON
-      }`
-    : undefined;
+  if (node.eligible !== false) {
+    return undefined;
+  }
+  const reason = node.eligibilityReason ?? NOT_SERVING_TARGET_NO_REASON;
+  return servesModelImagesOnly(node)
+    ? `Serving target for model-image presets; Hugging Face presets: ${reason}`
+    : `${NOT_SERVING_TARGET_DESCRIPTION}: ${reason}`;
 }
 
 /**
@@ -194,14 +204,17 @@ export function describeNode(node: GpuNode): string | undefined {
     return 'Not ready';
   }
   if (node.eligible === false) {
-    return NOT_SERVING_TARGET_DESCRIPTION;
+    return servesModelImagesOnly(node)
+      ? MODEL_IMAGE_TARGET_DESCRIPTION
+      : NOT_SERVING_TARGET_DESCRIPTION;
   }
   return isHostMemoryNode(node) ? hostNodeDescription(node) : undefined;
 }
 
 /**
  * The node name with {@link describeNode} under it. A node that is not a
- * serving target is dimmed, and the serving layer's reason is on hover.
+ * serving target is dimmed (not one model-image presets still serve on), and
+ * the serving layer's reason is on hover.
  */
 function NodeCell({ node }: { node: GpuNode }) {
   const description = describeNode(node);
@@ -211,7 +224,9 @@ function NodeCell({ node }: { node: GpuNode }) {
       <Text
         as="p"
         variant="body-medium"
-        color={ineligible ? 'secondary' : undefined}
+        color={
+          ineligible && !servesModelImagesOnly(node) ? 'secondary' : undefined
+        }
         truncate
         title={node.name}
       >

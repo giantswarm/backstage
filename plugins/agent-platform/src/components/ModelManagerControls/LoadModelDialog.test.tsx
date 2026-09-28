@@ -22,6 +22,7 @@ import { LoadModelDialog, type LoadTarget } from './LoadModelDialog';
 const checkFit = jest.fn();
 const loadModel = jest.fn();
 const listPresets = jest.fn();
+const listNodes = jest.fn();
 const onOpenChange = jest.fn();
 const onServed = jest.fn();
 let musterConnected = true;
@@ -36,7 +37,10 @@ jest.mock('../../hooks/useServedModelAction', () => ({
   useInvalidateModelManagerReads: () => jest.fn(),
 }));
 
-const modelManagerApi = { listPresets } as unknown as ModelManagerApi;
+const modelManagerApi = {
+  listPresets,
+  listNodes,
+} as unknown as ModelManagerApi;
 
 const poolCapabilities: ServingCapabilities = {
   ...NO_SERVING_CAPABILITIES,
@@ -297,18 +301,90 @@ describe('LoadModelDialog', () => {
     await render();
 
     await userEvent.click(
-      await screen.findByRole('radio', { name: /One copy on spark-a/ }),
+      await screen.findByRole('radio', { name: /One copy/ }),
     );
     await waitFor(() =>
       expect(screen.getByTestId('serve-fit-verdict')).toHaveTextContent(
-        'Fits — on spark-a',
+        /^Fits/,
       ),
+    );
+    expect(screen.getByTestId('serve-fit-verdict')).not.toHaveTextContent(
+      'spark-a',
     );
     await userEvent.click(serveButton());
     await waitFor(() =>
       expect(loadModel).toHaveBeenCalledWith({
         model: 'qwen3-4b-instruct',
         backend: 'kserve',
+      }),
+    );
+  });
+
+  it('serves a copy on the node the person picks, and lists a node it cannot land on disabled', async () => {
+    const GIB = 1024 ** 3;
+    const gpuNode = (name: string, extra: object = {}) => ({
+      name,
+      ready: true,
+      eligible: true,
+      gpuCount: 1,
+      budgetBytes: 110 * GIB,
+      freeBytes: 100 * GIB,
+      ...extra,
+    });
+    listNodes.mockResolvedValue([
+      gpuNode('spark-a'),
+      gpuNode('spark-b'),
+      gpuNode('spark-c', {
+        eligible: false,
+        eligibilityReason: 'outside the serving node selector',
+      }),
+    ]);
+    const copyFit: ModelManagerFitResult = {
+      ...fits,
+      instanceType: undefined,
+      node: 'spark-b',
+    };
+    checkFit.mockImplementation(async ({ node }: { node?: string }) => ({
+      ...copyFit,
+      ...(node ? { node } : {}),
+    }));
+    await render({
+      targets: [
+        { ...pool, capabilities: { ...poolCapabilities, nodeInventory: true } },
+      ],
+    });
+
+    const verdict = await screen.findByTestId('serve-fit-verdict');
+    await waitFor(() =>
+      expect(verdict).toHaveTextContent('Fits on spark-a and spark-b'),
+    );
+    expect(checkFit).toHaveBeenCalledWith({
+      model: 'qwen3-4b-instruct',
+      node: 'spark-a',
+      backend: 'kserve',
+    });
+    expect(checkFit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ node: 'spark-c' }),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Node/ }));
+    expect(
+      await screen.findByRole('option', { name: /spark-c/ }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('option', { name: /spark-c/ })).toHaveTextContent(
+      'not a serving target: outside the serving node selector',
+    );
+    await userEvent.click(screen.getByRole('option', { name: /spark-a/ }));
+
+    await waitFor(() =>
+      expect(verdict).toHaveTextContent('Fits — will be placed on spark-a'),
+    );
+    await userEvent.click(serveButton());
+    await waitFor(() =>
+      expect(loadModel).toHaveBeenCalledWith({
+        model: 'qwen3-4b-instruct',
+        backend: 'kserve',
+        node: 'spark-a',
       }),
     );
   });
