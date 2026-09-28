@@ -15,6 +15,7 @@ import type {
   AgentSpec,
   ValidateAgentResult,
 } from '../../lib/agentManager';
+import type { HarnessChoice } from '../../lib/harnesses';
 import type { DiscoveredSkill } from '../../lib/skills';
 import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
@@ -156,6 +157,8 @@ type Scenario = {
   createError?: Error;
   /** The dry run itself is refused (thrown), e.g. a not-connected session. */
   validateError?: Error;
+  /** The Harness picked on the details step; none is the platform Harness. */
+  harness?: HarnessChoice;
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -227,9 +230,11 @@ function makeMusterApi(scenario: Scenario = {}) {
 function Seed({
   children,
   withSkill = true,
+  harness,
 }: {
   children: ReactNode;
   withSkill?: boolean;
+  harness?: HarnessChoice;
 }) {
   const {
     setName,
@@ -237,6 +242,7 @@ function Seed({
     setSystemMessage,
     setInstallation,
     selectModelConfig,
+    selectHarness,
     toggleSkill,
     setToolset,
     isComplete,
@@ -247,6 +253,7 @@ function Seed({
     setSystemMessage('You review pull requests.');
     setInstallation('gazelle');
     selectModelConfig('opus-4-7', 'kagent');
+    selectHarness(harness);
     if (withSkill) {
       toggleSkill(SKILL);
     }
@@ -268,7 +275,7 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
         <NewAgentFormProvider>
-          <Seed withSkill={withSkill}>
+          <Seed withSkill={withSkill} harness={scenario.harness}>
             <NewAgentReviewPage />
           </Seed>
         </NewAgentFormProvider>
@@ -329,6 +336,7 @@ describe('NewAgentReviewPage', () => {
       toolset: ['preset:read-only'],
     });
     expect(spec).not.toHaveProperty('runtime');
+    expect(spec).not.toHaveProperty('harness');
 
     // What agent-manager rendered is what is shown, verbatim.
     const oci = await screen.findByTestId('code-agent.yaml');
@@ -356,6 +364,39 @@ describe('NewAgentReviewPage', () => {
     expect(
       screen.getByText(/Values validated against the chart's schema/),
     ).toHaveTextContent('1.0.0 (registry)');
+  });
+
+  it('validates and creates on the Harness picked, and names it in the review', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      harness: {
+        name: 'claude',
+        admits: 'claude',
+        runtime: 'claude',
+        imageName: 'claude-harness',
+      },
+    });
+
+    await waitFor(() =>
+      expect(
+        specSentTo(callTool, 'x_agent-manager_validate_agent'),
+      ).toMatchObject({ harness: 'claude' }),
+    );
+    const summary = screen.getByText('Harness').parentElement as HTMLElement;
+    expect(summary).toHaveTextContent('claude');
+    expect(summary).toHaveTextContent('Claude Code');
+    expect(
+      screen.getByText(/the agent runs on the Harness/),
+    ).toBeInTheDocument();
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(
+        specSentTo(callTool, 'x_agent-manager_create_agent'),
+      ).toMatchObject({ harness: 'claude' }),
+    );
   });
 
   it("shows the dry run's violations inline and withholds Deploy", async () => {

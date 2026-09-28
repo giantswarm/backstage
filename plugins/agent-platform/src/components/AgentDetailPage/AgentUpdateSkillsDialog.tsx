@@ -291,7 +291,7 @@ export function AgentUpdateSkillsDialog({
         {dryRun.result && !failure && violations.length === 0 && (
           <Text variant="body-small" color="secondary">
             {changesAnything
-              ? 'Confirming re-pins the skills marked above; the platform Harness then compiles a new revision.'
+              ? 'Confirming re-pins the skills marked above; its Harness then compiles a new revision.'
               : "Every git skill is already at its repository's default-branch head."}
           </Text>
         )}

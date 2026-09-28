@@ -20,6 +20,7 @@ const state: NewAgentFormState = {
   installation: 'gazelle',
   modelConfigName: 'opus-4-7',
   modelConfigNamespace: 'kagent',
+  harness: undefined,
   systemMessage: 'You review pull requests.',
   selectedSkills: [skill],
   toolset: ['preset:read-only'],
@@ -41,6 +42,19 @@ describe('skillEntryOf', () => {
 });
 
 describe('agentSpecOf', () => {
+  it('names the Harness picked by the label value it admits, and none for the platform Harness', () => {
+    expect(
+      agentSpecOf(
+        {
+          ...state,
+          harness: { name: 'claude-go', admits: 'go', runtime: 'claude' },
+        },
+        { toolset: [] },
+      ).harness,
+    ).toBe('go');
+    expect(agentSpecOf(state, { toolset: [] })).not.toHaveProperty('harness');
+  });
+
   it("is agent-manager's create contract: the slug as the name, the ModelConfig's namespace, the declared toolset", () => {
     expect(
       agentSpecOf(state, {

@@ -98,7 +98,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
         title={wording.doing}
         description={
           (describesThisWrite ? status?.summary : undefined) ??
-          `agent-manager ${wording.wrote}${as}; waiting for the platform Harness to compile the template.`
+          `agent-manager ${wording.wrote}${as}; waiting for its Harness to compile the template.`
         }
       />
     );
@@ -111,7 +111,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
         status="success"
         title="Ready"
         description={`The agent is ready${
-          harness ? ` on Harness ${harness}` : ' on the platform Harness'
+          harness ? ` on Harness ${harness}` : ' on its Harness'
         }${requestedBy ? ` (${wording.done.toLowerCase()}${as})` : ''}.`}
       />
     );
@@ -123,7 +123,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
       title={wording.failedTitle}
       description={
         status?.summary ??
-        'agent-manager reports the template failed on the platform Harness.'
+        'agent-manager reports the template failed on its Harness.'
       }
     />
   );
@@ -131,7 +131,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
 
 /**
  * The agent's readiness right after Deploy, from agent-manager's
- * `get_agent_status` polled until the platform Harness has a verdict.
+ * `get_agent_status` polled until the agent's Harness has a verdict.
  *
  * Rendered only on the visit that follows a create (the review page hands the
  * agent over in the router state) and only for the agent the page shows;

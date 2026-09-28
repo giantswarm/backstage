@@ -443,7 +443,7 @@ function AgentDetailPageContent() {
     (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
       toastApi.post({
         title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
-        description: 'The platform Harness compiles a new revision.',
+        description: 'Its Harness compiles a new revision.',
         status: 'success',
         timeout: TOAST_TIMEOUT_MS,
       });

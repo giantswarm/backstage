@@ -8,6 +8,7 @@ import {
 
 import { slugify } from '../../lib/slugify';
 import { systemMessageProblem } from '../../lib/systemMessage';
+import type { HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
   normalizeSelection,
@@ -22,6 +23,12 @@ export type NewAgentFormState = {
   installation: string | undefined;
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
+  /**
+   * The Harness the agent runs on, when the person picked one other than the
+   * platform Harness. Undefined is the platform Harness: `harness` is then
+   * left out of the request and agent-manager composes its own.
+   */
+  harness: HarnessChoice | undefined;
   systemMessage: string;
   /**
    * Skills the user picked, in selection order, each with the commit the
@@ -45,6 +52,8 @@ export type NewAgentFormContextValue = {
   setDescription: (description: string) => void;
   setInstallation: (installation: string | undefined) => void;
   selectModelConfig: (name: string, namespace: string) => void;
+  /** Undefined picks the platform Harness. */
+  selectHarness: (harness: HarnessChoice | undefined) => void;
   setSystemMessage: (systemMessage: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
   toggleSkill: (skill: DiscoveredSkill) => void;
@@ -84,6 +93,7 @@ const initialState: NewAgentFormState = {
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
+  harness: undefined,
   // Empty means "use the chart default": the spec sent to agent-manager omits
   // it (agentSpecOf), and agent-manager keeps the chart's default prompt.
   systemMessage: '',
@@ -162,21 +172,29 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
       },
       setDescription: description =>
         setState(prev => ({ ...prev, description })),
-      // Changing the installation clears the model selection: ModelConfigs are
-      // scoped to an installation, so the previous pick may not exist here.
+      // Changing the installation clears the model and Harness selections:
+      // both are scoped to an installation, so the previous pick may not exist
+      // here.
       setInstallation: installation =>
         setState(prev => ({
           ...prev,
           installation,
           modelConfigName: undefined,
           modelConfigNamespace: undefined,
+          harness: undefined,
         })),
+      // The ModelConfig's namespace is the agent's, and a Harness admits only
+      // templates of its own namespace, so a model in another namespace drops
+      // the Harness pick.
       selectModelConfig: (name, namespace) =>
         setState(prev => ({
           ...prev,
           modelConfigName: name,
           modelConfigNamespace: namespace,
+          harness:
+            prev.modelConfigNamespace === namespace ? prev.harness : undefined,
         })),
+      selectHarness: harness => setState(prev => ({ ...prev, harness })),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
       toggleToolsetSelector: selector =>
