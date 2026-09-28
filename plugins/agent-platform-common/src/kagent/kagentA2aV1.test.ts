@@ -524,7 +524,7 @@ describe('task stored for the claude Harness turn (kagent 1.1)', () => {
     );
   });
 
-  it('counts it once when history holds the same message', () => {
+  it('counts a message once when history holds it twice', () => {
     const [task] = normalized;
     const withCopy = {
       ...task,

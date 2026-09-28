@@ -709,7 +709,8 @@ describe('KagentClient against a fake controller', () => {
 
       expect(resumed.task.id).toBe(paused.task.id);
       expect(resumed.task.status.state).toBe('TASK_STATE_COMPLETED');
-      const reply = resumed.task.history.at(-1)!;
+      // a2a-go appends the reply, then moves the replaced prompt behind it.
+      const reply = resumed.task.history.find(m => m.messageId === 'm2')!;
       expect(reply.taskId).toBe(paused.task.id);
       expect(reply.extensions).toEqual([HITL_EXTENSION_URI]);
       expect(
@@ -722,8 +723,14 @@ describe('KagentClient against a fake controller', () => {
       });
       // The transcript carries a rendering of the decision when no words were given.
       expect(reply.parts).toEqual([{ text: 'Rejected.' }]);
-      // The request the decision answers stays in history ahead of it.
-      const prompt = resumed.task.history.at(-2)!;
+      // The request the decision answers stays in history, with the timeline
+      // position that sorts it back ahead of the reply.
+      const prompt = resumed.task.history.at(-1)!;
+      expect(prompt.metadata).toEqual(
+        expect.objectContaining({
+          'kagent.dev/a2a/timeline-position': expect.any(String),
+        }),
+      );
       expect(
         (prompt.metadata as Record<string, unknown>)[HITL_EXTENSION_URI],
       ).toEqual(expect.objectContaining({ type: 'tool_approval_request' }));
@@ -794,8 +801,8 @@ describe('KagentClient against a fake controller', () => {
       };
       const resumed = tasks.find(task => task.id === paused.task.id)!;
       expect(resumed.status.state).toBe('TASK_STATE_COMPLETED');
-      const reply = resumed.history.at(-1)!;
-      expect(reply.messageId).toBe('m2');
+      const reply = resumed.history.find(m => m.messageId === 'm2')!;
+      expect(reply.role).toBe('ROLE_USER');
       expect(reply.taskId).toBe(paused.task.id);
       expect(
         (reply.metadata as Record<string, unknown>)[HITL_EXTENSION_URI],
@@ -873,9 +880,10 @@ describe('KagentClient against a fake controller', () => {
 
       expect(resumed.task.status.state).toBe('TASK_STATE_COMPLETED');
       expect(
-        (resumed.task.history.at(-1)!.metadata as Record<string, unknown>)[
-          HITL_EXTENSION_URI
-        ],
+        (
+          resumed.task.history.find(m => m.messageId === 'm3')!
+            .metadata as Record<string, unknown>
+        )[HITL_EXTENSION_URI],
       ).toEqual({
         type: 'ask_user_response',
         id: 'ask-1',

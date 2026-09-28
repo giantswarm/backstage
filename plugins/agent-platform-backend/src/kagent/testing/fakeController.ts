@@ -487,11 +487,13 @@ export function createFakeController(
       user.role = Role.USER;
       user.metadata = { ...message.metadata, [TIMELINE_POSITION_KEY]: stamp() };
       const resumed = clone(TaskSchema, stored.task);
-      // a2a-go moves the status message a new status replaces into history.
+      // a2a-go appends the reply first, then moves the status message the next
+      // status replaces into history, so the prompt lands after the reply and
+      // only its timeline position puts it back in front.
+      resumed.history.push(user);
       if (resumed.status?.message) {
         resumed.history.push(resumed.status.message);
       }
-      resumed.history.push(user);
       resumed.artifacts.push(
         create(ArtifactSchema, {
           artifactId: `${stored.task.id}-resumed`,
@@ -614,12 +616,13 @@ export function createFakeController(
           contextId: task.contextId,
           role: Role.AGENT,
           parts: [{ content: { case: 'text', value: hint } }],
-          ...(activated && {
-            extensions: [HITL_EXTENSION_URI],
-            metadata: {
+          ...(activated && { extensions: [HITL_EXTENSION_URI] }),
+          metadata: {
+            [TIMELINE_POSITION_KEY]: stamp(),
+            ...(activated && {
               [HITL_EXTENSION_URI]: script.request as unknown as JsonObject,
-            },
-          }),
+            }),
+          },
         });
         const paused = withStatus(task, TaskState.INPUT_REQUIRED, prompt);
         stored.task = paused;
