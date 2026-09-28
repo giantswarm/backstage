@@ -297,11 +297,23 @@ describe('placementChoices', () => {
     const choices = placementChoices(
       { ...base, recommended: 'copies', node: 'gpu1' },
       undefined,
-      'gpu2',
+      ['gpu2'],
     )!;
     expect(choices.find(c => c.id === 'copies')?.label).toBe(
       'One copy on gpu2',
     );
+  });
+
+  it('counts the copies on the ticked nodes', () => {
+    const choices = placementChoices(
+      { ...base, fits: false, recommended: 'copies' },
+      undefined,
+      ['a', 'b', 'c'],
+    )!;
+    expect(choices.find(c => c.id === 'copies')).toMatchObject({
+      label: '3 copies on a, b and c — more people served at once',
+      disabled: false,
+    });
   });
 });
 
@@ -334,14 +346,13 @@ describe('the Node field', () => {
     ).toEqual(['a', 'c']);
   });
 
-  it('offers any node first, each node with its budget, and disables the ones the preset cannot land on', () => {
+  it('offers each node with its budget, and disables the ones the preset cannot land on', () => {
     const choices = nodeChoices(
       [node('a'), node('b'), pinnedOut, node('d', { ready: false })],
       { b: { model: 'm', fits: false, reason: 'needs 120 GiB' } as any },
       { modelImage: false, prePulledNodes: ['a'] },
     );
     expect(choices).toEqual([
-      { id: 'any', label: 'Any node that fits', disabled: false },
       {
         id: 'a',
         label: 'a',
@@ -360,7 +371,7 @@ describe('the Node field', () => {
   });
 
   it('offers a node pinned out by the cache claim for a model-image preset', () => {
-    const [, c] = nodeChoices([pinnedOut], {}, { modelImage: true });
+    const [c] = nodeChoices([pinnedOut], {}, { modelImage: true });
     expect(c).toMatchObject({ id: 'c', disabled: false });
   });
 });
@@ -369,6 +380,26 @@ describe('describeSplit', () => {
   it('names the nodes', () => {
     expect(describeSplit(['a', 'b'])).toBe('Split across a and b');
     expect(describeSplit(['a', 'b', 'c'])).toBe('Split across a, b and c');
+  });
+});
+
+describe('the verdict of copies on several nodes', () => {
+  const fit = {
+    model: 'm',
+    fits: true,
+    presets: [],
+    placement: 'copies',
+    nodes: ['spark-a', 'spark-b'],
+    node: 'spark-b',
+    requiredBytes: 50 * 1024 ** 3,
+    budgetBytes: 110 * 1024 ** 3,
+  } as unknown as ModelManagerFitResult;
+
+  it('says how many copies, where, and that each node holds a whole copy', () => {
+    const verdict = describeFitVerdict(fit);
+    expect(verdict.summary).toBe('Fits as 2 copies on spark-a and spark-b');
+    expect(describeFit(fit)).toContain('needs 50.0 GiB on each of 2 nodes');
+    expect(describeFit(fit)).not.toContain('split');
   });
 });
 

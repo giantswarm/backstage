@@ -402,6 +402,10 @@ export function toServedModelFromManager(
     node: running?.node ?? model.node,
     nodeSource: kserve && running?.node ? 'pod' : undefined,
     splitNodes: running?.placement === 'split' ? running.nodes : undefined,
+    copyNodes:
+      running?.placement === 'copies' && (running.nodes?.length ?? 0) > 1
+        ? running.nodes
+        : undefined,
     gpuCount: running?.gpus,
     internalUrl: running?.endpoint ?? clientEndpoint,
     interfaces: running?.interfaces,
