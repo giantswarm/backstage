@@ -339,7 +339,9 @@ export function createClusterTokenRouter(
 
         // Everything else is a broker-side exchange failure -- e.g.
         // `invalid_target`, where the audience/installation is not served by
-        // the broker (a registration/config gap). Actionable -> stays at `warn`.
+        // the broker. The frontend asks only for installations marked covered
+        // (`clusterTokenAudience` or a Dex target), so this is a registration
+        // gap in the broker. Actionable -> stays at `warn`.
         logger.warn(
           'Cluster token exchange failed: broker rejected the exchange',
           meta,
