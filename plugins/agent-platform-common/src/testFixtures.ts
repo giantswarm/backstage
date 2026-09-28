@@ -116,6 +116,19 @@ export const tasksAskUser: TaskEnvelopeFixture =
 export const tasksBareArray: unknown = tasksBareArrayJson as unknown;
 /** `ListTasksResponse` of a completed claude Harness turn on kagent 1.1. */
 export const tasksClaudeHarness: unknown = tasksClaudeHarnessJson as unknown;
+/**
+ * {@link tasksClaudeHarness} with its turn ended `TASK_STATE_FAILED` instead,
+ * keeping the status message and the usage on it. Derived, not recorded: it
+ * puts a v1 failed task through `toWireTask`, which leaves a failed turn's
+ * status message off history.
+ */
+export const tasksClaudeHarnessFailed: unknown = (() => {
+  const fixture = structuredClone(tasksClaudeHarnessJson) as {
+    tasks: Array<{ status: { state: string } }>;
+  };
+  fixture.tasks[0].status.state = 'TASK_STATE_FAILED';
+  return fixture;
+})();
 export const tasksDataNotArray: unknown = tasksDataNotArrayJson as unknown;
 export const tasksEmptyNoData: unknown = tasksEmptyNoDataJson as unknown;
 export const tasksErrorEnvelope: unknown = tasksErrorEnvelopeJson as unknown;

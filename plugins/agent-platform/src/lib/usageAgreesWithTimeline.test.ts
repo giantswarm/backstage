@@ -7,6 +7,8 @@ import {
   tasksApproval,
   tasksAskUser,
   tasksAskUserPending,
+  tasksClaudeHarness,
+  tasksClaudeHarnessFailed,
   tasksFailed,
   tasksUnknownState,
   tasksV099,
@@ -32,13 +34,52 @@ const WIDE = {
   endMs: Date.parse('2030-01-01T00:00:00Z'),
 };
 
+/**
+ * A failed turn whose status carries what it spent, as the claude Harness
+ * reports it, and a later turn whose history repeats that status message.
+ */
+const failedWithUsage = (() => {
+  const fixture = structuredClone(tasksFailed) as typeof tasksFailed;
+  const message = fixture.data[0].status.message as {
+    metadata?: Record<string, unknown>;
+  };
+  message.metadata = {
+    ...message.metadata,
+    'kagent.dev/a2a/usage': { promptTokenCount: 50, candidatesTokenCount: 7 },
+  };
+  (fixture.data[1].history as unknown[]).unshift(structuredClone(message));
+  return fixture;
+})();
+
+/** A session waiting on a question whose pending prompt reports its usage. */
+const askUserPendingWithUsage = (() => {
+  const fixture = structuredClone(
+    tasksAskUserPending,
+  ) as typeof tasksAskUserPending;
+  const message = fixture.data[1].status.message as {
+    metadata?: Record<string, unknown>;
+  };
+  message.metadata = {
+    ...message.metadata,
+    'kagent.dev/a2a/usage': { promptTokenCount: 30, candidatesTokenCount: 4 },
+  };
+  return fixture;
+})();
+
 const FIXTURES: Array<[string, unknown]> = [
   ['a v0.9.9 session with a delegation', tasksV099],
   ['an adk_-prefixed session', tasksAdkPrefixed],
   ['a session with an approval', tasksApproval],
   ['a session with an answered question', tasksAskUser],
   ['a session waiting on a question', tasksAskUserPending],
+  [
+    'a session waiting on a question that reports its usage',
+    askUserPendingWithUsage,
+  ],
+  ['a v1 claude Harness session', tasksClaudeHarness],
+  ['a v1 claude Harness session whose turn failed', tasksClaudeHarnessFailed],
   ['a session whose turn failed', tasksFailed],
+  ['a session whose failed turn reports its usage', failedWithUsage],
   ['a session in an unknown state', tasksUnknownState],
 ];
 
@@ -63,4 +104,11 @@ describe.each(FIXTURES)('token sums agree on %s', (_name, fixture) => {
 
     expect(usage.tally.turns).toBe(tasks.length);
   });
+});
+
+it('counts a failed turn’s usage once when a later history repeats it', () => {
+  const { tasks } = normalizeTaskList(failedWithUsage);
+
+  expect(reduceSessionUsage(tasks, WIDE).tally.totalTokens).toBe(57);
+  expect(buildTimeline(tasks).tokens.total).toBe(57);
 });

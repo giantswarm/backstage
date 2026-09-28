@@ -1,6 +1,11 @@
 import { A2aTaskWire } from './kagentTaskSchema';
 import { normalizeTimestamp } from './kagentSessions';
 import {
+  claimEndedTurnUsage,
+  historyWithPendingPrompt,
+  readTurnStatus,
+} from './kagentTurnStatus';
+import {
   addTokenUsage,
   CONFIRMATION_TOOL_NAME,
   isAgentToolName,
@@ -153,6 +158,12 @@ function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
  *   recognised, and counted in neither `toolCalls` nor `tools`.
  * - **`task.metadata` usage is not read.** On ADK it is the last model call's,
  *   already on that call's artifact.
+ * - **A failed or canceled turn's usage is read off its status**, through
+ *   `claimEndedTurnUsage`, since that message is not in history. A turn awaiting
+ *   input has its pending prompt walked as history, as the timeline does.
+ * - **A task outside the window is walked but not counted**, so the ids it
+ *   holds are seen: a later in-window task repeating one of its messages must
+ *   not credit that message's usage to the later day.
  */
 export function reduceSessionUsage(
   tasks: A2aTaskWire[],
@@ -175,17 +186,19 @@ export function reduceSessionUsage(
   for (const task of tasks) {
     const at = normalizeTimestamp(task.status?.timestamp);
     const atMs = at === undefined ? undefined : Date.parse(at);
-    if (atMs !== undefined && (atMs < window.startMs || atMs > window.endMs)) {
-      continue;
-    }
+    const outOfWindow =
+      atMs !== undefined && (atMs < window.startMs || atMs > window.endMs);
 
     const turn = emptyTally();
     turn.turns = 1;
+    let turnUnparseable = 0;
+    const turnTools: string[] = [];
+    const status = readTurnStatus(task);
 
-    for (const entry of task.history ?? []) {
+    for (const entry of historyWithPendingPrompt(task, status)) {
       const parsed = parseHistoryEntry(entry);
       if (parsed.kind === 'unparseable') {
-        unparseableMessages += 1;
+        turnUnparseable += 1;
         continue;
       }
       if (parsed.kind !== 'message') {
@@ -242,11 +255,21 @@ export function reduceSessionUsage(
         const effective = unwrapProxiedCall(call);
         const name = effective.name ?? 'unknown tool';
         turn.toolCalls += 1;
-        bump(tools, name);
-        bump(servers, mcpServerOf(name));
+        turnTools.push(name);
       }
     }
 
+    addUsage(turn, claimEndedTurnUsage(status, seenMessageIds));
+
+    if (outOfWindow) {
+      continue;
+    }
+
+    unparseableMessages += turnUnparseable;
+    for (const name of turnTools) {
+      bump(tools, name);
+      bump(servers, mcpServerOf(name));
+    }
     tally.turns += turn.turns;
     tally.toolCalls += turn.toolCalls;
     addUsage(tally, {
