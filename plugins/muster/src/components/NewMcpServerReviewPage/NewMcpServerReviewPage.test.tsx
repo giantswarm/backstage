@@ -8,14 +8,18 @@ import {
 } from '@backstage/frontend-test-utils';
 
 import { musterApiRef } from '../../apis';
+import { MCPServer } from '../../lib/k8s';
 import { rootRouteRef } from '../../routes';
 import { McpServersRouter } from '../McpServersRouter';
 
 const connect = jest.fn();
 
+/** Registered servers of the active installation, per test. */
+let mockMcpServers: MCPServer[] = [];
+
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
-    installations: ['gazelle'],
+    installations: ['gazelle', 'golem'],
     isLoadingInstallations: false,
     installationInfos: [],
     activeInstallation: 'gazelle',
@@ -25,7 +29,8 @@ jest.mock('../MusterInstanceProvider', () => ({
       requiresAuth: true,
     },
     setActiveInstallation: jest.fn(),
-    mcpServers: [],
+    mcpServers: mockMcpServers,
+    isLoading: false,
     retry: jest.fn(),
   }),
   useMusterSession: () => ({
@@ -97,6 +102,7 @@ async function renderReviewStep() {
 
 describe('NewMcpServerReviewPage', () => {
   beforeEach(() => {
+    mockMcpServers = [];
     callTool.mockReset();
     listServers.mockReset();
     getAuthStatus.mockReset();
@@ -197,9 +203,14 @@ describe('NewMcpServerReviewPage', () => {
       screen.getAllByRole('button', { name: 'Edit details' })[0],
     );
     await screen.findByText('Step 1 of 4: Details');
-    expect(screen.getByLabelText(/^Name/)).toHaveValue('Weather');
-    // …with the technical name locked to the registered CR.
+    expect(screen.getByText('Edit MCP server: weather')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^URL/)).toHaveValue(
+      'https://weather.example.com/mcp',
+    );
+    // …with the technical name locked to the registered CR, and no display
+    // name to ask for: it only ever derived the technical name.
     expect(screen.getByLabelText(/Technical name/)).toBeDisabled();
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
 
     // Walk forward again: the save is an update to the same name.
     callTool.mockClear();
@@ -220,5 +231,71 @@ describe('NewMcpServerReviewPage', () => {
       'core_mcpserver_validate',
       'core_mcpserver_update',
     ]);
+  });
+
+  it('saves an edit as validate then update, keeping what the wizard does not model', async () => {
+    mockMcpServers = [
+      new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'miro' },
+          spec: {
+            type: 'streamable-http',
+            url: 'https://mcp.miro.com/',
+            autoStart: true,
+            headers: { 'X-Team': 'bumblebee' },
+            suspended: true,
+          },
+        } as never,
+        'gazelle',
+      ),
+    ];
+    callTool.mockResolvedValue({});
+    await renderWizard('/agent-platform/muster/servers/new?edit=miro');
+
+    expect(
+      await screen.findByText('Edit MCP server: miro'),
+    ).toBeInTheDocument();
+    const url = screen.getByLabelText(/^URL/);
+    await userEvent.clear(url);
+    await userEvent.type(url, 'https://mcp.miro.com/v2');
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Continue' })[0],
+    );
+    await screen.findByText('Step 2 of 4: Authentication');
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Continue' })[0],
+    );
+    await screen.findByText('Step 3 of 4: Review & save');
+    expect(screen.getByText('Manage via GitOps instead')).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Save changes' })[0],
+    );
+
+    expect(await screen.findByText(/Changes saved\./)).toBeInTheDocument();
+    expect(callTool.mock.calls.map(c => c[0])).toEqual([
+      'core_mcpserver_validate',
+      'core_mcpserver_update',
+    ]);
+    for (const [, definition, installation] of callTool.mock.calls) {
+      expect(definition).toEqual({
+        name: 'miro',
+        type: 'streamable-http',
+        url: 'https://mcp.miro.com/v2',
+        autoStart: true,
+        headers: { 'X-Team': 'bumblebee' },
+      });
+      // The edited server's installation.
+      expect(installation).toBe('gazelle');
+    }
+  });
+
+  it('says so when the server to edit does not exist', async () => {
+    await renderWizard('/agent-platform/muster/servers/new?edit=nope');
+
+    expect(await screen.findByText('Server not found')).toBeInTheDocument();
+    expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();
   });
 });

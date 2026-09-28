@@ -94,12 +94,13 @@ function makeInstance(retry: () => void): MusterInstance {
 
 /** Where the row sent the user, and what it seeded the wizard with. */
 function WizardProbe() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const { state, registeredName, definition } = useNewMcpServerForm();
   return (
     <div data-testid="wizard">
       {JSON.stringify({
         pathname,
+        search,
         registeredName,
         url: state.url,
         definition,
@@ -188,6 +189,21 @@ describe('ServerMutationActions lifecycle affordances', () => {
     ).not.toBeInTheDocument();
     // Delete stays live regardless of lifecycle state.
     expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+  });
+
+  it('gives keyboard and screen-reader users the reason a row action is gated', async () => {
+    await renderActions(
+      makeServer({ state: 'Auth Required', authType: 'oauth' }),
+    );
+
+    // The disabled button itself takes no focus; the wrapper does, and is
+    // named with the reason.
+    const gate = screen.getByRole('group', {
+      name: `Reconnect (unavailable): ${OAUTH_SIGN_IN_GATE}`,
+    });
+    expect(gate).toHaveAttribute('tabindex', '0');
+    gate.focus();
+    expect(gate).toHaveFocus();
   });
 
   it('disables Reconnect for an OAuth server waiting on sign-in', async () => {
@@ -429,30 +445,45 @@ describe('ServerMutationActions post-mutation refresh', () => {
 });
 
 describe('ServerMutationActions Edit', () => {
-  it('opens the registration wizard pre-filled with the server', async () => {
+  it('opens the registration wizard on this server', async () => {
     await renderActions(makeServer({ state: 'Connected' }));
-    expect(wizard().registeredName).toBeUndefined();
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    const seeded = wizard();
-    expect(seeded.pathname).toBe('/agent-platform/muster/servers/new');
-    // Saving is an update to this server, not a new registration.
-    expect(seeded.registeredName).toBe('miro');
-    expect(seeded.url).toBe('https://mcp.miro.com/');
-    // What the wizard has no field for still rides along into the update.
-    expect(seeded.definition.headers).toEqual({ 'X-Team': 'bumblebee' });
+    // The edit is in the URL; the wizard seeds itself from it
+    // (NewMcpServerEditGate), so nothing is seeded by the row.
+    const probe = wizard();
+    expect(probe.pathname).toBe('/agent-platform/muster/servers/new');
+    expect(probe.search).toBe('?edit=miro');
+    expect(probe.registeredName).toBeUndefined();
   });
 
-  it('cannot edit a stdio server through the wizard, and says why', async () => {
-    await renderActions(makeServer({ state: 'Connected', type: 'stdio' }));
+  it('offers the JSON editor for a server the wizard cannot edit, and says why', async () => {
+    const callTool = jest.fn().mockResolvedValue({});
+    await renderActions(makeServer({ state: 'Connected', type: 'stdio' }), {
+      callTool,
+    });
 
-    const edit = screen.getByRole('button', { name: 'Edit' });
-    expect(edit).toBeDisabled();
-    await userEvent.hover(edit.parentElement as Element);
     expect(
-      await screen.findByText(/Only remote .* servers can be edited here/),
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
+    const jsonEdit = screen.getByRole('button', { name: 'Edit as JSON' });
+    await userEvent.hover(jsonEdit.parentElement as Element);
+    expect(
+      await screen.findByText(/only covers remote .* servers/),
     ).toBeInTheDocument();
+
+    // The dialog's edit path still saves as an update to this server.
+    await userEvent.click(jsonEdit);
+    expect(
+      await screen.findByText('Edit ad-hoc server — miro'),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(callTool).toHaveBeenCalledWith(
+      'core_mcpserver_update',
+      expect.objectContaining({ name: 'miro', type: 'stdio' }),
+      'gazelle',
+    );
   });
 
   it('keeps GitOps-managed servers on Edit via GitOps', async () => {

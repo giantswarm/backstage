@@ -9,9 +9,12 @@ import {
 
 import { musterApiRef, type McpServerRuntime } from '../../apis';
 import { rootRouteRef } from '../../routes';
+import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
 
 const retry = jest.fn();
+/** Registered servers of the active installation, per test. */
+let mockMcpServers: MCPServer[] = [];
 
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -25,7 +28,8 @@ jest.mock('../MusterInstanceProvider', () => ({
       requiresAuth: true,
     },
     setActiveInstallation: jest.fn(),
-    mcpServers: [],
+    mcpServers: mockMcpServers,
+    isLoading: false,
     retry,
   }),
   useMusterSession: () => ({
@@ -106,6 +110,7 @@ function runtime(overrides: Partial<McpServerRuntime>): McpServerRuntime {
 
 describe('NewMcpServerVerifyPage', () => {
   beforeEach(() => {
+    mockMcpServers = [];
     jest.clearAllMocks();
     listServers.mockResolvedValue({ mcpServers: [] });
     getAuthStatus.mockResolvedValue({ servers: [] });
@@ -338,5 +343,56 @@ describe('NewMcpServerVerifyPage', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Done' })[0]);
 
     expect(await screen.findByText('servers-list')).toBeInTheDocument();
+  });
+
+  describe('after an edit', () => {
+    function edited(generation: number, observedGeneration: number) {
+      return new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'weather', generation },
+          spec: { type: 'streamable-http', url: 'https://w.example.com/mcp' },
+          status: {
+            state: 'Connected',
+            conditions: [
+              {
+                type: 'Ready',
+                status: 'True',
+                reason: 'Connected',
+                observedGeneration,
+              },
+            ],
+          },
+        } as never,
+        'gazelle',
+      );
+    }
+
+    it('holds a "Connected" back until muster has reconciled the new spec', async () => {
+      mockMcpServers = [edited(3, 2)];
+      listServers.mockResolvedValue({
+        mcpServers: [runtime({ state: 'Connected' })],
+      });
+      await renderWizard(
+        '/agent-platform/muster/servers/new/verify?edit=weather',
+      );
+
+      expect(await screen.findByText('Applying changes…')).toBeInTheDocument();
+      expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+    });
+
+    it('reports the state once the Ready condition caught up', async () => {
+      mockMcpServers = [edited(3, 3)];
+      listServers.mockResolvedValue({
+        mcpServers: [runtime({ state: 'Connected' })],
+      });
+      await renderWizard(
+        '/agent-platform/muster/servers/new/verify?edit=weather',
+      );
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Applying changes…')).not.toBeInTheDocument();
+    });
   });
 });

@@ -138,6 +138,22 @@ describe('NewMcpServerFormProvider', () => {
     expect(result.current.definition.auth).toEqual({ forwardToken: true });
   });
 
+  it('keeps the answer when the current mode is picked again', () => {
+    // The selected card fires onSelect too; that is no switch.
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() => result.current.setAuthMode('platform-sso'));
+    act(() => result.current.setRequiredAudiences(['aud-a']));
+
+    act(() => result.current.setAuthMode('platform-sso'));
+
+    expect(result.current.state.requiredAudiences).toEqual(['aud-a']);
+    expect(result.current.definition.auth).toEqual({
+      forwardToken: true,
+      requiredAudiences: ['aud-a'],
+    });
+  });
+
   it('flags scopes set without an issuer', () => {
     const { result, fillDetails } = renderForm();
     fillDetails();
@@ -298,6 +314,120 @@ describe('NewMcpServerFormProvider', () => {
       // The CR name stays locked to the server even when the name changes.
       act(() => result.current.setName('Weather (EU)'));
       expect(result.current.definition.name).toBe('weather-mcp');
+    });
+
+    it('pins the edit to the server’s installation', () => {
+      const { result } = renderForm();
+      act(() => result.current.startEdit(server));
+
+      expect(result.current.registeredInstallation).toBe('gaggle');
+      expect(result.current.state.installation).toBe('gaggle');
+    });
+
+    it('does not require the hidden display name', () => {
+      const { result } = renderForm();
+      act(() => result.current.startEdit(server));
+
+      act(() => result.current.setName(''));
+
+      expect(result.current.isComplete).toBe(true);
+    });
+
+    it('lays later saves over what was saved, not over the server as it was', () => {
+      const { result } = renderForm();
+      act(() =>
+        result.current.startEdit(
+          new MCPServer(
+            {
+              apiVersion: 'muster.giantswarm.io/v1alpha1',
+              kind: 'MCPServer',
+              metadata: { name: 'weather-mcp' },
+              spec: {
+                type: 'streamable-http',
+                url: 'https://weather.example.com/mcp',
+                description: 'Old',
+              },
+            } as never,
+            'gaggle',
+          ),
+        ),
+      );
+      act(() => result.current.setDescription('New'));
+      act(() => result.current.markSaved(result.current.definition));
+      expect(result.current.lastSave).toBe('update');
+
+      // muster keeps a description an update clears, so the definition shows
+      // the one now live: the saved one.
+      act(() => result.current.setDescription(''));
+      expect(result.current.definition.description).toBe('New');
+    });
+
+    it('records a create as the base of the "Edit details" loop', () => {
+      const { result, fillDetails } = renderForm();
+      fillDetails();
+
+      act(() => result.current.markSaved(result.current.definition));
+
+      expect(result.current.lastSave).toBe('create');
+      expect(result.current.registeredName).toBe('weather-mcp');
+      expect(result.current.registeredInstallation).toBe('gaggle');
+    });
+
+    it('brings the registered auth answer back when its mode is picked again', () => {
+      const { result } = renderForm();
+      act(() =>
+        result.current.startEdit(
+          new MCPServer(
+            {
+              apiVersion: 'muster.giantswarm.io/v1alpha1',
+              kind: 'MCPServer',
+              metadata: { name: 'weather-mcp' },
+              spec: {
+                type: 'streamable-http',
+                url: 'https://weather.example.com/mcp',
+                auth: { forwardToken: true, requiredAudiences: ['aud-a'] },
+              },
+            } as never,
+            'gaggle',
+          ),
+        ),
+      );
+
+      act(() => result.current.setAuthMode('none'));
+      expect(result.current.state.requiredAudiences).toEqual([]);
+      act(() => result.current.setAuthMode('platform-sso'));
+
+      expect(result.current.state.requiredAudiences).toEqual(['aud-a']);
+    });
+
+    it('sets an unfinished registration aside and brings it back on reset', () => {
+      const { result } = renderForm();
+      act(() => result.current.setUrl('https://draft.example.com/mcp'));
+
+      act(() => result.current.startEdit(server));
+      expect(result.current.state.url).toBe('https://weather.example.com/mcp');
+      // Another edit replaces this one without touching the draft.
+      act(() => result.current.startEdit(server));
+
+      act(() => result.current.reset());
+      expect(result.current.registeredName).toBeUndefined();
+      expect(result.current.state.url).toBe('https://draft.example.com/mcp');
+
+      // Brought back once; the next reset is an empty form.
+      act(() => result.current.reset());
+      expect(result.current.state.url).toBe('');
+    });
+
+    it('keeps its run-level actions stable across renders', () => {
+      const { result } = renderForm();
+      const { reset, startEdit, markSaved } = result.current;
+
+      act(() => result.current.setUrl('https://x.example.com'));
+      act(() => result.current.startEdit(server));
+
+      expect(result.current.reset).toBe(reset);
+      expect(result.current.startEdit).toBe(startEdit);
+      expect(result.current.markSaved).toBe(markSaved);
     });
 
     it('forgets the edited server on reset', () => {

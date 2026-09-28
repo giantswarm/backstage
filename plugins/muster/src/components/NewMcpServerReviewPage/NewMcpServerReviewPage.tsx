@@ -23,6 +23,7 @@ import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { SessionGate } from '../shared';
+import { withEditParam } from '../NewMcpServerEditGate';
 
 const useStyles = makeStyles(theme => ({
   column: {
@@ -121,7 +122,7 @@ export function NewMcpServerReviewPage() {
   const detailsLink = useRouteRef(newMcpServerRouteRef);
   const authLink = useRouteRef(newMcpServerAuthRouteRef);
   const verifyLink = useRouteRef(newMcpServerVerifyRouteRef);
-  const { state, definition, isComplete, registeredName, setRegisteredName } =
+  const { state, definition, isComplete, registeredName, markSaved } =
     useNewMcpServerForm();
   const session = useMusterSession();
   const { authenticated } = session;
@@ -146,12 +147,13 @@ export function NewMcpServerReviewPage() {
         definition,
         state.installation,
       );
-      setRegisteredName(definition.name);
+      // What was just written is the base of any further save in this run.
+      markSaved(definition);
       // The CR exists now — refresh every muster read (server lists, tools) so
       // the verify step opens on live data.
       queryClient.invalidateQueries({ queryKey: ['muster'] });
       if (verifyLink) {
-        navigate(verifyLink());
+        navigate(withEditParam(verifyLink(), definition.name));
       }
     } catch (e) {
       setError(mutationErrorMessage(e));
@@ -163,7 +165,7 @@ export function NewMcpServerReviewPage() {
     definition,
     state.installation,
     isEdit,
-    setRegisteredName,
+    markSaved,
     queryClient,
     verifyLink,
     navigate,
@@ -178,7 +180,9 @@ export function NewMcpServerReviewPage() {
         <Button
           variant="tertiary"
           isDisabled={busy}
-          onPress={() => authLink && navigate(authLink())}
+          onPress={() =>
+            authLink && navigate(withEditParam(authLink(), registeredName))
+          }
         >
           Back
         </Button>
@@ -195,6 +199,7 @@ export function NewMcpServerReviewPage() {
       busy,
       authenticated,
       authLink,
+      registeredName,
       navigate,
       onRegister,
       busyLabel,
@@ -209,7 +214,12 @@ export function NewMcpServerReviewPage() {
 
   // A deep link with the form incomplete can't be reviewed — back to step 1.
   if (isRedirecting) {
-    return <Navigate to={detailsLink ? detailsLink() : '..'} replace />;
+    return (
+      <Navigate
+        to={detailsLink ? withEditParam(detailsLink(), registeredName) : '..'}
+        replace
+      />
+    );
   }
 
   const definitionJson = JSON.stringify(definition, null, 2);
@@ -288,13 +298,15 @@ export function NewMcpServerReviewPage() {
 
                 <details className={classes.details}>
                   <summary className={classes.summaryLine}>
-                    Register manually instead
+                    {isEdit
+                      ? 'Manage via GitOps instead'
+                      : 'Register manually instead'}
                   </summary>
                   <div className={classes.detailsBody}>
                     <Text variant="body-small" color="secondary">
-                      Prefer GitOps or the CLI? Commit the manifest to your
-                      management-clusters repo, or run the command against the
-                      installation.
+                      {isEdit
+                        ? 'Prefer GitOps? Commit the manifest to your management-clusters repo instead.'
+                        : 'Prefer GitOps or the CLI? Commit the manifest to your management-clusters repo, or run the command against the installation.'}
                     </Text>
                     <pre className={classes.codeBlock}>{manifestYaml}</pre>
                     {/* The CLI cannot express every definition this wizard can

@@ -37,7 +37,7 @@ import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
 import { newMcpServerRouteRef } from '../../routes';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
-import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
+import { withEditParam } from '../NewMcpServerEditGate';
 import {
   DEACTIVATED_SIGN_IN_GATE,
   ServerAuthActions,
@@ -386,10 +386,21 @@ function LifecycleButton({
   if (!gateReason) {
     return button;
   }
+  // The span carries the tooltip because the disabled button fires neither
+  // hover nor focus. Focusable and labelled with the reason, so keyboard and
+  // screen-reader users learn why the action is unavailable, not just that
+  // it is. (The lint rule assumes a non-interactive element never needs
+  // focus; this one stands in for the button that cannot take it.)
   return (
     <Tooltip title={gateReason}>
-      {/* span wrapper so the tooltip still fires over the disabled button */}
-      <span>{button}</span>
+      <span
+        role="group"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+        aria-label={`${label} (unavailable): ${gateReason}`}
+      >
+        {button}
+      </span>
     </Tooltip>
   );
 }
@@ -450,13 +461,16 @@ export function ServerMutationActions({
 
   const navigate = useNavigate();
   const registerLink = useRouteRef(newMcpServerRouteRef);
-  const { startEdit } = useNewMcpServerForm();
+  // The wizard seeds itself from `?edit=` (NewMcpServerEditGate), so the edit
+  // survives a reload and a registration draft in progress is set aside, not
+  // lost.
   const onEdit = () => {
-    startEdit(server);
     if (registerLink) {
-      navigate(registerLink());
+      navigate(withEditParam(registerLink(), server.getName()));
     }
   };
+  const editBlocker = wizardEditBlocker(server);
+  const [jsonEditOpen, setJsonEditOpen] = useState(false);
   const [action, setAction] = useState<LiveAction | undefined>();
 
   if (managed) {
@@ -474,12 +488,31 @@ export function ServerMutationActions({
     <Flex align="center" gap="2" className={classes.actions}>
       <StateBadge tone="neutral" label="Manually added" />
       {authActions}
-      <LifecycleButton
-        label="Edit"
-        icon={<Edit fontSize="inherit" />}
-        gateReason={wizardEditBlocker(server)}
-        onClick={onEdit}
-      />
+      {editBlocker ? (
+        // What the wizard cannot represent the JSON editor still can, so a
+        // server the wizard refuses keeps an in-app edit path.
+        <Tooltip title={editBlocker}>
+          <span>
+            <Button
+              size="small"
+              variant="secondary"
+              iconStart={<Edit fontSize="inherit" />}
+              onPress={() => setJsonEditOpen(true)}
+            >
+              Edit as JSON
+            </Button>
+          </span>
+        </Tooltip>
+      ) : (
+        <Button
+          size="small"
+          variant="secondary"
+          iconStart={<Edit fontSize="inherit" />}
+          onPress={onEdit}
+        >
+          Edit
+        </Button>
+      )}
       {suspended ? (
         <Button
           size="small"
@@ -548,6 +581,13 @@ export function ServerMutationActions({
         Delete
       </Button>
 
+      {editBlocker && (
+        <AdHocServerDialog
+          server={server}
+          open={jsonEditOpen}
+          onClose={() => setJsonEditOpen(false)}
+        />
+      )}
       <ConfirmActionDialog
         server={server}
         action={action}

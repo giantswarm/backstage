@@ -262,6 +262,44 @@ describe('MCPServer Ready condition and per-session auth', () => {
   });
 });
 
+describe('MCPServer.isReconcilePending', () => {
+  function withReady(
+    generation: number | undefined,
+    conditions: Array<Record<string, unknown>> | undefined,
+  ): MCPServer {
+    return new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'srv', generation },
+        spec: { type: 'streamable-http' },
+        status: { state: 'Connected', conditions },
+      } as never,
+      'gazelle',
+    );
+  }
+
+  it('is pending while the Ready condition trails the spec generation', () => {
+    expect(
+      withReady(3, [
+        { type: 'Ready', status: 'True', observedGeneration: 2 },
+      ]).isReconcilePending(),
+    ).toBe(true);
+    expect(
+      withReady(3, [
+        { type: 'Ready', status: 'True', observedGeneration: 3 },
+      ]).isReconcilePending(),
+    ).toBe(false);
+  });
+
+  it('claims nothing without a condition to tell by', () => {
+    expect(withReady(3, undefined).isReconcilePending()).toBe(false);
+    expect(
+      withReady(3, [{ type: 'Ready', status: 'True' }]).isReconcilePending(),
+    ).toBe(false);
+  });
+});
+
 describe('serversHealthSummary', () => {
   function fleet(healthy: number, unhealthy: number): MCPServer[] {
     return [
