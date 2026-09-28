@@ -11,8 +11,11 @@ const OTEL_VARIABLES = [
   'OTEL_EXPORTER_OTLP_ENDPOINT',
   'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
   'OTEL_TRACES_EXPORTER',
+  'OTEL_METRICS_EXPORTER',
 ];
 
+// Returns the OTEL_* variables as instrumentation.js left them, since the
+// module mutates process.env directly and this restores it afterwards.
 function load(env) {
   const saved = { ...process.env };
   for (const name of OTEL_VARIABLES) {
@@ -21,6 +24,9 @@ function load(env) {
   Object.assign(process.env, env);
   try {
     jest.isolateModules(() => require('./instrumentation'));
+    return Object.fromEntries(
+      OTEL_VARIABLES.map(name => [name, process.env[name]]),
+    );
   } finally {
     process.env = saved;
   }
@@ -45,5 +51,18 @@ describe('instrumentation', () => {
         '@opentelemetry/instrumentation-knex': { enabled: false },
       }),
     );
+  });
+
+  it('leaves metrics off when only traces are exported', () => {
+    const result = load({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4317' });
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(result.OTEL_METRICS_EXPORTER).toBe('none');
+  });
+
+  it('starts the SDK for metrics alone and turns traces off', () => {
+    const result = load({ OTEL_METRICS_EXPORTER: 'prometheus' });
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(result.OTEL_TRACES_EXPORTER).toBe('none');
+    expect(result.OTEL_METRICS_EXPORTER).toBe('prometheus');
   });
 });

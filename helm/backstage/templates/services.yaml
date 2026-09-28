@@ -16,3 +16,8 @@ spec:
     - name: {{ .Values.name }}
       port: {{ .Values.port }}
       targetPort: http
+    {{- if .Values.observability.metrics.enabled }}
+    - name: metrics
+      port: {{ .Values.observability.metrics.port }}
+      targetPort: metrics
+    {{- end }}

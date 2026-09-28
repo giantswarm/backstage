@@ -1,0 +1,50 @@
+{{- if and .Values.observability.metrics.enabled .Values.networkPolicy.enabled }}
+{{- if eq .Values.networkPolicy.flavor "cilium" }}
+---
+# Admits the monitoring agent onto the metrics port only, so a default-deny
+# cluster still lets a scrape reach the backend once metrics are on.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  labels:
+    {{- include "labels.backstage" $ | nindent 4 }}
+  name: {{ .Values.name }}-metrics
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      app: {{ .Values.name }}
+      component: backstage
+  ingress:
+    - fromEntities:
+        - cluster
+      toPorts:
+        - ports:
+            - port: {{ .Values.observability.metrics.port | quote }}
+              protocol: TCP
+{{- else }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    {{- include "labels.backstage" $ | nindent 4 }}
+  name: {{ .Values.name }}-metrics
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Values.name }}
+      component: backstage
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: {{ .Values.observability.metrics.port }}
+          protocol: TCP
+{{- end }}
+{{- end }}

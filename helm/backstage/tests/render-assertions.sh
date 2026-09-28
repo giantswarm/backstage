@@ -9,6 +9,8 @@
 # * the pod template's checksum over the extraAppConfig entries, without which
 #   a changed app-config fragment never reaches the running portal;
 # * the OTLP variables, without which the backend starts and exports no trace;
+# * the metrics port, env and network policy leg, without which the backend
+#   starts with metrics on but nothing can scrape it;
 # * the base64 guard on the `data` Secrets, without which a plaintext value
 #   renders and the install fails with "illegal base64 data at input byte N".
 set -euo pipefail
@@ -160,6 +162,51 @@ expect otel 'k8s.pod.name=$(OTEL_POD_NAME)'
 echo "--> no observability.otel.endpoint: no OTLP variable"
 render no-otel
 refute no-otel 'OTEL_'
+
+echo "--> observability.metrics.enabled: the Prometheus exporter env, ports and cilium ingress leg render"
+render metrics --set observability.metrics.enabled=true --set serviceMonitor.enabled=true
+expect metrics 'value: prometheus'
+expect metrics 'OTEL_EXPORTER_PROMETHEUS_HOST'
+expect metrics 'value: "0.0.0.0"'
+expect metrics 'OTEL_EXPORTER_PROMETHEUS_PORT'
+expect metrics 'value: "9464"'
+expect metrics 'name: metrics'
+expect metrics 'containerPort: 9464'
+expect metrics 'kind: CiliumNetworkPolicy'
+expect metrics 'fromEntities'
+expect metrics '\- cluster'
+expect metrics 'kind: ServiceMonitor'
+expect metrics 'port: metrics'
+refute metrics 'OTEL_TRACES_SAMPLER'
+
+echo "--> observability.metrics.enabled with networkPolicy.flavor=kubernetes: ingress from kube-system"
+render metrics-kubernetes --set observability.metrics.enabled=true --set networkPolicy.flavor=kubernetes
+expect metrics-kubernetes 'kubernetes.io/metadata.name: kube-system'
+expect metrics-kubernetes 'port: 9464'
+refute metrics-kubernetes 'kind: CiliumNetworkPolicy'
+
+echo "--> observability.metrics.enabled=false (default): no metrics env, port or policy"
+render no-metrics
+refute no-metrics 'OTEL_METRICS_EXPORTER'
+refute no-metrics 'OTEL_EXPORTER_PROMETHEUS'
+refute no-metrics 'name: metrics'
+refute no-metrics 'backstage-metrics'
+refute no-metrics 'kind: ServiceMonitor'
+
+echo "--> observability.otel.endpoint and observability.metrics.enabled together: traces and metrics both render, resource env once"
+render otel-and-metrics --set observability.otel.endpoint=http://otlp-gateway.kube-system.svc:4317 --set observability.metrics.enabled=true
+expect otel-and-metrics 'value: "http://otlp-gateway.kube-system.svc:4317"'
+expect otel-and-metrics 'value: prometheus'
+resource_env_count=$(grep -c 'name: OTEL_RESOURCE_ATTRIBUTES' "${work_dir}/otel-and-metrics.yaml")
+if [ "${resource_env_count}" -ne 1 ]; then
+  echo "FAIL: otel-and-metrics: OTEL_RESOURCE_ATTRIBUTES rendered ${resource_env_count} times, want 1"
+  failed=1
+fi
+
+echo "--> observability.metrics.enabled with networkPolicy.enabled=false: no metrics network policy"
+render metrics-no-netpol --set observability.metrics.enabled=true --set networkPolicy.enabled=false
+refute metrics-no-netpol 'backstage-metrics'
+expect metrics-no-netpol 'value: prometheus'
 
 # A render that must fail, with a message naming the value.
 render_fails() {
