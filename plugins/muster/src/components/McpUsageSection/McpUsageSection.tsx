@@ -285,6 +285,7 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
               formatTooltipLabel={start =>
                 formatBucketTooltip(start, data.step_hours)
               }
+              formatValue={formatCount}
             />
           </Paper>
 
