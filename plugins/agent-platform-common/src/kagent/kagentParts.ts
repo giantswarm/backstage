@@ -6,7 +6,7 @@ import {
 } from './kagentTaskSchema';
 import {
   isKagentMetadataFlagSet,
-  readKagentMetadataRecord,
+  readKagentMetadata,
   readKagentMetadataString,
   readKagentSubagentUsage,
 } from './kagentMetadata';
@@ -263,7 +263,9 @@ export function isInternalToolName(name: string | undefined): boolean {
  * counts them in the total but in neither part.
  */
 export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
-  return tokenUsageOf(readKagentMetadataRecord(metadata, 'usage_metadata'));
+  return tokenUsageOf(
+    readKagentMetadata(metadata, 'usage_metadata', carriesTokenUsage),
+  );
 }
 
 /**
@@ -277,7 +279,15 @@ export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
 export function readNestedTokenUsage(
   response: unknown,
 ): TokenUsage | undefined {
-  return tokenUsageOf(readKagentSubagentUsage(response));
+  return tokenUsageOf(readKagentSubagentUsage(response, carriesTokenUsage));
+}
+
+/**
+ * Whether a usage bag counts any tokens. A spelling that counts none, `{}`
+ * included, does not hide an older spelling that does.
+ */
+function carriesTokenUsage(value: unknown): value is Record<string, unknown> {
+  return tokenUsageOf(value) !== undefined;
 }
 
 function tokenUsageOf(value: unknown): TokenUsage | undefined {

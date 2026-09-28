@@ -122,6 +122,15 @@ describe('readTokenUsage', () => {
     ).toEqual({ total: 40, prompt: 10, completion: 5 });
   });
 
+  it('falls back past a canonical usage that counts nothing', () => {
+    expect(
+      readTokenUsage({
+        'kagent.dev/a2a/usage': {},
+        adk_usage_metadata: { promptTokenCount: 7, candidatesTokenCount: 3 },
+      }),
+    ).toEqual({ total: 10, prompt: 7, completion: 3 });
+  });
+
   it('returns undefined for a bag with no usage at all', () => {
     expect(readTokenUsage({})).toBeUndefined();
     expect(readTokenUsage(undefined)).toBeUndefined();
@@ -137,6 +146,15 @@ describe('readTokenUsage', () => {
 });
 
 describe('readNestedTokenUsage', () => {
+  it('falls back past a usage field that counts nothing', () => {
+    expect(
+      readNestedTokenUsage({
+        usage: {},
+        kagent_usage_metadata: { promptTokenCount: 5, candidatesTokenCount: 1 },
+      }),
+    ).toEqual({ total: 6, prompt: 5, completion: 1 });
+  });
+
   it("reads the usage field of a delegated agent's response", () => {
     expect(
       readNestedTokenUsage({

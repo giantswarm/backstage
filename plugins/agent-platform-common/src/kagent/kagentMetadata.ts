@@ -124,12 +124,20 @@ export function readKagentTimelinePosition(
 
 /**
  * The usage bag a delegated agent's tool response carries: a plain `usage`
- * object, or the metadata-style `*_usage_metadata` key of older runtimes.
+ * object, or the metadata-style `*_usage_metadata` key of older runtimes. A
+ * value `accept` rejects is skipped like in {@link readKagentMetadata}.
  */
-export function readKagentSubagentUsage(response: unknown): unknown {
+export function readKagentSubagentUsage<T = Record<string, unknown>>(
+  response: unknown,
+  accept: (value: unknown) => value is T = isRecord as (
+    value: unknown,
+  ) => value is T,
+): T | undefined {
   const bag = asRecord(response);
   if (!bag) {
     return undefined;
   }
-  return asRecord(bag.usage) ?? readKagentMetadataRecord(bag, 'usage_metadata');
+  return accept(bag.usage)
+    ? bag.usage
+    : readKagentMetadata(bag, 'usage_metadata', accept);
 }
