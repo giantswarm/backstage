@@ -163,7 +163,7 @@ echo "--> no observability.otel.endpoint: no OTLP variable"
 render no-otel
 refute no-otel 'OTEL_'
 
-echo "--> observability.metrics.enabled: the Prometheus exporter env, ports and cilium ingress leg render"
+echo "--> observability.metrics.enabled: the Prometheus exporter env, ports and ServiceMonitor render, and no policy selects the backend pod"
 render metrics --set observability.metrics.enabled=true --set serviceMonitor.enabled=true
 expect metrics 'value: prometheus'
 expect metrics 'OTEL_EXPORTER_PROMETHEUS_HOST'
@@ -172,25 +172,16 @@ expect metrics 'OTEL_EXPORTER_PROMETHEUS_PORT'
 expect metrics 'value: "9464"'
 expect metrics 'name: metrics'
 expect metrics 'containerPort: 9464'
-expect metrics 'kind: CiliumNetworkPolicy'
-expect metrics 'fromEntities'
-expect metrics '\- cluster'
+refute metrics 'backstage-metrics'
 expect metrics 'kind: ServiceMonitor'
 expect metrics 'port: metrics'
 refute metrics 'OTEL_TRACES_SAMPLER'
 
-echo "--> observability.metrics.enabled with networkPolicy.flavor=kubernetes: ingress from kube-system"
-render metrics-kubernetes --set observability.metrics.enabled=true --set networkPolicy.flavor=kubernetes
-expect metrics-kubernetes 'kubernetes.io/metadata.name: kube-system'
-expect metrics-kubernetes 'port: 9464'
-refute metrics-kubernetes 'kind: CiliumNetworkPolicy'
-
-echo "--> observability.metrics.enabled=false (default): no metrics env, port or policy"
+echo "--> observability.metrics.enabled=false (default): no metrics env, port or ServiceMonitor"
 render no-metrics
 refute no-metrics 'OTEL_METRICS_EXPORTER'
 refute no-metrics 'OTEL_EXPORTER_PROMETHEUS'
 refute no-metrics 'name: metrics'
-refute no-metrics 'backstage-metrics'
 refute no-metrics 'kind: ServiceMonitor'
 
 echo "--> observability.otel.endpoint and observability.metrics.enabled together: traces and metrics both render, resource env once"
@@ -202,11 +193,6 @@ if [ "${resource_env_count}" -ne 1 ]; then
   echo "FAIL: otel-and-metrics: OTEL_RESOURCE_ATTRIBUTES rendered ${resource_env_count} times, want 1"
   failed=1
 fi
-
-echo "--> observability.metrics.enabled with networkPolicy.enabled=false: no metrics network policy"
-render metrics-no-netpol --set observability.metrics.enabled=true --set networkPolicy.enabled=false
-refute metrics-no-netpol 'backstage-metrics'
-expect metrics-no-netpol 'value: prometheus'
 
 # A render that must fail, with a message naming the value.
 render_fails() {

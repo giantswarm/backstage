@@ -148,7 +148,7 @@ names the value. `githubAppCredentials`, `google.credentialsJson` and
 | observability.otel.resourceAttributes | string | `""` | Resource attributes as `key=value` pairs separated by commas, appended to the pod's `k8s.pod.name`, `k8s.namespace.name` and `k8s.node.name` (OTEL_RESOURCE_ATTRIBUTES). |
 | observability.otel.sampler | string | `"parentbased_traceidratio"` | Trace sampler (OTEL_TRACES_SAMPLER). The parent-based default follows the sampling decision of an incoming `traceparent` and samples root spans by `samplerArg`. |
 | observability.otel.samplerArg | string | `"0.1"` | Sampler argument (OTEL_TRACES_SAMPLER_ARG): the ratio of root spans sampled for the `traceidratio` samplers. |
-| observability.metrics | object | `{"enabled":false,"port":9464}` | Prometheus metrics export from the backend, on a `metrics` container port and Service port. Off by default: enabling it changes the pod's ports and, with networkPolicy.enabled, opens an ingress leg for scraping. |
+| observability.metrics | object | `{"enabled":false,"port":9464}` | Prometheus metrics export from the backend, on a `metrics` container port and Service port. Off by default: enabling it changes the pod's ports. The chart's network policies select the database pods only, so the scrape needs no policy of its own. |
 | observability.metrics.enabled | bool | `false` | Start the OpenTelemetry SDK's Prometheus exporter (OTEL_METRICS_EXPORTER=prometheus) and serve `/metrics` on `port`. |
 | observability.metrics.port | int | `9464` | Port the Prometheus exporter listens on (OTEL_EXPORTER_PROMETHEUS_PORT), also the `metrics` container port and Service port. |
 | nodeSelector | object | `{}` | Node selector labels to constrain pod scheduling to specific nodes |
