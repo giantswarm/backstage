@@ -103,12 +103,8 @@ export function useStopServedModel() {
           managerRefOf(model),
           { backend: model.backend },
         );
-        await Promise.all([
-          invalidateManagerReads(model.installation),
-          invalidateResourceReads(queryClient, model.installation, [
-            LLMInferenceService.getGVK(),
-          ]),
-        ]);
+        // model-manager's reads and the serving objects both.
+        await invalidateManagerReads(model.installation);
         return;
       }
 

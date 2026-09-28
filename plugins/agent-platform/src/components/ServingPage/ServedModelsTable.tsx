@@ -509,6 +509,7 @@ export function servedModelStatusLines(row: ServedModelRow): string[] {
 function hasFootprint(readiness: ServedModelReadiness): boolean {
   return (
     readiness !== 'pending' &&
+    readiness !== 'starting' &&
     readiness !== 'notReady' &&
     readiness !== 'terminating'
   );

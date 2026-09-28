@@ -24,7 +24,9 @@ import type {
 } from '../../lib/modelManager';
 import {
   describeFitVerdict,
+  describeServedWhere,
   placementChoices,
+  servedPresetRow,
 } from '../../lib/modelManagerServe';
 import { formatBytes } from '../../lib/modelManagerServing';
 import {
@@ -83,9 +85,19 @@ export type LoadModelDialogProps = {
   onServed?: (target: LoadTarget, answer: ModelManagerLoadAnswer) => void;
 };
 
-type Choice = { id: string; label: string; description?: string };
+type Choice = {
+  id: string;
+  label: string;
+  description?: string;
+  disabled?: boolean;
+  /** Where the preset serves already (`Serving on gpu-a`); such a choice is disabled. */
+  served?: string;
+};
 
-function presetChoice(preset: ModelManagerPreset): Choice {
+function presetChoice(
+  preset: ModelManagerPreset,
+  served: ServedModel | undefined,
+): Choice {
   const facts = [
     preset.model,
     preset.weightsBytes !== undefined
@@ -95,12 +107,14 @@ function presetChoice(preset: ModelManagerPreset): Choice {
       ? `${preset.gpus} GPU${preset.gpus === 1 ? '' : 's'}`
       : undefined,
   ].filter(Boolean);
+  const where = served ? describeServedWhere(served) : undefined;
   return {
     id: preset.name,
     label: preset.displayName ?? preset.name,
-    description: [preset.description, facts.join(' · ')]
+    description: [where, preset.description, facts.join(' · ')]
       .filter(Boolean)
       .join(' — '),
+    ...(where ? { disabled: true, served: where } : {}),
   };
 }
 
@@ -222,7 +236,12 @@ export function LoadModelDialog({
       return [];
     }
     if (usesPresets) {
-      return (presets.data ?? []).map(presetChoice);
+      return (presets.data ?? []).map(preset =>
+        presetChoice(
+          preset,
+          servedPresetRow(models, target.name, target.backend, preset.name),
+        ),
+      );
     }
     return models
       .filter(
@@ -235,20 +254,22 @@ export function LoadModelDialog({
       .map(cachedModelChoice);
   }, [target, usesPresets, presets.data, models]);
 
-  // The first choice stands in for none; a seeded name the list does not
-  // carry gives way to it too.
+  // The first servable choice stands in for none; a seeded name the list
+  // does not carry gives way to it too. A seeded preset that serves already
+  // stays chosen, so the dialog can say where.
   useEffect(() => {
     if (choices.length > 0 && !choices.some(choice => choice.id === model)) {
-      setModel(choices[0].id);
+      setModel((choices.find(choice => !choice.disabled) ?? choices[0]).id);
     }
   }, [choices, model]);
   const choice = choices.find(candidate => candidate.id === model);
+  const servedWhere = choice?.served;
 
   const needsFit = Boolean(target?.capabilities.fitCheck);
   const fit = useQuery({
     queryKey: modelManagerFitQueryKey(installation, backend, model),
     queryFn: () => client!.checkFit({ model, ...(backend ? { backend } : {}) }),
-    enabled: isOpen && Boolean(client && choice) && needsFit,
+    enabled: isOpen && Boolean(client && choice) && !servedWhere && needsFit,
     staleTime: 30_000,
     retry: false,
   });
@@ -263,7 +284,8 @@ export function LoadModelDialog({
         placement: 'split',
         ...(backend ? { backend } : {}),
       }),
-    enabled: isOpen && Boolean(client && choice) && offersPlacement,
+    enabled:
+      isOpen && Boolean(client && choice) && !servedWhere && offersPlacement,
     staleTime: 30_000,
     retry: false,
   });
@@ -323,7 +345,11 @@ export function LoadModelDialog({
   const fitBlocks =
     needsFit &&
     (activeFit.isPending || activeFit.isError || verdict?.fits === false);
-  const canServe = Boolean(client && target && choice) && !isBusy && !fitBlocks;
+  const canServe =
+    Boolean(client && target && choice) &&
+    !servedWhere &&
+    !isBusy &&
+    !fitBlocks;
 
   return (
     <Dialog
@@ -458,7 +484,16 @@ export function LoadModelDialog({
             </RadioGroup>
           )}
 
-          {needsFit && choice && (
+          {servedWhere && choice && (
+            <Alert
+              status="info"
+              data-testid="serve-already-serving"
+              title={`${choice.label}: ${servedWhere}`}
+              description="model-manager serves each preset once. Stop it in the Serving list first to serve it on another node."
+            />
+          )}
+
+          {needsFit && choice && !servedWhere && (
             <div data-testid="serve-fit-verdict">
               {activeFit.isPending && (
                 <Text variant="body-medium" color="secondary">

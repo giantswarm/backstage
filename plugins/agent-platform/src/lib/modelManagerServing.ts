@@ -206,6 +206,20 @@ export function runtimeLabel(runtime: {
   return runtime.version ? `${name} ${runtime.version}` : name;
 }
 
+/** Whether a serve is on its way: a phase short of ready, and no step failed. */
+function isStartingPhase(running: {
+  phase?: string;
+  steps?: { state?: string }[];
+}): boolean {
+  return (
+    Boolean(running.phase) &&
+    running.phase !== 'ready' &&
+    running.phase !== 'failed' &&
+    running.phase !== 'terminating' &&
+    !(running.steps ?? []).some(step => step.state === 'failed')
+  );
+}
+
 /**
  * One model of a model-manager inventory as a served model.
  *
@@ -265,6 +279,11 @@ export function toServedModelFromManager(
       // The deletion is the state; a reason left from before says nothing.
       readiness = 'terminating';
       readinessMessage = `${what} is being deleted.`;
+    } else if (status === 'NotReady' && isStartingPhase(running)) {
+      // A serve on its way with no failed step: a normal start, however the
+      // Deployment's condition reads (MinimumReplicasUnavailable).
+      readiness = 'starting';
+      readinessMessage = `${what} is starting: ${running.phase}.`;
     } else {
       readiness = status === 'Pending' ? 'pending' : 'notReady';
       readinessReason = running.reason;

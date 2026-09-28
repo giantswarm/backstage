@@ -31,6 +31,7 @@ import {
 import type { ModelManagerLoadAnswer } from '../../lib/modelManager';
 import {
   describeLoadAnswer,
+  loadAnswerNodes,
   parseServeRoute,
   withoutServeRoute,
 } from '../../lib/modelManagerServe';
@@ -282,14 +283,26 @@ export function ServingPage() {
 
   const onServed = useCallback(
     (target: LoadTarget, answer: ModelManagerLoadAnswer) => {
-      toastApi.post({
-        title: `Serving "${answer.name}" on ${describeLoadTarget(target)}`,
-        description:
-          describeLoadAnswer(answer) ||
-          'model-manager is starting it — the status column follows the served model.',
-        status: 'success',
-        timeout: TOAST_TIMEOUT_MS,
-      });
+      const nodes = loadAnswerNodes(answer).join(', ');
+      const where = `${describeLoadTarget(target)}${nodes ? ` · ${nodes}` : ''}`;
+      toastApi.post(
+        answer.alreadyServing
+          ? {
+              title: `"${answer.name}" already serves on ${where}`,
+              description:
+                'Nothing was started: model-manager serves each preset once. Stop it first to serve it on another node.',
+              status: 'info',
+              timeout: TOAST_TIMEOUT_MS,
+            }
+          : {
+              title: `Serving "${answer.name}" on ${where} — loading`,
+              description:
+                describeLoadAnswer(answer) ||
+                'model-manager is starting it — the status column follows the served model.',
+              status: 'success',
+              timeout: TOAST_TIMEOUT_MS,
+            },
+      );
       // The timeline follows the object model-manager composed; the row
       // arrives with the next inventory read.
       setOpenedModel({

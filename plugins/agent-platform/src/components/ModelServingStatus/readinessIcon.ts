@@ -14,7 +14,7 @@ import type { ServedModelReadiness } from '../../lib/serving';
  * icons are React components, so they live here). A pause for `idle` (parked,
  * comes back on request), a disk for `available`, a download arrow for
  * `downloading`, a warning triangle for `notServing` (the one state that
- * needs a hand), the hourglass for `pending`, a struck circle for
+ * needs a hand), the hourglass for `pending` and `starting`, a struck circle for
  * `terminating` (going away).
  */
 export const SERVED_READINESS_ICON: Record<
@@ -28,5 +28,6 @@ export const SERVED_READINESS_ICON: Record<
   downloading: CloudDownloadIcon,
   notReady: ErrorIcon,
   pending: HourglassEmptyIcon,
+  starting: HourglassEmptyIcon,
   terminating: RemoveCircleOutlineIcon,
 };
