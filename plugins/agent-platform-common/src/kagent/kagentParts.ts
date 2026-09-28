@@ -131,6 +131,12 @@ export type TokenUsage = {
   total: number;
   prompt: number;
   completion: number;
+  /**
+   * The cost in USD the runtime itself reported (`costUsd`), absent when no
+   * summed bag carried one. The claude Harness reports it per turn; ADK
+   * reports none, so an absent figure is "not reported", never zero.
+   */
+  costUsd?: number;
 };
 
 /** Parse one part, or `undefined` when it is not an object at all. */
@@ -301,10 +307,12 @@ function tokenUsageOf(value: unknown): TokenUsage | undefined {
   if (reportedTotal === 0 && prompt === 0 && completion === 0) {
     return undefined;
   }
+  const costUsd = asFiniteNonNegative(usage.costUsd);
   return {
     total: reportedTotal > 0 ? reportedTotal : prompt + completion,
     prompt,
     completion,
+    ...(costUsd !== undefined && { costUsd }),
   };
 }
 
@@ -315,15 +323,26 @@ export function addTokenUsage(
   if (!right) {
     return left;
   }
+  const costUsd =
+    left.costUsd === undefined && right.costUsd === undefined
+      ? undefined
+      : (left.costUsd ?? 0) + (right.costUsd ?? 0);
   return {
     total: left.total + right.total,
     prompt: left.prompt + right.prompt,
     completion: left.completion + right.completion,
+    ...(costUsd !== undefined && { costUsd }),
   };
 }
 
 function asNonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+function asFiniteNonNegative(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
 }
 
 function asNumber(value: unknown): number {

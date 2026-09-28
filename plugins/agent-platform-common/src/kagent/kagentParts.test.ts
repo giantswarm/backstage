@@ -1,4 +1,5 @@
 import {
+  addTokenUsage,
   isAgentToolName,
   isFunctionCallPart,
   isInternalToolName,
@@ -142,6 +143,45 @@ describe('readTokenUsage', () => {
         },
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('reported cost', () => {
+  const bag = (usage: Record<string, unknown>) => ({
+    'kagent.dev/a2a/usage': {
+      promptTokenCount: 10,
+      candidatesTokenCount: 2,
+      ...usage,
+    },
+  });
+
+  it('reads the costUsd a runtime reports beside the tokens', () => {
+    expect(readTokenUsage(bag({ costUsd: 0.25 }))).toEqual({
+      total: 12,
+      prompt: 10,
+      completion: 2,
+      costUsd: 0.25,
+    });
+  });
+
+  it('leaves the cost out when none, or no usable one, is reported', () => {
+    for (const costUsd of [undefined, null, '0.25', -1, Number.NaN]) {
+      expect(readTokenUsage(bag({ costUsd }))).not.toHaveProperty('costUsd');
+    }
+  });
+
+  it('keeps a reported zero', () => {
+    expect(readTokenUsage(bag({ costUsd: 0 }))?.costUsd).toBe(0);
+  });
+
+  it('sums the costs reported and stays absent when neither side reports one', () => {
+    const reported = { total: 1, prompt: 1, completion: 0, costUsd: 0.5 };
+    const unreported = { total: 2, prompt: 1, completion: 1 };
+
+    expect(addTokenUsage(reported, reported).costUsd).toBe(1);
+    expect(addTokenUsage(unreported, reported).costUsd).toBe(0.5);
+    expect(addTokenUsage(reported, unreported).costUsd).toBe(0.5);
+    expect(addTokenUsage(unreported, unreported)).not.toHaveProperty('costUsd');
   });
 });
 

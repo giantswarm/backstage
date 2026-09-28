@@ -1190,6 +1190,17 @@ export function SessionDetailPage() {
               tokens: timeline.tokens.total,
             })}
           />
+          {/* Beside the estimate, never in place of it: a figure only some
+              runtimes report (the claude Harness does, ADK does not), summed
+              over the turns that reported one. Absent means not reported, so
+              a session with none shows no stat rather than "$0.00". */}
+          {timeline.tokens.costUsd !== undefined && (
+            <Stat
+              label="Reported cost"
+              value={formatUsd(timeline.tokens.costUsd)}
+              hint="Reported by the agent's runtime for each turn and summed here. A turn that reported no cost, a canceled one say, is not in it."
+            />
+          )}
         </Box>
 
         <SessionTimeline
