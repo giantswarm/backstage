@@ -151,6 +151,8 @@ function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
  *   the pass anyway, so the response is the only place its cost appears.
  * - **A delegation is not a tool call.** It is registered so its response can be
  *   recognised, and counted in neither `toolCalls` nor `tools`.
+ * - **`task.metadata` usage is not read.** On ADK it is the last model call's,
+ *   already on that call's artifact.
  */
 export function reduceSessionUsage(
   tasks: A2aTaskWire[],

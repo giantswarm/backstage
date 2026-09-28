@@ -1,4 +1,5 @@
 import { InputError } from '@backstage/errors';
+import { asRecord } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { JsonObject } from '@bufbuild/protobuf';
 import type { Message, Task } from './gen/a2a_pb';
 
@@ -56,13 +57,6 @@ export type HitlAnswer = {
   answers?: string[][];
   rejectionReason?: string;
 };
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
-}
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;

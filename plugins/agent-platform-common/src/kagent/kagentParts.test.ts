@@ -3,6 +3,7 @@ import {
   isFunctionCallPart,
   isInternalToolName,
   MUSTER_PROXY_LABEL,
+  readNestedTokenUsage,
   readTokenUsage,
   unwrapProxiedCall,
 } from './kagentParts';
@@ -56,6 +57,17 @@ describe('unwrapProxiedCall', () => {
 });
 
 describe('readTokenUsage', () => {
+  it('reads usage written under kagent.dev/a2a/usage', () => {
+    expect(
+      readTokenUsage({
+        'kagent.dev/a2a/usage': {
+          promptTokenCount: 2_900,
+          candidatesTokenCount: 58,
+        },
+      }),
+    ).toEqual({ total: 2_958, prompt: 2_900, completion: 58 });
+  });
+
   it('reads usage written under the kagent_ prefix', () => {
     expect(
       readTokenUsage({
@@ -110,6 +122,15 @@ describe('readTokenUsage', () => {
     ).toEqual({ total: 40, prompt: 10, completion: 5 });
   });
 
+  it('falls back past a canonical usage that counts nothing', () => {
+    expect(
+      readTokenUsage({
+        'kagent.dev/a2a/usage': {},
+        adk_usage_metadata: { promptTokenCount: 7, candidatesTokenCount: 3 },
+      }),
+    ).toEqual({ total: 10, prompt: 7, completion: 3 });
+  });
+
   it('returns undefined for a bag with no usage at all', () => {
     expect(readTokenUsage({})).toBeUndefined();
     expect(readTokenUsage(undefined)).toBeUndefined();
@@ -121,6 +142,38 @@ describe('readTokenUsage', () => {
         },
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('readNestedTokenUsage', () => {
+  it('falls back past a usage field that counts nothing', () => {
+    expect(
+      readNestedTokenUsage({
+        usage: {},
+        kagent_usage_metadata: { promptTokenCount: 5, candidatesTokenCount: 1 },
+      }),
+    ).toEqual({ total: 6, prompt: 5, completion: 1 });
+  });
+
+  it("reads the usage field of a delegated agent's response", () => {
+    expect(
+      readNestedTokenUsage({
+        result: 'done',
+        usage: { promptTokenCount: 40, candidatesTokenCount: 2 },
+      }),
+    ).toEqual({ total: 42, prompt: 40, completion: 2 });
+  });
+
+  it('reads the kagent_usage_metadata key older runtimes wrote', () => {
+    expect(
+      readNestedTokenUsage({
+        result: 'done',
+        kagent_usage_metadata: {
+          promptTokenCount: 40,
+          candidatesTokenCount: 2,
+        },
+      }),
+    ).toEqual({ total: 42, prompt: 40, completion: 2 });
   });
 });
 

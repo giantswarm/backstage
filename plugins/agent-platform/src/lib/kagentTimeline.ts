@@ -229,7 +229,8 @@ function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
  *
  * Gated on the state like the pending prompt, and for the mirror-image reason: on
  * a terminal failure `status.message` is the reason; on a completed task it is the
- * reply, already in history, and reading it here would show it twice.
+ * reply, which history holds (`toWireTask` appends it on the API v2 line), and
+ * reading it here would show it twice.
  *
  * A cancel usually carries no `status.message` at all — a turn stopped four
  * seconds in on a live installation had one history entry, the person's message,

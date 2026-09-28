@@ -22,3 +22,4 @@ export * from './kagent/kagentRuntimeLost';
 export * from './kagent/kagentSessionStates';
 export * from './kagent/kagentSessionUsage';
 export * from './kagent/kagentUsage';
+export * from './kagent/record';

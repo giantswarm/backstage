@@ -73,7 +73,7 @@ import {
  *
  * Turns are scripted per test through {@link FakeControllerOptions.turn}; the
  * default is a two-chunk streamed reply, in the shape the Go ADK streams
- * (artifact updates stamped partial/complete, then a terminal status update).
+ * (artifact updates marked append/lastChunk, then a terminal status update).
  */
 
 export type RecordedCall = {
@@ -155,7 +155,8 @@ const DEFAULT_USERS = {
   'other-token': 'other@lab.local',
 };
 
-const TIMELINE_POSITION_KEY = 'kagent.dev/timeline-position';
+const TIMELINE_POSITION_KEY = 'kagent.dev/a2a/timeline-position';
+const USAGE_KEY = 'kagent.dev/a2a/usage';
 const TERMINAL = new Set([
   TaskState.COMPLETED,
   TaskState.FAILED,
@@ -429,7 +430,7 @@ export function createFakeController(
     task: Task,
     artifactId: string,
     text: string,
-    partial: boolean,
+    append: boolean,
     lastChunk: boolean,
   ): StreamResponse {
     return create(StreamResponseSchema, {
@@ -441,12 +442,8 @@ export function createFakeController(
           artifact: {
             artifactId,
             parts: [{ content: { case: 'text', value: text } }],
-            metadata: {
-              kagent_partial: partial,
-              kagent_author: task.contextId,
-            },
           },
-          append: partial,
+          append,
           lastChunk,
         },
       },
@@ -490,7 +487,13 @@ export function createFakeController(
       user.role = Role.USER;
       user.metadata = { ...message.metadata, [TIMELINE_POSITION_KEY]: stamp() };
       const resumed = clone(TaskSchema, stored.task);
+      // a2a-go appends the reply first, then moves the status message the next
+      // status replaces into history, so the prompt lands after the reply and
+      // only its timeline position puts it back in front.
       resumed.history.push(user);
+      if (resumed.status?.message) {
+        resumed.history.push(resumed.status.message);
+      }
       resumed.artifacts.push(
         create(ArtifactSchema, {
           artifactId: `${stored.task.id}-resumed`,
@@ -498,7 +501,7 @@ export function createFakeController(
             { content: { case: 'text', value: 'Done, after your decision.' } },
           ],
           metadata: {
-            kagent_usage_metadata: {
+            [USAGE_KEY]: {
               promptTokenCount: 10,
               candidatesTokenCount: 4,
             },
@@ -587,8 +590,7 @@ export function createFakeController(
             artifactId,
             parts: [{ content: { case: 'text', value: script.text } }],
             metadata: {
-              kagent_author: instance.agentTemplate?.name ?? '',
-              kagent_usage_metadata: {
+              [USAGE_KEY]: {
                 promptTokenCount: 700,
                 candidatesTokenCount: 11,
               },
@@ -614,12 +616,13 @@ export function createFakeController(
           contextId: task.contextId,
           role: Role.AGENT,
           parts: [{ content: { case: 'text', value: hint } }],
-          ...(activated && {
-            extensions: [HITL_EXTENSION_URI],
-            metadata: {
+          ...(activated && { extensions: [HITL_EXTENSION_URI] }),
+          metadata: {
+            [TIMELINE_POSITION_KEY]: stamp(),
+            ...(activated && {
               [HITL_EXTENSION_URI]: script.request as unknown as JsonObject,
-            },
-          }),
+            }),
+          },
         });
         const paused = withStatus(task, TaskState.INPUT_REQUIRED, prompt);
         stored.task = paused;

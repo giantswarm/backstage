@@ -1,10 +1,42 @@
 import {
   isKagentMetadataFlagSet,
   readKagentMetadata,
+  readKagentMetadataRecord,
   readKagentMetadataString,
+  readKagentSubagentUsage,
+  readKagentTimelinePosition,
 } from './kagentMetadata';
 
 describe('readKagentMetadata', () => {
+  it.each([
+    ['type', 'kagent.dev/a2a/part-type', 'function_call'],
+    ['usage_metadata', 'kagent.dev/a2a/usage', { promptTokenCount: 1 }],
+  ])('reads %s under its canonical key %s', (key, canonical, value) => {
+    expect(readKagentMetadata({ [canonical]: value }, key)).toEqual(value);
+  });
+
+  it('prefers the canonical key over both legacy prefixes', () => {
+    expect(
+      readKagentMetadata(
+        {
+          'kagent.dev/a2a/part-type': 'function_response',
+          adk_type: 'function_call',
+          kagent_type: 'function_call',
+        },
+        'type',
+      ),
+    ).toBe('function_response');
+  });
+
+  it('falls back when the canonical key holds null', () => {
+    expect(
+      readKagentMetadata(
+        { 'kagent.dev/a2a/usage': null, adk_usage_metadata: { a: 1 } },
+        'usage_metadata',
+      ),
+    ).toEqual({ a: 1 });
+  });
+
   it('prefers the adk_ prefix over kagent_', () => {
     // Mirrors kagent's own getMetadataValue: upstream ADK writes adk_, kagent
     // writes kagent_, and a session can contain both.
@@ -40,7 +72,30 @@ describe('readKagentMetadata', () => {
   );
 });
 
+describe('readKagentMetadataRecord', () => {
+  it('falls back past a canonical value that is not an object', () => {
+    expect(
+      readKagentMetadataRecord(
+        {
+          'kagent.dev/a2a/usage': 'n/a',
+          adk_usage_metadata: { promptTokenCount: 3 },
+        },
+        'usage_metadata',
+      ),
+    ).toEqual({ promptTokenCount: 3 });
+  });
+});
+
 describe('readKagentMetadataString', () => {
+  it('falls back past an empty canonical string', () => {
+    expect(
+      readKagentMetadataString(
+        { 'kagent.dev/a2a/part-type': '', adk_type: 'function_call' },
+        'type',
+      ),
+    ).toBe('function_call');
+  });
+
   it('accepts a non-empty string under either prefix', () => {
     expect(
       readKagentMetadataString({ kagent_type: 'function_call' }, 'type'),
@@ -70,4 +125,67 @@ describe('isKagentMetadataFlagSet', () => {
       false,
     );
   });
+});
+
+describe('readKagentTimelinePosition', () => {
+  it('reads the canonical key first', () => {
+    expect(
+      readKagentTimelinePosition({
+        'kagent.dev/a2a/timeline-position': '2026-09-25T10:00:00Z',
+        'kagent.dev/timeline-position': '2026-09-11T03:02:56Z',
+      }),
+    ).toBe(Date.parse('2026-09-25T10:00:00Z'));
+  });
+
+  it('falls back past a canonical position that does not parse', () => {
+    expect(
+      readKagentTimelinePosition({
+        'kagent.dev/a2a/timeline-position': 'soon',
+        'kagent.dev/timeline-position': '2026-09-11T03:02:56Z',
+      }),
+    ).toBe(Date.parse('2026-09-11T03:02:56Z'));
+  });
+
+  it('falls back to the key older controllers wrote', () => {
+    expect(
+      readKagentTimelinePosition({
+        'kagent.dev/timeline-position': '2026-09-11T03:02:56Z',
+      }),
+    ).toBe(Date.parse('2026-09-11T03:02:56Z'));
+  });
+
+  it.each([undefined, {}, { 'kagent.dev/a2a/timeline-position': 3 }])(
+    'returns undefined for %p',
+    input => {
+      expect(readKagentTimelinePosition(input)).toBeUndefined();
+    },
+  );
+});
+
+describe('readKagentSubagentUsage', () => {
+  it("reads the usage field of a delegated agent's response", () => {
+    expect(
+      readKagentSubagentUsage({ result: 'ok', usage: { promptTokenCount: 5 } }),
+    ).toEqual({ promptTokenCount: 5 });
+  });
+
+  it('falls back to the metadata-style key', () => {
+    expect(
+      readKagentSubagentUsage({
+        kagent_usage_metadata: { promptTokenCount: 7 },
+      }),
+    ).toEqual({ promptTokenCount: 7 });
+  });
+
+  it.each([null, 3, 'many'])(
+    'falls back to the metadata-style key past a usage of %p',
+    usage => {
+      expect(
+        readKagentSubagentUsage({
+          usage,
+          adk_usage_metadata: { promptTokenCount: 7 },
+        }),
+      ).toEqual({ promptTokenCount: 7 });
+    },
+  );
 });

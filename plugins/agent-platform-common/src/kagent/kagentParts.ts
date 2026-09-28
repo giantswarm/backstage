@@ -8,7 +8,9 @@ import {
   isKagentMetadataFlagSet,
   readKagentMetadata,
   readKagentMetadataString,
+  readKagentSubagentUsage,
 } from './kagentMetadata';
+import { asRecord } from './record';
 
 /**
  * Primitives for reading A2A message parts the way kagent writes them.
@@ -179,9 +181,9 @@ export function readPartText(part: A2aPartWire): string | undefined {
 /**
  * Whether a text part is the model's *reasoning* rather than its answer.
  *
- * kagent's ADK bridge sets this when converting a Gemini/Anthropic thinking
- * block: `a2a_part.metadata = {get_kagent_metadata_key("thought"): part.thought}`
- * (`python/packages/kagent-adk/src/kagent/adk/converters/part_converter.py`).
+ * Set by kagent's ADK bridge before 1.1, as `{adk,kagent}_thought` on the part.
+ * From 1.1 a thinking block arrives as a plain text part with no marker, so this
+ * is only ever true in history stored by an older controller.
  */
 export function isThoughtPart(part: A2aPartWire): boolean {
   return isKagentMetadataFlagSet(part.metadata, 'thought');
@@ -242,7 +244,7 @@ export function isInternalToolName(name: string | undefined): boolean {
 }
 
 /**
- * Token usage from a metadata bag, under either prefix.
+ * Token usage from a metadata bag, under any of kagent's spellings.
  *
  * The field names are Gemini's (`promptTokenCount` / `candidatesTokenCount`),
  * which is what ADK passes through. A partial bag yields zeros for the missing
@@ -250,8 +252,8 @@ export function isInternalToolName(name: string | undefined): boolean {
  * no breakdown, is still worth showing.
  *
  * **`totalTokenCount` is derived when kagent doesn't report one.** Confirmed on a
- * real session on an internal installation, whose every message carried exactly
- * `adk_usage_metadata: {promptTokenCount, candidatesTokenCount}` — no
+ * real session on an internal installation (pre-1.1), whose every message carried
+ * a usage bag of exactly `{promptTokenCount, candidatesTokenCount}` — no
  * `totalTokenCount` at all. Summing the reported totals therefore gave "Total 0"
  * next to 1.4M input, which reads as broken. kagent's own UI has the same hole
  * (`total: usage.totalTokenCount ?? 0`).
@@ -261,7 +263,35 @@ export function isInternalToolName(name: string | undefined): boolean {
  * counts them in the total but in neither part.
  */
 export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
-  const usage = asRecord(readKagentMetadata(metadata, 'usage_metadata'));
+  return tokenUsageOf(
+    readKagentMetadata(metadata, 'usage_metadata', carriesTokenUsage),
+  );
+}
+
+/**
+ * A delegated agent's own usage, which rides inside the tool *response* rather
+ * than in message metadata.
+ *
+ * A subagent runs in its own session, so its messages are not in this session's
+ * tasks — the parent only ever sees the response. Counting this is therefore not
+ * double counting; it is the only place the child's cost appears here.
+ */
+export function readNestedTokenUsage(
+  response: unknown,
+): TokenUsage | undefined {
+  return tokenUsageOf(readKagentSubagentUsage(response, carriesTokenUsage));
+}
+
+/**
+ * Whether a usage bag counts any tokens. A spelling that counts none, `{}`
+ * included, does not hide an older spelling that does.
+ */
+function carriesTokenUsage(value: unknown): value is Record<string, unknown> {
+  return tokenUsageOf(value) !== undefined;
+}
+
+function tokenUsageOf(value: unknown): TokenUsage | undefined {
+  const usage = asRecord(value);
   if (!usage) {
     return undefined;
   }
@@ -278,20 +308,6 @@ export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
   };
 }
 
-/**
- * A delegated agent's own usage, which rides inside the tool *response* rather
- * than in message metadata.
- *
- * A subagent runs in its own session, so its messages are not in this session's
- * tasks — the parent only ever sees the response. Counting this is therefore not
- * double counting; it is the only place the child's cost appears here.
- *
- * The response object is keyed exactly like a metadata bag
- * (`kagent_usage_metadata`), so {@link readTokenUsage} reads it as-is. This
- * wrapper exists to name the distinction at the call site, not to add logic.
- */
-export const readNestedTokenUsage = readTokenUsage;
-
 export function addTokenUsage(
   left: TokenUsage,
   right: TokenUsage | undefined,
@@ -304,13 +320,6 @@ export function addTokenUsage(
     prompt: left.prompt + right.prompt,
     completion: left.completion + right.completion,
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
 }
 
 function asNonEmptyString(value: unknown): string | undefined {

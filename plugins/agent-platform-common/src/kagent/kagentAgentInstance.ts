@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { wireString } from './kagentSchema';
 import type { KagentSession } from './kagentSessions';
 import { normalizeTimestamp } from './kagentTimestamp';
+import { isRecord } from './record';
 
 /**
  * Wire shapes of the kagent API v2 `AgentInstanceService`, as the backend
@@ -64,10 +65,6 @@ export const agentInstanceListWireSchema = z.looseObject({
 export const agentInstanceEnvelopeWireSchema = z.looseObject({
   agentInstance: z.unknown().optional(),
 });
-
-function isRecord(raw: unknown): raw is Record<string, unknown> {
-  return typeof raw === 'object' && raw !== null && !Array.isArray(raw);
-}
 
 /** Whether a body is a `ListAgentInstancesResponse` rather than a 0.10 list. */
 export function isAgentInstanceList(raw: unknown): boolean {
