@@ -376,3 +376,71 @@ describe('GSAuthProviders.getGithubAuthApi', () => {
     expect(api.getGithubAuthApi()).toBe(github);
   });
 });
+
+describe('GSAuthProviders cluster token broker coverage', () => {
+  const installations = {
+    a: { authProvider: 'oidc', oidcTokenProvider: 'oidc-a' },
+    b: { authProvider: 'oidc', oidcTokenProvider: 'oidc-b' },
+    c: {
+      authProvider: 'oidc',
+      oidcTokenProvider: 'oidc-c',
+      clusterTokenAudience: 'c',
+    },
+  };
+
+  function createCoverageApi(clusterTokenBroker: object | undefined) {
+    getSignedInConfig.mockResolvedValue(
+      new ConfigReader({ gs: { installations, clusterTokenBroker } }),
+    );
+    return GSAuthProviders.create({
+      configApi: {
+        ...configApi,
+        getOptionalString: jest.fn((key: string) =>
+          key === 'gs.authProvider' ? 'oidc-a' : undefined,
+        ),
+      } as unknown as ConfigApi,
+      discoveryApi,
+      oauthRequestApi,
+    });
+  }
+
+  beforeEach(() => {
+    getSignedInConfig.mockReset();
+  });
+
+  it('covers only the Dex targets when there is no muster broker', async () => {
+    const api = createCoverageApi({ targets: { b: {} } });
+    await api.ensureInitialized();
+
+    expect(api.getBrokerCoveredInstallations()).toEqual(['b']);
+    // clusterTokenAudience alone means nothing without muster: c keeps its
+    // own provider entry, b's leaves the settings page.
+    expect(api.getProviders().map(p => p.providerName)).toEqual([
+      'oidc-a',
+      'oidc-c',
+    ]);
+  });
+
+  it('covers the Dex targets and muster-covered installations together', async () => {
+    const api = createCoverageApi({
+      tokenUrl: 'https://muster.example.com/oauth/token',
+      targets: { b: {} },
+    });
+    await api.ensureInitialized();
+
+    expect(api.getBrokerCoveredInstallations()).toEqual(['b', 'c']);
+    expect(api.getProviders().map(p => p.providerName)).toEqual(['oidc-a']);
+  });
+
+  it('covers nothing without a broker', async () => {
+    const api = createCoverageApi(undefined);
+    await api.ensureInitialized();
+
+    expect(api.getBrokerCoveredInstallations()).toEqual([]);
+    expect(api.getProviders().map(p => p.providerName)).toEqual([
+      'oidc-a',
+      'oidc-b',
+      'oidc-c',
+    ]);
+  });
+});

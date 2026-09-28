@@ -28,6 +28,12 @@ if (isMainThread && exporting) {
         '@opentelemetry/instrumentation-fs': { enabled: false },
         '@opentelemetry/instrumentation-dns': { enabled: false },
         '@opentelemetry/instrumentation-net': { enabled: false },
+        // The pg instrumentation traces every query already. knex's names its
+        // spans after the connection's database, which a `pg` connection in
+        // pluginDivisionMode `schema` does not set: `raw undefined`, and for a
+        // schema-builder query no name at all, which fails the whole OTLP
+        // batch in the exporter's serializer.
+        '@opentelemetry/instrumentation-knex': { enabled: false },
       }),
     ],
   }).start();

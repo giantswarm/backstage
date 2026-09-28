@@ -104,6 +104,15 @@ describe('readSignedInConfig', () => {
             tokenUrl: 'https://muster.example.com/oauth/token',
             clientId: 'portal',
             clientSecret: 'hunter2',
+            targets: {
+              gaggle: {
+                tokenUrl: 'https://dex.gaggle.example.com/token',
+                clientId: 'portal-broker',
+                clientSecret: 'hunter3',
+                connectorId: 'portal',
+                scopes: 'openid groups',
+              },
+            },
           },
           containerRegistry: {
             registries: [
@@ -134,6 +143,7 @@ describe('readSignedInConfig', () => {
         },
         clusterTokenBroker: {
           tokenUrl: 'https://muster.example.com/oauth/token',
+          targets: { gaggle: {} },
         },
       },
       muster: {
@@ -143,6 +153,16 @@ describe('readSignedInConfig', () => {
         mcp: [{ name: 'muster', authProvider: 'mcp-muster' }],
       },
     });
+  });
+
+  it('keeps only the keys of a map under a {} step', () => {
+    expect(
+      projectConfigPaths(
+        { a: { m: { x: { secret: 's' }, y: 1 }, other: true } },
+        ['a.m{}'],
+      ),
+    ).toEqual({ a: { m: { x: {}, y: {} } } });
+    expect(projectConfigPaths({ a: { m: 'scalar' } }, ['a.m{}'])).toEqual({});
   });
 
   it('names no secret and no public path in the allowlist', () => {

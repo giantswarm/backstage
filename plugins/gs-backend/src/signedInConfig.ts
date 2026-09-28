@@ -4,7 +4,9 @@ import { JsonObject, JsonValue } from '@backstage/types';
 /**
  * The configuration the signed-in frontend reads, as paths into app-config.
  * `[]` steps into every element of an array, so `muster.installations[].name`
- * projects the `name` of each installation and nothing else of it.
+ * projects the `name` of each installation and nothing else of it. A final
+ * `{}` keeps only the keys of a map, so `gs.clusterTokenBroker.targets{}`
+ * names the installations with a target and nothing of their credentials.
  *
  * This list is the whole allowlist: a key that is not named here never reaches
  * the browser through `GET /api/gs/config`. The unauthenticated `index.html`
@@ -25,6 +27,9 @@ export const SIGNED_IN_CONFIG_PATHS: readonly string[] = [
   // path; the URL names the broker host. The client id and secret next to it
   // are the backend's alone.
   'gs.clusterTokenBroker.tokenUrl',
+  // The installations whose own Dex mints their cluster token: names only,
+  // each target's endpoint and client stay with the backend.
+  'gs.clusterTokenBroker.targets{}',
   // Link templates on the cluster, deployment and home pages: the fleet's
   // Grafana, Happa and Teleport hostnames.
   'gs.clusterDetails.resources',
@@ -77,6 +82,14 @@ function project(
   const [head, ...rest] = segments;
   if (!isObject(value)) {
     return undefined;
+  }
+  if (head.endsWith('{}')) {
+    const key = head.slice(0, -2);
+    const map = value[key];
+    if (!isObject(map)) {
+      return undefined;
+    }
+    return { [key]: Object.fromEntries(Object.keys(map).map(k => [k, {}])) };
   }
   if (head.endsWith('[]')) {
     const key = head.slice(0, -2);

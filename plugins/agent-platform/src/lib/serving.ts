@@ -76,6 +76,9 @@ export function servingGroupKey(
  * - `pending` — no verdict yet ("not known", not "broken"), or the workload
  *   pod waits for a node or an image (`readinessReason`: `Unschedulable`,
  *   `ImagePullBackOff`).
+ * - `starting` — a normal start in progress: the workload runs but has not
+ *   become available yet (weights, warm-up), with no crash or failure; a
+ *   large model takes minutes. Neutral, not a fault.
  * - `terminating` — being deleted: a Stop serving in progress, or a deletion
  *   from elsewhere; the row leaves the list once it completes.
  */
@@ -87,6 +90,7 @@ export type ServedModelReadiness =
   | 'downloading'
   | 'notReady'
   | 'pending'
+  | 'starting'
   | 'terminating';
 
 /** The states a served model's step can be in — the managers' vocabulary. */
@@ -176,6 +180,13 @@ export const SERVED_MODEL_READINESS: Record<
     phrase: 'pending',
     description: 'No verdict from the backend yet.',
   },
+  starting: {
+    label: 'Starting',
+    intent: 'neutral',
+    phrase: 'starting',
+    description:
+      'Starting normally: the runtime loads the weights and warms up, several minutes for a large model.',
+  },
   terminating: {
     label: 'Stopping',
     intent: 'neutral',
@@ -203,10 +214,11 @@ export const SERVED_MODEL_READINESS_ORDER: Record<
   notServing: 1,
   notReady: 2,
   pending: 3,
-  terminating: 4,
-  idle: 5,
-  downloading: 6,
-  available: 7,
+  starting: 4,
+  terminating: 5,
+  idle: 6,
+  downloading: 7,
+  available: 8,
 };
 
 /**
@@ -357,6 +369,8 @@ export type ServedModel = {
   node?: string;
   /** Whether `node` is where the pod actually is, or only the declared pin. */
   nodeSource?: 'pod' | 'spec';
+  /** KServe: the nodes a model split across a fast link runs on, in rank order; `undefined` for a copy. */
+  splitNodes?: string[];
   /** GPUs requested. `undefined` when the backend reports none. */
   gpuCount?: number;
   /** URL in-cluster clients (a kagent ModelConfig) use. */

@@ -27,17 +27,74 @@ export const LLMISVC_POLL_IDLE_MS = 60_000;
  * `refetchInterval` for the LLMInferenceService lists: readiness comes from
  * the object's status, written by the llm-d controller minutes after the
  * create — so the list has to be re-read to see a served model come up. Fast
- * while something is pending or failed, slow once everything answers.
+ * while something is pending, failed or being deleted (a deleting object
+ * keeps its Ready condition until it is gone), slow once everything answers.
  */
 export function llmInferenceServiceRefetchInterval(query: {
   state: { data?: LLMInferenceServiceInterface[] };
 }): number {
   const items = query.state.data ?? [];
   return items.some(
-    item => deriveLLMInferenceServiceReadiness(item) !== 'ready',
+    item =>
+      Boolean(item.metadata?.deletionTimestamp) ||
+      deriveLLMInferenceServiceReadiness(item) !== 'ready',
   )
     ? LLMISVC_POLL_ACTIVE_MS
     : LLMISVC_POLL_IDLE_MS;
+}
+
+/** Container states in which a workload is not starting but failing. */
+const FAILING_WAITING_REASONS = new Set([
+  'CrashLoopBackOff',
+  'ImagePullBackOff',
+  'ErrImagePull',
+  'CreateContainerConfigError',
+  'CreateContainerError',
+  'RunContainerError',
+]);
+
+/**
+ * Whether a workload pod is in a normal start: scheduled and initializing
+ * (the storage-initializer downloading the weights) or running, with no
+ * container restarted, crashed or stuck in a failing wait. A crash loop, an
+ * image pull failure or a failed pod is no start; a pod without a node is
+ * the scheduler's wait, told apart before (`Pending`).
+ */
+export function isPodStarting(pod: Pod): boolean {
+  const status = pod.jsonData.status;
+  const phase = status?.phase;
+  if (phase !== 'Running' && !(phase === 'Pending' && pod.getNodeName())) {
+    return false;
+  }
+  return [
+    ...(status?.initContainerStatuses ?? []),
+    ...(status?.containerStatuses ?? []),
+  ].every(
+    container =>
+      (container.restartCount ?? 0) === 0 &&
+      !FAILING_WAITING_REASONS.has(container.state?.waiting?.reason ?? '') &&
+      (container.state?.terminated?.exitCode ?? 0) === 0,
+  );
+}
+
+/**
+ * A start in words: `Starting on gpu-a for 4 min: downloading the weights.`
+ * or `…: the runtime loads the weights and warms up.`
+ */
+export function describeStart(pod: Pod, now: number): string {
+  const node = pod.getNodeName();
+  const started = Date.parse(pod.jsonData.status?.startTime ?? '');
+  const minutes = Number.isNaN(started)
+    ? undefined
+    : Math.max(0, Math.floor((now - started) / 60_000));
+  return [
+    'Starting',
+    node ? ` on ${node}` : '',
+    minutes === undefined ? '' : ` for ${minutes} min`,
+    pod.jsonData.status?.phase === 'Running'
+      ? ': the runtime loads the weights and warms up.'
+      : ': downloading the weights.',
+  ].join('');
 }
 
 /**
@@ -155,6 +212,7 @@ export function toServedModel(
   object: LLMInferenceService,
   pods: Pod[] = [],
   gpuResourceName?: string,
+  now: number = Date.now(),
 ): ServedModel {
   const namespace = object.getNamespace();
   const labels = object.getLabels() ?? {};
@@ -169,6 +227,12 @@ export function toServedModel(
   if (object.getDeletionTimestamp()) {
     readiness = 'terminating';
     readinessMessage = `LLMInferenceService ${object.getName()} is being deleted.`;
+  } else if (readiness !== 'ready' && pod && isPodStarting(pod)) {
+    // A scheduled pod on its way, however the Deployment's condition reads
+    // (MinimumReplicasUnavailable during any start): the storage-initializer
+    // downloads the weights, then the runtime loads them and warms up.
+    readiness = 'starting';
+    readinessMessage = describeStart(pod, now);
   } else if (readiness !== 'ready' && waiting) {
     readiness = 'pending';
     readinessReason = waiting.reason;

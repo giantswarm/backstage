@@ -187,12 +187,14 @@ export function mapConnectError(
 
   switch (connectError.code) {
     case Code.Unauthenticated:
+      logDenial(logger, installationName, connectError);
       return new AuthenticationError(
-        `Not authenticated against the kagent API for installation '${installationName}'.`,
+        `Not authenticated against the kagent API for installation '${installationName}'${denialReason(connectError.rawMessage)}`,
       );
     case Code.PermissionDenied:
+      logDenial(logger, installationName, connectError);
       return new NotAllowedError(
-        `Not authorized to use the kagent API for installation '${installationName}'.`,
+        `Not authorized to use the kagent API for installation '${installationName}'${denialReason(connectError.rawMessage)}`,
       );
     case Code.NotFound:
       return new NotFoundError(context.missingResource);
@@ -250,6 +252,43 @@ export function mapConnectError(
         `The kagent API for installation '${installationName}' failed: ${reason}`,
       );
   }
+}
+
+/** Longest denial reason carried into a user-facing message. */
+const MAX_DENIAL_REASON = 300;
+
+/**
+ * The tail of a 401/403 message: the edge's or kagent's reason, or a full stop.
+ *
+ * agentgateway's JWT policy answers a rejected token with a trailers-only gRPC
+ * status whose `grpc-message` names the cause ("authentication failure: token
+ * uses the unknown key …", "… no bearer token found"). Without it an expired
+ * token, a token from a recreated Dex and a missing token all read the same.
+ * connect-node's `HTTP <status>` placeholder, used when a proxy answered without
+ * a gRPC status, says nothing the error class does not, so it is dropped; so
+ * is Connect's `[code]` prefix, which is why this reads `rawMessage`.
+ */
+function denialReason(reason: string): string {
+  const trimmed = reason.trim();
+  if (!trimmed || /^HTTP \d{3}$/.test(trimmed)) {
+    return '.';
+  }
+  const bounded =
+    trimmed.length > MAX_DENIAL_REASON
+      ? `${trimmed.slice(0, MAX_DENIAL_REASON)}…`
+      : trimmed;
+  return `: ${bounded}`;
+}
+
+function logDenial(
+  logger: LoggerService,
+  installationName: string,
+  error: ConnectError,
+) {
+  logger.debug(
+    `kagent API denied a request for installation '${installationName}'`,
+    { code: Code[error.code], error: error.rawMessage },
+  );
 }
 
 /**

@@ -2435,13 +2435,13 @@
             "properties": {
                 "apiKey": {
                     "type": "string",
-                    "description": "Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var). Not needed when aiChat.anthropic.provider is vertex, where the Google service account is the credential instead"
+                    "description": "Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var). Not needed when aiChat.anthropic.provider is vertex, where the Google service account is the credential instead. Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
         "authSessionSecret": {
             "type": "string",
-            "description": "Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var)"
+            "description": "Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
         },
         "aws": {
             "type": "object",
@@ -2450,11 +2450,11 @@
             "properties": {
                 "accessKeyID": {
                     "type": "string",
-                    "description": "AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var)"
+                    "description": "AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 },
                 "secretAccessKey": {
                     "type": "string",
-                    "description": "AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var)"
+                    "description": "AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2609,7 +2609,7 @@
             "properties": {
                 "apiToken": {
                     "type": "string",
-                    "description": "CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var)"
+                    "description": "CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2691,7 +2691,7 @@
         },
         "dexAuthCredentials": {
             "type": "object",
-            "description": "Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars",
+            "description": "Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars. Both values of an entry are base64-encoded: the chart writes them into the Secret's `data` as is",
             "additionalProperties": {
                 "type": "object",
                 "required": [
@@ -2716,7 +2716,7 @@
             "properties": {
                 "mcpToken": {
                     "type": "string",
-                    "description": "Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var)"
+                    "description": "Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2738,7 +2738,7 @@
             "properties": {
                 "publicReadToken": {
                     "type": "string",
-                    "description": "GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var)"
+                    "description": "GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2780,11 +2780,11 @@
             "properties": {
                 "clientID": {
                     "type": "string",
-                    "description": "GitHub OAuth App client ID (exposed as GITHUB_OAUTH_CLIENT_ID env var)"
+                    "description": "GitHub OAuth App client ID (exposed as GITHUB_OAUTH_CLIENT_ID env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 },
                 "clientSecret": {
                     "type": "string",
-                    "description": "GitHub OAuth App client secret (exposed as GITHUB_OAUTH_CLIENT_SECRET env var)"
+                    "description": "GitHub OAuth App client secret (exposed as GITHUB_OAUTH_CLIENT_SECRET env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2822,7 +2822,7 @@
             "properties": {
                 "apiToken": {
                     "type": "string",
-                    "description": "Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var)"
+                    "description": "Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2957,7 +2957,7 @@
         },
         "ociRegistryCredentials": {
             "type": "object",
-            "description": "Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig",
+            "description": "Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig. Both values of an entry are base64-encoded: the chart writes them into the Secret's `data` as is",
             "additionalProperties": {
                 "type": "object",
                 "required": [
@@ -2982,7 +2982,7 @@
             "properties": {
                 "apiKey": {
                     "type": "string",
-                    "description": "OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var)"
+                    "description": "OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2993,7 +2993,7 @@
             "properties": {
                 "apiToken": {
                     "type": "string",
-                    "description": "PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var)"
+                    "description": "PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -3349,7 +3349,7 @@
                     "properties": {
                         "dsn": {
                             "type": "string",
-                            "description": "Sentry DSN for the frontend app (exposed as SENTRY_DSN_APP env var)"
+                            "description": "Sentry DSN for the frontend app (exposed as SENTRY_DSN_APP env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                         }
                     }
                 },
@@ -3360,13 +3360,13 @@
                     "properties": {
                         "dsn": {
                             "type": "string",
-                            "description": "Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var)"
+                            "description": "Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                         }
                     }
                 },
                 "reportURI": {
                     "type": "string",
-                    "description": "Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var)"
+                    "description": "Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -3394,7 +3394,7 @@
             "properties": {
                 "salt": {
                     "type": "string",
-                    "description": "TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml."
+                    "description": "TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml. Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },

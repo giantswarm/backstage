@@ -52,4 +52,14 @@ but not the native footprint, and the sum is what the kernel enforces. Setting
 heap already follows the limit; it would also have to repeat the image's
 `--no-node-snapshot`, which the scaffolder needs.
 
+## Secret values
+
+The values that end up in `<name>-secrets`, `<name>-dex-auth-credentials-secret`
+and `<name>-oci-registry-credentials-secret` (`authSessionSecret`, the API
+tokens and keys, the Sentry DSNs, `dexAuthCredentials`, `ociRegistryCredentials`,
+…) go into the Secret's `data` as they are, so they must be base64-encoded
+(`printf %s "$value" | base64 -w0`). A plaintext value fails the render and
+names the value. `githubAppCredentials`, `google.credentialsJson` and
+`pluginKeys` are the exception: they are plaintext (`stringData`).
+
 {{ template "chart.valuesSection" . }}

@@ -41,3 +41,19 @@ timeout:
   tcp:
     connectTimeout: 10s
 {{- end }}
+
+{{- /*
+backstage.base64 renders a value for a Secret's `data` and fails the render,
+naming the value, when it is not base64: Kubernetes would otherwise reject the
+Secret with "illegal base64 data at input byte N", which names neither.
+Called with (list "<values path>" <value>).
+*/}}
+{{- define "backstage.base64" -}}
+{{- $path := index . 0 -}}
+{{- $value := toString (index . 1) -}}
+{{- $compact := regexReplaceAll "\\s" $value "" -}}
+{{- if or (not (regexMatch "^[A-Za-z0-9+/]*={0,2}$" $compact)) (ne (mod (len $compact) 4) 0) -}}
+{{- fail (printf "%s must be base64-encoded: it goes into the Secret's data as is (encode it with `base64 -w0`)" $path) -}}
+{{- end -}}
+{{- $value -}}
+{{- end }}

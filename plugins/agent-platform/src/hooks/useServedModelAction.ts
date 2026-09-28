@@ -1,8 +1,12 @@
 import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  LLMInferenceService,
+  ModelConfig,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { modelManagerApiRef } from '../apis';
+import { invalidateResourceReads } from './invalidateResourceReads';
 import {
   modelManagerBackendsQueryKey,
   modelManagerJobsQueryKey,
@@ -83,6 +87,11 @@ export function useInvalidateModelManagerReadsFor() {
             ],
           }),
         ),
+        // The serving objects themselves, which the Serving list reads too:
+        // a served or stopped model shows its new state without a reload.
+        invalidateResourceReads(queryClient, installation, [
+          LLMInferenceService.getGVK(),
+        ]),
       ]);
     },
     [queryClient],
