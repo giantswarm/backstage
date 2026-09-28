@@ -225,7 +225,9 @@ export function NewMcpServerReviewPage() {
           color="secondary"
           className={classes.stepLabel}
         >
-          Step 3 of 4: Review &amp; register
+          {isEdit
+            ? 'Step 3 of 4: Review & save'
+            : 'Step 3 of 4: Review & register'}
         </Text>
         <Text
           as="h2"
@@ -233,7 +235,7 @@ export function NewMcpServerReviewPage() {
           weight="bold"
           className={classes.pageTitle}
         >
-          Review and register
+          {isEdit ? 'Review and save' : 'Review and register'}
         </Text>
         <Text as="p" color="secondary" className={classes.intro}>
           {isEdit ? (
@@ -298,16 +300,18 @@ export function NewMcpServerReviewPage() {
                     {/* The CLI cannot express every definition this wizard can
                         compose: `muster create mcpserver` has no flags for
                         sigv4 signing or request metadata. Saying so beats
-                        printing a command that looks right and is rejected. */}
-                    {cliCommand ? (
-                      <pre className={classes.codeBlock}>{cliCommand}</pre>
-                    ) : (
-                      <Text variant="body-small" color="secondary">
-                        The muster CLI has no flags for this server&apos;s
-                        signing configuration or request metadata — use the
-                        manifest above, or register it here.
-                      </Text>
-                    )}
+                        printing a command that looks right and is rejected.
+                        An edit shows none: the command is a create. */}
+                    {!isEdit &&
+                      (cliCommand ? (
+                        <pre className={classes.codeBlock}>{cliCommand}</pre>
+                      ) : (
+                        <Text variant="body-small" color="secondary">
+                          The muster CLI has no flags for this server&apos;s
+                          signing configuration or request metadata — use the
+                          manifest above, or register it here.
+                        </Text>
+                      ))}
                   </div>
                 </details>
               </Flex>

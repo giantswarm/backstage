@@ -127,7 +127,11 @@ export function NewMcpServerPage() {
   // Transport auto-detection: once the URL looks complete, muster probes it
   // and the detected transport gets pre-selected. A manual card click wins
   // until the URL changes again; inconclusive detection changes nothing.
-  const [transportTouched, setTransportTouched] = useState(false);
+  // Editing a registered server starts from the transport it is registered
+  // with, so a re-probe of the unchanged URL must not quietly switch it.
+  const [transportTouched, setTransportTouched] = useState(
+    Boolean(registeredName),
+  );
   const { detected } = useTransportDetection(state.url, state.installation);
 
   const onUrlChange = useCallback(
@@ -198,11 +202,12 @@ export function NewMcpServerPage() {
           weight="bold"
           className={classes.pageTitle}
         >
-          Register an MCP server
+          {registeredName ? 'Edit MCP server' : 'Register an MCP server'}
         </Text>
         <Text as="p" className={classes.intro}>
-          Bring an existing remote MCP server to the platform so agents can use
-          its tools through the gateway.
+          {registeredName
+            ? 'Change how this server is reached and authenticated. Saving updates the registered server in place.'
+            : 'Bring an existing remote MCP server to the platform so agents can use its tools through the gateway.'}
         </Text>
 
         <ActiveInstallationNote />

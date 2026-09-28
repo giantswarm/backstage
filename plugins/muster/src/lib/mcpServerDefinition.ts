@@ -17,7 +17,7 @@
 // annotations through the create tool would in fact fail the registration — its
 // request parsing rejects unknown fields.
 
-import type { MCPServerAuth, MCPServerSigV4 } from './k8s';
+import type { MCPServer, MCPServerAuth, MCPServerSigV4 } from './k8s';
 import { toYaml } from './gitops';
 
 /**
@@ -634,4 +634,109 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
         },
     sigv4,
   };
+}
+
+/**
+ * Why a registered server cannot be edited through the wizard, or undefined
+ * when it can. The wizard only speaks the remote transports; a `stdio` server
+ * runs a local process next to muster and stays out of it.
+ */
+export function wizardEditBlocker(server: MCPServer): string | undefined {
+  const type = server.getType();
+  return type === 'streamable-http' || type === 'sse'
+    ? undefined
+    : 'Only remote (streamable-http or SSE) servers can be edited here.';
+}
+
+function authModeOf(auth: MCPServerAuth | undefined): McpServerAuthMode {
+  if (auth?.type === 'sigv4' || auth?.sigv4) {
+    return 'sigv4';
+  }
+  if (auth?.forwardToken) {
+    return 'platform-sso';
+  }
+  if (auth?.type === 'oauth') {
+    return 'own-account';
+  }
+  return 'none';
+}
+
+/**
+ * A registered server → the wizard state that composes it, so "Edit" opens the
+ * registration form pre-filled. The display name is not persisted anywhere, so
+ * it starts as the CR name.
+ */
+export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
+  const auth = server.getAuth();
+  return {
+    ...emptyFormState,
+    name: server.getName(),
+    slug: server.getName(),
+    description: server.getDescription() ?? '',
+    installation: server.cluster,
+    url: server.getUrl() ?? '',
+    transport: server.getType() === 'sse' ? 'sse' : 'streamable-http',
+    authMode: authModeOf(auth),
+    issuer: auth?.authorizationServer?.issuer ?? '',
+    scopes: auth?.authorizationServer?.scopes ?? '',
+    requiredAudiences: auth?.requiredAudiences ?? [],
+    sigv4Region: auth?.sigv4?.region ?? '',
+    sigv4Service: auth?.sigv4?.service ?? '',
+    sigv4RoleArn: auth?.sigv4?.roleArn ?? '',
+    meta: Object.entries(server.getMeta() ?? {}).map(([key, value]) => ({
+      key,
+      value,
+    })),
+  };
+}
+
+/** Definition fields the wizard composes; it never touches any other. */
+const WIZARD_FIELDS = ['name', 'type', 'url', 'description', 'auth', 'meta'];
+
+/**
+ * Auth fields the wizard has no control for. They survive an edit as long as
+ * the auth mode stays the one the server had — switching modes drops them, as
+ * they belong to the old mode.
+ */
+const UNMODELLED_AUTH_FIELDS = ['tokenExchange', 'localMint'] as const;
+
+/**
+ * The wizard's definition laid over the server being edited, for
+ * `core_mcpserver_update`. The update carries the whole definition, so what the
+ * wizard does not model (`headers`, `env`, `toolPrefix`, `timeout`,
+ * `autoStart`, ...) is carried over from the existing server instead of being
+ * silently dropped.
+ */
+export function mergeOntoExisting(
+  existing: Record<string, unknown>,
+  composed: McpServerDefinition,
+  authModeChanged: boolean,
+): McpServerDefinition {
+  const kept = Object.fromEntries(
+    Object.entries(existing).filter(([key]) => !WIZARD_FIELDS.includes(key)),
+  );
+  const merged: McpServerDefinition = { ...kept, ...composed };
+  if (typeof existing.autoStart === 'boolean') {
+    merged.autoStart = existing.autoStart;
+  }
+  const existingAuth = existing.auth as MCPServerAuth | undefined;
+  if (!authModeChanged && existingAuth) {
+    const carried: MCPServerAuth = {};
+    for (const key of UNMODELLED_AUTH_FIELDS) {
+      if (existingAuth[key] !== undefined) {
+        Object.assign(carried, { [key]: existingAuth[key] });
+      }
+    }
+    if (Object.keys(carried).length) {
+      merged.auth = { ...merged.auth, ...carried };
+    }
+  }
+  return merged;
+}
+
+/** The auth mode a registered server's definition corresponds to. */
+export function authModeOfDefinition(
+  definition: Record<string, unknown>,
+): McpServerAuthMode {
+  return authModeOf(definition.auth as MCPServerAuth | undefined);
 }

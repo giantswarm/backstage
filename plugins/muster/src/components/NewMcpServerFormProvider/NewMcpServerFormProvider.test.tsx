@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { MCPServer } from '../../lib/k8s';
 import {
   NewMcpServerFormProvider,
   useNewMcpServerForm,
@@ -264,6 +265,50 @@ describe('NewMcpServerFormProvider', () => {
         forwardToken: true,
         requiredAudiences: ['dex-k8s-authenticator'],
       },
+    });
+  });
+
+  describe('editing a registered server', () => {
+    const server = new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'weather-mcp' },
+        spec: {
+          type: 'streamable-http',
+          url: 'https://weather.example.com/mcp',
+          timeout: 90,
+        },
+      } as never,
+      'gaggle',
+    );
+
+    it('seeds the form as an update to that server', () => {
+      const { result } = renderForm();
+
+      act(() => result.current.startEdit(server));
+
+      expect(result.current.registeredName).toBe('weather-mcp');
+      expect(result.current.isComplete).toBe(true);
+      expect(result.current.definition).toMatchObject({
+        name: 'weather-mcp',
+        url: 'https://weather.example.com/mcp',
+        timeout: 90,
+      });
+      // The CR name stays locked to the server even when the name changes.
+      act(() => result.current.setName('Weather (EU)'));
+      expect(result.current.definition.name).toBe('weather-mcp');
+    });
+
+    it('forgets the edited server on reset', () => {
+      const { result } = renderForm();
+      act(() => result.current.startEdit(server));
+
+      act(() => result.current.reset());
+
+      expect(result.current.registeredName).toBeUndefined();
+      expect(result.current.state.url).toBe('');
+      expect(result.current.definition).not.toHaveProperty('timeout');
     });
   });
 });

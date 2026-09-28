@@ -210,7 +210,7 @@ describe('NewMcpServerReviewPage', () => {
     await userEvent.click(
       screen.getAllByRole('button', { name: 'Continue' })[0],
     );
-    await screen.findByText('Step 3 of 4: Review & register');
+    await screen.findByText('Step 3 of 4: Review & save');
 
     await userEvent.click(
       screen.getAllByRole('button', { name: 'Save changes' })[0],

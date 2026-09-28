@@ -6,6 +6,9 @@ import {
   deriveSlug,
   emptyFormState,
   formatMetaEntries,
+  formStateFromServer,
+  mergeOntoExisting,
+  wizardEditBlocker,
   parseMetaEntries,
   sigv4Advisories,
   toMcpServerManifestYaml,
@@ -13,6 +16,8 @@ import {
   validateNewMcpServerForm,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
+import { toMcpServerDefinition } from './gitops';
+import { MCPServer } from './k8s';
 
 function state(
   overrides: Partial<NewMcpServerFormState> = {},
@@ -956,5 +961,121 @@ describe('toMusterCliCommand', () => {
         ),
       ),
     ).toBeUndefined();
+  });
+});
+
+function registered(spec: Record<string, unknown>): MCPServer {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: { name: 'weather-mcp' },
+      spec: {
+        type: 'streamable-http',
+        url: 'https://w.example.com/mcp',
+        ...spec,
+      },
+    } as never,
+    'gaggle',
+  );
+}
+
+describe('editing a registered server in the wizard', () => {
+  it.each([
+    [{}, 'none'],
+    [{ auth: { type: 'oauth' } }, 'own-account'],
+    [{ auth: { forwardToken: true } }, 'platform-sso'],
+    [{ auth: { type: 'sigv4', sigv4: { region: 'eu-west-1' } } }, 'sigv4'],
+  ])('reads the auth mode back from %j', (spec, mode) => {
+    expect(formStateFromServer(registered(spec)).authMode).toBe(mode);
+  });
+
+  it('round-trips what the wizard models', () => {
+    const server = registered({
+      type: 'sse',
+      description: 'Forecasts',
+      auth: {
+        type: 'oauth',
+        authorizationServer: { issuer: 'https://idp', scopes: 'read' },
+      },
+      meta: { AWS_REGION: 'eu-west-1' },
+    });
+    const form = formStateFromServer(server);
+
+    expect(form).toMatchObject({
+      name: 'weather-mcp',
+      slug: 'weather-mcp',
+      installation: 'gaggle',
+      transport: 'sse',
+      issuer: 'https://idp',
+      scopes: 'read',
+      meta: [{ key: 'AWS_REGION', value: 'eu-west-1' }],
+    });
+    expect(validateNewMcpServerForm(form)).toEqual([]);
+    const { name, type, url, description, auth, meta } =
+      toMcpServerDefinition(server);
+    expect(composeMcpServerDefinition(form)).toEqual({
+      name,
+      type,
+      url,
+      description,
+      auth,
+      meta,
+      autoStart: true,
+    });
+  });
+
+  it('keeps the fields the wizard has no control for on update', () => {
+    const existing = toMcpServerDefinition(
+      registered({
+        autoStart: false,
+        timeout: 90,
+        toolPrefix: 'wx',
+        headers: { 'X-Team': 'bumblebee' },
+        description: 'Old',
+      }),
+    );
+    const edited = composeMcpServerDefinition(
+      state({ slug: 'weather-mcp', description: '' }),
+    );
+
+    const merged = mergeOntoExisting(existing, edited, false);
+
+    expect(merged).toMatchObject({
+      name: 'weather-mcp',
+      url: 'https://weather.example.com/mcp',
+      autoStart: false,
+      timeout: 90,
+      toolPrefix: 'wx',
+      headers: { 'X-Team': 'bumblebee' },
+    });
+    // A field the wizard owns and the user cleared stays cleared.
+    expect(merged).not.toHaveProperty('description');
+  });
+
+  it('keeps unmodelled auth settings only while the auth mode is unchanged', () => {
+    const existing = toMcpServerDefinition(
+      registered({
+        auth: {
+          forwardToken: true,
+          tokenExchange: { enabled: true },
+        },
+      }),
+    );
+    const sso = composeMcpServerDefinition(state({ authMode: 'platform-sso' }));
+    const none = composeMcpServerDefinition(state({ authMode: 'none' }));
+
+    expect(mergeOntoExisting(existing, sso, false).auth).toEqual({
+      forwardToken: true,
+      tokenExchange: { enabled: true },
+    });
+    expect(mergeOntoExisting(existing, none, true)).not.toHaveProperty('auth');
+  });
+
+  it('leaves stdio servers out of the wizard', () => {
+    expect(wizardEditBlocker(registered({}))).toBeUndefined();
+    expect(wizardEditBlocker(registered({ type: 'stdio' }))).toMatch(
+      /Only remote/,
+    );
   });
 });

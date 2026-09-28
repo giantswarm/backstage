@@ -6,11 +6,16 @@ import {
   type ReactNode,
 } from 'react';
 
+import type { MCPServer } from '../../lib/k8s';
+import { toMcpServerDefinition } from '../../lib/gitops';
 import {
   authFieldAvailability,
+  authModeOfDefinition,
   composeMcpServerDefinition,
   deriveSlug,
   emptyFormState,
+  formStateFromServer,
+  mergeOntoExisting,
   sigv4Advisories,
   validateMcpServerAuth,
   validateMcpServerDetails,
@@ -46,6 +51,12 @@ export type NewMcpServerFormContextValue = {
    */
   registeredName: string | undefined;
   setRegisteredName: (name: string | undefined) => void;
+  /**
+   * Seeds the wizard from an already-registered server, so its "Edit" opens
+   * the registration form pre-filled. Saving is then an update to that server
+   * that keeps every field the wizard does not model.
+   */
+  startEdit: (server: MCPServer) => void;
   reset: () => void;
   /** True when the form has no validation errors. */
   isComplete: boolean;
@@ -104,6 +115,9 @@ export function NewMcpServerFormProvider({
   // it by hand (same rule as agent creation).
   const [slugEdited, setSlugEdited] = useState(false);
   const [registeredName, setRegisteredName] = useState<string | undefined>();
+  // The server being edited, as it was when the edit started: the base the
+  // wizard's definition is laid over, so an update keeps what it cannot show.
+  const [existing, setExisting] = useState<Record<string, unknown>>();
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
     const detailsErrors = validateMcpServerDetails(state);
@@ -158,9 +172,16 @@ export function NewMcpServerFormProvider({
       setMeta: meta => setState(prev => ({ ...prev, meta })),
       registeredName,
       setRegisteredName,
+      startEdit: server => {
+        setSlugEdited(true);
+        setRegisteredName(server.getName());
+        setExisting(toMcpServerDefinition(server));
+        setState(formStateFromServer(server));
+      },
       reset: () => {
         setSlugEdited(false);
         setRegisteredName(undefined);
+        setExisting(undefined);
         setState(emptyFormState);
       },
       isComplete: validationErrors.length === 0,
@@ -168,9 +189,15 @@ export function NewMcpServerFormProvider({
       detailsErrors,
       authFields: authFieldAvailability(state),
       authAdvisories: sigv4Advisories(state),
-      definition: composeMcpServerDefinition(state),
+      definition: existing
+        ? mergeOntoExisting(
+            existing,
+            composeMcpServerDefinition(state),
+            authModeOfDefinition(existing) !== state.authMode,
+          )
+        : composeMcpServerDefinition(state),
     };
-  }, [state, slugEdited, registeredName]);
+  }, [state, slugEdited, registeredName, existing]);
 
   return (
     <NewMcpServerFormContext.Provider value={value}>
