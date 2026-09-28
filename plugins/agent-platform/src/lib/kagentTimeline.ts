@@ -18,6 +18,7 @@ import {
   parsePart,
   readFunctionCall,
   readFunctionResponse,
+  readEndedTurnUsage,
   readKagentMetadataString,
   readMessageText,
   readNestedTokenUsage,
@@ -647,6 +648,14 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         state: ending.state,
         reason: ending.reason,
       });
+    }
+    // After the ending: it reads the reason against the ids rendered so far.
+    const endedUsage = readEndedTurnUsage(task, seenMessageIds);
+    if (endedUsage) {
+      tokens = addTokenUsage(tokens, endedUsage.usage);
+      if (endedUsage.messageId) {
+        seenMessageIds.add(endedUsage.messageId);
+      }
     }
   });
 

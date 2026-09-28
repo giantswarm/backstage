@@ -451,6 +451,29 @@ describe('buildTimeline', () => {
       expect(skippedMessages).toBe(0);
     });
 
+    it('counts the usage the failure reports and keeps its reason', () => {
+      // The claude Harness reports what a failed turn spent on its status
+      // message, which stays off history.
+      const spent = structuredClone(failed) as typeof failed;
+      const message = spent.data[0].status.message as {
+        metadata?: Record<string, unknown>;
+      };
+      message.metadata = {
+        ...message.metadata,
+        'kagent.dev/a2a/usage': {
+          promptTokenCount: 50,
+          candidatesTokenCount: 7,
+        },
+      };
+      const { items, tokens } = timelineFor(spent);
+
+      expect(tokens).toEqual({ total: 57, prompt: 50, completion: 7 });
+      expect(items[1]).toMatchObject({
+        kind: 'turn-failed',
+        reason: expect.stringContaining('gpt-6-astra'),
+      });
+    });
+
     it('still marks the turn when kagent gave no reason', () => {
       const silent = structuredClone(failed) as typeof failed;
       delete (silent.data[0].status as { message?: unknown }).message;

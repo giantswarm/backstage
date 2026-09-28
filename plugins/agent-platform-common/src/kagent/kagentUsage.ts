@@ -1,5 +1,10 @@
-import { A2aTaskWire } from './kagentTaskSchema';
+import { a2aMessageWireSchema, A2aTaskWire } from './kagentTaskSchema';
 import { normalizeTimestamp } from './kagentSessions';
+import {
+  CANCELED_STATE,
+  describeSessionState,
+  FAILED_STATES,
+} from './kagentSessionState';
 import {
   addTokenUsage,
   CONFIRMATION_TOOL_NAME,
@@ -153,6 +158,8 @@ function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
  *   recognised, and counted in neither `toolCalls` nor `tools`.
  * - **`task.metadata` usage is not read.** On ADK it is the last model call's,
  *   already on that call's artifact.
+ * - **A failed or canceled turn's usage is read off its status**, through
+ *   {@link readEndedTurnUsage}, since that message is not in history.
  */
 export function reduceSessionUsage(
   tasks: A2aTaskWire[],
@@ -247,6 +254,14 @@ export function reduceSessionUsage(
       }
     }
 
+    const ended = readEndedTurnUsage(task, seenMessageIds);
+    if (ended) {
+      addUsage(turn, ended.usage);
+      if (ended.messageId) {
+        seenMessageIds.add(ended.messageId);
+      }
+    }
+
     tally.turns += turn.turns;
     tally.toolCalls += turn.toolCalls;
     addUsage(tally, {
@@ -273,4 +288,34 @@ export function reduceSessionUsage(
   }
 
   return { tally, days, tools, servers, undatedTurns, unparseableMessages };
+}
+
+/**
+ * The usage on the status message of a turn that failed or was canceled, with
+ * that message's id, unless `seen` already holds the id.
+ *
+ * That message is how the turn ended, not a reply, so `toWireTask` leaves it
+ * off history and the timeline shows it as the turn's ending. The claude
+ * Harness reports what a failed turn spent on it and nowhere else. Recording
+ * the id is the caller's: the timeline reads the ending against the ids it has
+ * rendered first, and would drop the reason if this one were among them.
+ */
+export function readEndedTurnUsage(
+  task: A2aTaskWire,
+  seen: ReadonlySet<string>,
+): { messageId?: string; usage: TokenUsage } | undefined {
+  const state = describeSessionState(task.status?.state)?.key;
+  if (!state || !(FAILED_STATES.has(state) || state === CANCELED_STATE)) {
+    return undefined;
+  }
+  const parsed = a2aMessageWireSchema.safeParse(task.status?.message);
+  if (!parsed.success || parsed.data.role === 'user') {
+    return undefined;
+  }
+  const { messageId, metadata } = parsed.data;
+  if (messageId && seen.has(messageId)) {
+    return undefined;
+  }
+  const usage = readTokenUsage(metadata);
+  return usage && { messageId, usage };
 }
