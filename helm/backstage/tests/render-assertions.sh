@@ -176,9 +176,23 @@ render_fails() {
 }
 
 echo "--> base64 values in the data Secrets: rendered as they are"
-render base64 --set authSessionSecret=c2Vzc2lvbg== --set dexAuthCredentials.gazelle.clientID=YmFja3N0YWdl --set dexAuthCredentials.gazelle.clientSecret=c2VjcmV0
-expect base64 'AUTH_SESSION_SECRET: c2Vzc2lvbg=='
-expect base64 'AUTH_DEX_GAZELLE_CLIENT_ID: YmFja3N0YWdl'
+render base64 --set authSessionSecret=c2Vzc2lvbg== --set sentry.backend.dsn=ZHNu --set dexAuthCredentials.gazelle.clientID=YmFja3N0YWdl --set dexAuthCredentials.gazelle.clientSecret=c2VjcmV0
+# Under `data`, not beside it: a key outside `data` leaves the Secret empty and
+# still renders, applies and passes a text match.
+data_keys() {
+  local name=$1 secret=$2
+  yq -r "select(.kind == \"Secret\" and .metadata.name == \"${secret}\") | .data // {} | keys | join(\",\")" "${work_dir}/${name}.yaml"
+}
+secrets_keys=$(data_keys base64 backstage-secrets)
+if [ "${secrets_keys}" != "AUTH_SESSION_SECRET,SENTRY_DSN_BACKEND" ]; then
+  echo "FAIL: base64: backstage-secrets data holds [${secrets_keys}], want [AUTH_SESSION_SECRET,SENTRY_DSN_BACKEND]"
+  failed=1
+fi
+dex_keys=$(data_keys base64 backstage-dex-auth-credentials-secret)
+if [ "${dex_keys}" != "AUTH_DEX_GAZELLE_CLIENT_ID,AUTH_DEX_GAZELLE_CLIENT_SECRET" ]; then
+  echo "FAIL: base64: backstage-dex-auth-credentials-secret data holds [${dex_keys}]"
+  failed=1
+fi
 
 echo "--> plaintext values in the data Secrets: the render fails and names the value"
 render_fails plain-scalar 'sentry.app.dsn must be base64-encoded' --set sentry.app.dsn=https://key@o1.ingest.sentry.io/1
