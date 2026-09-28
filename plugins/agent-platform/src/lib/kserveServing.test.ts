@@ -733,7 +733,39 @@ describe('toServedModel during a start', () => {
     expect(toServedModel(starting, [running], undefined, now)).toMatchObject({
       readiness: 'starting',
       readinessMessage:
-        'Starting on gpu-node-2 for 4 min: the pod runs, not ready yet (weights, warm-up).',
+        'Starting on gpu-node-2 for 4 min: the runtime loads the weights and warms up.',
+    });
+  });
+
+  it('shows a scheduled pod still initializing (the weights download) as Starting', () => {
+    const initializing = pod({
+      status: {
+        phase: 'Pending',
+        startTime: '2026-09-28T10:04:00Z',
+        initContainerStatuses: [
+          {
+            name: 'storage-initializer',
+            restartCount: 0,
+            state: { running: { startedAt: '2026-09-28T10:04:05Z' } },
+          },
+        ],
+        containerStatuses: [
+          {
+            name: 'main',
+            ready: false,
+            restartCount: 0,
+            state: { waiting: { reason: 'PodInitializing' } },
+          },
+        ],
+      },
+    });
+
+    expect(
+      toServedModel(starting, [initializing], undefined, now),
+    ).toMatchObject({
+      readiness: 'starting',
+      readinessMessage:
+        'Starting on gpu-node-2 for 1 min: downloading the weights.',
     });
   });
 

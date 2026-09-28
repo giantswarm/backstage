@@ -54,18 +54,21 @@ const FAILING_WAITING_REASONS = new Set([
 ]);
 
 /**
- * Whether a workload pod is in a normal start: running, no container
- * restarted, crashed or stuck in a failing wait. A crash loop or a failed
- * pod is no start.
+ * Whether a workload pod is in a normal start: scheduled and initializing
+ * (the storage-initializer downloading the weights) or running, with no
+ * container restarted, crashed or stuck in a failing wait. A crash loop, an
+ * image pull failure or a failed pod is no start; a pod without a node is
+ * the scheduler's wait, told apart before (`Pending`).
  */
 export function isPodStarting(pod: Pod): boolean {
   const status = pod.jsonData.status;
-  if (status?.phase !== 'Running') {
+  const phase = status?.phase;
+  if (phase !== 'Running' && !(phase === 'Pending' && pod.getNodeName())) {
     return false;
   }
   return [
-    ...(status.initContainerStatuses ?? []),
-    ...(status.containerStatuses ?? []),
+    ...(status?.initContainerStatuses ?? []),
+    ...(status?.containerStatuses ?? []),
   ].every(
     container =>
       (container.restartCount ?? 0) === 0 &&
@@ -74,7 +77,10 @@ export function isPodStarting(pod: Pod): boolean {
   );
 }
 
-/** A start in words: `Starting on gpu-a for 4 min: the pod runs, not ready yet.` */
+/**
+ * A start in words: `Starting on gpu-a for 4 min: downloading the weights.`
+ * or `…: the runtime loads the weights and warms up.`
+ */
 export function describeStart(pod: Pod, now: number): string {
   const node = pod.getNodeName();
   const started = Date.parse(pod.jsonData.status?.startTime ?? '');
@@ -85,7 +91,9 @@ export function describeStart(pod: Pod, now: number): string {
     'Starting',
     node ? ` on ${node}` : '',
     minutes === undefined ? '' : ` for ${minutes} min`,
-    ': the pod runs, not ready yet (weights, warm-up).',
+    pod.jsonData.status?.phase === 'Running'
+      ? ': the runtime loads the weights and warms up.'
+      : ': downloading the weights.',
   ].join('');
 }
 
@@ -219,15 +227,16 @@ export function toServedModel(
   if (object.getDeletionTimestamp()) {
     readiness = 'terminating';
     readinessMessage = `LLMInferenceService ${object.getName()} is being deleted.`;
+  } else if (readiness !== 'ready' && pod && isPodStarting(pod)) {
+    // A scheduled pod on its way, however the Deployment's condition reads
+    // (MinimumReplicasUnavailable during any start): the storage-initializer
+    // downloads the weights, then the runtime loads them and warms up.
+    readiness = 'starting';
+    readinessMessage = describeStart(pod, now);
   } else if (readiness !== 'ready' && waiting) {
     readiness = 'pending';
     readinessReason = waiting.reason;
     readinessMessage = waiting.message ?? readinessMessage;
-  } else if (readiness === 'notReady' && pod && isPodStarting(pod)) {
-    // The Deployment's MinimumReplicasUnavailable during any start is no
-    // failure: the runtime loads the weights and warms up.
-    readiness = 'starting';
-    readinessMessage = describeStart(pod, now);
   } else if (readiness !== 'ready') {
     readinessReason = object.getReadinessReason();
     readinessMessage = explanationWithoutReason(
