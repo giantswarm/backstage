@@ -253,6 +253,14 @@ observability:
     # @schema type:string
     # -- Sampler argument (OTEL_TRACES_SAMPLER_ARG): the ratio of root spans sampled for the `traceidratio` samplers.
     samplerArg: '0.1'
+  # -- Prometheus metrics export from the backend, on a `metrics` container port and Service port. Off by default: enabling it changes the pod's ports. The chart's network policies select the database pods only, so the scrape needs no policy of its own.
+  metrics:
+    # @schema type:boolean
+    # -- Start the OpenTelemetry SDK's Prometheus exporter (OTEL_METRICS_EXPORTER=prometheus) and serve `/metrics` on `port`.
+    enabled: false
+    # @schema type:integer;minimum:1;maximum:65535
+    # -- Port the Prometheus exporter listens on (OTEL_EXPORTER_PROMETHEUS_PORT), also the `metrics` container port and Service port.
+    port: 9464
 
 # @schema type:object;additionalProperties:true
 # -- Node selector labels to constrain pod scheduling to specific nodes
@@ -478,3 +486,15 @@ ociRegistryCredentials: {}
 # @schema item:object;itemProperties:{"keyId":{"type":"string"},"publicKey":{"type":"string"},"privateKey":{"type":"string"}}
 # -- Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/
 pluginKeys: []
+
+# -- ServiceMonitor for the backend's Prometheus metrics endpoint. Has no effect unless observability.metrics.enabled is also true.
+serviceMonitor:
+  # @schema type:boolean
+  # -- Render the ServiceMonitor.
+  enabled: false
+  # @schema type:string
+  # -- Scrape interval, e.g. `60s`. Empty uses the Prometheus Operator default.
+  interval: ''
+  # @schema type:object;additionalProperties:true
+  # -- Extra labels on the ServiceMonitor. The Giant Swarm observability platform routes a scrape to a Mimir tenant by the `observability.giantswarm.io/tenant` label here.
+  labels: {}

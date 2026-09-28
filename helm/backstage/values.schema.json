@@ -2919,6 +2919,23 @@
             "description": "OpenTelemetry trace export from the backend, as the standard OTEL_* variables. Nothing is exported while `endpoint` is empty.",
             "additionalProperties": false,
             "properties": {
+                "metrics": {
+                    "type": "object",
+                    "description": "Prometheus metrics export from the backend, on a `metrics` container port and Service port. Off by default: enabling it changes the pod's ports. The chart's network policies select the database pods only, so the scrape needs no policy of its own.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Start the OpenTelemetry SDK's Prometheus exporter (OTEL_METRICS_EXPORTER=prometheus) and serve `/metrics` on `port`."
+                        },
+                        "port": {
+                            "type": "integer",
+                            "description": "Port the Prometheus exporter listens on (OTEL_EXPORTER_PROMETHEUS_PORT), also the `metrics` container port and Service port.",
+                            "maximum": 65535,
+                            "minimum": 1
+                        }
+                    }
+                },
                 "otel": {
                     "type": "object",
                     "additionalProperties": false,
@@ -3367,6 +3384,26 @@
                 "reportURI": {
                     "type": "string",
                     "description": "Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
+                }
+            }
+        },
+        "serviceMonitor": {
+            "type": "object",
+            "description": "ServiceMonitor for the backend's Prometheus metrics endpoint. Has no effect unless observability.metrics.enabled is also true.",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Render the ServiceMonitor."
+                },
+                "interval": {
+                    "type": "string",
+                    "description": "Scrape interval, e.g. `60s`. Empty uses the Prometheus Operator default."
+                },
+                "labels": {
+                    "type": "object",
+                    "description": "Extra labels on the ServiceMonitor. The Giant Swarm observability platform routes a scrape to a Mimir tenant by the `observability.giantswarm.io/tenant` label here.",
+                    "additionalProperties": true
                 }
             }
         },

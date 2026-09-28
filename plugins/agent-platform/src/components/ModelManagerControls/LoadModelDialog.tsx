@@ -13,7 +13,7 @@ import {
   Select,
   Text,
 } from '@backstage/ui';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery } from '@tanstack/react-query';
 import { modelManagerApiRef } from '../../apis';
 import { useModelManagerToolsClient } from '../../hooks/useModelManagerBackends';
 import { useInvalidateModelManagerReads } from '../../hooks/useServedModelAction';
@@ -23,14 +23,20 @@ import type {
   ModelManagerPreset,
 } from '../../lib/modelManager';
 import {
+  ANY_NODE,
   describeFitVerdict,
   describeServedWhere,
+  isModelImagePreset,
+  nodeCandidates,
+  nodeChoices,
   placementChoices,
   servedPresetRow,
+  servesPresetOn,
 } from '../../lib/modelManagerServe';
 import { formatBytes } from '../../lib/modelManagerServing';
 import {
   modelManagerFitQueryKey,
+  modelManagerNodesQueryKey,
   modelManagerPresetsQueryKey,
 } from '../../lib/queryKeys';
 import type {
@@ -172,7 +178,10 @@ function targetForSeed(
  * or why not; a preset no size of the pool hosts cannot be served. Where
  * model-manager recommends a placement, the person chooses it — split across
  * fast-linked nodes or one copy — the recommendation preselected and the
- * verdict the chosen placement's. On a host
+ * verdict the chosen placement's. A copy goes on any node that fits, or on
+ * the node the person picks from the node inventory — each node judged by
+ * its own `check_fit`, the ones the preset cannot land on listed disabled
+ * with the reason; a pick is sent as `node`, the hostname pin. On a host
  * backend the choice is a cached model. Serve is one `load_model` over
  * muster: model-manager composes the serving object (an `LLMInferenceService`
  * on a pool) and answers with what it created, the fit it judged by and the
@@ -289,7 +298,77 @@ export function LoadModelDialog({
     staleTime: 30_000,
     retry: false,
   });
-  const placements = placementChoices(fit.data, splitFit.data);
+
+  // The Node field: the backend's nodes, each judged by a check pinned to it.
+  const nodeInventory = Boolean(target?.capabilities.nodeInventory);
+  const nodes = useQuery({
+    queryKey: modelManagerNodesQueryKey(installation),
+    queryFn: () => modelManagerApi.listNodes(installation),
+    enabled: isOpen && Boolean(target) && needsFit && nodeInventory,
+    staleTime: 30_000,
+  });
+  const modelImage = isModelImagePreset(
+    presets.data?.find(preset => preset.name === model)?.storageUri,
+  );
+  const candidates = useMemo(
+    () =>
+      nodeCandidates(
+        (nodes.data ?? []).filter(
+          node => !node.backend || !backend || node.backend === backend,
+        ),
+        modelImage,
+      ),
+    [nodes.data, backend, modelImage],
+  );
+  const nodeFits = useQueries({
+    queries: candidates.map(node => ({
+      queryKey: modelManagerFitQueryKey(
+        installation,
+        backend,
+        model,
+        '',
+        node.name,
+      ),
+      queryFn: () =>
+        client!.checkFit({
+          model,
+          node: node.name,
+          ...(backend ? { backend } : {}),
+        }),
+      enabled:
+        isOpen &&
+        Boolean(client && choice) &&
+        !servedWhere &&
+        servesPresetOn(node, modelImage),
+      staleTime: 30_000,
+      retry: false,
+    })),
+  });
+  const fitByNode = Object.fromEntries(
+    candidates.map((node, index) => [node.name, nodeFits[index]]),
+  );
+  const nodeOptions =
+    candidates.length > 0
+      ? nodeChoices(
+          candidates,
+          Object.fromEntries(
+            candidates.map(node => [node.name, fitByNode[node.name]?.data]),
+          ),
+          { modelImage, prePulledNodes: fit.data?.prePulledNodes },
+        )
+      : undefined;
+  const [pickedNode, setPickedNode] = useState(ANY_NODE);
+  useEffect(() => setPickedNode(ANY_NODE), [model, targetKey, isOpen]);
+  // A pick that became unservable gives way to any node.
+  const node =
+    nodeOptions?.find(option => option.id === pickedNode && !option.disabled)
+      ?.id ?? ANY_NODE;
+  const pinned = node === ANY_NODE ? undefined : node;
+  const fittingNodes = candidates
+    .filter(candidate => fitByNode[candidate.name]?.data?.fits)
+    .map(candidate => candidate.name);
+
+  const placements = placementChoices(fit.data, splitFit.data, pinned);
 
   // The recommendation stands until the person picks; a new model or a
   // disabled pick falls back to it.
@@ -304,9 +383,14 @@ export function LoadModelDialog({
         recommendedChoice
       )?.id
     : undefined;
-  const activeFit = placement === 'split' ? splitFit : fit;
+  const split = placement === 'split';
+  const pinnedFit = pinned && !split ? fitByNode[pinned] : undefined;
+  const activeFit = split ? splitFit : (pinnedFit ?? fit);
   const verdict = activeFit.data
-    ? describeFitVerdict(activeFit.data)
+    ? describeFitVerdict(
+        activeFit.data,
+        pinnedFit ? { node: pinned } : { fittingNodes },
+      )
     : undefined;
 
   const load = useMutation({
@@ -314,9 +398,8 @@ export function LoadModelDialog({
       client!.loadModel({
         model,
         ...(backend ? { backend } : {}),
-        ...(placement === 'split'
-          ? { placement, nodes: splitFit.data?.nodes }
-          : {}),
+        ...(split ? { placement, nodes: splitFit.data?.nodes } : {}),
+        ...(pinnedFit ? { node: pinned } : {}),
       }),
     onSuccess: () => invalidate(),
   });
@@ -482,6 +565,21 @@ export function LoadModelDialog({
                 </Radio>
               ))}
             </RadioGroup>
+          )}
+
+          {nodeOptions && !split && !servedWhere && (
+            <Select
+              label="Node"
+              data-testid="serve-node"
+              isDisabled={isBusy}
+              options={nodeOptions}
+              selectedKey={node}
+              onSelectionChange={key => {
+                if (key) {
+                  setPickedNode(String(key));
+                }
+              }}
+            />
           )}
 
           {servedWhere && choice && (

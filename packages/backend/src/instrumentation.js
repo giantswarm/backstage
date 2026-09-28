@@ -2,18 +2,27 @@
 // patch modules as they load, so the SDK has to start before anything imports
 // them. Configured only through the standard OTEL_* variables, and started
 // only when one of them names an exporter; without, nothing is exported.
-// Traces only: metrics and logs stay off unless their variable is set.
+// Traces and metrics are independent: either can be on with the other off.
 const { isMainThread } = require('node:worker_threads');
 
 const env = process.env;
-const exporting = Boolean(
+const tracing = Boolean(
   env.OTEL_EXPORTER_OTLP_ENDPOINT ||
   env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
   env.OTEL_TRACES_EXPORTER,
 );
+const exportingMetrics = Boolean(
+  env.OTEL_METRICS_EXPORTER && env.OTEL_METRICS_EXPORTER !== 'none',
+);
+const exporting = tracing || exportingMetrics;
 
 if (isMainThread && exporting) {
   env.OTEL_SERVICE_NAME ??= 'backstage';
+  // A metrics-only start must not fall back to the SDK's default OTLP trace
+  // exporter, which would try localhost:4318 with no operator asking for it.
+  if (!tracing) {
+    env.OTEL_TRACES_EXPORTER ??= 'none';
+  }
   env.OTEL_METRICS_EXPORTER ??= 'none';
   env.OTEL_LOGS_EXPORTER ??= 'none';
 

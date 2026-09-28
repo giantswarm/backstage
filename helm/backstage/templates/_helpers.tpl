@@ -42,6 +42,29 @@ timeout:
     connectTimeout: 10s
 {{- end }}
 
+{{/*
+Resource env vars shared by the OTLP trace export and the Prometheus metrics
+export: the pod's identity, fed into OTEL_RESOURCE_ATTRIBUTES so both signals
+carry the same k8s.pod.name/k8s.namespace.name/k8s.node.name/service.version.
+Rendered once for whichever of the two is on. Takes the root context.
+*/}}
+{{- define "backstage.otelResourceEnv" -}}
+- name: OTEL_POD_NAME
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.name
+- name: OTEL_POD_NAMESPACE
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.namespace
+- name: OTEL_NODE_NAME
+  valueFrom:
+    fieldRef:
+      fieldPath: spec.nodeName
+- name: OTEL_RESOURCE_ATTRIBUTES
+  value: {{ printf "k8s.pod.name=$(OTEL_POD_NAME),k8s.namespace.name=$(OTEL_POD_NAMESPACE),k8s.node.name=$(OTEL_NODE_NAME),service.version=%s%s" .Chart.AppVersion (ternary (printf ",%s" .Values.observability.otel.resourceAttributes) "" (ne .Values.observability.otel.resourceAttributes "")) | quote }}
+{{- end }}
+
 {{- /*
 backstage.base64 renders a value for a Secret's `data` and fails the render,
 naming the value, when it is not base64: Kubernetes would otherwise reject the
