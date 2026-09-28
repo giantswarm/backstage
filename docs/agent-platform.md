@@ -385,14 +385,15 @@ value, which is what agent-manager's `harness` argument names (`lib/harnesses.ts
 The platform Harness (`get_info`'s `harness.name`) comes first and is the
 default. Picking it is no pick: the request leaves `harness` out and
 agent-manager composes its own, exactly as before. Any other pick is sent as
-`harness` to `validate_agent` and `create_agent`. The section renders nothing
-when the namespace holds one Harness or none, so an installation without coding
-Harnesses sees no change. A list that could not be read (forbidden, or failed)
-shows a warning instead, since a choice may have been missed. Changing the
-installation, or picking a model in another namespace, drops the pick, since a
-Harness admits templates of its own namespace only, and a status notice says
-so until the person picks a runtime again. The Harness is
-fixed at create: the edit page has no runtime field.
+`harness` to `validate_agent` and `create_agent`. A namespace holding one
+Harness, which is every installation without coding Harnesses, shows it as a
+read-only card, so the person still sees what will run the agent; the request
+is unchanged there. A namespace listing none shows no section. A list that could
+not be read (forbidden, or failed) shows a warning instead, since a choice may
+have been missed. Changing the installation, or picking a model in another
+namespace, drops the pick, since a Harness admits templates of its own namespace
+only, and a status notice says so until the person picks a runtime again. The
+Harness is fixed at create: the edit page has no runtime field.
 
 ### The review page is agent-manager's dry run
 

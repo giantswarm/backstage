@@ -10,11 +10,13 @@ import {
   DEFAULT_PLATFORM_HARNESS,
   harnessChoicesOf,
   harnessTitle,
+  type HarnessChoice,
 } from '../../lib/harnesses';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import {
   SelectableCard,
   SelectableCardGrid,
+  StaticCard,
   useSelectableCardStyles,
 } from '../SelectableCard';
 
@@ -22,11 +24,11 @@ import {
  * The runtime an agent runs on: the Harnesses of the chosen model's namespace
  * that admit agents by the harness label, read with the person's own RBAC.
  *
- * The cards show only when there is a choice to make: a namespace holding the
- * platform Harness alone (coding Harnesses are off by default) renders no
- * section, and the agent runs on the platform Harness as it would with no pick.
- * A list that could not be read says so, since a choice may have been missed;
- * a pick dropped by a later model or installation change says so too.
+ * Several Harnesses are radio cards; a namespace holding one (the platform
+ * Harness alone, since coding Harnesses are off by default) shows it as a
+ * read-only card, so the person still sees what will run the agent. A list
+ * that could not be read says so, since a choice may have been missed; a pick
+ * dropped by a later model or installation change says so too.
  */
 export function HarnessPicker() {
   const classes = useSelectableCardStyles();
@@ -59,7 +61,7 @@ export function HarnessPicker() {
   }
 
   const hasChoice = choices.length > 1;
-  const couldNotRead = !isLoading && !hasChoice && errors.length > 0;
+  const couldNotRead = !isLoading && choices.length === 0 && errors.length > 0;
 
   const dropNotice = droppedHarness ? (
     <div role="status">
@@ -73,7 +75,7 @@ export function HarnessPicker() {
     </div>
   ) : null;
 
-  if (!hasChoice) {
+  if (choices.length === 0) {
     if (!couldNotRead && !dropNotice) {
       return null;
     }
@@ -92,48 +94,66 @@ export function HarnessPicker() {
   }
 
   const selected = state.harness?.admits ?? platformHarness;
+  const content = (choice: HarnessChoice) => (
+    <>
+      <Text weight="bold">{harnessTitle(choice)}</Text>
+      {choice.admits === platformHarness && (
+        <Text variant="body-small" color="secondary">
+          Platform default
+        </Text>
+      )}
+      <Text variant="body-x-small" color="secondary">
+        Harness <span className={classes.code}>{choice.name}</span>
+        {choice.imageName && (
+          <>
+            {' · '}
+            <span className={classes.code}>{choice.imageName}</span>
+          </>
+        )}
+      </Text>
+    </>
+  );
 
   return (
     <Flex direction="column" gap="2">
       <FieldLabel
         label="Runtime"
         secondaryLabel="Harness"
-        description="What runs the agent. It can't be changed once the agent exists."
+        description={
+          hasChoice
+            ? "What runs the agent. It can't be changed once the agent exists."
+            : `What runs the agent: the only Harness in ${namespace} on ${installation}.`
+        }
       />
       {dropNotice}
-      <SelectableCardGrid role="radiogroup" ariaLabel="Runtime" minWidth={220}>
-        {choices.map(choice => {
-          const isPlatform = choice.admits === platformHarness;
-          const title = harnessTitle(choice);
-          return (
-            <SelectableCard
-              key={choice.name}
-              role="radio"
-              selected={choice.admits === selected}
-              ariaLabel={`${title}, Harness ${choice.name}${
-                isPlatform ? ', platform default' : ''
-              }`}
-              onSelect={() => selectHarness(isPlatform ? undefined : choice)}
-            >
-              <Text weight="bold">{title}</Text>
-              {isPlatform && (
-                <Text variant="body-small" color="secondary">
-                  Platform default
-                </Text>
-              )}
-              <Text variant="body-x-small" color="secondary">
-                Harness <span className={classes.code}>{choice.name}</span>
-                {choice.imageName && (
-                  <>
-                    {' · '}
-                    <span className={classes.code}>{choice.imageName}</span>
-                  </>
-                )}
-              </Text>
-            </SelectableCard>
-          );
-        })}
-      </SelectableCardGrid>
+      {hasChoice ? (
+        <SelectableCardGrid
+          role="radiogroup"
+          ariaLabel="Runtime"
+          minWidth={220}
+        >
+          {choices.map(choice => {
+            const isPlatform = choice.admits === platformHarness;
+            return (
+              <SelectableCard
+                key={choice.name}
+                role="radio"
+                selected={choice.admits === selected}
+                ariaLabel={`${harnessTitle(choice)}, Harness ${choice.name}${
+                  isPlatform ? ', platform default' : ''
+                }`}
+                onSelect={() => selectHarness(isPlatform ? undefined : choice)}
+              >
+                {content(choice)}
+              </SelectableCard>
+            );
+          })}
+        </SelectableCardGrid>
+      ) : (
+        <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
+          <StaticCard>{content(choices[0])}</StaticCard>
+        </SelectableCardGrid>
+      )}
     </Flex>
   );
 }

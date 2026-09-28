@@ -87,11 +87,27 @@ beforeEach(() => {
 });
 
 describe('HarnessPicker', () => {
-  it('shows no choice when the namespace holds the platform Harness only', async () => {
+  it('shows the only Harness of the namespace read-only, with nothing to pick', async () => {
     mockUseResources.mockReturnValue(listing([harness('kagent', 'kagent')]));
     await render();
 
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    const card = screen.getByRole('listitem');
+    expect(card).toHaveTextContent('Declarative (Go ADK)');
+    expect(card).toHaveTextContent('Platform default');
+    expect(card).toHaveTextContent('Harness kagent');
+    expect(
+      screen.getByText(
+        'What runs the agent: the only Harness in kagent on gazelle.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no section while the namespace lists no Harness at all', async () => {
+    mockUseResources.mockReturnValue(listing([]));
+    await render();
+
     expect(screen.queryByText('Runtime')).not.toBeInTheDocument();
   });
 
