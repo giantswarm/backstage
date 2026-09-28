@@ -34,6 +34,12 @@ if (isMainThread && exporting) {
         // schema-builder query no name at all, which fails the whole OTLP
         // batch in the exporter's serializer.
         '@opentelemetry/instrumentation-knex': { enabled: false },
+        // The kubelet's readiness and liveness probes, a request every few
+        // seconds that would otherwise each start a trace.
+        '@opentelemetry/instrumentation-http': {
+          ignoreIncomingRequestHook: req =>
+            (req.url ?? '').startsWith('/.backstage/health/'),
+        },
       }),
     ],
   }).start();
