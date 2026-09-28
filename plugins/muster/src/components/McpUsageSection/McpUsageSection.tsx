@@ -123,8 +123,15 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
+/**
+ * Thousands grouping fixed to `en-US`, whatever the browser's locale, to match
+ * the agent-platform figures this section sits beside on the Usage page
+ * (`formatCount` in that plugin's `lib/formatNumbers.ts`).
+ */
+const grouped = new Intl.NumberFormat('en-US');
+
 function formatCount(value: number): string {
-  return Math.round(value).toLocaleString();
+  return grouped.format(Math.round(value));
 }
 
 function formatSeconds(value: number | null): string {
@@ -286,6 +293,8 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                 formatBucketTooltip(start, data.step_hours)
               }
               formatValue={formatCount}
+              formatYAxisTick={formatCount}
+              yAxisWidth={56}
               height={200}
               showLegend
             />
