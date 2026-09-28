@@ -643,6 +643,8 @@ export type GpuNode = {
   eligible?: boolean;
   /** Why `eligible` is false, in the backend's words. */
   eligibilityReason?: string;
+  /** `eligible` is false only for Hugging Face presets: model-image (oci://) presets serve here. */
+  modelImageEligible?: boolean;
 };
 
 /** Reasons the GPU capacity of an installation could not be read. */
