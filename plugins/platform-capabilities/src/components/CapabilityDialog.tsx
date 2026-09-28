@@ -8,6 +8,7 @@ import {
   DialogHeader,
   Flex,
   Text,
+  TextField,
   VisuallyHidden,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
@@ -47,6 +48,11 @@ export const REFUSED_MESSAGE = "The manager's refusal names this choice.";
 
 /** The heading of the review's result, which takes the focus as the result lands. */
 export const RESULT_TITLE = 'Compared with your choices';
+
+export const WHY_LABEL = 'Why this change';
+
+export const WHY_DESCRIPTION =
+  'Your team reads this in the approval request, above what changes.';
 
 const FORM_STYLE = {
   display: 'flex',
@@ -119,6 +125,8 @@ export function CapabilityDialog({
   );
   const [reviewed, setReviewed] = useState<VerifyResult>();
   const [done, setDone] = useState<Committed>();
+  // Why the person makes the change: the manager requires it on a commit.
+  const [why, setWhy] = useState('');
 
   const review = useMutation({
     mutationFn: () =>
@@ -134,13 +142,13 @@ export function CapabilityDialog({
         ? api.enableCapability(
             installation.name,
             capability.name,
-            { inputs: values },
+            { inputs: values, reason: why.trim() },
             { mode: 'commit' },
           )
         : api.reconcileCapability(
             installation.name,
             capability.name,
-            { inputs: values },
+            { inputs: values, reason: why.trim() },
             { mode: 'commit' },
           ),
     onSuccess: async result => {
@@ -173,6 +181,7 @@ export function CapabilityDialog({
   const toOpen = (accepted?.pullRequests ?? []).length;
   const nothingToOpen = accepted !== undefined && toOpen === 0;
   const connected = connection.data?.connected === true;
+  const explained = why.trim() !== '';
   const title = `${kind === 'enable' ? 'Enable' : 'Apply changes to'} ${capability.name} on ${installation.name}`;
 
   let step: Step = 'form';
@@ -222,7 +231,7 @@ export function CapabilityDialog({
     }
     if (editing) {
       review.mutate();
-    } else if (accepted && connected && !nothingToOpen) {
+    } else if (accepted && connected && explained && !nothingToOpen) {
       commit.mutate();
     }
   };
@@ -311,6 +320,17 @@ export function CapabilityDialog({
                 </Text>
                 <ComparisonView result={accepted} />
                 <PlanView plan={accepted} />
+                {!nothingToOpen && (
+                  <TextField
+                    name="reason"
+                    label={WHY_LABEL}
+                    description={WHY_DESCRIPTION}
+                    isRequired
+                    isDisabled={busy}
+                    value={why}
+                    onChange={setWhy}
+                  />
+                )}
                 {!connected && (
                   <Alert
                     status="warning"
@@ -389,7 +409,7 @@ export function CapabilityDialog({
                 <Button
                   type="submit"
                   variant="primary"
-                  isDisabled={busy || !connected}
+                  isDisabled={busy || !connected || !explained}
                 >
                   {commit.isPending
                     ? 'Opening…'

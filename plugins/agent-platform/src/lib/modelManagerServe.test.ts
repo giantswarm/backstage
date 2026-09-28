@@ -5,12 +5,19 @@ import type {
 import {
   currentStep,
   describeCache,
+  describeFit,
   describeFitVerdict,
   describeLoadAnswer,
+  describeServedWhere,
+  describeSplit,
+  loadAnswerNodes,
+  placementChoices,
   parseServeRoute,
   withoutServeRoute,
   tryModelIdOf,
+  servedPresetRow,
 } from './modelManagerServe';
+import type { ServedModel } from './serving';
 
 /** `check_fit` on gazelle's L4 pool for a preset that fits (model-manager 0.24.0). */
 const fits: ModelManagerFitResult = {
@@ -210,5 +217,146 @@ describe('tryModelIdOf', () => {
     expect(tryModelIdOf({ name: 'llama3', modelSource: undefined })).toBe(
       'llama3',
     );
+  });
+});
+
+describe('placementChoices', () => {
+  const base = {
+    model: 'm',
+    fits: true,
+    presets: [],
+  } as unknown as ModelManagerFitResult;
+
+  it('offers nothing when model-manager recommends no placement', () => {
+    expect(placementChoices(base, undefined)).toBeUndefined();
+  });
+
+  it('keeps a recommended split choosable while its check is pending', () => {
+    const choices = placementChoices(
+      { ...base, recommended: 'split' },
+      undefined,
+    )!;
+    expect(choices.find(c => c.id === 'split')).toMatchObject({
+      recommended: true,
+      disabled: false,
+    });
+  });
+
+  it('disables a split that does not fit, with its reason', () => {
+    const choices = placementChoices(
+      { ...base, recommended: 'copies', node: 'gpu1' },
+      { ...base, fits: false, reason: 'no fast link' },
+    )!;
+    expect(choices).toEqual([
+      expect.objectContaining({
+        id: 'split',
+        disabled: true,
+        description: 'no fast link',
+      }),
+      expect.objectContaining({
+        id: 'copies',
+        label: 'One copy on gpu1',
+        recommended: true,
+        disabled: false,
+      }),
+    ]);
+  });
+});
+
+describe('describeSplit', () => {
+  it('names the nodes', () => {
+    expect(describeSplit(['a', 'b'])).toBe('Split across a and b');
+    expect(describeSplit(['a', 'b', 'c'])).toBe('Split across a, b and c');
+  });
+});
+
+describe('describeFit of a split', () => {
+  it('says the requirement is per node', () => {
+    const fit = {
+      model: 'm',
+      fits: true,
+      presets: [],
+      placement: 'split',
+      nodes: ['a', 'b'],
+      weightsBytes: 100 * 1024 ** 3,
+      overheadBytes: 20 * 1024 ** 3,
+      requiredBytes: 70 * 1024 ** 3,
+    } as unknown as ModelManagerFitResult;
+    expect(describeFit(fit)).toContain(
+      'needs 70.0 GiB on each of 2 nodes (100 GiB of weights split 2 ways + 20.0 GiB of serving headroom)',
+    );
+  });
+});
+
+describe('served presets', () => {
+  const row = (overrides: Partial<ServedModel>): ServedModel => ({
+    id: 'gazelle/kserve/kserve/flash',
+    installation: 'gazelle',
+    backend: 'kserve',
+    name: 'flash',
+    preset: 'flash',
+    readiness: 'ready',
+    node: 'spark-b',
+    endpointHosts: [],
+    ...overrides,
+  });
+
+  it('finds the served row of a preset on its installation and backend', () => {
+    const models = [
+      row({ installation: 'other' }),
+      row({ readiness: 'available', id: 'cached' }),
+      row({ id: 'served' }),
+    ];
+    expect(servedPresetRow(models, 'gazelle', 'kserve', 'flash')?.id).toBe(
+      'served',
+    );
+    expect(
+      servedPresetRow(models, 'gazelle', 'kserve', 'other'),
+    ).toBeUndefined();
+    expect(
+      servedPresetRow(
+        [row({ readiness: 'available' })],
+        'gazelle',
+        'kserve',
+        'flash',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('says where a served row runs', () => {
+    expect(describeServedWhere(row({}))).toBe('Serving on spark-b');
+    expect(describeServedWhere(row({ readiness: 'terminating' }))).toBe(
+      'Stopping on spark-b',
+    );
+    expect(
+      describeServedWhere(row({ splitNodes: ['spark-a', 'spark-b'] })),
+    ).toBe('Serving on spark-a, spark-b');
+    expect(describeServedWhere(row({ node: undefined }))).toBe(
+      'Serving already',
+    );
+  });
+
+  it('names the nodes of a load answer: the existing object’s, else the fit’s', () => {
+    expect(
+      loadAnswerNodes({
+        name: 'flash',
+        loaded: true,
+        alreadyServing: true,
+        servingNodes: ['spark-b'],
+      } as ModelManagerLoadAnswer),
+    ).toEqual(['spark-b']);
+    expect(
+      loadAnswerNodes({
+        name: 'flash',
+        loaded: true,
+        fit: { node: 'spark-a' },
+      } as ModelManagerLoadAnswer),
+    ).toEqual(['spark-a']);
+    expect(
+      loadAnswerNodes({
+        name: 'flash',
+        loaded: true,
+      } as ModelManagerLoadAnswer),
+    ).toEqual([]);
   });
 });

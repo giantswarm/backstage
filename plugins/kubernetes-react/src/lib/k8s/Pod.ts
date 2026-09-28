@@ -13,6 +13,8 @@ export type PodContainer = {
 /** A container's state as the kubelet reports it (`status.containerStatuses[]`). */
 export type PodContainerStatus = {
   name: string;
+  ready?: boolean;
+  restartCount?: number;
   state?: {
     waiting?: { reason?: string; message?: string };
     running?: { startedAt?: string };

@@ -32,6 +32,7 @@ import {
   type ServingBackend,
 } from '../../lib/serving';
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
+import { describeSplit } from '../../lib/modelManagerServe';
 import { interfaceLabel, sortInterfaces } from '../../lib/servedModelApi';
 import { ServedReadinessLabel } from '../ModelServingStatus';
 import { CopyEndpointButton } from './ServedModelsGroupHeader';
@@ -148,7 +149,7 @@ export function sortServedModelsBy(
       case 'runtime':
         return row.runtime ?? '';
       case 'node':
-        return row.node ?? '';
+        return row.splitNodes?.join(',') ?? row.node ?? '';
       case 'gpuCount':
         return String(row.gpuCount ?? -1).padStart(6, '0');
       default:
@@ -308,7 +309,9 @@ export type ServedModelColumns = {
 /** Derive the optional columns from what the rows carry. */
 export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
   return {
-    placement: rows.some(row => row.node !== undefined),
+    placement: rows.some(
+      row => row.node !== undefined || row.splitNodes !== undefined,
+    ),
     model: rows.some(
       row => row.modelSource !== undefined && row.modelSource !== row.name,
     ),
@@ -506,6 +509,7 @@ export function servedModelStatusLines(row: ServedModelRow): string[] {
 function hasFootprint(readiness: ServedModelReadiness): boolean {
   return (
     readiness !== 'pending' &&
+    readiness !== 'starting' &&
     readiness !== 'notReady' &&
     readiness !== 'terminating'
   );
@@ -904,28 +908,43 @@ function getColumnConfig(
         id: 'node',
         label: 'Node',
         isSortable: true,
-        cell: row => (
-          <Cell>
-            <Text
-              as="p"
-              variant="body-medium"
-              truncate
-              // The pin is intent, the pod is fact; say which the cell shows.
-              title={
-                row.nodeSource === 'spec'
-                  ? `Pinned by the spec; no running pod yet`
-                  : row.node
-              }
-            >
-              {row.node || '—'}
-            </Text>
-            {row.nodeSource === 'spec' && (
-              <Text variant="body-small" color="secondary">
-                pinned
+        cell: row =>
+          row.splitNodes ? (
+            <Cell>
+              <Text
+                as="p"
+                variant="body-medium"
+                truncate
+                title={describeSplit(row.splitNodes)}
+              >
+                {row.splitNodes.join(', ')}
               </Text>
-            )}
-          </Cell>
-        ),
+              <Text variant="body-small" color="secondary">
+                split
+              </Text>
+            </Cell>
+          ) : (
+            <Cell>
+              <Text
+                as="p"
+                variant="body-medium"
+                truncate
+                // The pin is intent, the pod is fact; say which the cell shows.
+                title={
+                  row.nodeSource === 'spec'
+                    ? `Pinned by the spec; no running pod yet`
+                    : row.node
+                }
+              >
+                {row.node || '—'}
+              </Text>
+              {row.nodeSource === 'spec' && (
+                <Text variant="body-small" color="secondary">
+                  pinned
+                </Text>
+              )}
+            </Cell>
+          ),
       },
       {
         id: 'gpuCount',

@@ -8,7 +8,9 @@
 #   Gateway's default 15 s route timeout cuts every streamed response;
 # * the pod template's checksum over the extraAppConfig entries, without which
 #   a changed app-config fragment never reaches the running portal;
-# * the OTLP variables, without which the backend starts and exports no trace.
+# * the OTLP variables, without which the backend starts and exports no trace;
+# * the base64 guard on the `data` Secrets, without which a plaintext value
+#   renders and the install fails with "illegal base64 data at input byte N".
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -158,6 +160,43 @@ expect otel 'k8s.pod.name=$(OTEL_POD_NAME)'
 echo "--> no observability.otel.endpoint: no OTLP variable"
 render no-otel
 refute no-otel 'OTEL_'
+
+# A render that must fail, with a message naming the value.
+render_fails() {
+  local name=$1 message=$2
+  shift 2
+  if helm template test "${chart_dir}" "$@" >/dev/null 2>"${work_dir}/${name}.err"; then
+    echo "FAIL: ${name}: the render succeeds"
+    failed=1
+  elif ! grep -q -- "${message}" "${work_dir}/${name}.err"; then
+    echo "FAIL: ${name}: the error does not say ${message}"
+    cat "${work_dir}/${name}.err"
+    failed=1
+  fi
+}
+
+echo "--> base64 values in the data Secrets: rendered as they are"
+render base64 --set authSessionSecret=c2Vzc2lvbg== --set sentry.backend.dsn=ZHNu --set dexAuthCredentials.gazelle.clientID=YmFja3N0YWdl --set dexAuthCredentials.gazelle.clientSecret=c2VjcmV0
+# Under `data`, not beside it: a key outside `data` leaves the Secret empty and
+# still renders, applies and passes a text match.
+data_keys() {
+  local name=$1 secret=$2
+  yq -r "select(.kind == \"Secret\" and .metadata.name == \"${secret}\") | .data // {} | keys | join(\",\")" "${work_dir}/${name}.yaml"
+}
+secrets_keys=$(data_keys base64 backstage-secrets)
+if [ "${secrets_keys}" != "AUTH_SESSION_SECRET,SENTRY_DSN_BACKEND" ]; then
+  echo "FAIL: base64: backstage-secrets data holds [${secrets_keys}], want [AUTH_SESSION_SECRET,SENTRY_DSN_BACKEND]"
+  failed=1
+fi
+dex_keys=$(data_keys base64 backstage-dex-auth-credentials-secret)
+if [ "${dex_keys}" != "AUTH_DEX_GAZELLE_CLIENT_ID,AUTH_DEX_GAZELLE_CLIENT_SECRET" ]; then
+  echo "FAIL: base64: backstage-dex-auth-credentials-secret data holds [${dex_keys}]"
+  failed=1
+fi
+
+echo "--> plaintext values in the data Secrets: the render fails and names the value"
+render_fails plain-scalar 'sentry.app.dsn must be base64-encoded' --set sentry.app.dsn=https://key@o1.ingest.sentry.io/1
+render_fails plain-map 'dexAuthCredentials.gazelle.clientID must be base64-encoded' --set dexAuthCredentials.gazelle.clientID=backstage --set dexAuthCredentials.gazelle.clientSecret=c2VjcmV0
 
 if [ "${failed}" -ne 0 ]; then
   exit 1

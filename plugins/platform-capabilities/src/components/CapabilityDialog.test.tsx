@@ -182,8 +182,12 @@ describe('CapabilityDialog', () => {
     // Open pull requests, named by their number: the action's line takes
     // the focus and is announced.
     await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await userEvent.type(
+      await screen.findByRole('textbox', { name: /Why this change/ }),
+      'the chart moved',
+    );
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Open 2 pull requests' }),
+      screen.getByRole('button', { name: 'Open 2 pull requests' }),
     );
     const committed = await screen.findByTestId('committed');
     const line = committed.firstElementChild as HTMLElement;

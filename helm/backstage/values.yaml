@@ -99,13 +99,13 @@ resources:
     memory: 1Gi
 
 # @schema type:string
-# -- Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var)
+# -- Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var). Base64-encoded: the chart writes it into the Secret's `data` as is
 authSessionSecret: ''
 
 # -- CircleCI integration settings
 circleci:
   # @schema type:string
-  # -- CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var)
+  # -- CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   apiToken: ''
 
 # @schema type:object;additionalProperties:true
@@ -113,7 +113,7 @@ circleci:
 common: {}
 
 # @schema additionalProperties:{"type":"object","properties":{"clientID":{"type":"string"},"clientSecret":{"type":"string"}},"required":["clientID","clientSecret"]}
-# -- Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars
+# -- Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars. Both values of an entry are base64-encoded: the chart writes them into the Secret's `data` as is
 dexAuthCredentials: {}
 #  example:
 #    clientID: "example"
@@ -122,10 +122,10 @@ dexAuthCredentials: {}
 # -- GitHub OAuth credentials for user authentication
 githubAuthCredentials:
   # @schema type:string
-  # -- GitHub OAuth App client ID (exposed as GITHUB_OAUTH_CLIENT_ID env var)
+  # -- GitHub OAuth App client ID (exposed as GITHUB_OAUTH_CLIENT_ID env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   clientID: ''
   # @schema type:string
-  # -- GitHub OAuth App client secret (exposed as GITHUB_OAUTH_CLIENT_SECRET env var)
+  # -- GitHub OAuth App client secret (exposed as GITHUB_OAUTH_CLIENT_SECRET env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   clientSecret: ''
 
 # -- GitHub App credentials for repository access and webhooks
@@ -152,13 +152,13 @@ githubAppCredentials:
 # -- GitHub integration settings (PAT used as fallback by catalog processors when the GitHub App lacks access to a repository)
 github:
   # @schema type:string
-  # -- GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var)
+  # -- GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   publicReadToken: ''
 
 # -- Grafana integration settings
 grafana:
   # @schema type:string
-  # -- Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var)
+  # -- Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   apiToken: ''
 
 # -- Sentry error tracking settings
@@ -166,48 +166,48 @@ sentry:
   # -- Sentry settings for the frontend application
   app:
     # @schema type:string
-    # -- Sentry DSN for the frontend app (exposed as SENTRY_DSN_APP env var)
+    # -- Sentry DSN for the frontend app (exposed as SENTRY_DSN_APP env var). Base64-encoded: the chart writes it into the Secret's `data` as is
     dsn: ''
   # -- Sentry settings for the backend service
   backend:
     # @schema type:string
-    # -- Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var)
+    # -- Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var). Base64-encoded: the chart writes it into the Secret's `data` as is
     dsn: ''
   # @schema type:string
-  # -- Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var)
+  # -- Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   reportURI: ''
 
 # -- TelemetryDeck analytics settings
 telemetrydeck:
   # @schema type:string
-  # -- TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml.
+  # -- TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml. Base64-encoded: the chart writes it into the Secret's `data` as is
   salt: ''
 
 # -- AWS credentials for S3 and other AWS service integrations
 aws:
   # @schema type:string
-  # -- AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var)
+  # -- AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   accessKeyID: ''
   # @schema type:string
-  # -- AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var)
+  # -- AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   secretAccessKey: ''
 
 # -- External access settings for programmatic API access
 externalAccess:
   # @schema type:string
-  # -- Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var)
+  # -- Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   mcpToken: ''
 
 # -- Anthropic AI provider settings
 anthropic:
   # @schema type:string
-  # -- Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var). Not needed when aiChat.anthropic.provider is vertex, where the Google service account is the credential instead
+  # -- Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var). Not needed when aiChat.anthropic.provider is vertex, where the Google service account is the credential instead. Base64-encoded: the chart writes it into the Secret's `data` as is
   apiKey: ''
 
 # -- OpenAI provider settings
 openai:
   # @schema type:string
-  # -- OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var)
+  # -- OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   apiKey: ''
 
 # -- Google Vertex AI provider settings for AI chat (used by gemini-* models, and by claude-* models when aiChat.anthropic.provider is vertex)
@@ -225,7 +225,7 @@ google:
 # -- PagerDuty integration settings
 pagerduty:
   # @schema type:string
-  # -- PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var)
+  # -- PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is
   apiToken: ''
 
 # @schema type:[object, string]
@@ -469,7 +469,7 @@ route:
     spec: {}
 
 # @schema additionalProperties:{"type":"object","properties":{"username":{"type":"string"},"password":{"type":"string"}},"required":["username","password"]}
-# -- Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig
+# -- Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig. Both values of an entry are base64-encoded: the chart writes them into the Secret's `data` as is
 ociRegistryCredentials: {}
 #  exampleRegistry:
 #    username: "user"

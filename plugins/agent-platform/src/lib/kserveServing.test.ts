@@ -304,11 +304,12 @@ describe('toServedModel', () => {
       node: 'gpu-node-2',
       nodeSource: 'pod',
     });
-    // A Running pod says the model is somewhere: the conditions stand.
+    // A Running pod without a failure is a start on its way, not a fault
+    // (a crash loop keeps the conditions: 'toServedModel during a start').
     expect(toServedModel(notReady, [pod()])).toMatchObject({
-      readiness: 'notReady',
-      readinessReason: 'WorkloadsNotReady',
-      readinessMessage: 'Deployment does not have minimum availability.',
+      readiness: 'starting',
+      readinessReason: undefined,
+      node: 'gpu-node-2',
     });
     // A ready object with a pending sibling (a rollout) stays ready.
     expect(
@@ -681,5 +682,111 @@ describe('llmInferenceServiceRefetchInterval', () => {
     expect(llmInferenceServiceRefetchInterval({ state: {} })).toBe(
       LLMISVC_POLL_IDLE_MS,
     );
+  });
+
+  it('polls fast while a Ready object is being deleted, so a stopped model leaves the list', () => {
+    const deleting: LLMInferenceServiceInterface = {
+      ...ready,
+      metadata: {
+        ...ready.metadata,
+        deletionTimestamp: '2026-09-28T10:00:00Z',
+      },
+    };
+    expect(
+      llmInferenceServiceRefetchInterval({ state: { data: [deleting] } }),
+    ).toBe(LLMISVC_POLL_ACTIVE_MS);
+  });
+});
+
+describe('toServedModel during a start', () => {
+  const starting = llmisvc({
+    status: {
+      observedGeneration: 1,
+      conditions: [
+        {
+          type: 'Ready',
+          status: 'False',
+          reason: 'MinimumReplicasUnavailable',
+          message: 'Deployment does not have minimum availability.',
+        },
+      ],
+    },
+  });
+  const now = Date.parse('2026-09-28T10:05:30Z');
+
+  it('shows a running pod that is not available yet as Starting, not Not ready', () => {
+    const running = pod({
+      status: {
+        phase: 'Running',
+        startTime: '2026-09-28T10:01:00Z',
+        containerStatuses: [
+          {
+            name: 'main',
+            ready: false,
+            restartCount: 0,
+            state: { running: { startedAt: '2026-09-28T10:01:10Z' } },
+          },
+        ],
+      },
+    });
+
+    expect(toServedModel(starting, [running], undefined, now)).toMatchObject({
+      readiness: 'starting',
+      readinessMessage:
+        'Starting on gpu-node-2 for 4 min: the runtime loads the weights and warms up.',
+    });
+  });
+
+  it('shows a scheduled pod still initializing (the weights download) as Starting', () => {
+    const initializing = pod({
+      status: {
+        phase: 'Pending',
+        startTime: '2026-09-28T10:04:00Z',
+        initContainerStatuses: [
+          {
+            name: 'storage-initializer',
+            restartCount: 0,
+            state: { running: { startedAt: '2026-09-28T10:04:05Z' } },
+          },
+        ],
+        containerStatuses: [
+          {
+            name: 'main',
+            ready: false,
+            restartCount: 0,
+            state: { waiting: { reason: 'PodInitializing' } },
+          },
+        ],
+      },
+    });
+
+    expect(
+      toServedModel(starting, [initializing], undefined, now),
+    ).toMatchObject({
+      readiness: 'starting',
+      readinessMessage:
+        'Starting on gpu-node-2 for 1 min: downloading the weights.',
+    });
+  });
+
+  it('keeps a crash-looping pod red with its reason', () => {
+    const crashing = pod({
+      status: {
+        phase: 'Running',
+        containerStatuses: [
+          {
+            name: 'main',
+            ready: false,
+            restartCount: 3,
+            state: { waiting: { reason: 'CrashLoopBackOff' } },
+          },
+        ],
+      },
+    });
+
+    expect(toServedModel(starting, [crashing], undefined, now)).toMatchObject({
+      readiness: 'notReady',
+      readinessReason: 'MinimumReplicasUnavailable',
+    });
   });
 });

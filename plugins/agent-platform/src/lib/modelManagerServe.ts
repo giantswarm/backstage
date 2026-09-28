@@ -1,6 +1,7 @@
 import type {
   ModelManagerFitResult,
   ModelManagerLoadAnswer,
+  ModelManagerPlacement,
   ModelManagerServeStep,
 } from './modelManager';
 import { formatBytes } from './modelManagerServing';
@@ -19,14 +20,28 @@ export function describeFit(fit: ModelManagerFitResult): string {
   if (fit.downloadBytes !== undefined) {
     parts.push(`Download ${formatBytes(fit.downloadBytes)}`);
   }
+  const splitWays =
+    fit.placement === 'split' && fit.nodes && fit.nodes.length > 1
+      ? fit.nodes.length
+      : undefined;
   if (fit.requiredBytes !== undefined) {
+    // A split's requirement is per node: its share of the weights and the
+    // headroom (model-manager reports the whole model's weights).
+    const weights =
+      fit.weightsBytes !== undefined
+        ? `${formatBytes(fit.weightsBytes)} of weights${
+            splitWays ? ` split ${splitWays} ways` : ''
+          }${fit.weightsSource ? ` per ${fit.weightsSource}` : ''}`
+        : undefined;
     const breakdown =
-      fit.weightsBytes !== undefined && fit.overheadBytes !== undefined
-        ? ` (${formatBytes(fit.weightsBytes)} of weights${
-            fit.weightsSource ? ` per ${fit.weightsSource}` : ''
-          } + ${formatBytes(fit.overheadBytes)} of serving headroom)`
+      weights && fit.overheadBytes !== undefined
+        ? ` (${weights} + ${formatBytes(fit.overheadBytes)} of serving headroom)`
         : '';
-    parts.push(`needs ${formatBytes(fit.requiredBytes)}${breakdown}`);
+    parts.push(
+      `needs ${formatBytes(fit.requiredBytes)}${
+        splitWays ? ` on each of ${splitWays} nodes` : ''
+      }${breakdown}`,
+    );
   }
   if (fit.node && fit.budgetBytes !== undefined) {
     const free =
@@ -67,15 +82,31 @@ export type FitVerdict = {
   details: string[];
 };
 
-/** `check_fit`'s answer as the dialog shows it before the Serve button. */
-/** Where a fitting model runs: the instance type the node comes as, else the node it is on. */
+/** "Split across A and B", the words for a split's nodes. */
+export function describeSplit(nodes: string[] | undefined): string {
+  if (!nodes || nodes.length === 0) {
+    return 'Split across nodes';
+  }
+  const list =
+    nodes.length === 1
+      ? nodes[0]
+      : `${nodes.slice(0, -1).join(', ')} and ${nodes[nodes.length - 1]}`;
+  return `Split across ${list}`;
+}
+
+/** Where a fitting model runs: across a split's nodes, the instance type the node comes as, else the node it is on. */
 function describeWhere(fit: ModelManagerFitResult): string | undefined {
+  if (fit.placement === 'split') {
+    const where = describeSplit(fit.nodes).replace(/^Split/, 'split');
+    return fit.fastLink ? `${where} (fast link ${fit.fastLink})` : where;
+  }
   if (fit.instanceType) {
     return `the node comes as ${fit.instanceType}`;
   }
   return fit.node ? `on ${fit.node}` : undefined;
 }
 
+/** `check_fit`'s answer as the dialog shows it before the Serve button. */
 export function describeFitVerdict(fit: ModelManagerFitResult): FitVerdict {
   const sizes = describeFit(fit);
   if (!fit.fits) {
@@ -91,6 +122,65 @@ export function describeFitVerdict(fit: ModelManagerFitResult): FitVerdict {
     summary: where ? `Fits — ${where}` : 'Fits',
     details: [describeCache(fit), sizes].filter(Boolean),
   };
+}
+
+/** One option of the Serve dialog's placement choice. */
+export type PlacementChoice = {
+  id: ModelManagerPlacement;
+  label: string;
+  /** Why it is recommended, or why it cannot be chosen. */
+  description?: string;
+  recommended: boolean;
+  disabled: boolean;
+};
+
+/** Why a split is recommended — the fast link — or why it cannot be chosen. */
+function describeSplitChoice(
+  split: ModelManagerFitResult | undefined,
+): string | undefined {
+  if (split && !split.fits) {
+    return split.reason ?? 'No fast-linked nodes host this model';
+  }
+  return split?.fastLink
+    ? `These nodes share the fast link ${split.fastLink}.`
+    : undefined;
+}
+
+/**
+ * The placement choice of the Serve dialog from the default fit (copies,
+ * carrying model-manager's recommendation) and the split fit: none when the
+ * backend recommends nothing (no placement before model-manager#190, or a
+ * host backend). Split is offered only when it fits, else disabled with
+ * model-manager's reason.
+ */
+export function placementChoices(
+  copies: ModelManagerFitResult | undefined,
+  split: ModelManagerFitResult | undefined,
+): PlacementChoice[] | undefined {
+  const recommended = copies?.recommended;
+  if (!recommended) {
+    return undefined;
+  }
+  const splitFits = split?.fits === true;
+  return [
+    {
+      id: 'split',
+      label: split?.nodes?.length
+        ? `${describeSplit(split.nodes)} — one model, faster answers, longer context`
+        : 'Split across fast-linked nodes',
+      description: describeSplitChoice(split),
+      recommended: recommended === 'split',
+      // Unjudged yet, a recommended split stays chosen (its pending check
+      // holds the Serve button); judged, it is offered only when it fits.
+      disabled: split ? !splitFits : recommended !== 'split',
+    },
+    {
+      id: 'copies',
+      label: copies?.node ? `One copy on ${copies.node}` : 'One copy',
+      recommended: recommended === 'copies',
+      disabled: copies?.fits !== true,
+    },
+  ];
 }
 
 /** The step under way (or the one that failed), first in order; none once every step is done. */
@@ -135,6 +225,53 @@ export function describeLoadAnswer(answer: ModelManagerLoadAnswer): string {
     );
   }
   return parts.join(' · ');
+}
+
+/** The states in which a served object for a preset exists on the backend. */
+const SERVING_STATES: ReadonlySet<ServedModel['readiness']> = new Set([
+  'ready',
+  'notReady',
+  'pending',
+  'starting',
+  'terminating',
+]);
+
+/**
+ * The served row of a preset on an installation's backend, if it serves
+ * already: model-manager serves each preset once, so the Serve dialog shows
+ * where instead of offering it again.
+ */
+export function servedPresetRow(
+  models: ServedModel[],
+  installation: string,
+  backend: string | undefined,
+  preset: string,
+): ServedModel | undefined {
+  return models.find(
+    model =>
+      model.installation === installation &&
+      (!backend || model.backend === backend) &&
+      model.preset === preset &&
+      SERVING_STATES.has(model.readiness),
+  );
+}
+
+/** Where a served row runs, in words: `Serving on gpu-a`, `Stopping on gpu-a`. */
+export function describeServedWhere(row: ServedModel): string {
+  const verb = row.readiness === 'terminating' ? 'Stopping' : 'Serving';
+  const nodes = row.splitNodes?.length ? row.splitNodes.join(', ') : row.node;
+  return nodes ? `${verb} on ${nodes}` : `${verb} already`;
+}
+
+/** The nodes a load answer serves on: an existing object's, else the fit's. */
+export function loadAnswerNodes(answer: ModelManagerLoadAnswer): string[] {
+  if (answer.servingNodes?.length) {
+    return answer.servingNodes;
+  }
+  if (answer.fit?.nodes?.length) {
+    return answer.fit.nodes;
+  }
+  return answer.fit?.node ? [answer.fit.node] : [];
 }
 
 /**

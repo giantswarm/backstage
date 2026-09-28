@@ -5,6 +5,7 @@ import {
   modelManagerLoadAnswerSchema,
   type ModelManagerFitResult,
   type ModelManagerLoadAnswer,
+  type ModelManagerPlacement,
 } from '../lib/modelManager';
 import {
   addBackendArgs,
@@ -66,6 +67,10 @@ export type ServeRequest = {
   /** The preset name on kserve (`qwen3-4b-instruct`), the model reference on a host backend. */
   model: string;
   backend?: string;
+  /** kserve: `split` across the nodes of a fast link, or `copies` (the default). */
+  placement?: ModelManagerPlacement;
+  /** kserve, placement `split`: the nodes to split across; default the recommended fast link's. */
+  nodes?: string[];
 };
 
 /**

@@ -1,9 +1,9 @@
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, useState } from 'react';
 import {
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { modelManagerApiRef } from '../../apis';
@@ -236,6 +236,165 @@ describe('LoadModelDialog', () => {
     expect(loadModel).not.toHaveBeenCalled();
   });
 
+  it('preselects the recommended split across fast-linked nodes and serves it there', async () => {
+    const sparkFit: ModelManagerFitResult = {
+      ...fits,
+      instanceType: undefined,
+      node: 'spark-a',
+      placement: 'copies',
+      recommended: 'split',
+      recommendedNodes: ['spark-a', 'spark-b'],
+    };
+    const splitFit: ModelManagerFitResult = {
+      ...sparkFit,
+      placement: 'split',
+      nodes: ['spark-a', 'spark-b'],
+      fastLink: 'sparks',
+    };
+    checkFit.mockImplementation(
+      async ({ placement }: { placement?: string }) =>
+        placement === 'split' ? splitFit : sparkFit,
+    );
+    await render();
+
+    const split = await screen.findByRole('radio', {
+      name: /Split across spark-a and spark-b.*\(recommended\)/,
+    });
+    await waitFor(() => expect(split).toBeChecked());
+    const verdict = screen.getByTestId('serve-fit-verdict');
+    await waitFor(() =>
+      expect(verdict).toHaveTextContent(
+        'Fits — split across spark-a and spark-b (fast link sparks)',
+      ),
+    );
+    await waitFor(() => expect(serveButton()).toBeEnabled());
+    await userEvent.click(serveButton());
+
+    await waitFor(() =>
+      expect(loadModel).toHaveBeenCalledWith({
+        model: 'qwen3-4b-instruct',
+        backend: 'kserve',
+        placement: 'split',
+        nodes: ['spark-a', 'spark-b'],
+      }),
+    );
+  });
+
+  it('serves one copy when the person picks it over the recommended split', async () => {
+    const sparkFit: ModelManagerFitResult = {
+      ...fits,
+      instanceType: undefined,
+      node: 'spark-a',
+      placement: 'copies',
+      recommended: 'split',
+    };
+    checkFit.mockImplementation(
+      async ({ placement }: { placement?: string }) =>
+        placement === 'split'
+          ? { ...sparkFit, placement: 'split', nodes: ['spark-a', 'spark-b'] }
+          : sparkFit,
+    );
+    await render();
+
+    await userEvent.click(
+      await screen.findByRole('radio', { name: /One copy on spark-a/ }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('serve-fit-verdict')).toHaveTextContent(
+        'Fits — on spark-a',
+      ),
+    );
+    await userEvent.click(serveButton());
+    await waitFor(() =>
+      expect(loadModel).toHaveBeenCalledWith({
+        model: 'qwen3-4b-instruct',
+        backend: 'kserve',
+      }),
+    );
+  });
+
+  it('disables split with model-manager’s reason where no nodes share a fast link', async () => {
+    const poolFit: ModelManagerFitResult = {
+      ...fits,
+      placement: 'copies',
+      recommended: 'copies',
+    };
+    checkFit.mockImplementation(
+      async ({ placement }: { placement?: string }) =>
+        placement === 'split'
+          ? {
+              ...poolFit,
+              fits: false,
+              placement: 'split',
+              reason: 'no fast link joins nodes on this cluster',
+            }
+          : poolFit,
+    );
+    await render();
+
+    const split = await screen.findByRole('radio', {
+      name: /Split across fast-linked nodes/,
+    });
+    await waitFor(() => expect(split).toBeDisabled());
+    expect(
+      screen.getByText('no fast link joins nodes on this cluster'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('radio', { name: /One copy.*\(recommended\)/ }),
+    ).toBeChecked();
+  });
+
+  it('offers no placement where model-manager recommends none', async () => {
+    await render();
+    await screen.findByTestId('serve-fit-verdict');
+    expect(screen.queryByTestId('serve-placement')).not.toBeInTheDocument();
+    expect(checkFit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ placement: 'split' }),
+    );
+  });
+
+  it('keeps the chosen preset when the served list refetches the same targets', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    // The Serving page passes a new targets array on every poll.
+    let refetch = () => {};
+    const Harness = () => {
+      const [targets, setTargets] = useState<LoadTarget[]>([pool]);
+      refetch = () => setTargets([{ ...pool }]);
+      return (
+        <TestApiProvider apis={[[modelManagerApiRef, modelManagerApi]]}>
+          <QueryClientProvider client={queryClient}>
+            <LoadModelDialog
+              isOpen
+              onOpenChange={onOpenChange}
+              targets={targets}
+              models={[]}
+            />
+          </QueryClientProvider>
+        </TestApiProvider>
+      );
+    };
+    await renderInTestApp(<Harness />);
+    await screen.findByTestId('serve-fit-verdict');
+
+    await userEvent.click(screen.getByRole('button', { name: /Preset/ }));
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Qwen3 8B FP8' }),
+    );
+    await waitFor(() =>
+      expect(checkFit).toHaveBeenCalledWith({
+        model: 'qwen3-8b-fp8',
+        backend: 'kserve',
+      }),
+    );
+    act(() => refetch());
+
+    expect(screen.getByRole('button', { name: /Preset/ })).toHaveTextContent(
+      'Qwen3 8B FP8',
+    );
+  });
+
   it('blocks Serve while the fit check is pending or failed — never a guess', async () => {
     checkFit.mockRejectedValue(new Error('model-manager: deadline exceeded'));
     await render();
@@ -288,6 +447,54 @@ describe('LoadModelDialog', () => {
       }),
     );
     expect(checkFit).not.toHaveBeenCalled();
+  });
+
+  it('shows a preset that serves already as Serving on its node, and never serves it again', async () => {
+    const servedPreset: ServedModel = {
+      id: 'gazelle/kserve/kserve/qwen3-4b-instruct',
+      installation: 'gazelle',
+      backend: 'kserve',
+      name: 'qwen3-4b-instruct',
+      preset: 'qwen3-4b-instruct',
+      readiness: 'ready',
+      node: 'gpu-a',
+      endpointHosts: [],
+    };
+    await render({
+      models: [servedPreset],
+      seed: { installation: 'gazelle', model: 'qwen3-4b-instruct' },
+    });
+
+    const note = await screen.findByTestId('serve-already-serving');
+    expect(note).toHaveTextContent('Qwen3 4B Instruct: Serving on gpu-a');
+    expect(note).toHaveTextContent('Stop it in the Serving list first');
+    expect(serveButton()).toBeDisabled();
+    expect(checkFit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'qwen3-4b-instruct' }),
+    );
+    expect(loadModel).not.toHaveBeenCalled();
+  });
+
+  it('opens unseeded on the first preset that does not serve yet', async () => {
+    const servedPreset: ServedModel = {
+      id: 'gazelle/kserve/kserve/qwen3-4b-instruct',
+      installation: 'gazelle',
+      backend: 'kserve',
+      name: 'qwen3-4b-instruct',
+      preset: 'qwen3-4b-instruct',
+      readiness: 'starting',
+      node: 'gpu-a',
+      endpointHosts: [],
+    };
+    await render({ models: [servedPreset] });
+
+    await waitFor(() =>
+      expect(checkFit).toHaveBeenCalledWith({
+        model: 'qwen3-8b-fp8',
+        backend: 'kserve',
+      }),
+    );
+    expect(screen.queryByTestId('serve-already-serving')).toBeNull();
   });
 
   it('keeps a refused load in the dialog', async () => {

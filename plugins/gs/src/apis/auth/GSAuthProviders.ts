@@ -93,11 +93,14 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // start empty.
   private kubernetesAuthProviders: AuthProvider[] = [];
   private kubernetesAuthApis: { [providerName: string]: AuthApi } = {};
-  // Whether `gs.clusterTokenBroker.tokenUrl` is set: the silent broker path
-  // for every installation but the main provider's. Part of the signed-in
-  // config, so known once `ensureInitialized()` has run; false until then,
-  // when there are no per-installation providers to filter anyway.
-  private clusterTokenBrokerConfigured = false;
+  // The silent broker path, from the signed-in config, so known once
+  // `ensureInitialized()` has run; empty until then, when there are no
+  // per-installation providers to filter anyway. `gs.clusterTokenBroker.tokenUrl`
+  // (muster) serves every installation but the main provider's; the names
+  // under `gs.clusterTokenBroker.targets` are the installations whose own Dex
+  // mints their token, with or without muster.
+  private musterBrokerConfigured = false;
+  private dexBrokerTargets = new Set<string>();
   private initialized = false;
   private initPromise: Promise<void> | undefined;
 
@@ -177,8 +180,11 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       this.initPromise = (async () => {
         try {
           const config = await getSignedInConfig();
-          this.clusterTokenBrokerConfigured = Boolean(
+          this.musterBrokerConfigured = Boolean(
             config.getOptionalString('gs.clusterTokenBroker.tokenUrl'),
+          );
+          this.dexBrokerTargets = new Set(
+            config.getOptionalConfig('gs.clusterTokenBroker.targets')?.keys(),
           );
           this.kubernetesAuthProviders = this.buildKubernetesAuthProviders(
             readInstallationsConfig(config),
@@ -245,6 +251,28 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     });
   }
 
+  /** Whether the installation's cluster token comes from the broker route. */
+  private usesClusterTokenBroker(installationName: string): boolean {
+    return (
+      this.musterBrokerConfigured || this.dexBrokerTargets.has(installationName)
+    );
+  }
+
+  /**
+   * Whether the installation is reached through the main login alone, so its
+   * own provider entry leaves the settings page: a Dex target, or muster with
+   * the installation marked covered (`clusterTokenAudience`).
+   */
+  private isBrokerCovered({
+    installationName,
+    clusterTokenAudience,
+  }: AuthProvider): boolean {
+    return (
+      this.dexBrokerTargets.has(installationName) ||
+      (this.musterBrokerConfigured && Boolean(clusterTokenAudience))
+    );
+  }
+
   /**
    * Returns a function that silently mints a per-cluster token through the
    * cluster token broker (the backend's /api/auth/cluster-token route), or
@@ -261,7 +289,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     const mainProviderName =
       this.configApi.getOptionalString('gs.authProvider');
     if (
-      !this.clusterTokenBrokerConfigured ||
+      !this.usesClusterTokenBroker(installationName) ||
       !mainProviderName ||
       providerName === mainProviderName
     ) {
@@ -545,37 +573,30 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   }
 
   getProviders() {
-    // Installations explicitly marked as covered by the cluster token broker
-    // (clusterTokenAudience set) get their tokens silently through the main
-    // login, so their separate provider entries disappear from the settings
-    // page. The main login itself always stays.
-    const brokerConfigured = this.clusterTokenBrokerConfigured;
+    // Installations covered by the cluster token broker get their tokens
+    // silently through the main login, so their separate provider entries
+    // disappear from the settings page. The main login itself always stays.
     const mainProviderName =
       this.configApi?.getOptionalString('gs.authProvider');
 
     const kubernetesAuthProviders = this.kubernetesAuthProviders.filter(
-      ({ providerName, clusterTokenAudience }) => {
-        if (!brokerConfigured || providerName === mainProviderName) {
-          return true;
-        }
-        return !clusterTokenAudience;
-      },
+      provider =>
+        provider.providerName === mainProviderName ||
+        !this.isBrokerCovered(provider),
     );
 
     return [...kubernetesAuthProviders, ...this.mcpAuthProviders];
   }
 
   getBrokerCoveredInstallations(): string[] {
-    if (!this.clusterTokenBrokerConfigured) {
-      return [];
-    }
     const mainProviderName =
       this.configApi?.getOptionalString('gs.authProvider');
 
     return this.kubernetesAuthProviders
       .filter(
-        ({ providerName, clusterTokenAudience }) =>
-          providerName !== mainProviderName && Boolean(clusterTokenAudience),
+        provider =>
+          provider.providerName !== mainProviderName &&
+          this.isBrokerCovered(provider),
       )
       .map(({ installationName }) => installationName);
   }
