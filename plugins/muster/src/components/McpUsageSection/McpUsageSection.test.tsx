@@ -24,13 +24,16 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
     data,
     series,
     formatValue,
+    showLegend,
   }: {
     data: Record<string, number>[];
     series: { dataKey: string }[];
     formatValue?: (value: number) => string;
+    showLegend?: boolean;
   }) => (
     <div
       data-testid="chart"
+      data-legend={String(Boolean(showLegend))}
       data-tooltip-values={JSON.stringify(
         data.map(row =>
           series.map(s =>
@@ -153,7 +156,7 @@ describe('McpUsageSection on an installation the portal cannot reach', () => {
 });
 
 describe('McpUsageSection chart', () => {
-  it('shows whole call counts in the tooltip, although increase() returns fractions', async () => {
+  it('shows whole call counts in the tooltip and a legend for its three outcomes', async () => {
     const usage: McpUsage = {
       available: true,
       range_hours: 720,
@@ -206,5 +209,7 @@ describe('McpUsageSection chart', () => {
     expect(
       JSON.parse(chart.getAttribute('data-tooltip-values') ?? '[]'),
     ).toEqual([['5,271', '17', '282']]);
+    // Three series told apart by fill alone need a legend.
+    expect(chart).toHaveAttribute('data-legend', 'true');
   });
 });

@@ -286,6 +286,8 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                 formatBucketTooltip(start, data.step_hours)
               }
               formatValue={formatCount}
+              height={200}
+              showLegend
             />
           </Paper>
 
