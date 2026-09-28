@@ -1,13 +1,10 @@
 import {
-  a2aMessageWireSchema,
   A2aTaskWire,
   addTokenUsage,
   ASK_USER_TOOL_NAME,
-  AWAITING_INPUT_STATES,
-  CANCELED_STATE,
+  claimEndedTurnUsage,
   CONFIRMATION_TOOL_NAME,
-  describeSessionState,
-  FAILED_STATES,
+  historyWithPendingPrompt,
   isAgentToolName,
   isFunctionCallPart,
   isFunctionResponsePart,
@@ -18,13 +15,14 @@ import {
   parsePart,
   readFunctionCall,
   readFunctionResponse,
-  readEndedTurnUsage,
   readKagentMetadataString,
   readMessageText,
   readNestedTokenUsage,
   readPartText,
   readTokenUsage,
+  readTurnStatus,
   TokenUsage,
+  TurnStatus,
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
@@ -162,57 +160,6 @@ const EMPTY_USAGE: TokenUsage = { total: 0, prompt: 0, completion: 0 };
  */
 
 /**
- * A task's history, plus the question it is currently waiting on.
- *
- * kagent puts an *unanswered* confirmation on `task.status.message` and **not** in
- * `history`, so a session that ends by asking the user something rendered as if
- * the agent had simply stopped talking. The raw `ask_user` call does appear in
- * history, but it is deliberately skipped as ADK plumbing (`INTERNAL_TOOL_NAMES`)
- * because the approval path is supposed to render it — and that path only ever
- * looked at history. The question fell between the two.
- *
- * Verified against a live session on an internal installation: the pending
- * `status.message` carries a
- * distinct `messageId` that appears nowhere in `history`, wrapping the question in
- * the same `adk_request_confirmation` shape an answered one has. So appending it
- * as a final entry gets the existing approval handling — including the
- * `ask_user` -> `asks: 'input'` discrimination — for free.
- *
- * Gated on the state rather than merely on the message being present. Two reasons:
- * it is the documented contract (`status.message` "carries the pending prompt
- * while a task waits for input"), and it makes the item self-clearing — once the
- * user answers elsewhere and the task reaches a terminal state, the prompt stops
- * being emitted here and the answered confirmation renders from history instead,
- * so the card cannot linger as a question that has already been answered.
- *
- * kagent's own UI splits the same problem across two passes
- * (`extractMessagesFromTasks` skips unresolved confirmations in history;
- * `extractApprovalMessagesFromTasks` reads `status.message`). One list keeps the
- * question in its chronological place instead of appending it to the end.
- *
- * Only an object-shaped message is appended. `status.message` is `z.unknown()` at
- * the parse boundary, so a kagent version putting a bare string there — an
- * `auth-required` hint, say — would otherwise reach `parseHistoryEntry`, fail
- * `a2aMessageWireSchema` and count as `skippedMessages`, which the UI reports as
- * "1 message could not be read" on a session that is in fact perfectly healthy.
- * A shape we cannot render should be invisible, not announced as data loss.
- */
-function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
-  const history = Array.isArray(task.history) ? task.history : [];
-  const state = task.status?.state?.toLowerCase();
-  const pending = task.status?.message;
-  if (
-    !pending ||
-    typeof pending !== 'object' ||
-    !state ||
-    !AWAITING_INPUT_STATES.has(state)
-  ) {
-    return history;
-  }
-  return [...history, pending];
-}
-
-/**
  * Whether a task ended without answering, and what kagent said about it.
  *
  * Two endings qualify, and they are not the same thing. A **failure** is the
@@ -244,24 +191,19 @@ function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
  * ended, which the prose alone does not.
  */
 function readTurnEnding(
-  task: A2aTaskWire,
+  status: TurnStatus | undefined,
   alreadyRendered: Set<string>,
 ):
   | { state: string; reason?: string; messageId?: string; author?: string }
   | undefined {
-  const state = describeSessionState(task.status?.state)?.key;
-  if (!state || !(FAILED_STATES.has(state) || state === CANCELED_STATE)) {
+  if (!status?.ended) {
     return undefined;
   }
-  const raw = task.status?.message;
-  const message =
-    raw && typeof raw === 'object'
-      ? a2aMessageWireSchema.safeParse(raw)
-      : undefined;
-  if (!message?.success) {
+  const { state, message } = status;
+  if (!message) {
     return { state };
   }
-  const { messageId, metadata } = message.data;
+  const { messageId, metadata } = message;
   return {
     state,
     messageId,
@@ -269,7 +211,7 @@ function readTurnEnding(
     reason:
       messageId && alreadyRendered.has(messageId)
         ? undefined
-        : readMessageText(message.data),
+        : readMessageText(message),
   };
 }
 
@@ -337,7 +279,8 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     // because this is now the *only* timestamp source — it becomes `at` for every
     // item in the task.
     const taskTimestamp = normalizeTimestamp(task.status?.timestamp);
-    const entries = historyWithPendingPrompt(task);
+    const status = readTurnStatus(task);
+    const entries = historyWithPendingPrompt(task, status);
 
     // Open calls are per task: a response never answers a call from another turn,
     // and letting them match across tasks would attach a result to the wrong call
@@ -636,7 +579,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
 
     // Last in its turn: whatever the agent managed to say or do before it ended
     // keeps its place, and the ending closes the turn the way the badge says.
-    const ending = readTurnEnding(task, seenMessageIds);
+    const ending = readTurnEnding(status, seenMessageIds);
     if (ending) {
       items.push({
         kind: 'turn-failed',
@@ -650,13 +593,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       });
     }
     // After the ending: it reads the reason against the ids rendered so far.
-    const endedUsage = readEndedTurnUsage(task, seenMessageIds);
-    if (endedUsage) {
-      tokens = addTokenUsage(tokens, endedUsage.usage);
-      if (endedUsage.messageId) {
-        seenMessageIds.add(endedUsage.messageId);
-      }
-    }
+    tokens = addTokenUsage(tokens, claimEndedTurnUsage(status, seenMessageIds));
   });
 
   return { items, tokens, skippedMessages };

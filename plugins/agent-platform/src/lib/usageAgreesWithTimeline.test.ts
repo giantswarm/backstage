@@ -7,6 +7,8 @@ import {
   tasksApproval,
   tasksAskUser,
   tasksAskUserPending,
+  tasksClaudeHarness,
+  tasksClaudeHarnessFailed,
   tasksFailed,
   tasksUnknownState,
   tasksV099,
@@ -49,12 +51,33 @@ const failedWithUsage = (() => {
   return fixture;
 })();
 
+/** A session waiting on a question whose pending prompt reports its usage. */
+const askUserPendingWithUsage = (() => {
+  const fixture = structuredClone(
+    tasksAskUserPending,
+  ) as typeof tasksAskUserPending;
+  const message = fixture.data[1].status.message as {
+    metadata?: Record<string, unknown>;
+  };
+  message.metadata = {
+    ...message.metadata,
+    'kagent.dev/a2a/usage': { promptTokenCount: 30, candidatesTokenCount: 4 },
+  };
+  return fixture;
+})();
+
 const FIXTURES: Array<[string, unknown]> = [
   ['a v0.9.9 session with a delegation', tasksV099],
   ['an adk_-prefixed session', tasksAdkPrefixed],
   ['a session with an approval', tasksApproval],
   ['a session with an answered question', tasksAskUser],
   ['a session waiting on a question', tasksAskUserPending],
+  [
+    'a session waiting on a question that reports its usage',
+    askUserPendingWithUsage,
+  ],
+  ['a v1 claude Harness session', tasksClaudeHarness],
+  ['a v1 claude Harness session whose turn failed', tasksClaudeHarnessFailed],
   ['a session whose turn failed', tasksFailed],
   ['a session whose failed turn reports its usage', failedWithUsage],
   ['a session in an unknown state', tasksUnknownState],

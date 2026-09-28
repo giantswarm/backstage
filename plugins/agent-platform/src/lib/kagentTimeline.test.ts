@@ -10,6 +10,7 @@ import {
   tasksAskUserPending as askUserPending,
   tasksBareArray as bareArray,
   tasksClaudeHarness as claudeHarness,
+  tasksClaudeHarnessFailed as claudeHarnessFailed,
   tasksEmptyNoData as emptyNoData,
   tasksFailed as failed,
   tasksMalformed as malformed,
@@ -471,6 +472,33 @@ describe('buildTimeline', () => {
       expect(items[1]).toMatchObject({
         kind: 'turn-failed',
         reason: expect.stringContaining('gpt-6-astra'),
+      });
+    });
+
+    it('does not render the reason again when a later history repeats it', () => {
+      // The ending's id is seen whether or not it carries usage, so the
+      // provider error does not render a second time as prose under the reply.
+      const repeated = structuredClone(failed) as typeof failed;
+      (repeated.data[1].history as unknown[]).unshift(
+        structuredClone(repeated.data[0].status.message),
+      );
+      const { items } = timelineFor(repeated);
+
+      expect(kinds(items)).toEqual([
+        'user-message',
+        'turn-failed',
+        'user-message',
+        'turn-failed',
+      ]);
+    });
+
+    it('reads a failed v1 claude Harness turn with its usage', () => {
+      const { items, tokens } = timelineFor(claudeHarnessFailed);
+
+      expect(tokens).toEqual({ total: 71338, prompt: 70958, completion: 380 });
+      expect(items.at(-1)).toMatchObject({
+        kind: 'turn-failed',
+        state: 'failed',
       });
     });
 
