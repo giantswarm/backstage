@@ -22,6 +22,7 @@ import {
   readMessageText,
   readNestedTokenUsage,
   readPartText,
+  readStatusMessageUsage,
   readTokenUsage,
   TokenUsage,
   unwrapProxiedCall,
@@ -631,6 +632,16 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
 
       flushText();
     });
+
+    // The claude Harness reports a turn's usage only on the message the task's
+    // status carries, which history does not hold once the task has ended.
+    const statusUsage = readStatusMessageUsage(task.status);
+    if (
+      statusUsage &&
+      !(statusUsage.messageId && seenMessageIds.has(statusUsage.messageId))
+    ) {
+      tokens = addTokenUsage(tokens, statusUsage.usage);
+    }
 
     // Last in its turn: whatever the agent managed to say or do before it ended
     // keeps its place, and the ending closes the turn the way the badge says.

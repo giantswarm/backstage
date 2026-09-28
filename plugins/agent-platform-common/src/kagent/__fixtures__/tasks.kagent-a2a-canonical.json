@@ -281,7 +281,11 @@
         }
       ],
       "metadata": {
-        "kagent.dev/a2a/task-created-at": "2026-09-11T03:03:00.202996449Z"
+        "kagent.dev/a2a/task-created-at": "2026-09-11T03:03:00.202996449Z",
+        "kagent.dev/a2a/usage": {
+          "promptTokenCount": 5358,
+          "candidatesTokenCount": 4
+        }
       }
     }
   ],

@@ -1,4 +1,5 @@
 import claudeStream from './__fixtures__/stream.claude-harness-1.1.json';
+import claudeTasks from './__fixtures__/tasks.claude-harness-1.1.json';
 import stream from './__fixtures__/stream.kagent-4a91c273.json';
 import canceled from './__fixtures__/task.canceled.kagent-4a91c273.json';
 import hitlApproval from './__fixtures__/tasks.hitl-approval.kagent-4a91c273.json';
@@ -231,9 +232,11 @@ describe('tasks recorded on kagent-4a91c273', () => {
 });
 
 describe('tasks in kagent.dev/a2a metadata', () => {
-  // The recorded conversation above, with its metadata as kagent's canonical
-  // contract spells it: part-type, usage, timeline-position and
-  // task-created-at under kagent.dev/a2a/, and no adk_ keys.
+  // The recorded conversation above, with its metadata where the kagent 1.1
+  // ADK executor puts it: part-type, usage, timeline-position and
+  // task-created-at under kagent.dev/a2a/, no adk_ keys, each call's usage on
+  // its artifact, and the last call's usage copied onto task.metadata
+  // (`_after_agent`), which a reader must not count again.
   const reference = normalizeTaskList(tasks).tasks;
   const canonical = normalizeTaskList(canonicalTasks).tasks;
 
@@ -491,15 +494,95 @@ describe('stream recorded on the claude Harness (kagent 1.1)', () => {
     ).toHaveLength(3);
   });
 
-  it("ends completed with the turn's usage", () => {
+  it('ends completed', () => {
     const last = events[events.length - 1];
     expect(last.kind).toBe('status-update');
-    const status = last.status as Wire;
-    expect(status).toEqual(expect.objectContaining({ state: 'completed' }));
-    expect(readTokenUsage((status.message as Wire).metadata)).toEqual({
-      total: 71338,
-      prompt: 70958,
-      completion: 380,
-    });
+    expect(last.status).toEqual(
+      expect.objectContaining({ state: 'completed' }),
+    );
+  });
+});
+
+describe('task stored for the claude Harness turn (kagent 1.1)', () => {
+  // The stream above folded the way the gateway persists it (a2a-go's
+  // a2aevent.ApplyUpdate). The turn's usage is on the message the completed
+  // status carries and nowhere in history or artifacts.
+  const window = {
+    startMs: Date.parse('2026-09-01T00:00:00Z'),
+    endMs: Date.parse('2026-12-01T00:00:00Z'),
+  };
+  const normalized = normalizeTaskList(claudeTasks).tasks;
+  const expected = {
+    totalTokens: 71338,
+    inputTokens: 70958,
+    outputTokens: 380,
+  };
+
+  it("counts the usage the task's status carries", () => {
+    expect(reduceSessionUsage(normalized, window).tally).toEqual(
+      expect.objectContaining(expected),
+    );
+  });
+
+  it('counts it once when history holds the same message', () => {
+    const [task] = normalized;
+    const withCopy = {
+      ...task,
+      history: [...(task.history ?? []), task.status!.message],
+    };
+    expect(reduceSessionUsage([withCopy], window).tally).toEqual(
+      expect.objectContaining(expected),
+    );
+  });
+});
+
+describe('history order', () => {
+  const at = (iso: string) => ({ 'kagent.dev/a2a/timeline-position': iso });
+  const ids = (raw: unknown) =>
+    (toWireTask(raw)!.history as Wire[]).map(entry => entry.messageId);
+  const text = [{ text: 'x' }];
+
+  it('keeps an unstamped entry behind the entry before it', () => {
+    // A(t=10) before B(no position) before C(t=5): C sorts first, and B stays
+    // behind A however the sort visits the three.
+    expect(
+      ids({
+        id: 't',
+        contextId: 'c',
+        history: [
+          {
+            messageId: 'A',
+            role: 'ROLE_USER',
+            parts: text,
+            metadata: at('2026-09-26T10:00:10Z'),
+          },
+        ],
+        artifacts: [
+          { artifactId: 'B', parts: text },
+          {
+            artifactId: 'C',
+            parts: text,
+            metadata: at('2026-09-26T10:00:05Z'),
+          },
+        ],
+      }),
+    ).toEqual(['C', 'A', 'B']);
+  });
+
+  it('keeps leading unstamped entries first', () => {
+    expect(
+      ids({
+        id: 't',
+        contextId: 'c',
+        history: [{ messageId: 'A', role: 'ROLE_USER', parts: text }],
+        artifacts: [
+          {
+            artifactId: 'B',
+            parts: text,
+            metadata: at('2026-09-26T10:00:05Z'),
+          },
+        ],
+      }),
+    ).toEqual(['A', 'B']);
   });
 });

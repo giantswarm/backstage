@@ -27,10 +27,13 @@ describe('readKagentMetadata', () => {
     ).toBe('function_response');
   });
 
-  it('reads a key without a canonical name under the prefixes only', () => {
+  it('falls back when the canonical key holds null', () => {
     expect(
-      readKagentMetadata({ 'kagent.dev/a2a/thought': true }, 'thought'),
-    ).toBeUndefined();
+      readKagentMetadata(
+        { 'kagent.dev/a2a/usage': null, adk_usage_metadata: { a: 1 } },
+        'usage_metadata',
+      ),
+    ).toEqual({ a: 1 });
   });
 
   it('prefers the adk_ prefix over kagent_', () => {
@@ -107,7 +110,16 @@ describe('readKagentTimelinePosition', () => {
         'kagent.dev/a2a/timeline-position': '2026-09-25T10:00:00Z',
         'kagent.dev/timeline-position': '2026-09-11T03:02:56Z',
       }),
-    ).toBe('2026-09-25T10:00:00Z');
+    ).toBe(Date.parse('2026-09-25T10:00:00Z'));
+  });
+
+  it('falls back past a canonical position that does not parse', () => {
+    expect(
+      readKagentTimelinePosition({
+        'kagent.dev/a2a/timeline-position': 'soon',
+        'kagent.dev/timeline-position': '2026-09-11T03:02:56Z',
+      }),
+    ).toBe(Date.parse('2026-09-11T03:02:56Z'));
   });
 
   it('falls back to the key older controllers wrote', () => {
@@ -115,7 +127,7 @@ describe('readKagentTimelinePosition', () => {
       readKagentTimelinePosition({
         'kagent.dev/timeline-position': '2026-09-11T03:02:56Z',
       }),
-    ).toBe('2026-09-11T03:02:56Z');
+    ).toBe(Date.parse('2026-09-11T03:02:56Z'));
   });
 
   it.each([undefined, {}, { 'kagent.dev/a2a/timeline-position': 3 }])(
@@ -140,4 +152,16 @@ describe('readKagentSubagentUsage', () => {
       }),
     ).toEqual({ promptTokenCount: 7 });
   });
+
+  it.each([null, 3, 'many'])(
+    'falls back to the metadata-style key past a usage of %p',
+    usage => {
+      expect(
+        readKagentSubagentUsage({
+          usage,
+          adk_usage_metadata: { promptTokenCount: 7 },
+        }),
+      ).toEqual({ promptTokenCount: 7 });
+    },
+  );
 });

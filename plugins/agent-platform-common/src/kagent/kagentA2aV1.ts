@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ASK_USER_TOOL_NAME, CONFIRMATION_TOOL_NAME } from './kagentParts';
 import { readKagentTimelinePosition } from './kagentMetadata';
+import { asRecord, isRecord } from './record';
 import { wireString } from './kagentSchema';
 
 /**
@@ -150,10 +151,6 @@ export const a2aV1StreamResponseWireSchema = z.looseObject({
   artifactUpdate: z.unknown().optional(),
 });
 
-function isRecord(raw: unknown): raw is Record<string, unknown> {
-  return typeof raw === 'object' && raw !== null && !Array.isArray(raw);
-}
-
 /** Whether a body is a `ListTasksResponse` rather than a 0.10 envelope. */
 export function isA2aV1TaskList(raw: unknown): boolean {
   return isRecord(raw) && 'tasks' in raw && !('data' in raw);
@@ -179,19 +176,16 @@ export function isA2aV1StreamResponse(raw: unknown): boolean {
 
 type Wire = Record<string, unknown>;
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 /**
  * One v1 part as a `kind`-discriminated part. Text, data and file keep their
- * metadata bag verbatim — it is where kagent's `{adk,kagent}_type`,
- * `_usage_metadata` and `_thought` markers live, and the readers are keyed on
- * those. A part with none of the four contents is passed through as what it is.
+ * metadata bag verbatim — it is where kagent's part type
+ * (`kagent.dev/a2a/part-type`, or `{adk,kagent}_type` in older history) lives,
+ * and the readers are keyed on it. A part with none of the four contents is
+ * passed through as what it is.
  */
 export function toWirePart(raw: unknown): Wire | undefined {
   const parsed = a2aV1PartWireSchema.safeParse(raw);
@@ -392,11 +386,10 @@ export function toWireMessage(raw: unknown): Wire | undefined {
  * An artifact as an **agent message**.
  *
  * On the API v2 line the agent's output lands in `Task.artifacts` (one artifact
- * per response, carrying the ADK metadata — author, token usage — on the
+ * per response, carrying the runtime's metadata, token usage included, on the
  * artifact), while `Task.history` holds what the user sent. The readers walk
  * `history` for the agent's replies and never `artifacts`, so each artifact
- * becomes a history entry, keeping its id as the message id and its metadata
- * (which is where `{adk,kagent}_usage_metadata` lives).
+ * becomes a history entry, keeping its id as the message id and its metadata.
  */
 function artifactToWireMessage(
   raw: unknown,
@@ -453,28 +446,15 @@ function toWireStatus(raw: unknown): Wire | undefined {
 }
 
 /**
- * The instant a history entry belongs at, from the timeline position kagent
- * stamps on messages and artifacts alike. Undefined when absent, in which case
- * the entry keeps its relative order.
- */
-function timelinePosition(entry: Wire): number | undefined {
-  const raw = readKagentTimelinePosition(entry.metadata);
-  if (raw === undefined) {
-    return undefined;
-  }
-  const parsed = Date.parse(raw);
-  return Number.isNaN(parsed) ? undefined : parsed;
-}
-
-/**
  * A v1 task as the legacy-shaped task every reader parses.
  *
  * `history` is the user's messages **and** the agent's artifacts merged into
- * one conversation, ordered by kagent's timeline position where both carry one
- * and by arrival otherwise (a stable sort, so entries without a position keep
- * their place relative to their neighbours). An artifact whose id also appears
- * in the history is not added twice. `artifacts` is kept too, translated, for
- * anything that wants the raw shape.
+ * one conversation, ordered by kagent's timeline position. An entry without a
+ * position takes the one of the entry before it in arrival order (the start of
+ * time when there is none), so it keeps its place behind that neighbour and the
+ * sort key is total even when a task mixes stamped and unstamped entries. An
+ * artifact whose id also appears in the history is not added twice.
+ * `artifacts` is kept too, translated, for anything that wants the raw shape.
  */
 export function toWireTask(raw: unknown): Wire | undefined {
   const parsed = a2aV1TaskWireSchema.safeParse(raw);
@@ -505,17 +485,12 @@ export function toWireTask(raw: unknown): Wire | undefined {
     history.push(entry);
   }
 
-  const positioned = history.map((entry, index) => ({
-    entry,
-    index,
-    at: timelinePosition(entry),
-  }));
-  positioned.sort((a, b) => {
-    if (a.at === undefined || b.at === undefined) {
-      return a.index - b.index;
-    }
-    return a.at - b.at || a.index - b.index;
+  let lastPosition = Number.NEGATIVE_INFINITY;
+  const positioned = history.map((entry, index) => {
+    lastPosition = readKagentTimelinePosition(entry.metadata) ?? lastPosition;
+    return { entry, index, at: lastPosition };
   });
+  positioned.sort((a, b) => a.at - b.at || a.index - b.index);
 
   const status = toWireStatus(task.status);
   return {

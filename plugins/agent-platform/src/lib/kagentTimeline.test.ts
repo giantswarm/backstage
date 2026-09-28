@@ -9,6 +9,7 @@ import {
   tasksApproval as approval,
   tasksAskUserPending as askUserPending,
   tasksBareArray as bareArray,
+  tasksClaudeHarness as claudeHarness,
   tasksEmptyNoData as emptyNoData,
   tasksFailed as failed,
   tasksMalformed as malformed,
@@ -132,6 +133,15 @@ describe('buildTimeline', () => {
       prompt: 1180 + 760 + 2600,
       completion: 240 + 130 + 500,
     });
+  });
+
+  it("counts a claude Harness turn's usage from the message its status carries", () => {
+    // kagent 1.1: the Harness reports the turn's usage on the completed
+    // status's message only, which the gateway never moves into history.
+    const { items, tokens } = timelineFor(claudeHarness);
+
+    expect(tokens).toEqual({ total: 71338, prompt: 70958, completion: 380 });
+    expect(items.filter(item => item.kind === 'tool-call')).toHaveLength(3);
   });
 
   it('groups items by the task they came from', () => {

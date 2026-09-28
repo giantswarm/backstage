@@ -1,3 +1,5 @@
+import { asRecord } from './record';
+
 const A2A_PREFIX = 'kagent.dev/a2a/';
 
 /** Legacy unprefixed key to its `kagent.dev/a2a/` name. */
@@ -20,38 +22,41 @@ const TIMELINE_POSITION_KEYS = [
  * own spelling instead, under a **prefixed** key: upstream Google ADK writes
  * `adk_<key>`, kagent's own code writes `kagent_<key>`, and one session can
  * contain every spelling. A reader therefore takes the canonical key first,
- * then `adk_`, then `kagent_`.
+ * then `adk_`, then `kagent_`. A key holding `null` or nothing is skipped, so
+ * the next spelling still gets its turn.
  *
  * Callers ask for the legacy, unprefixed key (`type`, `usage_metadata`); the
- * canonical name for it comes from {@link CANONICAL_KEYS}. A key with no
- * canonical counterpart (`thought`, `author`) is read under the prefixes only.
+ * canonical name for it comes from {@link CANONICAL_KEYS}.
+ *
+ * **`thought`, `author` and `partial` have no canonical name.** kagent 1.1
+ * deletes every `adk_*` key at the runtime boundary and no longer stamps
+ * `thought` on text parts, so on 1.1 these read as undefined: reasoning renders
+ * as the agent's answer and replies carry no author. Stored task history from
+ * older controllers still has them. A streamed chunk falls back to the A2A
+ * `lastChunk` flag for `partial`.
  *
  * **Both legacy prefixes really do occur, on the same installation.** Two
  * sessions on one internal installation, read a day apart, carried
  * `kagent_usage_metadata` and `adk_usage_metadata` respectively. Reading only
  * one spelling makes a session's token totals silently zero.
- *
- * This is deliberately the *only* place any of these spellings is written out.
  */
 export function readKagentMetadata<T = unknown>(
   metadata: unknown,
   key: string,
 ): T | undefined {
-  const bag = asBag(metadata);
+  const bag = asRecord(metadata);
   if (!bag) {
     return undefined;
   }
   const canonical = CANONICAL_KEYS[key];
-  if (canonical && canonical in bag) {
-    return bag[canonical] as T;
-  }
-  const adkKey = `adk_${key}`;
-  if (adkKey in bag) {
-    return bag[adkKey] as T;
-  }
-  const kagentKey = `kagent_${key}`;
-  if (kagentKey in bag) {
-    return bag[kagentKey] as T;
+  const keys = canonical
+    ? [canonical, `adk_${key}`, `kagent_${key}`]
+    : [`adk_${key}`, `kagent_${key}`];
+  for (const candidate of keys) {
+    const value = bag[candidate];
+    if (value !== undefined && value !== null) {
+      return value as T;
+    }
   }
   return undefined;
 }
@@ -71,20 +76,25 @@ export function isKagentMetadataFlagSet(metadata: unknown, key: string) {
 }
 
 /**
- * The RFC 3339 timeline position kagent stamps on a history entry, under its
- * canonical key or the one older controllers wrote.
+ * The instant, in epoch milliseconds, of the RFC 3339 timeline position kagent
+ * stamps on a history entry, under its canonical key or the one older
+ * controllers wrote. A position that does not parse is skipped.
  */
 export function readKagentTimelinePosition(
   metadata: unknown,
-): string | undefined {
-  const bag = asBag(metadata);
+): number | undefined {
+  const bag = asRecord(metadata);
   if (!bag) {
     return undefined;
   }
   for (const key of TIMELINE_POSITION_KEYS) {
     const value = bag[key];
-    if (typeof value === 'string' && value !== '') {
-      return value;
+    if (typeof value !== 'string' || value === '') {
+      continue;
+    }
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
     }
   }
   return undefined;
@@ -92,22 +102,12 @@ export function readKagentTimelinePosition(
 
 /**
  * The usage bag a delegated agent's tool response carries: a plain `usage`
- * field, or the metadata-style `*_usage_metadata` key of older runtimes.
+ * object, or the metadata-style `*_usage_metadata` key of older runtimes.
  */
 export function readKagentSubagentUsage(response: unknown): unknown {
-  const bag = asBag(response);
+  const bag = asRecord(response);
   if (!bag) {
     return undefined;
   }
-  if ('usage' in bag) {
-    return bag.usage;
-  }
-  return readKagentMetadata(bag, 'usage_metadata');
-}
-
-function asBag(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
+  return asRecord(bag.usage) ?? readKagentMetadata(bag, 'usage_metadata');
 }
