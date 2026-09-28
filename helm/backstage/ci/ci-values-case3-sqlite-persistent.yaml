@@ -13,16 +13,16 @@ image:
 port: 7007
 registry:
   domain: gsoci.azurecr.io
-authSessionSecret: fooBar
+authSessionSecret: Zm9vQmFy
 circleci:
-  apiToken: dummyToken
+  apiToken: ZHVtbXlUb2tlbg==
 dexAuthCredentials:
   example-1:
-    clientID: exampleOneDummyClientID
-    clientSecret: exampleOneDummyClientSecret
+    clientID: ZXhhbXBsZU9uZUR1bW15Q2xpZW50SUQ=
+    clientSecret: ZXhhbXBsZU9uZUR1bW15Q2xpZW50U2VjcmV0
 githubAuthCredentials:
-  clientID: dummyClientID
-  clientSecret: dummyClientSecret
+  clientID: ZHVtbXlDbGllbnRJRA==
+  clientSecret: ZHVtbXlDbGllbnRTZWNyZXQ=
 githubAppCredentials:
   appId: 42
   webhookUrl: 'dummyWehbookUrl'
@@ -34,12 +34,12 @@ githubAppCredentials:
     private
     key
 grafana:
-  apiToken: dummyToken
+  apiToken: ZHVtbXlUb2tlbg==
 sentry:
   app:
-    dsn: summySentryDSN
+    dsn: c3VtbXlTZW50cnlEU04=
   backend:
-    dsn: summySentryDSN
+    dsn: c3VtbXlTZW50cnlEU04=
 
 # Recreate strategy avoids the RollingUpdate deadlock when the PVC is RWO:
 # a new pod can't mount the volume until the old pod has fully terminated.
