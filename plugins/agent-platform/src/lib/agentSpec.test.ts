@@ -21,6 +21,7 @@ const state: NewAgentFormState = {
   modelConfigName: 'opus-4-7',
   modelConfigNamespace: 'kagent',
   harness: undefined,
+  droppedHarness: undefined,
   systemMessage: 'You review pull requests.',
   selectedSkills: [skill],
   toolset: ['preset:read-only'],

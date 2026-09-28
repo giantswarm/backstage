@@ -21,12 +21,22 @@ jest.mock('../../hooks/useAgentManager', () => ({
   }),
 }));
 
-function harness(name: string, runtime: 'kagent' | 'claude'): Harness {
+function harness(
+  name: string,
+  runtime: 'kagent' | 'claude',
+  { namespace = 'kagent', displayName = undefined as string | undefined } = {},
+): Harness {
   return new Harness(
     {
       apiVersion: 'kagent.dev/v1alpha3',
       kind: 'Harness',
-      metadata: { name, namespace: 'kagent' },
+      metadata: {
+        name,
+        namespace,
+        ...(displayName && {
+          annotations: { 'ui.giantswarm.io/display-name': displayName },
+        }),
+      },
       spec: {
         allowedAgentTemplates: {
           selector: {
@@ -51,7 +61,15 @@ function Probe() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   formHarness = state.harness?.admits;
-  return null;
+  return (
+    <button type="button" onClick={() => selectModelConfig('sonnet', 'demo')}>
+      Pick a model in demo
+    </button>
+  );
+}
+
+function listing(resources: Harness[], errors: unknown[] = []) {
+  return { resources, isLoading: false, errors };
 }
 
 async function render() {
@@ -70,22 +88,66 @@ beforeEach(() => {
 
 describe('HarnessPicker', () => {
   it('shows no choice when the namespace holds the platform Harness only', async () => {
-    mockUseResources.mockReturnValue({
-      resources: [harness('kagent', 'kagent')],
-      isLoading: false,
-      errors: [],
-    });
+    mockUseResources.mockReturnValue(listing([harness('kagent', 'kagent')]));
     await render();
 
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByText('Runtime')).not.toBeInTheDocument();
+  });
+
+  it("says so when the namespace's Harnesses could not be read", async () => {
+    mockUseResources.mockReturnValue(
+      listing([], [{ cluster: 'gazelle', error: new Error('Forbidden') }]),
+    );
+    await render();
+
+    expect(screen.getByText("Couldn't read the runtimes")).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+  });
+
+  it("titles a card by the Harness's display name when an admin set one", async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('go', 'claude', { displayName: 'Claude Code with Go' }),
+      ]),
+    );
+    await render();
+
+    expect(
+      screen.getByRole('radio', {
+        name: 'Claude Code with Go, Harness go',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('tells the person when a model in another namespace drops their pick', async () => {
+    mockUseResources.mockReturnValue(
+      listing([harness('claude', 'claude'), harness('kagent', 'kagent')]),
+    );
+    const user = userEvent.setup();
+    await render();
+
+    await user.click(screen.getByRole('radio', { name: /Harness claude/ }));
+    expect(formHarness).toBe('claude');
+
+    mockUseResources.mockReturnValue(
+      listing([harness('kagent', 'kagent', { namespace: 'demo' })]),
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Pick a model in demo' }),
+    );
+
+    expect(formHarness).toBeUndefined();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'You picked the Harness claude for a different namespace',
+    );
   });
 
   it("lists the model's namespace's Harnesses, the platform one picked, and records another pick", async () => {
-    mockUseResources.mockReturnValue({
-      resources: [harness('claude', 'claude'), harness('kagent', 'kagent')],
-      isLoading: false,
-      errors: [],
-    });
+    mockUseResources.mockReturnValue(
+      listing([harness('claude', 'claude'), harness('kagent', 'kagent')]),
+    );
     const user = userEvent.setup();
     await render();
 
@@ -97,22 +159,21 @@ describe('HarnessPicker', () => {
     );
     const cards = screen.getAllByRole('radio');
     expect(cards.map(card => card.getAttribute('aria-label'))).toEqual([
-      'Run on the Harness kagent',
-      'Run on the Harness claude',
+      'Declarative (Go ADK), Harness kagent, platform default',
+      'Claude Code, Harness claude',
     ]);
     expect(cards[0]).toHaveAttribute('aria-checked', 'true');
     expect(cards[0]).toHaveTextContent('Platform default');
 
     await user.click(cards[1]);
     expect(formHarness).toBe('claude');
-    expect(screen.getByRole('radio', { name: /claude/ })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    expect(
+      screen.getByRole('radio', { name: /Harness claude/ }),
+    ).toHaveAttribute('aria-checked', 'true');
     expect(cards[1]).toHaveTextContent('Claude Code');
 
     // Back to the platform Harness is no pick at all.
-    await user.click(screen.getByRole('radio', { name: /kagent/ }));
+    await user.click(screen.getByRole('radio', { name: /Harness kagent/ }));
     expect(formHarness).toBeUndefined();
   });
 });

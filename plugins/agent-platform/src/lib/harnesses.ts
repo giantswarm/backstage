@@ -9,6 +9,8 @@ export const DEFAULT_PLATFORM_HARNESS = 'kagent';
 /** A Harness an agent can be created on, as the wizard offers it. */
 export type HarnessChoice = {
   name: string;
+  /** The Harness's `ui.giantswarm.io/display-name`, when an admin set one. */
+  displayName?: string;
   /** The `agent-platform.giantswarm.io/harness` value it admits: what `create_agent` takes. */
   admits: string;
   runtime?: HarnessRuntime;
@@ -25,6 +27,15 @@ const RUNTIME_LABELS: Record<HarnessRuntime, string> = {
 
 export function runtimeLabel(runtime: HarnessRuntime | undefined): string {
   return runtime ? RUNTIME_LABELS[runtime] : 'Unknown runtime';
+}
+
+/**
+ * What a person calls the Harness: its display name, else its runtime family.
+ * Two Harnesses of one family (Claude Code with two toolchains, say) read the
+ * same without a display name; the Harness name beneath tells them apart.
+ */
+export function harnessTitle(choice: HarnessChoice): string {
+  return choice.displayName ?? runtimeLabel(choice.runtime);
 }
 
 /** `gsoci.azurecr.io/giantswarm/kagent/claude-harness@sha256:…` → `claude-harness`. */
@@ -54,6 +65,9 @@ export function harnessChoicesOf(
       return [
         {
           name: harness.getName(),
+          ...(harness.getDisplayNameAnnotation() && {
+            displayName: harness.getDisplayNameAnnotation(),
+          }),
           admits,
           runtime: harness.getRuntime(),
           imageName: imageNameOf(harness.getImage()),

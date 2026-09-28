@@ -52,6 +52,28 @@ describe('Harness', () => {
     expect(makeHarness({}).getAdmittedHarnessLabel()).toBeUndefined();
   });
 
+  it('reads the display name annotation, ignoring a blank one', () => {
+    const annotated = (value: string) =>
+      new Harness(
+        {
+          apiVersion: 'kagent.dev/v1alpha3',
+          kind: 'Harness',
+          metadata: {
+            name: 'go',
+            namespace: 'kagent',
+            annotations: { 'ui.giantswarm.io/display-name': value },
+          },
+        } as HarnessInterface,
+        'gazelle',
+      );
+
+    expect(annotated('Claude Code with Go').getDisplayNameAnnotation()).toBe(
+      'Claude Code with Go',
+    );
+    expect(annotated('  ').getDisplayNameAnnotation()).toBeUndefined();
+    expect(makeHarness({}).getDisplayNameAnnotation()).toBeUndefined();
+  });
+
   it('reads the workload image', () => {
     expect(makeHarness({ claude: {} }).getImage()).toBe(
       'gsoci.azurecr.io/giantswarm/kagent/claude-harness@sha256:85230e58',

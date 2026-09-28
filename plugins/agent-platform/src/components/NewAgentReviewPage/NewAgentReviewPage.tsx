@@ -35,7 +35,7 @@ import {
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
-import { runtimeLabel } from '../../lib/harnesses';
+import { harnessTitle } from '../../lib/harnesses';
 import { shortCommit } from '../../lib/skills';
 import {
   buildCatalogue,
@@ -574,9 +574,7 @@ export function NewAgentReviewPage() {
               </Text>
             )}
             <Text variant="body-x-small" color="secondary">
-              {state.harness
-                ? runtimeLabel(state.harness.runtime)
-                : 'Platform default'}
+              {state.harness ? harnessTitle(state.harness) : 'Platform default'}
             </Text>
           </SummaryItem>
           <SummaryItem label="Tools">

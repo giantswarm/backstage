@@ -372,9 +372,12 @@ piece of platform work).
 Below the model, the details step lists the **Harnesses of the chosen model's
 namespace** (`HarnessPicker`, `harnesses.kagent.dev` read through the
 Kubernetes proxy with the person's own RBAC, the same rights as reading
-AgentTemplates and ModelConfigs) as runtime-family cards: the family comes from
-the one of `spec.kagent`, `spec.claude`, `spec.codex` and `spec.byo` that is
-set, with the Harness's name and image beneath. Only a Harness whose
+AgentTemplates and ModelConfigs) as runtime cards. A card is titled by the
+Harness's `ui.giantswarm.io/display-name` when an admin set one, else by its
+runtime family (the one of `spec.kagent`, `spec.claude`, `spec.codex` and
+`spec.byo` that is set), with the Harness's name and image beneath: two Claude
+Code Harnesses with different toolchains read apart only by those, or by a
+display name. Only a Harness whose
 `allowedAgentTemplates` selector matches on
 `agent-platform.giantswarm.io/harness` is offered, and the pick is that label
 value, which is what agent-manager's `harness` argument names (`lib/harnesses.ts`).
@@ -383,10 +386,12 @@ The platform Harness (`get_info`'s `harness.name`) comes first and is the
 default. Picking it is no pick: the request leaves `harness` out and
 agent-manager composes its own, exactly as before. Any other pick is sent as
 `harness` to `validate_agent` and `create_agent`. The section renders nothing
-when the namespace holds one Harness or none, when the list is forbidden, or
-when it fails, so an installation without coding Harnesses sees no change.
-Changing the installation, or picking a model in another namespace, drops the
-pick, since a Harness admits templates of its own namespace only. The Harness is
+when the namespace holds one Harness or none, so an installation without coding
+Harnesses sees no change. A list that could not be read (forbidden, or failed)
+shows a warning instead, since a choice may have been missed. Changing the
+installation, or picking a model in another namespace, drops the pick, since a
+Harness admits templates of its own namespace only, and a status notice says
+so until the person picks a runtime again. The Harness is
 fixed at create: the edit page has no runtime field.
 
 ### The review page is agent-manager's dry run

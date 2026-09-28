@@ -1,5 +1,10 @@
 import { Harness } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { harnessChoicesOf, imageNameOf, runtimeLabel } from './harnesses';
+import {
+  harnessChoicesOf,
+  harnessTitle,
+  imageNameOf,
+  runtimeLabel,
+} from './harnesses';
 
 function harness(
   name: string,
@@ -88,5 +93,21 @@ describe('runtimeLabel', () => {
     expect(runtimeLabel('kagent')).toBe('Declarative (Go ADK)');
     expect(runtimeLabel('claude')).toBe('Claude Code');
     expect(runtimeLabel(undefined)).toBe('Unknown runtime');
+  });
+});
+
+describe('harnessTitle', () => {
+  it('prefers the display name, then the runtime family', () => {
+    expect(
+      harnessTitle({
+        name: 'go',
+        admits: 'go',
+        runtime: 'claude',
+        displayName: 'Claude Code with Go',
+      }),
+    ).toBe('Claude Code with Go');
+    expect(harnessTitle({ name: 'go', admits: 'go', runtime: 'claude' })).toBe(
+      'Claude Code',
+    );
   });
 });

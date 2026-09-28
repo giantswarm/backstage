@@ -48,6 +48,15 @@ export class Harness extends KubeObject<HarnessInterface> {
     return value?.trim() ? value : undefined;
   }
 
+  /**
+   * The `ui.giantswarm.io/display-name` annotation, or `undefined` when it is
+   * missing or blank.
+   */
+  getDisplayNameAnnotation(): string | undefined {
+    const value = this.getAnnotations()?.['ui.giantswarm.io/display-name'];
+    return value?.trim() ? value : undefined;
+  }
+
   /** The workload image reference, digest included. */
   getImage(): string | undefined {
     return this.jsonData.spec?.workload.image;
