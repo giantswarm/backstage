@@ -54,7 +54,9 @@ describe('instrumentation', () => {
   });
 
   it('leaves metrics off when only traces are exported', () => {
-    const result = load({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4317' });
+    const result = load({
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4317',
+    });
     expect(start).toHaveBeenCalledTimes(1);
     expect(result.OTEL_METRICS_EXPORTER).toBe('none');
   });
