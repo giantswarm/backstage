@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 
 /**
@@ -21,8 +21,14 @@ const PRESET_LABEL = /Qwen2\.5 0\.5B Instruct \(CPU\)/;
 const TARGET = /· KServe$/;
 const shots = process.env.AGENTLAB_E2E_SCREENSHOTS;
 
-async function snapshot(page: Page, name: string) {
-  if (shots) {
+async function snapshot(page: Page, name: string, of?: Locator) {
+  if (!shots) {
+    return;
+  }
+  if (of) {
+    await of.scrollIntoViewIfNeeded();
+    await of.screenshot({ path: `${shots}/${name}.png` });
+  } else {
     await page.screenshot({ path: `${shots}/${name}.png` });
   }
 }
@@ -86,7 +92,7 @@ test.describe.serial('Serve feedback on KServe', () => {
     const option = admin.getByRole('option', { name: PRESET_LABEL });
     await expect(option).toContainText(/Serving on \S+/);
     await expect(option).toHaveAttribute('aria-disabled', 'true');
-    await snapshot(admin, 'serve-dialog-served-preset');
+    await snapshot(admin, 'serve-dialog-served-preset', option);
     await admin.keyboard.press('Escape');
     await dialog.getByRole('button', { name: 'Cancel' }).click();
   });
@@ -139,7 +145,7 @@ test.describe.serial('Serve feedback on KServe', () => {
             ) ?? 'other';
           seen.add(state);
           if (state === 'Starting') {
-            await snapshot(admin, 'serving-row-starting');
+            await snapshot(admin, 'serving-row-starting', row);
           }
           return state;
         },
@@ -150,6 +156,6 @@ test.describe.serial('Serve feedback on KServe', () => {
       'Not ready',
     );
     expect([...seen]).toContain('Starting');
-    await snapshot(admin, 'serving-row-ready');
+    await snapshot(admin, 'serving-row-ready', row);
   });
 });
