@@ -227,6 +227,53 @@ export function describeLoadAnswer(answer: ModelManagerLoadAnswer): string {
   return parts.join(' · ');
 }
 
+/** The states in which a served object for a preset exists on the backend. */
+const SERVING_STATES: ReadonlySet<ServedModel['readiness']> = new Set([
+  'ready',
+  'notReady',
+  'pending',
+  'starting',
+  'terminating',
+]);
+
+/**
+ * The served row of a preset on an installation's backend, if it serves
+ * already: model-manager serves each preset once, so the Serve dialog shows
+ * where instead of offering it again.
+ */
+export function servedPresetRow(
+  models: ServedModel[],
+  installation: string,
+  backend: string | undefined,
+  preset: string,
+): ServedModel | undefined {
+  return models.find(
+    model =>
+      model.installation === installation &&
+      (!backend || model.backend === backend) &&
+      model.preset === preset &&
+      SERVING_STATES.has(model.readiness),
+  );
+}
+
+/** Where a served row runs, in words: `Serving on gpu-a`, `Stopping on gpu-a`. */
+export function describeServedWhere(row: ServedModel): string {
+  const verb = row.readiness === 'terminating' ? 'Stopping' : 'Serving';
+  const nodes = row.splitNodes?.length ? row.splitNodes.join(', ') : row.node;
+  return nodes ? `${verb} on ${nodes}` : `${verb} already`;
+}
+
+/** The nodes a load answer serves on: an existing object's, else the fit's. */
+export function loadAnswerNodes(answer: ModelManagerLoadAnswer): string[] {
+  if (answer.servingNodes?.length) {
+    return answer.servingNodes;
+  }
+  if (answer.fit?.nodes?.length) {
+    return answer.fit.nodes;
+  }
+  return answer.fit?.node ? [answer.fit.node] : [];
+}
+
 /**
  * The route the pool panel opens the Serve dialog with:
  * `?serve=1&installation=<installation>&cluster=<cluster>&pool=<pool name>`

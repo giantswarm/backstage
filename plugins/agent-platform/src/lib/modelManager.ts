@@ -657,6 +657,10 @@ export const modelManagerLoadAnswerSchema = z.looseObject({
     })
     .optional(),
   fit: modelManagerFitResultSchema.optional(),
+  /** The preset served already: nothing was created (model-manager#188). */
+  alreadyServing: wireOptionalBoolean,
+  /** The nodes the already-served preset runs on; empty while unknown. */
+  servingNodes: wireStringList,
 });
 export type ModelManagerLoadAnswer = z.infer<
   typeof modelManagerLoadAnswerSchema

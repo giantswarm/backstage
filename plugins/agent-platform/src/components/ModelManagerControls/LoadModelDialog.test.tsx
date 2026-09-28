@@ -449,6 +449,54 @@ describe('LoadModelDialog', () => {
     expect(checkFit).not.toHaveBeenCalled();
   });
 
+  it('shows a preset that serves already as Serving on its node, and never serves it again', async () => {
+    const servedPreset: ServedModel = {
+      id: 'gazelle/kserve/kserve/qwen3-4b-instruct',
+      installation: 'gazelle',
+      backend: 'kserve',
+      name: 'qwen3-4b-instruct',
+      preset: 'qwen3-4b-instruct',
+      readiness: 'ready',
+      node: 'gpu-a',
+      endpointHosts: [],
+    };
+    await render({
+      models: [servedPreset],
+      seed: { installation: 'gazelle', model: 'qwen3-4b-instruct' },
+    });
+
+    const note = await screen.findByTestId('serve-already-serving');
+    expect(note).toHaveTextContent('Qwen3 4B Instruct: Serving on gpu-a');
+    expect(note).toHaveTextContent('Stop it in the Serving list first');
+    expect(serveButton()).toBeDisabled();
+    expect(checkFit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'qwen3-4b-instruct' }),
+    );
+    expect(loadModel).not.toHaveBeenCalled();
+  });
+
+  it('opens unseeded on the first preset that does not serve yet', async () => {
+    const servedPreset: ServedModel = {
+      id: 'gazelle/kserve/kserve/qwen3-4b-instruct',
+      installation: 'gazelle',
+      backend: 'kserve',
+      name: 'qwen3-4b-instruct',
+      preset: 'qwen3-4b-instruct',
+      readiness: 'starting',
+      node: 'gpu-a',
+      endpointHosts: [],
+    };
+    await render({ models: [servedPreset] });
+
+    await waitFor(() =>
+      expect(checkFit).toHaveBeenCalledWith({
+        model: 'qwen3-8b-fp8',
+        backend: 'kserve',
+      }),
+    );
+    expect(screen.queryByTestId('serve-already-serving')).toBeNull();
+  });
+
   it('keeps a refused load in the dialog', async () => {
     loadModel.mockRejectedValue(
       new Error('does_not_fit: no size of the pool hosts the preset'),

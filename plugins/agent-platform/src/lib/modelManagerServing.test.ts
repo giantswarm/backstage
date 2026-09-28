@@ -996,3 +996,43 @@ describe('toServedModelFromManager · the reason behind a state (model-manager 0
     expect(loaded.readinessReason).toBeUndefined();
   });
 });
+
+describe('toServedModelFromManager during a start', () => {
+  const kserveBackend = {
+    backend: 'kserve' as const,
+    healthy: true,
+  } as Parameters<typeof toServedModelFromManager>[1];
+  const starting = (steps: { name: string; state: string }[]) =>
+    toServedModelFromManager('gpu', kserveBackend, {
+      name: 'org/flash',
+      loaded: true,
+      running: {
+        resource: 'flash',
+        kind: 'LLMInferenceService',
+        status: 'NotReady',
+        reason: 'MinimumReplicasUnavailable',
+        message:
+          'MinimumReplicasUnavailable Deployment does not have minimum availability.',
+        phase: 'loading',
+        steps,
+      },
+    } as Parameters<typeof toServedModelFromManager>[2]);
+
+  it('shows a serve on its way as Starting, not Not ready', () => {
+    expect(
+      starting([
+        { name: 'scheduling', state: 'done' },
+        { name: 'loading', state: 'inProgress' },
+      ]),
+    ).toMatchObject({
+      readiness: 'starting',
+      readinessMessage: 'LLMInferenceService flash is starting: loading.',
+    });
+  });
+
+  it('keeps a failed step red', () => {
+    expect(starting([{ name: 'loading', state: 'failed' }]).readiness).toBe(
+      'notReady',
+    );
+  });
+});
