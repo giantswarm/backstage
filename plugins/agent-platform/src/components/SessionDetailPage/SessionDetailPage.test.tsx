@@ -21,6 +21,7 @@ import { SessionDetailPage } from './SessionDetailPage';
 
 import {
   sessionDetailV099 as detailV099,
+  tasksClaudeHarness,
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 
@@ -404,6 +405,27 @@ describe('SessionDetailPage', () => {
     expect(screen.getByText('Input tokens (billed)')).toBeInTheDocument();
     expect(screen.getByText('Turns')).toBeInTheDocument();
     expect(screen.getByText('Output tokens')).toBeInTheDocument();
+  });
+
+  it('shows the cost a claude Harness turn reported beside the estimate', async () => {
+    const claudeTasks = normalizeTaskList(tasksClaudeHarness).tasks;
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: buildTimeline(claudeTasks),
+      taskCount: claudeTasks.length,
+    });
+    await render();
+
+    expect(screen.getByText('Est. cost')).toBeInTheDocument();
+    expect(screen.getByText('Reported cost')).toBeInTheDocument();
+    expect(screen.getByText('$0.131')).toBeInTheDocument();
+  });
+
+  it('shows no reported cost when the runtime reports none', async () => {
+    await render();
+
+    expect(screen.getByText('Est. cost')).toBeInTheDocument();
+    expect(screen.queryByText('Reported cost')).not.toBeInTheDocument();
   });
 
   it('shows the start but no last activity or duration', async () => {

@@ -501,6 +501,17 @@ describe('stream recorded on the claude Harness (kagent 1.1)', () => {
       expect.objectContaining({ state: 'completed' }),
     );
   });
+
+  it('reports the cost of the turn on its final status message', () => {
+    const last = events[events.length - 1];
+    const message = (last.status as Wire).message as Wire;
+    expect(readTokenUsage(message.metadata)).toEqual({
+      total: 71338,
+      prompt: 70958,
+      completion: 380,
+      costUsd: 0.13148115,
+    });
+  });
 });
 
 describe('task stored for the claude Harness turn (kagent 1.1)', () => {
