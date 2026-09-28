@@ -141,7 +141,12 @@ describe('buildTimeline', () => {
     // status's message only, which a2a-go never moves into history.
     const { items, tokens } = timelineFor(claudeHarness);
 
-    expect(tokens).toEqual({ total: 71338, prompt: 70958, completion: 380 });
+    expect(tokens).toEqual({
+      total: 71338,
+      prompt: 70958,
+      completion: 380,
+      costUsd: 0.13148115,
+    });
     expect(items.filter(item => item.kind === 'tool-call')).toHaveLength(3);
   });
 
@@ -158,7 +163,24 @@ describe('buildTimeline', () => {
       total: 71338,
       prompt: 70958,
       completion: 380,
+      costUsd: 0.13148115,
     });
+  });
+
+  it('sums the cost each claude Harness turn reports', () => {
+    const [task] = normalizeTaskList(claudeHarness).tasks;
+    const second = structuredClone(task);
+    second.id = 'second';
+    (second.status!.message as { messageId: string }).messageId = 'second';
+
+    expect(buildTimeline([task, second]).tokens.costUsd).toBeCloseTo(
+      2 * 0.13148115,
+      10,
+    );
+  });
+
+  it('reports no cost for a session whose runtime reports none', () => {
+    expect(timelineFor(kagentPrefixed).tokens).not.toHaveProperty('costUsd');
   });
 
   it('groups items by the task they came from', () => {
@@ -495,7 +517,12 @@ describe('buildTimeline', () => {
     it('reads a failed v1 claude Harness turn with its usage', () => {
       const { items, tokens } = timelineFor(claudeHarnessFailed);
 
-      expect(tokens).toEqual({ total: 71338, prompt: 70958, completion: 380 });
+      expect(tokens).toEqual({
+        total: 71338,
+        prompt: 70958,
+        completion: 380,
+        costUsd: 0.13148115,
+      });
       expect(items.at(-1)).toMatchObject({
         kind: 'turn-failed',
         state: 'failed',

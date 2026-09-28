@@ -87,14 +87,14 @@ describe.each(FIXTURES)('token sums agree on %s', (_name, fixture) => {
   const { tasks } = normalizeTaskList(fixture);
 
   it('input and output match the timeline', () => {
-    const timeline = buildTimeline(tasks);
+    const { prompt, completion, total } = buildTimeline(tasks).tokens;
     const usage = reduceSessionUsage(tasks, WIDE);
 
     expect({
       prompt: usage.tally.inputTokens,
       completion: usage.tally.outputTokens,
       total: usage.tally.totalTokens,
-    }).toEqual(timeline.tokens);
+    }).toEqual({ prompt, completion, total });
   });
 
   it('the turn count matches the task count', () => {

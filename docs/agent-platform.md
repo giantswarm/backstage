@@ -1467,7 +1467,8 @@ session's id, and subagent sessions are filtered out of the list anyway.
 
 ### The stats strip
 
-`Turns · Input tokens (billed) · Output tokens · Est. cost`.
+`Turns · Input tokens (billed) · Output tokens · Est. cost`, plus
+`Reported cost` when the agent's runtime reports one.
 
 **Input tokens are labelled "billed" on purpose.** Every model call re-sends the
 whole context, so a 4-turn session with a large tool catalogue reached **1.4M
@@ -1495,6 +1496,13 @@ model mix moves, and reads `—` rather than `$0.00`when nothing in that window
 had a usable price. Two Mimir queries, independent of the session read, so an
 installation with`mimirEnabled: false` loses this stat and keeps the rest of
 the page.
+
+**Reported cost is the runtime's own figure, beside the estimate.** The claude
+Harness puts `costUsd` in the `kagent.dev/a2a/usage` bag of each turn's final
+status message, next to the token counts; the strip sums it over the session's
+turns, deduplicated by message id like the tokens. ADK reports no cost, so a
+session on the platform Harness shows no stat rather than `$0.00`. A turn
+canceled before Claude Code reports usage is not in the sum.
 
 ### Timestamps are absolute here, relative in the list
 
@@ -2967,6 +2975,9 @@ of number, and the UI distinguishes them by name:
   whole table: the installation's blend across every model, because the table
   is a single query and its rows span models. Its footnote says so, and points
   at the session page as the sharper number.
+- **Per session, reported** (the session detail strip, beside Est. cost) —
+  labelled **"Reported cost"**. What the agent's runtime reported for each
+  turn, summed. Only the claude Harness reports one today.
 
 Keep that naming. Calling the gateway's figure an estimate invited doubt about
 a number that is as good as the catalogue, and dropping "Est." from the session
