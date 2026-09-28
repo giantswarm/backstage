@@ -536,6 +536,50 @@ describe('task stored for the claude Harness turn (kagent 1.1)', () => {
   });
 });
 
+describe("a completed task's status message", () => {
+  const message = (id: string, role = 'ROLE_AGENT') => ({
+    messageId: id,
+    role,
+    parts: [{ text: id }],
+  });
+  const ids = (raw: unknown) =>
+    (toWireTask(raw)!.history as Wire[]).map(entry => entry.messageId);
+
+  it('is appended to history last', () => {
+    expect(
+      ids({
+        id: 't',
+        history: [message('U', 'ROLE_USER')],
+        artifacts: [{ artifactId: 'A', parts: [{ text: 'a' }] }],
+        status: { state: 'TASK_STATE_COMPLETED', message: message('S') },
+      }),
+    ).toEqual(['U', 'A', 'S']);
+  });
+
+  it('is not appended twice when history holds it', () => {
+    expect(
+      ids({
+        id: 't',
+        history: [message('U', 'ROLE_USER'), message('S')],
+        status: { state: 'TASK_STATE_COMPLETED', message: message('S') },
+      }),
+    ).toEqual(['U', 'S']);
+  });
+
+  it.each(['TASK_STATE_FAILED', 'TASK_STATE_INPUT_REQUIRED'])(
+    'is left on status alone when the task is %s',
+    state => {
+      expect(
+        ids({
+          id: 't',
+          history: [message('U', 'ROLE_USER')],
+          status: { state, message: message('S') },
+        }),
+      ).toEqual(['U']);
+    },
+  );
+});
+
 describe('history order', () => {
   const at = (iso: string) => ({ 'kagent.dev/a2a/timeline-position': iso });
   const ids = (raw: unknown) =>

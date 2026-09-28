@@ -1,4 +1,4 @@
-import { asRecord } from './record';
+import { asRecord, isRecord } from './record';
 
 const A2A_PREFIX = 'kagent.dev/a2a/';
 
@@ -22,8 +22,8 @@ const TIMELINE_POSITION_KEYS = [
  * own spelling instead, under a **prefixed** key: upstream Google ADK writes
  * `adk_<key>`, kagent's own code writes `kagent_<key>`, and one session can
  * contain every spelling. A reader therefore takes the canonical key first,
- * then `adk_`, then `kagent_`. A key holding `null` or nothing is skipped, so
- * the next spelling still gets its turn.
+ * then `adk_`, then `kagent_`. A key holding `null`, nothing, or a value
+ * `accept` rejects is skipped, so the next spelling still gets its turn.
  *
  * Callers ask for the legacy, unprefixed key (`type`, `usage_metadata`); the
  * canonical name for it comes from {@link CANONICAL_KEYS}.
@@ -43,6 +43,9 @@ const TIMELINE_POSITION_KEYS = [
 export function readKagentMetadata<T = unknown>(
   metadata: unknown,
   key: string,
+  accept: (value: unknown) => value is T = isPresent as (
+    value: unknown,
+  ) => value is T,
 ): T | undefined {
   const bag = asRecord(metadata);
   if (!bag) {
@@ -54,11 +57,31 @@ export function readKagentMetadata<T = unknown>(
     : [`adk_${key}`, `kagent_${key}`];
   for (const candidate of keys) {
     const value = bag[candidate];
-    if (value !== undefined && value !== null) {
-      return value as T;
+    if (accept(value)) {
+      return value;
     }
   }
   return undefined;
+}
+
+function isPresent(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value !== '';
+}
+
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean';
+}
+
+/** `readKagentMetadata`, narrowed to a plain object. */
+export function readKagentMetadataRecord(
+  metadata: unknown,
+  key: string,
+): Record<string, unknown> | undefined {
+  return readKagentMetadata(metadata, key, isRecord);
 }
 
 /** `readKagentMetadata`, narrowed to a non-empty string. */
@@ -66,13 +89,12 @@ export function readKagentMetadataString(
   metadata: unknown,
   key: string,
 ): string | undefined {
-  const value = readKagentMetadata(metadata, key);
-  return typeof value === 'string' && value !== '' ? value : undefined;
+  return readKagentMetadata(metadata, key, isNonEmptyString);
 }
 
 /** `readKagentMetadata`, narrowed to a strict boolean `true`. */
 export function isKagentMetadataFlagSet(metadata: unknown, key: string) {
-  return readKagentMetadata(metadata, key) === true;
+  return readKagentMetadata(metadata, key, isBoolean) === true;
 }
 
 /**
@@ -109,5 +131,5 @@ export function readKagentSubagentUsage(response: unknown): unknown {
   if (!bag) {
     return undefined;
   }
-  return asRecord(bag.usage) ?? readKagentMetadata(bag, 'usage_metadata');
+  return asRecord(bag.usage) ?? readKagentMetadataRecord(bag, 'usage_metadata');
 }

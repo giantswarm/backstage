@@ -22,7 +22,6 @@ import {
   readMessageText,
   readNestedTokenUsage,
   readPartText,
-  readStatusMessageUsage,
   readTokenUsage,
   TokenUsage,
   unwrapProxiedCall,
@@ -230,7 +229,8 @@ function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
  *
  * Gated on the state like the pending prompt, and for the mirror-image reason: on
  * a terminal failure `status.message` is the reason; on a completed task it is the
- * reply, already in history, and reading it here would show it twice.
+ * reply, which history holds (`toWireTask` appends it on the API v2 line), and
+ * reading it here would show it twice.
  *
  * A cancel usually carries no `status.message` at all — a turn stopped four
  * seconds in on a live installation had one history entry, the person's message,
@@ -632,16 +632,6 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
 
       flushText();
     });
-
-    // The claude Harness reports a turn's usage only on the message the task's
-    // status carries, which history does not hold once the task has ended.
-    const statusUsage = readStatusMessageUsage(task.status);
-    if (
-      statusUsage &&
-      !(statusUsage.messageId && seenMessageIds.has(statusUsage.messageId))
-    ) {
-      tokens = addTokenUsage(tokens, statusUsage.usage);
-    }
 
     // Last in its turn: whatever the agent managed to say or do before it ended
     // keeps its place, and the ending closes the turn the way the badge says.

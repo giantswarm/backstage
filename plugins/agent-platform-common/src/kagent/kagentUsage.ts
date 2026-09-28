@@ -12,7 +12,6 @@ import {
   readFunctionCall,
   readFunctionResponse,
   readNestedTokenUsage,
-  readStatusMessageUsage,
   readTokenUsage,
   TokenUsage,
   unwrapProxiedCall,
@@ -152,9 +151,8 @@ function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
  *   the pass anyway, so the response is the only place its cost appears.
  * - **A delegation is not a tool call.** It is registered so its response can be
  *   recognised, and counted in neither `toolCalls` nor `tools`.
- * - **The message a task's status carries is counted** unless history already
- *   holds it: the claude Harness reports a turn's usage only there
- *   (`readStatusMessageUsage`).
+ * - **`task.metadata` usage is not read.** On ADK it is the last model call's,
+ *   already on that call's artifact.
  */
 export function reduceSessionUsage(
   tasks: A2aTaskWire[],
@@ -247,17 +245,6 @@ export function reduceSessionUsage(
         bump(tools, name);
         bump(servers, mcpServerOf(name));
       }
-    }
-
-    const statusUsage = readStatusMessageUsage(task.status);
-    if (
-      statusUsage &&
-      !(statusUsage.messageId && seenMessageIds.has(statusUsage.messageId))
-    ) {
-      if (statusUsage.messageId) {
-        seenMessageIds.add(statusUsage.messageId);
-      }
-      addUsage(turn, statusUsage.usage);
     }
 
     tally.turns += turn.turns;

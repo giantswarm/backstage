@@ -6,7 +6,7 @@ import {
 } from './kagentTaskSchema';
 import {
   isKagentMetadataFlagSet,
-  readKagentMetadata,
+  readKagentMetadataRecord,
   readKagentMetadataString,
   readKagentSubagentUsage,
 } from './kagentMetadata';
@@ -263,29 +263,7 @@ export function isInternalToolName(name: string | undefined): boolean {
  * counts them in the total but in neither part.
  */
 export function readTokenUsage(metadata: unknown): TokenUsage | undefined {
-  return tokenUsageOf(readKagentMetadata(metadata, 'usage_metadata'));
-}
-
-/**
- * The usage on the agent message a task's status carries, with that message's
- * id so a caller can skip it when history already holds the same message.
- *
- * a2a-go moves a status message into `history` only when the next status
- * replaces it, so the message a task ends on stays on `status`. The claude
- * Harness reports a turn's usage there and nowhere else.
- *
- * `task.metadata` carries usage too, on ADK: the last model call's, which is
- * already on that call's artifact. It is deliberately not read.
- */
-export function readStatusMessageUsage(
-  status: unknown,
-): { messageId?: string; usage: TokenUsage } | undefined {
-  const parsed = parseHistoryEntry(asRecord(status)?.message);
-  if (parsed.kind !== 'message' || parsed.message.role === 'user') {
-    return undefined;
-  }
-  const usage = readTokenUsage(parsed.message.metadata);
-  return usage && { messageId: parsed.message.messageId, usage };
+  return tokenUsageOf(readKagentMetadataRecord(metadata, 'usage_metadata'));
 }
 
 /**

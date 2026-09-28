@@ -487,6 +487,10 @@ export function createFakeController(
       user.role = Role.USER;
       user.metadata = { ...message.metadata, [TIMELINE_POSITION_KEY]: stamp() };
       const resumed = clone(TaskSchema, stored.task);
+      // a2a-go moves the status message a new status replaces into history.
+      if (resumed.status?.message) {
+        resumed.history.push(resumed.status.message);
+      }
       resumed.history.push(user);
       resumed.artifacts.push(
         create(ArtifactSchema, {

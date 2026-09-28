@@ -1,6 +1,7 @@
 import {
   isKagentMetadataFlagSet,
   readKagentMetadata,
+  readKagentMetadataRecord,
   readKagentMetadataString,
   readKagentSubagentUsage,
   readKagentTimelinePosition,
@@ -71,7 +72,30 @@ describe('readKagentMetadata', () => {
   );
 });
 
+describe('readKagentMetadataRecord', () => {
+  it('falls back past a canonical value that is not an object', () => {
+    expect(
+      readKagentMetadataRecord(
+        {
+          'kagent.dev/a2a/usage': 'n/a',
+          adk_usage_metadata: { promptTokenCount: 3 },
+        },
+        'usage_metadata',
+      ),
+    ).toEqual({ promptTokenCount: 3 });
+  });
+});
+
 describe('readKagentMetadataString', () => {
+  it('falls back past an empty canonical string', () => {
+    expect(
+      readKagentMetadataString(
+        { 'kagent.dev/a2a/part-type': '', adk_type: 'function_call' },
+        'type',
+      ),
+    ).toBe('function_call');
+  });
+
   it('accepts a non-empty string under either prefix', () => {
     expect(
       readKagentMetadataString({ kagent_type: 'function_call' }, 'type'),

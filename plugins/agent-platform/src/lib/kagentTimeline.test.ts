@@ -137,11 +137,27 @@ describe('buildTimeline', () => {
 
   it("counts a claude Harness turn's usage from the message its status carries", () => {
     // kagent 1.1: the Harness reports the turn's usage on the completed
-    // status's message only, which the gateway never moves into history.
+    // status's message only, which a2a-go never moves into history.
     const { items, tokens } = timelineFor(claudeHarness);
 
     expect(tokens).toEqual({ total: 71338, prompt: 70958, completion: 380 });
     expect(items.filter(item => item.kind === 'tool-call')).toHaveLength(3);
+  });
+
+  it("counts a claude Harness status message once when a later task's history repeats it", () => {
+    const [task] = normalizeTaskList(claudeHarness).tasks;
+    const repeat = {
+      id: 'later',
+      kind: 'task',
+      status: { state: 'completed', timestamp: task.status?.timestamp },
+      history: [task.status!.message],
+    };
+
+    expect(buildTimeline([task, repeat]).tokens).toEqual({
+      total: 71338,
+      prompt: 70958,
+      completion: 380,
+    });
   });
 
   it('groups items by the task they came from', () => {

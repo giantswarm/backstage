@@ -722,6 +722,11 @@ describe('KagentClient against a fake controller', () => {
       });
       // The transcript carries a rendering of the decision when no words were given.
       expect(reply.parts).toEqual([{ text: 'Rejected.' }]);
+      // The request the decision answers stays in history ahead of it.
+      const prompt = resumed.task.history.at(-2)!;
+      expect(
+        (prompt.metadata as Record<string, unknown>)[HITL_EXTENSION_URI],
+      ).toEqual(expect.objectContaining({ type: 'tool_approval_request' }));
       // The reply was routed to the instance and asked for the extension too.
       const send = fake.calls
         .filter(call => call.method === 'SendMessage')

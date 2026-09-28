@@ -445,6 +445,14 @@ function toWireStatus(raw: unknown): Wire | undefined {
   };
 }
 
+function completedAgentMessage(status: Wire | undefined): Wire | undefined {
+  if (status?.state !== 'completed') {
+    return undefined;
+  }
+  const message = asRecord(status.message);
+  return message && message.role !== 'user' ? message : undefined;
+}
+
 /**
  * A v1 task as the legacy-shaped task every reader parses.
  *
@@ -455,6 +463,12 @@ function toWireStatus(raw: unknown): Wire | undefined {
  * sort key is total even when a task mixes stamped and unstamped entries. An
  * artifact whose id also appears in the history is not added twice.
  * `artifacts` is kept too, translated, for anything that wants the raw shape.
+ *
+ * A completed task's agent `status.message` is appended last, unless history
+ * already holds it. a2a-go moves a status message into `history` only when the
+ * next status replaces it, so the message a task ends on stays on `status`;
+ * the claude Harness reports a turn's usage there and nowhere else. The
+ * message stays on `status` as well.
  */
 export function toWireTask(raw: unknown): Wire | undefined {
   const parsed = a2aV1TaskWireSchema.safeParse(raw);
@@ -491,14 +505,20 @@ export function toWireTask(raw: unknown): Wire | undefined {
     return { entry, index, at: lastPosition };
   });
   positioned.sort((a, b) => a.at - b.at || a.index - b.index);
+  const ordered = positioned.map(item => item.entry);
 
   const status = toWireStatus(task.status);
+  const final = completedAgentMessage(status);
+  const finalId = final?.messageId as string | undefined;
+  if (final && !(finalId && seen.has(finalId))) {
+    ordered.push(final);
+  }
   return {
     ...(task.id && { id: task.id }),
     ...(task.contextId && { contextId: task.contextId }),
     kind: 'task',
     ...(status && { status }),
-    history: positioned.map(item => item.entry),
+    history: ordered,
     artifacts: (Array.isArray(task.artifacts) ? task.artifacts : [])
       .map(toWireArtifact)
       .filter((artifact): artifact is Wire => Boolean(artifact)),
