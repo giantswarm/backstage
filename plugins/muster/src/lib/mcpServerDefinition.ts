@@ -23,7 +23,7 @@ import {
   AUTH_MODE_LABELS,
   serverAuthMode,
   type ServerAuthMode,
-} from './serverInventory';
+} from './serverAuthMode';
 
 /**
  * Transports the wizard offers. `stdio` is a CRD option but not a wizard one:
