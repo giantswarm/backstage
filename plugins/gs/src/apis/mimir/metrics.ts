@@ -348,7 +348,7 @@ export const AgentgatewayRequestsTotal = {
 export const AgentgatewayCostCatalogLookupsTotal = {
   name: 'agentgateway_cost_catalog_lookups_total',
   description:
-    'Price-catalogue lookups by `status`: `Exact` (the model is priced), `Unpriced` (in the built-in catalogue of the gateway release or the `llmRouting.modelCatalog` overlay of the platform values, with no rate for a token type), `Missing` (in neither) and `NoCatalog` (none loaded). Anything but `Exact` means the cost figures understate spend; the fix is a gateway release that prices the model, or an overlay entry in the platform values.',
+    'Price-catalogue lookups by `status`: `Exact` (the model is priced), `Unpriced` (in the built-in catalogue of the gateway release or the `llmRouting.modelCatalog` overlay of the platform values, but no rate applies to the call: no `input` or `output` rate, or no tier for its context size), `Missing` (in neither) and `NoCatalog` (none loaded). Anything but `Exact` means the cost figures understate spend; the fix is a gateway release that prices the model, or an overlay entry in the platform values.',
   type: 'counter',
   source: 'agentgateway',
 } as const satisfies PrometheusMetric;

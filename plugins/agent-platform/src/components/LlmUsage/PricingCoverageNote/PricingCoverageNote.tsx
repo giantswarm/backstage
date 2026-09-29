@@ -19,7 +19,7 @@ const useStyles = makeStyles((_theme: Theme) => ({
  */
 const STATUS_MEANING: Record<string, string> = {
   Unpriced:
-    "in agentgateway's built-in catalogue or llmRouting.modelCatalog, but with no rate for a token type",
+    "in agentgateway's built-in catalogue or llmRouting.modelCatalog, but no rate applies to the call (no input or output rate, or no tier for its context size)",
   Missing:
     "in neither agentgateway's built-in catalogue nor llmRouting.modelCatalog",
   NoCatalog: 'no price catalogue is loaded at all',
@@ -130,7 +130,7 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
     <UsageCard
       title="Models with no usable price"
       wide
-      note="Add them to llmRouting.modelCatalog in the platform's Helm values, or upgrade agentgateway to a release whose built-in catalogue prices them. The cost figures above then start counting them."
+      note="Upgrade agentgateway to a release whose built-in catalogue prices them, or add them to llmRouting.modelCatalog in the platform's Helm values. The cost figures above then start counting them."
     >
       <Table<UnpricedModelRow> {...tableProps} columnConfig={columnConfig} />
     </UsageCard>
