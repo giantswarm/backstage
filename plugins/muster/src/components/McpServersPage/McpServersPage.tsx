@@ -283,12 +283,17 @@ export function McpServersPage() {
       />
     );
   } else if (mcpServers.length === 0) {
+    // The endpoint still leads: muster serves its core tools without any
+    // aggregated server behind it.
     body = (
-      <EmptyState
-        missing="data"
-        title="No MCP servers"
-        description="No MCPServer CRs found in this installation. The muster CRDs may not be installed, or the aggregator federates none yet."
-      />
+      <Box className={classes.column}>
+        <MusterSummary servers={mcpServers} />
+        <EmptyState
+          missing="data"
+          title="No MCP servers"
+          description="No MCPServer CRs found in this installation. The muster CRDs may not be installed, or the aggregator federates none yet."
+        />
+      </Box>
     );
   } else {
     body = (

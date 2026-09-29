@@ -278,6 +278,14 @@ describe('McpServersPage', () => {
     expect(
       screen.queryByRole('region', { name: 'Agent Platform' }),
     ).not.toBeInTheDocument();
+    // muster itself is still there to connect to.
+    expect(screen.getByTestId('muster-summary')).toBeInTheDocument();
+  });
+
+  it('leads the server groups with the summary', async () => {
+    await renderPage([makeServer('github')]);
+
+    expect(screen.getByTestId('muster-summary')).toBeInTheDocument();
   });
 
   it('loads rather than claiming there is no muster while the fleet is still answering', async () => {
@@ -299,6 +307,7 @@ describe('McpServersPage', () => {
     await renderPage([], { isLoading: false, activeInstallation: undefined });
 
     expect(screen.getByText('No muster installation')).toBeInTheDocument();
+    expect(screen.queryByTestId('muster-summary')).not.toBeInTheDocument();
     // Not `queryByRole('progressbar')`: the bar carries that role only after
     // its 250ms delay, so it is absent in the loading branch too.
     expect(screen.queryByTestId('progress')).not.toBeInTheDocument();

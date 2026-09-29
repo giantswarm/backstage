@@ -294,6 +294,26 @@ describe('serversHealthSummary', () => {
     expect(serversHealthSummary(fleet(49, 6)).tone).toBe('warning');
   });
 
+  it('counts deactivated servers apart, not as unhealthy', () => {
+    const deactivated = new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'off' },
+        spec: { type: 'streamable-http', suspended: true },
+        status: { state: 'Disconnected' },
+      } as never,
+      'gazelle',
+    );
+    const summary = serversHealthSummary([...fleet(8, 0), deactivated]);
+    expect(summary).toEqual({
+      healthy: 8,
+      total: 8,
+      deactivated: 1,
+      tone: 'ok',
+    });
+  });
+
   it('is ok for an all-healthy or empty fleet', () => {
     expect(serversHealthSummary(fleet(12, 0)).tone).toBe('ok');
     expect(serversHealthSummary([]).tone).toBe('ok');

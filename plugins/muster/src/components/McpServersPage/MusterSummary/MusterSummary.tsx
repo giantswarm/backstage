@@ -1,11 +1,11 @@
-import { useApi } from '@backstage/core-plugin-api';
 import { Flex, Text } from '@backstage/ui';
-import { useQuery } from '@tanstack/react-query';
-import { CopyButton } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../../apis';
-import { MCPServer, serversHealthSummary } from '../../../lib/k8s';
+import { CopyButton, InfoHint } from '@giantswarm/backstage-plugin-ui-react';
 import {
-  isUnreachableSession,
+  MCPServer,
+  SERVERS_HEALTH_WARNING_FRACTION,
+  serversHealthSummary,
+} from '../../../lib/k8s';
+import {
   useMusterInstance,
   useMusterSession,
 } from '../../MusterInstanceProvider';
@@ -14,6 +14,19 @@ export type MusterSummaryProps = {
   servers: MCPServer[];
 };
 
+function healthHint(deactivated: number): string {
+  const threshold = Math.round(SERVERS_HEALTH_WARNING_FRACTION * 100);
+  const lines = [
+    `Healthy: running, connected, or waiting only for someone to sign in. Amber once more than ${threshold}% are not.`,
+  ];
+  if (deactivated > 0) {
+    lines.push(
+      `${deactivated} deactivated ${deactivated === 1 ? 'server is' : 'servers are'} not counted.`,
+    );
+  }
+  return lines.join('\n');
+}
+
 /**
  * The installation's muster at a glance, above the server list: the endpoint
  * an MCP client connects to, and the totals the list itself does not add up.
@@ -21,21 +34,17 @@ export type MusterSummaryProps = {
  */
 export function MusterSummary({ servers }: MusterSummaryProps) {
   const { activeInstallation, activeInstallationInfo } = useMusterInstance();
-  const musterApi = useApi(musterApiRef);
-  const session = useMusterSession();
+  const { toolCount, toolCountPending } = useMusterSession();
 
-  // Same key and call as the session probe, so react-query serves both from
-  // one round-trip.
-  const { data: overview } = useQuery({
-    queryKey: ['muster', 'overview', activeInstallation],
-    queryFn: () =>
-      musterApi.filterTools({ installation: activeInstallation, limit: 1 }),
-    enabled: Boolean(activeInstallation) && !isUnreachableSession(session),
-  });
-  const toolCount = session.authenticated ? overview?.total : undefined;
-
-  const { healthy, total, tone } = serversHealthSummary(servers);
+  const { healthy, total, deactivated, tone } = serversHealthSummary(servers);
   const endpoint = activeInstallationInfo?.endpoint;
+
+  let tools = '';
+  if (toolCountPending) {
+    tools = ' · … tools';
+  } else if (toolCount !== undefined) {
+    tools = ` · ${toolCount} ${toolCount === 1 ? 'tool' : 'tools'}`;
+  }
 
   return (
     <Flex direction="column" gap="1" mb="4">
@@ -59,18 +68,22 @@ export function MusterSummary({ servers }: MusterSummaryProps) {
           </Text>
         )}
       </Flex>
-      <Text variant="body-medium" color="secondary">
-        {total} {total === 1 ? 'server' : 'servers'} ·{' '}
-        <Text
-          as="span"
-          variant="body-medium"
-          color={tone === 'warning' ? 'warning' : 'secondary'}
-        >
-          {healthy} healthy
+      <Flex align="center" gap="1">
+        <Text variant="body-medium" color="secondary">
+          {total} {total === 1 ? 'server' : 'servers'} ·{' '}
+          <Text
+            as="span"
+            variant="body-medium"
+            color={tone === 'warning' ? 'warning' : 'secondary'}
+          >
+            {healthy} healthy
+          </Text>
+          {tools}
         </Text>
-        {toolCount !== undefined &&
-          ` · ${toolCount} ${toolCount === 1 ? 'tool' : 'tools'}`}
-      </Text>
+        <InfoHint label="How healthy servers are counted" size="medium">
+          {healthHint(deactivated)}
+        </InfoHint>
+      </Flex>
     </Flex>
   );
 }

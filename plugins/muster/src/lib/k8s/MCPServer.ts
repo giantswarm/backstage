@@ -455,26 +455,33 @@ export const SERVERS_HEALTH_WARNING_FRACTION = 0.1;
 
 export interface ServersHealthSummary {
   healthy: number;
+  /** The servers the health is measured over: every one not deactivated. */
   total: number;
+  /** Servers left out of `total` because they are deactivated on purpose. */
+  deactivated: number;
   tone: 'ok' | 'warning';
 }
 
 /**
  * Counts how many aggregated servers are healthy (severity `ok`, which includes
  * `Auth Required`) and decides the Servers view's count tone via
- * {@link SERVERS_HEALTH_WARNING_FRACTION}.
+ * {@link SERVERS_HEALTH_WARNING_FRACTION}. Deactivated servers
+ * (`spec.suspended`) read `Disconnected` by design, so they are counted apart
+ * rather than as unhealthy.
  */
 export function serversHealthSummary(
-  servers: Pick<MCPServer, 'getState'>[],
+  servers: Pick<MCPServer, 'getState' | 'getSuspended'>[],
 ): ServersHealthSummary {
-  const total = servers.length;
-  const healthy = servers.filter(
+  const active = servers.filter(s => !s.getSuspended());
+  const total = active.length;
+  const healthy = active.filter(
     s => mcpServerStateSeverity(s.getState()) === 'ok',
   ).length;
   const unhealthyFraction = total === 0 ? 0 : (total - healthy) / total;
   return {
     healthy,
     total,
+    deactivated: servers.length - total,
     tone:
       unhealthyFraction > SERVERS_HEALTH_WARNING_FRACTION ? 'warning' : 'ok',
   };
