@@ -10,12 +10,15 @@ import type {
 } from '@backstage/plugin-catalog-node';
 import type { LocationSpec } from '@backstage/plugin-catalog-common';
 import { NotFoundError } from '@backstage/errors';
-import semver from 'semver';
+import { Version } from '@giantswarm/semver-ts';
 import {
   type ContainerRegistryService,
   containerRegistryServiceRef,
 } from '@giantswarm/backstage-plugin-gs-node';
-import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  isStableVersion,
+  parseChartRef,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { isTransientError, readErrorInfo } from '../util/errors';
 
 const HELMCHARTS_ANNOTATION = 'giantswarm.io/helmcharts';
@@ -169,10 +172,7 @@ export class LatestOciReleaseProcessor implements CatalogProcessor {
       ref.repository,
       { limit: TAGS_FETCH_LIMIT },
     );
-    const stable = result.tags.find(t => {
-      const parsed = semver.parse(t.tag);
-      return parsed !== null && parsed.prerelease.length === 0;
-    });
+    const stable = result.tags.find(t => isStableVersion(t.tag));
     if (!stable) {
       this.logger.debug(
         `LatestOciReleaseProcessor: no stable release found for ${ref.registry}/${ref.repository} within the latest ${TAGS_FETCH_LIMIT} tags, skipping`,
@@ -209,7 +209,7 @@ function pickHighestSemver(
       best = candidate;
       continue;
     }
-    if (semver.rcompare(candidate.tag, best.tag) < 0) {
+    if (Version.parse(candidate.tag).gt(Version.parse(best.tag))) {
       best = candidate;
     }
   }

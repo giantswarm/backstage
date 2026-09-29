@@ -89,7 +89,7 @@ export class ContainerRegistryService {
    * @param registry - The registry host (e.g., ghcr.io, docker.io, gsoci.azurecr.io)
    * @param repository - The repository path (e.g., giantswarm/my-app)
    * @param options - Optional configuration
-   * @param options.limit - Maximum number of tags to fetch (only supported for ACR)
+   * @param options.limit - Maximum number of tags to fetch (default: all). ACR returns the most recent ones; other registries list tags in lexical order.
    * @returns Object containing tags and the latest stable version
    */
   async getTags(
@@ -108,7 +108,11 @@ export class ContainerRegistryService {
       tags = await this.acrClient.getTags(registry, repository, options);
     } else {
       // OCI returns tags without createdAt, add null createdAt
-      const ociTags = await this.ociClient.getTags(registry, repository);
+      const ociTags = await this.ociClient.getTags(
+        registry,
+        repository,
+        options,
+      );
       tags = ociTags.map(t => ({ tag: t.tag, createdAt: null }));
     }
 
