@@ -48,8 +48,9 @@ grows the heap lazily into whatever the cgroup allows. Keep an override of
 `resources.limits.memory` at `1Gi` or above; a lower limit shrinks the heap
 but not the native footprint, and the sum is what the kernel enforces. Setting
 `NODE_OPTIONS=--max-old-space-size` is not needed for the default, because the
-heap already follows the limit; it would also have to repeat the image's
-`--no-node-snapshot`, which the scaffolder needs.
+heap already follows the limit; it would also replace the image's
+`NODE_OPTIONS`, so it has to repeat `--require /app/instrumentation.js` to
+keep tracing.
 
 ## Secret values
 

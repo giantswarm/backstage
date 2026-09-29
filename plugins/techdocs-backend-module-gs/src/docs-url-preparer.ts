@@ -197,7 +197,6 @@ export class DocsUrlPreparer implements PreparerBase {
         site_name: entity.metadata.name,
         edit_uri: getEditURI(entity),
         nav: getNavigationItems(mdFiles, docsComponentName),
-        plugins: ['monorepo'],
       };
 
       fs.writeFileSync(`${root}/mkdocs.yaml`, dump(mkdocs));
