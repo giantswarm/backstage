@@ -22,13 +22,14 @@ export function describeFit(fit: ModelManagerFitResult): string {
   if (fit.downloadBytes) {
     parts.push(`Download ${formatBytes(fit.downloadBytes)}`);
   }
-  const splitWays =
-    fit.placement === 'split' && fit.nodes && fit.nodes.length > 1
-      ? fit.nodes.length
-      : undefined;
+  // Several nodes: a split's share, or a whole copy, on each of them.
+  const perNode =
+    fit.nodes && fit.nodes.length > 1 ? fit.nodes.length : undefined;
+  const splitWays = fit.placement === 'split' ? perNode : undefined;
   if (fit.requiredBytes !== undefined) {
     // A split's requirement is per node: its share of the weights and the
-    // headroom (model-manager reports the whole model's weights).
+    // headroom (model-manager reports the whole model's weights); a copy's
+    // is the whole model on each node.
     const weights =
       fit.weightsBytes !== undefined
         ? `${formatBytes(fit.weightsBytes)} of weights${
@@ -41,7 +42,7 @@ export function describeFit(fit: ModelManagerFitResult): string {
         : '';
     parts.push(
       `needs ${formatBytes(fit.requiredBytes)}${
-        splitWays ? ` on each of ${splitWays} nodes` : ''
+        perNode ? ` on each of ${perNode} nodes` : ''
       }${breakdown}`,
     );
   }
@@ -102,6 +103,11 @@ export function describeSplit(nodes: string[] | undefined): string {
   return `Split across ${listNames(nodes)}`;
 }
 
+/** "2 copies on A and B", the words for copies on several nodes. */
+export function describeCopies(nodes: string[]): string {
+  return `${nodes.length} copies on ${listNames(nodes)}`;
+}
+
 /**
  * What the Serve request pins a copy to: the node the person chose, or none
  * — then the nodes any of which it may land on, when they are known.
@@ -128,6 +134,9 @@ function describeWhere(
     return fit.fastLink
       ? `— ${where} (fast link ${fit.fastLink})`
       : `— ${where}`;
+  }
+  if (fit.nodes && fit.nodes.length > 1) {
+    return `as ${describeCopies(fit.nodes)}`;
   }
   if (fit.instanceType) {
     return `— the node comes as ${fit.instanceType}`;
@@ -181,18 +190,30 @@ function describeSplitChoice(
     : undefined;
 }
 
+/** The copies choice in words: one copy anywhere, on a node, or one on each. */
+function copiesLabel(nodes: string[]): string {
+  if (nodes.length === 0) {
+    return 'One copy';
+  }
+  if (nodes.length === 1) {
+    return `One copy on ${nodes[0]}`;
+  }
+  return `${describeCopies(nodes)} — more people served at once`;
+}
+
 /**
  * The placement choice of the Serve dialog from the default fit (copies,
  * carrying model-manager's recommendation) and the split fit: none when the
  * backend recommends nothing (no placement before model-manager#190, or a
  * host backend). Split is offered only when it fits, else disabled with
- * model-manager's reason.
+ * model-manager's reason. Copies go on the nodes the person ticked — one
+ * each — or, none ticked, one copy on a node that fits.
  */
 export function placementChoices(
   copies: ModelManagerFitResult | undefined,
   split: ModelManagerFitResult | undefined,
-  /** The node the person pinned the copy to, if any. */
-  node?: string,
+  /** The nodes the person ticked for the copies, if any. */
+  nodes: string[] = [],
 ): PlacementChoice[] | undefined {
   const recommended = copies?.recommended;
   if (!recommended) {
@@ -213,17 +234,15 @@ export function placementChoices(
     },
     {
       id: 'copies',
-      label: node ? `One copy on ${node}` : 'One copy',
+      label: copiesLabel(nodes),
       recommended: recommended === 'copies',
-      disabled: copies?.fits !== true,
+      // Ticked nodes are each judged already (the Nodes field).
+      disabled: nodes.length === 0 && copies?.fits !== true,
     },
   ];
 }
 
-/** The Node field's first option: model-manager and the scheduler pick. */
-export const ANY_NODE = 'any';
-
-/** One option of the Serve dialog's Node field. */
+/** One option of the Serve dialog's Nodes field. */
 export type NodeChoice = {
   id: string;
   label: string;
@@ -288,42 +307,39 @@ function whyNotOn(
 }
 
 /**
- * The Node field: "Any node that fits", then each candidate with its free
- * budget — or, disabled, why the preset cannot land there. `fits` is
- * `check_fit` pinned to each node; a node still being judged is offered.
+ * The Nodes field: each candidate with its free budget — or, disabled, why
+ * the preset cannot land there. `fits` is `check_fit` pinned to each node; a
+ * node still being judged is offered.
  */
 export function nodeChoices(
   nodes: ModelManagerNode[],
   fits: Record<string, ModelManagerFitResult | undefined>,
   options: { modelImage: boolean; prePulledNodes?: string[] },
 ): NodeChoice[] {
-  return [
-    { id: ANY_NODE, label: 'Any node that fits', disabled: false },
-    ...nodes.map(node => {
-      const why = whyNotOn(node, fits[node.name], options.modelImage);
-      if (why) {
-        return {
-          id: node.name,
-          label: node.name,
-          description: why,
-          disabled: true,
-        };
-      }
-      const free =
-        node.freeBytes !== undefined && node.budgetBytes !== undefined
-          ? `${formatBytes(node.freeBytes)} free of ${formatBytes(node.budgetBytes)}`
-          : undefined;
-      const pulled = options.prePulledNodes?.includes(node.name)
-        ? 'model image pulled'
-        : undefined;
+  return nodes.map(node => {
+    const why = whyNotOn(node, fits[node.name], options.modelImage);
+    if (why) {
       return {
         id: node.name,
         label: node.name,
-        description: [free, pulled].filter(Boolean).join(' · ') || undefined,
-        disabled: false,
+        description: why,
+        disabled: true,
       };
-    }),
-  ];
+    }
+    const free =
+      node.freeBytes !== undefined && node.budgetBytes !== undefined
+        ? `${formatBytes(node.freeBytes)} free of ${formatBytes(node.budgetBytes)}`
+        : undefined;
+    const pulled = options.prePulledNodes?.includes(node.name)
+      ? 'model image pulled'
+      : undefined;
+    return {
+      id: node.name,
+      label: node.name,
+      description: [free, pulled].filter(Boolean).join(' · ') || undefined,
+      disabled: false,
+    };
+  });
 }
 
 /** The step under way (or the one that failed), first in order; none once every step is done. */
@@ -402,7 +418,8 @@ export function servedPresetRow(
 /** Where a served row runs, in words: `Serving on gpu-a`, `Stopping on gpu-a`. */
 export function describeServedWhere(row: ServedModel): string {
   const verb = row.readiness === 'terminating' ? 'Stopping' : 'Serving';
-  const nodes = row.splitNodes?.length ? row.splitNodes.join(', ') : row.node;
+  const several = row.splitNodes ?? row.copyNodes;
+  const nodes = several?.length ? several.join(', ') : row.node;
   return nodes ? `${verb} on ${nodes}` : `${verb} already`;
 }
 

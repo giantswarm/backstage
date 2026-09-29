@@ -32,7 +32,7 @@ import {
   type ServingBackend,
 } from '../../lib/serving';
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
-import { describeSplit } from '../../lib/modelManagerServe';
+import { describeCopies, describeSplit } from '../../lib/modelManagerServe';
 import { interfaceLabel, sortInterfaces } from '../../lib/servedModelApi';
 import { ServedReadinessLabel } from '../ModelServingStatus';
 import { CopyEndpointButton } from './ServedModelsGroupHeader';
@@ -149,7 +149,7 @@ export function sortServedModelsBy(
       case 'runtime':
         return row.runtime ?? '';
       case 'node':
-        return row.splitNodes?.join(',') ?? row.node ?? '';
+        return (row.splitNodes ?? row.copyNodes)?.join(',') ?? row.node ?? '';
       case 'gpuCount':
         return String(row.gpuCount ?? -1).padStart(6, '0');
       default:
@@ -306,11 +306,34 @@ export type ServedModelColumns = {
   api: boolean;
 };
 
+/** The Node cell of a model on several nodes: a split's, or its copies'. */
+function SeveralNodesCell({ row }: { row: ServedModelRow }) {
+  const nodes = row.splitNodes ?? row.copyNodes ?? [];
+  return (
+    <Cell>
+      <Text
+        as="p"
+        variant="body-medium"
+        truncate
+        title={row.splitNodes ? describeSplit(nodes) : describeCopies(nodes)}
+      >
+        {nodes.join(', ')}
+      </Text>
+      <Text variant="body-small" color="secondary">
+        {row.splitNodes ? 'split' : `${nodes.length} copies`}
+      </Text>
+    </Cell>
+  );
+}
+
 /** Derive the optional columns from what the rows carry. */
 export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
   return {
     placement: rows.some(
-      row => row.node !== undefined || row.splitNodes !== undefined,
+      row =>
+        row.node !== undefined ||
+        row.splitNodes !== undefined ||
+        row.copyNodes !== undefined,
     ),
     model: rows.some(
       row => row.modelSource !== undefined && row.modelSource !== row.name,
@@ -909,20 +932,8 @@ function getColumnConfig(
         label: 'Node',
         isSortable: true,
         cell: row =>
-          row.splitNodes ? (
-            <Cell>
-              <Text
-                as="p"
-                variant="body-medium"
-                truncate
-                title={describeSplit(row.splitNodes)}
-              >
-                {row.splitNodes.join(', ')}
-              </Text>
-              <Text variant="body-small" color="secondary">
-                split
-              </Text>
-            </Cell>
+          row.splitNodes || row.copyNodes ? (
+            <SeveralNodesCell row={row} />
           ) : (
             <Cell>
               <Text
