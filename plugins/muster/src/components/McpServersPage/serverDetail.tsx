@@ -10,6 +10,7 @@ import { musterApiRef } from '../../apis';
 import {
   DEACTIVATED_LABEL,
   MCPServer,
+  type MCPServerAuth,
   mcpServerStateSeverity,
 } from '../../lib/k8s';
 import {
@@ -166,6 +167,23 @@ export function ServerConfig({ server }: { server: MCPServer }) {
 }
 
 /**
+ * `auth.type` as muster reads it. The CRD defaults it to `none`, which a
+ * forwarded or exchanged token overrides: muster treats both as OAuth.
+ */
+function authTypeLabel(auth: MCPServerAuth): string {
+  if (auth.type && auth.type !== 'none') {
+    return auth.type;
+  }
+  if (auth.tokenExchange?.enabled) {
+    return 'oauth (implied by token exchange)';
+  }
+  if (auth.forwardToken) {
+    return 'oauth (implied by the forwarded token)';
+  }
+  return 'none';
+}
+
+/**
  * The per-server auth/token chain recovered from `spec.auth`.
  *
  * The sign-in/sign-out affordance deliberately lives in the disclosures'
@@ -184,13 +202,7 @@ export function AuthChain({ server }: { server: MCPServer }) {
 
   const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
 
-  const facts: Fact[] = [
-    // No `type` with a forwarded token: muster treats that as OAuth.
-    {
-      label: 'Type',
-      value: auth.type ?? 'oauth (implied by the forwarded token)',
-    },
-  ];
+  const facts: Fact[] = [{ label: 'Type', value: authTypeLabel(auth) }];
   if (sigv4) {
     facts.push(
       { label: 'Signing region', value: <Mono>{sigv4.region}</Mono> },

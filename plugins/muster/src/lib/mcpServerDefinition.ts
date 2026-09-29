@@ -666,31 +666,52 @@ const WIZARD_AUTH_MODES: Partial<Record<ServerAuthMode, McpServerAuthMode>> = {
 };
 
 /**
- * The `spec.auth` keys each wizard answer composes (see `composeAuth`), and
- * the `type` values it reads as that answer. A key outside its own answer —
- * `tokenExchange` (even disabled), `localMint`, `requiredAudiences` on an OAuth
- * sign-in, an authorization server on an anonymous server — has no field in
- * the wizard, so an edit there would silently drop the setting.
+ * The `spec.auth` keys each wizard answer composes (see `composeAuth`). A key
+ * outside its own answer — `tokenExchange` (even disabled), `forwardIdentity`,
+ * `requiredAudiences` on an OAuth sign-in, an authorization server on an
+ * anonymous server — has no field in the wizard, so an edit there would
+ * silently drop the setting. Which answer a server gets is
+ * {@link serverAuthMode}'s decision, so the `type` needs no check here.
  */
-const WIZARD_AUTH_SHAPES: Record<
-  McpServerAuthMode,
-  { keys: string[]; types: (MCPServerAuth['type'] | undefined)[] }
-> = {
-  none: { keys: ['type'], types: [undefined, 'none'] },
-  'own-account': { keys: ['type', 'authorizationServer'], types: ['oauth'] },
+const WIZARD_AUTH_KEYS: Record<McpServerAuthMode, string[]> = {
+  none: [],
+  'own-account': ['type', 'authorizationServer'],
   // forwardToken implies OAuth in muster, so an explicit `type: oauth` is the
   // same server and composing it without one keeps it.
-  'platform-sso': {
-    keys: ['type', 'forwardToken', 'requiredAudiences'],
-    types: [undefined, 'oauth'],
-  },
-  sigv4: { keys: ['type', 'sigv4'], types: ['sigv4'] },
+  'platform-sso': ['type', 'forwardToken', 'requiredAudiences'],
+  sigv4: ['type', 'sigv4'],
 };
 const WIZARD_AUTHORIZATION_SERVER_KEYS = ['issuer', 'scopes'];
 const WIZARD_SIGV4_KEYS = ['region', 'service', 'roleArn'];
 
-function onlyKeys(value: object | undefined, allowed: string[]): boolean {
-  return Object.keys(value ?? {}).every(key => allowed.includes(key));
+/**
+ * `auth` without the values the CRD defaults (`type: none`, `forwardToken:
+ * false`, `forwardIdentity: false`). A server read back from the cluster
+ * carries them whatever it was created with, and they mean the same as the
+ * key being absent.
+ */
+function withoutCrdDefaults(auth: MCPServerAuth): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...auth };
+  if (rest.type === 'none') {
+    delete rest.type;
+  }
+  for (const flag of ['forwardToken', 'forwardIdentity']) {
+    if (rest[flag] === false) {
+      delete rest[flag];
+    }
+  }
+  return rest;
+}
+
+/** The keys of `value` outside `allowed`, prefixed with `path`. */
+function extraKeys(
+  value: object | undefined,
+  allowed: string[],
+  path = '',
+): string[] {
+  return Object.keys(value ?? {})
+    .filter(key => !allowed.includes(key))
+    .map(key => `${path}${key}`);
 }
 
 /** `label` inside a sentence: only the first letter lowercased, not SSO or AWS. */
@@ -708,9 +729,9 @@ const EDIT_AS_JSON_HINT = 'Use “Edit as JSON” to change its definition.';
  * Why a registered server cannot be edited through the wizard, or undefined
  * when it can. The wizard only speaks the remote transports (a `stdio` server
  * runs a local process next to muster) and its own four auth answers: a server
- * using token exchange, local minting or any other auth setting the wizard has
- * no field for would be pre-filled with an answer that is not what it does,
- * and saving would drop the setting.
+ * using token exchange or any other auth setting the wizard has no field for
+ * would be pre-filled with an answer that is not what it does, and saving
+ * would drop the setting.
  */
 export function wizardEditBlocker(server: MCPServer): string | undefined {
   const type = server.getType();
@@ -723,14 +744,19 @@ export function wizardEditBlocker(server: MCPServer): string | undefined {
     return `This server uses ${inSentence(AUTH_MODE_LABELS[mode])}, which the registration wizard does not offer. ${EDIT_AS_JSON_HINT}`;
   }
   const auth = server.getAuth();
-  const shape = WIZARD_AUTH_SHAPES[answer];
-  if (
-    !shape.types.includes(auth?.type) ||
-    !onlyKeys(auth, shape.keys) ||
-    !onlyKeys(auth?.authorizationServer, WIZARD_AUTHORIZATION_SERVER_KEYS) ||
-    !onlyKeys(auth?.sigv4, WIZARD_SIGV4_KEYS)
-  ) {
-    return `This server has authentication settings the registration wizard cannot show or keep (such as token exchange or local token minting). ${EDIT_AS_JSON_HINT}`;
+  const unsupported = auth
+    ? [
+        ...extraKeys(withoutCrdDefaults(auth), WIZARD_AUTH_KEYS[answer]),
+        ...extraKeys(
+          auth.authorizationServer,
+          WIZARD_AUTHORIZATION_SERVER_KEYS,
+          'authorizationServer.',
+        ),
+        ...extraKeys(auth.sigv4, WIZARD_SIGV4_KEYS, 'sigv4.'),
+      ]
+    : [];
+  if (unsupported.length > 0) {
+    return `This server has authentication settings the registration wizard cannot show or keep: ${unsupported.join(', ')}. ${EDIT_AS_JSON_HINT}`;
   }
   return undefined;
 }

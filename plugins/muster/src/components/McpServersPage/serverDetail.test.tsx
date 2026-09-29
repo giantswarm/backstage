@@ -170,30 +170,45 @@ describe('AuthChain', () => {
   });
 
   it.each([
-    ['a forwarded token', { forwardToken: true, requiredAudiences: ['k'] }],
+    [
+      'a forwarded token',
+      { forwardToken: true, requiredAudiences: ['k'] },
+      'oauth (implied by the forwarded token)',
+    ],
     [
       'token exchange',
       {
         forwardToken: true,
         tokenExchange: { enabled: true, connectorId: 'giantswarm' },
       },
+      'oauth (implied by token exchange)',
     ],
-  ])(
-    'shows the chain of a server with %s and no type, which the wizard writes',
-    async (_, auth) => {
-      await renderInTestApp(
-        <AuthChain server={makeServer({ type: 'streamable-http', auth })} />,
+    [
+      'token exchange and no forwarded token',
+      { tokenExchange: { enabled: true, connectorId: 'giantswarm' } },
+      'oauth (implied by token exchange)',
+    ],
+  ])('shows the chain of a server with %s', async (_, auth, type) => {
+    // Without `type`, as the wizard writes it, and with the `type: none` and
+    // `forwardToken: false` defaults the cluster returns it with.
+    for (const stored of [
+      auth,
+      { type: 'none', forwardToken: false, ...auth },
+    ]) {
+      const { unmount } = await renderInTestApp(
+        <AuthChain
+          server={makeServer({ type: 'streamable-http', auth: stored })}
+        />,
       );
 
       expect(
         screen.queryByText(/No authentication configured/),
       ).not.toBeInTheDocument();
-      expect(
-        screen.getByText('oauth (implied by the forwarded token)'),
-      ).toBeInTheDocument();
+      expect(screen.getByText(type)).toBeInTheDocument();
       expect(screen.getByText('Forward token')).toBeInTheDocument();
-    },
-  );
+      unmount();
+    }
+  });
 
   it('says a server without an auth block is anonymous', async () => {
     await renderInTestApp(
