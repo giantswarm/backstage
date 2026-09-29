@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
   Alert,
@@ -11,7 +11,11 @@ import {
   Text,
   TextAreaField,
 } from '@backstage/ui';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ALERT_MESSAGE_STYLE,
+  ConfirmDialog,
+  useOnDialogOpen,
+} from '@giantswarm/backstage-plugin-ui-react';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import PlayArrow from '@material-ui/icons/PlayArrow';
@@ -87,12 +91,12 @@ function ConfirmActionDialog({
   const [error, setError] = useState<string | undefined>();
   const [done, setDone] = useState(false);
 
-  const handleClose = () => {
+  // Reset on open, not on close: the dialog keeps rendering while it fades
+  // out, and `action` stays set for that reason too.
+  useOnDialogOpen(open, () => {
     setError(undefined);
     setDone(false);
-    setBusy(false);
-    onClose();
-  };
+  });
 
   const run = async () => {
     if (!action) {
@@ -117,10 +121,9 @@ function ConfirmActionDialog({
   return (
     <ConfirmDialog
       isOpen={open}
-      // DialogHeader's close button bypasses ConfirmDialog's busy lock.
       onOpenChange={next => {
-        if (!next && !busy) {
-          handleClose();
+        if (!next) {
+          onClose();
         }
       }}
       title={action?.label ?? ''}
@@ -193,23 +196,19 @@ export function AdHocServerDialog({
   const [error, setError] = useState<string | undefined>();
   const [message, setMessage] = useState<string | undefined>();
 
-  // Seeded on the closed → open transition only: `server` is polled, and
-  // re-seeding on every refetch would overwrite what the user is typing.
-  const wasOpen = useRef(false);
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      setValue(
-        JSON.stringify(
-          server ? toMcpServerDefinition(server) : NEW_SERVER_TEMPLATE,
-          null,
-          2,
-        ),
-      );
-      setError(undefined);
-      setMessage(undefined);
-    }
-    wasOpen.current = open;
-  }, [open, server]);
+  // Seeded on open only: `server` is polled, and re-seeding on every refetch
+  // would overwrite what the user is typing.
+  useOnDialogOpen(open, () => {
+    setValue(
+      JSON.stringify(
+        server ? toMcpServerDefinition(server) : NEW_SERVER_TEMPLATE,
+        null,
+        2,
+      ),
+    );
+    setError(undefined);
+    setMessage(undefined);
+  });
 
   const parsed = (): Record<string, unknown> | undefined => {
     try {
@@ -291,7 +290,12 @@ export function AdHocServerDialog({
             value={value}
             onChange={setValue}
           />
-          {error && <Alert status="danger" description={error} />}
+          {error && (
+            <Alert
+              status="danger"
+              description={<span style={ALERT_MESSAGE_STYLE}>{error}</span>}
+            />
+          )}
           {message && <Alert status="success" description={message} />}
         </Flex>
       </DialogBody>
@@ -455,6 +459,11 @@ export function ServerMutationActions({
   const editBlocker = wizardEditBlocker(server);
   const [jsonEditOpen, setJsonEditOpen] = useState(false);
   const [action, setAction] = useState<LiveAction | undefined>();
+  const [actionOpen, setActionOpen] = useState(false);
+  const openAction = (next: LiveAction) => {
+    setAction(next);
+    setActionOpen(true);
+  };
 
   if (managed) {
     return (
@@ -502,7 +511,7 @@ export function ServerMutationActions({
           variant="secondary"
           iconStart={<PlayArrow fontSize="inherit" />}
           onPress={() =>
-            setAction({
+            openAction({
               label: `Activate ${server.getName()}`,
               tool: 'core_service_start',
               args: { name: server.getName() },
@@ -520,7 +529,7 @@ export function ServerMutationActions({
             variant="secondary"
             iconStart={<Stop fontSize="inherit" />}
             onPress={() =>
-              setAction({
+              openAction({
                 label: `Deactivate ${server.getName()}`,
                 tool: 'core_service_stop',
                 args: { name: server.getName() },
@@ -536,7 +545,7 @@ export function ServerMutationActions({
             icon={<Replay fontSize="inherit" />}
             gateReason={reconnectGate}
             onClick={() =>
-              setAction({
+              openAction({
                 label: `Reconnect ${server.getName()}`,
                 tool: 'core_service_restart',
                 args: { name: server.getName() },
@@ -553,7 +562,7 @@ export function ServerMutationActions({
         destructive
         iconStart={<DeleteOutline fontSize="inherit" />}
         onPress={() =>
-          setAction({
+          openAction({
             label: `Delete ${server.getName()}`,
             tool: 'core_mcpserver_delete',
             args: { name: server.getName() },
@@ -574,8 +583,8 @@ export function ServerMutationActions({
       <ConfirmActionDialog
         server={server}
         action={action}
-        open={action !== undefined}
-        onClose={() => setAction(undefined)}
+        open={actionOpen}
+        onClose={() => setActionOpen(false)}
       />
     </Flex>
   );

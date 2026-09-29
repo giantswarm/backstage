@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { CSSProperties, ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -8,6 +8,16 @@ import {
   DialogHeader,
   Flex,
 } from '@backstage/ui';
+
+/**
+ * For an error message inside a bui `Alert`, which neither keeps line breaks
+ * nor breaks long words: backend messages come with both (a list of problems,
+ * a URL).
+ */
+export const ALERT_MESSAGE_STYLE: CSSProperties = {
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+};
 
 export type ConfirmDialogProps = {
   isOpen: boolean;
@@ -83,7 +93,12 @@ export function ConfirmDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
+      // Gated here as well: DialogHeader's close button ignores isDismissable.
+      onOpenChange={next => {
+        if (next || !isBusy) {
+          onOpenChange(next);
+        }
+      }}
       isDismissable={!isBusy}
       isKeyboardDismissDisabled={isBusy}
       width={width}
@@ -92,7 +107,12 @@ export function ConfirmDialog({
       <DialogBody>
         <Flex direction="column" gap="3">
           {children}
-          {error ? <Alert status="danger" description={error} /> : null}
+          {error ? (
+            <Alert
+              status="danger"
+              description={<span style={ALERT_MESSAGE_STYLE}>{error}</span>}
+            />
+          ) : null}
         </Flex>
       </DialogBody>
       <DialogFooter>

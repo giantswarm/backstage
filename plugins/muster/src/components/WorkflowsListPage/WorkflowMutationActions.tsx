@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { dump, load } from 'js-yaml';
 import {
   Alert,
@@ -13,11 +13,15 @@ import {
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import Add from '@material-ui/icons/Add';
+// MUI's Tooltip, not bui's: a disabled bui Button fires neither hover nor
+// focus, so a react-aria tooltip could not explain why it is disabled.
 import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
 import {
+  ALERT_MESSAGE_STYLE,
   ConfirmDialog,
   GitOpsManagedLabel,
+  useOnDialogOpen,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
@@ -120,12 +124,11 @@ function ConfirmDeleteDialog({
   const [error, setError] = useState<string | undefined>();
   const [done, setDone] = useState(false);
 
-  const handleClose = () => {
+  // Reset on open, not on close: the dialog keeps rendering while it fades out.
+  useOnDialogOpen(open, () => {
     setError(undefined);
     setDone(false);
-    setBusy(false);
-    onClose();
-  };
+  });
 
   const run = async () => {
     setBusy(true);
@@ -152,10 +155,9 @@ function ConfirmDeleteDialog({
   return (
     <ConfirmDialog
       isOpen={open}
-      // DialogHeader's close button bypasses ConfirmDialog's busy lock.
       onOpenChange={next => {
-        if (!next && !busy) {
-          handleClose();
+        if (!next) {
+          onClose();
         }
       }}
       title={`Delete ${workflow.getName()}`}
@@ -214,22 +216,18 @@ export function AdHocWorkflowDialog({
   const [error, setError] = useState<string | undefined>();
   const [message, setMessage] = useState<string | undefined>();
 
-  // Seeded on the closed → open transition only: `workflow` is polled, and
-  // re-seeding on every refetch would overwrite what the user is typing.
-  const wasOpen = useRef(false);
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      setValue(
-        dump(
-          workflow ? toWorkflowDefinition(workflow) : NEW_WORKFLOW_TEMPLATE,
-          { lineWidth: 120, noRefs: true },
-        ),
-      );
-      setError(undefined);
-      setMessage(undefined);
-    }
-    wasOpen.current = open;
-  }, [open, workflow]);
+  // Seeded on open only: `workflow` is polled, and re-seeding on every
+  // refetch would overwrite what the user is typing.
+  useOnDialogOpen(open, () => {
+    setValue(
+      dump(workflow ? toWorkflowDefinition(workflow) : NEW_WORKFLOW_TEMPLATE, {
+        lineWidth: 120,
+        noRefs: true,
+      }),
+    );
+    setError(undefined);
+    setMessage(undefined);
+  });
 
   const parsed = (): Record<string, unknown> | undefined => {
     let obj: unknown;
@@ -329,7 +327,12 @@ export function AdHocWorkflowDialog({
             maxHeight={360}
             error={Boolean(error)}
           />
-          {error && <Alert status="danger" description={error} />}
+          {error && (
+            <Alert
+              status="danger"
+              description={<span style={ALERT_MESSAGE_STYLE}>{error}</span>}
+            />
+          )}
           {message && <Alert status="success" description={message} />}
         </Flex>
       </DialogBody>
