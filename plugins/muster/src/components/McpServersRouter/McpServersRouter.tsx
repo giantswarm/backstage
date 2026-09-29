@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 
 import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
+import { NewMcpServerEditGate } from '../NewMcpServerEditGate';
 import { McpServersPage } from '../McpServersPage';
 import { NewMcpServerPage } from '../NewMcpServerPage';
 import { NewMcpServerAuthPage } from '../NewMcpServerAuthPage';
@@ -26,6 +27,9 @@ function ScrollToTop() {
  * `/agent-platform/muster/servers/new` and its step sub-routes — the same
  * shape as agent creation's AgentsRouter. Mounted inside MusterProviders by
  * MusterSection, so the wizard shares the section's active installation.
+ * Editing a registered server runs through the same steps with `?edit=<name>`
+ * (see NewMcpServerEditGate), so the routes — and their telemetry page names —
+ * are the same for both.
  */
 export const McpServersRouter = () => {
   return (
@@ -33,10 +37,38 @@ export const McpServersRouter = () => {
       <ScrollToTop />
       <Routes>
         <Route index element={<McpServersPage />} />
-        <Route path="new" element={<NewMcpServerPage />} />
-        <Route path="new/auth" element={<NewMcpServerAuthPage />} />
-        <Route path="new/review" element={<NewMcpServerReviewPage />} />
-        <Route path="new/verify" element={<NewMcpServerVerifyPage />} />
+        <Route
+          path="new"
+          element={
+            <NewMcpServerEditGate>
+              <NewMcpServerPage />
+            </NewMcpServerEditGate>
+          }
+        />
+        <Route
+          path="new/auth"
+          element={
+            <NewMcpServerEditGate>
+              <NewMcpServerAuthPage />
+            </NewMcpServerEditGate>
+          }
+        />
+        <Route
+          path="new/review"
+          element={
+            <NewMcpServerEditGate>
+              <NewMcpServerReviewPage />
+            </NewMcpServerEditGate>
+          }
+        />
+        <Route
+          path="new/verify"
+          element={
+            <NewMcpServerEditGate>
+              <NewMcpServerVerifyPage />
+            </NewMcpServerEditGate>
+          }
+        />
       </Routes>
     </NewMcpServerFormProvider>
   );

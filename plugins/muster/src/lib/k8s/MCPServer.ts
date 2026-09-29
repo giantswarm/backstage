@@ -234,6 +234,22 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
   }
 
   /**
+   * Whether muster has yet to reconcile the latest spec change: its `Ready`
+   * condition was written for an older `metadata.generation`, so the status
+   * (and a "Connected" in it) still describes the previous configuration.
+   * False when there is no such condition to tell by (muster before 5.28).
+   */
+  isReconcilePending(): boolean {
+    const observed = this.getReadyCondition()?.observedGeneration;
+    const generation = this.jsonData.metadata.generation;
+    return (
+      observed !== undefined &&
+      generation !== undefined &&
+      observed < generation
+    );
+  }
+
+  /**
    * The explanation behind `.status.state`, for a tooltip next to the state
    * badge: the `Ready` condition's message, or nothing on a muster that does
    * not write conditions yet.

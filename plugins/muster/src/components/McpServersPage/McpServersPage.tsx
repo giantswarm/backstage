@@ -21,6 +21,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { newMcpServerRouteRef } from '../../routes';
+import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
@@ -147,17 +148,28 @@ export function McpServersPage() {
   // platform, ahead of the raw-JSON ad-hoc dialog below.
   const navigate = useNavigate();
   const newServerLink = useRouteRef(newMcpServerRouteRef);
+  // The wizard state outlives the wizard, so an unfinished registration draft
+  // is still there on the next visit. An edit (or a saved registration) is not
+  // a draft: registering a new server starts from an empty form.
+  const { registeredName, reset } = useNewMcpServerForm();
   const headerActions = useMemo(
     () => (
       <UiButton
         variant="primary"
         iconStart={<AddIcon fontSize="inherit" />}
-        onPress={() => newServerLink && navigate(newServerLink())}
+        onPress={() => {
+          if (registeredName) {
+            reset();
+          }
+          if (newServerLink) {
+            navigate(newServerLink());
+          }
+        }}
       >
         Register server
       </UiButton>
     ),
-    [newServerLink, navigate],
+    [newServerLink, navigate, registeredName, reset],
   );
   useProvidePageHeaderActions(headerActions);
 

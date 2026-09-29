@@ -27,12 +27,17 @@ import Replay from '@material-ui/icons/Replay';
 // hover nor focus -- so the react-aria tooltip could never open on exactly the
 // buttons whose disabled state it exists to explain.
 import Tooltip from '@material-ui/core/Tooltip';
+import { useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import { isGitOpsManaged, toMcpServerDefinition } from '../../lib/gitops';
+import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
+import { newMcpServerRouteRef } from '../../routes';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
+import { withEditParam } from '../NewMcpServerEditGate';
 import {
   DEACTIVATED_SIGN_IN_GATE,
   ServerAuthActions,
@@ -287,9 +292,7 @@ export function AdHocServerDialog({
       TransitionProps={{ onEnter: seed }}
     >
       <DialogTitle>
-        {isEdit
-          ? `Edit ad-hoc server — ${server?.getName()}`
-          : 'Add ad-hoc server'}
+        {isEdit ? `Edit as JSON — ${server?.getName()}` : 'Add ad-hoc server'}
       </DialogTitle>
       <DialogContent>
         <DialogContentText>
@@ -355,7 +358,7 @@ export const OAUTH_SIGN_IN_GATE =
   'cannot sign a session in — muster refuses it. Use “Sign in” in this ' +
   'row instead.';
 
-/** A lifecycle button, disabled with an explanatory tooltip when gated. */
+/** A row action button, disabled with an explanatory tooltip when gated. */
 function LifecycleButton({
   label,
   icon,
@@ -381,10 +384,21 @@ function LifecycleButton({
   if (!gateReason) {
     return button;
   }
+  // The span carries the tooltip because the disabled button fires neither
+  // hover nor focus. Focusable and labelled with the reason, so keyboard and
+  // screen-reader users learn why the action is unavailable, not just that
+  // it is. (The lint rule assumes a non-interactive element never needs
+  // focus; this one stands in for the button that cannot take it.)
   return (
     <Tooltip title={gateReason}>
-      {/* span wrapper so the tooltip still fires over the disabled button */}
-      <span>{button}</span>
+      <span
+        role="group"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+        aria-label={`${label} (unavailable): ${gateReason}`}
+      >
+        {button}
+      </span>
     </Tooltip>
   );
 }
@@ -393,7 +407,9 @@ function LifecycleButton({
  * Lifecycle/CRUD affordances for one server, gitops-aware. Provenance is the
  * only restriction: GitOps-managed servers are read-only and explain how to
  * edit or remove them in Git ({@link GitOpsServerActions}); manually-added (ad-hoc) servers
- * allow live core_mcpserver_* CRUD + lifecycle behind a confirm dialog.
+ * allow live core_mcpserver_* CRUD + lifecycle behind a confirm dialog. Edit
+ * reopens the registration wizard pre-filled with the server, and saving there
+ * updates it in place.
  *
  * The row also carries the per-session auth actions (Sign in / Sign out --
  * {@link ServerAuthActions}), in BOTH branches: signing in to an OAuth server
@@ -441,7 +457,18 @@ export function ServerMutationActions({
     server.getAuth()?.type === 'oauth' && server.getState() === 'Auth Required';
   const reconnectGate = oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined;
 
-  const [editOpen, setEditOpen] = useState(false);
+  const navigate = useNavigate();
+  const registerLink = useRouteRef(newMcpServerRouteRef);
+  // The wizard seeds itself from `?edit=` (NewMcpServerEditGate), so the edit
+  // survives a reload and a registration draft in progress is set aside, not
+  // lost.
+  const onEdit = () => {
+    if (registerLink) {
+      navigate(withEditParam(registerLink(), server.getName()));
+    }
+  };
+  const editBlocker = wizardEditBlocker(server);
+  const [jsonEditOpen, setJsonEditOpen] = useState(false);
   const [action, setAction] = useState<LiveAction | undefined>();
 
   if (managed) {
@@ -459,14 +486,31 @@ export function ServerMutationActions({
     <Flex align="center" gap="2" className={classes.actions}>
       <StateBadge tone="neutral" label="Manually added" />
       {authActions}
-      <Button
-        size="small"
-        variant="secondary"
-        iconStart={<Edit fontSize="inherit" />}
-        onPress={() => setEditOpen(true)}
-      >
-        Edit
-      </Button>
+      {editBlocker ? (
+        // What the wizard cannot represent the JSON editor still can, so a
+        // server the wizard refuses keeps an in-app edit path.
+        <Tooltip title={editBlocker}>
+          <span>
+            <Button
+              size="small"
+              variant="secondary"
+              iconStart={<Edit fontSize="inherit" />}
+              onPress={() => setJsonEditOpen(true)}
+            >
+              Edit as JSON
+            </Button>
+          </span>
+        </Tooltip>
+      ) : (
+        <Button
+          size="small"
+          variant="secondary"
+          iconStart={<Edit fontSize="inherit" />}
+          onPress={onEdit}
+        >
+          Edit
+        </Button>
+      )}
       {suspended ? (
         <Button
           size="small"
@@ -535,11 +579,13 @@ export function ServerMutationActions({
         Delete
       </Button>
 
-      <AdHocServerDialog
-        server={server}
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-      />
+      {editBlocker && (
+        <AdHocServerDialog
+          server={server}
+          open={jsonEditOpen}
+          onClose={() => setJsonEditOpen(false)}
+        />
+      )}
       <ConfirmActionDialog
         server={server}
         action={action}

@@ -7,6 +7,7 @@ import {
   TOOL_GROUP_LABEL,
   ToolGroup,
 } from '../../lib/k8s';
+import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
 import { McpServersPage } from './McpServersPage';
 
 // The page under test is the partition into sections; the rows themselves
@@ -107,9 +108,14 @@ async function renderPage(
 ) {
   mcpServers = servers;
   instanceOverrides = overrides;
-  return renderInTestApp(<McpServersPage />, {
-    mountedRoutes: { '/agent-platform/muster': rootRouteRef },
-  });
+  return renderInTestApp(
+    <NewMcpServerFormProvider>
+      <McpServersPage />
+    </NewMcpServerFormProvider>,
+    {
+      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+    },
+  );
 }
 
 /** The section (aria-labelled by its tool-group title) and its row markers. */

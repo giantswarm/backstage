@@ -27,6 +27,7 @@ import { musterOAuthCallbackUrl } from '../../lib/oauthCallback';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
+import { withEditParam } from '../NewMcpServerEditGate';
 
 const useStyles = makeStyles(theme => ({
   column: {
@@ -113,6 +114,7 @@ export function NewMcpServerAuthPage() {
     authAdvisories,
     detailsErrors,
     validationErrors,
+    registeredName,
   } = useNewMcpServerForm();
 
   // Audiences are a list in the form state but one comma-separated field here.
@@ -121,6 +123,15 @@ export function NewMcpServerAuthPage() {
   const [audiencesRaw, setAudiencesRaw] = useState(
     state.requiredAudiences.join(', '),
   );
+  // A mode switch replaces the audiences in the form state (cleared, or the
+  // registered server's own restored), so the text follows it — otherwise the
+  // field would keep showing audiences the definition no longer has.
+  // Adjusted during render, React's pattern for state derived from a change.
+  const [audiencesMode, setAudiencesMode] = useState(state.authMode);
+  if (audiencesMode !== state.authMode) {
+    setAudiencesMode(state.authMode);
+    setAudiencesRaw(state.requiredAudiences.join(', '));
+  }
   const onAudiencesChange = (raw: string) => {
     setAudiencesRaw(raw);
     setRequiredAudiences(
@@ -150,16 +161,19 @@ export function NewMcpServerAuthPage() {
       return;
     }
     if (reviewLink) {
-      navigate(reviewLink());
+      navigate(withEditParam(reviewLink(), registeredName));
     }
-  }, [authErrorCount, reviewLink, navigate]);
+  }, [authErrorCount, reviewLink, navigate, registeredName]);
 
   const actions = useMemo(
     () => (
       <Flex gap="2">
         <Button
           variant="tertiary"
-          onPress={() => detailsLink && navigate(detailsLink())}
+          onPress={() =>
+            detailsLink &&
+            navigate(withEditParam(detailsLink(), registeredName))
+          }
         >
           Back
         </Button>
@@ -168,7 +182,7 @@ export function NewMcpServerAuthPage() {
         </Button>
       </Flex>
     ),
-    [detailsLink, navigate, onContinue],
+    [detailsLink, navigate, onContinue, registeredName],
   );
 
   // Guarded like the agent flow's later steps: when this render only produces
@@ -180,7 +194,12 @@ export function NewMcpServerAuthPage() {
   // A direct deep link with required step-1 fields missing can't be fixed on
   // this page — send the user back to fill those in first.
   if (isRedirecting) {
-    return <Navigate to={detailsLink ? detailsLink() : '..'} replace />;
+    return (
+      <Navigate
+        to={detailsLink ? withEditParam(detailsLink(), registeredName) : '..'}
+        replace
+      />
+    );
   }
 
   return (
@@ -413,8 +432,9 @@ export function NewMcpServerAuthPage() {
             <CardBody>
               <Flex direction="column" gap="3">
                 <Text as="p" color="secondary" className={classes.footerNote}>
-                  Next you review the composed server definition, register it,
-                  and watch it connect.
+                  {registeredName
+                    ? 'Next you review the updated server definition, save it, and watch the server reconnect.'
+                    : 'Next you review the composed server definition, register it, and watch it connect.'}
                 </Text>
                 {showValidation && authErrors.length > 0 && (
                   <Alert

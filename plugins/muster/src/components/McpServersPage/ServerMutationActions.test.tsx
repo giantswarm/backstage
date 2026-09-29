@@ -1,7 +1,12 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
+import { useLocation } from 'react-router-dom';
+import {
+  renderInTestApp,
+  TestApiProvider,
+} from '@backstage/frontend-test-utils';
+import { rootRouteRef } from '../../routes';
 import { AuthStatusResponse, musterApiRef } from '../../apis';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import {
@@ -9,6 +14,10 @@ import {
   MusterInstanceContext,
 } from '../MusterInstanceProvider';
 import { DEACTIVATED_SIGN_IN_GATE } from '../shared';
+import {
+  NewMcpServerFormProvider,
+  useNewMcpServerForm,
+} from '../NewMcpServerFormProvider';
 import {
   OAUTH_SIGN_IN_GATE,
   ServerMutationActions,
@@ -34,6 +43,7 @@ function makeServer(options: {
   suspended?: boolean;
   /** Marks the CR GitOps-managed (Helm provenance label). */
   managed?: boolean;
+  type?: 'streamable-http' | 'sse' | 'stdio';
 }): MCPServer {
   return new MCPServer(
     {
@@ -46,8 +56,9 @@ function makeServer(options: {
           : {}),
       },
       spec: {
-        type: 'streamable-http',
+        type: options.type ?? 'streamable-http',
         url: 'https://mcp.miro.com/',
+        headers: { 'X-Team': 'bumblebee' },
         ...(options.suspended !== undefined
           ? { suspended: options.suspended }
           : {}),
@@ -81,6 +92,27 @@ function makeInstance(retry: () => void): MusterInstance {
   };
 }
 
+/** Where the row sent the user, and what it seeded the wizard with. */
+function WizardProbe() {
+  const { pathname, search } = useLocation();
+  const { state, registeredName, definition } = useNewMcpServerForm();
+  return (
+    <div data-testid="wizard">
+      {JSON.stringify({
+        pathname,
+        search,
+        registeredName,
+        url: state.url,
+        definition,
+      })}
+    </div>
+  );
+}
+
+function wizard() {
+  return JSON.parse(screen.getByTestId('wizard').textContent!);
+}
+
 async function renderActions(
   server: MCPServer,
   options: {
@@ -112,15 +144,19 @@ async function renderActions(
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
-        {options.retry ? (
-          <MusterInstanceContext.Provider value={makeInstance(options.retry)}>
-            {actions}
-          </MusterInstanceContext.Provider>
-        ) : (
-          actions
-        )}
+        <NewMcpServerFormProvider>
+          {options.retry ? (
+            <MusterInstanceContext.Provider value={makeInstance(options.retry)}>
+              {actions}
+            </MusterInstanceContext.Provider>
+          ) : (
+            actions
+          )}
+          <WizardProbe />
+        </NewMcpServerFormProvider>
       </QueryClientProvider>
     </TestApiProvider>,
+    { mountedRoutes: { '/agent-platform/muster': rootRouteRef } },
   );
   return { invalidateQueries };
 }
@@ -153,6 +189,21 @@ describe('ServerMutationActions lifecycle affordances', () => {
     ).not.toBeInTheDocument();
     // Delete stays live regardless of lifecycle state.
     expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled();
+  });
+
+  it('gives keyboard and screen-reader users the reason a row action is gated', async () => {
+    await renderActions(
+      makeServer({ state: 'Auth Required', authType: 'oauth' }),
+    );
+
+    // The disabled button itself takes no focus; the wrapper does, and is
+    // named with the reason.
+    const gate = screen.getByRole('group', {
+      name: `Reconnect (unavailable): ${OAUTH_SIGN_IN_GATE}`,
+    });
+    expect(gate).toHaveAttribute('tabindex', '0');
+    gate.focus();
+    expect(gate).toHaveFocus();
   });
 
   it('disables Reconnect for an OAuth server waiting on sign-in', async () => {
@@ -391,17 +442,56 @@ describe('ServerMutationActions post-mutation refresh', () => {
     expect(await screen.findByText('boom')).toBeInTheDocument();
     expect(retry).not.toHaveBeenCalled();
   });
+});
 
-  it('refetches after saving an ad-hoc server definition', async () => {
-    const retry = jest.fn();
-    await renderActions(makeServer({ state: 'Connected' }), { retry });
+describe('ServerMutationActions Edit', () => {
+  it('opens the registration wizard on this server', async () => {
+    await renderActions(makeServer({ state: 'Connected' }));
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Save' }));
+
+    // The edit is in the URL; the wizard seeds itself from it
+    // (NewMcpServerEditGate), so nothing is seeded by the row.
+    const probe = wizard();
+    expect(probe.pathname).toBe('/agent-platform/muster/servers/new');
+    expect(probe.search).toBe('?edit=miro');
+    expect(probe.registeredName).toBeUndefined();
+  });
+
+  it('offers the JSON editor for a server the wizard cannot edit, and says why', async () => {
+    const callTool = jest.fn().mockResolvedValue({});
+    await renderActions(makeServer({ state: 'Connected', type: 'stdio' }), {
+      callTool,
+    });
 
     expect(
-      await screen.findByText(/Saved\. The server list has been refreshed/),
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
+    const jsonEdit = screen.getByRole('button', { name: 'Edit as JSON' });
+    await userEvent.hover(jsonEdit.parentElement as Element);
+    expect(
+      await screen.findByText(/only covers remote .* servers/),
     ).toBeInTheDocument();
-    expect(retry).toHaveBeenCalled();
+
+    // The dialog's edit path still saves as an update to this server.
+    await userEvent.click(jsonEdit);
+    expect(await screen.findByText('Edit as JSON — miro')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(callTool).toHaveBeenCalledWith(
+      'core_mcpserver_update',
+      expect.objectContaining({ name: 'miro', type: 'stdio' }),
+      'gazelle',
+    );
+  });
+
+  it('keeps GitOps-managed servers on their Git edit path', async () => {
+    await renderActions(makeServer({ state: 'Connected', managed: true }));
+
+    expect(
+      screen.getByRole('button', { name: 'Edit/Remove' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
   });
 });

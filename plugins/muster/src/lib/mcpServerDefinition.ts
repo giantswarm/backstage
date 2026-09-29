@@ -17,8 +17,13 @@
 // annotations through the create tool would in fact fail the registration — its
 // request parsing rejects unknown fields.
 
-import type { MCPServerAuth, MCPServerSigV4 } from './k8s';
+import type { MCPServer, MCPServerAuth, MCPServerSigV4 } from './k8s';
 import { toYaml } from './gitops';
+import {
+  AUTH_MODE_LABELS,
+  serverAuthMode,
+  type ServerAuthMode,
+} from './serverInventory';
 
 /**
  * Transports the wizard offers. `stdio` is a CRD option but not a wizard one:
@@ -150,6 +155,18 @@ export const emptyFormState: NewMcpServerFormState = {
   sigv4RoleArn: '',
   meta: [],
 };
+
+/**
+ * Whether the state holds anything the user entered. The installation does not
+ * count: it mirrors the page header's selector rather than being typed in.
+ */
+export function hasUserInput(state: NewMcpServerFormState): boolean {
+  return (Object.keys(emptyFormState) as Array<keyof NewMcpServerFormState>)
+    .filter(key => key !== 'installation')
+    .some(
+      key => JSON.stringify(state[key]) !== JSON.stringify(emptyFormState[key]),
+    );
+}
 
 /** `spec.url` pattern from the CRD. */
 const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/;
@@ -634,4 +651,181 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
         },
     sigv4,
   };
+}
+
+/**
+ * The wizard's answer for each way a registered server is reached
+ * ({@link serverAuthMode}, the one classification every surface shares).
+ * Token exchange has none: the wizard does not offer it.
+ */
+const WIZARD_AUTH_MODES: Partial<Record<ServerAuthMode, McpServerAuthMode>> = {
+  anonymous: 'none',
+  'own-account': 'own-account',
+  'platform-sso': 'platform-sso',
+  sigv4: 'sigv4',
+};
+
+/**
+ * The `spec.auth` keys each wizard answer can express, and the keys of its
+ * nested blocks. Anything else — `tokenExchange` (even disabled), `localMint`,
+ * an explicit authorization endpoint — has no field in the wizard, so an edit
+ * there would either misstate the server or silently drop the setting.
+ */
+const WIZARD_AUTH_KEYS = [
+  'type',
+  'forwardToken',
+  'requiredAudiences',
+  'authorizationServer',
+  'sigv4',
+];
+const WIZARD_AUTHORIZATION_SERVER_KEYS = ['issuer', 'scopes'];
+const WIZARD_SIGV4_KEYS = ['region', 'service', 'roleArn'];
+
+function onlyKeys(value: object | undefined, allowed: string[]): boolean {
+  return Object.keys(value ?? {}).every(key => allowed.includes(key));
+}
+
+/**
+ * Where a server the wizard cannot edit is edited instead — the row's JSON
+ * editor, which shows and saves the whole definition.
+ */
+const EDIT_AS_JSON_HINT = 'Use “Edit as JSON” to change its definition.';
+
+/**
+ * Why a registered server cannot be edited through the wizard, or undefined
+ * when it can. The wizard only speaks the remote transports (a `stdio` server
+ * runs a local process next to muster) and its own four auth answers: a server
+ * using token exchange, local minting or any other auth setting the wizard has
+ * no field for would be pre-filled with an answer that is not what it does,
+ * and saving would drop the setting.
+ */
+export function wizardEditBlocker(server: MCPServer): string | undefined {
+  const type = server.getType();
+  if (type !== 'streamable-http' && type !== 'sse') {
+    return `The registration wizard only covers remote (streamable-http or SSE) servers. ${EDIT_AS_JSON_HINT}`;
+  }
+  const mode = serverAuthMode(server);
+  if (!WIZARD_AUTH_MODES[mode]) {
+    return `This server uses ${AUTH_MODE_LABELS[mode].toLowerCase()}, which the registration wizard does not offer. ${EDIT_AS_JSON_HINT}`;
+  }
+  const auth = server.getAuth();
+  if (
+    !onlyKeys(auth, WIZARD_AUTH_KEYS) ||
+    !onlyKeys(auth?.authorizationServer, WIZARD_AUTHORIZATION_SERVER_KEYS) ||
+    !onlyKeys(auth?.sigv4, WIZARD_SIGV4_KEYS)
+  ) {
+    return `This server has authentication settings the registration wizard cannot show or keep (such as token exchange or local token minting). ${EDIT_AS_JSON_HINT}`;
+  }
+  return undefined;
+}
+
+/** The auth-answer fields of the form state, which switch with the mode. */
+const AUTH_ANSWER_FIELDS = [
+  'issuer',
+  'scopes',
+  'requiredAudiences',
+  'sigv4Region',
+  'sigv4Service',
+  'sigv4RoleArn',
+] as const;
+
+export type McpServerAuthAnswer = Pick<
+  NewMcpServerFormState,
+  (typeof AUTH_ANSWER_FIELDS)[number]
+>;
+
+/** The auth-answer fields of `state`, for restoring them later. */
+export function authAnswerOf(
+  state: NewMcpServerFormState,
+): McpServerAuthAnswer {
+  return Object.fromEntries(
+    AUTH_ANSWER_FIELDS.map(key => [key, state[key]]),
+  ) as McpServerAuthAnswer;
+}
+
+/** No auth answer at all — what switching to another mode starts from. */
+export const emptyAuthAnswer: McpServerAuthAnswer =
+  authAnswerOf(emptyFormState);
+
+/**
+ * A registered server → the wizard state that composes it, so "Edit" opens the
+ * registration form pre-filled. The display name is not persisted anywhere, so
+ * it starts as the CR name. Only for servers {@link wizardEditBlocker} lets
+ * through, whose auth block is exactly one of the wizard's modes.
+ */
+export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
+  const auth = server.getAuth();
+  return {
+    ...emptyFormState,
+    name: server.getName(),
+    slug: server.getName(),
+    description: server.getDescription() ?? '',
+    installation: server.cluster,
+    url: server.getUrl() ?? '',
+    transport: server.getType() === 'sse' ? 'sse' : 'streamable-http',
+    authMode: WIZARD_AUTH_MODES[serverAuthMode(server)] ?? 'none',
+    issuer: auth?.authorizationServer?.issuer ?? '',
+    scopes: auth?.authorizationServer?.scopes ?? '',
+    requiredAudiences: auth?.requiredAudiences ?? [],
+    sigv4Region: auth?.sigv4?.region ?? '',
+    sigv4Service: auth?.sigv4?.service ?? '',
+    sigv4RoleArn: auth?.sigv4?.roleArn ?? '',
+    meta: Object.entries(server.getMeta() ?? {}).map(([key, value]) => ({
+      key,
+      value,
+    })),
+  };
+}
+
+/** Definition fields the wizard composes; it never touches any other. */
+const WIZARD_FIELDS = ['name', 'type', 'url', 'description', 'auth', 'meta'];
+
+/**
+ * The wizard's definition laid over the server being edited, for
+ * `core_mcpserver_update`.
+ *
+ * muster's update (handleMCPServerUpdate in internal/mcpserver/api_adapter.go)
+ * is a merge onto the stored CR, with per-field rules this mirrors so the
+ * definition shown on the review step is what the server ends up with:
+ *
+ * - An omitted `auth`, `meta`, `headers`, `env`, `toolPrefix`, `timeout`, ...
+ *   keeps the stored value. What the wizard does not model is carried over
+ *   anyway, so the definition reads complete. A wizard answer that *clears*
+ *   `auth` or `meta` is sent explicitly (`{ type: 'none' }`, `{}`) — omitting
+ *   it would keep the old value.
+ * - `description` is only replaced by a non-empty value; muster cannot clear
+ *   it through an update, so a cleared description keeps the stored one.
+ * - `autoStart` is always overwritten, omitted meaning false. The server's own
+ *   value is sent (missing reads as false, like `getAutoStart()`): the
+ *   wizard's `true` is a registration default, and an edit must not turn it on.
+ * - `suspended` is tri-state — omitted keeps the current lifecycle state — so
+ *   it is deliberately neither composed nor carried (`toMcpServerDefinition`
+ *   does not read it) and a deactivated server stays deactivated.
+ *
+ * The auth block is otherwise entirely the wizard's: {@link wizardEditBlocker}
+ * keeps servers with auth settings it cannot model out of the wizard.
+ */
+export function mergeOntoExisting(
+  existing: Record<string, unknown>,
+  composed: McpServerDefinition,
+): McpServerDefinition {
+  const kept = Object.fromEntries(
+    Object.entries(existing).filter(([key]) => !WIZARD_FIELDS.includes(key)),
+  );
+  const merged: McpServerDefinition = {
+    ...kept,
+    ...composed,
+    autoStart:
+      typeof existing.autoStart === 'boolean' ? existing.autoStart : false,
+  };
+  if (!merged.description && typeof existing.description === 'string') {
+    merged.description = existing.description;
+  }
+  if (!merged.auth && existing.auth) {
+    merged.auth = { type: 'none' };
+  }
+  if (!merged.meta && existing.meta) {
+    merged.meta = {};
+  }
+  return merged;
 }

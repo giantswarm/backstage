@@ -6,6 +6,10 @@ import {
   deriveSlug,
   emptyFormState,
   formatMetaEntries,
+  formStateFromServer,
+  hasUserInput,
+  mergeOntoExisting,
+  wizardEditBlocker,
   parseMetaEntries,
   sigv4Advisories,
   toMcpServerManifestYaml,
@@ -13,6 +17,8 @@ import {
   validateNewMcpServerForm,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
+import { toMcpServerDefinition } from './gitops';
+import { MCPServer } from './k8s';
 
 function state(
   overrides: Partial<NewMcpServerFormState> = {},
@@ -956,5 +962,248 @@ describe('toMusterCliCommand', () => {
         ),
       ),
     ).toBeUndefined();
+  });
+});
+
+function registered(spec: Record<string, unknown>): MCPServer {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: { name: 'weather-mcp' },
+      spec: {
+        type: 'streamable-http',
+        url: 'https://w.example.com/mcp',
+        ...spec,
+      },
+    } as never,
+    'gaggle',
+  );
+}
+
+describe('editing a registered server in the wizard', () => {
+  it.each([
+    [{}, 'none'],
+    [{ auth: { type: 'oauth' } }, 'own-account'],
+    [{ auth: { forwardToken: true } }, 'platform-sso'],
+    [{ auth: { type: 'sigv4', sigv4: { region: 'eu-west-1' } } }, 'sigv4'],
+  ])('reads the auth mode back from %j', (spec, mode) => {
+    expect(formStateFromServer(registered(spec)).authMode).toBe(mode);
+  });
+
+  it('round-trips what the wizard models', () => {
+    const server = registered({
+      type: 'sse',
+      description: 'Forecasts',
+      auth: {
+        type: 'oauth',
+        authorizationServer: { issuer: 'https://idp', scopes: 'read' },
+      },
+      meta: { AWS_REGION: 'eu-west-1' },
+    });
+    const form = formStateFromServer(server);
+
+    expect(form).toMatchObject({
+      name: 'weather-mcp',
+      slug: 'weather-mcp',
+      installation: 'gaggle',
+      transport: 'sse',
+      issuer: 'https://idp',
+      scopes: 'read',
+      meta: [{ key: 'AWS_REGION', value: 'eu-west-1' }],
+    });
+    expect(validateNewMcpServerForm(form)).toEqual([]);
+    const { name, type, url, description, auth, meta } =
+      toMcpServerDefinition(server);
+    expect(composeMcpServerDefinition(form)).toEqual({
+      name,
+      type,
+      url,
+      description,
+      auth,
+      meta,
+      autoStart: true,
+    });
+  });
+
+  it.each([
+    // forwardToken implies OAuth in muster, so an explicit `type: oauth` next
+    // to it is still Platform SSO — and nothing else to fill in.
+    [
+      { auth: { type: 'oauth', forwardToken: true, requiredAudiences: ['a'] } },
+      { authMode: 'platform-sso', requiredAudiences: ['a'], issuer: '' },
+    ],
+    // OAuth with discovery: no issuer override to pre-fill.
+    [
+      { auth: { type: 'oauth' } },
+      { authMode: 'own-account', issuer: '', scopes: '' },
+    ],
+    [{ auth: { type: 'none' } }, { authMode: 'none' }],
+  ])('pre-fills the auth answer of %j', (spec, expected) => {
+    expect(formStateFromServer(registered(spec))).toMatchObject(expected);
+  });
+
+  it('trims request metadata values on the round trip', () => {
+    // The wizard composes trimmed values, so a stored value with surrounding
+    // whitespace is saved back without it once the server is edited.
+    const form = formStateFromServer(
+      registered({ meta: { AWS_REGION: ' eu-west-1 ' } }),
+    );
+
+    expect(form.meta).toEqual([{ key: 'AWS_REGION', value: ' eu-west-1 ' }]);
+    expect(composeMcpServerDefinition(form).meta).toEqual({
+      AWS_REGION: 'eu-west-1',
+    });
+  });
+
+  it('keeps the fields the wizard has no control for on update', () => {
+    const existing = toMcpServerDefinition(
+      registered({
+        autoStart: true,
+        timeout: 90,
+        toolPrefix: 'wx',
+        headers: { 'X-Team': 'bumblebee' },
+      }),
+    );
+    const edited = composeMcpServerDefinition(state({ slug: 'weather-mcp' }));
+
+    expect(mergeOntoExisting(existing, edited)).toMatchObject({
+      name: 'weather-mcp',
+      url: 'https://weather.example.com/mcp',
+      autoStart: true,
+      timeout: 90,
+      toolPrefix: 'wx',
+      headers: { 'X-Team': 'bumblebee' },
+    });
+  });
+
+  it('keeps the server’s autoStart, reading a missing one as off', () => {
+    // muster's update always overwrites autoStart (omitted = false), and the
+    // wizard's `true` is only a registration default: an edit must not turn
+    // it on.
+    const edited = composeMcpServerDefinition(state({ slug: 'weather-mcp' }));
+
+    expect(
+      mergeOntoExisting(
+        toMcpServerDefinition(registered({ autoStart: false })),
+        edited,
+      ).autoStart,
+    ).toBe(false);
+    expect(
+      mergeOntoExisting(toMcpServerDefinition(registered({})), edited)
+        .autoStart,
+    ).toBe(false);
+  });
+
+  it('sends a cleared auth answer or metadata explicitly', () => {
+    // muster's update keeps a stored auth/meta block it is not sent, so
+    // omitting them would silently keep the old values.
+    const existing = toMcpServerDefinition(
+      registered({
+        auth: { type: 'oauth' },
+        meta: { AWS_REGION: 'eu-west-1' },
+      }),
+    );
+    const merged = mergeOntoExisting(
+      existing,
+      composeMcpServerDefinition(state({ slug: 'weather-mcp' })),
+    );
+
+    expect(merged.auth).toEqual({ type: 'none' });
+    expect(merged.meta).toEqual({});
+    // A server that never had either gets neither.
+    const plain = mergeOntoExisting(
+      toMcpServerDefinition(registered({})),
+      composeMcpServerDefinition(state({ slug: 'weather-mcp' })),
+    );
+    expect(plain).not.toHaveProperty('auth');
+    expect(plain).not.toHaveProperty('meta');
+  });
+
+  it('keeps the stored description when it is cleared', () => {
+    // muster only replaces a description with a non-empty one, so the review
+    // step shows the description the server keeps.
+    const merged = mergeOntoExisting(
+      toMcpServerDefinition(registered({ description: 'Old' })),
+      composeMcpServerDefinition(
+        state({ slug: 'weather-mcp', description: '' }),
+      ),
+    );
+
+    expect(merged.description).toBe('Old');
+  });
+
+  it('leaves suspended out of the update', () => {
+    // muster's update treats an omitted suspended as "keep the current
+    // lifecycle state", so a deactivated server stays deactivated.
+    const merged = mergeOntoExisting(
+      toMcpServerDefinition(registered({ suspended: true })),
+      composeMcpServerDefinition(state({ slug: 'weather-mcp' })),
+    );
+
+    expect(merged).not.toHaveProperty('suspended');
+  });
+
+  it.each([
+    [{ type: 'stdio' }, /only covers remote/],
+    [
+      { auth: { forwardToken: true, tokenExchange: { enabled: true } } },
+      /token exchange \(cross-cluster sso\), which the registration wizard does not offer/,
+    ],
+    // tokenExchange-only once read as "No authentication".
+    [{ auth: { tokenExchange: { enabled: true } } }, /does not offer/],
+    // A disabled block is still a setting the wizard would drop.
+    [
+      { auth: { forwardToken: true, tokenExchange: { enabled: false } } },
+      /cannot show or keep/,
+    ],
+    [
+      { auth: { forwardToken: true, localMint: { enabled: true } } },
+      /cannot show or keep/,
+    ],
+    [
+      {
+        auth: {
+          type: 'oauth',
+          authorizationServer: {
+            issuer: 'https://idp',
+            authorizationEndpoint: 'https://idp/authorize',
+          },
+        },
+      },
+      /cannot show or keep/,
+    ],
+  ])('keeps %j out of the wizard, pointing to the JSON editor', (spec, why) => {
+    const reason = wizardEditBlocker(registered(spec));
+    expect(reason).toMatch(why);
+    expect(reason).toMatch(/Edit as JSON/);
+  });
+
+  it('lets every auth answer the wizard offers through', () => {
+    for (const spec of [
+      {},
+      { auth: { type: 'oauth' } },
+      { auth: { type: 'oauth', authorizationServer: { issuer: 'https://i' } } },
+      { auth: { forwardToken: true, requiredAudiences: ['a'] } },
+      { auth: { type: 'sigv4', sigv4: { region: 'eu-west-1' } } },
+      { type: 'sse' },
+    ]) {
+      expect(wizardEditBlocker(registered(spec))).toBeUndefined();
+    }
+  });
+});
+
+describe('hasUserInput', () => {
+  it('ignores the mirrored installation but not what was typed', () => {
+    expect(hasUserInput({ ...emptyFormState, installation: 'gaggle' })).toBe(
+      false,
+    );
+    expect(hasUserInput({ ...emptyFormState, url: 'https://x' })).toBe(true);
+    expect(
+      hasUserInput({
+        ...emptyFormState,
+        meta: [{ key: 'A', value: '' }],
+      }),
+    ).toBe(true);
   });
 });
