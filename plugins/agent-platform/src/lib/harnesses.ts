@@ -46,9 +46,12 @@ export function imageNameOf(image: string | undefined): string | undefined {
 }
 
 /**
- * The Harnesses of `namespace` that admit agents by the harness label, the
- * platform one first and the rest by name. A Harness selecting on anything
- * else admits no agent the Generic chart renders, so it is not offered.
+ * The Harnesses of `namespace` whose selector matches on the harness label,
+ * the platform one first and the rest by name. A Harness without that label
+ * in its selector admits no agent the Generic chart renders, so it is not
+ * offered. Other requirements of the selector are not checked: the template
+ * also carries labels the chart and Flux stamp, and whether it admits the
+ * agent is the Harness's own verdict once the template exists.
  */
 export function harnessChoicesOf(
   harnesses: readonly Harness[],
