@@ -1,4 +1,5 @@
 import { KubernetesApi } from '@backstage/plugin-kubernetes-react';
+import { k8sResponseError } from './k8sResponseError';
 
 const SELF_SUBJECT_ACCESS_REVIEW_PATH =
   '/apis/authorization.k8s.io/v1/selfsubjectaccessreviews';
@@ -58,12 +59,10 @@ export async function createSelfSubjectAccessReview(options: {
   });
 
   if (!response.ok) {
-    const error = new Error(
-      `Failed to review access to ${resourceAttributes.resource} on ${cluster}. Reason: ${response.statusText}.`,
+    throw await k8sResponseError(
+      response,
+      `Failed to review access to ${resourceAttributes.resource} on ${cluster}`,
     );
-    error.name = response.status === 403 ? 'ForbiddenError' : error.name;
-
-    throw error;
   }
 
   const review = await response.json();
