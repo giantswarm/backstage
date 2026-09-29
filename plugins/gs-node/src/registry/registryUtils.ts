@@ -1,4 +1,4 @@
-import semver from 'semver';
+import { Version } from '@giantswarm/semver-ts';
 import { isStableVersion } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
@@ -45,14 +45,22 @@ export function getNextPageUrl(
 }
 
 /**
- * Sorts versions in descending order (newest first) using semver.
- * Returns a new array without mutating the input.
+ * Sorts versions in descending order (newest first), parsing and comparing
+ * them the way Flux does (Masterminds/semver). Entries that are no version at
+ * all are dropped. Returns a new array without mutating the input.
  *
- * @param versions - Array of semver version strings
- * @returns Sorted array of versions (newest first)
+ * @param versions - Array of version strings
+ * @returns The versions among them, sorted newest first
  */
-export function sortVersions(versions: string[]): string[] {
-  return [...versions].sort((a, b) => semver.rcompare(a, b));
+export function sortVersions(versions: readonly string[]): string[] {
+  return versions
+    .map(raw => ({ raw, version: Version.tryParse(raw) }))
+    .filter(
+      (entry): entry is { raw: string; version: Version } =>
+        entry.version !== null,
+    )
+    .sort((a, b) => b.version.compare(a.version))
+    .map(entry => entry.raw);
 }
 
 /**

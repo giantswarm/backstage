@@ -7,13 +7,13 @@ import {
   ConflictError,
   ServiceUnavailableError,
 } from '@backstage/errors';
-import semver from 'semver';
 import { RegistryAuthClient } from './RegistryAuthClient';
 import { RegistryError } from './RegistryError';
 import {
   getNextPageUrl,
   MAX_TAG_PAGES,
   normalizeRegistry,
+  sortVersions,
 } from './registryUtils';
 
 /** The largest page ACR's `_tags` API serves; a bigger `n` is capped to it. */
@@ -99,15 +99,12 @@ export class AcrRegistryClient {
       });
     }
 
-    // Filter to valid semver versions and map to TagInfo
-    const validTags = acrTags.filter(tag => semver.valid(tag.name));
-    const tagInfos: TagInfo[] = validTags.map(tag => ({
-      tag: tag.name,
-      createdAt: tag.createdTime,
-    }));
-
-    // Sort by semver (newest first)
-    tagInfos.sort((a, b) => semver.rcompare(a.tag, b.tag));
+    const createdTimes = new Map(
+      acrTags.map(tag => [tag.name, tag.createdTime]),
+    );
+    const tagInfos: TagInfo[] = sortVersions(acrTags.map(tag => tag.name)).map(
+      tag => ({ tag, createdAt: createdTimes.get(tag)! }),
+    );
 
     this.logger.info('Successfully fetched tags from ACR API', {
       registry: normalized,

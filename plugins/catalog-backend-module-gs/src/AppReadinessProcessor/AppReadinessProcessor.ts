@@ -20,12 +20,13 @@ import {
   NotAllowedError,
   NotFoundError,
 } from '@backstage/errors';
-import semver from 'semver';
+import { Version } from '@giantswarm/semver-ts';
 import {
   type ContainerRegistryService,
   containerRegistryServiceRef,
 } from '@giantswarm/backstage-plugin-gs-node';
 import {
+  isStableVersion,
   parseChartRef,
   ReleaseReadinessFlags,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -531,7 +532,9 @@ export function verdict(
     return { readiness: READINESS_UNKNOWN, flags: [] };
   }
 
-  const release = semver.parse(releaseTag);
+  // Strict, unlike the chart tags: a loose parse would read a date-named
+  // release such as `2024.01.15` as a version.
+  const release = Version.tryParseStrict(releaseTag.replace(/^v/, ''));
   if (!release) {
     // A release tag we cannot compare — a date, a monorepo prefix, a codename.
     return { readiness: READINESS_UNKNOWN, flags: [] };
@@ -542,7 +545,7 @@ export function verdict(
   // without `--prerelease` comes back as the latest. highestStable excludes
   // prerelease chart tags, so comparing the two would report a component whose
   // only published charts are prerelease-versioned as never published.
-  if (release.prerelease.length > 0) {
+  if (release.prerelease !== '') {
     return { readiness: READINESS_UNKNOWN, flags: [] };
   }
 
@@ -572,9 +575,9 @@ export function verdict(
     );
   }
 
-  // The git tag `v1.6.0` publishes as chart tag `1.6.0`; semver.parse drops the
-  // prefix, so the comparison needs no special case.
-  if (semver.gt(release, semver.parse(published)!)) {
+  // The git tag `v1.6.0` publishes as chart tag `1.6.0`; the prefix is dropped
+  // above, so the comparison needs no special case.
+  if (release.gt(Version.parse(published))) {
     return blocked(FLAG_RELEASE_NOT_PUBLISHED);
   }
 
@@ -591,17 +594,17 @@ export function verdict(
  * registry gives them.
  */
 export function highestStable(tags: readonly string[]): string | undefined {
-  let best: string | undefined;
+  let best: { tag: string; version: Version } | undefined;
   for (const tag of tags) {
-    const parsed = semver.parse(tag);
-    if (!parsed || parsed.prerelease.length > 0) {
+    if (!isStableVersion(tag)) {
       continue;
     }
-    if (!best || semver.gt(parsed, semver.parse(best)!)) {
-      best = tag;
+    const version = Version.parse(tag);
+    if (!best || version.gt(best.version)) {
+      best = { tag, version };
     }
   }
-  return best;
+  return best?.tag;
 }
 
 function parseHelmChartsAnnotation(entity: Entity): ChartRef[] {

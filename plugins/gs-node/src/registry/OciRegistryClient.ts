@@ -7,7 +7,6 @@ import {
   ConflictError,
   ServiceUnavailableError,
 } from '@backstage/errors';
-import semver from 'semver';
 import { RegistryAuthClient } from './RegistryAuthClient';
 import { RegistryError } from './RegistryError';
 import {
@@ -94,9 +93,7 @@ export class OciRegistryClient {
       });
     }
 
-    // Filter to only valid semver versions and sort
-    const validTags = tags.filter(tag => semver.valid(tag));
-    const sortedTags = sortVersions(validTags);
+    const sortedTags = sortVersions(tags);
 
     this.logger.info('Successfully fetched tags from OCI registry', {
       registry: normalized,

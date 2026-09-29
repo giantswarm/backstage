@@ -1,4 +1,8 @@
-import { findLatestStableVersion, getNextPageUrl } from './registryUtils';
+import {
+  findLatestStableVersion,
+  getNextPageUrl,
+  sortVersions,
+} from './registryUtils';
 
 describe('findLatestStableVersion', () => {
   it('skips release candidates and dev builds', () => {
@@ -60,5 +64,32 @@ describe('getNextPageUrl', () => {
     expect(
       getNextPageUrl(withLink(null), 'https://ghcr.io/v2/org/app/tags/list'),
     ).toBeUndefined();
+  });
+});
+
+describe('sortVersions', () => {
+  it('sorts newest first by version precedence, not by string', () => {
+    expect(sortVersions(['1.9.0', '1.10.0', '1.10.0-rc.1', 'v1.2.3'])).toEqual([
+      '1.10.0',
+      '1.10.0-rc.1',
+      '1.9.0',
+      'v1.2.3',
+    ]);
+  });
+
+  it('drops tags that are no version', () => {
+    expect(sortVersions(['latest', '1.0.0', 'artifacthub.io'])).toEqual([
+      '1.0.0',
+    ]);
+  });
+
+  it('reads incomplete versions the way Flux does', () => {
+    expect(sortVersions(['1.2.1', '1.3'])).toEqual(['1.3', '1.2.1']);
+  });
+
+  it('does not mutate its input', () => {
+    const versions = ['1.0.0', '2.0.0'];
+    sortVersions(versions);
+    expect(versions).toEqual(['1.0.0', '2.0.0']);
   });
 });
