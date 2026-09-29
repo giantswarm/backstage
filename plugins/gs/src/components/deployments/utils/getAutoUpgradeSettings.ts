@@ -1,3 +1,5 @@
+import { Constraints, Version } from '@giantswarm/semver-ts';
+
 export type AutoUpgradeMode =
   'no-upgrades' | 'patch-upgrades' | 'minor-upgrades' | 'major-upgrades';
 
@@ -9,40 +11,71 @@ const autoUpgradeLabels: Record<AutoUpgradeMode, string> = {
 };
 
 /**
- * Derives automatic upgrade mode from an OCIRepository reference.
+ * The version a semver range starts from: the version Flux currently resolves
+ * it to, when that is known and inside the range, else the lowest version the
+ * range admits.
+ */
+function rangeBase(range: Constraints, currentVersion?: string) {
+  const current = currentVersion ? Version.tryParse(currentVersion) : null;
+  return current && range.check(current) ? current : range.minVersion();
+}
+
+/**
+ * Derives the automatic upgrade mode of an OCIRepository reference: which
+ * upgrades Flux performs from the current version, read with the constraint
+ * semantics Flux uses (Masterminds/semver). A pinned tag, or a range that
+ * admits no newer version, means no automatic upgrades.
  *
- * Supports Masterminds/semver constraint syntax used by Flux:
- * - Tilde ranges (`~1.2.3`) and patch wildcards (`1.2.x`) → patch upgrades
- * - Caret ranges (`^1.2.3`) and minor wildcards (`1.x`, `1.x.x`) → minor and patch upgrades
- * - Comparison operators (`>=1.2.3`, `>1.2.3`) and full wildcards (`*`) → major, minor and patch upgrades
- * - No semver (pinned tag) → no automatic upgrades
+ * @param ref - The OCIRepository `spec.ref`
+ * @param currentVersion - The version Flux currently resolves the range to, if known
  */
 export function deriveAutoUpgradeMode(
   ref: { semver?: string; tag?: string } | undefined,
+  currentVersion?: string,
 ): AutoUpgradeMode {
-  if (!ref?.semver) return 'no-upgrades';
+  const range = ref?.semver ? Constraints.tryParse(ref.semver) : null;
+  const base = range ? rangeBase(range, currentVersion) : null;
+  if (!range || !base) return 'no-upgrades';
 
-  const s = ref.semver.trim();
+  const { major, minor, patch } = base;
+  const admits = (...parts: [number, number, number]) =>
+    range.check(new Version(...parts, '', '', ''));
 
-  // Tilde range: ~1.2.3, ~1, ~2.3 → patch-level changes
-  if (s.startsWith('~')) return 'patch-upgrades';
-
-  // Caret range: ^1.2.3, ^0.2.3 → minor-level changes
-  if (s.startsWith('^')) return 'minor-upgrades';
-
-  // Greater-than operators: >=1.2.3, >1.2.3 → major-level changes
-  if (s.startsWith('>=') || s.startsWith('>')) return 'major-upgrades';
-
-  // Patch-level wildcard: 1.2.x, 1.2.*, 1.2.X
-  if (/^\d+\.\d+\.[xX*]$/.test(s)) return 'patch-upgrades';
-
-  // Minor-level wildcard: 1.x, 1.*, 1.x.x, 1.*.*, 1.X, 1.X.X
-  if (/^\d+\.[xX*](\.[xX*])?$/.test(s)) return 'minor-upgrades';
-
-  // Full wildcard: *, x, X, x.x.x, *.*.*, X.X.X (and mixed)
-  if (/^[xX*](\.[xX*]){0,2}$/.test(s)) return 'major-upgrades';
-
+  if (admits(major + 1, 0, 0)) return 'major-upgrades';
+  if (admits(major, minor + 1, 0)) return 'minor-upgrades';
+  if (admits(major, minor, patch + 1)) return 'patch-upgrades';
   return 'no-upgrades';
+}
+
+/**
+ * Derives the chart version of an OCIRepository reference: the pinned tag, or
+ * for a semver range the version Flux currently resolves it to, else the
+ * lowest version the range admits. A range without a lower bound (`*`,
+ * `<2.0.0`) yields no version unless the current one is known.
+ */
+export function deriveChartVersion(
+  ref: { semver?: string; tag?: string } | undefined,
+  currentVersion?: string,
+): string | undefined {
+  if (ref?.tag) return ref.tag;
+
+  const range = ref?.semver ? Constraints.tryParse(ref.semver) : null;
+  if (!range) return undefined;
+
+  const current = currentVersion ? Version.tryParse(currentVersion) : null;
+  if (current && range.check(current)) return currentVersion;
+
+  const min = range.minVersion();
+  return min && (min.major || min.minor || min.patch)
+    ? min.toString()
+    : undefined;
+}
+
+/** Reads the version from an OCIRepository `status.artifact.revision` such as `1.2.3@sha256:…`. */
+export function versionFromRevision(
+  revision: string | undefined,
+): string | undefined {
+  return revision?.split('@')[0] || undefined;
 }
 
 export function getAutoUpgradeLabel(mode: AutoUpgradeMode): string {
