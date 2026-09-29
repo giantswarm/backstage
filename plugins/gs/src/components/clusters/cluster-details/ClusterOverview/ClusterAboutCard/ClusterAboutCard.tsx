@@ -148,13 +148,16 @@ export function ClusterAboutCard() {
       resourceNamespace: controlPlaneNamespace,
     });
   }
-  if (controlPlaneIncompatibilities[0]) {
+  // A disabled query still resolves ControlPlane discovery cached by another
+  // page, incompatibilities included, until giantswarm/backstage#2663 lands.
+  // Keep those out of the card for a managed control plane.
+  if (hasKubeadmControlPlane && controlPlaneIncompatibilities[0]) {
     controlPlaneErrorMessage = getIncompatibilityMessage(
       controlPlaneIncompatibilities[0],
     );
   }
 
-  useShowErrors(controlPlaneErrors);
+  useShowErrors(hasKubeadmControlPlane ? controlPlaneErrors : null);
 
   const clusterType = calculateClusterType(cluster);
   const description = getClusterDescription(cluster);

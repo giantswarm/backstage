@@ -13,9 +13,3 @@ version suffix, so a v1beta1 ref matches a resource read at v1beta2. Core
 resources are matched on the exact `apiVersion`. The pure
 `refMatchesResource(ref, identity)` and `getApiGroupFromVersion` are
 exported for callers without a model class.
-
-`useResource` with `{ enabled: false }` is now quiet all the way down: it no
-longer runs API discovery for the resource's group and no longer reports
-version incompatibilities to the error reporter. Callers disable the query
-exactly when they know the resource is not there to be read, so neither the
-discovery request nor the report was wanted.
