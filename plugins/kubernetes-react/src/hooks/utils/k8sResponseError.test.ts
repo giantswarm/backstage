@@ -24,6 +24,41 @@ describe('k8sResponseError', () => {
     );
   });
 
+  it('uses the message of a Backstage error body when the proxy itself failed', async () => {
+    const error = await k8sResponseError(
+      failedResponse({
+        status: 500,
+        json: async () => ({
+          error: {
+            name: 'Error',
+            message: 'connect ECONNREFUSED 10.0.0.1:443',
+          },
+        }),
+      }),
+      'Failed to fetch x',
+    );
+
+    expect(error.message).toBe(
+      'Failed to fetch x. Reason: connect ECONNREFUSED 10.0.0.1:443.',
+    );
+  });
+
+  it('does not double the full stop of a message that already has one', async () => {
+    const error = await k8sResponseError(
+      failedResponse({
+        status: 400,
+        json: async () => ({
+          message: 'admission webhook "x" denied the request: name is invalid.',
+        }),
+      }),
+      'Failed to create x',
+    );
+
+    expect(error.message).toBe(
+      'Failed to create x. Reason: admission webhook "x" denied the request: name is invalid.',
+    );
+  });
+
   it('falls back to the status code when there is no reason phrase', async () => {
     // HTTP/2 responses carry no reason phrase, and a proxied 404 may have no
     // body at all.

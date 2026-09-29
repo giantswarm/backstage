@@ -1,18 +1,21 @@
 /**
  * The reason a failed Kubernetes proxy response gives: the `message` of the
- * Kubernetes `Status` object in its body when there is one, otherwise the
- * HTTP status. HTTP/2 responses carry no reason phrase, so `statusText` can be
+ * Kubernetes `Status` object in its body, or of the Backstage error body
+ * (`{ error: { message } }`) when the proxy itself failed, otherwise the HTTP
+ * status. HTTP/2 responses carry no reason phrase, so `statusText` can be
  * empty and never stands alone.
  */
 async function readErrorReason(response: Response): Promise<string> {
   try {
     const body = await response.json();
+    const message = body?.message ?? body?.error?.message;
 
-    if (typeof body?.message === 'string' && body.message) {
-      return body.message;
+    if (typeof message === 'string' && message) {
+      // The caller appends its own full stop.
+      return message.replace(/\.$/, '');
     }
   } catch {
-    // Not a Kubernetes Status object — fall back to the HTTP status.
+    // Not a JSON error body — fall back to the HTTP status.
   }
 
   return response.statusText

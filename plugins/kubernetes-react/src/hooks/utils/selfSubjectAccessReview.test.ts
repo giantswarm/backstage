@@ -95,7 +95,7 @@ describe('createSelfSubjectAccessReview', () => {
     ).rejects.toMatchObject({ name: 'ForbiddenError' });
   });
 
-  it('names an expired token so it is not retried, and says why', async () => {
+  it('names a 401 and says why the review failed', async () => {
     const { api } = createKubernetesApi({
       ok: false,
       status: 401,

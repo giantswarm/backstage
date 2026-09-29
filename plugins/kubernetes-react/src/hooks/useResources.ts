@@ -28,8 +28,6 @@ export function useResources<R extends KubeObject<any>>(
   const { enableDiscovery, ...restQueryOptions } = queryOptions;
   const enabled = restQueryOptions.enabled ?? true;
 
-  // A disabled query skips discovery too, so it sends no requests, doesn't
-  // report as loading, and yields no version issues to report.
   const {
     clustersGVKs,
     isDiscovering,
@@ -37,7 +35,8 @@ export function useResources<R extends KubeObject<any>>(
     incompatibilities,
     clientOutdatedStates,
   } = usePreferredVersions(selectedClusters, staticGVK, {
-    enableDiscovery: enabled && enableDiscovery !== false,
+    enableDiscovery,
+    enabled,
   });
 
   // List queries are enabled per cluster as soon as that cluster's discovery

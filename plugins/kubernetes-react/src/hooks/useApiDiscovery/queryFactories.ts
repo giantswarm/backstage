@@ -108,7 +108,9 @@ export function apiResourceQueryOptions(
     },
     staleTime: CACHE_TIME,
     gcTime: CACHE_TIME,
-    retry: 1,
+    // Retry a transient failure once, but not a 401: the token won't change.
+    retry: (failureCount: number, error: Error) =>
+      error.name !== 'UnauthorizedError' && failureCount < 1,
   };
 }
 
