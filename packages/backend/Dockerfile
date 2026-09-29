@@ -138,7 +138,7 @@ WORKDIR /app
 # This switches many Node.js dependencies to production mode.
 ENV NODE_ENV=production
 
-# --no-node-snapshot is required by the scaffolder-backend plugin on Node 20+.
+# Nothing in the backend needs --no-node-snapshot; it is removed separately.
 # --require starts the OpenTelemetry SDK before the backend loads so its
 # instrumentations patch the modules they trace, whatever command runs the
 # backend; it exports only when an OTEL_* variable names an exporter (the
