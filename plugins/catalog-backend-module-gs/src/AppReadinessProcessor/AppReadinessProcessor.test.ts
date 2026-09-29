@@ -176,6 +176,17 @@ describe('verdict', () => {
     ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
   });
 
+  it.each(['2024.01.15', '20260101', 'v2'])(
+    'reports unknown for the release tag %s rather than reading it loosely as a version',
+    releaseTag => {
+      expect(
+        verdict(releaseTag, [
+          { latestStable: '1.0.0', unreadable: false, truncated: false },
+        ]),
+      ).toEqual({ readiness: READINESS_UNKNOWN, flags: [] });
+    },
+  );
+
   it('compares a multi-chart component against its highest published chart', () => {
     // Charts in one repo are versioned independently, so requiring every chart
     // to match the repo's release tag would flag normal repos.

@@ -7,10 +7,17 @@ import {
   ConflictError,
   ServiceUnavailableError,
 } from '@backstage/errors';
-import semver from 'semver';
 import { RegistryAuthClient } from './RegistryAuthClient';
 import { RegistryError } from './RegistryError';
-import { normalizeRegistry } from './registryUtils';
+import {
+  getNextPageUrl,
+  MAX_TAG_PAGES,
+  normalizeRegistry,
+  sortVersions,
+} from './registryUtils';
+
+/** The largest page ACR's `_tags` API serves; a bigger `n` is capped to it. */
+const ACR_MAX_PAGE_SIZE = 999;
 
 export interface TagInfo {
   tag: string;
@@ -58,7 +65,7 @@ export class AcrRegistryClient {
    * @param registry - The ACR registry host (e.g., gsoci.azurecr.io)
    * @param repository - The repository path (e.g., giantswarm/my-app)
    * @param options - Optional configuration
-   * @param options.limit - Maximum number of tags to fetch (default: all)
+   * @param options.limit - Fetch only this many of the most recent tags (default: all)
    * @returns Array of tags, sorted by semver (newest first)
    */
   async getTags(
@@ -70,18 +77,67 @@ export class AcrRegistryClient {
   ): Promise<TagInfo[]> {
     const normalized = normalizeRegistry(registry);
     const url = new URL(`https://${normalized}/acr/v1/${repository}/_tags`);
-    if (options?.limit) {
-      url.searchParams.set('n', options.limit.toString());
-    }
+    const limit = options?.limit;
+    url.searchParams.set(
+      'n',
+      Math.min(limit ?? ACR_MAX_PAGE_SIZE, ACR_MAX_PAGE_SIZE).toString(),
+    );
     // Order by most recent first
     url.searchParams.set('orderby', 'timedesc');
 
-    this.logger.debug(`Fetching tags from ACR API: ${url.toString()}`);
+    let acrTags: AcrTagListResponse['tags'] = [];
+    let pageUrl: string | undefined = url.toString();
+    let pages = 0;
+    while (
+      pageUrl &&
+      pages < MAX_TAG_PAGES &&
+      (limit === undefined || acrTags.length < limit)
+    ) {
+      const page = await this.fetchTagPage(pageUrl, normalized, repository);
+      acrTags.push(...page.tags);
+      pages++;
+      pageUrl = page.nextUrl;
+    }
+    if (limit !== undefined) {
+      acrTags = acrTags.slice(0, limit);
+    }
 
-    const response = await this.authClient.fetch(
-      url.toString(),
-      'application/json',
+    if (pageUrl && pages >= MAX_TAG_PAGES) {
+      this.logger.info('Stopped following ACR tag pages at the page limit', {
+        registry: normalized,
+        repository,
+        pages,
+      });
+    }
+
+    const createdTimes = new Map(
+      acrTags.map(tag => [tag.name, tag.createdTime]),
     );
+    const tagInfos: TagInfo[] = sortVersions(acrTags.map(tag => tag.name)).map(
+      tag => ({ tag, createdAt: createdTimes.get(tag)! }),
+    );
+
+    this.logger.info('Successfully fetched tags from ACR API', {
+      registry: normalized,
+      repository,
+      totalTags: tagInfos.length,
+      pages,
+    });
+
+    return tagInfos;
+  }
+
+  private async fetchTagPage(
+    url: string,
+    normalized: string,
+    repository: string,
+  ): Promise<{
+    tags: AcrTagListResponse['tags'];
+    nextUrl: string | undefined;
+  }> {
+    this.logger.debug(`Fetching tags from ACR API: ${url}`);
+
+    const response = await this.authClient.fetch(url, 'application/json');
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -117,26 +173,9 @@ export class AcrRegistryClient {
 
     const data = (await response.json()) as AcrTagListResponse;
 
-    if (!data.tags || !Array.isArray(data.tags)) {
-      return [];
-    }
-
-    // Filter to valid semver versions and map to TagInfo
-    const validTags = data.tags.filter(tag => semver.valid(tag.name));
-    const tagInfos: TagInfo[] = validTags.map(tag => ({
-      tag: tag.name,
-      createdAt: tag.createdTime,
-    }));
-
-    // Sort by semver (newest first)
-    tagInfos.sort((a, b) => semver.rcompare(a.tag, b.tag));
-
-    this.logger.info('Successfully fetched tags from ACR API', {
-      registry: normalized,
-      repository,
-      totalTags: tagInfos.length,
-    });
-
-    return tagInfos;
+    return {
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      nextUrl: getNextPageUrl(response, url),
+    };
   }
 }

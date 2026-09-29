@@ -31,6 +31,9 @@
     "prepack": "backstage-cli package prepack",
     "postpack": "backstage-cli package postpack"
   },
+  "dependencies": {
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.1.0"
+  },
   "devDependencies": {
     "@backstage/cli": "backstage:^"
   },
