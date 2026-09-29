@@ -5,8 +5,10 @@
  * - `ObjectReference` (CAPI v1beta1) carries `apiVersion`, e.g.
  *   `controlplane.cluster.x-k8s.io/v1beta1`, or `v1` for a core resource.
  * - `TypedLocalObjectReference` (CAPI v1beta2) carries `apiGroup`, the group
- *   alone, e.g. `controlplane.cluster.x-k8s.io`; an empty or absent `apiGroup`
- *   means the core group.
+ *   alone, e.g. `controlplane.cluster.x-k8s.io`; an empty `apiGroup` means
+ *   the core group.
+ *
+ * A ref with neither field is unspecified and matches on kind alone.
  */
 export interface ResourceRef {
   apiVersion?: string;
