@@ -36,13 +36,13 @@
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
     "@backstage/types": "backstage:^",
-    "node-fetch": "^3.3.2",
-    "semver": "^7.7.3"
+    "@giantswarm/backstage-plugin-gs-common": "^0.21.1",
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.1.0",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",
-    "@backstage/cli": "backstage:^",
-    "@types/semver": "^7"
+    "@backstage/cli": "backstage:^"
   },
   "files": [
     "dist"

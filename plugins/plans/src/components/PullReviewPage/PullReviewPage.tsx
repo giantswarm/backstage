@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import type { Selection } from 'react-aria-components';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
   Badge,
+  Button,
   List,
   ListRow,
   Text,
@@ -11,11 +12,15 @@ import {
   ToggleButtonGroup,
 } from '@backstage/ui';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
+import FullscreenIcon from '@material-ui/icons/Fullscreen';
+import FullscreenExitIcon from '@material-ui/icons/FullscreenExit';
 import {
   Content,
   EmptyState,
   Link,
   Progress,
+  sidebarConfig,
+  useSidebarPinState,
 } from '@backstage/core-components';
 import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
@@ -139,6 +144,43 @@ const useStyles = makeStyles((theme: Theme) => ({
     borderRadius: theme.shape.borderRadius,
     backgroundColor: '#fff',
   },
+  // Full-screen reading: the document panel becomes a fixed overlay over the
+  // app's content column -- everything on the page underneath (plugin header,
+  // title, document nav) is covered, while the app sidebar stays visible and
+  // usable. `left` and `bottom` follow the sidebar's pinned/mobile state and
+  // are set inline. These rules come after `toolbar`/`htmlFrame` on purpose:
+  // same specificity, so source order decides which wins.
+  fullscreen: {
+    position: 'fixed',
+    top: 0,
+    right: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    backgroundColor: 'var(--bui-bg-app)',
+    // Below the sidebar, so its hover fly-out still opens over the document;
+    // above everything else on the page.
+    zIndex: theme.zIndex.appBar - 1,
+    // Mirrors the SidebarPage padding transition when the sidebar is pinned.
+    transition: 'left 0.1s ease-out',
+  },
+  fullscreenToolbar: {
+    flexShrink: 0,
+    padding: theme.spacing(1.5, 3),
+    marginBottom: 0,
+  },
+  fullscreenBody: {
+    flexGrow: 1,
+    minHeight: 0,
+    overflow: 'auto',
+    // Reaching the end of the document must not scroll the page underneath.
+    overscrollBehavior: 'contain',
+    padding: theme.spacing(2, 3, 3),
+  },
+  fullscreenFrame: {
+    // Resolves against the scroll container's content box, so the frame fills
+    // the overlay exactly, padding included, without a second scrollbar.
+    height: '100%',
+  },
 }));
 
 const OVERVIEW = 'overview';
@@ -203,9 +245,16 @@ function OverviewPanel(props: { repo: string; pull: PlanPull }) {
 
 /**
  * One changed document: toolbar (Rendered/Diff toggle, diff stats, status,
- * GitHub link) above the annotated reader or the diff. HTML files render in
- * a sandboxed iframe (comments only via the diff); removed files are diff
- * only.
+ * GitHub link, full-screen toggle) above the annotated reader or the diff.
+ * HTML files render in a sandboxed iframe (comments only via the diff);
+ * removed files are diff only.
+ *
+ * Full screen turns the panel into an overlay over the app's content column
+ * (the sidebar stays), with the toolbar pinned at the top and the document
+ * scrolling on its own. It toggles a class on the same element tree rather
+ * than rendering a second one, so the reader stays mounted and an open
+ * comment composer keeps its draft. The same toolbar button, or Escape,
+ * leaves it.
  */
 function DocumentPanel(props: {
   repo: string;
@@ -229,6 +278,36 @@ function DocumentPanel(props: {
   const [view, setView] = useState<'rendered' | 'diff'>(
     renderable ? 'rendered' : 'diff',
   );
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!fullscreen) {
+      return undefined;
+    }
+    // Overlays with their own Escape handling (MUI modals, react-aria
+    // popovers) stop propagation before the event reaches the window, so
+    // closing one of them does not also leave full screen.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        setFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [fullscreen]);
+
+  // The overlay starts where the app's content column starts: right of the
+  // sidebar (its closed or pinned-open width), or above the bottom bar the
+  // sidebar turns into on phones.
+  const { isPinned, isMobile } = useSidebarPinState();
+  const overlayInset = isMobile
+    ? { left: 0, bottom: sidebarConfig.mobileSidebarHeight }
+    : {
+        left: isPinned
+          ? sidebarConfig.drawerWidthOpen
+          : sidebarConfig.drawerWidthClosed,
+        bottom: 0,
+      };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['plans', 'content', repo, branch, file.filename],
@@ -257,7 +336,11 @@ function DocumentPanel(props: {
     } else if (html) {
       body = (
         <iframe
-          className={classes.htmlFrame}
+          className={
+            fullscreen
+              ? `${classes.htmlFrame} ${classes.fullscreenFrame}`
+              : classes.htmlFrame
+          }
           title={file.filename}
           sandbox="allow-scripts"
           srcDoc={data.content}
@@ -287,8 +370,17 @@ function DocumentPanel(props: {
   }
 
   return (
-    <>
-      <div className={classes.toolbar}>
+    <div
+      className={fullscreen ? classes.fullscreen : undefined}
+      style={fullscreen ? overlayInset : undefined}
+    >
+      <div
+        className={
+          fullscreen
+            ? `${classes.toolbar} ${classes.fullscreenToolbar}`
+            : classes.toolbar
+        }
+      >
         {renderable && file.patch && (
           <ToggleButtonGroup
             selectionMode="single"
@@ -312,9 +404,25 @@ function DocumentPanel(props: {
         <span className={classes.deletions}>−{file.deletions}</span>
         <div className={classes.toolbarSpacer} />
         <Link to={githubUrl}>View on GitHub</Link>
+        <Button
+          size="small"
+          variant="tertiary"
+          iconStart={
+            fullscreen ? (
+              <FullscreenExitIcon fontSize="small" />
+            ) : (
+              <FullscreenIcon fontSize="small" />
+            )
+          }
+          onPress={() => setFullscreen(current => !current)}
+        >
+          {fullscreen ? 'Exit full screen' : 'Full screen'}
+        </Button>
       </div>
-      {body}
-    </>
+      <div className={fullscreen ? classes.fullscreenBody : undefined}>
+        {body}
+      </div>
+    </div>
   );
 }
 
