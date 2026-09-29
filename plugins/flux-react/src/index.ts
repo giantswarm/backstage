@@ -1,5 +1,7 @@
 export { FluxIcon } from './assets/icons';
 export * from './components';
+export { useGitOpsSource } from './hooks';
+export type { ChangeRequestTerm, GitOpsSource } from './hooks';
 export { findHelmReleaseChartName } from './utils/findHelmReleaseChartName';
 export {
   isManagedByFlux,

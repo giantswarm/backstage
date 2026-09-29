@@ -5,7 +5,7 @@
 # workflow in .circleci/config.yml merges into this file at pipeline runtime.
 version: 2.1
 orbs:
-  architect: giantswarm/architect@10.11.0
+  architect: giantswarm/architect@10.11.1
 
 jobs:
   # Self-contained Node build/test on a cimg/node executor (architect ships no
@@ -28,10 +28,11 @@ jobs:
     # of recompiling better-sqlite3/isolated-vm/etc. from source via node-gyp
     # every run. Keyed on the node image version -- a node bump must not restore
     # stale-ABI binaries. The Node analogue of go-build's $GOCACHE persist.
+    # Exact key only: another lockfile's tree would make the install reconcile
+    # partially and skip postinstall (patch-package), see devctl#2183.
     - restore_cache:
         keys:
-        - node-build-yarn-v1-24.21.0-{{ checksum "yarn.lock" }}
-        - node-build-yarn-v1-24.21.0-
+        - node-build-yarn-v2-24.21.0-{{ checksum "yarn.lock" }}
     - run:
         name: Install dependencies
         command: yarn install --immutable
@@ -66,11 +67,9 @@ jobs:
     # Save the build-output cache *after* verify/build so it captures both the
     # node_modules native addons compiled during install AND the tsc/eslint/jest
     # incremental caches those steps write under node_modules/.cache -- the
-    # compute-side analogue of persisting $GOCACHE. Write-once per lockfile (the
-    # restore prefix keeps every run warm-started from the last good cache, so a
-    # red build never leaves a repo cold).
+    # compute-side analogue of persisting $GOCACHE. Write-once per lockfile.
     - save_cache:
-        key: node-build-yarn-v1-24.21.0-{{ checksum "yarn.lock" }}
+        key: node-build-yarn-v2-24.21.0-{{ checksum "yarn.lock" }}
         paths:
         - node_modules
         - .yarn/install-state.gz

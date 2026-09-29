@@ -127,7 +127,9 @@ Each cluster is listed under `gs.installations.<mc>` and in
 k8s-plugin routing key, but for a broker-covered cluster it needs no matching
 `auth.providers` entry. Setting `clusterTokenAudience` marks the installation as
 fully broker-covered, so its token is minted silently and it disappears from the
-provider settings page.
+provider settings page. An installation without it (and without a Dex target)
+is never exchanged at muster, which would only answer `invalid_target`; it keeps
+its own entry on the provider settings page.
 
 ```yaml
 gs:

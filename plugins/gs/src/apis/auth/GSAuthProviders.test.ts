@@ -432,6 +432,64 @@ describe('GSAuthProviders cluster token broker coverage', () => {
     expect(api.getProviders().map(p => p.providerName)).toEqual(['oidc-a']);
   });
 
+  it('exchanges at muster only for the installations it covers', async () => {
+    const api = createCoverageApi({
+      tokenUrl: 'https://muster.example.com/oauth/token',
+    });
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async input => {
+        const url = String(input);
+        if (url.includes('/oidc-a/refresh')) {
+          return new Response(
+            JSON.stringify({
+              providerInfo: {
+                idToken: 'main-id-token',
+                accessToken: 'main-access-token',
+                scope: 'openid',
+                expiresInSeconds: 3600,
+              },
+              backstageIdentity: {
+                token: 'backstage-token',
+                identity: {
+                  type: 'user',
+                  userEntityRef: 'user:default/someone',
+                  ownershipEntityRefs: [],
+                },
+                expiresInSeconds: 3600,
+              },
+              profile: {},
+            }),
+          );
+        }
+        if (url.includes('/api/auth/cluster-token/')) {
+          return new Response(
+            JSON.stringify({ token: 'cluster-token', expiresInSeconds: 600 }),
+          );
+        }
+        return new Response('', { status: 401 });
+      });
+
+    try {
+      const covered = await api.getKubernetesAuthApi('oidc-c');
+      await expect(covered!.getIdToken({ optional: true })).resolves.toBe(
+        'cluster-token',
+      );
+
+      // b is not marked covered: muster would only answer invalid_target, so
+      // it is never asked. b keeps its own sign-in, which has no session here.
+      const uncovered = await api.getKubernetesAuthApi('oidc-b');
+      await expect(uncovered!.getIdToken({ optional: true })).resolves.toBe('');
+
+      const exchanged = fetchSpy.mock.calls
+        .map(([input]) => String(input))
+        .filter(url => url.includes('/api/auth/cluster-token/'));
+      expect(exchanged).toEqual(['http://backend/api/auth/cluster-token/c']);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('covers nothing without a broker', async () => {
     const api = createCoverageApi(undefined);
     await api.ensureInitialized();

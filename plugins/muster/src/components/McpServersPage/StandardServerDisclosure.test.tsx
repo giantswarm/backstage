@@ -17,10 +17,26 @@ import {
   StandardServerDisclosureProps,
 } from './StandardServerDisclosure';
 
+const mockUseGitOpsSource = jest.fn();
+
+jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
+  useGitOpsSource: (...args: unknown[]) => mockUseGitOpsSource(...args),
+}));
+
+beforeEach(() => {
+  mockUseGitOpsSource.mockReset();
+  mockUseGitOpsSource.mockReturnValue({
+    inGit: false,
+    isLoading: false,
+    errors: [],
+  });
+});
+
 function makeServer(
   family: string,
   mc: string,
   state: MCPServerState,
+  labels: Record<string, string> = {},
 ): MCPServer {
   return new MCPServer(
     {
@@ -28,7 +44,7 @@ function makeServer(
       kind: 'MCPServer',
       metadata: {
         name: `${family}-${mc}`,
-        labels: { [MANAGEMENT_CLUSTER_LABEL]: mc },
+        labels: { [MANAGEMENT_CLUSTER_LABEL]: mc, ...labels },
       },
       spec: {
         type: 'streamable-http',
@@ -168,5 +184,49 @@ describe('StandardServerDisclosure', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Degraded clusters')).toBeInTheDocument();
     expect(screen.getByText('garm · Failed')).toBeInTheDocument();
+  });
+
+  it('looks up no source for a family that is not GitOps-managed', async () => {
+    await render({
+      family: 'kubernetes',
+      servers: ['gazelle', 'garm'].map(mc =>
+        makeServer('kubernetes', mc, 'Connected'),
+      ),
+    });
+
+    await userEvent.click(screen.getByText('kubernetes'));
+
+    expect(await screen.findByText('Management clusters')).toBeInTheDocument();
+    expect(mockUseGitOpsSource).not.toHaveBeenCalled();
+  });
+
+  it('links a GitOps-managed family to its source', async () => {
+    mockUseGitOpsSource.mockReturnValue({
+      inGit: true,
+      isLoading: false,
+      url: 'https://github.com/giantswarm/management-clusters/tree/abc123/management-clusters/gazelle',
+      errors: [],
+    });
+    const servers = ['gazelle', 'garm'].map(mc =>
+      makeServer('kubernetes', mc, 'Connected', {
+        'app.kubernetes.io/managed-by': 'Helm',
+      }),
+    );
+    await render({ family: 'kubernetes', servers });
+
+    await userEvent.click(screen.getByText('kubernetes'));
+
+    expect(
+      await screen.findByText('Managed through GitOps'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Source/ })).toHaveAttribute(
+      'href',
+      expect.stringContaining('management-clusters/gazelle'),
+    );
+    // Resolved for the representative, on the installation its CR lives on.
+    expect(mockUseGitOpsSource).toHaveBeenCalledWith(
+      expect.objectContaining({ cluster: 'gazelle' }),
+      'gazelle',
+    );
   });
 });

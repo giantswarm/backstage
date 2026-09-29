@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Box,
-  // The three dialogs below this row are still on MUI -- migrating them is a
+  // The two dialogs below this row are still on MUI -- migrating them is a
   // rework, not a swap (ConfirmActionDialog's "Done." state has no counterpart
   // in ui-react's ConfirmDialog), so their buttons stay MUI's for now.
   Button as MuiButton,
@@ -17,7 +17,6 @@ import {
   Theme,
 } from '@material-ui/core';
 import { Button, Flex } from '@backstage/ui';
-import GitHub from '@material-ui/icons/GitHub';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import PlayArrow from '@material-ui/icons/PlayArrow';
@@ -31,21 +30,15 @@ import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
-import {
-  isGitOpsManaged,
-  provenanceReleaseId,
-  readProvenance,
-  toManifestYaml,
-  toMcpServerDefinition,
-} from '../../lib/gitops';
+import { isGitOpsManaged, toMcpServerDefinition } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
-import { GitOpsManagedLabel } from '@giantswarm/backstage-plugin-ui-react';
 import {
   DEACTIVATED_SIGN_IN_GATE,
   ServerAuthActions,
   StateBadge,
 } from '../shared';
+import { GitOpsServerActions } from './GitOpsServerActions';
 
 const useStyles = makeStyles((theme: Theme) => ({
   actions: {
@@ -53,17 +46,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     marginTop: theme.spacing(2),
     paddingTop: theme.spacing(1.5),
     borderTop: `1px solid ${theme.palette.divider}`,
-  },
-  manifest: {
-    whiteSpace: 'pre',
-    overflowX: 'auto',
-    fontFamily: 'monospace',
-    fontSize: 12,
-    margin: 0,
-    padding: theme.spacing(1.5),
-    borderRadius: theme.shape.borderRadius,
-    border: `1px solid ${theme.palette.divider}`,
-    backgroundColor: theme.palette.action.hover,
   },
   editField: {
     '& textarea': {
@@ -80,69 +62,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.success.main,
   },
 }));
-
-/**
- * GitOps "manifest to commit" dialog: GitOps-managed servers are read-only in
- * the app, so Add/Edit/Delete produce a manifest the operator commits to the
- * management-clusters repo (a PR), never a live mutation. Shows the rendered
- * MCPServer manifest and the managing HelmRelease.
- */
-function GitOpsManifestDialog({
-  server,
-  open,
-  intent,
-  onClose,
-}: {
-  server: MCPServer;
-  open: boolean;
-  intent: 'edit' | 'delete';
-  onClose: () => void;
-}) {
-  const classes = useStyles();
-  const releaseId = provenanceReleaseId(readProvenance(server));
-  const manifest = toManifestYaml(server);
-
-  const copy = () => {
-    navigator.clipboard?.writeText(manifest).catch(() => undefined);
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        {intent === 'delete' ? 'Remove via GitOps' : 'Edit via GitOps'} —{' '}
-        {server.getName()}
-      </DialogTitle>
-      <DialogContent>
-        <DialogContentText component="div">
-          This server is <strong>GitOps-managed</strong>
-          {releaseId ? (
-            <>
-              {' '}
-              by HelmRelease <code>{releaseId}</code>
-            </>
-          ) : null}
-          . Live changes would be reverted by the reconciler, so they are
-          read-only here.{' '}
-          {intent === 'delete'
-            ? 'To remove it, delete its manifest in the management-clusters GitOps repo and open a PR.'
-            : 'To change it, edit its manifest in the management-clusters GitOps repo and open a PR.'}
-        </DialogContentText>
-        <Box mt={2}>
-          <Typography variant="caption" color="textSecondary">
-            Current manifest
-          </Typography>
-          <pre className={classes.manifest}>{manifest}</pre>
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <MuiButton onClick={copy}>Copy manifest</MuiButton>
-        <MuiButton onClick={onClose} color="primary">
-          Close
-        </MuiButton>
-      </DialogActions>
-    </Dialog>
-  );
-}
 
 type LiveAction = {
   label: string;
@@ -472,8 +391,8 @@ function LifecycleButton({
 
 /**
  * Lifecycle/CRUD affordances for one server, gitops-aware. Provenance is the
- * only restriction: GitOps-managed servers are read-only and route
- * Add/Edit/Delete through a GitOps PR/manifest; manually-added (ad-hoc) servers
+ * only restriction: GitOps-managed servers are read-only and explain how to
+ * edit or remove them in Git ({@link GitOpsServerActions}); manually-added (ad-hoc) servers
  * allow live core_mcpserver_* CRUD + lifecycle behind a confirm dialog.
  *
  * The row also carries the per-session auth actions (Sign in / Sign out --
@@ -522,40 +441,16 @@ export function ServerMutationActions({
     server.getAuth()?.type === 'oauth' && server.getState() === 'Auth Required';
   const reconnectGate = oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined;
 
-  const [gitopsIntent, setGitopsIntent] = useState<'edit' | 'delete' | null>(
-    null,
-  );
   const [editOpen, setEditOpen] = useState(false);
   const [action, setAction] = useState<LiveAction | undefined>();
 
   if (managed) {
     return (
-      <Flex align="center" gap="2" className={classes.actions}>
-        <GitOpsManagedLabel />
-        {authActions}
-        <Button
-          size="small"
-          variant="secondary"
-          iconStart={<GitHub fontSize="inherit" />}
-          onPress={() => setGitopsIntent('edit')}
-        >
-          Edit via GitOps
-        </Button>
-        <Button
-          size="small"
-          variant="secondary"
-          iconStart={<DeleteOutline fontSize="inherit" />}
-          onPress={() => setGitopsIntent('delete')}
-        >
-          Remove via GitOps
-        </Button>
-        <GitOpsManifestDialog
-          server={server}
-          open={gitopsIntent !== null}
-          intent={gitopsIntent ?? 'edit'}
-          onClose={() => setGitopsIntent(null)}
-        />
-      </Flex>
+      <GitOpsServerActions
+        server={server}
+        authActions={authActions}
+        className={classes.actions}
+      />
     );
   }
 

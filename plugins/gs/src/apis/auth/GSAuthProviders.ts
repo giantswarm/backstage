@@ -96,9 +96,9 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // The silent broker path, from the signed-in config, so known once
   // `ensureInitialized()` has run; empty until then, when there are no
   // per-installation providers to filter anyway. `gs.clusterTokenBroker.tokenUrl`
-  // (muster) serves every installation but the main provider's; the names
-  // under `gs.clusterTokenBroker.targets` are the installations whose own Dex
-  // mints their token, with or without muster.
+  // (muster) serves the installations marked with `clusterTokenAudience`; the
+  // names under `gs.clusterTokenBroker.targets` are the installations whose
+  // own Dex mints their token, with or without muster.
   private musterBrokerConfigured = false;
   private dexBrokerTargets = new Set<string>();
   private initialized = false;
@@ -251,17 +251,13 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     });
   }
 
-  /** Whether the installation's cluster token comes from the broker route. */
-  private usesClusterTokenBroker(installationName: string): boolean {
-    return (
-      this.musterBrokerConfigured || this.dexBrokerTargets.has(installationName)
-    );
-  }
-
   /**
    * Whether the installation is reached through the main login alone, so its
-   * own provider entry leaves the settings page: a Dex target, or muster with
-   * the installation marked covered (`clusterTokenAudience`).
+   * cluster token comes from the broker route and its own provider entry
+   * leaves the settings page: a Dex target, or muster with the installation
+   * marked covered (`clusterTokenAudience`). An installation muster does not
+   * serve is never exchanged there: the broker would only answer
+   * `invalid_target`.
    */
   private isBrokerCovered({
     installationName,
@@ -276,20 +272,20 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   /**
    * Returns a function that silently mints a per-cluster token through the
    * cluster token broker (the backend's /api/auth/cluster-token route), or
-   * undefined when the broker path does not apply to this provider. The main
-   * auth provider is excluded: its session is the broker's subject token.
+   * undefined when the installation is not broker-covered. The main auth
+   * provider is excluded: its session is the broker's subject token.
    */
   private createClusterTokenProvider(
-    installationName: string,
-    providerName: string,
+    provider: AuthProvider,
   ): (() => Promise<ClusterToken | undefined>) | undefined {
     if (!this.configApi) {
       return undefined;
     }
+    const { installationName, providerName } = provider;
     const mainProviderName =
       this.configApi.getOptionalString('gs.authProvider');
     if (
-      !this.usesClusterTokenBroker(installationName) ||
+      !this.isBrokerCovered(provider) ||
       !mainProviderName ||
       providerName === mainProviderName
     ) {
@@ -402,21 +398,20 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     const mainProviderName =
       this.configApi?.getOptionalString('gs.authProvider');
 
-    const entries = providers.map(
-      ({ providerName, providerDisplayName, installationName }) => {
-        if (providerName === mainProviderName && this.mainAuthApi) {
-          return [providerName, this.mainAuthApi] as const;
-        }
-        return [
+    const entries = providers.map(provider => {
+      const { providerName, providerDisplayName } = provider;
+      if (providerName === mainProviderName && this.mainAuthApi) {
+        return [providerName, this.mainAuthApi] as const;
+      }
+      return [
+        providerName,
+        this.createKubernetesAuthApi(
           providerName,
-          this.createKubernetesAuthApi(
-            providerName,
-            providerDisplayName,
-            this.createClusterTokenProvider(installationName, providerName),
-          ),
-        ] as const;
-      },
-    );
+          providerDisplayName,
+          this.createClusterTokenProvider(provider),
+        ),
+      ] as const;
+    });
 
     return Object.fromEntries(entries);
   }

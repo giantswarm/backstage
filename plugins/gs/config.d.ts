@@ -280,7 +280,8 @@ export interface Config {
          * Audience requested from the cluster token broker for this
          * installation (typically the installation name). Setting it marks the
          * installation as fully covered by the broker and removes its entry
-         * from the provider settings page.
+         * from the provider settings page. Without it (and without a Dex
+         * target) the installation's token is never requested from muster.
          */
         clusterTokenAudience?: string;
         backendUrl?: string;
