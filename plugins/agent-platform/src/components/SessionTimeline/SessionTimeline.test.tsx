@@ -7,6 +7,7 @@ import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-c
 import { SessionTimeline } from './SessionTimeline';
 
 import {
+  attachmentPngV2,
   tasksApproval,
   tasksAskUser,
   tasksAskUserPending,
@@ -825,11 +826,9 @@ describe('SessionTimeline — a turn the person canceled', () => {
 });
 
 describe('SessionTimeline — an attached file', () => {
-  const PNG_BYTES = Buffer.from(
-    Uint8Array.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
-    ]),
-  ).toString('base64');
+  // A real 1×1 PNG: the preview reads its header for the dimensions.
+  const PNG_BYTES = (attachmentPngV2.part as { file: { bytes: string } }).file
+    .bytes;
 
   function withAttachment(file: Record<string, unknown>) {
     return {
@@ -879,7 +878,7 @@ describe('SessionTimeline — an attached file', () => {
 
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(
-      screen.getByText(/not an image type the portal shows/),
+      screen.getByText(/only PNG, JPEG, GIF and WebP images are shown/),
     ).toBeInTheDocument();
   });
 
@@ -893,9 +892,7 @@ describe('SessionTimeline — an attached file', () => {
     );
 
     expect(screen.getByText('shot.png')).toBeInTheDocument();
-    expect(
-      screen.getByText(/attached bytes could not be read/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/contents could not be read/)).toBeInTheDocument();
     // Nothing to click: an untrusted file is not offered for download.
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
@@ -919,6 +916,78 @@ describe('SessionTimeline — an attached file', () => {
 
     await userEvent.click(screen.getByRole('radio', { name: 'Hidden' }));
 
+    expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument();
+  });
+
+  it('captions an image with the type its bytes carry, not the declared one', async () => {
+    await render(
+      withAttachment({
+        name: 'shot.png',
+        mimeType: 'application/octet-stream',
+        bytes: PNG_BYTES,
+      }),
+    );
+
+    const caption = screen.getByTestId('timeline-attachment');
+    expect(caption).toHaveTextContent('image/png');
+    expect(caption).not.toHaveTextContent('application/octet-stream');
+  });
+
+  it("marks the type on a file with no preview as the sender's claim", async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+
+    await render(
+      withAttachment({
+        name: 'harmless.png',
+        mimeType: 'image/png',
+        bytes: svg.toString('base64'),
+      }),
+    );
+
+    expect(screen.getByText(/declared as image\/png/)).toBeInTheDocument();
+  });
+
+  it("keeps the user's file on the user's side and the agent's name on its reply", async () => {
+    const fixture = withAttachment({ name: 'shot.png', bytes: PNG_BYTES });
+    fixture.data[0].history.push({
+      kind: 'message',
+      messageId: 'message-2',
+      role: 'agent',
+      parts: [{ kind: 'text', text: 'That is a screenshot.' }],
+    } as never);
+
+    await render(fixture);
+
+    const order = [
+      ...document.querySelectorAll(
+        '[data-testid^="timeline-"], [class*="authorHeader"]',
+      ),
+    ].map(el => el.getAttribute('data-testid') ?? 'agent-header');
+    expect(order).toEqual([
+      'timeline-user-message',
+      'timeline-attachment',
+      'agent-header',
+      'timeline-agent-message',
+    ]);
+  });
+
+  it('shows a file sent with an ask_user reply that has no text part', async () => {
+    const structuredOnly = structuredClone(tasksAskUser) as typeof tasksAskUser;
+    const decision = structuredOnly.data[0].history.find(
+      item => item.messageId === 'm-decision-1',
+    ) as { parts: unknown[] };
+    decision.parts = [
+      ...decision.parts.filter(
+        part => (part as { kind?: string }).kind !== 'text',
+      ),
+      { kind: 'file', file: { name: 'shot.png', bytes: PNG_BYTES } },
+    ];
+
+    await render(structuredOnly, 'SRE Agent');
+
+    expect(
+      screen.getByText(/Still no reply to messages with image/),
+    ).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument();
   });
 });

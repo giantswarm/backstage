@@ -11,6 +11,7 @@ import {
   isFunctionResponsePart,
   isInternalToolName,
   isThoughtPart,
+  KagentAttachment,
   normalizeTimestamp,
   parseHistoryEntry,
   parsePart,
@@ -18,7 +19,6 @@ import {
   readFunctionResponse,
   readKagentMetadataString,
   readMessageText,
-  decodedLength,
   readAttachment,
   readAttachmentPreview,
   readNestedTokenUsage,
@@ -124,8 +124,6 @@ export type TimelineItem =
        * to decide how to render it — see `readAttachmentPreview`.
        */
       declaredType?: string;
-      /** Decoded size in bytes, when the payload could be measured. */
-      byteSize?: number;
       /** Whether it can be shown, and as what. */
       preview: AttachmentPreview;
       /** Whether the attachment came from the user rather than the agent. */
@@ -174,6 +172,32 @@ export type SessionTimeline = {
 type OpenCall = { callId: string; itemIndex: number };
 
 const EMPTY_USAGE: TokenUsage = { total: 0, prompt: 0, completion: 0 };
+
+/**
+ * Previews already decided, keyed on the raw part.
+ *
+ * The timeline is rebuilt on every poll, and deciding a preview validates the
+ * whole payload and builds a `data:` URL as long as it. react-query keeps the
+ * identity of every part that did not change between polls, so an unchanged
+ * attachment is decided once, and a part that is no longer referenced takes its
+ * preview with it.
+ */
+const previewsByPart = new WeakMap<object, AttachmentPreview>();
+
+function previewFor(
+  rawPart: unknown,
+  attachment: KagentAttachment,
+): AttachmentPreview {
+  if (!rawPart || typeof rawPart !== 'object') {
+    return readAttachmentPreview(attachment);
+  }
+  let preview = previewsByPart.get(rawPart);
+  if (!preview) {
+    preview = readAttachmentPreview(attachment);
+    previewsByPart.set(rawPart, preview);
+  }
+  return preview;
+}
 
 /**
  * The A2A states in which `status.message` is a prompt the task is *waiting on*,
@@ -374,7 +398,8 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           // are none, the answers are recovered from the decision payload's
           // `ask_user_answers` instead: kagent's own UI reads only that field, so it
           // may be the sole carrier on sessions that did not come through a
-          // gateway that also writes the text part.
+          // gateway that also writes the text part. The parts still go through the
+          // handling below, so a file sent with the answers is not dropped.
           if (decision.answers.length > 0 && !hasTextPart(parts)) {
             items.push({
               kind: 'user-message',
@@ -383,7 +408,6 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
               taskIndex,
               text: decision.answers.join('\n\n'),
             });
-            return;
           }
         }
       }
@@ -522,7 +546,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           // message it came with, so it is never one of `ACTIVITY_KINDS` and the
           // Hidden setting does not remove it.
           flushText();
-          const preview = readAttachmentPreview(attachment);
+          const preview = previewFor(rawPart, attachment);
           items.push({
             kind: 'attachment',
             id: `${taskIndex}:${entryIndex}:${items.length}`,
@@ -536,13 +560,6 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             ...(attachment.declaredType === undefined
               ? {}
               : { declaredType: attachment.declaredType }),
-            // Only for a payload that is valid base64 — the length of a string
-            // that is not tells the reader nothing, and stating it as a size
-            // would be a number we made up.
-            ...(attachment.base64 === undefined ||
-            (preview.kind === 'none' && preview.reason === 'undecodable')
-              ? {}
-              : { byteSize: decodedLength(attachment.base64) }),
           });
           return;
         }

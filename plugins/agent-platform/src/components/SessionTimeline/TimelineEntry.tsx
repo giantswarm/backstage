@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { Alert, Badge } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import LoopIcon from '@material-ui/icons/Loop';
@@ -9,6 +9,7 @@ import {
   NoPreviewReason,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { TimelineItem } from '../../lib/kagentTimeline';
+import { formatBytes } from '../../lib/modelManagerServing';
 import { ActivityRow, InertActivityRow } from './ActivityRow';
 import { MessageMarkdown } from './MessageMarkdown';
 import { PayloadBlock } from './PayloadBlock';
@@ -136,6 +137,7 @@ const useStyles = makeStyles(theme => ({
   },
   attachment: {
     maxWidth: '85%',
+    margin: 0,
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(0.5),
@@ -191,23 +193,14 @@ function MessageBody({ text }: { text: string }) {
   return <MessageMarkdown text={text} />;
 }
 
-/** How a size reads in a caption. */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${Math.round(bytes / 1024)} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /** Why a file has no preview, in words the reader can act on. */
 const NO_PREVIEW_REASONS: Record<NoPreviewReason, string> = {
-  'not-previewable': 'No preview: this is not an image type the portal shows.',
-  undecodable: 'No preview: the attached bytes could not be read.',
+  'not-previewable':
+    'No preview: only PNG, JPEG, GIF and WebP images are shown inline.',
+  undecodable: "No preview: the file's contents could not be read.",
   'too-large': 'No preview: the file is too large to show inline.',
-  remote: 'No preview: kagent linked to this file instead of sending it.',
+  remote:
+    'No preview: the file was sent as a link, which the portal does not open.',
   empty: 'No preview: the attachment arrived with no content.',
 };
 
@@ -216,8 +209,9 @@ const NO_PREVIEW_REASONS: Record<NoPreviewReason, string> = {
  *
  * **The bytes are untrusted and rendered in our own origin**, so an image is only
  * ever shown when the bytes themselves say they are one of the allowlisted raster
- * types — the declared type is reported as a claim and never acted on, and an SVG
- * is never previewed whatever it calls itself (`readAttachmentPreview`).
+ * types, and an SVG is never previewed whatever it calls itself
+ * (`readAttachmentPreview`). A previewed image is captioned with the type its
+ * bytes carry; the declared type appears only on the chip, as the sender's claim.
  *
  * Anything with no preview renders as an inert chip: the name, the declared type,
  * the size and why there is nothing to see. **No download link** — handing an
@@ -231,46 +225,67 @@ function AttachmentEntry({
   item: Extract<TimelineItem, { kind: 'attachment' }>;
 }) {
   const classes = useStyles();
+  // The header only promises a well-formed image; the browser has the last word
+  // on the rest of the bytes.
+  const [failedToLoad, setFailedToLoad] = useState(false);
   const name = item.name ?? 'Attachment';
-  const facts = [
-    item.declaredType,
-    item.byteSize === undefined ? undefined : formatBytes(item.byteSize),
-  ].filter(Boolean);
+  const size =
+    item.preview.byteSize === undefined
+      ? undefined
+      : formatBytes(item.preview.byteSize);
+  const sender = item.isUser ? (
+    <span className={classes.srOnly}>You attached</span>
+  ) : null;
 
+  if (item.preview.kind === 'image' && !failedToLoad) {
+    const facts = [item.preview.type, size].filter(Boolean);
+    return (
+      <div
+        className={classes.attachmentRow}
+        data-user={item.isUser}
+        data-testid="timeline-attachment"
+      >
+        <figure className={classes.attachment}>
+          {sender}
+          <img
+            className={classes.attachmentImage}
+            src={item.preview.dataUrl}
+            alt={name}
+            onError={() => setFailedToLoad(true)}
+          />
+          <figcaption className={classes.attachmentCaption}>
+            {/* The name is already the image's accessible name. */}
+            <span aria-hidden="true">{name} · </span>
+            {facts.join(' · ')}
+          </figcaption>
+        </figure>
+      </div>
+    );
+  }
+
+  const reason =
+    item.preview.kind === 'image' ? 'undecodable' : item.preview.reason;
+  const facts = [
+    item.declaredType === undefined
+      ? undefined
+      : `declared as ${item.declaredType}`,
+    size,
+  ].filter(Boolean);
   return (
     <div
       className={classes.attachmentRow}
       data-user={item.isUser}
       data-testid="timeline-attachment"
     >
-      <div className={classes.attachment}>
-        {item.preview.kind === 'image' ? (
-          <>
-            <img
-              className={classes.attachmentImage}
-              src={item.preview.dataUrl}
-              // The file name is the only description anyone supplied. It is
-              // rendered as text below as well, so a reader who cannot see the
-              // image still gets it once, not twice.
-              alt={name}
-            />
-            <span className={classes.attachmentCaption}>
-              {[name, ...facts].join(' · ')}
-            </span>
-          </>
-        ) : (
-          <div className={classes.attachmentChip}>
-            <span className={classes.attachmentName}>{name}</span>
-            {facts.length > 0 && (
-              <span className={classes.attachmentCaption}>
-                {facts.join(' · ')}
-              </span>
-            )}
-            <span className={classes.attachmentCaption}>
-              {NO_PREVIEW_REASONS[item.preview.reason]}
-            </span>
-          </div>
+      <div className={`${classes.attachment} ${classes.attachmentChip}`}>
+        {sender}
+        <span className={classes.attachmentName}>{name}</span>
+        {facts.length > 0 && (
+          <span className={classes.attachmentCaption}>{facts.join(' · ')}</span>
         )}
+        <span className={classes.attachmentCaption}>
+          {NO_PREVIEW_REASONS[reason]}
+        </span>
       </div>
     </div>
   );
