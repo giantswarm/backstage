@@ -1470,7 +1470,9 @@ config arrays rather than merging them, so a deployment that overrides `img-src`
 must re-list `data:` along with the other base entries.
 
 **Only the poll renders attachments.** The live stream overlay reads text and
-call parts; a file part arrives with the next poll, at most 10 s later.
+call parts, so a stream event that carries a file part (`streamEventCarriesFile`)
+re-reads the session's tasks there and then, rather than leaving the file to the
+next poll or the end of the turn.
 
 **A message the parser cannot read is counted, not hidden.** `skippedMessages`
 counts history entries that failed the schema outright — artifact and status updates

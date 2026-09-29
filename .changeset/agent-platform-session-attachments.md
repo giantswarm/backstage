@@ -33,6 +33,9 @@ filter denial-of-service surface out of the page. There is no download link for 
 file with no preview: handing untrusted bytes to disk moves the risk to wherever
 they are opened next. The bytes never pass through the markdown renderer.
 
+A file that arrives on the live stream re-reads the conversation at once, so it
+shows up mid-turn rather than with the next poll.
+
 A file kagent only linked to is described, not fetched — the portal would
 otherwise make a request on the reader's behalf to a host named by whoever sent
 the message.
