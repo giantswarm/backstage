@@ -981,6 +981,25 @@ function registered(spec: Record<string, unknown>): MCPServer {
   );
 }
 
+/**
+ * `spec` as the cluster returns it: the CRD defaults `type`, `forwardToken`
+ * and `forwardIdentity` inside any auth block, whatever it was created with.
+ */
+function stored(spec: Record<string, unknown>): Record<string, unknown> {
+  if (!spec.auth) {
+    return spec;
+  }
+  return {
+    ...spec,
+    auth: {
+      type: 'none',
+      forwardToken: false,
+      forwardIdentity: false,
+      ...(spec.auth as object),
+    },
+  };
+}
+
 describe('editing a registered server in the wizard', () => {
   it.each([
     [{}, 'none'],
@@ -989,6 +1008,7 @@ describe('editing a registered server in the wizard', () => {
     [{ auth: { type: 'sigv4', sigv4: { region: 'eu-west-1' } } }, 'sigv4'],
   ])('reads the auth mode back from %j', (spec, mode) => {
     expect(formStateFromServer(registered(spec)).authMode).toBe(mode);
+    expect(formStateFromServer(registered(stored(spec))).authMode).toBe(mode);
   });
 
   it('round-trips what the wizard models', () => {
@@ -1148,7 +1168,7 @@ describe('editing a registered server in the wizard', () => {
     [{ type: 'stdio' }, /only covers remote/],
     [
       { auth: { forwardToken: true, tokenExchange: { enabled: true } } },
-      /token exchange \(cross-cluster sso\), which the registration wizard does not offer/,
+      /uses token exchange \(cross-cluster SSO\), which the registration wizard does not offer/,
     ],
     // tokenExchange-only once read as "No authentication".
     [{ auth: { tokenExchange: { enabled: true } } }, /does not offer/],
@@ -1173,22 +1193,75 @@ describe('editing a registered server in the wizard', () => {
       },
       /cannot show or keep/,
     ],
+    // Keys the wizard knows, but of another answer than the server's: the
+    // answer it is pre-filled with would compose the auth block without them.
+    [
+      { auth: { type: 'oauth', requiredAudiences: ['x'] } },
+      /cannot show or keep/,
+    ],
+    [
+      { auth: { type: 'none', authorizationServer: { issuer: 'https://i' } } },
+      /cannot show or keep/,
+    ],
+    [
+      {
+        auth: {
+          forwardToken: true,
+          authorizationServer: { issuer: 'https://i' },
+        },
+      },
+      /cannot show or keep/,
+    ],
+    // An auth type this frontend does not know is not "No authentication".
+    [
+      { auth: { type: 'mtls' } },
+      /uses unrecognised authentication, which the registration wizard does not offer/,
+    ],
   ])('keeps %j out of the wizard, pointing to the JSON editor', (spec, why) => {
-    const reason = wizardEditBlocker(registered(spec));
-    expect(reason).toMatch(why);
-    expect(reason).toMatch(/Edit as JSON/);
+    for (const read of [spec, stored(spec)]) {
+      const reason = wizardEditBlocker(registered(read));
+      expect(reason).toMatch(why);
+      expect(reason).toMatch(/Edit as JSON/);
+    }
+  });
+
+  it('names the settings that keep a server out of the wizard', () => {
+    expect(
+      wizardEditBlocker(
+        registered(
+          stored({ auth: { type: 'oauth', requiredAudiences: ['x'] } }),
+        ),
+      ),
+    ).toMatch(/cannot show or keep: requiredAudiences\./);
+    expect(
+      wizardEditBlocker(
+        registered(
+          stored({
+            auth: {
+              type: 'oauth',
+              forwardIdentity: true,
+              authorizationServer: { issuer: 'https://i', expectedIssuer: 'x' },
+            },
+          }),
+        ),
+      ),
+    ).toMatch(/forwardIdentity, authorizationServer\.expectedIssuer\./);
   });
 
   it('lets every auth answer the wizard offers through', () => {
     for (const spec of [
       {},
+      { auth: { type: 'none' } },
       { auth: { type: 'oauth' } },
       { auth: { type: 'oauth', authorizationServer: { issuer: 'https://i' } } },
       { auth: { forwardToken: true, requiredAudiences: ['a'] } },
+      { auth: { type: 'oauth', forwardToken: true, requiredAudiences: ['a'] } },
       { auth: { type: 'sigv4', sigv4: { region: 'eu-west-1' } } },
       { type: 'sse' },
     ]) {
+      // As composed, and as the cluster returns it with the CRD's defaults.
       expect(wizardEditBlocker(registered(spec))).toBeUndefined();
+      expect(wizardEditBlocker(registered(stored(spec)))).toBeUndefined();
     }
   });
 });

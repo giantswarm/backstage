@@ -4,10 +4,16 @@ import { MCPServer } from './k8s';
  * How users reach a server, read from `spec.auth`. The four modes the
  * registration wizard offers (see mcpServerDefinition.ts) plus cross-cluster
  * token exchange, which the wizard does not offer but the federated fleet
- * uses to bridge SSO into remote management clusters.
+ * uses to bridge SSO into remote management clusters. `unknown` is an auth
+ * `type` this frontend does not know, which must not read as no auth at all.
  */
 export type ServerAuthMode =
-  'platform-sso' | 'token-exchange' | 'own-account' | 'sigv4' | 'anonymous';
+  | 'platform-sso'
+  | 'token-exchange'
+  | 'own-account'
+  | 'sigv4'
+  | 'anonymous'
+  | 'unknown';
 
 export const AUTH_MODE_LABELS: Record<ServerAuthMode, string> = {
   'platform-sso': 'Platform SSO (forwarded token)',
@@ -15,6 +21,7 @@ export const AUTH_MODE_LABELS: Record<ServerAuthMode, string> = {
   'own-account': 'Own account (OAuth sign-in)',
   sigv4: 'AWS SigV4 (machine identity)',
   anonymous: 'Anonymous',
+  unknown: 'Unrecognised authentication',
 };
 
 /**
@@ -39,5 +46,8 @@ export function serverAuthMode(server: MCPServer): ServerAuthMode {
   if (auth.type === 'oauth') {
     return 'own-account';
   }
-  return 'anonymous';
+  if (auth.type === undefined || auth.type === 'none') {
+    return 'anonymous';
+  }
+  return 'unknown';
 }
