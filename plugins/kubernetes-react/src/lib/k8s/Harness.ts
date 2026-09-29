@@ -4,6 +4,11 @@ import { HARNESS_LABEL } from './Agent';
 
 type HarnessInterface = crds.kagent.v1alpha3.Harness;
 
+/** A Harness's `spec.allowedAgentTemplates.selector`. */
+export type HarnessAgentTemplateSelector = NonNullable<
+  NonNullable<HarnessInterface['spec']>['allowedAgentTemplates']
+>['selector'];
+
 /**
  * The runtime adapter a Harness selects: the one of `spec.kagent`,
  * `spec.claude`, `spec.codex` and `spec.byo` that is set.
@@ -46,6 +51,11 @@ export class Harness extends KubeObject<HarnessInterface> {
         HARNESS_LABEL
       ];
     return value?.trim() ? value : undefined;
+  }
+
+  /** The `allowedAgentTemplates` label selector, `undefined` when unset. */
+  getAgentTemplateSelector(): HarnessAgentTemplateSelector | undefined {
+    return this.jsonData.spec?.allowedAgentTemplates?.selector;
   }
 
   /**

@@ -351,9 +351,9 @@ describe('NewAgentReviewPage', () => {
       screen.getByText('oci://gsoci.azurecr.io/charts/giantswarm/agent:1.x'),
     ).toBeInTheDocument();
     expect(screen.getByText('latest 1.0.0')).toBeInTheDocument();
-    expect(screen.getByText('Harness').parentElement).toHaveTextContent(
-      'kagent',
-    );
+    expect(
+      screen.getByText('Runtime (Harness)').parentElement,
+    ).toHaveTextContent('kagent');
     // The skills summary names the pin.
     expect(screen.getByText('@cb1fb76')).toBeInTheDocument();
     // The Tools summary names the preset by its label, the selector below it.
@@ -382,7 +382,8 @@ describe('NewAgentReviewPage', () => {
         specSentTo(callTool, 'x_agent-manager_validate_agent'),
       ).toMatchObject({ harness: 'claude' }),
     );
-    const summary = screen.getByText('Harness').parentElement as HTMLElement;
+    const summary = screen.getByText('Runtime (Harness)')
+      .parentElement as HTMLElement;
     expect(summary).toHaveTextContent('claude');
     expect(summary).toHaveTextContent('Claude Code');
     expect(

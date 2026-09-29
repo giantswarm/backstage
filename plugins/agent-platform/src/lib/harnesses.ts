@@ -1,6 +1,8 @@
-import type {
-  Harness,
-  HarnessRuntime,
+import {
+  HARNESS_LABEL,
+  type Harness,
+  type HarnessAgentTemplateSelector,
+  type HarnessRuntime,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 /** agent-manager's platform Harness when `get_info` has not answered. */
@@ -46,12 +48,83 @@ export function imageNameOf(image: string | undefined): string | undefined {
 }
 
 /**
- * The Harnesses of `namespace` whose selector matches on the harness label,
- * the platform one first and the rest by name. A Harness without that label
- * in its selector admits no agent the Generic chart renders, so it is not
- * offered. Other requirements of the selector are not checked: the template
- * also carries labels the chart and Flux stamp, and whether it admits the
- * agent is the Harness's own verdict once the template exists.
+ * The labels the Generic agent chart (`agenttemplate.labels`) stamps on an
+ * AgentTemplate whose value does not depend on the release. The wizard sends
+ * no extra `labels`, so these plus the harness label are all of them.
+ */
+const FIXED_TEMPLATE_LABELS: Readonly<Record<string, string>> = {
+  app: 'agent',
+  'app.kubernetes.io/name': 'agent',
+  'app.kubernetes.io/managed-by': 'Helm',
+  'application.giantswarm.io/team': 'bumblebee',
+};
+
+/**
+ * Labels the template carries with a per-release value (release name, chart
+ * version, the HelmRelease helm-controller stamps): present, value unknown.
+ */
+const PER_RELEASE_TEMPLATE_LABELS: ReadonlySet<string> = new Set([
+  'app.kubernetes.io/instance',
+  'app.kubernetes.io/version',
+  'helm.sh/chart',
+  'helm.toolkit.fluxcd.io/name',
+  'helm.toolkit.fluxcd.io/namespace',
+]);
+
+/**
+ * Whether every requirement of `selector` holds for the AgentTemplate the
+ * wizard creates with `harness` = `admits`.
+ *
+ * An empty `matchLabels` value counts as no requirement: the platform
+ * Harness template drops every selector label whose value is empty, which is
+ * how agent-platform's values remove the kagent chart's own
+ * `kagent.dev/harness` key. A requirement on a per-release label can only be
+ * met by `Exists`; any value it asks for is treated as unmet, since no value
+ * holds for every agent. An unknown operator is unmet.
+ *
+ * A best-effort read: agent-manager's `requireHarness` and the Harness's own
+ * verdict on the template stay the authoritative checks.
+ */
+export function selectorAdmitsAgent(
+  selector: HarnessAgentTemplateSelector,
+  admits: string,
+): boolean {
+  const labels: Record<string, string> = {
+    ...FIXED_TEMPLATE_LABELS,
+    [HARNESS_LABEL]: admits,
+  };
+  const has = (key: string) =>
+    key in labels || PER_RELEASE_TEMPLATE_LABELS.has(key);
+
+  const labelsMet = Object.entries(selector.matchLabels ?? {}).every(
+    ([key, value]) => value === '' || labels[key] === value,
+  );
+  const expressionsMet = (selector.matchExpressions ?? []).every(
+    ({ key, operator, values = [] }) => {
+      switch (operator) {
+        case 'Exists':
+          return has(key);
+        case 'DoesNotExist':
+          return !has(key);
+        case 'In':
+          return key in labels && values.includes(labels[key]);
+        case 'NotIn':
+          return (
+            !PER_RELEASE_TEMPLATE_LABELS.has(key) &&
+            !(key in labels && values.includes(labels[key]))
+          );
+        default:
+          return false;
+      }
+    },
+  );
+  return labelsMet && expressionsMet;
+}
+
+/**
+ * The Harnesses of `namespace` that admit the agent the wizard creates on
+ * them (see {@link selectorAdmitsAgent}), the platform one first and the rest
+ * by name.
  */
 export function harnessChoicesOf(
   harnesses: readonly Harness[],
@@ -62,7 +135,8 @@ export function harnessChoicesOf(
     .filter(harness => harness.getNamespace() === namespace)
     .flatMap(harness => {
       const admits = harness.getAdmittedHarnessLabel();
-      if (!admits) {
+      const selector = harness.getAgentTemplateSelector();
+      if (!admits || !selector || !selectorAdmitsAgent(selector, admits)) {
         return [];
       }
       return [

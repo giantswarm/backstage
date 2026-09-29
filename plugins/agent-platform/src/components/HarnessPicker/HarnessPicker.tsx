@@ -27,8 +27,9 @@ import {
  * Several Harnesses are radio cards; a namespace holding one (the platform
  * Harness alone, since coding Harnesses are off by default) shows it as a
  * read-only card, so the person still sees what will run the agent. A list
- * that could not be read says so, since a choice may have been missed; a pick
- * dropped by a later model or installation change says so too.
+ * that could not be read, fully or in part, says so, since a choice may have
+ * been missed; a pick dropped by a later model or installation change says so
+ * too.
  */
 export function HarnessPicker() {
   const classes = useSelectableCardStyles();
@@ -168,6 +169,12 @@ export function HarnessPicker() {
         }
       />
       {dropNotice}
+      {errors.length > 0 && (
+        <Alert
+          status="warning"
+          title="Some runtimes couldn't be loaded; the list may be incomplete."
+        />
+      )}
       {hasChoice ? (
         <SelectableCardGrid
           role="radiogroup"

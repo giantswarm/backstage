@@ -4,6 +4,7 @@ import {
   harnessTitle,
   imageNameOf,
   runtimeLabel,
+  selectorAdmitsAgent,
 } from './harnesses';
 
 function harness(
@@ -73,6 +74,97 @@ describe('harnessChoicesOf', () => {
         'kagent',
       ),
     ).toEqual([expect.objectContaining({ name: 'claude-go', admits: 'go' })]);
+  });
+});
+
+describe('selector requirements', () => {
+  const selecting = (
+    name: string,
+    selector: Record<string, unknown>,
+  ): Harness =>
+    harness(name, { kagent: {}, allowedAgentTemplates: { selector } });
+
+  it('still offers the platform Harness whose values blank kagent.dev/harness', () => {
+    expect(
+      harnessChoicesOf(
+        [
+          selecting('kagent', {
+            matchLabels: {
+              'agent-platform.giantswarm.io/harness': 'kagent',
+              'kagent.dev/harness': '',
+            },
+          }),
+        ],
+        'kagent',
+        'kagent',
+      ),
+    ).toEqual([expect.objectContaining({ name: 'kagent' })]);
+  });
+
+  it('hides a Harness that needs a label the agent never carries', () => {
+    expect(
+      harnessChoicesOf(
+        [
+          selecting('kagent', {
+            matchLabels: {
+              'agent-platform.giantswarm.io/harness': 'kagent',
+              'kagent.dev/harness': 'kagent',
+            },
+          }),
+        ],
+        'kagent',
+        'kagent',
+      ),
+    ).toEqual([]);
+  });
+
+  it('accepts labels the chart stamps on every template', () => {
+    expect(
+      selectorAdmitsAgent(
+        {
+          matchLabels: {
+            'agent-platform.giantswarm.io/harness': 'claude',
+            'app.kubernetes.io/managed-by': 'Helm',
+          },
+        },
+        'claude',
+      ),
+    ).toBe(true);
+  });
+
+  it('evaluates matchExpressions against the labels the template carries', () => {
+    const admits = (matchExpressions: unknown[]) =>
+      selectorAdmitsAgent(
+        {
+          matchLabels: { 'agent-platform.giantswarm.io/harness': 'claude' },
+          matchExpressions,
+        } as never,
+        'claude',
+      );
+
+    expect(
+      admits([
+        {
+          key: 'agent-platform.giantswarm.io/harness',
+          operator: 'In',
+          values: ['claude', 'codex'],
+        },
+        { key: 'helm.sh/chart', operator: 'Exists' },
+        { key: 'team', operator: 'DoesNotExist' },
+        { key: 'app', operator: 'NotIn', values: ['other'] },
+      ]),
+    ).toBe(true);
+    expect(admits([{ key: 'team', operator: 'Exists' }])).toBe(false);
+    expect(
+      admits([{ key: 'app', operator: 'In', values: ['something-else'] }]),
+    ).toBe(false);
+    // No value of a per-release label holds for every agent.
+    expect(
+      admits([
+        { key: 'app.kubernetes.io/instance', operator: 'In', values: ['a'] },
+      ]),
+    ).toBe(false);
+    expect(admits([{ key: 'app', operator: 'Gt', values: ['1'] }])).toBe(false);
   });
 });
 

@@ -253,4 +253,21 @@ describe('HarnessPicker', () => {
       screen.getByRole('radio', { name: /Harness kagent,/ }),
     ).toHaveAttribute('aria-checked', 'false');
   });
+
+  it('warns that the list may be incomplete when part of it could not be read', async () => {
+    mockUseResources.mockReturnValue(
+      listing(
+        [harness('kagent', 'kagent'), harness('claude', 'claude')],
+        [{ cluster: 'gazelle', error: new Error('Forbidden') }],
+      ),
+    );
+    await render();
+
+    expect(
+      screen.getByText(
+        "Some runtimes couldn't be loaded; the list may be incomplete.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+  });
 });

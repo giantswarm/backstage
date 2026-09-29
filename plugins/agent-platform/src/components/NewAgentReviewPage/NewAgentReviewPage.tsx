@@ -565,7 +565,7 @@ export function NewAgentReviewPage() {
               </Text>
             )}
           </SummaryItem>
-          <SummaryItem label="Harness">
+          <SummaryItem label="Runtime (Harness)">
             {harnessName ? (
               <span className={classes.code}>{harnessName}</span>
             ) : (
