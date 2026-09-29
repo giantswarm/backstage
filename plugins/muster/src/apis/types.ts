@@ -200,7 +200,7 @@ export type MusterInstallationSource = 'derived' | 'configured';
 /** One muster installation the backend can target, as reported by `/installations`. */
 export interface MusterInstallationInfo {
   name: string;
-  /** The aggregator's MCP endpoint URL (mono-rendered on the dashboard). */
+  /** The aggregator's MCP endpoint URL (shown atop the Servers view). */
   endpoint?: string;
   /**
    * Whether requests need the person's token: always for a derived

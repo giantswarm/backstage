@@ -489,7 +489,6 @@ describe('getTelemetryPageViewPayload', () => {
       '/ai-chat',
       '/ai-chat/history',
       '/agent-platform/muster',
-      '/agent-platform/muster/dashboard',
       '/agent-platform/muster/servers',
       '/agent-platform/muster/workflows',
       '/agent-platform/muster/workflows/my-workflow',

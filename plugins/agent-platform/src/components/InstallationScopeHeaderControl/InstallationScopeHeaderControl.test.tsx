@@ -74,7 +74,7 @@ describe('componentForTab', () => {
     expect(componentForTab('agents')).toBe('kagent');
     expect(componentForTab('sessions/gazelle/abc')).toBe('kagent');
     expect(componentForTab('models/configs')).toBe('kagent');
-    expect(componentForTab('/muster/dashboard')).toBe('muster');
+    expect(componentForTab('/muster/servers')).toBe('muster');
   });
 
   it('knows no component for the section index or an unknown tab', () => {
@@ -115,7 +115,7 @@ describe('InstallationScopeHeaderControl', () => {
 
   it('marks installations whose muster the portal cannot reach, on the MCP Servers tab only', async () => {
     mockMusterNotReachable = ['wombat'];
-    await renderAt('/agent-platform/muster/dashboard');
+    await renderAt('/agent-platform/muster/servers');
 
     const { describe } = mockSelect.mock.calls.at(-1)![0];
     expect(describe(entry('wombat'))).toBe('not reachable from this portal');

@@ -30,6 +30,9 @@ jest.mock('./IntegrationServerDisclosure', () => ({
     <div data-testid="server-row">server:{server.getName()}</div>
   ),
 }));
+jest.mock('./MusterSummary', () => ({
+  MusterSummary: () => <div data-testid="muster-summary" />,
+}));
 jest.mock('./ServerMutationActions', () => ({
   AddAdHocServerButton: () => <button type="button">Add ad-hoc server</button>,
 }));

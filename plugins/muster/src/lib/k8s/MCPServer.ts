@@ -6,7 +6,7 @@ import {
 /**
  * Label muster sets on every aggregated MCPServer CR identifying the target
  * management cluster the server talks to. Drives the per-cluster pills on the
- * MCP servers page and the dashboard's fleet coverage.
+ * MCP servers page.
  */
 export const MANAGEMENT_CLUSTER_LABEL =
   'muster.giantswarm.io/management-cluster';
@@ -40,7 +40,7 @@ export interface ToolGroupInfo {
 
 /**
  * The tool groups with their display names and one-line descriptions -- the
- * one vocabulary for the MCP servers page, the dashboard, the agent
+ * one vocabulary for the MCP servers page, the agent
  * creation Tools step and the agent detail page. Render them in
  * {@link TOOL_GROUP_ORDER}.
  */
@@ -90,7 +90,7 @@ export function parseToolGroup(
 
 /**
  * How every surface names a server with `spec.suspended: true` -- the
- * dashboard's inventory count, the list rows, the detail blocks. "Deactivated"
+ * list rows and the detail blocks. "Deactivated"
  * rather than "suspended" because it pairs with the Activate / Deactivate
  * lifecycle buttons that flip the flag ({@link MCPServer.getSuspended}).
  */
@@ -388,7 +388,7 @@ export type MCPServerSeverity = 'ok' | 'warning' | 'error' | 'unknown';
 
 /**
  * Maps an MCPServer infrastructure state to a coarse severity used for the
- * dashboard health colouring.
+ * health colouring.
  *
  * `Auth Required` and `Awaiting Session` are deliberately treated as healthy,
  * not a warning: the first means the server needs a person's sign-in, the
@@ -436,14 +436,14 @@ export function worstSeverity(
 }
 
 /**
- * Fraction of aggregated servers that must be unhealthy before the dashboard
- * "Servers healthy" stat flips to amber.
+ * Fraction of aggregated servers that must be unhealthy before the Servers
+ * view's healthy count flips to amber.
  *
  * muster federates ~26 management clusters, so at least one remote backend is
  * almost always degraded (DNS failures on a few remote installations across
  * trials).
- * Colouring the stat amber on `healthy != total` made it near-permanently amber
- * and therefore useless as a signal (dashboard review F1). Warn only when a
+ * Colouring the count amber on `healthy != total` would make it near-permanently
+ * amber and therefore useless as a signal. Warn only when a
  * meaningful fraction is unhealthy so the colour means "act on this".
  *
  * ponytail: fixed 10% threshold (5/55 stays green, 6/55 warns). The orthogonal
@@ -461,7 +461,7 @@ export interface ServersHealthSummary {
 
 /**
  * Counts how many aggregated servers are healthy (severity `ok`, which includes
- * `Auth Required`) and decides the dashboard stat tone via
+ * `Auth Required`) and decides the Servers view's count tone via
  * {@link SERVERS_HEALTH_WARNING_FRACTION}.
  */
 export function serversHealthSummary(

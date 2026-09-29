@@ -33,8 +33,8 @@ import {
 // attaches to `page:agent-platform` as its "MCP Servers" tab (mounted at
 // `/agent-platform/muster`). `rootRouteRef` is carried here so muster's route refs
 // resolve relative to `/agent-platform/muster`, keeping every `useRouteRef` link
-// working. The four muster views (Dashboard, MCP servers, Workflows, Tool explorer)
-// render as a second-level tab row inside MusterSection.
+// working. The three muster views (Servers, Workflows, Tool explorer) render
+// as a second-level tab row inside MusterSection.
 const musterSubPage = SubPageBlueprint.make({
   name: 'mcp-servers',
   attachTo: { id: 'page:agent-platform', input: 'pages' },

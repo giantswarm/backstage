@@ -73,9 +73,8 @@ export function familyToolGroup(servers: MCPServer[]): ToolGroupKey {
  * never an empty or broken page. Every group is always present, possibly with
  * no rows, so callers render a stable set of sections.
  *
- * Shared by the MCP-servers manager and the dashboard's capability view so
- * both group the fleet identically; fleet coverage reads the family rows
- * across all groups through {@link familyGroups}.
+ * The MCP-servers manager reads the family rows across all groups through
+ * {@link familyGroups} to measure each family's fleet coverage.
  */
 export function partitionServers(servers: MCPServer[]): ToolGroupPartition[] {
   const families = new Map<string, MCPServer[]>();

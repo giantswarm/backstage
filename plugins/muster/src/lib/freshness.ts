@@ -1,6 +1,6 @@
 /**
  * Formats how long ago the live health reads were last updated, for the
- * dashboard / MCP-servers freshness indicator (ADR D4). Pure so it can be unit
+ * MCP-servers freshness indicator (ADR D4). Pure so it can be unit
  * tested without rendering; the component supplies `now` from a ticking clock.
  *
  * Returns an empty string when there is no successful read yet (no timestamp),

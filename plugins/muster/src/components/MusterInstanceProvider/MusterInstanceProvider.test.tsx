@@ -306,7 +306,7 @@ describe('MusterInstanceProvider installations', () => {
   it('lists nothing, is not loading, and explains the home installation whose probe was refused', async () => {
     // The incident: the home's `GET /apis` answered 401 (the ID token carried
     // no audience the apiserver accepts). The section used to end up with no
-    // installation, no gate and no error -- the dashboard on its progress bar.
+    // installation, no gate and no error.
     const error = new InventoryProbeError('gazelle', 401, '');
     mockInventory = inventory([
       entry('gazelle', { probe: 'failed', components: NONE, error }),

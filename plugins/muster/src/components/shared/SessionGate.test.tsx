@@ -139,35 +139,29 @@ describe('SessionGate', () => {
 });
 
 describe('sessionGateCopy', () => {
-  it('gives each failure class its own badge and action', () => {
+  it('gives each failure class its own sentence and action', () => {
     expect(sessionGateCopy(EXPIRED, 'golem')).toEqual({
-      badge: 'Session expired',
       sentence: EXPIRED.failure!.message,
       action: 'Sign in again',
     });
     expect(sessionGateCopy(MINT_FAILED, 'golem')).toEqual({
-      badge: 'No token',
       sentence: MINT_FAILED.failure!.message,
       action: 'Retry',
     });
     expect(sessionGateCopy(REJECTED, 'golem')).toEqual({
-      badge: 'Rejected by muster',
       sentence: REJECTED.failure!.message,
       action: 'Retry',
     });
     expect(sessionGateCopy(UNREACHABLE, 'golem')).toEqual({
-      badge: 'Not reachable',
       sentence: UNREACHABLE.failure!.message,
     });
   });
 
   it('has no action while checking, and a retry for an unexplained miss', () => {
     expect(sessionGateCopy(session({ pending: true }), 'golem')).toEqual({
-      badge: 'Checking session…',
       sentence: 'Checking your muster session for golem…',
     });
     expect(sessionGateCopy(session(), undefined)).toEqual({
-      badge: 'No session',
       sentence: 'No muster session yet.',
       action: 'Retry',
     });

@@ -17,7 +17,6 @@ import {
 } from '../../routes';
 import { MusterProviders } from '../MusterProviders';
 import { useMusterInstance } from '../MusterInstanceProvider';
-import { DashboardPage } from '../DashboardPage';
 import { McpServersRouter } from '../McpServersRouter';
 import { WorkflowsRouter } from '../WorkflowsRouter';
 import { ToolExplorerPage } from '../ToolExplorerPage';
@@ -25,9 +24,8 @@ import { ToolExplorerPage } from '../ToolExplorerPage';
 // The muster views. This used to be four SubPageBlueprint tabs on a standalone
 // muster page; muster is now a section embedded under the Agent Platform page's
 // "MCP Servers" tab, so these render as a second-level tab row here instead.
-// Dashboard is first, so the section index redirects to it.
+// Servers is first, so the section index redirects to it.
 const VIEWS = [
-  { path: 'dashboard', title: 'Dashboard' },
   { path: 'servers', title: 'Servers' },
   { path: 'workflows', title: 'Workflows' },
   { path: 'tools', title: 'Tool explorer' },
@@ -41,7 +39,17 @@ const VIEWS = [
  */
 const IndexRedirect = () => {
   const { search } = useLocation();
-  return <Navigate to={{ pathname: 'dashboard', search }} replace />;
+  return <Navigate to={{ pathname: 'servers', search }} replace />;
+};
+
+/**
+ * Sends the linkable `/dashboard` path to the Servers view, keeping the query
+ * string. Required for the reason {@link LegacyUsageRedirect} gives. Spelled
+ * `../servers` because the route is matched at `dashboard`.
+ */
+const LegacyDashboardRedirect = () => {
+  const { search } = useLocation();
+  return <Navigate to={`../servers${search}`} replace />;
 };
 
 /**
@@ -52,7 +60,7 @@ const IndexRedirect = () => {
  *
  * The fallback is spelled `../workflows` rather than `..`: this route is matched
  * relative to the section root, so a bare `..` would land on the index (and from
- * there on the Dashboard) instead of the workflows list.
+ * there on the Servers view) instead of the workflows list.
  */
 /**
  * `/agent-platform/muster/usage` moved to the Agent Platform's own Usage tab,
@@ -63,19 +71,19 @@ const IndexRedirect = () => {
  *
  * A sibling of the index redirect rather than a route inside `MusterViews`, for
  * the same reason that one is, and it preserves the query string so an
- * `?installation=` in a deep link survives. Falls back to `dashboard` when the
+ * `?installation=` in a deep link survives. Falls back to `servers` when the
  * external ref is unbound (agent-platform disabled), which is where the section
  * index goes anyway.
  */
 const LegacyUsageRedirect = () => {
   const { search } = useLocation();
   const usageLink = useRouteRef(agentPlatformUsageExternalRouteRef);
-  // The fallback is spelled `../dashboard`, not `dashboard`: this route is
+  // The fallback is spelled `../servers`, not `servers`: this route is
   // matched at `usage`, so a bare relative path resolves *under* it and lands on
-  // `/muster/usage/dashboard`. Same trap `LegacyRunRedirect` documents below.
+  // `/muster/usage/servers`. Same trap `LegacyRunRedirect` documents below.
   return (
     <Navigate
-      to={`${usageLink ? usageLink() : '../dashboard'}${search}`}
+      to={`${usageLink ? usageLink() : '../servers'}${search}`}
       replace
     />
   );
@@ -95,8 +103,7 @@ const LegacyRunRedirect = () => {
  * that says so once for every view: which installation, what the API server
  * answered (a 401 the person's token cannot repair, a 403, another error) and
  * what fixes it. Before this, a rejected token left the section without an
- * installation, without a gate and without an error: the dashboard sat on its
- * progress bar and the other views claimed no installation runs muster.
+ * installation, without a gate and without an error: the views claimed no installation runs muster.
  */
 const MusterViewsBody = () => {
   const {
@@ -120,7 +127,6 @@ const MusterViewsBody = () => {
 
   return (
     <Routes>
-      <Route path="dashboard" element={<DashboardPage />} />
       <Route path="servers/*" element={<McpServersRouter />} />
       <Route path="workflows/*" element={<WorkflowsRouter />} />
       <Route path="tools" element={<ToolExplorerPage />} />
@@ -173,15 +179,16 @@ const MusterViews = () => {
 // the active installation into `?installation=` from an effect: a search-only
 // navigation resolves against the pathname of the render it was created in, so
 // mounted alongside the redirect that write landed on the pre-redirect path and
-// silently replaced `/muster/dashboard` back with `/muster`. The provider now
+// silently replaced `/muster/servers` back with `/muster`. The provider now
 // reads the section-wide installation scope (gs `useInstallationScope`) and
 // writes nothing on mount; the scope's own URL sync runs in the page header,
 // outside these routes. The placement stays: it keeps any future search-only
 // write in a separate commit from the redirect. Same reason the legacy
-// `workflows/:name/run` redirect lives here.
+// `dashboard` and `workflows/:name/run` redirects live here.
 export const MusterSection = () => (
   <Routes>
     <Route index element={<IndexRedirect />} />
+    <Route path="dashboard" element={<LegacyDashboardRedirect />} />
     <Route path="usage" element={<LegacyUsageRedirect />} />
     <Route path="workflows/:name/run" element={<LegacyRunRedirect />} />
     <Route path="*" element={<MusterViews />} />
