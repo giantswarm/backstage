@@ -8431,6 +8431,7 @@ __metadata:
     "@backstage/plugin-kubernetes-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-flux-react": "workspace:^"
     "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-gs-react": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"

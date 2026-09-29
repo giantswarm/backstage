@@ -33,6 +33,7 @@
     "@backstage/frontend-plugin-api": "backstage:^",
     "@backstage/plugin-kubernetes-react": "backstage:^",
     "@backstage/ui": "backstage:^",
+    "@giantswarm/backstage-plugin-flux-react": "workspace:^",
     "@giantswarm/backstage-plugin-gs": "workspace:^",
     "@giantswarm/backstage-plugin-gs-react": "workspace:^",
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
