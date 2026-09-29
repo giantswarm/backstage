@@ -3,6 +3,7 @@ import { ASK_USER_TOOL_NAME, CONFIRMATION_TOOL_NAME } from './kagentParts';
 import { readKagentTimelinePosition } from './kagentMetadata';
 import { asRecord, isRecord } from './record';
 import { wireString } from './kagentSchema';
+import { asNonEmptyString } from './values';
 
 /**
  * The A2A **v1** wire, as the kagent API v2 controller speaks it over gRPC and
@@ -176,10 +177,6 @@ export function isA2aV1StreamResponse(raw: unknown): boolean {
 
 type Wire = Record<string, unknown>;
 
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : undefined;
-}
-
 /**
  * One v1 part as a `kind`-discriminated part. Text, data and file keep their
  * metadata bag verbatim — it is where kagent's part type
@@ -242,8 +239,8 @@ function readHitlPayload(
  * offered to answer on a shape this cannot read.
  */
 function hitlRequestParts(payload: Record<string, unknown>): Wire[] {
-  const type = asString(payload.type);
-  const hint = asString(payload.hint);
+  const type = asNonEmptyString(payload.type);
+  const hint = asNonEmptyString(payload.hint);
   const confirmation = (
     approvalId: string,
     call: { id?: string; name?: string; args?: unknown },
@@ -273,11 +270,11 @@ function hitlRequestParts(payload: Record<string, unknown>): Wire[] {
       .map(asRecord)
       .filter((tool): tool is Record<string, unknown> => Boolean(tool))
       .map(tool => {
-        const id = asString(tool.id);
+        const id = asNonEmptyString(tool.id);
         return id
           ? confirmation(id, {
-              id: asString(tool.call_id),
-              name: asString(tool.name),
+              id: asNonEmptyString(tool.call_id),
+              name: asNonEmptyString(tool.name),
               args: tool.args,
             })
           : undefined;
@@ -286,7 +283,7 @@ function hitlRequestParts(payload: Record<string, unknown>): Wire[] {
   }
 
   if (type === 'ask_user_request') {
-    const id = asString(payload.id);
+    const id = asNonEmptyString(payload.id);
     if (!id) {
       return [];
     }
@@ -311,7 +308,7 @@ function hitlRequestParts(payload: Record<string, unknown>): Wire[] {
  * approval carrying the answers positionally, as `ask_user_answers`.
  */
 function hitlResponsePart(payload: Record<string, unknown>): Wire | undefined {
-  const type = asString(payload.type);
+  const type = asNonEmptyString(payload.type);
   if (type === 'tool_approval_response') {
     const approvals = (
       Array.isArray(payload.approvals) ? payload.approvals : []
@@ -323,7 +320,7 @@ function hitlResponsePart(payload: Record<string, unknown>): Wire | undefined {
       kind: 'data',
       data: {
         decision_type: rejected ? 'reject' : 'approve',
-        ...(asString(rejected?.rejection_reason) && {
+        ...(asNonEmptyString(rejected?.rejection_reason) && {
           rejection_reason: rejected!.rejection_reason,
         }),
       },
@@ -551,8 +548,10 @@ export function toWireStreamEvent(raw: unknown): Wire | undefined {
     const state = status?.state as string | undefined;
     return {
       kind: 'status-update',
-      ...(asString(statusUpdate.taskId) && { taskId: statusUpdate.taskId }),
-      ...(asString(statusUpdate.contextId) && {
+      ...(asNonEmptyString(statusUpdate.taskId) && {
+        taskId: statusUpdate.taskId,
+      }),
+      ...(asNonEmptyString(statusUpdate.contextId) && {
         contextId: statusUpdate.contextId,
       }),
       ...(status && { status }),
@@ -571,8 +570,10 @@ export function toWireStreamEvent(raw: unknown): Wire | undefined {
         : toWireArtifact(artifactUpdate.artifact);
     return {
       kind: 'artifact-update',
-      ...(asString(artifactUpdate.taskId) && { taskId: artifactUpdate.taskId }),
-      ...(asString(artifactUpdate.contextId) && {
+      ...(asNonEmptyString(artifactUpdate.taskId) && {
+        taskId: artifactUpdate.taskId,
+      }),
+      ...(asNonEmptyString(artifactUpdate.contextId) && {
         contextId: artifactUpdate.contextId,
       }),
       ...(artifact && { artifact }),

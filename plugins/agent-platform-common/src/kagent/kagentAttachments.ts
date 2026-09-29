@@ -1,4 +1,5 @@
 import { A2aPartWire } from './kagentTaskSchema';
+import { asNonEmptyString } from './values';
 
 /**
  * Attachments are **untrusted input rendered in our own origin**: the bytes come
@@ -16,7 +17,7 @@ export type KagentAttachment = {
   name?: string;
   /** What the sender *said* it is. Shown as a claim; never acted on. */
   declaredType?: string;
-  /** The payload as standard base64, when the part carried bytes. */
+  /** The payload as the part carried it, when the part carried bytes. */
   base64?: string;
   /** Where the payload lives, when the part named a location instead. */
   uri?: string;
@@ -48,28 +49,53 @@ export type PreviewableImageType = (typeof PREVIEWABLE_IMAGE_TYPES)[number];
  * The largest payload that may be turned into a `data:` URL.
  *
  * A screenshot pasted into a chat is well under this; a payload above it is not
- * something to hand the browser as one string in the page's own DOM. The cap is
- * applied to the *encoded* length, so it is enforced without decoding anything.
+ * something to hand the browser as one string in the page's own DOM. It is
+ * measured from the encoded length, so it is enforced without decoding anything.
  */
 export const MAX_PREVIEW_BYTES = 8 * 1024 * 1024;
 
 /**
- * Bytes needed to recognise every type in the allowlist.
+ * The most pixels an image may declare and still be previewed.
  *
- * WebP is the longest signature: `RIFF` + 4 size bytes + `WEBP` = 12. 18 rounds
- * that up to a whole number of base64 quanta with room to spare, and it is the
- * only part of the payload that is ever decoded to classify it — a 5 MB image is
- * never decoded just to find out what it is.
+ * The byte cap does not bound the decode: a 100 KB PNG can declare 30000×30000
+ * and make the browser allocate gigabytes for every reader of the session. 50
+ * megapixels admits a 48 MP phone photo and a 5K screenshot.
  */
-export const SNIFF_BYTES = 18;
+export const MAX_PREVIEW_PIXELS = 50_000_000;
+
+/**
+ * Bytes decoded from the start of the payload to classify it.
+ *
+ * Covers every signature in the allowlist and the dimensions of PNG, GIF and
+ * WebP, the furthest being WebP's VP8 frame size at bytes 26–29. JPEG keeps its
+ * dimensions in a frame header after a variable run of segments, which is
+ * walked separately, a few bytes at a time.
+ */
+export const SNIFF_BYTES = 30;
+
+/** Segments walked in search of a JPEG frame header before giving up. */
+const MAX_JPEG_SEGMENTS = 64;
+
+/**
+ * The longest encoded payload worth normalising: base64 of
+ * {@link MAX_PREVIEW_BYTES}, with room for the line breaks of wrapped base64.
+ * Anything longer is too large whatever it turns out to contain, which is
+ * decided from `length` without reading the string.
+ */
+const MAX_ENCODED_LENGTH = Math.ceil(
+  Math.ceil(MAX_PREVIEW_BYTES / 3) * 4 * 1.05,
+);
 
 /** Why an attachment has no preview. */
 export type NoPreviewReason =
   /** The bytes are not a type we render inline — including SVG, always. */
   | 'not-previewable'
-  /** The payload is not valid base64, so there are no bytes to look at. */
+  /** The payload is not base64, or not the image its signature announced. */
   | 'undecodable'
-  /** Valid base64, but larger than {@link MAX_PREVIEW_BYTES}. */
+  /**
+   * Larger than {@link MAX_PREVIEW_BYTES}, or declaring more than
+   * {@link MAX_PREVIEW_PIXELS}.
+   */
   | 'too-large'
   /** The part named a location rather than carrying the bytes. */
   | 'remote'
@@ -83,11 +109,15 @@ export type AttachmentPreview =
       type: PreviewableImageType;
       /** `data:<type>;base64,<payload>`, built without decoding the payload. */
       dataUrl: string;
+      /** Decoded size in bytes. */
+      byteSize: number;
     }
-  | { kind: 'none'; reason: NoPreviewReason };
-
-/** Standard base64, padded, with nothing else in it. */
-const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
+  | {
+      kind: 'none';
+      reason: NoPreviewReason;
+      /** Decoded size in bytes, present only when the payload is valid base64. */
+      byteSize?: number;
+    };
 
 /**
  * The file part's contents, or undefined when the part is not a file part.
@@ -110,13 +140,11 @@ export function readAttachment(
   if (base64 === undefined && uri === undefined) {
     return undefined;
   }
+  const name = asNonEmptyString(record.name);
+  const declaredType = asNonEmptyString(record.mimeType);
   return {
-    ...(asNonEmptyString(record.name) === undefined
-      ? {}
-      : { name: asNonEmptyString(record.name) }),
-    ...(asNonEmptyString(record.mimeType) === undefined
-      ? {}
-      : { declaredType: asNonEmptyString(record.mimeType) }),
+    ...(name === undefined ? {} : { name }),
+    ...(declaredType === undefined ? {} : { declaredType }),
     ...(base64 === undefined ? {} : { base64 }),
     ...(uri === undefined ? {} : { uri }),
   };
@@ -126,9 +154,10 @@ export function readAttachment(
  * Decide whether an attachment may be shown, and as what.
  *
  * The order is deliberate, and each step is a reason not to do the next one:
- * reject a part with no payload, refuse a remote one, validate the base64,
- * apply the size cap, and only then decode the first {@link SNIFF_BYTES} bytes
- * to derive the type. Nothing outside {@link PREVIEWABLE_IMAGE_TYPES} is
+ * reject a part with no payload, refuse a remote one, apply the size cap to the
+ * raw length, normalise and validate the base64, apply the exact size cap, and
+ * only then decode the first {@link SNIFF_BYTES} bytes to derive the type and
+ * read the dimensions. Nothing outside {@link PREVIEWABLE_IMAGE_TYPES} is
  * rendered, and the type used for the `data:` URL is the sniffed one, so the
  * browser is never told a type the bytes do not support.
  */
@@ -144,30 +173,70 @@ export function readAttachmentPreview(
       reason: attachment.uri === undefined ? 'empty' : 'remote',
     };
   }
-
-  const base64 = attachment.base64;
-  if (!BASE64_PATTERN.test(base64) || base64.length % 4 !== 0) {
-    return { kind: 'none', reason: 'undecodable' };
-  }
-  if (decodedLength(base64) > MAX_PREVIEW_BYTES) {
+  if (attachment.base64.length > MAX_ENCODED_LENGTH) {
     return { kind: 'none', reason: 'too-large' };
   }
 
-  const head = decodeHead(base64);
-  if (!head) {
+  const base64 = normalizeBase64(attachment.base64);
+  if (base64 === undefined) {
     return { kind: 'none', reason: 'undecodable' };
+  }
+  const byteSize = decodedLength(base64);
+  if (byteSize > MAX_PREVIEW_BYTES) {
+    return { kind: 'none', reason: 'too-large', byteSize };
+  }
+
+  const head = decodeRange(base64, 0, SNIFF_BYTES);
+  if (!head) {
+    return { kind: 'none', reason: 'undecodable', byteSize };
   }
   const type = sniffImageType(head);
   if (!type) {
-    return { kind: 'none', reason: 'not-previewable' };
+    return { kind: 'none', reason: 'not-previewable', byteSize };
   }
-  return { kind: 'image', type, dataUrl: `data:${type};base64,${base64}` };
+  const size = readImageSize(base64, type, head);
+  if (!size) {
+    return { kind: 'none', reason: 'undecodable', byteSize };
+  }
+  if (size.width * size.height > MAX_PREVIEW_PIXELS) {
+    return { kind: 'none', reason: 'too-large', byteSize };
+  }
+  return {
+    kind: 'image',
+    type,
+    dataUrl: `data:${type};base64,${base64}`,
+    byteSize,
+  };
+}
+
+/**
+ * The payload as padded standard base64, or undefined when it is not base64.
+ *
+ * Producers differ in what they send for the same bytes: unpadded
+ * (`RawStdEncoding`), URL-safe, or wrapped at 76 characters (Python's
+ * `base64.encodebytes`). All of them are the same bytes, and a `data:` URL
+ * needs the one form.
+ */
+export function normalizeBase64(raw: string): string | undefined {
+  const compact = raw
+    .replace(/\s+/g, '')
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .replace(/={1,2}$/, '');
+  if (
+    compact === '' ||
+    compact.length % 4 === 1 ||
+    !/^[A-Za-z0-9+/]+$/.test(compact)
+  ) {
+    return undefined;
+  }
+  return compact + '='.repeat((4 - (compact.length % 4)) % 4);
 }
 
 /**
  * The decoded size of a base64 payload, from its length alone.
  *
- * Exact for the padded, unbroken base64 the pattern above has already accepted.
+ * Exact for the padded, unbroken base64 {@link normalizeBase64} produces.
  */
 export function decodedLength(base64: string): number {
   let padding = 0;
@@ -191,7 +260,7 @@ export function sniffImageType(
     return 'image/png';
   }
   // JPEG: SOI plus the first marker. Every variant (JFIF, Exif, raw) starts this
-  // way, and the fourth byte distinguishes a JPEG from a stray `FF D8`.
+  // way, and the third byte distinguishes a JPEG from a stray `FF D8`.
   if (
     head.length >= 3 &&
     head[0] === 0xff &&
@@ -218,28 +287,157 @@ export function sniffImageType(
   return undefined;
 }
 
+type ImageSize = { width: number; height: number };
+
 /**
- * The first {@link SNIFF_BYTES} bytes of a base64 payload.
- *
- * Only whole base64 quanta are taken, so the decode can never depend on the
- * trailing bits of a partial group. Returns undefined when the payload is too
- * short to identify or cannot be decoded at all.
+ * The dimensions the image's own header declares, or undefined when the header
+ * is missing, truncated or states a zero side.
  */
-function decodeHead(base64: string): Uint8Array | undefined {
-  const quanta = Math.ceil(SNIFF_BYTES / 3);
-  const head = base64.slice(0, quanta * 4);
-  try {
-    const binary = globalThis.atob(head);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
-  } catch {
-    // `atob` is the last word on whether this is base64: the pattern above
-    // accepts some strings it rejects, and neither is a payload to render.
+function readImageSize(
+  base64: string,
+  type: PreviewableImageType,
+  head: Uint8Array,
+): ImageSize | undefined {
+  let size: ImageSize | undefined;
+  switch (type) {
+    case 'image/png':
+      // The IHDR chunk is required to come first.
+      size = startsWith(head.subarray(12), asciiBytes('IHDR'))
+        ? { width: uint32BE(head, 16), height: uint32BE(head, 20) }
+        : undefined;
+      break;
+    case 'image/gif':
+      size = { width: uint16LE(head, 6), height: uint16LE(head, 8) };
+      break;
+    case 'image/webp':
+      size = readWebpSize(head);
+      break;
+    default:
+      size = readJpegSize(base64);
+  }
+  if (
+    !size ||
+    !Number.isFinite(size.width) ||
+    !Number.isFinite(size.height) ||
+    size.width <= 0 ||
+    size.height <= 0
+  ) {
     return undefined;
   }
+  return size;
+}
+
+function readWebpSize(head: Uint8Array): ImageSize | undefined {
+  // Lossy: a VP8 key frame, whose start code precedes two 14-bit sides.
+  if (startsWith(head.subarray(12), asciiBytes('VP8 '))) {
+    if (!startsWith(head.subarray(23), [0x9d, 0x01, 0x2a])) {
+      return undefined;
+    }
+    return {
+      width: uint16LE(head, 26) & 0x3fff,
+      height: uint16LE(head, 28) & 0x3fff,
+    };
+  }
+  // Lossless: a signature byte, then both sides minus one, 14 bits each.
+  if (startsWith(head.subarray(12), asciiBytes('VP8L'))) {
+    if (head[20] !== 0x2f) {
+      return undefined;
+    }
+    const bits = uint32LE(head, 21);
+    return {
+      width: (bits & 0x3fff) + 1,
+      height: ((bits >>> 14) & 0x3fff) + 1,
+    };
+  }
+  // Extended: the canvas size, each side minus one in 24 bits.
+  if (startsWith(head.subarray(12), asciiBytes('VP8X'))) {
+    return { width: uint24LE(head, 24) + 1, height: uint24LE(head, 27) + 1 };
+  }
+  return undefined;
+}
+
+/**
+ * A JPEG's dimensions, from its first frame header.
+ *
+ * Walks the marker segments from the start of the file, decoding only each
+ * segment's first few bytes — an Exif block ahead of the frame header can be
+ * tens of kilobytes that are never read.
+ */
+function readJpegSize(base64: string): ImageSize | undefined {
+  let offset = 2;
+  for (let step = 0; step < MAX_JPEG_SEGMENTS; step += 1) {
+    const segment = decodeRange(base64, offset, 9);
+    if (!segment || segment.length < 2 || segment[0] !== 0xff) {
+      return undefined;
+    }
+    const marker = segment[1];
+    if (marker === 0xff) {
+      // A fill byte ahead of the marker.
+      offset += 1;
+      continue;
+    }
+    if (isFrameHeader(marker)) {
+      return segment.length < 9
+        ? undefined
+        : { width: uint16BE(segment, 7), height: uint16BE(segment, 5) };
+    }
+    if (marker === 0xda || marker === 0xd9) {
+      // Scan data or the end of the image, with no frame header before it.
+      return undefined;
+    }
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+      // Markers that stand alone, with no length.
+      offset += 2;
+      continue;
+    }
+    if (segment.length < 4) {
+      return undefined;
+    }
+    offset += 2 + uint16BE(segment, 2);
+  }
+  return undefined;
+}
+
+/** SOF0–SOF15, less the three codes in that range that are not frame headers. */
+function isFrameHeader(marker: number): boolean {
+  return (
+    marker >= 0xc0 &&
+    marker <= 0xcf &&
+    marker !== 0xc4 &&
+    marker !== 0xc8 &&
+    marker !== 0xcc
+  );
+}
+
+/**
+ * `length` bytes of a padded base64 payload from byte `offset`, fewer when the
+ * payload ends first.
+ *
+ * Decodes only the base64 quanta that cover the range, so reading a header
+ * never costs the size of the image. Returns undefined when those quanta are
+ * not base64.
+ */
+function decodeRange(
+  base64: string,
+  offset: number,
+  length: number,
+): Uint8Array | undefined {
+  const first = Math.floor(offset / 3);
+  const last = Math.ceil((offset + length) / 3);
+  let binary: string;
+  try {
+    binary = globalThis.atob(base64.slice(first * 4, last * 4));
+  } catch {
+    return undefined;
+  }
+  const start = offset - first * 3;
+  const bytes = new Uint8Array(
+    Math.max(0, Math.min(length, binary.length - start)),
+  );
+  for (let i = 0; i < bytes.length; i += 1) {
+    bytes[i] = binary.charCodeAt(start + i);
+  }
+  return bytes;
 }
 
 function startsWith(bytes: Uint8Array, signature: number[]): boolean {
@@ -253,6 +451,22 @@ function asciiBytes(text: string): number[] {
   return [...text].map(character => character.charCodeAt(0));
 }
 
-function asNonEmptyString(value: unknown): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : undefined;
+function uint16BE(bytes: Uint8Array, at: number): number {
+  return bytes[at] * 0x100 + bytes[at + 1];
+}
+
+function uint32BE(bytes: Uint8Array, at: number): number {
+  return uint16BE(bytes, at) * 0x10000 + uint16BE(bytes, at + 2);
+}
+
+function uint16LE(bytes: Uint8Array, at: number): number {
+  return bytes[at] + bytes[at + 1] * 0x100;
+}
+
+function uint24LE(bytes: Uint8Array, at: number): number {
+  return uint16LE(bytes, at) + bytes[at + 2] * 0x10000;
+}
+
+function uint32LE(bytes: Uint8Array, at: number): number {
+  return uint24LE(bytes, at) + bytes[at + 3] * 0x1000000;
 }
