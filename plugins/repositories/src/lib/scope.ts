@@ -1,4 +1,4 @@
-import { ManagerInfo, Scope } from '../apis';
+import { ManagerInfo, RepositoryRow, Scope } from '../apis';
 
 /**
  * The scope the page opens on: *My team* for everyone, *Unassigned* for a
@@ -27,4 +27,60 @@ export function teamsOf(info: ManagerInfo | undefined): string[] {
         .filter((team): team is string => !!team),
     ),
   ].sort();
+}
+
+/**
+ * The teams the caller belongs to, for the team a declaration form opens on:
+ * the teams of the manager's `mine` listing -- membership as the manager
+ * reads it on GitHub as the person, which is what decides -- and the team
+ * slugs of the caller's groups where the identity carries them (a lab Dex
+ * does, GitHub's login does not). Sorted, once each.
+ */
+export function callerTeams(
+  info: ManagerInfo | undefined,
+  mine: RepositoryRow[],
+): string[] {
+  return [
+    ...new Set([
+      ...teamsOf(info),
+      ...mine.map(row => row.team).filter((team): team is string => !!team),
+    ]),
+  ].sort();
+}
+
+/** One team a declaration form can be filed for. */
+export interface TeamOption {
+  id: string;
+  label: string;
+  /** The caller belongs to it, as the manager reports the caller's groups. */
+  mine: boolean;
+}
+
+/**
+ * The teams a declaration can be filed for: the caller's own first (labelled
+ * so, the form opens on the first; see [callerTeams]), then every team the
+ * inventory knows a declaration of, then the one the form holds already when
+ * neither names it (a team file the inventory has not swept yet). Sorted
+ * within each group; no team twice.
+ */
+export function teamOptions(
+  mine: string[],
+  inventoryTeams: string[],
+  current = '',
+): TeamOption[] {
+  const others = [
+    ...new Set(
+      inventoryTeams.filter(
+        (team): team is string => !!team && !mine.includes(team),
+      ),
+    ),
+  ].sort();
+  const options: TeamOption[] = [
+    ...mine.map(id => ({ id, label: `${id} (your team)`, mine: true })),
+    ...others.map(id => ({ id, label: id, mine: false })),
+  ];
+  if (current && !options.some(option => option.id === current)) {
+    options.push({ id: current, label: current, mine: false });
+  }
+  return options;
 }

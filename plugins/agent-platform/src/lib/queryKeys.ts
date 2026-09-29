@@ -61,15 +61,13 @@ export function sessionUsageQueryKey(installation: string) {
 }
 
 /**
- * The model-manager reads, per installation. Prefixed `model-manager` (not
- * `kagent`) so `components/QueryClientProvider`'s user-scoped filter leaves
- * them alone: an installation's inventory, backend descriptor and pull jobs
- * are the same for every user, and safe to persist.
+ * The model-manager reads, per installation — through muster as the person,
+ * but about the installation: its inventory, backend descriptors and pull
+ * jobs are the same for every user, so they are prefixed `model-manager` (not
+ * `kagent`, not `muster`) and `components/QueryClientProvider` persists them.
+ * Whether an installation has a model-manager at all is the `muster` question
+ * (`musterServersQueryKey` below).
  */
-export function modelManagerInstallationsQueryKey() {
-  return ['agent-platform', 'model-manager', 'installations'] as const;
-}
-
 export function modelManagerBackendQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'backend', installation] as const;
 }
@@ -95,6 +93,37 @@ export function modelManagerJobsQueryKey(installation: string) {
 
 export function modelManagerNodesQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'nodes', installation] as const;
+}
+export function modelManagerPresetsQueryKey(
+  installation: string,
+  backend?: string,
+) {
+  return [
+    'agent-platform',
+    'model-manager',
+    'presets',
+    installation,
+    backend ?? '',
+  ] as const;
+}
+/** `check_fit` of one model on one backend, as the Serve dialog asks it. */
+export function modelManagerFitQueryKey(
+  installation: string,
+  backend: string | undefined,
+  model: string,
+  placement: string = '',
+  node: string = '',
+) {
+  return [
+    'agent-platform',
+    'model-manager',
+    'fit',
+    installation,
+    backend ?? '',
+    model,
+    placement,
+    node,
+  ] as const;
 }
 
 /**
@@ -257,7 +286,7 @@ export function musterValidateAgentUpdateQueryKey(
  * cluster-manager, read through the person's muster session like agent-manager
  * above: what it offers (`get_info`), the installation's clusters with their
  * marks (`list_clusters`), one cluster's pools (`list_node_pools`) and the
- * curated accelerators from the create tool's schema.
+ * create tool's schema (the curated accelerators, the arguments it takes).
  */
 export function musterClusterManagerInfoQueryKey(installation: string) {
   return [
@@ -287,6 +316,11 @@ export function musterNodePoolsQueryKey(
   ] as const;
 }
 
-export function musterAcceleratorsQueryKey(installation: string) {
-  return ['muster', 'agent-platform', 'accelerators', installation] as const;
+export function musterCreateNodePoolSchemaQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'create-node-pool-schema',
+    installation,
+  ] as const;
 }

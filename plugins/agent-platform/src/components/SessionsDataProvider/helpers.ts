@@ -65,7 +65,6 @@ export type SessionRow = {
    */
   agentModel?: string;
   createdAt?: string;
-  updatedAt?: string;
   /**
    * kagent reported this session's runtime lost: the agent's working state
    * went with the platform node it was paused on, and no message can reach it
@@ -159,7 +158,6 @@ export function toSessionRow(
     agentNamespace: match?.namespace,
     agentModel: match?.modelName,
     createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
     runtimeLost: readReportedRuntimeLoss(session) !== undefined,
   };
 }
@@ -175,8 +173,9 @@ function timestampValue(value: string | undefined): number | undefined {
 
 /**
  * Default ordering: the home installation's sessions first, then everyone
- * else's; within that, most recent activity first, then title. Without a
- * `home` it is recency alone.
+ * else's; within that, newest first, then title. Without a `home` it is
+ * newest first alone. By start rather than by `updatedAt`, which kagent API v2
+ * does not move on a turn (kagent-dev/kagent#2397).
  */
 export function sortSessionRows(
   rows: SessionRow[],
@@ -189,8 +188,8 @@ export function sortSessionRows(
     if (byHome !== 0) {
       return byHome;
     }
-    const aTime = timestampValue(a.updatedAt);
-    const bTime = timestampValue(b.updatedAt);
+    const aTime = timestampValue(a.createdAt);
+    const bTime = timestampValue(b.createdAt);
     if (aTime !== bTime) {
       // Rows with no timestamp sort last regardless of direction.
       if (aTime === undefined) return 1;
@@ -208,15 +207,15 @@ export function sortSessionRows(
  * rows with an unknown timestamp always sort last — in *both* directions, since
  * "unknown" is not "oldest".
  */
-export function sortSessionsBy(
-  rows: SessionRow[],
+export function sortSessionsBy<T extends SessionRow>(
+  rows: T[],
   sort: { column: unknown; direction: 'ascending' | 'descending' },
-): SessionRow[] {
+): T[] {
   const column = String(sort.column);
   const factor = sort.direction === 'ascending' ? 1 : -1;
 
   return [...rows].sort((a, b) => {
-    if (column === 'createdAt' || column === 'updatedAt') {
+    if (column === 'createdAt') {
       const aTime = timestampValue(a[column]);
       const bTime = timestampValue(b[column]);
       if (aTime === bTime) {
@@ -227,17 +226,17 @@ export function sortSessionsBy(
       return (aTime - bTime) * factor;
     }
 
-    const aValue = String(a[column as keyof SessionRow] ?? '');
-    const bValue = String(b[column as keyof SessionRow] ?? '');
+    const aValue = String(a[column as keyof T] ?? '');
+    const bValue = String(b[column as keyof T] ?? '');
     return aValue.localeCompare(bValue) * factor;
   });
 }
 
 /** Free-text search over the title and the agent name. */
-export function sessionSearchFn(
-  rows: SessionRow[],
+export function sessionSearchFn<T extends SessionRow>(
+  rows: T[],
   search: string,
-): SessionRow[] {
+): T[] {
   const needle = search.trim().toLowerCase();
   if (!needle) {
     return rows;

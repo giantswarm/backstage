@@ -15,7 +15,9 @@ import {
   OTHER_WORKFLOWS_KEY,
   parseSelector,
   parseToolsetHeader,
+  labelOfPresetSelector,
   presetLabel,
+  selectorLabel,
   selectorForTool,
   selectorProblem,
   serverOfTool,
@@ -148,6 +150,22 @@ describe('presets', () => {
     expect(presetLabel('custom-thing')).toBe('custom-thing');
   });
 
+  it('shows a labelled preset selector by its label and any other as written', () => {
+    expect(selectorLabel('preset:read-only')).toBe('Read-only tools');
+    expect(selectorLabel('server:pro')).toBe('server:pro');
+    expect(selectorLabel('not a selector')).toBe('not a selector');
+    // An installation's own preset stays recognisable as a preset.
+    expect(selectorLabel('preset:custom-thing')).toBe('preset:custom-thing');
+    expect(selectorLabel('preset:Read-only')).toBe('preset:Read-only');
+    expect(selectorLabel('preset:server:pro')).toBe('preset:server:pro');
+  });
+
+  it('labels only the preset selectors that have a label', () => {
+    expect(labelOfPresetSelector('preset:full')).toBe('Full gateway');
+    expect(labelOfPresetSelector('preset:custom-thing')).toBeUndefined();
+    expect(labelOfPresetSelector('server:pro')).toBeUndefined();
+  });
+
   it('keeps full exclusive when toggling, and none clears the selection', () => {
     expect(toggleSelector([], 'preset:read-only')).toEqual([
       'preset:read-only',
@@ -274,6 +292,7 @@ describe('describeToolset', () => {
     });
     expect(describeToolset({ state: 'no-gateway' })).toEqual({
       summary: 'No tools',
+      inactive: true,
     });
     expect(describeToolset({ state: 'implicit-full', carrier: 'a' })).toEqual({
       summary: 'Full gateway access',
@@ -285,7 +304,7 @@ describe('describeToolset', () => {
         selectors: ['preset:none'],
         carrier: 'a',
       }),
-    ).toEqual({ summary: 'No tools', detail: 'preset:none' });
+    ).toEqual({ summary: 'No tools', detail: 'preset:none', inactive: true });
     expect(
       describeToolset({
         state: 'declared',
@@ -300,9 +319,30 @@ describe('describeToolset', () => {
         carrier: 'a',
       }),
     ).toEqual({
-      summary: 'preset:read-only, server:pro',
+      summary: 'Read-only tools, server:pro',
       detail: '2 selectors',
     });
+    expect(
+      describeToolset({
+        state: 'declared',
+        selectors: ['preset:read-only'],
+        carrier: 'a',
+      }),
+    ).toEqual({ summary: 'Read-only tools', detail: 'preset:read-only' });
+    expect(
+      describeToolset({
+        state: 'declared',
+        selectors: ['server:pro'],
+        carrier: 'a',
+      }),
+    ).toEqual({ summary: 'server:pro', detail: '1 selector' });
+    expect(
+      describeToolset({
+        state: 'declared',
+        selectors: ['preset:ops'],
+        carrier: 'a',
+      }),
+    ).toEqual({ summary: 'preset:ops', detail: '1 selector' });
   });
 });
 

@@ -55,6 +55,7 @@
     "@giantswarm/backstage-plugin-agent-platform": "workspace:^",
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^",
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^",
+    "@giantswarm/backstage-plugin-bot-prs": "workspace:^",
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^",
     "@giantswarm/backstage-plugin-flux": "workspace:^",
     "@giantswarm/backstage-plugin-flux-react": "workspace:^",
@@ -62,6 +63,7 @@
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
     "@giantswarm/backstage-plugin-muster": "workspace:^",
     "@giantswarm/backstage-plugin-plans": "workspace:^",
+    "@giantswarm/backstage-plugin-platform-capabilities": "workspace:^",
     "@giantswarm/backstage-plugin-repositories": "workspace:^",
     "@giantswarm/backstage-plugin-roadmap": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
@@ -77,12 +79,15 @@
     "history": "^5.0.0",
     "react": "^18.0.2",
     "react-dom": "^18.0.2",
+    "react-helmet": "6.1.0",
     "react-router-dom": "^6.30.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@backstage/config": "backstage:^",
+    "@backstage/config-loader": "backstage:^",
     "@backstage/frontend-test-utils": "backstage:^",
+    "@backstage/types": "backstage:^",
     "@playwright/test": "^1.32.3",
     "@testing-library/dom": "^10.0.0",
     "@testing-library/jest-dom": "^7.0.0",
@@ -91,6 +96,7 @@
     "@types/crypto-js": "^4",
     "@types/node": "^24.0.0",
     "@types/react-dom": "*",
+    "@types/react-helmet": "^6.1.0",
     "cross-env": "^10.0.0"
   },
   "browserslist": {

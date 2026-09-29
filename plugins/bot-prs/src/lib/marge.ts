@@ -1,0 +1,593 @@
+/**
+ * marge's tool contract, as the portal calls it through muster.
+ *
+ * marge is the bot PR sweep engine (giantswarm/marge). The portal reaches its
+ * tools as the signed-in person through the installation's muster, where they
+ * appear as `x_marge_<tool>`. The shapes
+ * here mirror `cmd/serve.go` of giantswarm/marge: the portal decides nothing
+ * about a PR, it renders what the engine reports and fires the engine's own
+ * steps.
+ */
+
+/** The MCPServer name muster registers marge under. */
+export const MARGE_SERVER = 'marge';
+
+/** The tools this plugin calls, by their marge name. */
+export const MARGE_TOOLS = {
+  list: 'list',
+  sweep: 'sweep',
+  mark: 'mark',
+} as const;
+
+export type MargeTool = (typeof MARGE_TOOLS)[keyof typeof MARGE_TOOLS];
+
+/** `x_<server>_<tool>`: how muster exposes an aggregated server's tool. */
+export function margeToolName(tool: MargeTool): string {
+  return `x_${MARGE_SERVER}_${tool}`;
+}
+
+/**
+ * The `tool` a mark written from this page names as the one that gave up on
+ * the PR. The engine's default, `ai`, describes a rescue agent; a person who
+ * marks a PR blocked here is not one.
+ */
+export const MARGE_MARK_TOOL = 'developer-portal';
+
+/**
+ * The sweep's steps, in the engine's fixed order (`process.AllActions`).
+ * `classify` is implied on every run and `mark` writes the evidence comment
+ * that attributes a step to the caller, so neither is a choice on the page.
+ */
+export const SWEEP_STEPS = [
+  {
+    id: 'changelog',
+    label: 'Changelog',
+    description:
+      'Commit the team’s changelog entry on a PR that will merge, before it is approved. The commit starts CI again, so that PR merges on the next sweep. A repository that generates its release notes from its commits earns no entry, and neither does a PR whose title names no version.',
+  },
+  {
+    id: 'approve',
+    label: 'Approve',
+    description:
+      'Approve the green PRs whose update type the team policy merges: patch and minor by default, never a major.',
+  },
+  {
+    id: 'merge',
+    label: 'Merge',
+    description:
+      'Squash-merge the approved green PRs. A pending or unreported required check is a wait, never a bypass; a failing security check is never merged past.',
+  },
+  {
+    id: 'refresh',
+    label: 'Refresh branches',
+    description:
+      'Update a stale branch from its base when every failing check is green on the base branch head, so CI runs again.',
+  },
+  {
+    id: 'retry',
+    label: 'Retry CI',
+    description:
+      'Rerun the CircleCI workflow of a build CircleCI itself cancelled, on the same commit.',
+  },
+  {
+    id: 'remedy',
+    label: 'Remedy',
+    description:
+      'Apply the catalogue rule that matches a failure, through the action the rule names and under that action’s own guards: a rerun, a branch update, a close. No matching rule writes nothing.',
+  },
+] as const;
+
+export type SweepStep = (typeof SWEEP_STEPS)[number]['id'];
+
+/** The `actions` argument for a set of steps: the steps plus `mark`. */
+export function actionsArgument(steps: readonly SweepStep[]): string {
+  return [...steps, 'mark'].join(',');
+}
+
+/**
+ * The `actions` argument of a classification run: the classify step alone.
+ * The engine adds classify to every set, so this is the smallest run there
+ * is. It writes each PR's `marge/<class>` label and nothing else: no
+ * approval, no merge, no branch update, no evidence comment.
+ */
+export const CLASSIFY_ACTIONS = 'classify';
+
+/**
+ * The class the engine files a PR under when it is green and the team policy
+ * merges its update type: what a sweep approves and merges on its next run.
+ * Every other class is waiting on a check, on a person, or on nothing.
+ */
+export const GREEN_GROUP: MargeGroup = 'eligible';
+
+/**
+ * The steps behind **Approve and merge**: the engine approves the PRs its own
+ * policy approves, then merges the ones it approved. Each step keeps its
+ * guards, so a PR that stopped being green between the read and the run is
+ * held, not merged.
+ */
+export const MERGE_GREEN_STEPS = [
+  'approve',
+  'merge',
+] as const satisfies readonly SweepStep[];
+
+/**
+ * The per-PR actions of the page, each one sweep step narrowed to the PR.
+ * Merge carries approve with it, because the engine merges only what it has
+ * approved. Mark blocked is its own tool and not listed here.
+ */
+export const PR_ACTIONS = [
+  { id: 'approve', label: 'Approve', steps: ['approve'] },
+  { id: 'merge', label: 'Merge', steps: ['approve', 'merge'] },
+  { id: 'refresh', label: 'Refresh branch', steps: ['refresh'] },
+  { id: 'retry', label: 'Retry CI', steps: ['retry'] },
+] as const satisfies readonly {
+  id: string;
+  label: string;
+  steps: readonly SweepStep[];
+}[];
+
+export type PrSweepAction = (typeof PR_ACTIONS)[number]['id'];
+
+/** The resolved policy a PR was decided under (`SweepPolicyInfo`). */
+export type MargePolicy = {
+  sweep: boolean;
+  update_types: Record<string, string[]>;
+  rescue: {
+    enabled: boolean;
+    timeout?: string;
+    weekly: number;
+    budget_per_rescue_usd?: number;
+    budget_weekly_usd?: number;
+    budget_enforced: boolean;
+    rescues_dispatched: boolean;
+    /** `per-pr` or `per-sweep`: who confirms before the engine acts. */
+    confirm?: string;
+  };
+  concurrency: { per_team: number; per_repo: number };
+  model_config?: string;
+  slack_channel?: string;
+  sources?: string[];
+};
+
+/** The most recent prior rescue attempt recorded on a PR (`SweepRescueInfo`). */
+export type MargeRescue = {
+  tool?: string;
+  outcome: string;
+  reason?: string;
+  at?: string;
+  /** The PR content changed since the attempt: it no longer describes the code. */
+  stale: boolean;
+  /** The head moved but the change did not (a Renovate rebase). */
+  rebased: boolean;
+};
+
+/** One PR in a sweep result (`SweepPREntry`). */
+export type MargeEntry = {
+  owner: string;
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  /** The engine's state, as `StatusState.String()` renders it. */
+  status: string;
+  /** The last evidence line: why the PR is in this state. */
+  detail?: string;
+  /** The bot that authored the PR. */
+  kind?: string;
+  /** The size of the update; absent on a stored read. */
+  update_type?: string;
+  /** The `marge/<class>` label on the PR. */
+  label?: string;
+  created_at?: string;
+  age_days?: number;
+  /** The title read as an update: what moves, and between which versions. */
+  dependency?: string;
+  version_from?: string;
+  version_to?: string;
+  rescue?: MargeRescue;
+  /** Why an obsolete PR is obsolete: `superseded` or `no_op`. */
+  reason?: string;
+  policy?: MargePolicy;
+};
+
+/** The lists a sweep result groups its entries into, in the engine's order. */
+export const MARGE_GROUPS = [
+  'merged',
+  'auto_merge',
+  'remedied',
+  'security_failures',
+  'action_required',
+  'eligible',
+  'unclassified',
+  'stale',
+  'refreshed',
+  'cancelled',
+  'retried',
+  'ci_unavailable',
+  'ci_no_verdict',
+  'obsolete',
+  'waiting',
+  'skipped',
+] as const;
+
+export type MargeGroup = (typeof MARGE_GROUPS)[number];
+
+/**
+ * What each class means, in the reader's terms: what the engine decided, and
+ * who the PR is waiting for. The classes are the engine's own closed
+ * vocabulary -- a sweep writes one to each PR's `marge/<class>` label and
+ * nobody writes one by hand -- so this is the page's legend for them.
+ */
+export const GROUP_MEANING: Record<MargeGroup, string> = {
+  merged: 'The engine merged it. Nothing is left to do.',
+  auto_merge:
+    'GitHub merges it as soon as every requirement is met, because the PR has auto-merge on.',
+  remedied:
+    'A catalogue rule fixed what was failing. The PR is back with CI, not with you.',
+  security_failures:
+    'A security check failed. The engine never merges past one: a person reads the finding.',
+  action_required:
+    'CI failed for a reason the engine has no rule for. This is the queue a person works through.',
+  eligible:
+    'Green, and the team policy merges its update type. Approve and merge acts on exactly these.',
+  unclassified:
+    'Nothing has decided this PR yet: no sweep has labelled it. Classify now decides it.',
+  stale:
+    'It failed on something the base branch has already fixed. Refreshing the branch re-runs CI.',
+  refreshed:
+    'Its branch was just updated from the base, so CI is running again.',
+  cancelled:
+    'CI itself cancelled the build, so there is no verdict on the code yet. A retry gets one.',
+  retried: 'Its cancelled build was just retried.',
+  ci_unavailable:
+    'CI could not run: a budget, a disabled pipeline, a setting a person has to change.',
+  ci_no_verdict:
+    'A check failed without establishing anything about the code. The detail names the remedy.',
+  obsolete:
+    'A newer PR replaces it, or its change does nothing. It wants closing, not fixing.',
+  waiting: 'A required check has not finished. The engine waits; so do you.',
+  skipped:
+    'The engine did not decide it: the repository is out of the sweep, or its author is not a trusted bot.',
+};
+
+export type MargeSummary = {
+  total: number;
+  merged: number;
+  auto_merge: number;
+  remedied: number;
+  failed: number;
+  security_failures: number;
+  ci_unavailable: number;
+  ci_no_verdict: number;
+  stale: number;
+  refreshed: number;
+  cancelled: number;
+  retried: number;
+  obsolete: number;
+  waiting: number;
+  skipped: number;
+  eligible: number;
+  unclassified: number;
+};
+
+export type MargeRules = {
+  source: string;
+  ref?: string;
+  digest?: string;
+  loaded: number;
+  skipped?: { path: string; reason: string }[];
+  error?: string;
+};
+
+export type MargeUnhandled = {
+  signature: string;
+  checks: string[];
+  count: number;
+  prs: string[];
+  excerpt?: string;
+};
+
+/** What `list`, `sweep` and `remedy` answer (`SweepResult`). */
+export type MargeResult = Partial<Record<MargeGroup, MargeEntry[]>> & {
+  summary: MargeSummary;
+  rules?: MargeRules;
+  unhandled?: MargeUnhandled[];
+  repositories_failed?: { repo: string; error: string }[];
+};
+
+/** One team's queue inside a `list` that covered several teams (`TeamQueue`). */
+export type MargeTeamQueue = {
+  team: string;
+  result?: MargeResult;
+  /** Why the team has no result: it has no team file, or its files do not parse. */
+  error?: string;
+};
+
+/** What `list` answers when it was given `teams` (`TeamQueues`). */
+export type MargeTeamQueues = {
+  teams: MargeTeamQueue[];
+};
+
+/**
+ * Whether an answer is the several-team shape. A marge that does not take
+ * `teams` ignores the argument and answers the query scope instead, which is
+ * a SweepResult and every bot PR the person can see, so the shape is what
+ * tells the two apart.
+ */
+export function isTeamQueues(answer: unknown): answer is MargeTeamQueues {
+  return Array.isArray((answer as MargeTeamQueues | undefined)?.teams);
+}
+
+/** What `mark` answers: the marker it wrote, or would write. */
+export type MargeMarkResult = {
+  owner: string;
+  repo: string;
+  number: number;
+  outcome: string;
+  tool: string;
+  head_sha: string;
+  at: string;
+  dry_run: boolean;
+  patch_id?: string;
+  change_id?: string;
+};
+
+/** One row of the page: an entry plus the list the engine filed it under. */
+export type BotPrRow = MargeEntry & {
+  /** The row's identity for the table: the same as `ref`. */
+  id: string;
+  /** The team whose queue the PR came from, and whose policy decides it. */
+  team: string;
+  group: MargeGroup;
+  /** `owner/repo`. */
+  repository: string;
+  /** `owner/repo#number`, the reference every tool accepts. */
+  ref: string;
+  /** The dependency the PR updates, as marge read it; the title otherwise. */
+  dependency: string;
+  /**
+   * The versions the update moves between, as marge read them. A marge that
+   * does not send them, and a title that names none, leave both empty.
+   */
+  versionFrom: string;
+  versionTo: string;
+};
+
+/** Every entry of a result as one flat list, in the engine's group order. */
+export function rowsOf(
+  result: MargeResult | undefined,
+  team: string = '',
+): BotPrRow[] {
+  if (!result) {
+    return [];
+  }
+  const rows: BotPrRow[] = [];
+  for (const group of MARGE_GROUPS) {
+    for (const entry of result[group] ?? []) {
+      const ref = `${entry.owner}/${entry.repo}#${entry.number}`;
+      rows.push({
+        ...entry,
+        id: ref,
+        team,
+        group,
+        repository: `${entry.owner}/${entry.repo}`,
+        ref,
+        dependency: entry.dependency || dependencyOf(entry.title),
+        versionFrom: entry.version_from ?? '',
+        versionTo: entry.version_to ?? '',
+      });
+    }
+  }
+  return rows;
+}
+
+/**
+ * A PR title without its conventional-commit type, which every bot PR of a
+ * queue shares: `chore(deps): update dependency x to v2` reads `update
+ * dependency x to v2`.
+ */
+export function withoutCommitType(title: string): string {
+  return title.replace(/^[a-z]+(\([^)]*\))?!?:\s*/i, '').trim();
+}
+
+/**
+ * The dependency a bot PR updates, as the bots title them: Renovate's
+ * `Update dependency X to v2` / `Update X Docker tag to v2` / `Update module
+ * X to v2` / `Update vendir X to v2` / `Update ocm component X to v2`, Dependabot's `Bump X from 1 to 2`, with or without a conventional
+ * `chore(deps):` prefix. A title neither shape matches groups under itself,
+ * so an Align files or Herald PR forms a group of one.
+ *
+ * marge reads the same title with its own patterns and sends the answer on
+ * the entry. This is the fallback for an installation whose marge does not.
+ * A title in neither shape names no dependency: an Align files PR, a Herald
+ * PR and a bot's own onboarding PR each move nothing, and echoing the title
+ * into the column says otherwise.
+ */
+export function dependencyOf(title: string): string {
+  const text = withoutCommitType(title);
+  const renovate = text.match(
+    /^update\s+(?:(?:dependency|module|helm release|plugin|vendir|ocm component|github action)\s+)?(.+?)(?:\s+(?:docker tag|action|digest|orb|image))?\s+to\s+\S+/i,
+  );
+  if (renovate) {
+    return renovate[1];
+  }
+  const dependabot = text.match(/^bump\s+(.+?)\s+from\s+\S+/i);
+  if (dependabot) {
+    return dependabot[1];
+  }
+  return '';
+}
+
+/**
+ * The version change a row carries, for the table: both versions when the
+ * title names both, the target alone when it names one, empty when it names
+ * none.
+ */
+export function versionOf(row: Pick<BotPrRow, 'versionFrom' | 'versionTo'>) {
+  if (!row.versionTo) {
+    return '';
+  }
+  return row.versionFrom
+    ? `${row.versionFrom} → ${row.versionTo}`
+    : row.versionTo;
+}
+
+/**
+ * The marge team a catalogue group stands for. Giant Swarm's groups are named
+ * `team-<name>` and marge's team files `team-<name>.yaml`, so the team is the
+ * group name without the prefix; a group without the prefix is offered as it
+ * is, and marge says whether a team file exists for it.
+ */
+export function teamOfGroupRef(entityRef: string): string | undefined {
+  const match = entityRef.match(/^group:(?:[^/]+\/)?(.+)$/i);
+  if (!match) {
+    return undefined;
+  }
+  const name = match[1];
+  return name.startsWith('team-') ? name.slice('team-'.length) : name;
+}
+
+/**
+ * How a status reads on the page, and what kind of state it is.
+ * `positive`: the engine merged or handed the PR on; `warning`: a person or
+ * the next sweep decides; `negative`: something failed; `info`: in flight;
+ * `neutral`: nothing is known.
+ */
+export type StatusIntent =
+  'positive' | 'warning' | 'negative' | 'info' | 'neutral';
+
+export function statusIntentOf(group: MargeGroup): StatusIntent {
+  switch (group) {
+    case 'merged':
+    case 'auto_merge':
+    case 'remedied':
+    case 'refreshed':
+    case 'retried':
+    case 'eligible':
+      return 'positive';
+    case 'security_failures':
+    case 'action_required':
+      return 'negative';
+    case 'stale':
+    case 'cancelled':
+    case 'obsolete':
+    case 'ci_unavailable':
+    case 'ci_no_verdict':
+      return 'warning';
+    case 'waiting':
+      return 'info';
+    case 'unclassified':
+    case 'skipped':
+    default:
+      return 'neutral';
+  }
+}
+
+/**
+ * muster's answers when the session is not connected to a server -- the
+ * patterns gs-node's `looksNotConnected` matches on the backend -- plus
+ * marge's own refusals of a call without a grant: "not signed in" when the
+ * bearer is missing, "authentication required: server returned 401
+ * Unauthorized" when GitHub rejects it.
+ */
+const NOT_CONNECTED_PATTERNS = [
+  /tool not found/i,
+  /unknown tool/i,
+  /not connected/i,
+  /not authenticated/i,
+  /auth(entication|orization)? required/i,
+  /requires authentication/i,
+  /not signed in/i,
+  /\b401\b/,
+];
+
+export function looksNotConnected(message: string): boolean {
+  return NOT_CONNECTED_PATTERNS.some(pattern => pattern.test(message));
+}
+
+/**
+ * The person's muster session holds no connection to marge yet: the tool is
+ * not in the session's tool set, or marge refused the call without a grant.
+ * The per-server sign-in fixes it.
+ */
+export class MargeNotConnectedError extends Error {
+  readonly name = 'MargeNotConnectedError';
+}
+
+/**
+ * The call's answer never reached the page, so nothing is known about what
+ * marge did with the call: the browser's connection closed under the request,
+ * or the portal's edge answered in marge's place. It is not a refusal. marge
+ * may have run the call in full and may still be running it, so a dry run
+ * changed nothing and a write's outcome is unknown until the queue is read
+ * again.
+ */
+export class MargeAnswerLostError extends Error {
+  readonly name = 'MargeAnswerLostError';
+}
+
+/**
+ * What fetch rejects with when the connection closes under it: a `TypeError`
+ * reading "Failed to fetch" in Chrome (with the host appended), "NetworkError
+ * when attempting to fetch resource." in Firefox, "Load failed" in Safari.
+ */
+const NETWORK_FAILURE_PATTERNS = [
+  /failed to fetch/i,
+  /network ?error/i,
+  /load failed/i,
+];
+
+/**
+ * What the portal's edge answers when the backend's answer does not reach it:
+ * a closed upstream connection, no healthy backend, a timeout. The muster
+ * client keeps the status on the error it throws.
+ */
+const EDGE_FAILURE_STATUSES = [502, 503, 504];
+
+function messageOf(error: unknown): string {
+  const message = (error as { message?: unknown } | null)?.message;
+  return typeof message === 'string' ? message : String(error);
+}
+
+export function looksAnswerLost(error: unknown): boolean {
+  if (error instanceof TypeError) {
+    return NETWORK_FAILURE_PATTERNS.some(pattern =>
+      pattern.test(error.message),
+    );
+  }
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === 'number' && EDGE_FAILURE_STATUSES.includes(status);
+}
+
+/**
+ * What a tool call threw, as the page tells the cases apart: no connection
+ * to marge, an answer that never arrived, and marge's own refusal.
+ */
+export function classifyMargeError(error: unknown): Error {
+  if (
+    error instanceof MargeNotConnectedError ||
+    error instanceof MargeAnswerLostError
+  ) {
+    return error;
+  }
+  const message = messageOf(error);
+  if (looksAnswerLost(error)) {
+    return new MargeAnswerLostError(message, { cause: error });
+  }
+  if (looksNotConnected(message)) {
+    return new MargeNotConnectedError(message);
+  }
+  return error instanceof Error ? error : new Error(message);
+}
+
+/**
+ * marge answers this for a team it has no policy file for: `no team file for
+ * "x": giantswarm/github@main has no team/x.yaml, or it cannot be read`
+ * (internal/policy/load.go). The catalog names the team, giantswarm/github
+ * does not, which is a gap to report once, not a refusal per team.
+ */
+const UNKNOWN_TEAM_PATTERN = /no team file for/i;
+
+export function looksUnknownTeam(error: Error | null | undefined): boolean {
+  return Boolean(error) && UNKNOWN_TEAM_PATTERN.test(error!.message);
+}

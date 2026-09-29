@@ -2,7 +2,7 @@ import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Cell, CellText, Text } from '@backstage/ui';
 
-import { stopRowPress } from '../../lib/rowPress';
+import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import { servingRouteRef } from '../../routes';
 import { ServedReadinessLabel, servingTitle } from '../ModelServingStatus';
 import type { AgentRow } from '../AgentsDataProvider';
@@ -20,7 +20,8 @@ export function isAgentRowMuted(row: AgentRow): boolean {
 export const MUTED_ROW_STYLE = { opacity: 0.55 } as const;
 
 /**
- * The Model column: the ModelConfig's name and, where the serving layer has a
+ * The Model column: the row's model label (the ModelConfig's display name,
+ * else its model, else its resource name) and, where the serving layer has a
  * word on the model behind it, that model's readiness in the shared
  * vocabulary of `lib/serving.ts` — the same label the Model configs and
  * Serving views show for it. `Not serving` links to the Serving view, where

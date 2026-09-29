@@ -104,22 +104,21 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
 }
 
 /**
- * A query parameter that may repeat (`?toolset=a&toolset=b`): one value is a
- * string, several an array. Anything else (an object from `toolset[x]=`
- * bracket syntax) is refused rather than forwarded.
+ * Every value of a query parameter that may repeat (`?toolset=a&toolset=b`),
+ * in order, read from the raw query string. `req.query` is the root router's
+ * `qs` parse, which turns more than 20 repeats into an index-keyed object and
+ * drops everything past 1000 parameters; bracket syntax (`toolset[x]=`) is a
+ * different key and is ignored.
  */
 function repeatedQueryValues(
-  value: unknown,
+  req: express.Request,
   name: string,
 ): string[] | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const values = Array.isArray(value) ? value : [value];
-  if (!values.every(entry => typeof entry === 'string')) {
-    throw new InputError(`${name} must be a string or a list of strings`);
-  }
-  return values as string[];
+  const values = new URL(
+    req.originalUrl,
+    'http://localhost',
+  ).searchParams.getAll(name);
+  return values.length > 0 ? values : undefined;
 }
 
 export async function createRouter(
@@ -339,7 +338,7 @@ export async function createRouter(
     // contains a comma or whitespace). Passed through verbatim: muster owns the
     // grammar and answers an unknown preset or a malformed selector with its
     // own message, which the frontend shows as is.
-    const toolset = repeatedQueryValues(req.query.toolset, 'toolset');
+    const toolset = repeatedQueryValues(req, 'toolset');
     if (toolset !== undefined) {
       args.toolset = toolset;
     }
@@ -774,11 +773,12 @@ export async function createRouter(
 
   router.get('/executions', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const { workflow_name: workflowName, status } = req.query;
+    const workflowName = singleQueryValue(
+      req.query.workflow_name,
+      'workflow_name',
+    );
+    const status = singleQueryValue(req.query.status, 'status');
 
-    if (status !== undefined && typeof status !== 'string') {
-      throw new InputError('status must be provided at most once');
-    }
     if (
       status !== undefined &&
       !EXECUTION_STATUSES.includes(
@@ -791,10 +791,10 @@ export async function createRouter(
     }
 
     const args: Record<string, unknown> = {};
-    if (typeof workflowName === 'string' && workflowName !== '') {
+    if (workflowName) {
       args.workflow_name = workflowName;
     }
-    if (typeof status === 'string') {
+    if (status !== undefined) {
       args.status = status;
     }
     const limit = parseOptionalInt(req.query.limit, 'limit');

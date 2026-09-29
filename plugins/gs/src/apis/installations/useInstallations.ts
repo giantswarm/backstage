@@ -8,7 +8,7 @@ import {
 export type UseInstallationsResult = {
   /** Configured installations, or an empty array until the fetch resolves. */
   installations: InstallationConfig[];
-  /** True until the post-sign-in `/api/gs/installations` fetch has resolved. */
+  /** True until the post-sign-in `/api/gs/config` fetch has resolved. */
   isLoading: boolean;
 };
 

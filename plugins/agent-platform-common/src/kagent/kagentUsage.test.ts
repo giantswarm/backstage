@@ -4,6 +4,8 @@ import { mcpServerOf, reduceSessionUsage, utcDayKey } from './kagentUsage';
 import {
   tasksAdkPrefixed,
   tasksAskUserPending,
+  tasksClaudeHarness,
+  tasksClaudeHarnessFailed,
   tasksMalformed,
   tasksV099,
 } from '../testFixtures';
@@ -49,6 +51,23 @@ function agentUsage(
     metadata: { [`${prefix}_usage_metadata`]: usage },
     parts: [],
   };
+}
+
+/** A task that ended in `state` with `message` on its status. */
+function endedTask(
+  id: string,
+  timestamp: string,
+  state: string,
+  message: unknown,
+  history: unknown[] = [],
+): A2aTaskWire {
+  return {
+    id,
+    contextId: 'c1',
+    kind: 'task',
+    status: { state, timestamp, message },
+    history,
+  } as A2aTaskWire;
 }
 
 /** A message with one function-call part. */
@@ -297,6 +316,135 @@ describe('reduceSessionUsage', () => {
     expect(usage.tally.turns).toBe(1);
     expect(usage.tally.inputTokens).toBe(100);
     expect([...usage.days.keys()]).toEqual(['2026-07-23']);
+  });
+
+  describe('a turn whose status is not in history', () => {
+    const bag = { promptTokenCount: 50, candidatesTokenCount: 7 };
+
+    it.each(['failed', 'rejected', 'canceled'])(
+      'counts the usage on a %s turn\u2019s status',
+      state => {
+        const usage = reduceSessionUsage(
+          [
+            endedTask(
+              't1',
+              '2026-09-04T09:00:00Z',
+              state,
+              agentUsage('s1', bag),
+            ),
+          ],
+          WIDE,
+        );
+
+        expect(usage.tally.inputTokens).toBe(50);
+        expect(usage.tally.outputTokens).toBe(7);
+      },
+    );
+
+    it('counts a failed turn\u2019s status once when a later history repeats it', () => {
+      const usage = reduceSessionUsage(
+        [
+          endedTask(
+            't1',
+            '2026-09-04T09:00:00Z',
+            'failed',
+            agentUsage('s1', bag),
+          ),
+          task('t2', '2026-09-04T10:00:00Z', [agentUsage('s1', bag)]),
+        ],
+        WIDE,
+      );
+
+      expect(usage.tally.totalTokens).toBe(57);
+    });
+
+    it('ignores usage on a failed turn\u2019s status written as the user', () => {
+      const usage = reduceSessionUsage(
+        [
+          endedTask('t1', '2026-09-04T09:00:00Z', 'failed', {
+            ...agentUsage('s1', bag),
+            role: 'user',
+          }),
+        ],
+        WIDE,
+      );
+
+      expect(usage.tally.totalTokens).toBe(0);
+    });
+
+    it.each(['input-required', 'auth-required'])(
+      'counts the usage on the pending prompt of an %s turn',
+      state => {
+        const usage = reduceSessionUsage(
+          [
+            endedTask(
+              't1',
+              '2026-09-04T09:00:00Z',
+              state,
+              agentUsage('p1', bag),
+            ),
+          ],
+          WIDE,
+        );
+
+        expect(usage.tally.totalTokens).toBe(57);
+      },
+    );
+
+    it('does not count a completed turn\u2019s status, which history holds', () => {
+      const usage = reduceSessionUsage(
+        [
+          endedTask(
+            't1',
+            '2026-09-04T09:00:00Z',
+            'completed',
+            agentUsage('s1', bag),
+          ),
+        ],
+        WIDE,
+      );
+
+      expect(usage.tally.totalTokens).toBe(0);
+    });
+
+    it('counts a failed v1 claude Harness turn as the completed one', () => {
+      const completed = reduceSessionUsage(tasksOf(tasksClaudeHarness), WIDE);
+      const failed = reduceSessionUsage(
+        tasksOf(tasksClaudeHarnessFailed),
+        WIDE,
+      );
+
+      expect(failed.tally.totalTokens).toBe(71338);
+      expect(failed.tally).toEqual(completed.tally);
+    });
+  });
+
+  it('does not credit an out-of-window message to the later task that repeats it', () => {
+    const bag = { promptTokenCount: 50, candidatesTokenCount: 7 };
+    const window = {
+      startMs: Date.parse('2026-09-01T00:00:00Z'),
+      endMs: Date.parse('2026-10-01T00:00:00Z'),
+    };
+    const usage = reduceSessionUsage(
+      [
+        endedTask(
+          'old-failed',
+          '2026-08-01T09:00:00Z',
+          'failed',
+          agentUsage('s-old', bag),
+        ),
+        task('old', '2026-08-01T10:00:00Z', [agentUsage('m-old', bag)]),
+        task('new', '2026-09-04T10:00:00Z', [
+          agentUsage('s-old', bag),
+          agentUsage('m-old', bag),
+          agentUsage('m-new', bag),
+        ]),
+      ],
+      window,
+    );
+
+    expect(usage.tally.turns).toBe(1);
+    expect(usage.tally.totalTokens).toBe(57);
   });
 
   it('counts an undated turn in the totals but in no day', () => {

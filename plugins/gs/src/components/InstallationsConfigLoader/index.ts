@@ -1,1 +1,0 @@
-export { InstallationsConfigLoader } from './InstallationsConfigLoader';

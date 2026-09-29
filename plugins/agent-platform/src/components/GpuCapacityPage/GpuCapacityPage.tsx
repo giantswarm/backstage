@@ -4,6 +4,10 @@ import { Flex, Text } from '@backstage/ui';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { NO_SERVING_CAPABILITIES, backendsOn } from '../../lib/serving';
+import {
+  HIDE_INSTALLATION,
+  isSoleInstallation,
+} from '../../lib/soleInstallation';
 import { useGpuNodePoolControls } from '../GpuNodePools';
 import { useServing } from '../ServingProvider';
 import { GpuCapacityPanel } from './GpuCapacityPanel';
@@ -42,6 +46,7 @@ export function GpuCapacityPage() {
   const pools = useGpuNodePoolControls(
     serving.reachableInstallations,
     serving.servedModels,
+    serving.scope,
   );
   useProvidePageHeaderActions(pools.addButton);
 
@@ -60,7 +65,19 @@ export function GpuCapacityPage() {
       installation => backendsOn(serving, installation).length === 0,
     );
 
-  if (!serving.isLoading && nodeInventoryInstallations.length === 0) {
+  // The page's shape is decided once everything is read: the list with its
+  // cards while reading, the empty state only when there is nothing to list
+  // — never one, then the other (giantswarm/backstage#2501).
+  const reading = serving.isLoading || pools.isLoading;
+  // Decided on the serving read alone: the node inventory comes from it, and
+  // the cluster-manager reads behind the pools above can take much longer.
+  const soleInstallation = isSoleInstallation({
+    scope: serving.scope,
+    isLoading: serving.isLoading,
+    installations: nodeInventoryInstallations,
+    unreachableInstallations: Object.keys(serving.gpuCapacityUnavailable),
+  });
+  if (!reading && nodeInventoryInstallations.length === 0) {
     return (
       <Content>
         {pools.dialogs}
@@ -74,6 +91,7 @@ export function GpuCapacityPage() {
           )}
           action={pools.addButton}
         />
+        {pools.cachePanel}
       </Content>
     );
   }
@@ -94,8 +112,10 @@ export function GpuCapacityPage() {
           nodes={serving.gpuNodes}
           installations={nodeInventoryInstallations}
           unavailable={serving.gpuCapacityUnavailable}
-          isLoading={serving.isLoading}
+          isLoading={reading}
+          hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
         />
+        {pools.cachePanel}
       </Flex>
     </Content>
   );

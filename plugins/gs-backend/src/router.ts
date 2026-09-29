@@ -11,7 +11,7 @@ import {
 } from './agentSkills/discoverAgentSkills';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
-import { readInstallationsConfig } from './installations';
+import { readSignedInConfig } from './signedInConfig';
 
 export async function createRouter({
   config,
@@ -28,23 +28,18 @@ export async function createRouter({
   router.use(express.json());
 
   /**
-   * GET /installations
+   * GET /config
    *
-   * Returns the full Giant Swarm installations map from app-config
-   * (`gs.installations`). This block is intentionally NOT shipped to the
-   * unauthenticated frontend config (it would deanonymize customers via
-   * `baseDomain` and leak the installation topology), so the SPA loads it from
-   * this authenticated endpoint after the user signs in. Authenticated by
-   * default in the new backend system.
-   *
-   * Returns:
-   * - A map keyed by installation name, each value carrying the installation's
-   *   configuration fields (pipeline, providers, authProvider,
-   *   oidcTokenProvider, clusterTokenAudience, backendUrl, baseDomain, region,
-   *   apiVersionOverrides).
+   * The configuration the signed-in frontend reads: the paths listed in
+   * `SIGNED_IN_CONFIG_PATHS`, in app-config shape. The unauthenticated
+   * `index.html` carries only what the sign-in page needs, so everything else
+   * a Giant Swarm plugin reads in the browser -- the installations map (with
+   * the customer-identifying base domains), admin groups, link templates, the
+   * muster and MCP server lists -- comes from this route once, after the main
+   * sign-in. Authenticated by default in the new backend system.
    */
-  router.get('/installations', async (_req, res) => {
-    res.json(readInstallationsConfig(config));
+  router.get('/config', async (_req, res) => {
+    res.json(readSignedInConfig(config));
   });
 
   /**

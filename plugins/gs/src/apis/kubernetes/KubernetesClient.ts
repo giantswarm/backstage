@@ -4,7 +4,7 @@ import {
   KubernetesBackendClient,
 } from '@backstage/plugin-kubernetes-react';
 import { ClusterConfiguration } from './types';
-import { ConfigApi, FetchApi } from '@backstage/core-plugin-api';
+import { FetchApi } from '@backstage/core-plugin-api';
 import {
   CustomObjectsByEntityRequest,
   KubernetesRequestBody,
@@ -12,6 +12,7 @@ import {
   WorkloadsByEntityRequest,
 } from '@backstage/plugin-kubernetes-common';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationsConfig } from '../installations';
 
 /**
@@ -39,8 +40,11 @@ export class KubernetesClient implements KubernetesApi {
   private readonly discoveryApi: DiscoveryApiClient;
   private readonly fetchApi: FetchApi;
   private readonly kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
-  private readonly proxyTimeoutMs: number;
-  private readonly proxyMaxConcurrency: number;
+  // The proxy knobs are part of the signed-in config; `ensureProxySettings()`
+  // reads them before the first request, the defaults hold until then.
+  private proxyTimeoutMs = DEFAULT_PROXY_TIMEOUT_MS;
+  private proxyMaxConcurrency = DEFAULT_PROXY_MAX_CONCURRENCY;
+  private proxySettingsLoaded: Promise<void> | undefined;
   private activeProxyRequests = 0;
   // Foreground (page) reads are served before background warm-up probes so a
   // single-cluster read is never serialized behind the whole-fleet warm-up.
@@ -49,7 +53,6 @@ export class KubernetesClient implements KubernetesApi {
   private clusters: ClusterConfiguration[] | undefined;
 
   constructor(options: {
-    configApi: ConfigApi;
     discoveryApi: DiscoveryApiClient;
     fetchApi: FetchApi;
     kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
@@ -63,13 +66,26 @@ export class KubernetesClient implements KubernetesApi {
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
-    this.proxyTimeoutMs =
-      options.configApi.getOptionalNumber('gs.kubernetes.proxyTimeoutMs') ??
-      DEFAULT_PROXY_TIMEOUT_MS;
-    this.proxyMaxConcurrency =
-      options.configApi.getOptionalNumber(
-        'gs.kubernetes.proxyMaxConcurrency',
-      ) ?? DEFAULT_PROXY_MAX_CONCURRENCY;
+  }
+
+  /**
+   * Reads `gs.kubernetes.proxyTimeoutMs` and `gs.kubernetes.proxyMaxConcurrency`
+   * from the signed-in config, once. Every proxy request awaits this first, and
+   * a proxy request only ever runs after sign-in (it needs a cluster from the
+   * same config), so awaiting the source here does not stall app boot.
+   */
+  private ensureProxySettings(): Promise<void> {
+    if (!this.proxySettingsLoaded) {
+      this.proxySettingsLoaded = getSignedInConfig().then(config => {
+        this.proxyTimeoutMs =
+          config.getOptionalNumber('gs.kubernetes.proxyTimeoutMs') ??
+          DEFAULT_PROXY_TIMEOUT_MS;
+        this.proxyMaxConcurrency =
+          config.getOptionalNumber('gs.kubernetes.proxyMaxConcurrency') ??
+          DEFAULT_PROXY_MAX_CONCURRENCY;
+      });
+    }
+    return this.proxySettingsLoaded;
   }
 
   /**
@@ -197,6 +213,7 @@ export class KubernetesClient implements KubernetesApi {
      */
     timeoutMs?: number;
   }): Promise<Response> {
+    await this.ensureProxySettings();
     // Wait for a concurrency slot before doing anything (including the broker
     // token mint), so the whole connection is throttled, not just the fetch.
     // Queue time deliberately does not count against the per-request timeout,

@@ -171,7 +171,7 @@ describe('ServingProvider', () => {
 
   it('lists both sources side by side on one installation, the later deciding its backend', () => {
     // A lab with KServe CRDs and an Ollama-backed model-manager: the
-    // InferenceService and the Ollama model both render; the installation is
+    // LLMInferenceService and the Ollama model both render; the installation is
     // labelled by the model-manager source; capabilities are OR-ed.
     mockUseModelManagerServingSource.mockReturnValue({
       ...empty,

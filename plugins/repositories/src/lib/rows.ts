@@ -1,22 +1,79 @@
-import { RepositoryRow } from '../apis';
+import {
+  StatusLabelIntent,
+  SyncMark,
+  syncMarkIntent,
+  syncMarkLegend,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { InventoryRecord, Lifecycle, RepositoryRow } from '../apis';
 
-/** The sortable columns of the Repositories table. */
-export type SortColumn =
-  | 'repository'
-  | 'team'
-  | 'lifecycle'
-  | 'lastPersonCommit'
-  | 'score'
-  | 'setup'
-  | 'findings'
-  | 'age';
+/**
+ * A row's set-up state as the page names it: the engine's converged state in
+ * the manager's words (`converged`, `not converged`, `refused` where the
+ * engine refused the declaration), `run pending` while an Align now waits for
+ * its run, `unchecked` for a declared repository no check has run through,
+ * `undeclared` for one no team file declares, `gone` for one GitHub no
+ * longer has.
+ */
+export type SetupState =
+  | 'converged'
+  | 'not converged'
+  | 'refused'
+  | 'run pending'
+  | 'unchecked'
+  | 'undeclared'
+  | 'gone';
 
-export type SortDirection = 'asc' | 'desc';
+/**
+ * What the set-up state is read from: the fields of a `list_repositories`
+ * row it depends on. A record (`get_repository`) folds into the same fields
+ * through {@link setupOf}, so the row's icon and the expanded panel's header
+ * read one state from one function.
+ */
+export type SetupSource = Pick<RepositoryRow, 'team' | 'gone' | 'setup'>;
 
-/** A row's set-up state as the page names it. */
-export type SetupState = 'converged' | 'not converged' | 'unchecked';
+/**
+ * A record's set-up as the manager's listing carries it in a row: converged
+ * from the engine's checks; refused where the engine's result is the entry
+ * step, an entry the schema refused and no other step ran; the run pending
+ * and the check's error as they are; gone where GitHub has no repository;
+ * undeclared where no team file has an entry.
+ */
+export function setupOf(record: InventoryRecord): SetupSource {
+  const { checks, checkedAt, checkError, lastRun, pendingRun } = record.setup;
+  return {
+    team: record.declaration?.team,
+    gone: record.reality === null,
+    setup: {
+      converged: checks?.converged,
+      refused: checks?.steps.some(step => step.step === 'entry'),
+      checkedAt,
+      lastRun: lastRun?.runUrl,
+      pendingRun,
+      error: checkError,
+    },
+  };
+}
 
-export function setupState(row: RepositoryRow): SetupState {
+/**
+ * The state, decided in this order: gone and undeclared have no set-up to
+ * judge; a run pending is about to change the rest; a refused entry is never
+ * converged, whatever the engine's result says (its result for a refused
+ * entry carries `converged: true` over the entry step alone); then the
+ * engine's verdict, and unchecked without one.
+ */
+export function setupState(row: SetupSource): SetupState {
+  if (row.gone) {
+    return 'gone';
+  }
+  if (!row.team) {
+    return 'undeclared';
+  }
+  if (row.setup.pendingRun) {
+    return 'run pending';
+  }
+  if (row.setup.refused) {
+    return 'refused';
+  }
   if (row.setup.converged === true) {
     return 'converged';
   }
@@ -26,112 +83,86 @@ export function setupState(row: RepositoryRow): SetupState {
   return 'unchecked';
 }
 
-/** The orphan score bands the tiles count. */
-export type ScoreBand = 'healthy' | 'watch' | 'orphan';
+/** The set-up as one glance: the portal's marks, shared with the Installations page. */
+export type SetupMark = SyncMark;
 
-export function scoreBand(score: number): ScoreBand {
-  if (score >= 60) {
-    return 'orphan';
+/**
+ * The mark of a row's set-up: converged is in sync, not converged is not in
+ * sync; a run pending or a declared repository not checked yet is not
+ * reconciled; an undeclared repository has nothing to set it up (not
+ * installed); a refused declaration or a check that could not run is failed;
+ * a repository gone from GitHub is unknown.
+ */
+export function markOf(row: SetupSource): SetupMark {
+  switch (setupState(row)) {
+    case 'converged':
+      return 'in sync';
+    case 'not converged':
+      return 'not in sync';
+    case 'run pending':
+      return 'not reconciled';
+    case 'unchecked':
+      return row.setup.error ? 'failed' : 'not reconciled';
+    case 'undeclared':
+      return 'not installed';
+    case 'refused':
+      return 'failed';
+    default:
+      return 'unknown';
   }
-  if (score >= 30) {
-    return 'watch';
-  }
-  return 'healthy';
 }
 
-/** A row's lifecycle as the tiles count it: the declared one, else `active`. */
-export function lifecycleOf(row: RepositoryRow): string {
+/**
+ * The intent of a row's set-up where it is a label rather than an icon, the
+ * expanded panel's header: coloured as the row's mark.
+ */
+export const setupIntent = (row: SetupSource): StatusLabelIntent =>
+  syncMarkIntent(markOf(row));
+
+/** What each mark means for a repository's set-up, in the tooltip and the legend. */
+export const SETUP_GLOSS: Record<SetupMark, string> = {
+  'in sync': 'set up as declared',
+  'not in sync': 'off its declared set-up',
+  'not reconciled': 'not reconciled yet',
+  'not installed': 'no declaration sets it up',
+  failed: 'the last check failed',
+  unknown: 'gone from GitHub',
+};
+
+/** The legend of the marks, for the Set-up column's header. */
+export const SETUP_LEGEND = syncMarkLegend(SETUP_GLOSS);
+
+/**
+ * The words behind a row's icon, and of the panel's header: the state in the
+ * manager's words, the gloss, and the manager's reason where the check could
+ * not run.
+ */
+export function setupLabel(row: SetupSource): string {
+  const state = setupState(row);
+  const label = `${state} · ${SETUP_GLOSS[markOf(row)]}`;
+  return state === 'unchecked' && row.setup.error
+    ? `${label}: ${row.setup.error}`
+    : label;
+}
+
+/** Sorting by set-up puts the repositories wanting a look first. */
+export const MARK_ORDER: Record<SetupMark, number> = {
+  failed: 0,
+  'not in sync': 1,
+  'not reconciled': 2,
+  unknown: 3,
+  'not installed': 4,
+  'in sync': 5,
+};
+
+/**
+ * A row's lifecycle as the manager judges it: the declared one, `archived`
+ * for a repository archived on GitHub without a declaration saying so, else
+ * `active`.
+ */
+export function lifecycleOf(row: RepositoryRow): Lifecycle | string {
   if (row.archived && !row.lifecycle) {
     return 'archived';
   }
   return row.lifecycle || 'active';
-}
-
-export interface Tiles {
-  setup: Record<SetupState, number>;
-  score: Record<ScoreBand, number>;
-  lifecycle: Record<string, number>;
-}
-
-/** Counts per set-up state, score band and lifecycle over the listed rows. */
-export function countTiles(rows: RepositoryRow[]): Tiles {
-  const tiles: Tiles = {
-    setup: { converged: 0, 'not converged': 0, unchecked: 0 },
-    score: { healthy: 0, watch: 0, orphan: 0 },
-    lifecycle: {},
-  };
-  for (const row of rows) {
-    tiles.setup[setupState(row)]++;
-    tiles.score[scoreBand(row.orphan.score)]++;
-    const lifecycle = lifecycleOf(row);
-    tiles.lifecycle[lifecycle] = (tiles.lifecycle[lifecycle] ?? 0) + 1;
-  }
-  return tiles;
-}
-
-const SETUP_ORDER: Record<SetupState, number> = {
-  'not converged': 0,
-  unchecked: 1,
-  converged: 2,
-};
-
-const UNIT_SECONDS: Record<string, number> = { h: 3600, m: 60, s: 1, ms: 0 };
-
-/** Go durations sort by their length; `5m3s` < `2h`. */
-export function durationSeconds(age: string | undefined): number {
-  if (!age) {
-    return Number.POSITIVE_INFINITY;
-  }
-  let seconds = 0;
-  for (const [, value, unit] of age.matchAll(/([\d.]+)(ms|h|m|s)/g)) {
-    seconds += Number(value) * UNIT_SECONDS[unit];
-  }
-  return seconds;
-}
-
-function key(row: RepositoryRow, column: SortColumn): string | number {
-  switch (column) {
-    case 'repository':
-      return row.repository.toLowerCase();
-    case 'team':
-      return row.team ?? '';
-    case 'lifecycle':
-      return lifecycleOf(row);
-    case 'lastPersonCommit':
-      // ISO timestamps order as strings; a repository without one sorts last.
-      return row.lastPersonCommit ?? '';
-    case 'score':
-      return row.orphan.score;
-    case 'setup':
-      return SETUP_ORDER[setupState(row)];
-    case 'findings':
-      return row.findings?.length ?? 0;
-    case 'age':
-      return durationSeconds(row.age);
-    default:
-      return '';
-  }
-}
-
-/** The rows sorted by a column; ties keep the manager's order (by score). */
-export function sortRows(
-  rows: RepositoryRow[],
-  column: SortColumn,
-  direction: SortDirection,
-): RepositoryRow[] {
-  const sign = direction === 'asc' ? 1 : -1;
-  return rows
-    .map((row, index) => ({ row, index }))
-    .sort((a, b) => {
-      const ka = key(a.row, column);
-      const kb = key(b.row, column);
-      if (ka < kb) {
-        return -sign;
-      }
-      if (ka > kb) {
-        return sign;
-      }
-      return a.index - b.index;
-    })
-    .map(({ row }) => row);
 }

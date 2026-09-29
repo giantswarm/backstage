@@ -15,7 +15,8 @@ import {
   CatalogTableColumnsFunc,
   CatalogTableRow,
 } from '@backstage/plugin-catalog';
-import { ReactNode } from 'react';
+import { ReactNode, useCallback } from 'react';
+import { useInstallationCapabilityColumns } from '@giantswarm/backstage-plugin-platform-capabilities';
 import { CustomCatalogTable } from '../CustomCatalogTable';
 import { EntityProviderPicker } from '../EntityProviderPicker';
 import { EntityPipelinePicker } from '../EntityPipelinePicker';
@@ -27,7 +28,7 @@ import {
   noWrapColumn,
 } from '../columns';
 
-const columnsFunc: CatalogTableColumnsFunc = () => {
+const baseColumns: CatalogTableColumnsFunc = () => {
   return [
     autoWidthColumn(
       CatalogTable.columns.createNameColumn({ defaultKind: 'resource' }),
@@ -56,8 +57,19 @@ export function InstallationsPage(props: InstallationsPageProps) {
     emptyContent,
   } = props;
 
+  // One column per platform capability with its state on the installation,
+  // from giantswarm-platform-manager through muster as the signed-in person;
+  // none where the platform-capabilities api is not enabled (a customer
+  // portal). The Capabilities tab of an installation holds the actions.
+  const capabilities = useInstallationCapabilityColumns();
+  const columnsFunc: CatalogTableColumnsFunc = useCallback(
+    context => [...baseColumns(context), ...capabilities.columns],
+    [capabilities.columns],
+  );
+
   return (
     <Content>
+      {capabilities.notice}
       <EntityListProvider>
         <CatalogFilterLayout>
           <CatalogFilterLayout.Filters>

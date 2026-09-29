@@ -53,6 +53,10 @@ import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { TextAreaField } from '../NewAgentPage/TextAreaField';
+import {
+  MAX_SYSTEM_MESSAGE_LENGTH,
+  systemMessageProblem,
+} from '../../lib/systemMessage';
 import { isMounted, SkillPicker } from '../SkillPicker';
 import { agentManagerAbsenceReason } from '../AgentDetailPage/AgentActionsMenu';
 import { EditAgentToolsetField } from './EditAgentToolsetField';
@@ -239,8 +243,10 @@ function EditAgentForm({
     dirty ? update : undefined,
   );
   const violations = dryRun.result?.errors ?? [];
+  const promptProblem = systemMessageProblem(edit.systemMessage);
   const canWrite =
     dirty &&
+    !promptProblem &&
     Boolean(dryRun.result) &&
     violations.length === 0 &&
     !dryRun.failure;
@@ -387,11 +393,13 @@ function EditAgentForm({
               />
               <TextAreaField
                 label="System prompt"
-                description="Empty restores the chart's default prompt."
+                description="Empty restores the chart's default prompt. Put long reference material in a skill; the prompt is limited in length."
                 value={edit.systemMessage}
                 onChange={value => set('systemMessage', value)}
                 rows={10}
                 mono
+                maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
+                error={promptProblem}
               />
               <Flex direction="column" gap="2">
                 <FieldLabel
@@ -572,17 +580,26 @@ function EditAgentPageContent() {
   const availability = useAgentManagerAvailability(
     installation ? [installation] : [],
   );
-  const gate = {
-    presence: availability.presenceOf(installation),
-    isUnavailable: availability.isUnavailable,
-  };
-  const reason = agentManagerAbsenceReason(gate, installation);
+  const presence = availability.presenceOf(installation);
   const { agent, isLoading, failure } = useAgentManagerAgent(
     installation,
     namespace,
     name,
-    { enabled: gate.presence === 'available' },
+    { enabled: presence === 'available' },
   );
+
+  // An agent applied from git is refused by agent-manager, so the form is never
+  // offered — the same sentence the detail page's actions menu gives, in the
+  // same place this page already explains a missing agent-manager. While the
+  // read is in flight there is no verdict and no reason; that lands on the
+  // progress branch below.
+  const gate = {
+    presence,
+    isUnavailable: availability.isUnavailable,
+    isGitOpsOwned: agent?.managed === 'gitops',
+    isVerdictPending: isLoading,
+  };
+  const reason = agentManagerAbsenceReason(gate, installation);
 
   if (reason) {
     return (
@@ -643,7 +660,8 @@ function EditAgentPageContent() {
  * person: the form pre-filled from `get_agent` (display name, description,
  * system prompt, model, toolset, skills with their pins — no runtime), the
  * review as `validate_agent`'s dry run of the update, Save as `update_agent`
- * with only the changed fields. A GitOps-owned or suspended agent's dry run
+ * with only the changed fields. An agent applied from git never reaches the
+ * form — agent-manager refuses every write to it. A suspended agent's dry run
  * comes back as agent-manager's refusal and Save stays locked. Commit
  * (`mode: commit`) appears only when `get_info` reports the capability.
  */

@@ -21,6 +21,7 @@ import { SessionDetailPage } from './SessionDetailPage';
 
 import {
   sessionDetailV099 as detailV099,
+  tasksClaudeHarness,
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 
@@ -406,12 +407,35 @@ describe('SessionDetailPage', () => {
     expect(screen.getByText('Output tokens')).toBeInTheDocument();
   });
 
-  it('shows the wall-clock duration', async () => {
-    // kagent records no per-turn durations, so this is updated_at - created_at:
-    // the session's span, including time the user was away.
+  it('shows the cost a claude Harness turn reported beside the estimate', async () => {
+    const claudeTasks = normalizeTaskList(tasksClaudeHarness).tasks;
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: buildTimeline(claudeTasks),
+      taskCount: claudeTasks.length,
+    });
     await render();
 
-    expect(screen.getByText('Duration')).toBeInTheDocument();
+    expect(screen.getByText('Est. cost')).toBeInTheDocument();
+    expect(screen.getByText('Reported cost')).toBeInTheDocument();
+    expect(screen.getByText('$0.131')).toBeInTheDocument();
+  });
+
+  it('shows no reported cost when the runtime reports none', async () => {
+    await render();
+
+    expect(screen.getByText('Est. cost')).toBeInTheDocument();
+    expect(screen.queryByText('Reported cost')).not.toBeInTheDocument();
+  });
+
+  it('shows the start but no last activity or duration', async () => {
+    // kagent API v2 does not move updated_at on a turn, so both would only
+    // restate the start (kagent-dev/kagent#2397).
+    await render();
+
+    expect(screen.getByText(/^Started/)).toBeInTheDocument();
+    expect(screen.queryByText(/last activity/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Duration')).not.toBeInTheDocument();
   });
 
   it('renders the timeline', async () => {
@@ -1378,6 +1402,74 @@ describe('SessionDetailPage', () => {
         screen.queryByText('a duplicate stand-in'),
       ).not.toBeInTheDocument();
     });
+
+    describe('a streamed turn ending', () => {
+      /** The stream's copy of a cancel: terminal, and with no reason to carry. */
+      const canceledStream = () => ({
+        ...createStreamTurn('m-canceled-1'),
+        dispatched: true,
+        isFinal: true,
+        stateKey: 'canceled',
+        items: [
+          {
+            kind: 'turn-failed' as const,
+            id: 'stream:0',
+            taskIndex: 0,
+            state: 'canceled',
+          },
+        ],
+      });
+
+      const canceledTimeline = buildTimeline(
+        normalizeTaskList({
+          data: [
+            {
+              id: 'task-canceled',
+              status: {
+                state: 'canceled',
+                timestamp: '2026-09-18T05:56:07.729Z',
+              },
+              history: [
+                {
+                  messageId: 'm-canceled-1',
+                  role: 'user',
+                  parts: [{ text: 'Could a node pool sit in another region?' }],
+                },
+              ],
+            },
+          ],
+        }).tasks,
+      );
+
+      it('is dropped once the poll has closed that turn', async () => {
+        // How a turn ended carries a `messageId` only when kagent wrote a reason,
+        // and a cancel has none to write — so neither copy can be recognised by
+        // id, and both rendered until the send discarded its preview. A turn has
+        // one ending, so the poll having closed this turn retires the streamed one.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: canceledTimeline,
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: canceledStream() }),
+        );
+        await render();
+
+        expect(screen.getAllByText('This turn was canceled')).toHaveLength(1);
+      });
+
+      it('is still shown while the poll has not caught up', async () => {
+        // The other half: the preview is the only record of how the turn ended
+        // until the conversation read lands, and dropping it there would put the
+        // page back to a reply that stops mid-sentence with nothing to say why.
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: canceledStream() }),
+        );
+        await render();
+
+        expect(screen.getByText('This turn was canceled')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('the first message of a session just created', () => {
@@ -1527,7 +1619,7 @@ describe('SessionDetailPage', () => {
       },
     });
 
-    it('explains the failed turn in the portal’s words and offers the new session beside Send', async () => {
+    it('explains the failed turn in the portal’s words and offers the new session under the box', async () => {
       mockUseSessionDetail.mockReturnValue(suspectedView);
       await render();
 

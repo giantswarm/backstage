@@ -19,7 +19,8 @@ import DeviceHub from '@material-ui/icons/DeviceHub';
 import Extension from '@material-ui/icons/Extension';
 import VerifiedUser from '@material-ui/icons/VerifiedUser';
 import Lock from '@material-ui/icons/Lock';
-import { Content, Link, Progress } from '@backstage/core-components';
+import { Content, EmptyState, Link } from '@backstage/core-components';
+import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
@@ -40,7 +41,10 @@ import {
   Stat,
   StateBadge,
 } from '../shared';
-import { serversHealthSummary } from '../../lib/k8s';
+import {
+  serversHealthSummary,
+  SERVERS_HEALTH_WARNING_FRACTION,
+} from '../../lib/k8s';
 import { musterApiRef } from '../../apis';
 import {
   agentPlatformUsageExternalRouteRef,
@@ -148,7 +152,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'flex-start',
-    gap: theme.spacing(1.5, 6),
+    gap: theme.spacing(2, 5),
     marginTop: theme.spacing(2.5),
     paddingTop: theme.spacing(2),
     borderTop: `1px solid ${theme.palette.divider}`,
@@ -276,6 +280,22 @@ function BrowseCard({
   );
 }
 
+/**
+ * No installation to show: still resolving which one runs muster, or the fleet
+ * answered and none does.
+ */
+function renderNoInstallation(isLoadingInstallations: boolean) {
+  return isLoadingInstallations ? (
+    <LoadingIndicator label="Finding the installation's muster…" />
+  ) : (
+    <EmptyState
+      missing="data"
+      title="No muster installation"
+      description="None of the installations this portal knows runs muster, so there is nothing to show here."
+    />
+  );
+}
+
 export function DashboardPage() {
   const classes = useStyles();
   const theme = useTheme();
@@ -285,6 +305,7 @@ export function DashboardPage() {
     mcpServers,
     workflows,
     isLoading,
+    isLoadingInstallations,
     dataUpdatedAt,
     isRefreshing,
     retry,
@@ -360,7 +381,7 @@ export function DashboardPage() {
       <ActiveInstallationNote />
 
       {!activeInstallation ? (
-        <Progress />
+        renderNoInstallation(isLoadingInstallations)
       ) : (
         <Box className={classes.column}>
           {isLoading && (
@@ -469,11 +490,17 @@ export function DashboardPage() {
               <Stat
                 label="Aggregated servers"
                 value={serversPending ? '…' : mcpServers.length}
+                hint="The MCP servers muster fronts on this installation, whatever state they are in."
               />
-              <Stat label="Tools" value={toolStat} />
+              <Stat
+                label="Tools"
+                value={toolStat}
+                hint="Every tool muster offers your session here, across all of its servers. Needs you to be signed in to muster."
+              />
               <Stat
                 label="Workflows"
                 value={workflowsPending ? '…' : workflows.length}
+                hint="The workflows defined on this installation, whether or not they have ever run."
               />
               {/* Computed from the CRD reads, not the muster session, so it
                   renders whenever the server list has loaded -- the same data
@@ -486,6 +513,7 @@ export function DashboardPage() {
                     : `${serversHealthy}/${mcpServers.length}`
                 }
                 tone={serversPending ? undefined : serversHealthyTone}
+                hint={`Servers that are running, connected, or waiting only for someone to sign in, out of all of them. Amber once more than ${Math.round(SERVERS_HEALTH_WARNING_FRACTION * 100)}% are not.`}
               />
             </Box>
           </Paper>

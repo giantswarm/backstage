@@ -7,6 +7,7 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
+import { Helmet } from 'react-helmet';
 import {
   Content,
   EmptyState,
@@ -18,7 +19,7 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Avatar, Button, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import {
   Agent,
   ErrorsProvider,
@@ -44,6 +45,7 @@ import {
   useAgentManagerAvailability,
   useAgentManagerInfo,
 } from '../../hooks/useAgentManager';
+import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
@@ -78,6 +80,7 @@ import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentSkillsCard } from './AgentSkillsCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
+import { AgentAvatar } from '../AgentAvatar';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 8000;
@@ -99,6 +102,8 @@ const DEPLOYING_PRESENTATION: ReadinessPresentation = {
 /**
  * The page header: avatar, name, the derived readiness, where the agent runs,
  * and — once the template exists — when it was created and what it is for.
+ * It also names the agent in the document title; `GSPageLayout` appends the
+ * app title.
  */
 function AgentHeader({
   displayName,
@@ -121,10 +126,11 @@ function AgentHeader({
 }) {
   return (
     <Flex direction="column" gap="2">
+      <Helmet title={`${displayName} · Agents · Agent Platform`} />
       <BackToAgents>← Agents</BackToAgents>
 
       <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
-        <Avatar
+        <AgentAvatar
           size="large"
           purpose="decoration"
           name={displayName}
@@ -132,7 +138,9 @@ function AgentHeader({
         />
         <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            <Text variant="title-medium">{displayName}</Text>
+            <Text as="h2" variant="title-medium">
+              {displayName}
+            </Text>
             {/* Tagged because the derived readiness and the condition it came
                 from share a label ("Ready", "Ready") — this is the derived
                 one, distinct from the entries in the conditions list. */}
@@ -276,21 +284,49 @@ function AgentDetailPageContent() {
 
   // The write actions — Delete, Edit, Update skills — go through agent-manager
   // over muster as the signed-in person, and are offered when the installation's
-  // muster lists agent-manager (feature detection; authorization stays the
-  // apiserver's, reached through agent-manager). Called here rather than inside
-  // the menu: the menu is rendered in the shared plugin header, outside this
-  // plugin's `QueryClientProvider`, so react-query has no client there. The
-  // dialogs are rendered in the page body for the same reason.
+  // muster lists agent-manager and the agent is not applied from git
+  // (authorization stays the apiserver's, reached through agent-manager).
+  // Called here rather than inside the menu: the menu is rendered in the shared
+  // plugin header, outside this plugin's `QueryClientProvider`, so react-query
+  // has no client there. The dialogs are rendered in the page body for the same
+  // reason.
   const availability = useAgentManagerAvailability(
     installation ? [installation] : [],
   );
+  const isAgentManagerReachable =
+    !availability.isUnavailable &&
+    availability.presenceOf(installation) === 'available';
+
+  // Whether a live write is possible at all, in agent-manager's own words:
+  // `managed: 'gitops'` means the agent's HelmRelease is applied by a Flux
+  // Kustomization, so every write is refused and its desired state belongs in
+  // the GitOps repository. Deliberately not `isGitOpsManaged(agent)` from the
+  // labels — that answers "is a reconciler in charge", which is true of every
+  // agent this plugin deploys, since the create flow applies a HelmRelease of
+  // its own. A read that settles without an answer — not connected, refused —
+  // leaves the actions offered: agent-manager then refuses on confirm, as it
+  // did before. One still in flight withholds them instead, so they are not
+  // shown for a muster round-trip and then taken back.
+  const { agent: managerAgent, isLoading: isReadingManagerAgent } =
+    useAgentManagerAgent(installation, namespace, name, {
+      enabled: isAgentManagerReachable,
+    });
+
   const agentManagerGate = useMemo(
     () => ({
       presence: availability.presenceOf(installation),
       isUnavailable: availability.isUnavailable,
+      isGitOpsOwned: managerAgent?.managed === 'gitops',
+      isVerdictPending: isReadingManagerAgent,
     }),
-    [availability, installation],
+    [availability, installation, managerAgent?.managed, isReadingManagerAgent],
   );
+
+  /** Every live write the page offers is gated on this. */
+  const canWriteAgent =
+    isAgentManagerReachable &&
+    !agentManagerGate.isVerdictPending &&
+    !agentManagerGate.isGitOpsOwned;
   const { info: agentManagerInfo } = useAgentManagerInfo(
     agentManagerGate.presence === 'available' ? installation : undefined,
   );
@@ -363,9 +399,8 @@ function AgentDetailPageContent() {
 
   const { deleteAgent, commit: commitDeletion } = deletion;
   const confirmDelete = useCallback(async () => {
-    let result;
     try {
-      result = await deleteAgent();
+      await deleteAgent();
     } catch {
       // Left to the dialog, which stays open and shows agent-manager's message
       // — a GitOps-owned or suspended release, a viewer's Forbidden. No toast:
@@ -373,18 +408,14 @@ function AgentDetailPageContent() {
       return;
     }
     setDeleteOpen(false);
-    const as = result.requestedBy ? ` as ${result.requestedBy}` : '';
     toastApi.post({
       // Deliberately not "Agent deleted": the HelmRelease has a finalizer, so
       // all that is certain here is that agent-manager's delete was accepted
       // and helm-controller has started uninstalling. The agent can still be in
       // the list for a few seconds.
       title: `Deleting agent "${agent?.getDisplayName() ?? name}"`,
-      description: `agent-manager deleted its Helm release${as}; Flux is uninstalling it, so it may take a moment to disappear from the list.${
-        result.ociRepositoryKept
-          ? ` The namespace's shared chart source stays: ${result.ociRepositoryKept}.`
-          : ''
-      }`,
+      description:
+        'Flux is uninstalling it, so it may take a moment to disappear from the list.',
       status: 'success',
       // A ToastApi toast without a timeout is permanent, and this is an
       // acknowledgement, not something to dismiss by hand.
@@ -412,9 +443,7 @@ function AgentDetailPageContent() {
     (_skills: unknown, requestedBy?: string, fromGeneration?: number) => {
       toastApi.post({
         title: `Updating the skills of "${agent?.getDisplayName() ?? name}"`,
-        description: `agent-manager re-pinned the git skills${
-          requestedBy ? ` as ${requestedBy}` : ''
-        }; the platform Harness compiles a new revision.`,
+        description: 'The platform Harness compiles a new revision.',
         status: 'success',
         timeout: TOAST_TIMEOUT_MS,
       });
@@ -677,12 +706,7 @@ function AgentDetailPageContent() {
             element={
               <AgentSkillsCard
                 agent={agent}
-                onUpdateSkills={
-                  agentManagerGate.presence === 'available' &&
-                  !agentManagerGate.isUnavailable
-                    ? openUpdateSkills
-                    : undefined
-                }
+                onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
               />
             }
           />
@@ -750,7 +774,8 @@ function AgentDetailPageContent() {
  *
  * The agent can be edited, have its skills re-pinned and be deleted from the
  * header's actions menu — every write through agent-manager over muster as the
- * signed-in person, offered when the installation's muster lists agent-manager.
+ * signed-in person, offered when the installation's muster lists agent-manager
+ * and the agent is not applied from git.
  *
  * What the APUI prototype shows and this deliberately does not, because there is
  * no data behind it: sessions all-time, sessions in the last 30 days, a success

@@ -10,6 +10,16 @@ const useStyles = makeStyles((theme: Theme) => ({
     '&:not(:last-child)': {
       marginBottom: theme.spacing(1),
     },
+    // bui's own 4px leaves the body's first sub-heading sitting on the summary
+    // row, which is dense enough (name, kind, badges) to need clear separation
+    // before the detail starts. Only the first block is affected -- the ones
+    // below it are spaced by their own margins.
+    //
+    // Scoped to the expanded state exactly as bui scopes its own: an
+    // unconditional padding is dead height under every collapsed row.
+    '&[data-expanded="true"] > $details': {
+      paddingTop: theme.spacing(1.5),
+    },
   },
   trigger: {
     // The consumer summaries are full-width flex rows that right-align their

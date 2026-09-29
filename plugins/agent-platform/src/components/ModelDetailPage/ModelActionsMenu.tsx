@@ -9,6 +9,7 @@ import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { UseDeleteModelConfigResult } from '../../hooks/useDeleteModelConfig';
 import { modelsRouteRef } from '../../routes';
@@ -91,7 +92,7 @@ export function ModelActionsMenu({
           aria-label="Model actions"
           variant="tertiary"
         />
-        <Menu>
+        <Menu maxWidth={MENU_WIDTH}>
           <MenuItem
             color="danger"
             iconStart={<DeleteOutlineIcon />}

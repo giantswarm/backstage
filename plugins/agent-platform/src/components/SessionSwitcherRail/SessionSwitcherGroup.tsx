@@ -1,26 +1,7 @@
-import { SessionStateTone } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { makeStyles, Theme, useTheme } from '@material-ui/core';
+import { makeStyles, useTheme } from '@material-ui/core';
+import { toneColor } from '../../lib/sessionStateTone';
 import { SessionSwitcherCard } from './SessionSwitcherCard';
 import { RailGroup } from './helpers';
-
-/**
- * Tone to colour. bui's `Badge` takes no tone in this version, so the dot is
- * hand-drawn — which is also what `PullReviewPage` does for its status dots.
- */
-export function toneColor(tone: SessionStateTone, theme: Theme): string {
-  switch (tone) {
-    case 'warning':
-      return theme.palette.warning.main;
-    case 'info':
-      return theme.palette.info.main;
-    case 'success':
-      return theme.palette.success.main;
-    case 'danger':
-      return theme.palette.error.main;
-    default:
-      return theme.palette.text.secondary;
-  }
-}
 
 const useStyles = makeStyles(theme => ({
   group: {

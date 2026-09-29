@@ -1,12 +1,10 @@
 import {
-  a2aMessageWireSchema,
   A2aTaskWire,
   addTokenUsage,
   ASK_USER_TOOL_NAME,
-  AWAITING_INPUT_STATES,
+  claimEndedTurnUsage,
   CONFIRMATION_TOOL_NAME,
-  describeSessionState,
-  FAILED_STATES,
+  historyWithPendingPrompt,
   isAgentToolName,
   isFunctionCallPart,
   isFunctionResponsePart,
@@ -22,7 +20,9 @@ import {
   readNestedTokenUsage,
   readPartText,
   readTokenUsage,
+  readTurnStatus,
   TokenUsage,
+  TurnStatus,
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
@@ -110,10 +110,17 @@ export type TimelineItem =
       verdict?: 'approved' | 'rejected';
     })
   | (TimelineItemBase & {
+      /**
+       * A turn that ended with no reply under it. Named for the case it was built
+       * for, and kept that way because an e2e suite and the stream reducer address
+       * it by this name — `state` says which ending it actually was.
+       */
       kind: 'turn-failed';
       /**
-       * The terminal state that ended the turn — `failed` or `rejected`, as the
-       * normalised key `describeSessionState` resolves (see `FAILED_STATES`).
+       * The terminal state that ended the turn — `failed` or `rejected` (see
+       * `FAILED_STATES`), or `canceled` (see `CANCELED_STATE`), as the normalised
+       * key `describeSessionState` resolves. A cancel is not a failure and the
+       * entry says so; it is here because it leaves the same hole in the page.
        */
       state: string;
       /**
@@ -153,58 +160,12 @@ const EMPTY_USAGE: TokenUsage = { total: 0, prompt: 0, completion: 0 };
  */
 
 /**
- * A task's history, plus the question it is currently waiting on.
+ * Whether a task ended without answering, and what kagent said about it.
  *
- * kagent puts an *unanswered* confirmation on `task.status.message` and **not** in
- * `history`, so a session that ends by asking the user something rendered as if
- * the agent had simply stopped talking. The raw `ask_user` call does appear in
- * history, but it is deliberately skipped as ADK plumbing (`INTERNAL_TOOL_NAMES`)
- * because the approval path is supposed to render it — and that path only ever
- * looked at history. The question fell between the two.
- *
- * Verified against a live session on an internal installation: the pending
- * `status.message` carries a
- * distinct `messageId` that appears nowhere in `history`, wrapping the question in
- * the same `adk_request_confirmation` shape an answered one has. So appending it
- * as a final entry gets the existing approval handling — including the
- * `ask_user` -> `asks: 'input'` discrimination — for free.
- *
- * Gated on the state rather than merely on the message being present. Two reasons:
- * it is the documented contract (`status.message` "carries the pending prompt
- * while a task waits for input"), and it makes the item self-clearing — once the
- * user answers elsewhere and the task reaches a terminal state, the prompt stops
- * being emitted here and the answered confirmation renders from history instead,
- * so the card cannot linger as a question that has already been answered.
- *
- * kagent's own UI splits the same problem across two passes
- * (`extractMessagesFromTasks` skips unresolved confirmations in history;
- * `extractApprovalMessagesFromTasks` reads `status.message`). One list keeps the
- * question in its chronological place instead of appending it to the end.
- *
- * Only an object-shaped message is appended. `status.message` is `z.unknown()` at
- * the parse boundary, so a kagent version putting a bare string there — an
- * `auth-required` hint, say — would otherwise reach `parseHistoryEntry`, fail
- * `a2aMessageWireSchema` and count as `skippedMessages`, which the UI reports as
- * "1 message could not be read" on a session that is in fact perfectly healthy.
- * A shape we cannot render should be invisible, not announced as data loss.
- */
-function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
-  const history = Array.isArray(task.history) ? task.history : [];
-  const state = task.status?.state?.toLowerCase();
-  const pending = task.status?.message;
-  if (
-    !pending ||
-    typeof pending !== 'object' ||
-    !state ||
-    !AWAITING_INPUT_STATES.has(state)
-  ) {
-    return history;
-  }
-  return [...history, pending];
-}
-
-/**
- * Whether a task ended in error, and what kagent said about it.
+ * Two endings qualify, and they are not the same thing. A **failure** is the
+ * agent's or the provider's; a **cancel** is the person's own Stop, or the
+ * controller ending the run. Both leave the turn with no reply under it, which is
+ * the hole this fills, so both are read here and the caller's entry says which.
  *
  * A failed turn was the one outcome that rendered as *nothing*: the badge said
  * "Failed", but the timeline showed the user's message with no reply under it,
@@ -216,32 +177,33 @@ function historyWithPendingPrompt(task: A2aTaskWire): unknown[] {
  *
  * Gated on the state like the pending prompt, and for the mirror-image reason: on
  * a terminal failure `status.message` is the reason; on a completed task it is the
- * reply, already in history, and reading it here would show it twice.
+ * reply, which history holds (`toWireTask` appends it on the API v2 line), and
+ * reading it here would show it twice.
+ *
+ * A cancel usually carries no `status.message` at all — a turn stopped four
+ * seconds in on a live installation had one history entry, the person's message,
+ * and nothing else — so the entry is the whole of what is known about it. Read the
+ * field anyway: a controller that does record why is worth repeating verbatim.
  *
  * The reason is dropped — not the entry — when history already carries the same
  * message: a runtime that also records the failing reply as an agent message has
- * already rendered it as prose above, and the entry then says only that the turn
- * failed, which the prose alone does not.
+ * already rendered it as prose above, and the entry then says only how the turn
+ * ended, which the prose alone does not.
  */
-function readTurnFailure(
-  task: A2aTaskWire,
+function readTurnEnding(
+  status: TurnStatus | undefined,
   alreadyRendered: Set<string>,
 ):
   | { state: string; reason?: string; messageId?: string; author?: string }
   | undefined {
-  const state = describeSessionState(task.status?.state)?.key;
-  if (!state || !FAILED_STATES.has(state)) {
+  if (!status?.ended) {
     return undefined;
   }
-  const raw = task.status?.message;
-  const message =
-    raw && typeof raw === 'object'
-      ? a2aMessageWireSchema.safeParse(raw)
-      : undefined;
-  if (!message?.success) {
+  const { state, message } = status;
+  if (!message) {
     return { state };
   }
-  const { messageId, metadata } = message.data;
+  const { messageId, metadata } = message;
   return {
     state,
     messageId,
@@ -249,7 +211,7 @@ function readTurnFailure(
     reason:
       messageId && alreadyRendered.has(messageId)
         ? undefined
-        : readMessageText(message.data),
+        : readMessageText(message),
   };
 }
 
@@ -317,7 +279,8 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     // because this is now the *only* timestamp source — it becomes `at` for every
     // item in the task.
     const taskTimestamp = normalizeTimestamp(task.status?.timestamp);
-    const entries = historyWithPendingPrompt(task);
+    const status = readTurnStatus(task);
+    const entries = historyWithPendingPrompt(task, status);
 
     // Open calls are per task: a response never answers a call from another turn,
     // and letting them match across tasks would attach a result to the wrong call
@@ -614,22 +577,23 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       flushText();
     });
 
-    // Last in its turn: whatever the agent managed to say or do before failing
-    // keeps its place, and the failure closes the turn the way the badge says
-    // it ended.
-    const failure = readTurnFailure(task, seenMessageIds);
-    if (failure) {
+    // Last in its turn: whatever the agent managed to say or do before it ended
+    // keeps its place, and the ending closes the turn the way the badge says.
+    const ending = readTurnEnding(status, seenMessageIds);
+    if (ending) {
       items.push({
         kind: 'turn-failed',
-        id: `${taskIndex}:failed:${items.length}`,
+        id: `${taskIndex}:ended:${items.length}`,
         at: taskTimestamp,
-        author: failure.author,
+        author: ending.author,
         taskIndex,
-        messageId: failure.messageId,
-        state: failure.state,
-        reason: failure.reason,
+        messageId: ending.messageId,
+        state: ending.state,
+        reason: ending.reason,
       });
     }
+    // After the ending: it reads the reason against the ids rendered so far.
+    tokens = addTokenUsage(tokens, claimEndedTurnUsage(status, seenMessageIds));
   });
 
   return { items, tokens, skippedMessages };

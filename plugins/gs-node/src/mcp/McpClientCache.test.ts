@@ -1,4 +1,4 @@
-import { McpClientCache, isClosedClientError } from './McpClientCache';
+import { McpClientCache } from './McpClientCache';
 
 const mockLogger = {
   info: jest.fn(),
@@ -10,6 +10,7 @@ const mockLogger = {
 
 interface FakeTransport {
   onclose?: (...args: unknown[]) => void;
+  onSessionExpired?: (...args: unknown[]) => void;
 }
 
 interface FakeClient {
@@ -26,27 +27,6 @@ function makeFakeClient(id: number): FakeClient {
     close: jest.fn().mockResolvedValue(undefined),
   };
 }
-
-describe('isClosedClientError', () => {
-  it('detects the SDK closed-client error message', () => {
-    expect(
-      isClosedClientError(
-        new Error('Attempted to send a request from a closed client'),
-      ),
-    ).toBe(true);
-    expect(
-      isClosedClientError(
-        'wrapped: Attempted to send a request from a closed client (foo)',
-      ),
-    ).toBe(true);
-  });
-
-  it('returns false for unrelated errors', () => {
-    expect(isClosedClientError(undefined)).toBe(false);
-    expect(isClosedClientError(null)).toBe(false);
-    expect(isClosedClientError(new Error('network unreachable'))).toBe(false);
-  });
-});
 
 describe('McpClientCache', () => {
   let cache: McpClientCache;
@@ -129,5 +109,79 @@ describe('McpClientCache', () => {
 
     expect(factory).toHaveBeenCalledTimes(2);
     expect(second).toBe(success);
+  });
+});
+
+describe('McpClientCache session hooks and idle TTL', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('rebuilds when the transport reports the session expired (404 on the id)', async () => {
+    const cache = new McpClientCache(mockLogger, { sweepIntervalMs: 60_000 });
+    const clients = [makeFakeClient(1), makeFakeClient(2)];
+    const factory = jest.fn(async () => clients.shift() as any);
+
+    const first = await cache.getOrCreate('k', factory);
+    expect(typeof (first as any).transport.onSessionExpired).toBe('function');
+
+    (first as any).transport.onSessionExpired('sess-1');
+
+    const second = await cache.getOrCreate('k', factory);
+    expect((second as any).id).toBe(2);
+    expect(factory).toHaveBeenCalledTimes(2);
+    await cache.dispose();
+  });
+
+  it('chains an existing transport.onSessionExpired handler', async () => {
+    const cache = new McpClientCache(mockLogger, { sweepIntervalMs: 60_000 });
+    const client = makeFakeClient(1);
+    const previous = jest.fn();
+    client.transport.onSessionExpired = previous;
+    await cache.getOrCreate('k', async () => client as any);
+
+    client.transport.onSessionExpired!('sess-1');
+    expect(previous).toHaveBeenCalledWith('sess-1');
+    await cache.dispose();
+  });
+
+  it('markDead with the client a caller failed on does not kill its replacement', async () => {
+    const cache = new McpClientCache(mockLogger, { sweepIntervalMs: 60_000 });
+    const clients = [makeFakeClient(1), makeFakeClient(2)];
+    const factory = jest.fn(async () => clients.shift() as any);
+
+    const stale = await cache.getOrCreate('k', factory);
+    cache.markDead('k', stale);
+    const fresh = await cache.getOrCreate('k', factory);
+    expect((fresh as any).id).toBe(2);
+
+    // A second caller that failed on the stale client arrives late.
+    cache.markDead('k', stale);
+    expect(await cache.getOrCreate('k', factory)).toBe(fresh);
+    expect(factory).toHaveBeenCalledTimes(2);
+    await cache.dispose();
+  });
+
+  it('recreates an entry idle for longer than the idle TTL, refreshed on every use', async () => {
+    jest.useFakeTimers({ now: 1_000_000 });
+    const cache = new McpClientCache(mockLogger, {
+      ttlMs: 60 * 60_000,
+      idleTtlMs: 10 * 60_000,
+      sweepIntervalMs: 60 * 60_000,
+    });
+    const clients = [makeFakeClient(1), makeFakeClient(2)];
+    const factory = jest.fn(async () => clients.shift() as any);
+
+    const first = await cache.getOrCreate('k', factory);
+    jest.setSystemTime(1_000_000 + 9 * 60_000);
+    expect(await cache.getOrCreate('k', factory)).toBe(first);
+    jest.setSystemTime(1_000_000 + 18 * 60_000);
+    expect(await cache.getOrCreate('k', factory)).toBe(first);
+
+    jest.setSystemTime(1_000_000 + 29 * 60_000);
+    const second = await cache.getOrCreate('k', factory);
+    expect((second as any).id).toBe(2);
+    expect(factory).toHaveBeenCalledTimes(2);
+    await cache.dispose();
   });
 });

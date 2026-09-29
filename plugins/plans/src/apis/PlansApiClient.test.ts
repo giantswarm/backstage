@@ -193,6 +193,25 @@ describe('PlansApiClient', () => {
     });
   });
 
+  it('names a refused pace so the page does not retry it', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        {
+          error: {
+            name: 'TooManyRequestsError',
+            message: 'request failed with status 429: too many requests',
+          },
+        },
+        429,
+      ),
+    );
+
+    await expect(client.getTree()).rejects.toMatchObject({
+      name: 'TooManyRequestsError',
+      message: 'request failed with status 429: too many requests',
+    });
+  });
+
   it('falls back to a generic message on a non-JSON error body', async () => {
     fetchMock.mockResolvedValue({
       ok: false,

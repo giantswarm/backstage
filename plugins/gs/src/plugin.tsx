@@ -692,6 +692,9 @@ export const gsPlugin = createFrontendPlugin({
     // agent-platform detail page links a kagent Agent to the HelmRelease that
     // deployed it, where the Flux status and GitOps source already live.
     deploymentDetails: deploymentDetailsRouteRef,
+    // Exposed so the agent-platform tabs can send someone to where a platform
+    // capability is enabled on an installation that lacks it.
+    installationsPage: installationsRouteRef,
     entityContent: entityDeploymentsRouteRef,
   },
   externalRoutes: {

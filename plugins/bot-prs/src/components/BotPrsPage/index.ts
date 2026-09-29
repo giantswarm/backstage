@@ -1,0 +1,1 @@
+export { BotPrsPage } from './BotPrsPage';

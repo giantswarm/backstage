@@ -36,25 +36,49 @@ const useStyles = makeStyles((theme: Theme) => ({
  */
 export function TotalsStrip({
   totals,
+  windowDays,
   rates,
   isRateLoading,
+  costBasis,
 }: {
   totals: SessionUsageTotals;
+  /** The window the totals cover, as the response reports it. */
+  windowDays: number;
   rates?: TokenRates;
   /** The rate's two Mimir queries are still in flight. */
   isRateLoading?: boolean;
+  /** How the estimate was arrived at, from `describeCostBasis`. */
+  costBasis?: string;
 }) {
   const classes = useStyles();
+  const windowNote = `in the last ${windowDays} days`;
   return (
     <div className={classes.strip}>
-      <Stat label="Sessions" value={formatCount(totals.sessions)} />
-      <Stat label="Turns" value={formatCount(totals.turns)} />
+      <Stat
+        label="Sessions"
+        value={formatCount(totals.sessions)}
+        hint={`Sessions with at least one turn ${windowNote}.`}
+      />
+      <Stat
+        label="Turns"
+        value={formatCount(totals.turns)}
+        hint={`Messages sent to an agent ${windowNote}. A turn counts once however many model and tool calls the answer took.`}
+      />
       <Stat
         label="Input tokens (billed)"
         value={formatTokens(totals.inputTokens)}
+        hint="Every token these turns sent to a model, summed over each call, delegated agents' included."
       />
-      <Stat label="Output tokens" value={formatTokens(totals.outputTokens)} />
-      <Stat label="Tool calls" value={formatCount(totals.toolCalls)} />
+      <Stat
+        label="Output tokens"
+        value={formatTokens(totals.outputTokens)}
+        hint="Every token a model generated in these turns, delegated agents' included."
+      />
+      <Stat
+        label="Tool calls"
+        value={formatCount(totals.toolCalls)}
+        hint="Tools the agents called in these turns. A hand-off to another agent is not counted as one."
+      />
       {/* A skeleton, not an em dash, while the rate is in flight. The counts
           beside it come from kagent and land first, so an em dash here reads
           as "nothing could be priced" — a finding — when the truth is only
@@ -62,6 +86,7 @@ export function TotalsStrip({
           the figure arrives. */}
       <Stat
         label="Est. cost"
+        hint={costBasis}
         value={
           isRateLoading ? (
             <Skeleton width={56} height={22} rounded />

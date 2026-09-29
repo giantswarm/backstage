@@ -150,16 +150,21 @@ _serving sources_ merged in `ServingProvider` (`lib/serving.ts` is the
 backend-agnostic seam: `ServedModel`, `ServingCapabilities`,
 `ServingSourceSnapshot`, `findServedModel`, `mergeServingSnapshots`):
 
-- **KServe CRs** (`useKServeServingSource`): InferenceServices, nodes and
-  predictor pods read with the user's own RBAC on installations that serve the
-  InferenceService CRD. Read-only, plus the GPU capacity panel.
+- **KServe CRs** (`useKServeServingSource`): `LLMInferenceService`s (KServe's
+  llm-d control plane, `serving.kserve.io/v1alpha2`), nodes and the workload
+  pods (`app.kubernetes.io/part-of=llminferenceservice`,
+  `app.kubernetes.io/name=<object>`) read with the user's own RBAC on
+  installations that serve the `serving.kserve.io` API group. Read-only, plus
+  the GPU capacity panel; the installation's model-serving discovery ConfigMap
+  gives it the accelerator resource name and the models Gateway.
 - **model-manager** (`useModelManagerServingSource`): the inventory of the
-  installations the backend proxies a
-  [model-manager](https://github.com/giantswarm/model-manager) for, read
-  through `agent-platform-backend`'s `/model-manager/...` pass-through.
+  installations whose muster lists
+  [model-manager](https://github.com/giantswarm/model-manager) as an
+  MCPServer, read through its `x_model-manager_*` tools over that muster as the
+  signed-in person (`ModelManagerApiClient`, the same hop agents take).
   model-manager fronts a _serving backend_ — Ollama on a laptop agentlab
   install, KServe on a GPU install — and reports it together with **capability
-  flags** (`GET /api/v1/backend`).
+  flags** (`list_backends`).
 
 **Everything beyond the table renders per capability flag, never per backend
 name.** `pull` puts a _Pull model_ button and the downloads list on the
@@ -178,43 +183,43 @@ schedules onto nodes).
 listed the row. Its items follow the capabilities and the row's state; on
 KServe the words are the serving layer's: a cached download that nobody
 serves offers _Serve…_ (the portal's serve flow, pre-filled — see below) and
-_Delete…_ (the cache directory), a served InferenceService offers _Stop
+_Delete…_ (the cache directory), a served LLMInferenceService offers _Stop
 serving…_ — done through model-manager where it operates the row (it also
 removes the ModelConfig it created), by deleting the CR with the user's own
 RBAC otherwise (the ModelConfigs stay) — and wiring only while it serves.
 _Remove model config_ is withheld for a ModelConfig model-manager merely
-recognises (`modelConfig.managed: false`, the portal's own wiring): it never
+recognises (`modelConfig.managed: false`, a hand-written one): it never
 deletes what it did not create, and the "Used by" column says who wired each
 one.
 
-**KServe through model-manager** (`backend: kserve`, model-manager ≥ 0.3):
-the inventory is the per-node download cache plus the InferenceServices. A
-cached model nobody serves is an `available` row — "downloaded on `<node>`",
-with its size, cache directory and preset — named after its Hugging Face
-repository; a served one is named after its InferenceService (the name agents
-address it by), takes the CR's readiness and, on an installation whose
-InferenceServices the user can also read as CRs, is **folded onto that CR
-row** (`mergeServingSnapshots`, by predictor hostname) so one row carries the
-CR's status and placement and model-manager's size, cache and controls. The
-GPU panel gains each node's memory budget (what the fit check compares
-against, less what the models served there reserve) and its model cache
-(`GET /api/v1/nodes`), laid over the CR source's device-plugin figures.
+**KServe through model-manager** (`backend: kserve`): the inventory is the
+per-node download cache plus the LLMInferenceServices. A cached model nobody
+serves is an `available` row — "downloaded on `<node>`", with its size, cache
+directory and preset — named after its Hugging Face repository; a served one
+is named after its LLMInferenceService, takes the object's readiness (with
+the workload pod's reason while it waits) and its serve timeline, and, on an
+installation whose LLMInferenceServices the user can also read as CRs, is
+**folded onto that CR row** (`mergeServingSnapshots`, by namespace and name —
+never by host: every routed model answers on the models Gateway's one host)
+so one row carries the CR's status and placement and model-manager's size,
+cache, timeline and controls. The GPU panel gains each node's memory budget
+(what the fit check compares against, less what the models served there
+reserve) and its model cache (`list_nodes`), laid over the CR source's
+device-plugin figures.
 
 **Import from Hugging Face** (`search` + `pull`; `ImportModelDialog`): search
-the hub (`GET /api/v1/search`), pick a hit, choose the serving preset the
+the hub (`search_models`), pick a hit, choose the serving preset the
 download is for and the node whose cache receives it, and read model-manager's
 own size and fit verdict for exactly that combination
-(`POST /api/v1/models/fit-check`: weights from the hub's file tree plus the
+(`check_fit`: weights from the hub's file tree plus the
 preset's overhead against the node's memory budget). A model that does not fit
 cannot be submitted, a gated one needs the installation's hub token; the
 download is a pre-warm `pull` with `preset` and `node`, followed in the
-downloads panel like any other job. Serving it afterwards goes through the
-serve flow, whose **Weights** picker offers the cached downloads of the
-installation: picking one names the InferenceService after the cache
-directory (which is where the storage-initializer is redirected to, or —
-without the admission policies — becomes a `pvc://<claim>/<dir>` source) and
-pins it to the node that holds the weights. _Serve…_ on a downloaded row opens
-the dialog seeded that way.
+downloads panel like any other job. Serving it afterwards is the Serve dialog
+on its preset (_Serve…_ on the downloaded row opens it seeded that way):
+model-manager composes the LLMInferenceService named after the preset, which
+is the cache directory the storage-initializer is redirected to, so the
+pre-warmed weights are found.
 
 **Readiness** is backend-neutral: `ready` (loaded, serving), `available`
 (downloaded, not in memory — a backend with `load` brings it to ready, and
@@ -222,8 +227,24 @@ Ollama loads it on the first request anyway), `notReady`, `pending`. A model's
 **features** (`tools`, `vision`, `thinking`, …) are shown, with a warning where
 `tools` is missing: agents cannot use such a model.
 
-**Pulling** starts a job (`POST /api/v1/models/pull` answers 202 with it) that
-the downloads panel polls every 2 s while running (`GET /api/v1/jobs`), showing
+**The APIs a served model answers** (KServe, model-manager 1.1.0 on): a Ready
+model reports the interfaces its running server registered, read from vLLM's
+route list, and the runtime with its version. The row shows an **API** column
+— one chip per interface in a fixed order (Chat completions, Responses,
+Messages, count_tokens, Embeddings), the route on hover — only when a row of
+the group reports one, and the runtime version in the group header (`KServe ·
+vLLM 0.23.0`). On an installation with the platform's LLM endpoint
+(model-manager 1.2.0 on) a model on it reports its **public name** — what a
+client sends as `model` there — and the endpoint's URL: the Model column shows
+the name under the served id, the copy action yields that URL, and the
+ModelConfig reaches the model there. At Ready the step timeline adds one
+copy-able `curl` per interface, filled with the URL, the name to send and the
+auth the endpoint checks (the person's Dex token on the models Gateway, an API
+key of the LLM endpoint outside the cluster, none on an in-cluster address;
+`lib/servedModelApi.ts`); _Try it_ sends the same name.
+
+**Pulling** starts a job (`pull_model` answers with it) that
+the downloads panel polls every 2 s while running (`list_jobs`), showing
 bytes and percent, then the outcome — including the kagent ModelConfig the job
 wired, linked to its detail page. Jobs are model-manager's in-memory list. A
 pull of a reference already downloading is joined, not duplicated.
@@ -231,13 +252,17 @@ pull of a reference already downloading is joined, not duplicated.
 **ModelConfig linkage** runs in both directions and on one matcher
 (`findServedModel`): a ModelConfig row says which served model its endpoint
 points at ("Served by …"), a served-model row lists the ModelConfigs that use
-it. Three rules, most exact first: the ModelConfig the backend itself created
+it. Four rules, most exact first: the ModelConfig the backend itself created
 for the model (model-manager's `modelConfig` field) wins outright; otherwise
 the endpoint hostname, disambiguated by the ModelConfig's `model` id — an
 Ollama host serves every tag on one hostname, so the id is what tells them
 apart (agentlab's static `qwen35-local` resolves to `qwen3.5:9b` this way);
-with a single served model on a host and no name match, that one (a vLLM
-InferenceService names its model however it likes).
+then by the endpoint's path — every routed KServe model answers on the models
+Gateway's one host, each under `/<namespace>/<name>`; with a single served
+model on a host and no name or path match, that one (a vLLM workload names
+its model however it likes). A client on the Gateway whose path names no
+listed object, or on a workload Service hostname nobody serves, is told its
+LLMInferenceService is gone (`resolveClientServing`).
 
 **Mixed installations.** Sources are merged: the served models of both render
 side by side — except a model both list, which is folded into one row (above)
@@ -246,30 +271,40 @@ later (model-manager) source decides the installation's backend label. In
 agentlab, where the KServe CRDs are installed next to a model-manager, that is
 exactly the state.
 
-**Trust model of the model-manager routes.** The backend
-(`plugins/agent-platform-backend/src/modelManagerRouter.ts`,
-`ModelManagerClient.ts`) exposes `GET /model-manager/installations` (names
-only) and a thin, authenticated pass-through of the model-manager REST under
-`/model-manager/{backend,models,models/*name,loaded,models/{pull,load,unload,wire,unwire,fit-check},jobs,jobs/:id,presets,search,nodes}`
-per `?installation=` (`pull` and `load` forward the kserve fields `preset` and
-`node`; `load` and `fit-check` accept a preset without a model). Every data route **requires** the user's
-per-installation Dex ID token in the `backstage-model-manager-authorization`
-header (a sibling of `backstage-kagent-authorization`: one header per
-upstream), which becomes `Authorization: Bearer` toward model-manager.
-model-manager itself checks no identity: the agentgateway `/model-manager`
-route in front of it — an `AgentgatewayPolicy` with JWT validation, the same
-shape as the kagent controller route — is the boundary that rejects a missing
-or invalid token, and the proxy decides nothing from it. An `apiBaseUrl` that
-bypasses the gateway (an in-cluster Service URL, the lab shortcut) therefore
-has no boundary: every signed-in portal user can then manage models. Errors
-map `{ error: { code } }` onto `@backstage/errors` (`invalid_request` → 400,
-`not_found` → 404, `conflict` → 409, `does_not_fit` → 412
-`PreconditionFailedError` with model-manager's numbers in the message — a
-refused fit is a verdict on the request, not a fault — `unsupported` → 403
-"capability not supported", `backend_error` and an unreachable model-manager →
-503).
-`POST /api/v1/models/load` has its own, longer timeout: on Ollama it blocks
-until several GiB of weights are in memory.
+**How the portal reaches model-manager.** There is no model-manager URL, REST
+client or proxy route in the portal. Every call — the inventory reads, the
+presets, `check_fit`, `load_model`, `unload_model`, the pull jobs, wiring and
+deletion — is one `x_model-manager_<tool>` call through the muster plugin's
+client (`musterApi.callTool()`), which mints the person's token for the
+installation's muster; muster runs the tool with the person's own grant for
+model-manager (model-manager forwards the Dex token), so a write lands as the
+person and a refusal is model-manager's own. Whether an installation has a
+model-manager at all is the presence of the `model-manager` MCPServer in its
+muster (`core_mcpserver_list`, `useModelManagerInstallations`) — no portal
+configuration says where model-manager is, and an installation whose muster
+lists none shows what it shows without one (the KServe CR view, or nothing).
+Serving is model-manager's `load_model` as the person (the fit check against
+the pool's sizes included): the portal composes no serving object of its own
+— model-manager composes the `LLMInferenceService` from the preset onto the
+platform's well-known `LLMInferenceServiceConfig`s, and wires the model
+config once it answers. model-manager's refusals arrive as `"<code>: <message>"`
+and keep their meaning (`lib/modelManagerBackends.ts`: `not_found` →
+`NotFoundError`, `unsupported` → `ForbiddenError` — the capability was never
+offered, `conflict` → `ConflictError` — name the backend, `does_not_fit` →
+`PreconditionFailedError` — a verdict on the request, not a fault,
+`backend_error` → `ServiceUnavailableError`); muster's "not connected" answers
+are `ModelManagerNotConnectedError`, an error to show, not a connect flow.
+
+The one model-related call the portal's backend carries out itself is **Try
+it** on a served model (`POST /served-models/try`, `tryRouter.ts`): two chat
+completions against the served model's endpoint as model-manager reports it,
+for the model id the ModelConfig sends (`spec.model` — the name vLLM serves
+under, not the serving object's name), without a token and with the person's
+installation token
+(`backstage-served-model-authorization`), because the browser cannot post to
+the models Gateway cross-origin. The route holds the endpoint to the
+installation's own base domain (`gs.installations.<name>.baseDomain`) and
+posts a person's token nowhere else.
 
 ### Skill discovery
 
@@ -514,8 +549,15 @@ a context could not cross the boundary. The store is the contract.
   list is one flat table under every scope — Agents, Sessions and Models
   alike: the Installation column tells the rows apart, an installation with
   nothing to show simply has no row, and one that could not be read is named
-  in the warning card below the table. `sortAgentRows` / `sortSessionRows`
-  put the home installation's rows first in the flat lists.
+  in the warning card below the table. Every table with an Installation
+  column — Agents, Sessions, Model configs, and the GPU node pools, model
+  cache and GPU capacity tables — drops it when the rows can only come from
+  one installation (`isSoleInstallation` in `lib/soleInstallation.ts`): one
+  pinned in the header, or only one of those asked answered once all have.
+  Those that sort by Installation by default then sort by name instead
+  (`useVisibleSort` in ui-react), so the order always follows a visible
+  header. `sortAgentRows` / `sortSessionRows` put the home installation's
+  rows first in the flat lists.
 - **Pinning** narrows every tab (`applyInstallationScope` over the inventory's
   installations in each provider, `ServingProvider` included). Under `'all'`
   the MCP Servers tab shows the home muster — one muster is one aggregator —
@@ -552,7 +594,7 @@ via `FirstAgentCard` and `EmptyStateCard` (the latter in `ui-react`):
   than explaining itself.
 - **Agents but no sessions.** The Sessions tab drops the table, the search field
   and the "your sessions across the fleet" blurb, and puts the composer —
-  expanded, not its collapsed strip — inside the card under "Start your first
+  grown, not its single-line strip — inside the card under "Start your first
   session". The prompt box _is_ the invitation; there is no list below it to make
   room for.
 - **Nothing could be read.** Deliberately _not_ an invitation. An empty list
@@ -658,10 +700,20 @@ it is true forever and interesting once.
 
 A kagent `Session` carries only `id`, `name?`, `user_id`, `created_at`,
 `updated_at`, `deleted_at?`, `agent_id?` and `source?`. So the columns are
-Session, Agent, Installation, Started, and Last activity — and the prototype's
-status, trigger, duration, cost, tokens, team, linked task, results and evaluation
-columns have no backing data at all. The nine-stat summary band derives from those
-same absent fields, so it is out too.
+Session, Agent, State, Installation and Started, and the prototype's status,
+trigger, duration, cost, tokens, team, linked task, results and evaluation
+columns have no backing data at all. The nine-stat summary band derives from
+those same absent fields, so it is out too. Installation is left out when the
+list can only come from one installation (one pinned in the header, or only one
+running kagent), where it would repeat the same name on every row.
+
+There is **no Last activity column**, and the list sorts by Started. On the
+kagent API v2 line `AgentInstance.updated_at` moves only at creation and on
+`CREATING` → `READY`; sending a message never touches it, so the column only
+repeated Started, and a resumed session did not move up. The session detail
+page drops "last activity" and the Duration stat for the same reason. Restore
+them once kagent-dev/kagent#2397 exposes the newest task's time on
+`ListAgentInstances`.
 
 Two consequences worth knowing:
 
@@ -998,7 +1050,7 @@ answer:
 
 `GET /api/agent-platform/kagent/session-states?installation=<name>` answers, for
 each of the caller's sessions, what state it is in. The session switcher rail
-groups by it.
+groups by it, and the sessions list shows it as a column.
 
 **This is one of two routes in the backend that interpret kagent rather than
 forwarding it**, and the exception is arithmetic rather than taste. An
@@ -1105,6 +1157,38 @@ write, a terminal session whose `updated_at` has not moved needs no re-read at
 all, and steady-state cost drops by roughly an order of magnitude. That is the
 same open question the polling section raises above, and it is unverified — so
 the memo is deliberately not in the baseline.
+
+#### The State column on the sessions list
+
+The Sessions tab and an agent's own sessions card render the same summary as a
+sortable **State** column, through the same `describeSessionState` map the rail
+and the session page read — so one session cannot be called two things on two
+screens.
+
+**The column is fetched per installation the list actually shows a row from**,
+not per installation in scope: an installation with no row has no state to ask
+after, and each pass costs it one task read per session it holds. The reads go
+under the rail's own query key, so a list and a session page open together share
+one entry per installation instead of each paying for its own.
+
+**It polls on the baseline tier (60 s), not the rail's fast 10 s.** The rail
+watches one installation and exists to show a turn moving; the list spans the
+fleet, and at the fast tier an eleven-installation scope would spend a full pass
+on each of them every 15 s for a column nobody reads for progress. Opening a
+session still shows its live state immediately.
+
+**Four outcomes per cell, never a blank.** A state; `No activity yet` for a
+session that reported none; `Unknown` for one the backend could not read, or for
+every row of an installation whose whole summary failed; and `Not loaded` for
+one nothing asked about — past the activity window or the per-pass cap — whose
+tooltip points at the session page, where the state is.
+Collapsing the last three into one cell would let "we could not tell" read as
+"nothing is waiting on you", which is the opposite answer.
+
+**Sorting is by urgency, not by label.** Ascending is waiting, then running, then
+failed, then finished, then the three kinds of no-answer, each group newest
+first. Alphabetical labels would sort `Completed` above `Waiting for input`,
+which inverts the only reason to sort by state at all.
 
 ### The session switcher rail
 
@@ -1227,10 +1311,8 @@ Not bui `List`/`ListRow`, and not `Card` with `onPress`:
 Hand-rolling also means no additions to `packages/app/src/bui-overrides.css` —
 `RecentConversations` needed five `.bui-*` overrides for a _single-line_ row.
 
-Each card is three lines: a compact single-unit age (`2h`, never `2h 5m` — the
-stats strip's `formatDuration` and the rail's `formatCompactAge` are separate
-functions in `lib/duration` for exactly this reason), the title clamped to two
-lines, and the agent's avatar and name. The prototype's `team` line has no kagent
+Each card is three lines: a compact single-unit age (`2h`, never `2h 5m`, from
+`formatCompactAge` in `lib/duration`), the title clamped to two lines, and the agent's avatar and name. The prototype's `team` line has no kagent
 equivalent, and its trigger icon has no backing data at all. The group heading
 carries the status, so cards show no badge — in a 280 px column that would cost
 the title a line. The current card is marked by an accent bar, a background and a
@@ -1294,10 +1376,12 @@ full; the agent's internal work is collapsible, with a Hidden/Collapsed/Expanded
 control — collapsed by default, because the working is the point of the screen but a
 wall of tool payloads is unreadable.
 
-Presentation follows the conventions of chat surfaces, shared with the AI chat
-plugin's visual language. The user's messages are right-aligned bubbles and
-deliberately **not** markdown — prompts quote logs and `#`-prefixed lines that must
-stay the characters typed. The agent's side of a turn opens with its avatar and
+Presentation follows the conventions of chat surfaces. The user's messages are
+right-aligned bubbles filled in the portal's primary colour — the same fill Send
+carries, and one that follows `app.branding.theme.<mode>.primaryColor`, so a
+white-labelled portal speaks in its own voice rather than bui's accent. Their text
+is deliberately **not** markdown — prompts quote logs and `#`-prefixed lines that
+must stay the characters typed. The agent's side of a turn opens with its avatar and
 name once, and its prose renders as GFM markdown (tables, code blocks, entity-aware
 links). Internal work renders as one-line disclosure rows whose payloads are
 JSON-highlighted, with JSON hiding inside result strings inlined rather than shown
@@ -1359,7 +1443,8 @@ session's id, and subagent sessions are filtered out of the list anyway.
 
 ### The stats strip
 
-`Turns · Duration · Input tokens (billed) · Output tokens · Est. cost`.
+`Turns · Input tokens (billed) · Output tokens · Est. cost`, plus
+`Reported cost` when the agent's runtime reports one.
 
 **Input tokens are labelled "billed" on purpose.** Every model call re-sends the
 whole context, so a 4-turn session with a large tool catalogue reached **1.4M
@@ -1378,9 +1463,6 @@ is derived from the parts when kagent reports none. A reported total still wins,
 since a model billing thinking tokens separately counts them in the total but in
 neither part.
 
-**Duration is wall-clock**, `updated_at − created_at`: kagent records no per-turn
-durations, so it includes however long the user was away between turns.
-
 **Est. cost is an estimate and cannot be anything else.** The gateway prices
 whole model calls and its metrics carry no session label, so this is the tokens
 beside it multiplied by the $/token this agent (or, failing that, this
@@ -1391,13 +1473,19 @@ had a usable price. Two Mimir queries, independent of the session read, so an
 installation with`mimirEnabled: false` loses this stat and keeps the rest of
 the page.
 
+**Reported cost is the runtime's own figure, beside the estimate.** The claude
+Harness puts `costUsd` in the `kagent.dev/a2a/usage` bag of each turn's final
+status message, next to the token counts; the strip sums it over the session's
+turns, deduplicated by message id like the tokens. ADK reports no cost, so a
+session on the platform Harness shows no stat rather than `$0.00`. A turn
+canceled before Claude Code reports usage is not in the sum.
+
 ### Timestamps are absolute here, relative in the list
 
 The detail header and the turn markers show `28 Jul 2026, 10:07 UTC`, not "1 day
-ago". Both ends of a session usually fall on the same day, so the relative form
-rendered "Started 1 day ago · last activity 1 day ago" for a session that took
-three minutes, and printed "1 day ago" identically on every turn marker — hiding
-the progression the timeline exists to show. The list keeps the relative form,
+ago". The relative form printed "1 day ago" identically on every turn marker of
+a session that took three minutes, hiding the progression the timeline exists to
+show. The list keeps the relative form,
 where scanning for recency is the point.
 
 ### Renaming a session
@@ -1695,14 +1783,16 @@ reason. No surface shows `actor "ai-…" request timed out` as the whole of
 anything.
 
 **The way out is a new session with the same agent, from the composer.** The
-composer's `newSession` prop renders **Start a new session with &lt;agent&gt;**:
-_beside_ Send while the loss is only suspected — a cold worker can time out once,
-and sending again is the honest retry — and _in Send's place_ once kagent has
-reported it, when Enter starts the new session too and the answer panel yields
-to the composer (an answer would run into the same lost runtime). The action
-takes the box's text, else the message the failed send handed back, else the
-last message the person sent into this session — the one the runtime never
-read — and follows the order every entry point keeps: create the instance,
+composer's `newSession` prop renders **Start a new session with &lt;agent&gt;**
+under the message box, right-aligned — outside the box, because it leaves this
+session rather than being one of the box's own controls. It is the _secondary_
+button while the loss is only suspected — a cold worker can time out once, and
+sending again is the honest retry — and the _primary_ one, with Send gone, once
+kagent has reported it, when Enter starts the new session too and the answer
+panel yields to the composer (an answer would run into the same lost runtime).
+The action takes the box's text, else the message the failed send handed back,
+else the last message the person sent into this session — the one the runtime
+never read — and follows the order every entry point keeps: create the instance,
 navigate, let the new page dispatch the text from the router state (see
 "Starting a session"). That navigation is from one session's page to another's,
 which the route element would otherwise survive with its state intact — the
@@ -2111,24 +2201,30 @@ would be submitting a guess about what was asked.
 
 ### Starting a session
 
-A session is started from a **composer**: a prompt, an agent, and "Start". There is
+A session is started from a **composer**: a prompt, an agent, and Start. There is
 deliberately no new-session _screen_ — that is the prototype's shape, and the prompt
 is the only thing the spec treats as required.
 
-It appears in two places. **Inline above the sessions list**, collapsed to a single
-line and expanding on focus, because that list is the prototype's "Mine" scope, where
-creating is the job of the view rather than a secondary action — and kagent scoping
-sessions to the signed-in user is exactly what makes our one list that scope. And in a
-**dialog on the agent detail page**, opened by "Start a session" in the header, with
-that agent preselected and the picker offering only it. Neither placement puts a
-button in the shared page header for anything but opening the dialog: that slot renders
-outside the plugin's `QueryClientProvider`, so the create mutation would have no client
-there.
+Both composers — this one and the reply box on a session's page — are the same box,
+`ComposerFrame` from `ui-react`: a text field that grows with its content, with the
+controls inside the same border underneath it. Here the agent picker sits
+bottom-left and Start is a right-pointing arrow bottom-right; on a session's page the
+arrow points up (Send) and Stop takes its slot while a turn runs. The caption goes
+under the box.
 
-Expansion is **one-way**. Nothing collapses the inline composer again, because
-collapsing on blur would hide the agent just chosen, and re-collapsing under the cursor
-reads as a glitch. **Enter starts** and Shift+Enter inserts a newline, matching the
-reply composer.
+It appears in two places. **Inline above the sessions list**, with a single-line text
+field that grows on focus (the picker and Start show throughout), because that list is
+the prototype's "Mine" scope, where creating is the job of the view rather than a
+secondary action — and kagent scoping sessions to the signed-in user is exactly what
+makes our one list that scope. And in a **dialog on the agent detail page**, opened by
+"Start a session" in the header, with that agent preselected and the picker offering
+only it. Neither placement puts a button in the shared page header for anything but
+opening the dialog: that slot renders outside the plugin's `QueryClientProvider`, so
+the create mutation would have no client there.
+
+The growth is **one-way**. Nothing shrinks the inline composer again, because shrinking
+on blur would move the controls under the cursor, which reads as a glitch. **Enter
+starts** and Shift+Enter inserts a newline, matching the reply composer.
 
 #### Create, navigate, then send — in that order
 
@@ -2289,12 +2385,19 @@ Harness on API v2, not an agent.
 
 ### Columns
 
-Agent (display name, description, avatar from the technical name), **Status** with
-the admitting Harness underneath ("on kagent"), Installation, Namespace, Model
-(resolved by name in the agent's namespace), **Toolset** (the declaration as the
-carrier carries it: the selectors, `No tools`, `Full gateway access`, or a dash while
-the carrier is not readable) and Skills (count). The status column sorts by severity,
-not admitted first.
+Agent (display name, description, avatar from the technical name), **Status** (with
+an info icon whose tooltip gives the readiness message and any Harness warnings),
+Installation, Namespace, Model (resolved by name in the agent's namespace),
+**Toolset** (the declaration as the carrier carries it: the selectors, `No tools` in
+secondary text, `Full gateway access`, or a dash while the carrier is not readable)
+and Skills (count). The status column sorts by severity, not admitted first.
+
+Installation is dropped when the list comes from one installation — the pinned one,
+or the only one that answered once loading settles — and Namespace while every row
+shares one namespace. A search field above the table matches the name, the
+description and the installation. A pinned installation without kagent gets a card
+linking to the Installations page instead of an empty table, and "New agent" is
+disabled there.
 
 ### Readiness
 
@@ -2449,8 +2552,18 @@ durable view of the same verdict.
 - **Toolset** — what the agent's carrier `RemoteMCPServer` declares and what that
   resolves to for the viewer (see "Toolsets"). Three states on the new carrier as
   before — declared, implicit full access (a gateway binding whose carrier has no
-  header), no gateway (what `preset:none` renders to) — plus **not readable** while
-  the carrier could not be read, which is never mistaken for full access.
+  header), no gateway (what `preset:none` renders to) — plus the two the carrier
+  read can end in, neither of them ever mistaken for full access: **not readable**
+  when the namespace's `RemoteMCPServer`s could not be read at all (no permission,
+  unreachable), and **gateway server missing** when the read answered but holds no
+  server of the bound name — a binding that reaches nothing. Both wait for the read
+  to answer: while it is in flight the card says it is reading the toolset, because
+  an unanswered read is not evidence of anything. `useAgentToolset` decides that
+  from the queries' own terminal state, and from neither `isLoading` (still false
+  on the render before a query starts fetching) nor `errors` (a `RejectedError` —
+  an installation nobody has authenticated with — is filtered out of it, so that
+  read would look unanswered forever). A chat-only agent waits for nothing: no
+  gateway binding is decided by the agent alone, and says **No tools** at once.
 - **Skills** — each `spec.skills[]` entry with its repository (or OCI reference, or
   bucket object), path and **pin** — the short commit or digest, the full value on
   hover — in the **same card grid the create flow's skill picker uses**, so an
@@ -2495,6 +2608,36 @@ are absent and a disabled item says why; while the server list is still being
 read they are withheld rather than appearing and disappearing. The read-only
 `View manifest` stays in every case.
 
+**And by whether the agent can be written at all.** The page reads `get_agent`
+(`useAgentManagerAgent`, the same query the edit page and the update-skills
+dialog use, so opening either is a cache hit) for one field: `managed`. An agent
+whose `HelmRelease` is applied by a Flux Kustomization comes back as
+`managed: 'gitops'`, agent-manager refuses every live write to it, and the three
+items are withheld — as is the Skills card's `Update skills…` button. Before
+this, the refusal only arrived after the dialog was opened and its dry run had
+run.
+
+**Nothing explains the absence in place.** A menu is a list of things to do, so
+what cannot be offered is left out rather than spelled out in a disabled item —
+that holds for the missing-agent-manager cases too, which used to do exactly
+that. The Overview tab's "Managed through GitOps" card is the explanation, and
+it is already there. `agentManagerAbsenceReason` survives for `EditAgentPage`,
+which has to say something when a deep link lands on it: it answers with its
+existing empty state instead of a form whose Save could only be refused.
+
+Use **agent-manager's verdict**, not `isGitOpsManaged()` from the provenance
+labels: that answers "is a reconciler in charge", which is true of _every_ agent
+this plugin deploys, since the create flow applies a `HelmRelease` of its own.
+When the read **settles without an answer** — the muster session is not
+connected, or it was refused — the actions stay offered. Withholding them there
+would take them from people who do have them, and agent-manager still refuses on
+confirm. While the read is **in flight** they are withheld instead, the same way
+the kebab already withholds them while the muster server list is being read:
+offering them for a muster round-trip and then taking them away is the one
+window in which a GitOps-owned agent could still be written to. The `commit` mode is the affordance a GitOps-owned agent
+should eventually get instead; it is declared-but-false on every installation
+today, and this gate is where to reopen the actions when it ships.
+
 **The dialog says one thing:** that this ends any session currently running with
 the agent, including ones started by other people that are not shown. That is
 the only thing the person clicking cannot work out for themselves — kagent scopes
@@ -2504,11 +2647,12 @@ an agent is idle. Nothing mechanical is in it.
 **On success** the person lands back on the agents list with a toast
 (`toastApiRef`) that says "Deleting", not "Deleted": the `HelmRelease` has a
 finalizer, so all that is certain is that agent-manager's delete was accepted
-and helm-controller has started uninstalling. The toast names who the delete
-ran as (`requestedBy`) and, when agent-manager kept the shared chart source,
-its reason (`ociRepositoryKept`, e.g. "still referenced by 2 other
-HelmRelease(s): sre-agent, docs-bot"). On failure the dialog stays open and
-shows the message.
+and helm-controller has started uninstalling. Its one line of body says just
+that — the row may linger for a few seconds — because that is the only thing
+the list itself does not show. `requestedBy` and `ociRepositoryKept` come back
+in the result but are not rendered: the first names the person to themselves,
+the second grows with every release in the namespace (see the toast rule in
+`docs/ui.md`). On failure the dialog stays open and shows the message.
 
 **Commit** (`delete_agent` with `mode: commit`, giantswarm/agent-manager#24 — a
 pull request that removes the agent's files from the owning GitOps repository,
@@ -2609,8 +2753,9 @@ ready again on the platform Harness.
 repository does not exist, the ref is unknown, or the configured token cannot
 read it`) comes back from the dry run as an `invalid_request:` refusal: the
 dialog shows agent-manager's message, the confirm stays locked and nothing is
-written. A GitOps-owned or suspended agent is refused the same way with
-agent-manager's `conflict:` message. Note what agent-manager does **not** check
+written. A suspended agent is refused the same way with agent-manager's
+`conflict:` message. A GitOps-owned agent no longer reaches the dialog at all —
+the button is withheld (see "What is offered…" above). Note what agent-manager does **not** check
 at write time: that the skill's `path` still exists at the new head — a vanished
 path is written and then reported by the Harness on the template
 (`ResolvedRefs=False`), which the detail page's status card shows.
@@ -2718,15 +2863,18 @@ one thing to hold on to is which of them can answer what:
 | tokens, cost, models, latency, errors | exact, all users                    | tokens only, caller only |
 | per agent                             | exact                               | yes                      |
 | per model                             | exact — the model that _answered_   | no (see below)           |
-| **per user**                          | **impossible** — no `user` label    | implicitly, one user     |
+| **per user**                          | possible — `user` label, unread yet | implicitly, one user     |
 | **per session**                       | **impossible** — no `session` label | yes                      |
 | sessions, turns, tool calls           | not a concept                       | yes                      |
 
 The metrics carry `gateway`, `listener`, `agent_namespace`, `agent`,
-`gen_ai_request_model`, `gen_ai_response_model`, `gen_ai_token_type` and
-`status`. There is no user and no session dimension, and adding one is a
-platform-side change (kagent would have to propagate the caller's identity to
-the gateway on the model call) — not something the portal can work around.
+`gen_ai_request_model`, `gen_ai_response_model`, `gen_ai_token_type`, `status`
+and `user` — the caller's email address, which the platform propagates to the
+gateway on the model call. There is no session dimension, and adding one is a
+platform-side change, not something the portal can work around. The `user`
+label is recent: an installation whose gateway predates it reports series with
+no `user` at all, so a window that reaches back before the upgrade cannot be
+fully attributed.
 
 `agent` is the **ServiceAccount of the calling pod**, which is why the Cost
 tab's per-agent join matches `agent_namespace`/`agent` against each `Agent`
@@ -2737,6 +2885,52 @@ Deployment ServiceAccount after the agent, so the two agree; checked on
 as `namespace/agent`, unlinked, and its spend stays in the totals; the
 gateway's own `unknown` (no Pod matched the caller IP) reads as
 "Unattributed".
+
+### Tokens per second is the median call, not the mean
+
+The Gateway health strip's speed figure comes from
+`agentgateway_gen_ai_server_time_per_output_token`, which observes **one value
+per streamed call** — that call's own mean seconds per output token. The query
+inverts the median of those values, `1 / histogram_quantile(0.50, …)`.
+
+The obvious query, `_count / _sum`, is the one that does not work. That mean is
+unweighted by reply length, so a reply that emitted three tokens after a long
+wait counts as much as one that emitted three thousand — and a short reply's
+seconds-per-token is enormous, because a fixed cost is divided by almost
+nothing. Measured over 30 days on 2026-09-22: on `graveler` the median call ran
+at 16 ms/token (63 tok/s) while ~1% of calls sat at ≥ 2.5 s/token, which alone
+pulled the mean to 461 ms — the strip read **2 tok/s**. `gazelle`, with ten
+times the traffic, showed 197 tok/s by the mean and 200 by the median, so the
+defect is invisible there: an installation with enough well-behaved calls hides
+it, which is exactly why it reached a browser.
+
+**Read it as a rough rate.** agentgateway observes the histogram into coarse
+buckets — `0.001, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5,
+0.75, 1.0, 2.5` seconds per token — so the median is interpolated inside one of
+them. `gazelle`'s falls in `(0.001, 0.01]`, which is anywhere from 100 to 1000
+tok/s; `graveler`'s in `(0.01, 0.025]`, 40 to 100. That is why
+`formatTokensPerSecond` prints two significant figures: `200/s` rather than the
+`197/s` the arithmetic offers. The bucketing also bounds the figure at both
+ends — every observation in the first bucket gives 2000 tok/s and no more, and
+a median in the overflow bucket comes back as the top finite bound, 2.5 s per
+token, which the formatter renders `<1/s` rather than rounding to a `0/s` that
+would read as a broken page.
+
+Two things it still is not. It is not the speed of an agent: a turn spends most
+of its wall clock in tool calls, and this measures only the model's generation.
+And it does not cover every call — a reply the agent asked for in one piece
+observes nothing here, so the figure describes the streamed subset while call
+duration and the call count describe all of it. An installation where nothing
+streams has an empty histogram, whose quantile is `NaN`, and the strip shows
+`—` rather than a zero (a zero quantile would make the inversion `+Inf`, which
+`sampleValue` rejects the same way).
+
+A token-weighted throughput — output tokens over total call seconds — was the
+alternative: 38 tok/s on `graveler`, 81 on `gazelle`. It counts every token
+once, but its denominator is the whole call, so prefill and the wait for the
+first token are billed as generation time and it reads slower than the model
+generates. The median answers "how fast does a call run", which is the question
+next to two duration quantiles.
 
 ### One cost is measured, the other is estimated — and the labels say which
 
@@ -2756,6 +2950,9 @@ of number, and the UI distinguishes them by name:
   whole table: the installation's blend across every model, because the table
   is a single query and its rows span models. Its footnote says so, and points
   at the session page as the sharper number.
+- **Per session, reported** (the session detail strip, beside Est. cost) —
+  labelled **"Reported cost"**. What the agent's runtime reported for each
+  turn, summed. Only the claude Harness reports one today.
 
 Keep that naming. Calling the gateway's figure an estimate invited doubt about
 a number that is as good as the catalogue, and dropping "Est." from the session
@@ -3075,11 +3272,12 @@ exported from an `alpha` entry point, mirroring
 
 ### What it cannot show
 
-**Per-user anything.** Neither source can do it. kagent's session list is one
-user's by construction, and the gateway metrics carry no user label at all — so
-"which team is spending this" has no answer here, and getting one needs kagent
-to propagate the caller's identity to agentgateway on the model call. A
-platform-side change, not a portal one.
+**Per-user spend, today.** Nothing here breaks spend down by person: kagent's
+session list is one user's by construction, and the gateway views deliberately
+sum across everyone. The gateway metrics _do_ carry a `user` label, so
+"which team is spending this" is answerable from them — it is unbuilt, and it
+is a decision about showing one colleague's spend to another rather than a
+missing measurement.
 
 **Per-session cost, exactly.** The gateway metrics carry no session label
 either, so the session figures are estimates by construction — see [Cost is an
@@ -3095,16 +3293,20 @@ still appear on Your sessions, which is the one place such an agent is visible
 any version: every provider adapter populates only `promptTokenCount` and
 `candidatesTokenCount`, and a repo-wide search for cached-input or
 thinking-token fields finds nothing. (The gateway _does_ split input from cache
-reads and writes, which is why the token-type chart exists — but only for calls
-that went through it.) `totalTokens` is carried on the kagent wire anyway,
+reads and writes, which is why the token-type chart exists, and its
+per-output-token histogram is where the Overview's Tokens per second comes
+from — but both cover only the calls that went through it, so neither can be
+shown against one session.) `totalTokens` is carried on the kagent wire anyway,
 because a reported total can legitimately exceed its parts when a model bills
 thinking tokens separately — summing the two would under-report such a model
 with no way to notice.
 
-**Time to first token, or time per output token.** The gateway emits both only
-for a streamed response, and a kagent agent turn asks for a whole completion —
-so they are permanently empty here and are deliberately not registered as
-metrics. Call duration is the latency figure that works.
+**Time to first token.** The gateway emits it only for a streamed response,
+and it answers the same question as the per-output-token histogram behind the
+Tokens per second figure, less directly — so it is deliberately not registered
+as a metric. That figure has the same blind spot: a reply the agent asked for
+in one piece observes no per-token time and is missing from it, while call
+duration covers every call.
 
 One thing to know per installation: kagent 0.10 can prune sessions older than a
 configured number of days, **deleting them outright**. If that is ever set below
@@ -3118,24 +3320,23 @@ halves are worth keeping side by side.
 All under `agentPlatform` (see `plugins/agent-platform/config.d.ts` and
 `plugins/agent-platform-backend/config.d.ts`):
 
-| Key                          | Purpose                                                                                                                                                                                                                                              |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `skills.repositories`        | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill, pinned to the repository's head commit at discovery).                                                                                                                          |
-| `kagent.timeoutMs`           | Per-request timeout toward a kagent controller (default 10000). Backend-only.                                                                                                                                                                        |
-| `kagent.turnTimeoutMs`       | How long a unary send (and a Stop) waits for the agent before answering "still running" (default 30000). Backend-only.                                                                                                                               |
-| `kagent.sessionStates.*`     | Bounds on the derived session-state summary behind the session switcher rail: `maxSessions`, `maxAgeMs`, `concurrency`, `taskTimeoutMs`, `budgetMs`, `cacheTtlMs`. Sized to the frontend's 10s poll. Backend-only.                                   |
-| `kagent.sessionUsage.*`      | Bounds on the usage summary behind the Usage tab: `windowDays` plus the same six levers. Numbers differ from `sessionStates` on purpose — read on a tab visit, reporting on days. Backend-only.                                                      |
-| `kagent.installations`       | Which installations to reach kagent on, keyed by name; also the allowlist. `apiBaseUrl` is the **gRPC origin** of the controller route (`https://<host>[:port]`, no path), overriding the derived `https://agentgateway.<baseDomain>`. Backend-only. |
-| `modelManager.installations` | Installations that run model-manager, keyed by name, each with the required `apiBaseUrl` (`https://agentgateway.<baseDomain>/model-manager` through the gateway). Nothing is derived. Backend-only.                                                  |
-| `modelManager.timeoutMs`     | Per-request timeout toward a model-manager API (default 10000). Backend-only.                                                                                                                                                                        |
-| `modelManager.loadTimeoutMs` | Timeout for `POST /api/v1/models/load`, which blocks until the model is in memory (default 120000). Backend-only.                                                                                                                                    |
+| Key                      | Purpose                                                                                                                                                                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skills.repositories`    | GitHub repo URLs to discover skills from (each `SKILL.md` is a skill, pinned to the repository's head commit at discovery).                                                                                                                          |
+| `kagent.timeoutMs`       | Per-request timeout toward a kagent controller (default 10000). Backend-only.                                                                                                                                                                        |
+| `kagent.turnTimeoutMs`   | How long a unary send (and a Stop) waits for the agent before answering "still running" (default 30000). Backend-only.                                                                                                                               |
+| `kagent.sessionStates.*` | Bounds on the derived session-state summary behind the session switcher rail: `maxSessions`, `maxAgeMs`, `concurrency`, `taskTimeoutMs`, `budgetMs`, `cacheTtlMs`. Sized to the frontend's 10s poll. Backend-only.                                   |
+| `kagent.sessionUsage.*`  | Bounds on the usage summary behind the Usage tab: `windowDays` plus the same six levers. Numbers differ from `sessionStates` on purpose — read on a tab visit, reporting on days. Backend-only.                                                      |
+| `kagent.installations`   | Which installations to reach kagent on, keyed by name; also the allowlist. `apiBaseUrl` is the **gRPC origin** of the controller route (`https://<host>[:port]`, no path), overriding the derived `https://agentgateway.<baseDomain>`. Backend-only. |
 
-The `kagent` and `modelManager` keys keep the default **backend** visibility and
+There is no model-manager configuration: the portal reaches model-manager
+through the installation's muster, where it is registered as an MCPServer.
+
+The `kagent` keys keep the default **backend** visibility and
 are never served to the frontend: `apiBaseUrl` embeds `baseDomain` (or the
 installation's gateway hostname), which deanonymises customers (the same reason
 `gs.installations` is backend-only). The frontend learns installation _names_
-from the authenticated `GET /kagent/installations` and
-`GET /model-manager/installations` instead.
+from the authenticated `GET /kagent/installations` instead.
 
 The plugin's page and nav item are enabled via `app.extensions` in
 `app-config.yaml`.

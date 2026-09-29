@@ -3,6 +3,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createAzure } from '@ai-sdk/azure';
 import { createVertex } from '@ai-sdk/google-vertex';
+import { createVertexAnthropic } from '@ai-sdk/google-vertex/anthropic';
 import type { LanguageModel } from 'ai';
 
 /**
@@ -10,7 +11,12 @@ import type { LanguageModel } from 'ai';
  * used to describe which AI-SDK provider a model was built from.
  */
 export type ProviderName =
-  'anthropic' | 'google-vertex' | 'azure' | 'openai-compatible' | 'openai';
+  | 'anthropic'
+  | 'google-vertex-anthropic'
+  | 'google-vertex'
+  | 'azure'
+  | 'openai-compatible'
+  | 'openai';
 
 /**
  * Resolved AI chat provider configuration, as read from `aiChat.*`. Kept as a
@@ -29,6 +35,11 @@ export interface SelectModelOptions {
   anthropic: {
     apiKey?: string;
     baseUrl?: string;
+    /**
+     * `aiChat.anthropic.provider`: `vertex` serves `claude-*` models from the
+     * Anthropic publisher on Google Vertex AI instead of Anthropic's own API.
+     */
+    provider?: 'api' | 'vertex';
   };
   azure: {
     apiKey?: string;
@@ -52,7 +63,8 @@ export interface SelectModelOptions {
    */
   fetch?: typeof globalThis.fetch;
   /**
-   * Test seam: forwarded to `createVertex`'s `googleAuthOptions`. Passing a stub
+   * Test seam: forwarded to the `googleAuthOptions` of both Vertex providers.
+   * Passing a stub
    * auth client here keeps the Vertex branch offline (no service-account read,
    * no token minting). When omitted, the mounted service-account JSON at
    * `google.keyFilename` is used, matching production.
@@ -78,7 +90,8 @@ export function isAzureConfigured(azure: SelectModelOptions['azure']): boolean {
  * which provider it came from.
  *
  * Provider precedence (kept identical to the /chat handler):
- *   `claude-*`  -> Anthropic
+ *   `claude-*`  -> Anthropic, or the Anthropic publisher on Google Vertex when
+ *                  `anthropic.provider` is `vertex`
  *   `gemini-*`  -> Google Vertex (ahead of the Azure/OpenAI chain so a gemini
  *                  model isn't swallowed by an Azure configuration)
  *   otherwise   -> Azure (if configured) / openai-compatible (`openai.api: chat`)
@@ -94,7 +107,47 @@ export function selectModel(options: SelectModelOptions): SelectedModel {
   const isAnthropicModel = modelName.startsWith('claude-');
   const isGoogleModel = modelName.startsWith('gemini-');
 
+  // Vertex is not authenticated with a static API key: google-auth-library reads
+  // the mounted service-account JSON and mints short-lived OAuth2 tokens. Shared
+  // by both Vertex branches below.
+  const googleAuthOptions =
+    options.googleAuthOptions ??
+    (options.google.keyFilename
+      ? { keyFilename: options.google.keyFilename }
+      : undefined);
+
   if (isAnthropicModel) {
+    if (options.anthropic.provider === 'vertex') {
+      // `createVertexAnthropic` reads project and location as *optional*
+      // settings (unlike `createVertex`, which throws), and its env fallbacks
+      // are GOOGLE_VERTEX_*, not the GOOGLE_CLOUD_* pair the chart exports. A
+      // missing value would otherwise reach the wire as
+      // `https://undefined-aiplatform.googleapis.com/...projects/undefined/...`
+      // and fail per request as a DNS error pointing nowhere near the cause.
+      if (!options.google.project || !options.google.location) {
+        throw new Error(
+          'Claude on Google Vertex AI is selected (aiChat.anthropic.provider: vertex) but aiChat.google.project and/or aiChat.google.location are not set',
+        );
+      }
+
+      // Claude served from the operator's own Vertex AI project. The model is an
+      // AnthropicLanguageModel underneath, and its internals parse provider
+      // options under the hardcoded key `anthropic` -- so `providerOptions
+      // .anthropic` (adaptive thinking, effort, cacheControl) applies here too.
+      // `anthropic.baseUrl` is deliberately not forwarded: `baseURL` replaces
+      // the whole Vertex URL prefix, not just the host.
+      const vertexAnthropic = createVertexAnthropic({
+        project: options.google.project,
+        location: options.google.location,
+        googleAuthOptions,
+        fetch,
+      });
+      return {
+        model: vertexAnthropic(modelName),
+        providerName: 'google-vertex-anthropic',
+      };
+    }
+
     const anthropic = createAnthropic({
       apiKey: options.anthropic.apiKey,
       baseURL: options.anthropic.baseUrl,
@@ -104,17 +157,10 @@ export function selectModel(options: SelectModelOptions): SelectedModel {
   }
 
   if (isGoogleModel) {
-    // Vertex is not authenticated with a static API key: `@ai-sdk/google-vertex`
-    // uses google-auth-library to read the mounted service-account JSON and mint
-    // short-lived OAuth2 tokens.
     const vertex = createVertex({
       project: options.google.project,
       location: options.google.location,
-      googleAuthOptions:
-        options.googleAuthOptions ??
-        (options.google.keyFilename
-          ? { keyFilename: options.google.keyFilename }
-          : undefined),
+      googleAuthOptions,
       fetch,
     });
     return { model: vertex(modelName), providerName: 'google-vertex' };

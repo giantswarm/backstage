@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { SessionUsageTotals } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { TotalsStrip } from './TotalsStrip';
 
@@ -13,7 +14,7 @@ const TOTALS: SessionUsageTotals = {
 
 describe('TotalsStrip', () => {
   it('renders the counts kagent supplies', () => {
-    render(<TotalsStrip totals={TOTALS} />);
+    render(<TotalsStrip totals={TOTALS} windowDays={30} />);
 
     expect(screen.getByText('9')).toBeInTheDocument();
     expect(screen.getByText('40')).toBeInTheDocument();
@@ -25,7 +26,9 @@ describe('TotalsStrip', () => {
     // The counts land from kagent before the two Mimir rate queries, so an em
     // dash here read as "nothing could be priced" — a finding — when the truth
     // was only "not yet".
-    const { container } = render(<TotalsStrip totals={TOTALS} isRateLoading />);
+    const { container } = render(
+      <TotalsStrip totals={TOTALS} windowDays={30} isRateLoading />,
+    );
 
     expect(screen.queryByText('—')).toBeNull();
     expect(container.querySelectorAll('.bui-Skeleton')).toHaveLength(1);
@@ -35,7 +38,11 @@ describe('TotalsStrip', () => {
 
   it('shows the estimate once the rate lands', () => {
     const { container } = render(
-      <TotalsStrip totals={TOTALS} rates={{ blended: 3 / 1_000_000 }} />,
+      <TotalsStrip
+        totals={TOTALS}
+        windowDays={30}
+        rates={{ blended: 3 / 1_000_000 }}
+      />,
     );
 
     expect(container.querySelectorAll('.bui-Skeleton')).toHaveLength(0);
@@ -45,7 +52,9 @@ describe('TotalsStrip', () => {
   it('shows an em dash when the rate resolved to nothing', () => {
     // Settled, not pending: nothing in the window could be priced. That *is* a
     // finding, and it must not read as `$0.00`.
-    const { container } = render(<TotalsStrip totals={TOTALS} rates={{}} />);
+    const { container } = render(
+      <TotalsStrip totals={TOTALS} windowDays={30} rates={{}} />,
+    );
 
     expect(container.querySelectorAll('.bui-Skeleton')).toHaveLength(0);
     expect(screen.getByText('—')).toBeInTheDocument();
@@ -54,9 +63,37 @@ describe('TotalsStrip', () => {
   it('has no combined token total', () => {
     // Input and output are priced differently, so their sum is not a number
     // anyone acts on — the same reason the session detail strip omits it.
-    render(<TotalsStrip totals={TOTALS} />);
+    render(<TotalsStrip totals={TOTALS} windowDays={30} />);
 
     expect(screen.queryByText('7.5M')).toBeInTheDocument();
     expect(screen.queryByText(/Total tokens/i)).toBeNull();
+  });
+
+  it('states the window in the hints, and how the cost was estimated', async () => {
+    // Keyboard focus, as in the Stat tests: the tooltip opens on it, and a
+    // hover does not reach it in jsdom.
+    const user = userEvent.setup();
+    const tabTo = async (name: string) => {
+      const button = screen.getByRole('button', { name });
+      while (document.activeElement !== button) {
+        await user.tab();
+      }
+    };
+    render(
+      <TotalsStrip
+        totals={TOTALS}
+        windowDays={30}
+        rates={{ blended: 3 / 1_000_000 }}
+        costBasis="Estimated: gazelle's observed cost per token over the last 7d."
+      />,
+    );
+
+    await tabTo('How Sessions is calculated');
+    expect(await screen.findByText(/in the last 30 days/)).toBeInTheDocument();
+
+    await tabTo('How Est. cost is calculated');
+    expect(
+      await screen.findByText(/gazelle's observed cost per token/),
+    ).toBeInTheDocument();
   });
 });

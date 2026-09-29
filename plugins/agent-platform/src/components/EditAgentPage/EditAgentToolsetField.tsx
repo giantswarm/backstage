@@ -10,19 +10,24 @@ import {
   TextField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import {
+  ToolTable,
+  type ToolTableItem,
+} from '@giantswarm/backstage-plugin-muster';
 
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useToolsetPresets } from '../../hooks/useToolsetPresets';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import {
   declaredToolset,
+  presetLabel,
   presetSelector,
+  selectorLabel,
   selectorProblem,
   toggleSelector,
   toolsetProblems,
   toolsetShape,
 } from '../../lib/toolset';
-import { SelectableRow, SelectableRowList } from '../SelectableCard';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
 const useStyles = makeStyles(theme => ({
@@ -92,23 +97,33 @@ export function EditAgentToolsetField({
         description="Which of the gateway's tools the agent can discover and call, within whatever the person using it may reach. Nothing selected means no tools."
       />
 
-      <SelectableRowList role="group" ariaLabel="Presets">
-        {presets.presets.map(preset => {
+      {/* A preset by its label, with the selector that goes into the toolset
+          — `preset:read-only` — as the meta. */}
+      <ToolTable
+        role="group"
+        ariaLabel="Presets"
+        items={presets.presets.map((preset): ToolTableItem => {
           const selector = presetSelector(preset.name);
-          return (
-            <SelectableRow
-              key={selector}
-              role="checkbox"
-              selected={selected.has(selector)}
-              ariaLabel={`Preset ${preset.name}`}
-              onSelect={() => onChange(toggleSelector(value, selector))}
-              title={selector}
-              code
-              summary={preset.description}
-            />
-          );
+          const label = presetLabel(preset.name);
+          return {
+            key: selector,
+            name: label,
+            ariaLabel: `Preset ${label}`,
+            meta: (
+              <Text variant="body-x-small" color="secondary">
+                <span style={{ fontFamily: 'monospace' }}>{selector}</span>
+              </Text>
+            ),
+            description: preset.description,
+            mode: {
+              kind: 'select',
+              role: 'checkbox',
+              checked: selected.has(selector),
+              onToggle: () => onChange(toggleSelector(value, selector)),
+            },
+          };
         })}
-      </SelectableRowList>
+      />
       {presets.source === 'built-in' && (
         <Text variant="body-x-small" color="secondary">
           Only the built-in presets are known
@@ -163,7 +178,7 @@ export function EditAgentToolsetField({
           >
             {value.map(selector => (
               <Tag key={selector} id={selector}>
-                {selector}
+                {selectorLabel(selector)}
               </Tag>
             ))}
           </TagGroup>

@@ -31,6 +31,15 @@ describe('ConditionsList', () => {
     expect(triggers()).toHaveLength(2);
   });
 
+  it('heads each condition at the given level', () => {
+    render(
+      <ConditionsList conditions={[accepted, notReady]} headingLevel={4} />,
+    );
+
+    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(2);
+    expect(screen.queryByRole('heading', { level: 3 })).toBeNull();
+  });
+
   it('sorts the most recent transition first', () => {
     render(<ConditionsList conditions={[accepted, notReady]} />);
 

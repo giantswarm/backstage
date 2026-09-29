@@ -1,4 +1,4 @@
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 export const defaultFriendlyLabelsConfiguration = [
   {
@@ -12,16 +12,20 @@ export const defaultFriendlyLabelsConfiguration = [
   },
 ];
 
+/**
+ * The `gs.friendlyLabels` or `gs.friendlyAnnotations` list of the signed-in
+ * config, or undefined while the config has not loaded or the key is unset.
+ */
 export function useFriendlyItemsConfiguration(configurationKey: string) {
-  const configApi = useApi(configApiRef);
+  const { config } = useSignedInConfig();
 
-  const configsArray = configApi.getOptionalConfigArray(configurationKey);
+  const configsArray = config?.getOptionalConfigArray(configurationKey);
   if (!configsArray) {
     return undefined;
   }
 
-  return configsArray.map(config => {
-    const valueMapConfig = config.getOptionalConfig('valueMap');
+  return configsArray.map(itemConfig => {
+    const valueMapConfig = itemConfig.getOptionalConfig('valueMap');
     const valueMap = valueMapConfig
       ? Object.fromEntries(
           valueMapConfig
@@ -31,10 +35,10 @@ export function useFriendlyItemsConfiguration(configurationKey: string) {
       : undefined;
 
     return {
-      selector: config.getString('selector'),
-      key: config.getOptionalString('key'),
+      selector: itemConfig.getString('selector'),
+      key: itemConfig.getOptionalString('key'),
       valueMap,
-      variant: config.getOptionalString('variant'),
+      variant: itemConfig.getOptionalString('variant'),
     };
   });
 }

@@ -17,8 +17,8 @@ export interface Config {
        * picker. A selected skill is pinned to the head commit of the
        * repository's default branch at discovery time and becomes a
        * `skills[]` entry (`{ name, path, git: { url, commit } }`) of the
-       * agent's chart values.
-       * @visibility frontend
+       * agent's chart values. The frontend reads the list from the signed-in
+       * config.
        */
       repositories?: string[];
     };

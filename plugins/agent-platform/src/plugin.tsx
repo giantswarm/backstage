@@ -14,6 +14,7 @@ import {
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
 import AndroidIcon from '@material-ui/icons/Android';
+import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 
 import {
   KagentApiClient,
@@ -26,6 +27,7 @@ import {
   agentsRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
+  installationsExternalRouteRef,
   modelDetailRouteRef,
   modelsRouteRef,
   musterToolExplorerExternalRouteRef,
@@ -65,6 +67,10 @@ const agentPlatformPage = PageBlueprint.make({
 // flow (`/agent-platform/agents/new`, `.../new/skills`, `.../new/tools` and
 // `.../new/review`),
 // all driven by an internal react-router in AgentsRouter.
+//
+// Wrapped, like the Sessions tab, in the backend's cookie auth: both render
+// agent avatars, `<img>` loads through the agent-platform backend that the
+// browser's user cookie authenticates (see AgentPlatformCookieAuth).
 const agentsSubPage = SubPageBlueprint.make({
   name: 'agents',
   params: {
@@ -72,8 +78,17 @@ const agentsSubPage = SubPageBlueprint.make({
     title: 'Agents',
     routeRef: agentsRouteRef,
     loader: async () => {
-      const { AgentsRouter } = await import('./components/AgentsRouter');
-      return <AgentsRouter />;
+      const [{ AgentsRouter }, { AgentPlatformCookieAuth }] = await Promise.all(
+        [
+          import('./components/AgentsRouter'),
+          import('./components/AgentPlatformCookieAuth'),
+        ],
+      );
+      return (
+        <AgentPlatformCookieAuth>
+          <AgentsRouter />
+        </AgentPlatformCookieAuth>
+      );
     },
   },
 });
@@ -93,8 +108,16 @@ const sessionsSubPage = SubPageBlueprint.make({
     title: 'Sessions',
     routeRef: sessionsRouteRef,
     loader: async () => {
-      const { SessionsRouter } = await import('./components/SessionsRouter');
-      return <SessionsRouter />;
+      const [{ SessionsRouter }, { AgentPlatformCookieAuth }] =
+        await Promise.all([
+          import('./components/SessionsRouter'),
+          import('./components/AgentPlatformCookieAuth'),
+        ]);
+      return (
+        <AgentPlatformCookieAuth>
+          <SessionsRouter />
+        </AgentPlatformCookieAuth>
+      );
     },
   },
 });
@@ -196,16 +219,17 @@ const kagentApi = ApiBlueprint.make({
     }),
 });
 
-// Client for the model-manager REST API (the Models tab's Serving view on
-// installations that deploy it), via the same backend proxy. Same
-// dependencies as the kagent client, for the same reason: the per-installation
-// Dex ID token is minted through the kubernetes APIs.
+// model-manager (the Models tab's Serving view on installations whose muster
+// lists it): every call is one of its tools through the muster plugin's
+// client, as the signed-in person. The kubernetes APIs mint the installation
+// token the one backend-carried call (a try of a served model) sends along.
 const modelManagerApi = ApiBlueprint.make({
   name: 'model-manager',
   params: defineParams =>
     defineParams({
       api: modelManagerApiRef,
       deps: {
+        musterApi: musterApiRef,
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
         kubernetesApi: kubernetesApiRef,
@@ -244,11 +268,12 @@ export const agentPlatformPlugin = createFrontendPlugin({
     serving: servingRouteRef,
     gpuCapacity: gpuCapacityRouteRef,
   },
-  // Both carry a `defaultTarget`, so they resolve without an app-config binding
+  // All carry a `defaultTarget`, so they resolve without an app-config binding
   // and are simply unbound when the target plugin is disabled. Every call site
   // must handle `useRouteRef` returning undefined.
   externalRoutes: {
     musterToolExplorer: musterToolExplorerExternalRouteRef,
     deploymentDetails: deploymentDetailsExternalRouteRef,
+    installations: installationsExternalRouteRef,
   },
 });

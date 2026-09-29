@@ -81,7 +81,7 @@ describe('RuntimeLostNotice', () => {
     expect(screen.queryByText(/send again/)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /start a new session with Grill master from the box below/,
+        /start a new session with Grill master — the button under the message box/,
       ),
     ).toBeInTheDocument();
   });

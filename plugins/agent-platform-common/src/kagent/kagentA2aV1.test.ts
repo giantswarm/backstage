@@ -1,7 +1,10 @@
+import claudeStream from './__fixtures__/stream.claude-harness-1.1.json';
+import claudeTasks from './__fixtures__/tasks.claude-harness-1.1.json';
 import stream from './__fixtures__/stream.kagent-4a91c273.json';
 import canceled from './__fixtures__/task.canceled.kagent-4a91c273.json';
 import hitlApproval from './__fixtures__/tasks.hitl-approval.kagent-4a91c273.json';
 import tasks from './__fixtures__/tasks.kagent-4a91c273.json';
+import canonicalTasks from './__fixtures__/tasks.kagent-a2a-canonical.json';
 import v0Tasks from './__fixtures__/tasks.v0-9-9.json';
 import {
   HITL_EXTENSION_URI,
@@ -228,6 +231,47 @@ describe('tasks recorded on kagent-4a91c273', () => {
   });
 });
 
+describe('tasks in kagent.dev/a2a metadata', () => {
+  // The recorded conversation above, with its metadata where the kagent 1.1
+  // ADK executor puts it: part-type, usage, timeline-position and
+  // task-created-at under kagent.dev/a2a/, no adk_ keys, each call's usage on
+  // its artifact, and the last call's usage copied onto task.metadata
+  // (`_after_agent`), which a reader must not count again.
+  const reference = normalizeTaskList(tasks).tasks;
+  const canonical = normalizeTaskList(canonicalTasks).tasks;
+
+  const toolCalls = (normalized: typeof reference) =>
+    (normalized[0].history as Wire[])
+      .flatMap(entry => (entry.parts as unknown[]) ?? [])
+      .map(parsePart)
+      .filter(part => part && isFunctionCallPart(part))
+      .map(part => readFunctionCall(part!).name);
+
+  it('orders the history exactly as under the legacy keys', () => {
+    const ids = (normalized: typeof reference) =>
+      (normalized[0].history as Wire[]).map(
+        entry => entry.messageId ?? entry.artifactId,
+      );
+    expect(ids(canonical)).toEqual(ids(reference));
+  });
+
+  it('reads the same tool calls', () => {
+    expect(toolCalls(canonical)).toEqual(toolCalls(reference));
+    expect(toolCalls(canonical)).toContain('call_tool');
+  });
+
+  it('sums the same usage', () => {
+    const window = {
+      startMs: Date.parse('2026-09-01T00:00:00Z'),
+      endMs: Date.parse('2026-12-01T00:00:00Z'),
+    };
+    const { tally } = reduceSessionUsage(canonical, window);
+    expect(tally).toEqual(reduceSessionUsage(reference, window).tally);
+    expect(tally.inputTokens).toBeGreaterThan(0);
+    expect(tally.toolCalls).toBe(2);
+  });
+});
+
 describe('human in the loop on the v1 wire', () => {
   it('turns a typed approval request into the confirmation call the readers render', () => {
     const { tasks: normalized } = normalizeTaskList(hitlApproval);
@@ -424,5 +468,176 @@ describe('stream recorded on kagent-4a91c273', () => {
   it('reports a frame it cannot read as undefined, never throwing', () => {
     expect(toWireStreamEvent({ something: 'else' })).toBeUndefined();
     expect(toWireStreamEvent(null)).toBeUndefined();
+  });
+});
+
+describe('stream recorded on the claude Harness (kagent 1.1)', () => {
+  // A Claude Code turn with a Bash call and a muster tool call, recorded from
+  // the controller: only canonical kagent.dev/a2a/ keys, no adk_ or kagent_.
+  const events = claudeStream.map(toWireStreamEvent) as Wire[];
+  const parts = events
+    .filter(event => event.kind === 'artifact-update')
+    .flatMap(event => ((event.artifact as Wire).parts as unknown[]) ?? [])
+    .map(parsePart);
+
+  it('reads every tool call and its result', () => {
+    const calls = parts
+      .filter(part => part && isFunctionCallPart(part))
+      .map(part => readFunctionCall(part!).name);
+    expect(calls).toEqual([
+      'Bash',
+      'ToolSearch',
+      'mcp__coding-poc__list_core_tools',
+    ]);
+    expect(
+      parts.filter(part => part && isFunctionResponsePart(part)),
+    ).toHaveLength(3);
+  });
+
+  it('ends completed', () => {
+    const last = events[events.length - 1];
+    expect(last.kind).toBe('status-update');
+    expect(last.status).toEqual(
+      expect.objectContaining({ state: 'completed' }),
+    );
+  });
+
+  it('reports the cost of the turn on its final status message', () => {
+    const last = events[events.length - 1];
+    const message = (last.status as Wire).message as Wire;
+    expect(readTokenUsage(message.metadata)).toEqual({
+      total: 71338,
+      prompt: 70958,
+      completion: 380,
+      costUsd: 0.13148115,
+    });
+  });
+});
+
+describe('task stored for the claude Harness turn (kagent 1.1)', () => {
+  // The stream above folded the way the gateway persists it (a2a-go's
+  // a2aevent.ApplyUpdate). The turn's usage is on the message the completed
+  // status carries and nowhere in history or artifacts.
+  const window = {
+    startMs: Date.parse('2026-09-01T00:00:00Z'),
+    endMs: Date.parse('2026-12-01T00:00:00Z'),
+  };
+  const normalized = normalizeTaskList(claudeTasks).tasks;
+  const expected = {
+    totalTokens: 71338,
+    inputTokens: 70958,
+    outputTokens: 380,
+  };
+
+  it("counts the usage the task's status carries", () => {
+    expect(reduceSessionUsage(normalized, window).tally).toEqual(
+      expect.objectContaining(expected),
+    );
+  });
+
+  it('counts a message once when history holds it twice', () => {
+    const [task] = normalized;
+    const withCopy = {
+      ...task,
+      history: [...(task.history ?? []), task.status!.message],
+    };
+    expect(reduceSessionUsage([withCopy], window).tally).toEqual(
+      expect.objectContaining(expected),
+    );
+  });
+});
+
+describe("a completed task's status message", () => {
+  const message = (id: string, role = 'ROLE_AGENT') => ({
+    messageId: id,
+    role,
+    parts: [{ text: id }],
+  });
+  const ids = (raw: unknown) =>
+    (toWireTask(raw)!.history as Wire[]).map(entry => entry.messageId);
+
+  it('is appended to history last', () => {
+    expect(
+      ids({
+        id: 't',
+        history: [message('U', 'ROLE_USER')],
+        artifacts: [{ artifactId: 'A', parts: [{ text: 'a' }] }],
+        status: { state: 'TASK_STATE_COMPLETED', message: message('S') },
+      }),
+    ).toEqual(['U', 'A', 'S']);
+  });
+
+  it('is not appended twice when history holds it', () => {
+    expect(
+      ids({
+        id: 't',
+        history: [message('U', 'ROLE_USER'), message('S')],
+        status: { state: 'TASK_STATE_COMPLETED', message: message('S') },
+      }),
+    ).toEqual(['U', 'S']);
+  });
+
+  it.each(['TASK_STATE_FAILED', 'TASK_STATE_INPUT_REQUIRED'])(
+    'is left on status alone when the task is %s',
+    state => {
+      expect(
+        ids({
+          id: 't',
+          history: [message('U', 'ROLE_USER')],
+          status: { state, message: message('S') },
+        }),
+      ).toEqual(['U']);
+    },
+  );
+});
+
+describe('history order', () => {
+  const at = (iso: string) => ({ 'kagent.dev/a2a/timeline-position': iso });
+  const ids = (raw: unknown) =>
+    (toWireTask(raw)!.history as Wire[]).map(entry => entry.messageId);
+  const text = [{ text: 'x' }];
+
+  it('keeps an unstamped entry behind the entry before it', () => {
+    // A(t=10) before B(no position) before C(t=5): C sorts first, and B stays
+    // behind A however the sort visits the three.
+    expect(
+      ids({
+        id: 't',
+        contextId: 'c',
+        history: [
+          {
+            messageId: 'A',
+            role: 'ROLE_USER',
+            parts: text,
+            metadata: at('2026-09-26T10:00:10Z'),
+          },
+        ],
+        artifacts: [
+          { artifactId: 'B', parts: text },
+          {
+            artifactId: 'C',
+            parts: text,
+            metadata: at('2026-09-26T10:00:05Z'),
+          },
+        ],
+      }),
+    ).toEqual(['C', 'A', 'B']);
+  });
+
+  it('keeps leading unstamped entries first', () => {
+    expect(
+      ids({
+        id: 't',
+        contextId: 'c',
+        history: [{ messageId: 'A', role: 'ROLE_USER', parts: text }],
+        artifacts: [
+          {
+            artifactId: 'B',
+            parts: text,
+            metadata: at('2026-09-26T10:00:05Z'),
+          },
+        ],
+      }),
+    ).toEqual(['A', 'B']);
   });
 });

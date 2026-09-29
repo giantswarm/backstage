@@ -11,7 +11,7 @@ import {
 export type PodListRequest = {
   installation: string;
   namespace?: string;
-  /** Raw `labelSelector` value, e.g. `serving.kserve.io/inferenceservice`. */
+  /** Raw `labelSelector` value, e.g. `app.kubernetes.io/part-of=llminferenceservice`. */
   labelSelector?: string;
   /** Raw `fieldSelector` value, e.g. `spec.nodeName=gpu-node-1`. */
   fieldSelector?: string;
@@ -49,8 +49,8 @@ export type PodLists = {
  * selector) pair — with the user's own RBAC.
  *
  * `useResources` runs exactly one list per installation and speaks only
- * `matchingLabels` equality; the serving views need an *exists* label selector
- * (every KServe predictor pod, all namespaces) and per-node `fieldSelector`
+ * `matchingLabels` equality; the serving views need a cluster-wide label
+ * selector (every KServe workload pod, all namespaces) and per-node `fieldSelector`
  * lists (the pods occupying one GPU node), and how many of those there are is
  * only known once nodes have been read. Hence this thin sibling over the same
  * proxy, keyed like `useListResources` (`['cluster', <installation>, 'list',

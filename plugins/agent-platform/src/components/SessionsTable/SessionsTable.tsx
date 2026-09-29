@@ -1,29 +1,41 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import useDebounce from 'react-use/esm/useDebounce';
 import {
-  Avatar,
   Badge,
   Cell,
   CellText,
   ColumnConfig,
   Flex,
   SearchField,
+  Skeleton,
   Table,
   Text,
   useTable,
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
+import { useTheme } from '@material-ui/core';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useNavigate } from 'react-router-dom';
-import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DateComponent,
+  stopRowPress,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { AvatarSize } from '../../lib/agentAvatar';
-import { stopRowPress } from '../../lib/rowPress';
+import { toneColor } from '../../lib/sessionStateTone';
 import {
   SessionRow,
   sessionSearchFn,
   sortSessionsBy,
 } from '../SessionsDataProvider/helpers';
+import {
+  SessionTableRow,
+  sortSessionsByState,
+  withSessionStates,
+} from './helpers';
+import { AgentAvatar } from '../AgentAvatar';
 
 /** The avatar is one line of text tall; request 2× for hi-dpi crispness. */
 const ROW_AVATAR_SIZE: AvatarSize = 48;
@@ -37,6 +49,15 @@ export const RUNTIME_LOST_LABEL = 'Runtime lost';
 export const RUNTIME_LOST_TITLE =
   'kagent cannot bring this session’s agent back; the transcript stays readable. Start a new session to carry on.';
 
+/** One line, cut with an ellipsis at the width of its container. */
+const TRUNCATE = {
+  display: 'block',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+} as const;
+
 /** Dash shown where a value is genuinely unknown. */
 function Unknown() {
   return (
@@ -46,19 +67,116 @@ function Unknown() {
   );
 }
 
+/** Copy for each way a state can be missing, kept in one place. */
+const STATE_UNKNOWN_LABEL = 'Unknown';
+const STATE_UNKNOWN_TITLE =
+  'kagent could not be read for this session, so its state is not known. This is not the same as finished.';
+const STATE_IDLE_LABEL = 'No activity yet';
+const STATE_IDLE_TITLE =
+  'This session was started and has no turn that reported a state.';
+const STATE_UNEVALUATED_LABEL = 'Not loaded';
+const STATE_UNEVALUATED_TITLE = 'Open the session to see its state.';
+
+/**
+ * The State column's cell: the state of the session's newest turn.
+ *
+ * A dot *and* the state's words, never the dot alone — the colour repeats what
+ * the label says rather than carrying it. The wording and the tone come from
+ * `describeSessionState`, the same map the session page's badge and the rail's
+ * groups read, so one session cannot be called two things on two screens.
+ */
+function StateCell({
+  row,
+  isLoading,
+}: {
+  row: SessionTableRow;
+  isLoading: boolean;
+}) {
+  const theme = useTheme();
+  const cell = row.stateCell;
+
+  if (cell.kind === 'unevaluated') {
+    // Nothing has come back yet: a placeholder, not a claim about the session.
+    if (isLoading) {
+      return (
+        <Cell>
+          <Skeleton height="16px" />
+        </Cell>
+      );
+    }
+    return (
+      <Cell>
+        <Text
+          variant="body-medium"
+          color="secondary"
+          title={STATE_UNEVALUATED_TITLE}
+        >
+          {STATE_UNEVALUATED_LABEL}
+        </Text>
+      </Cell>
+    );
+  }
+
+  if (cell.kind === 'unreadable') {
+    return (
+      <Cell>
+        <Text
+          variant="body-medium"
+          color="secondary"
+          title={STATE_UNKNOWN_TITLE}
+        >
+          {STATE_UNKNOWN_LABEL}
+        </Text>
+      </Cell>
+    );
+  }
+
+  if (cell.kind === 'idle') {
+    return (
+      <Cell>
+        <Text variant="body-medium" color="secondary" title={STATE_IDLE_TITLE}>
+          {STATE_IDLE_LABEL}
+        </Text>
+      </Cell>
+    );
+  }
+
+  return (
+    <Cell>
+      <Flex align="center" gap="2">
+        <span
+          aria-hidden="true"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            flexShrink: 0,
+            backgroundColor: toneColor(cell.state.tone, theme),
+          }}
+        />
+        <Text variant="body-medium" truncate style={{ minWidth: 0 }}>
+          {cell.state.label}
+        </Text>
+      </Flex>
+    </Cell>
+  );
+}
+
 function getColumnConfig(
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>,
   hrefFor: (row: SessionRow) => string | undefined,
-): ColumnConfig<SessionRow>[] {
+  isLoadingStates: boolean,
+): ColumnConfig<SessionTableRow>[] {
   return [
     {
-      // kagent truncates titles to 20 characters when deriving them from the
-      // first message, so these are short and lossy by nature — nothing to gain
-      // from a wide column.
       id: 'title',
       label: 'Session',
       isRowHeader: true,
       isSortable: true,
+      // One line, cut to the column: the title is what a row is found by, so
+      // it takes the room the short columns give up.
+      defaultWidth: '3fr',
+      minWidth: 200,
       cell: row => {
         const href = hrefFor(row);
         // A real anchor in the row-header cell, *as well as* the whole-row
@@ -73,10 +191,12 @@ function getColumnConfig(
         // {@link stopRowPress}.
         return (
           <Cell>
-            <Flex align="center" gap="2">
+            <Flex align="center" gap="2" style={{ minWidth: 0 }}>
               {href ? (
                 <Link
                   to={href}
+                  title={row.title}
+                  style={TRUNCATE}
                   onPointerDown={stopRowPress}
                   onPointerUp={stopRowPress}
                   onClick={stopRowPress}
@@ -84,13 +204,24 @@ function getColumnConfig(
                   {row.title}
                 </Link>
               ) : (
-                <Text variant="body-medium">{row.title}</Text>
+                <Text
+                  variant="body-medium"
+                  truncate
+                  title={row.title}
+                  style={{ minWidth: 0 }}
+                >
+                  {row.title}
+                </Text>
               )}
               {/* Said in the list, before the person opens it and types: a
                   session kagent reports lost takes no message any more. The
                   page explains and offers the way on. */}
               {row.runtimeLost && (
-                <Badge size="small" title={RUNTIME_LOST_TITLE}>
+                <Badge
+                  size="small"
+                  title={RUNTIME_LOST_TITLE}
+                  style={{ flexShrink: 0 }}
+                >
                   {RUNTIME_LOST_LABEL}
                 </Badge>
               )}
@@ -103,11 +234,13 @@ function getColumnConfig(
       id: 'agentName',
       label: 'Agent',
       isSortable: true,
+      defaultWidth: '1.5fr',
+      minWidth: 160,
       cell: row => (
         <Cell>
           {row.agentName ? (
             <Flex align="center" gap="2">
-              <Avatar
+              <AgentAvatar
                 size="small"
                 purpose="decoration"
                 name={row.agentName}
@@ -137,33 +270,36 @@ function getColumnConfig(
       ),
     },
     {
+      // Between the agent and the installation: what the session is doing reads
+      // with what it is, before where it runs.
+      id: 'state',
+      label: 'State',
+      isSortable: true,
+      // Sized for the longest label, "Waiting for input".
+      defaultWidth: '1fr',
+      minWidth: 150,
+      cell: row => <StateCell row={row} isLoading={isLoadingStates} />,
+    },
+    {
       id: 'installation',
       label: 'Installation',
       isSortable: true,
+      defaultWidth: '0.75fr',
+      minWidth: 110,
       cell: row => <CellText title={row.installation} />,
     },
+    // No "Last activity": kagent API v2 never moves an instance's `updated_at`
+    // after it is ready, so it only repeated Started. kagent-dev/kagent#2397.
     {
       id: 'createdAt',
       label: 'Started',
       isSortable: true,
+      defaultWidth: '1fr',
+      minWidth: 130,
       cell: row => (
         <Cell>
           {row.createdAt ? (
             <DateComponent value={row.createdAt} relative />
-          ) : (
-            <Unknown />
-          )}
-        </Cell>
-      ),
-    },
-    {
-      id: 'updatedAt',
-      label: 'Last activity',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          {row.updatedAt ? (
-            <DateComponent value={row.updatedAt} relative />
           ) : (
             <Unknown />
           )}
@@ -178,6 +314,12 @@ export type HideableSessionColumn = 'agentName' | 'installation';
 
 export type SessionsTableProps = {
   rows: SessionRow[];
+  /**
+   * Derived state per session, from `useFleetSessionStates`. The State column is
+   * rendered only when this is given: a table with no states to show is better
+   * without the column than with one full of dashes.
+   */
+  sessionStates?: FleetSessionStatesView;
   /** True only while no rows exist yet, so the skeleton replaces the table. */
   isLoading?: boolean;
   /** Search debounce; set to 0 in tests so typing takes effect immediately. */
@@ -208,6 +350,7 @@ export type SessionsTableProps = {
  */
 export function SessionsTable({
   rows,
+  sessionStates,
   isLoading,
   searchDebounceMs = 150,
   hideColumns,
@@ -231,14 +374,40 @@ export function SessionsTable({
     [sessionDetailRoute],
   );
 
+  // The states joined onto the rows here rather than by each caller: search and
+  // sorting run over what the table is given, so the join has to happen before
+  // `useTable` sees the rows.
+  const stateRows = useMemo(
+    () => withSessionStates(rows, sessionStates),
+    [rows, sessionStates],
+  );
+
   const hiddenKey = hideColumns?.join(',') ?? '';
+  const isLoadingStates = sessionStates?.isLoading ?? false;
+  const hasStates = sessionStates !== undefined;
   const columnConfig = useMemo(() => {
     const hidden = new Set<string>(hiddenKey ? hiddenKey.split(',') : []);
+    if (!hasStates) {
+      hidden.add('state');
+    }
 
-    return getColumnConfig(buildAvatarUrl, hrefFor).filter(
+    return getColumnConfig(buildAvatarUrl, hrefFor, isLoadingStates).filter(
       column => !hidden.has(String(column.id)),
     );
-  }, [buildAvatarUrl, hrefFor, hiddenKey]);
+  }, [buildAvatarUrl, hrefFor, hiddenKey, hasStates, isLoadingStates]);
+
+  // Sorting by State is the one column whose order is not a field comparison —
+  // see `sortSessionsByState` for why it is a rank and not the label.
+  const sortFn = useCallback(
+    (
+      sorted: SessionTableRow[],
+      sort: { column: unknown; direction: 'ascending' | 'descending' },
+    ) =>
+      String(sort.column) === 'state'
+        ? sortSessionsByState(sorted, sort.direction)
+        : sortSessionsBy(sorted, sort),
+    [],
+  );
 
   // Name only the axes the caller still shows. `sessionSearchFn` matches the
   // agent and the installation whatever is hidden, which is harmless — it finds
@@ -260,20 +429,27 @@ export function SessionsTable({
     return `Search by ${rest} or ${last}`;
   }, [hiddenKey]);
 
-  const { tableProps, search } = useTable<SessionRow>({
+  const { tableProps, search } = useTable<SessionTableRow>({
     mode: 'complete',
     // `undefined` rather than `[]` while loading: an empty array renders the
     // empty state, so the skeleton would never show and "No sessions found."
     // would flash before the first rows arrive.
-    data: isLoading ? undefined : rows,
+    data: isLoading ? undefined : stateRows,
     searchFn: sessionSearchFn,
     searchDebounceMs,
-    sortFn: sortSessionsBy,
-    initialSort: { column: 'updatedAt', direction: 'descending' },
+    sortFn,
+    initialSort: { column: 'createdAt', direction: 'descending' },
     paginationOptions: showPagination
       ? { pageSize: 25, pageSizeOptions: [25, 50, 100] }
       : { type: 'none' },
   });
+
+  // The term the rows are filtered by: `useTable` debounces the search and
+  // does not hand the debounced value back, so the empty state keeps its own.
+  const [searchTerm, setSearchTerm] = useState('');
+  useDebounce(() => setSearchTerm(search.value.trim()), searchDebounceMs, [
+    search.value,
+  ]);
 
   return (
     <Flex direction="column" gap="3">
@@ -285,7 +461,7 @@ export function SessionsTable({
           onChange={search.onChange}
         />
       )}
-      <Table<SessionRow>
+      <Table<SessionTableRow>
         {...tableProps}
         columnConfig={columnConfig}
         rowConfig={{
@@ -301,7 +477,7 @@ export function SessionsTable({
         }}
         emptyState={
           <Text variant="body-medium" color="secondary">
-            {emptyMessage}
+            {searchTerm ? `No sessions match "${searchTerm}".` : emptyMessage}
           </Text>
         }
       />

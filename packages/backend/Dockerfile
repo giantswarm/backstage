@@ -139,10 +139,16 @@ WORKDIR /app
 # This switches many Node.js dependencies to production mode.
 ENV NODE_ENV=production
 
-# This is required by scaffolder-backend plugin.
-# This disables node snapshot for Node 20 to work with the Scaffolder
-ENV NODE_OPTIONS="--no-node-snapshot"
+# --no-node-snapshot is required by the scaffolder-backend plugin on Node 20+.
+# --require starts the OpenTelemetry SDK before the backend loads so its
+# instrumentations patch the modules they trace, whatever command runs the
+# backend; it exports only when an OTEL_* variable names an exporter (the
+# chart's observability.otel).
+# https://backstage.io/docs/tutorials/setup-opentelemetry
+ENV NODE_OPTIONS="--no-node-snapshot --require /app/instrumentation.js"
 
 COPY --from=build --chown=node:node /app /app
+
+COPY --chown=node:node packages/backend/src/instrumentation.js ./
 
 CMD ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]

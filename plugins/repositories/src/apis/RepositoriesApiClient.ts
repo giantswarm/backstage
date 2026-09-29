@@ -5,11 +5,13 @@ import {
 } from '@backstage/core-plugin-api';
 import { RepositoriesAuthApi } from './auth';
 import {
+  Alignment,
   Committed,
+  Created,
   DeclarationEntry,
   DeclarationInput,
-  Dispatch,
   InventoryRecord,
+  LifecycleChange,
   ListFilters,
   ManagerInfo,
   Plan,
@@ -17,6 +19,7 @@ import {
   RepositoriesConnectionResponse,
   RepositoryListing,
   Validation,
+  Watch,
   WriteOptions,
   WriteResult,
 } from './types';
@@ -78,18 +81,23 @@ export class RepositoriesApiClient implements RepositoriesApi {
     return this.request('/repositories', { query: filters });
   }
 
-  getRepository(
-    name: string,
-    stalePeriodDays?: number,
-  ): Promise<InventoryRecord> {
-    return this.request(`/repositories/${encodeURIComponent(name)}`, {
-      query: { stalePeriodDays },
-    });
+  getRepository(name: string): Promise<InventoryRecord> {
+    return this.request(`/repositories/${encodeURIComponent(name)}`);
   }
 
   refreshRepository(name: string): Promise<InventoryRecord> {
     return this.request(`/repositories/${encodeURIComponent(name)}/refresh`, {
       method: 'POST',
+    });
+  }
+
+  watchRepository(
+    name: string,
+    args: { pullRequest: number; timeout?: number },
+  ): Promise<Watch> {
+    return this.request(`/repositories/${encodeURIComponent(name)}/watch`, {
+      method: 'POST',
+      body: args,
     });
   }
 
@@ -103,7 +111,7 @@ export class RepositoriesApiClient implements RepositoriesApi {
   createRepository(
     input: DeclarationInput,
     options: { mode: 'commit' },
-  ): Promise<Committed> {
+  ): Promise<Created> {
     return this.request('/repositories', {
       method: 'POST',
       body: { ...input, ...options },
@@ -118,6 +126,14 @@ export class RepositoriesApiClient implements RepositoriesApi {
     return this.write(name, 'update', args, options);
   }
 
+  adoptRepository<O extends WriteOptions>(
+    name: string,
+    args: { team: string; entry: DeclarationEntry; reason?: string },
+    options: O,
+  ): Promise<WriteResult<O, Plan, Committed>> {
+    return this.write(name, 'adopt', args, options);
+  }
+
   transferRepository<O extends WriteOptions>(
     name: string,
     args: { toTeam: string; reason?: string },
@@ -128,28 +144,18 @@ export class RepositoriesApiClient implements RepositoriesApi {
 
   setLifecycle<O extends WriteOptions>(
     name: string,
-    args: { lifecycle: 'deprecated' | 'archived'; reason?: string },
+    args: { lifecycle: LifecycleChange; reason?: string; confirm?: string },
     options: O,
   ): Promise<WriteResult<O, Plan, Committed>> {
     return this.write(name, 'lifecycle', args, options);
   }
 
-  reconcileRepository(
+  alignRepository(
     name: string,
     args: { team?: string },
     options: WriteOptions,
-  ): Promise<Dispatch> {
-    return this.write(name, 'reconcile', args, options);
-  }
-
-  decideRepository(
-    name: string,
-    args: { verdict: 'keep'; note?: string },
-  ): Promise<InventoryRecord> {
-    return this.request(`/repositories/${encodeURIComponent(name)}/decide`, {
-      method: 'POST',
-      body: args,
-    });
+  ): Promise<Alignment> {
+    return this.write(name, 'align', args, options);
   }
 
   /** One write of a repository: its arguments plus how it lands, as given. */

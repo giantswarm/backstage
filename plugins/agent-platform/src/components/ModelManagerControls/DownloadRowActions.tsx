@@ -4,6 +4,7 @@ import CancelIcon from '@material-ui/icons/Cancel';
 import ClearIcon from '@material-ui/icons/Clear';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import ReplayIcon from '@material-ui/icons/Replay';
+import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCancelJob, usePullModel } from '../../hooks/usePullJobs';
 import type { ServedModelDownloadRow } from '../ServingPage/ServedModelsTable';
@@ -112,7 +113,7 @@ export function DownloadRowActions({
         size="small"
         isDisabled={isPending}
       />
-      <Menu>
+      <Menu maxWidth={MENU_WIDTH}>
         {active ? (
           <MenuItem
             color="danger"

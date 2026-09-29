@@ -35,6 +35,14 @@ opt-in via `yarn test:watch`.
 # Run tests for a specific plugin (preferred) — single run, exits
 yarn test plugins/my-plugin
 
+# Narrower: any number of path patterns (Jest testPathPattern regexes, so a
+# directory prefix is enough). Prefer this while iterating — a plugin-wide run
+# for a one-file change costs minutes for the same signal.
+yarn test plugins/muster/src/components/shared/ToolTable plugins/agent-platform/src/components/ToolsetResolutionList
+
+# Narrowest: one test by name (substring of its `it(...)` title)
+yarn test plugins/my-plugin/src/components/MyComponent -t "does the thing"
+
 # Run a single package's tests — single run, exits
 yarn workspace @giantswarm/backstage-plugin-muster test
 
@@ -51,6 +59,10 @@ yarn test:e2e
 # with this Backstage in it) — see e2e/agentlab/README.md
 yarn test:e2e:agentlab
 ```
+
+Save the plugin-wide (or two-plugin) run for a change to something shared — a
+component or helper with call sites beyond the file you edited. Then it is worth
+the minutes; otherwise the path patterns above are the same signal in seconds.
 
 #### Verifying a change in agentlab
 
@@ -166,7 +178,8 @@ All plugins live under `plugins/` and are published under the
 
 - **`flux`** - Flux CD GitOps plugin shell (most logic lives in `flux-react`)
 
-- **`ai-chat`** - AI chat interface
+- **`ai-chat`** - AI chat interface. **Deprecated** — no new features; fixes
+  and keeping it building only.
 
 - **`agent-platform`** - Agent Platform: scaffolder-driven agent creation
   (kagent), ported from the APUI prototype
@@ -181,7 +194,8 @@ All plugins live under `plugins/` and are published under the
 
 - **`gs-backend`** - Backend services for GS functionality
 
-- **`ai-chat-backend`** - AI chat backend service (LLM providers)
+- **`ai-chat-backend`** - AI chat backend service (LLM providers).
+  **Deprecated** along with `ai-chat`.
 
 - **`muster-backend`** - Backend for the Muster plugin
 
@@ -212,7 +226,8 @@ All plugins live under `plugins/` and are published under the
   - Reusable components like tables, charts, date formatting
   - Utilities: `useTableColumns`, `isTableColumnHidden`, `sortAndFilterOptions`, `semverCompareSort`
 
-- **`ai-chat-react`** (web) - Shared components for the AI chat plugin
+- **`ai-chat-react`** (web) - Shared components for the AI chat plugin.
+  **Deprecated** along with `ai-chat`.
 
 - **`error-reporter-react`** (web) - Error reporting components
 
@@ -243,18 +258,44 @@ Entry point: `packages/app/src/App.tsx`
 
 #### UI component libraries
 
-Three layers, in order of preference for new work. **Prefer bui (`@backstage/ui`)
-for new UI** — it's the new Backstage design system and the direction we're
-migrating toward, and it's already in use across `gs`, `ui-react`, `ai-chat`, and
-`app`. Fall back to the legacy `@backstage/core-components` (classic Backstage
-components) and `@material-ui/core` (MUI v4 + `makeStyles`) only where bui has no
-equivalent yet — e.g. the feature-rich `Table`, `Page`/`Header`/`Content`
-scaffolding. Mixing all three in one file is expected during the migration. The
-bui stylesheet is imported once in `packages/app/src/index.tsx`; no `BUIProvider`
-is needed.
+Three layers. **New and edited UI code imports from bui (`@backstage/ui`)** —
+it's the new Backstage design system and the direction we're migrating toward.
+`@backstage/core-components` (classic Backstage) and `@material-ui/core` (MUI v4)
+are legacy and allowed only for the pieces bui has no equivalent for:
 
-See `docs/ui.md` and the **`ui`** Claude Code skill for details, including how to
-read Backstage Storybook component/story source without cloning the monorepo.
+- `makeStyles` and `@material-ui/icons/<Icon>` (bui has no styling API for
+  one-off layout tweaks and ships no icon set)
+- the feature-rich core-components `Table` (column visibility, CSV export,
+  faceted filters) — see the **`tables`** skill
+- `Page`/`Header`/`Content` scaffolding on classic (non-NFS) pages, and the
+  core-components `Link`/`LinkButton` when the target is a route ref
+- `Progress`, `EmptyState`, `ErrorPanel`/`WarningPanel`, `MarkdownContent`,
+  `CodeSnippet`, the `Status*` dots and the sidebar/entity-page scaffolding
+
+**Everything else has a bui equivalent, including the ones that get rebuilt in
+MUI by mistake**: `Tabs`/`TabList`/`Tab`/`TabPanel`, `Dialog`, `Select`,
+`Combobox`, `Checkbox`, `Radio`, `Switch`, `Slider`, `Tag` (for `Chip`), `Badge`,
+`Alert`, `Skeleton`, `Accordion`, `TextField`, `SearchField`, `DatePicker`,
+`ToggleButtonGroup`, `Text` (for `Typography`). Before concluding bui lacks
+something, check the installed package — don't rely on a list:
+
+```bash
+grep -oE '^declare (const|function) [A-Z][A-Za-z]+' \
+  node_modules/@backstage/ui/dist/index.d.ts \
+  | sed -E 's/declare (const|function) //' | grep -v 'Definition$' | sort -u
+```
+
+MUI and bui coexist in many files — that's the migration's residue, not
+permission to add more. ESLint warns on every `@material-ui/core` import that
+has a bui equivalent (`muiWithBuiEquivalent` in the root `.eslintrc.js`), but
+**`yarn lint` swallows warnings** — check a file you wrote with
+`npx eslint <path>` from its package directory. The bui stylesheet is imported once in `packages/app/src/index.tsx`,
+and `BUIProvider` is already mounted by `@backstage/plugin-app`'s `AppRoot`, so
+bui `href`s are client-side routed (keep them absolute).
+
+See `docs/ui.md` and the **`ui`** Claude Code skill for details — the full bui
+inventory, the MUI→bui swap table, and how to read Backstage Storybook
+component/story source without cloning the monorepo.
 
 #### Analytics / Telemetry — keep in sync when adding pages
 

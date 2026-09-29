@@ -11,8 +11,9 @@ import { createRouter } from './router';
  * A gateway over giantswarm-repo-manager's read tools for the Repositories
  * page: the inventory of the org's repositories (`list_repositories`), one
  * repository's full record (`get_repository`), a rebuild of that record
- * (`refresh_repository`) and the manager's identity report (`get_info`).
- * Every call runs as the signed-in person: the frontend forwards the caller's
+ * (`refresh_repository`), the manager's identity report (`get_info`) and the
+ * follow of a new repository to readiness (`watch_repository`); and over its
+ * write tools, each as the person. Every call runs as the signed-in person: the frontend forwards the caller's
  * Dex ID token, muster forwards it to the manager, which obtains the person's
  * GitHub grant from muster's token broker (`repositories.muster`). Nothing is
  * composed here -- the page shows what the tools return.

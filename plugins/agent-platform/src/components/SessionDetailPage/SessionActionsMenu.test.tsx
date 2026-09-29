@@ -1,6 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionsRouteRef } from '../../routes';
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
 import { SessionActionsMenu } from './SessionActionsMenu';
@@ -111,7 +112,7 @@ describe('SessionActionsMenu', () => {
     // through getComputedStyle, which resolves `rem` against the root font size
     // since jsdom 29, so it reports `192px` and says nothing about what the
     // component asked for.
-    expect(screen.getByRole('menu').style.width).toBe('12rem');
+    expect(screen.getByRole('menu').style.width).toBe(MENU_WIDTH);
   });
 
   it('says what deleting actually means before doing it', async () => {

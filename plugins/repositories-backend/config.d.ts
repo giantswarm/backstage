@@ -12,7 +12,6 @@ export interface Config {
     muster?: {
       /**
        * Name of the muster installation in `muster.installations`.
-       * @visibility frontend
        */
       installation: string;
       /**

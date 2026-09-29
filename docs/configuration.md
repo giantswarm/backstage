@@ -1,5 +1,55 @@
 # Configuration
 
+## What the browser receives
+
+The portal ships two tiers of configuration to the browser.
+
+The **public config** is the `<script type="backstage.io/config">` block of the
+unauthenticated `index.html`: every path a `config.d.ts` marks
+`@visibility frontend`, served to anyone who can reach the portal, signed in or
+not. It is kept to what the sign-in page needs before anyone is signed in:
+
+| Path                                                                          | Why it is public                                                                             |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `app.*` (title, baseUrl, extensions, routes, branding, Sentry, TelemetryDeck) | the app shell and the sign-in page render from it                                            |
+| `backend.baseUrl`                                                             | where the sign-in flow and every request go                                                  |
+| `auth.environment`, `auth.providers.*`                                        | which providers exist (their secrets are `@visibility secret`)                               |
+| `gs.authProvider`                                                             | the provider the sign-in page initiates                                                      |
+| `gs.auth.scopes`, `gs.auth.extraScopes`                                       | the scopes the sign-in requests                                                              |
+| `gs.signInProvider.*`, `gs.signInFallbackProvider.*`                          | the two sign-in cards                                                                        |
+| `gs.github.brokerAudience`                                                    | picks the GitHub auth API when the app constructs its APIs, before sign-in; an audience name |
+| `organization.name`, `permission.enabled`                                     | Backstage core                                                                               |
+
+The **signed-in config** is served by the authenticated `GET /api/gs/config`,
+once, after the main sign-in, in app-config shape. Everything else a Giant
+Swarm plugin reads in the browser comes from here: the installations map
+(with the customer-identifying base domains), `gs.adminGroups`, the cluster
+token broker URL, the link templates of the cluster, deployment and home
+pages, the friendly labels and annotations, the Kubernetes end-of-life table,
+the proxy tuning knobs, the muster installations, the MCP server list and the
+chat's welcome copy, the skill repositories and the Flux Git host patterns.
+The complete list is `SIGNED_IN_CONFIG_PATHS` in the gs-backend plugin; the
+frontend reads it through `@giantswarm/backstage-plugin-gs-react`
+(`useSignedInConfig()` in components, `getSignedInConfig()` in the utility
+APIs constructed at app boot).
+
+To let the browser read a new key: leave its `config.d.ts` entry at the
+default (backend) visibility, add the path to `SIGNED_IN_CONFIG_PATHS` and read
+it through the signed-in config. `@visibility frontend` is only for what the
+sign-in page itself needs, per field: `@deepVisibility frontend` is not used,
+because it would ship every field later added under that key to every visitor,
+and a test refuses it in every `config.d.ts` of this repository. A public field
+is validated when the app-backend starts, and a missing required one stops the
+start, so a public leaf a deployment fills from the environment (the loader
+drops a key whose variable is unset) is declared optional.
+
+The public set is pinned: `packages/app/src/config/frontendVisiblePaths.golden.json`
+lists every frontend-visible path of the app's merged config schema, and
+`frontendVisibility.test.ts` (part of `ci:verify`) fails when the schema
+exposes anything else, whether from a new field, a new plugin or a dependency
+bump. Regenerate it, and review the diff, with
+`UPDATE_GOLDEN=1 yarn workspace app test src/config`.
+
 ## Cluster access (broker-only)
 
 Backstage reaches every management cluster through a single main Dex login. The
@@ -18,8 +68,9 @@ gs:
 
 ### `gs.clusterTokenBroker`
 
-Setting `tokenUrl` enables the silent per-cluster token path. Without it,
-Backstage falls back to per-cluster OIDC popups.
+Setting `tokenUrl` (muster) or at least one entry under `targets` (an
+installation's own Dex, see below) enables the silent per-cluster token path.
+Without either, Backstage falls back to per-cluster OIDC popups.
 
 ```yaml
 gs:
@@ -33,6 +84,42 @@ gs:
     # scope: ...
 ```
 
+### Without muster: a Dex target per installation
+
+A portal whose management cluster runs no muster exchanges the main session at
+each other installation's own Dex instead. Dex implements the RFC 8693 grant
+with its `connector_id` extension: the installation's Dex needs an OIDC
+connector whose `issuer` is the portal's main Dex (`getUserInfo: false`, and
+the CA of that issuer in `rootCAs` when it is not publicly trusted) and a
+confidential client for the portal, listed in the apiserver client's
+`trustedPeers` so the cross-client scope below is granted. The issued
+token is an id_token of the installation's Dex with the apiserver's client as
+its audience, the same token a per-cluster login would have given.
+
+```yaml
+gs:
+  clusterTokenBroker:
+    # tokenUrl, clientId and clientSecret (muster) are optional once a target
+    # exists; with both, the targets win for their installations and muster
+    # serves the rest.
+    targets:
+      example-b: # an installation name under gs.installations
+        tokenUrl: https://dex.example-b.gigantic.io/token
+        # Confidential client on that Dex (backend-only).
+        clientId: ${CLUSTER_TOKEN_EXAMPLE_B_CLIENT_ID}
+        clientSecret: ${CLUSTER_TOKEN_EXAMPLE_B_CLIENT_SECRET}
+        # The Dex OIDC connector that trusts the portal's main Dex issuer.
+        connectorId: portal
+        # Scope of the issued id_token; the cross-client scope sets its
+        # audience to the apiserver's client.
+        scopes: openid email groups audience:server:client_id:dex-k8s-authenticator
+```
+
+An installation with a target is broker-covered without `clusterTokenAudience`.
+The browser learns only the installation names under `targets`; the endpoints
+and clients stay with the backend. Every field is required: a target without
+one fails the backend's startup.
+
 ### Broker-covered installations
 
 Each cluster is listed under `gs.installations.<mc>` and in
@@ -40,7 +127,9 @@ Each cluster is listed under `gs.installations.<mc>` and in
 k8s-plugin routing key, but for a broker-covered cluster it needs no matching
 `auth.providers` entry. Setting `clusterTokenAudience` marks the installation as
 fully broker-covered, so its token is minted silently and it disappears from the
-provider settings page.
+provider settings page. An installation without it (and without a Dex target)
+is never exchanged at muster, which would only answer `invalid_target`; it keeps
+its own entry on the provider settings page.
 
 ```yaml
 gs:
@@ -155,6 +244,24 @@ A Dex deployment needs both of the scopes above:
 Keycloak and Entra ID need no extra scope. They reject both scopes above with
 `invalid_scope` and show no login page, so leave `gs.auth.extraScopes` unset or
 set it to `[]`.
+
+### Changing the scopes on a running instance
+
+Widening `gs.auth.extraScopes` (or `gs.auth.scopes`) signs everyone in again.
+An existing session was granted the previous scope set, and a token refresh
+cannot add a scope to that grant: the issuer re-issues the tokens with the
+scopes the sign-in consented to, whatever the refresh asks for. The login
+provider therefore refuses to refresh a session with fewer scopes than the
+configuration now requests, and the portal starts a fresh sign-in (a popup) on
+the person's next page load, asking for the new set. No manual sign-out is
+needed. Until that sign-in completes, the Agent Platform section explains any
+`401` an installation's API server answers with, and offers the sign-out.
+
+Without the refusal an instance that gained the `dex-k8s-authenticator` audience
+scope kept refreshing the old grant: the backend answered the wider refresh
+request with a token that still lacked the audience, reported the requested
+scopes as granted, and every Kubernetes proxy read failed with `401 oidc:
+expected audience "dex-k8s-authenticator"` until the person signed out by hand.
 
 Keycloak needs one more step, on the IdP side: it has no built-in `groups`
 scope. Add a client scope named `groups` with a Group Membership mapper (claim
@@ -311,6 +418,40 @@ The following optional features are available:
 - `deploymentsPage`: Enable the Deployments page, which lists all the deployments -- `HelmRelease` and `App CR` resources -- in the installations the user has access to via the Backstage instance.
 - `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
+
+## Grafana dashboards card
+
+Team and component pages carrying the `grafana/dashboard-selector` annotation
+get the dashboards card of `@backstage-community/plugin-grafana` only on a
+portal that enables it:
+
+```yaml
+app:
+  extensions:
+    - entity-card:catalog/grafana-dashboards: true
+```
+
+The card is disabled by default because it works only where the plugin is
+wired: the `grafana` section names the host, and a `proxy.endpoints` entry at
+`/grafana/api` targets that host with a service-account token. The `grafana`
+section is required by the plugin's schema on every portal, so every
+deployment carries one, and the annotated entities reach every portal through
+the shared catalog. Without the switch an annotated entity shows neither the
+card nor the `404` it would report without the proxy entry.
+
+```yaml
+proxy:
+  endpoints:
+    /grafana/api:
+      target: https://grafana.example.com/
+      headers:
+        Authorization: Bearer ${GRAFANA_TOKEN}
+
+grafana:
+  hosts:
+    - id: grafana
+      domain: https://grafana.example.com
+```
 
 ## Component dependency fetching
 

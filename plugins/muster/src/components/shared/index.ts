@@ -11,10 +11,17 @@ export { Stat } from '@giantswarm/backstage-plugin-ui-react';
 export type { StatProps } from '@giantswarm/backstage-plugin-ui-react';
 export { DisclosureAccordion } from './DisclosureAccordion';
 export type { DisclosureAccordionProps } from './DisclosureAccordion';
-export { ToolList } from './ToolList';
-export type { ToolListItem, ToolListProps } from './ToolList';
-export { Gate } from './Gate';
-export type { GateProps } from './Gate';
+export { ToolTable, toolTableItem, ToolMarkers, hasMarkers } from './ToolTable';
+export type {
+  ToolTableProps,
+  ToolTableItem,
+  ToolRowMode,
+  ToolMarkersProps,
+} from './ToolTable';
+// `Gate` moved to `ui-react` when the gs installation-inventory gate needed
+// the same box. Re-exported from here so muster's call sites stay unchanged.
+export { Gate } from '@giantswarm/backstage-plugin-ui-react';
+export type { GateProps } from '@giantswarm/backstage-plugin-ui-react';
 export { SessionGate } from './SessionGate';
 export type { SessionGateProps } from './SessionGate';
 export { FreshnessIndicator } from './FreshnessIndicator';

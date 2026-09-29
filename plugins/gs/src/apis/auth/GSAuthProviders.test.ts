@@ -4,23 +4,36 @@ import { GSAuthProviders } from './GSAuthProviders';
 import { SIGN_IN_CONNECTOR_STORAGE_KEY } from './signInConnectorMemory';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { InstallationConfig } from '../installations';
+import { Config, ConfigReader } from '@backstage/config';
 
 jest.mock('@backstage/core-app-api', () => ({
   ...jest.requireActual('@backstage/core-app-api'),
   openLoginPopup: jest.fn(),
 }));
 
-// Replace the module-level async installations source so the test drives what
+// Replace the module-level signed-in config source so the test drives what
 // `ensureInitialized()` sees (and can make it reject on demand).
-jest.mock('../installations', () => {
-  const actual = jest.requireActual('../installations');
-  return { ...actual, getInstallationsConfig: jest.fn() };
+jest.mock('@giantswarm/backstage-plugin-gs-react', () => {
+  const actual = jest.requireActual('@giantswarm/backstage-plugin-gs-react');
+  return { ...actual, getSignedInConfig: jest.fn() };
 });
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { getInstallationsConfig } = require('../installations') as {
-  getInstallationsConfig: jest.Mock<Promise<InstallationConfig[]>>;
-};
+const { getSignedInConfig } =
+  require('@giantswarm/backstage-plugin-gs-react') as {
+    getSignedInConfig: jest.Mock<Promise<Config>>;
+  };
+
+/** A signed-in config that carries exactly these installations. */
+function signedInConfig(installations: InstallationConfig[]): Config {
+  return new ConfigReader({
+    gs: {
+      installations: Object.fromEntries(
+        installations.map(({ name, ...rest }) => [name, rest]),
+      ),
+    },
+  });
+}
 
 const configApi = {
   // No main provider, no broker: keeps getProviders returning exactly the
@@ -53,7 +66,7 @@ describe('GSAuthProviders.ensureInitialized', () => {
   let warnSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    getInstallationsConfig.mockReset();
+    getSignedInConfig.mockReset();
     warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
@@ -62,15 +75,25 @@ describe('GSAuthProviders.ensureInitialized', () => {
   });
 
   it('skips malformed installation entries and still builds the valid ones', async () => {
-    getInstallationsConfig.mockResolvedValue([
-      { name: 'valid', authProvider: 'oidc', oidcTokenProvider: 'oidc-valid' },
-      // Non-oidc auth provider -> skipped.
-      { name: 'bad-auth', authProvider: 'saml', oidcTokenProvider: 'oidc-x' },
-      // Missing oidcTokenProvider -> skipped.
-      { name: 'bad-missing', authProvider: 'oidc' },
-      // oidcTokenProvider without the `oidc-` prefix -> skipped.
-      { name: 'bad-prefix', authProvider: 'oidc', oidcTokenProvider: 'weird' },
-    ]);
+    getSignedInConfig.mockResolvedValue(
+      signedInConfig([
+        {
+          name: 'valid',
+          authProvider: 'oidc',
+          oidcTokenProvider: 'oidc-valid',
+        },
+        // Non-oidc auth provider -> skipped.
+        { name: 'bad-auth', authProvider: 'saml', oidcTokenProvider: 'oidc-x' },
+        // Missing oidcTokenProvider -> skipped.
+        { name: 'bad-missing', authProvider: 'oidc' },
+        // oidcTokenProvider without the `oidc-` prefix -> skipped.
+        {
+          name: 'bad-prefix',
+          authProvider: 'oidc',
+          oidcTokenProvider: 'weird',
+        },
+      ]),
+    );
 
     const api = createApi();
     await api.ensureInitialized();
@@ -82,26 +105,28 @@ describe('GSAuthProviders.ensureInitialized', () => {
   });
 
   it('does not latch a rejected promise: a later call retries and succeeds', async () => {
-    getInstallationsConfig
-      .mockRejectedValueOnce(new Error('installations source failed'))
-      .mockResolvedValueOnce([
-        {
-          name: 'valid',
-          authProvider: 'oidc',
-          oidcTokenProvider: 'oidc-valid',
-        },
-      ]);
+    getSignedInConfig
+      .mockRejectedValueOnce(new Error('signed-in config source failed'))
+      .mockResolvedValueOnce(
+        signedInConfig([
+          {
+            name: 'valid',
+            authProvider: 'oidc',
+            oidcTokenProvider: 'oidc-valid',
+          },
+        ]),
+      );
 
     const api = createApi();
 
     // First init rejects (transient failure).
     await expect(api.ensureInitialized()).rejects.toThrow(
-      'installations source failed',
+      'signed-in config source failed',
     );
 
     // A later call must NOT re-await the cached rejection -- it retries.
     await expect(api.ensureInitialized()).resolves.toBeUndefined();
-    expect(getInstallationsConfig).toHaveBeenCalledTimes(2);
+    expect(getSignedInConfig).toHaveBeenCalledTimes(2);
     expect(api.getProviders().map(p => p.providerName)).toEqual(['oidc-valid']);
   });
 });
@@ -199,7 +224,7 @@ describe('GSAuthProviders sign-in connector memory', () => {
 
   beforeEach(() => {
     window.localStorage.clear();
-    getInstallationsConfig.mockReset();
+    getSignedInConfig.mockReset();
     (openLoginPopup as jest.Mock).mockReset();
     (openLoginPopup as jest.Mock).mockResolvedValue(popupPayload);
     // The refresh cookie is gone: every `/refresh` fails, sign-out succeeds.
@@ -284,9 +309,15 @@ describe('GSAuthProviders sign-in connector memory', () => {
 
   it('keeps per-installation providers out of it', async () => {
     window.localStorage.setItem(SIGN_IN_CONNECTOR_STORAGE_KEY, 'giantswarm-ad');
-    getInstallationsConfig.mockResolvedValue([
-      { name: 'golem', authProvider: 'oidc', oidcTokenProvider: 'oidc-golem' },
-    ]);
+    getSignedInConfig.mockResolvedValue(
+      signedInConfig([
+        {
+          name: 'golem',
+          authProvider: 'oidc',
+          oidcTokenProvider: 'oidc-golem',
+        },
+      ]),
+    );
     const api = createSignInApi({ 'gs.authProvider': 'oidc-gazelle' });
 
     // No broker configured: the installation signs in through its own popup.
@@ -343,5 +374,131 @@ describe('GSAuthProviders.getGithubAuthApi', () => {
     expect(github).not.toBe(api.getMainAuthApi());
     // memoized: ScmAuth, the settings card and the plugins share one session
     expect(api.getGithubAuthApi()).toBe(github);
+  });
+});
+
+describe('GSAuthProviders cluster token broker coverage', () => {
+  const installations = {
+    a: { authProvider: 'oidc', oidcTokenProvider: 'oidc-a' },
+    b: { authProvider: 'oidc', oidcTokenProvider: 'oidc-b' },
+    c: {
+      authProvider: 'oidc',
+      oidcTokenProvider: 'oidc-c',
+      clusterTokenAudience: 'c',
+    },
+  };
+
+  function createCoverageApi(clusterTokenBroker: object | undefined) {
+    getSignedInConfig.mockResolvedValue(
+      new ConfigReader({ gs: { installations, clusterTokenBroker } }),
+    );
+    return GSAuthProviders.create({
+      configApi: {
+        ...configApi,
+        getOptionalString: jest.fn((key: string) =>
+          key === 'gs.authProvider' ? 'oidc-a' : undefined,
+        ),
+      } as unknown as ConfigApi,
+      discoveryApi,
+      oauthRequestApi,
+    });
+  }
+
+  beforeEach(() => {
+    getSignedInConfig.mockReset();
+  });
+
+  it('covers only the Dex targets when there is no muster broker', async () => {
+    const api = createCoverageApi({ targets: { b: {} } });
+    await api.ensureInitialized();
+
+    expect(api.getBrokerCoveredInstallations()).toEqual(['b']);
+    // clusterTokenAudience alone means nothing without muster: c keeps its
+    // own provider entry, b's leaves the settings page.
+    expect(api.getProviders().map(p => p.providerName)).toEqual([
+      'oidc-a',
+      'oidc-c',
+    ]);
+  });
+
+  it('covers the Dex targets and muster-covered installations together', async () => {
+    const api = createCoverageApi({
+      tokenUrl: 'https://muster.example.com/oauth/token',
+      targets: { b: {} },
+    });
+    await api.ensureInitialized();
+
+    expect(api.getBrokerCoveredInstallations()).toEqual(['b', 'c']);
+    expect(api.getProviders().map(p => p.providerName)).toEqual(['oidc-a']);
+  });
+
+  it('exchanges at muster only for the installations it covers', async () => {
+    const api = createCoverageApi({
+      tokenUrl: 'https://muster.example.com/oauth/token',
+    });
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async input => {
+        const url = String(input);
+        if (url.includes('/oidc-a/refresh')) {
+          return new Response(
+            JSON.stringify({
+              providerInfo: {
+                idToken: 'main-id-token',
+                accessToken: 'main-access-token',
+                scope: 'openid',
+                expiresInSeconds: 3600,
+              },
+              backstageIdentity: {
+                token: 'backstage-token',
+                identity: {
+                  type: 'user',
+                  userEntityRef: 'user:default/someone',
+                  ownershipEntityRefs: [],
+                },
+                expiresInSeconds: 3600,
+              },
+              profile: {},
+            }),
+          );
+        }
+        if (url.includes('/api/auth/cluster-token/')) {
+          return new Response(
+            JSON.stringify({ token: 'cluster-token', expiresInSeconds: 600 }),
+          );
+        }
+        return new Response('', { status: 401 });
+      });
+
+    try {
+      const covered = await api.getKubernetesAuthApi('oidc-c');
+      await expect(covered!.getIdToken({ optional: true })).resolves.toBe(
+        'cluster-token',
+      );
+
+      // b is not marked covered: muster would only answer invalid_target, so
+      // it is never asked. b keeps its own sign-in, which has no session here.
+      const uncovered = await api.getKubernetesAuthApi('oidc-b');
+      await expect(uncovered!.getIdToken({ optional: true })).resolves.toBe('');
+
+      const exchanged = fetchSpy.mock.calls
+        .map(([input]) => String(input))
+        .filter(url => url.includes('/api/auth/cluster-token/'));
+      expect(exchanged).toEqual(['http://backend/api/auth/cluster-token/c']);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('covers nothing without a broker', async () => {
+    const api = createCoverageApi(undefined);
+    await api.ensureInitialized();
+
+    expect(api.getBrokerCoveredInstallations()).toEqual([]);
+    expect(api.getProviders().map(p => p.providerName)).toEqual([
+      'oidc-a',
+      'oidc-b',
+      'oidc-c',
+    ]);
   });
 });

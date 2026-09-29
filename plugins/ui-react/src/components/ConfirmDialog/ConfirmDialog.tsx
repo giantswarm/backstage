@@ -35,6 +35,11 @@ export type ConfirmDialogProps = {
   isConfirmDisabled?: boolean;
   /** Shown as a danger alert above the buttons. Typically a failed attempt's message. */
   error?: ReactNode;
+  /**
+   * The action ran and the dialog now shows its result: the confirm button
+   * goes, and Cancel becomes Close, because there is nothing left to cancel.
+   */
+  isDone?: boolean;
   onConfirm: () => void;
   width?: number | string;
 };
@@ -67,6 +72,7 @@ export function ConfirmDialog({
   isBusy = false,
   isConfirmDisabled = false,
   error,
+  isDone = false,
   onConfirm,
   width = 'min(90vw, 520px)',
 }: ConfirmDialogProps) {
@@ -91,17 +97,19 @@ export function ConfirmDialog({
           isDisabled={isBusy}
           onClick={() => onOpenChange(false)}
         >
-          {cancelLabel}
+          {isDone ? 'Close' : cancelLabel}
         </Button>
-        <Button
-          variant="primary"
-          destructive={destructive}
-          isPending={isBusy}
-          isDisabled={isConfirmDisabled}
-          onClick={onConfirm}
-        >
-          {isBusy ? (busyLabel ?? confirmLabel) : confirmLabel}
-        </Button>
+        {isDone ? null : (
+          <Button
+            variant="primary"
+            destructive={destructive}
+            isPending={isBusy}
+            isDisabled={isConfirmDisabled}
+            onClick={onConfirm}
+          >
+            {isBusy ? (busyLabel ?? confirmLabel) : confirmLabel}
+          </Button>
+        )}
       </DialogFooter>
     </Dialog>
   );

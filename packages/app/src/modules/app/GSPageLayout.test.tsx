@@ -1,5 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 import { GSPageLayout } from './GSPageLayout';
 
@@ -93,6 +93,25 @@ describe('GSPageLayout', () => {
     expect(
       screen.getByRole('button', { name: 'New agent' }),
     ).toBeInTheDocument();
+  });
+
+  it('names the active tab and the page in the document title', async () => {
+    await renderAt('/flux/tree/some%20nested%20id');
+
+    await waitFor(() =>
+      expect(document.title).toBe('Tree view · Flux | Backstage'),
+    );
+  });
+
+  it('falls back to the app title on a page without a header of its own', async () => {
+    document.title = 'Agents · Agent Platform | Backstage';
+    await renderInTestApp(
+      <GSPageLayout title="Home" noHeader>
+        <div>content</div>
+      </GSPageLayout>,
+    );
+
+    await waitFor(() => expect(document.title).toBe('Backstage'));
   });
 
   it('renders only the content when noHeader is set', async () => {

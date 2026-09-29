@@ -61,6 +61,7 @@ describe('reduceByAgent', () => {
         id: 'kagent|sre-agent',
         namespace: 'kagent',
         agent: 'sre-agent',
+        kind: 'agent',
         label: 'SRE Agent',
         href: '/agents/gazelle/SRE Agent',
         tokens: 1_000_000,
@@ -93,19 +94,41 @@ describe('reduceByAgent', () => {
     expect(rows[0].tokens).toBe(1_000_000);
   });
 
-  it('keeps a label that matches no CR, unlinked, showing namespace/agent', () => {
+  it('renders a pair that matches no agent as a removed agent, unlinked, its spend kept', () => {
     const rows = reduceByAgent({
       ...byAgentOptions,
-      cost: [sample({ agent_namespace: 'kagent', agent: 'deleted' }, '1')],
+      cost: [
+        sample({ agent_namespace: 'kagent', agent: 'sre-agent' }, '3'),
+        sample({ agent_namespace: 'kagent', agent: 'deleted' }, '1'),
+      ],
       tokens: undefined,
       calls: undefined,
     });
 
-    expect(rows[0].label).toBe('kagent/deleted');
-    expect(rows[0].href).toBeUndefined();
+    const removed = rows.find(row => row.agent === 'deleted');
+    expect(removed).toMatchObject({
+      kind: 'removed',
+      label: 'kagent/deleted',
+      costUsd: 1,
+      // Its dollar is part of the whole the shares are measured against, so
+      // the table keeps agreeing with the tiles above it.
+      sharePct: 25,
+    });
+    expect(removed?.href).toBeUndefined();
   });
 
-  it("renders the gateway's `unknown` agent as the caller's unknown label", () => {
+  it('names a removed agent that has no namespace by its bare name', () => {
+    const rows = reduceByAgent({
+      ...byAgentOptions,
+      cost: [sample({ agent: 'deleted' }, '1')],
+      tokens: undefined,
+      calls: undefined,
+    });
+
+    expect(rows[0]).toMatchObject({ kind: 'removed', label: 'deleted' });
+  });
+
+  it("renders the gateway's `unknown` agent as unattributed, by the caller's label", () => {
     const rows = reduceByAgent({
       ...byAgentOptions,
       cost: [sample({ agent_namespace: 'kagent', agent: 'unknown' }, '1')],
@@ -113,7 +136,10 @@ describe('reduceByAgent', () => {
       calls: undefined,
     });
 
-    expect(rows[0].label).toBe('Unattributed');
+    expect(rows[0]).toMatchObject({
+      kind: 'unattributed',
+      label: 'Unattributed',
+    });
     expect(rows[0].href).toBeUndefined();
   });
 
@@ -278,6 +304,7 @@ describe('reduceReliability', () => {
       ],
       p50: [sample({}, '1.5')],
       p95: [sample({}, '12')],
+      outputTokensPerSecond: [sample({}, '196.8')],
     });
 
     expect(reliability).toEqual({
@@ -287,6 +314,7 @@ describe('reduceReliability', () => {
       rateLimited: 80,
       p50Seconds: 1.5,
       p95Seconds: 12,
+      outputTokensPerSecond: 196.8,
     });
   });
 
@@ -299,6 +327,7 @@ describe('reduceReliability', () => {
       requestsByStatus: [sample({}, '500'), sample({ status: '200' }, '500')],
       p50: undefined,
       p95: undefined,
+      outputTokensPerSecond: undefined,
     });
 
     expect(reliability.totalRequests).toBe(1000);
@@ -314,6 +343,7 @@ describe('reduceReliability', () => {
       ],
       p50: undefined,
       p95: undefined,
+      outputTokensPerSecond: undefined,
     });
 
     expect(reliability.errorRequests).toBe(0);
@@ -328,6 +358,7 @@ describe('reduceReliability', () => {
       ],
       p50: undefined,
       p95: undefined,
+      outputTokensPerSecond: undefined,
     });
 
     expect(reliability.errorRequests).toBe(20);
@@ -341,11 +372,39 @@ describe('reduceReliability', () => {
       requestsByStatus: undefined,
       p50: [sample({}, 'NaN')],
       p95: [],
+      outputTokensPerSecond: undefined,
     });
 
     expect(reliability.p50Seconds).toBeUndefined();
     expect(reliability.p95Seconds).toBeUndefined();
     expect(reliability.errorRatePct).toBeUndefined();
+  });
+
+  it('reports no output speed when nothing streamed', () => {
+    // A call answered in one piece observes no per-output-token time, so the
+    // ratio has no series at all — which must not read as "0 tokens/s".
+    const reliability = reduceReliability({
+      requestsByStatus: [sample({ status: '200' }, '40')],
+      p50: [sample({}, '2')],
+      p95: [sample({}, '9')],
+      outputTokensPerSecond: [],
+    });
+
+    expect(reliability.outputTokensPerSecond).toBeUndefined();
+    // The calls themselves are still counted: the speed is the streamed
+    // subset, the requests are all of them.
+    expect(reliability.totalRequests).toBe(40);
+  });
+
+  it('reports no output speed for a division Mimir answered as NaN', () => {
+    const reliability = reduceReliability({
+      requestsByStatus: undefined,
+      p50: undefined,
+      p95: undefined,
+      outputTokensPerSecond: [sample({}, 'NaN')],
+    });
+
+    expect(reliability.outputTokensPerSecond).toBeUndefined();
   });
 });
 
@@ -574,6 +633,7 @@ describe('buildLlmUsage', () => {
     requestsByStatus: [sample({ status: '200' }, '10')],
     p50: [sample({}, '2')],
     p95: [sample({}, '9')],
+    outputTokensPerSecond: [sample({}, '196.8')],
     unpricedLookups: [],
     costPerDay: [],
     tokensPerDay: [],

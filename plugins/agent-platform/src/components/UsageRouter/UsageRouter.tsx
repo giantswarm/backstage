@@ -121,7 +121,7 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
  *
  * The providers wrap every view once, so switching views neither remounts them
  * nor refetches — which matters more here than on the Models tab: the two
- * gateway views run the same nine Mimir queries, and they only cost one round
+ * gateway views run the same twelve Mimir queries, and they only cost one round
  * between them because the query client outlives the tab switch.
  *
  * The index redirect is a sibling of the views, not a route inside them, so the

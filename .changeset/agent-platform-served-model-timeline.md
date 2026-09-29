@@ -1,0 +1,5 @@
+---
+'@giantswarm/backstage-plugin-agent-platform': minor
+---
+
+Serving page: a served model's row opens its **step timeline** — model-manager 0.24.0's seven steps (predictor pod scheduled, GPU node started, weights in the cache, runtime image pulled, model loaded by vLLM, route ready, endpoint answers) with their state, when each began or how long it took, and what each usually takes; the weights step shows the bytes downloaded so far, then _cached_ or the size once done; a failure is a failed step with the reason (`ImagePullBackOff`, a stalled download, `Unschedulable`), never a bare _Pending_. The panel opens by itself after **Serve** and from a chevron on the row. At Ready it shows the endpoint, the wired ModelConfig and **Try it**, which sends one chat completion through the portal's backend twice — without a token and as the signed-in person — and shows both answers (401 without, 200 with). The inventory polls at 10 s while a served model is on its way or being deleted; **Unload** shows _Stopping_ until model-manager no longer lists the model, and the panel says so.

@@ -86,6 +86,43 @@ describe('ModelsTable', () => {
     expect(screen.getByText('Installation')).toBeInTheDocument();
   });
 
+  it('leaves out the columns it is asked to hide', async () => {
+    await renderTable(
+      <ModelsTable rows={rows} hideColumns={['installation']} />,
+    );
+
+    expect(screen.getByText('Model config')).toBeInTheDocument();
+    expect(screen.queryByText('Installation')).not.toBeInTheDocument();
+  });
+
+  it('sorts by name instead of the hidden Installation column', async () => {
+    const zeta = {
+      ...rows[0],
+      id: 'inst-1/kagent/a-model',
+      name: 'a-model',
+      displayName: 'Zeta',
+    };
+    const alpha = {
+      ...rows[0],
+      id: 'inst-1/kagent/b-model',
+      name: 'b-model',
+      displayName: 'Alpha',
+    };
+    const names = () =>
+      screen
+        .getAllByRole('rowheader')
+        .map(cell => cell.querySelector('p')?.textContent);
+
+    const { unmount } = await renderTable(<ModelsTable rows={[zeta, alpha]} />);
+    expect(names()).toEqual(['Zeta', 'Alpha']);
+    unmount();
+
+    await renderTable(
+      <ModelsTable rows={[zeta, alpha]} hideColumns={['installation']} />,
+    );
+    expect(names()).toEqual(['Alpha', 'Zeta']);
+  });
+
   it('renders each row with status and endpoint fallback', async () => {
     await renderTable(<ModelsTable rows={rows} />);
 
@@ -140,20 +177,20 @@ describe('ModelsTable', () => {
               namespace: 'kserve',
               backend: 'kserve',
               readiness: 'ready',
-              message: 'InferenceService qwen3 is ready.',
+              message: 'LLMInferenceService qwen3 is ready.',
             },
           },
         ]}
       />,
     );
 
-    const servedBy = screen.getByText(/Served by InferenceService/);
+    const servedBy = screen.getByText(/Served by LLMInferenceService/);
     expect(servedBy).toHaveTextContent(
-      'Served by InferenceService kserve/qwen3',
+      'Served by LLMInferenceService kserve/qwen3',
     );
     expect(servedBy).toHaveAttribute(
       'title',
-      'InferenceService kserve/qwen3 is ready — InferenceService qwen3 is ready.',
+      'LLMInferenceService kserve/qwen3 is ready — LLMInferenceService qwen3 is ready.',
     );
     // The state is a label, not only a tooltip.
     expect(screen.getByTestId('model-serving-readiness')).toHaveTextContent(
@@ -340,7 +377,7 @@ describe('ModelsTable serving state', () => {
     );
   });
 
-  it('says Serve on a KServe model config whose InferenceService is gone', async () => {
+  it('says Serve on a KServe model config whose LLMInferenceService is gone', async () => {
     await renderTableWithApis(
       <ModelsTable
         rows={[
@@ -355,7 +392,7 @@ describe('ModelsTable serving state', () => {
               name: 'lab-echo',
               namespace: 'model-serving',
               message:
-                'InferenceService model-serving/lab-echo is not serving — stopped, or never created.',
+                'LLMInferenceService model-serving/lab-echo is not serving — stopped, or never created.',
               shortcut: { kind: 'load', ref: 'lab-echo' },
             },
           },
@@ -363,8 +400,8 @@ describe('ModelsTable serving state', () => {
       />,
     );
 
-    expect(screen.getByText(/Points at InferenceService/)).toHaveTextContent(
-      'Points at InferenceService model-serving/lab-echo',
+    expect(screen.getByText(/Points at LLMInferenceService/)).toHaveTextContent(
+      'Points at LLMInferenceService model-serving/lab-echo',
     );
 
     await userEvent.click(
@@ -542,7 +579,7 @@ describe('toModelRow', () => {
         namespace: 'kserve',
         backend: 'kserve',
         readiness: 'ready',
-        message: 'InferenceService qwen3 is ready.',
+        message: 'LLMInferenceService qwen3 is ready.',
       },
     );
 
@@ -552,7 +589,7 @@ describe('toModelRow', () => {
       namespace: 'kserve',
       backend: 'kserve',
       readiness: 'ready',
-      message: 'InferenceService qwen3 is ready.',
+      message: 'LLMInferenceService qwen3 is ready.',
     });
   });
 });

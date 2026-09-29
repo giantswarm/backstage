@@ -94,13 +94,20 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
   static readonly plural = 'modelconfigs';
 
   /**
+   * The `ui.giantswarm.io/display-name` annotation, or `undefined` when it is
+   * missing or blank.
+   */
+  getDisplayNameAnnotation(): string | undefined {
+    const value = this.getAnnotations()?.['ui.giantswarm.io/display-name'];
+    return value?.trim() ? value : undefined;
+  }
+
+  /**
    * Friendly name for pickers. Prefers the `ui.giantswarm.io/display-name`
-   * annotation when present, otherwise falls back to the resource name.
+   * annotation when set, otherwise falls back to the resource name.
    */
   getDisplayName() {
-    return (
-      this.getAnnotations()?.['ui.giantswarm.io/display-name'] ?? this.getName()
-    );
+    return this.getDisplayNameAnnotation() ?? this.getName();
   }
 
   getModel() {

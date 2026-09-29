@@ -485,7 +485,7 @@ describe('NewAgentToolsPage', () => {
       within(summaryBar()).queryByText('No tools'),
     ).not.toBeInTheDocument();
     await user.click(
-      screen.getByRole('button', { name: 'Remove preset:read-only' }),
+      screen.getByRole('button', { name: 'Remove Read-only tools' }),
     );
     expect(toolsetOutput()).toBe('');
     expect(continueButton()).toBeEnabled();
@@ -605,6 +605,51 @@ describe('NewAgentToolsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows progress while the presets are read, without claiming the built-ins are all there is', async () => {
+    const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    const gated: MusterApi = {
+      ...api,
+      filterTools: async (options = {}) => {
+        if (options.includePresets) {
+          await gate;
+        }
+        return api.filterTools(options);
+      },
+    };
+    await renderStep({ api: gated });
+
+    // `Progress` renders a hidden placeholder for its first 250ms, so the bar
+    // itself is what has to be waited for -- a `progress` test id matches either.
+    expect(
+      await screen.findByRole('progressbar', {
+        name: "Reading the installation's presets…",
+      }),
+    ).toBeInTheDocument();
+    // The notice would state something untrue for as long as the read takes,
+    // so it waits -- but the built-in cards the hook holds meanwhile are valid
+    // whatever muster answers, and stay clickable while the bar runs.
+    expect(
+      screen.queryByText('Only the built-in presets are known'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('checkbox', { name: 'Preset Read-only tools' }),
+    ).toBeInTheDocument();
+
+    release();
+
+    // Infrastructure is the installation's own preset: the real list arrived.
+    expect(
+      await screen.findByRole('checkbox', { name: 'Preset Infrastructure' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Only the built-in presets are known'),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows the resolved count in the summary and the resolved list for a preset, with read-only and destructive markers', async () => {
     const { api, filterTools } = makeMusterApi({
       signedIn: false,
@@ -622,8 +667,8 @@ describe('NewAgentToolsPage', () => {
       await within(summaryBar()).findByText('Resolves to 2 tools for you'),
     ).toBeInTheDocument();
     expect(
-      within(summaryBar()).getByRole('listitem', { name: '' }),
-    ).toHaveTextContent('preset:read-only');
+      within(summaryBar()).getByTitle('preset:read-only'),
+    ).toHaveTextContent('Read-only tools');
 
     const resolved = within(toolsetCard());
     await resolved.findByText('x_kubernetes_get_pods');

@@ -27,6 +27,28 @@ describe('SimpleAccordion', () => {
     expect(screen.getByText('Install the client.')).toBeInTheDocument();
   });
 
+  it('renders the trigger as an h3 by default, or at the given level', () => {
+    const { rerender } = render(
+      <SimpleAccordion title="Raw data">
+        <p>Payload.</p>
+      </SimpleAccordion>,
+    );
+
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Raw data' }),
+    ).toBeInTheDocument();
+
+    rerender(
+      <SimpleAccordion title="Raw data" headingLevel={5}>
+        <p>Payload.</p>
+      </SimpleAccordion>,
+    );
+
+    expect(
+      screen.getByRole('heading', { level: 5, name: 'Raw data' }),
+    ).toBeInTheDocument();
+  });
+
   it('honours defaultExpanded', () => {
     render(
       <SimpleAccordion title="Raw data" defaultExpanded>

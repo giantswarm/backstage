@@ -17,7 +17,7 @@ import { dump } from 'js-yaml';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import {
@@ -39,6 +39,7 @@ import { shortCommit } from '../../lib/skills';
 import {
   buildCatalogue,
   declaredToolset,
+  selectorLabel,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
@@ -117,10 +118,10 @@ const useStyles = makeStyles(theme => ({
 // lineWidth: -1 keeps prompts and URLs unfolded; noRefs avoids YAML anchors.
 const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
 
-/** The one-line Tools summary: the loud labels, or a selector count. */
+/** The one-line Tools summary: the loud labels, or the selectors by their labels. */
 function toolsetSummaryLabel(
   shape: 'none' | 'full' | 'composed',
-  count: number,
+  declared: string[],
 ): string {
   if (shape === 'none') {
     return 'No tools';
@@ -128,7 +129,7 @@ function toolsetSummaryLabel(
   if (shape === 'full') {
     return 'Full gateway access';
   }
-  return `${count} selector${count === 1 ? '' : 's'}`;
+  return declared.map(selectorLabel).join(', ');
 }
 
 function SummaryItem({
@@ -333,10 +334,12 @@ export function NewAgentReviewPage() {
   const shape = toolsetShape(declared);
 
   // Persist the same deterministic avatar the UI renders onto the resource, as
-  // the size-agnostic canonical URL. Seeded by the technical name so it matches
-  // the created agent; undefined when the installation has no configured base
-  // domain (then the chart keeps its default).
-  const buildAvatarUrl = useAgentAvatarUrl();
+  // the size-agnostic canonical URL on the installation's own avatars host —
+  // what every A2A client loads, unlike the portal's backend-proxied `<img>`.
+  // Seeded by the technical name so it matches the created agent; undefined
+  // when the installation has no configured base domain (then the chart keeps
+  // its default).
+  const buildIconUrl = useAgentIconUrl();
 
   // The form as agent-manager's create contract. Memoized so the dry run is not
   // re-requested on every re-render — this page re-renders as the queries below
@@ -346,9 +349,9 @@ export function NewAgentReviewPage() {
     () =>
       agentSpecOf(state, {
         toolset: declared,
-        iconUrl: buildAvatarUrl(state.installation, state.slug),
+        iconUrl: buildIconUrl(state.installation, state.slug),
       }),
-    [state, declared, buildAvatarUrl],
+    [state, declared, buildIconUrl],
   );
   const namespace = spec.namespace;
 
@@ -570,7 +573,7 @@ export function NewAgentReviewPage() {
           </SummaryItem>
           <SummaryItem label="Tools">
             <Text variant="body-small">
-              {toolsetSummaryLabel(shape, declared.length)}
+              {toolsetSummaryLabel(shape, declared)}
             </Text>
             <Text variant="body-x-small" color="secondary">
               <span className={classes.code}>{declared.join(', ')}</span>

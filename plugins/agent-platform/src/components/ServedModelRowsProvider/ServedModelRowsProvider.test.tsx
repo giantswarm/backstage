@@ -1,7 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServedModel } from '../../lib/serving';
-import type { WiringState } from '../../hooks/useAutoWireServedModels';
 import type { ServingContextValue } from '../ServingProvider';
 import type { ModelConfigsContextValue } from '../ModelConfigsProvider';
 import {
@@ -11,7 +10,6 @@ import {
 
 const mockUseServing = jest.fn<Partial<ServingContextValue>, []>();
 const mockUseModelConfigs = jest.fn<Partial<ModelConfigsContextValue>, []>();
-const mockUseAutoWireServedModels = jest.fn();
 
 jest.mock('../ServingProvider', () => ({
   useServing: () => mockUseServing(),
@@ -19,10 +17,8 @@ jest.mock('../ServingProvider', () => ({
 jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => mockUseModelConfigs(),
 }));
-jest.mock('../../hooks/useAutoWireServedModels', () => ({
-  useAutoWireServedModels: (...args: unknown[]) =>
-    mockUseAutoWireServedModels(...args),
-}));
+
+const ROUTE = 'https://models.example.test/kserve/qwen3-14b';
 
 const qwen: ServedModel = {
   id: 'inst-1/kserve/kserve/qwen3-14b',
@@ -30,11 +26,10 @@ const qwen: ServedModel = {
   backend: 'kserve',
   name: 'qwen3-14b',
   namespace: 'kserve',
-  modelSource: 'hf://Qwen/Qwen3-14B',
-  runtime: 'kserve-vllm',
+  modelSource: 'Qwen/Qwen3-14B',
   readiness: 'ready',
-  internalUrl: 'http://qwen3-14b-predictor.kserve.svc.cluster.local',
-  endpointHosts: ['qwen3-14b-predictor.kserve.svc.cluster.local'],
+  internalUrl: ROUTE,
+  endpointHosts: ['models.example.test'],
 };
 
 // A model whose backend already knows its ModelConfig (model-manager wired it).
@@ -73,7 +68,6 @@ const Rows = () => {
         <li key={row.id}>
           {row.id}: used by{' '}
           {row.usedBy.map(consumer => consumer.name).join(',') || 'nobody'}
-          {row.wiring ? ` (${row.wiring.status})` : ''}
         </li>
       ))}
     </ul>
@@ -84,25 +78,18 @@ describe('ServedModelRowsProvider', () => {
   beforeEach(() => {
     mockUseServing.mockReset();
     mockUseModelConfigs.mockReset();
-    mockUseAutoWireServedModels.mockReset();
     mockUseServing.mockReturnValue({
       installations: ['inst-1'],
       servedModels: [qwen, smollm],
       servedModelFor: (_installation, lookup) =>
-        lookup.endpoint?.includes('qwen3-14b-predictor') ? qwen : undefined,
+        lookup.endpoint?.includes('/kserve/qwen3-14b') ? qwen : undefined,
     });
     mockUseModelConfigs.mockReturnValue({
       isLoading: false,
       modelConfigsFor: () => [
-        modelConfig(
-          'qwen3-14b',
-          'http://qwen3-14b-predictor.kserve.svc.cluster.local/v1',
-        ),
+        modelConfig('qwen3-14b', `${ROUTE}/v1`),
         modelConfig('claude'),
       ],
-    });
-    mockUseAutoWireServedModels.mockReturnValue({
-      wiringFor: () => undefined,
     });
   });
 
@@ -121,13 +108,9 @@ describe('ServedModelRowsProvider', () => {
     ).toBeInTheDocument();
   });
 
-  it('hands the joined rows to the auto-wiring and reports its state per row', () => {
-    const wiring: WiringState = { status: 'wiring' };
-    mockUseAutoWireServedModels.mockReturnValue({
-      wiringFor: (id: string) => (id === qwen.id ? wiring : undefined),
-    });
+  it('lists a model nobody points at as used by nobody', () => {
     mockUseModelConfigs.mockReturnValue({
-      isLoading: true,
+      isLoading: false,
       modelConfigsFor: () => [],
     });
 
@@ -137,16 +120,12 @@ describe('ServedModelRowsProvider', () => {
       </ServedModelRowsProvider>,
     );
 
-    const [candidates, , options] = mockUseAutoWireServedModels.mock.calls[0];
-    expect(candidates.map((row: ServedModel) => row.id)).toEqual([
-      qwen.id,
-      smollm.id,
-    ]);
-    expect(options).toEqual({ modelConfigsLoading: true });
     expect(
-      screen.getByText(
-        'inst-1/kserve/kserve/qwen3-14b: used by nobody (wiring)',
-      ),
+      screen.getByText('inst-1/kserve/kserve/qwen3-14b: used by nobody'),
+    ).toBeInTheDocument();
+    // The backend's own ModelConfig still counts.
+    expect(
+      screen.getByText('inst-1/ollama//smollm2:135m: used by smollm2'),
     ).toBeInTheDocument();
   });
 

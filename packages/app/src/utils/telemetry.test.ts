@@ -518,6 +518,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/models/gazelle/agent-platform/gpt-4o',
       '/agent-platform/models/capacity',
       '/plans',
+      '/bot-prs',
       '/plans/pr/22',
       '/roadmap',
       '/roadmap/items/PVTI_abc123',

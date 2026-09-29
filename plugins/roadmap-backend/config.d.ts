@@ -5,12 +5,10 @@ export interface Config {
      * Board key served by this portal (`roadmap` or `customer`, as pro names
      * them). When unset, the roadmap endpoints return 503 (the plugin is
      * effectively disabled).
-     * @visibility frontend
      */
     board?: string;
     /**
      * Teams shown by default in the frontend's filter.
-     * @visibility frontend
      */
     teams?: string[];
 
@@ -24,7 +22,6 @@ export interface Config {
     muster?: {
       /**
        * Name of the muster installation in `muster.installations`.
-       * @visibility frontend
        */
       installation: string;
       /** Name of the pro MCPServer in that muster (the `core_auth_login` target). */

@@ -1,8 +1,10 @@
+import { ConfigReader } from '@backstage/config';
+import { setSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import {
   __resetInstallationsConfigForTests,
   getInstallationsConfig,
   getInstallationsConfigSnapshot,
-  normalizeInstallationsConfig,
+  readInstallationsConfig,
   setInstallationsConfig,
   subscribeInstallationsConfig,
 } from './installationsConfig';
@@ -12,19 +14,33 @@ describe('installationsConfig source', () => {
     __resetInstallationsConfigForTests();
   });
 
-  it('normalizes the backend response into a name-carrying array', () => {
-    const normalized = normalizeInstallationsConfig({
-      golem: { pipeline: 'stable', baseDomain: 'golem.example.com' },
-      gaggle: { pipeline: 'testing' },
+  it('reads gs.installations of a signed-in config as a name-carrying array', () => {
+    const config = new ConfigReader({
+      gs: {
+        installations: {
+          golem: { pipeline: 'stable', baseDomain: 'golem.example.com' },
+          gaggle: { pipeline: 'testing' },
+        },
+      },
     });
 
-    expect(normalized).toEqual([
+    expect(readInstallationsConfig(config)).toEqual([
       { name: 'golem', pipeline: 'stable', baseDomain: 'golem.example.com' },
       { name: 'gaggle', pipeline: 'testing' },
     ]);
+    // The same config yields the same array: snapshots stay stable.
+    expect(readInstallationsConfig(config)).toBe(
+      readInstallationsConfig(config),
+    );
   });
 
-  it('has no snapshot before it is populated', () => {
+  it('reads a signed-in config without installations as none', () => {
+    setSignedInConfig(new ConfigReader({ gs: { adminGroups: [] } }));
+
+    expect(getInstallationsConfigSnapshot()).toEqual([]);
+  });
+
+  it('has no snapshot before the signed-in config is published', () => {
     expect(getInstallationsConfigSnapshot()).toBeUndefined();
   });
 

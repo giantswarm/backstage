@@ -369,10 +369,12 @@ describe('ToolsetResolutionList', () => {
       status: 'loading',
     });
 
-    expect(screen.getByText('Resolving the toolset…')).toBeInTheDocument();
     expect(
-      screen.getByRole('progressbar', { name: 'Resolving the toolset' }),
+      await screen.findByRole('progressbar', {
+        name: 'Resolving the toolset…',
+      }),
     ).toBeInTheDocument();
+    expect(screen.getByText('Resolving the toolset…')).toBeInTheDocument();
   });
 
   it('renders the non-resolution outcomes as their messages, never as an empty list', async () => {

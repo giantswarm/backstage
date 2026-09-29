@@ -43,6 +43,34 @@ const wireOptionalBoolean = z
   .transform(value => (typeof value === 'boolean' ? value : undefined))
   .optional();
 
+/** The non-empty strings of an array, else `undefined`. */
+const wireStringList = z
+  .unknown()
+  .transform(value =>
+    Array.isArray(value)
+      ? value.filter(
+          (item): item is string => typeof item === 'string' && item !== '',
+        )
+      : undefined,
+  )
+  .optional();
+
+/**
+ * How a model is placed on kserve (model-manager#190): `split` — one model
+ * across the nodes of a fast link, tensor parallel over it — or `copies`,
+ * one copy per node.
+ */
+export type ModelManagerPlacement = 'split' | 'copies';
+
+const wirePlacement = z
+  .unknown()
+  .transform(value =>
+    value === 'split' || value === 'copies'
+      ? (value as ModelManagerPlacement)
+      : undefined,
+  )
+  .optional();
+
 /**
  * The capability flags `GET /api/v1/backend` reports. A false flag means the
  * matching operation answers `501 unsupported` on this installation, so the
@@ -178,7 +206,7 @@ export const modelConfigRefSchema = z.looseObject({
   apiVersion: wireString,
   provider: wireString,
   model: wireString,
-  /** `spec.model` — the name the provider serves the model under (kserve: the InferenceService name). */
+  /** `spec.model` — the name the provider serves the model under (kserve: `spec.model.name` of the LLMInferenceService). */
   providerModel: wireString,
   /** `openAI.baseUrl` or `ollama.host`. */
   endpoint: wireString,
@@ -202,7 +230,49 @@ export const modelConfigRefSchema = z.looseObject({
 
 export type ModelConfigRef = z.infer<typeof modelConfigRefSchema>;
 
+/**
+ * One step of a served model's timeline (model-manager 0.24.0, kserve):
+ * `scheduling`, `nodeStarting`, `downloadingWeights`, `pullingImage`,
+ * `loading`, `routing`, `ready`, in that order. The `downloadingWeights`
+ * step carries the weights' size (`bytesTotal`), the progress where the
+ * cache agent reports it (`bytesCompleted`) and, once done, whether the
+ * claim already held the weights (`cached`).
+ */
+export const modelManagerServeStepSchema = z.looseObject({
+  name: z.string(),
+  state: wireString,
+  since: wireString,
+  finishedAt: wireString,
+  reason: wireString,
+  message: wireString,
+  bytesTotal: wireNumber,
+  bytesCompleted: wireNumber,
+  cached: wireOptionalBoolean,
+});
+export type ModelManagerServeStep = z.infer<typeof modelManagerServeStepSchema>;
+
 /** One entry of `GET /api/v1/loaded`, and `Model.running`. */
+/** KServe (model-manager 1.1.0 on) — the runtime serving a Ready model, as its server reports it. */
+export const modelManagerRuntimeSchema = z.looseObject({
+  /** `vllm`, what the llm-d template starts. */
+  name: z.string(),
+  /** The server's `GET /version`, as it answers (a source build: `0.1.dev1+g<commit>`). */
+  version: wireString,
+});
+
+/**
+ * KServe (model-manager 1.1.0 on) — one API a served model answers: a route
+ * its running server registered, in agentgateway's format vocabulary.
+ */
+export const modelManagerInterfaceSchema = z.looseObject({
+  /** `Completions` (chat completions), `Responses`, `Messages`, `AnthropicTokenCount`, `Embeddings`. */
+  type: z.string(),
+  /** The route, relative to the model's `endpoint` (`/v1/chat/completions`). */
+  path: z.string(),
+});
+
+export type ModelManagerInterface = z.infer<typeof modelManagerInterfaceSchema>;
+
 export const modelManagerLoadedModelSchema = z.looseObject({
   name: z.string(),
   digest: wireString,
@@ -215,6 +285,10 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   /** Inference URL (KServe). */
   endpoint: wireString,
   node: wireString,
+  /** KServe — how the model is placed: `split` across `nodes`, or `copies`. */
+  placement: wirePlacement,
+  /** KServe — the nodes of a split, in rank order (the first serves the API). */
+  nodes: wireStringList,
   /**
    * Ollama `loaded`; KServe — the serving object's state: `Ready`,
    * `NotReady` (a condition says so), `Pending` (no verdict yet, or — from
@@ -237,16 +311,15 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   /** KServe — the serving object's name (also the served model name). */
   resource: wireString,
   /**
-   * KServe — the serving object's kind behind `resource`: `InferenceService`
-   * or `LLMInferenceService` (model-manager 0.23.4 on; absent before, when
-   * every object was an InferenceService).
+   * KServe — the serving object's kind behind `resource`: `LLMInferenceService`
+   * (model-manager 0.23.4 on; absent before).
    */
   kind: wireString,
-  /** KServe — the preset the InferenceService was created from. */
+  /** KServe — the preset the LLMInferenceService was composed from. */
   preset: wireString,
   /** KServe — accelerators the predictor requests. */
   gpus: wireNumber,
-  /** KServe — `app.kubernetes.io/managed-by` of the InferenceService (model-manager, backstage, …). */
+  /** KServe — `app.kubernetes.io/managed-by` of the LLMInferenceService (model-manager, …). */
   managedBy: wireString,
   /** The backend serving it (model-manager 0.17 on); absent = the descriptor's. */
   backend: wireString,
@@ -254,6 +327,50 @@ export const modelManagerLoadedModelSchema = z.looseObject({
   device: wireString,
   /** Lemonade — exempt from slot eviction (loaded with keepAlive -1). */
   pinned: wireOptionalBoolean,
+  /**
+   * KServe (model-manager 0.24.0 on) — where the serve stands:
+   * `scheduling`, `nodeStarting`, `downloadingWeights`, `pullingImage`,
+   * `loading`, `routing`, `ready`, `failed` or `terminating`. Absent on the
+   * backends without a serve lifecycle (Ollama, LM Studio, Lemonade).
+   */
+  phase: wireString,
+  /** KServe (0.24.0 on) — the whole timeline, one step per phase in order. */
+  steps: z.array(modelManagerServeStepSchema).optional(),
+  /** KServe (1.1.0 on) — the runtime of a Ready model, as its server reports it. */
+  runtime: z
+    .unknown()
+    .transform(value => {
+      const parsed = modelManagerRuntimeSchema.safeParse(value);
+      return parsed.success ? parsed.data : undefined;
+    })
+    .optional(),
+  /**
+   * KServe (1.1.0 on) — the API interfaces the Ready model's server
+   * registered; absent before the model is Ready, empty with
+   * `interfacesReason` when the read found none. An entry that is no
+   * interface is dropped.
+   */
+  interfaces: z
+    .unknown()
+    .transform(value =>
+      Array.isArray(value)
+        ? value.flatMap(item => {
+            const parsed = modelManagerInterfaceSchema.safeParse(item);
+            return parsed.success ? [parsed.data] : [];
+          })
+        : undefined,
+    )
+    .optional(),
+  /** KServe (1.1.0 on) — why `interfaces` is empty on a Ready model. */
+  interfacesReason: wireString,
+  /**
+   * KServe (1.2.0 on), on an installation with the platform's LLM endpoint —
+   * the model's name there, what a client sends as `model`; `endpoint` is
+   * then the endpoint's URL.
+   */
+  publicName: wireString,
+  /** KServe (1.2.0 on) — why a served model is not on the LLM endpoint. */
+  publicNameReason: wireString,
 });
 
 export type ModelManagerLoadedModel = z.infer<
@@ -297,14 +414,14 @@ export const modelManagerModelSchema = z.looseObject({
   node: wireString,
   /**
    * KServe — whether the weights are in the node's cache: false for a model
-   * known only from a preset or a running InferenceService whose weights are
+   * known only from a preset or a running LLMInferenceService whose weights are
    * not cached yet. Absent (undefined) means the backend lists downloads only.
    */
   downloaded: z
     .unknown()
     .transform(value => (typeof value === 'boolean' ? value : undefined))
     .optional(),
-  /** KServe — the cache directory, which is the InferenceService name the storage-initializer uses. */
+  /** KServe — the cache directory, which is the LLMInferenceService name the storage-initializer uses. */
   path: wireString,
   /** KServe — the serving preset whose model this is. */
   preset: wireString,
@@ -392,7 +509,7 @@ export function isJobActive(job: Pick<ModelManagerJob, 'phase'>): boolean {
 
 /** One entry of `GET /api/v1/presets` (kserve): a published ServingPreset, resolved for clients. */
 export const modelManagerPresetSchema = z.looseObject({
-  /** Also the InferenceService name a load creates. */
+  /** Also the LLMInferenceService name a load creates. */
   name: z.string(),
   displayName: wireString,
   description: wireString,
@@ -485,8 +602,12 @@ export const modelManagerFitResultSchema = z.looseObject({
   weightsSource: wireString,
   overheadBytes: wireNumber,
   requiredBytes: wireNumber,
-  /** What a pull fetches (all repository files). */
+  /** What a pull fetches (all repository files; a model image's layers, 0 on a node that holds it). */
   downloadBytes: wireNumber,
+  /** oci:// presets: the nodes whose kubelet holds the model image already. */
+  prePulledNodes: wireStringList,
+  /** The nodes the preset serves on already. */
+  servingNodes: wireStringList,
   /** Node the check was made against. */
   node: wireString,
   budgetBytes: wireNumber,
@@ -501,9 +622,53 @@ export const modelManagerFitResultSchema = z.looseObject({
   tokenConfigured: wireBoolean(false),
   /** The model is already in the node's cache. */
   cached: wireBoolean(false),
+  /** How `cached` was decided (model-manager 0.24.0): `scan`, `index`, `unknown` — then `cached: false` is no verdict — or `oci-image`, a preset served from its model image. */
+  cacheSource: wireString,
+  /** The instance type the pool's node comes as when the load scales it from zero. */
+  instanceType: wireString,
+  /** The placement judged: `copies`, or `split` across `nodes` (`node` their first, the figures the tightest node's). */
+  placement: wirePlacement,
+  /** A split's nodes, in rank order. */
+  nodes: wireStringList,
+  /** The fast link a split runs over. */
+  fastLink: wireString,
+  /** The placement model-manager recommends for the model here; absent before model-manager#190. */
+  recommended: wirePlacement,
+  /** The nodes of the recommendation. */
+  recommendedNodes: wireStringList,
 });
 
 export type ModelManagerFitResult = z.infer<typeof modelManagerFitResultSchema>;
+
+/**
+ * `load_model`'s answer: the object it created (`running.resource`,
+ * `running.kind`), the fit verdict the load was judged by (`fit`, the
+ * `check_fit` shape) and the initial timeline (`running.phase`, `running.steps`).
+ */
+export const modelManagerLoadAnswerSchema = z.looseObject({
+  name: z.string(),
+  backend: wireString,
+  loaded: wireBoolean(false),
+  running: z
+    .looseObject({
+      resource: wireString,
+      kind: wireString,
+      status: wireString,
+      reason: wireString,
+      message: wireString,
+      phase: wireString,
+      steps: z.array(modelManagerServeStepSchema).optional(),
+    })
+    .optional(),
+  fit: modelManagerFitResultSchema.optional(),
+  /** The preset served already: nothing was created (model-manager#188). */
+  alreadyServing: wireOptionalBoolean,
+  /** The nodes the already-served preset runs on; empty while unknown. */
+  servingNodes: wireStringList,
+});
+export type ModelManagerLoadAnswer = z.infer<
+  typeof modelManagerLoadAnswerSchema
+>;
 
 /**
  * One entry of `GET /api/v1/nodes`: a node's memory budget and download cache.
@@ -545,6 +710,13 @@ export const modelManagerNodeSchema = z.looseObject({
   eligible: wireOptionalBoolean,
   /** Why not, when `eligible` is false. */
   eligibilityReason: wireString,
+  /**
+   * `eligible` false only for the cache-claim pin: the node still serves a
+   * preset from its model image (oci://), just not a Hugging Face one.
+   */
+  modelImageEligible: wireOptionalBoolean,
+  /** The fast link the node belongs to (kserve): a model can be split across its nodes. */
+  fastLink: wireString,
   /** The download cache on this node; absent when the node holds none. */
   cache: z
     .unknown()

@@ -58,7 +58,12 @@ this portal is answered by the unauthenticated reachability probe.
 the same `name` as a fleet installation overrides its `url`, `headers`,
 `prometheusServer` and `authProvider` field by field; an entry whose name the
 fleet configuration does not know adds an installation (then `url` is
-required):
+required). `authProvider` is the installation's sign-in provider,
+`oidc-<installation>`: the provider whose Dex issues the token the entry is
+reached with (the main sign-in provider, `gs.authProvider`, on the home
+installation; the token the cluster token broker mints from that session on
+every other one). `mcp-*` names are dedicated `auth.providers` PKCE providers,
+which single sign-on replaced; they are not the value here.
 
 ```yaml
 muster:
@@ -69,7 +74,7 @@ muster:
     # Adds an installation the fleet configuration does not know.
     - name: lab
       url: https://muster.lab.example/mcp
-      authProvider: mcp-muster
+      authProvider: oidc-lab
 ```
 
 `GET /api/muster/installations` reports each installation with its `source`

@@ -652,25 +652,37 @@ describe('createRouter', () => {
   });
 
   describe('/tree', () => {
-    const listing: Record<string, unknown[]> = {
-      '/': [
-        { name: 'README.md', path: 'README.md', type: 'file', size: 10 },
-        { name: 'plan-a', path: 'plan-a', type: 'dir' },
+    const treeEntry = (path: string, type: 'blob' | 'tree', size?: number) => ({
+      path,
+      type,
+      mode: type === 'tree' ? '040000' : '100644',
+      sha: `sha-${path}`,
+      url: `https://api.github.com/repos/${REPO}/git/${type}s/sha-${path}`,
+      ...(size !== undefined && { size }),
+    });
+    const repositoryTree = {
+      sha: 'head-sha',
+      truncated: false,
+      tree: [
+        treeEntry('README.md', 'blob', 10),
+        treeEntry('plan-a', 'tree'),
+        treeEntry('plan-a/PRD.md', 'blob', 20),
+        treeEntry('plan-a/sub', 'tree'),
+        treeEntry('plan-a/sub/note.md', 'blob', 5),
+        // A submodule: neither a file nor a folder of the plan repository.
+        {
+          path: 'vendored',
+          type: 'commit',
+          mode: '160000',
+          sha: 'sub',
+          url: '',
+        },
       ],
-      'plan-a/': [
-        { name: 'PRD.md', path: 'plan-a/PRD.md', type: 'file', size: 20 },
-        { name: 'sub', path: 'plan-a/sub', type: 'dir' },
-      ],
-      'plan-a/sub/': [
-        { name: 'note.md', path: 'plan-a/sub/note.md', type: 'file', size: 5 },
-      ],
+      count: 6,
     };
 
-    it('walks the directories of the default branch', async () => {
-      github.answers.set(
-        'get_file_contents',
-        (args: Record<string, unknown>) => listing[args.path as string],
-      );
+    it('reads the recursive tree of the default branch in one call', async () => {
+      github.answers.set('get_repository_tree', repositoryTree);
 
       const res = await request(app).get('/tree');
 
@@ -685,15 +697,25 @@ describe('createRouter', () => {
           { path: 'plan-a/sub/note.md', type: 'blob', size: 5 },
         ],
       });
-      expect(github.calls.every(c => c.args.ref === undefined)).toBe(true);
+      expect(github.calls).toEqual([
+        {
+          tool: 'get_repository_tree',
+          args: {
+            owner: 'giantswarm',
+            repo: 'bumblebee-plans',
+            recursive: true,
+          },
+          authToken: 'dex-id-token',
+        },
+      ]);
     });
 
     it('resolves a branch name to its git ref', async () => {
       github.answers.set(
-        'get_file_contents',
+        'get_repository_tree',
         (args: Record<string, unknown>) => {
-          expect(args.ref).toBe('refs/heads/plan/klaus-agent-type');
-          return [];
+          expect(args.tree_sha).toBe('refs/heads/plan/klaus-agent-type');
+          return { sha: 'x', truncated: false, tree: [], count: 0 };
         },
       );
       const res = await request(app)
@@ -701,6 +723,69 @@ describe('createRouter', () => {
         .query({ ref: 'plan/klaus-agent-type' });
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ truncated: false, tree: [] });
+    });
+
+    it("passes GitHub's truncation on", async () => {
+      github.answers.set('get_repository_tree', {
+        ...repositoryTree,
+        truncated: true,
+      });
+      const res = await request(app).get('/tree');
+      expect(res.status).toBe(200);
+      expect(res.body.truncated).toBe(true);
+    });
+
+    it('fetches the tree once for concurrent and repeated requests', async () => {
+      github.answers.set('get_repository_tree', repositoryTree);
+      github.answers.set('list_pull_requests', []);
+
+      const [tree, epics] = await Promise.all([
+        request(app).get('/tree'),
+        request(app).get('/epics'),
+      ]);
+      const again = await request(app).get('/tree');
+
+      expect(tree.status).toBe(200);
+      expect(epics.status).toBe(200);
+      expect(again.status).toBe(200);
+      expect(
+        github.calls.filter(c => c.tool === 'get_repository_tree'),
+      ).toHaveLength(1);
+      expect(
+        github.calls.filter(
+          c => c.tool === 'get_file_contents' && c.args.path === '/',
+        ),
+      ).toHaveLength(0);
+    });
+
+    it('answers a refused pace as 429 and asks GitHub again next time', async () => {
+      github.answers.set('get_repository_tree', repositoryTree);
+      github.failNextCallsWith = new Error(
+        'failed to call tool: transport error: request failed with status 429: too many requests',
+      );
+
+      const refused = await request(app).get('/tree');
+      expect(refused.status).toBe(429);
+      expect(refused.body.error).toMatchObject({
+        name: 'TooManyRequestsError',
+        message: expect.stringContaining('429'),
+      });
+
+      const res = await request(app).get('/tree');
+      expect(res.status).toBe(200);
+      expect(res.body.tree).toHaveLength(5);
+      expect(
+        github.calls.filter(c => c.tool === 'get_repository_tree'),
+      ).toHaveLength(2);
+    });
+
+    it('reads a REST rate limit as 429, not as a permission', async () => {
+      github.failNextCallsWith = new Error(
+        'failed to get repository tree: GET https://api.github.com/repos/x/y/git/trees/HEAD: 403 API rate limit exceeded for user ID 1.',
+      );
+      const res = await request(app).get('/tree');
+      expect(res.status).toBe(429);
+      expect(res.body.error.name).toBe('TooManyRequestsError');
     });
   });
 
@@ -745,16 +830,30 @@ describe('createRouter', () => {
 
   describe('/epics', () => {
     it('collects epics of merged plans and open pull requests', async () => {
-      github.answers.set(
-        'get_file_contents',
-        (args: Record<string, unknown>) =>
-          args.path === '/'
-            ? [{ name: 'plan-a', path: 'plan-a', type: 'dir' }]
-            : [
-                { name: 'PRD.md', path: 'plan-a/PRD.md', type: 'file' },
-                { name: 'ADR.md', path: 'plan-a/ADR.md', type: 'file' },
-              ],
-      );
+      github.answers.set('get_repository_tree', {
+        sha: 'head-sha',
+        truncated: false,
+        tree: [
+          { path: 'plan-a', type: 'tree', mode: '040000', sha: 'a', url: '' },
+          {
+            path: 'plan-a/PRD.md',
+            type: 'blob',
+            mode: '100644',
+            sha: 'b',
+            url: '',
+            size: 20,
+          },
+          {
+            path: 'plan-a/ADR.md',
+            type: 'blob',
+            mode: '100644',
+            sha: 'c',
+            url: '',
+            size: 30,
+          },
+        ],
+        count: 3,
+      });
       github.contentAnswers.set(
         'get_file_contents:plan-a/PRD.md',
         fileContent(

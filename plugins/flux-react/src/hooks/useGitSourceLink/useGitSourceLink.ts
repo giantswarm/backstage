@@ -1,4 +1,4 @@
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { parseFluxRevision } from '../../utils/parseFluxRevision';
 
 const PLACEHOLDER_REGEXP = /\$\{\{(\w+)\}\}/g;
@@ -55,8 +55,10 @@ export function useGitSourceLink({
   revision?: string;
   path?: string;
 }): string | undefined {
-  const config = useApi(configApiRef);
-  const customPatternsConfig = config.getOptionalConfigArray(
+  // The custom patterns are part of the signed-in config (they name Git
+  // hosts); the built-in GitHub patterns apply while it loads.
+  const { config } = useSignedInConfig();
+  const customPatternsConfig = config?.getOptionalConfigArray(
     'flux.gitRepositoryPatterns',
   );
 

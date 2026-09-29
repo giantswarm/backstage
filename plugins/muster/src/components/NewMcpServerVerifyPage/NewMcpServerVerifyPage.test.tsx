@@ -275,6 +275,34 @@ describe('NewMcpServerVerifyPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('treats Awaiting Session as verified, with nothing to sign in to', async () => {
+    // A forwardToken/tokenExchange server is used with each person's own
+    // identity: muster holds no connection of its own, so between sessions it
+    // reads Awaiting Session. Not a failure, not a sign-in.
+    listServers.mockResolvedValue({
+      mcpServers: [runtime({ state: 'Awaiting Session', toolsCount: 0 })],
+    });
+
+    await renderVerifyStep();
+
+    expect(
+      await screen.findByText(
+        "This server connects per session — that's normal",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Tools appear here once your muster session has connected to the server.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('The server is not connecting'),
+    ).not.toBeInTheDocument();
+  });
+
   it("surfaces muster's status message on failure and offers the edit loop", async () => {
     listServers.mockResolvedValue({
       mcpServers: [

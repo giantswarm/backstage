@@ -319,6 +319,18 @@ describe('presenceByMc', () => {
     expect(presence[0].severity).toBe('ok');
   });
 
+  it('treats Awaiting Session as healthy: the federated fleet between sessions', () => {
+    // Every remote cluster's server is served per session through token
+    // exchange; with nobody connected the whole fleet reads Awaiting Session,
+    // which must not paint every pill amber.
+    const presence = presenceByMc([
+      makeServer({ name: 'k8s-alpha', mc: 'alpha', state: 'Awaiting Session' }),
+      makeServer({ name: 'k8s-beta', mc: 'beta', state: 'Awaiting Session' }),
+    ]);
+    expect(presence.map(p => p.severity)).toEqual(['ok', 'ok']);
+    expect(presence[0].state).toBe('Awaiting Session');
+  });
+
   it('names a deactivated instance rather than its Disconnected symptom', () => {
     // The pill still counts as degraded (the cluster's tools are unavailable),
     // but the text says why, so nobody goes looking for an outage.

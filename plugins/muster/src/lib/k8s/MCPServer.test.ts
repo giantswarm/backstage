@@ -182,6 +182,84 @@ describe('mcpServerStateSeverity', () => {
   it('treats Auth Required as healthy, not a warning', () => {
     expect(mcpServerStateSeverity('Auth Required')).toBe('ok');
   });
+
+  it('treats Awaiting Session as healthy: a per-session server between sessions', () => {
+    // muster holds no connection of its own to a forwardToken/tokenExchange
+    // server; a broken exchange reads Failed there, never Awaiting Session.
+    expect(mcpServerStateSeverity('Awaiting Session')).toBe('ok');
+  });
+});
+
+describe('MCPServer Ready condition and per-session auth', () => {
+  function makeConditionServer(
+    conditions: unknown,
+    auth?: Record<string, unknown>,
+  ): MCPServer {
+    return new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'remote-mcp-kubernetes' },
+        spec: { type: 'streamable-http', ...(auth ? { auth } : {}) },
+        status: { state: 'Awaiting Session', conditions },
+      } as never,
+      'gazelle',
+    );
+  }
+
+  const READY = {
+    type: 'Ready',
+    status: 'True',
+    reason: 'AwaitingSession',
+    message:
+      'Served per session: each caller\'s token is exchanged (RFC 8693) at https://dex.remote.example.test/token through connector "remote-oidc"; muster holds no connection of its own. No session is connected; the last exchange succeeded at 2026-09-21T12:41:03Z.',
+  };
+
+  it('reads the Ready condition and its message as the state explanation', () => {
+    const server = makeConditionServer([
+      { type: 'Other', status: 'False', message: 'not this one' },
+      READY,
+    ]);
+    expect(server.getReadyCondition()?.reason).toBe('AwaitingSession');
+    expect(server.getStateExplanation()).toBe(READY.message);
+  });
+
+  it('has no explanation on a muster that writes no conditions', () => {
+    expect(
+      makeConditionServer(undefined).getStateExplanation(),
+    ).toBeUndefined();
+    expect(
+      makeConditionServer([
+        { type: 'Ready', status: 'True', message: '  ' },
+      ]).getStateExplanation(),
+    ).toBeUndefined();
+  });
+
+  it("knows which servers are used with the caller's own identity", () => {
+    expect(
+      makeConditionServer([], {
+        type: 'oauth',
+        forwardToken: true,
+      }).isServedPerSession(),
+    ).toBe(true);
+    expect(
+      makeConditionServer([], {
+        type: 'oauth',
+        tokenExchange: { enabled: true, connectorId: 'remote-oidc' },
+      }).isServedPerSession(),
+    ).toBe(true);
+    // A sign-in through muster, a machine identity, no auth: not per session.
+    expect(
+      makeConditionServer([], { type: 'oauth' }).isServedPerSession(),
+    ).toBe(false);
+    expect(
+      makeConditionServer([], {
+        type: 'oauth',
+        tokenExchange: { enabled: false },
+      }).isServedPerSession(),
+    ).toBe(false);
+    expect(makeConditionServer([]).isServedPerSession()).toBe(false);
+  });
 });
 
 describe('serversHealthSummary', () => {

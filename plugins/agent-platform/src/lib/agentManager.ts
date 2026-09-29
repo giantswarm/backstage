@@ -444,7 +444,9 @@ export type UpdateAgentResult = {
 /**
  * `delete_agent`: what went. The shared per-namespace `OCIRepository` of the
  * chart stays while another release references it (or the check could not be
- * made) — `ociRepositoryKept` is agent-manager's reason, shown as given.
+ * made) — `ociRepositoryKept` is agent-manager's reason. Nothing renders it, or
+ * `requestedBy`: the reason names every other release in the namespace and the
+ * caller is the reader (see the toast rule in `docs/ui.md`).
  */
 export type DeleteAgentResult = {
   name: string;

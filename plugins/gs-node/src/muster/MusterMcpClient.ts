@@ -5,7 +5,11 @@ import {
   experimental_createMCPClient as createMCPClient,
   MCPClient,
 } from '@ai-sdk/mcp';
-import { isClosedClientError, McpClientCache } from '../mcp';
+import {
+  describeMcpFailure,
+  isRecoverableSessionError,
+  McpClientCache,
+} from '../mcp';
 
 /**
  * The muster aggregator only exposes its meta-tools over MCP. Discovery
@@ -179,30 +183,53 @@ export interface McpContentItem {
 
 type ContentItem = McpContentItem;
 
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
- * The human-readable message of an errored tool result's text block. When the
- * text is itself a serialized MCP result (`{"isError":true,"content":[...]}` —
- * what `call_tool` puts in its envelope for a failed wrapped tool), return the
- * inner text block's text; otherwise the text already is the message.
+ * The text blocks of an errored tool result, the human-readable message first.
+ * When the text is itself a serialized MCP result (`{"isError":true,"content":[...]}`
+ * — what `call_tool` puts in its envelope for a failed wrapped tool), these are
+ * the inner text blocks; otherwise the text already is the message.
  */
-function errorTextOf(text: string): string {
+function errorTextsOf(text: string): string[] {
   let inner: unknown;
   try {
     inner = JSON.parse(text);
   } catch {
-    return text;
+    return [text];
   }
   if (inner === null || typeof inner !== 'object') {
-    return text;
+    return [text];
   }
   const content = (inner as { content?: unknown }).content;
   if (!Array.isArray(content)) {
-    return text;
+    return [text];
   }
-  const innerText = (content as ContentItem[]).find(
-    item => item?.type === 'text',
-  )?.text;
-  return innerText ?? text;
+  const texts = (content as ContentItem[])
+    .filter(item => item?.type === 'text' && typeof item.text === 'string')
+    .map(item => item.text as string);
+  return texts.length > 0 ? texts : [text];
+}
+
+/**
+ * A tool-level error (`isError`) of a muster call: the message is the tool's
+ * first text block, as before; `details` are its further text blocks,
+ * verbatim, where the tool answered more than one — cluster-manager's
+ * `delete_node_pool` puts its structured refusal (`{"refused": {nodes, models,
+ * hint}}`) in a second block next to the text. Backstage's error middleware
+ * serializes an error's own properties, so `details` reaches the frontend
+ * with the message.
+ */
+export class MusterToolError extends Error {
+  readonly name = 'MusterToolError';
+  readonly details: string[];
+
+  constructor(message: string, details: string[] = []) {
+    super(message);
+    this.details = details;
+  }
 }
 
 /**
@@ -257,21 +284,19 @@ export class MusterMcpClient {
       throw new NotFoundError(`Unknown muster meta-tool: ${metaTool}`);
     }
 
-    const { client, cacheKey } = await this.connect(options);
-    const tools = client.toolsFromDefinitions({
-      tools: [{ name: metaTool, inputSchema: { type: 'object' as const } }],
-    });
+    return this.withSessionRecovery(options, async client => {
+      const tools = client.toolsFromDefinitions({
+        tools: [{ name: metaTool, inputSchema: { type: 'object' as const } }],
+      });
 
-    const tool = tools[metaTool];
-    if (!tool || typeof tool.execute !== 'function') {
-      throw new ServiceUnavailableError(
-        `Muster meta-tool ${metaTool} has no executor`,
-      );
-    }
+      const tool = tools[metaTool];
+      if (!tool || typeof tool.execute !== 'function') {
+        throw new ServiceUnavailableError(
+          `Muster meta-tool ${metaTool} has no executor`,
+        );
+      }
 
-    let result;
-    try {
-      result = await tool.execute(args, {
+      const result: unknown = await tool.execute(args, {
         toolCallId: `muster-backend-${metaTool}`,
         messages: [],
         // ai@7 added a required `context` field to ToolExecutionOptions
@@ -279,12 +304,81 @@ export class MusterMcpClient {
         // context, so pass undefined.
         context: undefined,
       });
+      return result;
+    });
+  }
+
+  /**
+   * Run `op` on this caller's cached MCP client and, when it failed because
+   * the MCP session is gone, once more on a fresh client (a new `initialize`).
+   *
+   * A lost session is a normal event for an MCP client: the gateway in front
+   * of muster reaps sessions idle for its TTL, a gateway or muster roll drops
+   * them, a request lands on another replica. The server answers 404 for the
+   * id it forgot; the SDK's http transport then clears its id and reports the
+   * error without closing, so every later request would go out without a
+   * session id and be answered 400 -- until the cache TTL. Such a request was
+   * rejected before it reached the tool, so running it again is safe even for
+   * a mutation. Only a second failure reaches the caller, and any transport
+   * failure reaches them in plain words (see {@link explain}).
+   */
+  private async withSessionRecovery<T>(
+    options: { authToken?: string } | undefined,
+    op: (client: MCPClient) => Promise<T> | T,
+  ): Promise<T> {
+    const first = await this.connectOrExplain(options);
+    try {
+      return await op(first.client);
     } catch (error) {
-      this.handleRequestError(error, cacheKey);
-      throw error;
+      if (!isRecoverableSessionError(error)) {
+        throw this.explain(error);
+      }
+      this.cache.markDead(first.cacheKey, first.client);
+      this.logger.warn(
+        `Muster MCP session for '${this.installation.name}' was lost; re-initializing and retrying once`,
+        { cause: messageOf(error) },
+      );
     }
 
-    return result;
+    const second = await this.connectOrExplain(options);
+    try {
+      return await op(second.client);
+    } catch (error) {
+      if (isRecoverableSessionError(error)) {
+        this.cache.markDead(second.cacheKey, second.client);
+      }
+      throw this.explain(error);
+    }
+  }
+
+  private async connectOrExplain(options?: { authToken?: string }) {
+    try {
+      return await this.connect(options);
+    } catch (error) {
+      throw this.explain(error);
+    }
+  }
+
+  /**
+   * The error the caller gets for a failed MCP request. The SDK's transport
+   * text (`MCP HTTP Transport Error: POSTing to endpoint (HTTP 400): mcp:
+   * session header is required ...`) is for the log; the person reading the
+   * Models pages gets what happened in plain words, per installation. Errors
+   * that are not the transport's -- a tool's own error, a 401 that the
+   * frontend turns into its sign-in prompt -- pass through unchanged.
+   */
+  private explain(error: unknown): unknown {
+    const reason = describeMcpFailure(error);
+    if (reason === undefined) {
+      return error;
+    }
+    this.logger.warn(
+      `Muster MCP request to '${this.installation.name}' failed: ${reason}`,
+      { cause: messageOf(error) },
+    );
+    return new ServiceUnavailableError(
+      `${this.installation.name} did not answer: ${reason}`,
+    );
   }
 
   /**
@@ -309,15 +403,6 @@ export class MusterMcpClient {
       this.clientFactory(headers),
     );
     return { client, cacheKey };
-  }
-
-  private handleRequestError(error: unknown, cacheKey: string): void {
-    if (isClosedClientError(error)) {
-      this.logger.warn(
-        `Muster MCP client returned a closed-client error; reconnecting on the next request.`,
-      );
-      this.cache.markDead(cacheKey);
-    }
   }
 
   /**
@@ -478,15 +563,9 @@ export class MusterMcpClient {
     uri: string,
     options?: { authToken?: string },
   ): Promise<unknown> {
-    const { client, cacheKey } = await this.connect(options);
-
-    let result;
-    try {
-      result = await client.readResource({ uri });
-    } catch (error) {
-      this.handleRequestError(error, cacheKey);
-      throw error;
-    }
+    const result = await this.withSessionRecovery(options, client =>
+      client.readResource({ uri }),
+    );
 
     const text = result.contents.find(
       (content): content is typeof content & { text: string } =>
@@ -531,9 +610,11 @@ export class MusterMcpClient {
     const text = content?.find(item => item.type === 'text')?.text;
 
     if (isError) {
-      throw new Error(
-        (text === undefined ? undefined : errorTextOf(text)) ??
-          `Muster tool ${toolName} failed without an error message`,
+      const [message, ...details] =
+        text === undefined ? [] : errorTextsOf(text);
+      throw new MusterToolError(
+        message ?? `Muster tool ${toolName} failed without an error message`,
+        details,
       );
     }
 

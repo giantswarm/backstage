@@ -50,8 +50,8 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   useResources: () => ({ resources: [], isLoading: false, errors: [] }),
 }));
 
-jest.mock('../../hooks/useAgentAvatarUrl', () => ({
-  useAgentAvatarUrl: () => (installation: string, name: string) =>
+jest.mock('../../hooks/useAgentIconUrl', () => ({
+  useAgentIconUrl: () => (installation: string, name: string) =>
     `https://avatars.${installation}.example/v1/${name}.png`,
 }));
 
@@ -348,6 +348,10 @@ describe('NewAgentReviewPage', () => {
     );
     // The skills summary names the pin.
     expect(screen.getByText('@cb1fb76')).toBeInTheDocument();
+    // The Tools summary names the preset by its label, the selector below it.
+    expect(screen.getByText('Read-only tools').parentElement).toHaveTextContent(
+      'preset:read-only',
+    );
     // Validated against the chart schema agent-manager named.
     expect(
       screen.getByText(/Values validated against the chart's schema/),

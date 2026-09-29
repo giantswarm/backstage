@@ -2435,13 +2435,13 @@
             "properties": {
                 "apiKey": {
                     "type": "string",
-                    "description": "Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var)"
+                    "description": "Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var). Not needed when aiChat.anthropic.provider is vertex, where the Google service account is the credential instead. Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
         "authSessionSecret": {
             "type": "string",
-            "description": "Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var)"
+            "description": "Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
         },
         "aws": {
             "type": "object",
@@ -2450,11 +2450,11 @@
             "properties": {
                 "accessKeyID": {
                     "type": "string",
-                    "description": "AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var)"
+                    "description": "AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 },
                 "secretAccessKey": {
                     "type": "string",
-                    "description": "AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var)"
+                    "description": "AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2487,11 +2487,14 @@
                 },
                 "extraAppConfig": {
                     "type": "array",
-                    "description": "Extra app configuration files to inline into command arguments, each referencing a ConfigMap",
+                    "description": "Extra app configuration files to inline into command arguments, each referencing a ConfigMap. Backstage reads them at start and the chart does not render the ConfigMaps, so a change to one rolls the pod only through the entry's optional `checksum`: whoever renders the ConfigMap sets it to a hash of the ConfigMap's data, and the pod template's `checksum/extra-app-config` annotation changes with it",
                     "items": {
                         "type": "object",
                         "additionalProperties": false,
                         "properties": {
+                            "checksum": {
+                                "type": "string"
+                            },
                             "configMapRef": {
                                 "type": "string"
                             },
@@ -2606,7 +2609,7 @@
             "properties": {
                 "apiToken": {
                     "type": "string",
-                    "description": "CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var)"
+                    "description": "CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2688,7 +2691,7 @@
         },
         "dexAuthCredentials": {
             "type": "object",
-            "description": "Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars",
+            "description": "Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars. Both values of an entry are base64-encoded: the chart writes them into the Secret's `data` as is",
             "additionalProperties": {
                 "type": "object",
                 "required": [
@@ -2713,7 +2716,7 @@
             "properties": {
                 "mcpToken": {
                     "type": "string",
-                    "description": "Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var)"
+                    "description": "Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2735,7 +2738,7 @@
             "properties": {
                 "publicReadToken": {
                     "type": "string",
-                    "description": "GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var)"
+                    "description": "GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2777,11 +2780,11 @@
             "properties": {
                 "clientID": {
                     "type": "string",
-                    "description": "GitHub OAuth App client ID (exposed as GITHUB_OAUTH_CLIENT_ID env var)"
+                    "description": "GitHub OAuth App client ID (exposed as GITHUB_OAUTH_CLIENT_ID env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 },
                 "clientSecret": {
                     "type": "string",
-                    "description": "GitHub OAuth App client secret (exposed as GITHUB_OAUTH_CLIENT_SECRET env var)"
+                    "description": "GitHub OAuth App client secret (exposed as GITHUB_OAUTH_CLIENT_SECRET env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2795,7 +2798,7 @@
         },
         "google": {
             "type": "object",
-            "description": "Google Vertex AI provider settings for AI chat (used when aiChat.model is a gemini-* model)",
+            "description": "Google Vertex AI provider settings for AI chat (used by gemini-* models, and by claude-* models when aiChat.anthropic.provider is vertex)",
             "additionalProperties": false,
             "properties": {
                 "credentialsJson": {
@@ -2819,7 +2822,7 @@
             "properties": {
                 "apiToken": {
                     "type": "string",
-                    "description": "Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var)"
+                    "description": "Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2911,9 +2914,67 @@
             "description": "Node selector labels to constrain pod scheduling to specific nodes",
             "additionalProperties": true
         },
+        "observability": {
+            "type": "object",
+            "description": "OpenTelemetry trace export from the backend, as the standard OTEL_* variables. Nothing is exported while `endpoint` is empty.",
+            "additionalProperties": false,
+            "properties": {
+                "metrics": {
+                    "type": "object",
+                    "description": "Prometheus metrics export from the backend, on a `metrics` container port and Service port. Off by default: enabling it changes the pod's ports. The chart's network policies select the database pods only, so the scrape needs no policy of its own.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "description": "Start the OpenTelemetry SDK's Prometheus exporter (OTEL_METRICS_EXPORTER=prometheus) and serve `/metrics` on `port`."
+                        },
+                        "port": {
+                            "type": "integer",
+                            "description": "Port the Prometheus exporter listens on (OTEL_EXPORTER_PROMETHEUS_PORT), also the `metrics` container port and Service port.",
+                            "maximum": 65535,
+                            "minimum": 1
+                        }
+                    }
+                },
+                "otel": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "endpoint": {
+                            "type": "string",
+                            "description": "OTLP collector URL (OTEL_EXPORTER_OTLP_ENDPOINT), e.g. `http://otlp-gateway.kube-system.svc:4317` for gRPC. Empty: no export and none of the variables below is set."
+                        },
+                        "headers": {
+                            "type": "string",
+                            "description": "OTLP headers as `key=value` pairs separated by commas (OTEL_EXPORTER_OTLP_HEADERS), e.g. `X-Scope-OrgID=giantswarm` for the collector's tenant."
+                        },
+                        "protocol": {
+                            "type": "string",
+                            "description": "OTLP protocol (OTEL_EXPORTER_OTLP_PROTOCOL).",
+                            "enum": [
+                                "grpc",
+                                "http/protobuf"
+                            ]
+                        },
+                        "resourceAttributes": {
+                            "type": "string",
+                            "description": "Resource attributes as `key=value` pairs separated by commas, appended to the pod's `k8s.pod.name`, `k8s.namespace.name` and `k8s.node.name` (OTEL_RESOURCE_ATTRIBUTES)."
+                        },
+                        "sampler": {
+                            "type": "string",
+                            "description": "Trace sampler (OTEL_TRACES_SAMPLER). The parent-based default follows the sampling decision of an incoming `traceparent` and samples root spans by `samplerArg`."
+                        },
+                        "samplerArg": {
+                            "type": "string",
+                            "description": "Sampler argument (OTEL_TRACES_SAMPLER_ARG): the ratio of root spans sampled for the `traceidratio` samplers."
+                        }
+                    }
+                }
+            }
+        },
         "ociRegistryCredentials": {
             "type": "object",
-            "description": "Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig",
+            "description": "Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig. Both values of an entry are base64-encoded: the chart writes them into the Secret's `data` as is",
             "additionalProperties": {
                 "type": "object",
                 "required": [
@@ -2938,7 +2999,7 @@
             "properties": {
                 "apiKey": {
                     "type": "string",
-                    "description": "OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var)"
+                    "description": "OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -2949,7 +3010,7 @@
             "properties": {
                 "apiToken": {
                     "type": "string",
-                    "description": "PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var)"
+                    "description": "PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },
@@ -3305,7 +3366,7 @@
                     "properties": {
                         "dsn": {
                             "type": "string",
-                            "description": "Sentry DSN for the frontend app (exposed as SENTRY_DSN_APP env var)"
+                            "description": "Sentry DSN for the frontend app (exposed as SENTRY_DSN_APP env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                         }
                     }
                 },
@@ -3316,13 +3377,33 @@
                     "properties": {
                         "dsn": {
                             "type": "string",
-                            "description": "Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var)"
+                            "description": "Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
                         }
                     }
                 },
                 "reportURI": {
                     "type": "string",
-                    "description": "Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var)"
+                    "description": "Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
+                }
+            }
+        },
+        "serviceMonitor": {
+            "type": "object",
+            "description": "ServiceMonitor for the backend's Prometheus metrics endpoint. Has no effect unless observability.metrics.enabled is also true.",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Render the ServiceMonitor."
+                },
+                "interval": {
+                    "type": "string",
+                    "description": "Scrape interval, e.g. `60s`. Empty uses the Prometheus Operator default."
+                },
+                "labels": {
+                    "type": "object",
+                    "description": "Extra labels on the ServiceMonitor. The Giant Swarm observability platform routes a scrape to a Mimir tenant by the `observability.giantswarm.io/tenant` label here.",
+                    "additionalProperties": true
                 }
             }
         },
@@ -3350,7 +3431,7 @@
             "properties": {
                 "salt": {
                     "type": "string",
-                    "description": "TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml."
+                    "description": "TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml. Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
             }
         },

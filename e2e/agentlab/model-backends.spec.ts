@@ -7,9 +7,9 @@ import { lab } from './lab';
  * `add_backend` / `remove_backend` reached through muster as the signed-in
  * person. The lab runs model-manager with no backend of its own, so the
  * lab's Ollama is registered from the portal and removed again, and a KServe
- * that serves nothing yet (the lab has no InferenceService API) is listed
- * under Backends without models and removed from its row. Serial: both
- * tests write the same model-manager's backend documents.
+ * that serves nothing yet (the lab has no InferenceService API) gets a card
+ * of its own and is removed from it. Serial: both tests write the same
+ * model-manager's backend documents.
  */
 test.describe.serial('model backends', () => {
   test('Add model backend registers the lab Ollama as a Serving group, Remove backend removes it', async ({
@@ -52,7 +52,7 @@ test.describe.serial('model backends', () => {
     await expect(admin.getByText('Registered from the portal')).toBeHidden();
   });
 
-  test('a registered backend without models is listed and removed from its own row', async ({
+  test('a registered backend without models gets a card of its own and is removed from it', async ({
     admin,
   }) => {
     test.setTimeout(180_000);
@@ -73,15 +73,17 @@ test.describe.serial('model backends', () => {
     ).toBeVisible({ timeout: 30_000 });
     await dialog.getByRole('button', { name: 'Close' }).first().click();
 
-    const row = admin.getByTestId('backend-without-models-kserve');
+    const card = admin.getByTestId(
+      `served-models-group-${lab.installation}/kserve`,
+    );
     await expect(
-      admin.getByRole('heading', { name: 'Backends without models' }),
-      'a backend that serves nothing yet gets a row of its own',
+      card,
+      'a backend that serves nothing yet gets a card of its own',
     ).toBeVisible({ timeout: 60_000 });
-    await expect(row.getByText('Registered from the portal')).toBeVisible();
+    await expect(card.getByText('Registered from the portal')).toBeVisible();
 
-    await removeBackend(row, 'KServe', 'kserve', admin);
-    await expect(row, 'the row is gone').toBeHidden({ timeout: 60_000 });
+    await removeBackend(card, 'KServe', 'kserve', admin);
+    await expect(card, 'the card is gone').toBeHidden({ timeout: 60_000 });
   });
 });
 

@@ -7,9 +7,11 @@ import {
   columnsForRows,
   downloadLine,
   downloadPercent,
+  groupOfBackend,
   groupServedModelRows,
   memoryLine,
   memoryLineTitle,
+  NO_SERVED_MODELS,
   ServedModelDownloadRow,
   ServedModelRow,
   ServedModelsTable,
@@ -122,7 +124,7 @@ const ollamaRows: ServedModelRow[] = [
   },
 ];
 
-/** A KServe model-manager's rows: a served InferenceService and a cached download. */
+/** A KServe model-manager's rows: a served LLMInferenceService and a cached download. */
 const kserveManagerRows: ServedModelRow[] = [
   {
     ...rows[0],
@@ -200,19 +202,22 @@ describe('columnsForRows', () => {
       model: true,
       runtime: false,
       capabilities: false,
+      api: false,
     });
     expect(columnsForRows(ollamaRows)).toEqual({
       placement: false,
       model: false,
       runtime: false,
       capabilities: true,
+      api: false,
     });
-    // A fresh InferenceService alone: nothing placed, nothing to show yet.
+    // A fresh LLMInferenceService alone: nothing placed, nothing to show yet.
     expect(columnsForRows([rows[2]])).toEqual({
       placement: false,
       model: false,
       runtime: false,
       capabilities: false,
+      api: false,
     });
   });
 
@@ -472,7 +477,7 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
           {
             ...rows[1],
             readiness: 'terminating',
-            readinessMessage: 'InferenceService devstral is being deleted.',
+            readinessMessage: 'LLMInferenceService devstral is being deleted.',
           },
         ]}
       />,
@@ -547,7 +552,96 @@ describe('downloadLine, downloadPercent and servedModelStatusLines on a download
   });
 });
 
+describe('ServedModelsTable · API interfaces', () => {
+  const generate = [
+    { type: 'Messages', path: '/v1/messages' },
+    { type: 'Completions', path: '/v1/chat/completions' },
+    { type: 'Responses', path: '/v1/responses' },
+    { type: 'AnthropicTokenCount', path: '/v1/messages/count_tokens' },
+  ];
+  const served: ServedModelRow = {
+    ...rows[0],
+    id: 'lab/kserve/model-serving/qwen2-5-0-5b-cpu',
+    installation: 'lab',
+    name: 'qwen2-5-0-5b-cpu',
+    modelSource: 'Qwen/Qwen2.5-0.5B-Instruct',
+    runtime: 'vLLM 0.23.0',
+    interfaces: generate,
+    publicName: 'qwen2-5-0-5b-cpu',
+    internalUrl: 'http://agentgateway.agent-platform.svc:8081',
+    externalUrl: undefined,
+  };
+
+  it('shows one chip per interface in the fixed order, the route on hover, and the public name', async () => {
+    await renderTable(<ServedModelsTable rows={[served]} />);
+    expect(
+      screen.getByRole('columnheader', { name: 'API' }),
+    ).toBeInTheDocument();
+    const chips = ['Chat completions', 'Responses', 'Messages', 'count_tokens'];
+    const cell = screen
+      .getByText('Chat completions')
+      .closest('[role="gridcell"]') as HTMLElement;
+    expect(
+      within(cell)
+        .getAllByText(/./)
+        .map(node => node.textContent),
+    ).toEqual(chips);
+    expect(screen.getByText('Messages').closest('span[title]')).toHaveAttribute(
+      'title',
+      '/v1/messages',
+    );
+    expect(screen.getByText('model name qwen2-5-0-5b-cpu')).toBeInTheDocument();
+    expect(screen.getByText('KServe · vLLM 0.23.0')).toBeInTheDocument();
+  });
+
+  it('shows no API column when no row of the group reports interfaces', async () => {
+    await renderTable(
+      <ServedModelsTable
+        rows={[
+          {
+            ...served,
+            interfaces: [],
+            interfacesReason: 'no route list',
+            publicName: undefined,
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByRole('columnheader', { name: 'API' })).toBeNull();
+    expect(columnsForRows([{ ...served, interfaces: undefined }]).api).toBe(
+      false,
+    );
+    expect(columnsForRows([served]).api).toBe(true);
+  });
+});
+
 describe('ServedModelsTable', () => {
+  it('orders a backend without models among the groups, with its note in place of a table', async () => {
+    await renderTable(
+      <ServedModelsTable
+        rows={rows}
+        emptyGroups={[
+          groupOfBackend({
+            installation: 'inst-0',
+            kind: 'ollama',
+            healthy: false,
+            message: 'connection refused',
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent),
+    ).toEqual(['inst-0', 'inst-1', 'inst-2']);
+    expect(
+      within(screen.getByTestId('served-models-group-inst-0/ollama')).getByText(
+        'Not healthy: connection refused',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('grid')).toHaveLength(2);
+  });
+
   it('renders one group per installation, named when there is more than one', async () => {
     await renderTable(<ServedModelsTable rows={rows} />);
 
@@ -584,7 +678,7 @@ describe('ServedModelsTable', () => {
     ]) {
       expect(screen.queryByRole('columnheader', { name: header })).toBeNull();
     }
-    // The fresh InferenceService has no node and no source yet: its group has
+    // The fresh LLMInferenceService has no node and no source yet: its group has
     // neither column.
     expect(
       within(second).queryByRole('columnheader', { name: 'Node' }),
@@ -603,7 +697,7 @@ describe('ServedModelsTable', () => {
     expect(screen.getByText('Not ready')).toBeInTheDocument();
     expect(screen.getByText('Pending')).toBeInTheDocument();
     expect(screen.getByText('hf://Qwen/Qwen3-14B')).toBeInTheDocument();
-    // The endpoints differ per InferenceService, so each row carries its own
+    // The endpoints differ per LLMInferenceService, so each row carries its own
     // copy action and the group header none.
     expect(
       screen.queryByText('http://qwen3-14b-predictor.kserve.svc.cluster.local'),
@@ -644,7 +738,7 @@ describe('ServedModelsTable', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows a fresh InferenceService with nothing but its name and status', async () => {
+  it('shows a fresh LLMInferenceService with nothing but its name and status', async () => {
     await renderTable(<ServedModelsTable rows={[rows[2]]} />);
 
     expect(screen.getByText('fresh')).toBeInTheDocument();
@@ -663,10 +757,27 @@ describe('ServedModelsTable', () => {
     expect(screen.getAllByText('No model config')).toHaveLength(2);
   });
 
+  it('lists the running models first, then the ones that need attention, then the available ones', async () => {
+    // Handed over in the reverse order, on one installation and backend.
+    await renderTable(
+      <ServedModelsTable
+        rows={[kserveManagerRows[1], rows[1], kserveManagerRows[0]]}
+      />,
+    );
+
+    const names = within(screen.getByRole('grid'))
+      .getAllByRole('rowheader')
+      .map(cell => cell.textContent);
+    expect(names).toHaveLength(3);
+    expect(names[0]).toMatch(/^qwen3-14b/);
+    expect(names[1]).toMatch(/^devstral/);
+    expect(names[2]).toMatch(/^mistralai\/Devstral-Small-2-24B-Instruct-2512/);
+  });
+
   it('renders the empty state without rows', async () => {
     await renderTable(<ServedModelsTable rows={[]} />);
 
-    expect(screen.getByText('No models are being served.')).toBeInTheDocument();
+    expect(screen.getByText(NO_SERVED_MODELS)).toBeInTheDocument();
     expect(screen.queryByRole('grid')).toBeNull();
   });
 
@@ -803,7 +914,7 @@ describe('ServedModelsTable', () => {
   });
 
   describe('with a download among the rows', () => {
-    it('renders a pull in flight as a Downloading row sorted among its future neighbours, with the progress and a bar', async () => {
+    it('renders a pull in flight as a Downloading row between the running and the available models, with the progress and a bar', async () => {
       await renderTable(
         <ServedModelsTable rows={[...ollamaRows, downloading]} />,
       );
@@ -814,9 +925,9 @@ describe('ServedModelsTable', () => {
       const names = within(grid)
         .getAllByRole('rowheader')
         .map(cell => cell.textContent);
-      expect(names[0]).toMatch(/^gemma3:270m/);
+      expect(names[0]).toMatch(/^qwen3\.5:9b/);
       expect(names[1]).toMatch(/^qwen2\.5:0\.5b/);
-      expect(names[2]).toMatch(/^qwen3\.5:9b/);
+      expect(names[2]).toMatch(/^gemma3:270m/);
 
       expect(screen.getByText('Downloading')).toBeInTheDocument();
       expect(
@@ -981,16 +1092,23 @@ describe('ServedModelsTable', () => {
 });
 
 describe('sortServedModelsBy', () => {
-  it('sorts by the requested column with a stable tiebreaker', () => {
+  it('sorts Status by what runs, what needs attention and what is not running, other columns by value, with a stable tiebreaker', () => {
     const byReadiness = sortServedModelsBy(rows, {
       column: 'readiness',
       direction: 'ascending',
     });
+    // Ready, then not ready, then pending — never the alphabet of the words.
     expect(byReadiness.map(row => row.name)).toEqual([
+      'qwen3-14b',
       'devstral',
       'fresh',
-      'qwen3-14b',
     ]);
+    expect(
+      sortServedModelsBy(rows, {
+        column: 'readiness',
+        direction: 'descending',
+      }).map(row => row.name),
+    ).toEqual(['fresh', 'devstral', 'qwen3-14b']);
 
     const byGpus = sortServedModelsBy(rows, {
       column: 'gpuCount',
@@ -1005,7 +1123,7 @@ describe('sortServedModelsBy', () => {
   });
 });
 
-describe('ServedModelsTable actions and wiring', () => {
+describe('ServedModelsTable actions', () => {
   it('renders one actions column only when given a menu, and lets it decide per row', async () => {
     const ollamaRow: ServedModelRow = {
       ...rows[2],
@@ -1044,35 +1162,15 @@ describe('ServedModelsTable actions and wiring', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows where a model came from and how its wiring is going', async () => {
+  it('shows where a model came from, and that nothing points at it yet', async () => {
     await renderTable(
-      <ServedModelsTable
-        rows={[
-          {
-            ...rows[1],
-            preset: 'devstral-small-2',
-            wiring: { status: 'wiring' },
-          },
-          {
-            ...rows[2],
-            wiring: {
-              status: 'conflict',
-              message: 'name taken by another config',
-            },
-          },
-        ]}
-      />,
+      <ServedModelsTable rows={[{ ...rows[1], preset: 'devstral-small-2' }]} />,
     );
 
     expect(
       screen.getByText('kserve · preset devstral-small-2'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Creating model config…')).toBeInTheDocument();
-    expect(screen.getByText('Model config name taken')).toBeInTheDocument();
-    expect(
-      screen.getByTitle('name taken by another config'),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('No model config')).not.toBeInTheDocument();
+    expect(screen.getByText('No model config')).toBeInTheDocument();
   });
 });
 

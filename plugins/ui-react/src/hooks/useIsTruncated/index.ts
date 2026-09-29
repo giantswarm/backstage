@@ -1,0 +1,1 @@
+export { useIsTruncated } from './useIsTruncated';

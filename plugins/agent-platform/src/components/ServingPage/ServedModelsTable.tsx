@@ -15,28 +15,28 @@ import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { modelDetailRouteRef } from '../../routes';
-import { stopRowPress } from '../../lib/rowPress';
+import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
   formatBytes,
   formatContextLength,
   formatGpuShare,
   formatTime,
-  isServedInferenceService,
+  isServedKServeModel,
   lacksToolCalling,
 } from '../../lib/modelManagerServing';
-import type {
-  ServedModel,
-  ServedModelReadiness,
-  ServingBackend,
+import {
+  SERVED_MODEL_READINESS_ORDER,
+  type ServedModel,
+  type ServedModelReadiness,
+  type ServingBackend,
 } from '../../lib/serving';
 import type { ModelManagerJobPhase } from '../../lib/modelManager';
-import type { WiringState } from '../../hooks/useAutoWireServedModels';
+import { describeSplit } from '../../lib/modelManagerServe';
+import { interfaceLabel, sortInterfaces } from '../../lib/servedModelApi';
 import { ServedReadinessLabel } from '../ModelServingStatus';
-import {
-  CopyEndpointButton,
-  ServedModelsGroupHeader,
-} from './ServedModelsGroupHeader';
+import { CopyEndpointButton } from './ServedModelsGroupHeader';
+import { ServedModelsGroupCard } from './ServedModelsGroupCard';
 
 /** A kagent ModelConfig that fronts a served model. */
 export type ServedModelConsumer = {
@@ -75,8 +75,6 @@ export type ServedModelDownload = {
  */
 export type ServedModelRow = ServedModel & {
   usedBy: ServedModelConsumer[];
-  /** The auto-wiring's progress for this model, while it has no consumer yet. */
-  wiring?: WiringState;
   /** Absent for a served model; `download` for a pull rendered as a row. */
   kind?: 'download';
   /** The pull, on a `download` row. */
@@ -105,13 +103,13 @@ export function isActiveDownload(row: ServedModelRow): boolean {
 }
 
 /**
- * Rows this portal can stop serving: a KServe InferenceService, whichever
+ * Rows this portal can stop serving: a KServe LLMInferenceService, whichever
  * source listed it — deleted through model-manager where it operates the row,
  * else as a CR with the user's RBAC. A cached download nobody serves is not
  * one.
  */
 export function isStoppable(row: ServedModel): boolean {
-  return isServedInferenceService(row);
+  return isServedKServeModel(row);
 }
 
 /**
@@ -127,7 +125,9 @@ export function isServableDownload(row: ServedModel): boolean {
 /**
  * Client-side sorting with the row id as the stable tiebreaker (same
  * reasoning as ModelsTable). Sorts within a group — every group is its own
- * table.
+ * table. Status sorts in {@link SERVED_MODEL_READINESS_ORDER} — the running
+ * models, then the ones that need attention, then the ones not running —
+ * which is also the order a group's table opens in.
  */
 export function sortServedModelsBy(
   rows: ServedModelRow[],
@@ -140,13 +140,16 @@ export function sortServedModelsBy(
       case 'name':
         return row.name;
       case 'readiness':
-        return row.readiness;
+        return String(SERVED_MODEL_READINESS_ORDER[row.readiness]).padStart(
+          2,
+          '0',
+        );
       case 'modelSource':
         return row.modelSource ?? '';
       case 'runtime':
         return row.runtime ?? '';
       case 'node':
-        return row.node ?? '';
+        return row.splitNodes?.join(',') ?? row.node ?? '';
       case 'gpuCount':
         return String(row.gpuCount ?? -1).padStart(6, '0');
       default:
@@ -176,7 +179,49 @@ export type ServedModelGroup = {
   runtime?: string;
   /** The one endpoint every row of the group answers on, else `undefined`. */
   endpoint?: string;
+  /** What its card says in place of a table: a backend without models. */
+  note?: string;
 };
+
+/** What the card of a backend without models says, while it is healthy. */
+export const NO_MODELS_ON_BACKEND =
+  'No models served yet — serve or pull one, or remove the backend.';
+
+/**
+ * A backend registered with a model-manager that serves nothing yet — a
+ * KServe without a pool, an Ollama before its first pull — as a group of its
+ * own: no rows, the header a group with rows would have, and the note its
+ * card shows instead of a table.
+ */
+export function groupOfBackend(backend: {
+  installation: string;
+  kind: ServingBackend;
+  version?: string;
+  endpoint?: string;
+  healthy?: boolean;
+  message?: string;
+}): ServedModelGroup {
+  return {
+    key: `${backend.installation}/${backend.kind}`,
+    installation: backend.installation,
+    backend: backend.kind,
+    rows: [],
+    runtime: backend.version ? `${backend.kind} ${backend.version}` : undefined,
+    endpoint: backend.endpoint,
+    note:
+      backend.healthy === false && backend.message
+        ? `Not healthy: ${backend.message}`
+        : NO_MODELS_ON_BACKEND,
+  };
+}
+
+/** Installation order, then backend. */
+function compareGroups(a: ServedModelGroup, b: ServedModelGroup): number {
+  return (
+    a.installation.localeCompare(b.installation) ||
+    a.backend.localeCompare(b.backend)
+  );
+}
 
 /** The one value the rows share; `undefined` when they carry none, or differ. */
 function sharedValue(values: (string | undefined)[]): string | undefined {
@@ -193,8 +238,9 @@ function endpointOf(row: ServedModel): string | undefined {
 
 /**
  * Group the rows by installation and backend, in installation order. An
- * installation with two serving sources of different backends (InferenceServices
- * read as CRs next to an Ollama model-manager) is two groups, so a group's
+ * installation with two serving sources of different backends
+ * (LLMInferenceServices read as CRs next to an Ollama model-manager) is two
+ * groups, so a group's
  * header always describes every row under it.
  */
 export function groupServedModelRows(
@@ -221,11 +267,7 @@ export function groupServedModelRows(
       runtime: sharedValue(group.rows.map(row => row.runtime)),
       endpoint: sharedValue(group.rows.map(endpointOf)),
     }))
-    .sort(
-      (a, b) =>
-        a.installation.localeCompare(b.installation) ||
-        a.backend.localeCompare(b.backend),
-    );
+    .sort(compareGroups);
 }
 
 /**
@@ -245,7 +287,7 @@ export type ServedModelColumns = {
   placement: boolean;
   /**
    * Where the weights come from, when that differs from the served name: a
-   * Hugging Face id behind an InferenceService. An Ollama tag is both, so the
+   * Hugging Face id behind an LLMInferenceService. An Ollama tag is both, so the
    * column stays out.
    */
   model: boolean;
@@ -256,12 +298,20 @@ export type ServedModelColumns = {
   runtime: boolean;
   /** Model features (tools, vision, …). */
   capabilities: boolean;
+  /**
+   * The APIs a served model answers (chat completions, Messages, …) — shown
+   * once a row's server reported at least one; a group whose models report
+   * none has no API column and no empty chip row.
+   */
+  api: boolean;
 };
 
 /** Derive the optional columns from what the rows carry. */
 export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
   return {
-    placement: rows.some(row => row.node !== undefined),
+    placement: rows.some(
+      row => row.node !== undefined || row.splitNodes !== undefined,
+    ),
     model: rows.some(
       row => row.modelSource !== undefined && row.modelSource !== row.name,
     ),
@@ -274,6 +324,7 @@ export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
     capabilities: rows.some(
       row => row.capabilities !== undefined || row.engine !== undefined,
     ),
+    api: rows.some(row => (row.interfaces?.length ?? 0) > 0),
   };
 }
 
@@ -284,7 +335,7 @@ export function columnsForRows(rows: ServedModelRow[]): ServedModelColumns {
  * the backend reports the split) and the eviction time, as far as the
  * backend reports them — `Not loaded` when the backend knows the model but
  * has not got it in memory, nothing when it has no notion of memory (an
- * InferenceService read as a CR) or is loaded without figures (its status
+ * LLMInferenceService read as a CR) or is loaded without figures (its status
  * already says so).
  */
 export function memoryLine(
@@ -458,6 +509,7 @@ export function servedModelStatusLines(row: ServedModelRow): string[] {
 function hasFootprint(readiness: ServedModelReadiness): boolean {
   return (
     readiness !== 'pending' &&
+    readiness !== 'starting' &&
     readiness !== 'notReady' &&
     readiness !== 'terminating'
   );
@@ -602,35 +654,38 @@ export function ModelFeaturesCell({ row }: { row: ServedModelRow }) {
   );
 }
 
-/** What the "Used by" cell says while the auto-wiring is at work, or stuck. */
-function WiringStatus({ wiring }: { wiring: WiringState }) {
-  switch (wiring.status) {
-    case 'wiring':
-      return (
-        <Text variant="body-medium" color="secondary">
-          Creating model config…
+/**
+ * The APIs a served model answers, one chip per interface in a fixed order
+ * with the route in its tooltip; empty with the reason on hover when its
+ * server reported none.
+ */
+export function ModelInterfacesCell({ row }: { row: ServedModelRow }) {
+  const interfaces = sortInterfaces(row.interfaces ?? []);
+  if (interfaces.length === 0) {
+    return (
+      <Cell>
+        <Text
+          as="p"
+          variant="body-medium"
+          color="secondary"
+          title={row.interfacesReason}
+        >
+          {row.interfaces ? '—' : null}
         </Text>
-      );
-    case 'done':
-      return (
-        <Text variant="body-medium" color="secondary">
-          Model config created
-        </Text>
-      );
-    case 'conflict':
-      return (
-        <Text variant="body-medium" color="warning" title={wiring.message}>
-          Model config name taken
-        </Text>
-      );
-    case 'error':
-    default:
-      return (
-        <Text variant="body-medium" color="danger" title={wiring.message}>
-          Model config not created
-        </Text>
-      );
+      </Cell>
+    );
   }
+  return (
+    <Cell>
+      <Flex align="center" gap="1" style={{ flexWrap: 'wrap' }}>
+        {interfaces.map(api => (
+          <span key={api.type} title={api.path}>
+            <Badge size="small">{interfaceLabel(api.type)}</Badge>
+          </span>
+        ))}
+      </Flex>
+    </Cell>
+  );
 }
 
 /**
@@ -642,10 +697,7 @@ function UsedByNobody({ row }: { row: ServedModelRow }) {
   if (isDownloadRow(row)) {
     return null;
   }
-  const { wiring } = row;
-  return wiring ? (
-    <WiringStatus wiring={wiring} />
-  ) : (
+  return (
     <Text variant="body-medium" color="secondary">
       No model config
     </Text>
@@ -816,6 +868,10 @@ function getColumnConfig(
       cell: row => (
         <CellText
           title={row.modelSource === row.name ? '' : (row.modelSource ?? '—')}
+          // On the LLM endpoint a client sends the public name, not the id.
+          description={
+            row.publicName ? `model name ${row.publicName}` : undefined
+          }
         />
       ),
     });
@@ -838,34 +894,57 @@ function getColumnConfig(
     });
   }
 
+  if (columns.api) {
+    config.push({
+      id: 'api',
+      label: 'API',
+      cell: row => <ModelInterfacesCell row={row} />,
+    });
+  }
+
   if (columns.placement) {
     config.push(
       {
         id: 'node',
         label: 'Node',
         isSortable: true,
-        cell: row => (
-          <Cell>
-            <Text
-              as="p"
-              variant="body-medium"
-              truncate
-              // The pin is intent, the pod is fact; say which the cell shows.
-              title={
-                row.nodeSource === 'spec'
-                  ? `Pinned by the spec; no running pod yet`
-                  : row.node
-              }
-            >
-              {row.node || '—'}
-            </Text>
-            {row.nodeSource === 'spec' && (
-              <Text variant="body-small" color="secondary">
-                pinned
+        cell: row =>
+          row.splitNodes ? (
+            <Cell>
+              <Text
+                as="p"
+                variant="body-medium"
+                truncate
+                title={describeSplit(row.splitNodes)}
+              >
+                {row.splitNodes.join(', ')}
               </Text>
-            )}
-          </Cell>
-        ),
+              <Text variant="body-small" color="secondary">
+                split
+              </Text>
+            </Cell>
+          ) : (
+            <Cell>
+              <Text
+                as="p"
+                variant="body-medium"
+                truncate
+                // The pin is intent, the pod is fact; say which the cell shows.
+                title={
+                  row.nodeSource === 'spec'
+                    ? `Pinned by the spec; no running pod yet`
+                    : row.node
+                }
+              >
+                {row.node || '—'}
+              </Text>
+              {row.nodeSource === 'spec' && (
+                <Text variant="body-small" color="secondary">
+                  pinned
+                </Text>
+              )}
+            </Cell>
+          ),
       },
       {
         id: 'gpuCount',
@@ -970,12 +1049,16 @@ function ServedModelsGroupTable({
     mode: 'complete',
     data: group.rows,
     sortFn: sortServedModelsBy,
-    initialSort: { column: 'name', direction: 'ascending' },
+    initialSort: { column: 'readiness', direction: 'ascending' },
     paginationOptions: { type: 'none' },
   });
 
   return <Table<ServedModelRow> {...tableProps} columnConfig={columnConfig} />;
 }
+
+/** What the Serving page says when no serving layer in view lists a model. */
+export const NO_SERVED_MODELS =
+  'No models yet — none running, downloaded or being pulled.';
 
 export type ServedModelsTableProps = {
   rows: ServedModelRow[];
@@ -991,13 +1074,24 @@ export type ServedModelsTableProps = {
    * for a backend registered with a model-manager. Absent = plain headers.
    */
   renderGroupActions?: (group: ServedModelGroup) => ReactNode;
+  /** What goes under a group's table, inside its card: the opened row's steps. */
+  renderGroupDetail?: (group: ServedModelGroup) => ReactNode;
+  /**
+   * Groups without rows ({@link groupOfBackend}), each a card with its note,
+   * in order among the others.
+   */
+  emptyGroups?: ServedModelGroup[];
 };
 
 /**
  * Presentational table of served models, grouped by installation and backend
- * ({@link groupServedModelRows}): one header per group with what its rows
- * share — backend, runtime version, the endpoint they answer on — and one
- * table under it whose columns follow those rows ({@link columnsForRows}). A
+ * ({@link groupServedModelRows}): one card per group, its header what the rows
+ * share — backend, runtime version, the endpoint they answer on — and its
+ * body a table whose columns follow those rows ({@link columnsForRows}) and
+ * whose rows open with the running models, then the ones that need
+ * attention, then the ones not running ({@link sortServedModelsBy}). A
+ * registered backend without models ({@link groupOfBackend}) is a card in the
+ * same order, its note in place of a table. A
  * backend that schedules onto nodes gets Node and GPUs, one whose weights
  * come from somewhere other than the served name gets Model, one that
  * reports features gets Features; an Ollama installation next to a KServe
@@ -1011,6 +1105,8 @@ export function ServedModelsTable({
   rows,
   renderActions,
   renderGroupActions,
+  renderGroupDetail,
+  emptyGroups,
 }: ServedModelsTableProps) {
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
 
@@ -1024,32 +1120,48 @@ export function ServedModelsTable({
     [modelDetailRoute],
   );
 
-  const groups = useMemo(() => groupServedModelRows(rows), [rows]);
+  const groups = useMemo(
+    () =>
+      [...groupServedModelRows(rows), ...(emptyGroups ?? [])].sort(
+        compareGroups,
+      ),
+    [rows, emptyGroups],
+  );
   const installations = new Set(groups.map(group => group.installation)).size;
 
   if (groups.length === 0) {
     return (
       <Text variant="body-medium" color="secondary">
-        No models are being served.
+        {NO_SERVED_MODELS}
       </Text>
     );
   }
 
   return (
-    <Flex direction="column" gap="4">
+    <Flex direction="column" gap="3">
       {groups.map(group => (
-        <Flex key={group.key} direction="column" gap="2">
-          <ServedModelsGroupHeader
-            group={group}
-            showInstallation={installations > 1}
-            actions={renderGroupActions?.(group)}
-          />
-          <ServedModelsGroupTable
-            group={group}
-            hrefFor={hrefFor}
-            renderActions={renderActions}
-          />
-        </Flex>
+        <ServedModelsGroupCard
+          key={group.key}
+          data-testid={`served-models-group-${group.key}`}
+          group={group}
+          showInstallation={installations > 1}
+          actions={renderGroupActions?.(group)}
+        >
+          {group.rows.length > 0 ? (
+            <Flex direction="column" gap="3">
+              <ServedModelsGroupTable
+                group={group}
+                hrefFor={hrefFor}
+                renderActions={renderActions}
+              />
+              {renderGroupDetail?.(group)}
+            </Flex>
+          ) : (
+            <Text as="p" variant="body-medium" color="secondary">
+              {group.note}
+            </Text>
+          )}
+        </ServedModelsGroupCard>
       ))}
     </Flex>
   );

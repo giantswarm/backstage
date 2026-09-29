@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  LoadingIndicator,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import type { AgentSkillEntry } from '../../lib/agentManager';
@@ -12,6 +15,7 @@ import {
   SelectableCard,
   SelectableCardGrid,
   StaticCard,
+  useClampedText,
   useSelectableCardStyles,
 } from '../SelectableCard';
 
@@ -57,6 +61,10 @@ function CatalogSkillCard({
     skill.path !== '' &&
     (skill.path.includes('/') || skill.path !== skill.name);
   const pinned = mounted && 'git' in mounted ? mounted.git.commit : undefined;
+  const description = useClampedText({
+    text: skill.description,
+    subject: skill.name,
+  });
 
   return (
     <SelectableCard
@@ -64,13 +72,11 @@ function CatalogSkillCard({
       selected={Boolean(mounted)}
       ariaLabel={`Skill ${skill.name}`}
       onSelect={onToggle}
+      hoverAction={description.toggle}
+      describedById={description.describedById}
     >
       <Text weight="bold">{skill.name}</Text>
-      {skill.description && (
-        <Text variant="body-small" color="secondary">
-          {skill.description}
-        </Text>
-      )}
+      {description.content}
       <Text variant="body-x-small" color="secondary">
         {repoSlug(skill.repoUrl)}
         {showPath && (
@@ -230,7 +236,7 @@ export function SkillPicker({
         </Text>
       )}
       {catalog.isLoading && catalog.skills.length === 0 && (
-        <Text color="secondary">Discovering skills…</Text>
+        <LoadingIndicator label="Discovering skills…" />
       )}
       {catalog.failedRepositories.length > 0 && (
         <Alert

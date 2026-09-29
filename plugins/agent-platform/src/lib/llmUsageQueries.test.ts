@@ -1,5 +1,6 @@
 import {
   dailyRangeWindow,
+  llmUsageQueries,
   dailyWindowDayKeys,
   todayDayKey,
   todayPartialRange,
@@ -101,6 +102,17 @@ describe('dailyWindowDayKeys', () => {
   it('is stable all day, like the window it mirrors', () => {
     expect(dailyWindowDayKeys(dailyRangeWindow(MIDNIGHT + 60_000))).toEqual(
       dailyWindowDayKeys(dailyRangeWindow(MIDNIGHT + 23 * 60 * 60 * 1000)),
+    );
+  });
+});
+
+describe('llmUsageQueries.outputTokensPerSecond', () => {
+  it('inverts the median, not the mean', () => {
+    // The mean of this histogram is unweighted by reply length, so a reply
+    // that emitted three tokens after a long wait counts as much as a long
+    // one — on `graveler` that turned a 63 tok/s median into 2 tok/s.
+    expect(llmUsageQueries.outputTokensPerSecond).toBe(
+      '1 / histogram_quantile(0.50, sum by (le) (rate(agentgateway_gen_ai_server_time_per_output_token_bucket[30d])))',
     );
   });
 });

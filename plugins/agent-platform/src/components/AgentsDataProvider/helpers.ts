@@ -157,8 +157,9 @@ export type AgentRow = {
   technicalName: string;
   description: string;
   /**
-   * Human-readable model label resolved from the referenced ModelConfig, or
-   * `undefined` when the template references no model.
+   * Human-readable model label resolved from the referenced ModelConfig: its
+   * display name, else its `spec.model`, else its resource name. `undefined`
+   * when the template references no model.
    */
   model?: string;
   /**
@@ -166,7 +167,7 @@ export type AgentRow = {
    * label.
    *
    * Distinct from {@link model} on purpose. That one is for a reader and falls
-   * back to the ModelConfig's own resource name; this one has to match what a
+   * back to other labels; this one has to match what a
    * provider and the gateway call the model (`gen_ai_response_model`), so it
    * is the ModelConfig's field verbatim or nothing. Pricing a session needs
    * this; a table column wants the other.
@@ -176,15 +177,9 @@ export type AgentRow = {
   /** Readiness derived from the template's Harness entries. */
   readiness: AgentReadiness;
   /**
-   * The Harness whose verdict `readiness` is — the platform Harness named by the
-   * admission label when it reports. `undefined` while no Harness admits the
-   * template.
-   */
-  harness?: string;
-  /**
    * Detail explaining a non-ready readiness (the Harness's reconcile error, the
-   * unresolved reference, or why no Harness admits the template), for a
-   * tooltip. `undefined` when there is nothing to explain.
+   * unresolved reference, or why no Harness admits the template), for the
+   * status's info icon. `undefined` when there is nothing to explain.
    */
   readinessMessage?: string;
   /**
@@ -246,7 +241,7 @@ export function resolveModelLabel(
   if (!ref) {
     return undefined;
   }
-  return resolveModelConfig(agent, modelConfigs)?.getDisplayName() ?? ref;
+  return modelLabel(resolveModelConfig(agent, modelConfigs)) ?? ref;
 }
 
 /**
@@ -256,6 +251,21 @@ export function resolveModelLabel(
 export type ResolveModelServing = (
   modelConfig: ModelConfig,
 ) => ClientServingState | undefined;
+
+/**
+ * What a reader calls the model: the ModelConfig's display name, else the
+ * model it configures, else its resource name.
+ */
+function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
+  if (!modelConfig) {
+    return undefined;
+  }
+  return (
+    modelConfig.getDisplayNameAnnotation() ??
+    modelConfig.getModel() ??
+    modelConfig.getName()
+  );
+}
 
 /**
  * Flatten an `AgentTemplate` into a plain {@link AgentRow}. With a
@@ -285,11 +295,10 @@ export function toAgentRow(
     name: agent.getDisplayName(),
     technicalName: name,
     description: agent.getDescription() ?? '',
-    model: modelConfig?.getDisplayName() ?? agent.getModelConfigName(),
+    model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
     skillCount: agent.getSkillCount(),
     readiness: agent.getReadiness(),
-    harness: agent.getDecidingHarness()?.name,
     readinessMessage: agent.getReadinessMessage(),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
@@ -374,4 +383,20 @@ export function sortAgentsBy(
       aValue.localeCompare(bValue) * factor || a.name.localeCompare(b.name)
     );
   });
+}
+
+/**
+ * Free-text search over what a reader looks an agent up by: its display and
+ * technical name, what it is for, and the installation it runs on.
+ */
+export function agentSearchFn(rows: AgentRow[], search: string): AgentRow[] {
+  const needle = search.trim().toLowerCase();
+  if (!needle) {
+    return rows;
+  }
+  return rows.filter(row =>
+    [row.name, row.technicalName, row.description, row.installation].some(
+      field => field.toLowerCase().includes(needle),
+    ),
+  );
 }

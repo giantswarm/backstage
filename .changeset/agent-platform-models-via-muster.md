@@ -1,0 +1,8 @@
+---
+'@giantswarm/backstage-plugin-agent-platform': minor
+'@giantswarm/backstage-plugin-agent-platform-backend': minor
+---
+
+Models pages call model-manager through muster as the signed-in person. Every read and write behind the Serving view, the GPU capacity panel and the Serve dialog — `list_backends`, `list_models`, `list_presets`, `check_fit`, `load_model`, `unload_model`, `list_nodes`, the pull jobs, wiring and deletion — is one `x_model-manager_<tool>` call over the installation's muster; whether an installation has a model-manager is the presence of the `model-manager` MCPServer in its muster, so no portal configuration says where model-manager is. A GPU node pool's **Serve your first model** therefore reaches the kserve backend the pool registered — its presets, the fit verdict against the pool's sizes, the `load_model` as the person — wherever muster lists model-manager, and the browser-composed InferenceService of the CR view is withheld there, even while model-manager reports no backend yet. A model-manager with no backend registered is listed as a serving layer with nothing registered, not as unreachable. model-manager's refusals keep their meaning (`not_found`, `unsupported`, `conflict`, `does_not_fit`, `backend_error`).
+
+The backend's `/model-manager/...` REST pass-through and its `agentPlatform.modelManager` configuration (`installations`, `timeoutMs`, `loadTimeoutMs`) are removed; the block is ignored where a config still carries it. The one model-related call the backend still makes is **Try it** on a served model, now `POST /served-models/try` with the endpoint model-manager reported, held to the installation's own base domain.

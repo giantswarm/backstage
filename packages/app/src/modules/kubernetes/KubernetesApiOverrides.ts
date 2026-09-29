@@ -1,6 +1,5 @@
 import { ApiBlueprint } from '@backstage/frontend-plugin-api';
 import {
-  configApiRef,
   discoveryApiRef,
   fetchApiRef,
   microsoftAuthApiRef,
@@ -109,19 +108,12 @@ export const KubernetesClientOverride = ApiBlueprint.make({
     defineParams({
       api: kubernetesApiRef,
       deps: {
-        configApi: configApiRef,
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
         kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
       },
-      factory: ({
-        configApi,
-        discoveryApi,
-        fetchApi,
-        kubernetesAuthProvidersApi,
-      }) =>
+      factory: ({ discoveryApi, fetchApi, kubernetesAuthProvidersApi }) =>
         new KubernetesClient({
-          configApi,
           discoveryApi: discoveryApi as GSDiscoveryApiClient,
           fetchApi,
           kubernetesAuthProvidersApi,

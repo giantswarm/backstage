@@ -118,9 +118,26 @@ describe('InstallationScopeSelect', () => {
     expect(options.map(option => option.textContent)).toEqual([
       'All installations',
       'golem',
-      'wombatno kagent here',
       'snailsigned out',
+      'wombatno kagent here',
     ]);
+  });
+
+  // The inventory moves an installation up once its access probe settles;
+  // the list must not reshuffle with it between openings.
+  it('lists the home installation first and the rest by name, whatever the inventory order', async () => {
+    mockInventory = {
+      entries: [wombat, snail, golem],
+      home: 'golem',
+      isLoading: false,
+    };
+    renderSelect();
+
+    await userEvent.click(trigger());
+
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual(['All installations', 'golem', 'snailsigned out', 'wombat']);
   });
 
   it('prepends what the host knows about an installation', async () => {

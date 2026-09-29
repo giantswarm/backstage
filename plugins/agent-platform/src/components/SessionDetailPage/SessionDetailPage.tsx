@@ -14,7 +14,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Avatar, Badge, Box, Button, Flex, Text } from '@backstage/ui';
+import { Alert, Badge, Box, Button, Flex, Text } from '@backstage/ui';
 import {
   makeStyles,
   Tooltip,
@@ -67,7 +67,6 @@ import {
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
 import {
-  formatDuration,
   formatTokens,
   SessionTimeline,
   StreamLossPhase,
@@ -76,6 +75,7 @@ import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
 import { formatUsd } from '../../lib/formatNumbers';
 import { useTokenRates } from '../../hooks/useTokenRates';
+import { AgentAvatar } from '../AgentAvatar';
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
@@ -101,8 +101,13 @@ const useStyles = makeStyles(theme => ({
   },
   // The composer stays reachable however long the conversation gets. Only the
   // composer docks: a pending confirmation panel can be tall, and pinning it
-  // would cover the very conversation it asks about.
+  // would cover the very conversation it asks about. The gap is what keeps
+  // whatever shares the dock — a lost-runtime notice, a rejected send — off the
+  // composer's box; neither bui's Alert nor the composer's form has a margin.
   bottomDock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2),
     position: 'sticky',
     bottom: 0,
     zIndex: 1,
@@ -123,7 +128,7 @@ const useStyles = makeStyles(theme => ({
   stats: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: theme.spacing(4),
+    gap: theme.spacing(2, 5),
     paddingTop: theme.spacing(1.5),
     paddingBottom: theme.spacing(1.5),
     borderTop: `1px solid ${theme.palette.divider}`,
@@ -464,8 +469,20 @@ export function SessionDetailPage() {
       const polled = new Set(
         timeline.items.map(item => item.messageId).filter(Boolean),
       );
+      // How a turn ended carries a `messageId` only when kagent wrote a reason
+      // for it — the exception for a failure, the rule for a cancel, which has no
+      // reason to write. Recognition by id therefore cannot retire the streamed
+      // entry once the poll delivers its own, and the two rendered one under the
+      // other for as long as the send's remaining invalidation took. A turn has
+      // one ending, so the poll having closed *this* turn is what retires it.
+      const polledEndedTurn = timeline.items.some(
+        item => item.kind === 'turn-failed' && item.taskIndex === taskIndex,
+      );
       for (const item of stream.items) {
         if (item.messageId && polled.has(item.messageId)) {
+          continue;
+        }
+        if (item.kind === 'turn-failed' && polledEndedTurn) {
           continue;
         }
         items.push({ ...item, taskIndex });
@@ -896,8 +913,8 @@ export function SessionDetailPage() {
       Boolean(pendingConfirmation && agent) &&
       !answerDispatched &&
       !runtimeLoss?.reported;
-    // The way out, offered from the box: beside Send while the loss is only
-    // suspected, in Send's place once kagent has reported it. Needs the agent
+    // The way out, offered under the box: a second button while the loss is
+    // only suspected, the only one once kagent has reported it. Needs the agent
     // as a row to create against; without one the notice says where else to go.
     const offersNewSession = Boolean(runtimeLoss && agentRow && !isConfirming);
     bottomControl = (
@@ -1051,7 +1068,7 @@ export function SessionDetailPage() {
                 MUI's tooltip rather than bui's: bui wraps react-aria's
                 `TooltipTrigger`, which only wires up its own focusable components,
                 and this trigger is a bare <button> so it can inherit the heading's
-                typography. Same fallback the plugin's `CopyButton` makes. */}
+                typography. */}
             <Tooltip title="Rename session">
               <button
                 type="button"
@@ -1086,7 +1103,7 @@ export function SessionDetailPage() {
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
             {row.agentName && (
               <Flex align="center" gap="2">
-                <Avatar
+                <AgentAvatar
                   size="small"
                   purpose="decoration"
                   name={row.agentName}
@@ -1121,28 +1138,21 @@ export function SessionDetailPage() {
             </Flex>
           </Flex>
 
-          {/* Absolute, not relative. Both ends of a session are frequently within
-              the same day, so the relative form rendered "1 day ago · 1 day ago" —
-              identical for two timestamps 34 minutes apart, which told the reader
-              nothing. The Duration stat below now carries the span, so an exact
-              start time is the more useful thing to show here. The list keeps the
-              relative form, where scanning for recency is the point. */}
+          {/* Absolute, not relative: the list keeps the relative form, where
+              scanning for recency is the point. No last activity and no
+              duration: kagent API v2 does not move `updated_at` on a turn, so
+              both would only restate the start (kagent-dev/kagent#2397). */}
           <Text variant="body-small" color="secondary">
             Started{' '}
             {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
-            {' · last activity '}
-            {row.updatedAt ? <DateComponent value={row.updatedAt} /> : '—'}
           </Text>
         </Flex>
 
         <Box className={classes.stats}>
-          <Stat label="Turns" value={String(taskCount)} />
-          {/* Wall-clock span, not compute time — kagent records no per-turn
-              durations, so this includes however long the user was away between
-              turns. */}
           <Stat
-            label="Duration"
-            value={formatDuration(row.createdAt, row.updatedAt) ?? '—'}
+            label="Turns"
+            value={String(taskCount)}
+            hint="One per message sent to the agent. A turn counts once however many model and tool calls the answer took."
           />
           {/* Labelled "billed", because the raw number is startling: every model
               call re-sends the whole context, so a 4-turn session with a large tool
@@ -1154,12 +1164,14 @@ export function SessionDetailPage() {
           <Stat
             label="Input tokens (billed)"
             value={formatTokens(timeline.tokens.prompt)}
+            hint="Every token sent to a model in this session, summed over each call, delegated agents' included."
           />
           <Stat
             label="Output tokens"
             value={formatTokens(timeline.tokens.completion)}
+            hint="Every token a model generated in this session, delegated agents' included."
           />
-          {/* Estimated, not billed, and the tooltip has to say *how*: the
+          {/* Estimated, not billed, and the hint has to say *how*: the
               gateway prices whole model calls and its metrics carry no session
               label, so a session's cost can only ever be its tokens times an
               observed rate. Which rate that is decides whether the figure is
@@ -1167,19 +1179,28 @@ export function SessionDetailPage() {
               leaving the reader to assume the best case. Reads "—" rather than
               "$0.00" when there is no rate to apply — zero spend and unpriced
               spend are different facts. */}
-          <Tooltip
-            title={describeCostBasis({
+          <Stat
+            label="Est. cost"
+            value={formatUsd(estimatedCostUsd)}
+            hint={describeCostBasis({
               tier: rateTier,
               model: row.agentModel,
               installation: row.installation,
               window: rateWindow,
               tokens: timeline.tokens.total,
             })}
-          >
-            <span>
-              <Stat label="Est. cost" value={formatUsd(estimatedCostUsd)} />
-            </span>
-          </Tooltip>
+          />
+          {/* Beside the estimate, never in place of it: a figure only some
+              runtimes report (the claude Harness does, ADK does not), summed
+              over the turns that reported one. Absent means not reported, so
+              a session with none shows no stat rather than "$0.00". */}
+          {timeline.tokens.costUsd !== undefined && (
+            <Stat
+              label="Reported cost"
+              value={formatUsd(timeline.tokens.costUsd)}
+              hint="Reported by the agent's runtime for each turn and summed here. A turn that reported no cost, a canceled one say, is not in it."
+            />
+          )}
         </Box>
 
         <SessionTimeline

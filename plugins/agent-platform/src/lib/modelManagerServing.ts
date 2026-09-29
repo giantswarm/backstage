@@ -11,6 +11,7 @@ import type {
   ModelManagerLoading,
   ModelManagerModel,
   ModelManagerNode,
+  ModelManagerServeStep,
 } from './modelManager';
 import {
   endpointAuthority,
@@ -18,13 +19,12 @@ import {
   notLoadedReadiness,
   type GpuNode,
   type ServedModel,
+  type ServedModelStep,
+  type ServedModelStepState,
   type ServingBackend,
   type ServingCapabilities,
   type ServingLoading,
 } from './serving';
-
-/** `app.kubernetes.io/managed-by` the portal's own writes carry (`BACKSTAGE_FIELD_MANAGER`). */
-const PORTAL_MANAGED_BY = 'giantswarm-backstage';
 
 const MIB = 2 ** 20;
 
@@ -118,9 +118,10 @@ export function clientEndpointOf(
 /**
  * The `hostname:port` authorities on which the backend answers for every model
  * it has, for `ServingSourceSnapshot.sharedHosts`: Ollama's own client-facing
- * endpoint ({@link clientEndpointOf}). KServe's `endpoint` is the
- * InferenceService API, not somewhere a model answers, and each predictor has
- * a host of its own — none. The same authority is what `endpointHosts` in
+ * endpoint ({@link clientEndpointOf}). KServe's `endpoint` is the Kubernetes
+ * API, not somewhere a model answers, and each served model answers on its
+ * own Service or under its own path on the models Gateway — none. The same
+ * authority is what `endpointHosts` in
  * {@link toServedModelFromManager} lists for every Ollama row, port kept: a
  * host that also runs another OpenAI-compatible server on another port must
  * not have that server's clients read as Ollama's — neither as "gone" nor as
@@ -137,15 +138,86 @@ export function sharedHostsOf(
 }
 
 /**
- * The namespace of a predictor's in-cluster URL
- * (`http://<name>-predictor.<namespace>.svc.cluster.local`), else `undefined`.
+ * The namespace of a served LLMInferenceService from the address model-manager
+ * reports for it: the workload Service's in-cluster URL
+ * (`http://<name>-kserve-workload-svc.<namespace>.svc.cluster.local:8000`),
+ * or its route on the models Gateway (`https://models.<domain>/<namespace>/
+ * <name>`, the platform's path convention — recognised by the object's own
+ * name as the second segment). `undefined` for anything else.
  */
-export function namespaceOfPredictorUrl(
+export function namespaceOfServedUrl(
   url: string | undefined,
+  resource: string | undefined,
 ): string | undefined {
-  const host = urlHostname(url);
-  const parts = host?.split('.') ?? [];
-  return parts.length >= 3 && parts[2] === 'svc' ? parts[1] : undefined;
+  if (!url) {
+    return undefined;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  const parts = parsed.hostname.toLowerCase().split('.');
+  if (parts.length >= 3 && parts[2] === 'svc') {
+    return parts[1];
+  }
+  const [namespace, name] = parsed.pathname.split('/').filter(Boolean);
+  return namespace && name && name === resource ? namespace : undefined;
+}
+
+/**
+ * model-manager's steps in the seam's vocabulary. A state this portal has no
+ * word for (a newer model-manager) reads as `pending`: the step is shown, not
+ * judged. Absent stays absent — an older model-manager, or a backend without
+ * a serve lifecycle, reports none.
+ */
+export function toServedModelSteps(
+  steps: ModelManagerServeStep[] | undefined,
+): ServedModelStep[] | undefined {
+  return steps?.map(step => ({
+    name: step.name,
+    state: toStepState(step.state),
+    since: step.since,
+    finishedAt: step.finishedAt,
+    reason: step.reason,
+    message: step.message,
+    bytesTotal: step.bytesTotal,
+    bytesCompleted: step.bytesCompleted,
+    cached: step.cached,
+  }));
+}
+
+function toStepState(state: string | undefined): ServedModelStepState {
+  return state === 'inProgress' || state === 'done' || state === 'failed'
+    ? state
+    : 'pending';
+}
+
+/** How the portal names a runtime a model's server reports. */
+const RUNTIME_NAMES: Record<string, string> = { vllm: 'vLLM' };
+
+/** The runtime a served model's server reports, as a row shows it: `vLLM 0.23.0`. */
+export function runtimeLabel(runtime: {
+  name: string;
+  version?: string;
+}): string {
+  const name = RUNTIME_NAMES[runtime.name] ?? runtime.name;
+  return runtime.version ? `${name} ${runtime.version}` : name;
+}
+
+/** Whether a serve is on its way: a phase short of ready, and no step failed. */
+function isStartingPhase(running: {
+  phase?: string;
+  steps?: { state?: string }[];
+}): boolean {
+  return (
+    Boolean(running.phase) &&
+    running.phase !== 'ready' &&
+    running.phase !== 'failed' &&
+    running.phase !== 'terminating' &&
+    !(running.steps ?? []).some(step => step.state === 'failed')
+  );
 }
 
 /**
@@ -157,21 +229,21 @@ export function namespaceOfPredictorUrl(
  * backend that loads on demand (Ollama), `notServing` on one that does not
  * when a ModelConfig points at the model, `available` otherwise or when the
  * block is absent. On KServe the inventory is the per-node download cache plus
- * the InferenceServices: a served model (`running`) takes the serving
- * object's own state as model-manager reads it from the CR and its predictor
+ * the LLMInferenceServices: a served model (`running`) takes the serving
+ * object's own state as model-manager reads it from the CR and its workload
  * pod — with the backend's reason (`Unschedulable`) as the row's word and the
  * rest of the message as the explanation — and is named after the
- * InferenceService — the name agents address it by and the
- * ModelConfig's `spec.model` — so that `findServedModel` and the CR source
- * agree on it; a cached model nobody serves sits on its node ("downloaded on
- * …") and is named after its repository. Every model is `notReady` while the
- * backend reports itself unhealthy (its inventory may then be stale).
+ * LLMInferenceService, in its namespace, so that the CR source's row of the
+ * same object folds onto it (`mergeServingSnapshots`); a cached model nobody
+ * serves sits on its node ("downloaded on …") and is named after its
+ * repository. Every model is `notReady` while the backend reports itself
+ * unhealthy (its inventory may then be stale).
  *
  * The endpoint every model answers on is the backend's own — on a multi-model
  * host that is one hostname for every model, which is why `findServedModel`
- * disambiguates by name. On KServe only a served model has an endpoint (the
- * predictor's), which is also what folds it onto the same InferenceService
- * read as a CR (`mergeServingSnapshots`).
+ * disambiguates by name. On KServe only a served model has an endpoint: its
+ * route on the models Gateway (one host for every routed model, told apart by
+ * the path), or its workload Service.
  */
 export function toServedModelFromManager(
   installation: string,
@@ -182,7 +254,7 @@ export function toServedModelFromManager(
   const kserve = backend.backend === 'kserve';
   const resource = kserve ? (running?.resource ?? model.path) : undefined;
   const namespace = kserve
-    ? namespaceOfPredictorUrl(running?.endpoint)
+    ? namespaceOfServedUrl(running?.endpoint, resource)
     : undefined;
 
   let readiness: ServedModel['readiness'];
@@ -195,11 +267,11 @@ export function toServedModelFromManager(
       `The ${backend.backend} backend is not healthy; its inventory may be stale.`;
   } else if (kserve && running) {
     // The serving object's state as model-manager reads it from the CR and
-    // its predictor pod (0.23.4 on: a waiting pod makes the object Pending,
+    // its workload pod (0.23.4 on: a waiting pod makes the object Pending,
     // with the pod's reason). `message` is the reason and the text on one
     // line: the reason becomes the row's own word, the text the explanation.
     const status = running.status ?? 'Pending';
-    const what = `${running.kind ?? 'InferenceService'} ${resource ?? model.name}`;
+    const what = `${running.kind ?? 'LLMInferenceService'} ${resource ?? model.name}`;
     if (status === 'Ready') {
       readiness = 'ready';
       readinessMessage = `${what} is ready.`;
@@ -207,6 +279,11 @@ export function toServedModelFromManager(
       // The deletion is the state; a reason left from before says nothing.
       readiness = 'terminating';
       readinessMessage = `${what} is being deleted.`;
+    } else if (status === 'NotReady' && isStartingPhase(running)) {
+      // A serve on its way with no failed step: a normal start, however the
+      // Deployment's condition reads (MinimumReplicasUnavailable).
+      readiness = 'starting';
+      readinessMessage = `${what} is starting: ${running.phase}.`;
     } else {
       readiness = status === 'Pending' ? 'pending' : 'notReady';
       readinessReason = running.reason;
@@ -268,11 +345,12 @@ export function toServedModelFromManager(
 
   // Ollama: every model answers on the backend's own server, listed as its
   // `hostname:port` authority since the host may run other servers on other
-  // ports (see `sharedHostsOf`). KServe: only a served model has an endpoint,
-  // its predictor's, a hostname of its own — listed bare, as the CR read lists
-  // it, so the two views fold (`isSameServedModel`) and a client reaches it
-  // on any port and scheme (the backend "endpoint" is the InferenceService
-  // API, not somewhere a model answers).
+  // ports (see `sharedHostsOf`). KServe: only a served model has an endpoint
+  // — its route on the models Gateway, or its workload Service — listed as a
+  // bare hostname, as the CR read lists it, so a client reaches it on any
+  // port and scheme; a client on the Gateway's shared host is told apart by
+  // the route's path (the backend "endpoint" is the Kubernetes API, not
+  // somewhere a model answers).
   const clientEndpoint = kserve ? undefined : clientEndpointOf(backend);
   const endpointHosts = Array.from(
     new Set(
@@ -283,17 +361,17 @@ export function toServedModelFromManager(
     ),
   );
 
-  // Ollama says which server it is; on KServe the runtime is the
-  // InferenceService's, which the CR read reports.
+  // Ollama says which server it is; on KServe the model's own server does,
+  // once Ready (model-manager 1.1.0 on: vLLM and its version).
   let runtime: string | undefined = backend.backend;
   if (kserve) {
-    runtime = undefined;
+    runtime = running?.runtime ? runtimeLabel(running.runtime) : undefined;
   } else if (backend.version) {
     runtime = `${backend.backend} ${backend.version}`;
   }
 
   // KServe: a served model is identified like the CR source identifies its
-  // InferenceService (same id, same name), a cached one by where it sits.
+  // LLMInferenceService (same id, same name), a cached one by where it sits.
   let id = `${installation}/${backend.backend}//${model.name}`;
   let name = model.name;
   if (kserve) {
@@ -319,15 +397,19 @@ export function toServedModelFromManager(
     readiness,
     readinessMessage,
     readinessReason,
+    phase: running?.phase,
+    steps: toServedModelSteps(running?.steps),
     node: running?.node ?? model.node,
     nodeSource: kserve && running?.node ? 'pod' : undefined,
+    splitNodes: running?.placement === 'split' ? running.nodes : undefined,
     gpuCount: running?.gpus,
     internalUrl: running?.endpoint ?? clientEndpoint,
+    interfaces: running?.interfaces,
+    interfacesReason: running?.interfacesReason,
+    publicName: running?.publicName,
+    publicNameReason: running?.publicNameReason,
     endpointHosts,
     preset: model.preset ?? running?.preset,
-    managedByPortal: running?.managedBy
-      ? running.managedBy === PORTAL_MANAGED_BY
-      : undefined,
     sizeBytes: model.sizeBytes,
     loaded: model.loaded,
     memoryBytes: running?.sizeBytes,
@@ -348,6 +430,7 @@ export function toServedModelFromManager(
           managed: model.modelConfig.managed,
           ready: model.modelConfig.ready,
           message: model.modelConfig.message,
+          model: model.modelConfig.providerModel ?? model.modelConfig.model,
         }
       : undefined,
     managerRef: model.name,
@@ -414,6 +497,7 @@ export function toGpuNodeFromManager(
     accelerated: node.accelerated,
     eligible: node.eligible,
     eligibilityReason: node.eligibilityReason,
+    modelImageEligible: node.modelImageEligible,
     cache: node.cache
       ? {
           claim: node.cache.claim,
@@ -429,12 +513,12 @@ export function toGpuNodeFromManager(
 }
 
 /**
- * Whether a KServe row is a served model — an InferenceService, whichever
+ * Whether a KServe row is a served model — an LLMInferenceService, whichever
  * source listed it — as opposed to a cached download or a preset nobody
  * serves: a CR read always has a namespace; model-manager's inventory marks a
- * served model `loaded` and names its predictor.
+ * served model `loaded` and names its serving object.
  */
-export function isServedInferenceService(model: ServedModel): boolean {
+export function isServedKServeModel(model: ServedModel): boolean {
   return (
     model.backend === 'kserve' &&
     (model.namespace !== undefined || model.loaded === true)
@@ -443,15 +527,14 @@ export function isServedInferenceService(model: ServedModel): boolean {
 
 /**
  * The reference to hand model-manager for a row. A served KServe model goes by
- * its InferenceService name: model-manager resolves that for every operation
- * (unload, wire, unwire, delete) and it is unambiguous even when the
- * InferenceService was composed from another model's preset — the repository
- * of the cached weights then names nothing model-manager serves. Anything else
- * goes by what model-manager listed it as (`managerRef`: an Ollama tag, the
+ * its LLMInferenceService name: model-manager resolves that for every
+ * operation (unload, wire, unwire, delete), and it is unambiguous where a
+ * repository is not — two presets may serve one repository. Anything else goes
+ * by what model-manager listed it as (`managerRef`: an Ollama tag, the
  * repository of a cached download), else the row's name.
  */
 export function managerRefOf(model: ServedModel): string {
-  if (isServedInferenceService(model)) {
+  if (isServedKServeModel(model)) {
     return model.name;
   }
   return model.managerRef ?? model.name;

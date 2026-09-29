@@ -48,6 +48,13 @@
       // UI-message-stream wire protocol is unchanged between v6 and v7, so the
       // ai@7 backend streams to the ai@6 frontend fine.
       //
+      // That scoped override must stay a RANGE (`^7.0.28`), never an exact
+      // version: `ai` pins `@ai-sdk/provider` exactly, the @ai-sdk/* providers
+      // are range-declared and float on every lockfile refresh, and a pinned
+      // `ai` is additionally gated by the 14-day minimumReleaseAge. The two
+      // then land on different `@ai-sdk/provider` 4.0.x copies and the
+      // structurally-incompatible LanguageModelV4 types fail tsc (PR #2492).
+      //
       // Keep this hold: the spec-lock rationale is permanent, and lifting it
       // while the stack is split across two majors would let Renovate propose
       // exactly the uncoordinated major bump #1926 hit. Do the next major

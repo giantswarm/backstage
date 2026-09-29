@@ -7,6 +7,7 @@ import {
   formatGpuMemory,
   GpuCapacityPanel,
   lacksInstallationCache,
+  MODEL_IMAGE_TARGET_DESCRIPTION,
   NO_CACHE_ON_NODE_HINT,
   NOT_SERVING_TARGET_DESCRIPTION,
 } from './GpuCapacityPanel';
@@ -138,6 +139,38 @@ describe('GpuCapacityPanel', () => {
     expect(
       screen.getByText('No GPU nodes found on inst-1.'),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('shows no empty table when every installation is unavailable', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={['inst-1']}
+        unavailable={{ 'inst-1': 'error' }}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText('No GPU nodes found.')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('shows a loading indicator, not an empty table, while the nodes are read', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={['inst-1']}
+        unavailable={{}}
+        isLoading
+      />,
+    );
+
+    expect(
+      await screen.findByRole('progressbar', { name: 'Reading nodes…' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No GPU nodes found/)).not.toBeInTheDocument();
   });
 });
 
@@ -482,6 +515,24 @@ const rowOf = (name: string) =>
   screen.getByText(name).closest('[role="row"]') as HTMLElement;
 
 describe('GpuCapacityPanel · serving targets', () => {
+  it('marks a node pinned out by the cache claim as a target for model-image presets', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[sparkTarget, { ...sparkPinnedOut, modelImageEligible: true }]}
+        installations={['gpu']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    const marker = screen.getByText(MODEL_IMAGE_TARGET_DESCRIPTION);
+    expect(rowOf('spark-e119')).toContainElement(marker);
+    expect(marker).toHaveAttribute(
+      'title',
+      'Serving target for model-image presets; Hugging Face presets: cache claim hf-cache is pinned to spark-8723',
+    );
+  });
+
   it('marks a node the serving layer will not place a model on, with its reason on hover', async () => {
     await renderInTestApp(
       <GpuCapacityPanel

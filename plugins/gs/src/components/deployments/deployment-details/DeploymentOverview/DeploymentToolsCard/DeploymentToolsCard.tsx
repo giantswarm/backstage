@@ -1,12 +1,12 @@
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { Toolkit, type Tool } from '../../../../UI';
 import { formatTemplateString } from '../../../../utils/formatTemplateString';
 import { useDeploymentDetailsTemplateData } from '../../../../hooks';
 
 export function DeploymentToolsCard() {
-  const configApi = useApi(configApiRef);
+  const { config } = useSignedInConfig();
   const { deployment, installationName } = useCurrentDeployment();
 
   const deploymentDetailsTemplateData = useDeploymentDetailsTemplateData(
@@ -14,7 +14,7 @@ export function DeploymentToolsCard() {
     deployment,
   );
 
-  const linksConfig = configApi.getOptionalConfigArray(
+  const linksConfig = config?.getOptionalConfigArray(
     'gs.deploymentDetails.resources',
   );
 

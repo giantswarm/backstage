@@ -1,10 +1,10 @@
 import {
-  configApiRef,
   discoveryApiRef,
   fetchApiRef,
   useApi,
 } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { DiscoveredSkill } from '../lib/skills';
 
 export type SkillCatalog = {
@@ -26,16 +26,18 @@ export type SkillCatalog = {
  * whole catalog — the others still load and the failed ones are reported.
  */
 export function useSkillCatalog(): SkillCatalog {
-  const configApi = useApi(configApiRef);
+  // The repository list is part of the signed-in config; discovery waits for
+  // it rather than starting with an empty list.
+  const { config, isLoading: configIsLoading } = useSignedInConfig();
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
 
   const repositories =
-    configApi.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
+    config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['agent-platform', 'skills', repositories.join(',')],
-    enabled: repositories.length > 0,
+    enabled: !configIsLoading && repositories.length > 0,
     queryFn: async () => {
       const baseUrl = await discoveryApi.getBaseUrl('gs');
 
@@ -76,7 +78,7 @@ export function useSkillCatalog(): SkillCatalog {
 
   return {
     skills: data?.skills ?? [],
-    isLoading,
+    isLoading: configIsLoading || isLoading,
     error: (error as Error) ?? null,
     hasRepositories: repositories.length > 0,
     failedRepositories: data?.failedRepositories ?? [],

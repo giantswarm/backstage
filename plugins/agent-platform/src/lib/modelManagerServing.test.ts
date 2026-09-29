@@ -15,11 +15,11 @@ import {
   formatBytes,
   formatContextLength,
   formatGpuShare,
-  isServedInferenceService,
+  isServedKServeModel,
   lacksToolCalling,
   clientEndpointOf,
   managerRefOf,
-  namespaceOfPredictorUrl,
+  namespaceOfServedUrl,
   notableCapabilities,
   sharedHostsOf,
   toGpuNodeFromManager,
@@ -27,6 +27,7 @@ import {
   toServingBackend,
   toServingCapabilities,
   toServingLoading,
+  runtimeLabel,
   validateModelRef,
 } from './modelManagerServing';
 import { findServedModel } from './serving';
@@ -76,6 +77,52 @@ describe('toServingBackend / toServingCapabilities', () => {
       nodeInventory: false,
       search: false,
     });
+  });
+});
+
+describe('toServedModelFromManager · API interfaces', () => {
+  const running = kserveModels.find(model => model.running)!;
+  const withInterfaces = modelManagerModelSchema.parse({
+    ...modelsKserve.models.find(model => model.running),
+    running: {
+      ...modelsKserve.models.find(model => model.running)!.running,
+      endpoint: 'http://agentgateway.agent-platform.svc:8081',
+      runtime: { name: 'vllm', version: '0.23.0' },
+      interfaces: [
+        { type: 'Completions', path: '/v1/chat/completions' },
+        { type: 'Messages', path: '/v1/messages' },
+        { bogus: true },
+      ],
+      publicName: 'qwen3-14b',
+    },
+  });
+
+  it('carries the runtime, the interfaces and the public name model-manager reports', () => {
+    const served = toServedModelFromManager('lab', kserve, withInterfaces);
+    expect(served.runtime).toBe('vLLM 0.23.0');
+    expect(served.interfaces).toEqual([
+      { type: 'Completions', path: '/v1/chat/completions' },
+      { type: 'Messages', path: '/v1/messages' },
+    ]);
+    expect(served.publicName).toBe('qwen3-14b');
+    expect(served.internalUrl).toBe(
+      'http://agentgateway.agent-platform.svc:8081',
+    );
+  });
+
+  it('reports none of it for a model-manager that says nothing', () => {
+    const served = toServedModelFromManager('lab', kserve, running);
+    expect(served.runtime).toBeUndefined();
+    expect(served.interfaces).toBeUndefined();
+    expect(served.publicName).toBeUndefined();
+  });
+
+  it('names the runtime with its version as the server reports it', () => {
+    expect(runtimeLabel({ name: 'vllm', version: '0.1.dev1+g51f799c1a' })).toBe(
+      'vLLM 0.1.dev1+g51f799c1a',
+    );
+    expect(runtimeLabel({ name: 'vllm' })).toBe('vLLM');
+    expect(runtimeLabel({ name: 'sglang', version: '0.5' })).toBe('sglang 0.5');
   });
 });
 
@@ -152,12 +199,13 @@ describe('toServedModelFromManager', () => {
     expect(served.readinessMessage).toBe('dial tcp: connection refused');
   });
 
-  it('maps a served KServe model as its InferenceService, like the CR source does', () => {
+  it('maps a served KServe model as its LLMInferenceService, like the CR source does', () => {
     const served = toServedModelFromManager('gpu', kserve, kserveModels[0]);
 
     expect(served).toMatchObject({
-      // Same id and name as the CR read of the same InferenceService, so the
-      // two fold into one row and the ModelConfig's spec.model matches.
+      // Same id and name as the CR read of the same LLMInferenceService, so
+      // the two fold into one row — the namespace read off the route on the
+      // models Gateway (`/<namespace>/<name>`).
       id: 'gpu/kserve/model-serving/qwen3-14b',
       backend: 'kserve',
       name: 'qwen3-14b',
@@ -165,28 +213,28 @@ describe('toServedModelFromManager', () => {
       managerRef: 'Qwen/Qwen3-14B',
       modelSource: 'Qwen/Qwen3-14B',
       readiness: 'ready',
-      readinessMessage: 'InferenceService qwen3-14b is ready.',
+      readinessMessage: 'LLMInferenceService qwen3-14b is ready.',
       node: 'gpu-node-1',
       nodeSource: 'pod',
       gpuCount: 1,
       preset: 'qwen3-14b',
       downloaded: true,
       cachePath: 'qwen3-14b',
-      managedByPortal: true,
-      internalUrl: 'http://qwen3-14b-predictor.model-serving.svc.cluster.local',
-      // The portal's own wiring, which model-manager recognises but does not own.
+      internalUrl: 'https://models.example.test/model-serving/qwen3-14b',
+      // The ModelConfig model-manager wired for it.
       modelConfig: {
         name: 'qwen3-14b',
         namespace: 'kagent',
-        managed: false,
+        managed: true,
         ready: true,
+        // `spec.model`: what the ModelConfig sends the provider — the name
+        // the model is served under.
+        model: 'Qwen/Qwen3-14B',
       },
       operable: true,
     });
-    // Only the predictor answers; the backend "endpoint" is the CR API.
-    expect(served.endpointHosts).toEqual([
-      'qwen3-14b-predictor.model-serving.svc.cluster.local',
-    ]);
+    // Only the route answers; the backend "endpoint" is the Kubernetes API.
+    expect(served.endpointHosts).toEqual(['models.example.test']);
     expect(served.runtime).toBeUndefined();
   });
 
@@ -207,15 +255,15 @@ describe('toServedModelFromManager', () => {
     });
     expect(served.namespace).toBeUndefined();
     expect(served.endpointHosts).toEqual([]);
-    expect(isServedInferenceService(served)).toBe(false);
+    expect(isServedKServeModel(served)).toBe(false);
     expect(
-      isServedInferenceService(
+      isServedKServeModel(
         toServedModelFromManager('gpu', kserve, kserveModels[0]),
       ),
     ).toBe(true);
   });
 
-  it('follows the InferenceService readiness model-manager reads from the CR', () => {
+  it('follows the LLMInferenceService readiness model-manager reads from the CR', () => {
     const base = kserveModels[0];
     const pending = toServedModelFromManager('gpu', kserve, {
       ...base,
@@ -226,7 +274,7 @@ describe('toServedModelFromManager', () => {
       running: {
         ...base.running!,
         status: 'NotReady',
-        message: 'predictor pod is crash-looping',
+        message: 'workload pod is crash-looping',
       },
     });
     const terminating = toServedModelFromManager('gpu', kserve, {
@@ -238,11 +286,11 @@ describe('toServedModelFromManager', () => {
     expect(pending.readinessMessage).toMatch(/has not reported yet/);
     expect(pending.readinessReason).toBeUndefined();
     expect(failing.readiness).toBe('notReady');
-    expect(failing.readinessMessage).toBe('predictor pod is crash-looping');
+    expect(failing.readinessMessage).toBe('workload pod is crash-looping');
     expect(failing.readinessReason).toBeUndefined();
     expect(terminating.readiness).toBe('terminating');
     expect(terminating.readinessMessage).toBe(
-      'InferenceService qwen3-14b is being deleted.',
+      'LLMInferenceService qwen3-14b is being deleted.',
     );
   });
 
@@ -272,10 +320,25 @@ describe('toServedModelFromManager', () => {
         error: undefined,
       },
     });
+    // The namespace of a served object, from its workload Service or its
+    // route on the models Gateway (the object's own name as the second
+    // segment); nothing from another server's address.
     expect(
-      namespaceOfPredictorUrl('http://x-predictor.serving.svc.cluster.local'),
+      namespaceOfServedUrl(
+        'http://x-kserve-workload-svc.serving.svc.cluster.local:8000',
+        'x',
+      ),
     ).toBe('serving');
-    expect(namespaceOfPredictorUrl('http://172.21.0.1:11434')).toBeUndefined();
+    expect(
+      namespaceOfServedUrl('https://models.example.test/serving/x', 'x'),
+    ).toBe('serving');
+    expect(
+      namespaceOfServedUrl('https://models.example.test/serving/x', 'y'),
+    ).toBeUndefined();
+    expect(
+      namespaceOfServedUrl('http://172.21.0.1:11434', 'x'),
+    ).toBeUndefined();
+    expect(namespaceOfServedUrl(undefined, 'x')).toBeUndefined();
     expect(
       managerRefOf({
         backend: 'kserve',
@@ -283,8 +346,8 @@ describe('toServedModelFromManager', () => {
         managerRef: 'Qwen/Qwen3-14B',
       } as any),
     ).toBe('Qwen/Qwen3-14B');
-    // A served InferenceService goes by its name: model-manager resolves it
-    // whatever preset it was composed from, unlike the cached repository.
+    // A served LLMInferenceService goes by its name: model-manager resolves
+    // it whatever preset it was composed from, unlike the cached repository.
     expect(
       managerRefOf({
         backend: 'kserve',
@@ -898,7 +961,7 @@ describe('toServedModelFromManager · the reason behind a state (model-manager 0
       readiness: 'pending',
       readinessReason: 'ContainerCreating',
       readinessMessage:
-        'InferenceService qwen3-14b is pending: ContainerCreating.',
+        'LLMInferenceService qwen3-14b is pending: ContainerCreating.',
     });
   });
 
@@ -917,7 +980,7 @@ describe('toServedModelFromManager · the reason behind a state (model-manager 0
     expect(served.readiness).toBe('terminating');
     expect(served.readinessReason).toBeUndefined();
     expect(served.readinessMessage).toBe(
-      'InferenceService qwen3-14b is being deleted.',
+      'LLMInferenceService qwen3-14b is being deleted.',
     );
   });
 
@@ -931,5 +994,45 @@ describe('toServedModelFromManager · the reason behind a state (model-manager 0
     expect(ready.readiness).toBe('ready');
     expect(ready.readinessReason).toBeUndefined();
     expect(loaded.readinessReason).toBeUndefined();
+  });
+});
+
+describe('toServedModelFromManager during a start', () => {
+  const kserveBackend = {
+    backend: 'kserve' as const,
+    healthy: true,
+  } as Parameters<typeof toServedModelFromManager>[1];
+  const starting = (steps: { name: string; state: string }[]) =>
+    toServedModelFromManager('gpu', kserveBackend, {
+      name: 'org/flash',
+      loaded: true,
+      running: {
+        resource: 'flash',
+        kind: 'LLMInferenceService',
+        status: 'NotReady',
+        reason: 'MinimumReplicasUnavailable',
+        message:
+          'MinimumReplicasUnavailable Deployment does not have minimum availability.',
+        phase: 'loading',
+        steps,
+      },
+    } as Parameters<typeof toServedModelFromManager>[2]);
+
+  it('shows a serve on its way as Starting, not Not ready', () => {
+    expect(
+      starting([
+        { name: 'scheduling', state: 'done' },
+        { name: 'loading', state: 'inProgress' },
+      ]),
+    ).toMatchObject({
+      readiness: 'starting',
+      readinessMessage: 'LLMInferenceService flash is starting: loading.',
+    });
+  });
+
+  it('keeps a failed step red', () => {
+    expect(starting([{ name: 'loading', state: 'failed' }]).readiness).toBe(
+      'notReady',
+    );
   });
 });

@@ -1,3 +1,5 @@
+import { ComponentType } from 'react';
+import { SvgIconProps } from '@material-ui/core/SvgIcon';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import ErrorIcon from '@material-ui/icons/Error';
 import InfoIcon from '@material-ui/icons/Info';
@@ -31,13 +33,20 @@ const INTENT_TOKEN: Record<StatusLabelIntent, string> = {
 };
 
 /**
+ * An intent's colour as a CSS value -- `var(--bui-fg-…)` -- for a component
+ * that colours its own glyph the way this label colours its icon.
+ */
+export const intentColor = (intent: StatusLabelIntent) =>
+  `var(${INTENT_TOKEN[intent]})`;
+
+/**
  * Default icon per intent. Each is a filled Material variant with a distinct
  * silhouette — tick, triangle, circle, and so on — so a status stays legible
  * when colour is unavailable or unreliable (colour blindness, greyscale print).
  * Override via {@link StatusLabelProps.icon} when a domain has a more specific
  * glyph, e.g. an hourglass for "waiting".
  */
-const INTENT_ICON: Record<StatusLabelIntent, typeof CheckCircleIcon> = {
+const INTENT_ICON: Record<StatusLabelIntent, ComponentType<SvgIconProps>> = {
   positive: CheckCircleIcon,
   warning: ReportProblemIcon,
   negative: ErrorIcon,
@@ -59,15 +68,23 @@ export type StatusLabelProps = {
   intent: StatusLabelIntent;
   /**
    * Icon override for domains with a more specific glyph than the intent's
-   * default. Pass a Material icon component, e.g. `HourglassEmpty`.
+   * default. Pass a Material icon component, e.g. `HourglassEmpty`, or any
+   * component taking `SvgIconProps`.
    */
-  icon?: typeof CheckCircleIcon;
+  icon?: ComponentType<SvgIconProps>;
   /**
    * Detail shown on hover — typically the underlying reason a status is not
    * healthy. Rendered as a `title`, so keep it short enough to read as a
    * tooltip.
    */
   title?: string;
+  /**
+   * Lay the label out inline -- an `inline-flex` span with the text as a
+   * span -- for a status inside a line of text: a list item's reason, a
+   * diff annotation. The default block layout is for a cell or a row of its
+   * own.
+   */
+  inline?: boolean;
 };
 
 /**
@@ -96,20 +113,43 @@ export const StatusLabel = ({
   intent,
   icon,
   title,
+  inline,
 }: StatusLabelProps) => {
   const Icon = icon ?? INTENT_ICON[intent];
+  const glyph = (
+    <span
+      style={{
+        display: 'flex',
+        color: intentColor(intent),
+        fontSize: ICON_SIZE,
+      }}
+    >
+      <Icon fontSize="inherit" />
+    </span>
+  );
+
+  if (inline) {
+    return (
+      <span
+        title={title}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 'var(--bui-space-2)',
+          verticalAlign: 'middle',
+        }}
+      >
+        {glyph}
+        <Text as="span" variant="body-medium">
+          {label}
+        </Text>
+      </span>
+    );
+  }
 
   return (
     <Flex align="center" gap="2" title={title}>
-      <span
-        style={{
-          display: 'flex',
-          color: `var(${INTENT_TOKEN[intent]})`,
-          fontSize: ICON_SIZE,
-        }}
-      >
-        <Icon fontSize="inherit" />
-      </span>
+      {glyph}
       <Text variant="body-medium">{label}</Text>
     </Flex>
   );

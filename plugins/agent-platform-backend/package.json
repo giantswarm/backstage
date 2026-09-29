@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-agent-platform-backend",
   "version": "0.1.0",
   "license": "Apache-2.0",
-  "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "publishConfig": {
@@ -13,7 +12,12 @@
   "configSchema": "config.d.ts",
   "backstage": {
     "role": "backend-plugin",
-    "pluginId": "agent-platform"
+    "pluginId": "agent-platform",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-agent-platform",
+      "@giantswarm/backstage-plugin-agent-platform-backend",
+      "@giantswarm/backstage-plugin-agent-platform-common"
+    ]
   },
   "scripts": {
     "start": "backstage-cli package start",

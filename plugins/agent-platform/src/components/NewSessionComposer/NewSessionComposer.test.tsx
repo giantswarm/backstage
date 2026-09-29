@@ -80,39 +80,37 @@ beforeEach(() => {
 
 describe('NewSessionComposer', () => {
   describe('collapsing', () => {
-    it('shows only the prompt until it is focused', () => {
+    it('shows the agent picker and Start before it is focused', () => {
       renderComposer({ collapsible: true });
-
-      expect(field()).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: 'Start' }),
-      ).not.toBeInTheDocument();
-    });
-
-    it('reveals the agent picker and Start on focus', async () => {
-      renderComposer({ collapsible: true });
-
-      await userEvent.click(field());
 
       expect(startButton()).toBeInTheDocument();
       expect(agentPicker()).toBeInTheDocument();
     });
 
-    it('stays expanded after losing focus', async () => {
-      // One-way on purpose: collapsing on blur would hide the agent just picked,
-      // and re-collapsing under the cursor reads as a glitch.
+    it('shows a single line until focused, then grows', async () => {
+      renderComposer({ collapsible: true });
+      expect(field()).toHaveAttribute('rows', '1');
+
+      await userEvent.click(field());
+
+      expect(field()).toHaveAttribute('rows', '3');
+    });
+
+    it('stays grown after losing focus', async () => {
+      // One-way on purpose: shrinking on blur would move the controls under
+      // the cursor, which reads as a glitch.
       renderComposer({ collapsible: true });
 
       await userEvent.click(field());
       await userEvent.tab();
 
-      expect(startButton()).toBeInTheDocument();
+      expect(field()).toHaveAttribute('rows', '3');
     });
 
-    it('starts expanded when not collapsible, as the dialog uses it', () => {
+    it('starts grown when not collapsible, as the dialog uses it', () => {
       renderComposer();
 
-      expect(startButton()).toBeInTheDocument();
+      expect(field()).toHaveAttribute('rows', '3');
     });
   });
 
@@ -123,15 +121,69 @@ describe('NewSessionComposer', () => {
       expect(startButton()).toBeDisabled();
     });
 
-    it('is disabled with a prompt but no agent selected', async () => {
+    it('says an agent is missing rather than starting without one', async () => {
       // Unlike the prototype there is no canonical default agent, and a wrong
       // guess starts a paid turn against something that can act on a cluster.
+      // But a refusal has to be said: Start stays pressable, and pressing it
+      // names the gap and moves focus to the picker.
       // Two agents, because a sole agent is preselected — see the picker tests.
       renderComposer({ agents: [sre, issues] });
 
       await userEvent.type(field(), 'why is the ingress failing?');
+      expect(startButton()).toBeEnabled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-      expect(startButton()).toBeDisabled();
+      await userEvent.click(startButton());
+
+      expect(onStart).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Choose an agent to start.',
+      );
+      expect(agentPicker()).toHaveFocus();
+    });
+
+    it('says an agent is missing on Enter too', async () => {
+      renderComposer({ agents: [sre, issues] });
+
+      await userEvent.type(field(), 'why is the ingress failing?{Enter}');
+
+      expect(onStart).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Choose an agent to start.',
+      );
+    });
+
+    it('drops the message once a late default is adopted', async () => {
+      // The remembered agent can arrive after the user has already pressed
+      // Enter; adopting it is not a pick, but it answers the message all the same.
+      const { rerender } = renderComposer({ agents: [sre, issues] });
+
+      await userEvent.type(field(), 'check{Enter}');
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+
+      rerender(
+        <NewSessionComposer
+          agents={[sre, issues]}
+          defaultAgent={issues}
+          isStarting={false}
+          onStart={onStart}
+        />,
+      );
+
+      expect(agentPicker()).toHaveTextContent('Issue Tracker');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('drops the message once an agent is chosen', async () => {
+      renderComposer({ agents: [sre, issues] });
+
+      await userEvent.type(field(), 'check{Enter}');
+      await userEvent.click(agentPicker());
+      await userEvent.click(
+        screen.getByRole('option', { name: /Issue Tracker/ }),
+      );
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('is disabled for a prompt of pure whitespace', async () => {
@@ -153,7 +205,11 @@ describe('NewSessionComposer', () => {
     it('is disabled while a create is in flight', () => {
       renderComposer({ defaultAgent: sre, isStarting: true });
 
-      expect(screen.getByRole('button', { name: 'Starting…' })).toBeDisabled();
+      // Pending, react-aria names the button "Start Loading".
+      expect(screen.getByRole('button', { name: /^Start\b/ })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
     });
   });
 
@@ -248,9 +304,10 @@ describe('NewSessionComposer', () => {
       renderComposer({ agents: [sre, issues], defaultAgent: platform });
 
       await userEvent.type(field(), 'check');
+      await userEvent.click(startButton());
 
       expect(agentPicker()).toHaveTextContent('Select an agent');
-      expect(startButton()).toBeDisabled();
+      expect(onStart).not.toHaveBeenCalled();
     });
 
     it('falls back to a sole agent when the default is not on offer', async () => {
@@ -365,9 +422,10 @@ describe('NewSessionComposer', () => {
       renderComposer({ agents: [broken] });
 
       await userEvent.type(field(), 'check');
+      await userEvent.click(startButton());
 
       expect(agentPicker()).toHaveTextContent('Select an agent');
-      expect(startButton()).toBeDisabled();
+      expect(onStart).not.toHaveBeenCalled();
     });
 
     describe('a picker with nothing to choose', () => {
@@ -462,7 +520,7 @@ describe('the model behind the agent', () => {
       readiness: 'notReady',
       name: 'qwen3-14b',
       namespace: 'kserve',
-      message: 'InferenceService qwen3-14b is not ready.',
+      message: 'LLMInferenceService qwen3-14b is not ready.',
     },
   });
   const idleModel = agentRow({
@@ -500,7 +558,7 @@ describe('the model behind the agent', () => {
       screen.getByText("SRE Agent's model is not ready"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/InferenceService kserve\/qwen3-14b: /),
+      screen.getByText(/LLMInferenceService kserve\/qwen3-14b: /),
     ).toBeInTheDocument();
   });
 

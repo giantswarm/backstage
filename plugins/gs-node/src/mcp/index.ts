@@ -1,1 +1,7 @@
-export { McpClientCache, isClosedClientError } from './McpClientCache';
+export { McpClientCache } from './McpClientCache';
+export {
+  describeMcpFailure,
+  isClosedClientError,
+  isLostSessionError,
+  isRecoverableSessionError,
+} from './mcpErrors';

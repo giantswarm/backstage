@@ -4,22 +4,28 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClusterManagerClient } from '../apis/ClusterManagerClient';
 import {
   CLUSTER_MANAGER_SERVER,
+  ClusterManagerError,
   ClusterManagerNotConnectedError,
   clusterApiNote,
   isManagedPool,
-  parseReplicasGuard,
+  offersTool,
   poolNameOf,
+  type ClusterManagerTool,
   type ClusterManagerInfo,
   type CreateNodePoolInput,
   type DeleteNodePoolInput,
+  type RemoveModelCacheInput,
+  type Refusal,
+  type CacheClaim,
   type ManagedCluster,
   type NodePool,
   type NodePoolWriteResult,
-  type ReplicasGuard,
   type WriteMode,
+  type CreateNodePoolSchema,
 } from '../lib/clusterManager';
+import { gpuNodePoolsRefetchInterval } from '../lib/poolLifecycle';
 import {
-  musterAcceleratorsQueryKey,
+  musterCreateNodePoolSchemaQueryKey,
   musterClusterManagerInfoQueryKey,
   musterClustersQueryKey,
 } from '../lib/queryKeys';
@@ -101,17 +107,29 @@ export function useManagedClusters(installation: string | undefined) {
   };
 }
 
-/** The curated accelerators for the create dialog. */
-export function useAccelerators(installation: string | undefined) {
+export type CreateNodePoolSchemaState = {
+  schema: CreateNodePoolSchema | undefined;
+  /** True while the schema is read: the form keeps the sections it declares in place meanwhile. */
+  isLoading: boolean;
+};
+
+/**
+ * The create tool's schema for the create dialog: the curated accelerators
+ * and the arguments this installation's cluster-manager takes; `undefined`
+ * while it is read, and `isLoading` says so.
+ */
+export function useCreateNodePoolSchema(
+  installation: string | undefined,
+): CreateNodePoolSchemaState {
   const client = useClusterManagerClient(installation);
-  const { data } = useQuery({
-    queryKey: musterAcceleratorsQueryKey(installation ?? ''),
+  const { data, isLoading } = useQuery({
+    queryKey: musterCreateNodePoolSchemaQueryKey(installation ?? ''),
     enabled: Boolean(client),
-    queryFn: () => client!.listAccelerators(),
+    queryFn: () => client!.createNodePoolSchema(),
     staleTime: 5 * 60_000,
     retry: false,
   });
-  return data;
+  return { schema: data, isLoading: Boolean(client) && isLoading };
 }
 
 /** One GPU node pool cluster-manager owns, as a row of the pools list. */
@@ -125,9 +143,24 @@ export type GpuNodePoolRow = {
   pool: NodePool;
 };
 
+/**
+ * One model cache claim of a cluster, as a row of the Model cache card: a
+ * cluster keeps its claims after its last pool is gone, so the rows come from
+ * every cluster `list_clusters` names, pool or not (giantswarm/backstage#2493).
+ */
+export type ModelCacheRow = {
+  /** `<installation>/<cluster>/<claim>`, the row key. */
+  id: string;
+  installation: string;
+  cluster: ManagedCluster;
+  claim: CacheClaim;
+};
+
 /** What one installation's `list_clusters` → `list_node_pools` fan-out yields. */
 type GpuNodePoolsOfInstallation = {
   rows: GpuNodePoolRow[];
+  /** The model cache claims of every cluster listed, pool or not. */
+  caches: ModelCacheRow[];
   /** The tool's note where the installation does not serve the Cluster API. */
   note?: string;
 };
@@ -165,15 +198,33 @@ export function useGpuNodePools(installations: string[]) {
             pool,
           }));
         });
-        return { rows, note: clusterApiNote(clusterApi) };
+        const caches = clusters.flatMap(cluster =>
+          (cluster.serving.readiness?.cacheClaims ?? []).map(claim => ({
+            id: `${installation}/${cluster.name}/${claim.name}`,
+            installation,
+            cluster,
+            claim,
+          })),
+        );
+        return { rows, caches, note: clusterApiNote(clusterApi) };
       },
       staleTime: 30_000,
+      // 10 s while a pool of the installation is unsettled, 60 s otherwise —
+      // in a tab that is not focused too: a pool's serve intent is served the
+      // moment its stack is ready, not when the person looks again.
+      refetchInterval: gpuNodePoolsRefetchInterval,
+      refetchIntervalInBackground: true,
       retry: false,
     })),
   });
 
   const rows = useMemo(
     () => queries.flatMap(query => query.data?.rows ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queries.map(query => query.dataUpdatedAt).join('|')],
+  );
+  const caches = useMemo(
+    () => queries.flatMap(query => query.data?.caches ?? []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [queries.map(query => query.dataUpdatedAt).join('|')],
   );
@@ -194,17 +245,46 @@ export function useGpuNodePools(installations: string[]) {
 
   return {
     rows,
+    caches,
     notes,
     errors,
     isLoading: Boolean(musterApi) && queries.some(query => query.isLoading),
   };
 }
 
+/**
+ * The installations whose cluster-manager lists a tool (`get_info.tools`):
+ * `remove_model_cache` is offered only where the installation's
+ * cluster-manager has it (0.17+); an older one shows the cache read-only.
+ */
+export function useInstallationsOffering(
+  installations: string[],
+  tool: ClusterManagerTool,
+): string[] {
+  const musterApi = useMusterPluginApi();
+  const queries = useQueries({
+    queries: installations.map(installation => ({
+      queryKey: musterClusterManagerInfoQueryKey(installation),
+      enabled: Boolean(musterApi),
+      queryFn: () =>
+        new ClusterManagerClient(musterApi!, installation).getInfo(),
+      staleTime: 60_000,
+      retry: false,
+    })),
+  });
+  const signature = queries
+    .map((query, index) =>
+      offersTool(query.data, tool) ? installations[index] : '',
+    )
+    .join('|');
+  return useMemo(() => signature.split('|').filter(Boolean), [signature]);
+}
+
 export type NodePoolWriteFailure = {
   kind: 'refused' | 'not-connected' | 'error';
   message: string;
-  /** `delete_node_pool`'s replicas guard, when the refusal is that one. */
-  guard?: ReplicasGuard;
+  /** The structured refusal (the nodes and models of a delete, the model cache of a create), when the answer carried one. */
+  refused?: Refusal;
 };
 
 export function classifyNodePoolWriteFailure(
@@ -214,8 +294,11 @@ export function classifyNodePoolWriteFailure(
   if (error instanceof ClusterManagerNotConnectedError) {
     return { kind: 'not-connected', message };
   }
-  const guard = parseReplicasGuard(message);
-  return { kind: 'refused', message, guard };
+  return {
+    kind: 'refused',
+    message,
+    refused: error instanceof ClusterManagerError ? error.refused : undefined,
+  };
 }
 
 export type NodePoolWriteState = {
@@ -226,10 +309,15 @@ export type NodePoolWriteState = {
     input: CreateNodePoolInput,
     mode: WriteMode,
   ) => Promise<NodePoolWriteResult>;
-  /** `delete_node_pool` as the person; `force` only after the guard showed. */
+  /** `delete_node_pool` as the person; `force` only after a refusal, as the second choice. */
   remove: (
     input: DeleteNodePoolInput,
     options: { mode: WriteMode; force?: boolean },
+  ) => Promise<NodePoolWriteResult>;
+  /** `remove_model_cache` as the person: the cluster's claims, or the one named. */
+  removeCache: (
+    input: RemoveModelCacheInput,
+    options: { mode: WriteMode; dryRun?: boolean },
   ) => Promise<NodePoolWriteResult>;
   isBusy: boolean;
   failure: NodePoolWriteFailure | undefined;
@@ -297,11 +385,19 @@ export function useNodePoolWrite(
     ) => run(c => c.deleteNodePool(input, options), true),
     [run],
   );
+  const removeCache = useCallback(
+    (
+      input: RemoveModelCacheInput,
+      options: { mode: WriteMode; dryRun?: boolean },
+    ) => run(c => c.removeModelCache(input, options), !options.dryRun),
+    [run],
+  );
 
   return {
     dryRun,
     create,
     remove,
+    removeCache,
     isBusy,
     failure,
     reset: () => setFailure(undefined),

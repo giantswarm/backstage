@@ -18,12 +18,12 @@ import {
 } from '../../lib/modelManager';
 import type { GpuNode } from '../../lib/serving';
 import {
-  describeFit,
   describeSearchResult,
   ImportModelDialog,
   SEARCH_LIMIT,
   type ImportTarget,
 } from './ImportModelDialog';
+import { describeFit } from '../../lib/modelManagerServe';
 
 const searchModels = jest.fn();
 const fitCheck = jest.fn();

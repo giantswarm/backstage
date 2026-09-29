@@ -2,6 +2,7 @@ import { mockServices } from '@backstage/backend-test-utils';
 import type { MCPClient } from '@ai-sdk/mcp';
 import {
   MusterMcpClient,
+  MusterToolError,
   readMusterInstallationsFromConfig,
   readMusterServerFromConfig,
 } from './MusterMcpClient';
@@ -354,6 +355,30 @@ describe('MusterMcpClient', () => {
     await expect(
       client.callTool('core_workflow_get', { name: 'missing' }),
     ).rejects.toThrow('workflow not found');
+  });
+
+  it('carries the further text blocks of a refused tool as details', async () => {
+    const refused =
+      '{"refused":{"nodes":["i-0abc"],"models":[],"hint":"unload first"}}';
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [
+          { type: 'text', text: 'node pool gpu-l4 still runs 1 node(s)' },
+          { type: 'text', text: refused },
+        ],
+        isError: true,
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    const error: unknown = await client
+      .callTool('x_cluster-manager_delete_node_pool', { name: 'gpu-l4' })
+      .catch(e => e);
+    expect(error).toBeInstanceOf(MusterToolError);
+    expect((error as MusterToolError).message).toBe(
+      'node pool gpu-l4 still runs 1 node(s)',
+    );
+    expect((error as MusterToolError).details).toEqual([refused]);
   });
 
   /**

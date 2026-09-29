@@ -51,6 +51,16 @@ but not the native footprint, and the sum is what the kernel enforces. Setting
 heap already follows the limit; it would also have to repeat the image's
 `--no-node-snapshot`, which the scaffolder needs.
 
+## Secret values
+
+The values that end up in `<name>-secrets`, `<name>-dex-auth-credentials-secret`
+and `<name>-oci-registry-credentials-secret` (`authSessionSecret`, the API
+tokens and keys, the Sentry DSNs, `dexAuthCredentials`, `ociRegistryCredentials`,
+…) go into the Secret's `data` as they are, so they must be base64-encoded
+(`printf %s "$value" | base64 -w0`). A plaintext value fails the render and
+names the value. `githubAppCredentials`, `google.credentialsJson` and
+`pluginKeys` are the exception: they are plaintext (`stringData`).
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -88,14 +98,14 @@ heap already follows the limit; it would also have to repeat the image's
 | resources.limits | object | `{"cpu":"500m","memory":"1Gi"}` | CPU and memory resource limits |
 | resources.limits.cpu | string | `"500m"` | CPU resource limit for the Backstage container |
 | resources.limits.memory | string | `"1Gi"` | Memory resource limit for the Backstage container. Node sizes the V8 heap from this limit (about 55 %: a 560 MiB heap under 1Gi, 348 MiB under the former 600Mi) and the rest is the backend's native memory (about 250-300 MiB). Under the portal's browser e2e suite the container peaks at about 660 MiB with a 1Gi limit; at 600Mi the main thread was OOM-killed. Keep any override at 1Gi or above (see "Memory" in the README) |
-| authSessionSecret | string | `""` | Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var) |
+| authSessionSecret | string | `""` | Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | circleci | object | `{"apiToken":""}` | CircleCI integration settings |
-| circleci.apiToken | string | `""` | CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var) |
+| circleci.apiToken | string | `""` | CircleCI API token for pipeline integration (exposed as CIRCLECI_API_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | common | object | `{}` | Bitnami common library chart settings (subchart dependency) |
-| dexAuthCredentials | object | `{}` | Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars |
+| dexAuthCredentials | object | `{}` | Dex authentication provider credentials, keyed by provider name. Each entry generates AUTH_DEX_<NAME>_CLIENT_ID and AUTH_DEX_<NAME>_CLIENT_SECRET env vars. Both values of an entry are base64-encoded: the chart writes them into the Secret's `data` as is |
 | githubAuthCredentials | object | `{"clientID":"","clientSecret":""}` | GitHub OAuth credentials for user authentication |
-| githubAuthCredentials.clientID | string | `""` | GitHub OAuth App client ID (exposed as GITHUB_OAUTH_CLIENT_ID env var) |
-| githubAuthCredentials.clientSecret | string | `""` | GitHub OAuth App client secret (exposed as GITHUB_OAUTH_CLIENT_SECRET env var) |
+| githubAuthCredentials.clientID | string | `""` | GitHub OAuth App client ID (exposed as GITHUB_OAUTH_CLIENT_ID env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
+| githubAuthCredentials.clientSecret | string | `""` | GitHub OAuth App client secret (exposed as GITHUB_OAUTH_CLIENT_SECRET env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | githubAppCredentials | object | `{"appId":0,"clientId":"","clientSecret":"","privateKey":"","webhookSecret":"","webhookUrl":""}` | GitHub App credentials for repository access and webhooks |
 | githubAppCredentials.appId | int | `0` | GitHub App ID |
 | githubAppCredentials.webhookUrl | string | `""` | GitHub App webhook URL |
@@ -104,33 +114,43 @@ heap already follows the limit; it would also have to repeat the image's
 | githubAppCredentials.webhookSecret | string | `""` | GitHub App webhook secret |
 | githubAppCredentials.privateKey | string | `""` | GitHub App private key (PEM format) |
 | github | object | `{"publicReadToken":""}` | GitHub integration settings (PAT used as fallback by catalog processors when the GitHub App lacks access to a repository) |
-| github.publicReadToken | string | `""` | GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var) |
+| github.publicReadToken | string | `""` | GitHub personal access token with public read access (exposed as GITHUB_PUBLIC_READ_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | grafana | object | `{"apiToken":""}` | Grafana integration settings |
-| grafana.apiToken | string | `""` | Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var) |
+| grafana.apiToken | string | `""` | Grafana API token for dashboard integration (exposed as GRAFANA_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | sentry | object | `{"app":{"dsn":""},"backend":{"dsn":""},"reportURI":""}` | Sentry error tracking settings |
 | sentry.app | object | `{"dsn":""}` | Sentry settings for the frontend application |
-| sentry.app.dsn | string | `""` | Sentry DSN for the frontend app (exposed as SENTRY_DSN_APP env var) |
+| sentry.app.dsn | string | `""` | Sentry DSN for the frontend app (exposed as SENTRY_DSN_APP env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | sentry.backend | object | `{"dsn":""}` | Sentry settings for the backend service |
-| sentry.backend.dsn | string | `""` | Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var) |
-| sentry.reportURI | string | `""` | Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var) |
+| sentry.backend.dsn | string | `""` | Sentry DSN for the backend service (exposed as SENTRY_DSN_BACKEND env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
+| sentry.reportURI | string | `""` | Sentry CSP report URI (exposed as SENTRY_REPORT_URI env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | telemetrydeck | object | `{"salt":""}` | TelemetryDeck analytics settings |
-| telemetrydeck.salt | string | `""` | TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml. |
+| telemetrydeck.salt | string | `""` | TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml. Base64-encoded: the chart writes it into the Secret's `data` as is |
 | aws | object | `{"accessKeyID":"","secretAccessKey":""}` | AWS credentials for S3 and other AWS service integrations |
-| aws.accessKeyID | string | `""` | AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var) |
-| aws.secretAccessKey | string | `""` | AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var) |
+| aws.accessKeyID | string | `""` | AWS access key ID (exposed as AWS_ACCESS_KEY_ID env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
+| aws.secretAccessKey | string | `""` | AWS secret access key (exposed as AWS_SECRET_ACCESS_KEY env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | externalAccess | object | `{"mcpToken":""}` | External access settings for programmatic API access |
-| externalAccess.mcpToken | string | `""` | Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var) |
+| externalAccess.mcpToken | string | `""` | Bearer token for MCP (Model Context Protocol) external access (exposed as EXTERNAL_ACCESS_MCP_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | anthropic | object | `{"apiKey":""}` | Anthropic AI provider settings |
-| anthropic.apiKey | string | `""` | Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var) |
+| anthropic.apiKey | string | `""` | Anthropic API key for AI chat features (exposed as ANTHROPIC_API_KEY env var). Not needed when aiChat.anthropic.provider is vertex, where the Google service account is the credential instead. Base64-encoded: the chart writes it into the Secret's `data` as is |
 | openai | object | `{"apiKey":""}` | OpenAI provider settings |
-| openai.apiKey | string | `""` | OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var) |
-| google | object | `{"credentialsJson":"","location":"","project":""}` | Google Vertex AI provider settings for AI chat (used when aiChat.model is a gemini-* model) |
+| openai.apiKey | string | `""` | OpenAI API key for AI chat features (exposed as OPENAI_API_KEY env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
+| google | object | `{"credentialsJson":"","location":"","project":""}` | Google Vertex AI provider settings for AI chat (used by gemini-* models, and by claude-* models when aiChat.anthropic.provider is vertex) |
 | google.project | string | `""` | GCP project ID for Vertex AI (exposed as GOOGLE_CLOUD_PROJECT env var) |
 | google.location | string | `""` | Vertex AI region, e.g. europe-west1 (exposed as GOOGLE_CLOUD_LOCATION env var) |
 | google.credentialsJson | string | `""` | Service-account JSON content for Vertex AI authentication. When set, mounted as a file at /app/google/credentials.json (SOPS-encrypted in gitops). google-auth-library uses it to mint and auto-refresh short-lived OAuth2 tokens |
 | pagerduty | object | `{"apiToken":""}` | PagerDuty integration settings |
-| pagerduty.apiToken | string | `""` | PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var) |
+| pagerduty.apiToken | string | `""` | PagerDuty API token for incident management integration (exposed as PAGERDUTY_TOKEN env var). Base64-encoded: the chart writes it into the Secret's `data` as is |
 | sharedConfig | object | `{}` | Shared configuration that generates a ConfigMap. Can be referenced in the main app configuration with $include keyword |
+| observability | object | `{"metrics":{"enabled":false,"port":9464},"otel":{"endpoint":"","headers":"","protocol":"grpc","resourceAttributes":"","sampler":"parentbased_traceidratio","samplerArg":"0.1"}}` | OpenTelemetry trace export from the backend, as the standard OTEL_* variables. Nothing is exported while `endpoint` is empty. |
+| observability.otel.endpoint | string | `""` | OTLP collector URL (OTEL_EXPORTER_OTLP_ENDPOINT), e.g. `http://otlp-gateway.kube-system.svc:4317` for gRPC. Empty: no export and none of the variables below is set. |
+| observability.otel.protocol | string | `"grpc"` | OTLP protocol (OTEL_EXPORTER_OTLP_PROTOCOL). |
+| observability.otel.headers | string | `""` | OTLP headers as `key=value` pairs separated by commas (OTEL_EXPORTER_OTLP_HEADERS), e.g. `X-Scope-OrgID=giantswarm` for the collector's tenant. |
+| observability.otel.resourceAttributes | string | `""` | Resource attributes as `key=value` pairs separated by commas, appended to the pod's `k8s.pod.name`, `k8s.namespace.name` and `k8s.node.name` (OTEL_RESOURCE_ATTRIBUTES). |
+| observability.otel.sampler | string | `"parentbased_traceidratio"` | Trace sampler (OTEL_TRACES_SAMPLER). The parent-based default follows the sampling decision of an incoming `traceparent` and samples root spans by `samplerArg`. |
+| observability.otel.samplerArg | string | `"0.1"` | Sampler argument (OTEL_TRACES_SAMPLER_ARG): the ratio of root spans sampled for the `traceidratio` samplers. |
+| observability.metrics | object | `{"enabled":false,"port":9464}` | Prometheus metrics export from the backend, on a `metrics` container port and Service port. Off by default: enabling it changes the pod's ports. The chart's network policies select the database pods only, so the scrape needs no policy of its own. |
+| observability.metrics.enabled | bool | `false` | Start the OpenTelemetry SDK's Prometheus exporter (OTEL_METRICS_EXPORTER=prometheus) and serve `/metrics` on `port`. |
+| observability.metrics.port | int | `9464` | Port the Prometheus exporter listens on (OTEL_EXPORTER_PROMETHEUS_PORT), also the `metrics` container port and Service port. |
 | nodeSelector | object | `{}` | Node selector labels to constrain pod scheduling to specific nodes |
 | strategy | object | `{}` | Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume. |
 | networkPolicy | object | `{"enabled":true,"flavor":"cilium"}` | Network policy settings |
@@ -154,7 +174,7 @@ heap already follows the limit; it would also have to repeat the image's
 | backstage | object | `{"appConfig":{},"args":[],"command":["node","packages/backend"],"extraAppConfig":[],"extraEnvVars":[],"extraEnvVarsCM":[],"extraEnvVarsSecrets":[],"extraVolumeMounts":[],"extraVolumes":[],"initContainers":[]}` | Backstage application parameters |
 | backstage.command | list | `["node","packages/backend"]` | Container command to start the Backstage backend |
 | backstage.args | list | `[]` | Additional command arguments passed to the Backstage container |
-| backstage.extraAppConfig | list | `[]` | Extra app configuration files to inline into command arguments, each referencing a ConfigMap |
+| backstage.extraAppConfig | list | `[]` | Extra app configuration files to inline into command arguments, each referencing a ConfigMap. Backstage reads them at start and the chart does not render the ConfigMaps, so a change to one rolls the pod only through the entry's optional `checksum`: whoever renders the ConfigMap sets it to a hash of the ConfigMap's data, and the pod template's `checksum/extra-app-config` annotation changes with it |
 | backstage.appConfig | object | `{}` | Inline Backstage app configuration that generates a ConfigMap automatically. Do not use for sensitive data |
 | backstage.extraEnvVars | list | `[]` | Extra environment variables for the Backstage container |
 | backstage.extraEnvVarsCM | list | `[]` | Names of existing ConfigMaps to mount as envFrom sources in the Backstage container |
@@ -193,5 +213,9 @@ heap already follows the limit; it would also have to repeat the image's
 | route.backendTrafficPolicy.labels | object | `{}` | Labels applied to the BackendTrafficPolicy resource |
 | route.backendTrafficPolicy.annotations | object | `{}` | Annotations applied to the BackendTrafficPolicy resource |
 | route.backendTrafficPolicy.spec | object | `{}`, rendered as the streaming-safe timeouts above | BackendTrafficPolicy spec passthrough (timeout, retry, circuitBreaker, etc.); targetRefs is injected automatically. Empty, the chart renders `timeout.http` `{requestTimeout: 0s, maxStreamDuration: 0s, connectionIdleTimeout: 1h}`, `timeout.tcp.connectTimeout: 10s` and `tcpKeepalive` `{idleTime: 60s, interval: 30s, probes: 3}`. A spec set here replaces that default wholesale, so carry the timeouts over if the portal streams |
-| ociRegistryCredentials | object | `{}` | Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig |
+| ociRegistryCredentials | object | `{}` | Private OCI registry credentials, keyed by registry name. Each entry generates OCI_REGISTRY_<NAME>_USERNAME and OCI_REGISTRY_<NAME>_PASSWORD env vars. Registry hosts are configured in backstage.appConfig. Both values of an entry are base64-encoded: the chart writes them into the Secret's `data` as is |
 | pluginKeys | list | `[]` | Plugin signing key pairs, each mounted as files under /app/plugin-keys/<keyId>/ |
+| serviceMonitor | object | `{"enabled":false,"interval":"","labels":{}}` | ServiceMonitor for the backend's Prometheus metrics endpoint. Has no effect unless observability.metrics.enabled is also true. |
+| serviceMonitor.enabled | bool | `false` | Render the ServiceMonitor. |
+| serviceMonitor.interval | string | `""` | Scrape interval, e.g. `60s`. Empty uses the Prometheus Operator default. |
+| serviceMonitor.labels | object | `{}` | Extra labels on the ServiceMonitor. The Giant Swarm observability platform routes a scrape to a Mimir tenant by the `observability.giantswarm.io/tenant` label here. |

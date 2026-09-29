@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Stat } from './Stat';
 
 describe('Stat', () => {
@@ -25,5 +26,33 @@ describe('Stat', () => {
     render(<Stat label="Latency" value={<em>n/a</em>} />);
 
     expect(screen.getByText('n/a').tagName).toBe('EM');
+  });
+
+  it('has no hint affordance unless one is given', () => {
+    render(<Stat label="Turns" value="62" />);
+
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('names the stat in the hint button, and shows the hint on focus', async () => {
+    // Focus, not hover: the affordance exists because a tooltip on inert text
+    // is unreachable by keyboard, so that is the path worth asserting.
+    const user = userEvent.setup();
+    render(
+      <Stat
+        label="Tokens per second"
+        value="63/s"
+        hint="The median streamed call's generation speed."
+      />,
+    );
+
+    const button = screen.getByRole('button', {
+      name: 'How Tokens per second is calculated',
+    });
+    await user.tab();
+    expect(button).toHaveFocus();
+    expect(
+      await screen.findByText("The median streamed call's generation speed."),
+    ).toBeInTheDocument();
   });
 });

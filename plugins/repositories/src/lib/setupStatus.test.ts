@@ -1,24 +1,19 @@
 import { newService, presentService } from '../fixtures/records';
 import {
-  convergedState,
   resultFindings,
   stepDetail,
   stepsNotOk,
+  verdictIntent,
 } from './setupStatus';
 
 /**
- * `devctl repo status` prints `setup.checks` as a header, a STEP / VERDICT /
- * DETAIL table and a Findings list (devctl's reconcile.Result.WriteTable).
+ * `devctl repo status` prints `setup.checks` as a STEP / VERDICT / DETAIL
+ * table and a Findings list (devctl's reconcile.Result.WriteTable).
  * The page shows the same record through these helpers; pinning their output
  * to the CLI's text for the fixture keeps the two equal field by field.
  */
 describe('set-up status, as devctl repo status prints it', () => {
   const checks = presentService.setup.checks!;
-
-  it('names the converged state of the header line', () => {
-    expect(convergedState(checks)).toBe('converged');
-    expect(convergedState(newService.setup.checks!)).toBe('not converged');
-  });
 
   it('renders each step line as STEP, VERDICT, DETAIL', () => {
     const lines = checks.steps.map(
@@ -63,6 +58,22 @@ describe('set-up status, as devctl repo status prints it', () => {
     ).toEqual([
       '- [default-icon] the repository uses the default icon\n  fix: upload an icon in the repository settings',
     ]);
+  });
+
+  it('gives every verdict a status intent, unknown ones a neutral one', () => {
+    expect(
+      ['ok', 'repaired', 'drift', 'reported', 'skipped', 'failed'].map(
+        verdictIntent,
+      ),
+    ).toEqual([
+      'positive',
+      'positive',
+      'warning',
+      'info',
+      'neutral',
+      'negative',
+    ]);
+    expect(verdictIntent('pending')).toBe('neutral');
   });
 
   it('names the steps still pending in a set-up that has not converged', () => {

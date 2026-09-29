@@ -5,7 +5,6 @@ export interface Config {
      * Name of the entry in the `aiChat.mcp` server list that points at the
      * muster MCP server. Used only for the legacy single-installation setup
      * (when `muster.installations` is not set). Defaults to `muster`.
-     * @visibility frontend
      */
     serverName?: string;
 
@@ -27,7 +26,6 @@ export interface Config {
       /**
        * Stable installation id used for routing and as the client cache scope.
        * Matches the `gs.installations` key to override a derived entry.
-       * @visibility frontend
        */
       name: string;
       /**
@@ -50,10 +48,10 @@ export interface Config {
        * is not used to pick a token: the frontend forwards the token the
        * cluster token broker mints for that installation (issued by its own
        * Dex, `aud: [dex-k8s-authenticator, …]`), which that muster trusts and
-       * the kagent/model-manager proxies already send. Frontend-visible (a
-       * provider name, not a secret). A derived installation always requires
-       * the person's token (every muster gates), with no provider name needed.
-       * @visibility frontend
+       * the kagent/model-manager proxies already send. The frontend reads it
+       * from the signed-in config (a provider name, not a secret). A derived
+       * installation always requires the person's token (every muster gates),
+       * with no provider name needed.
        */
       authProvider?: string;
       /** Static headers added to every request to this installation. */

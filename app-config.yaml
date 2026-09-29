@@ -80,15 +80,11 @@ backend:
     # host: 127.0.0.1
   csp:
     connect-src: ["'self'", 'http:', 'https:']
-    # Agent avatar icons are served per installation from
-    # `avatars.<baseDomain>` (see plugins/agent-platform). Each deployment must
-    # allowlist its own installations' avatars hosts here — e.g.
-    # `https://avatars.<baseDomain>` — in the environment config where
-    # `gs.installations` is set (customer base domains are intentionally kept
-    # out of this checked-in file). Backstage replaces (does not merge) config
-    # arrays, so an environment override of `img-src` must re-list these base
-    # entries. For local dev, add your test installation's avatars host to
-    # app-config.local.yaml.
+    # Agent avatars load same-origin through the agent-platform backend
+    # (`/api/agent-platform/avatars/...`), so no per-installation host belongs
+    # here: this header is sent with the unauthenticated page. Backstage
+    # replaces (does not merge) config arrays, so an environment override of
+    # `img-src` must re-list these base entries.
     img-src:
       - "'self'"
       - 'data:'
@@ -296,6 +292,10 @@ aiChat:
     apiKey: ${ANTHROPIC_API_KEY}
     # Optional: custom base URL for Anthropic-compatible APIs
     # baseUrl: https://api.anthropic.com/v1
+    # Optional: serve claude-* models from the Anthropic publisher on Google
+    # Vertex AI (configured under `google` below) instead of Anthropic's own
+    # API. No Anthropic API key is used then. Default: api
+    # provider: vertex
 
   # OpenAI configuration
   openai:
@@ -310,9 +310,10 @@ aiChat:
   #   # baseUrl: https://my-resource.openai.azure.com/openai  # alternative: full URL
   #   # apiVersion: '2024-10-21'  # optional API version override
 
-  # Google Vertex AI configuration (used when model is a gemini-* model).
-  # Authenticates from a mounted service-account JSON; google-auth-library
-  # mints and auto-refreshes short-lived OAuth2 tokens (no static API key).
+  # Google Vertex AI configuration (used by gemini-* models, and by claude-*
+  # models when anthropic.provider is vertex). Authenticates from a mounted
+  # service-account JSON; google-auth-library mints and auto-refreshes
+  # short-lived OAuth2 tokens (no static API key).
   google:
     project: ${GOOGLE_CLOUD_PROJECT}
     location: ${GOOGLE_CLOUD_LOCATION}

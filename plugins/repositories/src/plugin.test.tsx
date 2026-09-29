@@ -13,12 +13,9 @@ const api: RepositoriesApi = {
     version: 'v0.3.0',
     toolPrefix: 'giantswarm-repo-manager',
     caller: { groups: [] },
-    github: {
-      apiUrl: '',
-      grant: { obtained: true },
-      circleciConfigured: false,
-    },
+    github: { apiUrl: '', grant: { obtained: true } },
     inventory: { connected: true, records: 0 },
+    circleci: { source: 'statuses+artifact' },
   }),
   listRepositories: async () => listingOf([]),
   getRepository: async () => {
@@ -74,6 +71,9 @@ describe('repositoriesPlugin gating', () => {
         { timeout: 15_000 },
       ),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Team/)).toBeInTheDocument();
+    // A button, not getByLabelText: the preset list also offers "Team
+    // plans", so /Team$/ is needed to tell the two apart, and getByLabelText
+    // reads this custom Select's accessible name as label + placeholder.
+    expect(screen.getByRole('button', { name: /Team$/ })).toBeInTheDocument();
   }, 30_000);
 });

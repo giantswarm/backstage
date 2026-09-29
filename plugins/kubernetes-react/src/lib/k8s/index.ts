@@ -39,21 +39,24 @@ export { ClusterSecretStore } from './ClusterSecretStore';
 export { ConfigMap } from './ConfigMap';
 export { Deployment } from './Deployment';
 export {
-  deriveInferenceServiceReadiness,
-  InferenceService,
-  InferenceServiceConditionType,
+  deriveLLMInferenceServiceReadiness,
+  LLMInferenceService,
+  LLMInferenceServiceConditionType,
   NVIDIA_GPU_RESOURCE,
-  urlHostname,
-} from './InferenceService';
+} from './LLMInferenceService';
 export type {
-  InferenceServiceCondition,
-  InferenceServiceContainer,
-  InferenceServiceInterface,
-  InferenceServicePredictor,
-  InferenceServicePredictorModel,
-  InferenceServiceReadiness,
-  InferenceServiceVolumeMount,
-} from './InferenceService';
+  LLMInferenceServiceAddress,
+  LLMInferenceServiceCondition,
+  LLMInferenceServiceContainer,
+  LLMInferenceServiceInterface,
+  LLMInferenceServiceReadiness,
+  LLMInferenceServiceTemplate,
+} from './LLMInferenceService';
+export {
+  clusterLocalServiceUrl,
+  isClusterLocalHostname,
+  urlHostname,
+} from './url';
 export { KubeObject } from './KubeObject';
 export { Namespace } from './Namespace';
 export { Node } from './Node';

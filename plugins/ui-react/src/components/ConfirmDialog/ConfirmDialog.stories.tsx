@@ -49,7 +49,9 @@ const meta = {
             'knows the action succeeded — so run the action, pass `isBusy` ' +
             'while it is in flight and `error` if it fails. A dialog that ' +
             'dismissed itself on confirm would throw away the only place a ' +
-            'failure could be reported.\n\n' +
+            'failure could be reported. When the result is worth reading, ' +
+            'keep it open with `isDone`: the confirm button goes and Cancel ' +
+            'becomes Close.\n\n' +
             '**It is controlled, not a `DialogTrigger` wrapper.** That is the ' +
             'only thing that works when the trigger is a `MenuItem`: ' +
             'react-aria unmounts the menu on selection, taking any trigger ' +
@@ -150,6 +152,19 @@ export const Open: Story = {};
 /** Mid-flight: both buttons locked, confirm reporting progress. */
 export const Busy: Story = {
   args: { isBusy: true },
+};
+
+/** After the action: the result stays readable, and Close is the only way on. */
+export const Done: Story = {
+  args: {
+    isDone: true,
+    children: (
+      <Text variant="body-medium">
+        Agent &quot;Issue Tracker&quot; is deleted. Its sessions end within a
+        minute.
+      </Text>
+    ),
+  },
 };
 
 /** A non-destructive confirmation, with its own labels. */

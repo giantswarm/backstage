@@ -124,7 +124,8 @@ describe('modelManagerModelSchema', () => {
 
     expect(models[0].loaded).toBe(true);
     expect(models[0].running).toMatchObject({
-      endpoint: 'http://qwen3-14b-predictor.model-serving.svc.cluster.local',
+      endpoint: 'https://models.example.test/model-serving/qwen3-14b',
+      kind: 'LLMInferenceService',
       node: 'gpu-node-1',
     });
     expect(models[0].modelConfig).toMatchObject({
@@ -186,7 +187,14 @@ describe('modelManagerModelSchema: the reason behind a state (model-manager 0.23
         kind: 'LLMInferenceService',
       },
     });
-    const older = modelManagerModelSchema.parse(modelsKserve.models[0]);
+    // A model-manager before 0.23.4 named neither the reason nor the kind
+    // (the fixture carries no reason at all).
+    const { kind: _kind, ...runningBefore } = modelsKserve.models[0]
+      .running as Record<string, unknown>;
+    const older = modelManagerModelSchema.parse({
+      ...modelsKserve.models[0],
+      running: runningBefore,
+    });
 
     expect(pending.running).toMatchObject({
       status: 'Pending',

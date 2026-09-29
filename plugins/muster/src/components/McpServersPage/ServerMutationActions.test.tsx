@@ -63,6 +63,7 @@ function makeInstance(retry: () => void): MusterInstance {
     dataUpdatedAt: undefined,
     isRefreshing: false,
     retry,
+    refreshInventory: jest.fn(),
   };
 }
 
@@ -266,7 +267,7 @@ describe('ServerMutationActions session auth affordances', () => {
     expect(
       await screen.findByRole('button', { name: 'Sign in' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('GitOps-managed (read-only)')).toBeInTheDocument();
+    expect(screen.getByText('Managed through GitOps')).toBeInTheDocument();
   });
 
   it('gates Sign in for a deactivated server and says why', async () => {

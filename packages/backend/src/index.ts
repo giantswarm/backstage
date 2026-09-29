@@ -98,6 +98,11 @@ backend.add(import('@giantswarm/backstage-plugin-roadmap-backend'));
 // repositories plugin (the org's repository inventory via giantswarm-repo-manager)
 backend.add(import('@giantswarm/backstage-plugin-repositories-backend'));
 
+// platform-capabilities plugin (the installations' platform capabilities via giantswarm-platform-manager)
+backend.add(
+  import('@giantswarm/backstage-plugin-platform-capabilities-backend'),
+);
+
 // mcp actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 

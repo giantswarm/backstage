@@ -1,19 +1,23 @@
 /**
- * Module-level async source for the Giant Swarm installations configuration.
+ * The Giant Swarm installations, read from the signed-in config.
  *
- * The `gs.installations` block is no longer shipped to the (unauthenticated)
- * frontend config -- it deanonymizes customers and leaks the installation
- * topology. Instead the SPA fetches it from the authenticated
- * `GET /api/gs/installations` endpoint once, after the user signs in (see
- * `InstallationsConfigLoader`).
- *
- * Backstage Utility API factories are constructed before React renders, so
- * React context alone cannot feed them. This module is that bridge: the boot
- * -time APIs (`DiscoveryApiClient`, `KubernetesClient`, `GSAuthProviders`)
- * `await getInstallationsConfig()` lazily -- none of them need installations
- * before the main Dex sign-in completes -- while React consumers subscribe via
- * `useSyncExternalStore` and re-render once the data arrives.
+ * `gs.installations` is backend-only in the schema: shipping it to the
+ * unauthenticated frontend config would deanonymize customers (`baseDomain`)
+ * and leak the installation topology. It reaches the browser as part of the
+ * signed-in config (`GET /api/gs/config`, published by `SignedInConfigLoader`
+ * after the main sign-in), and this module is the typed view of that part:
+ * the boot-time APIs (`DiscoveryApiClient`, `KubernetesClient`,
+ * `GSAuthProviders`) await it lazily on paths that run after sign-in, React
+ * consumers subscribe through `useInstallations`.
  */
+import { Config, ConfigReader } from '@backstage/config';
+import {
+  __resetSignedInConfigForTests,
+  getSignedInConfig,
+  getSignedInConfigSnapshot,
+  setSignedInConfig,
+  subscribeSignedInConfig,
+} from '@giantswarm/backstage-plugin-gs-react';
 
 export type InstallationConfig = {
   name: string;
@@ -34,82 +38,68 @@ export type InstallationConfig = {
   apiVersionOverrides?: { [pluralKind: string]: string };
 };
 
-/** Raw shape returned by the backend endpoint (keyed by installation name). */
-export type InstallationsConfigResponse = {
+/** `gs.installations` as configured: keyed by installation name. */
+type InstallationsMap = {
   [installationName: string]: Omit<InstallationConfig, 'name'>;
 };
 
-let installations: InstallationConfig[] | undefined;
-let deferred:
-  | {
-      promise: Promise<InstallationConfig[]>;
-      resolve: (v: InstallationConfig[]) => void;
-    }
-  | undefined;
-const listeners = new Set<() => void>();
+// One array per config instance, so snapshots stay referentially stable for
+// `useSyncExternalStore` and the per-request callers.
+const byConfig = new WeakMap<Config, InstallationConfig[]>();
 
-function ensureDeferred() {
-  if (!deferred) {
-    let resolve!: (v: InstallationConfig[]) => void;
-    const promise = new Promise<InstallationConfig[]>(res => {
-      resolve = res;
-    });
-    deferred = { promise, resolve };
+/**
+ * The installations of a signed-in config as a stable, name-carrying array.
+ * Missing `gs.installations` reads as no installations.
+ */
+export function readInstallationsConfig(config: Config): InstallationConfig[] {
+  let installations = byConfig.get(config);
+  if (!installations) {
+    const map = config.getOptional<InstallationsMap>('gs.installations') ?? {};
+    installations = Object.entries(map).map(([name, value]) => ({
+      name,
+      ...value,
+    }));
+    byConfig.set(config, installations);
   }
-  return deferred;
-}
-
-/** Normalizes the backend response into a stable, name-carrying array. */
-export function normalizeInstallationsConfig(
-  response: InstallationsConfigResponse,
-): InstallationConfig[] {
-  return Object.entries(response).map(([name, value]) => ({ name, ...value }));
-}
-
-/**
- * Populates the source and wakes every awaiting API + subscribed component.
- * Idempotent: calling it again (e.g. a re-fetch) replaces the value and
- * notifies subscribers.
- */
-export function setInstallationsConfig(next: InstallationConfig[]): void {
-  installations = next;
-  ensureDeferred().resolve(next);
-  listeners.forEach(listener => listener());
-}
-
-/**
- * Resolves with the installations once loaded. If already loaded, resolves
- * immediately; otherwise waits for the post-sign-in fetch. Used by boot-time
- * APIs that only touch installations after the main sign-in.
- */
-export function getInstallationsConfig(): Promise<InstallationConfig[]> {
-  if (installations) {
-    return Promise.resolve(installations);
-  }
-  return ensureDeferred().promise;
-}
-
-/**
- * Synchronous snapshot of the installations, or `undefined` when not yet
- * loaded. Used by `useSyncExternalStore` and by sync code paths that must not
- * block (they treat `undefined` as "not loaded yet").
- */
-export function getInstallationsConfigSnapshot():
-  InstallationConfig[] | undefined {
   return installations;
 }
 
-/** Subscribe to load/refresh notifications. Returns an unsubscribe fn. */
-export function subscribeInstallationsConfig(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+/**
+ * Resolves with the installations once the signed-in config has loaded. If
+ * already loaded, resolves immediately. Used by boot-time APIs that only touch
+ * installations after the main sign-in.
+ */
+export function getInstallationsConfig(): Promise<InstallationConfig[]> {
+  return getSignedInConfig().then(readInstallationsConfig);
 }
 
-/** Test-only: clears the module state between tests. */
-export function __resetInstallationsConfigForTests(): void {
-  installations = undefined;
-  deferred = undefined;
-  listeners.clear();
+/**
+ * Synchronous snapshot of the installations, or `undefined` while the
+ * signed-in config has not loaded. Used by `useSyncExternalStore` and by sync
+ * code paths that must not block (they treat `undefined` as "not loaded yet").
+ */
+export function getInstallationsConfigSnapshot():
+  InstallationConfig[] | undefined {
+  const config = getSignedInConfigSnapshot();
+  return config ? readInstallationsConfig(config) : undefined;
 }
+
+/** Subscribes to signed-in config publishes. Returns the unsubscribe function. */
+export const subscribeInstallationsConfig = subscribeSignedInConfig;
+
+/**
+ * Publishes a signed-in config that carries exactly these installations. For
+ * tests; the app publishes the whole config through `SignedInConfigLoader`.
+ */
+export function setInstallationsConfig(
+  installations: InstallationConfig[],
+): void {
+  const map: InstallationsMap = {};
+  for (const { name, ...rest } of installations) {
+    map[name] = rest;
+  }
+  setSignedInConfig(new ConfigReader({ gs: { installations: map } }));
+}
+
+/** Test-only: clears the signed-in config between tests. */
+export const __resetInstallationsConfigForTests = __resetSignedInConfigForTests;

@@ -1,7 +1,7 @@
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { type Tool, Toolkit } from '../../../../UI';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { formatTemplateString } from '../../../../utils/formatTemplateString';
 import { useClusterDetailsTemplateData } from '../../../../hooks';
 import { isManagementCluster } from '../../../utils';
@@ -32,7 +32,7 @@ const defaultLinks = [
 ];
 
 export function ClusterToolsCard() {
-  const configApi = useApi(configApiRef);
+  const { config } = useSignedInConfig();
   const { cluster, installationName } = useCurrentCluster();
 
   const clusterDetailsTemplateData = useClusterDetailsTemplateData(
@@ -40,7 +40,7 @@ export function ClusterToolsCard() {
     cluster,
   );
 
-  const linksConfig = configApi.getOptionalConfigArray(
+  const linksConfig = config?.getOptionalConfigArray(
     'gs.clusterDetails.resources',
   );
 

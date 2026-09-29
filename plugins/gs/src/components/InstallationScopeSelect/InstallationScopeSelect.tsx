@@ -32,8 +32,8 @@ export type InstallationScopeSelectProps = {
 /**
  * The selector for the Agent Platform section's installation scope: "All
  * installations" (the default) and every platform installation the inventory
- * knows, home first, each with its state. Choosing pins the scope for every
- * tab; the choice is kept in the URL and in localStorage.
+ * knows, home first and then by name, each with its state. Choosing pins the
+ * scope for every tab; the choice is kept in the URL and in localStorage.
  *
  * Renders nothing on a portal that knows one installation, so the standalone
  * chart and single-installation portals look exactly as before. Mount it once
@@ -48,10 +48,24 @@ export function InstallationScopeSelect({
   const { scope, setScope, installations, isSingleInstallation, isLoading } =
     useInstallationScope();
 
+  // Home first, then by name. Not the inventory's own order, which moves an
+  // installation up as soon as its access probe settles -- right for which to
+  // query first, but a list that reshuffles between openings is one the reader
+  // has to search every time.
+  const sortedInstallations = useMemo(
+    () =>
+      [...installations].sort(
+        (a, b) =>
+          Number(b.home) - Number(a.home) ||
+          a.installation.localeCompare(b.installation),
+      ),
+    [installations],
+  );
+
   const options = useMemo(
     () => [
       { id: ALL_INSTALLATIONS, label: ALL_INSTALLATIONS_LABEL },
-      ...installations.map(entry => {
+      ...sortedInstallations.map(entry => {
         const state = [
           describe?.(entry),
           describeInstallationScopeOption(entry, component),
@@ -63,7 +77,7 @@ export function InstallationScopeSelect({
         };
       }),
     ],
-    [installations, describe, component],
+    [sortedInstallations, describe, component],
   );
 
   if (isLoading || isSingleInstallation) {

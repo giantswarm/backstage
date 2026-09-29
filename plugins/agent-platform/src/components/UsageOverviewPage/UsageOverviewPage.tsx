@@ -39,9 +39,10 @@ const WINDOW_NOTE = `The last ${WINDOW_DAYS} days.`;
  * many tokens they moved, and whether they are going well.
  *
  * **Everyone's traffic, not the reader's.** These come from the agentgateway
- * LLM listener, which sees every call regardless of who started it — which is
- * also why they cannot be broken down per user: the metrics carry no user
- * label. The per-user view is the Your sessions tab, and it is kagent's.
+ * LLM listener, which sees every call regardless of who started it. The
+ * metrics do carry a `user` label, so a per-user breakdown of them is
+ * possible; no view here reads it, and the per-user view today is the Your
+ * sessions tab, which is kagent's.
  *
  * The corollary — that an agent calling a provider directly bypasses the
  * listener and so appears nowhere here — is deliberately **not** in the
@@ -108,7 +109,10 @@ export function UsageOverviewPage() {
             <UsageCard
               title="Gateway health"
               wide
-              note="The whole model call, request to response — not time to first token, which the gateway only reports for a streamed reply and an agent turn never is."
+              // Each figure explains its own arithmetic in its hint now, so
+              // the note carries only what none of them says: these are the
+              // model calls, not the turns that made them.
+              note="All of these describe the model calls themselves — not the agent turns around them, which spend most of their time in tool calls."
             >
               <ReliabilityStrip reliability={usage.reliability} />
             </UsageCard>

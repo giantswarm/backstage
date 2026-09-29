@@ -7,6 +7,7 @@ import {
 } from 'react';
 
 import { slugify } from '../../lib/slugify';
+import { systemMessageProblem } from '../../lib/systemMessage';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
   normalizeSelection,
@@ -109,10 +110,14 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
   const [slugEdited, setSlugEdited] = useState(false);
 
   const value = useMemo<NewAgentFormContextValue>(() => {
-    // The system prompt is intentionally NOT validated: the chart ships a
-    // default agent.systemMessage, so an empty field just means "use the chart
-    // default" (agentSpecOf omits it).
+    // An empty system prompt is valid: the chart ships a default
+    // agent.systemMessage, so an empty field means "use the chart default"
+    // (agentSpecOf omits it). Only its length is checked.
     const validationErrors: string[] = [];
+    const promptProblem = systemMessageProblem(state.systemMessage);
+    if (promptProblem) {
+      validationErrors.push(promptProblem);
+    }
     if (!state.name.trim()) {
       validationErrors.push('Name is required');
     }

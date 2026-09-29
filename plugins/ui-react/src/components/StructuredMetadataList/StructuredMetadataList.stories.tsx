@@ -28,7 +28,7 @@ const meta = {
           whenToUse:
             'For an entity/resource detail block with several fields. For a single ' +
             'inline “key: value” line, `ContentRow` is lighter.',
-          migration: 'mui-v4',
+          migration: 'mixed',
         }),
       },
     },

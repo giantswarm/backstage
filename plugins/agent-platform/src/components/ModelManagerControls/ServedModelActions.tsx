@@ -16,7 +16,10 @@ import LinkOffIcon from '@material-ui/icons/LinkOff';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
 import StopIcon from '@material-ui/icons/Stop';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  MENU_WIDTH,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   SERVED_MODEL_ACTION_LABEL,
@@ -24,7 +27,7 @@ import {
   type ServedModelAction,
 } from '../../hooks/useServedModelAction';
 import {
-  isServedInferenceService,
+  isServedKServeModel,
   managerRefOf,
 } from '../../lib/modelManagerServing';
 import type {
@@ -63,13 +66,13 @@ export type ServedModelActionsProps = {
   loading?: ServingLoading;
   /**
    * Offer "Serve…" on a KServe model that is not serving — a cached download,
-   * a preset — opening the portal's serve flow pre-filled with it (the fit
-   * check, the composed InferenceService, the user's own RBAC). Without it a
-   * KServe backend with `load` gets the plain model-manager load instead.
+   * a preset — opening the Serve dialog on it (model-manager's presets and
+   * fit check, one `load_model` as the person). Without it a KServe backend
+   * with `load` gets the plain model-manager load instead.
    */
   onServe?: (model: ServedModel) => void;
   /**
-   * Offer "Stop serving…" on a served KServe model (an InferenceService),
+   * Offer "Stop serving…" on a served KServe model (an LLMInferenceService),
    * whichever source listed it: the section confirms and then stops it
    * through model-manager where it operates the row, else by deleting the
    * CR with the user's RBAC. With it, no "Unload" appears on KServe rows.
@@ -97,7 +100,7 @@ export function hasRowActions(
   offers: { onServe?: unknown; onStop?: unknown } = {},
 ): boolean {
   const kserve = model.backend === 'kserve';
-  const serving = kserve ? isServedInferenceService(model) : false;
+  const serving = kserve ? isServedKServeModel(model) : false;
   if (kserve && !serving && offers.onServe) {
     return true;
   }
@@ -156,7 +159,7 @@ export function ServedModelActions({
   );
 
   const kserve = model.backend === 'kserve';
-  const serving = kserve ? isServedInferenceService(model) : false;
+  const serving = kserve ? isServedKServeModel(model) : false;
   const ref = managerRefOf(model);
   // Every operation names the row's backend: one model-manager may run
   // several, and a same-named reference on another backend is not this row.
@@ -321,7 +324,7 @@ export function ServedModelActions({
           size="small"
           isDisabled={isPending}
         />
-        <Menu>
+        <Menu maxWidth={MENU_WIDTH}>
           {entries.map(({ key, label, icon: Icon, color, run: onAction }) => (
             <MenuItem
               key={key}
@@ -379,7 +382,7 @@ function describeOutcome(action: ServedModelAction, kserve: boolean): string {
   switch (action.type) {
     case 'load':
       if (kserve) {
-        return 'InferenceService created; the status column follows it';
+        return 'LLMInferenceService created; the status column follows it';
       }
       return action.keepAlive === PIN_KEEP_ALIVE
         ? 'loaded into memory and pinned'

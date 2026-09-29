@@ -205,6 +205,10 @@ export function WorkflowStatsPanel({
     data.max_duration_ms !== null ? formatDuration(data.max_duration_ms) : '—';
 
   const perDay = padPerDay(data.per_day);
+  const sampleScope =
+    data.sampled < data.runs
+      ? `, over the most recent ${data.sampled.toLocaleString()} runs`
+      : '';
 
   const completedColor = theme.palette.success.main;
   const failedColor = theme.palette.error.main;
@@ -212,10 +216,27 @@ export function WorkflowStatsPanel({
   return (
     <Box>
       <Box className={classes.statRow}>
-        <Stat label="Runs" value={data.runs.toLocaleString()} />
-        <Stat label="Success rate" value={successRate} tone={successTone} />
-        <Stat label="Avg duration" value={avg} />
-        <Stat label="Max duration" value={max} />
+        <Stat
+          label="Runs"
+          value={data.runs.toLocaleString()}
+          hint="Every run muster has a record of for this workflow, the ones still in progress included."
+        />
+        <Stat
+          label="Success rate"
+          value={successRate}
+          tone={successTone}
+          hint={`Completed runs as a share of finished ones${sampleScope}. Runs still in progress are left out. Amber below 95%.`}
+        />
+        <Stat
+          label="Avg duration"
+          value={avg}
+          hint={`The mean duration of the finished runs, failed ones included${sampleScope}.`}
+        />
+        <Stat
+          label="Max duration"
+          value={max}
+          hint={`The longest finished run, failed ones included${sampleScope}.`}
+        />
       </Box>
 
       <Box className={classes.breakdown}>

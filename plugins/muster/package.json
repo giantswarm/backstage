@@ -2,7 +2,6 @@
   "name": "@giantswarm/backstage-plugin-muster",
   "version": "0.3.0",
   "license": "Apache-2.0",
-  "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "publishConfig": {
@@ -12,7 +11,11 @@
   },
   "backstage": {
     "role": "frontend-plugin",
-    "pluginId": "muster"
+    "pluginId": "muster",
+    "pluginPackages": [
+      "@giantswarm/backstage-plugin-muster",
+      "@giantswarm/backstage-plugin-muster-backend"
+    ]
   },
   "sideEffects": false,
   "scripts": {
@@ -31,6 +34,7 @@
     "@backstage/plugin-kubernetes-react": "backstage:^",
     "@backstage/ui": "backstage:^",
     "@giantswarm/backstage-plugin-gs": "workspace:^",
+    "@giantswarm/backstage-plugin-gs-react": "workspace:^",
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
     "@material-table/core": "^3.1.0",
@@ -52,6 +56,7 @@
     "@backstage/dev-utils": "backstage:^",
     "@backstage/frontend-test-utils": "backstage:^",
     "@backstage/test-utils": "backstage:^",
+    "@storybook/react": "^10.5.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.0.0",

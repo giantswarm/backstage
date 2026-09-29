@@ -36,7 +36,7 @@ export type LlmUsageViewModel = {
 /**
  * The one resolution-and-state ladder both Mimir views share.
  *
- * Sharing it is the point: two tabs reading the same nine queries for the same
+ * Sharing it is the point: two tabs reading the same twelve queries for the same
  * installation must never disagree about which installation that is or whether
  * there is anything to show. The order mirrors `AgentUsageSection`'s, so the
  * three tabs answer "no installations" and "kagent is not here" identically.

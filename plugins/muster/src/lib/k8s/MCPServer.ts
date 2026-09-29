@@ -96,16 +96,42 @@ export function parseToolGroup(
  */
 export const DEACTIVATED_LABEL = 'Deactivated';
 
-/** Infrastructure state reported in `.status.state` (mirrors muster CRD enum). */
+/**
+ * Infrastructure state reported in `.status.state` (mirrors muster CRD enum).
+ *
+ * `Auth Required` names a server a person signs in to through muster;
+ * `Awaiting Session` a server served per session with each caller's own
+ * identity (`auth.forwardToken`, `auth.tokenExchange`) that no session is
+ * connected to right now -- muster holds no connection of its own to it, and
+ * there is no sign-in to offer. Both are healthy steady states.
+ */
 export type MCPServerState =
   | 'Running'
   | 'Starting'
   | 'Stopped'
   | 'Connected'
   | 'Auth Required'
+  | 'Awaiting Session'
   | 'Connecting'
   | 'Disconnected'
   | 'Failed';
+
+/**
+ * One entry of `.status.conditions`. muster writes a single `Ready`
+ * condition: `True` while the server is reachable, the reason the state in
+ * one word (`AwaitingSession`, `Connected`, `AuthRequired`, `Suspended`,
+ * `Failed`, ...) or the class of a token-exchange failure
+ * (`TokenExchangeCredentials`, `TokenExchangeEndpoint`,
+ * `TokenExchangeConnector`), and the message the explanation a person reads.
+ */
+export interface MCPServerCondition {
+  type: string;
+  status: 'True' | 'False' | 'Unknown';
+  reason?: string;
+  message?: string;
+  lastTransitionTime?: string;
+  observedGeneration?: number;
+}
 
 export interface MCPServerFamily {
   name: string;
@@ -185,6 +211,7 @@ interface MCPServerInterface extends KubeObjectInterface {
     lastConnected?: string;
     consecutiveFailures?: number;
     nextRetryAfter?: string;
+    conditions?: MCPServerCondition[];
   };
 }
 
@@ -196,6 +223,35 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
 
   getState() {
     return this.jsonData.status?.state;
+  }
+
+  /**
+   * muster's `Ready` condition, when the reconciler has written one (muster
+   * 5.28+). Its message is the one sentence that explains the state.
+   */
+  getReadyCondition(): MCPServerCondition | undefined {
+    return this.jsonData.status?.conditions?.find(c => c.type === 'Ready');
+  }
+
+  /**
+   * The explanation behind `.status.state`, for a tooltip next to the state
+   * badge: the `Ready` condition's message, or nothing on a muster that does
+   * not write conditions yet.
+   */
+  getStateExplanation(): string | undefined {
+    const message = this.getReadyCondition()?.message?.trim();
+    return message ? message : undefined;
+  }
+
+  /**
+   * Whether this server is used with each caller's own identity
+   * (`auth.forwardToken`, or `auth.tokenExchange.enabled`) rather than a
+   * connection of muster's own or a grant a person signs in for. Such a
+   * server waits in `Awaiting Session` between sessions and offers no sign-in.
+   */
+  isServedPerSession() {
+    const auth = this.getAuth();
+    return Boolean(auth?.forwardToken || auth?.tokenExchange?.enabled);
   }
 
   getFamily() {
@@ -334,11 +390,14 @@ export type MCPServerSeverity = 'ok' | 'warning' | 'error' | 'unknown';
  * Maps an MCPServer infrastructure state to a coarse severity used for the
  * dashboard health colouring.
  *
- * `Auth Required` is deliberately treated as healthy, not a warning: it means
- * the server needs a user session, which the browsing user already has. The
- * real per-user auth gap (if any) surfaces through the tool explorer's
- * `servers_requiring_auth` affordance, so rendering it as amber here would be a
- * false degraded signal.
+ * `Auth Required` and `Awaiting Session` are deliberately treated as healthy,
+ * not a warning: the first means the server needs a person's sign-in, the
+ * second that it is used with each caller's own identity and no session is
+ * connected right now -- both are the steady state of a server that works.
+ * The real per-user auth gap (if any) surfaces through the tool explorer's
+ * `servers_requiring_auth` affordance, so rendering either as amber here
+ * would be a false degraded signal. A per-session server whose token exchange
+ * is broken reads `Failed` in muster and lands on `error` like any other.
  */
 export function mcpServerStateSeverity(
   state: MCPServerState | undefined,
@@ -347,6 +406,7 @@ export function mcpServerStateSeverity(
     case 'Running':
     case 'Connected':
     case 'Auth Required':
+    case 'Awaiting Session':
       return 'ok';
     case 'Starting':
     case 'Connecting':

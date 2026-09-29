@@ -62,7 +62,10 @@ const useStyles = makeStyles({
 
 export interface Fact {
   label: string;
-  /** A string is wrapped in `body-small` text; anything else renders as given. */
+  /**
+   * A string or a number is wrapped in `body-small` text; anything else
+   * renders as given.
+   */
   value: ReactNode;
 }
 
@@ -107,7 +110,11 @@ export const FactList = ({
             </Text>
           </dt>
           <dd className={`${classes.cell} ${classes.value}`}>
-            {typeof fact.value === 'string' ? (
+            {/* Numbers are wrapped as well as strings: a caller pushing a
+                count would otherwise get the surrounding typography for that
+                one row, a size and family apart from its neighbours. */}
+            {typeof fact.value === 'string' ||
+            typeof fact.value === 'number' ? (
               <Text variant="body-small">{fact.value}</Text>
             ) : (
               fact.value

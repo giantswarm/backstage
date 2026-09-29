@@ -156,7 +156,7 @@ describe('createRouter', () => {
     };
     manager.answers.set('list_repositories', listing);
     const res = await request(app).get(
-      '/repositories?scope=team&team=team-bumblebee&fork=false&minOrphanScore=40&search=must&renovate=missing&limit=50',
+      '/repositories?scope=team&team=team-bumblebee&fork=false&archived=false&search=must&renovate=missing&lifecycle=active&inactiveDays=90&finding=default-icon&orb=10&arm64=true&chinaPush=split&signing=signed&limit=50',
     );
     expect(res.status).toBe(200);
     expect(res.body).toEqual(listing);
@@ -168,36 +168,59 @@ describe('createRouter', () => {
           scope: 'team',
           team: 'team-bumblebee',
           fork: false,
-          minOrphanScore: 40,
+          archived: false,
           search: 'must',
           renovate: 'missing',
+          lifecycle: 'active',
+          inactiveDays: 90,
+          finding: 'default-icon',
+          orb: '10',
+          arm64: true,
+          chinaPush: 'split',
+          signing: 'signed',
           limit: 50,
         },
       },
     ]);
   });
 
+  it('drops the arguments the manager no longer takes', async () => {
+    manager.answers.set('list_repositories', { repositories: [] });
+    const res = await request(app).get(
+      '/repositories?scope=all&minOrphanScore=40&decision=keep&stalePeriodDays=90&undeclared=true',
+    );
+    expect(res.status).toBe(200);
+    expect(manager.calls[0].args).toEqual({ scope: 'all' });
+  });
+
   it('refuses a malformed filter instead of passing it on', async () => {
     expect((await request(app).get('/repositories?fork=maybe')).status).toBe(
+      400,
+    );
+    expect((await request(app).get('/repositories?archived=yes')).status).toBe(
       400,
     );
     expect(
       (await request(app).get('/repositories?inactiveDays=soon')).status,
     ).toBe(400);
+    expect((await request(app).get('/repositories?arm64=arm')).status).toBe(
+      400,
+    );
     expect(manager.calls).toHaveLength(0);
   });
 
-  it('gets one repository record, rescored for a stale period on request', async () => {
-    const record = { repository: 'giantswarm/muster', orphan: { score: 0 } };
+  it('gets one repository record, the query string having no say', async () => {
+    const record = { repository: 'giantswarm/muster', findings: [] };
     manager.answers.set('get_repository', record);
     const res = await request(app).get(
       '/repositories/muster?stalePeriodDays=90',
     );
     expect(res.status).toBe(200);
     expect(res.body).toEqual(record);
-    expect(manager.calls[0]).toMatchObject({
+    expect(manager.calls[0]).toEqual({
       tool: 'get_repository',
-      args: { repository: 'muster', stalePeriodDays: 90 },
+      authToken: 'dex-id-token',
+      args: { repository: 'muster' },
     });
   });
 
@@ -236,7 +259,7 @@ describe('createRouter', () => {
       gen: { language: 'go', flavours: ['app'] },
     };
 
-    it('runs the dry run of a declaration through validate_repository', async () => {
+    it('runs the dry run of a declaration through validate_repository, the reason included', async () => {
       const validation = {
         team: 'team-bumblebee',
         entries: [],
@@ -245,14 +268,14 @@ describe('createRouter', () => {
       manager.answers.set('validate_repository', validation);
       const res = await request(app)
         .post('/repositories/validate')
-        .send({ team: 'team-bumblebee', entry });
+        .send({ team: 'team-bumblebee', entry, reason: 'the new service' });
       expect(res.status).toBe(200);
       expect(res.body).toEqual(validation);
       expect(manager.calls).toEqual([
         {
           tool: 'validate_repository',
           authToken: 'dex-id-token',
-          args: { team: 'team-bumblebee', entry },
+          args: { team: 'team-bumblebee', entry, reason: 'the new service' },
         },
       ]);
     });
@@ -286,9 +309,14 @@ describe('createRouter', () => {
 
     it.each([
       ['update', 'update_repository', { entry, reason: 'more flavours' }],
+      [
+        'adopt',
+        'adopt_repository',
+        { team: 'team-bumblebee', entry, reason: 'ours to keep' },
+      ],
       ['transfer', 'transfer_repository', { toTeam: 'team-planeteers' }],
       ['lifecycle', 'set_lifecycle', { lifecycle: 'archived', reason: 'done' }],
-      ['reconcile', 'reconcile_repository', { team: 'team-bumblebee' }],
+      ['align', 'align_repository', { team: 'team-bumblebee' }],
     ])(
       'POST /repositories/:name/%s calls %s for the repository',
       async (path, tool, body) => {
@@ -307,21 +335,47 @@ describe('createRouter', () => {
       },
     );
 
-    it('leaves a decision note through decide_repository', async () => {
-      const record = {
-        repository: 'giantswarm/muster',
-        decision: { verdict: 'keep' },
+    it('follows a new repository through watch_repository with the pull request and the timeout as numbers', async () => {
+      const watch = {
+        repository: 'https://github.com/giantswarm/muster',
+        phases: [
+          { name: 'created', at: '2026-09-18T10:00:00Z', seconds: 0 },
+          { name: 'scaffolded', at: '2026-09-18T10:00:04Z', seconds: 4 },
+        ],
+        changed: false,
+        ready: false,
+        pending: 'declared',
+        waited: 20,
       };
-      manager.answers.set('decide_repository', record);
+      manager.answers.set('watch_repository', watch);
+      const res = await request(app)
+        .post('/repositories/muster/watch')
+        .send({ pullRequest: 4242, timeout: 20 });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(watch);
+      expect(manager.calls).toEqual([
+        {
+          tool: 'watch_repository',
+          authToken: 'dex-id-token',
+          args: { repository: 'muster', pullRequest: 4242, timeout: 20 },
+        },
+      ]);
+      // The pull request is the tool's number, not a string off a form.
+      expect(
+        (
+          await request(app)
+            .post('/repositories/muster/watch')
+            .send({ pullRequest: '4242' })
+        ).status,
+      ).toBe(400);
+    });
+
+    it('has no decide route any more', async () => {
       const res = await request(app)
         .post('/repositories/muster/decide')
-        .send({ verdict: 'keep', note: 'still ours' });
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual(record);
-      expect(manager.calls[0]).toMatchObject({
-        tool: 'decide_repository',
-        args: { repository: 'muster', verdict: 'keep', note: 'still ours' },
-      });
+        .send({ verdict: 'keep' });
+      expect(res.status).toBe(404);
+      expect(manager.calls).toHaveLength(0);
     });
 
     it("answers 403 with the manager's reason when it refuses the write", async () => {
@@ -341,7 +395,7 @@ describe('createRouter', () => {
       // undici reports a connection failure as a TypeError.
       manager.failNextCallWith = new TypeError('fetch failed');
       const res = await request(app)
-        .post('/repositories/muster/reconcile')
+        .post('/repositories/muster/align')
         .send({ mode: 'commit' });
       expect(res.status).toBe(500);
     });
@@ -393,8 +447,8 @@ describe('bodyArguments', () => {
 describe('listArguments', () => {
   it('drops empty values and keeps the tool argument names', () => {
     expect(
-      listArguments({ scope: 'mine', search: '', undeclared: 'true' }),
-    ).toEqual({ scope: 'mine', undeclared: true });
+      listArguments({ scope: 'mine', search: '', archived: 'false' }),
+    ).toEqual({ scope: 'mine', archived: false });
   });
 
   it('ignores parameters the tool does not take', () => {

@@ -20,9 +20,11 @@ type YamlEditorFormFieldProps = {
   value: string;
   onChange?: (value: string) => void;
   height?: number;
-  maxHeight?: number;
+  /** Pixels, or any CSS length such as `calc(100vh - 200px)`. */
+  maxHeight?: number | string;
   schema?: JSONSchema7;
   readOnly?: boolean;
+  language?: 'yaml' | 'json';
 };
 
 export const YamlEditorFormField = memo(
@@ -38,6 +40,7 @@ export const YamlEditorFormField = memo(
     maxHeight,
     schema,
     readOnly,
+    language,
   }: YamlEditorFormFieldProps) => {
     const theme = useTheme();
     return (
@@ -66,10 +69,13 @@ export const YamlEditorFormField = memo(
             schema={schema}
             onChange={onChange}
             height={height !== undefined ? `${height}px` : undefined}
-            maxHeight={maxHeight !== undefined ? `${maxHeight}px` : undefined}
+            maxHeight={
+              typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight
+            }
             theme={theme.palette.type}
             error={error}
             readOnly={readOnly}
+            language={language}
           />
         </Box>
       </FormControl>

@@ -1,0 +1,1 @@
+export { BotPrsTable } from './BotPrsTable';

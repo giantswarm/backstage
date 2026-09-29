@@ -21,9 +21,11 @@ same behaviour and API, test-only changes, comments, and documentation.
 
 Two things that are *not* reasons to skip:
 
-- **`"private": true`.** Every `packages/*` and `plugins/*` package in this repo
-  is private, and they all still receive changesets, because here changesets
-  produce per-package CHANGELOGs rather than npm publishes.
+- **`"private": true`.** The `packages/*` packages (`app`, `backend`,
+  `backend-headless-service`, `@internal/backend-common`) are private and still
+  receive changesets: `privatePackages.version` in `.changeset/config.json`
+  gives them version bumps and CHANGELOG entries, only the npm publish is
+  skipped.
 - **An entry in the root `CHANGELOG.md`.** That is a different artefact — see
   below.
 
@@ -35,42 +37,40 @@ conventional-commit PR titles, tags `vX.Y.Z` and creates the GitHub Release,
 which triggers the CircleCI architect pipeline. No release PR and no approval
 step. That axis reads PR titles and the root `CHANGELOG.md`; it never looks at
 `.changeset/`. Note it does not bump `package.json` either, which is why the
-root `version` reads 0.138.0 against `v0.220.x` tags.
+root `version` (0.138.0) has nothing to do with the `vX.Y.Z` tags.
 
-**The plugin packages** are changeset-managed, but that axis is currently
-dormant:
+**The plugin packages** are changeset-managed and published to npm:
 
-- every `packages/*` and `plugins/*` package is `"private": true`, and
-  `.changeset/config.json` sets `access: "restricted"` with no
-  `privatePackages` override
-- nothing in `.github/workflows` or `.circleci` runs `changeset version` or
-  `changeset publish`
-- so nothing is published to npm, and **pending changesets are consumed by
-  nothing**. The newest per-package CHANGELOG entry on `main` is `v0.137.1`
-  (2026-06-18), from the last PR-based `chore(release)` that ran
-  `changeset version` before the push-based git-cliff tagger replaced it;
-  `docs/releases/` likewise stops at v0.138.0. Changesets have been
-  accumulating since (141 at the time of writing, oldest from early August)
-- the wiring that would switch it on — dropping `private`, `access: public`, a
-  changesets/action "Version Packages" PR — exists on an unmerged branch;
-  issue **#1772 step 4** is the durable pointer
+- every `plugins/*` package is public (`@giantswarm/backstage-plugin-*`,
+  `publishConfig.access: public`); the `packages/*` packages stay private and
+  are versioned but never published
+- `.github/workflows/release-plugins.yaml` runs on every push to `main`. With
+  pending changesets it pushes `changeset-release/main` and opens or refreshes
+  the pull request `chore(release): version packages` (`yarn release:version`:
+  versions, CHANGELOGs, lockfile). Once that pull request merges no changesets
+  are left, and the same workflow builds the plugins and publishes every public
+  package whose version is not on npm yet (`yarn release:publish`). A merge
+  without a changeset publishes nothing
+- the plugins get no git tags and no GitHub Releases: git-cliff has no
+  `tag_pattern` and would take a plugin tag as the app's last release. The npm
+  registry and the per-package `CHANGELOG.md` are the record
+- merging the Version Packages pull request is a `chore` commit on `main`,
+  which git-cliff releases as an app patch: that image carries the new plugin
+  versions
 
-**So why still write one?** Because it is the queued release note. It produces
-no CHANGELOG entry today, but it is what the entry gets generated from once the
-axis is switched back on, and nobody reconstructs a release note from a diff
-months later. Writing one costs a minute; recovering one after the fact costs an
-archaeology session.
-
-Whether to revive the axis, or to stop accumulating, is #1772's question — not
-something to decide while writing a changeset.
+**So a changeset is the release note and the version bump of the package.** A
+pull request without one changes nothing on npm, and nobody reconstructs a
+release note from a diff months later.
 
 ## Checking your work
 
-`yarn changeset status` does **not** work as a check in this repo: it prints an
-empty "Packages to be bumped" list even with every pending changeset present, so
-it reports the same thing whether or not you remembered one. Look for the file
-in `.changeset/` instead. For the same reason, CI enforcement would have to be a
-file-existence check rather than `changeset status`.
+`yarn changeset status` compares the branch with `main` (`baseBranch`): on a
+branch that adds a changeset it lists the packages and bump levels, on a branch
+that changes a package without one it exits 1 and says so, and on `main` itself
+it prints an empty list. Under `.changeset/config.json` this works for every
+package; a private package is only skipped when `privatePackages.version` is
+off, which is what made the list empty for the whole repository before the
+plugin axis went live.
 
 ## Context
 

@@ -1,5 +1,6 @@
 export { repositoriesPlugin as default, repositoriesPlugin } from './plugin';
 export {
+  LIFECYCLES,
   repositoriesApiRef,
   RepositoriesApiClient,
   MusterServerNotConnectedError,
@@ -15,8 +16,10 @@ export type {
   RepositoryRow,
   RepositoryRowSetup,
   InventoryRecord,
+  Lifecycle,
   ListFilters,
   ManagerInfo,
+  ManagerSchema,
   Scope,
   SetupResult,
   SetupStep,
@@ -33,6 +36,9 @@ export type {
   PullRequest,
   Committed,
   Delivery,
+  Alignment,
+  OptIn,
   Dispatch,
+  PlannedStep,
   WriteOptions,
 } from './apis';

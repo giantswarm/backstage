@@ -7,3 +7,4 @@ packages/*/node_modules
 plugins
 volumes
 *.local.yaml
+!packages/backend/src/instrumentation.js

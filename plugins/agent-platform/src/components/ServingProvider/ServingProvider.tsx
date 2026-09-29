@@ -4,6 +4,7 @@ import {
   useInstallationInventory,
   useInstallations,
   useInstallationScope,
+  type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
 import {
@@ -26,6 +27,8 @@ import {
 import { useModelManagerServingSource } from './useModelManagerServingSource';
 
 export type ServingContextValue = ServingSourceSnapshot & {
+  /** The section's installation scope the reads are narrowed to. */
+  scope: InstallationScope;
   /**
    * Every reachable installation in scope, with or without a serving layer —
    * what a control that adds one (Add GPU node pool) is offered for.
@@ -33,7 +36,7 @@ export type ServingContextValue = ServingSourceSnapshot & {
   reachableInstallations: string[];
   /**
    * The served model a client on `installation` points at — how a kagent
-   * ModelConfig is linked to the InferenceService, Ollama model or other
+   * ModelConfig is linked to the LLMInferenceService, Ollama model or other
    * backend fronting it (see `findServedModel` for the rules, applied with
    * the installation's declared multi-model hosts). `undefined` for provider
    * defaults, external endpoints, and a client of a multi-model host that
@@ -53,7 +56,7 @@ export type ServingContextValue = ServingSourceSnapshot & {
    * (`resolveClientServing`): the served model it fronts with that model's
    * readiness, or `notServing` for a model the layer knows nothing answers
    * for — an Ollama model deleted while its ModelConfig remained, a KServe
-   * InferenceService stopped. `undefined` for provider defaults and external
+   * LLMInferenceService stopped. `undefined` for provider defaults and external
    * endpoints; and, for the "gone" verdict alone, while any source is still
    * loading, since a model merely not listed *yet* must not read as gone.
    */
@@ -195,6 +198,7 @@ export function ServingProvider({ children }: { children: ReactNode }) {
         candidates,
         backends,
         sharedHosts: snapshot.sharedHosts?.[installation] ?? [],
+        gatewayHosts: snapshot.gatewayHosts?.[installation] ?? [],
       });
       if (state && !state.model && snapshot.isLoading) {
         return undefined;
@@ -203,6 +207,7 @@ export function ServingProvider({ children }: { children: ReactNode }) {
     };
     return {
       ...snapshot,
+      scope,
       reachableInstallations,
       servedModelFor,
       servedModelForEndpoint: (installation, endpoint) =>
@@ -219,7 +224,7 @@ export function ServingProvider({ children }: { children: ReactNode }) {
           ? snapshot.backendLoading?.[installation]?.[backend]
           : undefined) ?? snapshot.loading?.[installation],
     };
-  }, [kserve, modelManager, reachableInstallations]);
+  }, [kserve, modelManager, reachableInstallations, scope]);
 
   return (
     <ServingContext.Provider value={value}>{children}</ServingContext.Provider>

@@ -31,6 +31,12 @@ export interface InstallationHealthPillProps {
   severity: MCPServerSeverity;
   /** Human-readable state, shown as a suffix only when not healthy. */
   state: string;
+  /**
+   * The sentence behind the state, appended to the pill's tooltip -- for an
+   * MCPServer the muster `Ready` condition's message, which tells a server
+   * awaiting a session from one whose token exchange is broken.
+   */
+  detail?: string;
 }
 
 /**
@@ -43,12 +49,14 @@ export function InstallationHealthPill({
   name,
   severity,
   state,
+  detail,
 }: InstallationHealthPillProps) {
   const classes = useStyles();
   const theme = useTheme();
   const color = toneColors(theme, severityTone(severity)).main;
+  const title = detail ? `${name}: ${state} — ${detail}` : `${name}: ${state}`;
   return (
-    <span className={classes.pill} title={`${name}: ${state}`}>
+    <span className={classes.pill} title={title}>
       <span className={classes.pillDot} style={{ backgroundColor: color }} />
       <span className={classes.pillName}>{name}</span>
       {severity !== 'ok' && (

@@ -22,6 +22,12 @@ spec:
       annotations:
           checksum/configmaps: {{ include (print $.Template.BasePath "/configmaps.yaml") . | sha256sum | quote }}
           checksum/secrets: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum | quote }}
+          {{- /* The extraAppConfig ConfigMaps are not the chart's: their content
+          reaches this checksum through each entry's checksum, set by whoever
+          renders the ConfigMap. */}}
+          {{- with .Values.backstage.extraAppConfig }}
+          checksum/extra-app-config: {{ toJson . | sha256sum | quote }}
+          {{- end }}
       labels:
         app: {{ .Values.name }}
         component: backstage
@@ -58,6 +64,10 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.port }}
+            {{- if .Values.observability.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.observability.metrics.port }}
+            {{- end }}
           {{- if .Values.backstage.command }}
           command: {{- .Values.backstage.command | toYaml | nindent 12 }}
           {{- end }}
@@ -135,6 +145,33 @@ spec:
               value: {{ .Values.google.project | quote }}
             - name: GOOGLE_CLOUD_LOCATION
               value: {{ .Values.google.location | quote }}
+            {{- end }}
+            {{- with .Values.observability.otel }}
+            {{- if .endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .protocol | quote }}
+            {{- if .headers }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: {{ .headers | quote }}
+            {{- end }}
+            - name: OTEL_TRACES_SAMPLER
+              value: {{ .sampler | quote }}
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ .samplerArg | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if or .Values.observability.otel.endpoint .Values.observability.metrics.enabled }}
+            {{- include "backstage.otelResourceEnv" $ | nindent 12 }}
+            {{- end }}
+            {{- if .Values.observability.metrics.enabled }}
+            - name: OTEL_METRICS_EXPORTER
+              value: prometheus
+            - name: OTEL_EXPORTER_PROMETHEUS_HOST
+              value: "0.0.0.0"
+            - name: OTEL_EXPORTER_PROMETHEUS_PORT
+              value: {{ .Values.observability.metrics.port | quote }}
             {{- end }}
             {{- if .Values.backstage.extraEnvVars }}
             {{- include "common.tplvalues.render" ( dict "value" .Values.backstage.extraEnvVars "context" $) | nindent 12 }}

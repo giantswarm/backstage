@@ -1,14 +1,26 @@
 import {
   ClusterManagerError,
   ClusterManagerNotConnectedError,
+  cheapestPriced,
   classifyClusterManagerError,
   clusterManagerToolName,
   describeComponent,
+  describePrice,
+  describePriceSources,
   groupManifestsByRelease,
   isValidPoolName,
   manifestFilename,
-  parseReplicasGuard,
+  parseRefusal,
   poolNameOf,
+  presetLabel,
+  cacheKeptByCluster,
+  describeCacheSetting,
+  describeClaimSize,
+  describeMonthlyPrice,
+  describePriceSource,
+  mountedClaimOf,
+  offersTool,
+  type CacheClaim,
 } from './clusterManager';
 
 describe('clusterManagerToolName', () => {
@@ -37,27 +49,116 @@ describe('isValidPoolName', () => {
   });
 });
 
-describe('parseReplicasGuard', () => {
-  it('reads the count and the nodes from the refusal', () => {
-    const guard = parseReplicasGuard(
-      "node pool gpu-l4 still runs 2 node(s) (i-0abc, i-0def): something is scheduled on them — check the cluster's Serving group, scale the workloads away and re-run once the pool is empty, or pass force to delete the pool with its nodes",
+describe('parseRefusal', () => {
+  const block = {
+    refused: {
+      nodes: ['aws:///eu-west-1a/i-0abc'],
+      models: ['LLMInferenceService model-serving/qwen3-4b (Qwen/Qwen3-4B)'],
+      hint: 'Karpenter removes an empty node about 10 minutes after its last pod; a served model has to be unloaded first.',
+    },
+  };
+  it('reads the refused block from the further text blocks', () => {
+    expect(parseRefusal(['not json', JSON.stringify(block)])).toEqual(
+      block.refused,
     );
-    expect(guard).toMatchObject({
-      pool: 'gpu-l4',
-      count: 2,
-      nodes: ['i-0abc', 'i-0def'],
+  });
+  it('tolerates a block with fields missing', () => {
+    expect(parseRefusal(['{"refused":{"nodes":["i-1"]}}'])).toEqual({
+      nodes: ['i-1'],
+      models: [],
+      hint: '',
     });
   });
-  it('is undefined for any other refusal', () => {
+  it('is undefined without a refused block', () => {
+    expect(parseRefusal([])).toBeUndefined();
+    expect(parseRefusal(['{"partial":true}'])).toBeUndefined();
+  });
+
+  it("carries create_node_pool's cache blocks: the zones named against a claim, or several claims", () => {
+    const claim = {
+      namespace: 'model-serving',
+      name: 'hf-cache',
+      phase: 'Bound',
+      volume: 'pvc-1',
+      zone: 'eu-central-1b',
+    };
     expect(
-      parseReplicasGuard(
-        'HelmRelease org-acme/wc1-def00 was not created by cluster-manager',
-      ),
-    ).toBeUndefined();
+      parseRefusal([
+        JSON.stringify({
+          refused: {
+            nodes: [],
+            models: [],
+            hint: "Name the claim's zone among the zones, name one zone, or pass cache false, and re-run.",
+            cacheZone: {
+              claim,
+              claimZone: 'eu-central-1b',
+              zones: ['eu-central-1a', 'eu-central-1c'],
+              remedies: [
+                'name eu-central-1b among the zones',
+                'pass cache false',
+              ],
+            },
+          },
+        }),
+      ]),
+    ).toEqual({
+      nodes: [],
+      models: [],
+      hint: "Name the claim's zone among the zones, name one zone, or pass cache false, and re-run.",
+      cacheZone: {
+        claim: { ...claim, error: undefined },
+        claimZone: 'eu-central-1b',
+        zones: ['eu-central-1a', 'eu-central-1c'],
+        remedies: ['name eu-central-1b among the zones', 'pass cache false'],
+      },
+    });
+    const several = parseRefusal([
+      JSON.stringify({
+        refused: {
+          nodes: [],
+          models: [],
+          hint: '',
+          cacheClaims: {
+            claims: [
+              claim,
+              {
+                ...claim,
+                name: 'hf-cache-eu-central-1a',
+                zone: 'eu-central-1a',
+              },
+            ],
+            remedies: ['name one zone'],
+          },
+        },
+      }),
+    ]);
+    expect(several?.cacheClaims?.claims.map(c => c.name)).toEqual([
+      'hf-cache',
+      'hf-cache-eu-central-1a',
+    ]);
+    expect(several?.cacheZone).toBeUndefined();
   });
 });
 
 describe('classifyClusterManagerError', () => {
+  it('keeps the structured refusal a tool error carries as details', () => {
+    const error = classifyClusterManagerError(
+      Object.assign(new Error('node pool gpu-l4 still runs 1 node(s)'), {
+        details: ['{"refused":{"nodes":["i-1"],"models":[],"hint":"wait"}}'],
+      }),
+    );
+    expect(error).toBeInstanceOf(ClusterManagerError);
+    expect((error as ClusterManagerError).refused).toEqual({
+      nodes: ['i-1'],
+      models: [],
+      hint: 'wait',
+    });
+    expect(
+      (classifyClusterManagerError(new Error('plain')) as ClusterManagerError)
+        .refused,
+    ).toBeUndefined();
+  });
+
   it("turns muster's not-connected answers into the connect step", () => {
     expect(
       classifyClusterManagerError(
@@ -132,5 +233,218 @@ describe('describeComponent', () => {
     expect(
       describeComponent({ status: 'unknown', reason: 'forbidden' }, 'Serving'),
     ).toBe('Serving: unknown (forbidden)');
+  });
+});
+
+describe('prices and preset names (giantswarm/cluster-manager#44)', () => {
+  const xlarge = {
+    instanceType: 'g6.xlarge',
+    size: 'xlarge',
+    vcpu: 4,
+    memoryGiB: 16,
+    gpus: 1,
+    gpuMemoryGiB: 24,
+    usableVcpu: 3,
+    usableMemoryGiB: 11.9,
+    pricePerHourUSD: 1.0064,
+    priceSource:
+      'AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1)',
+    priceAsOf: '2026-09-17',
+  };
+  const twoXlarge = {
+    ...xlarge,
+    instanceType: 'g6.2xlarge',
+    size: '2xlarge',
+    pricePerHourUSD: 1.22249,
+  };
+  const unpriced = {
+    ...xlarge,
+    instanceType: 'g6.4xlarge',
+    size: '4xlarge',
+    pricePerHourUSD: undefined,
+    priceSource: undefined,
+    priceAsOf: undefined,
+    priceNote: 'no on-demand price: the size is not offered there',
+  };
+
+  it('formats the price to two decimals per hour, and nothing without one', () => {
+    expect(describePrice(xlarge)).toBe('$1.01/h');
+    expect(describePrice(twoXlarge)).toBe('$1.22/h');
+    expect(describePrice({ pricePerHourUSD: 2 })).toBe('$2.00/h');
+    expect(describePrice(unpriced)).toBeUndefined();
+  });
+
+  it('names the cheapest of the chosen sizes that carries a price', () => {
+    const shapes = [xlarge, twoXlarge, unpriced];
+    expect(cheapestPriced(shapes, ['xlarge', '2xlarge'])?.size).toBe('xlarge');
+    expect(cheapestPriced(shapes, ['2xlarge', '4xlarge'])?.size).toBe(
+      '2xlarge',
+    );
+    expect(cheapestPriced(shapes, ['4xlarge'])).toBeUndefined();
+    expect(cheapestPriced(shapes, [])).toBeUndefined();
+  });
+
+  it('lists every distinct price source once, with its date', () => {
+    expect(describePriceSources([xlarge, twoXlarge, unpriced])).toEqual([
+      'AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1), as of 2026-09-17',
+    ]);
+    expect(describePriceSources([{ ...xlarge, priceAsOf: undefined }])).toEqual(
+      ['AWS EC2 on-demand Linux list price, EU (Frankfurt) (eu-central-1)'],
+    );
+    expect(describePriceSources([unpriced])).toEqual([]);
+  });
+
+  it('labels a preset by its display name, or its id from an older cluster-manager', () => {
+    expect(
+      presetLabel({ preset: 'qwen3-8b-fp8', displayName: 'Qwen3 8B FP8' }),
+    ).toBe('Qwen3 8B FP8');
+    expect(presetLabel({ preset: 'qwen3-8b-fp8' })).toBe('qwen3-8b-fp8');
+    expect(presetLabel({ preset: 'qwen3-8b-fp8', displayName: '' })).toBe(
+      'qwen3-8b-fp8',
+    );
+  });
+});
+
+describe('the model cache’s standing cost (giantswarm/backstage#2493)', () => {
+  const claim: CacheClaim = {
+    namespace: 'model-serving',
+    name: 'hf-cache',
+    phase: 'Bound',
+    volume: 'pvc-1',
+    zone: 'eu-central-1b',
+    capacity: '100Gi',
+    capacityGiB: 100,
+    tier: { type: 'gp3', iops: 3000, throughputMiBps: 500 },
+    created: '2026-09-18T20:31:04Z',
+    price: {
+      monthlyUSD: 27.37,
+      source: 'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)',
+      asOf: '2026-09-19',
+    },
+    mounted: true,
+  };
+
+  it('parses the cacheOn refusal with the priced claim', () => {
+    const refusal = parseRefusal([
+      JSON.stringify({
+        refused: {
+          nodes: [],
+          models: [],
+          hint: 'Leave cache on, or remove the cache with remove_model_cache, and re-run.',
+          cacheOn: {
+            claim,
+            claimName: 'hf-cache',
+            remedies: [
+              'leave cache on',
+              'remove the cache with remove_model_cache',
+            ],
+          },
+        },
+      }),
+    ]);
+    expect(refusal?.cacheOn?.claimName).toBe('hf-cache');
+    expect(refusal?.cacheOn?.remedies).toHaveLength(2);
+    expect(refusal?.cacheOn?.claim).toMatchObject({
+      name: 'hf-cache',
+      capacity: '100Gi',
+      capacityGiB: 100,
+      tier: { type: 'gp3', iops: 3000, throughputMiBps: 500 },
+      created: '2026-09-18T20:31:04Z',
+      price: { monthlyUSD: 27.37 },
+      mounted: true,
+    });
+  });
+
+  it('words a claim’s size and price, and where the price came from', () => {
+    expect(describeClaimSize(claim)).toBe('100 GiB gp3 at 500 MiB/s');
+    expect(describeClaimSize({ capacity: '100Gi' })).toBe('100Gi');
+    expect(describeClaimSize({})).toBeUndefined();
+    expect(describeMonthlyPrice(claim.price)).toBe('$27.37/month');
+    expect(describeMonthlyPrice(undefined)).toBeUndefined();
+    expect(describePriceSource(claim)).toBe(
+      'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1), as of 2026-09-19',
+    );
+    expect(
+      describePriceSource({ priceNote: 'no price: the tier is not known' }),
+    ).toBe('no price: the tier is not known');
+    expect(
+      describeCacheSetting({
+        enabled: true,
+        capacity: '100Gi',
+        tier: 'gp3, 500 MiB/s, 3000 IOPS',
+        monthlyPriceUSD: 27.37,
+        priceSource: 'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)',
+        priceAsOf: '2026-09-19',
+        note: '',
+      }),
+    ).toEqual({
+      size: '100Gi gp3, 500 MiB/s, 3000 IOPS',
+      price: '$27.37/month',
+      source:
+        'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1), as of 2026-09-19',
+    });
+    expect(
+      describeCacheSetting({ enabled: true, priceNote: 'no price', note: '' }),
+    ).toEqual({ size: undefined, price: undefined, source: 'no price' });
+  });
+
+  it('tells a cluster that keeps a cache from one that does not, and names the mounted claim', () => {
+    const readiness = {
+      release: null,
+      children: [],
+      controllers: [],
+      configs: null,
+      backend: {},
+      presets: null,
+      modelsGateway: null,
+    };
+    const kept = {
+      serving: {
+        status: 'present' as const,
+        provider: 'cluster-manager' as const,
+        readiness: {
+          ...readiness,
+          cache: { enabled: true, claim: 'hf-cache' },
+          cacheClaims: [claim],
+        },
+      },
+    };
+    expect(cacheKeptByCluster(kept)).toBe(true);
+    expect(mountedClaimOf(kept)?.name).toBe('hf-cache');
+    expect(
+      cacheKeptByCluster({
+        serving: {
+          status: 'present',
+          provider: 'cluster-manager',
+          readiness: {
+            ...readiness,
+            cache: { enabled: false },
+            cacheClaims: [claim],
+          },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      cacheKeptByCluster({
+        serving: {
+          status: 'present',
+          provider: 'chart',
+          readiness: {
+            ...readiness,
+            cache: { enabled: true, claim: 'hf-cache' },
+          },
+        },
+      }),
+    ).toBe(false);
+    expect(cacheKeptByCluster(undefined)).toBe(false);
+    expect(mountedClaimOf({ serving: { status: 'absent' } })).toBeUndefined();
+  });
+
+  it('offersTool reads get_info.tools', () => {
+    expect(
+      offersTool({ tools: ['remove_model_cache'] }, 'remove_model_cache'),
+    ).toBe(true);
+    expect(offersTool({ tools: [] }, 'remove_model_cache')).toBe(false);
+    expect(offersTool(undefined, 'remove_model_cache')).toBe(false);
   });
 });

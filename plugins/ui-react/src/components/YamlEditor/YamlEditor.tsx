@@ -20,6 +20,7 @@ import {
   bracketMatching,
   foldGutter,
   foldKeymap,
+  forceParsing,
 } from '@codemirror/language';
 import {
   autocompletion,
@@ -30,7 +31,7 @@ import {
 import { vsCodeLight } from '@fsegurai/codemirror-theme-vscode-light';
 import { vsCodeDark } from '@fsegurai/codemirror-theme-vscode-dark';
 import { yamlSchema } from 'codemirror-json-schema/yaml';
-import { updateSchema } from 'codemirror-json-schema';
+import { jsonSchema, updateSchema } from 'codemirror-json-schema';
 import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
 
@@ -56,6 +57,11 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+// CodeMirror parses lazily up to the viewport, so the outer levels of a long
+// document get no fold markers until the rest is parsed.
+const parseFully = (view: EditorView) =>
+  forceParsing(view, view.state.doc.length, 100);
+
 type YamlEditorProps = {
   initialValue?: string;
   schema?: any;
@@ -65,6 +71,8 @@ type YamlEditorProps = {
   theme?: 'light' | 'dark';
   error?: boolean;
   readOnly?: boolean;
+  /** Syntax of the document; fixed at mount. */
+  language?: 'yaml' | 'json';
 };
 
 export const YamlEditor = ({
@@ -76,6 +84,7 @@ export const YamlEditor = ({
   theme = 'light',
   error = false,
   readOnly = false,
+  language = 'yaml',
 }: YamlEditorProps) => {
   const classes = useStyles();
   const editorRef = useRef(null);
@@ -92,7 +101,9 @@ export const YamlEditor = ({
 
     const commonExtensions = [
       gutter({ class: 'CodeMirror-lint-markers' }),
-      bracketMatching(),
+      // The cursor rests on the first character, so a read-only view would
+      // open with a bracket highlighted.
+      readOnly ? [] : bracketMatching(),
       highlightActiveLineGutter(),
       closeBrackets(),
       history(),
@@ -121,12 +132,14 @@ export const YamlEditor = ({
       }),
     ];
 
-    // Create editor state with YAML schema support
+    // Create editor state with JSON schema support for the chosen syntax
     const state = EditorState.create({
       doc: initialValue,
       extensions: [
         commonExtensions,
-        schema ? yamlSchema(schema) : yamlSchema({}),
+        language === 'json'
+          ? jsonSchema(schema ?? {})
+          : yamlSchema(schema ?? {}),
         theme === 'light' ? vsCodeLight : vsCodeDark,
       ],
     });
@@ -138,6 +151,7 @@ export const YamlEditor = ({
     });
 
     viewRef.current = view;
+    if (readOnly) parseFully(view);
 
     // Cleanup on unmount
     // eslint-disable-next-line consistent-return
@@ -162,8 +176,9 @@ export const YamlEditor = ({
           insert: initialValue,
         },
       });
+      if (readOnly) parseFully(view);
     }
-  }, [initialValue]);
+  }, [initialValue, readOnly]);
 
   // Update schema when it changes
   useEffect(() => {

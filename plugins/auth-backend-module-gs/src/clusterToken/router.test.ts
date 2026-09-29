@@ -34,6 +34,22 @@ const BROKER_CONFIG = {
   },
 };
 
+const DEX_TARGET = {
+  tokenUrl: 'https://dex.gaggle.example.com/token',
+  clientId: 'portal-broker',
+  clientSecret: 'dex-secret',
+  connectorId: 'portal',
+  scopes: 'openid email groups audience:server:client_id:dex-k8s-authenticator',
+};
+
+// A portal without muster: only gaggle is reachable, through its own Dex.
+const DEX_ONLY_CONFIG = {
+  gs: {
+    clusterTokenBroker: { targets: { gaggle: DEX_TARGET } },
+    installations: BROKER_CONFIG.gs.installations,
+  },
+};
+
 function buildApp(configData: object = BROKER_CONFIG) {
   const router = createClusterTokenRouter({
     config: new ConfigReader(configData),
@@ -216,6 +232,47 @@ describe('createClusterTokenRouter', () => {
     expect(logger.debug).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      'a token store outage',
+      JSON.stringify({
+        error: 'temporarily_unavailable',
+        error_description: 'The server could not reach its token store',
+      }),
+    ],
+    [
+      'pending OIDC discovery',
+      JSON.stringify({
+        error: 'service_unavailable',
+        error_description: 'OIDC discovery in progress, please retry',
+      }),
+    ],
+    ['an empty body', ''],
+  ])(
+    'maps a 503 for %s to a broker_unavailable reason',
+    async (_case, body) => {
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(new Response(body, { status: 503 }));
+
+      const res = await request(buildApp()!)
+        .post('/cluster-token/golem')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+      expect(res.status).toBe(502);
+      expect(res.body).toEqual({
+        error: 'Token broker is temporarily unavailable',
+        reason: 'broker_unavailable',
+      });
+      // One constant message per broker outage, the installation in metadata.
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Cluster token exchange failed: token broker temporarily unavailable',
+        expect.objectContaining({ installation: 'golem', status: 503 }),
+      );
+    },
+  );
+
   it('maps a rejected subject token to a subject_invalid reason', async () => {
     mockBrokerResponse(
       { error: 'invalid_grant', error_description: 'subject token expired' },
@@ -313,5 +370,100 @@ describe('createClusterTokenRouter', () => {
         cause: expect.stringContaining('ECONNREFUSED'),
       }),
     );
+  });
+  describe('with a Dex target', () => {
+    it("exchanges at the installation's Dex for an id_token", async () => {
+      const fetchSpy = mockBrokerResponse({
+        access_token: 'dex-id-token',
+        issued_token_type: 'urn:ietf:params:oauth:token-type:id_token',
+        token_type: 'bearer',
+        expires_in: 3600,
+      });
+
+      const res = await request(buildApp(DEX_ONLY_CONFIG)!)
+        .post('/cluster-token/gaggle')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        token: 'dex-id-token',
+        expiresInSeconds: 3600,
+      });
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(url).toBe('https://dex.gaggle.example.com/token');
+      expect(init.headers.Authorization).toBe(
+        `Basic ${Buffer.from('portal-broker:dex-secret').toString('base64')}`,
+      );
+      const params = new URLSearchParams(init.body);
+      expect(params.get('grant_type')).toBe(
+        'urn:ietf:params:oauth:grant-type:token-exchange',
+      );
+      expect(params.get('subject_token')).toBe('subject-token');
+      expect(params.get('connector_id')).toBe('portal');
+      expect(params.get('scope')).toBe(DEX_TARGET.scopes);
+      expect(params.get('requested_token_type')).toBe(
+        'urn:ietf:params:oauth:token-type:id_token',
+      );
+      expect(params.get('audience')).toBeNull();
+    });
+
+    it('returns 404 for an installation without a target and no muster', async () => {
+      const fetchSpy = jest.spyOn(global, 'fetch');
+      const res = await request(buildApp(DEX_ONLY_CONFIG)!)
+        .post('/cluster-token/golem')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+      expect(res.status).toBe(404);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('prefers the target over muster for its installation', async () => {
+      const fetchSpy = mockBrokerResponse({
+        access_token: 'token',
+        expires_in: 1800,
+      });
+      const config = JSON.parse(JSON.stringify(BROKER_CONFIG));
+      config.gs.clusterTokenBroker.targets = { gaggle: DEX_TARGET };
+      const app = buildApp(config)!;
+
+      await request(app)
+        .post('/cluster-token/gaggle')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+      await request(app)
+        .post('/cluster-token/golem')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+
+      expect(fetchSpy.mock.calls.map(([url]) => url)).toEqual([
+        'https://dex.gaggle.example.com/token',
+        'https://muster.example.com/oauth/token',
+      ]);
+    });
+
+    it('maps a wrong target client secret to broker_client_invalid', async () => {
+      mockBrokerResponse({ error: 'invalid_client' }, { status: 401 });
+      const res = await request(buildApp(DEX_ONLY_CONFIG)!)
+        .post('/cluster-token/gaggle')
+        .set(SUBJECT_TOKEN_HEADER, 'subject-token');
+      expect(res.status).toBe(502);
+      expect(res.body.reason).toBe('broker_client_invalid');
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.not.stringContaining('gaggle'),
+        expect.objectContaining({ installation: 'gaggle', broker: 'dex' }),
+      );
+    });
+
+    it('refuses a target without its required fields at startup', () => {
+      const { scopes: _scopes, ...incomplete } = DEX_TARGET;
+      expect(() =>
+        buildApp({
+          gs: { clusterTokenBroker: { targets: { gaggle: incomplete } } },
+        }),
+      ).toThrow(/scopes/);
+    });
+
+    it('refuses a broker with neither a tokenUrl nor targets', () => {
+      expect(() =>
+        buildApp({ gs: { clusterTokenBroker: { scope: 'openid' } } }),
+      ).toThrow(/tokenUrl.*targets/);
+    });
   });
 });

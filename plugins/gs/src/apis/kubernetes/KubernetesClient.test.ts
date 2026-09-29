@@ -1,4 +1,6 @@
-import { ConfigApi, FetchApi } from '@backstage/core-plugin-api';
+import { ConfigReader } from '@backstage/config';
+import { FetchApi } from '@backstage/core-plugin-api';
+import { setSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { KubernetesAuthProvidersApi } from '@backstage/plugin-kubernetes-react';
 import { KubernetesClient } from './KubernetesClient';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
@@ -36,13 +38,16 @@ function createClient(
   proxyTimeoutMs?: number,
   proxyMaxConcurrency?: number,
 ) {
-  const configApi = {
-    getOptionalNumber: jest.fn((key: string) =>
-      key === 'gs.kubernetes.proxyMaxConcurrency'
-        ? proxyMaxConcurrency
-        : proxyTimeoutMs,
-    ),
-  } as unknown as ConfigApi;
+  // The proxy knobs come from the signed-in config; a proxy test publishes one
+  // that carries exactly the values under test (an unset knob keeps its
+  // default). A getClusters test passes none and publishes its own source.
+  if (proxyTimeoutMs !== undefined || proxyMaxConcurrency !== undefined) {
+    setSignedInConfig(
+      new ConfigReader({
+        gs: { kubernetes: { proxyTimeoutMs, proxyMaxConcurrency } },
+      }),
+    );
+  }
   const discoveryApi = {
     getBaseUrl: jest.fn().mockResolvedValue('http://backend/api/kubernetes'),
   } as unknown as DiscoveryApiClient;
@@ -52,7 +57,6 @@ function createClient(
   } as unknown as KubernetesAuthProvidersApi;
 
   const client = new KubernetesClient({
-    configApi,
     discoveryApi,
     fetchApi,
     kubernetesAuthProvidersApi,

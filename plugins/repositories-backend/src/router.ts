@@ -35,13 +35,14 @@ const LIST_ARGUMENTS: Record<string, 'string' | 'number' | 'boolean'> = {
   visibility: 'string',
   fork: 'boolean',
   lifecycle: 'string',
+  archived: 'boolean',
   inactiveDays: 'number',
-  minOrphanScore: 'number',
-  decision: 'string',
   finding: 'string',
-  undeclared: 'boolean',
+  orb: 'string',
+  arm64: 'boolean',
+  chinaPush: 'string',
+  signing: 'string',
   limit: 'number',
-  stalePeriodDays: 'number',
 };
 
 /** The two arguments every write tool of the manager takes. */
@@ -59,7 +60,14 @@ const WRITE_OPTIONS: Record<string, ArgumentKind> = {
  * declaration entry itself is validated by the manager, not here.
  */
 const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
-  validate_repository: { team: 'string', entry: 'object', entries: 'array' },
+  // The dry run takes exactly the arguments the commit takes, the reason
+  // included: the page reviews the very request it then commits.
+  validate_repository: {
+    team: 'string',
+    entry: 'object',
+    entries: 'array',
+    reason: 'string',
+  },
   create_repository: {
     team: 'string',
     entry: 'object',
@@ -68,14 +76,27 @@ const BODY_ARGUMENTS: Record<string, Record<string, ArgumentKind>> = {
     ...WRITE_OPTIONS,
   },
   update_repository: { entry: 'object', reason: 'string', ...WRITE_OPTIONS },
+  adopt_repository: {
+    team: 'string',
+    entry: 'object',
+    reason: 'string',
+    ...WRITE_OPTIONS,
+  },
   transfer_repository: {
     toTeam: 'string',
     reason: 'string',
     ...WRITE_OPTIONS,
   },
-  set_lifecycle: { lifecycle: 'string', reason: 'string', ...WRITE_OPTIONS },
-  reconcile_repository: { team: 'string', ...WRITE_OPTIONS },
-  decide_repository: { verdict: 'string', note: 'string' },
+  set_lifecycle: {
+    lifecycle: 'string',
+    reason: 'string',
+    confirm: 'string',
+    ...WRITE_OPTIONS,
+  },
+  align_repository: { team: 'string', ...WRITE_OPTIONS },
+  // Read-only, a POST for the body: the pull request the creation opened and
+  // how long one call may wait -- the manager bounds it (at most 150 s).
+  watch_repository: { pullRequest: 'number', timeout: 'number' },
 };
 
 export interface RouterOptions {
@@ -264,16 +285,9 @@ export async function createRouter(
   });
 
   router.get('/repositories/:name', async (req, res) => {
-    const stalePeriodDays = singleQueryValue(
-      req.query.stalePeriodDays,
-      'stalePeriodDays',
-    );
     res.json(
       await call(req, 'get_repository', {
         repository: repositoryName(req.params.name),
-        ...(stalePeriodDays !== undefined && {
-          stalePeriodDays: Number(stalePeriodDays),
-        }),
       }),
     );
   });
@@ -315,7 +329,8 @@ export async function createRouter(
     );
   });
 
-  const writeOfRepository = (path: string, tool: keyof typeof BODY_ARGUMENTS) =>
+  /** One tool of a repository, its arguments read out of the body. */
+  const toolOfRepository = (path: string, tool: keyof typeof BODY_ARGUMENTS) =>
     router.post(`/repositories/:name/${path}`, async (req, res) => {
       res.json(
         await call(req, tool, {
@@ -325,12 +340,17 @@ export async function createRouter(
       );
     });
 
-  writeOfRepository('update', 'update_repository');
-  writeOfRepository('transfer', 'transfer_repository');
-  writeOfRepository('lifecycle', 'set_lifecycle');
-  writeOfRepository('reconcile', 'reconcile_repository');
-  // A decision note on the inventory record (verdict keep); the cache only.
-  writeOfRepository('decide', 'decide_repository');
+  toolOfRepository('update', 'update_repository');
+  toolOfRepository('adopt', 'adopt_repository');
+  toolOfRepository('transfer', 'transfer_repository');
+  toolOfRepository('lifecycle', 'set_lifecycle');
+  toolOfRepository('align', 'align_repository');
+
+  // Follows a repository just created to readiness: one call blocks until a
+  // phase completes, the repository is ready or fails, or the timeout runs
+  // out, and answers with the phases reached; the page calls again while
+  // it is neither ready nor failed. Read-only.
+  toolOfRepository('watch', 'watch_repository');
 
   // A missing grant is a 401 that carries the sign-in URL; the manager's own
   // refusals are 403s and an unknown repository a 404, so neither pages us as

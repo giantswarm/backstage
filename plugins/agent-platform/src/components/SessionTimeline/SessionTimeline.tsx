@@ -1,7 +1,6 @@
 import { ReactNode, useMemo, useState } from 'react';
 import {
   Alert,
-  Avatar,
   Button,
   Flex,
   Text,
@@ -20,6 +19,7 @@ import {
   hasExpandableDetail,
   isActivityItem,
 } from './helpers';
+import { AgentAvatar } from '../AgentAvatar';
 
 const useStyles = makeStyles(theme => ({
   turnMarker: {
@@ -136,7 +136,7 @@ function AgentHeader({
   const classes = useStyles();
   return (
     <div className={classes.authorHeader}>
-      <Avatar
+      <AgentAvatar
         size="small"
         purpose="decoration"
         name={name}

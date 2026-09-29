@@ -83,7 +83,19 @@ describe('modelManagerBackends', () => {
     );
     expect(refused).toBeInstanceOf(ModelManagerToolError);
     expect((refused as ModelManagerToolError).code).toBe('conflict');
+    // The status word maps onto the error name the plugin's reads key on.
+    expect(refused.name).toBe('ConflictError');
     expect(refused.message).toMatch(/configured statically/);
+    expect(
+      classifyModelManagerToolError(new Error('not_found: no such model')).name,
+    ).toBe('NotFoundError');
+    expect(
+      classifyModelManagerToolError(new Error('does_not_fit: needs 21 GB'))
+        .name,
+    ).toBe('PreconditionFailedError');
+    expect(
+      classifyModelManagerToolError(new Error('something else entirely')).name,
+    ).toBe('ModelManagerToolError');
 
     expect(
       classifyModelManagerToolError(

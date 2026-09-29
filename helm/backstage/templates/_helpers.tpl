@@ -41,3 +41,42 @@ timeout:
   tcp:
     connectTimeout: 10s
 {{- end }}
+
+{{/*
+Resource env vars shared by the OTLP trace export and the Prometheus metrics
+export: the pod's identity, fed into OTEL_RESOURCE_ATTRIBUTES so both signals
+carry the same k8s.pod.name/k8s.namespace.name/k8s.node.name/service.version.
+Rendered once for whichever of the two is on. Takes the root context.
+*/}}
+{{- define "backstage.otelResourceEnv" -}}
+- name: OTEL_POD_NAME
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.name
+- name: OTEL_POD_NAMESPACE
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.namespace
+- name: OTEL_NODE_NAME
+  valueFrom:
+    fieldRef:
+      fieldPath: spec.nodeName
+- name: OTEL_RESOURCE_ATTRIBUTES
+  value: {{ printf "k8s.pod.name=$(OTEL_POD_NAME),k8s.namespace.name=$(OTEL_POD_NAMESPACE),k8s.node.name=$(OTEL_NODE_NAME),service.version=%s%s" .Chart.AppVersion (ternary (printf ",%s" .Values.observability.otel.resourceAttributes) "" (ne .Values.observability.otel.resourceAttributes "")) | quote }}
+{{- end }}
+
+{{- /*
+backstage.base64 renders a value for a Secret's `data` and fails the render,
+naming the value, when it is not base64: Kubernetes would otherwise reject the
+Secret with "illegal base64 data at input byte N", which names neither.
+Called with (list "<values path>" <value>).
+*/}}
+{{- define "backstage.base64" -}}
+{{- $path := index . 0 -}}
+{{- $value := toString (index . 1) -}}
+{{- $compact := regexReplaceAll "\\s" $value "" -}}
+{{- if or (not (regexMatch "^[A-Za-z0-9+/]*={0,2}$" $compact)) (ne (mod (len $compact) 4) 0) -}}
+{{- fail (printf "%s must be base64-encoded: it goes into the Secret's data as is (encode it with `base64 -w0`)" $path) -}}
+{{- end -}}
+{{- $value -}}
+{{- end }}

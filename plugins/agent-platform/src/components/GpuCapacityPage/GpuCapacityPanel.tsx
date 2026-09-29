@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, type ReactElement, type ReactNode } from 'react';
 import {
   Alert,
   Badge,
@@ -10,7 +10,11 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  LoadingIndicator,
+  useVisibleSort,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { formatBytes, formatTime } from '../../lib/modelManagerServing';
 import {
   gpuFree,
@@ -20,6 +24,13 @@ import {
   type GpuNode,
 } from '../../lib/serving';
 import { backendServerName } from '../../lib/modelManagerServing';
+
+/** The default order, and the one while the Installation column is hidden. */
+const BY_INSTALLATION = {
+  column: 'installation',
+  direction: 'ascending',
+} as const;
+const BY_NAME = { column: 'name', direction: 'ascending' } as const;
 
 /** MiB → a short GiB figure, e.g. 122880 → "120 GiB". */
 export function formatGpuMemory(memoryMiB: number | undefined): string {
@@ -86,6 +97,13 @@ export function hostNodeDescription(node: GpuNode): string {
 /** What the node name's description says for a node the serving layer will not place a model on. */
 export const NOT_SERVING_TARGET_DESCRIPTION = 'Not a serving target';
 const NOT_SERVING_TARGET_NO_REASON = 'the serving layer gave no reason';
+/** The same for a node that is a serving target for model-image presets only. */
+export const MODEL_IMAGE_TARGET_DESCRIPTION = 'Model-image presets only';
+
+/** Not a serving target for Hugging Face presets, but for model-image (oci://) ones. */
+function servesModelImagesOnly(node: GpuNode): boolean {
+  return node.eligible === false && node.modelImageEligible === true;
+}
 
 /** The hint in an empty cache cell when another node of the installation holds the cache. */
 export const NO_CACHE_ON_NODE_HINT = 'no model cache on this node';
@@ -94,14 +112,17 @@ const NO_CACHE_ON_NODE_TITLE =
 
 /**
  * "Not a serving target: <reason>" for a node the serving layer will not
- * place a model on — the node cell's and the budget cell's tooltip.
+ * place a model on — the node cell's and the budget cell's tooltip; for a
+ * node only model-image presets can land on, that it serves those.
  */
 function eligibilityDetail(node: GpuNode): string | undefined {
-  return node.eligible === false
-    ? `${NOT_SERVING_TARGET_DESCRIPTION}: ${
-        node.eligibilityReason ?? NOT_SERVING_TARGET_NO_REASON
-      }`
-    : undefined;
+  if (node.eligible !== false) {
+    return undefined;
+  }
+  const reason = node.eligibilityReason ?? NOT_SERVING_TARGET_NO_REASON;
+  return servesModelImagesOnly(node)
+    ? `Serving target for model-image presets; Hugging Face presets: ${reason}`
+    : `${NOT_SERVING_TARGET_DESCRIPTION}: ${reason}`;
 }
 
 /**
@@ -165,8 +186,8 @@ export type GpuCapacityColumns = {
 
 export function columnsForNodes(nodes: GpuNode[]): GpuCapacityColumns {
   return {
-    // Kept while nothing is listed yet, so the header does not jump once the
-    // nodes arrive.
+    // Kept while nothing is listed yet, so the card's explanation does not
+    // jump once cluster nodes arrive.
     gpu: nodes.length === 0 || nodes.some(node => !isHostMemoryNode(node)),
     budget: nodes.some(node => node.memoryBudgetBytes !== undefined),
     cache: nodes.some(node => node.cache !== undefined),
@@ -183,14 +204,17 @@ export function describeNode(node: GpuNode): string | undefined {
     return 'Not ready';
   }
   if (node.eligible === false) {
-    return NOT_SERVING_TARGET_DESCRIPTION;
+    return servesModelImagesOnly(node)
+      ? MODEL_IMAGE_TARGET_DESCRIPTION
+      : NOT_SERVING_TARGET_DESCRIPTION;
   }
   return isHostMemoryNode(node) ? hostNodeDescription(node) : undefined;
 }
 
 /**
  * The node name with {@link describeNode} under it. A node that is not a
- * serving target is dimmed, and the serving layer's reason is on hover.
+ * serving target is dimmed (not one model-image presets still serve on), and
+ * the serving layer's reason is on hover.
  */
 function NodeCell({ node }: { node: GpuNode }) {
   const description = describeNode(node);
@@ -200,7 +224,9 @@ function NodeCell({ node }: { node: GpuNode }) {
       <Text
         as="p"
         variant="body-medium"
-        color={ineligible ? 'secondary' : undefined}
+        color={
+          ineligible && !servesModelImagesOnly(node) ? 'secondary' : undefined
+        }
         truncate
         title={node.name}
       >
@@ -497,6 +523,8 @@ export type GpuCapacityPanelProps = {
   installations: string[];
   unavailable: Record<string, GpuCapacityUnavailableReason>;
   isLoading: boolean;
+  /** Columns to leave out: the page drops Installation where it would repeat. */
+  hideColumns?: ReadonlyArray<'installation'>;
 };
 
 /**
@@ -518,6 +546,7 @@ export function GpuCapacityPanel({
   installations,
   unavailable,
   isLoading,
+  hideColumns,
 }: GpuCapacityPanelProps) {
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
   const noCacheHints = useMemo(
@@ -530,19 +559,28 @@ export function GpuCapacityPanel({
     [nodes],
   );
   const columnConfig = useMemo(
-    () => getColumnConfig(columns, noCacheHints),
-    [columns, noCacheHints],
+    () =>
+      getColumnConfig(columns, noCacheHints).filter(
+        column => !hideColumns?.includes(column.id as 'installation'),
+      ),
+    [columns, noCacheHints, hideColumns],
   );
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
   const hasIneligible = useMemo(
     () => nodes.some(node => node.eligible === false),
     [nodes],
   );
+  const { sort, onSortChange } = useVisibleSort(
+    BY_INSTALLATION,
+    BY_NAME,
+    hideColumns,
+  );
   const { tableProps } = useTable<GpuNode>({
     mode: 'complete',
     data: nodes,
     sortFn: sortGpuNodesBy,
-    initialSort: { column: 'installation', direction: 'ascending' },
+    sort,
+    onSortChange,
     paginationOptions: { type: 'none' },
   });
 
@@ -552,6 +590,21 @@ export function GpuCapacityPanel({
   const readableInstallations = installations.filter(
     installation => !(installation in unavailable),
   );
+
+  let body: ReactNode;
+  if (nodes.length > 0) {
+    body = <Table<GpuNode> {...tableProps} columnConfig={columnConfig} />;
+  } else if (isLoading) {
+    body = <LoadingIndicator label="Reading nodes…" />;
+  } else {
+    body = (
+      <Text variant="body-medium" color="secondary">
+        {readableInstallations.length > 0
+          ? `No GPU nodes found on ${readableInstallations.join(', ')}.`
+          : 'No GPU nodes found.'}
+      </Text>
+    );
+  }
 
   return (
     <InfoCard title="GPU capacity">
@@ -569,21 +622,7 @@ export function GpuCapacityPanel({
             ' A node marked not a serving target is one the serving layer will not place a model on — outside its node selector, or unable to mount the model cache; the reason is on hover.'}
         </Text>
 
-        {nodes.length > 0 || isLoading || readableInstallations.length === 0 ? (
-          <Table<GpuNode>
-            {...tableProps}
-            columnConfig={columnConfig}
-            emptyState={
-              <Text variant="body-medium" color="secondary">
-                {isLoading ? 'Reading nodes…' : 'No GPU nodes found.'}
-              </Text>
-            }
-          />
-        ) : (
-          <Text variant="body-medium" color="secondary">
-            No GPU nodes found on {readableInstallations.join(', ')}.
-          </Text>
-        )}
+        {body}
 
         {unavailableEntries.length > 0 && (
           <Alert

@@ -19,6 +19,8 @@ function makeServer(
   state?: MCPServerState,
   /** CR labels; `app.kubernetes.io/managed-by: Helm` marks it GitOps-managed. */
   labels?: Record<string, string>,
+  /** The muster `Ready` condition, when the test needs the explanation. */
+  ready?: { status: 'True' | 'False'; reason: string; message: string },
 ): MCPServer {
   return new MCPServer(
     {
@@ -26,11 +28,31 @@ function makeServer(
       kind: 'MCPServer',
       metadata: { name: 'aws-root', ...(labels ? { labels } : {}) },
       spec,
-      ...(state ? { status: { state } } : {}),
+      ...(state
+        ? {
+            status: {
+              state,
+              ...(ready ? { conditions: [{ type: 'Ready', ...ready }] } : {}),
+            },
+          }
+        : {}),
     } as never,
     'gazelle',
   );
 }
+
+const EXCHANGE_SPEC = {
+  type: 'streamable-http',
+  url: 'https://mcp-kubernetes.remote.example.test/mcp',
+  auth: {
+    type: 'oauth',
+    tokenExchange: {
+      enabled: true,
+      dexTokenEndpoint: 'https://dex.remote.example.test/token',
+      connectorId: 'remote-oidc',
+    },
+  },
+};
 
 const OAUTH_SPEC = { type: 'streamable-http', auth: { type: 'oauth' } };
 const HELM_MANAGED = { 'app.kubernetes.io/managed-by': 'Helm' };
@@ -165,27 +187,46 @@ describe('AuthChain', () => {
   });
 });
 
-describe('ServerTools with no tools to show', () => {
-  /** Renders the tool list for a server whose catalogue comes back empty. */
-  async function renderTools(server: MCPServer) {
-    const musterApi = {
-      filterTools: jest.fn().mockResolvedValue({ tools: [] }),
-    };
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    return renderInTestApp(
-      <TestApiProvider apis={[[musterApiRef, musterApi]]}>
-        <QueryClientProvider client={queryClient}>
-          <ServerTools server={server} />
-        </QueryClientProvider>
-      </TestApiProvider>,
-      // ServerTools links each tool into the explorer, so the route the link
-      // resolves against has to be mounted.
-      { mountedRoutes: { '/agent-platform/muster': rootRouteRef } },
-    );
-  }
+/** Renders the tool list over a stubbed `filter_tools` result. */
+async function renderTools(
+  server: MCPServer,
+  result: Record<string, unknown> = { tools: [] },
+) {
+  const musterApi = { filterTools: jest.fn().mockResolvedValue(result) };
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderInTestApp(
+    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+      <QueryClientProvider client={queryClient}>
+        <ServerTools server={server} />
+      </QueryClientProvider>
+    </TestApiProvider>,
+    // ServerTools links each tool into the explorer, so the route the link
+    // resolves against has to be mounted.
+    { mountedRoutes: { '/agent-platform/muster': rootRouteRef } },
+  );
+}
 
+describe('ServerTools', () => {
+  it('links each tool into the explorer, scoped to this server', async () => {
+    // The tags are the way from a server to its tools; an unscoped link would
+    // drop the reader into the whole aggregated catalogue.
+    await renderTools(makeServer(OAUTH_SPEC, 'Connected'), {
+      total: 1,
+      tools: [{ name: 'x_aws-root_list_buckets', summary: 'List buckets' }],
+    });
+
+    const link = await screen.findByRole('link', { name: 'list_buckets' });
+    const href = link.getAttribute('href')!;
+    const params = new URLSearchParams(href.slice(href.indexOf('?')));
+    expect(params.get('installation')).toBe('gazelle');
+    expect(params.get('server')).toBe('aws-root');
+    expect(params.get('tool')).toBe('x_aws-root_list_buckets');
+  });
+});
+
+describe('ServerTools with no tools to show', () => {
   it('does not send a sigv4 server’s user to a sign-in that cannot exist', async () => {
     // muster keeps a rejected sigv4 credential in `Failed`, but the CR status
     // is one read behind the aggregator — so the guard is the auth type, not
@@ -214,6 +255,41 @@ describe('ServerTools with no tools to show', () => {
     expect(
       await screen.findByText(/Use “Sign in” in the actions below/),
     ).toBeInTheDocument();
+  });
+
+  it('says a per-session server connects with the person’s own identity, not a sign-in', async () => {
+    // Awaiting Session: muster holds no connection of its own, the tools
+    // appear once this session has connected the server. Neither "down" nor
+    // "Sign in" is true here.
+    await renderTools(makeServer(EXCHANGE_SPEC, 'Awaiting Session'));
+
+    expect(
+      await screen.findByText(
+        /connects per session with your own identity; its tools appear here once your muster session has connected to it/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Use “Sign in”/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
+  });
+
+  it('explains a Failed token exchange with muster’s own sentence', async () => {
+    // The Ready condition tells a broken exchange from an endpoint that does
+    // not answer; the generic "may be down" would hide the Secret to fix.
+    await renderTools(
+      makeServer(EXCHANGE_SPEC, 'Failed', undefined, {
+        status: 'False',
+        reason: 'TokenExchangeCredentials',
+        message:
+          'token exchange credentials from Secret agent-platform/remote-token-exchange-credentials: secrets "remote-token-exchange-credentials" not found',
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        /No tools exposed — token exchange credentials from Secret agent-platform\/remote-token-exchange-credentials/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
   });
 
   it('says a deactivated server is deactivated, not down and not unauthenticated', async () => {
@@ -272,7 +348,9 @@ describe('RuntimeState on a deactivated server', () => {
     expect(await screen.findByText('connected')).toBeInTheDocument();
     expect(screen.getByText('58')).toBeInTheDocument();
     expect(
-      screen.getByText(/the session rows below are your session's last/),
+      screen.getByText(
+        /the Session, Tools, Resources and Prompts rows are your session's last/,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -281,7 +359,7 @@ describe('RuntimeState on a deactivated server', () => {
 
     expect(await screen.findByText('connected')).toBeInTheDocument();
     expect(
-      screen.queryByText(/the session rows below/),
+      screen.queryByText(/the Session, Tools, Resources and Prompts rows/),
     ).not.toBeInTheDocument();
   });
 });

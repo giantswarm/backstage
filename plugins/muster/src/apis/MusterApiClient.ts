@@ -8,6 +8,7 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
+import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationOidcToken } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { isHomeInstallation, MusterTokenMintError } from './installationToken';
 import {
@@ -78,6 +79,23 @@ const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
  * `gs.authProvider` is unset as well.
  */
 const MAIN_LOGIN_PROVIDER = 'main';
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every(entry => typeof entry === 'string')
+  );
+}
+
+/**
+ * The further text blocks a tool answered next to its error message — a
+ * `MusterToolError`'s `details` as {@link MusterApiClient} carries them — or
+ * none. Callers parse what their tool puts there (cluster-manager: the
+ * structured refusal of `delete_node_pool`).
+ */
+export function toolErrorDetails(error: unknown): string[] {
+  const details = (error as { details?: unknown } | null)?.details;
+  return isStringArray(details) ? details : [];
+}
 
 export class MusterApiClient implements MusterApi {
   private readonly discoveryApi: DiscoveryApi;
@@ -338,7 +356,7 @@ export class MusterApiClient implements MusterApi {
   private async requiresToken(
     installation?: string,
   ): Promise<{ authProvider: string } | undefined> {
-    const configured = this.resolveAuthProvider(installation);
+    const configured = await this.resolveAuthProvider(installation);
     if (configured) {
       return { authProvider: configured };
     }
@@ -379,13 +397,18 @@ export class MusterApiClient implements MusterApi {
    * requires a per-user token; which token depends on whether it is the home
    * installation (see {@link resolveToken}). A derived installation has no
    * entry here -- see {@link requiresToken}.
+   *
+   * Both lists are part of the signed-in config: the installation names
+   * enumerate the fleet, so they are not in the public `index.html`. Every
+   * muster request runs after sign-in, so awaiting the source here never
+   * stalls.
    */
-  private resolveAuthProvider(installation?: string): string | undefined {
-    if (!this.configApi) {
-      return undefined;
-    }
+  private async resolveAuthProvider(
+    installation?: string,
+  ): Promise<string | undefined> {
+    const config = await getSignedInConfig();
     if (installation) {
-      const installations = this.configApi.getOptionalConfigArray(
+      const installations = config.getOptionalConfigArray(
         'muster.installations',
       );
       const match = installations?.find(
@@ -397,8 +420,8 @@ export class MusterApiClient implements MusterApi {
       }
     }
     const serverName =
-      this.configApi.getOptionalString('muster.serverName') ?? 'muster';
-    const mcpConfigs = this.configApi.getOptionalConfigArray('aiChat.mcp');
+      config.getOptionalString('muster.serverName') ?? 'muster';
+    const mcpConfigs = config.getOptionalConfigArray('aiChat.mcp');
     const mcpConfig = mcpConfigs?.find(
       mcp => mcp.getOptionalString('name') === serverName,
     );
@@ -537,14 +560,25 @@ export class MusterApiClient implements MusterApi {
   private async handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const message =
-        (errorData as { error?: { message?: string } })?.error?.message ??
-        `Muster request failed with status ${response.status}`;
-      const error = new Error(message);
+      const { message, details } =
+        (errorData as { error?: { message?: string; details?: unknown } })
+          ?.error ?? {};
+      const error = new Error(
+        message ?? `Muster request failed with status ${response.status}`,
+      );
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';
       if (response.status === 503) error.name = 'ServiceUnavailableError';
+      // The status stays with it: a 502, 503 or 504 is the portal's edge
+      // answering in the backend's place, and a caller that wrote something
+      // cannot tell from it how far the write got.
+      (error as Error & { status: number }).status = response.status;
+      // A tool-level error's further text blocks (gs-node's MusterToolError
+      // `details`) stay with it: cluster-manager's structured refusal rides there.
+      if (isStringArray(details)) {
+        (error as Error & { details: string[] }).details = details;
+      }
       throw error;
     }
 

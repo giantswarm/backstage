@@ -53,6 +53,19 @@ jest.mock('../../hooks/useAgentSessions', () => ({
 // them itself. Stubbed for the same reason `useAgentSessions` is: this page's
 // react-query client and the muster API are not part of the test, and the menu
 // and the write dialogs are covered by their own tests.
+// The states summary is one more backend read this page's branches do not turn
+// on; the table renders the column, and its own tests cover it.
+jest.mock('../../hooks/useFleetSessionStates', () => ({
+  useFleetSessionStates: () => ({
+    states: new Map(),
+    unreadable: new Set(),
+    failedInstallations: new Set(),
+    skippedCount: 0,
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 jest.mock('../../hooks/useAgentDeletion', () => ({
   useAgentDeletion: () => ({
     deleteAgent: jest.fn(),
@@ -73,13 +86,19 @@ jest.mock('../../hooks/useUpdateAgent', () => ({
     reset: jest.fn(),
   }),
 }));
+// agent-manager's presence on the installation, and what it says about this
+// agent. The default is an installation without it — nothing asked, no write
+// affordance offered — which is what most of this file's tests want.
+let agentManagerPresence: 'available' | 'missing' | 'unknown' = 'unknown';
+let isMusterUnavailable = true;
+
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: () => ({
     available: [],
     missing: [],
-    presenceOf: () => 'unknown',
+    presenceOf: () => agentManagerPresence,
     isLoading: false,
-    isUnavailable: true,
+    isUnavailable: isMusterUnavailable,
   }),
   useAgentManagerInfo: () => ({
     info: undefined,
@@ -87,6 +106,28 @@ jest.mock('../../hooks/useAgentManager', () => ({
     error: null,
   }),
 }));
+
+// `get_agent`, which the page reads for one thing only: whether agent-manager
+// can write to this agent at all (`managed`). Undefined is the unread case —
+// not connected, refused, still in flight — where the actions stay offered.
+let managerAgent: { managed: string } | undefined;
+let isReadingManagerAgent = false;
+
+jest.mock('../../hooks/useAgentManagerAgent', () => ({
+  useAgentManagerAgent: () => ({
+    agent: managerAgent,
+    isLoading: isReadingManagerAgent,
+    failure: undefined,
+  }),
+}));
+
+/** An installation whose muster lists agent-manager, which is what offers the writes. */
+function withAgentManager(managed: string | undefined = 'helmrelease') {
+  agentManagerPresence = 'available';
+  isMusterUnavailable = false;
+  managerAgent = managed === undefined ? undefined : { managed };
+  isReadingManagerAgent = false;
+}
 // agent-manager's `get_agent_status`, the page's word on whether an agent whose
 // template the apiserver does not know is being deployed (its HelmRelease exists)
 // or does not exist at all. The default is an installation without agent-manager:
@@ -263,7 +304,10 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
   );
 }
 
-function makeModelConfig() {
+/** The model the fixture agent references; `displayName: null` omits the annotation. */
+function makeModelConfig({
+  displayName = 'Claude Opus 4.7',
+}: { displayName?: string | null } = {}) {
   return new ModelConfig(
     {
       apiVersion: 'kagent.dev/v1alpha3',
@@ -271,7 +315,9 @@ function makeModelConfig() {
       metadata: {
         name: 'opus-4-7',
         namespace: 'agent-platform',
-        annotations: { 'ui.giantswarm.io/display-name': 'Claude Opus 4.7' },
+        annotations: displayName
+          ? { 'ui.giantswarm.io/display-name': displayName }
+          : undefined,
       },
       spec: { model: 'claude-opus-4-7', provider: 'Anthropic' },
     },
@@ -281,6 +327,7 @@ function makeModelConfig() {
 
 const NO_SESSIONS: AgentSessionsView = {
   rows: [],
+  installation: 'gazelle',
   isLoading: false,
   isNotUserScoped: false,
   isUnavailable: false,
@@ -436,6 +483,10 @@ describe('AgentDetailPage', () => {
     mockServingStateFor.mockReset();
     mockUseAgentStatus.mockReset();
     mockUseAgentStatus.mockReturnValue(NO_STATUS);
+    agentManagerPresence = 'unknown';
+    isMusterUnavailable = true;
+    managerAgent = undefined;
+    isReadingManagerAgent = false;
   });
 
   it('renders every section for a ready agent', async () => {
@@ -632,6 +683,57 @@ describe('AgentDetailPage', () => {
       // Read-only: the picker's checkbox affordance must not come along.
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     });
+
+    // The exact label, because the stubbed dialog's own button says
+    // "stub: Update skills landed" and would match a looser query.
+    const updateSkills = () =>
+      screen.queryByRole('button', { name: 'Update skills\u2026' });
+
+    it('offers Update skills when agent-manager can write to the agent', async () => {
+      withAgentManager('helmrelease');
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).toBeInTheDocument();
+    });
+
+    it('withholds Update skills for an agent applied from git', async () => {
+      // agent-manager refuses every live write to it: its desired state lives in
+      // the GitOps repository, so pressing the button could only ever end in the
+      // refusal the dialog used to show after the fact.
+      withAgentManager('gitops');
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).not.toBeInTheDocument();
+    });
+
+    it("withholds Update skills while agent-manager's verdict is in flight", async () => {
+      // Not the same as "did not answer": showing the button for a muster
+      // round-trip and then removing it is the one window in which a
+      // GitOps-owned agent's skills could still be updated.
+      withAgentManager('gitops');
+      isReadingManagerAgent = true;
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).not.toBeInTheDocument();
+    });
+
+    it('still offers Update skills when agent-manager did not answer', async () => {
+      // Not connected, refused, or still in flight. Withholding the action there
+      // would take it from people who do have it; agent-manager refuses on
+      // confirm if it must.
+      withAgentManager(undefined);
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).toBeInTheDocument();
+    });
   });
 
   it('shows an OCI skill by its reference and digest', async () => {
@@ -658,6 +760,77 @@ describe('AgentDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(`sha256:${'f'.repeat(12)}`)).toBeInTheDocument();
   });
+
+  it('names the agent in the document title and as the page heading', async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+
+    // The app layout appends " | <app title>"; the page sets the rest.
+    await waitFor(() =>
+      expect(document.title).toBe('PR reviewer · Agents · Agent Platform'),
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'PR reviewer' }),
+    ).toBeInTheDocument();
+  });
+
+  it('titles the page with the technical name when the agent has no display name', async () => {
+    stubResources(
+      { resource: makeAgent({ metadata: { annotations: {} } }) },
+      { resource: makeModelConfig() },
+    );
+
+    await renderPage();
+
+    await waitFor(() =>
+      expect(document.title).toBe('pr-reviewer · Agents · Agent Platform'),
+    );
+  });
+
+  it('lists the configuration as terms and descriptions, not headings', async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+
+    const terms = Array.from(document.querySelectorAll('dt')).map(
+      term => term.textContent,
+    );
+    expect(terms).toEqual(expect.arrayContaining(['Harness', 'Model']));
+    expect(screen.queryByRole('heading', { name: 'Model' })).toBeNull();
+  });
+
+  it('heads each condition one level below the Status card', async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole('heading', { level: 4, name: /^Accepted/ }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ['no', null],
+    ['a blank', '  '],
+  ])(
+    'leads with the model when the ModelConfig has %s display name',
+    async (_, displayName) => {
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig({ displayName }) },
+      );
+
+      await renderPage();
+
+      // The first line is the model, not the resource name the ModelConfig
+      // line already shows, and in monospace like the other identifiers.
+      const modelLine = screen.getByText('claude-opus-4-7 · Anthropic');
+      expect(modelLine).toHaveAttribute('data-variant', 'body-medium');
+      expect(modelLine).toHaveStyle({ fontFamily: 'monospace' });
+      expect(screen.queryByText('opus-4-7')).toBeNull();
+    },
+  );
 
   it('falls back to the bare ModelConfig reference when it cannot be read', async () => {
     // Normal for a non-admin: ModelConfigs live in namespaces they may not read.
@@ -1127,6 +1300,27 @@ describe('AgentDetailPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the system prompt as Markdown, with a button that copies its source', async () => {
+    stubResources({
+      resource: makeAgent({
+        spec: {
+          modelConfig: { name: 'opus-4-7' },
+          systemPrompt: '## How you work\n\nLook **before** you answer.',
+        },
+      } as Partial<AgentInterface>),
+    });
+
+    await renderPage();
+
+    expect(
+      screen.getByRole('heading', { name: 'How you work' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('before').tagName).toBe('STRONG');
+    expect(
+      screen.getByRole('button', { name: 'Copy system prompt' }),
+    ).toBeInTheDocument();
+  });
+
   describe('sessions', () => {
     it('describes the list as the user’s own', async () => {
       stubResources({ resource: makeAgent() });
@@ -1487,7 +1681,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
       readiness: 'notServing',
       name: 'opus',
       namespace: 'model-serving',
-      message: 'InferenceService model-serving/opus is not serving.',
+      message: 'LLMInferenceService model-serving/opus is not serving.',
     });
     stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
@@ -1497,7 +1691,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
       'Not serving',
     );
     expect(
-      screen.getByText('Points at InferenceService model-serving/opus'),
+      screen.getByText('Points at LLMInferenceService model-serving/opus'),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Serving view' })).toHaveAttribute(
       'href',

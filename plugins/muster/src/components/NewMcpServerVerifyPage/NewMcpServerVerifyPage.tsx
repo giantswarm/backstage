@@ -5,8 +5,12 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
-import { Box, makeStyles } from '@material-ui/core';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import { makeStyles } from '@material-ui/core';
+import {
+  FactList,
+  useProvidePageHeaderActions,
+  type Fact,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
 import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
@@ -15,11 +19,7 @@ import { decodeDexSubject } from '../../lib/dexSubject';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { ServerSignIn, StateBadge, severityTone } from '../shared';
-import {
-  DefRow,
-  HealthDetails,
-  ServerTools,
-} from '../McpServersPage/serverDetail';
+import { HealthDetails, ServerTools } from '../McpServersPage/serverDetail';
 
 /**
  * How often the live runtime list is re-read while the server is still
@@ -45,13 +45,6 @@ const useStyles = makeStyles(theme => ({
   intro: {
     maxWidth: '70ch',
     marginBottom: theme.spacing(3),
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(140px, max-content) 1fr',
-    columnGap: theme.spacing(2),
-    rowGap: theme.spacing(0.75),
-    alignItems: 'baseline',
   },
   code: {
     fontFamily: 'monospace',
@@ -111,7 +104,9 @@ export function NewMcpServerVerifyPage() {
       const runtimeState = (query.state.data?.mcpServers ?? []).find(
         s => s.name === serverName,
       )?.state;
-      return runtimeState === 'Connected' || runtimeState === 'Running'
+      return runtimeState === 'Connected' ||
+        runtimeState === 'Running' ||
+        runtimeState === 'Awaiting Session'
         ? SETTLED_POLL_INTERVAL_MS
         : VERIFY_POLL_INTERVAL_MS;
     },
@@ -140,9 +135,50 @@ export function NewMcpServerVerifyPage() {
   // offering a login would send the user somewhere that cannot help.
   const authRequired =
     serverState === 'Auth Required' && state.authMode !== 'sigv4';
+  // `Awaiting Session`: the server is used with each caller's own identity
+  // (token forwarding or exchange), muster holds no connection of its own,
+  // and this person's session connects it when it uses it. Verified, with
+  // nothing to sign in to.
+  const awaitingSession = serverState === 'Awaiting Session';
   const connected = serverState === 'Connected' || serverState === 'Running';
   const failed = severity === 'error';
   const toolsCount = runtime?.toolsCount;
+
+  const connectionFacts: Fact[] = [
+    {
+      label: 'State',
+      value: serverState ? (
+        <StateBadge
+          tone={severityTone(severity)}
+          label={serverState}
+          title={cr?.getStateExplanation()}
+        />
+      ) : (
+        'Waiting for the server to appear…'
+      ),
+    },
+  ];
+  if (runtime?.statusMessage) {
+    connectionFacts.push({ label: 'Status', value: runtime.statusMessage });
+  }
+  if (runtime?.sessionStatus) {
+    connectionFacts.push({ label: 'Session', value: runtime.sessionStatus });
+  }
+  if (toolsCount !== undefined) {
+    connectionFacts.push({ label: 'Tools discovered', value: toolsCount });
+  }
+  if (runtime?.registeredBy) {
+    connectionFacts.push({
+      label: 'Registered by',
+      value: (
+        <span title={runtime.registeredBy}>
+          {runtime.registeredByEmail ??
+            decodeDexSubject(runtime.registeredBy) ??
+            runtime.registeredBy}
+        </span>
+      ),
+    });
+  }
 
   const actions = useMemo(
     () => (
@@ -212,36 +248,7 @@ export function NewMcpServerVerifyPage() {
                 <Text as="h3" variant="title-small" weight="bold">
                   Connection status
                 </Text>
-                <Box className={classes.grid}>
-                  <DefRow label="State">
-                    {serverState ? (
-                      <StateBadge
-                        tone={severityTone(severity)}
-                        label={serverState}
-                      />
-                    ) : (
-                      'Waiting for the server to appear…'
-                    )}
-                  </DefRow>
-                  {runtime?.statusMessage && (
-                    <DefRow label="Status">{runtime.statusMessage}</DefRow>
-                  )}
-                  {runtime?.sessionStatus && (
-                    <DefRow label="Session">{runtime.sessionStatus}</DefRow>
-                  )}
-                  {toolsCount !== undefined && (
-                    <DefRow label="Tools discovered">{toolsCount}</DefRow>
-                  )}
-                  {runtime?.registeredBy && (
-                    <DefRow label="Registered by">
-                      <span title={runtime.registeredBy}>
-                        {runtime.registeredByEmail ??
-                          decodeDexSubject(runtime.registeredBy) ??
-                          runtime.registeredBy}
-                      </span>
-                    </DefRow>
-                  )}
-                </Box>
+                <FactList facts={connectionFacts} maxWidth={null} />
                 {!serverState && (
                   <Text variant="body-small" color="secondary">
                     Newly registered servers can take a few seconds to show up
@@ -266,6 +273,21 @@ export function NewMcpServerVerifyPage() {
                     installation={installation}
                   />
                 </Flex>
+              </CardBody>
+            </Card>
+          )}
+
+          {awaitingSession && (
+            <Card>
+              <CardBody>
+                <Alert
+                  status="info"
+                  title="This server connects per session — that's normal"
+                  description={
+                    cr?.getStateExplanation() ??
+                    'It is used with each person’s own identity: muster holds no connection of its own, and its tools appear in your session once muster has connected it for you.'
+                  }
+                />
               </CardBody>
             </Card>
           )}
@@ -318,9 +340,13 @@ export function NewMcpServerVerifyPage() {
                   <ServerTools server={cr} />
                 ) : (
                   <Text variant="body-small" color="secondary">
-                    {authRequired
-                      ? 'Tools appear here after you sign in to the server.'
-                      : 'Tools appear here once the server is connected and discovery has run.'}
+                    {authRequired &&
+                      'Tools appear here after you sign in to the server.'}
+                    {awaitingSession &&
+                      'Tools appear here once your muster session has connected to the server.'}
+                    {!authRequired &&
+                      !awaitingSession &&
+                      'Tools appear here once the server is connected and discovery has run.'}
                   </Text>
                 )}
               </Flex>

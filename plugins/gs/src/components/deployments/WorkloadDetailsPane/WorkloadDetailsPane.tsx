@@ -6,6 +6,7 @@ import {
   InfoCard,
   JsonHighlight,
   SimpleAccordion,
+  Stat,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ErrorsProvider } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ContentRow, ClusterLink, DateComponent } from '../../UI';
@@ -136,32 +137,27 @@ function ReplicasCard({
   replicaStatus: { desired: number; ready: number };
 }) {
   const { desired, ready } = replicaStatus;
-  let readyColor: 'secondary' | 'primary' | 'danger' = 'danger';
+  let readyTone: 'neutral' | 'error' | undefined = 'error';
   if (desired === 0) {
-    readyColor = 'secondary';
+    readyTone = 'neutral';
   } else if (ready >= desired) {
-    readyColor = 'primary';
+    readyTone = undefined;
   }
 
   return (
     <InfoCard title="Replicas">
-      <Flex>
-        <Box grow style={{ textAlign: 'center' }}>
-          <Text as="div" variant="title-medium">
-            {desired}
-          </Text>
-          <Text as="div" variant="body-x-small" color="secondary">
-            Desired
-          </Text>
-        </Box>
-        <Box grow style={{ textAlign: 'center' }}>
-          <Text as="div" variant="title-medium" color={readyColor}>
-            {ready}
-          </Text>
-          <Text as="div" variant="body-x-small" color="secondary">
-            Ready
-          </Text>
-        </Box>
+      <Flex gap="10">
+        <Stat
+          label="Desired"
+          value={desired}
+          hint="The replicas the workload's spec asks for. For a DaemonSet, the nodes it should run on."
+        />
+        <Stat
+          label="Ready"
+          value={ready}
+          tone={readyTone}
+          hint="Replicas whose pods pass their readiness checks. Red while fewer are ready than desired."
+        />
       </Flex>
     </InfoCard>
   );

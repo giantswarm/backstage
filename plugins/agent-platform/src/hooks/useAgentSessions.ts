@@ -17,6 +17,8 @@ import { useKagentCapabilities } from './useKagentCapabilities';
 export type AgentSessionsView = {
   /** This agent's sessions, most recent activity first. */
   rows: SessionRow[];
+  /** The installation the rows were read from, for a reader that needs to ask it something else. */
+  installation: string;
   isLoading: boolean;
   /**
    * True when the installation's kagent runs in `unsecure` mode and so returns
@@ -96,6 +98,7 @@ export function useAgentSessions(
 
   return {
     rows,
+    installation,
     isLoading,
     isNotUserScoped: capabilities.isUserScoped === false,
     // Only unavailable when there is genuinely nothing to show. react-query keeps

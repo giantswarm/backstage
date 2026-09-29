@@ -158,6 +158,7 @@ export function AgentStatusCard({ agent }: { agent: Agent }) {
 
         <ConditionsList
           conditions={conditions}
+          headingLevel={4}
           emptyContent={
             <Text variant="body-small" color="secondary">
               {readiness === 'notAdmitted'

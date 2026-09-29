@@ -2,6 +2,7 @@ import {
   A2aMessageWire,
   a2aMessageWireSchema,
   a2aStreamEventWireSchema,
+  CANCELED_STATE,
   CONFIRMATION_TOOL_NAME,
   describeSessionState,
   normalizeStreamEvent,
@@ -196,15 +197,24 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         next.isFinal = true;
       }
 
-      if (isFinal && state && FAILED_STATES.has(state)) {
-        // The turn ended in error, and `status.message` is now the *reason*, not
-        // a reply. Ingesting it as one showed the provider's error as the agent's
-        // prose for a moment — then the poll, whose history holds no reply at
-        // all, replaced the preview with nothing and the error was gone. Rendered
-        // instead as the failed turn `buildTimeline` will produce from the polled
-        // task, under the same messageId so that copy supersedes this one.
+      if (
+        isFinal &&
+        state &&
+        (FAILED_STATES.has(state) || state === CANCELED_STATE)
+      ) {
+        // The turn ended without answering, and `status.message` is now the
+        // *reason*, not a reply. Ingesting it as one showed the provider's error
+        // as the agent's prose for a moment — then the poll, whose history holds
+        // no reply at all, replaced the preview with nothing and the error was
+        // gone. Rendered instead as the ended-turn entry `buildTimeline` will
+        // produce from the polled task, under the same messageId so that copy
+        // supersedes this one.
+        //
+        // A cancel takes the same path so that pressing Stop settles into the
+        // entry the poll is about to deliver, rather than leaving the partial
+        // reply hanging and then having it vanish.
         flushLiveRun(next);
-        pushFailureItem(next, state, readAgentMessage(event.status?.message));
+        pushEndingItem(next, state, readAgentMessage(event.status?.message));
         return next;
       }
 
@@ -603,11 +613,11 @@ function pushTextItem(
 }
 
 /**
- * The terminal failure of a streamed turn, as the failed-turn entry the polled
- * timeline will carry. No adjacent-text dedupe: a failure is never the repeat of
- * an artifact chunk.
+ * The terminal ending of a streamed turn — failed, rejected or canceled — as the
+ * entry the polled timeline will carry. No adjacent-text dedupe: an ending is
+ * never the repeat of an artifact chunk.
  */
-function pushFailureItem(
+function pushEndingItem(
   turn: StreamTurn,
   state: string,
   message: A2aMessageWire | undefined,

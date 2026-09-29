@@ -3,12 +3,25 @@ export interface Config {
   aiChat?: {
     anthropic?: {
       /**
-       * Anthropic API key
+       * Anthropic API key. Required when `provider` is `api` (the default),
+       * unused when it is `vertex`.
        * @visibility secret
        */
-      apiKey: string;
+      apiKey?: string;
       /**
-       * Optional: custom base URL for Anthropic-compatible APIs
+       * Which platform serves `claude-*` models:
+       *   - "api" (default): Anthropic's own API, authenticated with `apiKey`.
+       *   - "vertex": Claude on Google Cloud Vertex AI, authenticated from the
+       *     service-account JSON configured under `aiChat.google`. No Anthropic
+       *     API key is involved; `aiChat.google.project`, `location` and
+       *     `keyFilename` are required.
+       * @visibility backend
+       */
+      provider?: 'api' | 'vertex';
+      /**
+       * Optional: custom base URL for Anthropic-compatible APIs. Ignored when
+       * `provider` is `vertex`, where the URL is derived from the GCP project
+       * and location.
        * @visibility backend
        */
       baseUrl?: string;
@@ -84,7 +97,8 @@ export interface Config {
       /**
        * Path to the mounted Google Cloud service-account JSON, used by
        * google-auth-library to mint and auto-refresh short-lived OAuth2
-       * access tokens. Required for Vertex (`gemini-*`) models.
+       * access tokens. Required for Vertex models: `gemini-*`, and `claude-*`
+       * when `aiChat.anthropic.provider` is `vertex`.
        * @visibility backend
        */
       keyFilename?: string;

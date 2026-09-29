@@ -28,6 +28,7 @@ function instance(overrides: Partial<MusterInstance> = {}): MusterInstance {
     dataUpdatedAt: undefined,
     isRefreshing: false,
     retry: jest.fn(),
+    refreshInventory: jest.fn(),
     ...overrides,
   };
 }

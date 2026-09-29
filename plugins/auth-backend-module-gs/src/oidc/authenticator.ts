@@ -1,3 +1,4 @@
+import { AuthenticationError } from '@backstage/errors';
 import { OAuthAuthenticator } from '@backstage/plugin-auth-node';
 import {
   oidcAuthenticator,
@@ -51,6 +52,11 @@ export function requestedConnectorId(req: {
  * It also lets a sign-in request choose the Dex connector: a `connector_id`
  * on `/start` replaces the configured default for that authorization request
  * (see {@link requestedConnectorId}).
+ *
+ * And it refuses to refresh a session with fewer scopes than the request asks
+ * for (see `refresh`), so a widened `gs.auth.extraScopes` makes existing
+ * sessions sign in again instead of forwarding a token that lacks the new
+ * scopes.
  */
 export const gsOidcAuthenticator: OAuthAuthenticator<
   OidcContext,
@@ -105,5 +111,27 @@ export const gsOidcAuthenticator: OAuthAuthenticator<
       },
     };
     return oidcAuthenticator.start(input, pinned);
+  },
+  async refresh(input, ctx) {
+    // A refresh never widens a grant: the issuer re-issues the tokens with the
+    // scopes the sign-in consented to, whatever the refresh asks for (Dex
+    // issues the new ID token from the refresh token's own scopes). The OAuth
+    // adapter persists the granted scopes in a cookie next to the refresh
+    // token and says here whether the request stays within them. The upstream
+    // authenticator ignores that flag; the adapter then records the *requested*
+    // set as granted and reports it to the frontend, which treats scopes the
+    // token never carried as present. After `gs.auth.extraScopes` gained the
+    // `audience:server:client_id:*` scope the apiservers require, every
+    // existing session kept forwarding an ID token without that audience and
+    // every Kubernetes read failed with 401 until the person signed out by
+    // hand. Refusing is what keeps the session honest: the frontend's session
+    // manager drops the session and starts a fresh sign-in, which requests the
+    // widened set.
+    if (input.scopeAlreadyGranted === false) {
+      throw new AuthenticationError(
+        'The session was signed in with fewer scopes than this refresh asks for; a refresh cannot widen the grant, so the person has to sign in again.',
+      );
+    }
+    return oidcAuthenticator.refresh(input, ctx);
   },
 };

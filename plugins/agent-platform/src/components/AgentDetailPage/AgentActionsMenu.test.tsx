@@ -12,10 +12,10 @@ type AgentInterface = AgentTemplateInterface;
 
 // The menu renders in the shared plugin header, outside the plugin's
 // QueryClientProvider, so it calls no react-query hook itself: whether the write
-// actions are offered arrives as a prop (feature detection from the MCPServer
-// presence, read by the page), and the actions only ask the page to open the
-// dialogs it renders in its body. This test is therefore about what the menu
-// offers and says; the dialogs and hooks have their own tests.
+// actions are offered arrives as a prop (agent-manager's presence and its
+// verdict on the agent, both read by the page), and the actions only ask the
+// page to open the dialogs it renders in its body. This test is therefore about
+// what the menu offers and says; the dialogs and hooks have their own tests.
 function makeAgent(): Agent {
   return new Agent(
     {
@@ -39,6 +39,8 @@ const onDelete = jest.fn();
 const AVAILABLE: AgentManagerGate = {
   presence: 'available',
   isUnavailable: false,
+  isGitOpsOwned: false,
+  isVerdictPending: false,
 };
 
 const renderMenu = (agentManager: AgentManagerGate = AVAILABLE) =>
@@ -113,8 +115,13 @@ describe('AgentActionsMenu', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  it('offers none of the three and says why when muster lists no agent-manager', async () => {
-    await renderMenu({ presence: 'missing', isUnavailable: false });
+  it('offers none of the three when muster lists no agent-manager', async () => {
+    await renderMenu({
+      presence: 'missing',
+      isUnavailable: false,
+      isGitOpsOwned: false,
+      isVerdictPending: false,
+    });
     await openMenu();
 
     expect(
@@ -126,32 +133,62 @@ describe('AgentActionsMenu', () => {
     expect(
       screen.queryByRole('menuitem', { name: /Update skills/ }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('menuitem', {
-        name: /muster on gazelle lists no agent-manager/,
-      }),
-    ).toHaveAttribute('aria-disabled', 'true');
-    // The read-only escape hatch stays.
+    // The read-only escape hatch, and nothing else: a menu lists things to do,
+    // so what cannot be offered is left out rather than explained in place.
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(
       screen.getByRole('menuitem', { name: 'View manifest' }),
     ).toBeInTheDocument();
   });
 
-  it('says the muster plugin is missing when the portal has none', async () => {
-    await renderMenu({ presence: 'unknown', isUnavailable: true });
+  it('offers none of the three for an agent applied from git', async () => {
+    // agent-manager refuses every live write to it, so the actions are withheld
+    // rather than opened and refused on confirm. No explanation here: the
+    // Overview tab's "Managed through GitOps" card already carries it.
+    await renderMenu({ ...AVAILABLE, isGitOpsOwned: true });
     await openMenu();
 
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(
-      screen.getByRole('menuitem', { name: /no muster plugin/ }),
+      screen.getByRole('menuitem', { name: 'View manifest' }),
     ).toBeInTheDocument();
+  });
+
+  it("withholds the actions while agent-manager's verdict is still in flight", async () => {
+    // Offering them for a muster round-trip and then taking them away is the
+    // one window where a GitOps-owned agent could still be written to.
+    await renderMenu({ ...AVAILABLE, isVerdictPending: true });
+    await openMenu();
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(
+      screen.getByRole('menuitem', { name: 'View manifest' }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers none of the three when the portal has no muster plugin', async () => {
+    await renderMenu({
+      presence: 'unknown',
+      isUnavailable: true,
+      isGitOpsOwned: false,
+      isVerdictPending: false,
+    });
+    await openMenu();
+
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(
       screen.queryByRole('menuitem', { name: /Delete agent/ }),
     ).not.toBeInTheDocument();
   });
 
-  it('withholds the actions while the server list is still being read, without a reason', async () => {
+  it('withholds the actions while the server list is still being read', async () => {
     // Rather than offering them and taking them away again once muster answers.
-    await renderMenu({ presence: 'unknown', isUnavailable: false });
+    await renderMenu({
+      presence: 'unknown',
+      isUnavailable: false,
+      isGitOpsOwned: false,
+      isVerdictPending: false,
+    });
     await openMenu();
 
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);

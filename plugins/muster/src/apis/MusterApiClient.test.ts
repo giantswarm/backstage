@@ -3,7 +3,11 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
-import { MusterApiClient } from './MusterApiClient';
+import {
+  __resetSignedInConfigForTests,
+  setSignedInConfig,
+} from '@giantswarm/backstage-plugin-gs-react';
+import { MusterApiClient, toolErrorDetails } from './MusterApiClient';
 import { MusterAuthProvidersApi } from './types';
 
 const HEADER = 'backstage-muster-authorization';
@@ -28,11 +32,19 @@ const CLUSTERS: Record<
   },
 };
 
-function configData(mainProvider: string | undefined, legacy: boolean) {
+/** The public config: the main provider alone. */
+function configData(mainProvider: string | undefined) {
+  return mainProvider ? { gs: { authProvider: mainProvider } } : {};
+}
+
+/**
+ * The signed-in config the client resolves auth providers from:
+ * `muster.installations[]` and, with `legacy`, the single-installation
+ * `aiChat.mcp` entry `resolveAuthProvider` falls back to when no installation
+ * is named (or the named one has no authProvider).
+ */
+function signedInConfigData(legacy: boolean) {
   return {
-    ...(mainProvider ? { gs: { authProvider: mainProvider } } : {}),
-    // The legacy single-installation entry `resolveAuthProvider` falls back to
-    // when no installation is named (or the named one has no authProvider).
     ...(legacy
       ? { aiChat: { mcp: [{ name: 'muster', authProvider: 'mcp-muster' }] } }
       : {}),
@@ -47,6 +59,10 @@ function configData(mainProvider: string | undefined, legacy: boolean) {
   };
 }
 
+beforeEach(() => {
+  __resetSignedInConfigForTests();
+});
+
 function okResponse(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as Response;
 }
@@ -54,6 +70,68 @@ function okResponse(body: unknown): Response {
 function errorResponse(status: number, body: unknown): Response {
   return { ok: false, status, json: async () => body } as Response;
 }
+
+describe('MusterApiClient tool errors', () => {
+  it('keeps the further text blocks of a refused tool with the thrown error', async () => {
+    const { client, fetchMock } = setup();
+    fetchMock.mockResolvedValue(
+      errorResponse(500, {
+        error: {
+          name: 'MusterToolError',
+          message: 'node pool gpu-l4 still runs 1 node(s)',
+          details: ['{"refused":{"nodes":["i-0abc"]}}'],
+        },
+      }),
+    );
+
+    const error: unknown = await client
+      .callTool('x_cluster-manager_delete_node_pool', {}, 'open')
+      .catch(e => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      'node pool gpu-l4 still runs 1 node(s)',
+    );
+    expect(toolErrorDetails(error)).toEqual([
+      '{"refused":{"nodes":["i-0abc"]}}',
+    ]);
+  });
+});
+
+describe('MusterApiClient response status', () => {
+  it("keeps the status of an answer that is not muster-backend's own", async () => {
+    const { client, fetchMock } = setup();
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 504,
+      json: async () => {
+        throw new SyntaxError('upstream request timeout');
+      },
+    } as unknown as Response);
+
+    const error: unknown = await client
+      .callTool('x_marge_sweep', {}, 'open')
+      .catch(e => e);
+    expect((error as Error).message).toBe(
+      'Muster request failed with status 504',
+    );
+    expect((error as Error & { status?: number }).status).toBe(504);
+  });
+});
+
+describe('toolErrorDetails', () => {
+  it('reads the further text blocks a tool error carries, else none', () => {
+    expect(
+      toolErrorDetails(
+        Object.assign(new Error('refused'), { details: ['{"refused":{}}'] }),
+      ),
+    ).toEqual(['{"refused":{}}']);
+    expect(toolErrorDetails(new Error('plain'))).toEqual([]);
+    expect(toolErrorDetails(undefined)).toEqual([]);
+    expect(
+      toolErrorDetails(Object.assign(new Error('x'), { details: [1] })),
+    ).toEqual([]);
+  });
+});
 
 type SetupOptions = {
   /** `gs.authProvider`; `null` leaves it unset. */
@@ -87,6 +165,9 @@ function setup(options: SetupOptions = {}) {
     getCredentials: getBrokeredCredentials,
   } as unknown as KubernetesAuthProvidersApi;
 
+  setSignedInConfig(
+    mockApis.config({ data: signedInConfigData(options.legacy ?? false) }),
+  );
   const client = new MusterApiClient({
     discoveryApi: {
       getBaseUrl: jest.fn().mockResolvedValue('http://backend/api/muster'),
@@ -97,7 +178,6 @@ function setup(options: SetupOptions = {}) {
         options.mainProvider === null
           ? undefined
           : (options.mainProvider ?? 'oidc-gazelle'),
-        options.legacy ?? false,
       ),
     }),
     authProvidersApi,
