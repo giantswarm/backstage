@@ -14,7 +14,8 @@ that request can only 404, and the page showed an error banner
 /apis/controlplane.cluster.x-k8s.io/v1beta2/namespaces/<ns>/kubeadmcontrolplanes/<name>/.
 Reason: .`) for a perfectly healthy cluster.
 
-The card now checks the ref's kind and API group first. When the ref is not
-a `KubeadmControlPlane`, the request is skipped, no error is shown, and the
-Kubernetes version reads "not available" until the portal learns to read
-managed control planes.
+The card now checks the ref's kind and API group first, with
+`ControlPlane.matchesRef` — the same match `findResourceByRef` uses. When
+the ref is not a `KubeadmControlPlane`, the query is disabled, no error is
+shown, and the Kubernetes version reads "not available" until the portal
+learns to read managed control planes.

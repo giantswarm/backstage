@@ -45,7 +45,6 @@ import {
 } from '../../../../../assets/icons/CustomIcons';
 import { ClusterTypes, ClusterProviders } from '../../../utils';
 import { AsyncValue, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { isKubeadmControlPlaneRef } from './utils';
 
 interface ProviderLocationDisplayProps {
   provider: string;
@@ -118,10 +117,11 @@ export function ClusterAboutCard() {
   const { name: controlPlaneName, namespace: controlPlaneNamespace } =
     controlPlaneRef;
 
-  // Managed control planes (AKS, EKS) are not a KubeadmControlPlane, so the
-  // fetch would only 404. Skip it and its errors; the Kubernetes version then
-  // reads as not available. See isKubeadmControlPlaneRef.
-  const hasKubeadmControlPlane = isKubeadmControlPlaneRef(controlPlaneRef);
+  // Managed control planes are not a KubeadmControlPlane — an AKS cluster
+  // references an AzureASOManagedControlPlane, an EKS cluster an
+  // AWSManagedControlPlane — so the fetch would only 404. Disable it, and the
+  // Kubernetes version reads as not available.
+  const hasKubeadmControlPlane = ControlPlane.matchesRef(controlPlaneRef);
 
   const {
     resource: controlPlane,
@@ -140,7 +140,7 @@ export function ClusterAboutCard() {
   );
 
   let controlPlaneErrorMessage;
-  if (hasKubeadmControlPlane && controlPlaneError) {
+  if (controlPlaneError) {
     controlPlaneErrorMessage = getErrorMessage({
       error: controlPlaneError,
       resourceKind: ControlPlane.kind,
@@ -148,13 +148,13 @@ export function ClusterAboutCard() {
       resourceNamespace: controlPlaneNamespace,
     });
   }
-  if (hasKubeadmControlPlane && controlPlaneIncompatibilities[0]) {
+  if (controlPlaneIncompatibilities[0]) {
     controlPlaneErrorMessage = getIncompatibilityMessage(
       controlPlaneIncompatibilities[0],
     );
   }
 
-  useShowErrors(hasKubeadmControlPlane ? controlPlaneErrors : null);
+  useShowErrors(controlPlaneErrors);
 
   const clusterType = calculateClusterType(cluster);
   const description = getClusterDescription(cluster);
