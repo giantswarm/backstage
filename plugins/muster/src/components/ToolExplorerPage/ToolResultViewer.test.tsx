@@ -3,6 +3,15 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/test-utils';
 import { ToolResultViewer } from './ToolResultViewer';
 
+// The CodeMirror-backed editor does not render its document under jsdom; a
+// read-only textarea exposes the same value.
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  YamlEditorFormField: ({ value }: { value: string }) => (
+    <textarea aria-label="Result" value={value} readOnly />
+  ),
+}));
+
 const listResult = [
   { metadata: { name: 'alpha', namespace: 'default' }, status: 'Ready' },
   { metadata: { name: 'beta', namespace: 'kube-system' }, status: 'Pending' },
@@ -25,7 +34,17 @@ describe('ToolResultViewer', () => {
 
     await userEvent.click(screen.getByRole('radio', { name: 'Raw' }));
     // Raw view renders compact JSON, so a quoted key is present verbatim.
-    expect(screen.getByText(/"status":"Ready"/)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Result' })).toHaveValue(
+      JSON.stringify(listResult),
+    );
+  });
+
+  it('shows the pretty-printed result in the Parsed view', async () => {
+    await renderInTestApp(<ToolResultViewer result={{ ok: true }} />);
+
+    expect(screen.getByRole('textbox', { name: 'Result' })).toHaveValue(
+      JSON.stringify({ ok: true }, null, 2),
+    );
   });
 
   it('shows the duration and size meta', async () => {

@@ -18,10 +18,14 @@ import ReplayIcon from '@material-ui/icons/Replay';
 import UnfoldLessIcon from '@material-ui/icons/UnfoldLess';
 import UnfoldMoreIcon from '@material-ui/icons/UnfoldMore';
 import { CopyTextButton } from '@backstage/core-components';
-import { JsonHighlight } from '@giantswarm/backstage-plugin-ui-react';
+import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
 import { detectTable } from '../../lib/resultShape';
 
 type ViewMode = 'parsed' | 'raw' | 'table';
+
+// Fills the viewport below the toolbar once the result is scrolled into view,
+// with a usable minimum on short windows.
+const RESULT_MAX_HEIGHT = 'max(240px, calc(100vh - 200px))';
 
 /** One table row: a stable id plus the raw record `detectTable` produced. */
 type ResultRow = { id: string; values: Record<string, unknown> };
@@ -52,10 +56,10 @@ export interface ToolResultViewerProps {
 }
 
 /**
- * Renders a tool's JSON result: a parsed (syntax-highlighted, collapsible) view,
- * a compact table when the result is a list of like-shaped objects, and a raw
- * (compact) view. Shows the call duration and result size, and offers copy,
- * download, and one-click re-run.
+ * Renders a tool's JSON result: a parsed (pretty-printed, foldable) view and a
+ * raw (compact) view in the read-only editor, and a compact table when the
+ * result is a list of like-shaped objects. Shows the call duration and result
+ * size, and offers copy, download, and one-click re-run.
  */
 export function ToolResultViewer({
   result,
@@ -201,7 +205,7 @@ export function ToolResultViewer({
         {mode === 'table' && table && (
           <Box
             style={{
-              maxHeight: 480,
+              maxHeight: RESULT_MAX_HEIGHT,
               overflow: 'auto',
               border: '1px solid var(--bui-border-1)',
               borderRadius: 'var(--bui-radius-2)',
@@ -222,28 +226,21 @@ export function ToolResultViewer({
               {formatBytes(sizeBytes)}). Use the expand button to show it.
             </Text>
           ) : (
-            <JsonHighlight
-              customStyle={{ margin: 0, fontSize: '0.75rem', maxHeight: 480 }}
-            >
-              {pretty}
-            </JsonHighlight>
+            <YamlEditorFormField
+              value={pretty}
+              language="json"
+              readOnly
+              maxHeight={RESULT_MAX_HEIGHT}
+            />
           ))}
 
         {mode === 'raw' && (
-          <Box
-            as="pre"
-            style={{
-              margin: 0,
-              fontFamily: 'monospace',
-              fontSize: '0.75rem',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              maxHeight: 480,
-              overflow: 'auto',
-            }}
-          >
-            {raw}
-          </Box>
+          <YamlEditorFormField
+            value={raw}
+            language="json"
+            readOnly
+            maxHeight={RESULT_MAX_HEIGHT}
+          />
         )}
       </Box>
     </Box>
