@@ -1,4 +1,9 @@
-import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  KubeObject,
+  Provenance,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { GitOpsSource } from '@giantswarm/backstage-plugin-flux-react';
+import type { GitOpsManagedLabelProps } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Provenance detection is implemented in `kubernetes-react`: it only reads labels
@@ -16,6 +21,62 @@ export {
   readProvenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 export type { Provenance } from '@giantswarm/backstage-plugin-kubernetes-react';
+
+/**
+ * The `source` for `GitOpsManagedLabel`: only once there is a Git source to
+ * resolve. A server reconciled from a HelmRelease that is not itself in Git
+ * keeps the plain label, rather than a link that can never resolve.
+ */
+export function gitOpsLabelSource(
+  source: GitOpsSource,
+): GitOpsManagedLabelProps['source'] {
+  if (!source.inGit && !source.isLoading) {
+    return undefined;
+  }
+  return {
+    url: source.url,
+    isLoading: source.isLoading,
+    errorMessage: source.errorMessage,
+  };
+}
+
+/** `namespace/name`, or just the name for an object without a namespace. */
+export function qualifiedName(name: string, namespace?: string): string {
+  return namespace ? `${namespace}/${name}` : name;
+}
+
+/**
+ * Whether the object is rendered by a Helm chart, so its desired state is the
+ * chart values rather than a manifest of the object itself.
+ */
+export function isChartRendered(p: Provenance): boolean {
+  return Boolean(p.fluxHelmRelease || p.helmRelease || p.managedBy === 'Helm');
+}
+
+/** The object that reconciles a resource, by kind, for display. */
+export function gitOpsManagerDescription(
+  p: Provenance,
+): { kind: string; id: string } | undefined {
+  if (p.fluxHelmRelease) {
+    return {
+      kind: 'HelmRelease',
+      id: qualifiedName(p.fluxHelmRelease, p.fluxHelmNamespace),
+    };
+  }
+  if (p.helmRelease) {
+    return {
+      kind: 'Helm release',
+      id: qualifiedName(p.helmRelease, p.helmNamespace),
+    };
+  }
+  if (p.fluxKustomization) {
+    return {
+      kind: 'Kustomization',
+      id: qualifiedName(p.fluxKustomization, p.fluxKustomizationNamespace),
+    };
+  }
+  return undefined;
+}
 
 /**
  * Flatten an MCPServer CR's spec into the argument shape muster's

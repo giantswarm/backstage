@@ -1,5 +1,8 @@
 import { MCPServer, MusterWorkflow } from './k8s';
 import {
+  gitOpsManagerDescription,
+  isChartRendered,
+  qualifiedName,
   toManifestYaml,
   toMcpServerDefinition,
   toWorkflowDefinition,
@@ -84,5 +87,42 @@ describe('workflow definitions (gitops.ts)', () => {
     expect(yaml).toContain('kind: Workflow');
     expect(yaml).toContain('apiVersion: muster.giantswarm.io/v1alpha1');
     expect(yaml).toContain('name: deploy');
+  });
+});
+
+describe('GitOps display helpers', () => {
+  it('qualifies a name with its namespace, if any', () => {
+    expect(qualifiedName('flux-extras', 'flux-giantswarm')).toBe(
+      'flux-giantswarm/flux-extras',
+    );
+    expect(qualifiedName('flux-extras')).toBe('flux-extras');
+  });
+
+  it('tells a chart-rendered object from one applied as a manifest', () => {
+    expect(isChartRendered({ fluxHelmRelease: 'agent-platform-mcps' })).toBe(
+      true,
+    );
+    expect(isChartRendered({ helmRelease: 'agent-platform' })).toBe(true);
+    expect(isChartRendered({ managedBy: 'Helm' })).toBe(true);
+    expect(isChartRendered({ fluxKustomization: 'flux-extras' })).toBe(false);
+  });
+
+  it('names the managing object by its kind', () => {
+    expect(
+      gitOpsManagerDescription({
+        fluxHelmRelease: 'agent-platform-mcps',
+        fluxHelmNamespace: 'agent-platform',
+      }),
+    ).toEqual({
+      kind: 'HelmRelease',
+      id: 'agent-platform/agent-platform-mcps',
+    });
+    expect(
+      gitOpsManagerDescription({
+        fluxKustomization: 'flux-extras',
+        fluxKustomizationNamespace: 'flux-giantswarm',
+      }),
+    ).toEqual({ kind: 'Kustomization', id: 'flux-giantswarm/flux-extras' });
+    expect(gitOpsManagerDescription({ managedBy: 'flux' })).toBeUndefined();
   });
 });

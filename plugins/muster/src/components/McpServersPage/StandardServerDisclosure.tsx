@@ -1,5 +1,6 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Box, Flex, Text } from '@backstage/ui';
+import { useGitOpsSource } from '@giantswarm/backstage-plugin-flux-react';
 import { GitOpsManagedLabel } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer } from '../../lib/k8s';
 import {
@@ -25,7 +26,7 @@ import {
   ServerTools,
   useServerCapabilityCounts,
 } from './serverDetail';
-import { isGitOpsManaged } from '../../lib/gitops';
+import { gitOpsLabelSource, isGitOpsManaged } from '../../lib/gitops';
 
 const useStyles = makeStyles((theme: Theme) => ({
   summary: {
@@ -109,6 +110,15 @@ export interface StandardServerDisclosureProps {
   activeInstallation?: string;
   authenticated: boolean;
   defaultExpanded?: boolean;
+}
+
+/**
+ * The family's GitOps claim with its source link. Its own component so the
+ * source lookup runs only for a managed family.
+ */
+function FamilyGitOpsLabel({ server }: { server: MCPServer }) {
+  const source = useGitOpsSource(server, server.cluster);
+  return <GitOpsManagedLabel source={gitOpsLabelSource(source)} />;
 }
 
 /**
@@ -292,7 +302,7 @@ export function StandardServerDisclosure({
           behind it would just 401. */}
       {(managed || authenticated) && (
         <Flex direction="column" gap="2" className={classes.sessionActions}>
-          {managed && <GitOpsManagedLabel />}
+          {managed && <FamilyGitOpsLabel server={representative} />}
           {authenticated &&
             servers
               // A sigv4 instance has no user sign-in at all; AuthChain above
