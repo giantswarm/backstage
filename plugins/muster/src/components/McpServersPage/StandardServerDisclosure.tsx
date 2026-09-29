@@ -1,5 +1,6 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Box, Flex, Text } from '@backstage/ui';
+import { useGitOpsSource } from '@giantswarm/backstage-plugin-flux-react';
 import { GitOpsManagedLabel } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer } from '../../lib/k8s';
 import {
@@ -25,7 +26,7 @@ import {
   ServerTools,
   useServerCapabilityCounts,
 } from './serverDetail';
-import { isGitOpsManaged } from '../../lib/gitops';
+import { gitOpsLabelSource, isGitOpsManaged } from '../../lib/gitops';
 
 const useStyles = makeStyles((theme: Theme) => ({
   summary: {
@@ -160,6 +161,7 @@ export function StandardServerDisclosure({
   const { resourcesCount, promptsCount } =
     useServerCapabilityCounts(representative);
   const managed = isGitOpsManaged(representative);
+  const gitOpsSource = useGitOpsSource(representative, representative.cluster);
 
   const summary = (
     <Flex align="center" gap="2" className={classes.summary}>
@@ -292,7 +294,9 @@ export function StandardServerDisclosure({
           behind it would just 401. */}
       {(managed || authenticated) && (
         <Flex direction="column" gap="2" className={classes.sessionActions}>
-          {managed && <GitOpsManagedLabel />}
+          {managed && (
+            <GitOpsManagedLabel source={gitOpsLabelSource(gitOpsSource)} />
+          )}
           {authenticated &&
             servers
               // A sigv4 instance has no user sign-in at all; AuthChain above

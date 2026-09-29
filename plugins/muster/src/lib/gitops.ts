@@ -1,4 +1,9 @@
-import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  KubeObject,
+  Provenance,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { GitOpsSource } from '@giantswarm/backstage-plugin-flux-react';
+import type { GitOpsManagedLabelProps } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Provenance detection is implemented in `kubernetes-react`: it only reads labels
@@ -16,6 +21,51 @@ export {
   readProvenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 export type { Provenance } from '@giantswarm/backstage-plugin-kubernetes-react';
+
+/**
+ * The `source` for `GitOpsManagedLabel`: only once there is a Git source to
+ * resolve. A server reconciled from a HelmRelease that is not itself in Git
+ * keeps the plain label, rather than a link that can never resolve.
+ */
+export function gitOpsLabelSource(
+  source: GitOpsSource,
+): GitOpsManagedLabelProps['source'] {
+  if (!source.inGit && !source.isLoading) {
+    return undefined;
+  }
+  return {
+    url: source.url,
+    isLoading: source.isLoading,
+    errorMessage: source.errorMessage,
+  };
+}
+
+/** The object that reconciles a resource, by kind, for display. */
+export function gitOpsManagerDescription(
+  p: Provenance,
+): { kind: string; id: string } | undefined {
+  const qualify = (name: string, namespace?: string) =>
+    namespace ? `${namespace}/${name}` : name;
+  if (p.fluxHelmRelease) {
+    return {
+      kind: 'HelmRelease',
+      id: qualify(p.fluxHelmRelease, p.fluxHelmNamespace),
+    };
+  }
+  if (p.helmRelease) {
+    return {
+      kind: 'Helm release',
+      id: qualify(p.helmRelease, p.helmNamespace),
+    };
+  }
+  if (p.fluxKustomization) {
+    return {
+      kind: 'Kustomization',
+      id: qualify(p.fluxKustomization, p.fluxKustomizationNamespace),
+    };
+  }
+  return undefined;
+}
 
 /**
  * Flatten an MCPServer CR's spec into the argument shape muster's
