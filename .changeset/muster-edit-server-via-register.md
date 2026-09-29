@@ -26,6 +26,6 @@ afterwards.
 Servers the wizard cannot represent — `stdio` servers, and servers using token
 exchange, local token minting or other auth settings it has no field for —
 keep an "Edit as JSON" button that opens the JSON editor, with a tooltip that
-says why. GitOps-managed servers are unchanged ("Edit via GitOps"). Disabled
+says why. GitOps-managed servers are unchanged ("Edit/Remove"). Disabled
 row actions are now focusable and name the reason they are unavailable, for
 keyboard and screen-reader users.

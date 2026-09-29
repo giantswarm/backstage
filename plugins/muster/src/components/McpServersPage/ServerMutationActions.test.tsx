@@ -486,11 +486,11 @@ describe('ServerMutationActions Edit', () => {
     );
   });
 
-  it('keeps GitOps-managed servers on Edit via GitOps', async () => {
+  it('keeps GitOps-managed servers on their Git edit path', async () => {
     await renderActions(makeServer({ state: 'Connected', managed: true }));
 
     expect(
-      screen.getByRole('button', { name: 'Edit via GitOps' }),
+      screen.getByRole('button', { name: 'Edit/Remove' }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Edit' }),
