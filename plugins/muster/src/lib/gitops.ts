@@ -40,28 +40,39 @@ export function gitOpsLabelSource(
   };
 }
 
+/** `namespace/name`, or just the name for an object without a namespace. */
+export function qualifiedName(name: string, namespace?: string): string {
+  return namespace ? `${namespace}/${name}` : name;
+}
+
+/**
+ * Whether the object is rendered by a Helm chart, so its desired state is the
+ * chart values rather than a manifest of the object itself.
+ */
+export function isChartRendered(p: Provenance): boolean {
+  return Boolean(p.fluxHelmRelease || p.helmRelease || p.managedBy === 'Helm');
+}
+
 /** The object that reconciles a resource, by kind, for display. */
 export function gitOpsManagerDescription(
   p: Provenance,
 ): { kind: string; id: string } | undefined {
-  const qualify = (name: string, namespace?: string) =>
-    namespace ? `${namespace}/${name}` : name;
   if (p.fluxHelmRelease) {
     return {
       kind: 'HelmRelease',
-      id: qualify(p.fluxHelmRelease, p.fluxHelmNamespace),
+      id: qualifiedName(p.fluxHelmRelease, p.fluxHelmNamespace),
     };
   }
   if (p.helmRelease) {
     return {
       kind: 'Helm release',
-      id: qualify(p.helmRelease, p.helmNamespace),
+      id: qualifiedName(p.helmRelease, p.helmNamespace),
     };
   }
   if (p.fluxKustomization) {
     return {
       kind: 'Kustomization',
-      id: qualify(p.fluxKustomization, p.fluxKustomizationNamespace),
+      id: qualifiedName(p.fluxKustomization, p.fluxKustomizationNamespace),
     };
   }
   return undefined;

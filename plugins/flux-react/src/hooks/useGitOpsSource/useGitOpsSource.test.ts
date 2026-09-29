@@ -201,6 +201,76 @@ describe('useGitOpsSource', () => {
     expect(source.url).toContain('management-clusters/gazelle/extras');
   });
 
+  it('explains a failed HelmRelease lookup without reporting it', () => {
+    const forbidden = new Error('helmreleases is forbidden');
+    mockUseResource.mockImplementation(
+      (_cluster: string, ResourceClass: unknown) => ({
+        resource: undefined,
+        isLoading: false,
+        error: ResourceClass === HelmRelease ? forbidden : null,
+        errors:
+          ResourceClass === HelmRelease
+            ? [{ type: 'error', cluster: 'gazelle', error: forbidden }]
+            : [],
+        incompatibilities: [],
+        discoveryErrors: [],
+        clientOutdatedStates: [],
+      }),
+    );
+
+    const source = render(makeResource(HELM_LABELS));
+
+    expect(source.inGit).toBe(false);
+    expect(source.errorMessage).toBeDefined();
+    expect(source.errors).toEqual([]);
+  });
+
+  // useResource reports API discovery as loading even for a disabled query.
+  it('is not loading while a lookup it never enables is discovering', () => {
+    mockUseResource.mockImplementation(() => ({
+      resource: undefined,
+      isLoading: true,
+      error: null,
+      errors: [],
+      incompatibilities: [],
+      discoveryErrors: [],
+      clientOutdatedStates: [],
+    }));
+
+    const source = render(makeResource({}));
+
+    expect(source.isLoading).toBe(false);
+    expect(source.inGit).toBe(false);
+  });
+
+  it('names no HelmRelease until the umbrella release has resolved', () => {
+    const inner = makeHelmRelease({
+      'helm.toolkit.fluxcd.io/name': 'agent-platform',
+      'helm.toolkit.fluxcd.io/namespace': 'flux-giantswarm',
+    });
+    mockUseResource.mockImplementation(
+      (_cluster: string, ResourceClass: unknown, options: { name: string }) => {
+        const outerPending =
+          ResourceClass === HelmRelease && options.name === 'agent-platform';
+        return {
+          resource:
+            ResourceClass === HelmRelease && !outerPending ? inner : undefined,
+          isLoading: outerPending,
+          error: null,
+          errors: [],
+          incompatibilities: [],
+          discoveryErrors: [],
+          clientOutdatedStates: [],
+        };
+      },
+    );
+
+    const source = render(makeResource(HELM_LABELS));
+
+    expect(source.isLoading).toBe(true);
+    expect(source.helmRelease).toBeUndefined();
+  });
+
   it('is not in Git when no Kustomization is found up the chain', () => {
     stubChain({ helmRelease: makeHelmRelease() });
 

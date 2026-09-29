@@ -113,6 +113,15 @@ export interface StandardServerDisclosureProps {
 }
 
 /**
+ * The family's GitOps claim with its source link. Its own component so the
+ * source lookup runs only for a managed family.
+ */
+function FamilyGitOpsLabel({ server }: { server: MCPServer }) {
+  const source = useGitOpsSource(server, server.cluster);
+  return <GitOpsManagedLabel source={gitOpsLabelSource(source)} />;
+}
+
+/**
  * One row of the standard-server list: a server family federated across many
  * target management clusters, its canonical tool surface shown once (filtered
  * by `x_<family>_*`), and a health pill per management cluster. The collapsed
@@ -161,7 +170,6 @@ export function StandardServerDisclosure({
   const { resourcesCount, promptsCount } =
     useServerCapabilityCounts(representative);
   const managed = isGitOpsManaged(representative);
-  const gitOpsSource = useGitOpsSource(representative, representative.cluster);
 
   const summary = (
     <Flex align="center" gap="2" className={classes.summary}>
@@ -294,9 +302,7 @@ export function StandardServerDisclosure({
           behind it would just 401. */}
       {(managed || authenticated) && (
         <Flex direction="column" gap="2" className={classes.sessionActions}>
-          {managed && (
-            <GitOpsManagedLabel source={gitOpsLabelSource(gitOpsSource)} />
-          )}
+          {managed && <FamilyGitOpsLabel server={representative} />}
           {authenticated &&
             servers
               // A sigv4 instance has no user sign-in at all; AuthChain above

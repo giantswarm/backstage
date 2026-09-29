@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -20,34 +20,60 @@ import {
   GitOpsManagedLabel,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { MCPServer } from '../../lib/k8s';
+import { MCPServer } from '../../../lib/k8s';
 import {
   gitOpsLabelSource,
   gitOpsManagerDescription,
+  isChartRendered,
+  qualifiedName,
   readProvenance,
   toManifestYaml,
-} from '../../lib/gitops';
-
-function qualifiedName(name: string, namespace?: string) {
-  return namespace ? `${namespace}/${name}` : name;
-}
+} from '../../../lib/gitops';
 
 function displayPath(path?: string) {
   const trimmed = path?.replace(/^\.?\/+/, '');
   return trimmed || 'the repository root';
 }
 
-function SourceStep({ source }: { source: GitOpsSource }) {
-  if (source.isLoading) {
-    return <Skeleton width={240} height={16} />;
+/**
+ * Where to start in Git. The Kustomization is known here, but a link needs
+ * its GitRepository and a URL pattern for the host too — without them, the
+ * step names the path, or else the Kustomization to look it up by.
+ */
+function SourceStep({
+  source,
+  kustomization,
+}: {
+  source: GitOpsSource;
+  kustomization: NonNullable<GitOpsSource['kustomization']>;
+}) {
+  if (source.url) {
+    return (
+      <>
+        Open{' '}
+        <ExternalLink href={source.url}>
+          {displayPath(kustomization.path)}
+        </ExternalLink>{' '}
+        in the GitOps repository.
+      </>
+    );
+  }
+  const reason = source.errorMessage ? <> ({source.errorMessage})</> : null;
+  const id = (
+    <code>{qualifiedName(kustomization.name, kustomization.namespace)}</code>
+  );
+  if (kustomization.path !== undefined) {
+    return (
+      <>
+        Open <code>{displayPath(kustomization.path)}</code> in the Git
+        repository Kustomization {id} reconciles from{reason}.
+      </>
+    );
   }
   return (
     <>
-      Open{' '}
-      <ExternalLink href={source.url!}>
-        {displayPath(source.kustomization?.path)}
-      </ExternalLink>{' '}
-      in the GitOps repository.
+      Find the directory Kustomization {id} applies, in the Git repository it
+      reconciles from{reason}.
     </>
   );
 }
@@ -69,14 +95,17 @@ function GitOpsEditDialog({
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
 }) {
-  const manifest = toManifestYaml(server);
+  // Always mounted, so only serialised while it is shown.
+  const manifest = useMemo(
+    () => (isOpen ? toManifestYaml(server) : ''),
+    [isOpen, server],
+  );
   const name = server.getName();
   const namespace = server.getNamespace();
-  // Loading counts as known: the hop to a HelmRelease is still resolving, and
-  // the steps would otherwise flash "could not be found" first.
-  const known = source.isLoading || (source.inGit && Boolean(source.url));
-  const chartRendered = Boolean(source.helmRelease);
-  const manager = gitOpsManagerDescription(readProvenance(server));
+  const provenance = readProvenance(server);
+  const manager = gitOpsManagerDescription(provenance);
+  const chartRendered =
+    Boolean(source.helmRelease) || isChartRendered(provenance);
   // Named the way the Git host names it; unknown until the GitRepository is.
   const changeRequest =
     source.changeRequestTerm ?? 'pull request (merge request on GitLab)';
@@ -86,11 +115,20 @@ function GitOpsEditDialog({
   };
 
   let steps: ReactNode;
-  if (known && source.helmRelease) {
+  if (source.isLoading) {
+    // Which steps apply is only known once the chain has resolved.
+    steps = (
+      <Flex direction="column" gap="2">
+        <Skeleton width="60%" height={16} />
+        <Skeleton width="80%" height={16} />
+        <Skeleton width="70%" height={16} />
+      </Flex>
+    );
+  } else if (source.kustomization && source.helmRelease) {
     steps = (
       <ol>
         <li>
-          <SourceStep source={source} />
+          <SourceStep source={source} kustomization={source.kustomization} />
         </li>
         <li>
           Find where HelmRelease{' '}
@@ -112,14 +150,14 @@ function GitOpsEditDialog({
         <li>Open a {changeRequest}. Once merged, Flux applies it.</li>
       </ol>
     );
-  } else if (known && source.kustomization) {
+  } else if (source.kustomization) {
     steps = (
       <ol>
         <li>
-          <SourceStep source={source} />
+          <SourceStep source={source} kustomization={source.kustomization} />
         </li>
         <li>
-          Below that directory, find the file that declares{' '}
+          Below that directory, find the YAML document that declares{' '}
           <code>kind: MCPServer</code> with <code>name: {name}</code>
           {namespace ? (
             <>
@@ -131,9 +169,9 @@ function GitOpsEditDialog({
         </li>
         <li>
           To edit, change its <code>spec</code> (the current manifest is below).
-          To remove, delete the file and its entry in the{' '}
-          <code>resources:</code> list of the <code>kustomization.yaml</code>{' '}
-          next to it.
+          To remove, delete that document; if the file is then empty, delete it
+          too, along with its entry under <code>resources:</code> in the{' '}
+          <code>kustomization.yaml</code> next to it, if there is one.
         </li>
         <li>
           Open a {changeRequest}. Once merged, Flux applies it when
@@ -149,19 +187,30 @@ function GitOpsEditDialog({
       </ol>
     );
   } else {
+    const managedBy = manager ? (
+      <>
+        It is managed by {manager.kind} <code>{manager.id}</code>, but its
+        source could not be found
+      </>
+    ) : (
+      <>Its source could not be found</>
+    );
+    const reason = source.errorMessage ? <> ({source.errorMessage})</> : null;
     steps = (
       <Text as="p" variant="body-medium">
-        {manager ? (
+        {managedBy}
+        {reason}.{' '}
+        {chartRendered ? (
           <>
-            It is managed by {manager.kind} <code>{manager.id}</code>, but its
-            source could not be found
+            Change the values that render <code>{name}</code> where that release
+            is defined in Git, and open a {changeRequest}.
           </>
         ) : (
-          <>Its source could not be found</>
+          <>
+            Edit or remove its manifest in the GitOps repository that manages
+            this installation, and open a {changeRequest}.
+          </>
         )}
-        {source.errorMessage ? <> ({source.errorMessage})</> : null}. Edit or
-        remove its manifest in the GitOps repository that manages this
-        installation, and open a {changeRequest}.
       </Text>
     );
   }

@@ -24,6 +24,7 @@ jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
 }));
 
 beforeEach(() => {
+  mockUseGitOpsSource.mockReset();
   mockUseGitOpsSource.mockReturnValue({
     inGit: false,
     isLoading: false,
@@ -183,6 +184,20 @@ describe('StandardServerDisclosure', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Degraded clusters')).toBeInTheDocument();
     expect(screen.getByText('garm · Failed')).toBeInTheDocument();
+  });
+
+  it('looks up no source for a family that is not GitOps-managed', async () => {
+    await render({
+      family: 'kubernetes',
+      servers: ['gazelle', 'garm'].map(mc =>
+        makeServer('kubernetes', mc, 'Connected'),
+      ),
+    });
+
+    await userEvent.click(screen.getByText('kubernetes'));
+
+    expect(await screen.findByText('Management clusters')).toBeInTheDocument();
+    expect(mockUseGitOpsSource).not.toHaveBeenCalled();
   });
 
   it('links a GitOps-managed family to its source', async () => {

@@ -32,7 +32,10 @@ export type GitOpsSource = {
    * request"), once the GitRepository is known.
    */
   changeRequestTerm?: ChangeRequestTerm;
-  /** Why no `url` could be resolved, for display in place of the link. */
+  /**
+   * Why no `url`, or no Git source at all, could be resolved — for display in
+   * place of the link.
+   */
   errorMessage?: string;
   /**
    * Kustomization and GitRepository lookup errors, for the caller to report
@@ -79,17 +82,20 @@ export function useGitOpsSource(
   const needsHelmReleaseHop =
     !getKustomizationName(resource) && Boolean(ownHelmReleaseName);
 
-  // The hops' failures are deliberately unread — see the note above `errors`.
-  const { resource: ownerHelmRelease, isLoading: helmReleaseIsLoading } =
-    useResource(
-      installationName,
-      HelmRelease,
-      {
-        name: ownHelmReleaseName!,
-        namespace: ownHelmReleaseNamespace,
-      },
-      { enabled: needsHelmReleaseHop },
-    );
+  // The hops' failures are kept out of `errors` — see the note there.
+  const {
+    resource: ownerHelmRelease,
+    isLoading: helmReleaseIsLoading,
+    error: helmReleaseError,
+  } = useResource(
+    installationName,
+    HelmRelease,
+    {
+      name: ownHelmReleaseName!,
+      namespace: ownHelmReleaseNamespace,
+    },
+    { enabled: needsHelmReleaseHop },
+  );
 
   // An umbrella chart renders HelmReleases of its own (agent-platform renders
   // agent-platform-mcps, which renders the MCPServers), so the owner may itself
@@ -106,16 +112,19 @@ export function useGitOpsSource(
     !getKustomizationName(ownerHelmRelease!) &&
     Boolean(outerHelmReleaseName);
 
-  const { resource: outerHelmRelease, isLoading: outerHelmReleaseIsLoading } =
-    useResource(
-      installationName,
-      HelmRelease,
-      {
-        name: outerHelmReleaseName!,
-        namespace: outerHelmReleaseNamespace,
-      },
-      { enabled: needsOuterHelmReleaseHop },
-    );
+  const {
+    resource: outerHelmRelease,
+    isLoading: outerHelmReleaseIsLoading,
+    error: outerHelmReleaseError,
+  } = useResource(
+    installationName,
+    HelmRelease,
+    {
+      name: outerHelmReleaseName!,
+      namespace: outerHelmReleaseNamespace,
+    },
+    { enabled: needsOuterHelmReleaseHop },
+  );
 
   let kustomizationOwner: KubeObject | undefined = resource;
   if (needsOuterHelmReleaseHop) {
@@ -149,6 +158,10 @@ export function useGitOpsSource(
   const kustomizationSourceRef = kustomization?.getSourceRef();
   const gitRepositoryName = kustomizationSourceRef?.name;
   const gitRepositoryNamespace = kustomizationSourceRef?.namespace;
+  const gitRepositoryEnabled = Boolean(
+    kustomizationSourceRef &&
+    kustomizationSourceRef.kind === GitRepository.kind,
+  );
   const {
     resource: gitRepository,
     errors: gitRepositoryErrors,
@@ -162,32 +175,30 @@ export function useGitOpsSource(
       name: gitRepositoryName!,
       namespace: gitRepositoryNamespace,
     },
-    {
-      enabled: Boolean(
-        kustomizationSourceRef &&
-        kustomizationSourceRef.kind === GitRepository.kind,
-      ),
-    },
+    { enabled: gitRepositoryEnabled },
   );
 
   const kustomizationPath = kustomization?.getPath();
   const gitRepositoryUrl = gitRepository?.getURL();
   const gitRepositoryRevision = gitRepository?.getRevision();
 
-  // Each stage's `isLoading` is only meaningful once that stage is enabled;
-  // a disabled query never resolves, so reading it unguarded would pin the
-  // skeleton on forever.
-  const isLoading =
+  // Each stage's `isLoading` is only meaningful once that stage is enabled:
+  // it also covers API discovery, which runs for a disabled query too, and a
+  // disabled query never resolves.
+  const helmReleaseHopsLoading =
     (needsHelmReleaseHop && helmReleaseIsLoading) ||
-    (needsOuterHelmReleaseHop && outerHelmReleaseIsLoading) ||
+    (needsOuterHelmReleaseHop && outerHelmReleaseIsLoading);
+  const isLoading =
+    helmReleaseHopsLoading ||
     (Boolean(kustomizationName) && kustomizationIsLoading) ||
-    gitRepositoryIsLoading;
+    (gitRepositoryEnabled && gitRepositoryIsLoading);
 
-  // The HelmRelease hops' failures are deliberately not returned. Each is a lookup
-  // started only to find out *whether* there is a Git source, and a failure
-  // means `inGit` stays false — so a "Failed to load HelmRelease" notice would
-  // be about a source the reader is never shown. A reader without RBAC on
-  // HelmReleases would get it on every resource they open.
+  // The HelmRelease hops' failures are deliberately left out of `errors`. Each
+  // is a lookup started only to find out *whether* there is a Git source, and a
+  // failure means `inGit` stays false — so a "Failed to load HelmRelease" notice
+  // would be about a source the reader is never shown. A reader without RBAC on
+  // HelmReleases would get it on every resource they open. They do reach
+  // `errorMessage`, for a caller that explains a missing source in place.
   //
   // The other two only fail once a Kustomization is known, which means there
   // *is* a source to show, and the failure can take the link's place.
@@ -196,6 +207,22 @@ export function useGitOpsSource(
   }, [gitRepositoryErrors, kustomizationErrors]);
 
   let errorMessage;
+  if (needsHelmReleaseHop && helmReleaseError) {
+    errorMessage = getErrorMessage({
+      error: helmReleaseError,
+      resourceKind: HelmRelease.kind,
+      resourceName: ownHelmReleaseName!,
+      resourceNamespace: ownHelmReleaseNamespace,
+    });
+  }
+  if (needsOuterHelmReleaseHop && outerHelmReleaseError) {
+    errorMessage = getErrorMessage({
+      error: outerHelmReleaseError,
+      resourceKind: HelmRelease.kind,
+      resourceName: outerHelmReleaseName!,
+      resourceNamespace: outerHelmReleaseNamespace,
+    });
+  }
   if (kustomizationError) {
     errorMessage = getErrorMessage({
       error: kustomizationError,
@@ -241,13 +268,20 @@ export function useGitOpsSource(
           path: kustomizationPath,
         }
       : undefined,
-    helmRelease: outermostHelmRelease(
-      needsOuterHelmReleaseHop
-        ? { name: outerHelmReleaseName, namespace: outerHelmReleaseNamespace }
-        : undefined,
-      needsHelmReleaseHop
-        ? { name: ownHelmReleaseName, namespace: ownHelmReleaseNamespace }
-        : undefined,
-    ),
+    // Withheld until the hops settle: before the outer one resolves, the inner
+    // release would be named, and it is not the one whose values to change.
+    helmRelease: helmReleaseHopsLoading
+      ? undefined
+      : outermostHelmRelease(
+          needsOuterHelmReleaseHop
+            ? {
+                name: outerHelmReleaseName,
+                namespace: outerHelmReleaseNamespace,
+              }
+            : undefined,
+          needsHelmReleaseHop
+            ? { name: ownHelmReleaseName, namespace: ownHelmReleaseNamespace }
+            : undefined,
+        ),
   };
 }
