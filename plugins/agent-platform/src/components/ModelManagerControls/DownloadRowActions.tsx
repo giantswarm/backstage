@@ -115,11 +115,7 @@ export function DownloadRowActions({
       />
       <Menu maxWidth={MENU_WIDTH}>
         {active ? (
-          <MenuItem
-            color="danger"
-            iconStart={<CancelIcon />}
-            onAction={() => onCancel()}
-          >
+          <MenuItem iconStart={<CancelIcon />} onAction={() => onCancel()}>
             Cancel download
           </MenuItem>
         ) : (

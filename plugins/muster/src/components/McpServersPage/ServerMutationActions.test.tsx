@@ -429,6 +429,26 @@ describe('ServerMutationActions post-mutation refresh', () => {
     });
   });
 
+  it("opens the next action fresh, not on the last one's result", async () => {
+    await renderActions(makeServer({ state: 'Connected' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await screen.findByText(/Done\. The server list has been refreshed/);
+    // The header's X is a Close too; the footer's is the last one.
+    const closes = screen.getAllByRole('button', { name: 'Close' });
+    await userEvent.click(closes[closes.length - 1]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Confirm' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Done\. The server list has been refreshed/),
+    ).not.toBeInTheDocument();
+  });
+
   it('does not refetch when the mutation fails', async () => {
     const retry = jest.fn();
     await renderActions(makeServer({ state: 'Connected' }), {

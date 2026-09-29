@@ -123,4 +123,20 @@ describe('ConfirmDialog', () => {
 
     expect(onOpenChange).not.toHaveBeenCalled();
   });
+
+  it('cannot be closed with the header button while busy', async () => {
+    const { onOpenChange } = renderDialog({ isBusy: true });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps the line breaks of an error message', () => {
+    renderDialog({ error: 'spec.url is required\nspec.type is invalid' });
+
+    expect(screen.getByText(/spec\.url is required/)).toHaveStyle({
+      whiteSpace: 'pre-wrap',
+    });
+  });
 });
