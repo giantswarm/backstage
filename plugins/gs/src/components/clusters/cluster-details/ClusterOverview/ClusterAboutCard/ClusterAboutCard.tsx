@@ -45,6 +45,9 @@ import {
 } from '../../../../../assets/icons/CustomIcons';
 import { ClusterTypes, ClusterProviders } from '../../../utils';
 import { AsyncValue, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import { isKubeadmControlPlaneRef } from './utils';
+
+const NO_ERRORS: never[] = [];
 
 interface ProviderLocationDisplayProps {
   provider: string;
@@ -117,19 +120,32 @@ export function ClusterAboutCard() {
   const { name: controlPlaneName, namespace: controlPlaneNamespace } =
     controlPlaneRef;
 
+  // The ControlPlane model only knows KubeadmControlPlane. A managed control
+  // plane (AKS: AzureASOManagedControlPlane, EKS: AWSManagedControlPlane) is a
+  // different kind, and sometimes a different API group, so asking the
+  // kubeadmcontrolplanes endpoint for it by name can only 404. Skip the
+  // request and its errors for those; the Kubernetes version then reads as
+  // not available.
+  const hasKubeadmControlPlane = isKubeadmControlPlaneRef(controlPlaneRef);
+
   const {
     resource: controlPlane,
     isLoading: controlPlaneIsLoading,
     errors: controlPlaneErrors,
     error: controlPlaneError,
     incompatibilities: controlPlaneIncompatibilities,
-  } = useResource(installationName, ControlPlane, {
-    name: controlPlaneName,
-    namespace: controlPlaneNamespace,
-  });
+  } = useResource(
+    installationName,
+    ControlPlane,
+    {
+      name: controlPlaneName,
+      namespace: controlPlaneNamespace,
+    },
+    { enabled: hasKubeadmControlPlane },
+  );
 
   let controlPlaneErrorMessage;
-  if (controlPlaneError) {
+  if (hasKubeadmControlPlane && controlPlaneError) {
     controlPlaneErrorMessage = getErrorMessage({
       error: controlPlaneError,
       resourceKind: ControlPlane.kind,
@@ -137,13 +153,13 @@ export function ClusterAboutCard() {
       resourceNamespace: controlPlaneNamespace,
     });
   }
-  if (controlPlaneIncompatibilities[0]) {
+  if (hasKubeadmControlPlane && controlPlaneIncompatibilities[0]) {
     controlPlaneErrorMessage = getIncompatibilityMessage(
       controlPlaneIncompatibilities[0],
     );
   }
 
-  useShowErrors(controlPlaneErrors);
+  useShowErrors(hasKubeadmControlPlane ? controlPlaneErrors : NO_ERRORS);
 
   const clusterType = calculateClusterType(cluster);
   const description = getClusterDescription(cluster);
