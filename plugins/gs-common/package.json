@@ -32,7 +32,7 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#commit=d67fa4202d49c2261cde2852c99eb4c39e42f3a1"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.0"
   },
   "devDependencies": {
     "@backstage/cli": "backstage:^"
