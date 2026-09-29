@@ -1,5 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { buildTimeline } from '../../lib/kagentTimeline';
@@ -989,5 +989,42 @@ describe('SessionTimeline — an attached file', () => {
       screen.getByText(/Still no reply to messages with image/),
     ).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument();
+  });
+
+  it('enlarges an image in the page and returns focus to it on close', async () => {
+    await render(withAttachment({ name: 'shot.png', bytes: PNG_BYTES }));
+
+    const enlarge = screen.getByRole('button', { name: 'Enlarge shot.png' });
+    await userEvent.click(enlarge);
+
+    const dialog = await screen.findByRole('dialog');
+    const fullSize = within(dialog).getByRole('img', { name: 'shot.png' });
+    expect(fullSize).toHaveAttribute(
+      'src',
+      `data:image/png;base64,${PNG_BYTES}`,
+    );
+    // Nothing leaves the page: no new tab, no download.
+    expect(within(dialog).queryByRole('link')).not.toBeInTheDocument();
+    // Focus stays inside while it is open.
+    await userEvent.tab();
+    await userEvent.tab();
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(enlarge).toHaveFocus();
+
+    await userEvent.click(enlarge);
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Close',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(enlarge).toHaveFocus();
   });
 });

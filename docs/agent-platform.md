@@ -1484,7 +1484,9 @@ inline `<svg>`, an `<object>` or an "open in a new tab", and it keeps SVG's
 XML-entity and filter denial-of-service surface out of the page. Sniffing is what
 makes the rule effective: a `.png`-declared SVG never reaches a renderer either.
 
-A previewed image is captioned with the type its bytes carry. Anything with no
+A previewed image is captioned with the type its bytes carry, and pressing it
+opens the same `data:` URL at natural size in an in-page dialog, scrolled rather
+than scaled; never a new tab. Anything with no
 preview renders as an inert chip naming the file, its declared type (as the
 sender's claim), its size and why there is nothing to see. **No download link** — handing an
 untrusted file to disk only moves the risk to wherever it is opened next. The

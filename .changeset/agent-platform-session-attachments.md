@@ -8,7 +8,8 @@ timeline was built, so an attachment showed nothing at all — not the image, no
 even a hint that something had been attached.
 
 An allowlisted raster image (PNG, JPEG, GIF, WebP) renders inline, scaled to fit,
-with its file name, the type its bytes carry and its size. Anything else renders
+with its file name, the type its bytes carry and its size; pressing it opens the
+image at natural size in an in-page dialog. Anything else renders
 an inert chip: the name, the declared type, the size, and why there is no
 preview. An attachment is conversation rather than the agent's working, so the
 timeline's Hidden setting does not remove it, and a file the user attached sits
