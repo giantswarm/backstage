@@ -36,7 +36,7 @@
     "@backstage/plugin-events-node": "backstage:^",
     "@giantswarm/backstage-plugin-gs-common": "^0.21.1",
     "@giantswarm/backstage-plugin-gs-node": "^0.3.0",
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#commit=67ea598412c475cf6462ed12b17cdf2dfe59203c",
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#commit=d67fa4202d49c2261cde2852c99eb4c39e42f3a1",
     "js-yaml": "^5.0.0"
   },
   "devDependencies": {
