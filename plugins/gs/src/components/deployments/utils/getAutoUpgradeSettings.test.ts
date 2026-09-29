@@ -65,6 +65,11 @@ describe('deriveAutoUpgradeMode', () => {
     ['>=1.2.0, <1.3.0', 'patch-upgrades'],
     ['1.2.3 - 1.4.0', 'minor-upgrades'],
     ['^1.2.3 || ^2.0.0', 'major-upgrades'],
+    // Gaps from exclusions and alternatives
+    ['>=1.2.3, !=2.0.0', 'major-upgrades'],
+    ['^1.2.3 || ^3.0.0', 'major-upgrades'],
+    ['~1.2.3 || ~1.4.0', 'minor-upgrades'],
+    ['~1.2.3, !=1.2.4', 'patch-upgrades'],
     // A single version
     ['1.2.3', 'no-upgrades'],
     // Surrounding whitespace
@@ -87,6 +92,12 @@ describe('deriveAutoUpgradeMode', () => {
     },
   );
 
+  it('returns no-upgrades for a digest, which takes precedence over semver', () => {
+    expect(
+      deriveAutoUpgradeMode({ digest: 'sha256:abc', semver: '^1.2.0' }),
+    ).toBe('no-upgrades');
+  });
+
   it('starts from the lowest admitted version when the current one is outside the range', () => {
     expect(deriveAutoUpgradeMode({ semver: '^1.2.3' }, '0.9.0')).toBe(
       'minor-upgrades',
@@ -97,6 +108,21 @@ describe('deriveAutoUpgradeMode', () => {
 describe('deriveChartVersion', () => {
   it('returns the pinned tag', () => {
     expect(deriveChartVersion({ tag: '1.2.3' })).toBe('1.2.3');
+  });
+
+  it('prefers a semver range over a tag, as Flux does', () => {
+    expect(
+      deriveChartVersion({ tag: '1.0.0', semver: '^1.2.0' }, '1.5.0'),
+    ).toBe('1.5.0');
+  });
+
+  it('returns the tag for a digest, which takes precedence over semver', () => {
+    expect(
+      deriveChartVersion(
+        { digest: 'sha256:abc', tag: '1.0.0', semver: '^1.2.0' },
+        '1.5.0',
+      ),
+    ).toBe('1.0.0');
   });
 
   it('returns the current version when the range admits it', () => {
@@ -114,9 +140,13 @@ describe('deriveChartVersion', () => {
     expect(deriveChartVersion({ semver })).toBe(version);
   });
 
-  it('returns no version for a range without a lower bound', () => {
-    expect(deriveChartVersion({ semver: '*' })).toBeUndefined();
-    expect(deriveChartVersion({ semver: '<2.0.0' })).toBeUndefined();
+  it('returns the lowest version of a range starting at zero', () => {
+    expect(deriveChartVersion({ semver: '>= 0.0.0-0' })).toBe('0.0.0-0');
+    expect(deriveChartVersion({ semver: '*' })).toBe('0.0.0');
+  });
+
+  it('returns no version for a range no version satisfies', () => {
+    expect(deriveChartVersion({ semver: '>=2.0.0 <1.0.0' })).toBeUndefined();
   });
 
   it('returns no version for no reference', () => {
@@ -127,6 +157,10 @@ describe('deriveChartVersion', () => {
 describe('versionFromRevision', () => {
   it('reads the version before the digest', () => {
     expect(versionFromRevision('1.2.3@sha256:abc')).toBe('1.2.3');
+  });
+
+  it('reads the revision format from before Flux 2.0', () => {
+    expect(versionFromRevision('1.9.0/sha256:abc')).toBe('1.9.0');
   });
 
   it('returns undefined for no revision', () => {
