@@ -12,6 +12,7 @@ import {
   createStreamTurn,
   isStreamTurnOver,
   StreamTurn,
+  streamEventCarriesFile,
 } from '../lib/kagentStreamTurn';
 import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
 
@@ -177,6 +178,12 @@ export function useStreamedTurn(installation: string, sessionId: string) {
         await open(result => {
           turn = applyStreamEvent(turn, result);
           setStreamTurn(turn);
+          if (streamEventCarriesFile(result)) {
+            // Not awaited: the stream keeps flowing while the poll catches up.
+            void queryClient.invalidateQueries({
+              queryKey: sessionTasksQueryKey(installation, sessionId),
+            });
+          }
         }, control.signal);
       } catch (error) {
         // Any event at all means the turn exists — a later failure only cut
