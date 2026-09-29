@@ -96,10 +96,26 @@ function inventory(
 
 // The backend lists golem first: the provider, not the backend, puts home first.
 const BACKEND: MusterInstallationInfo[] = [
-  { name: 'golem', requiresAuth: true, source: 'configured' },
-  { name: 'gazelle', requiresAuth: true, source: 'configured' },
-  { name: 'wombat', requiresAuth: true, source: 'derived' },
-  { name: 'snail', requiresAuth: true, source: 'derived' },
+  {
+    name: 'golem',
+    endpoint: 'https://muster.golem.example.test/mcp',
+    requiresAuth: true,
+  },
+  {
+    name: 'gazelle',
+    endpoint: 'https://muster.gazelle.example.test/mcp',
+    requiresAuth: true,
+  },
+  {
+    name: 'wombat',
+    endpoint: 'https://muster.wombat.example.test/mcp',
+    requiresAuth: true,
+  },
+  {
+    name: 'snail',
+    endpoint: 'https://muster.snail.example.test/mcp',
+    requiresAuth: true,
+  },
 ];
 
 function renderInstance() {
@@ -141,10 +157,10 @@ describe('MusterInstanceProvider installations', () => {
       expect(result.current.isLoadingInstallations).toBe(false),
     );
     expect(result.current.installations).toEqual(['gazelle', 'golem', 'snail']);
-    expect(result.current.installationInfos.map(i => i.source)).toEqual([
-      'configured',
-      'configured',
-      'derived',
+    expect(result.current.installationInfos.map(i => i.endpoint)).toEqual([
+      'https://muster.gazelle.example.test/mcp',
+      'https://muster.golem.example.test/mcp',
+      'https://muster.snail.example.test/mcp',
     ]);
     // Under "All installations" the home muster is shown -- a resolution, not
     // a choice: nothing is pinned for the section. The scope it was resolved
@@ -155,14 +171,14 @@ describe('MusterInstanceProvider installations', () => {
     expect(result.current.isSingleInstallation).toBe(false);
     expect(result.current.activeInstallationInfo).toEqual({
       name: 'gazelle',
+      endpoint: 'https://muster.gazelle.example.test/mcp',
       requiresAuth: true,
-      source: 'configured',
     });
     expect(mockSetScope).not.toHaveBeenCalled();
     expect(window.localStorage.getItem('muster-installation')).toBeNull();
   });
 
-  it('follows a pinned scope and exposes the source of the active installation', async () => {
+  it('follows a pinned scope and exposes the endpoint of the active installation', async () => {
     mockInventory = inventory([entry('gazelle'), entry('snail')]);
     mockScope = 'snail';
 
@@ -172,7 +188,9 @@ describe('MusterInstanceProvider installations', () => {
       expect(result.current.activeInstallation).toBe('snail'),
     );
     expect(result.current.scope).toBe('snail');
-    expect(result.current.activeInstallationInfo?.source).toBe('derived');
+    expect(result.current.activeInstallationInfo?.endpoint).toBe(
+      'https://muster.snail.example.test/mcp',
+    );
   });
 
   it('pins the section scope when an installation is chosen here', async () => {
@@ -306,7 +324,7 @@ describe('MusterInstanceProvider installations', () => {
   it('lists nothing, is not loading, and explains the home installation whose probe was refused', async () => {
     // The incident: the home's `GET /apis` answered 401 (the ID token carried
     // no audience the apiserver accepts). The section used to end up with no
-    // installation, no gate and no error -- the dashboard on its progress bar.
+    // installation, no gate and no error.
     const error = new InventoryProbeError('gazelle', 401, '');
     mockInventory = inventory([
       entry('gazelle', { probe: 'failed', components: NONE, error }),

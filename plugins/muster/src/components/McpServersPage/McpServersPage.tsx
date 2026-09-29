@@ -38,6 +38,7 @@ import {
   partitionServers,
 } from '../../lib/serverGrouping';
 import { StandardServerDisclosure } from './StandardServerDisclosure';
+import { MusterSummary } from './MusterSummary';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
 import { CoreFamiliesPanel } from './CoreFamiliesPanel';
 import { AddAdHocServerButton } from './ServerMutationActions';
@@ -128,7 +129,7 @@ export function McpServersPage() {
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
 
   // Session state (and the connect action) are resolved once via the shared
-  // hook so the manager, the dashboard and the workflows page agree (ADR D3).
+  // hook so the manager, the tool explorer and the workflows page agree (ADR D3).
   const {
     authenticated,
     connecting,
@@ -282,16 +283,22 @@ export function McpServersPage() {
       />
     );
   } else if (mcpServers.length === 0) {
+    // The endpoint still leads: muster serves its core tools without any
+    // aggregated server behind it.
     body = (
-      <EmptyState
-        missing="data"
-        title="No MCP servers"
-        description="No MCPServer CRs found in this installation. The muster CRDs may not be installed, or the aggregator federates none yet."
-      />
+      <Box className={classes.column}>
+        <MusterSummary servers={mcpServers} />
+        <EmptyState
+          missing="data"
+          title="No MCP servers"
+          description="No MCPServer CRs found in this installation. The muster CRDs may not be installed, or the aggregator federates none yet."
+        />
+      </Box>
     );
   } else {
     body = (
       <Box className={classes.column}>
+        <MusterSummary servers={mcpServers} />
         {requiresAuth && !authenticated && (
           <Box className={classes.topGate}>
             <Gate

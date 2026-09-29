@@ -14,9 +14,6 @@ import { MusterSection } from './MusterSection';
 
 // The views are irrelevant here -- this is about the section's routing -- and
 // stubbing them keeps the tree free of the kubernetes/muster reads they do.
-jest.mock('../DashboardPage', () => ({
-  DashboardPage: () => <div>dashboard-view</div>,
-}));
 jest.mock('../McpServersRouter', () => ({
   McpServersRouter: () => <div>servers-view</div>,
 }));
@@ -119,8 +116,7 @@ describe('MusterSection', () => {
 
   it('renders the inventory gate in place of the views when the only installation refused the probe', async () => {
     // The incident: the home's `GET /apis` answered 401, the section listed
-    // no installation, and the dashboard sat on its progress bar with nothing
-    // to say. The gate names the installation, quotes the 401 and offers the
+    // no installation, and the views had nothing to say. The gate names the installation, quotes the 401 and offers the
     // sign-out; the tab strip stays so the person still knows where they are.
     mockInventory = {
       ...EMPTY_INVENTORY,
@@ -143,7 +139,7 @@ describe('MusterSection', () => {
       ],
     };
 
-    renderSection('/agent-platform/muster/dashboard');
+    renderSection('/agent-platform/muster/servers');
 
     expect(
       await screen.findByText(
@@ -153,17 +149,17 @@ describe('MusterSection', () => {
     expect(
       screen.getByRole('button', { name: 'Sign out' }),
     ).toBeInTheDocument();
-    expect(screen.queryByText('dashboard-view')).toBeNull();
-    expect(screen.getByRole('tab', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.queryByText('servers-view')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Servers' })).toBeInTheDocument();
   });
 
-  it('redirects the section index to the dashboard view', async () => {
+  it('redirects the section index to the servers view', async () => {
     renderSection('/agent-platform/muster');
 
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/muster/dashboard',
+        '/agent-platform/muster/servers',
       );
     });
   });
@@ -176,16 +172,16 @@ describe('MusterSection', () => {
   // longer writes the default back at all -- under "All installations" the
   // home muster is shown without pinning it -- so the URL stays clean.
   it('keeps the redirect when the installations query is already cached', async () => {
-    const first = renderSection('/agent-platform/muster/dashboard');
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    const first = renderSection('/agent-platform/muster/servers');
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
     first.unmount();
 
     renderSection('/agent-platform/muster');
 
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/muster/dashboard',
+        '/agent-platform/muster/servers',
       );
     });
     expect(screen.getByTestId('path')).not.toHaveTextContent('installation=');
@@ -194,10 +190,10 @@ describe('MusterSection', () => {
   it('keeps an explicit installation across the index redirect', async () => {
     renderSection('/agent-platform/muster?installation=alpha');
 
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/muster/dashboard?installation=alpha',
+        '/agent-platform/muster/servers?installation=alpha',
       );
     });
   });
@@ -205,10 +201,28 @@ describe('MusterSection', () => {
   it('no longer offers MCP usage as a view of this section', async () => {
     // It moved to the Agent Platform's own Usage tab, beside the personal
     // section, so the tab strip must not still advertise it.
-    renderSection('/agent-platform/muster/dashboard');
+    renderSection('/agent-platform/muster/servers');
 
-    expect(await screen.findByText('dashboard-view')).toBeInTheDocument();
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'MCP usage' })).toBeNull();
+  });
+
+  it('offers no Dashboard view', async () => {
+    renderSection('/agent-platform/muster/servers');
+
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Dashboard' })).toBeNull();
+  });
+
+  it('redirects the legacy dashboard deep link to the servers view, keeping the query string', async () => {
+    renderSection('/agent-platform/muster/dashboard?installation=alpha');
+
+    expect(await screen.findByText('servers-view')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/muster/servers?installation=alpha',
+      );
+    });
   });
 
   it('redirects the legacy MCP usage deep link, keeping the query string', async () => {

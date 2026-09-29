@@ -10,11 +10,31 @@ import {
 // snail derived from their base domains (the backend cannot tell whether they
 // run muster), lab is configured but unknown to the fleet configuration.
 const BACKEND: MusterInstallationInfo[] = [
-  { name: 'wombat', requiresAuth: true, source: 'derived' },
-  { name: 'golem', requiresAuth: true, source: 'configured' },
-  { name: 'gazelle', requiresAuth: true, source: 'configured' },
-  { name: 'snail', requiresAuth: true, source: 'derived' },
-  { name: 'lab', requiresAuth: true, source: 'configured' },
+  {
+    name: 'wombat',
+    endpoint: 'https://muster.wombat.example.test/mcp',
+    requiresAuth: true,
+  },
+  {
+    name: 'golem',
+    endpoint: 'https://muster.golem.example.test/mcp',
+    requiresAuth: true,
+  },
+  {
+    name: 'gazelle',
+    endpoint: 'https://muster.gazelle.example.test/mcp',
+    requiresAuth: true,
+  },
+  {
+    name: 'snail',
+    endpoint: 'https://muster.snail.example.test/mcp',
+    requiresAuth: true,
+  },
+  {
+    name: 'lab',
+    endpoint: 'https://muster.lab.example.test/mcp',
+    requiresAuth: true,
+  },
 ];
 
 type EntryInput = Partial<InstallationInventoryEntry> & {
@@ -78,8 +98,8 @@ describe('selectMusterInstallations', () => {
     // The backend's own fields travel along.
     expect(listed[2]).toEqual({
       name: 'snail',
+      endpoint: 'https://muster.snail.example.test/mcp',
       requiresAuth: true,
-      source: 'derived',
     });
   });
 
