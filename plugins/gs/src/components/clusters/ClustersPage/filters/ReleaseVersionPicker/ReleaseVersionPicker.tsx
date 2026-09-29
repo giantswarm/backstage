@@ -2,11 +2,11 @@ import { useMemo } from 'react';
 import {
   MultiplePicker,
   MultiplePickerOption,
+  semverCompareSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ReleaseVersionFilter } from '../filters';
 import { ClusterData, useClustersData } from '../../../ClustersDataProvider';
 import uniqBy from 'lodash/uniqBy';
-import semver from 'semver';
 
 const TITLE = 'Release';
 
@@ -34,9 +34,9 @@ export const ReleaseVersionPicker = () => {
       .map(item => formatOption(item))
       .filter(item => Boolean(item)) as MultiplePickerOption[];
 
-    return uniqBy(allOptions, 'value').sort((itemA, itemB) => {
-      return semver.compare(itemA.value, itemB.value);
-    });
+    return uniqBy(allOptions, 'value').sort(
+      semverCompareSort(item => item.value),
+    );
   }, [data]);
 
   const handleSelect = (selectedValues: string[]) => {

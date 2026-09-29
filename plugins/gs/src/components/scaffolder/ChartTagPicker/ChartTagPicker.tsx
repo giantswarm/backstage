@@ -3,8 +3,10 @@ import { Grid, TextField, Typography } from '@material-ui/core';
 import Autocomplete from '@material-ui/lab/Autocomplete';
 import { ChartTagPickerProps, ChartTagPickerValue } from './schema';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
-import semver from 'semver';
 import { useHelmChartTags } from '../../hooks';
+import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
+
+const oldestFirst = semverCompareSort<string>(tag => tag);
 
 type ChartTagPickerFieldProps = {
   id?: string;
@@ -39,26 +41,7 @@ const ChartTagPickerField = ({
       return [];
     }
 
-    return tags
-      .map(tagInfo => tagInfo.tag)
-      .sort((a, b) => {
-        const versionA = semver.valid(a);
-        const versionB = semver.valid(b);
-
-        if (!versionA && !versionB) {
-          return 0;
-        }
-
-        if (!versionA) {
-          return 1;
-        }
-
-        if (!versionB) {
-          return -1;
-        }
-
-        return semver.rcompare(versionA, versionB);
-      });
+    return tags.map(tagInfo => tagInfo.tag).sort((a, b) => oldestFirst(b, a));
   }, [tags]);
 
   // Derive selected version from value prop - this is a controlled component

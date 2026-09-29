@@ -9,17 +9,23 @@ import {
   useDeploymentsData,
 } from '../../../DeploymentsDataProvider';
 import uniqBy from 'lodash/uniqBy';
-import semver from 'semver';
+import { Version } from '@giantswarm/semver-ts';
 
 const TITLE = 'Version';
+
+/** Reads the version a value starts with, e.g. `2.2.0` from `2.2.0_fa483d226565`. */
+function parseLeadingVersion(value: string): Version | null {
+  const leading = value.match(/^v?\d+(\.\d+){0,2}/)?.[0];
+  return leading ? Version.tryParse(leading) : null;
+}
 
 export function compareVersionOptions(
   itemA: MultiplePickerOption,
   itemB: MultiplePickerOption,
 ): number {
-  const a = semver.valid(semver.coerce(itemA.value));
-  const b = semver.valid(semver.coerce(itemB.value));
-  if (a && b) return semver.compare(a, b);
+  const a = parseLeadingVersion(itemA.value);
+  const b = parseLeadingVersion(itemB.value);
+  if (a && b) return a.compare(b);
   if (a) return -1;
   if (b) return 1;
   return itemA.value.localeCompare(itemB.value);

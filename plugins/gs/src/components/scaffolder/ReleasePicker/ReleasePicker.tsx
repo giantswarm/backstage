@@ -1,16 +1,18 @@
 import { useCallback } from 'react';
 import { Grid } from '@material-ui/core';
 import { ReleasePickerProps } from './schema';
-import semver from 'semver';
 import { SelectFormField } from '../../UI/SelectFormField';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useResourcePicker } from '../hooks/useResourcePicker';
+import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
 import {
   Release,
   useResources,
   useShowErrors,
   RELEASE_VERSION_PREFIXES,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+
+const oldestFirst = semverCompareSort<string>(version => version);
 
 type ReleasePickerFieldProps = {
   id?: string;
@@ -57,7 +59,7 @@ const ReleasePickerField = ({
     initialValue: releaseValue,
     selectFirstValue: true,
     onSelect: onReleaseSelect,
-    compareFn: semver.rcompare,
+    compareFn: (a, b) => oldestFirst(b, a),
   });
 
   const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
@@ -80,7 +82,6 @@ const ReleasePickerField = ({
     </Grid>
   );
 };
-
 export const ReleasePicker = ({
   onChange,
   rawErrors,

@@ -1,5 +1,5 @@
 import { TableColumn } from '@backstage/core-components';
-import semver from 'semver';
+import { Version } from '@giantswarm/semver-ts';
 
 export function sortAndFilterOptions<T extends object>(
   fn: (item: T) => string | undefined,
@@ -26,8 +26,8 @@ export function stringCompareFilter<T>(fn: (item: T) => string | undefined) {
 
 export function semverCompareSort<T>(fn: (item: T) => string | undefined) {
   return (a: T, b: T) => {
-    const versionA = semver.valid(fn(a));
-    const versionB = semver.valid(fn(b));
+    const versionA = Version.tryParse(fn(a) ?? '');
+    const versionB = Version.tryParse(fn(b) ?? '');
 
     if (!versionA && !versionB) {
       return 0;
@@ -41,6 +41,6 @@ export function semverCompareSort<T>(fn: (item: T) => string | undefined) {
       return -1;
     }
 
-    return semver.compare(versionA, versionB);
+    return versionA.compare(versionB);
   };
 }
