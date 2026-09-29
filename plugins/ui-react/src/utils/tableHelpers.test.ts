@@ -119,4 +119,26 @@ describe('semverCompareSort', () => {
       { version: '1.3' },
     ]);
   });
+
+  it('sorts newest first with descending, keeping invalid versions last', () => {
+    const items = [
+      { version: 'latest' },
+      { version: '1.0.0' },
+      { version: undefined },
+      { version: '2.0.0' },
+      { version: '1.10.0' },
+    ];
+
+    const sortedItems = items.sort(
+      semverCompareSort(item => item.version, { descending: true }),
+    );
+
+    expect(sortedItems).toEqual([
+      { version: '2.0.0' },
+      { version: '1.10.0' },
+      { version: '1.0.0' },
+      { version: 'latest' },
+      { version: undefined },
+    ]);
+  });
 });

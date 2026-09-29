@@ -13,18 +13,21 @@ import { Version } from '@giantswarm/semver-ts';
 
 const TITLE = 'Version';
 
-/** Reads the version a value starts with, e.g. `2.2.0` from `2.2.0_fa483d226565`. */
-function parseLeadingVersion(value: string): Version | null {
-  const leading = value.match(/^v?\d+(\.\d+){0,2}/)?.[0];
-  return leading ? Version.tryParse(leading) : null;
+/**
+ * Reads the first version in a value, as `semver.coerce` does: `2.2.0` from
+ * `2.2.0_fa483d226565`, `1.10.0` from `chart-1.10.0`.
+ */
+function parseFirstVersion(value: string): Version | null {
+  const first = value.match(/(?:^|\D)(\d+(?:\.\d+){0,2})/)?.[1];
+  return first ? Version.tryParse(first) : null;
 }
 
 export function compareVersionOptions(
   itemA: MultiplePickerOption,
   itemB: MultiplePickerOption,
 ): number {
-  const a = parseLeadingVersion(itemA.value);
-  const b = parseLeadingVersion(itemB.value);
+  const a = parseFirstVersion(itemA.value);
+  const b = parseFirstVersion(itemB.value);
   if (a && b) return a.compare(b);
   if (a) return -1;
   if (b) return 1;

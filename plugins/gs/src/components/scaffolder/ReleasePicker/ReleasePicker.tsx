@@ -12,7 +12,9 @@ import {
   RELEASE_VERSION_PREFIXES,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-const oldestFirst = semverCompareSort<string>(version => version);
+const newestFirst = semverCompareSort<string>(version => version, {
+  descending: true,
+});
 
 type ReleasePickerFieldProps = {
   id?: string;
@@ -59,7 +61,7 @@ const ReleasePickerField = ({
     initialValue: releaseValue,
     selectFirstValue: true,
     onSelect: onReleaseSelect,
-    compareFn: (a, b) => oldestFirst(b, a),
+    compareFn: newestFirst,
   });
 
   const disabled = isLoading || !Boolean(installationName) || errors.length > 0;

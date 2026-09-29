@@ -6,7 +6,9 @@ import { useValueFromOptions } from '../hooks/useValueFromOptions';
 import { useHelmChartTags } from '../../hooks';
 import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
 
-const oldestFirst = semverCompareSort<string>(tag => tag);
+const newestFirst = semverCompareSort<string>(tag => tag, {
+  descending: true,
+});
 
 type ChartTagPickerFieldProps = {
   id?: string;
@@ -41,7 +43,7 @@ const ChartTagPickerField = ({
       return [];
     }
 
-    return tags.map(tagInfo => tagInfo.tag).sort((a, b) => oldestFirst(b, a));
+    return tags.map(tagInfo => tagInfo.tag).sort(newestFirst);
   }, [tags]);
 
   // Derive selected version from value prop - this is a controlled component

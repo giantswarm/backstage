@@ -27,14 +27,13 @@ function getCommitHash(version: string): string | null {
 }
 
 function formatVersion(version: string): string {
-  const parsed = SemanticVersion.tryParse(version);
-  if (!parsed) {
+  if (!SemanticVersion.tryParse(version)) {
     return INVALID_VERSION;
   }
 
-  // The label leaves out build metadata.
-  const { major, minor, patch, prerelease } = parsed;
-  return `${major}.${minor}.${patch}${prerelease ? `-${prerelease}` : ''}`;
+  // As written, so the label and the release link match the tag, without a
+  // leading `v` and build metadata.
+  return version.trim().replace(/^v/, '').replace(/\+.*$/, '');
 }
 
 type TruncatedVersionProps = {
