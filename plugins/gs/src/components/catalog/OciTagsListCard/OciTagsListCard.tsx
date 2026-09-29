@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
+import { Switch, Text } from '@backstage/ui';
 import { Link, Progress } from '@backstage/core-components';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -13,7 +15,10 @@ import CalendarTodayIcon from '@material-ui/icons/CalendarToday';
 import LocalOfferIcon from '@material-ui/icons/LocalOffer';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { DateComponent } from '../../UI';
-import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  isStableVersion,
+  parseChartRef,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 const MAX_TAGS_TO_DISPLAY = 5;
 
@@ -83,6 +88,7 @@ export const OciTagsListCard = ({
   viewAllPath = 'version-history',
 }: OciTagsListCardProps) => {
   const classes = useStyles();
+  const [showAll, setShowAll] = useState(false);
   const { tags, latestStableVersion, isLoading, error } =
     useHelmChartTags(ociRepository);
 
@@ -112,7 +118,20 @@ export const OciTagsListCard = ({
       );
     }
 
-    const displayedTags = tags.slice(0, MAX_TAGS_TO_DISPLAY);
+    const shownTags = showAll
+      ? tags
+      : tags.filter(tagInfo => isStableVersion(tagInfo.tag));
+
+    if (shownTags.length === 0) {
+      return (
+        <Text color="secondary">
+          No stable releases yet. Turn on Show all to see release candidates and
+          dev builds.
+        </Text>
+      );
+    }
+
+    const displayedTags = shownTags.slice(0, MAX_TAGS_TO_DISPLAY);
 
     return (
       <List className={classes.list}>
@@ -145,8 +164,11 @@ export const OciTagsListCard = ({
     <InfoCard
       title="Version History"
       headerActions={
+        <Switch label="Show all" isSelected={showAll} onChange={setShowAll} />
+      }
+      footerActions={
         <Link component={RouterLink} to={viewAllPath}>
-          <Typography variant="body1">View all →</Typography>
+          <Typography variant="body1">View all versions →</Typography>
         </Link>
       }
     >

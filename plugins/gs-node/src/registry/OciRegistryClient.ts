@@ -10,7 +10,12 @@ import {
 import semver from 'semver';
 import { RegistryAuthClient } from './RegistryAuthClient';
 import { RegistryError } from './RegistryError';
-import { normalizeRegistry, sortVersions } from './registryUtils';
+import {
+  getNextPageUrl,
+  MAX_TAG_PAGES,
+  normalizeRegistry,
+  sortVersions,
+} from './registryUtils';
 
 export interface TagInfo {
   tag: string;
@@ -61,6 +66,7 @@ export class OciRegistryClient {
   /**
    * Fetches tags from a container registry for a given repository.
    * Returns only valid semver tags, sorted by version (newest first).
+   * Follows the registry's pagination until every tag is listed.
    *
    * @param registry - The registry host (e.g., ghcr.io, docker.io)
    * @param repository - The repository path (e.g., giantswarm/my-app)
@@ -68,8 +74,46 @@ export class OciRegistryClient {
    */
   async getTags(registry: string, repository: string): Promise<TagInfo[]> {
     const normalized = normalizeRegistry(registry);
-    const url = `https://${normalized}/v2/${repository}/tags/list`;
 
+    const tags: string[] = [];
+    let pageUrl: string | undefined =
+      `https://${normalized}/v2/${repository}/tags/list`;
+    let pages = 0;
+    while (pageUrl && pages < MAX_TAG_PAGES) {
+      const page = await this.fetchTagPage(pageUrl, normalized, repository);
+      tags.push(...page.tags);
+      pages++;
+      pageUrl = page.nextUrl;
+    }
+
+    if (pageUrl) {
+      this.logger.info('Stopped following OCI tag pages at the page limit', {
+        registry: normalized,
+        repository,
+        pages,
+      });
+    }
+
+    // Filter to only valid semver versions and sort
+    const validTags = tags.filter(tag => semver.valid(tag));
+    const sortedTags = sortVersions(validTags);
+
+    this.logger.info('Successfully fetched tags from OCI registry', {
+      registry: normalized,
+      repository,
+      totalTags: tags.length,
+      validSemverTags: sortedTags.length,
+      pages,
+    });
+
+    return sortedTags.map(tag => ({ tag }));
+  }
+
+  private async fetchTagPage(
+    url: string,
+    normalized: string,
+    repository: string,
+  ): Promise<{ tags: string[]; nextUrl: string | undefined }> {
     this.logger.debug(`Fetching tags from OCI registry: ${url}`);
 
     const response = await this.authClient.fetch(url, 'application/json');
@@ -108,22 +152,10 @@ export class OciRegistryClient {
 
     const data = (await response.json()) as TagListResponse;
 
-    if (!data.tags || !Array.isArray(data.tags)) {
-      return [];
-    }
-
-    // Filter to only valid semver versions and sort
-    const validTags = data.tags.filter(tag => semver.valid(tag));
-    const sortedTags = sortVersions(validTags);
-
-    this.logger.info('Successfully fetched tags from OCI registry', {
-      registry: normalized,
-      repository,
-      totalTags: data.tags.length,
-      validSemverTags: sortedTags.length,
-    });
-
-    return sortedTags.map(tag => ({ tag }));
+    return {
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      nextUrl: getNextPageUrl(response, url),
+    };
   }
 
   /**

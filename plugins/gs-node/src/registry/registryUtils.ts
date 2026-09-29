@@ -1,4 +1,5 @@
 import semver from 'semver';
+import { isStableVersion } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
  * Normalizes the registry URL by removing protocol prefix if present.
@@ -8,6 +9,39 @@ import semver from 'semver';
  */
 export function normalizeRegistry(registry: string): string {
   return registry.replace(/^https?:\/\//, '');
+}
+
+/**
+ * Upper bound on the pages a tag listing follows, so a registry that keeps
+ * answering with a next page cannot keep a request busy forever.
+ */
+export const MAX_TAG_PAGES = 20;
+
+/**
+ * Returns the absolute URL of the next page of a paginated registry listing,
+ * read from the response's `Link: <...>; rel="next"` header, as sent by the
+ * OCI Distribution Spec tag listing and by ACR's `_tags` API.
+ *
+ * @param response - The response of the current page
+ * @param currentUrl - The URL the current page was fetched from, to resolve a relative link against
+ * @returns The next page's URL, or undefined on the last page
+ */
+export function getNextPageUrl(
+  response: { headers: { get(name: string): string | null } },
+  currentUrl: string,
+): string | undefined {
+  const link = response.headers.get('link');
+  if (!link) {
+    return undefined;
+  }
+
+  for (const part of link.split(',')) {
+    const match = part.match(/<([^>]+)>\s*;(.*)/);
+    if (match && /\brel="?next"?/.test(match[2])) {
+      return new URL(match[1], currentUrl).toString();
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -30,11 +64,5 @@ export function sortVersions(versions: string[]): string[] {
 export function findLatestStableVersion(
   sortedVersions: string[],
 ): string | null {
-  for (const version of sortedVersions) {
-    const parsed = semver.parse(version);
-    if (parsed && parsed.prerelease.length === 0) {
-      return version;
-    }
-  }
-  return sortedVersions[0] ?? null;
+  return sortedVersions.find(isStableVersion) ?? sortedVersions[0] ?? null;
 }
