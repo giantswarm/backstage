@@ -23,7 +23,11 @@ export type ConfirmDialogProps = {
   cancelLabel?: string;
   /** Confirm button label while `isBusy`. Defaults to `confirmLabel`. */
   busyLabel?: string;
-  /** Renders the confirm button in the destructive (red) treatment. */
+  /**
+   * Renders the confirm button in the destructive (red) treatment. Only for what
+   * cannot be undone, such as a delete — not for an edit, a stop or a deactivate
+   * that another action reverses.
+   */
   destructive?: boolean;
   /** The confirmed action is in flight: both buttons lock and the dialog stays put. */
   isBusy?: boolean;

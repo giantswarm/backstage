@@ -85,7 +85,6 @@ type MenuEntry = {
   key: string;
   label: string;
   icon: typeof LinkIcon;
-  color?: 'danger';
   run: () => void | Promise<void>;
 };
 
@@ -233,7 +232,6 @@ export function ServedModelActions({
       key: 'stop',
       label: 'Stop serving…',
       icon: StopIcon,
-      color: 'danger',
       run: () => onStop(model),
     });
   } else if (operable && capabilities.unload && model.loaded === true) {
@@ -325,11 +323,10 @@ export function ServedModelActions({
           isDisabled={isPending}
         />
         <Menu maxWidth={MENU_WIDTH}>
-          {entries.map(({ key, label, icon: Icon, color, run: onAction }) => (
+          {entries.map(({ key, label, icon: Icon, run: onAction }) => (
             <MenuItem
               key={key}
               iconStart={<Icon />}
-              {...(color ? { color } : {})}
               onAction={() => onAction()}
             >
               {label}

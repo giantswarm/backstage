@@ -1,22 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { makeStyles, Theme } from '@material-ui/core';
 import {
-  Box,
-  // The two dialogs below this row are still on MUI -- migrating them is a
-  // rework, not a swap (ConfirmActionDialog's "Done." state has no counterpart
-  // in ui-react's ConfirmDialog), so their buttons stay MUI's for now.
-  Button as MuiButton,
-  CircularProgress,
+  Alert,
+  Button,
   Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  TextField,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
-import { Button, Flex } from '@backstage/ui';
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  Flex,
+  Text,
+  TextAreaField,
+} from '@backstage/ui';
+import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import PlayArrow from '@material-ui/icons/PlayArrow';
@@ -58,14 +53,6 @@ const useStyles = makeStyles((theme: Theme) => ({
       fontSize: 12,
     },
   },
-  error: {
-    color: theme.palette.error.main,
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-  },
-  ok: {
-    color: theme.palette.success.main,
-  },
 }));
 
 type LiveAction = {
@@ -79,7 +66,9 @@ type LiveAction = {
 
 /**
  * Confirm dialog for a live mutation against an ad-hoc (manually added) server.
- * On confirm it runs the muster tool through the `/call` proxy route.
+ * On confirm it runs the muster tool through the `/call` proxy route. Only
+ * Delete gets the destructive treatment: the lifecycle actions are undone by
+ * their counterpart (Deactivate by Activate).
  */
 function ConfirmActionDialog({
   server,
@@ -92,21 +81,16 @@ function ConfirmActionDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const refresh = useMusterMutationRefresh(server.cluster);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [done, setDone] = useState(false);
 
-  const reset = () => {
+  const handleClose = () => {
     setError(undefined);
     setDone(false);
     setBusy(false);
-  };
-
-  const handleClose = () => {
-    reset();
     onClose();
   };
 
@@ -131,56 +115,45 @@ function ConfirmActionDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{action?.label}</DialogTitle>
-      <DialogContent>
-        <DialogContentText component="div">
-          {action?.destructive ? (
-            <>
-              This permanently removes the ad-hoc server{' '}
-              <code>{server.getName()}</code> from this muster instance. This is
-              a live mutation and cannot be undone.
-            </>
-          ) : (
-            <>
-              {action?.description ? `${action.description} ` : ''}
-              Runs <code>{action?.tool}</code> against{' '}
-              <code>{server.getName()}</code> on installation{' '}
-              <code>{server.cluster}</code>.
-            </>
-          )}
-        </DialogContentText>
-        {error && (
-          <Box mt={2}>
-            <Typography variant="body2" className={classes.error}>
-              {error}
-            </Typography>
-          </Box>
+    <ConfirmDialog
+      isOpen={open}
+      // DialogHeader's close button bypasses ConfirmDialog's busy lock.
+      onOpenChange={next => {
+        if (!next && !busy) {
+          handleClose();
+        }
+      }}
+      title={action?.label ?? ''}
+      confirmLabel={action?.destructive ? 'Delete' : 'Confirm'}
+      destructive={action?.destructive}
+      isBusy={busy}
+      error={error}
+      isDone={done}
+      onConfirm={run}
+    >
+      <Text as="p" variant="body-medium">
+        {action?.destructive ? (
+          <>
+            This permanently removes the ad-hoc server{' '}
+            <code>{server.getName()}</code> from this muster instance. This is a
+            live mutation and cannot be undone.
+          </>
+        ) : (
+          <>
+            {action?.description ? `${action.description} ` : ''}
+            Runs <code>{action?.tool}</code> against{' '}
+            <code>{server.getName()}</code> on installation{' '}
+            <code>{server.cluster}</code>.
+          </>
         )}
-        {done && (
-          <Box mt={2}>
-            <Typography variant="body2" className={classes.ok}>
-              Done. The server list has been refreshed; the connection status
-              may take a few seconds to settle.
-            </Typography>
-          </Box>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <MuiButton onClick={handleClose}>{done ? 'Close' : 'Cancel'}</MuiButton>
-        {!done && (
-          <MuiButton
-            onClick={run}
-            color="secondary"
-            variant="contained"
-            disabled={busy}
-            startIcon={busy ? <CircularProgress size={14} /> : undefined}
-          >
-            {action?.destructive ? 'Delete' : 'Confirm'}
-          </MuiButton>
-        )}
-      </DialogActions>
-    </Dialog>
+      </Text>
+      {done && (
+        <Alert
+          status="success"
+          description="Done. The server list has been refreshed; the connection status may take a few seconds to settle."
+        />
+      )}
+    </ConfirmDialog>
   );
 }
 
@@ -216,22 +189,27 @@ export function AdHocServerDialog({
   const target = server?.cluster ?? installation;
   const refresh = useMusterMutationRefresh(target);
   const [value, setValue] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'validate' | 'save'>();
   const [error, setError] = useState<string | undefined>();
   const [message, setMessage] = useState<string | undefined>();
 
-  // Seed the editor when the dialog opens.
-  const seed = () => {
-    setValue(
-      JSON.stringify(
-        server ? toMcpServerDefinition(server) : NEW_SERVER_TEMPLATE,
-        null,
-        2,
-      ),
-    );
-    setError(undefined);
-    setMessage(undefined);
-  };
+  // Seeded on the closed → open transition only: `server` is polled, and
+  // re-seeding on every refetch would overwrite what the user is typing.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setValue(
+        JSON.stringify(
+          server ? toMcpServerDefinition(server) : NEW_SERVER_TEMPLATE,
+          null,
+          2,
+        ),
+      );
+      setError(undefined);
+      setMessage(undefined);
+    }
+    wasOpen.current = open;
+  }, [open, server]);
 
   const parsed = (): Record<string, unknown> | undefined => {
     try {
@@ -249,7 +227,7 @@ export function AdHocServerDialog({
     if (!def) {
       return;
     }
-    setBusy(true);
+    setBusy('validate');
     setMessage(undefined);
     try {
       await musterApi.callTool('core_mcpserver_validate', def, target);
@@ -257,7 +235,7 @@ export function AdHocServerDialog({
     } catch (e) {
       setError(mutationErrorMessage(e));
     } finally {
-      setBusy(false);
+      setBusy(undefined);
     }
   };
 
@@ -266,7 +244,7 @@ export function AdHocServerDialog({
     if (!def) {
       return;
     }
-    setBusy(true);
+    setBusy('save');
     setMessage(undefined);
     try {
       await musterApi.callTool(
@@ -279,62 +257,69 @@ export function AdHocServerDialog({
     } catch (e) {
       setError(mutationErrorMessage(e));
     } finally {
-      setBusy(false);
+      setBusy(undefined);
     }
   };
 
   return (
     <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      TransitionProps={{ onEnter: seed }}
+      isOpen={open}
+      // Gated here as well: DialogHeader's close button ignores isDismissable.
+      onOpenChange={next => {
+        if (!next && !busy) {
+          onClose();
+        }
+      }}
+      isDismissable={!busy}
+      isKeyboardDismissDisabled={Boolean(busy)}
+      width="min(90vw, 860px)"
     >
-      <DialogTitle>
+      <DialogHeader>
         {isEdit ? `Edit as JSON — ${server?.getName()}` : 'Add ad-hoc server'}
-      </DialogTitle>
-      <DialogContent>
-        <DialogContentText>
-          {isEdit ? 'Edit' : 'Define'} the muster server. Validate before
-          saving; both run as live mutations against installation{' '}
-          <code>{target}</code>.
-        </DialogContentText>
-        <TextField
-          className={classes.editField}
-          multiline
-          minRows={12}
-          fullWidth
-          variant="outlined"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-        />
-        {error && (
-          <Typography variant="body2" className={classes.error}>
-            {error}
-          </Typography>
-        )}
-        {message && (
-          <Typography variant="body2" className={classes.ok}>
-            {message}
-          </Typography>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <MuiButton onClick={onClose}>Close</MuiButton>
-        <MuiButton onClick={validate} disabled={busy}>
+      </DialogHeader>
+      <DialogBody>
+        <Flex direction="column" gap="3">
+          <Text as="p" variant="body-medium">
+            {isEdit ? 'Edit' : 'Define'} the muster server. Validate before
+            saving; both run as live mutations against installation{' '}
+            <code>{target}</code>.
+          </Text>
+          <TextAreaField
+            label="Server definition (JSON)"
+            className={classes.editField}
+            rows={12}
+            value={value}
+            onChange={setValue}
+          />
+          {error && <Alert status="danger" description={error} />}
+          {message && <Alert status="success" description={message} />}
+        </Flex>
+      </DialogBody>
+      <DialogFooter>
+        <Button
+          variant="secondary"
+          isDisabled={Boolean(busy)}
+          onPress={onClose}
+        >
+          Close
+        </Button>
+        <Button
+          variant="secondary"
+          isDisabled={Boolean(busy)}
+          isPending={busy === 'validate'}
+          onPress={validate}
+        >
           Validate
-        </MuiButton>
-        <MuiButton
-          onClick={save}
-          color="secondary"
-          variant="contained"
-          disabled={busy}
-          startIcon={busy ? <CircularProgress size={14} /> : undefined}
+        </Button>
+        <Button
+          variant="primary"
+          isDisabled={Boolean(busy)}
+          isPending={busy === 'save'}
+          onPress={save}
         >
           Save
-        </MuiButton>
-      </DialogActions>
+        </Button>
+      </DialogFooter>
     </Dialog>
   );
 }
