@@ -13,13 +13,15 @@ const useStyles = makeStyles((_theme: Theme) => ({
 }));
 
 /**
- * What each non-`Exact` lookup status means, so the reader knows whether to
- * add a price or a whole catalogue.
+ * What each non-`Exact` lookup status means. The gateway prices from the
+ * catalogue its release ships, plus the platform's `llmRouting.modelCatalog`
+ * overlay on top.
  */
 const STATUS_MEANING: Record<string, string> = {
   Unpriced: 'in the catalogue, but with no rate for a token type',
-  Missing: 'not in the catalogue',
-  NoCatalog: 'no price catalogue is configured at all',
+  Missing:
+    "in neither the gateway's built-in catalogue nor the platform's overlay",
+  NoCatalog: 'no price catalogue is loaded at all',
 };
 
 /**
@@ -127,7 +129,7 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
     <UsageCard
       title="Models with no usable price"
       wide
-      note="Add these to llmRouting.modelCatalog in the platform's Helm values, and the cost figures above start counting them."
+      note="Upgrade agentgateway to a release whose built-in catalogue prices them, or add them to llmRouting.modelCatalog in the platform's Helm values, and the cost figures above start counting them."
     >
       <Table<UnpricedModelRow> {...tableProps} columnConfig={columnConfig} />
     </UsageCard>
