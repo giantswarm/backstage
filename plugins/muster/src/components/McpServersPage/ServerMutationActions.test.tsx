@@ -14,6 +14,20 @@ import {
   ServerMutationActions,
 } from './ServerMutationActions';
 
+const mockUseGitOpsSource = jest.fn();
+
+jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
+  useGitOpsSource: (...args: unknown[]) => mockUseGitOpsSource(...args),
+}));
+
+beforeEach(() => {
+  mockUseGitOpsSource.mockReturnValue({
+    inGit: false,
+    isLoading: false,
+    errors: [],
+  });
+});
+
 function makeServer(options: {
   state?: MCPServerState;
   authType?: 'oauth' | 'none' | 'sigv4';

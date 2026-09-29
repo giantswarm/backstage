@@ -1,30 +1,19 @@
-import { useMemo } from 'react';
 import {
-  getErrorMessage,
-  getHelmReleaseName,
-  getHelmReleaseNamespace,
-  getIncompatibilityMessage,
-  getKustomizationName,
-  getKustomizationNamespace,
-  GitRepository,
-  HelmRelease,
   KubeObject,
-  Kustomization,
-  useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   GitOpsManagedLabel,
   InfoCard,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useGitSourceLink } from '../../hooks';
+import { useGitOpsSource } from '../../hooks';
 
 type GitOpsCardProps = {
   /**
    * Any reconciled resource. Only its Flux labels are read, so this serves an
    * `App`/`HelmRelease` applied straight from a Kustomization as well as an
    * object *rendered by* a HelmRelease (a kagent `Agent`, say), which needs the
-   * extra hop below.
+   * extra hop (see `useGitOpsSource`).
    */
   resource: KubeObject;
   installationName: string;
@@ -45,131 +34,14 @@ type GitOpsCardProps = {
  * gs cluster and deployment pages gate on `isManagedByFlux`) are unaffected.
  */
 export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
-  // A resource applied by a Kustomization carries the link to its source
-  // directly. One rendered by a Helm chart does not — the helm-controller only
-  // stamps which HelmRelease produced it — so the Kustomization, and with it the
-  // Git source, has to be found one level up, on the HelmRelease itself.
-  const ownHelmReleaseName = getHelmReleaseName(resource);
-  const ownHelmReleaseNamespace = getHelmReleaseNamespace(resource);
-  const needsHelmReleaseHop =
-    !getKustomizationName(resource) && Boolean(ownHelmReleaseName);
-
-  // The hop's failures are deliberately unread — see the note above `errors`.
-  const { resource: ownerHelmRelease, isLoading: helmReleaseIsLoading } =
-    useResource(
-      installationName,
-      HelmRelease,
-      {
-        name: ownHelmReleaseName!,
-        namespace: ownHelmReleaseNamespace,
-      },
-      { enabled: needsHelmReleaseHop },
-    );
-
-  const kustomizationOwner = needsHelmReleaseHop ? ownerHelmRelease : resource;
-  const kustomizationName = kustomizationOwner
-    ? getKustomizationName(kustomizationOwner)
-    : undefined;
-  const kustomizationNamespace = kustomizationOwner
-    ? getKustomizationNamespace(kustomizationOwner)
-    : undefined;
-
-  const {
-    resource: kustomization,
-    errors: kustomizationErrors,
-    isLoading: kustomizationIsLoading,
-    error: kustomizationError,
-    incompatibilities: kustomizationIncompatibilities,
-  } = useResource(
+  const { inGit, isLoading, url, errorMessage, errors } = useGitOpsSource(
+    resource,
     installationName,
-    Kustomization,
-    {
-      name: kustomizationName!,
-      namespace: kustomizationNamespace,
-    },
-    { enabled: Boolean(kustomizationName) },
   );
 
-  const kustomizationSourceRef = kustomization?.getSourceRef();
-  const gitRepositoryName = kustomizationSourceRef?.name;
-  const gitRepositoryNamespace = kustomizationSourceRef?.namespace;
-  const {
-    resource: gitRepository,
-    errors: gitRepositoryErrors,
-    isLoading: gitRepositoryIsLoading,
-    error: gitRepositoryError,
-    incompatibilities: gitRepositoryIncompatibilities,
-  } = useResource(
-    installationName,
-    GitRepository,
-    {
-      name: gitRepositoryName!,
-      namespace: gitRepositoryNamespace,
-    },
-    {
-      enabled: Boolean(
-        kustomizationSourceRef &&
-        kustomizationSourceRef.kind === GitRepository.kind,
-      ),
-    },
-  );
-
-  const kustomizationPath = kustomization?.getPath();
-  const gitRepositoryUrl = gitRepository?.getURL();
-  const gitRepositoryRevision = gitRepository?.getRevision();
-
-  // Each stage's `isLoading` is only meaningful once that stage is enabled;
-  // a disabled query never resolves, so reading it unguarded would pin the
-  // skeleton on forever.
-  const isLoading =
-    (needsHelmReleaseHop && helmReleaseIsLoading) ||
-    (Boolean(kustomizationName) && kustomizationIsLoading) ||
-    gitRepositoryIsLoading;
-
-  // The HelmRelease hop's failures are deliberately not reported. It is a lookup
-  // this card starts on its own initiative to find out *whether* there is a Git
-  // source, and if it fails the card renders nothing at all — so a global "Failed
-  // to load HelmRelease" notice would be an error about a card the reader never
-  // sees, on a page that is otherwise fine. A reader without RBAC on HelmReleases
-  // would get it on every agent they open.
-  //
-  // The other two are reported: they only fail once a Kustomization is known, which
-  // means the card *is* rendering and can show the failure in place of its link.
-  const errors = useMemo(() => {
-    return [...kustomizationErrors, ...gitRepositoryErrors];
-  }, [gitRepositoryErrors, kustomizationErrors]);
-
+  // Reported only once a Kustomization is known, which means the card *is*
+  // rendering and can show the failure in place of its link.
   useShowErrors(errors);
-
-  let errorMessage;
-  if (kustomizationError) {
-    errorMessage = getErrorMessage({
-      error: kustomizationError,
-      resourceKind: Kustomization.kind,
-      resourceName: kustomizationName!,
-      resourceNamespace: kustomizationNamespace,
-    });
-  }
-  if (gitRepositoryError) {
-    errorMessage = getErrorMessage({
-      error: gitRepositoryError,
-      resourceKind: GitRepository.kind,
-      resourceName: gitRepositoryName!,
-      resourceNamespace: gitRepositoryNamespace,
-    });
-  }
-  if (kustomizationIncompatibilities[0]) {
-    errorMessage = getIncompatibilityMessage(kustomizationIncompatibilities[0]);
-  }
-  if (gitRepositoryIncompatibilities[0]) {
-    errorMessage = getIncompatibilityMessage(gitRepositoryIncompatibilities[0]);
-  }
-
-  const sourceUrl = useGitSourceLink({
-    url: gitRepositoryUrl,
-    revision: gitRepositoryRevision,
-    path: kustomizationPath,
-  });
 
   // No Kustomization anywhere up the chain means the resource is reconciled but
   // its desired state is not in Git, so there is no GitOps claim to make and no
@@ -182,15 +54,13 @@ export function GitOpsCard({ resource, installationName }: GitOpsCardProps) {
   // on: the card's only job is to assert a Git source, and a failed lookup is no
   // basis for asserting one. Claiming GitOps off the Helm label alone would be
   // wrong for every agent this plugin deploys.
-  if (!kustomizationName) {
+  if (!inGit) {
     return null;
   }
 
   return (
     <InfoCard>
-      <GitOpsManagedLabel
-        source={{ url: sourceUrl, isLoading, errorMessage }}
-      />
+      <GitOpsManagedLabel source={{ url, isLoading, errorMessage }} />
     </InfoCard>
   );
 }
