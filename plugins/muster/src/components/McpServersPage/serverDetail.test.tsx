@@ -169,6 +169,42 @@ describe('AuthChain', () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    ['a forwarded token', { forwardToken: true, requiredAudiences: ['k'] }],
+    [
+      'token exchange',
+      {
+        forwardToken: true,
+        tokenExchange: { enabled: true, connectorId: 'giantswarm' },
+      },
+    ],
+  ])(
+    'shows the chain of a server with %s and no type, which the wizard writes',
+    async (_, auth) => {
+      await renderInTestApp(
+        <AuthChain server={makeServer({ type: 'streamable-http', auth })} />,
+      );
+
+      expect(
+        screen.queryByText(/No authentication configured/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText('oauth (implied by the forwarded token)'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Forward token')).toBeInTheDocument();
+    },
+  );
+
+  it('says a server without an auth block is anonymous', async () => {
+    await renderInTestApp(
+      <AuthChain server={makeServer({ type: 'streamable-http' })} />,
+    );
+
+    expect(
+      screen.getByText(/No authentication configured/),
+    ).toBeInTheDocument();
+  });
+
   it('leaves the OAuth chain untouched', async () => {
     await renderInTestApp(
       <AuthChain

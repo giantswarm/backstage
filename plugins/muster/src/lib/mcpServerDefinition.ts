@@ -666,23 +666,36 @@ const WIZARD_AUTH_MODES: Partial<Record<ServerAuthMode, McpServerAuthMode>> = {
 };
 
 /**
- * The `spec.auth` keys each wizard answer can express, and the keys of its
- * nested blocks. Anything else — `tokenExchange` (even disabled), `localMint`,
- * an explicit authorization endpoint — has no field in the wizard, so an edit
- * there would either misstate the server or silently drop the setting.
+ * The `spec.auth` keys each wizard answer composes (see `composeAuth`), and
+ * the `type` values it reads as that answer. A key outside its own answer —
+ * `tokenExchange` (even disabled), `localMint`, `requiredAudiences` on an OAuth
+ * sign-in, an authorization server on an anonymous server — has no field in
+ * the wizard, so an edit there would silently drop the setting.
  */
-const WIZARD_AUTH_KEYS = [
-  'type',
-  'forwardToken',
-  'requiredAudiences',
-  'authorizationServer',
-  'sigv4',
-];
+const WIZARD_AUTH_SHAPES: Record<
+  McpServerAuthMode,
+  { keys: string[]; types: (MCPServerAuth['type'] | undefined)[] }
+> = {
+  none: { keys: ['type'], types: [undefined, 'none'] },
+  'own-account': { keys: ['type', 'authorizationServer'], types: ['oauth'] },
+  // forwardToken implies OAuth in muster, so an explicit `type: oauth` is the
+  // same server and composing it without one keeps it.
+  'platform-sso': {
+    keys: ['type', 'forwardToken', 'requiredAudiences'],
+    types: [undefined, 'oauth'],
+  },
+  sigv4: { keys: ['type', 'sigv4'], types: ['sigv4'] },
+};
 const WIZARD_AUTHORIZATION_SERVER_KEYS = ['issuer', 'scopes'];
 const WIZARD_SIGV4_KEYS = ['region', 'service', 'roleArn'];
 
 function onlyKeys(value: object | undefined, allowed: string[]): boolean {
   return Object.keys(value ?? {}).every(key => allowed.includes(key));
+}
+
+/** `label` inside a sentence: only the first letter lowercased, not SSO or AWS. */
+function inSentence(label: string): string {
+  return label.charAt(0).toLowerCase() + label.slice(1);
 }
 
 /**
@@ -705,12 +718,15 @@ export function wizardEditBlocker(server: MCPServer): string | undefined {
     return `The registration wizard only covers remote (streamable-http or SSE) servers. ${EDIT_AS_JSON_HINT}`;
   }
   const mode = serverAuthMode(server);
-  if (!WIZARD_AUTH_MODES[mode]) {
-    return `This server uses ${AUTH_MODE_LABELS[mode].toLowerCase()}, which the registration wizard does not offer. ${EDIT_AS_JSON_HINT}`;
+  const answer = WIZARD_AUTH_MODES[mode];
+  if (!answer) {
+    return `This server uses ${inSentence(AUTH_MODE_LABELS[mode])}, which the registration wizard does not offer. ${EDIT_AS_JSON_HINT}`;
   }
   const auth = server.getAuth();
+  const shape = WIZARD_AUTH_SHAPES[answer];
   if (
-    !onlyKeys(auth, WIZARD_AUTH_KEYS) ||
+    !shape.types.includes(auth?.type) ||
+    !onlyKeys(auth, shape.keys) ||
     !onlyKeys(auth?.authorizationServer, WIZARD_AUTHORIZATION_SERVER_KEYS) ||
     !onlyKeys(auth?.sigv4, WIZARD_SIGV4_KEYS)
   ) {

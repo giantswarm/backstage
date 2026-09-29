@@ -32,6 +32,17 @@ describe('serverAuthMode', () => {
       },
     ],
     ['sigv4', { auth: { type: 'sigv4', sigv4: { region: 'eu-central-1' } } }],
+    // The precedence the checks rely on.
+    ['sigv4', { auth: { type: 'sigv4', forwardToken: true } }],
+    [
+      'platform-sso',
+      { auth: { forwardToken: true, tokenExchange: { enabled: false } } },
+    ],
+    [
+      'token-exchange',
+      { auth: { type: 'oauth', tokenExchange: { enabled: true } } },
+    ],
+    ['unknown', { auth: { type: 'mtls' } }],
   ])('classifies %s', (mode, spec) => {
     expect(serverAuthMode(makeServer(spec))).toBe(mode);
   });

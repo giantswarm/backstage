@@ -1148,7 +1148,7 @@ describe('editing a registered server in the wizard', () => {
     [{ type: 'stdio' }, /only covers remote/],
     [
       { auth: { forwardToken: true, tokenExchange: { enabled: true } } },
-      /token exchange \(cross-cluster sso\), which the registration wizard does not offer/,
+      /uses token exchange \(cross-cluster SSO\), which the registration wizard does not offer/,
     ],
     // tokenExchange-only once read as "No authentication".
     [{ auth: { tokenExchange: { enabled: true } } }, /does not offer/],
@@ -1173,6 +1173,30 @@ describe('editing a registered server in the wizard', () => {
       },
       /cannot show or keep/,
     ],
+    // Keys the wizard knows, but of another answer than the server's: the
+    // answer it is pre-filled with would compose the auth block without them.
+    [
+      { auth: { type: 'oauth', requiredAudiences: ['x'] } },
+      /cannot show or keep/,
+    ],
+    [
+      { auth: { type: 'none', authorizationServer: { issuer: 'https://i' } } },
+      /cannot show or keep/,
+    ],
+    [
+      {
+        auth: {
+          forwardToken: true,
+          authorizationServer: { issuer: 'https://i' },
+        },
+      },
+      /cannot show or keep/,
+    ],
+    // An auth type this frontend does not know is not "No authentication".
+    [
+      { auth: { type: 'mtls' } },
+      /uses unrecognised authentication, which the registration wizard does not offer/,
+    ],
   ])('keeps %j out of the wizard, pointing to the JSON editor', (spec, why) => {
     const reason = wizardEditBlocker(registered(spec));
     expect(reason).toMatch(why);
@@ -1182,9 +1206,11 @@ describe('editing a registered server in the wizard', () => {
   it('lets every auth answer the wizard offers through', () => {
     for (const spec of [
       {},
+      { auth: { type: 'none' } },
       { auth: { type: 'oauth' } },
       { auth: { type: 'oauth', authorizationServer: { issuer: 'https://i' } } },
       { auth: { forwardToken: true, requiredAudiences: ['a'] } },
+      { auth: { type: 'oauth', forwardToken: true, requiredAudiences: ['a'] } },
       { auth: { type: 'sigv4', sigv4: { region: 'eu-west-1' } } },
       { type: 'sse' },
     ]) {

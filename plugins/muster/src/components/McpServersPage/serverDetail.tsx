@@ -18,6 +18,7 @@ import {
   provenanceReleaseId,
 } from '../../lib/gitops';
 import { decodeDexSubject } from '../../lib/dexSubject';
+import { serverAuthMode } from '../../lib/serverAuthMode';
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -177,13 +178,19 @@ export function ServerConfig({ server }: { server: MCPServer }) {
 export function AuthChain({ server }: { server: MCPServer }) {
   const auth = server.getAuth();
 
-  if (!auth || auth.type === 'none' || auth.type === undefined) {
+  if (!auth || serverAuthMode(server) === 'anonymous') {
     return <Note>No authentication configured (anonymous).</Note>;
   }
 
   const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
 
-  const facts: Fact[] = [{ label: 'Type', value: auth.type }];
+  const facts: Fact[] = [
+    // No `type` with a forwarded token: muster treats that as OAuth.
+    {
+      label: 'Type',
+      value: auth.type ?? 'oauth (implied by the forwarded token)',
+    },
+  ];
   if (sigv4) {
     facts.push(
       { label: 'Signing region', value: <Mono>{sigv4.region}</Mono> },
