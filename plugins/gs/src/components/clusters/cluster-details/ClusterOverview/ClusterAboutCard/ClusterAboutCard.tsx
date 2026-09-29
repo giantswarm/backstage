@@ -47,8 +47,6 @@ import { ClusterTypes, ClusterProviders } from '../../../utils';
 import { AsyncValue, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { isKubeadmControlPlaneRef } from './utils';
 
-const NO_ERRORS: never[] = [];
-
 interface ProviderLocationDisplayProps {
   provider: string;
 }
@@ -120,12 +118,9 @@ export function ClusterAboutCard() {
   const { name: controlPlaneName, namespace: controlPlaneNamespace } =
     controlPlaneRef;
 
-  // The ControlPlane model only knows KubeadmControlPlane. A managed control
-  // plane (AKS: AzureASOManagedControlPlane, EKS: AWSManagedControlPlane) is a
-  // different kind, and sometimes a different API group, so asking the
-  // kubeadmcontrolplanes endpoint for it by name can only 404. Skip the
-  // request and its errors for those; the Kubernetes version then reads as
-  // not available.
+  // Managed control planes (AKS, EKS) are not a KubeadmControlPlane, so the
+  // fetch would only 404. Skip it and its errors; the Kubernetes version then
+  // reads as not available. See isKubeadmControlPlaneRef.
   const hasKubeadmControlPlane = isKubeadmControlPlaneRef(controlPlaneRef);
 
   const {
@@ -159,7 +154,7 @@ export function ClusterAboutCard() {
     );
   }
 
-  useShowErrors(hasKubeadmControlPlane ? controlPlaneErrors : NO_ERRORS);
+  useShowErrors(hasKubeadmControlPlane ? controlPlaneErrors : null);
 
   const clusterType = calculateClusterType(cluster);
   const description = getClusterDescription(cluster);

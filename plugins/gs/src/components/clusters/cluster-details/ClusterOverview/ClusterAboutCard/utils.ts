@@ -1,12 +1,12 @@
-import { ControlPlane } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Cluster,
+  ControlPlane,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { getApiGroupFromVersion } from '../../../../utils/findResourceByRef';
 
-export type ControlPlaneRef = {
-  apiVersion?: string;
-  apiGroup?: string;
-  kind: string;
-  name: string;
-  namespace: string;
-};
+export type ControlPlaneRef = NonNullable<
+  ReturnType<Cluster['getControlPlaneRef']>
+>;
 
 /**
  * Whether a cluster's `spec.controlPlaneRef` points at a resource the
@@ -27,7 +27,7 @@ export function isKubeadmControlPlaneRef(ref: ControlPlaneRef): boolean {
     return false;
   }
 
-  const group = ref.apiGroup ?? ref.apiVersion?.split('/')[0];
+  const group = ref.apiGroup ?? getApiGroupFromVersion(ref.apiVersion);
 
   return group === undefined || group === ControlPlane.group;
 }

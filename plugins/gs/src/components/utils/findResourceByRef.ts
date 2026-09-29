@@ -5,7 +5,7 @@ import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
  * For "controlplane.cluster.x-k8s.io/v1beta1" returns "controlplane.cluster.x-k8s.io"
  * For core resources like "v1" returns undefined
  */
-function getApiGroupFromVersion(
+export function getApiGroupFromVersion(
   apiVersion: string | undefined,
 ): string | undefined {
   if (!apiVersion) return undefined;
