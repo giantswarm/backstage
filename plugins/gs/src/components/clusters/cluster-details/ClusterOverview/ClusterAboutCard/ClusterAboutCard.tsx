@@ -148,9 +148,10 @@ export function ClusterAboutCard() {
       resourceNamespace: controlPlaneNamespace,
     });
   }
-  // A disabled query still resolves ControlPlane discovery cached by another
-  // page, incompatibilities included, until giantswarm/backstage#2663 lands.
-  // Keep those out of the card for a managed control plane.
+  // A disabled query still returns incompatibilities from ControlPlane
+  // discovery that another page has cached. The hook cannot tell whether a
+  // caller disabled its query to mean "not yet" or "does not apply", so the
+  // card keeps them out itself for a managed control plane.
   if (hasKubeadmControlPlane && controlPlaneIncompatibilities[0]) {
     controlPlaneErrorMessage = getIncompatibilityMessage(
       controlPlaneIncompatibilities[0],
