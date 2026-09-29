@@ -23,7 +23,10 @@ export function useResource<R extends KubeObject<any>>(
 ) {
   const isRestoring = useIsRestoring();
   const staticGVK = ResourceClass.getGVK();
+  const enabled = queryOptions?.enabled ?? true;
 
+  // A disabled query skips discovery too, so it sends no requests, doesn't
+  // report as loading, and yields no version issues to report.
   const {
     resolvedGVK,
     isDiscovering,
@@ -31,7 +34,7 @@ export function useResource<R extends KubeObject<any>>(
     incompatibilities,
     clientOutdatedStates,
   } = usePreferredVersion(cluster, staticGVK, {
-    enableDiscovery: options.enableDiscovery,
+    enableDiscovery: enabled && options.enableDiscovery !== false,
     explicitVersion: options.apiVersion,
   });
 
@@ -42,10 +45,7 @@ export function useResource<R extends KubeObject<any>>(
     {
       ...queryOptions,
       enabled:
-        (queryOptions?.enabled ?? true) &&
-        !isDiscovering &&
-        Boolean(cluster) &&
-        Boolean(resolvedGVK),
+        enabled && !isDiscovering && Boolean(cluster) && Boolean(resolvedGVK),
     },
   );
 

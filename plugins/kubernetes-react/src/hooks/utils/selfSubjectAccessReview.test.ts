@@ -94,4 +94,24 @@ describe('createSelfSubjectAccessReview', () => {
       }),
     ).rejects.toMatchObject({ name: 'ForbiddenError' });
   });
+
+  it('names an expired token so it is not retried, and says why', async () => {
+    const { api } = createKubernetesApi({
+      ok: false,
+      status: 401,
+      statusText: '',
+    });
+
+    await expect(
+      createSelfSubjectAccessReview({
+        kubernetesApi: api,
+        cluster: 'test-installation',
+        resourceAttributes,
+      }),
+    ).rejects.toMatchObject({
+      name: 'UnauthorizedError',
+      message:
+        'Failed to review access to kustomizations on test-installation. Reason: HTTP 401.',
+    });
+  });
 });
