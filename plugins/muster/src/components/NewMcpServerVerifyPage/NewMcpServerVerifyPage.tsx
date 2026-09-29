@@ -70,8 +70,9 @@ export function NewMcpServerVerifyPage() {
   const musterApi = useApi(musterApiRef);
   const detailsLink = useRouteRef(newMcpServerRouteRef);
   const serversLink = useRouteRef(mcpServersRouteRef);
-  const { state, registeredName, lastSave, reset } = useNewMcpServerForm();
-  const { mcpServers, retry } = useMusterInstance();
+  const { state, registeredName, lastSave, lastSaveAt, reset } =
+    useNewMcpServerForm();
+  const { mcpServers, mcpServersUpdatedAt, retry } = useMusterInstance();
 
   const installation = state.installation;
   const serverName = registeredName;
@@ -99,8 +100,14 @@ export function NewMcpServerVerifyPage() {
   // confirm a change that has not been applied. The Ready condition's
   // observedGeneration trailing metadata.generation says exactly that, so the
   // panel holds the verdict back and re-reads the CR until they agree (the
-  // provider's own refresh is 30s).
-  const applying = Boolean(cr?.isReconcilePending());
+  // provider's own refresh is 30s). Until the server list has been read again
+  // after the update, the CR in hand is the pre-update one (its generations
+  // agree), so that counts as applying too.
+  const isPreUpdateRead =
+    lastSave === 'update' &&
+    lastSaveAt !== undefined &&
+    (mcpServersUpdatedAt ?? 0) < lastSaveAt;
+  const applying = isPreUpdateRead || Boolean(cr?.isReconcilePending());
   useEffect(() => {
     if (!applying) {
       return undefined;

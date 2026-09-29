@@ -292,9 +292,7 @@ export function AdHocServerDialog({
       TransitionProps={{ onEnter: seed }}
     >
       <DialogTitle>
-        {isEdit
-          ? `Edit ad-hoc server — ${server?.getName()}`
-          : 'Add ad-hoc server'}
+        {isEdit ? `Edit as JSON — ${server?.getName()}` : 'Add ad-hoc server'}
       </DialogTitle>
       <DialogContent>
         <DialogContentText>

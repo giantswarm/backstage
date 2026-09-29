@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   renderInTestApp,
@@ -63,6 +63,16 @@ const musterApi = {
   filterTools,
 } as unknown as jest.Mocked<import('../../apis').MusterApi>;
 
+/** The browser's Back button. */
+function BrowserBack() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      browser back
+    </button>
+  );
+}
+
 function renderWizard(path: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -70,6 +80,7 @@ function renderWizard(path: string) {
   return renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
+        <BrowserBack />
         <Routes>
           <Route
             path="/agent-platform/muster/servers/*"
@@ -231,6 +242,29 @@ describe('NewMcpServerReviewPage', () => {
       'core_mcpserver_validate',
       'core_mcpserver_update',
     ]);
+  });
+
+  it('keeps the run as an edit of the new server when Back leaves verify after a create', async () => {
+    callTool.mockResolvedValue({});
+    await renderReviewStep();
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Register server' })[0],
+    );
+    await screen.findByText('Step 4 of 4: Verify');
+
+    // The registration's review step had no ?edit; Back must not empty the
+    // wizard into a registration that would fail with "already exists".
+    await userEvent.click(screen.getByRole('button', { name: 'browser back' }));
+
+    expect(
+      await screen.findByText('Step 3 of 4: Review & save'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: 'Save changes' }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByText('Register an MCP server'),
+    ).not.toBeInTheDocument();
   });
 
   it('saves an edit as validate then update, keeping what the wizard does not model', async () => {

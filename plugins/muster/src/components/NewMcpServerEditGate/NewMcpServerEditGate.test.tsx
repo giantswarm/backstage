@@ -33,8 +33,22 @@ function server(name: string, cluster: string, url: string): MCPServer {
   );
 }
 
+/** An MCPServer rendered by a HelmRelease: Git owns it. */
+const managed = new MCPServer(
+  {
+    apiVersion: 'muster.giantswarm.io/v1alpha1',
+    kind: 'MCPServer',
+    metadata: {
+      name: 'github',
+      labels: { 'app.kubernetes.io/managed-by': 'Helm' },
+    },
+    spec: { type: 'streamable-http', url: 'https://github.example.com/mcp' },
+  } as never,
+  'gazelle',
+);
+
 const servers: Record<string, MCPServer[]> = {
-  gazelle: [server('miro', 'gazelle', 'https://mcp.miro.com/')],
+  gazelle: [server('miro', 'gazelle', 'https://mcp.miro.com/'), managed],
   golem: [server('miro', 'golem', 'https://golem.miro.com/')],
 };
 
@@ -92,6 +106,18 @@ describe('NewMcpServerEditGate', () => {
       await screen.findByText('Edit MCP server: miro'),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/^URL/)).toHaveValue('https://mcp.miro.com/');
+  });
+
+  it('never opens the wizard for a GitOps-managed server, even by link', async () => {
+    await renderSection('/agent-platform/muster/servers/new?edit=github');
+
+    expect(
+      await screen.findByText('This server is managed in Git'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Back to MCP servers' }),
+    ).toBeInTheDocument();
   });
 
   it('waits for the server list before deciding', async () => {

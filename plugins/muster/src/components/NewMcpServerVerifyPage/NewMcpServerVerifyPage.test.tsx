@@ -15,6 +15,7 @@ import { McpServersRouter } from '../McpServersRouter';
 const retry = jest.fn();
 /** Registered servers of the active installation, per test. */
 let mockMcpServers: MCPServer[] = [];
+let mockMcpServersUpdatedAt: number | undefined;
 
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -29,6 +30,7 @@ jest.mock('../MusterInstanceProvider', () => ({
     },
     setActiveInstallation: jest.fn(),
     mcpServers: mockMcpServers,
+    mcpServersUpdatedAt: mockMcpServersUpdatedAt,
     isLoading: false,
     retry,
   }),
@@ -111,6 +113,7 @@ function runtime(overrides: Partial<McpServerRuntime>): McpServerRuntime {
 describe('NewMcpServerVerifyPage', () => {
   beforeEach(() => {
     mockMcpServers = [];
+    mockMcpServersUpdatedAt = undefined;
     jest.clearAllMocks();
     listServers.mockResolvedValue({ mcpServers: [] });
     getAuthStatus.mockResolvedValue({ servers: [] });
@@ -380,6 +383,52 @@ describe('NewMcpServerVerifyPage', () => {
 
       expect(await screen.findByText('Applying changes…')).toBeInTheDocument();
       expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+    });
+
+    /** Registers weather, then saves it again from "Edit details". */
+    async function saveAnUpdate() {
+      await renderVerifyStep();
+      await userEvent.click(
+        screen.getAllByRole('button', { name: 'Edit details' })[0],
+      );
+      await screen.findByText('Step 1 of 4: Details');
+      await userEvent.click(
+        screen.getAllByRole('button', { name: 'Continue' })[0],
+      );
+      await screen.findByText('Step 2 of 4: Authentication');
+      await userEvent.click(
+        screen.getAllByRole('button', { name: 'Continue' })[0],
+      );
+      await screen.findByText('Step 3 of 4: Review & save');
+      await userEvent.click(
+        screen.getAllByRole('button', { name: 'Save changes' })[0],
+      );
+      await screen.findByText('Step 4 of 4: Verify');
+    }
+
+    it('holds the verdict back until the server list has been read after the save', async () => {
+      // The CR in hand predates the update, so its generations still agree.
+      mockMcpServers = [edited(3, 3)];
+      mockMcpServersUpdatedAt = 1;
+      listServers.mockResolvedValue({
+        mcpServers: [runtime({ state: 'Connected' })],
+      });
+      await saveAnUpdate();
+
+      expect(await screen.findByText('Applying changes…')).toBeInTheDocument();
+      expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+    });
+
+    it('reports the state from a server list read after the save', async () => {
+      mockMcpServers = [edited(3, 3)];
+      mockMcpServersUpdatedAt = Number.MAX_SAFE_INTEGER;
+      listServers.mockResolvedValue({
+        mcpServers: [runtime({ state: 'Connected' })],
+      });
+      await saveAnUpdate();
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Applying changes…')).not.toBeInTheDocument();
     });
 
     it('reports the state once the Ready condition caught up', async () => {

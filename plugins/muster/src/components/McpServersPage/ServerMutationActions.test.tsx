@@ -475,9 +475,7 @@ describe('ServerMutationActions Edit', () => {
 
     // The dialog's edit path still saves as an update to this server.
     await userEvent.click(jsonEdit);
-    expect(
-      await screen.findByText('Edit ad-hoc server — miro'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Edit as JSON — miro')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(callTool).toHaveBeenCalledWith(
       'core_mcpserver_update',

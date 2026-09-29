@@ -67,6 +67,11 @@ export type NewMcpServerFormContextValue = {
    */
   lastSave: 'create' | 'update' | undefined;
   /**
+   * Epoch-ms of that last save. A server list read before it still shows the
+   * server as it was, so the verify step waits for a newer read.
+   */
+  lastSaveAt: number | undefined;
+  /**
    * Records a successful create or update of `definition`: the server is now
    * registered under its name on the form's installation, and later saves
    * (the verify step's "Edit details" loop) are updates laid over exactly what
@@ -155,6 +160,7 @@ export function NewMcpServerFormProvider({
     string | undefined
   >();
   const [lastSave, setLastSave] = useState<'create' | 'update'>();
+  const [lastSaveAt, setLastSaveAt] = useState<number>();
   // The registered server as last read or saved: the base the wizard's
   // definition is laid over, so an update keeps what it cannot show.
   const [base, setBase] = useState<EditBase>();
@@ -168,6 +174,7 @@ export function NewMcpServerFormProvider({
   const markSaved = useCallback((saved: McpServerDefinition) => {
     const current = latest.current;
     setLastSave(current.registeredName ? 'update' : 'create');
+    setLastSaveAt(Date.now());
     setRegisteredName(saved.name);
     setRegisteredInstallation(current.state.installation);
     setBase({ definition: saved, form: current.state });
@@ -188,6 +195,7 @@ export function NewMcpServerFormProvider({
     setRegisteredName(server.getName());
     setRegisteredInstallation(server.cluster);
     setLastSave(undefined);
+    setLastSaveAt(undefined);
     setBase({ definition: toMcpServerDefinition(server), form });
     setState(form);
   }, []);
@@ -199,6 +207,7 @@ export function NewMcpServerFormProvider({
     setRegisteredName(undefined);
     setRegisteredInstallation(undefined);
     setLastSave(undefined);
+    setLastSaveAt(undefined);
     setBase(undefined);
     setState(restored?.state ?? emptyFormState);
   }, []);
@@ -266,6 +275,7 @@ export function NewMcpServerFormProvider({
       registeredName,
       registeredInstallation,
       lastSave,
+      lastSaveAt,
       markSaved,
       startEdit,
       reset,
@@ -284,6 +294,7 @@ export function NewMcpServerFormProvider({
     registeredName,
     registeredInstallation,
     lastSave,
+    lastSaveAt,
     base,
     markSaved,
     startEdit,
