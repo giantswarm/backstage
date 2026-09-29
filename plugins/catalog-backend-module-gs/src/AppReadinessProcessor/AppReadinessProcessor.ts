@@ -474,9 +474,8 @@ export class AppReadinessProcessor implements CatalogProcessor {
       return {
         latestStable: highestStable(result.tags.map(t => t.tag)),
         unreadable: false,
-        // ACR pages at the limit we ask for (the OCI path ignores it and
-        // returns everything), so a full page means we may not have seen
-        // every tag.
+        // The registry client stops at the limit we ask for, so a full
+        // listing means we may not have seen every tag.
         truncated: result.tags.length >= TAGS_FETCH_LIMIT,
       };
     } catch (error) {

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Table } from '@backstage/core-components';
-import { Box, Typography } from '@material-ui/core';
-import { Flex, Switch, Text } from '@backstage/ui';
+import { Box, Flex, Switch, Text } from '@backstage/ui';
 import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { OciTagData, getOciTagColumns } from './columns';
@@ -52,7 +51,7 @@ export const OciTagsTable = ({ ociRepository, name }: OciTagsTableProps) => {
   let emptyContent = null;
   if (totalCount > 0) {
     emptyContent = (
-      <Box px={2} py={8}>
+      <Box px="4" py="14">
         <Text color="secondary">
           No stable releases yet. Turn on Show all to see release candidates and
           dev builds.
@@ -62,16 +61,16 @@ export const OciTagsTable = ({ ociRepository, name }: OciTagsTableProps) => {
   }
   if (error) {
     if (error.name !== 'NotFoundError') {
-      return <Typography color="error">{error.message}</Typography>;
+      return <Text color="danger">{error.message}</Text>;
     }
 
     const { repository } = parseChartRef(ociRepository);
     emptyContent = (
-      <Box px={2} py={8}>
-        <Typography variant="inherit" color="textSecondary">
+      <Box px="4" py="14">
+        <Text color="secondary">
           The repository <code>{repository}</code> is not available in the
           registry.
-        </Typography>
+        </Text>
       </Box>
     );
   }
@@ -89,10 +88,16 @@ export const OciTagsTable = ({ ociRepository, name }: OciTagsTableProps) => {
       style={{ width: '100%' }}
       title={
         <Flex align="center" gap="6">
-          <Typography variant="h6">
+          <Text as="span" variant="title-small" weight="bold">
             Versions of {name} ({countLabel})
-          </Typography>
-          <Switch label="Show all" isSelected={showAll} onChange={setShowAll} />
+          </Text>
+          {totalCount > 0 && (
+            <Switch
+              label="Show all"
+              isSelected={showAll}
+              onChange={setShowAll}
+            />
+          )}
         </Flex>
       }
       columns={columns}

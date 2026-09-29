@@ -77,6 +77,15 @@ describe('<OciTagsListCard />', () => {
     expect(screen.queryByText('1.0.0')).not.toBeInTheDocument();
   });
 
+  it('offers Show all only when the repository has tags', async () => {
+    await renderCard([]);
+
+    expect(await screen.findByText('No tags found')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: 'Show all' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('says so when there is no stable release yet', async () => {
     await renderCard([tag('1.0.0-rc.1')]);
 

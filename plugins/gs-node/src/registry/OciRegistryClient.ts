@@ -16,6 +16,12 @@ import {
   sortVersions,
 } from './registryUtils';
 
+/**
+ * Page size asked of `tags/list`. The reference registry (distribution)
+ * rejects a larger `n` by default.
+ */
+const OCI_PAGE_SIZE = 1000;
+
 export interface TagInfo {
   tag: string;
 }
@@ -69,23 +75,43 @@ export class OciRegistryClient {
    *
    * @param registry - The registry host (e.g., ghcr.io, docker.io)
    * @param repository - The repository path (e.g., giantswarm/my-app)
+   * @param options - Optional configuration
+   * @param options.limit - Fetch only this many tags (default: all). The registry lists tags in lexical order, so these are not necessarily the most recent ones.
    * @returns Array of tag info objects sorted by semver (newest first)
    */
-  async getTags(registry: string, repository: string): Promise<TagInfo[]> {
+  async getTags(
+    registry: string,
+    repository: string,
+    options?: {
+      limit?: number;
+    },
+  ): Promise<TagInfo[]> {
     const normalized = normalizeRegistry(registry);
+    const limit = options?.limit;
+    const url = new URL(`https://${normalized}/v2/${repository}/tags/list`);
+    url.searchParams.set(
+      'n',
+      Math.min(limit ?? OCI_PAGE_SIZE, OCI_PAGE_SIZE).toString(),
+    );
 
-    const tags: string[] = [];
-    let pageUrl: string | undefined =
-      `https://${normalized}/v2/${repository}/tags/list`;
+    let tags: string[] = [];
+    let pageUrl: string | undefined = url.toString();
     let pages = 0;
-    while (pageUrl && pages < MAX_TAG_PAGES) {
+    while (
+      pageUrl &&
+      pages < MAX_TAG_PAGES &&
+      (limit === undefined || tags.length < limit)
+    ) {
       const page = await this.fetchTagPage(pageUrl, normalized, repository);
       tags.push(...page.tags);
       pages++;
       pageUrl = page.nextUrl;
     }
+    if (limit !== undefined) {
+      tags = tags.slice(0, limit);
+    }
 
-    if (pageUrl) {
+    if (pageUrl && pages >= MAX_TAG_PAGES) {
       this.logger.info('Stopped following OCI tag pages at the page limit', {
         registry: normalized,
         repository,

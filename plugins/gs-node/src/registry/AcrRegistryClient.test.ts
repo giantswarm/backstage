@@ -51,17 +51,42 @@ describe('AcrRegistryClient.getTags', () => {
     );
   });
 
-  it('fetches a single page of the given size when a limit is given', async () => {
-    const fetch = jest
-      .fn()
-      .mockResolvedValue(page(['2.0.0'], '/acr/v1/charts/my-app/_tags?last=x'));
+  it('fetches a single page when it holds the limit', async () => {
+    const fetch = jest.fn().mockResolvedValue(
+      page(
+        Array.from({ length: 500 }, (_, i) => `1.0.${i}`),
+        '/acr/v1/charts/my-app/_tags?last=x',
+      ),
+    );
 
-    await clientWith(fetch).getTags('gsoci.azurecr.io', 'charts/my-app', {
-      limit: 500,
-    });
+    const tags = await clientWith(fetch).getTags(
+      'gsoci.azurecr.io',
+      'charts/my-app',
+      { limit: 500 },
+    );
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toContain('n=500');
+    expect(tags).toHaveLength(500);
+  });
+
+  it('pages up to a limit larger than the largest page ACR serves', async () => {
+    const fetch = jest.fn().mockResolvedValue(
+      page(
+        Array.from({ length: 999 }, (_, i) => `1.0.${i}`),
+        '/acr/v1/charts/my-app/_tags?last=x',
+      ),
+    );
+
+    const tags = await clientWith(fetch).getTags(
+      'gsoci.azurecr.io',
+      'charts/my-app',
+      { limit: 1500 },
+    );
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0][0]).toContain('n=999');
+    expect(tags).toHaveLength(1500);
   });
 
   it('stops at the page limit', async () => {

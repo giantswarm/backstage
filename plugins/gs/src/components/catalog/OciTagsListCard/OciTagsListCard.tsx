@@ -164,11 +164,13 @@ export const OciTagsListCard = ({
     <InfoCard
       title="Version History"
       headerActions={
-        <Switch label="Show all" isSelected={showAll} onChange={setShowAll} />
+        tags && tags.length > 0 && !error ? (
+          <Switch label="Show all" isSelected={showAll} onChange={setShowAll} />
+        ) : undefined
       }
       footerActions={
         <Link component={RouterLink} to={viewAllPath}>
-          <Typography variant="body1">View all versions →</Typography>
+          View all versions →
         </Link>
       }
     >

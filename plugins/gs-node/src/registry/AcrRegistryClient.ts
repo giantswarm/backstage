@@ -65,7 +65,7 @@ export class AcrRegistryClient {
    * @param registry - The ACR registry host (e.g., gsoci.azurecr.io)
    * @param repository - The repository path (e.g., giantswarm/my-app)
    * @param options - Optional configuration
-   * @param options.limit - Fetch only this many of the most recent tags, in one request (default: all, following every page)
+   * @param options.limit - Fetch only this many of the most recent tags (default: all)
    * @returns Array of tags, sorted by semver (newest first)
    */
   async getTags(
@@ -77,21 +77,32 @@ export class AcrRegistryClient {
   ): Promise<TagInfo[]> {
     const normalized = normalizeRegistry(registry);
     const url = new URL(`https://${normalized}/acr/v1/${repository}/_tags`);
-    url.searchParams.set('n', (options?.limit ?? ACR_MAX_PAGE_SIZE).toString());
+    const limit = options?.limit;
+    url.searchParams.set(
+      'n',
+      Math.min(limit ?? ACR_MAX_PAGE_SIZE, ACR_MAX_PAGE_SIZE).toString(),
+    );
     // Order by most recent first
     url.searchParams.set('orderby', 'timedesc');
 
-    const acrTags: AcrTagListResponse['tags'] = [];
+    let acrTags: AcrTagListResponse['tags'] = [];
     let pageUrl: string | undefined = url.toString();
     let pages = 0;
-    while (pageUrl && pages < MAX_TAG_PAGES) {
+    while (
+      pageUrl &&
+      pages < MAX_TAG_PAGES &&
+      (limit === undefined || acrTags.length < limit)
+    ) {
       const page = await this.fetchTagPage(pageUrl, normalized, repository);
       acrTags.push(...page.tags);
       pages++;
-      pageUrl = options?.limit ? undefined : page.nextUrl;
+      pageUrl = page.nextUrl;
+    }
+    if (limit !== undefined) {
+      acrTags = acrTags.slice(0, limit);
     }
 
-    if (pageUrl) {
+    if (pageUrl && pages >= MAX_TAG_PAGES) {
       this.logger.info('Stopped following ACR tag pages at the page limit', {
         registry: normalized,
         repository,
