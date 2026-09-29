@@ -573,4 +573,39 @@ describe('usePreferredVersions', () => {
     expect(result.current.clustersGVKs['cluster-a'].apiVersion).toBe('v1beta1');
     expect(api.proxy).toHaveBeenCalledTimes(requests);
   });
+
+  it('returns nothing to show or report while disabled, even from a cached result', async () => {
+    // A caller disables its query when it knows the resource is not there to
+    // be read (the cluster About card for a managed control plane). Discovery
+    // cached by another page must not surface as that caller's incompatibility.
+    const gvk = makeMultiVersionGVK(['v1beta1'], { plural: 'widgets' });
+    const api = createMockKubernetesApi({
+      'cluster-a': {
+        '/apis/test.example.io': makeApiGroupResponse('test.example.io', [
+          'v1beta2',
+        ]),
+        '/apis/test.example.io/v1beta2': makeApiResourceResponse(
+          'test.example.io',
+          'v1beta2',
+          ['widgets'],
+        ),
+      },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        usePreferredVersions(['cluster-a'], gvk, { enabled }),
+      { wrapper: createWrapper(api), initialProps: { enabled: true } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.incompatibilities).toHaveLength(1);
+    });
+
+    rerender({ enabled: false });
+
+    expect(result.current.incompatibilities).toEqual([]);
+    expect(result.current.clientOutdatedStates).toEqual([]);
+    expect(result.current.discoveryErrors).toEqual([]);
+  });
 });

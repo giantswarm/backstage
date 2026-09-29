@@ -24,10 +24,12 @@ export interface UsePreferredVersionsOptions {
   enableDiscovery?: boolean;
   /**
    * Whether the caller's own query is enabled. Defaults to true. When false,
-   * no discovery requests are sent and nothing counts as discovering, but a
-   * discovery result already in the cache still resolves — so a query that is
-   * disabled for a moment keeps its discovered version, and with it its
-   * query key and cached data.
+   * no discovery requests are sent, nothing counts as discovering, and no
+   * discovery errors, incompatibilities or client-outdated states are returned
+   * — a disabled caller has nothing to show or report. A discovery result
+   * already in the cache still resolves, though, so a query that is disabled
+   * for a moment keeps its discovered version, and with it its query key and
+   * cached data.
    */
   enabled?: boolean;
   /** Explicit API version to use, bypasses discovery. */
@@ -284,11 +286,13 @@ export function usePreferredVersions(
   // Don't report incompatibilities while discovery is still in progress —
   // partial Stage 2 results can cause false positives (e.g. a transient error
   // making it look like a version doesn't exist).
+  const quiet = isDiscovering || !enabled;
+
   return {
     clustersGVKs,
     isDiscovering,
-    discoveryErrors,
-    incompatibilities: isDiscovering ? [] : incompatibilities,
-    clientOutdatedStates: isDiscovering ? [] : clientOutdatedStates,
+    discoveryErrors: enabled ? discoveryErrors : [],
+    incompatibilities: quiet ? [] : incompatibilities,
+    clientOutdatedStates: quiet ? [] : clientOutdatedStates,
   };
 }
