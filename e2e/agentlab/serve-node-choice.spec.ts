@@ -212,7 +212,8 @@ test.describe.serial('Serve on the ticked nodes', () => {
     ).toBeDisabled();
 
     // One tick: the pin.
-    await phantomBox.click();
+    // The label, as a person clicks it: the input itself is visually hidden.
+    await nodes.getByText(PHANTOM_NODE, { exact: true }).click();
     await expect(phantomBox).not.toBeChecked();
     await snapshot(admin, 'serve-node-options', nodes);
     const node = KIND_NODE;
