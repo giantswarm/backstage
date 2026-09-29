@@ -178,4 +178,64 @@ describe('useResource', () => {
       }),
     ]);
   });
+
+  it('makes no request at all, discovery included, when disabled', async () => {
+    const api = createMockKubernetesApi({
+      'cluster-a': {
+        '/apis/application.giantswarm.io': appGroupResponse,
+        '/apis/application.giantswarm.io/v1alpha1': appResourcesResponse,
+      },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useResource(
+          'cluster-a',
+          App,
+          { name: 'my-app', namespace: 'org-test' },
+          { enabled: false },
+        ),
+      { wrapper: createWrapper(api) },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(api.proxy).not.toHaveBeenCalled();
+    expect(result.current.errors).toEqual([]);
+    expect(result.current.incompatibilities).toEqual([]);
+  });
+
+  it('says why the resource could not be fetched when the response has no reason phrase', async () => {
+    const api = createMockKubernetesApi({
+      'cluster-a': {
+        '/apis/application.giantswarm.io': appGroupResponse,
+        '/apis/application.giantswarm.io/v1alpha1': appResourcesResponse,
+      },
+    });
+    // The resource GET 404s over HTTP/2: no reason phrase, no Status body.
+    const answer = api.proxy.getMockImplementation()!;
+    api.proxy.mockImplementation(async (args: ProxyArgs) =>
+      args.path.includes('/namespaces/')
+        ? ({ ok: false, status: 404, statusText: '' } as Response)
+        : answer(args),
+    );
+
+    const { result } = renderHook(
+      () =>
+        useResource('cluster-a', App, {
+          name: 'my-app',
+          namespace: 'org-test',
+        }),
+      { wrapper: createWrapper(api) },
+    );
+
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+
+    expect(result.current.error?.name).toBe('NotFoundError');
+    expect(result.current.error?.message).toMatch(/Reason: HTTP 404\.$/);
+  });
 });

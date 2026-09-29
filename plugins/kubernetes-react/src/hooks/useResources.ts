@@ -26,6 +26,7 @@ export function useResources<R extends KubeObject<any>>(
   const staticGVK = ResourceClass.getGVK();
 
   const { enableDiscovery, ...restQueryOptions } = queryOptions;
+  const enabled = restQueryOptions.enabled ?? true;
 
   const {
     clustersGVKs,
@@ -35,6 +36,7 @@ export function useResources<R extends KubeObject<any>>(
     clientOutdatedStates,
   } = usePreferredVersions(selectedClusters, staticGVK, {
     enableDiscovery,
+    enabled,
   });
 
   // List queries are enabled per cluster as soon as that cluster's discovery
@@ -47,7 +49,7 @@ export function useResources<R extends KubeObject<any>>(
     options,
     {
       ...restQueryOptions,
-      enabled: restQueryOptions?.enabled ?? true,
+      enabled,
     },
   );
 

@@ -12,6 +12,8 @@ import { usePreferredVersions } from './usePreferredVersions';
 export interface UsePreferredVersionOptions {
   /** Enable API version discovery. Defaults to true. */
   enableDiscovery?: boolean;
+  /** Whether the caller's own query is enabled. See `UsePreferredVersionsOptions.enabled`. */
+  enabled?: boolean;
   /** Explicit API version to use, bypasses discovery. */
   explicitVersion?: string;
   /** Fall back to static version on discovery error. Defaults to true. */
@@ -45,7 +47,8 @@ export function usePreferredVersion(
   gvk: CustomResourceMatcher | MultiVersionResourceMatcher,
   options: UsePreferredVersionOptions = {},
 ): UsePreferredVersionResult {
-  const { enableDiscovery, explicitVersion, fallbackToStatic } = options;
+  const { enableDiscovery, enabled, explicitVersion, fallbackToStatic } =
+    options;
 
   const clusters = cluster ? [cluster] : [];
 
@@ -57,6 +60,7 @@ export function usePreferredVersion(
     clientOutdatedStates,
   } = usePreferredVersions(clusters, gvk, {
     enableDiscovery,
+    enabled,
     explicitVersion,
     fallbackToStatic,
   });
