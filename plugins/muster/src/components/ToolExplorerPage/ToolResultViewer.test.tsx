@@ -34,9 +34,7 @@ describe('ToolResultViewer', () => {
 
     await userEvent.click(screen.getByRole('radio', { name: 'Raw' }));
     // Raw view renders compact JSON, so a quoted key is present verbatim.
-    expect(screen.getByRole('textbox', { name: 'Result' })).toHaveValue(
-      JSON.stringify(listResult),
-    );
+    expect(screen.getByText(/"status":"Ready"/)).toBeInTheDocument();
   });
 
   it('shows the pretty-printed result in the Parsed view', async () => {

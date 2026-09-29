@@ -60,7 +60,7 @@ const useStyles = makeStyles(theme => ({
 // CodeMirror parses lazily up to the viewport, so the outer levels of a long
 // document get no fold markers until the rest is parsed.
 const parseFully = (view: EditorView) =>
-  forceParsing(view, view.state.doc.length, 500);
+  forceParsing(view, view.state.doc.length, 100);
 
 type YamlEditorProps = {
   initialValue?: string;
@@ -151,7 +151,7 @@ export const YamlEditor = ({
     });
 
     viewRef.current = view;
-    parseFully(view);
+    if (readOnly) parseFully(view);
 
     // Cleanup on unmount
     // eslint-disable-next-line consistent-return
@@ -176,9 +176,9 @@ export const YamlEditor = ({
           insert: initialValue,
         },
       });
-      parseFully(view);
+      if (readOnly) parseFully(view);
     }
-  }, [initialValue]);
+  }, [initialValue, readOnly]);
 
   // Update schema when it changes
   useEffect(() => {

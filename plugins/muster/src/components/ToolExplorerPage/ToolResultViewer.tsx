@@ -56,9 +56,9 @@ export interface ToolResultViewerProps {
 }
 
 /**
- * Renders a tool's JSON result: a parsed (pretty-printed, foldable) view and a
- * raw (compact) view in the read-only editor, and a compact table when the
- * result is a list of like-shaped objects. Shows the call duration and result
+ * Renders a tool's JSON result: a parsed (pretty-printed, foldable) view in the
+ * read-only editor, a compact table when the result is a list of like-shaped
+ * objects, and a raw (compact) view. Shows the call duration and result
  * size, and offers copy, download, and one-click re-run.
  */
 export function ToolResultViewer({
@@ -234,13 +234,23 @@ export function ToolResultViewer({
             />
           ))}
 
+        {/* A plain <pre>: the compact JSON is one line, which CodeMirror
+            renders and highlights in full. */}
         {mode === 'raw' && (
-          <YamlEditorFormField
-            value={raw}
-            language="json"
-            readOnly
-            maxHeight={RESULT_MAX_HEIGHT}
-          />
+          <Box
+            as="pre"
+            style={{
+              margin: 0,
+              fontFamily: 'monospace',
+              fontSize: '0.75rem',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxHeight: RESULT_MAX_HEIGHT,
+              overflow: 'auto',
+            }}
+          >
+            {raw}
+          </Box>
         )}
       </Box>
     </Box>
