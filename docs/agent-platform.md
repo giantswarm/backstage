@@ -1433,10 +1433,18 @@ Hidden setting does not remove it.
 
 **The bytes are untrusted and rendered in our own origin**, so the declared
 `mimeType` is never acted on. `readAttachmentPreview` rejects in order: no
-payload, a location rather than bytes, invalid base64, over the 8 MB cap — and
-only then decodes the first 18 bytes to derive the type from the magic bytes. The
-allowlist is PNG, JPEG, GIF and WebP, and the `data:` URL is labelled with the
-**sniffed** type, so the browser is never told a type the bytes do not support.
+payload, a location rather than bytes, over the 8 MB cap by length alone,
+invalid base64 — and only then decodes the first 30 bytes to derive the type from
+the magic bytes and read the dimensions (a JPEG's frame header is found by
+walking its segment headers). An image declaring more than 50 megapixels is not
+previewed, since the byte cap does not bound the decode. Unpadded, URL-safe and
+line-wrapped base64 are normalised first. The allowlist is PNG, JPEG, GIF and
+WebP, and the `data:` URL is labelled with the **sniffed** type, so the browser
+is never told a type the bytes do not support.
+
+A decided preview is cached on the raw part object. react-query keeps the
+identity of unchanged parts across polls, so rebuilding the timeline does not
+revalidate the payload or rebuild its `data:` URL.
 
 **SVG is never previewed**, whatever it calls itself. An SVG in
 `<img src="data:…">` does not run script — browsers load it in a non-scripting
@@ -1445,8 +1453,9 @@ inline `<svg>`, an `<object>` or an "open in a new tab", and it keeps SVG's
 XML-entity and filter denial-of-service surface out of the page. Sniffing is what
 makes the rule effective: a `.png`-declared SVG never reaches a renderer either.
 
-Anything with no preview renders as an inert chip naming the file, its declared
-type, its size and why there is nothing to see. **No download link** — handing an
+A previewed image is captioned with the type its bytes carry. Anything with no
+preview renders as an inert chip naming the file, its declared type (as the
+sender's claim), its size and why there is nothing to see. **No download link** — handing an
 untrusted file to disk only moves the risk to wherever it is opened next. The
 bytes never pass through the markdown renderer, whose sanitiser strips `data:`
 sources today; loosening that would weaken markdown everywhere in the portal.

@@ -5,6 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
+  attachmentPngV2,
   tasksAdkPrefixed as adkPrefixed,
   tasksApproval as approval,
   tasksAskUserPending as askUserPending,
@@ -1140,11 +1141,9 @@ function withDecision(fixture: typeof approval, decision: object) {
 }
 
 describe('buildTimeline — attachments', () => {
-  const PNG_BYTES = Buffer.from(
-    Uint8Array.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
-    ]),
-  ).toString('base64');
+  // A real 1×1 PNG: the preview reads its header for the dimensions.
+  const PNG_BYTES = (attachmentPngV2.part as { file: { bytes: string } }).file
+    .bytes;
 
   function taskWithAttachment(file: Record<string, unknown>): A2aTaskWire[] {
     return [
@@ -1222,7 +1221,9 @@ describe('buildTimeline — attachments', () => {
       kind: 'attachment',
       preview: { kind: 'none', reason: 'undecodable' },
     });
-    expect(items[1]).not.toHaveProperty('byteSize');
+    expect((items[1] as { preview: object }).preview).not.toHaveProperty(
+      'byteSize',
+    );
   });
 
   it('counts the attachment once when kagent repeats the message', () => {
@@ -1237,5 +1238,18 @@ describe('buildTimeline — attachments', () => {
     const { items } = buildTimeline(repeated);
 
     expect(items.filter(item => item.kind === 'attachment')).toHaveLength(1);
+  });
+
+  it('decides a preview once for a part that did not change between polls', () => {
+    // react-query keeps the identity of unchanged parts, so the rebuilt timeline
+    // hands the same preview back rather than a fresh copy of the payload.
+    const tasks = taskWithAttachment({ name: 'shot.png', bytes: PNG_BYTES });
+
+    const first = buildTimeline(tasks).items[1];
+    const second = buildTimeline(tasks).items[1];
+
+    expect((second as { preview: object }).preview).toBe(
+      (first as { preview: object }).preview,
+    );
   });
 });

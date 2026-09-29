@@ -113,6 +113,13 @@ export function groupIntoTurns(items: TimelineItem[]): TimelineTurn[] {
   return turns;
 }
 
+/** Whether an item is on the user's side of the conversation. */
+export function isUserItem(item: TimelineItem): boolean {
+  return (
+    item.kind === 'user-message' || (item.kind === 'attachment' && item.isUser)
+  );
+}
+
 /**
  * Display name for whoever produced an item.
  *
@@ -125,7 +132,7 @@ export function authorLabel(
   item: TimelineItem,
   resolvedAgentName?: string,
 ): string | undefined {
-  if (item.kind === 'user-message') {
+  if (isUserItem(item)) {
     return undefined;
   }
   if (resolvedAgentName) {
