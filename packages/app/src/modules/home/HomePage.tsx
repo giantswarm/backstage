@@ -9,6 +9,7 @@ import { SearchContextProvider } from '@backstage/plugin-search-react';
 import { Grid, makeStyles } from '@material-ui/core';
 import { GSHomePageResources } from '@giantswarm/backstage-plugin-gs';
 import { HomeLogo } from './HomeLogo';
+import { ReleaseInfo } from './ReleaseInfo';
 
 const useStyles = makeStyles(theme => ({
   searchBarInput: {
@@ -56,6 +57,9 @@ export const HomePage = () => {
               <Grid item xs={12} md={6}>
                 <GSHomePageResources />
               </Grid>
+            </Grid>
+            <Grid item xs={12}>
+              <ReleaseInfo />
             </Grid>
           </Grid>
         </Content>

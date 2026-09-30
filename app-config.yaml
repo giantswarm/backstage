@@ -1,6 +1,7 @@
 app:
   title: Dev Portal
   baseUrl: http://localhost:3000
+  releaseVersion: ${VERSION}
   extensions:
     - api:home/visits
     - app-root-element:home/visit-listener

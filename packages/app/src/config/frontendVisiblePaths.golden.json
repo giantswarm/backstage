@@ -67,6 +67,7 @@
   "app.pluginOverrides[].match",
   "app.pluginOverrides[].match.packageName",
   "app.pluginOverrides[].match.pluginId",
+  "app.releaseVersion",
   "app.rootRedirect",
   "app.routes.bindings.*",
   "app.support.items[].icon",

@@ -22,7 +22,9 @@ export const rootLogger = createServiceFactory({
           config: {
             dsn: logConfig.getString('dsn'),
             environment: logConfig.getString('environment'),
-            releaseVersion: logConfig.getString('releaseVersion'),
+            release:
+              logConfig.getOptionalString('releaseVersion') ??
+              config.getOptionalString('app.releaseVersion'),
             tracesSampleRate: logConfig.getNumber('tracesSampleRate'),
             ignoreErrors: [
               /^Index for techdocs was not created: indexer received 0 documents$/,

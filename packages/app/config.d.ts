@@ -18,6 +18,16 @@ export interface Config {
      */
     rootRedirect?: string;
 
+    /**
+     * The portal's own release, e.g. `2.81.5`: the chart's `VERSION`, filled
+     * in `app-config.yaml`. Shown on the home page and reported to Sentry and
+     * TelemetryDeck, both of which start before sign-in, so it is public.
+     * Optional like the Sentry fields below: unset when `VERSION` is (local
+     * development).
+     * @visibility frontend
+     */
+    releaseVersion?: string;
+
     branding?: {
       /**
        * Filesystem path where custom branding assets (logos, favicons) are stored.
