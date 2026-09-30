@@ -7,7 +7,8 @@ import { format, transports } from 'winston';
 import Sentry from 'winston-sentry-log';
 import { WinstonLogger } from '@backstage/backend-defaults/rootLogger';
 import { createConfigSecretEnumerator } from '@backstage/backend-defaults/rootConfig';
-import { normalizeSentryEvent } from './normalizeSentryEvent';
+import { normalizeSentryEvent, SentryEvent } from './normalizeSentryEvent';
+import { isStartupPollFailure, STARTUP_REQUEST_FAILURE } from './startupRace';
 
 /**
  * The options of the Sentry transport, passed to `Sentry.init` as they are;
@@ -39,8 +40,14 @@ export function getSentryTransportConfig(config: RootConfigService) {
       // explicit `account` (which is what our WhoIsOnCallEntityCard sends)
       // throws when resolving the API base URL. See giantswarm/giantswarm#37085.
       /^No PagerDuty accounts configuration found in config file\. Reverting to legacy configuration\.$/,
+      // A request that reached the backend before it finished starting up;
+      // the caller retries. See giantswarm/giantswarm#37351.
+      STARTUP_REQUEST_FAILURE,
     ],
-    beforeSend: normalizeSentryEvent,
+    // The events poll loop's startup failures need the event's cause, which
+    // `ignoreErrors` cannot see.
+    beforeSend: <T extends SentryEvent>(event: T) =>
+      isStartupPollFailure(event) ? null : normalizeSentryEvent(event),
   };
 }
 
