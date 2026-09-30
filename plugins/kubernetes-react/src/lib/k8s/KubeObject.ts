@@ -3,6 +3,11 @@ import {
   CustomResourceMatcher,
   MultiVersionResourceMatcher,
 } from './CustomResourceMatcher';
+import {
+  getApiGroupFromVersion,
+  refMatchesResource,
+  ResourceRef,
+} from './resourceRef';
 
 export interface KubeObjectInterface {
   kind: string;
@@ -110,9 +115,24 @@ export class KubeObject<T extends KubeObjectInterface = any> {
     return this.supportedVersions[this.supportedVersions.length - 1] ?? '';
   }
 
+  static readonly kind: string;
   static readonly group: string;
   static readonly plural: string;
   static readonly isCore: boolean = false;
+
+  /**
+   * Whether a reference (`spec.controlPlaneRef`, `spec.infrastructureRef`, …)
+   * points at a resource of this class, by kind and API group. Use it before
+   * fetching what a reference names: a `KubeadmControlPlane` reader asked for
+   * an `AzureASOManagedControlPlane` can only ever 404.
+   */
+  static matchesRef(ref: ResourceRef): boolean {
+    return refMatchesResource(ref, {
+      kind: this.kind,
+      group: this.isCore ? '' : (this.group ?? ''),
+      apiVersion: this.apiVersion,
+    });
+  }
 
   constructor(json: T, cluster: string) {
     this.jsonData = json;
@@ -142,6 +162,21 @@ export class KubeObject<T extends KubeObjectInterface = any> {
 
   getKind() {
     return this.jsonData.kind;
+  }
+
+  /**
+   * Whether a reference points at this object, by kind and API group — the
+   * instance counterpart of the static {@link KubeObject.matchesRef}. The
+   * version is ignored for grouped resources, so a v1beta1 reference matches
+   * an object read at v1beta2; for core resources it must match exactly.
+   */
+  matchesRef(ref: ResourceRef): boolean {
+    const apiVersion = this.getApiVersion();
+    return refMatchesResource(ref, {
+      kind: this.getKind(),
+      group: getApiGroupFromVersion(apiVersion) ?? '',
+      apiVersion,
+    });
   }
 
   getName() {
