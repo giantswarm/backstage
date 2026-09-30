@@ -24,7 +24,13 @@ const INSTALLATION = 'installation-a';
 
 type ControlPlaneRef = NonNullable<ReturnType<Cluster['getControlPlaneRef']>>;
 
-function createCluster(controlPlaneRef?: ControlPlaneRef) {
+function createCluster({
+  controlPlaneRef,
+  labels,
+}: {
+  controlPlaneRef?: ControlPlaneRef;
+  labels?: Record<string, string>;
+} = {}) {
   return new Cluster(
     {
       apiVersion: 'cluster.x-k8s.io/v1beta2',
@@ -33,6 +39,7 @@ function createCluster(controlPlaneRef?: ControlPlaneRef) {
         name: 'my-cluster',
         namespace: 'org-test',
         annotations: { 'cluster.giantswarm.io/description': 'Test cluster' },
+        ...(labels && { labels }),
       },
       spec: {
         ...(controlPlaneRef && { controlPlaneRef }),
@@ -157,22 +164,136 @@ const kubeadmControlPlaneResponse = {
   spec: { version: 'v1.31.4' },
 };
 
+const infrastructureGroupResponse = {
+  name: 'infrastructure.cluster.x-k8s.io',
+  versions: [
+    {
+      groupVersion: 'infrastructure.cluster.x-k8s.io/v1beta1',
+      version: 'v1beta1',
+    },
+  ],
+  preferredVersion: {
+    groupVersion: 'infrastructure.cluster.x-k8s.io/v1beta1',
+    version: 'v1beta1',
+  },
+};
+
+const infrastructureResourcesResponse = {
+  groupVersion: 'infrastructure.cluster.x-k8s.io/v1beta1',
+  resources: [
+    {
+      name: 'azureasomanagedcontrolplanes',
+      singularName: 'azureasomanagedcontrolplane',
+      namespaced: true,
+      kind: 'AzureASOManagedControlPlane',
+      verbs: ['get', 'list'],
+    },
+    {
+      name: 'azureasomanagedclusters',
+      singularName: 'azureasomanagedcluster',
+      namespaced: true,
+      kind: 'AzureASOManagedCluster',
+      verbs: ['get', 'list'],
+    },
+  ],
+};
+
+const azureASOManagedControlPlaneResponse = {
+  apiVersion: 'infrastructure.cluster.x-k8s.io/v1beta1',
+  kind: 'AzureASOManagedControlPlane',
+  metadata: { name: 'my-cluster', namespace: 'org-test' },
+  spec: { version: 'v1.32.5' },
+};
+
+const azureASOManagedClusterResponse = {
+  apiVersion: 'infrastructure.cluster.x-k8s.io/v1beta1',
+  kind: 'AzureASOManagedCluster',
+  metadata: { name: 'my-cluster', namespace: 'org-test' },
+  spec: {
+    resources: [
+      {
+        apiVersion: 'resources.azure.com/v1api20200601',
+        kind: 'ResourceGroup',
+        metadata: { name: 'my-cluster' },
+        spec: { location: 'westeurope' },
+      },
+    ],
+  },
+};
+
 describe('ClusterAboutCard', () => {
   beforeEach(() => {
     mockUseCurrentCluster.mockReset();
   });
 
-  it('does not fetch a KubeadmControlPlane for a managed control plane', async () => {
-    // An AKS cluster references an AzureASOManagedControlPlane. There is no
-    // KubeadmControlPlane to read, so the card must neither request it (the
-    // GET could only 404) nor discover its API group, and must show no error.
+  it('reads an AKS cluster from its CAPZ managed resources', async () => {
+    // An AKS cluster references an AzureASOManagedControlPlane and an
+    // AzureASOManagedCluster, and its Cluster carries the `cluster-aks` app
+    // label. The card reads the version and the location from those, never
+    // touches the KubeadmControlPlane API group (that GET could only 404),
+    // and shows no error.
     mockUseCurrentCluster.mockReturnValue({
       installationName: INSTALLATION,
       cluster: createCluster({
-        apiGroup: 'infrastructure.cluster.x-k8s.io',
-        kind: 'AzureASOManagedControlPlane',
-        name: 'my-cluster',
-        namespace: 'org-test',
+        controlPlaneRef: {
+          apiGroup: 'infrastructure.cluster.x-k8s.io',
+          kind: 'AzureASOManagedControlPlane',
+          name: 'my-cluster',
+          namespace: 'org-test',
+        },
+        labels: { app: 'cluster-aks' },
+      }),
+      clusterApp,
+    });
+    const api = createMockKubernetesApi({
+      '/apis/infrastructure.cluster.x-k8s.io': infrastructureGroupResponse,
+      '/apis/infrastructure.cluster.x-k8s.io/v1beta1':
+        infrastructureResourcesResponse,
+      '/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/org-test/azureasomanagedcontrolplanes/my-cluster/':
+        azureASOManagedControlPlaneResponse,
+      '/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/org-test/azureasomanagedclusters/my-cluster/':
+        azureASOManagedClusterResponse,
+    });
+
+    await renderCard(api);
+
+    expect(
+      await screen.findByLabelText('Kubernetes version: 1.32.5'),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('westeurope')).toBeInTheDocument();
+    expect(screen.getByTitle('Azure')).toBeInTheDocument();
+    await settle();
+
+    expect(requestedPaths(api)).toContain(
+      '/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/org-test/azureasomanagedcontrolplanes/my-cluster/',
+    );
+    expect(
+      requestedPaths(api).filter(
+        path =>
+          path.includes('kubeadmcontrolplanes') ||
+          path.includes('/apis/controlplane.cluster.x-k8s.io'),
+      ),
+    ).toEqual([]);
+    expect(
+      screen.queryByText(/Errors when trying to fetch/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/KubeadmControlPlane/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+  });
+
+  it('does not fetch a control plane of a kind it cannot read', async () => {
+    // An EKS cluster references an AWSManagedControlPlane, which has no model
+    // yet. The card must neither request it (the GET could only 404) nor
+    // discover its API group, and must show no error.
+    mockUseCurrentCluster.mockReturnValue({
+      installationName: INSTALLATION,
+      cluster: createCluster({
+        controlPlaneRef: {
+          apiGroup: 'controlplane.cluster.x-k8s.io',
+          kind: 'AWSManagedControlPlane',
+          name: 'my-cluster',
+          namespace: 'org-test',
+        },
       }),
       clusterApp,
     });
@@ -188,14 +309,13 @@ describe('ClusterAboutCard', () => {
     expect(
       requestedPaths(api).filter(
         path =>
-          path.includes('kubeadmcontrolplanes') ||
+          path.includes('controlplanes') ||
           path.includes('/apis/controlplane.cluster.x-k8s.io'),
       ),
     ).toEqual([]);
     expect(
       screen.queryByText(/Errors when trying to fetch/),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText(/KubeadmControlPlane/)).not.toBeInTheDocument();
     expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
   });
 
@@ -230,10 +350,12 @@ describe('ClusterAboutCard', () => {
     mockUseCurrentCluster.mockReturnValue({
       installationName: INSTALLATION,
       cluster: createCluster({
-        apiGroup: 'controlplane.cluster.x-k8s.io',
-        kind: 'KubeadmControlPlane',
-        name: 'my-cluster',
-        namespace: 'org-test',
+        controlPlaneRef: {
+          apiGroup: 'controlplane.cluster.x-k8s.io',
+          kind: 'KubeadmControlPlane',
+          name: 'my-cluster',
+          namespace: 'org-test',
+        },
       }),
       clusterApp,
     });

@@ -13,6 +13,7 @@ import {
 } from '../utils';
 import {
   AWSClusterRoleIdentity,
+  AzureASOManagedControlPlane,
   Cluster,
   ControlPlane,
   ErrorInfoUnion,
@@ -51,7 +52,7 @@ export function collectClusterData({
 }: {
   installationName: string;
   cluster: Cluster;
-  controlPlane?: ControlPlane | null;
+  controlPlane?: ControlPlane | AzureASOManagedControlPlane | null;
   providerCluster?: ProviderCluster | null;
   awsClusterRoleIdentity?: AWSClusterRoleIdentity | null;
 }): ClusterData {

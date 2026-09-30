@@ -31,6 +31,7 @@ import { AWSAccountField } from './AWSAccountField';
 import { ClusterSwitch } from '../../ClusterSwitch';
 import { clusterDetailsRouteRef } from '../../../../../routes';
 import {
+  AzureASOManagedControlPlane,
   ControlPlane,
   getErrorMessage,
   getIncompatibilityMessage,
@@ -45,6 +46,9 @@ import {
 } from '../../../../../assets/icons/CustomIcons';
 import { ClusterTypes, ClusterProviders } from '../../../utils';
 import { AsyncValue, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+
+/** The control plane kinds the card can read a Kubernetes version from. */
+const CONTROL_PLANE_MODELS = [ControlPlane, AzureASOManagedControlPlane];
 
 interface ProviderLocationDisplayProps {
   provider: string;
@@ -114,12 +118,15 @@ export function ClusterAboutCard() {
   const controlPlaneName = controlPlaneRef?.name ?? '';
   const controlPlaneNamespace = controlPlaneRef?.namespace;
 
-  // Managed control planes are not a KubeadmControlPlane — an AKS cluster
-  // references an AzureASOManagedControlPlane, an EKS cluster an
-  // AWSManagedControlPlane — so the fetch would only 404. Disable it, and the
-  // Kubernetes version reads as not available.
-  const hasKubeadmControlPlane =
-    controlPlaneRef !== undefined && ControlPlane.matchesRef(controlPlaneRef);
+  // The reference decides which control plane kind to read: a
+  // KubeadmControlPlane, or the AzureASOManagedControlPlane of an AKS
+  // cluster. A kind without a model here (an EKS cluster's
+  // AWSManagedControlPlane, say) would only 404, so its fetch stays disabled
+  // and the Kubernetes version reads as not available.
+  const ControlPlaneModel = controlPlaneRef
+    ? CONTROL_PLANE_MODELS.find(model => model.matchesRef(controlPlaneRef))
+    : undefined;
+  const hasSupportedControlPlane = ControlPlaneModel !== undefined;
 
   const {
     resource: controlPlane,
@@ -129,19 +136,19 @@ export function ClusterAboutCard() {
     incompatibilities: controlPlaneIncompatibilities,
   } = useResource(
     installationName,
-    ControlPlane,
+    ControlPlaneModel ?? ControlPlane,
     {
       name: controlPlaneName,
       namespace: controlPlaneNamespace,
     },
-    { enabled: hasKubeadmControlPlane },
+    { enabled: hasSupportedControlPlane },
   );
 
   let controlPlaneErrorMessage;
   if (controlPlaneError) {
     controlPlaneErrorMessage = getErrorMessage({
       error: controlPlaneError,
-      resourceKind: ControlPlane.kind,
+      resourceKind: (ControlPlaneModel ?? ControlPlane).kind,
       resourceName: controlPlaneName,
       resourceNamespace: controlPlaneNamespace,
     });
@@ -149,14 +156,15 @@ export function ClusterAboutCard() {
   // A disabled query still returns incompatibilities from ControlPlane
   // discovery that another page has cached. The hook cannot tell whether a
   // caller disabled its query to mean "not yet" or "does not apply", so the
-  // card keeps them out itself when there is no KubeadmControlPlane to read.
-  if (hasKubeadmControlPlane && controlPlaneIncompatibilities[0]) {
+  // card keeps them out itself when there is no supported control plane to
+  // read.
+  if (hasSupportedControlPlane && controlPlaneIncompatibilities[0]) {
     controlPlaneErrorMessage = getIncompatibilityMessage(
       controlPlaneIncompatibilities[0],
     );
   }
 
-  useShowErrors(hasKubeadmControlPlane ? controlPlaneErrors : null);
+  useShowErrors(hasSupportedControlPlane ? controlPlaneErrors : null);
 
   const clusterType = calculateClusterType(cluster);
   const description = getClusterDescription(cluster);
@@ -266,6 +274,7 @@ export function ClusterAboutCard() {
             </AboutField>
           )}
           renderAzure={() => null}
+          renderAzureManaged={() => null}
           renderVSphere={() => null}
           renderVCD={() => null}
         />

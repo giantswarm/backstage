@@ -1,6 +1,13 @@
 export { AWSCluster } from './AWSCluster';
 export { AWSClusterRoleIdentity } from './AWSClusterRoleIdentity';
 export { AWSMachinePool } from './AWSMachinePool';
+export { AzureASOManagedCluster } from './AzureASOManagedCluster';
+export type {
+  AzureASOManagedClusterInterface,
+  AzureASOManagedClusterResource,
+} from './AzureASOManagedCluster';
+export { AzureASOManagedControlPlane } from './AzureASOManagedControlPlane';
+export type { AzureASOManagedControlPlaneInterface } from './AzureASOManagedControlPlane';
 export { AzureCluster } from './AzureCluster';
 export { AzureMachineTemplate } from './AzureMachineTemplate';
 export { Cluster } from './Cluster';
