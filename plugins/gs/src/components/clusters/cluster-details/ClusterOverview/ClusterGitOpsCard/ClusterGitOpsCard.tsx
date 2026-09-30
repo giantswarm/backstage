@@ -7,8 +7,8 @@ import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster
 export const ClusterGitOpsCard = () => {
   const { clusterApp, installationName } = useCurrentCluster();
 
-  const isGitOpsManaged = isManagedByFlux(clusterApp);
-  if (!isGitOpsManaged) {
+  // A cluster being deleted may have lost its App already.
+  if (!clusterApp || !isManagedByFlux(clusterApp)) {
     return null;
   }
 
