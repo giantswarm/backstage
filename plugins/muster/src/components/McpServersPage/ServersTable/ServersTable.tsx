@@ -129,12 +129,12 @@ const SEVERITY_RANK: Record<MCPServerSeverity, number> = {
 
 /** The row's worst health, for sorting; muster itself sorts after every server. */
 function statusRank(entry: ServerListEntry): number {
-  const instances =
-    entry.row.kind === 'server'
-      ? [entry.row.server]
-      : entry.row.kind === 'family'
-        ? entry.row.servers
-        : [];
+  let instances: MCPServer[] = [];
+  if (entry.row.kind === 'server') {
+    instances = [entry.row.server];
+  } else if (entry.row.kind === 'family') {
+    instances = entry.row.servers;
+  }
   if (instances.length === 0) {
     return Number.MAX_SAFE_INTEGER;
   }
