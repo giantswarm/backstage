@@ -24,8 +24,6 @@ export { Gate } from '@giantswarm/backstage-plugin-ui-react';
 export type { GateProps } from '@giantswarm/backstage-plugin-ui-react';
 export { SessionGate } from './SessionGate';
 export type { SessionGateProps } from './SessionGate';
-export { FreshnessIndicator } from './FreshnessIndicator';
-export type { FreshnessIndicatorProps } from './FreshnessIndicator';
 export {
   DEACTIVATED_SIGN_IN_GATE,
   ServerAuthActions,

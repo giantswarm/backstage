@@ -14,12 +14,7 @@ import { serverListEntries } from '../../lib/serverList';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import {
-  FreshnessIndicator,
-  Gate,
-  useServerPageLinks,
-  useToolCatalogue,
-} from '../shared';
+import { Gate, useServerPageLinks, useToolCatalogue } from '../shared';
 import { MusterSummary } from './MusterSummary';
 import { ServersTable } from './ServersTable';
 
@@ -32,15 +27,8 @@ import { ServersTable } from './ServersTable';
  * picked inside the server offering it.
  */
 export function McpServersPage() {
-  const {
-    mcpServers,
-    activeInstallation,
-    activeInstallationInfo,
-    isLoading,
-    dataUpdatedAt,
-    isRefreshing,
-    retry,
-  } = useMusterInstance();
+  const { mcpServers, activeInstallation, activeInstallationInfo, isLoading } =
+    useMusterInstance();
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
   // Session state (and the connect action) are resolved once via the shared
   // hook so the manager, the tool explorer and the workflows page agree (ADR D3).
@@ -155,20 +143,15 @@ export function McpServersPage() {
             }
           />
         )}
-        <Flex align="center" justify="between" gap="3">
-          <SearchField
-            aria-label="Search servers and tools"
-            placeholder="Search servers and tools"
-            value={query}
-            onChange={setQuery}
-            style={{ flex: '1 1 auto', maxWidth: 480 }}
-          />
-          <FreshnessIndicator
-            updatedAt={dataUpdatedAt}
-            isRefreshing={isRefreshing}
-            onRefresh={retry}
-          />
-        </Flex>
+        {/* No refresh control: the servers are re-read every 30 s, as the
+            Agent Platform's other tables re-read theirs. */}
+        <SearchField
+          aria-label="Search servers and tools"
+          placeholder="Search servers and tools"
+          value={query}
+          onChange={setQuery}
+          style={{ maxWidth: 480 }}
+        />
         {catalogue.data?.truncated && (
           <Text as="p" variant="body-small" color="secondary">
             The installation offers more tools than one request returns; tool

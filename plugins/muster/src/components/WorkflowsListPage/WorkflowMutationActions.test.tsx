@@ -72,8 +72,6 @@ function makeInstance(retry: () => void): MusterInstance {
     mcpServers: [],
     workflows: [],
     isLoading: false,
-    dataUpdatedAt: undefined,
-    isRefreshing: false,
     retry,
     refreshInventory: jest.fn(),
   };

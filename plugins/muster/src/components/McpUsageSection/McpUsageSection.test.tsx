@@ -71,8 +71,6 @@ function instance(): MusterInstance {
     mcpServers: [],
     workflows: [],
     isLoading: false,
-    dataUpdatedAt: undefined,
-    isRefreshing: false,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
   };

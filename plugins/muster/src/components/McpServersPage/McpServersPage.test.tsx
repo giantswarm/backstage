@@ -51,8 +51,6 @@ jest.mock('../MusterInstanceProvider', () => ({
     mcpServers,
     workflows: [],
     isLoading: false,
-    dataUpdatedAt: Date.now(),
-    isRefreshing: false,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
     ...instanceOverrides,

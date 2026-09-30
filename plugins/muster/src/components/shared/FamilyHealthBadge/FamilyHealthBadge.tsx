@@ -17,7 +17,10 @@ export function FamilyHealthBadge({ instances }: { instances: MCPServer[] }) {
     .map(s => mcpServerStateSeverity(s.getState()))
     .reduce<MCPServerSeverity>(worstSeverity, 'ok');
   return (
-    <StateBadge tone={severityTone(worst)} label={familyHealthLabel(instances)} />
+    <StateBadge
+      tone={severityTone(worst)}
+      label={familyHealthLabel(instances)}
+    />
   );
 }
 
