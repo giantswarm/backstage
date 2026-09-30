@@ -194,8 +194,9 @@ const NEW_WORKFLOW_TEMPLATE = {
  * Ad-hoc workflow dialog: a JSON editor validated via `core_workflow_validate`
  * and saved via `core_workflow_create` (when `workflow` is absent) or
  * `core_workflow_update` (editing an existing ad-hoc workflow). Both calls go
- * through the `/call` proxy. The MCP-server edit dialog in
- * `ServerMutationActions` follows the same shape, for editing only.
+ * through the `/call` proxy. The MCP-server edit dialog (`AdHocServerDialog`
+ * in the server page's `serverActions`) follows the same shape, for editing
+ * only.
  */
 export function AdHocWorkflowDialog({
   installation,
@@ -374,8 +375,8 @@ export interface WorkflowMutationActionsProps {
  * Provenance-aware CRUD affordances for one workflow. Provenance is the only
  * restriction: GitOps-managed workflows are read-only and route Edit/Remove
  * through a GitOps PR/manifest; manually-added (ad-hoc) workflows allow live
- * `core_workflow_*` CRUD behind a confirm dialog. Mirrors
- * `ServerMutationActions`.
+ * `core_workflow_*` CRUD behind a confirm dialog, as the server page's header
+ * actions do for a server.
  */
 export function WorkflowMutationActions({
   workflow,

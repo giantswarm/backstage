@@ -26,8 +26,6 @@ export { SessionGate } from './SessionGate';
 export type { SessionGateProps } from './SessionGate';
 export { FreshnessIndicator } from './FreshnessIndicator';
 export type { FreshnessIndicatorProps } from './FreshnessIndicator';
-export { InstallationHealthPill } from './InstallationHealthPill';
-export type { InstallationHealthPillProps } from './InstallationHealthPill';
 export {
   DEACTIVATED_SIGN_IN_GATE,
   ServerAuthActions,
@@ -40,3 +38,6 @@ export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';
 export type { ServerPageLinks, ServerPageTab } from './useServerPageLinks';
+export { ServerStateBadge } from './ServerStateBadge';
+export { FamilyHealthBadge } from './FamilyHealthBadge';
+export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';

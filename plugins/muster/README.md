@@ -6,6 +6,9 @@ including execution history with live per-step status.
 
 ## Features
 
+- **MCP servers** (`/agent-platform/muster/servers`): one table of the
+  installation's servers -- a server family one row, muster itself one row --
+  searchable by server and tool name (`?q=`).
 - **Server page** (`/agent-platform/muster/servers/:server?installation=…`):
   one page per MCP server, server family or muster itself (`muster`), with
   the tabs Tools (the page's index), Resources, Prompts, -- for a family --

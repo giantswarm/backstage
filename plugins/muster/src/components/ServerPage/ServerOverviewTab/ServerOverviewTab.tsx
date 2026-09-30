@@ -14,7 +14,7 @@ import {
   ServerConfig,
 } from '../../McpServersPage/serverDetail';
 import { MusterSummary } from '../../McpServersPage/MusterSummary';
-import { serverLiveActions } from '../../McpServersPage/ServerMutationActions';
+import { serverLiveActions } from '../serverActions';
 import {
   DEACTIVATED_SIGN_IN_GATE,
   Gate,

@@ -1,0 +1,1 @@
+export { FamilyHealthBadge } from './FamilyHealthBadge';

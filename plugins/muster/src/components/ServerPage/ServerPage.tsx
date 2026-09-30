@@ -21,13 +21,7 @@ import {
   useProvidePageHeaderActions,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useGitOpsSource } from '@giantswarm/backstage-plugin-flux-react';
-import {
-  MCPServer,
-  mcpServerStateSeverity,
-  worstSeverity,
-  type MCPServerSeverity,
-} from '../../lib/k8s';
+import { MCPServer } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
 import {
@@ -47,18 +41,17 @@ import {
   ConfirmActionDialog,
   LiveAction,
   serverLiveActions,
-} from '../McpServersPage/ServerMutationActions';
-import { GitOpsEditDialog } from '../McpServersPage/GitOpsServerActions';
+} from './serverActions';
+import { GitOpsEditDialog } from './GitOpsEditDialog';
 import {
   DEACTIVATED_SIGN_IN_GATE,
   SessionGate,
+  FamilyHealthBadge,
   ServerAuthActions,
-  StateBadge,
-  severityTone,
+  ServerStateBadge,
   useServerSignIn,
 } from '../shared';
 import { ServerPageTabs, ServerPageTabSpec } from './ServerPageTabs';
-import { ServerStateBadge } from './ServerStateBadge';
 import { ServerOverviewTab } from './ServerOverviewTab';
 import { ServerToolsTab } from './ServerToolsTab';
 import { ServerCapabilityTab } from './ServerCapabilityTab';
@@ -97,43 +90,9 @@ function StatusBadge({ row }: { row: ServerPageRow }) {
     return <ServerStateBadge server={row.server} />;
   }
   if (row.kind === 'family') {
-    const severities = row.servers.map(s =>
-      mcpServerStateSeverity(s.getState()),
-    );
-    const healthy = severities.filter(s => s === 'ok').length;
-    const worst = severities.reduce<MCPServerSeverity>(worstSeverity, 'ok');
-    return (
-      <StateBadge
-        tone={severityTone(worst)}
-        label={`${healthy} of ${row.servers.length} instances healthy`}
-      />
-    );
+    return <FamilyHealthBadge instances={row.servers} />;
   }
   return null;
-}
-
-/**
- * The Edit/Remove dialog of a GitOps-managed server. Its own component so the
- * GitOps source lookup runs only for such a server.
- */
-function GitOpsDialog({
-  server,
-  isOpen,
-  onOpenChange,
-}: {
-  server: MCPServer;
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
-}) {
-  const source = useGitOpsSource(server, server.cluster);
-  return (
-    <GitOpsEditDialog
-      server={server}
-      source={source}
-      isOpen={isOpen}
-      onOpenChange={onOpenChange}
-    />
-  );
 }
 
 function ServerPageContent({
@@ -485,7 +444,7 @@ function ServerPageContent({
       </Routes>
 
       {singular && isGitOpsManaged(singular) && (
-        <GitOpsDialog
+        <GitOpsEditDialog
           server={singular}
           isOpen={gitOpsOpen}
           onOpenChange={setGitOpsOpen}

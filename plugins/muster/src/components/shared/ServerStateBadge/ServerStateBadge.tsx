@@ -3,7 +3,8 @@ import {
   MCPServer,
   mcpServerStateSeverity,
 } from '../../../lib/k8s';
-import { StateBadge, severityTone } from '../../shared';
+import { StateBadge } from '../StateBadge';
+import { severityTone } from '../tones';
 
 /**
  * One server's state as a badge. A deactivated server reads `Deactivated`

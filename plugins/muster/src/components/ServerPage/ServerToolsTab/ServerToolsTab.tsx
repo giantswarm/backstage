@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Alert, Flex, SearchField, Text } from '@backstage/ui';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import { ServerPageRow } from '../../../lib/serverGrouping';
+import { toolMatchesQuery } from '../../../lib/toolSearch';
 import { noToolsExplanation } from '../../McpServersPage/serverDetail';
 import { ToolTable, toolTableItem, useServerPageLinks } from '../../shared';
 import { ServerTools } from '../useServerPageData';
@@ -19,10 +20,6 @@ export interface ServerToolsTabProps {
    * in to the server, which hides its tools.
    */
   signInGate?: ReactNode;
-}
-
-function matches(query: string, ...values: (string | undefined)[]) {
-  return values.some(value => value?.toLowerCase().includes(query));
 }
 
 /** Why a row lists no tools, when it is not a missing sign-in. */
@@ -67,15 +64,13 @@ export function ServerToolsTab({
       { replace: true },
     );
 
-  const visible = useMemo(() => {
-    const all = tools.tools ?? [];
-    const q = query.trim().toLowerCase();
-    return q
-      ? all.filter(tool =>
-          matches(q, tool.name, tool.description ?? tool.summary),
-        )
-      : all;
-  }, [tools.tools, query]);
+  const visible = useMemo(
+    () =>
+      (tools.tools ?? []).filter(tool =>
+        toolMatchesQuery(tool, tools.shortName(tool.name), query),
+      ),
+    [tools, query],
+  );
 
   if (sessionGate) {
     return <>{sessionGate}</>;

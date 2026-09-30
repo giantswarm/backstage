@@ -253,44 +253,6 @@ export function orderPresenceDegradedFirst(
 }
 
 /**
- * How many cluster pills a collapsed family row shows before the healthy
- * remainder folds into a "+N more" count. Eight keeps the row on one line at
- * the pages' 1024px reading width even when two of the pills carry a state
- * ("<name> Failed" is half again as wide as "<name>"); a family across two
- * dozen clusters used to wrap onto a second and third line.
- */
-export const SUMMARY_PILL_LIMIT = 8;
-
-export type PresenceSummary = {
-  /** Pills to render: every degraded cluster, then healthy ones while room remains. */
-  shown: McPresence[];
-  /** Healthy clusters folded into the "+N more" count. */
-  folded: number;
-};
-
-/**
- * The pills a collapsed family row shows. Degraded clusters are never folded
- * (they are what the row is for, even when there are more than `limit` of
- * them); healthy clusters fill the remaining room. A single healthy leftover
- * is shown rather than folded -- "+1 more" costs the same width as the pill.
- */
-export function summarizePresence(
-  presence: McPresence[],
-  limit = SUMMARY_PILL_LIMIT,
-): PresenceSummary {
-  const ordered = orderPresenceDegradedFirst(presence);
-  const degraded = ordered.filter(p => p.severity !== 'ok');
-  const healthy = ordered.filter(p => p.severity === 'ok');
-  const room = Math.max(0, limit - degraded.length);
-  const shownHealthy =
-    healthy.length <= room + 1 ? healthy : healthy.slice(0, room);
-  return {
-    shown: [...degraded, ...shownHealthy],
-    folded: healthy.length - shownHealthy.length,
-  };
-}
-
-/**
  * Every management cluster any standard family is federated across, sorted:
  * the fleet a family's coverage is measured against. Servers without the
  * management-cluster label contribute nothing here.

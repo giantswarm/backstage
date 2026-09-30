@@ -16,7 +16,6 @@ import {
   presenceByMc,
   selectRepresentative,
   serverRowKey,
-  summarizePresence,
 } from './serverGrouping';
 
 function makeServer(opts: {
@@ -415,54 +414,6 @@ describe('orderPresenceDegradedFirst', () => {
       'agama',
       'alba',
     ]);
-  });
-});
-
-describe('summarizePresence', () => {
-  const mcName = (i: number) => `mc-${String(i).padStart(2, '0')}`;
-  const fleet = (size: number, degraded: string[]) =>
-    presenceByMc(
-      Array.from({ length: size }, (_, i) =>
-        makeServer({
-          name: `k8s-${i}`,
-          mc: mcName(i),
-          state: degraded.includes(mcName(i)) ? 'Failed' : 'Connected',
-        }),
-      ),
-    );
-
-  it('shows every degraded cluster first and folds the healthy remainder', () => {
-    const { shown, folded } = summarizePresence(
-      fleet(24, ['mc-17', 'mc-05']),
-      10,
-    );
-
-    expect(shown).toHaveLength(10);
-    expect(shown.slice(0, 2).map(p => p.mc)).toEqual(['mc-05', 'mc-17']);
-    expect(shown.slice(2).every(p => p.severity === 'ok')).toBe(true);
-    expect(folded).toBe(14);
-  });
-
-  it('never folds a degraded cluster, even past the limit', () => {
-    const all = Array.from({ length: 12 }, (_, i) => mcName(i));
-    const { shown, folded } = summarizePresence(fleet(12, all), 10);
-
-    expect(shown).toHaveLength(12);
-    expect(folded).toBe(0);
-  });
-
-  it('shows a single leftover rather than folding it into "+1 more"', () => {
-    const { shown, folded } = summarizePresence(fleet(11, []), 10);
-
-    expect(shown).toHaveLength(11);
-    expect(folded).toBe(0);
-  });
-
-  it('leaves a short row alone', () => {
-    const { shown, folded } = summarizePresence(fleet(3, []), 10);
-
-    expect(shown).toHaveLength(3);
-    expect(folded).toBe(0);
   });
 });
 

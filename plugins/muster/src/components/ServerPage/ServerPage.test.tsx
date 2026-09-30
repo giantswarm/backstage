@@ -17,8 +17,9 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   },
 }));
 
+const mockUseGitOpsSource = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
-  useGitOpsSource: () => ({ inGit: false, isLoading: false, errors: [] }),
+  useGitOpsSource: (...args: unknown[]) => mockUseGitOpsSource(...args),
 }));
 
 let mockServers: MCPServer[] = [];
@@ -65,6 +66,8 @@ function makeServer(opts: {
   lastError?: string;
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
+  /** muster's `Ready` condition, for a test that needs its explanation. */
+  ready?: { status: 'True' | 'False'; reason: string; message: string };
 }): MCPServer {
   return new MCPServer(
     {
@@ -94,6 +97,9 @@ function makeServer(opts: {
       status: {
         state: opts.state ?? 'Connected',
         ...(opts.lastError ? { lastError: opts.lastError } : {}),
+        ...(opts.ready
+          ? { conditions: [{ type: 'Ready', ...opts.ready }] }
+          : {}),
       },
     } as never,
     'gazelle',
@@ -145,6 +151,22 @@ const makeServers = () => [
     name: 'miro',
     state: 'Auth Required',
     spec: { auth: { type: 'oauth' } },
+  }),
+  makeServer({
+    name: 'broken',
+    state: 'Failed',
+    lastError: 'dial tcp: connection refused',
+    ready: {
+      status: 'False',
+      reason: 'ConnectionFailed',
+      message: 'muster cannot reach the server.',
+    },
+  }),
+  // A local process next to muster: the registration wizard cannot edit it.
+  makeServer({ name: 'legacy', spec: { type: 'stdio', url: undefined } }),
+  makeServer({
+    name: 'lambda',
+    spec: { auth: { type: 'sigv4', sigv4: { region: 'eu-central-1' } } },
   }),
 ];
 
@@ -238,6 +260,12 @@ async function renderHeader() {
 }
 
 beforeEach(() => {
+  mockUseGitOpsSource.mockReset();
+  mockUseGitOpsSource.mockReturnValue({
+    inGit: false,
+    isLoading: false,
+    errors: [],
+  });
   mockServers = makeServers();
   mockAuthenticated = true;
   mockHeaderActions = null;
@@ -651,6 +679,146 @@ describe('ServerPage review fixes', () => {
 
     expect(
       await screen.findByText('The authorization server rejected the client.'),
+    ).toBeInTheDocument();
+  });
+});
+
+/** Opens the header's overflow menu; resolves to the offered items' labels. */
+async function menuItems() {
+  const header = await renderHeader();
+  await userEvent.click(
+    within(header!.container).getByRole('button', { name: 'Server actions' }),
+  );
+  return screen.getAllByRole('menuitem').map(item => item.textContent);
+}
+
+describe('ServerPage lifecycle and edit actions', () => {
+  it('offers only Activate for a deactivated server', async () => {
+    await renderAt(`${BASE}/paused?installation=gazelle`);
+    await screen.findByRole('heading', { name: 'paused' });
+
+    expect(await menuItems()).toEqual(['Activate…', 'Delete…']);
+  });
+
+  it('withholds Reconnect for an OAuth server waiting on a sign-in, and says why', async () => {
+    await renderAt(`${BASE}/miro/overview?installation=gazelle`);
+    await screen.findByRole('heading', { name: 'miro' });
+
+    expect(await menuItems()).toEqual(['Deactivate…', 'Delete…']);
+    expect(
+      screen.getByText(/reconnecting cannot sign a session in/),
+    ).toBeInTheDocument();
+  });
+
+  it('opens the registration wizard on the server for Edit', async () => {
+    await renderAt(`${BASE}/aws-root?installation=gazelle`);
+    await screen.findByRole('heading', { name: 'aws-root' });
+    const header = await renderHeader();
+    await userEvent.click(
+      within(header!.container).getByRole('button', { name: 'Edit' }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        `${BASE}/new?edit=aws-root`,
+      ),
+    );
+  });
+
+  it('offers the JSON editor for a server the wizard cannot edit, and says why', async () => {
+    await renderAt(`${BASE}/legacy/overview?installation=gazelle`);
+    await screen.findByRole('heading', { name: 'legacy' });
+    const header = await renderHeader();
+
+    expect(
+      within(header!.container).getByRole('button', { name: 'Edit as JSON' }),
+    ).toBeInTheDocument();
+    expect(
+      within(header!.container).queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/only covers remote \(streamable-http or SSE\) servers/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('ServerPage session auth', () => {
+  it('offers Sign out in the menu for a signed-in OAuth server', async () => {
+    await renderAt(
+      `${BASE}/aws-root?installation=gazelle`,
+      makeApi({
+        getAuthStatus: jest.fn(async () => ({
+          servers: [{ name: 'aws-root', status: 'connected' }],
+        })),
+      }),
+    );
+    await screen.findByRole('heading', { name: 'aws-root' });
+
+    await waitFor(async () => {
+      expect(await menuItems()).toContain('Sign out');
+    });
+  });
+
+  it('offers no sign-in for a sigv4 server, which signs as muster itself', async () => {
+    await renderAt(
+      `${BASE}/lambda/overview?installation=gazelle`,
+      makeApi({
+        getAuthStatus: jest.fn(async () => ({
+          servers: [{ name: 'lambda', status: 'auth_required' }],
+        })),
+      }),
+    );
+    await screen.findByRole('heading', { name: 'lambda' });
+    const header = await renderHeader();
+
+    expect(
+      within(header!.container).queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/muster's own AWS machine identity/)).toBeVisible();
+  });
+});
+
+describe('ServerPage Overview', () => {
+  it('links a fleet server to its GitOps source', async () => {
+    mockUseGitOpsSource.mockReturnValue({
+      inGit: true,
+      isLoading: false,
+      url: 'https://github.com/example/fleet/tree/main/servers',
+      errors: [],
+    });
+    await renderAt(`${BASE}/grafana/overview?installation=gazelle`);
+
+    expect(
+      await screen.findByText('Managed through GitOps'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Source/ })).toHaveAttribute(
+      'href',
+      'https://github.com/example/fleet/tree/main/servers',
+    );
+  });
+
+  it('looks up no GitOps source for a family that is not managed through it', async () => {
+    await renderAt(`${BASE}/machines/overview?installation=gazelle`);
+    await screen.findByRole('heading', { name: 'machines' });
+
+    expect(mockUseGitOpsSource).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/A family is not edited from this page/),
+    ).toBeInTheDocument();
+  });
+
+  it('explains a failed server: the state on its badge, the diagnostics in Health', async () => {
+    await renderAt(`${BASE}/broken/overview?installation=gazelle`);
+
+    const heading = await screen.findByRole('heading', { name: 'broken' });
+    expect(
+      within(heading.parentElement!).getByTitle(
+        'muster cannot reach the server.',
+      ),
+    ).toHaveTextContent('Failed');
+    expect(screen.getByRole('heading', { name: 'Health' })).toBeInTheDocument();
+    expect(
+      screen.getByText('dial tcp: connection refused'),
     ).toBeInTheDocument();
   });
 });

@@ -1,0 +1,5 @@
+---
+'@giantswarm/backstage-plugin-muster': minor
+---
+
+MCP servers: the servers page is one flat table — **Server · Status · Tools · Auth · Source**, sorted by name — instead of three tool-group sections of expandable rows. A server family is one row ("24 of 26 instances healthy"), a singular server one row, muster's own tools one row, and every row opens its server page. Source says whether a server is a Fleet server, a User-registered server or muster itself. The search (`?q=`) keeps the servers whose name matches or that offer a matching tool (short name or description, the rule the Tools tab filters with); a row matched by its tools says "N of M match" and opens its Tools tab with the same filter. Without a muster session the table still lists the servers from the CRDs, searches names only and says what the session adds. The accordions, their per-cluster pills and action rows are removed; everything they showed is on the server page.

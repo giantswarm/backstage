@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef, ToolSummary } from '../../apis';
+import { useToolCatalogue } from '../shared';
 import { MCPServer } from '../../lib/k8s';
 import { ServerPageRow, selectRepresentative } from '../../lib/serverGrouping';
 import {
@@ -10,13 +11,6 @@ import {
   toolsForRow,
 } from '../../lib/toolGrouping';
 
-/**
- * A family's tools, whose per-instance fallbacks carry each instance's own
- * prefix and so match no single pattern, come from the installation's whole
- * catalogue. The key and limit are the Tool explorer's browse query's, so the
- * two share a cache entry.
- */
-const INSTALLATION_TOOLS_LIMIT = 2000;
 /** A singular server's tools, as the servers page's accordion reads them. */
 const SERVER_TOOLS_LIMIT = 200;
 
@@ -64,12 +58,10 @@ export function useServerTools(
     queryFn: () => musterApi.listCoreTools(installation),
     enabled: enabled && row.kind === 'core',
   });
-  const catalogue = useQuery({
-    queryKey: ['muster', 'tools-browse', installation],
-    queryFn: () =>
-      musterApi.filterTools({ installation, limit: INSTALLATION_TOOLS_LIMIT }),
-    enabled: enabled && includeFamily && row.kind === 'family',
-  });
+  const catalogue = useToolCatalogue(
+    installation,
+    enabled && includeFamily && row.kind === 'family',
+  );
   let query;
   if (row.kind === 'server') {
     query = scoped;

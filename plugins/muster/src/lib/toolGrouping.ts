@@ -286,3 +286,31 @@ export function shortToolName(
     ? name.slice(prefix.length + 1)
     : name;
 }
+
+/**
+ * The installation's catalogue split by the server page each tool belongs
+ * to, keyed like `serverRowKey`: the family name, the singular server's name,
+ * or `muster` for muster's own (`core_*`, `workflow_*`). The same attribution
+ * as {@link toolsForRow}, made once per tool rather than once per row and
+ * tool. A tool no server's prefix matches is left out.
+ */
+export function toolsByServerKey(
+  tools: ToolSummary[],
+  servers: ServerPrefixInfo[],
+  musterKey: string,
+): Map<string, ToolSummary[]> {
+  const byKey = new Map<string, ToolSummary[]>();
+  const add = (key: string, tool: ToolSummary) =>
+    byKey.set(key, [...(byKey.get(key) ?? []), tool]);
+  for (const tool of tools) {
+    if (tool.name.startsWith('core_') || tool.name.startsWith('workflow_')) {
+      add(musterKey, tool);
+    } else if (tool.name.startsWith('x_')) {
+      const owner = matchServers(tool.name, servers)[0];
+      if (owner) {
+        add(owner.family ?? owner.serverName, tool);
+      }
+    }
+  }
+  return byKey;
+}

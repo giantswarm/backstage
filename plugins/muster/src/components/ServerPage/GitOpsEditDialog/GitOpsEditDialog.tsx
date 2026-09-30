@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -10,19 +10,16 @@ import {
   Skeleton,
   Text,
 } from '@backstage/ui';
-import Edit from '@material-ui/icons/Edit';
 import {
   GitOpsSource,
   useGitOpsSource,
 } from '@giantswarm/backstage-plugin-flux-react';
 import {
   ExternalLink,
-  GitOpsManagedLabel,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer } from '../../../lib/k8s';
 import {
-  gitOpsLabelSource,
   gitOpsManagerDescription,
   isChartRendered,
   qualifiedName,
@@ -82,19 +79,19 @@ function SourceStep({
  * How to change a GitOps-managed server in Git: GitOps-managed servers are
  * read-only in the app, since the reconciler would revert a live change. The
  * steps depend on what is in Git — the MCPServer manifest itself, or the
- * values of the HelmRelease that renders it.
+ * values of the HelmRelease that renders it. Render it for a managed server
+ * only: it looks the server's GitOps source up.
  */
 export function GitOpsEditDialog({
   server,
-  source,
   isOpen,
   onOpenChange,
 }: {
   server: MCPServer;
-  source: GitOpsSource;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
 }) {
+  const source = useGitOpsSource(server, server.cluster);
   // Always mounted, so only serialised while it is shown.
   const manifest = useMemo(
     () => (isOpen ? toManifestYaml(server) : ''),
@@ -257,47 +254,5 @@ export function GitOpsEditDialog({
         </Button>
       </DialogFooter>
     </Dialog>
-  );
-}
-
-export interface GitOpsServerActionsProps {
-  server: MCPServer;
-  /** The per-session Sign in / Sign out affordance, if any. */
-  authActions?: ReactNode;
-  className?: string;
-}
-
-/**
- * The action row of a GitOps-managed server: the GitOps claim with a link to
- * its source, the session auth actions, and Edit/Remove, which explains how to
- * make the change in Git rather than mutating the server live.
- */
-export function GitOpsServerActions({
-  server,
-  authActions,
-  className,
-}: GitOpsServerActionsProps) {
-  const source = useGitOpsSource(server, server.cluster);
-  const [editOpen, setEditOpen] = useState(false);
-
-  return (
-    <Flex align="center" gap="2" className={className}>
-      <GitOpsManagedLabel source={gitOpsLabelSource(source)} />
-      {authActions}
-      <Button
-        size="small"
-        variant="secondary"
-        iconStart={<Edit fontSize="inherit" />}
-        onPress={() => setEditOpen(true)}
-      >
-        Edit/Remove
-      </Button>
-      <GitOpsEditDialog
-        server={server}
-        source={source}
-        isOpen={editOpen}
-        onOpenChange={setEditOpen}
-      />
-    </Flex>
   );
 }
