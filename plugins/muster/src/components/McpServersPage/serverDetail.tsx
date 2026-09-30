@@ -139,8 +139,8 @@ export function ServerConfig({ server }: { server: MCPServer }) {
       )}`,
     });
   }
-  facts.push({ label: 'Type', value: server.getType() ?? '-' });
-  facts.push({ label: 'Family', value: server.getFamily() ?? '-' });
+  facts.push({ label: 'Type', value: server.getType() ?? '—' });
+  facts.push({ label: 'Family', value: server.getFamily() ?? '—' });
   if (server.getManagementCluster()) {
     facts.push({ label: 'Target MC', value: server.getManagementCluster() });
   }
@@ -275,7 +275,7 @@ export function AuthChain({ server }: { server: MCPServer }) {
       label: 'Local mint',
       value: (
         <>
-          audience <Mono>{localMint.audience ?? '-'}</Mono>
+          audience <Mono>{localMint.audience ?? '—'}</Mono>
         </>
       ),
     });
@@ -424,7 +424,7 @@ export function RuntimeState({ server }: { server: MCPServer }) {
           title={server.getStateExplanation()}
         />
       ) : (
-        '-'
+        '—'
       ),
     },
   ];

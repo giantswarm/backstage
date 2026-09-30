@@ -324,7 +324,7 @@ function WorkflowDetailContent() {
             <span>
               namespace{' '}
               <code className={classes.mono}>
-                {workflow.getNamespace() ?? '-'}
+                {workflow.getNamespace() ?? '—'}
               </code>
             </span>
             <span>

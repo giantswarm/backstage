@@ -5,6 +5,7 @@ import { Box, Typography } from '@material-ui/core';
 import {
   isTableColumnHidden,
   matchesQuery,
+  NotAvailable,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { workflowDetailRouteRef } from '../../../routes';
 import { AvailabilityBadge, StateBadge } from '../../shared';
@@ -89,7 +90,7 @@ export const getInitialColumns = ({
       title: 'Namespace',
       field: WorkflowColumns.namespace,
       width: '15%',
-      render: row => <>{row.namespace || '-'}</>,
+      render: row => (row.namespace ? <>{row.namespace}</> : <NotAvailable />),
     },
     {
       title: 'Steps',
