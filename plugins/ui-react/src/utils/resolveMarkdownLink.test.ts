@@ -69,8 +69,17 @@ describe('createMarkdownLinkResolver', () => {
       // eslint-disable-next-line no-script-url
       'JavaScript:alert(1)',
       'data:text/html,hi',
+      'java\tscript:alert(1)',
+      // eslint-disable-next-line no-script-url
+      ' javascript:alert(1)',
     ])('drops the unsafe link %p', href => {
       expect(resolve(href)).toBe('');
+    });
+
+    it('resolves a relative link with a colon after its first slash', () => {
+      expect(resolve('docs/notes:v1.md')).toBe(
+        `${TRIVY_BLOB}/docs/notes:v1.md`,
+      );
     });
   });
 
@@ -91,6 +100,7 @@ describe('createMarkdownLinkResolver', () => {
 
     expect(resolve('setup.md')).toBe('https://example.com/docs/guide/setup.md');
     expect(resolve('/index.html')).toBe('https://example.com/index.html');
+    expect(resolve('java\tscript:alert(1)')).toBe('');
   });
 
   it.each([undefined, '', 'not a url', 'file:///README.md'])(
