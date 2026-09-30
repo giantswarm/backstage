@@ -317,7 +317,7 @@ function ServerPageContent({
   );
   const signInGate: ReactNode =
     singular && canSignIn && signInState.needsLogin ? (
-      <Flex direction="column" gap="2">
+      <Flex direction="column" gap="2" align="start">
         <Text as="p" variant="body-medium">
           Your muster session is not signed in to this server, so its tools are
           hidden.

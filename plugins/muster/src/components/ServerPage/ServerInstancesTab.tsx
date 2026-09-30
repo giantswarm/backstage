@@ -229,14 +229,18 @@ export function ServerInstancesTab({
                 <InstanceStatus server={server} />
               </Flex>
               {authenticated && server.canAuthenticateInteractively() && (
-                <ServerAuthActions
-                  serverName={server.getName()}
-                  installation={server.cluster}
-                  oauthConfigured={server.getAuth()?.type === 'oauth'}
-                  signInGate={
-                    server.getSuspended() ? DEACTIVATED_SIGN_IN_GATE : undefined
-                  }
-                />
+                <Flex direction="column" align="start">
+                  <ServerAuthActions
+                    serverName={server.getName()}
+                    installation={server.cluster}
+                    oauthConfigured={server.getAuth()?.type === 'oauth'}
+                    signInGate={
+                      server.getSuspended()
+                        ? DEACTIVATED_SIGN_IN_GATE
+                        : undefined
+                    }
+                  />
+                </Flex>
               )}
               <DetailBlock title="Configuration">
                 <ServerConfig server={server} />
