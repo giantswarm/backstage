@@ -329,10 +329,10 @@ function ServerPageContent({
     ) : undefined;
 
   // Tools leads: what a server offers is what a person comes to it for.
-  // Overview stays the index, so a server link still lands on it.
+  // Overview closes the row but stays the index, so a server link still
+  // lands on it.
   const tabs: ServerPageTabSpec[] = [
     { id: 'tools', path: 'tools', title: 'Tools', count: tools.tools?.length },
-    { id: 'overview', path: '', title: 'Overview' },
     {
       id: 'resources',
       path: 'resources',
@@ -354,6 +354,7 @@ function ServerPageContent({
       count: row.servers.length,
     });
   }
+  tabs.push({ id: 'overview', path: '', title: 'Overview' });
 
   return (
     <Flex direction="column" gap="4">

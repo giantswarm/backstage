@@ -256,19 +256,19 @@ describe('ServerPage tabs', () => {
         // A family's tools need the whole catalogue, read only on its Tools
         // tab: no count here rather than a download on every tab.
         'Tools',
-        'Overview',
         'Resources',
         'Prompts',
         'Instances (2)',
+        'Overview',
       ]),
     );
     expect(screen.getAllByRole('tab').map(t => t.getAttribute('href'))).toEqual(
       [
         `${BASE}/kubernetes/tools?installation=gazelle`,
-        `${BASE}/kubernetes?installation=gazelle`,
         `${BASE}/kubernetes/resources?installation=gazelle`,
         `${BASE}/kubernetes/prompts?installation=gazelle`,
         `${BASE}/kubernetes/instances?installation=gazelle`,
+        `${BASE}/kubernetes?installation=gazelle`,
       ],
     );
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
@@ -285,10 +285,10 @@ describe('ServerPage tabs', () => {
     await waitFor(() =>
       expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual([
         'Tools (2)',
-        'Overview',
         // Reported by core_mcpserver_list; a missing count is not shown as 0.
         'Resources (3)',
         'Prompts',
+        'Overview',
       ]),
     );
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
