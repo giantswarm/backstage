@@ -5,9 +5,8 @@ import {
   useElementFilter,
 } from '@backstage/core-plugin-api';
 import { useRouteRefParams } from '@backstage/frontend-plugin-api';
-import { Flex, PluginHeader } from '@backstage/ui';
+import { Alert as BuiAlert, Flex, PluginHeader } from '@backstage/ui';
 import StorageIcon from '@material-ui/icons/Storage';
-import { Box } from '@material-ui/core';
 import { TabProps } from '@material-ui/core/Tab';
 import Alert from '@material-ui/lab/Alert';
 import { useAsyncCluster } from '../ClusterDetailsPage/useCurrentCluster';
@@ -43,21 +42,27 @@ export const ClusterDeletingNotice = ({ cluster }: { cluster: Cluster }) => {
     return null;
   }
 
+  const deletionTimestamp = cluster.getDeletionTimestamp();
+
   return (
-    <Box marginBottom={2}>
-      <Alert severity="info">
-        This cluster is being deleted
-        {cluster.getDeletionTimestamp() ? (
-          <>
-            {' '}
-            since{' '}
-            <DateComponent value={cluster.getDeletionTimestamp()} relative />
-          </>
-        ) : null}
-        . Resources that belong to it disappear as the deletion proceeds, so
-        some details may be missing.
-      </Alert>
-    </Box>
+    <BuiAlert
+      status="info"
+      icon
+      mb="4"
+      title="This cluster is being deleted"
+      description={
+        <>
+          {deletionTimestamp ? (
+            <>
+              Deletion was requested{' '}
+              <DateComponent value={deletionTimestamp} relative />.{' '}
+            </>
+          ) : null}
+          Resources that belong to the cluster disappear as the deletion
+          proceeds, so some details may be missing.
+        </>
+      }
+    />
   );
 };
 
