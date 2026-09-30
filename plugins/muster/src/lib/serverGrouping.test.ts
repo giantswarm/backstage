@@ -9,11 +9,13 @@ import {
   familyCoverage,
   familyGroups,
   familyToolGroup,
+  findServerRow,
   fleetManagementClusters,
   orderPresenceDegradedFirst,
   partitionServers,
   presenceByMc,
   selectRepresentative,
+  serverRowKey,
   summarizePresence,
 } from './serverGrouping';
 
@@ -524,5 +526,47 @@ describe('fleetManagementClusters / familyCoverage', () => {
       'gaggle',
     ]);
     expect(coverage.degraded.map(p => p.mc)).toEqual(['garm']);
+  });
+});
+
+describe('findServerRow', () => {
+  const servers = [
+    makeServer({ name: 'walrus-mcp-kubernetes', family: 'kubernetes' }),
+    makeServer({ name: 'gazelle-mcp-kubernetes', family: 'kubernetes' }),
+    makeServer({ name: 'aws-root' }),
+    // A singular CR sharing the family's name: the family's page wins.
+    makeServer({ name: 'kubernetes' }),
+  ];
+
+  it('resolves a family name to the family row, its instances by name', () => {
+    const row = findServerRow(servers, 'kubernetes');
+    expect(row?.kind).toBe('family');
+    expect(row?.kind === 'family' && row.servers.map(s => s.getName())).toEqual(
+      ['gazelle-mcp-kubernetes', 'walrus-mcp-kubernetes'],
+    );
+  });
+
+  it('resolves a singular CR by its name', () => {
+    const row = findServerRow(servers, 'aws-root');
+    expect(row?.kind === 'server' && row.server.getName()).toBe('aws-root');
+  });
+
+  it('does not resolve a family instance on its own', () => {
+    // Instances are a detail of their family's page, never a page of their own.
+    expect(findServerRow(servers, 'walrus-mcp-kubernetes')).toBeUndefined();
+  });
+
+  it('resolves `muster` to muster itself', () => {
+    expect(findServerRow([], 'muster')).toEqual({ kind: 'core' });
+  });
+
+  it('is undefined for a server the installation does not have', () => {
+    expect(findServerRow(servers, 'nope')).toBeUndefined();
+  });
+
+  it('round-trips through serverRowKey', () => {
+    for (const key of ['kubernetes', 'aws-root', 'muster']) {
+      expect(serverRowKey(findServerRow(servers, key)!)).toBe(key);
+    }
   });
 });

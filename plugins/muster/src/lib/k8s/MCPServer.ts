@@ -274,6 +274,16 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
     return this.jsonData.spec?.family?.name;
   }
 
+  /**
+   * The argument a caller of a family-grouped tool names the instance with
+   * (`spec.family.instanceArg`, e.g. `management_cluster`). muster injects it
+   * into each grouped tool as a required parameter whose values are the
+   * instances' MCPServer names.
+   */
+  getInstanceArg() {
+    return this.jsonData.spec?.family?.instanceArg;
+  }
+
   getManagementCluster() {
     return this.findLabel(MANAGEMENT_CLUSTER_LABEL);
   }

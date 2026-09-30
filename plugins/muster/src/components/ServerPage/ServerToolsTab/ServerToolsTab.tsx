@@ -1,0 +1,134 @@
+import { ReactNode, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Alert, Flex, SearchField, Text } from '@backstage/ui';
+import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
+import { ServerPageRow } from '../../../lib/serverGrouping';
+import { noToolsExplanation } from '../../McpServersPage/serverDetail';
+import { ToolTable, toolTableItem, useServerPageLinks } from '../../shared';
+import { ServerTools } from '../useServerPageData';
+
+export interface ServerToolsTabProps {
+  row: ServerPageRow;
+  serverKey: string;
+  installation: string;
+  tools: ServerTools;
+  /** Shown instead of the table while the muster session is missing. */
+  sessionGate?: ReactNode;
+  /**
+   * Shown instead of an empty table when this person's session is not signed
+   * in to the server, which hides its tools.
+   */
+  signInGate?: ReactNode;
+}
+
+function matches(query: string, ...values: (string | undefined)[]) {
+  return values.some(value => value?.toLowerCase().includes(query));
+}
+
+/** Why a row lists no tools, when it is not a missing sign-in. */
+function emptyExplanation(row: ServerPageRow): string {
+  if (row.kind === 'server') {
+    return noToolsExplanation(row.server);
+  }
+  if (row.kind === 'family') {
+    return 'No tools exposed by any instance of this family. An instance that needs a sign-in offers it on the Instances tab.';
+  }
+  return 'muster reports no tools of its own.';
+}
+
+/**
+ * The server's tools, each linking to its tool page: short name, markers,
+ * description. The filter is the page's `?q=`, so a link can open the tab
+ * pre-filtered. A family's tools are listed once for the whole family,
+ * including the ones muster exposes per instance.
+ */
+export function ServerToolsTab({
+  row,
+  serverKey,
+  installation,
+  tools,
+  sessionGate,
+  signInGate,
+}: ServerToolsTabProps) {
+  const links = useServerPageLinks();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get('q') ?? '';
+
+  const setQuery = (next: string) =>
+    setSearchParams(
+      prev => {
+        if (next) {
+          prev.set('q', next);
+        } else {
+          prev.delete('q');
+        }
+        return prev;
+      },
+      { replace: true },
+    );
+
+  const visible = useMemo(() => {
+    const all = tools.tools ?? [];
+    const q = query.trim().toLowerCase();
+    return q
+      ? all.filter(tool =>
+          matches(q, tool.name, tool.description ?? tool.summary),
+        )
+      : all;
+  }, [tools.tools, query]);
+
+  if (sessionGate) {
+    return <>{sessionGate}</>;
+  }
+  if (tools.isLoading) {
+    return <LoadingIndicator label="Reading the server's tools…" />;
+  }
+  if (tools.error) {
+    return (
+      <Alert
+        status="danger"
+        title="Could not read the tools"
+        description={tools.error.message}
+      />
+    );
+  }
+
+  const all = tools.tools ?? [];
+  if (all.length === 0) {
+    return signInGate ? (
+      <>{signInGate}</>
+    ) : (
+      <Text as="p" variant="body-medium" color="secondary">
+        {emptyExplanation(row)}
+      </Text>
+    );
+  }
+
+  return (
+    <Flex direction="column" gap="3" style={{ maxWidth: 1024 }}>
+      <SearchField
+        aria-label="Filter tools"
+        placeholder="Filter tools"
+        value={query}
+        onChange={setQuery}
+      />
+      {tools.truncated && (
+        <Text as="p" variant="body-small" color="secondary">
+          The installation offers more tools than one request returns; this list
+          may be incomplete.
+        </Text>
+      )}
+      <ToolTable
+        ariaLabel="Tools"
+        emptyText={`No tool of this server matches “${query}”.`}
+        items={visible.map(tool => {
+          const href = links.tool(serverKey, tool.name, installation);
+          return toolTableItem(tool, {
+            name: tools.shortName(tool.name),
+            mode: href ? { kind: 'link', href } : { kind: 'static' },
+          });
+        })}
+      />
+    </Flex>
+  );
+}

@@ -268,6 +268,37 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it.each([
+    ['/agent-platform/muster/servers/kubernetes', 'tools'],
+    ['/agent-platform/muster/servers/kubernetes/overview', 'overview'],
+    ['/agent-platform/muster/servers/kubernetes/instances', 'instances'],
+  ])('should report %s as a server page', (path, view) => {
+    expect(getTelemetryPageViewPayload(path)).toEqual({
+      page: 'MCP server',
+      view,
+      path,
+    });
+  });
+
+  it('should report a tool page beneath its server', () => {
+    const path =
+      '/agent-platform/muster/servers/kubernetes/tools/x_kubernetes_get_pods';
+    expect(getTelemetryPageViewPayload(path)).toEqual({
+      page: 'MCP tool',
+      path,
+    });
+  });
+
+  it('should keep the registration wizard on the servers view', () => {
+    expect(
+      getTelemetryPageViewPayload('/agent-platform/muster/servers/new/auth'),
+    ).toEqual({
+      page: 'Muster',
+      view: 'servers',
+      path: '/agent-platform/muster/servers/new/auth',
+    });
+  });
+
   it('should return correct payload for muster tools view', () => {
     const result = getTelemetryPageViewPayload('/agent-platform/muster/tools');
     expect(result).toEqual({
@@ -492,6 +523,9 @@ describe('getTelemetryPageViewPayload', () => {
       // Registered: redirects to servers, but a bookmark still reports a view.
       '/agent-platform/muster/dashboard',
       '/agent-platform/muster/servers',
+      '/agent-platform/muster/servers/kubernetes',
+      '/agent-platform/muster/servers/kubernetes/overview',
+      '/agent-platform/muster/servers/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/muster/workflows',
       '/agent-platform/muster/workflows/my-workflow',
       '/agent-platform/muster/workflows/my-workflow/run',

@@ -21,6 +21,7 @@ import {
   HealthDetails,
   Provenance,
   ServerConfig,
+  ServerPageLink,
   ServerPrompts,
   ServerResources,
   ServerTools,
@@ -209,6 +210,10 @@ export function StandardServerDisclosure({
 
   return (
     <DisclosureAccordion summary={summary} defaultExpanded={defaultExpanded}>
+      <ServerPageLink
+        serverKey={family}
+        installation={representative.cluster}
+      />
       {/* Every cluster, not the collapsed row's capped subset -- this is
           where the full per-cluster picture lives. */}
       <DetailBlock title="Management clusters">

@@ -32,6 +32,7 @@ import {
 } from '../shared';
 import { TOOL_GROUPS, ToolGroupKey } from '../../lib/k8s';
 import {
+  MUSTER_SERVER_KEY,
   ServerRow,
   ToolGroupPartition,
   familyGroups,
@@ -42,6 +43,7 @@ import { StandardServerDisclosure } from './StandardServerDisclosure';
 import { MusterSummary } from './MusterSummary';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
 import { CoreFamiliesPanel } from './CoreFamiliesPanel';
+import { ServerPageLink } from './serverDetail';
 
 const useStyles = makeStyles((theme: Theme) => ({
   column: {
@@ -220,6 +222,10 @@ export function McpServersPage() {
         </Box>
       }
     >
+      <ServerPageLink
+        serverKey={MUSTER_SERVER_KEY}
+        installation={activeInstallation}
+      />
       {authenticated && activeInstallation ? (
         <CoreFamiliesPanel installation={activeInstallation} />
       ) : (

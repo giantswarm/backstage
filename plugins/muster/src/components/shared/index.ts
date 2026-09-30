@@ -38,3 +38,5 @@ export { useServerSignIn } from './useServerSignIn';
 export type { ServerSignInState } from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
+export { useServerPageLinks } from './useServerPageLinks';
+export type { ServerPageLinks, ServerPageTab } from './useServerPageLinks';
