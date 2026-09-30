@@ -7,6 +7,7 @@ import {
 import { useRouteRefParams } from '@backstage/frontend-plugin-api';
 import { Flex, PluginHeader } from '@backstage/ui';
 import StorageIcon from '@material-ui/icons/Storage';
+import { Box } from '@material-ui/core';
 import { TabProps } from '@material-ui/core/Tab';
 import Alert from '@material-ui/lab/Alert';
 import { useAsyncCluster } from '../ClusterDetailsPage/useCurrentCluster';
@@ -17,6 +18,7 @@ import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { AIChatButtonBui } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { calculateClusterStatus } from '../utils';
 import { ClusterStatuses } from '../ClusterStatus';
+import { DateComponent } from '../../UI';
 
 export type ClusterLayoutRouteProps = {
   path: string;
@@ -36,12 +38,36 @@ const Route: (props: ClusterLayoutRouteProps) => null = () => null;
 attachComponentData(Route, dataKey, true);
 attachComponentData(Route, 'core.gatherMountPoints', true);
 
+export const ClusterDeletingNotice = ({ cluster }: { cluster: Cluster }) => {
+  if (calculateClusterStatus(cluster) !== ClusterStatuses.Deleting) {
+    return null;
+  }
+
+  return (
+    <Box marginBottom={2}>
+      <Alert severity="info">
+        This cluster is being deleted
+        {cluster.getDeletionTimestamp() ? (
+          <>
+            {' '}
+            since{' '}
+            <DateComponent value={cluster.getDeletionTimestamp()} relative />
+          </>
+        ) : null}
+        . Resources that belong to it disappear as the deletion proceeds, so
+        some details may be missing.
+      </Alert>
+    </Box>
+  );
+};
+
 const PageContent = ({
   isLoading,
   notFound,
   clusterName,
   installationName,
   error,
+  cluster,
   clusterApp,
   element,
 }: {
@@ -50,6 +76,7 @@ const PageContent = ({
   clusterName: string;
   installationName: string;
   error: Error | null;
+  cluster?: Cluster;
   clusterApp?: App;
   element: ReactNode;
 }) => {
@@ -85,7 +112,12 @@ const PageContent = ({
     );
   }
 
-  return <Content>{element}</Content>;
+  return (
+    <Content>
+      {cluster ? <ClusterDeletingNotice cluster={cluster} /> : null}
+      {element}
+    </Content>
+  );
 };
 
 function getAIChatMessage(cluster: Cluster, installationName: string): string {
@@ -193,6 +225,7 @@ export const ClusterLayout = ({
         clusterName={name}
         installationName={installationName}
         error={error}
+        cluster={cluster}
         clusterApp={clusterApp}
         element={element}
       />
