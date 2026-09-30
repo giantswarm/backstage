@@ -58,7 +58,8 @@ export const AsyncClusterProvider = ({
 export function useCurrentCluster(): {
   installationName: string;
   cluster: Cluster;
-  clusterApp: App;
+  /** Absent only for a cluster being deleted, whose App went first. */
+  clusterApp?: App;
 } {
   const value = useContext(ClusterContext);
 
@@ -66,7 +67,7 @@ export function useCurrentCluster(): {
     throw new Error('ClusterContext not available');
   }
 
-  if (!value.cluster || !value.clusterApp) {
+  if (!value.cluster) {
     throw new Error(
       'useCurrentCluster hook is being called outside of an ClusterLayout where the cluster has not been loaded. If this is intentional, please use useAsyncCluster instead.',
     );

@@ -52,7 +52,15 @@ export const useClusterFromUrl = (): {
     isNotFound(errorClusterApp) &&
     isNotFound(errorCluster);
 
-  const error = notFound ? null : errorClusterApp || errorCluster;
+  // Deleting a cluster removes its App before the Cluster's finalizers let
+  // go of the Cluster, so a cluster being deleted without an App is expected.
+  const appGoneWhileDeleting =
+    Boolean(cluster?.getDeletionTimestamp()) &&
+    !clusterApp &&
+    errorClusterApp?.name === 'NotFoundError';
+
+  const error =
+    notFound || appGoneWhileDeleting ? null : errorClusterApp || errorCluster;
 
   return {
     installationName,
