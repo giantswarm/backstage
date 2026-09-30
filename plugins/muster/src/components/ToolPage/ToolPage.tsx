@@ -54,7 +54,7 @@ export function ToolPage() {
         { label: serverKey, href: links.server(serverKey, activeInstallation) },
         {
           label: 'Tools',
-          href: links.server(serverKey, activeInstallation, { tab: 'tools' }),
+          href: links.server(serverKey, activeInstallation),
         },
         { label: shortName },
       ]}
@@ -92,7 +92,7 @@ export function ToolPage() {
     );
   } else if (!row || !offered) {
     const serverHref = row
-      ? links.server(serverKey, activeInstallation, { tab: 'tools' })
+      ? links.server(serverKey, activeInstallation)
       : listHref;
     body = (
       <EmptyState

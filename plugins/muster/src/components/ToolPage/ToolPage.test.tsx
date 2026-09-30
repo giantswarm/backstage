@@ -118,7 +118,7 @@ describe('ToolPage', () => {
     ).toEqual([
       ['MCP Servers', `${BASE}?installation=gazelle`],
       ['aws-root', `${BASE}/aws-root?installation=gazelle`],
-      ['Tools', `${BASE}/aws-root/tools?installation=gazelle`],
+      ['Tools', `${BASE}/aws-root?installation=gazelle`],
     ]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Execute' }));
@@ -140,7 +140,7 @@ describe('ToolPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Back to the tools of aws-root' }),
-    ).toHaveAttribute('href', `${BASE}/aws-root/tools?installation=gazelle`);
+    ).toHaveAttribute('href', `${BASE}/aws-root?installation=gazelle`);
     expect(api.describeTool).not.toHaveBeenCalled();
   });
 

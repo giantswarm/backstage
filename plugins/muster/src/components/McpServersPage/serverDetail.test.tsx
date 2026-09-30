@@ -277,7 +277,7 @@ describe('ServerTools', () => {
       screen.getByRole('link', { name: 'Open the server’s tools' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/muster/servers/aws-root/tools?installation=gazelle',
+      '/agent-platform/muster/servers/aws-root?installation=gazelle',
     );
   });
 });

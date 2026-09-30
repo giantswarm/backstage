@@ -245,8 +245,10 @@ beforeEach(() => {
 });
 
 describe('ServerPage tabs', () => {
-  it('gives a family Overview, Tools, Resources, Prompts and Instances', async () => {
-    const api = await renderAt(`${BASE}/kubernetes?installation=gazelle`);
+  it('gives a family Tools, Resources, Prompts, Instances and Overview', async () => {
+    const api = await renderAt(
+      `${BASE}/kubernetes/overview?installation=gazelle`,
+    );
 
     expect(
       await screen.findByRole('heading', { name: 'kubernetes' }),
@@ -264,11 +266,11 @@ describe('ServerPage tabs', () => {
     );
     expect(screen.getAllByRole('tab').map(t => t.getAttribute('href'))).toEqual(
       [
-        `${BASE}/kubernetes/tools?installation=gazelle`,
+        `${BASE}/kubernetes?installation=gazelle`,
         `${BASE}/kubernetes/resources?installation=gazelle`,
         `${BASE}/kubernetes/prompts?installation=gazelle`,
         `${BASE}/kubernetes/instances?installation=gazelle`,
-        `${BASE}/kubernetes?installation=gazelle`,
+        `${BASE}/kubernetes/overview?installation=gazelle`,
       ],
     );
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
@@ -312,6 +314,22 @@ describe('ServerPage tabs', () => {
       'Instances',
     );
     expect(screen.getByText('muster (core tools)')).toBeInTheDocument();
+  });
+
+  it('lands on Tools, and keeps an old …/tools link with its filter', async () => {
+    await renderAt(`${BASE}/aws-root/tools?installation=gazelle&q=delete`);
+
+    expect(
+      await screen.findByRole('link', { name: 'delete_bucket' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Tools',
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        `${BASE}/aws-root?installation=gazelle&q=delete`,
+      ),
+    );
   });
 
   it('says so when the installation has no such server', async () => {
@@ -476,7 +494,7 @@ describe('ServerPage Instances tab', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
-        'Overview',
+        'Tools',
       ),
     );
   });
@@ -543,7 +561,7 @@ describe('ServerPage header actions', () => {
 
   it('withholds the live actions without a muster session and says why', async () => {
     mockAuthenticated = false;
-    await renderAt(`${BASE}/aws-root?installation=gazelle`);
+    await renderAt(`${BASE}/aws-root/overview?installation=gazelle`);
     await screen.findByRole('heading', { name: 'aws-root' });
 
     expect(mockHeaderActions).toBeNull();

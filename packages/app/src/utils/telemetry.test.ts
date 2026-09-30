@@ -269,8 +269,8 @@ describe('getTelemetryPageViewPayload', () => {
   });
 
   it.each([
-    ['/agent-platform/muster/servers/kubernetes', 'overview'],
-    ['/agent-platform/muster/servers/kubernetes/tools', 'tools'],
+    ['/agent-platform/muster/servers/kubernetes', 'tools'],
+    ['/agent-platform/muster/servers/kubernetes/overview', 'overview'],
     ['/agent-platform/muster/servers/kubernetes/instances', 'instances'],
   ])('should report %s as a server page', (path, view) => {
     expect(getTelemetryPageViewPayload(path)).toEqual({
@@ -524,7 +524,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/muster/dashboard',
       '/agent-platform/muster/servers',
       '/agent-platform/muster/servers/kubernetes',
-      '/agent-platform/muster/servers/kubernetes/tools',
+      '/agent-platform/muster/servers/kubernetes/overview',
       '/agent-platform/muster/servers/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/muster/workflows',
       '/agent-platform/muster/workflows/my-workflow',

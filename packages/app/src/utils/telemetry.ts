@@ -145,7 +145,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
       const parts = pathname.split('/');
       payload = {
         page: 'MCP server',
-        view: parts[5] || 'overview',
+        // Tools is the server page's index.
+        view: parts[5] || 'tools',
       };
       break;
     }

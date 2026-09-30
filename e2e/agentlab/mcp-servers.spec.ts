@@ -186,19 +186,26 @@ test("a row opens its server page, with the server's tabs", async ({
       `/agent-platform/muster/servers/mcp-kubernetes\\?installation=${lab.installation}$`,
     ),
   );
-  await expect(admin.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+  // Tools is the server page's index: a server link lands on its tools.
+  await expect(admin.getByRole('tab', { name: /^Tools/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  for (const tab of [/^Tools/, /^Resources/, /^Prompts/]) {
-    await expect(admin.getByRole('tab', { name: tab })).toBeVisible();
-  }
-
-  await admin.getByRole('tab', { name: /^Tools/ }).click();
   await expect(
     admin.getByRole('searchbox', { name: 'Filter tools' }),
     'the Tools tab lists the server’s tools',
   ).toBeVisible({ timeout: 60_000 });
+  for (const tab of [/^Resources/, /^Prompts/, /^Overview/]) {
+    await expect(admin.getByRole('tab', { name: tab })).toBeVisible();
+  }
+
+  await admin.getByRole('tab', { name: 'Overview' }).click();
+  await expect(admin).toHaveURL(
+    new RegExp(
+      `/agent-platform/muster/servers/mcp-kubernetes/overview\\?installation=${lab.installation}$`,
+    ),
+  );
+  await expect(admin.getByText('Configuration').first()).toBeVisible();
 });
 
 test("muster's own server page lists its core tools, and a tool page runs one", async ({
@@ -209,7 +216,7 @@ test("muster's own server page lists its core tools, and a tool page runs one", 
   await connectToMuster(admin);
   await open(
     admin,
-    `/agent-platform/muster/servers/muster/tools?installation=${lab.installation}`,
+    `/agent-platform/muster/servers/muster?installation=${lab.installation}`,
   );
 
   // Read-only, and there on every muster: the aggregator's own server list.

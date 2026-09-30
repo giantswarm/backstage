@@ -2,8 +2,11 @@ import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
 
-/** A server page's tabs, by their path segment. Overview is the index. */
-export type ServerPageTab = 'tools' | 'resources' | 'prompts' | 'instances';
+/**
+ * A server page's tabs, by their path segment. Tools is the index, so a link
+ * to it names no tab.
+ */
+export type ServerPageTab = 'resources' | 'prompts' | 'instances' | 'overview';
 
 function withQuery(path: string, query: Record<string, string | undefined>) {
   const params = new URLSearchParams();
@@ -17,7 +20,7 @@ function withQuery(path: string, query: Record<string, string | undefined>) {
 }
 
 export interface ServerPageLinks {
-  /** A server page (or one of its tabs); `q` pre-fills the Tools filter. */
+  /** A server page -- its Tools, or another tab; `q` pre-fills the Tools filter. */
   server: (
     server: string,
     installation: string | undefined,

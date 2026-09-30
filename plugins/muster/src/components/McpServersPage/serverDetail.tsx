@@ -577,7 +577,7 @@ export function ServerTools({
         {data?.truncated ? ' (first page)' : ''} —{' '}
         <Link
           className={classes.link}
-          href={links.server(serverKey, installation, { tab: 'tools' }) ?? '#'}
+          href={links.server(serverKey, installation) ?? '#'}
         >
           Open the server’s tools
         </Link>

@@ -154,8 +154,8 @@ function ServerPageContent({
   const search = `?installation=${encodeURIComponent(installation)}`;
 
   const representative = representativeServer(row, installation);
-  const { pathname } = useLocation();
-  const onToolsTab = pathname === `${basePath}/tools`;
+  const { pathname, search: currentSearch } = useLocation();
+  const onToolsTab = pathname === basePath;
   const tools = useServerTools(row, servers, installation, {
     enabled: authenticated,
     includeFamily: onToolsTab,
@@ -328,11 +328,10 @@ function ServerPageContent({
       </Flex>
     ) : undefined;
 
-  // Tools leads: what a server offers is what a person comes to it for.
-  // Overview closes the row but stays the index, so a server link still
-  // lands on it.
+  // Tools leads and is the index: what a server offers is what a person
+  // comes to it for, so a server link lands there. Overview closes the row.
   const tabs: ServerPageTabSpec[] = [
-    { id: 'tools', path: 'tools', title: 'Tools', count: tools.tools?.length },
+    { id: 'tools', path: '', title: 'Tools', count: tools.tools?.length },
     {
       id: 'resources',
       path: 'resources',
@@ -354,7 +353,7 @@ function ServerPageContent({
       count: row.servers.length,
     });
   }
-  tabs.push({ id: 'overview', path: '', title: 'Overview' });
+  tabs.push({ id: 'overview', path: 'overview', title: 'Overview' });
 
   return (
     <Flex direction="column" gap="4">
@@ -413,17 +412,6 @@ function ServerPageContent({
         <Route
           index
           element={
-            <ServerOverviewTab
-              row={row}
-              servers={servers}
-              representative={representative}
-              authenticated={authenticated}
-            />
-          }
-        />
-        <Route
-          path="tools"
-          element={
             <ServerToolsTab
               row={row}
               serverKey={serverKey}
@@ -431,6 +419,28 @@ function ServerPageContent({
               tools={tools}
               sessionGate={sessionGate}
               signInGate={signInGate}
+            />
+          }
+        />
+        {/* Where Tools lived before it became the index; the query string
+            (`?installation=`, a `?q=` filter) comes along. */}
+        <Route
+          path="tools"
+          element={
+            <Navigate
+              to={{ pathname: basePath, search: currentSearch }}
+              replace
+            />
+          }
+        />
+        <Route
+          path="overview"
+          element={
+            <ServerOverviewTab
+              row={row}
+              servers={servers}
+              representative={representative}
+              authenticated={authenticated}
             />
           }
         />
@@ -510,8 +520,8 @@ function ServerPageContent({
 }
 
 /**
- * One MCP server's page: Overview · Tools · Resources · Prompts, plus
- * Instances for a server family, with the server's actions in the page
+ * One MCP server's page: Tools (the index) · Resources · Prompts, plus
+ * Instances for a server family, and Overview, with the server's actions in the page
  * header. `:server` names the row the servers list shows -- a family, a
  * singular server or muster itself -- on the installation the section's scope
  * selects (`?installation=` first); switching the installation shows the same

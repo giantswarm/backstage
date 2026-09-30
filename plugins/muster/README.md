@@ -8,8 +8,8 @@ including execution history with live per-step status.
 
 - **Server page** (`/agent-platform/muster/servers/:server?installation=…`):
   one page per MCP server, server family or muster itself (`muster`), with
-  the tabs Overview, Tools, Resources, Prompts and -- for a family --
-  Instances, and the server's actions in the page header.
+  the tabs Tools (the page's index), Resources, Prompts, -- for a family --
+  Instances, and Overview, and the server's actions in the page header.
 - **Tool page** (`/agent-platform/muster/servers/:server/tools/:tool`): a
   tool's description, markers and input schema, and a typed form to run it.
 - **Workflows list** (`/agent-platform/muster/workflows`): all workflows known
