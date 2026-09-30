@@ -13,14 +13,12 @@ import { Account } from '../../../../../UI/Account';
 export const AWSAccountField = () => {
   const { cluster, installationName } = useCurrentCluster();
 
+  // Without an infrastructure reference there is nothing to read, and the
+  // account reads as not available.
   const infrastructureRef = cluster.getInfrastructureRef();
-  if (!infrastructureRef) {
-    throw new Error(
-      'There is no infrastructure reference defined in the cluster resource.',
-    );
-  }
-
-  const { name, namespace } = infrastructureRef;
+  const name = infrastructureRef?.name ?? '';
+  const namespace = infrastructureRef?.namespace;
+  const hasInfrastructureRef = infrastructureRef !== undefined;
 
   const {
     resource: awsCluster,
@@ -28,7 +26,12 @@ export const AWSAccountField = () => {
     errors: awsClusterErrors,
     error: awsClusterError,
     incompatibilities: awsClusterIncompatibilities,
-  } = useResource(installationName, AWSCluster, { name, namespace });
+  } = useResource(
+    installationName,
+    AWSCluster,
+    { name, namespace },
+    { enabled: hasInfrastructureRef },
+  );
 
   let awsClusterErrorMessage: string | undefined;
   if (awsClusterError) {
@@ -39,15 +42,18 @@ export const AWSAccountField = () => {
       resourceNamespace: namespace,
     });
   }
-  if (awsClusterIncompatibilities[0]) {
+  // A disabled query still returns cached incompatibilities.
+  if (hasInfrastructureRef && awsClusterIncompatibilities[0]) {
     awsClusterErrorMessage = getIncompatibilityMessage(
       awsClusterIncompatibilities[0],
     );
   }
 
-  useShowErrors(awsClusterErrors);
+  useShowErrors(hasInfrastructureRef ? awsClusterErrors : null);
 
   const identityRef = awsCluster?.getIdentityRef();
+  const hasRoleIdentity =
+    !!identityRef && identityRef.kind === AWSClusterRoleIdentity.kind;
 
   const {
     resource: awsClusterRoleIdentity,
@@ -61,10 +67,7 @@ export const AWSAccountField = () => {
     {
       name: identityRef?.name ?? '',
     },
-    {
-      enabled:
-        !!identityRef && identityRef.kind === AWSClusterRoleIdentity.kind,
-    },
+    { enabled: hasRoleIdentity },
   );
 
   let identityErrorMessage: string | undefined;
@@ -75,13 +78,13 @@ export const AWSAccountField = () => {
       resourceName: identityRef?.name ?? '',
     });
   }
-  if (identityIncompatibilities[0]) {
+  if (hasRoleIdentity && identityIncompatibilities[0]) {
     identityErrorMessage = getIncompatibilityMessage(
       identityIncompatibilities[0],
     );
   }
 
-  useShowErrors(identityErrors);
+  useShowErrors(hasRoleIdentity ? identityErrors : null);
 
   const accountId = awsClusterRoleIdentity?.getAWSAccountId();
   const accountUrl = awsClusterRoleIdentity?.getAWSAccountUrl();

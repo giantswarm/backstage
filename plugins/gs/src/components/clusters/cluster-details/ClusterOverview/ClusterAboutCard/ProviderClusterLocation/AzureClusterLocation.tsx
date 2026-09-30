@@ -11,14 +11,12 @@ import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 export const AzureClusterLocation = () => {
   const { cluster, installationName } = useCurrentCluster();
 
+  // Without an infrastructure reference there is nothing to read, and the
+  // location reads as not available.
   const infrastructureRef = cluster.getInfrastructureRef();
-  if (!infrastructureRef) {
-    throw new Error(
-      'There is no infrastructure reference defined in the cluster resource.',
-    );
-  }
-
-  const { name, namespace } = infrastructureRef;
+  const name = infrastructureRef?.name ?? '';
+  const namespace = infrastructureRef?.namespace;
+  const hasInfrastructureRef = infrastructureRef !== undefined;
 
   const {
     resource: azureCluster,
@@ -26,7 +24,12 @@ export const AzureClusterLocation = () => {
     errors,
     error,
     incompatibilities,
-  } = useResource(installationName, AzureCluster, { name, namespace });
+  } = useResource(
+    installationName,
+    AzureCluster,
+    { name, namespace },
+    { enabled: hasInfrastructureRef },
+  );
 
   let errorMessage: string | undefined;
   if (error) {
@@ -37,11 +40,12 @@ export const AzureClusterLocation = () => {
       resourceNamespace: namespace,
     });
   }
-  if (incompatibilities[0]) {
+  // A disabled query still returns cached incompatibilities.
+  if (hasInfrastructureRef && incompatibilities[0]) {
     errorMessage = getIncompatibilityMessage(incompatibilities[0]);
   }
 
-  useShowErrors(errors);
+  useShowErrors(hasInfrastructureRef ? errors : null);
 
   const location = azureCluster?.getLocation();
 

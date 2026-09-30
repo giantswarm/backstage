@@ -107,21 +107,19 @@ export function ClusterAboutCard() {
 
   const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef)!;
 
+  // A Cluster may have no control plane reference yet (one still being
+  // created, or an imported one). Only the Kubernetes version depends on it,
+  // so that reads as not available and the rest of the card renders.
   const controlPlaneRef = cluster.getControlPlaneRef();
-  if (!controlPlaneRef) {
-    throw new Error(
-      'There is no control plane reference defined in the cluster resource.',
-    );
-  }
-
-  const { name: controlPlaneName, namespace: controlPlaneNamespace } =
-    controlPlaneRef;
+  const controlPlaneName = controlPlaneRef?.name ?? '';
+  const controlPlaneNamespace = controlPlaneRef?.namespace;
 
   // Managed control planes are not a KubeadmControlPlane — an AKS cluster
   // references an AzureASOManagedControlPlane, an EKS cluster an
   // AWSManagedControlPlane — so the fetch would only 404. Disable it, and the
   // Kubernetes version reads as not available.
-  const hasKubeadmControlPlane = ControlPlane.matchesRef(controlPlaneRef);
+  const hasKubeadmControlPlane =
+    controlPlaneRef !== undefined && ControlPlane.matchesRef(controlPlaneRef);
 
   const {
     resource: controlPlane,
@@ -151,7 +149,7 @@ export function ClusterAboutCard() {
   // A disabled query still returns incompatibilities from ControlPlane
   // discovery that another page has cached. The hook cannot tell whether a
   // caller disabled its query to mean "not yet" or "does not apply", so the
-  // card keeps them out itself for a managed control plane.
+  // card keeps them out itself when there is no KubeadmControlPlane to read.
   if (hasKubeadmControlPlane && controlPlaneIncompatibilities[0]) {
     controlPlaneErrorMessage = getIncompatibilityMessage(
       controlPlaneIncompatibilities[0],

@@ -24,14 +24,18 @@ const INSTALLATION = 'installation-a';
 
 type ControlPlaneRef = NonNullable<ReturnType<Cluster['getControlPlaneRef']>>;
 
-function createCluster(controlPlaneRef: ControlPlaneRef) {
+function createCluster(controlPlaneRef?: ControlPlaneRef) {
   return new Cluster(
     {
       apiVersion: 'cluster.x-k8s.io/v1beta2',
       kind: 'Cluster',
-      metadata: { name: 'my-cluster', namespace: 'org-test' },
+      metadata: {
+        name: 'my-cluster',
+        namespace: 'org-test',
+        annotations: { 'cluster.giantswarm.io/description': 'Test cluster' },
+      },
       spec: {
-        controlPlaneRef,
+        ...(controlPlaneRef && { controlPlaneRef }),
         infrastructureRef: {
           apiGroup: 'infrastructure.cluster.x-k8s.io',
           kind: 'AzureASOManagedCluster',
@@ -185,6 +189,32 @@ describe('ClusterAboutCard', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/KubeadmControlPlane/)).not.toBeInTheDocument();
     expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+  });
+
+  it('renders without a control plane reference, the version as not available', async () => {
+    // A Cluster still being created, or an imported one, may have no
+    // spec.controlPlaneRef yet. Only the Kubernetes version depends on it.
+    mockUseCurrentCluster.mockReturnValue({
+      installationName: INSTALLATION,
+      cluster: createCluster(),
+      clusterApp,
+    });
+    const api = createMockKubernetesApi({});
+
+    await renderCard(api);
+
+    await waitFor(() => {
+      expect(kubernetesVersionField().getByText('n/a')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Test cluster')).toBeInTheDocument();
+    expect(
+      requestedPaths(api).filter(path =>
+        path.includes('/apis/controlplane.cluster.x-k8s.io'),
+      ),
+    ).toEqual([]);
+    expect(
+      screen.queryByText(/Errors when trying to fetch/),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the Kubernetes version of a KubeadmControlPlane', async () => {
