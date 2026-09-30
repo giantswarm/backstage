@@ -333,9 +333,11 @@ function ServerPageContent({
       </Flex>
     ) : undefined;
 
+  // Tools leads: what a server offers is what a person comes to it for.
+  // Overview stays the index, so a server link still lands on it.
   const tabs: ServerPageTabSpec[] = [
-    { id: 'overview', path: '', title: 'Overview' },
     { id: 'tools', path: 'tools', title: 'Tools', count: tools.tools?.length },
+    { id: 'overview', path: '', title: 'Overview' },
     {
       id: 'resources',
       path: 'resources',

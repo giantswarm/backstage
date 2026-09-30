@@ -40,7 +40,9 @@ export function ServerPageTabs({
             href={`${tab.path ? `${basePath}/${tab.path}` : basePath}${search}`}
             matchStrategy={tab.path ? 'prefix' : 'exact'}
           >
-            {tab.count === undefined ? tab.title : `${tab.title} ${tab.count}`}
+            {tab.count === undefined
+              ? tab.title
+              : `${tab.title} (${tab.count})`}
           </Tab>
         ))}
       </TabList>

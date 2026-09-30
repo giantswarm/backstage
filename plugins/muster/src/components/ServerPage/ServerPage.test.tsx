@@ -229,17 +229,17 @@ describe('ServerPage tabs', () => {
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual([
+        'Tools (2)',
         'Overview',
-        'Tools 2',
         'Resources',
         'Prompts',
-        'Instances 2',
+        'Instances (2)',
       ]),
     );
     expect(screen.getAllByRole('tab').map(t => t.getAttribute('href'))).toEqual(
       [
-        `${BASE}/kubernetes?installation=gazelle`,
         `${BASE}/kubernetes/tools?installation=gazelle`,
+        `${BASE}/kubernetes?installation=gazelle`,
         `${BASE}/kubernetes/resources?installation=gazelle`,
         `${BASE}/kubernetes/prompts?installation=gazelle`,
         `${BASE}/kubernetes/instances?installation=gazelle`,
@@ -257,10 +257,10 @@ describe('ServerPage tabs', () => {
 
     await waitFor(() =>
       expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual([
+        'Tools (2)',
         'Overview',
-        'Tools 2',
         // Reported by core_mcpserver_list; a missing count is not shown as 0.
-        'Resources 3',
+        'Resources (3)',
         'Prompts',
       ]),
     );
