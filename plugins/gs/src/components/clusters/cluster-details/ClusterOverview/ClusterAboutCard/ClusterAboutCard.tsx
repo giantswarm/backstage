@@ -31,6 +31,7 @@ import { AWSAccountField } from './AWSAccountField';
 import { ClusterSwitch } from '../../ClusterSwitch';
 import { clusterDetailsRouteRef } from '../../../../../routes';
 import {
+  AnyControlPlane,
   ControlPlane,
   findControlPlaneModel,
   getErrorMessage,
@@ -131,7 +132,7 @@ export function ClusterAboutCard() {
     errors: controlPlaneErrors,
     error: controlPlaneError,
     incompatibilities: controlPlaneIncompatibilities,
-  } = useResource(
+  } = useResource<AnyControlPlane>(
     installationName,
     ControlPlaneModel ?? ControlPlane,
     {

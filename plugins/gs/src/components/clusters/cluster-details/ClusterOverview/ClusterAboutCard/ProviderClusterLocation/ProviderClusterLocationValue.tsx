@@ -4,6 +4,7 @@ import {
   AzureCluster,
   getErrorMessage,
   getIncompatibilityMessage,
+  ProviderCluster,
   useResource,
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -37,7 +38,10 @@ export const ProviderClusterLocationValue = ({
     errors,
     error,
     incompatibilities,
-  } = useResource(installationName, model, { name, namespace });
+  } = useResource<ProviderCluster>(installationName, model, {
+    name,
+    namespace,
+  });
 
   let errorMessage: string | undefined;
   if (error) {
