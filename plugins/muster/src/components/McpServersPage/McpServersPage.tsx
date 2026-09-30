@@ -42,7 +42,6 @@ import { StandardServerDisclosure } from './StandardServerDisclosure';
 import { MusterSummary } from './MusterSummary';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
 import { CoreFamiliesPanel } from './CoreFamiliesPanel';
-import { AddAdHocServerButton } from './ServerMutationActions';
 
 const useStyles = makeStyles((theme: Theme) => ({
   column: {
@@ -99,11 +98,17 @@ const GROUP_ICONS: Record<ToolGroupKey, ReactNode> = {
  * rolled the label yet is expected -- and its servers are listed further
  * down, not missing.
  */
-function emptyGroupNote(group: ToolGroupKey): string {
+function emptyGroupNote(group: ToolGroupKey): ReactNode {
   const { title } = TOOL_GROUPS[group];
   switch (group) {
     case 'registered':
-      return 'No registered servers in this installation.';
+      // Points at the header's action, the one way to add a server.
+      return (
+        <>
+          No registered servers in this installation. Add one with{' '}
+          <strong>Register server</strong>.
+        </>
+      );
     default:
       return `No servers declare the ${title} tool group in this installation. Servers whose charts do not carry the tool-group label yet are listed under ${TOOL_GROUPS.registered.title}.`;
   }
@@ -144,8 +149,8 @@ export function McpServersPage() {
   const partition = useMemo(() => partitionServers(mcpServers), [mcpServers]);
 
   // "Register server" in the shared Agent Platform page header (agent-flow
-  // convention) — the primary path for bringing a remote MCP server onto the
-  // platform, ahead of the raw-JSON ad-hoc dialog below.
+  // convention) — the one path for bringing a remote MCP server onto the
+  // platform.
   const navigate = useNavigate();
   const newServerLink = useRouteRef(newMcpServerRouteRef);
   // The wizard state outlives the wizard, so an unfinished registration draft
@@ -226,25 +231,14 @@ export function McpServersPage() {
   const renderGroup = ({ group, rows }: ToolGroupPartition, index: number) => {
     const { title, description } = TOOL_GROUPS[group];
     const families = rows.filter(row => row.kind === 'family').length;
-    let action: ReactNode;
-    if (index === 0) {
-      action = (
+    const action =
+      index === 0 ? (
         <FreshnessIndicator
           updatedAt={dataUpdatedAt}
           isRefreshing={isRefreshing}
           onRefresh={retry}
         />
-      );
-    } else if (group === 'registered') {
-      // Registering a server is what fills this group -- the ad-hoc dialog
-      // sits with it; the header's Register server button is the primary path.
-      action = (
-        <AddAdHocServerButton
-          installation={activeInstallation}
-          authenticated={authenticated}
-        />
-      );
-    }
+      ) : undefined;
     const isAgentPlatform = group === 'agent-platform';
 
     return (

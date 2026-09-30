@@ -15,6 +15,8 @@ let mockKagent: {
   isProbing: boolean;
   isLoading?: boolean;
   home?: string;
+  /** Inventory entries, for the installations `installationsWith` leaves out. */
+  entries?: unknown[];
 } = {
   installations: ['alpha', 'beta', 'gaggle'],
   isProbing: false,
@@ -33,7 +35,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     isLoading: false,
   }),
   useInstallationInventory: () => ({
-    entries: [],
+    entries: mockKagent.entries ?? [],
     home: mockKagent.home,
     isLoading: mockKagent.isLoading ?? false,
     isProbing: mockKagent.isProbing,
@@ -136,6 +138,46 @@ describe('ModelConfigsProvider', () => {
     expect(hook.current.availableInstallations).toEqual(['alpha']);
     expect(hook.current.modelConfigsFor('alpha')).toHaveLength(2);
     expect(hook.current.modelConfigsFor('beta')).toHaveLength(0);
+  });
+
+  it('lists the installations left out because whether they run kagent is unknown', () => {
+    const entry = (
+      installation: string,
+      accessState: string,
+      probe: string,
+      kagent = false,
+      muted = false,
+    ) => ({
+      installation,
+      accessState,
+      probe,
+      muted,
+      components: { kagent },
+    });
+    mockKagent = {
+      installations: ['alpha'],
+      isProbing: false,
+      entries: [
+        entry('alpha', 'healthy', 'answered', true),
+        entry('expired', 'session-expired', 'pending'),
+        entry('down', 'degraded', 'answered', true),
+        entry('broken', 'healthy', 'failed'),
+        // Known not to run kagent, still connecting, or switched off: nothing
+        // to explain.
+        entry('nokagent', 'degraded', 'answered', false),
+        entry('slow', 'connecting', 'pending'),
+        entry('off', 'degraded', 'pending', false, true),
+      ],
+    };
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: 1 } }));
+
+    const { result: hook } = renderUseModelConfigs();
+
+    expect(hook.current.inaccessibleInstallations).toEqual([
+      'expired',
+      'down',
+      'broken',
+    ]);
   });
 
   it('does not flag a 404 (kagent not installed) as unreachable', () => {

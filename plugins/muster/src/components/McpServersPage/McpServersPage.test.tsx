@@ -34,9 +34,6 @@ jest.mock('./IntegrationServerDisclosure', () => ({
 jest.mock('./MusterSummary', () => ({
   MusterSummary: () => <div data-testid="muster-summary" />,
 }));
-jest.mock('./ServerMutationActions', () => ({
-  AddAdHocServerButton: () => <button type="button">Add ad-hoc server</button>,
-}));
 
 let mcpServers: MCPServer[] = [];
 // What the provider says, so a test can put the page in its loading or
@@ -203,16 +200,9 @@ describe('McpServersPage', () => {
     ).toBeInTheDocument();
 
     expect(registered.rows).toEqual(['server:lab-oauth-fixture', 'server:pro']);
-    // The ad-hoc registration action sits with the servers it creates.
+    // "Register server" in the page header is the one way to add a server.
     expect(
-      within(registered.region).getByRole('button', {
-        name: 'Add ad-hoc server',
-      }),
-    ).toBeInTheDocument();
-    expect(
-      within(agentPlatform.region).queryByRole('button', {
-        name: 'Add ad-hoc server',
-      }),
+      screen.queryByRole('button', { name: 'Add ad-hoc server' }),
     ).not.toBeInTheDocument();
 
     // Each section explains its tier in one line.
@@ -275,6 +265,28 @@ describe('McpServersPage', () => {
       'server:mcp-prometheus',
       'server:model-manager',
     ]);
+  });
+
+  it('points an empty Registered servers group at Register server', async () => {
+    await renderPage([
+      makeServer('agent-manager', { toolGroup: 'agent-platform' }),
+      makeServer('kubernetes-alpha', {
+        family: 'kubernetes',
+        mc: 'alpha',
+        toolGroup: 'infrastructure',
+      }),
+    ]);
+
+    const registered = section('Registered servers');
+    expect(registered.rows).toEqual([]);
+    expect(
+      within(registered.region).getByText(
+        (_, element) =>
+          element?.tagName === 'P' &&
+          element.textContent ===
+            'No registered servers in this installation. Add one with Register server.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('shows the empty state rather than sections when the installation has no MCPServer CRs', async () => {

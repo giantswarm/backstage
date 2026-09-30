@@ -137,9 +137,9 @@ function ConfirmActionDialog({
       <Text as="p" variant="body-medium">
         {action?.destructive ? (
           <>
-            This permanently removes the ad-hoc server{' '}
-            <code>{server.getName()}</code> from this muster instance. This is a
-            live mutation and cannot be undone.
+            This permanently removes the server <code>{server.getName()}</code>{' '}
+            from this muster instance. This is a live mutation and cannot be
+            undone.
           </>
         ) : (
           <>
@@ -160,36 +160,24 @@ function ConfirmActionDialog({
   );
 }
 
-const NEW_SERVER_TEMPLATE = {
-  name: 'my-server',
-  type: 'streamable-http',
-  description: '',
-  autoStart: true,
-  url: 'https://example.com/mcp',
-  timeout: 30,
-};
-
 /**
- * Ad-hoc server dialog: a JSON editor validated via `core_mcpserver_validate`
- * and saved via `core_mcpserver_create` (when `server` is absent) or
- * `core_mcpserver_update` (editing an existing ad-hoc server). Both calls go
- * through the `/call` proxy.
+ * Ad-hoc server edit dialog: a JSON editor seeded from the existing server,
+ * validated via `core_mcpserver_validate` and saved via
+ * `core_mcpserver_update`. Both calls go through the `/call` proxy. New servers
+ * are added through the "Register server" flow instead.
  */
-export function AdHocServerDialog({
-  installation,
+function AdHocServerDialog({
   server,
   open,
   onClose,
 }: {
-  installation?: string;
-  server?: MCPServer;
+  server: MCPServer;
   open: boolean;
   onClose: () => void;
 }) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
-  const isEdit = Boolean(server);
-  const target = server?.cluster ?? installation;
+  const target = server.cluster;
   const refresh = useMusterMutationRefresh(target);
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState<'validate' | 'save'>();
@@ -199,13 +187,7 @@ export function AdHocServerDialog({
   // Seeded on open only: `server` is polled, and re-seeding on every refetch
   // would overwrite what the user is typing.
   useOnDialogOpen(open, () => {
-    setValue(
-      JSON.stringify(
-        server ? toMcpServerDefinition(server) : NEW_SERVER_TEMPLATE,
-        null,
-        2,
-      ),
-    );
+    setValue(JSON.stringify(toMcpServerDefinition(server), null, 2));
     setError(undefined);
     setMessage(undefined);
   });
@@ -246,11 +228,7 @@ export function AdHocServerDialog({
     setBusy('save');
     setMessage(undefined);
     try {
-      await musterApi.callTool(
-        isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create',
-        def,
-        target,
-      );
+      await musterApi.callTool('core_mcpserver_update', def, target);
       refresh();
       setMessage('Saved. The server list has been refreshed.');
     } catch (e) {
@@ -273,15 +251,12 @@ export function AdHocServerDialog({
       isKeyboardDismissDisabled={Boolean(busy)}
       width="min(90vw, 860px)"
     >
-      <DialogHeader>
-        {isEdit ? `Edit as JSON — ${server?.getName()}` : 'Add ad-hoc server'}
-      </DialogHeader>
+      <DialogHeader>Edit as JSON — {server.getName()}</DialogHeader>
       <DialogBody>
         <Flex direction="column" gap="3">
           <Text as="p" variant="body-medium">
-            {isEdit ? 'Edit' : 'Define'} the muster server. Validate before
-            saving; both run as live mutations against installation{' '}
-            <code>{target}</code>.
+            Edit the muster server. Validate before saving; both run as live
+            mutations against installation <code>{target}</code>.
           </Text>
           <TextAreaField
             label="Server definition (JSON)"
@@ -587,55 +562,5 @@ export function ServerMutationActions({
         onClose={() => setActionOpen(false)}
       />
     </Flex>
-  );
-}
-
-/**
- * Section-level "Add server" affordance. Adding a standard/fleet server is a
- * GitOps change (a manifest committed to the management-clusters repo); a
- * manually-added (ad-hoc) server is created live through muster.
- */
-export function AddAdHocServerButton({
-  installation,
-  authenticated = true,
-}: {
-  installation?: string;
-  /**
-   * Whether there is an authenticated muster session for this installation.
-   * Adding an ad-hoc server runs `core_mcpserver_*` live through muster, which
-   * needs a session -- so it is disabled (with an explanatory tooltip) when
-   * there is none, rather than failing after the user composes a definition.
-   */
-  authenticated?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Tooltip
-        title={
-          authenticated
-            ? 'Create a live ad-hoc MCP server'
-            : 'Connect to muster (sign in) to add an ad-hoc server.'
-        }
-      >
-        {/* span wrapper so the tooltip still fires over the disabled button */}
-        <span>
-          <Button
-            size="small"
-            variant="secondary"
-            iconStart={<Edit fontSize="inherit" />}
-            onPress={() => setOpen(true)}
-            isDisabled={!authenticated}
-          >
-            Add ad-hoc server
-          </Button>
-        </span>
-      </Tooltip>
-      <AdHocServerDialog
-        installation={installation}
-        open={open}
-        onClose={() => setOpen(false)}
-      />
-    </>
   );
 }

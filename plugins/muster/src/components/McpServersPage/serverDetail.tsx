@@ -782,7 +782,8 @@ export function Provenance({ server }: { server: MCPServer }) {
   if (!releaseId && !p.managedBy) {
     return (
       <Note>
-        No GitOps provenance labels found -- this looks like an ad-hoc server.
+        No GitOps provenance labels found -- this looks like a server registered
+        from the portal.
       </Note>
     );
   }

@@ -248,6 +248,7 @@ const baseModelConfigs: ModelConfigsContextValue = {
   pendingInstallations: [],
   availableInstallations: ['inst-1'],
   unreachableInstallations: [],
+  inaccessibleInstallations: [],
   modelConfigsFor: () => [],
 };
 
