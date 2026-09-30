@@ -59,6 +59,7 @@ describe('TelemetryDeckAnalyticsApi', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(configApi.getOptionalString).mockReturnValue(undefined);
   });
 
   it('reports untracked page views for paths that matched a registered route', () => {

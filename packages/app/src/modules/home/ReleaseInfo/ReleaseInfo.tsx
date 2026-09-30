@@ -21,7 +21,12 @@ export const ReleaseInfo = () => {
   return (
     <Text as="p" variant="body-small" color="secondary">
       This is{' '}
-      <Link href={REPOSITORY_URL} target="_blank" variant="body-small">
+      <Link
+        href={REPOSITORY_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        variant="body-small"
+      >
         backstage
       </Link>{' '}
       provided by Giant Swarm, release{' '}
@@ -29,6 +34,7 @@ export const ReleaseInfo = () => {
         <Link
           href={`${REPOSITORY_URL}/releases/tag/${tag}`}
           target="_blank"
+          rel="noopener noreferrer"
           variant="body-small"
         >
           {tag}
