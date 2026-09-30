@@ -13,9 +13,7 @@ import type { InfrastructureRef } from '../../../ClusterSwitch';
 
 /** The infrastructure cluster kinds that carry a location. */
 export type LocatedProviderClusterModel =
-  | typeof AWSCluster
-  | typeof AzureCluster
-  | typeof AzureASOManagedCluster;
+  typeof AWSCluster | typeof AzureCluster | typeof AzureASOManagedCluster;
 
 /**
  * Reads the infrastructure cluster a Cluster references through the given
