@@ -16,13 +16,23 @@ test('the Deployments table names the installation of each deployment', async ({
 }) => {
   await admin.goto('/deployments');
 
+  const table = admin.locator('table').filter({
+    has: admin.getByRole('columnheader', { name: 'Installation' }),
+  });
   // valkey is rendered by the agent-platform umbrella chart: always there.
-  const row = admin.locator('tbody tr', { hasText: 'valkey' }).first();
+  const row = table.locator('tbody tr', { hasText: 'valkey' }).first();
   await expect(row, 'the deployments table lists valkey').toBeVisible({
     timeout: 60_000,
   });
-  const cell = row.getByRole('cell', { name: lab.installation, exact: true });
-  await expect(cell, 'the row names its installation').toBeVisible();
+  // In the lab the installation, its cluster and the namespace share one
+  // name: the cell is picked by the column's header.
+  const headers = await table.getByRole('columnheader').allTextContents();
+  const column = headers.findIndex(header => header.trim() === 'Installation');
+  expect(column, 'the table has an Installation column').toBeGreaterThan(-1);
+  const cell = row.getByRole('cell').nth(column);
+  await expect(cell, 'the row names its installation').toHaveText(
+    lab.installation,
+  );
 
   if (INSTALLATIONS_PAGE) {
     await expect(
