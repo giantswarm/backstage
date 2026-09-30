@@ -102,6 +102,10 @@ export function ServersTable({
       id: 'server',
       label: 'Server',
       isRowHeader: true,
+      // The name and its URL are what a person scans for; the other columns
+      // hold a badge, a count or a short label each.
+      defaultWidth: '4fr',
+      minWidth: 280,
       cell: entry => (
         <CellText
           title={entry.id}
@@ -115,6 +119,8 @@ export function ServersTable({
     {
       id: 'status',
       label: 'Status',
+      defaultWidth: '1.25fr',
+      minWidth: 180,
       cell: entry => (
         <Cell>
           {entry.row.kind === 'server' && (
@@ -134,11 +140,15 @@ export function ServersTable({
     {
       id: 'tools',
       label: 'Tools',
+      defaultWidth: '1fr',
+      minWidth: 120,
       cell: entry => <CellText title={toolsLabel(entry, catalogue)} />,
     },
     {
       id: 'auth',
       label: 'Auth',
+      defaultWidth: '1.75fr',
+      minWidth: 200,
       cell: entry => {
         const server = configServer(entry, installation);
         return (
@@ -155,6 +165,8 @@ export function ServersTable({
     {
       id: 'source',
       label: 'Source',
+      defaultWidth: '1fr',
+      minWidth: 150,
       cell: entry => (
         <CellText title={sourceLabel(configServer(entry, installation))} />
       ),
