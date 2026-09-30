@@ -3,20 +3,34 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import AddIcon from '@material-ui/icons/Add';
 import { Content, EmptyState } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Button, Flex, Link, SearchField, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Link, SearchField, Text } from '@backstage/ui';
 import {
   LoadingIndicator,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { newMcpServerRouteRef } from '../../routes';
 import { MUSTER_SERVER_KEY } from '../../lib/serverGrouping';
-import { serverListEntries } from '../../lib/serverList';
+import { serverListEntries, serverListRows } from '../../lib/serverList';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { Gate, useServerPageLinks, useToolCatalogue } from '../shared';
 import { MusterSummary } from './MusterSummary';
-import { ServersTable } from './ServersTable';
+import { CatalogueState, ServersTable } from './ServersTable';
+
+/** What a search with no result says, given what could be searched. */
+function emptyText(catalogue: CatalogueState, query: string): string {
+  switch (catalogue) {
+    case 'loaded':
+      return `No server or tool matches “${query}”.`;
+    case 'failed':
+      return `No server name matches “${query}”. Tool names could not be searched: the installation's tools failed to load.`;
+    case 'loading':
+      return `No server name matches “${query}”. The installation's tools are still loading.`;
+    default:
+      return `No server name matches “${query}”. Tool names are searched once connected to muster.`;
+  }
+}
 
 /**
  * The MCP servers of the active installation as one flat table -- a server
@@ -51,16 +65,23 @@ export function McpServersPage() {
     );
 
   const catalogue = useToolCatalogue(activeInstallation, authenticated);
-  const entries = useMemo(
-    () =>
-      serverListEntries(mcpServers, catalogue.data?.tools ?? undefined, query),
-    [mcpServers, catalogue.data, query],
+  // Each tool attributed to its row once per catalogue read; a keystroke in
+  // the search only filters.
+  const listRows = useMemo(
+    () => serverListRows(mcpServers, catalogue.data?.tools ?? undefined),
+    [mcpServers, catalogue.data],
   );
-  let catalogueState: 'loaded' | 'loading' | 'unavailable' = 'unavailable';
+  const entries = useMemo(
+    () => serverListEntries(listRows, query),
+    [listRows, query],
+  );
+  let catalogueState: CatalogueState = 'unavailable';
   if (catalogue.data) {
     catalogueState = 'loaded';
   } else if (catalogue.isLoading) {
     catalogueState = 'loading';
+  } else if (catalogue.error) {
+    catalogueState = 'failed';
   }
 
   // "Register server" in the shared Agent Platform page header (agent-flow
@@ -152,6 +173,24 @@ export function McpServersPage() {
           onChange={setQuery}
           style={{ maxWidth: 480 }}
         />
+        {catalogueState === 'failed' && (
+          <Alert
+            status="danger"
+            title="Could not read the installation's tools"
+            description={`${
+              (catalogue.error as Error | null)?.message ?? 'No details.'
+            } Tool counts are missing and the search covers server names only.`}
+            customActions={
+              <Button
+                size="small"
+                variant="secondary"
+                onPress={() => catalogue.refetch()}
+              >
+                Retry
+              </Button>
+            }
+          />
+        )}
         {catalogue.data?.truncated && (
           <Text as="p" variant="body-small" color="secondary">
             The installation offers more tools than one request returns; tool
@@ -163,11 +202,7 @@ export function McpServersPage() {
           installation={activeInstallation}
           query={query}
           catalogue={catalogueState}
-          emptyText={
-            catalogueState === 'loaded'
-              ? `No server or tool matches “${trimmed}”.`
-              : `No server name matches “${trimmed}”. Tool names are searched once connected to muster.`
-          }
+          emptyText={emptyText(catalogueState, trimmed)}
         />
       </Flex>
     );

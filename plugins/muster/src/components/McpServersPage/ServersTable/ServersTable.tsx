@@ -64,20 +64,32 @@ function statusLabel(entry: ServerListEntry): string {
   }
 }
 
+/** Whether the tool catalogue was read, is being read, failed, or needs a session. */
+export type CatalogueState = 'loaded' | 'loading' | 'failed' | 'unavailable';
+
+/** A server whose tools stay hidden until this person signs in to it. */
+function awaitsSignIn(server: MCPServer): boolean {
+  return (
+    server.getState() === 'Auth Required' &&
+    server.canAuthenticateInteractively()
+  );
+}
+
 /** The Tools cell: a count, "3 of 42 match" while searching, or why neither. */
-function toolsLabel(
-  entry: ServerListEntry,
-  catalogue: 'loaded' | 'loading' | 'unavailable',
-): string {
+function toolsLabel(entry: ServerListEntry, catalogue: CatalogueState): string {
   if (entry.toolCount === undefined) {
     return catalogue === 'loading' ? '…' : '—';
   }
-  // Its tools are hidden until this person signs in, not absent.
+  // Its tools are hidden until this person signs in, not absent -- for a
+  // family, when every instance waits on a sign-in.
+  const instances = entry.row.kind === 'server' ? [entry.row.server] : [];
+  if (entry.row.kind === 'family') {
+    instances.push(...entry.row.servers);
+  }
   if (
     entry.toolCount === 0 &&
-    entry.row.kind === 'server' &&
-    entry.row.server.getState() === 'Auth Required' &&
-    entry.row.server.canAuthenticateInteractively()
+    instances.length > 0 &&
+    instances.every(awaitsSignIn)
   ) {
     return 'Sign-in needed';
   }
@@ -92,7 +104,7 @@ export interface ServersTableProps {
   installation: string;
   /** The list's search, carried to a tool-matched row's Tools tab. */
   query: string;
-  catalogue: 'loaded' | 'loading' | 'unavailable';
+  catalogue: CatalogueState;
   emptyText: string;
 }
 
@@ -104,12 +116,15 @@ export interface ServersTableProps {
  */
 /** A list entry with what its cells show, worked out once for rendering and sorting. */
 interface ServerTableRow {
+  /** The row's unique list key, the table's row id. */
   id: string;
+  /** The server's name, what the Server column shows and sorts by. */
+  name: string;
   entry: ServerListEntry;
   status: string;
   tools: string;
-  /** The count a Tools sort orders by; rows without one sort last. */
-  toolsRank: number;
+  /** The count a Tools sort orders by; undefined (no count) sorts last. */
+  toolsRank?: number;
   auth: string;
   source: string;
 }
@@ -117,8 +132,8 @@ interface ServerTableRow {
 type SortKey = keyof Omit<ServerTableRow, 'id' | 'entry'>;
 
 /** Which row value each column sorts by. */
-const SORT_KEYS: Record<string, SortKey | 'id'> = {
-  server: 'id',
+const SORT_KEYS: Record<string, SortKey> = {
+  server: 'name',
   status: 'status',
   tools: 'toolsRank',
   auth: 'auth',
@@ -129,15 +144,16 @@ function sortServerRows(
   rows: ServerTableRow[],
   sort: SortDescriptor,
 ): ServerTableRow[] {
-  const key = SORT_KEYS[String(sort.column)] ?? 'id';
+  const key = SORT_KEYS[String(sort.column)] ?? 'name';
   const sign = sort.direction === 'descending' ? -1 : 1;
   const compare = (a: ServerTableRow, b: ServerTableRow) => {
     const x = a[key];
     const y = b[key];
-    // No value ("—": muster's status) is not a value to order by: last
-    // whichever way the column is sorted.
-    if ((x === '—') !== (y === '—')) {
-      return x === '—' ? 1 : -1;
+    // No value -- muster's "—" status, a row without a tool count -- is not a
+    // value to order by: last whichever way the column is sorted.
+    const missing = (v: unknown) => v === undefined || v === '—';
+    if (missing(x) !== missing(y)) {
+      return missing(x) ? 1 : -1;
     }
     // Text as it reads, numbers by value: "3 of 5 instances healthy" sorts
     // before "12 of 12 instances healthy", and equal statuses sit together.
@@ -146,7 +162,9 @@ function sortServerRows(
         ? x - y
         : String(x).localeCompare(String(y), undefined, { numeric: true });
     // Ties stay in name order whichever way the column is sorted.
-    return primary * sign || a.id.localeCompare(b.id);
+    return (
+      primary * sign || a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+    );
   };
   return [...rows].sort(compare);
 }
@@ -166,14 +184,15 @@ export function ServersTable({
         const server = configServer(entry, installation);
         const tools = toolsLabel(entry, catalogue);
         return {
-          id: entry.id,
+          // Unique per row: a family and a singular server may share a name.
+          id: entry.key,
+          name: entry.id,
           entry,
           status: statusLabel(entry),
           tools,
-          toolsRank:
-            entry.toolCount === undefined || !/^\d/.test(tools)
-              ? -1
-              : entry.toolMatches || entry.toolCount,
+          toolsRank: /^\d/.test(tools)
+            ? entry.toolMatches || entry.toolCount
+            : undefined,
           auth: server
             ? AUTH_MODE_LABELS[serverAuthMode(server)]
             : 'Muster session',
@@ -194,29 +213,41 @@ export function ServersTable({
       defaultWidth: '4fr',
       minWidth: 280,
       cell: row => {
-        const href = links.server(row.id, installation, {
-          q: row.entry.toolMatches ? query.trim() : undefined,
-        });
-        // A plain link, as the Sessions table's title is: `Link` from
-        // core-components routes client-side.
+        const { entry } = row;
+        const href = entry.shadowed
+          ? undefined
+          : links.server(entry.id, installation, {
+              q: entry.toolMatches ? query.trim() : undefined,
+            });
+        // core-components' `Link`, as the Sessions table's title: the target
+        // is a route ref's path (`links.server`), and it reads as a link, in
+        // the link colour -- bui's Link takes the body colour, underlined.
         return (
           <Cell>
             <Flex align="center" gap="2" style={{ minWidth: 0 }}>
               {href ? (
-                <Link to={href} title={row.id} style={TRUNCATE}>
-                  {row.id}
+                <Link to={href} title={entry.id} style={TRUNCATE}>
+                  {entry.id}
                 </Link>
               ) : (
-                <Text variant="body-medium" truncate title={row.id}>
-                  {row.id}
+                <Text
+                  variant="body-medium"
+                  truncate
+                  title={
+                    entry.shadowed
+                      ? `A server family (or muster) of the same name takes the page “${entry.id}”, so this server has none of its own.`
+                      : entry.id
+                  }
+                >
+                  {entry.id}
                 </Text>
               )}
-              {row.entry.row.kind === 'family' && (
+              {entry.row.kind === 'family' && (
                 <Badge size="small" style={{ flexShrink: 0 }}>
                   Family
                 </Badge>
               )}
-              {row.entry.row.kind === 'core' && (
+              {entry.row.kind === 'core' && (
                 <Badge size="small" style={{ flexShrink: 0 }}>
                   Core
                 </Badge>

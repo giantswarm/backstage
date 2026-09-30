@@ -15,7 +15,12 @@ import {
   SearchField,
   Text,
 } from '@backstage/ui';
-import { ToolTable, toolTableItem, type ToolTableItem } from '../shared';
+import {
+  ToolTable,
+  toolTableItem,
+  useToolCatalogue,
+  type ToolTableItem,
+} from '../shared';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef, ToolSummary } from '../../apis';
@@ -28,8 +33,6 @@ import {
 import { BrowserSkeleton, ExplorerError } from '../ToolDetail';
 import { ToolPrefs } from './useToolPrefs';
 
-/** No-pattern page size used to pull the whole catalogue for browsing. */
-const BROWSE_LIMIT = 2000;
 /** Page size for ranked search results. */
 const SEARCH_LIMIT = 50;
 
@@ -148,11 +151,8 @@ export function ToolBrowser({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const browse = useQuery({
-    queryKey: ['muster', 'tools-browse', installation],
-    queryFn: () => musterApi.filterTools({ installation, limit: BROWSE_LIMIT }),
-    enabled: trimmed === '',
-  });
+  // The whole catalogue, the read the servers list and server pages share.
+  const browse = useToolCatalogue(installation, trimmed === '');
 
   const search = useQuery({
     queryKey: ['muster', 'tools-search', installation, trimmed],

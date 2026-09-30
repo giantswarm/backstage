@@ -288,27 +288,56 @@ export function shortToolName(
 }
 
 /**
- * The installation's catalogue split by the server page each tool belongs
- * to, keyed like `serverRowKey`: the family name, the singular server's name,
- * or `muster` for muster's own (`core_*`, `workflow_*`). The same attribution
- * as {@link toolsForRow}, made once per tool rather than once per row and
- * tool. A tool no server's prefix matches is left out.
+ * The list key of the row a tool belongs to: `family:<name>`, `server:<name>`
+ * or `core` -- kind-qualified, because a family and a singular server may
+ * share a name.
+ */
+export type ServerListKey = string;
+
+/** The list key of a server page row. */
+export function serverListKey(row: ServerPageRow): ServerListKey {
+  switch (row.kind) {
+    case 'family':
+      return `family:${row.family}`;
+    case 'server':
+      return `server:${row.server.getName()}`;
+    default:
+      return 'core';
+  }
+}
+
+/**
+ * The installation's catalogue split by the row each tool belongs to, keyed
+ * by {@link serverListKey}: muster's own (`core_*`, `workflow_*`) under
+ * `core`, every other tool under the row its longest-matching prefix belongs
+ * to -- the same attribution as {@link toolsForRow}, made once per tool rather
+ * than once per row and tool. A tool no server's prefix matches is left out.
  */
 export function toolsByServerKey(
   tools: ToolSummary[],
   servers: ServerPrefixInfo[],
-  musterKey: string,
-): Map<string, ToolSummary[]> {
-  const byKey = new Map<string, ToolSummary[]>();
-  const add = (key: string, tool: ToolSummary) =>
-    byKey.set(key, [...(byKey.get(key) ?? []), tool]);
+): Map<ServerListKey, ToolSummary[]> {
+  const byKey = new Map<ServerListKey, ToolSummary[]>();
+  const add = (key: ServerListKey, tool: ToolSummary) => {
+    const bucket = byKey.get(key);
+    if (bucket) {
+      bucket.push(tool);
+    } else {
+      byKey.set(key, [tool]);
+    }
+  };
   for (const tool of tools) {
     if (tool.name.startsWith('core_') || tool.name.startsWith('workflow_')) {
-      add(musterKey, tool);
+      add('core', tool);
     } else if (tool.name.startsWith('x_')) {
       const owner = matchServers(tool.name, servers)[0];
       if (owner) {
-        add(owner.family ?? owner.serverName, tool);
+        add(
+          owner.family
+            ? `family:${owner.family}`
+            : `server:${owner.serverName}`,
+          tool,
+        );
       }
     }
   }

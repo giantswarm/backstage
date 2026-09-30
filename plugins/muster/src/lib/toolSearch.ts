@@ -1,12 +1,14 @@
 import { ToolSummary } from '../apis';
 
 /**
- * Whether a tool answers a search: its short name (without the prefix of the
- * server offering it) or its description contains the query, ignoring case.
- * Not the full name: every tool of `github` is `x_github_…`, so searching for
- * a server's name would otherwise count all its tools as matches. One rule
- * for the servers list's tool matches and a server's Tools filter, so the
- * "3 of 42 match" a row shows is the list its Tools tab opens with.
+ * Whether a tool answers a search: its full name, its short name (without the
+ * prefix of the server offering it) or its description contains the query,
+ * ignoring case. One rule for the servers list's tool matches and a server's
+ * Tools filter, so the "3 of 42 match" a row shows is the list its Tools tab
+ * opens with. The full name counts, so a name pasted from an agent's
+ * transcript (`x_kubernetes_get_pods`) finds its tool; a search for a
+ * server's own name does not turn into its tools all matching, because the
+ * servers list treats a row its name matches as a name match.
  */
 export function toolMatchesQuery(
   tool: ToolSummary,
@@ -17,7 +19,7 @@ export function toolMatchesQuery(
   if (!q) {
     return true;
   }
-  return [shortName, tool.description ?? tool.summary].some(value =>
+  return [tool.name, shortName, tool.description ?? tool.summary].some(value =>
     value?.toLowerCase().includes(q),
   );
 }

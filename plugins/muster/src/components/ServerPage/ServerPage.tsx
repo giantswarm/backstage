@@ -113,11 +113,9 @@ function ServerPageContent({
   const search = `?installation=${encodeURIComponent(installation)}`;
 
   const representative = representativeServer(row, installation);
-  const { pathname, search: currentSearch } = useLocation();
-  const onToolsTab = pathname === basePath;
+  const { search: currentSearch } = useLocation();
   const tools = useServerTools(row, servers, installation, {
     enabled: authenticated,
-    includeFamily: onToolsTab,
   });
   const counts = useServerCapabilityCounts(representative?.server, {
     enabled: authenticated,

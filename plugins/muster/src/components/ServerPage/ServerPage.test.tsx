@@ -272,18 +272,14 @@ beforeEach(() => {
 
 describe('ServerPage tabs', () => {
   it('gives a family Tools, Resources, Prompts, Instances and Overview', async () => {
-    const api = await renderAt(
-      `${BASE}/kubernetes/overview?installation=gazelle`,
-    );
+    await renderAt(`${BASE}/kubernetes/overview?installation=gazelle`);
 
     expect(
       await screen.findByRole('heading', { name: 'kubernetes' }),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual([
-        // A family's tools need the whole catalogue, read only on its Tools
-        // tab: no count here rather than a download on every tab.
-        'Tools',
+        'Tools (2)',
         'Resources',
         'Prompts',
         'Instances (2)',
@@ -304,7 +300,6 @@ describe('ServerPage tabs', () => {
     );
     expect(screen.getByText('1 of 2 instances healthy')).toBeInTheDocument();
     expect(screen.getByText('management_cluster')).toBeInTheDocument();
-    expect(api.filterTools).not.toHaveBeenCalled();
   });
 
   it('gives a singular server no Instances tab and shows counts muster reports', async () => {

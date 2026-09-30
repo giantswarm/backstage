@@ -64,12 +64,13 @@ export function ServerToolsTab({
       { replace: true },
     );
 
+  const { tools: listed, shortName } = tools;
   const visible = useMemo(
     () =>
-      (tools.tools ?? []).filter(tool =>
-        toolMatchesQuery(tool, tools.shortName(tool.name), query),
+      (listed ?? []).filter(tool =>
+        toolMatchesQuery(tool, shortName(tool.name), query),
       ),
-    [tools, query],
+    [listed, shortName, query],
   );
 
   if (sessionGate) {

@@ -42,7 +42,6 @@ export function ToolPage() {
     activeInstallation ?? '',
     {
       enabled: Boolean(row && activeInstallation) && session.authenticated,
-      includeFamily: true,
     },
   );
   const offered = serverTools.tools?.some(t => t.name === tool);

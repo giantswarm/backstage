@@ -24,5 +24,8 @@ export function useToolCatalogue(
     queryFn: () =>
       musterApi.filterTools({ installation, limit: TOOL_CATALOGUE_LIMIT }),
     enabled: enabled && Boolean(installation),
+    // The list, a server page and the Tool explorer read it in turn; moving
+    // between them within half a minute is not a reason to read it again.
+    staleTime: 30_000,
   });
 }

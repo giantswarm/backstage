@@ -1,2 +1,2 @@
 export { ServersTable } from './ServersTable';
-export type { ServersTableProps } from './ServersTable';
+export type { CatalogueState, ServersTableProps } from './ServersTable';

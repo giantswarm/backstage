@@ -419,4 +419,89 @@ describe('McpServersPage', () => {
     expect(screen.getByText('No muster installation')).toBeInTheDocument();
     expect(screen.queryByTestId('muster-summary')).not.toBeInTheDocument();
   });
+
+  it('keeps the rows without a tool count last when sorting by Tools', async () => {
+    await renderPage(withMiro());
+    await waitFor(() => expect(rows()[0][2]).toBe('1'));
+
+    await userEvent.click(screen.getByRole('columnheader', { name: 'Tools' }));
+
+    expect(rows().map(row => row[2])).toEqual([
+      '1',
+      '1',
+      '2',
+      '2',
+      'Sign-in needed',
+    ]);
+  });
+
+  it('says when the installation’s tools could not be read, and offers a retry', async () => {
+    const api = makeApi();
+    api.filterTools.mockRejectedValue(new Error('upstream timeout'));
+    await renderPage(fleet(), {
+      path: `${BASE}?installation=gazelle&q=pod`,
+      api,
+    });
+
+    expect(
+      await screen.findByText("Could not read the installation's tools"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/upstream timeout/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No server name matches “pod”. Tool names could not be searched: the installation's tools failed to load.",
+      ),
+    ).toBeInTheDocument();
+
+    api.filterTools.mockResolvedValue({
+      total: TOOLS.length,
+      filtered_count: TOOLS.length,
+      truncated: false,
+      tools: TOOLS,
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+  });
+
+  it('says a family whose instances all wait on a sign-in needs one', async () => {
+    await renderPage([
+      makeServer('walrus-slack', {
+        family: 'slack',
+        state: 'Auth Required',
+        auth: { type: 'oauth' },
+      }),
+    ]);
+
+    await waitFor(() =>
+      expect(rows().find(row => row[0]?.startsWith('slack'))?.[2]).toBe(
+        'Sign-in needed',
+      ),
+    );
+  });
+
+  it('lists a server a family of the same name shadows, without a link to a page it has not got', async () => {
+    await renderPage([...fleet(), makeServer('kubernetes')]);
+
+    await waitFor(() =>
+      expect(
+        rows().filter(row => row[0]?.startsWith('kubernetes')),
+      ).toHaveLength(2),
+    );
+    expect(screen.getAllByRole('link', { name: 'kubernetes' })).toHaveLength(1);
+    expect(
+      screen.getByTitle(/A server family \(or muster\) of the same name takes/),
+    ).toHaveTextContent('kubernetes');
+  });
+
+  it('finds a tool by its full name', async () => {
+    await renderPage(fleet(), {
+      path: `${BASE}?installation=gazelle&q=x_github_list_pulls`,
+    });
+
+    await waitFor(() =>
+      expect(rows().map(row => [row[0], row[2]])).toEqual([
+        ['github', '1 of 2 match'],
+      ]),
+    );
+  });
 });

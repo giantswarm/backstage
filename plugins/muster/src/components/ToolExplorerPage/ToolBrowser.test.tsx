@@ -54,7 +54,12 @@ async function renderBrowser(
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
-        <ToolBrowser onSelect={onSelect} servers={[]} prefs={prefs} />
+        <ToolBrowser
+          installation="gazelle"
+          onSelect={onSelect}
+          servers={[]}
+          prefs={prefs}
+        />
       </QueryClientProvider>
     </TestApiProvider>,
   );
