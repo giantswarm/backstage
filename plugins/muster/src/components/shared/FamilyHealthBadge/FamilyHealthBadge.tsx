@@ -13,13 +13,18 @@ import { severityTone } from '../tones';
  * be management clusters, accounts or machines.
  */
 export function FamilyHealthBadge({ instances }: { instances: MCPServer[] }) {
-  const severities = instances.map(s => mcpServerStateSeverity(s.getState()));
-  const healthy = severities.filter(s => s === 'ok').length;
-  const worst = severities.reduce<MCPServerSeverity>(worstSeverity, 'ok');
+  const worst = instances
+    .map(s => mcpServerStateSeverity(s.getState()))
+    .reduce<MCPServerSeverity>(worstSeverity, 'ok');
   return (
-    <StateBadge
-      tone={severityTone(worst)}
-      label={`${healthy} of ${instances.length} instances healthy`}
-    />
+    <StateBadge tone={severityTone(worst)} label={familyHealthLabel(instances)} />
   );
+}
+
+/** The words of {@link FamilyHealthBadge}, for a place that shows plain text. */
+export function familyHealthLabel(instances: MCPServer[]): string {
+  const healthy = instances.filter(
+    s => mcpServerStateSeverity(s.getState()) === 'ok',
+  ).length;
+  return `${healthy} of ${instances.length} instances healthy`;
 }

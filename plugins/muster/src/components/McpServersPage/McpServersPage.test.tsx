@@ -245,6 +245,27 @@ describe('McpServersPage', () => {
     ]);
   });
 
+  it.each([
+    // Most tools first; muster's single tool and aws-root's tie, by name.
+    ['Tools', 'descending', ['github', 'kubernetes', 'aws-root', 'muster']],
+    // The degraded family first, muster (no status of its own) last.
+    ['Status', 'ascending', ['kubernetes', 'aws-root', 'github', 'muster']],
+    ['Source', 'ascending', ['github', 'kubernetes', 'muster', 'aws-root']],
+  ])('sorts by %s', async (column, direction, expected) => {
+    await renderPage(fleet());
+    await waitFor(() => expect(rows()[0][2]).toBe('1'));
+
+    const header = screen.getByRole('columnheader', { name: column });
+    await userEvent.click(header);
+    if (direction === 'descending') {
+      await userEvent.click(header);
+    }
+
+    expect(
+      rows().map(row => row[0]!.split(/https?:|Server family|core tools/)[0]),
+    ).toEqual(expected);
+  });
+
   it('links each row to its server page on the same installation', async () => {
     await renderPage(fleet());
 

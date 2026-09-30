@@ -38,6 +38,6 @@ export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';
 export type { ServerPageLinks, ServerPageTab } from './useServerPageLinks';
-export { ServerStateBadge } from './ServerStateBadge';
-export { FamilyHealthBadge } from './FamilyHealthBadge';
+export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
+export { FamilyHealthBadge, familyHealthLabel } from './FamilyHealthBadge';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';

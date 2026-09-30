@@ -1,1 +1,1 @@
-export { FamilyHealthBadge } from './FamilyHealthBadge';
+export { FamilyHealthBadge, familyHealthLabel } from './FamilyHealthBadge';

@@ -1,1 +1,1 @@
-export { ServerStateBadge } from './ServerStateBadge';
+export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
