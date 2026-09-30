@@ -219,14 +219,14 @@ describe('McpServersPage', () => {
     );
     expect(rows()).toEqual([
       [
-        'aws-roothttps://aws-root.example.test/mcp',
+        'aws-root',
         'Connected',
         '1',
         'AWS SigV4 (machine identity)',
         'User-registered server',
       ],
       [
-        'githubhttps://github.example.test/mcp',
+        'github',
         'Connected',
         '2',
         'Own account (OAuth sign-in)',
@@ -305,7 +305,7 @@ describe('McpServersPage', () => {
 
     await waitFor(() =>
       expect(rows().map(row => [row[0], row[2]])).toEqual([
-        ['githubhttps://github.example.test/mcp', '1 of 2 match'],
+        ['github', '1 of 2 match'],
         ['kubernetesServer family', '2 of 2 match'],
       ]),
     );

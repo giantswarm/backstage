@@ -50,7 +50,8 @@ function description(entry: ServerListEntry): string | undefined {
     case 'family':
       return 'Server family';
     case 'server':
-      return entry.row.server.getUrl();
+      // The endpoint is on the server page; here it only crowds the name.
+      return undefined;
     default:
       return 'core tools';
   }
@@ -213,8 +214,8 @@ export function ServersTable({
       label: 'Server',
       isRowHeader: true,
       isSortable: true,
-      // The name and its URL are what a person scans for; the other columns
-      // hold a state, a count or a short label each.
+      // The name is what a person scans for; the other columns hold a state,
+      // a count or a short label each.
       defaultWidth: '4fr',
       minWidth: 280,
       cell: row => (
