@@ -376,15 +376,6 @@ function ServerPageContent({
           </Text>
           <StatusBadge row={row} />
         </Flex>
-        {singular?.getUrl() && (
-          <Text
-            variant="body-small"
-            color="secondary"
-            style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
-          >
-            {singular.getUrl()}
-          </Text>
-        )}
       </Flex>
 
       <ServerPageTabs tabs={tabs} search={search} />
