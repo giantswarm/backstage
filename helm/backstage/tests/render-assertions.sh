@@ -153,9 +153,14 @@ echo "--> no extraAppConfig: no annotation"
 render no-fragment
 refute no-fragment 'checksum/extra-app-config'
 
-echo "--> the release version reaches the app config"
-render release-version
-expect release-version 'name: APP_CONFIG_app_releaseVersion'
+echo "--> the release version reaches the app config: the chart's appVersion"
+app_version=$(sed -n "s/^appVersion: *['\"]*\([^'\"]*\)['\"]*$/\1/p" "${chart_dir}/Chart.yaml")
+if [ -z "${app_version}" ] ||
+  ! grep -A1 -- 'name: APP_CONFIG_app_releaseVersion' "${work_dir}/no-fragment.yaml" |
+  grep -q -- "value: \"${app_version}\""; then
+  echo "FAIL: release-version: APP_CONFIG_app_releaseVersion is not \"${app_version}\""
+  failed=1
+fi
 
 echo "--> observability.otel.endpoint set: the OTLP variables render"
 render otel --set observability.otel.endpoint=http://otlp-gateway.kube-system.svc:4317 --set observability.otel.headers=X-Scope-OrgID=giantswarm

@@ -23,7 +23,8 @@ export interface Config {
      * by the chart as `APP_CONFIG_app_releaseVersion`; locally `${VERSION}`
      * in `app-config.yaml`. Shown on the home page and reported to Sentry and
      * TelemetryDeck, both of which start before sign-in, so it is public.
-     * Optional like the Sentry fields below: unset when `VERSION` is.
+     * Optional like the Sentry fields below: unset in local development
+     * when `VERSION` is.
      * @visibility frontend
      */
     releaseVersion?: string;
