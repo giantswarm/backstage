@@ -48,9 +48,10 @@ export function useHelmChartReadme(
   return useMemo(
     () => ({
       readme,
+      readmeUrl,
       isLoading,
       error,
     }),
-    [readme, isLoading, error],
+    [readme, readmeUrl, isLoading, error],
   );
 }
