@@ -26,10 +26,15 @@ export class AzureASOManagedControlPlane extends KubeObject<AzureASOManagedContr
   static readonly plural = 'azureasomanagedcontrolplanes';
 
   /**
-   * The desired Kubernetes version, as `ControlPlane.getK8sVersion()` reads it
-   * for a KubeadmControlPlane. The observed version is in `status.version`.
+   * The desired Kubernetes version from `spec.version`, as
+   * `ControlPlane.getK8sVersion()` reads it for a KubeadmControlPlane.
+   *
+   * `spec.version` is optional in CAPZ: when it is unset, the version comes
+   * from the embedded ManagedCluster's `spec.kubernetesVersion`, and the
+   * controller reports the observed version in `status.version`. That is the
+   * fallback.
    */
   getK8sVersion() {
-    return this.jsonData.spec?.version;
+    return this.jsonData.spec?.version ?? this.jsonData.status?.version;
   }
 }

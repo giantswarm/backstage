@@ -9,6 +9,14 @@ export type {
 export { AzureASOManagedControlPlane } from './AzureASOManagedControlPlane';
 export type { AzureASOManagedControlPlaneInterface } from './AzureASOManagedControlPlane';
 export { AzureCluster } from './AzureCluster';
+export {
+  CONTROL_PLANE_MODELS,
+  findControlPlaneModel,
+} from './controlPlaneModels';
+export type {
+  AnyControlPlane,
+  ControlPlaneModel,
+} from './controlPlaneModels';
 export { AzureMachineTemplate } from './AzureMachineTemplate';
 export { Cluster } from './Cluster';
 export { ControlPlane } from './ControlPlane';

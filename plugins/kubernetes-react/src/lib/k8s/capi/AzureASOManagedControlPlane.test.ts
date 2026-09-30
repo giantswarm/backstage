@@ -26,7 +26,18 @@ describe('AzureASOManagedControlPlane', () => {
     expect(controlPlane.getK8sVersion()).toBe('v1.32.5');
   });
 
-  it('returns undefined without a spec', () => {
+  it('falls back to the observed version when the spec has none', () => {
+    // spec.version is optional in CAPZ; the version may come from the
+    // embedded ManagedCluster instead. The controller still reports it.
+    const controlPlane = makeControlPlane({
+      spec: {},
+      status: { version: 'v1.32.4' },
+    });
+
+    expect(controlPlane.getK8sVersion()).toBe('v1.32.4');
+  });
+
+  it('returns undefined without a spec and a status', () => {
     expect(makeControlPlane().getK8sVersion()).toBeUndefined();
   });
 

@@ -1,5 +1,7 @@
 import {
   AWSCluster,
+  AzureASOManagedCluster,
+  AzureCluster,
   getErrorMessage,
   getIncompatibilityMessage,
   useResource,
@@ -9,9 +11,22 @@ import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentClus
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 import type { InfrastructureRef } from '../../../ClusterSwitch';
 
-export const AWSClusterLocation = ({
+/** The infrastructure cluster kinds that carry a location. */
+export type LocatedProviderClusterModel =
+  | typeof AWSCluster
+  | typeof AzureCluster
+  | typeof AzureASOManagedCluster;
+
+/**
+ * Reads the infrastructure cluster a Cluster references through the given
+ * model and renders its location, with the fetch and API-version errors of
+ * that one resource.
+ */
+export const ProviderClusterLocationValue = ({
+  model,
   infrastructureRef,
 }: {
+  model: LocatedProviderClusterModel;
   infrastructureRef: InfrastructureRef;
 }) => {
   const { installationName } = useCurrentCluster();
@@ -19,18 +34,18 @@ export const AWSClusterLocation = ({
   const { name, namespace } = infrastructureRef;
 
   const {
-    resource: awsCluster,
+    resource: providerCluster,
     isLoading,
     errors,
     error,
     incompatibilities,
-  } = useResource(installationName, AWSCluster, { name, namespace });
+  } = useResource(installationName, model, { name, namespace });
 
   let errorMessage: string | undefined;
   if (error) {
     errorMessage = getErrorMessage({
       error,
-      resourceKind: AWSCluster.kind,
+      resourceKind: model.kind,
       resourceName: name,
       resourceNamespace: namespace,
     });
@@ -41,7 +56,7 @@ export const AWSClusterLocation = ({
 
   useShowErrors(errors);
 
-  const location = awsCluster?.getLocation();
+  const location = providerCluster?.getLocation();
 
   return (
     <AsyncValue

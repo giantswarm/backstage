@@ -2,42 +2,55 @@ import {
   AzureASOManagedControlPlane,
   Cluster,
   ControlPlane,
+  findControlPlaneModel,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useMemo } from 'react';
 
+/**
+ * Lists the control planes the given clusters reference.
+ *
+ * Each control plane kind is listed only on the installations whose clusters
+ * reference it, so an installation sees no discovery for a kind it does not
+ * serve. There is one `useResources` per entry of `CONTROL_PLANE_MODELS`; the
+ * rules of hooks do not allow a loop over the list.
+ */
 export function useControlPlanesForClusters(
   clusterResources: Cluster[],
   { enabled = true },
 ) {
-  const installations = new Set<string>();
-  // A CAPZ managed (AKS) cluster references an AzureASOManagedControlPlane
-  // instead of a KubeadmControlPlane. Those are listed only on installations
-  // that have such a cluster, so the other installations see no extra
-  // discovery for a kind they do not serve.
+  const kubeadmInstallations = new Set<string>();
   const azureManagedInstallations = new Set<string>();
   clusterResources.forEach(cluster => {
-    installations.add(cluster.cluster);
-
     const controlPlaneRef = cluster.getControlPlaneRef();
-    if (
-      controlPlaneRef &&
-      AzureASOManagedControlPlane.matchesRef(controlPlaneRef)
-    ) {
-      azureManagedInstallations.add(cluster.cluster);
+    if (!controlPlaneRef) {
+      return;
+    }
+
+    switch (findControlPlaneModel(controlPlaneRef)) {
+      case ControlPlane:
+        kubeadmInstallations.add(cluster.cluster);
+        break;
+      case AzureASOManagedControlPlane:
+        azureManagedInstallations.add(cluster.cluster);
+        break;
+      default:
+        // A kind without a model (an EKS AWSManagedControlPlane) is not read.
+        break;
     }
   });
 
-  const {
-    resources: controlPlanes,
-    errors: controlPlaneErrors,
-    isLoading: isLoadingControlPlanes,
-  } = useResources(Array.from(installations), ControlPlane, {}, { enabled });
+  const { resources: kubeadmControlPlanes, errors: kubeadmControlPlaneErrors } =
+    useResources(
+      Array.from(kubeadmInstallations),
+      ControlPlane,
+      {},
+      { enabled: enabled && kubeadmInstallations.size > 0 },
+    );
 
   const {
     resources: azureManagedControlPlanes,
     errors: azureManagedControlPlaneErrors,
-    isLoading: isLoadingAzureManagedControlPlanes,
   } = useResources(
     Array.from(azureManagedInstallations),
     AzureASOManagedControlPlane,
@@ -47,16 +60,13 @@ export function useControlPlanesForClusters(
 
   return useMemo(() => {
     return {
-      resources: [...controlPlanes, ...azureManagedControlPlanes],
-      errors: [...controlPlaneErrors, ...azureManagedControlPlaneErrors],
-      isLoading: isLoadingControlPlanes || isLoadingAzureManagedControlPlanes,
+      resources: [...kubeadmControlPlanes, ...azureManagedControlPlanes],
+      errors: [...kubeadmControlPlaneErrors, ...azureManagedControlPlaneErrors],
     };
   }, [
-    controlPlanes,
+    kubeadmControlPlanes,
     azureManagedControlPlanes,
-    controlPlaneErrors,
+    kubeadmControlPlaneErrors,
     azureManagedControlPlaneErrors,
-    isLoadingControlPlanes,
-    isLoadingAzureManagedControlPlanes,
   ]);
 }

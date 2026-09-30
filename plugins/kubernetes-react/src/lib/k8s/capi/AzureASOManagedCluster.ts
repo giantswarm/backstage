@@ -27,6 +27,9 @@ export interface AzureASOManagedClusterInterface extends KubeObjectInterface {
   };
 }
 
+/** The API group of the ASO `ResourceGroup` kind. */
+const RESOURCE_GROUP_API_GROUP = 'resources.azure.com';
+
 export class AzureASOManagedCluster extends ProviderCluster<AzureASOManagedClusterInterface> {
   static readonly supportedVersions = ['v1beta1'] as const;
   static readonly group = 'infrastructure.cluster.x-k8s.io';
@@ -35,19 +38,20 @@ export class AzureASOManagedCluster extends ProviderCluster<AzureASOManagedClust
 
   /**
    * Unlike an AzureCluster, the managed cluster has no `spec.location`. The
-   * region lives on the embedded ASO `ResourceGroup`; any other embedded
-   * resource with a location is the fallback.
+   * region is the location of the embedded ASO `ResourceGroup`. Without one,
+   * or when it has no location (an adopted resource group, say), the region is
+   * unknown: the other embedded resources (a virtual network, a peering) may
+   * sit in another region, so none of them is a substitute.
    */
   getLocation() {
     const resources = this.jsonData.spec?.resources ?? [];
 
     const resourceGroup = resources.find(
-      resource => resource.kind === 'ResourceGroup',
+      resource =>
+        resource.kind === 'ResourceGroup' &&
+        resource.apiVersion?.split('/')[0] === RESOURCE_GROUP_API_GROUP,
     );
-    if (resourceGroup?.spec?.location) {
-      return resourceGroup.spec.location;
-    }
 
-    return resources.find(resource => resource.spec?.location)?.spec?.location;
+    return resourceGroup?.spec?.location;
   }
 }

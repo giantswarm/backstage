@@ -316,6 +316,7 @@ describe('ClusterAboutCard', () => {
     expect(
       screen.queryByText(/Errors when trying to fetch/),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText(/KubeadmControlPlane/)).not.toBeInTheDocument();
     expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
   });
 

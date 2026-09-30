@@ -39,17 +39,43 @@ describe('AzureASOManagedCluster', () => {
       expect(cluster.getLocation()).toBe('westeurope');
     });
 
-    it('falls back to the first embedded resource with a location', () => {
+    it('returns undefined when the ResourceGroup has no location', () => {
+      // Another embedded resource may sit in another region, so its location
+      // is no substitute for the resource group's.
       const cluster = makeCluster({
         spec: {
           resources: [
-            { kind: 'VirtualNetworksSubnet', spec: {} },
-            { kind: 'VirtualNetwork', spec: { location: 'northeurope' } },
+            {
+              apiVersion: 'resources.azure.com/v1api20200601',
+              kind: 'ResourceGroup',
+              spec: {},
+            },
+            {
+              apiVersion: 'network.azure.com/v1api20240301',
+              kind: 'VirtualNetwork',
+              spec: { location: 'northeurope' },
+            },
           ],
         },
       });
 
-      expect(cluster.getLocation()).toBe('northeurope');
+      expect(cluster.getLocation()).toBeUndefined();
+    });
+
+    it('ignores a ResourceGroup kind from another API group', () => {
+      const cluster = makeCluster({
+        spec: {
+          resources: [
+            {
+              apiVersion: 'example.com/v1',
+              kind: 'ResourceGroup',
+              spec: { location: 'northeurope' },
+            },
+          ],
+        },
+      });
+
+      expect(cluster.getLocation()).toBeUndefined();
     });
 
     it('returns undefined without embedded resources', () => {

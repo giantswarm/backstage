@@ -31,8 +31,8 @@ import { AWSAccountField } from './AWSAccountField';
 import { ClusterSwitch } from '../../ClusterSwitch';
 import { clusterDetailsRouteRef } from '../../../../../routes';
 import {
-  AzureASOManagedControlPlane,
   ControlPlane,
+  findControlPlaneModel,
   getErrorMessage,
   getIncompatibilityMessage,
   useResource,
@@ -46,9 +46,6 @@ import {
 } from '../../../../../assets/icons/CustomIcons';
 import { ClusterTypes, ClusterProviders } from '../../../utils';
 import { AsyncValue, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-
-/** The control plane kinds the card can read a Kubernetes version from. */
-const CONTROL_PLANE_MODELS = [ControlPlane, AzureASOManagedControlPlane];
 
 interface ProviderLocationDisplayProps {
   provider: string;
@@ -120,11 +117,11 @@ export function ClusterAboutCard() {
 
   // The reference decides which control plane kind to read: a
   // KubeadmControlPlane, or the AzureASOManagedControlPlane of an AKS
-  // cluster. A kind without a model here (an EKS cluster's
+  // cluster. A kind without a model in CONTROL_PLANE_MODELS (an EKS cluster's
   // AWSManagedControlPlane, say) would only 404, so its fetch stays disabled
   // and the Kubernetes version reads as not available.
   const ControlPlaneModel = controlPlaneRef
-    ? CONTROL_PLANE_MODELS.find(model => model.matchesRef(controlPlaneRef))
+    ? findControlPlaneModel(controlPlaneRef)
     : undefined;
   const hasSupportedControlPlane = ControlPlaneModel !== undefined;
 
