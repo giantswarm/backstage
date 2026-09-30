@@ -4,6 +4,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import { renderHook, waitFor } from '@testing-library/react';
+import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
 import { App } from '../lib/k8s/App';
 import { useResource } from './useResource';
 
@@ -45,6 +46,7 @@ function createMockKubernetesApi(responses: ProxyResponses) {
 // settled.
 function createWrapper(
   kubernetesApi: ReturnType<typeof createMockKubernetesApi>,
+  errorReporter: { notify: jest.Mock } = { notify: jest.fn() },
 ) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -71,7 +73,12 @@ function createWrapper(
         client={queryClient}
         persistOptions={{ persister }}
       >
-        <TestApiProvider apis={[[kubernetesApiRef, kubernetesApi]]}>
+        <TestApiProvider
+          apis={[
+            [kubernetesApiRef, kubernetesApi],
+            [errorReporterApiRef, errorReporter],
+          ]}
+        >
           {children}
         </TestApiProvider>
       </PersistQueryClientProvider>
@@ -237,5 +244,78 @@ describe('useResource', () => {
 
     expect(result.current.error?.name).toBe('NotFoundError');
     expect(result.current.error?.message).toMatch(/Reason: HTTP 404\.$/);
+  });
+
+  it('sends no request for a resource without a name', async () => {
+    const api = createMockKubernetesApi({
+      'cluster-a': {
+        '/apis/application.giantswarm.io': appGroupResponse,
+        '/apis/application.giantswarm.io/v1alpha1': appResourcesResponse,
+      },
+    });
+
+    const { result } = renderHook(
+      () => useResource('cluster-a', App, { name: '', namespace: 'org-test' }),
+      { wrapper: createWrapper(api) },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+    // Let anything that would have been sent go out first.
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(api.proxy).not.toHaveBeenCalled();
+    expect(result.current.resource).toBeUndefined();
+  });
+
+  it('does not report version issues from cached discovery while disabled', async () => {
+    // The server serves apps only at v1beta1; the client supports v1alpha1.
+    const api = createMockKubernetesApi({
+      'cluster-a': {
+        '/apis/application.giantswarm.io': {
+          ...appGroupResponse,
+          versions: [
+            {
+              groupVersion: 'application.giantswarm.io/v1beta1',
+              version: 'v1beta1',
+            },
+          ],
+        },
+        '/apis/application.giantswarm.io/v1beta1': {
+          ...appResourcesResponse,
+          groupVersion: 'application.giantswarm.io/v1beta1',
+        },
+      },
+    });
+    const errorReporter = { notify: jest.fn() };
+    const wrapper = createWrapper(api, errorReporter);
+    const read = (enabled: boolean) =>
+      renderHook(
+        () =>
+          useResource(
+            'cluster-a',
+            App,
+            { name: 'my-app', namespace: 'org-test' },
+            { enabled },
+          ),
+        { wrapper },
+      );
+
+    // A reader discovers the incompatibility and reports it once.
+    const reader = read(true);
+    await waitFor(() => {
+      expect(errorReporter.notify).toHaveBeenCalledTimes(1);
+    });
+    reader.unmount();
+
+    // A disabled caller on the same cache sees it, but does not report again.
+    const disabled = read(false);
+    await waitFor(() => {
+      expect(disabled.result.current.incompatibilities).toHaveLength(1);
+    });
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    expect(errorReporter.notify).toHaveBeenCalledTimes(1);
   });
 });

@@ -23,7 +23,9 @@ export function useResource<R extends KubeObject<any>>(
 ) {
   const isRestoring = useIsRestoring();
   const staticGVK = ResourceClass.getGVK();
-  const enabled = queryOptions?.enabled ?? true;
+  // Without a name there is nothing to get: the path would be the list's, and
+  // the list would be read as if it were one resource.
+  const enabled = (queryOptions?.enabled ?? true) && Boolean(options.name);
 
   const {
     resolvedGVK,
@@ -81,10 +83,12 @@ export function useResource<R extends KubeObject<any>>(
     return result;
   }, [cluster, incompatibilities, queryInfo.error, queryInfo.refetch]);
 
-  // Report API version issues to Sentry automatically
+  // Report API version issues to Sentry automatically. Not while disabled: the
+  // issues then come from discovery another caller cached, and are reported
+  // by whichever caller is actually reading the resource.
   useReportApiVersionIssues(
-    incompatibilities.length > 0 ? incompatibilities : null,
-    clientOutdatedStates.length > 0 ? clientOutdatedStates : null,
+    enabled && incompatibilities.length > 0 ? incompatibilities : null,
+    enabled && clientOutdatedStates.length > 0 ? clientOutdatedStates : null,
   );
 
   return {

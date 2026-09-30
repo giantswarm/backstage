@@ -7,16 +7,16 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
+import type { InfrastructureRef } from '../../../ClusterSwitch';
 
-export const AzureClusterLocation = () => {
-  const { cluster, installationName } = useCurrentCluster();
+export const AzureClusterLocation = ({
+  infrastructureRef,
+}: {
+  infrastructureRef: InfrastructureRef;
+}) => {
+  const { installationName } = useCurrentCluster();
 
-  // Without an infrastructure reference there is nothing to read, and the
-  // location reads as not available.
-  const infrastructureRef = cluster.getInfrastructureRef();
-  const name = infrastructureRef?.name ?? '';
-  const namespace = infrastructureRef?.namespace;
-  const hasInfrastructureRef = infrastructureRef !== undefined;
+  const { name, namespace } = infrastructureRef;
 
   const {
     resource: azureCluster,
@@ -24,12 +24,7 @@ export const AzureClusterLocation = () => {
     errors,
     error,
     incompatibilities,
-  } = useResource(
-    installationName,
-    AzureCluster,
-    { name, namespace },
-    { enabled: hasInfrastructureRef },
-  );
+  } = useResource(installationName, AzureCluster, { name, namespace });
 
   let errorMessage: string | undefined;
   if (error) {
@@ -40,12 +35,11 @@ export const AzureClusterLocation = () => {
       resourceNamespace: namespace,
     });
   }
-  // A disabled query still returns cached incompatibilities.
-  if (hasInfrastructureRef && incompatibilities[0]) {
+  if (incompatibilities[0]) {
     errorMessage = getIncompatibilityMessage(incompatibilities[0]);
   }
 
-  useShowErrors(hasInfrastructureRef ? errors : null);
+  useShowErrors(errors);
 
   const location = azureCluster?.getLocation();
 

@@ -9,16 +9,16 @@ import {
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 import { Account } from '../../../../../UI/Account';
+import type { InfrastructureRef } from '../../../ClusterSwitch';
 
-export const AWSAccountField = () => {
-  const { cluster, installationName } = useCurrentCluster();
+export const AWSAccountField = ({
+  infrastructureRef,
+}: {
+  infrastructureRef: InfrastructureRef;
+}) => {
+  const { installationName } = useCurrentCluster();
 
-  // Without an infrastructure reference there is nothing to read, and the
-  // account reads as not available.
-  const infrastructureRef = cluster.getInfrastructureRef();
-  const name = infrastructureRef?.name ?? '';
-  const namespace = infrastructureRef?.namespace;
-  const hasInfrastructureRef = infrastructureRef !== undefined;
+  const { name, namespace } = infrastructureRef;
 
   const {
     resource: awsCluster,
@@ -26,12 +26,7 @@ export const AWSAccountField = () => {
     errors: awsClusterErrors,
     error: awsClusterError,
     incompatibilities: awsClusterIncompatibilities,
-  } = useResource(
-    installationName,
-    AWSCluster,
-    { name, namespace },
-    { enabled: hasInfrastructureRef },
-  );
+  } = useResource(installationName, AWSCluster, { name, namespace });
 
   let awsClusterErrorMessage: string | undefined;
   if (awsClusterError) {
@@ -42,14 +37,13 @@ export const AWSAccountField = () => {
       resourceNamespace: namespace,
     });
   }
-  // A disabled query still returns cached incompatibilities.
-  if (hasInfrastructureRef && awsClusterIncompatibilities[0]) {
+  if (awsClusterIncompatibilities[0]) {
     awsClusterErrorMessage = getIncompatibilityMessage(
       awsClusterIncompatibilities[0],
     );
   }
 
-  useShowErrors(hasInfrastructureRef ? awsClusterErrors : null);
+  useShowErrors(awsClusterErrors);
 
   const identityRef = awsCluster?.getIdentityRef();
   const hasRoleIdentity =
@@ -70,8 +64,11 @@ export const AWSAccountField = () => {
     { enabled: hasRoleIdentity },
   );
 
+  // Disabled for an identity of another kind, the query still returns what was
+  // cached under the same name for another cluster — an error or an
+  // incompatibility that has nothing to do with this one.
   let identityErrorMessage: string | undefined;
-  if (identityError) {
+  if (hasRoleIdentity && identityError) {
     identityErrorMessage = getErrorMessage({
       error: identityError,
       resourceKind: AWSClusterRoleIdentity.kind,

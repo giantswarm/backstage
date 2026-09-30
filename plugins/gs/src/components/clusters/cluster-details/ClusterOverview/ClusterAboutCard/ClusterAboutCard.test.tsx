@@ -4,7 +4,7 @@ import {
 } from '@backstage/frontend-test-utils';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import {
   App,
   Cluster,
@@ -107,6 +107,13 @@ async function renderCard(api: ReturnType<typeof createMockKubernetesApi>) {
   );
 }
 
+// A disabled query shows "n/a" on the first render, before any request could
+// be sent or the 100ms debounce of useShowErrors could publish an error. Wait
+// past both before checking that neither happened.
+async function settle() {
+  await act(() => new Promise(resolve => setTimeout(resolve, 200)));
+}
+
 function kubernetesVersionField() {
   const label = screen.getByRole('heading', { name: 'Kubernetes version' });
   return within(label.parentElement as HTMLElement);
@@ -176,6 +183,7 @@ describe('ClusterAboutCard', () => {
     await waitFor(() => {
       expect(kubernetesVersionField().getByText('n/a')).toBeInTheDocument();
     });
+    await settle();
 
     expect(
       requestedPaths(api).filter(
@@ -206,6 +214,7 @@ describe('ClusterAboutCard', () => {
     await waitFor(() => {
       expect(kubernetesVersionField().getByText('n/a')).toBeInTheDocument();
     });
+    await settle();
     expect(screen.getByText('Test cluster')).toBeInTheDocument();
     expect(
       requestedPaths(api).filter(path =>

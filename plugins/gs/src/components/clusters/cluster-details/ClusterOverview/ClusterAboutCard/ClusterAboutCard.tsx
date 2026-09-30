@@ -258,10 +258,10 @@ export function ClusterAboutCard() {
         </AboutField>
 
         <ClusterSwitch
-          renderAWS={() => (
+          renderAWS={infrastructureRef => (
             <AboutField label="AWS account">
               <AboutFieldValue>
-                <AWSAccountField />
+                <AWSAccountField infrastructureRef={infrastructureRef} />
               </AboutFieldValue>
             </AboutField>
           )}
