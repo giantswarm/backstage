@@ -11,6 +11,7 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private readonly configApi: ConfigApi;
   private readonly identityApi: IdentityApi;
   private readonly errorReporterApi?: ErrorReporterApi;
+  private readonly versionPayload: Record<string, string>;
   private td: TelemetryDeck | undefined;
   private initPromise: Promise<TelemetryDeck> | undefined;
 
@@ -22,6 +23,13 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     this.configApi = options.configApi;
     this.identityApi = options.identityApi;
     this.errorReporterApi = options.errorReporterApi;
+    // TelemetryDeck's default parameter for the app version; the JS SDK
+    // does not set it.
+    const releaseVersion =
+      options.configApi.getOptionalString('app.releaseVersion');
+    this.versionPayload = releaseVersion
+      ? { 'TelemetryDeck.AppInfo.version': releaseVersion }
+      : {};
   }
 
   static fromConfig(options: {
@@ -118,7 +126,7 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     }
 
     this.getOrCreateInstance()
-      .then(td => td.signal('pageview', payload))
+      .then(td => td.signal('pageview', { ...payload, ...this.versionPayload }))
       .catch(() => {});
   }
 }

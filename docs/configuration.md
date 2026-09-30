@@ -9,16 +9,16 @@ unauthenticated `index.html`: every path a `config.d.ts` marks
 `@visibility frontend`, served to anyone who can reach the portal, signed in or
 not. It is kept to what the sign-in page needs before anyone is signed in:
 
-| Path                                                                          | Why it is public                                                                             |
-| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `app.*` (title, baseUrl, extensions, routes, branding, Sentry, TelemetryDeck) | the app shell and the sign-in page render from it                                            |
-| `backend.baseUrl`                                                             | where the sign-in flow and every request go                                                  |
-| `auth.environment`, `auth.providers.*`                                        | which providers exist (their secrets are `@visibility secret`)                               |
-| `gs.authProvider`                                                             | the provider the sign-in page initiates                                                      |
-| `gs.auth.scopes`, `gs.auth.extraScopes`                                       | the scopes the sign-in requests                                                              |
-| `gs.signInProvider.*`, `gs.signInFallbackProvider.*`                          | the two sign-in cards                                                                        |
-| `gs.github.brokerAudience`                                                    | picks the GitHub auth API when the app constructs its APIs, before sign-in; an audience name |
-| `organization.name`, `permission.enabled`                                     | Backstage core                                                                               |
+| Path                                                                                           | Why it is public                                                                             |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `app.*` (title, baseUrl, release version, extensions, routes, branding, Sentry, TelemetryDeck) | the app shell and the sign-in page render from it                                            |
+| `backend.baseUrl`                                                                              | where the sign-in flow and every request go                                                  |
+| `auth.environment`, `auth.providers.*`                                                         | which providers exist (their secrets are `@visibility secret`)                               |
+| `gs.authProvider`                                                                              | the provider the sign-in page initiates                                                      |
+| `gs.auth.scopes`, `gs.auth.extraScopes`                                                        | the scopes the sign-in requests                                                              |
+| `gs.signInProvider.*`, `gs.signInFallbackProvider.*`                                           | the two sign-in cards                                                                        |
+| `gs.github.brokerAudience`                                                                     | picks the GitHub auth API when the app constructs its APIs, before sign-in; an audience name |
+| `organization.name`, `permission.enabled`                                                      | Backstage core                                                                               |
 
 The **signed-in config** is served by the authenticated `GET /api/gs/config`,
 once, after the main sign-in, in app-config shape. Everything else a Giant
