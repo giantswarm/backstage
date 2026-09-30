@@ -194,7 +194,8 @@ const NEW_WORKFLOW_TEMPLATE = {
  * Ad-hoc workflow dialog: a JSON editor validated via `core_workflow_validate`
  * and saved via `core_workflow_create` (when `workflow` is absent) or
  * `core_workflow_update` (editing an existing ad-hoc workflow). Both calls go
- * through the `/call` proxy. Mirrors the MCP-server `AdHocServerDialog`.
+ * through the `/call` proxy. The MCP-server edit dialog in
+ * `ServerMutationActions` follows the same shape, for editing only.
  */
 export function AdHocWorkflowDialog({
   installation,

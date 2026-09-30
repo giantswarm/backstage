@@ -14,7 +14,14 @@ let mockModelConfigs: {
   hasInstallations: boolean;
   availableInstallations: string[];
   unreachableInstallations: string[];
+  inaccessibleInstallations: string[];
 };
+
+// The muster Tool Explorer route the sign-in pointer links to.
+jest.mock('@backstage/frontend-plugin-api', () => ({
+  ...jest.requireActual('@backstage/frontend-plugin-api'),
+  useRouteRef: () => () => '/agent-platform/muster/tools',
+}));
 
 jest.mock('../NewAgentFormProvider', () => ({
   useNewAgentForm: () => ({
@@ -62,6 +69,7 @@ describe('InstallationSelect', () => {
       hasInstallations: true,
       availableInstallations: ['alpha', 'beta'],
       unreachableInstallations: [],
+      inaccessibleInstallations: [],
     };
     mockPresence = { alpha: 'available', beta: 'available', solo: 'available' };
     mockAgentManagerLoading = false;
@@ -83,12 +91,37 @@ describe('InstallationSelect', () => {
     });
 
     it('withdraws a pick whose muster turns out to lack agent-manager', () => {
+      mockInstallations = [
+        { name: 'alpha' },
+        { name: 'beta' },
+        { name: 'gamma' },
+      ];
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['alpha', 'beta', 'gamma'],
+      };
       mockState = { installation: 'beta' };
-      mockPresence = { alpha: 'available', beta: 'missing' };
+      mockPresence = {
+        alpha: 'available',
+        beta: 'missing',
+        gamma: 'available',
+      };
 
       render(<InstallationSelect />);
 
       expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
+    });
+
+    it('swaps a pick lacking agent-manager for the only usable installation', () => {
+      mockState = { installation: 'beta' };
+      mockPresence = { alpha: 'available', beta: 'missing' };
+
+      const { getByText } = render(<InstallationSelect />);
+
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
+      expect(mockSetInstallation).not.toHaveBeenCalledWith(undefined);
+      // The card stays: it is what explains why beta is not offered.
+      expect(getByText('No agent-manager on beta')).toBeInTheDocument();
     });
 
     it('keeps the picker settling while the server lists are still being read', () => {
@@ -199,6 +232,120 @@ describe('InstallationSelect', () => {
     });
   });
 
+  describe('with several configured but only one offering models', () => {
+    beforeEach(() => {
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['alpha'],
+      };
+    });
+
+    it('says where the agent runs instead of offering a one-option dropdown once the fleet query settles', () => {
+      const { getByRole, getByText, queryByLabelText } = render(
+        <InstallationSelect />,
+      );
+
+      // The card stays: it was on screen while the fleet resolved.
+      expect(
+        getByRole('heading', { name: 'Installation', level: 3 }),
+      ).toBeInTheDocument();
+      expect(
+        getByText(/the only installation with models and agent-manager/),
+      ).toHaveTextContent(
+        'Runs on alpha, the only installation with models and agent-manager.',
+      );
+      expect(queryByLabelText('Installation')).not.toBeInTheDocument();
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
+    });
+
+    it('keeps offering the picker while other installations may still respond', () => {
+      mockModelConfigs = { ...mockModelConfigs, isLoading: true };
+
+      const { getByLabelText, queryByText } = render(<InstallationSelect />);
+
+      expect(getByLabelText('Installation')).toBeInTheDocument();
+      expect(queryByText(/^Runs on/)).not.toBeInTheDocument();
+      expect(mockSetInstallation).not.toHaveBeenCalled();
+    });
+
+    it('keeps the sole option once settled, even when the fleet query re-probes', () => {
+      const { getByText, queryByLabelText, rerender } = render(
+        <InstallationSelect />,
+      );
+      // A cluster-access reconnect turns the inventory's probing back on.
+      mockModelConfigs = { ...mockModelConfigs, isLoading: true };
+      rerender(<InstallationSelect />);
+
+      expect(getByText(/^Runs on/)).toBeInTheDocument();
+      expect(queryByLabelText('Installation')).not.toBeInTheDocument();
+    });
+
+    it('keeps explaining unreachable installations', () => {
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        unreachableInstallations: ['beta'],
+      };
+
+      const { getByText } = render(<InstallationSelect />);
+
+      expect(getByText(/^Runs on/)).toBeInTheDocument();
+      expect(getByText(/Couldn't read 1 installation/)).toBeInTheDocument();
+      expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
+    });
+
+    it('explains installations whose cluster access is not healthy', () => {
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        inaccessibleInstallations: ['gamma'],
+      };
+
+      const { getByText } = render(<InstallationSelect />);
+
+      expect(getByText("Couldn't check gamma")).toBeInTheDocument();
+      expect(getByText(/Cluster access to gamma isn't healthy/)).toBeVisible();
+    });
+  });
+
+  describe('with several configured but only one known to have agent-manager', () => {
+    it('keeps the picker and explains an installation whose server list could not be read', () => {
+      mockPresence = { alpha: 'available', beta: 'unknown' };
+
+      const { getByLabelText, getByRole, getByText, queryByText } = render(
+        <InstallationSelect />,
+      );
+
+      // beta might have agent-manager, so alpha is not the only choice yet.
+      expect(getByLabelText('Installation')).toBeInTheDocument();
+      expect(queryByText(/^Runs on/)).not.toBeInTheDocument();
+      expect(queryByText('beta')).not.toBeInTheDocument();
+      expect(
+        getByText("Couldn't check beta for agent-manager"),
+      ).toBeInTheDocument();
+      expect(
+        getByText(/Sign in to muster on beta to check whether agents/),
+      ).toBeInTheDocument();
+      // Points at where that sign-in happens: muster, scoped to beta.
+      expect(getByRole('link', { name: 'Sign in to muster' })).toHaveAttribute(
+        'href',
+        '/agent-platform/muster/tools?installation=beta',
+      );
+      expect(mockSetInstallation).not.toHaveBeenCalled();
+    });
+
+    it('keeps the picker while the server lists are still being read', () => {
+      mockPresence = { alpha: 'available', beta: 'missing' };
+      mockAgentManagerLoading = true;
+
+      const { getByLabelText, getByText } = render(<InstallationSelect />);
+
+      expect(getByLabelText('Installation')).toBeInTheDocument();
+      expect(
+        getByText('Still checking the remaining installations…'),
+      ).toBeInTheDocument();
+      expect(mockSetInstallation).not.toHaveBeenCalled();
+    });
+  });
+
   describe('with a single installation configured', () => {
     beforeEach(() => {
       mockInstallations = [{ name: 'solo' }];
@@ -265,6 +412,30 @@ describe('InstallationSelect', () => {
       // Don't claim "no models" when the read never succeeded.
       expect(queryByText('No installations with models')).toBeNull();
     });
+
+    it("still explains itself when the sole installation's server list could not be read", () => {
+      mockPresence = { solo: 'unknown' };
+
+      const { getByText, queryByText } = render(<InstallationSelect />);
+
+      expect(
+        getByText("Couldn't check solo for agent-manager"),
+      ).toBeInTheDocument();
+      expect(queryByText('No installations with models')).toBeNull();
+    });
+
+    it('still explains itself when cluster access to the sole installation is not healthy', () => {
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: [],
+        inaccessibleInstallations: ['solo'],
+      };
+
+      const { getByText, queryByText } = render(<InstallationSelect />);
+
+      expect(getByText("Couldn't check solo")).toBeInTheDocument();
+      expect(queryByText('No installations with models')).toBeNull();
+    });
   });
 
   it('renders nothing until the installations config resolves', () => {
@@ -275,6 +446,7 @@ describe('InstallationSelect', () => {
       hasInstallations: false,
       availableInstallations: [],
       unreachableInstallations: [],
+      inaccessibleInstallations: [],
     };
 
     const { container } = render(<InstallationSelect />);
