@@ -3,7 +3,6 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { Box, Flex, Link, Tag, TagGroup, Text } from '@backstage/ui';
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { FactList, type Fact } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
@@ -24,9 +23,7 @@ import {
   formatRelativeTime,
   formatTimestamp,
 } from '../../lib/formatRelativeTime';
-import { StateBadge } from '../shared';
-import { severityTone } from '../shared';
-import { toolExplorerRouteRef } from '../../routes';
+import { StateBadge, severityTone, useServerPageLinks } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
   mono: {
@@ -117,12 +114,14 @@ export function DetailBlock({
 
 /**
  * Where a deactivated server is activated again, as a sentence to append. The
- * lifecycle buttons render for an ad-hoc server only (ServerMutationActions);
- * a GitOps-managed one has no Activate on this page, so pointing at "the
- * actions below" would send the reader to a button that is not there.
+ * lifecycle actions exist for an ad-hoc server only (the accordion's action row,
+ * the server page's header menu); a GitOps-managed one has no Activate, so
+ * pointing at one would send the reader to a control that is not there.
  */
 function activateHint(server: MCPServer): string {
-  return isGitOpsManaged(server) ? '' : ' Use “Activate” in the actions below.';
+  return isGitOpsManaged(server)
+    ? ''
+    : ' Use “Activate” in the server’s actions.';
 }
 
 /** CRD-sourced configuration (always available, no muster session needed). */
@@ -510,7 +509,7 @@ export function RuntimeState({ server }: { server: MCPServer }) {
  * Ready condition says about it (a token exchange broken for every caller
  * reads differently from an endpoint that does not answer).
  */
-function noToolsExplanation(server: MCPServer): string {
+export function noToolsExplanation(server: MCPServer): string {
   if (server.getSuspended()) {
     return `No tools exposed — this server is deactivated.${activateHint(
       server,
@@ -523,7 +522,7 @@ function noToolsExplanation(server: MCPServer): string {
   const authGated =
     state === 'Auth Required' && server.canAuthenticateInteractively();
   if (authGated) {
-    return 'No tools exposed — your muster session is not authenticated to this server. Use “Sign in” in the actions below.';
+    return 'No tools exposed — your muster session is not authenticated to this server. Use “Sign in” in the server’s actions.';
   }
   const explanation = server.getStateExplanation();
   if (state === 'Failed' && explanation) {
@@ -534,10 +533,10 @@ function noToolsExplanation(server: MCPServer): string {
 
 /**
  * Tools this server contributes to the aggregated catalogue, discovered lazily
- * via `filter_tools(pattern="<prefix>_*")`. Each tag links to the tool
- * explorer scoped to the same installation + server. `prefixOverride` lets a
- * family-grouped (standard) server filter by `x_<family>_*` instead of the
- * single CR's name-derived prefix.
+ * via `filter_tools(pattern="<prefix>_*")`. Each tag links to the tool's page
+ * beneath its server (the family's page for a family member). `prefixOverride`
+ * lets a family-grouped (standard) server filter by `x_<family>_*` instead of
+ * the single CR's name-derived prefix.
  */
 export function ServerTools({
   server,
@@ -548,8 +547,9 @@ export function ServerTools({
 }) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
-  const toolExplorerRoute = useRouteRef(toolExplorerRouteRef);
+  const links = useServerPageLinks();
   const installation = server.cluster;
+  const serverKey = server.getFamily() ?? server.getName();
   const prefix = prefixOverride ?? server.getToolNamePrefix();
   const pattern = `${prefix}_*`;
 
@@ -557,19 +557,6 @@ export function ServerTools({
     queryKey: ['muster', 'server-tools', installation, pattern],
     queryFn: () => musterApi.filterTools({ installation, pattern, limit: 200 }),
   });
-
-  const explorerLink = (toolName?: string) => {
-    const base = toolExplorerRoute?.() ?? '#';
-    const params = new URLSearchParams();
-    if (installation) {
-      params.set('installation', installation);
-    }
-    params.set('server', server.getName());
-    if (toolName) {
-      params.set('tool', toolName);
-    }
-    return `${base}?${params.toString()}`;
-  };
 
   if (isLoading) {
     return <Progress />;
@@ -588,8 +575,11 @@ export function ServerTools({
       <Note>
         {data?.total ?? tools.length} tool(s) under <Mono>{pattern}</Mono>
         {data?.truncated ? ' (first page)' : ''} —{' '}
-        <Link className={classes.link} href={explorerLink()}>
-          Open in tool explorer
+        <Link
+          className={classes.link}
+          href={links.server(serverKey, installation, { tab: 'tools' }) ?? '#'}
+        >
+          Open the server’s tools
         </Link>
       </Note>
       <TagGroup aria-label={`Tools under ${pattern}`}>
@@ -606,7 +596,7 @@ export function ServerTools({
                 open-in-new-tab. The title carries the summary on hover. */}
             <Link
               className={classes.tagLink}
-              href={explorerLink(tool.name)}
+              href={links.tool(serverKey, tool.name, installation) ?? '#'}
               title={tool.summary ?? tool.description ?? tool.name}
             >
               {tool.name.startsWith(`${prefix}_`)
@@ -660,7 +650,14 @@ export function useServerCapabilityCounts(server: MCPServer): {
  * scopes them by source server instead (muster#1096), which is what
  * `filter_resources` takes here.
  */
-export function ServerResources({ server }: { server: MCPServer }) {
+export function ServerResources({
+  server,
+  emptyText,
+}: {
+  server: MCPServer;
+  /** What an empty list says, where the caller knows more than this block. */
+  emptyText?: string;
+}) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const installation = server.cluster;
@@ -683,7 +680,8 @@ export function ServerResources({ server }: { server: MCPServer }) {
   if (resources.length === 0) {
     return (
       <Note>
-        No resources exposed (server may be down or require authentication).
+        {emptyText ??
+          'No resources exposed (server may be down or require authentication).'}
       </Note>
     );
   }
@@ -717,7 +715,14 @@ export function ServerResources({ server }: { server: MCPServer }) {
  * the server filter is used for symmetry with resources and to stay correct
  * if the prefix scheme ever changes.
  */
-export function ServerPrompts({ server }: { server: MCPServer }) {
+export function ServerPrompts({
+  server,
+  emptyText,
+}: {
+  server: MCPServer;
+  /** What an empty list says, where the caller knows more than this block. */
+  emptyText?: string;
+}) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const installation = server.cluster;
@@ -740,7 +745,8 @@ export function ServerPrompts({ server }: { server: MCPServer }) {
   if (prompts.length === 0) {
     return (
       <Note>
-        No prompts exposed (server may be down or require authentication).
+        {emptyText ??
+          'No prompts exposed (server may be down or require authentication).'}
       </Note>
     );
   }
@@ -803,4 +809,32 @@ export function Provenance({ server }: { server: MCPServer }) {
   }
 
   return <FactList facts={facts} maxWidth={null} />;
+}
+
+/**
+ * The link from a servers-page row to the server's own page, where everything
+ * about it -- its tools with a page each, resources, prompts, instances -- has
+ * room.
+ */
+export function ServerPageLink({
+  serverKey,
+  installation,
+}: {
+  /** The family name, the CR name, or `muster`. */
+  serverKey: string;
+  installation?: string;
+}) {
+  const classes = useStyles();
+  const links = useServerPageLinks();
+  const href = links.server(serverKey, installation);
+  if (!href) {
+    return null;
+  }
+  return (
+    <Box mb="2">
+      <Link className={classes.link} href={href}>
+        Open the server page
+      </Link>
+    </Box>
+  );
 }

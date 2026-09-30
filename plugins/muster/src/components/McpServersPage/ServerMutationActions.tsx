@@ -59,7 +59,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-type LiveAction = {
+export type LiveAction = {
   label: string;
   tool: string;
   args: Record<string, unknown>;
@@ -74,7 +74,7 @@ type LiveAction = {
  * Delete gets the destructive treatment: the lifecycle actions are undone by
  * their counterpart (Deactivate by Activate).
  */
-function ConfirmActionDialog({
+export function ConfirmActionDialog({
   server,
   action,
   open,
@@ -166,7 +166,7 @@ function ConfirmActionDialog({
  * `core_mcpserver_update`. Both calls go through the `/call` proxy. New servers
  * are added through the "Register server" flow instead.
  */
-function AdHocServerDialog({
+export function AdHocServerDialog({
   server,
   open,
   onClose,
@@ -322,6 +322,66 @@ export const OAUTH_SIGN_IN_GATE =
   'cannot sign a session in — muster refuses it. Use “Sign in” in this ' +
   'row instead.';
 
+/**
+ * The live lifecycle and CRUD actions muster offers for an ad-hoc server, each
+ * as the tool call its confirm dialog runs. Activate and Deactivate are two
+ * directions of one switch, so exactly one is set; Reconnect exists only for an
+ * active server (muster refuses it while suspended) and carries the reason it
+ * is refused for an OAuth server waiting on a per-user sign-in.
+ */
+export function serverLiveActions(server: MCPServer): {
+  activate?: LiveAction;
+  deactivate?: LiveAction;
+  reconnect?: LiveAction;
+  reconnectGate?: string;
+  remove: LiveAction;
+} {
+  const name = server.getName();
+  // muster refuses a reconnect (core_service_restart) for an OAuth server in
+  // `Auth Required`: authentication is session-scoped, so only the sign-in
+  // flow (core_auth_login) can connect it. The gate is deliberately
+  // state-scoped, not `auth.type === 'oauth'` alone — reconnecting a failed
+  // OAuth server is a valid retry.
+  const oauthSignInGated =
+    server.getAuth()?.type === 'oauth' && server.getState() === 'Auth Required';
+  const remove: LiveAction = {
+    label: `Delete ${name}`,
+    tool: 'core_mcpserver_delete',
+    args: { name },
+    destructive: true,
+  };
+  if (server.getSuspended()) {
+    return {
+      activate: {
+        label: `Activate ${name}`,
+        tool: 'core_service_start',
+        args: { name },
+        description:
+          'muster will resume maintaining a connection to this server.',
+      },
+      remove,
+    };
+  }
+  return {
+    deactivate: {
+      label: `Deactivate ${name}`,
+      tool: 'core_service_stop',
+      args: { name },
+      description:
+        'muster will disconnect this server and keep it deactivated until it is activated again.',
+    },
+    reconnect: {
+      label: `Reconnect ${name}`,
+      tool: 'core_service_restart',
+      args: { name },
+      description:
+        'muster will drop the current session to this server and establish a fresh one, re-running tool discovery.',
+    },
+    reconnectGate: oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined,
+    remove,
+  };
+}
+
 /** A row action button, disabled with an explanatory tooltip when gated. */
 function LifecycleButton({
   label,
@@ -412,14 +472,7 @@ export function ServerMutationActions({
       />
     ) : null;
 
-  // muster refuses a reconnect (core_service_restart) for an OAuth server in
-  // `Auth Required`: authentication is session-scoped, so only the sign-in
-  // flow (core_auth_login) can connect it. The gate is deliberately
-  // state-scoped, not `auth.type === 'oauth'` alone — reconnecting a failed
-  // OAuth server is a valid retry.
-  const oauthSignInGated =
-    server.getAuth()?.type === 'oauth' && server.getState() === 'Auth Required';
-  const reconnectGate = oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined;
+  const live = serverLiveActions(server);
 
   const navigate = useNavigate();
   const registerLink = useRouteRef(newMcpServerRouteRef);
@@ -480,70 +533,40 @@ export function ServerMutationActions({
           Edit
         </Button>
       )}
-      {suspended ? (
+      {live.activate && (
         <Button
           size="small"
           variant="secondary"
           iconStart={<PlayArrow fontSize="inherit" />}
-          onPress={() =>
-            openAction({
-              label: `Activate ${server.getName()}`,
-              tool: 'core_service_start',
-              args: { name: server.getName() },
-              description:
-                'muster will resume maintaining a connection to this server.',
-            })
-          }
+          onPress={() => openAction(live.activate!)}
         >
           Activate
         </Button>
-      ) : (
-        <>
-          <Button
-            size="small"
-            variant="secondary"
-            iconStart={<Stop fontSize="inherit" />}
-            onPress={() =>
-              openAction({
-                label: `Deactivate ${server.getName()}`,
-                tool: 'core_service_stop',
-                args: { name: server.getName() },
-                description:
-                  'muster will disconnect this server and keep it deactivated until it is activated again.',
-              })
-            }
-          >
-            Deactivate
-          </Button>
-          <LifecycleButton
-            label="Reconnect"
-            icon={<Replay fontSize="inherit" />}
-            gateReason={reconnectGate}
-            onClick={() =>
-              openAction({
-                label: `Reconnect ${server.getName()}`,
-                tool: 'core_service_restart',
-                args: { name: server.getName() },
-                description:
-                  'muster will drop the current session to this server and establish a fresh one, re-running tool discovery.',
-              })
-            }
-          />
-        </>
+      )}
+      {live.deactivate && (
+        <Button
+          size="small"
+          variant="secondary"
+          iconStart={<Stop fontSize="inherit" />}
+          onPress={() => openAction(live.deactivate!)}
+        >
+          Deactivate
+        </Button>
+      )}
+      {live.reconnect && (
+        <LifecycleButton
+          label="Reconnect"
+          icon={<Replay fontSize="inherit" />}
+          gateReason={live.reconnectGate}
+          onClick={() => openAction(live.reconnect!)}
+        />
       )}
       <Button
         size="small"
         variant="secondary"
         destructive
         iconStart={<DeleteOutline fontSize="inherit" />}
-        onPress={() =>
-          openAction({
-            label: `Delete ${server.getName()}`,
-            tool: 'core_mcpserver_delete',
-            args: { name: server.getName() },
-            destructive: true,
-          })
-        }
+        onPress={() => openAction(live.remove)}
       >
         Delete
       </Button>

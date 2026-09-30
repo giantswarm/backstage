@@ -167,3 +167,66 @@ test('the Tool explorer lists tools once the session is open', async ({
     "muster's core tools are listed",
   ).toBeVisible();
 });
+
+test("a row opens its server page, with the server's tabs", async ({
+  admin,
+}) => {
+  await open(admin, serversPath);
+  await connectToMuster(admin);
+  const row = serverRow(admin, 'mcp-kubernetes');
+  await row.click();
+  const detail = admin.getByRole('group', { name: /^mcp-kubernetes / });
+  await detail.getByRole('link', { name: 'Open the server page' }).click();
+
+  await expect(
+    admin.getByRole('heading', { name: 'mcp-kubernetes' }),
+  ).toBeVisible();
+  await expect(admin).toHaveURL(
+    new RegExp(
+      `/agent-platform/muster/servers/mcp-kubernetes\\?installation=${lab.installation}$`,
+    ),
+  );
+  await expect(admin.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  for (const tab of [/^Tools/, /^Resources/, /^Prompts/]) {
+    await expect(admin.getByRole('tab', { name: tab })).toBeVisible();
+  }
+
+  await admin.getByRole('tab', { name: /^Tools/ }).click();
+  await expect(
+    admin.getByRole('searchbox', { name: 'Filter tools' }),
+    'the Tools tab lists the server’s tools',
+  ).toBeVisible({ timeout: 60_000 });
+});
+
+test("muster's own server page lists its core tools, and a tool page runs one", async ({
+  admin,
+}) => {
+  test.setTimeout(120_000);
+  await open(admin, serversPath);
+  await connectToMuster(admin);
+  await open(
+    admin,
+    `/agent-platform/muster/servers/muster/tools?installation=${lab.installation}`,
+  );
+
+  // Read-only, and there on every muster: the aggregator's own server list.
+  const tool = admin.getByRole('link', { name: 'mcpserver_list', exact: true });
+  await expect(tool).toBeVisible({ timeout: 60_000 });
+  await tool.click();
+
+  await expect(
+    admin.getByRole('heading', { name: 'mcpserver_list' }),
+  ).toBeVisible();
+  await expect(admin.getByText('core_mcpserver_list')).toBeVisible();
+  const trail = admin.getByRole('navigation', { name: 'Breadcrumb' });
+  await expect(trail.getByRole('link', { name: 'muster' })).toBeVisible();
+
+  await admin.getByRole('button', { name: 'Execute' }).click();
+  await expect(
+    admin.getByText('Result', { exact: true }),
+    'the tool ran through the call proxy',
+  ).toBeVisible({ timeout: 60_000 });
+});

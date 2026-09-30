@@ -130,6 +130,26 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Muster index' };
       break;
 
+    // A tool's page beneath its server, and a server's page with its tab as
+    // the view. Above the generic muster case, which would report both as
+    // the servers list. The wizard's `servers/new…` steps stay there.
+    case /^\/agent-platform\/muster\/servers\/[^/]+\/tools\/[^/]+/.test(
+      pathname,
+    ):
+      payload = { page: 'MCP tool' };
+      break;
+
+    case /^\/agent-platform\/muster\/servers\/(?!new(\/|$))[^/]+/.test(
+      pathname,
+    ): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'MCP server',
+        view: parts[5] || 'overview',
+      };
+      break;
+    }
+
     case pathname.startsWith('/agent-platform/muster'): {
       const parts = pathname.split('/');
       payload = {

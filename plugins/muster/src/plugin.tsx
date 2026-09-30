@@ -20,7 +20,9 @@ import {
 import { mcpUsageSection } from './mcpUsageSection';
 import {
   agentPlatformUsageExternalRouteRef,
+  mcpServerRouteRef,
   mcpServersRouteRef,
+  mcpServerToolRouteRef,
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
   rootRouteRef,
@@ -94,6 +96,8 @@ export const musterPlugin = createFrontendPlugin({
   routes: {
     root: rootRouteRef,
     mcpServers: mcpServersRouteRef,
+    mcpServer: mcpServerRouteRef,
+    mcpServerTool: mcpServerToolRouteRef,
     newMcpServer: newMcpServerRouteRef,
     newMcpServerAuth: newMcpServerAuthRouteRef,
     workflows: workflowsRouteRef,

@@ -13,6 +13,7 @@ import {
   Provenance,
   RuntimeState,
   ServerConfig,
+  ServerPageLink,
   ServerPrompts,
   ServerResources,
   ServerTools,
@@ -88,6 +89,10 @@ export function IntegrationServerDisclosure({
 
   return (
     <DisclosureAccordion summary={summary} defaultExpanded={defaultExpanded}>
+      <ServerPageLink
+        serverKey={server.getName()}
+        installation={server.cluster}
+      />
       <DetailBlock title="Configuration">
         <ServerConfig server={server} />
         {server.getDescription() && (

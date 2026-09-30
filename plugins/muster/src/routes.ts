@@ -34,6 +34,20 @@ export const newMcpServerVerifyRouteRef = createSubRouteRef({
   parent: rootRouteRef,
 });
 
+// A server's page and a tool's page beneath it. `:server` is the family name
+// for a server family, the CR name for a singular server and `muster` for
+// muster's own tools; `:tool` is the full muster tool name. The wizard's
+// static `new` segment outranks `:server`.
+export const mcpServerRouteRef = createSubRouteRef({
+  path: '/servers/:server',
+  parent: rootRouteRef,
+});
+
+export const mcpServerToolRouteRef = createSubRouteRef({
+  path: '/servers/:server/tools/:tool',
+  parent: rootRouteRef,
+});
+
 export const workflowsRouteRef = createSubRouteRef({
   path: '/workflows',
   parent: rootRouteRef,

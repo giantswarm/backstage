@@ -17,7 +17,7 @@ import {
 } from '../MusterInstanceProvider';
 import { SectionHeader, ServerSignIn, SessionGate } from '../shared';
 import { ToolBrowser } from './ToolBrowser';
-import { ToolDetailPanel } from './ToolDetailPanel';
+import { ToolDetailPanel } from '../ToolDetail';
 import { useToolPrefs } from './useToolPrefs';
 
 const useStyles = makeStyles((theme: Theme) => ({

@@ -1,6 +1,7 @@
 export * from './display/ConditionMessage';
 export * from './display/FiltersLayout';
 export * from './AsyncValue';
+export * from './Breadcrumbs';
 export * from './Autocomplete';
 export * from './CodeBlock';
 export * from './CollapsibleMarkdown';

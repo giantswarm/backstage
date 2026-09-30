@@ -84,7 +84,7 @@ function SourceStep({
  * steps depend on what is in Git — the MCPServer manifest itself, or the
  * values of the HelmRelease that renders it.
  */
-function GitOpsEditDialog({
+export function GitOpsEditDialog({
   server,
   source,
   isOpen,

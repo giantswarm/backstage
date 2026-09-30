@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
+  Accordion,
+  AccordionPanel,
+  AccordionTrigger,
   Alert,
   Box,
   Button,
@@ -13,7 +16,9 @@ import {
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
+import { hasMarkers, ToolMarkers } from '../shared';
 import {
   buildArgs,
   enumDefaults,
@@ -51,8 +56,11 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
-  isFavourite: boolean;
-  onToggleFavourite: () => void;
+  /** Whether the tool is a favourite; the star shows only with a toggle. */
+  isFavourite?: boolean;
+  onToggleFavourite?: () => void;
+  /** Off where the page around the panel already names the tool. */
+  showName?: boolean;
 }
 
 /**
@@ -65,8 +73,9 @@ export interface ToolDetailPanelProps {
 export function ToolDetailPanel({
   name,
   installation,
-  isFavourite,
+  isFavourite = false,
   onToggleFavourite,
+  showName = true,
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
 
@@ -177,35 +186,51 @@ export function ToolDetailPanel({
 
   return (
     <Box>
-      <Flex align="center" justify="between" gap="2">
-        <Text
-          as="p"
-          variant="title-small"
-          weight="bold"
-          style={{ fontFamily: 'monospace', minWidth: 0 }}
-          truncate
-        >
-          {name}
-        </Text>
-        <TooltipTrigger>
-          <ButtonIcon
-            variant="tertiary"
-            size="small"
-            aria-label={isFavourite ? 'Remove favourite' : 'Add to favourites'}
-            icon={
-              isFavourite ? (
-                <StarIcon fontSize="small" color="primary" />
-              ) : (
-                <StarBorderIcon fontSize="small" />
-              )
-            }
-            onClick={onToggleFavourite}
-          />
-          <Tooltip>
-            {isFavourite ? 'Remove favourite' : 'Add to favourites'}
-          </Tooltip>
-        </TooltipTrigger>
-      </Flex>
+      {(showName || onToggleFavourite) && (
+        <Flex align="center" justify="between" gap="2">
+          {showName ? (
+            <Text
+              as="p"
+              variant="title-small"
+              weight="bold"
+              style={{ fontFamily: 'monospace', minWidth: 0 }}
+              truncate
+            >
+              {name}
+            </Text>
+          ) : (
+            <span />
+          )}
+          {onToggleFavourite && (
+            <TooltipTrigger>
+              <ButtonIcon
+                variant="tertiary"
+                size="small"
+                aria-label={
+                  isFavourite ? 'Remove favourite' : 'Add to favourites'
+                }
+                icon={
+                  isFavourite ? (
+                    <StarIcon fontSize="small" color="primary" />
+                  ) : (
+                    <StarBorderIcon fontSize="small" />
+                  )
+                }
+                onClick={onToggleFavourite}
+              />
+              <Tooltip>
+                {isFavourite ? 'Remove favourite' : 'Add to favourites'}
+              </Tooltip>
+            </TooltipTrigger>
+          )}
+        </Flex>
+      )}
+
+      {hasMarkers(data?.annotations) && (
+        <Box mt="1">
+          <ToolMarkers annotations={data?.annotations} />
+        </Box>
+      )}
 
       {data?.description && (
         <Box mt="1">
@@ -217,6 +242,22 @@ export function ToolDetailPanel({
           >
             {data.description}
           </Text>
+        </Box>
+      )}
+
+      {data?.inputSchema && (
+        <Box mt="3">
+          <Accordion>
+            <AccordionTrigger title="Input schema" />
+            <AccordionPanel>
+              <YamlEditorFormField
+                value={JSON.stringify(data.inputSchema, null, 2)}
+                language="json"
+                readOnly
+                maxHeight={360}
+              />
+            </AccordionPanel>
+          </Accordion>
         </Box>
       )}
 

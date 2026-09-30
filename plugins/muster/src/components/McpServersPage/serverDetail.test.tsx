@@ -95,7 +95,7 @@ describe('ServerConfig', () => {
 
     expect(screen.getByText('Deactivated')).toBeInTheDocument();
     expect(
-      screen.getByText(/Use “Activate” in the actions below/),
+      screen.getByText(/Use “Activate” in the server’s actions/),
     ).toBeInTheDocument();
   });
 
@@ -253,27 +253,32 @@ async function renderTools(
         <ServerTools server={server} />
       </QueryClientProvider>
     </TestApiProvider>,
-    // ServerTools links each tool into the explorer, so the route the link
-    // resolves against has to be mounted.
+    // ServerTools links each tool to its page, so the route the link resolves
+    // against has to be mounted.
     { mountedRoutes: { '/agent-platform/muster': rootRouteRef } },
   );
 }
 
 describe('ServerTools', () => {
-  it('links each tool into the explorer, scoped to this server', async () => {
-    // The tags are the way from a server to its tools; an unscoped link would
-    // drop the reader into the whole aggregated catalogue.
+  it('links each tool to its page beneath this server', async () => {
+    // The tags are the way from a server to its tools; each opens the tool
+    // under the server offering it, on the same installation.
     await renderTools(makeServer(OAUTH_SPEC, 'Connected'), {
       total: 1,
       tools: [{ name: 'x_aws-root_list_buckets', summary: 'List buckets' }],
     });
 
     const link = await screen.findByRole('link', { name: 'list_buckets' });
-    const href = link.getAttribute('href')!;
-    const params = new URLSearchParams(href.slice(href.indexOf('?')));
-    expect(params.get('installation')).toBe('gazelle');
-    expect(params.get('server')).toBe('aws-root');
-    expect(params.get('tool')).toBe('x_aws-root_list_buckets');
+    expect(link).toHaveAttribute(
+      'href',
+      '/agent-platform/muster/servers/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Open the server’s tools' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/muster/servers/aws-root/tools?installation=gazelle',
+    );
   });
 });
 
@@ -296,7 +301,7 @@ describe('ServerTools with no tools to show', () => {
       await screen.findByText(/the server may be down or unreachable/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/Use “Sign in” in the actions below/),
+      screen.queryByText(/Use “Sign in” in the server’s actions/),
     ).not.toBeInTheDocument();
   });
 
@@ -304,7 +309,7 @@ describe('ServerTools with no tools to show', () => {
     await renderTools(makeServer(OAUTH_SPEC, 'Auth Required'));
 
     expect(
-      await screen.findByText(/Use “Sign in” in the actions below/),
+      await screen.findByText(/Use “Sign in” in the server’s actions/),
     ).toBeInTheDocument();
   });
 
@@ -353,7 +358,7 @@ describe('ServerTools with no tools to show', () => {
 
     expect(
       await screen.findByText(
-        'No tools exposed — this server is deactivated. Use “Activate” in the actions below.',
+        'No tools exposed — this server is deactivated. Use “Activate” in the server’s actions.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();

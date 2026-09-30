@@ -25,8 +25,7 @@ import {
   ToolGroup,
   toolsForServer,
 } from '../../lib/toolGrouping';
-import { ExplorerError } from './ExplorerError';
-import { BrowserSkeleton } from './states';
+import { BrowserSkeleton, ExplorerError } from '../ToolDetail';
 import { ToolPrefs } from './useToolPrefs';
 
 /** No-pattern page size used to pull the whole catalogue for browsing. */

@@ -1,4 +1,6 @@
 import { ToolSummary } from '../apis';
+import type { MCPServer } from './k8s';
+import type { ServerPageRow } from './serverGrouping';
 
 /**
  * What the tool browser needs to know about one aggregated MCP server to place
@@ -42,7 +44,7 @@ function segmentOf(name: string): string {
  * cluster) into a single tool, so several servers can legitimately tie at the
  * longest match -- the caller treats that as a shared family.
  */
-function matchServers(
+export function matchServers(
   name: string,
   servers: ServerPrefixInfo[],
 ): ServerPrefixInfo[] {
@@ -214,4 +216,73 @@ export function toolsForServer(
       t => t.name === prefix || t.name.startsWith(`${prefix}_`),
     ),
   };
+}
+
+/**
+ * Every tool-name prefix the installation's servers are exposed under. A family
+ * member contributes two: the family's (`x_<family>`, the tools muster groups
+ * under one name) and its own `x_<toolPrefix | name>`, which muster falls back
+ * to for a tool the members do not agree on (diverging descriptions, an
+ * instance argument clashing with an input property) or for the whole family
+ * when the members' instance arguments differ.
+ */
+export function serverPrefixInfos(servers: MCPServer[]): ServerPrefixInfo[] {
+  return servers.flatMap(server => {
+    const info = {
+      serverName: server.getName(),
+      managementCluster: server.getManagementCluster(),
+      family: server.getFamily(),
+    };
+    const own = `x_${server.getToolPrefix() ?? server.getName()}`;
+    const prefix = server.getToolNamePrefix();
+    return own === prefix
+      ? [{ ...info, prefix }]
+      : [
+          { ...info, prefix },
+          { ...info, prefix: own },
+        ];
+  });
+}
+
+/**
+ * The tools a server page lists: muster's own (`core_*`, `workflow_*`) for
+ * muster, otherwise the tools whose longest-matching prefix belongs to the row
+ * -- so `x_foo` never claims the tools of a server exposed as `x_foo_bar`.
+ */
+export function toolsForRow(
+  tools: ToolSummary[],
+  row: ServerPageRow,
+  servers: ServerPrefixInfo[],
+): ToolSummary[] {
+  if (row.kind === 'core') {
+    return tools.filter(
+      t => t.name.startsWith('core_') || t.name.startsWith('workflow_'),
+    );
+  }
+  const owns = (info: ServerPrefixInfo) =>
+    row.kind === 'family'
+      ? info.family === row.family
+      : !info.family && info.serverName === row.server.getName();
+  return tools.filter(
+    t => t.name.startsWith('x_') && matchServers(t.name, servers).some(owns),
+  );
+}
+
+/**
+ * A tool's name without the prefix of the server offering it, for display:
+ * `x_kubernetes_get_pods` reads `get_pods` on the kubernetes page. The prefix
+ * is the longest one of `servers` the name matches; muster's own tools lose
+ * `core_`. A name nothing matches is returned whole.
+ */
+export function shortToolName(
+  name: string,
+  servers: ServerPrefixInfo[],
+): string {
+  if (name.startsWith('core_')) {
+    return name.slice('core_'.length);
+  }
+  const prefix = matchServers(name, servers)[0]?.prefix;
+  return prefix && name.startsWith(`${prefix}_`)
+    ? name.slice(prefix.length + 1)
+    : name;
 }
