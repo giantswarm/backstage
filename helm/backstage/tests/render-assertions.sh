@@ -9,6 +9,8 @@
 # * the pod template's checksum over the extraAppConfig entries, without which
 #   a changed app-config fragment never reaches the running portal;
 # * the OTLP variables, without which the backend starts and exports no trace;
+# * `APP_CONFIG_app_releaseVersion`, without which the portal starts and knows
+#   no release: the pod never loads the image's app-config.yaml;
 # * the metrics port, env and network policy leg, without which the backend
 #   starts with metrics on but nothing can scrape it;
 # * the base64 guard on the `data` Secrets, without which a plaintext value
@@ -150,6 +152,10 @@ fi
 echo "--> no extraAppConfig: no annotation"
 render no-fragment
 refute no-fragment 'checksum/extra-app-config'
+
+echo "--> the release version reaches the app config"
+render release-version
+expect release-version 'name: APP_CONFIG_app_releaseVersion'
 
 echo "--> observability.otel.endpoint set: the OTLP variables render"
 render otel --set observability.otel.endpoint=http://otlp-gateway.kube-system.svc:4317 --set observability.otel.headers=X-Scope-OrgID=giantswarm

@@ -118,6 +118,10 @@ spec:
           env:
             - name: VERSION
               value: "{{ .Chart.AppVersion }}"
+            # `app.releaseVersion`: the pod loads only the chart's config
+            # files, never the image's app-config.yaml.
+            - name: APP_CONFIG_app_releaseVersion
+              value: "{{ .Chart.AppVersion }}"
             {{- if eq .Values.database.engine "postgresql" }}
             - name: POSTGRES_HOST
               valueFrom:
