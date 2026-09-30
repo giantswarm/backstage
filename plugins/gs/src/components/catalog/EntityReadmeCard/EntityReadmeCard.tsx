@@ -1,4 +1,4 @@
-import { Typography } from '@material-ui/core';
+import { Text } from '@backstage/ui';
 import { useCurrentEntityChart } from '../EntityChartContext';
 import { useHelmChartTags } from '../../hooks/useHelmChartTags';
 import { useHelmChartReadme } from '../../hooks/useHelmChartReadme';
@@ -15,6 +15,7 @@ const ReadmeCardContent = () => {
   } = useHelmChartTags(selectedChart.ref);
   const {
     readme,
+    readmeUrl,
     isLoading: isLoadingReadme,
     error: readmeError,
   } = useHelmChartReadme(selectedChart.ref, latestStableVersion ?? undefined);
@@ -23,10 +24,10 @@ const ReadmeCardContent = () => {
     if (error.name === 'NotFoundError') {
       const { repository } = parseChartRef(selectedChart.ref);
       return (
-        <Typography variant="inherit" color="textSecondary">
+        <Text color="secondary">
           The repository <code>{repository}</code> is not available in the
           registry.
-        </Typography>
+        </Text>
       );
     }
     return undefined;
@@ -36,6 +37,7 @@ const ReadmeCardContent = () => {
     <CollapsibleMarkdownCard
       title="README"
       content={readme}
+      sourceUrl={readmeUrl}
       isLoading={isLoadingTags || isLoadingReadme}
       error={tagsError || readmeError}
       emptyMessage="No README available."

@@ -27,6 +27,8 @@ const useStyles = makeStyles({
 
 export type CollapsibleMarkdownProps = {
   content: string;
+  /** URL the markdown was loaded from; relative links resolve against it. */
+  sourceUrl?: string;
   toggleLabels: { expand: string; collapse: string };
   /** Height in pixels the content is cut to while collapsed. */
   collapsedHeight?: number;
@@ -38,6 +40,7 @@ export type CollapsibleMarkdownProps = {
  */
 export const CollapsibleMarkdown = ({
   content,
+  sourceUrl,
   toggleLabels,
   collapsedHeight = DEFAULT_COLLAPSED_HEIGHT,
 }: CollapsibleMarkdownProps) => {
@@ -77,7 +80,7 @@ export const CollapsibleMarkdown = ({
         onFocus={revealFocused}
       >
         <div ref={contentRef}>
-          <GSMarkdownContent content={content} />
+          <GSMarkdownContent content={content} sourceUrl={sourceUrl} />
         </div>
         {collapsed && <div className={classes.fade} />}
       </div>
