@@ -23,6 +23,7 @@ export function useResource<R extends KubeObject<any>>(
 ) {
   const isRestoring = useIsRestoring();
   const staticGVK = ResourceClass.getGVK();
+  const enabled = queryOptions?.enabled ?? true;
 
   const {
     resolvedGVK,
@@ -32,6 +33,7 @@ export function useResource<R extends KubeObject<any>>(
     clientOutdatedStates,
   } = usePreferredVersion(cluster, staticGVK, {
     enableDiscovery: options.enableDiscovery,
+    enabled,
     explicitVersion: options.apiVersion,
   });
 
@@ -42,10 +44,7 @@ export function useResource<R extends KubeObject<any>>(
     {
       ...queryOptions,
       enabled:
-        (queryOptions?.enabled ?? true) &&
-        !isDiscovering &&
-        Boolean(cluster) &&
-        Boolean(resolvedGVK),
+        enabled && !isDiscovering && Boolean(cluster) && Boolean(resolvedGVK),
     },
   );
 

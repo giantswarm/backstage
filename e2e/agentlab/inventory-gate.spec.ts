@@ -13,25 +13,24 @@ import { lab } from './lab';
  * apiserver accepts: drop `audience:server:client_id:kubernetes` from the
  * lab's `backstage.extraScopes` (a `platform.valuesFiles` overlay), roll the
  * portal and run with `AGENTLAB_INVENTORY_REFUSED=1`. Against a healthy lab
- * only the negative runs: the gate is absent and the dashboard renders.
+ * only the negative runs: the gate is absent and the Servers view renders.
  */
 
-const dashboardPath = '/agent-platform/muster/dashboard';
+const serversPath = '/agent-platform/muster/servers';
 /** The sentence the gate opens with for a 401 (`inventoryFailureCopy`). */
 const rejectedToken = /rejected the portal's token/;
 
-test('with a token the API server accepts, the muster dashboard renders without the inventory gate', async ({
+test('with a token the API server accepts, the muster Servers view renders without the inventory gate', async ({
   admin,
 }) => {
   test.skip(
     !!process.env.AGENTLAB_INVENTORY_REFUSED,
     'the lab portal requests no audience the apiserver accepts, every probe is refused',
   );
-  await open(admin, dashboardPath);
+  await open(admin, serversPath);
   await expect(
-    // Exact: the section's placeholder reads "Loading fleet coverage…".
-    admin.getByText('Fleet coverage', { exact: true }),
-    'the dashboard renders its CRD-backed section',
+    admin.getByRole('region', { name: 'Agent Platform' }),
+    'the Servers view renders its CRD-backed section',
   ).toBeVisible();
   await expect(admin.getByText(rejectedToken)).toHaveCount(0);
 });
@@ -55,7 +54,7 @@ test.describe('an installation whose inventory probe the API server refused', ()
       }
     });
 
-    await page.goto(dashboardPath);
+    await page.goto(serversPath);
     const gate = page.getByText(rejectedToken);
     await expect(gate, 'the section explains the refused probe').toBeVisible();
     await expect(gate).toContainText(lab.installation);

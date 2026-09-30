@@ -1,7 +1,7 @@
 import { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import { CustomResourceMatcher } from '../../lib/k8s/CustomResourceMatcher';
 import { KubeObjectInterface } from '../../lib/k8s/KubeObject';
-import { k8sMutationError } from './k8sMutation';
+import { k8sResponseError } from './k8sResponseError';
 import { getK8sListPath } from './k8sPath';
 
 /**
@@ -37,7 +37,7 @@ export async function fetchResourceList<
   });
 
   if (!response.ok) {
-    throw await k8sMutationError(
+    throw await k8sResponseError(
       response,
       `Failed to list ${gvk.plural}${
         namespace ? ` in namespace ${namespace}` : ''

@@ -41,6 +41,13 @@ export type MusterSession = {
   connecting: boolean;
   /** Re-run the token mint for the active installation, then re-probe. */
   connect: () => Promise<void>;
+  /**
+   * Every tool muster offers the session, as the probe reports it. Absent
+   * without a session, while the probe is in flight, or when it failed.
+   */
+  toolCount?: number;
+  /** True while the probe that yields {@link toolCount} has not answered. */
+  toolCountPending?: boolean;
 };
 
 /**
@@ -200,5 +207,13 @@ export function useMusterSession(): MusterSession {
     }
   }, [musterApi, activeInstallation, refetch, unreachable]);
 
-  return { authenticated, pending, failure, connecting, connect };
+  return {
+    authenticated,
+    pending,
+    failure,
+    connecting,
+    connect,
+    toolCount: authenticated ? probe?.total : undefined,
+    toolCountPending: enabled && status === 'pending',
+  };
 }

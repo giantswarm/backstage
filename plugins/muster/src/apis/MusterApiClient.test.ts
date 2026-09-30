@@ -390,9 +390,9 @@ describe('MusterApiClient token selection for derived installations', () => {
   // cluster entry mints through the main provider, so it is a home installation.
   const BACKEND = {
     installations: [
-      { name: 'snail', requiresAuth: true, source: 'derived' },
-      { name: 'home2', requiresAuth: true, source: 'derived' },
-      { name: 'ungated', requiresAuth: false, source: 'derived' },
+      { name: 'snail', requiresAuth: true },
+      { name: 'home2', requiresAuth: true },
+      { name: 'ungated', requiresAuth: false },
     ],
   };
 

@@ -210,8 +210,7 @@ export function StandardServerDisclosure({
   return (
     <DisclosureAccordion summary={summary} defaultExpanded={defaultExpanded}>
       {/* Every cluster, not the collapsed row's capped subset -- this is
-          where the full per-cluster picture lives now that the dashboard no
-          longer repeats it. */}
+          where the full per-cluster picture lives. */}
       <DetailBlock title="Management clusters">
         <Flex align="center" gap="1" className={classes.clusterList}>
           {present.map(p => (

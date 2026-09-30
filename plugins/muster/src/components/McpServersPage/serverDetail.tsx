@@ -10,6 +10,7 @@ import { musterApiRef } from '../../apis';
 import {
   DEACTIVATED_LABEL,
   MCPServer,
+  type MCPServerAuth,
   mcpServerStateSeverity,
 } from '../../lib/k8s';
 import {
@@ -18,6 +19,7 @@ import {
   provenanceReleaseId,
 } from '../../lib/gitops';
 import { decodeDexSubject } from '../../lib/dexSubject';
+import { serverAuthMode } from '../../lib/serverAuthMode';
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -165,6 +167,23 @@ export function ServerConfig({ server }: { server: MCPServer }) {
 }
 
 /**
+ * `auth.type` as muster reads it. The CRD defaults it to `none`, which a
+ * forwarded or exchanged token overrides: muster treats both as OAuth.
+ */
+function authTypeLabel(auth: MCPServerAuth): string {
+  if (auth.type && auth.type !== 'none') {
+    return auth.type;
+  }
+  if (auth.tokenExchange?.enabled) {
+    return 'oauth (implied by token exchange)';
+  }
+  if (auth.forwardToken) {
+    return 'oauth (implied by the forwarded token)';
+  }
+  return 'none';
+}
+
+/**
  * The per-server auth/token chain recovered from `spec.auth`.
  *
  * The sign-in/sign-out affordance deliberately lives in the disclosures'
@@ -177,13 +196,13 @@ export function ServerConfig({ server }: { server: MCPServer }) {
 export function AuthChain({ server }: { server: MCPServer }) {
   const auth = server.getAuth();
 
-  if (!auth || auth.type === 'none' || auth.type === undefined) {
+  if (!auth || serverAuthMode(server) === 'anonymous') {
     return <Note>No authentication configured (anonymous).</Note>;
   }
 
   const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
 
-  const facts: Fact[] = [{ label: 'Type', value: auth.type }];
+  const facts: Fact[] = [{ label: 'Type', value: authTypeLabel(auth) }];
   if (sigv4) {
     facts.push(
       { label: 'Signing region', value: <Mono>{sigv4.region}</Mono> },

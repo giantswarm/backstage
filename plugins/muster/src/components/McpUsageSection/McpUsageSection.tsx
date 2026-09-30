@@ -46,7 +46,7 @@ import { SessionGate, Stat } from '../shared';
  * directly under a daily one — same idiom, different meaning per bar.
  *
  * What was lost is the 24h zoom, whose real question ("is muster dispatching
- * right now") the muster Dashboard already answers. Bringing a control back
+ * right now") the per-server health on the Servers view answers. Bringing a control back
  * means one *page-level* control driving both sections, once the kagent route
  * accepts a window.
  */

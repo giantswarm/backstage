@@ -9,6 +9,7 @@ import { AuthStatusResponse, musterApiRef } from '../../apis';
 import { rootRouteRef } from '../../routes';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import { DEACTIVATED_SIGN_IN_GATE } from '../shared';
+import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
 
 /** An ad-hoc OAuth server, as registered through the portal. */
@@ -85,11 +86,13 @@ async function render(server: MCPServer) {
   return renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
-        <IntegrationServerDisclosure
-          server={server}
-          authenticated
-          defaultExpanded
-        />
+        <NewMcpServerFormProvider>
+          <IntegrationServerDisclosure
+            server={server}
+            authenticated
+            defaultExpanded
+          />
+        </NewMcpServerFormProvider>
       </QueryClientProvider>
     </TestApiProvider>,
     { mountedRoutes: { '/agent-platform/muster': rootRouteRef } },

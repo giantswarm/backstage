@@ -3,7 +3,7 @@ import {
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { modelManagerApiRef } from '../../apis';
@@ -320,7 +320,7 @@ describe('LoadModelDialog', () => {
     );
   });
 
-  it('serves a copy on the node the person picks, and lists a node it cannot land on disabled', async () => {
+  describe('on a cluster of several GPU nodes', () => {
     const GIB = 1024 ** 3;
     const gpuNode = (name: string, extra: object = {}) => ({
       name,
@@ -331,62 +331,137 @@ describe('LoadModelDialog', () => {
       freeBytes: 100 * GIB,
       ...extra,
     });
-    listNodes.mockResolvedValue([
-      gpuNode('spark-a'),
-      gpuNode('spark-b'),
-      gpuNode('spark-c', {
-        eligible: false,
-        eligibilityReason: 'outside the serving node selector',
-      }),
-    ]);
     const copyFit: ModelManagerFitResult = {
       ...fits,
       instanceType: undefined,
       node: 'spark-b',
     };
-    checkFit.mockImplementation(async ({ node }: { node?: string }) => ({
-      ...copyFit,
-      ...(node ? { node } : {}),
-    }));
-    await render({
-      targets: [
-        { ...pool, capabilities: { ...poolCapabilities, nodeInventory: true } },
-      ],
+    beforeEach(() => {
+      listNodes.mockResolvedValue([
+        gpuNode('spark-a'),
+        gpuNode('spark-b'),
+        gpuNode('spark-c', {
+          eligible: false,
+          eligibilityReason: 'outside the serving node selector',
+        }),
+      ]);
+      checkFit.mockImplementation(
+        async ({ node, nodes }: { node?: string; nodes?: string[] }) => ({
+          ...copyFit,
+          ...(node ? { node } : {}),
+          ...(nodes ? { placement: 'copies', nodes, node: nodes[0] } : {}),
+        }),
+      );
     });
+    const renderNodes = () =>
+      render({
+        targets: [
+          {
+            ...pool,
+            capabilities: { ...poolCapabilities, nodeInventory: true },
+          },
+        ],
+      });
 
-    const verdict = await screen.findByTestId('serve-fit-verdict');
-    await waitFor(() =>
-      expect(verdict).toHaveTextContent('Fits on spark-a and spark-b'),
-    );
-    expect(checkFit).toHaveBeenCalledWith({
-      model: 'qwen3-4b-instruct',
-      node: 'spark-a',
-      backend: 'kserve',
-    });
-    expect(checkFit).not.toHaveBeenCalledWith(
-      expect.objectContaining({ node: 'spark-c' }),
-    );
+    it('serves a copy on the node the person ticks, and lists a node it cannot land on disabled', async () => {
+      await renderNodes();
 
-    await userEvent.click(screen.getByRole('button', { name: /Node/ }));
-    expect(
-      await screen.findByRole('option', { name: /spark-c/ }),
-    ).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByRole('option', { name: /spark-c/ })).toHaveTextContent(
-      'not a serving target: outside the serving node selector',
-    );
-    await userEvent.click(screen.getByRole('option', { name: /spark-a/ }));
-
-    await waitFor(() =>
-      expect(verdict).toHaveTextContent('Fits — will be placed on spark-a'),
-    );
-    await userEvent.click(serveButton());
-    await waitFor(() =>
-      expect(loadModel).toHaveBeenCalledWith({
+      const verdict = await screen.findByTestId('serve-fit-verdict');
+      await waitFor(() =>
+        expect(verdict).toHaveTextContent('Fits on spark-a and spark-b'),
+      );
+      expect(checkFit).toHaveBeenCalledWith({
         model: 'qwen3-4b-instruct',
-        backend: 'kserve',
         node: 'spark-a',
-      }),
-    );
+        backend: 'kserve',
+      });
+      expect(checkFit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ node: 'spark-c' }),
+      );
+
+      const nodes = screen.getByTestId('serve-nodes');
+      expect(
+        within(nodes).getByRole('checkbox', { name: /spark-c/ }),
+      ).toBeDisabled();
+      expect(nodes).toHaveTextContent(
+        'not a serving target: outside the serving node selector',
+      );
+      await userEvent.click(
+        within(nodes).getByRole('checkbox', { name: /spark-a/ }),
+      );
+
+      await waitFor(() =>
+        expect(verdict).toHaveTextContent('Fits — will be placed on spark-a'),
+      );
+      await userEvent.click(serveButton());
+      await waitFor(() =>
+        expect(loadModel).toHaveBeenCalledWith({
+          model: 'qwen3-4b-instruct',
+          backend: 'kserve',
+          node: 'spark-a',
+        }),
+      );
+    });
+
+    it('serves one copy on each of the nodes that fit, judged together', async () => {
+      await renderNodes();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'All 2 nodes that fit' }),
+      );
+
+      const verdict = screen.getByTestId('serve-fit-verdict');
+      await waitFor(() =>
+        expect(verdict).toHaveTextContent(
+          'Fits as 2 copies on spark-a and spark-b',
+        ),
+      );
+      expect(checkFit).toHaveBeenCalledWith({
+        model: 'qwen3-4b-instruct',
+        placement: 'copies',
+        nodes: ['spark-a', 'spark-b'],
+        backend: 'kserve',
+      });
+      await userEvent.click(serveButton());
+      await waitFor(() =>
+        expect(loadModel).toHaveBeenCalledWith({
+          model: 'qwen3-4b-instruct',
+          backend: 'kserve',
+          placement: 'copies',
+          nodes: ['spark-a', 'spark-b'],
+        }),
+      );
+    });
+
+    it('blocks Serve with the reason when a ticked node cannot host a copy', async () => {
+      checkFit.mockImplementation(
+        async ({ node, nodes }: { node?: string; nodes?: string[] }) =>
+          nodes
+            ? {
+                ...copyFit,
+                fits: false,
+                placement: 'copies',
+                nodes,
+                reason: '1 of 2 nodes cannot host a copy — spark-b: too small',
+              }
+            : { ...copyFit, ...(node ? { node } : {}) },
+      );
+      await renderNodes();
+      const nodes = await screen.findByTestId('serve-nodes');
+      await userEvent.click(
+        within(nodes).getByRole('checkbox', { name: /spark-a/ }),
+      );
+      await userEvent.click(
+        within(nodes).getByRole('checkbox', { name: /spark-b/ }),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByTestId('serve-fit-verdict')).toHaveTextContent(
+          '1 of 2 nodes cannot host a copy — spark-b: too small',
+        ),
+      );
+      expect(serveButton()).toBeDisabled();
+    });
   });
 
   it('disables split with model-manager’s reason where no nodes share a fast link', async () => {

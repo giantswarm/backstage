@@ -27,6 +27,7 @@ import {
 } from '../../lib/mcpServerDefinition';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
+import { withEditParam } from '../NewMcpServerEditGate';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
 import { StateBadge } from '../shared/StateBadge';
@@ -113,12 +114,14 @@ export function NewMcpServerPage() {
   // The wizard registers onto the section's active installation — the same
   // instance every muster view is scoped to, switched via the installation
   // selector in the page header. Mirrored into the form state so validation
-  // and the composed definition see it.
+  // and the composed definition see it. Not while editing a registered
+  // server: that server lives where it lives, and switching the header ends
+  // the edit instead (NewMcpServerEditGate).
   useEffect(() => {
-    if (state.installation !== activeInstallation) {
+    if (!registeredName && state.installation !== activeInstallation) {
       setInstallation(activeInstallation);
     }
-  }, [activeInstallation, state.installation, setInstallation]);
+  }, [registeredName, activeInstallation, state.installation, setInstallation]);
 
   // Show validation feedback only once the user has tried to proceed, so the
   // form doesn't shout about empty fields before they've done anything.
@@ -127,7 +130,11 @@ export function NewMcpServerPage() {
   // Transport auto-detection: once the URL looks complete, muster probes it
   // and the detected transport gets pre-selected. A manual card click wins
   // until the URL changes again; inconclusive detection changes nothing.
-  const [transportTouched, setTransportTouched] = useState(false);
+  // Editing a registered server starts from the transport it is registered
+  // with, so a re-probe of the unchanged URL must not quietly switch it.
+  const [transportTouched, setTransportTouched] = useState(
+    Boolean(registeredName),
+  );
   const { detected } = useTransportDetection(state.url, state.installation);
 
   const onUrlChange = useCallback(
@@ -154,9 +161,9 @@ export function NewMcpServerPage() {
       return;
     }
     if (authLink) {
-      navigate(authLink());
+      navigate(withEditParam(authLink(), registeredName));
     }
-  }, [errorCount, authLink, navigate]);
+  }, [errorCount, authLink, navigate, registeredName]);
 
   // Memoized so the header actions slot only updates when the handlers actually
   // change, not on every keystroke in the form (see useProvidePageHeaderActions).
@@ -198,11 +205,14 @@ export function NewMcpServerPage() {
           weight="bold"
           className={classes.pageTitle}
         >
-          Register an MCP server
+          {registeredName
+            ? `Edit MCP server: ${registeredName}`
+            : 'Register an MCP server'}
         </Text>
         <Text as="p" className={classes.intro}>
-          Bring an existing remote MCP server to the platform so agents can use
-          its tools through the gateway.
+          {registeredName
+            ? 'Change how this server is reached and authenticated. Saving updates the registered server in place.'
+            : 'Bring an existing remote MCP server to the platform so agents can use its tools through the gateway.'}
         </Text>
 
         <ActiveInstallationNote />
@@ -215,17 +225,25 @@ export function NewMcpServerPage() {
                 description="How this server appears across the platform."
               />
               <Flex direction="column" gap="4">
-                <Grid.Root columns={{ initial: '1', sm: '2' }} gap="4">
-                  <Grid.Item>
-                    <TextField
-                      label="Name"
-                      isRequired
-                      value={state.name}
-                      onChange={setName}
-                      placeholder="e.g. Weather"
-                      description="The user-friendly name humans will use to refer to this server."
-                    />
-                  </Grid.Item>
+                <Grid.Root
+                  columns={{ initial: '1', sm: registeredName ? '1' : '2' }}
+                  gap="4"
+                >
+                  {/* The display name is not stored on the server — it only
+                      derives the technical name, which a registered server has
+                      locked. So an edit has nothing to ask here. */}
+                  {!registeredName && (
+                    <Grid.Item>
+                      <TextField
+                        label="Name"
+                        isRequired
+                        value={state.name}
+                        onChange={setName}
+                        placeholder="e.g. Weather"
+                        description="The user-friendly name humans will use to refer to this server."
+                      />
+                    </Grid.Item>
+                  )}
                   <Grid.Item>
                     <TextField
                       label="Technical name"
@@ -255,7 +273,13 @@ export function NewMcpServerPage() {
                   onChange={setDescription}
                   rows={4}
                   placeholder="What this server's tools are for, example tasks…"
-                  description="Describe this server so team mates know what to use it for."
+                  description={
+                    registeredName
+                      ? // muster's update only replaces a description with a
+                        // non-empty one (see mergeOntoExisting).
+                        'Describe this server so team mates know what to use it for. Leaving it empty keeps the current description.'
+                      : 'Describe this server so team mates know what to use it for.'
+                  }
                 />
               </Flex>
             </CardBody>
@@ -316,8 +340,9 @@ export function NewMcpServerPage() {
             <CardBody>
               <Flex direction="column" gap="3">
                 <Text as="p" color="secondary" className={classes.footerNote}>
-                  The next step asks how users authenticate to this server, then
-                  you review and register it.
+                  {registeredName
+                    ? 'The next step asks how users authenticate to this server, then you review and save your changes.'
+                    : 'The next step asks how users authenticate to this server, then you review and register it.'}
                 </Text>
                 {showValidation && detailsErrors.length > 0 && (
                   <Alert

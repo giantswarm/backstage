@@ -1,22 +1,21 @@
 import { useState } from 'react';
+import { makeStyles, Theme } from '@material-ui/core';
 import {
-  Box,
-  // The two dialogs below this row are still on MUI -- migrating them is a
-  // rework, not a swap (ConfirmActionDialog's "Done." state has no counterpart
-  // in ui-react's ConfirmDialog), so their buttons stay MUI's for now.
-  Button as MuiButton,
-  CircularProgress,
+  Alert,
+  Button,
   Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  TextField,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
-import { Button, Flex } from '@backstage/ui';
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  Flex,
+  Text,
+  TextAreaField,
+} from '@backstage/ui';
+import {
+  ALERT_MESSAGE_STYLE,
+  ConfirmDialog,
+  useOnDialogOpen,
+} from '@giantswarm/backstage-plugin-ui-react';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import PlayArrow from '@material-ui/icons/PlayArrow';
@@ -27,12 +26,17 @@ import Replay from '@material-ui/icons/Replay';
 // hover nor focus -- so the react-aria tooltip could never open on exactly the
 // buttons whose disabled state it exists to explain.
 import Tooltip from '@material-ui/core/Tooltip';
+import { useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import { isGitOpsManaged, toMcpServerDefinition } from '../../lib/gitops';
+import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
+import { newMcpServerRouteRef } from '../../routes';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
+import { withEditParam } from '../NewMcpServerEditGate';
 import {
   DEACTIVATED_SIGN_IN_GATE,
   ServerAuthActions,
@@ -53,14 +57,6 @@ const useStyles = makeStyles((theme: Theme) => ({
       fontSize: 12,
     },
   },
-  error: {
-    color: theme.palette.error.main,
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-  },
-  ok: {
-    color: theme.palette.success.main,
-  },
 }));
 
 type LiveAction = {
@@ -74,7 +70,9 @@ type LiveAction = {
 
 /**
  * Confirm dialog for a live mutation against an ad-hoc (manually added) server.
- * On confirm it runs the muster tool through the `/call` proxy route.
+ * On confirm it runs the muster tool through the `/call` proxy route. Only
+ * Delete gets the destructive treatment: the lifecycle actions are undone by
+ * their counterpart (Deactivate by Activate).
  */
 function ConfirmActionDialog({
   server,
@@ -87,23 +85,18 @@ function ConfirmActionDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const refresh = useMusterMutationRefresh(server.cluster);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [done, setDone] = useState(false);
 
-  const reset = () => {
+  // Reset on open, not on close: the dialog keeps rendering while it fades
+  // out, and `action` stays set for that reason too.
+  useOnDialogOpen(open, () => {
     setError(undefined);
     setDone(false);
-    setBusy(false);
-  };
-
-  const handleClose = () => {
-    reset();
-    onClose();
-  };
+  });
 
   const run = async () => {
     if (!action) {
@@ -126,56 +119,44 @@ function ConfirmActionDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{action?.label}</DialogTitle>
-      <DialogContent>
-        <DialogContentText component="div">
-          {action?.destructive ? (
-            <>
-              This permanently removes the ad-hoc server{' '}
-              <code>{server.getName()}</code> from this muster instance. This is
-              a live mutation and cannot be undone.
-            </>
-          ) : (
-            <>
-              {action?.description ? `${action.description} ` : ''}
-              Runs <code>{action?.tool}</code> against{' '}
-              <code>{server.getName()}</code> on installation{' '}
-              <code>{server.cluster}</code>.
-            </>
-          )}
-        </DialogContentText>
-        {error && (
-          <Box mt={2}>
-            <Typography variant="body2" className={classes.error}>
-              {error}
-            </Typography>
-          </Box>
+    <ConfirmDialog
+      isOpen={open}
+      onOpenChange={next => {
+        if (!next) {
+          onClose();
+        }
+      }}
+      title={action?.label ?? ''}
+      confirmLabel={action?.destructive ? 'Delete' : 'Confirm'}
+      destructive={action?.destructive}
+      isBusy={busy}
+      error={error}
+      isDone={done}
+      onConfirm={run}
+    >
+      <Text as="p" variant="body-medium">
+        {action?.destructive ? (
+          <>
+            This permanently removes the ad-hoc server{' '}
+            <code>{server.getName()}</code> from this muster instance. This is a
+            live mutation and cannot be undone.
+          </>
+        ) : (
+          <>
+            {action?.description ? `${action.description} ` : ''}
+            Runs <code>{action?.tool}</code> against{' '}
+            <code>{server.getName()}</code> on installation{' '}
+            <code>{server.cluster}</code>.
+          </>
         )}
-        {done && (
-          <Box mt={2}>
-            <Typography variant="body2" className={classes.ok}>
-              Done. The server list has been refreshed; the connection status
-              may take a few seconds to settle.
-            </Typography>
-          </Box>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <MuiButton onClick={handleClose}>{done ? 'Close' : 'Cancel'}</MuiButton>
-        {!done && (
-          <MuiButton
-            onClick={run}
-            color="secondary"
-            variant="contained"
-            disabled={busy}
-            startIcon={busy ? <CircularProgress size={14} /> : undefined}
-          >
-            {action?.destructive ? 'Delete' : 'Confirm'}
-          </MuiButton>
-        )}
-      </DialogActions>
-    </Dialog>
+      </Text>
+      {done && (
+        <Alert
+          status="success"
+          description="Done. The server list has been refreshed; the connection status may take a few seconds to settle."
+        />
+      )}
+    </ConfirmDialog>
   );
 }
 
@@ -211,12 +192,13 @@ export function AdHocServerDialog({
   const target = server?.cluster ?? installation;
   const refresh = useMusterMutationRefresh(target);
   const [value, setValue] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'validate' | 'save'>();
   const [error, setError] = useState<string | undefined>();
   const [message, setMessage] = useState<string | undefined>();
 
-  // Seed the editor when the dialog opens.
-  const seed = () => {
+  // Seeded on open only: `server` is polled, and re-seeding on every refetch
+  // would overwrite what the user is typing.
+  useOnDialogOpen(open, () => {
     setValue(
       JSON.stringify(
         server ? toMcpServerDefinition(server) : NEW_SERVER_TEMPLATE,
@@ -226,7 +208,7 @@ export function AdHocServerDialog({
     );
     setError(undefined);
     setMessage(undefined);
-  };
+  });
 
   const parsed = (): Record<string, unknown> | undefined => {
     try {
@@ -244,7 +226,7 @@ export function AdHocServerDialog({
     if (!def) {
       return;
     }
-    setBusy(true);
+    setBusy('validate');
     setMessage(undefined);
     try {
       await musterApi.callTool('core_mcpserver_validate', def, target);
@@ -252,7 +234,7 @@ export function AdHocServerDialog({
     } catch (e) {
       setError(mutationErrorMessage(e));
     } finally {
-      setBusy(false);
+      setBusy(undefined);
     }
   };
 
@@ -261,7 +243,7 @@ export function AdHocServerDialog({
     if (!def) {
       return;
     }
-    setBusy(true);
+    setBusy('save');
     setMessage(undefined);
     try {
       await musterApi.callTool(
@@ -274,64 +256,74 @@ export function AdHocServerDialog({
     } catch (e) {
       setError(mutationErrorMessage(e));
     } finally {
-      setBusy(false);
+      setBusy(undefined);
     }
   };
 
   return (
     <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      TransitionProps={{ onEnter: seed }}
+      isOpen={open}
+      // Gated here as well: DialogHeader's close button ignores isDismissable.
+      onOpenChange={next => {
+        if (!next && !busy) {
+          onClose();
+        }
+      }}
+      isDismissable={!busy}
+      isKeyboardDismissDisabled={Boolean(busy)}
+      width="min(90vw, 860px)"
     >
-      <DialogTitle>
-        {isEdit
-          ? `Edit ad-hoc server — ${server?.getName()}`
-          : 'Add ad-hoc server'}
-      </DialogTitle>
-      <DialogContent>
-        <DialogContentText>
-          {isEdit ? 'Edit' : 'Define'} the muster server. Validate before
-          saving; both run as live mutations against installation{' '}
-          <code>{target}</code>.
-        </DialogContentText>
-        <TextField
-          className={classes.editField}
-          multiline
-          minRows={12}
-          fullWidth
-          variant="outlined"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-        />
-        {error && (
-          <Typography variant="body2" className={classes.error}>
-            {error}
-          </Typography>
-        )}
-        {message && (
-          <Typography variant="body2" className={classes.ok}>
-            {message}
-          </Typography>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <MuiButton onClick={onClose}>Close</MuiButton>
-        <MuiButton onClick={validate} disabled={busy}>
+      <DialogHeader>
+        {isEdit ? `Edit as JSON — ${server?.getName()}` : 'Add ad-hoc server'}
+      </DialogHeader>
+      <DialogBody>
+        <Flex direction="column" gap="3">
+          <Text as="p" variant="body-medium">
+            {isEdit ? 'Edit' : 'Define'} the muster server. Validate before
+            saving; both run as live mutations against installation{' '}
+            <code>{target}</code>.
+          </Text>
+          <TextAreaField
+            label="Server definition (JSON)"
+            className={classes.editField}
+            rows={12}
+            value={value}
+            onChange={setValue}
+          />
+          {error && (
+            <Alert
+              status="danger"
+              description={<span style={ALERT_MESSAGE_STYLE}>{error}</span>}
+            />
+          )}
+          {message && <Alert status="success" description={message} />}
+        </Flex>
+      </DialogBody>
+      <DialogFooter>
+        <Button
+          variant="secondary"
+          isDisabled={Boolean(busy)}
+          onPress={onClose}
+        >
+          Close
+        </Button>
+        <Button
+          variant="secondary"
+          isDisabled={Boolean(busy)}
+          isPending={busy === 'validate'}
+          onPress={validate}
+        >
           Validate
-        </MuiButton>
-        <MuiButton
-          onClick={save}
-          color="secondary"
-          variant="contained"
-          disabled={busy}
-          startIcon={busy ? <CircularProgress size={14} /> : undefined}
+        </Button>
+        <Button
+          variant="primary"
+          isDisabled={Boolean(busy)}
+          isPending={busy === 'save'}
+          onPress={save}
         >
           Save
-        </MuiButton>
-      </DialogActions>
+        </Button>
+      </DialogFooter>
     </Dialog>
   );
 }
@@ -355,7 +347,7 @@ export const OAUTH_SIGN_IN_GATE =
   'cannot sign a session in — muster refuses it. Use “Sign in” in this ' +
   'row instead.';
 
-/** A lifecycle button, disabled with an explanatory tooltip when gated. */
+/** A row action button, disabled with an explanatory tooltip when gated. */
 function LifecycleButton({
   label,
   icon,
@@ -381,10 +373,21 @@ function LifecycleButton({
   if (!gateReason) {
     return button;
   }
+  // The span carries the tooltip because the disabled button fires neither
+  // hover nor focus. Focusable and labelled with the reason, so keyboard and
+  // screen-reader users learn why the action is unavailable, not just that
+  // it is. (The lint rule assumes a non-interactive element never needs
+  // focus; this one stands in for the button that cannot take it.)
   return (
     <Tooltip title={gateReason}>
-      {/* span wrapper so the tooltip still fires over the disabled button */}
-      <span>{button}</span>
+      <span
+        role="group"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+        aria-label={`${label} (unavailable): ${gateReason}`}
+      >
+        {button}
+      </span>
     </Tooltip>
   );
 }
@@ -393,7 +396,9 @@ function LifecycleButton({
  * Lifecycle/CRUD affordances for one server, gitops-aware. Provenance is the
  * only restriction: GitOps-managed servers are read-only and explain how to
  * edit or remove them in Git ({@link GitOpsServerActions}); manually-added (ad-hoc) servers
- * allow live core_mcpserver_* CRUD + lifecycle behind a confirm dialog.
+ * allow live core_mcpserver_* CRUD + lifecycle behind a confirm dialog. Edit
+ * reopens the registration wizard pre-filled with the server, and saving there
+ * updates it in place.
  *
  * The row also carries the per-session auth actions (Sign in / Sign out --
  * {@link ServerAuthActions}), in BOTH branches: signing in to an OAuth server
@@ -441,8 +446,24 @@ export function ServerMutationActions({
     server.getAuth()?.type === 'oauth' && server.getState() === 'Auth Required';
   const reconnectGate = oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined;
 
-  const [editOpen, setEditOpen] = useState(false);
+  const navigate = useNavigate();
+  const registerLink = useRouteRef(newMcpServerRouteRef);
+  // The wizard seeds itself from `?edit=` (NewMcpServerEditGate), so the edit
+  // survives a reload and a registration draft in progress is set aside, not
+  // lost.
+  const onEdit = () => {
+    if (registerLink) {
+      navigate(withEditParam(registerLink(), server.getName()));
+    }
+  };
+  const editBlocker = wizardEditBlocker(server);
+  const [jsonEditOpen, setJsonEditOpen] = useState(false);
   const [action, setAction] = useState<LiveAction | undefined>();
+  const [actionOpen, setActionOpen] = useState(false);
+  const openAction = (next: LiveAction) => {
+    setAction(next);
+    setActionOpen(true);
+  };
 
   if (managed) {
     return (
@@ -459,21 +480,38 @@ export function ServerMutationActions({
     <Flex align="center" gap="2" className={classes.actions}>
       <StateBadge tone="neutral" label="Manually added" />
       {authActions}
-      <Button
-        size="small"
-        variant="secondary"
-        iconStart={<Edit fontSize="inherit" />}
-        onPress={() => setEditOpen(true)}
-      >
-        Edit
-      </Button>
+      {editBlocker ? (
+        // What the wizard cannot represent the JSON editor still can, so a
+        // server the wizard refuses keeps an in-app edit path.
+        <Tooltip title={editBlocker}>
+          <span>
+            <Button
+              size="small"
+              variant="secondary"
+              iconStart={<Edit fontSize="inherit" />}
+              onPress={() => setJsonEditOpen(true)}
+            >
+              Edit as JSON
+            </Button>
+          </span>
+        </Tooltip>
+      ) : (
+        <Button
+          size="small"
+          variant="secondary"
+          iconStart={<Edit fontSize="inherit" />}
+          onPress={onEdit}
+        >
+          Edit
+        </Button>
+      )}
       {suspended ? (
         <Button
           size="small"
           variant="secondary"
           iconStart={<PlayArrow fontSize="inherit" />}
           onPress={() =>
-            setAction({
+            openAction({
               label: `Activate ${server.getName()}`,
               tool: 'core_service_start',
               args: { name: server.getName() },
@@ -491,7 +529,7 @@ export function ServerMutationActions({
             variant="secondary"
             iconStart={<Stop fontSize="inherit" />}
             onPress={() =>
-              setAction({
+              openAction({
                 label: `Deactivate ${server.getName()}`,
                 tool: 'core_service_stop',
                 args: { name: server.getName() },
@@ -507,7 +545,7 @@ export function ServerMutationActions({
             icon={<Replay fontSize="inherit" />}
             gateReason={reconnectGate}
             onClick={() =>
-              setAction({
+              openAction({
                 label: `Reconnect ${server.getName()}`,
                 tool: 'core_service_restart',
                 args: { name: server.getName() },
@@ -524,7 +562,7 @@ export function ServerMutationActions({
         destructive
         iconStart={<DeleteOutline fontSize="inherit" />}
         onPress={() =>
-          setAction({
+          openAction({
             label: `Delete ${server.getName()}`,
             tool: 'core_mcpserver_delete',
             args: { name: server.getName() },
@@ -535,16 +573,18 @@ export function ServerMutationActions({
         Delete
       </Button>
 
-      <AdHocServerDialog
-        server={server}
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-      />
+      {editBlocker && (
+        <AdHocServerDialog
+          server={server}
+          open={jsonEditOpen}
+          onClose={() => setJsonEditOpen(false)}
+        />
+      )}
       <ConfirmActionDialog
         server={server}
         action={action}
-        open={action !== undefined}
-        onClose={() => setAction(undefined)}
+        open={actionOpen}
+        onClose={() => setActionOpen(false)}
       />
     </Flex>
   );

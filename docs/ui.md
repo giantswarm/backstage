@@ -110,6 +110,15 @@ acknowledgement should not have to be dismissed by hand. Failures usually want
 **no** toast at all: if the user is still looking at the dialog they pressed the
 button in, show the message there instead.
 
+## Red buttons: only for what cannot be undone
+
+The destructive treatment (`destructive` on a bui `Button`, `ConfirmDialog` or
+a `MenuItem`'s `color="danger"`) is reserved for actions that cannot be taken
+back: deleting something. An action another action reverses is not
+destructive, even when it interrupts something: saving an edit (edit again),
+deactivating or stopping (activate or serve again), cancelling a download
+(retry). Those get a plain `primary` confirm button.
+
 ## Page headers and tabs (New Frontend System)
 
 Every NFS page header is rendered by a **custom `PageLayout` swappable

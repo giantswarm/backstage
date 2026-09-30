@@ -190,17 +190,10 @@ export interface McpUsage {
   servers: McpUsageServerRow[];
 }
 
-/**
- * Where the backend got a muster installation's endpoint: `derived` from the
- * installation's `baseDomain` (`https://muster.<baseDomain>/mcp`) or
- * `configured` in `muster.installations`.
- */
-export type MusterInstallationSource = 'derived' | 'configured';
-
 /** One muster installation the backend can target, as reported by `/installations`. */
 export interface MusterInstallationInfo {
   name: string;
-  /** The aggregator's MCP endpoint URL (mono-rendered on the dashboard). */
+  /** The aggregator's MCP endpoint URL (shown atop the Servers view). */
   endpoint?: string;
   /**
    * Whether requests need the person's token: always for a derived
@@ -219,8 +212,6 @@ export interface MusterInstallationInfo {
   reachable?: boolean | 'unknown';
   /** The failure class, when `reachable` is `false`. Never names the host. */
   reason?: string;
-  /** Absent from an older backend, which only knew configured entries. */
-  source?: MusterInstallationSource;
 }
 
 export interface MusterInstallationsResponse {

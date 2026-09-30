@@ -59,7 +59,6 @@ test.describe('second-level tabs', () => {
       'MCP tools',
     ] as const,
     '/agent-platform/muster': [
-      'Dashboard',
       'Servers',
       'Workflows',
       'Tool explorer',

@@ -12,6 +12,7 @@ import {
   checkVersionCompatibility,
   getLatestVersion,
 } from '../../lib/k8s/versionUtils';
+import { k8sResponseError } from '../utils/k8sResponseError';
 
 export const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
 
@@ -47,15 +48,10 @@ export function apiGroupQueryOptions(
       });
 
       if (!response.ok) {
-        // HTTP/2 responses carry no reason phrase, so statusText can be empty —
-        // fall back to the status code to keep the message meaningful.
-        const reason = response.statusText || `HTTP ${response.status}`;
-        const error = new Error(
-          `Failed to discover API group ${group} from ${cluster}. Reason: ${reason}.`,
+        throw await k8sResponseError(
+          response,
+          `Failed to discover API group ${group} from ${cluster}`,
         );
-        error.name = response.status === 404 ? 'NotFoundError' : error.name;
-        error.name = response.status === 403 ? 'ForbiddenError' : error.name;
-        throw error;
       }
 
       const apiGroup: APIGroup = await response.json();
@@ -100,8 +96,9 @@ export function apiResourceQueryOptions(
         // Other failures (5xx, timeouts) are transient — throw so React Query
         // tracks them as errors and can retry, rather than caching a false
         // "resource doesn't exist" result.
-        throw new Error(
-          `Failed to check API resources for ${group}/${version} on ${cluster}: ${response.statusText}`,
+        throw await k8sResponseError(
+          response,
+          `Failed to check API resources for ${group}/${version} on ${cluster}`,
         );
       }
 
@@ -111,7 +108,9 @@ export function apiResourceQueryOptions(
     },
     staleTime: CACHE_TIME,
     gcTime: CACHE_TIME,
-    retry: 1,
+    // Retry a transient failure once, but not a 401: the token won't change.
+    retry: (failureCount: number, error: Error) =>
+      error.name !== 'UnauthorizedError' && failureCount < 1,
   };
 }
 

@@ -12,8 +12,8 @@
 # This is a multi-stage build, as documented here:
 # https://backstage.io/docs/deployment/docker#multi-stage-build
 # The build stage carries the compilers and headers needed to compile the
-# native modules (better-sqlite3, isolated-vm) during yarn install; the runtime
-# stage ships only the installed /app tree plus python for techdocs.
+# native modules (better-sqlite3) during yarn install; the runtime stage ships
+# only the installed /app tree plus python for techdocs.
 
 # Pinned to a full version plus digest, not a floating `24-trixie-slim`.
 #
@@ -95,22 +95,21 @@ RUN --mount=type=bind,source=packages/backend-headless-service/dist/bundle.tar.g
     tar xzf /tmp/backend-headless-service-bundle.tar.gz
 
 # Prune runtime-dead files from node_modules: source maps, TypeScript
-# declarations, isolated-vm's bundled sources and foreign-platform prebuilds,
-# and node-gyp (install-time-only). This must NOT delete the config schema
-# files the backend compiles at startup — @backstage/config-loader resolves
-# each package's package.json "configSchema" (conventionally config.d.ts) and
-# type-checks it with the `typescript` package, following imports into other
-# packages' declarations. The script computes that exact file closure, keeps
-# it, and fails the build if the compiler's view of the schemas changes or if
-# config-loader's real loadConfigSchema() breaks on the pruned tree. It runs
-# after the bundle extraction above because the bundles overwrite the skeleton
-# package.json files with their published form (configSchema rewritten to the
-# precompiled config.schema.json). Pruning in the build stage means the
-# runtime stage's COPY --from=build never sees the deleted files — no
-# whiteout layers.
+# declarations and node-gyp (install-time-only). This must NOT delete the
+# config schema files the backend compiles at startup —
+# @backstage/config-loader resolves each package's package.json "configSchema"
+# (conventionally config.d.ts) and type-checks it with the `typescript`
+# package, following imports into other packages' declarations. The script
+# computes that exact file closure, keeps it, and fails the build if the
+# compiler's view of the schemas changes or if config-loader's real
+# loadConfigSchema() breaks on the pruned tree. It runs after the bundle
+# extraction above because the bundles overwrite the skeleton package.json
+# files with their published form (configSchema rewritten to the precompiled
+# config.schema.json). Pruning in the build stage means the runtime stage's
+# COPY --from=build never sees the deleted files — no whiteout layers.
 RUN --mount=type=bind,source=packages/backend/prune-node-modules.cjs,target=/tmp/prune-node-modules.cjs \
     node /tmp/prune-node-modules.cjs /app && \
-    node --no-node-snapshot -e "require('isolated-vm'); require('better-sqlite3'); console.log('native modules load after prune')"
+    node -e "require('better-sqlite3'); console.log('native modules load after prune')"
 
 # The runtime stage starts fresh from the same pinned base, leaving the apt
 # build toolchain (~370 MB) behind in the build stage.
@@ -139,7 +138,7 @@ WORKDIR /app
 # This switches many Node.js dependencies to production mode.
 ENV NODE_ENV=production
 
-# --no-node-snapshot is required by the scaffolder-backend plugin on Node 20+.
+# Nothing in the backend needs --no-node-snapshot; it is removed separately.
 # --require starts the OpenTelemetry SDK before the backend loads so its
 # instrumentations patch the modules they trace, whatever command runs the
 # backend; it exports only when an OTEL_* variable names an exporter (the

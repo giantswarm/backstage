@@ -28,6 +28,14 @@ describe('<Version />', () => {
         expected: '0.24.2-beta',
       },
       {
+        version: '0.24',
+        expected: '0.24',
+      },
+      {
+        version: '0.24.2+build.7',
+        expected: '0.24.2',
+      },
+      {
         version: 'v0.24.2-next.1',
         expected: '0.24.2-next.1',
       },

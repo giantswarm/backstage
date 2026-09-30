@@ -41,9 +41,8 @@ export interface InstallationHealthPillProps {
 
 /**
  * A compact health pill: a coloured dot for the severity plus the scope name,
- * with the state text appended only when the cell is not healthy. Shared by the
- * MCP-servers manager (per-MC pills on a family row) and the dashboard
- * fleet-health summary.
+ * with the state text appended only when the cell is not healthy. Used by the
+ * MCP-servers manager for the per-MC pills on a family row.
  */
 export function InstallationHealthPill({
   name,

@@ -23,9 +23,8 @@ import { selectMusterInstallations } from './selectInstallations';
 import { useMusterInstallations } from './useMusterInstallations';
 
 // A light background refetch so the live health reads (per-MC pills, the
-// "Servers healthy" stat, fleet coverage) don't drift silently from the CRD
-// between page loads. Configured once here so both the dashboard and the
-// MCP-servers manager inherit it (ADR D4). The reads are trivially cheap once
+// healthy count) don't drift silently from the CRD between page loads.
+// Configured once here so every view inherits it (ADR D4). The reads are trivially cheap once
 // the cluster auth is warm; the manual refresh control covers the gap between
 // intervals.
 const HEALTH_REFETCH_INTERVAL_MS = 30_000;
@@ -92,6 +91,11 @@ export type MusterInstance = {
   isLoading: boolean;
   /** Epoch-ms of the most recent successful CRD read, or undefined while cold. */
   dataUpdatedAt: number | undefined;
+  /**
+   * Epoch-ms of the most recent successful MCPServer read alone (workflows
+   * left out), for a caller that must know the server list postdates a write.
+   */
+  mcpServersUpdatedAt?: number;
   /** Whether a (background or manual) health refetch is currently in flight. */
   isRefreshing: boolean;
   /** Re-fetch the live CRD reads on demand (manual refresh / error retry). */
@@ -276,6 +280,12 @@ export const MusterInstanceProvider = ({
       .filter(t => t > 0);
     return times.length > 0 ? Math.max(...times) : undefined;
   }, [mcpServerQueries, workflowQueries]);
+  const mcpServersUpdatedAt = useMemo(() => {
+    const times = mcpServerQueries
+      .map(({ query }) => query.dataUpdatedAt)
+      .filter(t => t > 0);
+    return times.length > 0 ? Math.max(...times) : undefined;
+  }, [mcpServerQueries]);
 
   const isRefreshing = useMemo(
     () =>
@@ -326,6 +336,7 @@ export const MusterInstanceProvider = ({
           isLoadingServers &&
           mcpServers.length === 0),
       dataUpdatedAt,
+      mcpServersUpdatedAt,
       isRefreshing,
       retry: () => {
         retryServers();
@@ -348,6 +359,7 @@ export const MusterInstanceProvider = ({
       workflows,
       isLoadingServers,
       dataUpdatedAt,
+      mcpServersUpdatedAt,
       isRefreshing,
       retryServers,
       retryWorkflows,

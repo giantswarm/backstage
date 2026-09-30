@@ -278,7 +278,6 @@ describe('createRouter', () => {
           endpoint: 'injected',
           requiresAuth: false,
           reachable: true,
-          source: 'configured',
         },
       ],
     });
@@ -359,14 +358,12 @@ describe('createRouter', () => {
           name: 'gazelle',
           endpoint: 'https://muster.gazelle.example.io/mcp',
           requiresAuth: false,
-          source: 'configured',
           reachable: 'unknown',
         },
         {
           name: 'golem',
           endpoint: 'https://muster.golem.example.io/mcp',
           requiresAuth: true,
-          source: 'configured',
           reachable: 'unknown',
         },
       ]);
@@ -448,7 +445,7 @@ describe('createRouter', () => {
       return { fleetApp, logger };
     }
 
-    it('lists derived and configured installations with their source', async () => {
+    it('lists derived and configured installations with their endpoints', async () => {
       const { fleetApp } = await buildFleetApp({
         ...FLEET,
         muster: {
@@ -471,14 +468,12 @@ describe('createRouter', () => {
             name: 'gazelle',
             endpoint: 'https://muster-internal.gazelle.example.test/mcp',
             requiresAuth: true,
-            source: 'configured',
             reachable: true,
           },
           {
             name: 'golem',
             endpoint: 'https://muster.golem.example.test/mcp',
             requiresAuth: true,
-            source: 'derived',
             reachable: true,
           },
         ],

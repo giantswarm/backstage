@@ -1,4 +1,4 @@
-import semver from 'semver';
+import { Version as SemanticVersion } from '@giantswarm/semver-ts';
 import { Box, Tooltip, styled } from '@material-ui/core';
 import ReportProblemOutlined from '@material-ui/icons/ReportProblemOutlined';
 import MiddleEllipsis from 'react-middle-ellipsis';
@@ -18,28 +18,22 @@ const COMMIT_HASH_REGEXP = /\b[0-9a-f]{40}\b/;
 const INVALID_VERSION = 'n/a';
 
 function getCommitHash(version: string): string | null {
-  const semverVersion = semver.parse(version);
-  if (!semverVersion) {
-    return null;
-  }
-
-  if (
-    semverVersion.prerelease.length === 1 &&
-    semverVersion.prerelease[0].toString().match(COMMIT_HASH_REGEXP)
-  ) {
-    return semverVersion.prerelease[0].toString();
+  const prerelease = SemanticVersion.tryParse(version)?.prerelease ?? '';
+  if (!prerelease.includes('.') && COMMIT_HASH_REGEXP.test(prerelease)) {
+    return prerelease;
   }
 
   return null;
 }
 
 function formatVersion(version: string): string {
-  const semverVersion = semver.parse(version);
-  if (!semverVersion) {
+  if (!SemanticVersion.tryParse(version)) {
     return INVALID_VERSION;
   }
 
-  return semverVersion.toString();
+  // As written, so the label and the release link match the tag, without a
+  // leading `v` and build metadata.
+  return version.trim().replace(/^v/, '').replace(/\+.*$/, '');
 }
 
 type TruncatedVersionProps = {

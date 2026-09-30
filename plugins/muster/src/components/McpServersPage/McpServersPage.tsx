@@ -21,6 +21,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { newMcpServerRouteRef } from '../../routes';
+import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
@@ -38,6 +39,7 @@ import {
   partitionServers,
 } from '../../lib/serverGrouping';
 import { StandardServerDisclosure } from './StandardServerDisclosure';
+import { MusterSummary } from './MusterSummary';
 import { IntegrationServerDisclosure } from './IntegrationServerDisclosure';
 import { CoreFamiliesPanel } from './CoreFamiliesPanel';
 import { AddAdHocServerButton } from './ServerMutationActions';
@@ -128,7 +130,7 @@ export function McpServersPage() {
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
 
   // Session state (and the connect action) are resolved once via the shared
-  // hook so the manager, the dashboard and the workflows page agree (ADR D3).
+  // hook so the manager, the tool explorer and the workflows page agree (ADR D3).
   const {
     authenticated,
     connecting,
@@ -146,17 +148,28 @@ export function McpServersPage() {
   // platform, ahead of the raw-JSON ad-hoc dialog below.
   const navigate = useNavigate();
   const newServerLink = useRouteRef(newMcpServerRouteRef);
+  // The wizard state outlives the wizard, so an unfinished registration draft
+  // is still there on the next visit. An edit (or a saved registration) is not
+  // a draft: registering a new server starts from an empty form.
+  const { registeredName, reset } = useNewMcpServerForm();
   const headerActions = useMemo(
     () => (
       <UiButton
         variant="primary"
         iconStart={<AddIcon fontSize="inherit" />}
-        onPress={() => newServerLink && navigate(newServerLink())}
+        onPress={() => {
+          if (registeredName) {
+            reset();
+          }
+          if (newServerLink) {
+            navigate(newServerLink());
+          }
+        }}
       >
         Register server
       </UiButton>
     ),
-    [newServerLink, navigate],
+    [newServerLink, navigate, registeredName, reset],
   );
   useProvidePageHeaderActions(headerActions);
 
@@ -282,16 +295,22 @@ export function McpServersPage() {
       />
     );
   } else if (mcpServers.length === 0) {
+    // The endpoint still leads: muster serves its core tools without any
+    // aggregated server behind it.
     body = (
-      <EmptyState
-        missing="data"
-        title="No MCP servers"
-        description="No MCPServer CRs found in this installation. The muster CRDs may not be installed, or the aggregator federates none yet."
-      />
+      <Box className={classes.column}>
+        <MusterSummary servers={mcpServers} />
+        <EmptyState
+          missing="data"
+          title="No MCP servers"
+          description="No MCPServer CRs found in this installation. The muster CRDs may not be installed, or the aggregator federates none yet."
+        />
+      </Box>
     );
   } else {
     body = (
       <Box className={classes.column}>
+        <MusterSummary servers={mcpServers} />
         {requiresAuth && !authenticated && (
           <Box className={classes.topGate}>
             <Gate

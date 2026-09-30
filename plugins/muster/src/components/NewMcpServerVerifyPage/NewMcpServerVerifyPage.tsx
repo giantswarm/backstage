@@ -20,6 +20,7 @@ import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { ServerSignIn, StateBadge, severityTone } from '../shared';
 import { HealthDetails, ServerTools } from '../McpServersPage/serverDetail';
+import { withEditParam } from '../NewMcpServerEditGate';
 
 /**
  * How often the live runtime list is re-read while the server is still
@@ -69,8 +70,9 @@ export function NewMcpServerVerifyPage() {
   const musterApi = useApi(musterApiRef);
   const detailsLink = useRouteRef(newMcpServerRouteRef);
   const serversLink = useRouteRef(mcpServersRouteRef);
-  const { state, registeredName, reset } = useNewMcpServerForm();
-  const { mcpServers, retry } = useMusterInstance();
+  const { state, registeredName, lastSave, lastSaveAt, reset } =
+    useNewMcpServerForm();
+  const { mcpServers, mcpServersUpdatedAt, retry } = useMusterInstance();
 
   const installation = state.installation;
   const serverName = registeredName;
@@ -93,6 +95,30 @@ export function NewMcpServerVerifyPage() {
     [mcpServers, serverName, installation],
   );
 
+  // After an update the CR keeps the status of the previous configuration
+  // until muster reconciles the new spec — a "Connected" read then would
+  // confirm a change that has not been applied. The Ready condition's
+  // observedGeneration trailing metadata.generation says exactly that, so the
+  // panel holds the verdict back and re-reads the CR until they agree (the
+  // provider's own refresh is 30s). Until the server list has been read again
+  // after the update, the CR in hand is the pre-update one (its generations
+  // agree), so that counts as applying too.
+  const isPreUpdateRead =
+    lastSave === 'update' &&
+    lastSaveAt !== undefined &&
+    (mcpServersUpdatedAt ?? 0) < lastSaveAt;
+  const applying = isPreUpdateRead || Boolean(cr?.isReconcilePending());
+  useEffect(() => {
+    if (!applying) {
+      return undefined;
+    }
+    const timer = setInterval(
+      () => retryRef.current(),
+      VERIFY_POLL_INTERVAL_MS,
+    );
+    return () => clearInterval(timer);
+  }, [applying]);
+
   // Live per-session runtime view (state, status message, session tool count,
   // registeredBy). Shares the query key with the server manager's RuntimeState
   // so the two agree; the fast interval only applies while this page watches.
@@ -101,6 +127,9 @@ export function NewMcpServerVerifyPage() {
     queryFn: () => musterApi.listServers(installation),
     enabled: Boolean(installation && serverName),
     refetchInterval: query => {
+      if (applying) {
+        return VERIFY_POLL_INTERVAL_MS;
+      }
       const runtimeState = (query.state.data?.mcpServers ?? []).find(
         s => s.name === serverName,
       )?.state;
@@ -126,8 +155,9 @@ export function NewMcpServerVerifyPage() {
 
   // The runtime view is per-session and fresher; the CR status is the fallback
   // while the aggregator hasn't picked the server up yet.
-  const serverState = (runtime?.state ?? cr?.getState()) as
-    MCPServerState | undefined;
+  const serverState = (
+    applying ? undefined : (runtime?.state ?? cr?.getState())
+  ) as MCPServerState | undefined;
   const severity = mcpServerStateSeverity(serverState);
   // `Auth Required` only means "you can sign in" where a sign-in exists.
   // A sigv4 server signs as muster's own machine identity, so muster keeps it
@@ -144,20 +174,19 @@ export function NewMcpServerVerifyPage() {
   const failed = severity === 'error';
   const toolsCount = runtime?.toolsCount;
 
-  const connectionFacts: Fact[] = [
-    {
-      label: 'State',
-      value: serverState ? (
-        <StateBadge
-          tone={severityTone(severity)}
-          label={serverState}
-          title={cr?.getStateExplanation()}
-        />
-      ) : (
-        'Waiting for the server to appear…'
-      ),
-    },
-  ];
+  let stateValue: Fact['value'] = 'Waiting for the server to appear…';
+  if (applying) {
+    stateValue = <StateBadge tone="neutral" label="Applying changes…" />;
+  } else if (serverState) {
+    stateValue = (
+      <StateBadge
+        tone={severityTone(severity)}
+        label={serverState}
+        title={cr?.getStateExplanation()}
+      />
+    );
+  }
+  const connectionFacts: Fact[] = [{ label: 'State', value: stateValue }];
   if (runtime?.statusMessage) {
     connectionFacts.push({ label: 'Status', value: runtime.statusMessage });
   }
@@ -185,7 +214,10 @@ export function NewMcpServerVerifyPage() {
       <Flex gap="2">
         <Button
           variant="tertiary"
-          onPress={() => detailsLink && navigate(detailsLink())}
+          onPress={() =>
+            detailsLink &&
+            navigate(withEditParam(detailsLink(), registeredName))
+          }
         >
           Edit details
         </Button>
@@ -202,7 +234,7 @@ export function NewMcpServerVerifyPage() {
         </Button>
       </Flex>
     ),
-    [detailsLink, serversLink, navigate, reset],
+    [detailsLink, serversLink, navigate, reset, registeredName],
   );
 
   const isRedirecting = !serverName;
@@ -235,10 +267,11 @@ export function NewMcpServerVerifyPage() {
           Watching <span className={classes.code}>{serverName}</span> connect
         </Text>
         <Text as="p" color="secondary" className={classes.intro}>
-          The server is registered on <strong>{state.installation}</strong>.
-          This panel follows it live until it is connected and its tools are
-          discovered. You can leave at any time — finish sign-in or check status
-          later from the server&apos;s entry on the Servers page.
+          {lastSave === 'update' ? 'Changes saved. ' : ''}The server is
+          registered on <strong>{state.installation}</strong>. This panel
+          follows it live until it is connected and its tools are discovered.
+          You can leave at any time — finish sign-in or check status later from
+          the server&apos;s entry on the Servers page.
         </Text>
 
         <Flex direction="column" gap="4">
@@ -249,7 +282,14 @@ export function NewMcpServerVerifyPage() {
                   Connection status
                 </Text>
                 <FactList facts={connectionFacts} maxWidth={null} />
-                {!serverState && (
+                {applying && (
+                  <Text variant="body-small" color="secondary">
+                    Muster has not applied the saved changes yet. The status
+                    appears once it has, so it never shows the previous
+                    configuration — this refreshes automatically.
+                  </Text>
+                )}
+                {!serverState && !applying && (
                   <Text variant="body-small" color="secondary">
                     Newly registered servers can take a few seconds to show up
                     in the aggregator — this refreshes automatically.
@@ -292,7 +332,7 @@ export function NewMcpServerVerifyPage() {
             </Card>
           )}
 
-          {(failed || runtime?.error) && (
+          {!applying && (failed || runtime?.error) && (
             <Card>
               <CardBody>
                 <Flex direction="column" gap="3">
@@ -320,7 +360,10 @@ export function NewMcpServerVerifyPage() {
                   <Flex>
                     <Button
                       variant="secondary"
-                      onPress={() => detailsLink && navigate(detailsLink())}
+                      onPress={() =>
+                        detailsLink &&
+                        navigate(withEditParam(detailsLink(), registeredName))
+                      }
                     >
                       Edit details
                     </Button>

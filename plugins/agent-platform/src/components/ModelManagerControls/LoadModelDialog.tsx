@@ -3,6 +3,8 @@ import { useApi } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
+  Checkbox,
+  CheckboxGroup,
   Dialog,
   DialogBody,
   DialogFooter,
@@ -23,7 +25,6 @@ import type {
   ModelManagerPreset,
 } from '../../lib/modelManager';
 import {
-  ANY_NODE,
   describeFitVerdict,
   describeServedWhere,
   isModelImagePreset,
@@ -178,10 +179,12 @@ function targetForSeed(
  * or why not; a preset no size of the pool hosts cannot be served. Where
  * model-manager recommends a placement, the person chooses it — split across
  * fast-linked nodes or one copy — the recommendation preselected and the
- * verdict the chosen placement's. A copy goes on any node that fits, or on
- * the node the person picks from the node inventory — each node judged by
- * its own `check_fit`, the ones the preset cannot land on listed disabled
- * with the reason; a pick is sent as `node`, the hostname pin. On a host
+ * verdict the chosen placement's. A copy goes on any node that fits, or one
+ * copy on each node the person ticks in the node inventory — each node
+ * judged by its own `check_fit`, the ones the preset cannot land on listed
+ * disabled with the reason. One tick is sent as `node`, the hostname pin;
+ * several as `placement: copies` with the `nodes`, judged together by one
+ * more `check_fit` ("Fits as 4 copies"). On a host
  * backend the choice is a cached model. Serve is one `load_model` over
  * muster: model-manager composes the serving object (an `LLMInferenceService`
  * on a pool) and answers with what it created, the fit it judged by and the
@@ -357,18 +360,39 @@ export function LoadModelDialog({
           { modelImage, prePulledNodes: fit.data?.prePulledNodes },
         )
       : undefined;
-  const [pickedNode, setPickedNode] = useState(ANY_NODE);
-  useEffect(() => setPickedNode(ANY_NODE), [model, targetKey, isOpen]);
-  // A pick that became unservable gives way to any node.
-  const node =
-    nodeOptions?.find(option => option.id === pickedNode && !option.disabled)
-      ?.id ?? ANY_NODE;
-  const pinned = node === ANY_NODE ? undefined : node;
+  const [tickedNodes, setTickedNodes] = useState<string[]>([]);
+  useEffect(() => setTickedNodes([]), [model, targetKey, isOpen]);
   const fittingNodes = candidates
     .filter(candidate => fitByNode[candidate.name]?.data?.fits)
     .map(candidate => candidate.name);
+  // Ticks on nodes that became unservable give way; none is any node.
+  const copyNodes = tickedNodes.filter(name =>
+    nodeOptions?.some(option => option.id === name && !option.disabled),
+  );
+  const pinned = copyNodes.length === 1 ? copyNodes[0] : undefined;
+  const severalCopies = copyNodes.length > 1;
+  const copiesFit = useQuery({
+    queryKey: modelManagerFitQueryKey(
+      installation,
+      backend,
+      model,
+      'copies',
+      copyNodes.join(','),
+    ),
+    queryFn: () =>
+      client!.checkFit({
+        model,
+        placement: 'copies',
+        nodes: copyNodes,
+        ...(backend ? { backend } : {}),
+      }),
+    enabled:
+      isOpen && Boolean(client && choice) && !servedWhere && severalCopies,
+    staleTime: 30_000,
+    retry: false,
+  });
 
-  const placements = placementChoices(fit.data, splitFit.data, pinned);
+  const placements = placementChoices(fit.data, splitFit.data, copyNodes);
 
   // The recommendation stands until the person picks; a new model or a
   // disabled pick falls back to it.
@@ -385,7 +409,11 @@ export function LoadModelDialog({
     : undefined;
   const split = placement === 'split';
   const pinnedFit = pinned && !split ? fitByNode[pinned] : undefined;
-  const activeFit = split ? splitFit : (pinnedFit ?? fit);
+  const copies = severalCopies && !split;
+  // The verdict of the chosen placement: the split, the copies, the pinned
+  // copy, else one copy anywhere.
+  const activeFit =
+    (split && splitFit) || (copies && copiesFit) || pinnedFit || fit;
   const verdict = activeFit.data
     ? describeFitVerdict(
         activeFit.data,
@@ -399,6 +427,7 @@ export function LoadModelDialog({
         model,
         ...(backend ? { backend } : {}),
         ...(split ? { placement, nodes: splitFit.data?.nodes } : {}),
+        ...(copies ? { placement: 'copies' as const, nodes: copyNodes } : {}),
         ...(pinnedFit ? { node: pinned } : {}),
       }),
     onSuccess: () => invalidate(),
@@ -568,18 +597,46 @@ export function LoadModelDialog({
           )}
 
           {nodeOptions && !split && !servedWhere && (
-            <Select
-              label="Node"
-              data-testid="serve-node"
-              isDisabled={isBusy}
-              options={nodeOptions}
-              selectedKey={node}
-              onSelectionChange={key => {
-                if (key) {
-                  setPickedNode(String(key));
-                }
-              }}
-            />
+            <Flex direction="column" gap="1" data-testid="serve-nodes">
+              <CheckboxGroup
+                label="Nodes"
+                description="Tick a node for one copy there, several for one copy on each behind the same endpoint. None ticked: one copy on a node that fits."
+                value={copyNodes}
+                onChange={setTickedNodes}
+                isDisabled={isBusy}
+              >
+                {nodeOptions.map(option => (
+                  <Checkbox
+                    key={option.id}
+                    value={option.id}
+                    isDisabled={option.disabled}
+                  >
+                    <Flex direction="column" gap="0">
+                      <Text variant="body-medium">{option.label}</Text>
+                      {option.description && (
+                        <Text variant="body-small" color="secondary">
+                          {option.description}
+                        </Text>
+                      )}
+                    </Flex>
+                  </Checkbox>
+                ))}
+              </CheckboxGroup>
+              {fittingNodes.length > 1 && (
+                <div>
+                  <Button
+                    variant="tertiary"
+                    size="small"
+                    isDisabled={
+                      isBusy || copyNodes.length === fittingNodes.length
+                    }
+                    onPress={() => setTickedNodes(fittingNodes)}
+                  >
+                    All {fittingNodes.length} nodes that fit
+                  </Button>
+                </div>
+              )}
+            </Flex>
           )}
 
           {servedWhere && choice && (

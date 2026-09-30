@@ -520,4 +520,57 @@ describe('usePreferredVersions', () => {
     // proxy should never be called
     expect(api.proxy).not.toHaveBeenCalled();
   });
+
+  it('sends no discovery requests and is not discovering while disabled', () => {
+    const api = createMockKubernetesApi({});
+
+    const { result } = renderHook(
+      () => usePreferredVersions(['cluster-a'], makeGVK(), { enabled: false }),
+      { wrapper: createWrapper(api) },
+    );
+
+    expect(result.current.isDiscovering).toBe(false);
+    expect(result.current.clustersGVKs).toEqual({});
+    expect(api.proxy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the discovered version while disabled, so the query key does not change', async () => {
+    // Static is v1beta2, but the server serves the resource only at v1beta1.
+    // Falling back to static while disabled would move a caller's query to a
+    // different key and hide its cached data until it is enabled again.
+    const gvk = makeMultiVersionGVK(['v1beta1', 'v1beta2'], {
+      apiVersion: 'v1beta2',
+      plural: 'widgets',
+    });
+    const api = createMockKubernetesApi({
+      'cluster-a': {
+        '/apis/test.example.io': makeApiGroupResponse('test.example.io', [
+          'v1beta1',
+        ]),
+        '/apis/test.example.io/v1beta1': makeApiResourceResponse(
+          'test.example.io',
+          'v1beta1',
+          ['widgets'],
+        ),
+      },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        usePreferredVersions(['cluster-a'], gvk, { enabled }),
+      { wrapper: createWrapper(api), initialProps: { enabled: true } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isDiscovering).toBe(false);
+    });
+    expect(result.current.clustersGVKs['cluster-a'].apiVersion).toBe('v1beta1');
+    const requests = api.proxy.mock.calls.length;
+
+    rerender({ enabled: false });
+
+    expect(result.current.isDiscovering).toBe(false);
+    expect(result.current.clustersGVKs['cluster-a'].apiVersion).toBe('v1beta1');
+    expect(api.proxy).toHaveBeenCalledTimes(requests);
+  });
 });
