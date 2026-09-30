@@ -107,15 +107,19 @@ export function ClusterAboutCard() {
 
   const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef)!;
 
+  // A Cluster may have no control plane reference yet (one still being
+  // created, or an imported one). Only the Kubernetes version depends on it,
+  // so that reads as not available and the rest of the card renders.
   const controlPlaneRef = cluster.getControlPlaneRef();
-  if (!controlPlaneRef) {
-    throw new Error(
-      'There is no control plane reference defined in the cluster resource.',
-    );
-  }
+  const controlPlaneName = controlPlaneRef?.name ?? '';
+  const controlPlaneNamespace = controlPlaneRef?.namespace;
 
-  const { name: controlPlaneName, namespace: controlPlaneNamespace } =
-    controlPlaneRef;
+  // Managed control planes are not a KubeadmControlPlane — an AKS cluster
+  // references an AzureASOManagedControlPlane, an EKS cluster an
+  // AWSManagedControlPlane — so the fetch would only 404. Disable it, and the
+  // Kubernetes version reads as not available.
+  const hasKubeadmControlPlane =
+    controlPlaneRef !== undefined && ControlPlane.matchesRef(controlPlaneRef);
 
   const {
     resource: controlPlane,
@@ -123,10 +127,15 @@ export function ClusterAboutCard() {
     errors: controlPlaneErrors,
     error: controlPlaneError,
     incompatibilities: controlPlaneIncompatibilities,
-  } = useResource(installationName, ControlPlane, {
-    name: controlPlaneName,
-    namespace: controlPlaneNamespace,
-  });
+  } = useResource(
+    installationName,
+    ControlPlane,
+    {
+      name: controlPlaneName,
+      namespace: controlPlaneNamespace,
+    },
+    { enabled: hasKubeadmControlPlane },
+  );
 
   let controlPlaneErrorMessage;
   if (controlPlaneError) {
@@ -137,13 +146,17 @@ export function ClusterAboutCard() {
       resourceNamespace: controlPlaneNamespace,
     });
   }
-  if (controlPlaneIncompatibilities[0]) {
+  // A disabled query still returns incompatibilities from ControlPlane
+  // discovery that another page has cached. The hook cannot tell whether a
+  // caller disabled its query to mean "not yet" or "does not apply", so the
+  // card keeps them out itself when there is no KubeadmControlPlane to read.
+  if (hasKubeadmControlPlane && controlPlaneIncompatibilities[0]) {
     controlPlaneErrorMessage = getIncompatibilityMessage(
       controlPlaneIncompatibilities[0],
     );
   }
 
-  useShowErrors(controlPlaneErrors);
+  useShowErrors(hasKubeadmControlPlane ? controlPlaneErrors : null);
 
   const clusterType = calculateClusterType(cluster);
   const description = getClusterDescription(cluster);
@@ -245,10 +258,10 @@ export function ClusterAboutCard() {
         </AboutField>
 
         <ClusterSwitch
-          renderAWS={() => (
+          renderAWS={infrastructureRef => (
             <AboutField label="AWS account">
               <AboutFieldValue>
-                <AWSAccountField />
+                <AWSAccountField infrastructureRef={infrastructureRef} />
               </AboutFieldValue>
             </AboutField>
           )}

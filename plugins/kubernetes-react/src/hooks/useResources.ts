@@ -26,6 +26,7 @@ export function useResources<R extends KubeObject<any>>(
   const staticGVK = ResourceClass.getGVK();
 
   const { enableDiscovery, ...restQueryOptions } = queryOptions;
+  const enabled = restQueryOptions.enabled ?? true;
 
   const {
     clustersGVKs,
@@ -35,6 +36,7 @@ export function useResources<R extends KubeObject<any>>(
     clientOutdatedStates,
   } = usePreferredVersions(selectedClusters, staticGVK, {
     enableDiscovery,
+    enabled,
   });
 
   // List queries are enabled per cluster as soon as that cluster's discovery
@@ -47,7 +49,7 @@ export function useResources<R extends KubeObject<any>>(
     options,
     {
       ...restQueryOptions,
-      enabled: restQueryOptions?.enabled ?? true,
+      enabled,
     },
   );
 
@@ -78,9 +80,10 @@ export function useResources<R extends KubeObject<any>>(
   }, [queriesInfo.errors, incompatibilities, discoveryErrors]);
 
   // Report API version issues to Sentry automatically
+  // Not while disabled — see useResource.
   useReportApiVersionIssues(
-    incompatibilities.length > 0 ? incompatibilities : null,
-    clientOutdatedStates.length > 0 ? clientOutdatedStates : null,
+    enabled && incompatibilities.length > 0 ? incompatibilities : null,
+    enabled && clientOutdatedStates.length > 0 ? clientOutdatedStates : null,
   );
 
   return {

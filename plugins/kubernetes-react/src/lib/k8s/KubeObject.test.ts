@@ -1,5 +1,6 @@
 import { ConfigMap } from './ConfigMap';
 import { Kustomization } from './Kustomization';
+import { ControlPlane } from './capi/ControlPlane';
 
 describe('KubeObject.getResolvedGVK', () => {
   it('reports the group and version a custom resource was read at', () => {
@@ -239,5 +240,110 @@ describe('KubeObject.getApplyFieldOwners deduplication', () => {
     expect(resource.getApplyFieldOwners(['spec', 'suspend'])).toEqual([
       'kustomize-controller',
     ]);
+  });
+});
+
+describe('KubeObject.matchesRef (static)', () => {
+  it('accepts a ref to a KubeadmControlPlane in the ControlPlane group', () => {
+    expect(
+      ControlPlane.matchesRef({
+        apiGroup: 'controlplane.cluster.x-k8s.io',
+        kind: 'KubeadmControlPlane',
+      }),
+    ).toBe(true);
+    expect(
+      ControlPlane.matchesRef({
+        apiVersion: 'controlplane.cluster.x-k8s.io/v1beta1',
+        kind: 'KubeadmControlPlane',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects refs to managed control planes', () => {
+    expect(
+      ControlPlane.matchesRef({
+        apiGroup: 'infrastructure.cluster.x-k8s.io',
+        kind: 'AzureASOManagedControlPlane',
+      }),
+    ).toBe(false);
+    expect(
+      ControlPlane.matchesRef({
+        apiVersion: 'controlplane.cluster.x-k8s.io/v1beta2',
+        kind: 'AWSManagedControlPlane',
+      }),
+    ).toBe(false);
+  });
+
+  it('treats a core class as the empty group', () => {
+    expect(ConfigMap.matchesRef({ apiVersion: 'v1', kind: 'ConfigMap' })).toBe(
+      true,
+    );
+    expect(ConfigMap.matchesRef({ apiGroup: '', kind: 'ConfigMap' })).toBe(
+      true,
+    );
+    expect(
+      ConfigMap.matchesRef({ apiGroup: 'example.com', kind: 'ConfigMap' }),
+    ).toBe(false);
+  });
+});
+
+describe('KubeObject.matchesRef (instance)', () => {
+  const controlPlane = new ControlPlane(
+    {
+      apiVersion: 'controlplane.cluster.x-k8s.io/v1beta2',
+      kind: 'KubeadmControlPlane',
+      metadata: { name: 'my-cluster', namespace: 'org-test' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any,
+    'test-installation',
+  );
+
+  it('matches by kind and group, ignoring the version the object was read at', () => {
+    expect(
+      controlPlane.matchesRef({
+        apiVersion: 'controlplane.cluster.x-k8s.io/v1beta1',
+        kind: 'KubeadmControlPlane',
+      }),
+    ).toBe(true);
+    expect(
+      controlPlane.matchesRef({
+        apiGroup: 'controlplane.cluster.x-k8s.io',
+        kind: 'KubeadmControlPlane',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects a different kind or group', () => {
+    expect(
+      controlPlane.matchesRef({
+        apiGroup: 'controlplane.cluster.x-k8s.io',
+        kind: 'AWSManagedControlPlane',
+      }),
+    ).toBe(false);
+    expect(
+      controlPlane.matchesRef({
+        apiGroup: 'example.com',
+        kind: 'KubeadmControlPlane',
+      }),
+    ).toBe(false);
+  });
+
+  it('compares the exact apiVersion for a core object', () => {
+    const configMap = new ConfigMap(
+      {
+        apiVersion: 'v1',
+        kind: 'ConfigMap',
+        metadata: { name: 'my-config', namespace: 'org-test' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      'test-installation',
+    );
+
+    expect(configMap.matchesRef({ apiVersion: 'v1', kind: 'ConfigMap' })).toBe(
+      true,
+    );
+    expect(configMap.matchesRef({ apiVersion: 'v2', kind: 'ConfigMap' })).toBe(
+      false,
+    );
   });
 });

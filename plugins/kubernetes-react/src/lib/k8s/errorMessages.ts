@@ -33,9 +33,17 @@ export const getErrorMessage = ({
     return undefined;
   }
 
+  const resource = `${resourceKind} resource named "${resourceName}"${
+    resourceNamespace ? ` in namespace "${resourceNamespace}"` : ''
+  }`;
+
   if (error.name === 'ForbiddenError') {
-    return `Permission not sufficient to get ${resourceKind} resource named "${resourceName}" in namespace "${resourceNamespace}".`;
+    return `Permission not sufficient to get ${resource}.`;
   }
 
-  return `Failed to fetch ${resourceKind} resource named "${resourceName}" in namespace "${resourceNamespace}".`;
+  if (error.name === 'NotFoundError') {
+    return `${resource} not found.`;
+  }
+
+  return `Failed to fetch ${resource}.`;
 };

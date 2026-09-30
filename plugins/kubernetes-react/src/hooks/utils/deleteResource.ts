@@ -1,6 +1,7 @@
 import { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import { CustomResourceMatcher } from '../../lib/k8s/CustomResourceMatcher';
-import { k8sMutationError, stripTrailingSlash } from './k8sMutation';
+import { stripTrailingSlash } from './k8sMutation';
+import { k8sResponseError } from './k8sResponseError';
 import { getK8sGetPath } from './k8sPath';
 
 /**
@@ -57,7 +58,7 @@ export async function deleteResource(options: {
   });
 
   if (!response.ok) {
-    throw await k8sMutationError(
+    throw await k8sResponseError(
       response,
       `Failed to delete ${gvk.plural} ${name} on ${cluster}`,
     );

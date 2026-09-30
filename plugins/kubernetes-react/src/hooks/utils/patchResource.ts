@@ -1,10 +1,7 @@
 import { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import { CustomResourceMatcher } from '../../lib/k8s/CustomResourceMatcher';
-import {
-  BACKSTAGE_FIELD_MANAGER,
-  k8sMutationError,
-  stripTrailingSlash,
-} from './k8sMutation';
+import { BACKSTAGE_FIELD_MANAGER, stripTrailingSlash } from './k8sMutation';
+import { k8sResponseError } from './k8sResponseError';
 import { getK8sGetPath } from './k8sPath';
 
 // Re-exported because this used to be its definition site, and it is part of the
@@ -48,7 +45,7 @@ export async function patchResource(options: {
   });
 
   if (!response.ok) {
-    throw await k8sMutationError(
+    throw await k8sResponseError(
       response,
       `Failed to patch ${gvk.plural} ${name} on ${cluster}`,
     );
