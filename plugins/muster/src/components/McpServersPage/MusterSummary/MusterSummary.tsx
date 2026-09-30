@@ -47,7 +47,9 @@ export function MusterSummary({ servers }: MusterSummaryProps) {
   }
 
   return (
-    <Flex direction="column" gap="1" mb="4">
+    // One line: the endpoint, then the totals. It wraps only when the
+    // endpoint leaves no room.
+    <Flex align="center" gap="3" mb="4" style={{ flexWrap: 'wrap' }}>
       <Flex align="center" gap="2">
         <Text variant="body-medium" color="secondary">
           Endpoint
@@ -69,6 +71,9 @@ export function MusterSummary({ servers }: MusterSummaryProps) {
         )}
       </Flex>
       <Flex align="center" gap="1">
+        <Text variant="body-medium" color="secondary" aria-hidden>
+          ·
+        </Text>
         <Text variant="body-medium" color="secondary">
           {total} {total === 1 ? 'server' : 'servers'} ·{' '}
           <Text

@@ -1,19 +1,18 @@
-import { useMemo } from 'react';
+import { CSSProperties, useMemo } from 'react';
+import { Link } from '@backstage/core-components';
 import {
+  Badge,
+  Cell,
   CellText,
   ColumnConfig,
+  Flex,
   SortDescriptor,
   Table,
   Text,
   useTable,
 } from '@backstage/ui';
 import { isGitOpsManaged } from '../../../lib/gitops';
-import {
-  MCPServer,
-  MCPServerSeverity,
-  mcpServerStateSeverity,
-  worstSeverity,
-} from '../../../lib/k8s';
+import { MCPServer } from '../../../lib/k8s';
 import { selectRepresentative } from '../../../lib/serverGrouping';
 import { ServerListEntry } from '../../../lib/serverList';
 import { AUTH_MODE_LABELS, serverAuthMode } from '../../../lib/serverAuthMode';
@@ -45,17 +44,13 @@ function sourceLabel(server: MCPServer | undefined): string {
   return isGitOpsManaged(server) ? 'Fleet server' : 'User-registered server';
 }
 
-function description(entry: ServerListEntry): string | undefined {
-  switch (entry.row.kind) {
-    case 'family':
-      return 'Server family';
-    case 'server':
-      // The endpoint is on the server page; here it only crowds the name.
-      return undefined;
-    default:
-      return 'core tools';
-  }
-}
+/** One line, cut to the column with an ellipsis. */
+const TRUNCATE: CSSProperties = {
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
 
 /** The Status cell, as plain text like the other columns. */
 function statusLabel(entry: ServerListEntry): string {
@@ -112,8 +107,6 @@ interface ServerTableRow {
   id: string;
   entry: ServerListEntry;
   status: string;
-  /** Lower is worse: failing first when sorted ascending. */
-  statusRank: number;
   tools: string;
   /** The count a Tools sort orders by; rows without one sort last. */
   toolsRank: number;
@@ -121,36 +114,12 @@ interface ServerTableRow {
   source: string;
 }
 
-const SEVERITY_RANK: Record<MCPServerSeverity, number> = {
-  error: 0,
-  warning: 1,
-  unknown: 2,
-  ok: 3,
-};
-
-/** The row's worst health, for sorting; muster itself sorts after every server. */
-function statusRank(entry: ServerListEntry): number {
-  let instances: MCPServer[] = [];
-  if (entry.row.kind === 'server') {
-    instances = [entry.row.server];
-  } else if (entry.row.kind === 'family') {
-    instances = entry.row.servers;
-  }
-  if (instances.length === 0) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-  const worst = instances
-    .map(s => mcpServerStateSeverity(s.getState()))
-    .reduce<MCPServerSeverity>(worstSeverity, 'ok');
-  return SEVERITY_RANK[worst];
-}
-
 type SortKey = keyof Omit<ServerTableRow, 'id' | 'entry'>;
 
 /** Which row value each column sorts by. */
 const SORT_KEYS: Record<string, SortKey | 'id'> = {
   server: 'id',
-  status: 'statusRank',
+  status: 'status',
   tools: 'toolsRank',
   auth: 'auth',
   source: 'source',
@@ -165,10 +134,17 @@ function sortServerRows(
   const compare = (a: ServerTableRow, b: ServerTableRow) => {
     const x = a[key];
     const y = b[key];
+    // No value ("—": muster's status) is not a value to order by: last
+    // whichever way the column is sorted.
+    if ((x === '—') !== (y === '—')) {
+      return x === '—' ? 1 : -1;
+    }
+    // Text as it reads, numbers by value: "3 of 5 instances healthy" sorts
+    // before "12 of 12 instances healthy", and equal statuses sit together.
     const primary =
       typeof x === 'number' && typeof y === 'number'
         ? x - y
-        : String(x).localeCompare(String(y));
+        : String(x).localeCompare(String(y), undefined, { numeric: true });
     // Ties stay in name order whichever way the column is sorted.
     return primary * sign || a.id.localeCompare(b.id);
   };
@@ -193,7 +169,6 @@ export function ServersTable({
           id: entry.id,
           entry,
           status: statusLabel(entry),
-          statusRank: statusRank(entry),
           tools,
           toolsRank:
             entry.toolCount === undefined || !/^\d/.test(tools)
@@ -218,15 +193,38 @@ export function ServersTable({
       // a count or a short label each.
       defaultWidth: '4fr',
       minWidth: 280,
-      cell: row => (
-        <CellText
-          title={row.id}
-          description={description(row.entry)}
-          href={links.server(row.id, installation, {
-            q: row.entry.toolMatches ? query.trim() : undefined,
-          })}
-        />
-      ),
+      cell: row => {
+        const href = links.server(row.id, installation, {
+          q: row.entry.toolMatches ? query.trim() : undefined,
+        });
+        // A plain link, as the Sessions table's title is: `Link` from
+        // core-components routes client-side.
+        return (
+          <Cell>
+            <Flex align="center" gap="2" style={{ minWidth: 0 }}>
+              {href ? (
+                <Link to={href} title={row.id} style={TRUNCATE}>
+                  {row.id}
+                </Link>
+              ) : (
+                <Text variant="body-medium" truncate title={row.id}>
+                  {row.id}
+                </Text>
+              )}
+              {row.entry.row.kind === 'family' && (
+                <Badge size="small" style={{ flexShrink: 0 }}>
+                  Family
+                </Badge>
+              )}
+              {row.entry.row.kind === 'core' && (
+                <Badge size="small" style={{ flexShrink: 0 }}>
+                  Core
+                </Badge>
+              )}
+            </Flex>
+          </Cell>
+        );
+      },
     },
     {
       id: 'status',

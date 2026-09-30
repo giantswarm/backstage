@@ -233,21 +233,24 @@ describe('McpServersPage', () => {
         'Fleet server',
       ],
       [
-        'kubernetesServer family',
+        'kubernetesFamily',
         '1 of 2 instances healthy',
         '2',
         'Platform SSO (forwarded token)',
         'Fleet server',
       ],
-      ['mustercore tools', '—', '1', 'Muster session', 'muster'],
+      ['musterCore', '—', '1', 'Muster session', 'muster'],
     ]);
   });
 
   it.each([
     // Most tools first; muster's single tool and aws-root's tie, by name.
     ['Tools', 'descending', ['github', 'kubernetes', 'aws-root', 'muster']],
-    // The degraded family first, muster (no status of its own) last.
+    // By the status as it reads: "1 of 2 instances healthy", then the two
+    // "Connected" by name, then muster's "—".
     ['Status', 'ascending', ['kubernetes', 'aws-root', 'github', 'muster']],
+    // Reversed, but muster's "—" stays last and ties stay in name order.
+    ['Status', 'descending', ['aws-root', 'github', 'kubernetes', 'muster']],
     ['Source', 'ascending', ['github', 'kubernetes', 'muster', 'aws-root']],
   ])('sorts by %s', async (column, direction, expected) => {
     await renderPage(fleet());
@@ -259,9 +262,9 @@ describe('McpServersPage', () => {
       await userEvent.click(header);
     }
 
-    expect(
-      rows().map(row => row[0]!.split(/https?:|Server family|core tools/)[0]),
-    ).toEqual(expected);
+    expect(rows().map(row => row[0]!.replace(/(Family|Core)$/, ''))).toEqual(
+      expected,
+    );
   });
 
   it('links each row to its server page on the same installation', async () => {
@@ -306,7 +309,7 @@ describe('McpServersPage', () => {
     await waitFor(() =>
       expect(rows().map(row => [row[0], row[2]])).toEqual([
         ['github', '1 of 2 match'],
-        ['kubernetesServer family', '2 of 2 match'],
+        ['kubernetesFamily', '2 of 2 match'],
       ]),
     );
     expect(screen.getByRole('link', { name: /^kubernetes/ })).toHaveAttribute(
