@@ -13,24 +13,16 @@ import {
   DetailsPane,
   useDetailsPane,
 } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  DEACTIVATED_LABEL,
-  MCPServer,
-  mcpServerStateSeverity,
-} from '../../lib/k8s';
-import { formatRelativeTime } from '../../lib/formatRelativeTime';
+import { MCPServer, mcpServerStateSeverity } from '../../../lib/k8s';
+import { formatRelativeTime } from '../../../lib/formatRelativeTime';
 import {
   AuthChain,
   DetailBlock,
   HealthDetails,
   ServerConfig,
-} from '../McpServersPage/serverDetail';
-import {
-  DEACTIVATED_SIGN_IN_GATE,
-  ServerAuthActions,
-  StateBadge,
-  severityTone,
-} from '../shared';
+} from '../../McpServersPage/serverDetail';
+import { DEACTIVATED_SIGN_IN_GATE, ServerAuthActions } from '../../shared';
+import { ServerStateBadge } from '../ServerStateBadge';
 
 export const INSTANCE_PANE_ID = 'mcp-server-instance';
 
@@ -47,40 +39,21 @@ function byHealthThenName(a: MCPServer, b: MCPServer) {
   );
 }
 
-function InstanceStatus({ server }: { server: MCPServer }) {
-  const label = server.getSuspended()
-    ? DEACTIVATED_LABEL
-    : (server.getState() ?? 'unknown');
-  return (
-    <StateBadge
-      tone={severityTone(mcpServerStateSeverity(server.getState()))}
-      label={label}
-      title={server.getStateExplanation()}
-    />
-  );
-}
-
-/**
- * The link that opens an instance in the drawer. `useDetailsPane`'s route
- * carries only the pane's own parameters; merged into the current query here
- * so `?installation=` stays in the URL.
- */
+/** The link that opens an instance in the drawer, keeping `?installation=`. */
 function useInstanceHref() {
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   const { getRoute } = useDetailsPane(INSTANCE_PANE_ID);
-  return (server: MCPServer) => {
-    const paneQuery = getRoute(pathname, {
-      cluster: server.cluster,
-      kind: 'MCPServer',
-      namespace: server.getNamespace(),
-      name: server.getName(),
-    }).split('?')[1];
-    const merged = new URLSearchParams(search);
-    new URLSearchParams(paneQuery).forEach((value, key) =>
-      merged.set(key, value),
+  return (server: MCPServer) =>
+    getRoute(
+      pathname,
+      {
+        cluster: server.cluster,
+        kind: 'MCPServer',
+        namespace: server.getNamespace(),
+        name: server.getName(),
+      },
+      { keepSearch: true },
     );
-    return `${pathname}?${merged.toString()}`;
-  };
 }
 
 /** "Missing from: walrus. Present on 26 of 27 management clusters." */
@@ -161,7 +134,7 @@ export function ServerInstancesTab({
       label: 'Status',
       cell: row => (
         <Cell>
-          <InstanceStatus server={row.server} />
+          <ServerStateBadge server={row.server} />
         </Cell>
       ),
     },
@@ -226,7 +199,7 @@ export function ServerInstancesTab({
           return (
             <Flex direction="column" gap="2">
               <Flex align="center" gap="2">
-                <InstanceStatus server={server} />
+                <ServerStateBadge server={server} />
               </Flex>
               {authenticated && server.canAuthenticateInteractively() && (
                 <Flex direction="column" align="start">

@@ -3,12 +3,13 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useParams,
 } from 'react-router-dom';
 import { Content, EmptyState } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Flex, Link, Text } from '@backstage/ui';
+import { Alert, Flex, Link, Text } from '@backstage/ui';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import PlayArrow from '@material-ui/icons/PlayArrow';
@@ -57,16 +58,14 @@ import {
   useServerSignIn,
 } from '../shared';
 import { ServerPageTabs, ServerPageTabSpec } from './ServerPageTabs';
+import { ServerStateBadge } from './ServerStateBadge';
 import { ServerOverviewTab } from './ServerOverviewTab';
 import { ServerToolsTab } from './ServerToolsTab';
 import { ServerCapabilityTab } from './ServerCapabilityTab';
 import { ServerInstancesTab } from './ServerInstancesTab';
 import { ServerHeaderActions, ServerMenuItem } from './ServerHeaderActions';
-import {
-  representativeServer,
-  useCapabilityCounts,
-  useServerTools,
-} from './useServerPageData';
+import { representativeServer, useServerTools } from './useServerPageData';
+import { useServerCapabilityCounts } from '../McpServersPage/serverDetail';
 
 /** The servers list, on the same installation. */
 export function useServersListHref(installation: string | undefined) {
@@ -95,14 +94,7 @@ function kindLabel(row: ServerPageRow): string {
 
 function StatusBadge({ row }: { row: ServerPageRow }) {
   if (row.kind === 'server') {
-    const severity = mcpServerStateSeverity(row.server.getState());
-    return (
-      <StateBadge
-        tone={severityTone(severity)}
-        label={row.server.getState() ?? 'unknown'}
-        title={row.server.getStateExplanation()}
-      />
-    );
+    return <ServerStateBadge server={row.server} />;
   }
   if (row.kind === 'family') {
     const severities = row.servers.map(s =>
@@ -162,12 +154,15 @@ function ServerPageContent({
   const search = `?installation=${encodeURIComponent(installation)}`;
 
   const representative = representativeServer(row, installation);
-  const tools = useServerTools(row, servers, installation, authenticated);
-  const counts = useCapabilityCounts(
-    installation,
-    representative?.server.getName(),
-    authenticated,
-  );
+  const { pathname } = useLocation();
+  const onToolsTab = pathname === `${basePath}/tools`;
+  const tools = useServerTools(row, servers, installation, {
+    enabled: authenticated,
+    includeFamily: onToolsTab,
+  });
+  const counts = useServerCapabilityCounts(representative?.server, {
+    enabled: authenticated,
+  });
   const fleetClusters = useMemo(
     () => fleetManagementClusters(familyGroups(partitionServers(servers))),
     [servers],
@@ -380,6 +375,37 @@ function ServerPageContent({
         </Flex>
       </Flex>
 
+      {/* What the header's Sign in / Sign out answered. The header renders
+          outside this page's providers and shows only the pending state, so
+          a refusal, a note, or the URL of a sign-in page the browser blocked
+          from opening is said here, on every tab. */}
+      {canSignIn && signInState.error && (
+        <Alert status="danger" description={signInState.error} />
+      )}
+      {canSignIn && signInState.note && (
+        <Alert status="info" description={signInState.note} />
+      )}
+      {canSignIn &&
+        signInState.isWaiting &&
+        signInState.authUrl &&
+        !signInState.signInTabOpened && (
+          <Alert
+            status="warning"
+            description={
+              <>
+                The browser blocked the sign-in page.{' '}
+                <Link
+                  href={signInState.authUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open the sign-in page
+                </Link>
+              </>
+            }
+          />
+        )}
+
       <ServerPageTabs tabs={tabs} search={search} />
 
       <Routes>
@@ -468,6 +494,13 @@ function ServerPageContent({
             action={action}
             open={actionOpen}
             onClose={() => setActionOpen(false)}
+            // A deleted server has no page left to show: back to the list,
+            // where its absence is the confirmation.
+            onDone={done => {
+              if (done.destructive && listHref) {
+                navigate(listHref);
+              }
+            }}
           />
         </>
       )}

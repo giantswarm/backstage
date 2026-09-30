@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -136,6 +136,16 @@ const makeServers = () => [
     spec: { auth: { type: 'oauth' } },
   }),
   makeServer({ name: 'grafana', labels: HELM }),
+  makeServer({
+    name: 'paused',
+    state: 'Disconnected',
+    spec: { suspended: true },
+  }),
+  makeServer({
+    name: 'miro',
+    state: 'Auth Required',
+    spec: { auth: { type: 'oauth' } },
+  }),
 ];
 
 const TOOLS = [
@@ -164,6 +174,10 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     listServers: jest.fn(async () => ({
       mcpServers: [{ name: 'aws-root', resourcesCount: 3 }],
     })),
+    listCoreTools: jest.fn(async () => ({
+      total: 1,
+      tools: TOOLS.filter(t => t.name.startsWith('core_')),
+    })),
     filterResources: jest.fn(async () => ({ total: 0, resources: [] })),
     filterPrompts: jest.fn(async () => ({ total: 0, prompts: [] })),
     getAuthStatus: jest.fn(async () => ({ servers: [] })),
@@ -190,7 +204,12 @@ async function renderAt(path: string, api = makeApi()) {
       <Routes>
         <Route
           path="/agent-platform/muster/servers/*"
-          element={<McpServersRouter />}
+          element={
+            <>
+              <McpServersRouter />
+              <CurrentPath />
+            </>
+          }
         />
       </Routes>
     </QueryClientProvider>,
@@ -204,6 +223,11 @@ async function renderAt(path: string, api = makeApi()) {
 }
 
 const BASE = '/agent-platform/muster/servers';
+
+function CurrentPath() {
+  const { pathname, search } = useLocation();
+  return <div data-testid="path">{`${pathname}${search}`}</div>;
+}
 
 /** The header actions the page last provided, rendered on their own. */
 async function renderHeader() {
@@ -222,14 +246,16 @@ beforeEach(() => {
 
 describe('ServerPage tabs', () => {
   it('gives a family Overview, Tools, Resources, Prompts and Instances', async () => {
-    await renderAt(`${BASE}/kubernetes?installation=gazelle`);
+    const api = await renderAt(`${BASE}/kubernetes?installation=gazelle`);
 
     expect(
       await screen.findByRole('heading', { name: 'kubernetes' }),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual([
-        'Tools (2)',
+        // A family's tools need the whole catalogue, read only on its Tools
+        // tab: no count here rather than a download on every tab.
+        'Tools',
         'Overview',
         'Resources',
         'Prompts',
@@ -250,6 +276,7 @@ describe('ServerPage tabs', () => {
     );
     expect(screen.getByText('1 of 2 instances healthy')).toBeInTheDocument();
     expect(screen.getByText('management_cluster')).toBeInTheDocument();
+    expect(api.filterTools).not.toHaveBeenCalled();
   });
 
   it('gives a singular server no Instances tab and shows counts muster reports', async () => {
@@ -524,6 +551,88 @@ describe('ServerPage header actions', () => {
       screen.getByText(
         /run through the muster session, which is not available/,
       ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('ServerPage review fixes', () => {
+  it('names a deactivated server Deactivated in the header', async () => {
+    await renderAt(`${BASE}/paused?installation=gazelle`);
+
+    const heading = await screen.findByRole('heading', { name: 'paused' });
+    expect(heading.parentElement).toHaveTextContent('Deactivated');
+    expect(screen.queryByText('Disconnected')).not.toBeInTheDocument();
+  });
+
+  it('does not claim a server waiting on a sign-in exposes no resources', async () => {
+    await renderAt(`${BASE}/miro/resources?installation=gazelle`);
+
+    expect(
+      await screen.findByText(/not signed in to this server/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('This server exposes no resources.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('goes back to the list once the server is deleted', async () => {
+    // The router scrolls to the top on navigation; jsdom has no scrolling.
+    jest.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+    const api = await renderAt(`${BASE}/aws-root?installation=gazelle`);
+    await screen.findByRole('heading', { name: 'aws-root' });
+    const header = await renderHeader();
+    await userEvent.click(
+      within(header!.container).getByRole('button', { name: 'Server actions' }),
+    );
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }));
+    // The header was rendered on its own; its Delete opened the page's dialog.
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Delete' }),
+    );
+
+    await waitFor(() =>
+      expect(api.callTool).toHaveBeenCalledWith(
+        'core_mcpserver_delete',
+        { name: 'aws-root' },
+        'gazelle',
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        `${BASE}?installation=gazelle`,
+      ),
+    );
+  });
+
+  it('says what a refused sign-in from the header answered', async () => {
+    jest.spyOn(window, 'open').mockReturnValue(null);
+    await renderAt(
+      `${BASE}/aws-root?installation=gazelle`,
+      makeApi({
+        getAuthStatus: jest.fn(async () => ({
+          servers: [
+            {
+              name: 'aws-root',
+              status: 'auth_required',
+              auth_tool: 'core_auth_login',
+            },
+          ],
+        })),
+        signInServer: jest.fn(async () => ({
+          status: 'error',
+          message: 'The authorization server rejected the client.',
+        })),
+      }),
+    );
+    await screen.findByRole('heading', { name: 'aws-root' });
+    await waitFor(() => expect(mockHeaderActions).not.toBeNull());
+    const header = await renderHeader();
+    await userEvent.click(
+      within(header!.container).getByRole('button', { name: 'Sign in' }),
+    );
+
+    expect(
+      await screen.findByText('The authorization server rejected the client.'),
     ).toBeInTheDocument();
   });
 });

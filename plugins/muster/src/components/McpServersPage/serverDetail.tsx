@@ -621,17 +621,22 @@ export function ServerTools({
  * than `0` when the server exposes none, and absent on aggregators older than
  * muster#1099 -- in both cases the section is simply not shown.
  */
-export function useServerCapabilityCounts(server: MCPServer): {
+export function useServerCapabilityCounts(
+  server: MCPServer | undefined,
+  /** Off without a muster session: the counts are session-scoped. */
+  options: { enabled?: boolean } = {},
+): {
   resourcesCount?: number;
   promptsCount?: number;
 } {
   const musterApi = useApi(musterApiRef);
-  const installation = server.cluster;
-  const name = server.getName();
+  const installation = server?.cluster;
+  const name = server?.getName();
 
   const { data } = useQuery({
     queryKey: ['muster', 'servers', installation],
     queryFn: () => musterApi.listServers(installation),
+    enabled: Boolean(server) && (options.enabled ?? true),
   });
 
   const runtime = (data?.mcpServers ?? []).find(s => s.name === name);

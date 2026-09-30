@@ -2,20 +2,24 @@ import { ReactNode } from 'react';
 import { Card, CardBody, CardHeader, Flex, Text } from '@backstage/ui';
 import { useGitOpsSource } from '@giantswarm/backstage-plugin-flux-react';
 import { GitOpsManagedLabel } from '@giantswarm/backstage-plugin-ui-react';
-import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
-import { gitOpsLabelSource, isGitOpsManaged } from '../../lib/gitops';
-import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
-import { ServerPageRow } from '../../lib/serverGrouping';
+import { MCPServer, mcpServerStateSeverity } from '../../../lib/k8s';
+import { gitOpsLabelSource, isGitOpsManaged } from '../../../lib/gitops';
+import { wizardEditBlocker } from '../../../lib/mcpServerDefinition';
+import { ServerPageRow } from '../../../lib/serverGrouping';
 import {
   AuthChain,
   HealthDetails,
   Provenance,
   RuntimeState,
   ServerConfig,
-} from '../McpServersPage/serverDetail';
-import { MusterSummary } from '../McpServersPage/MusterSummary';
-import { serverLiveActions } from '../McpServersPage/ServerMutationActions';
-import { DEACTIVATED_SIGN_IN_GATE, Gate, ServerAuthActions } from '../shared';
+} from '../../McpServersPage/serverDetail';
+import { MusterSummary } from '../../McpServersPage/MusterSummary';
+import { serverLiveActions } from '../../McpServersPage/ServerMutationActions';
+import {
+  DEACTIVATED_SIGN_IN_GATE,
+  Gate,
+  ServerAuthActions,
+} from '../../shared';
 
 /** One titled block of the Overview. */
 export function OverviewCard({
@@ -171,7 +175,9 @@ function FamilyOverview({
           .
         </Text>
         <Note>
-          The family is managed through GitOps and has no live write actions.
+          {isGitOpsManaged(representative)
+            ? 'The family is managed through GitOps and has no live write actions.'
+            : 'A family is not edited from this page.'}{' '}
           Signing in to an instance is on the Instances tab.
         </Note>
       </OverviewCard>

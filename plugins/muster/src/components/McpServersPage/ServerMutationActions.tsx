@@ -79,11 +79,14 @@ export function ConfirmActionDialog({
   action,
   open,
   onClose,
+  onDone,
 }: {
   server: MCPServer;
   action: LiveAction | undefined;
   open: boolean;
   onClose: () => void;
+  /** Called once muster has carried the action out. */
+  onDone?: (action: LiveAction) => void;
 }) {
   const musterApi = useApi(musterApiRef);
   const refresh = useMusterMutationRefresh(server.cluster);
@@ -111,6 +114,7 @@ export function ConfirmActionDialog({
       // next 30s poll.
       refresh();
       setDone(true);
+      onDone?.(action);
     } catch (e) {
       setError(mutationErrorMessage(e));
     } finally {

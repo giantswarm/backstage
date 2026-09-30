@@ -1,38 +1,19 @@
 import { ReactNode, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Content, EmptyState } from '@backstage/core-components';
-import { Flex, Link, Text } from '@backstage/ui';
+import { Alert, Flex, Link, Text } from '@backstage/ui';
 import {
   Breadcrumbs,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  ServerPageRow,
-  findServerRow,
-  serverRowKey,
-} from '../../lib/serverGrouping';
-import {
-  serverPrefixInfos,
-  shortToolName,
-  toolsForRow,
-} from '../../lib/toolGrouping';
+import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
+import { serverPrefixInfos, shortToolName } from '../../lib/toolGrouping';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { SessionGate, useServerPageLinks } from '../shared';
 import { ToolDetailPanel } from '../ToolDetail';
 import { useServersListHref } from '../ServerPage';
-
-/**
- * Whether `tool` is one of the row's by its name alone -- the check that keeps
- * a tool page from rendering a tool under a server that does not offer it.
- */
-function belongsTo(
-  tool: string,
-  row: ServerPageRow,
-  prefixes: ReturnType<typeof serverPrefixInfos>,
-) {
-  return toolsForRow([{ name: tool }], row, prefixes).length > 0;
-}
+import { useServerTools } from '../ServerPage/useServerPageData';
 
 /**
  * One tool's page, beneath the server offering it: its short and full name,
@@ -52,6 +33,19 @@ export function ToolPage() {
   const prefixes = useMemo(() => serverPrefixInfos(mcpServers), [mcpServers]);
   const shortName = shortToolName(tool, prefixes);
   const serverKey = row ? serverRowKey(row) : key;
+  // The server's tools as muster lists them for this session: the tool is
+  // shown only when its server offers it on this installation, not merely
+  // when its name carries the server's prefix.
+  const serverTools = useServerTools(
+    row ?? { kind: 'core' },
+    mcpServers,
+    activeInstallation ?? '',
+    {
+      enabled: Boolean(row && activeInstallation) && session.authenticated,
+      includeFamily: true,
+    },
+  );
+  const offered = serverTools.tools?.some(t => t.name === tool);
 
   const trail = (
     <Breadcrumbs
@@ -78,7 +72,25 @@ export function ToolPage() {
         description="None of the installations this portal knows runs muster, so there are no aggregated tools to show."
       />
     );
-  } else if (!row || !belongsTo(tool, row, prefixes)) {
+  } else if (row && !session.authenticated) {
+    body = (
+      <SessionGate
+        session={session}
+        installation={activeInstallation}
+        context="A tool is described and run through the muster session."
+      />
+    );
+  } else if (row && serverTools.isLoading) {
+    body = <LoadingIndicator label="Reading the server's tools…" />;
+  } else if (row && serverTools.error) {
+    body = (
+      <Alert
+        status="danger"
+        title="Could not read the server's tools"
+        description={serverTools.error.message}
+      />
+    );
+  } else if (!row || !offered) {
     const serverHref = row
       ? links.server(serverKey, activeInstallation, { tab: 'tools' })
       : listHref;
@@ -88,7 +100,7 @@ export function ToolPage() {
         title={`No tool “${tool}” on ${activeInstallation}`}
         description={
           row
-            ? `${serverKey} on ${activeInstallation} does not offer a tool named “${tool}”.`
+            ? `${serverKey} on ${activeInstallation} does not offer a tool named “${tool}”. It may have been removed, or run on another installation — pick it in the page header.`
             : `The installation ${activeInstallation} has no MCP server or server family named “${key}”. It may run on another installation — pick it in the page header.`
         }
         action={
@@ -100,14 +112,6 @@ export function ToolPage() {
             </Link>
           ) : undefined
         }
-      />
-    );
-  } else if (!session.authenticated) {
-    body = (
-      <SessionGate
-        session={session}
-        installation={activeInstallation}
-        context="A tool is described and run through the muster session."
       />
     );
   } else {

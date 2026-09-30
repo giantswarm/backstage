@@ -11,16 +11,19 @@ import {
 } from '../../lib/toolGrouping';
 
 /**
- * The installation's whole tool catalogue, one request per installation. The
- * key and limit are the Tool explorer's browse query's, so the two share a
- * cache entry.
+ * A family's tools, whose per-instance fallbacks carry each instance's own
+ * prefix and so match no single pattern, come from the installation's whole
+ * catalogue. The key and limit are the Tool explorer's browse query's, so the
+ * two share a cache entry.
  */
 const INSTALLATION_TOOLS_LIMIT = 2000;
+/** A singular server's tools, as the servers page's accordion reads them. */
+const SERVER_TOOLS_LIMIT = 200;
 
 export interface ServerTools {
   /** The row's tools, by name; undefined until they are read. */
   tools?: ToolSummary[];
-  /** The catalogue hit the limit, so the list may be incomplete. */
+  /** The list hit its limit, so it may be incomplete. */
   truncated: boolean;
   isLoading: boolean;
   error?: Error;
@@ -29,29 +32,61 @@ export interface ServerTools {
 }
 
 /**
- * The tools a server page lists, read through the muster session. Disabled
- * without one: the catalogue is session-scoped, and the request would only
- * fail.
+ * The tools a server page lists, read through the muster session -- disabled
+ * without one, since the catalogue is session-scoped. A singular server's are
+ * one `filter_tools` for its prefix and muster's are its core tools, cheap
+ * enough to read on every tab for the Tools count. A family's need the whole
+ * catalogue, so they are read only where they are shown (`includeFamily`: the
+ * Tools tab and a tool page).
  */
 export function useServerTools(
   row: ServerPageRow,
   servers: MCPServer[],
   installation: string,
-  enabled: boolean,
+  { enabled, includeFamily }: { enabled: boolean; includeFamily: boolean },
 ): ServerTools {
   const musterApi = useApi(musterApiRef);
-  const { data, isLoading, error } = useQuery({
+  const pattern =
+    row.kind === 'server' ? `${row.server.getToolNamePrefix()}_*` : '';
+
+  const scoped = useQuery({
+    queryKey: ['muster', 'server-tools', installation, pattern],
+    queryFn: () =>
+      musterApi.filterTools({
+        installation,
+        pattern,
+        limit: SERVER_TOOLS_LIMIT,
+      }),
+    enabled: enabled && row.kind === 'server',
+  });
+  const core = useQuery({
+    queryKey: ['muster', 'core-tools', installation],
+    queryFn: () => musterApi.listCoreTools(installation),
+    enabled: enabled && row.kind === 'core',
+  });
+  const catalogue = useQuery({
     queryKey: ['muster', 'tools-browse', installation],
     queryFn: () =>
       musterApi.filterTools({ installation, limit: INSTALLATION_TOOLS_LIMIT }),
-    enabled,
+    enabled: enabled && includeFamily && row.kind === 'family',
   });
+  let query;
+  if (row.kind === 'server') {
+    query = scoped;
+  } else if (row.kind === 'core') {
+    query = core;
+  } else {
+    query = catalogue;
+  }
+  const { data, isLoading, error } = query;
 
   const prefixes = useMemo(() => serverPrefixInfos(servers), [servers]);
   const tools = useMemo(
     () =>
       data
-        ? toolsForRow(data.tools ?? [], row, prefixes).sort((a, b) =>
+        ? // The pattern `x_foo_*` also matches a server exposed as
+          // `x_foo_bar`; attribution by the longest prefix drops those.
+          toolsForRow(data.tools ?? [], row, prefixes).sort((a, b) =>
             a.name.localeCompare(b.name),
           )
         : undefined,
@@ -83,28 +118,4 @@ export function representativeServer(
     return selectRepresentative(row.servers, installation);
   }
   return undefined;
-}
-
-/**
- * The per-session resource and prompt counts muster reports for one server
- * (`core_mcpserver_list`, the query the servers page's runtime block shares).
- * Absent rather than 0 when the server exposes none, and on aggregators older
- * than muster#1099 -- a tab without a count shows none, never 0.
- */
-export function useCapabilityCounts(
-  installation: string,
-  serverName: string | undefined,
-  enabled: boolean,
-): { resourcesCount?: number; promptsCount?: number } {
-  const musterApi = useApi(musterApiRef);
-  const { data } = useQuery({
-    queryKey: ['muster', 'servers', installation],
-    queryFn: () => musterApi.listServers(installation),
-    enabled: enabled && Boolean(serverName),
-  });
-  const runtime = data?.mcpServers?.find(s => s.name === serverName);
-  return {
-    resourcesCount: runtime?.resourcesCount,
-    promptsCount: runtime?.promptsCount,
-  };
 }

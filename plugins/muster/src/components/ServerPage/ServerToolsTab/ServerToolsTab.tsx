@@ -2,10 +2,10 @@ import { ReactNode, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Alert, Flex, SearchField, Text } from '@backstage/ui';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
-import { ServerPageRow } from '../../lib/serverGrouping';
-import { noToolsExplanation } from '../McpServersPage/serverDetail';
-import { ToolTable, toolTableItem, useServerPageLinks } from '../shared';
-import { ServerTools } from './useServerPageData';
+import { ServerPageRow } from '../../../lib/serverGrouping';
+import { noToolsExplanation } from '../../McpServersPage/serverDetail';
+import { ToolTable, toolTableItem, useServerPageLinks } from '../../shared';
+import { ServerTools } from '../useServerPageData';
 
 export interface ServerToolsTabProps {
   row: ServerPageRow;

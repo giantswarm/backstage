@@ -1,8 +1,11 @@
 import { ReactNode } from 'react';
 import { Flex, Text } from '@backstage/ui';
-import { MCPServer, mcpServerStateSeverity } from '../../lib/k8s';
-import { ServerPageRow } from '../../lib/serverGrouping';
-import { ServerPrompts, ServerResources } from '../McpServersPage/serverDetail';
+import { MCPServer } from '../../../lib/k8s';
+import { ServerPageRow } from '../../../lib/serverGrouping';
+import {
+  ServerPrompts,
+  ServerResources,
+} from '../../McpServersPage/serverDetail';
 
 export interface ServerCapabilityTabProps {
   capability: 'resources' | 'prompts';
@@ -44,9 +47,25 @@ export function ServerCapabilityTab({
   }
 
   const { server } = representative;
-  const connected = mcpServerStateSeverity(server.getState()) === 'ok';
+  // `Connected`/`Running` only: severity `ok` also covers `Auth Required` and
+  // `Awaiting Session`, whose lists are empty because this session is not
+  // connected to the server, not because it exposes nothing.
+  const state = server.getState();
+  const connected = state === 'Connected' || state === 'Running';
   const noun = row.kind === 'family' ? 'This family' : 'This server';
-  const emptyText = connected ? `${noun} exposes no ${capability}.` : undefined;
+  let emptyText: string | undefined;
+  if (connected) {
+    emptyText = `${noun} exposes no ${capability}.`;
+  } else if (
+    state === 'Auth Required' &&
+    server.canAuthenticateInteractively()
+  ) {
+    emptyText = `None visible — your muster session is not signed in to this server, which hides its ${capability}. ${
+      row.kind === 'family'
+        ? 'Sign in to an instance on the Instances tab.'
+        : 'Sign in from the page header.'
+    }`;
+  }
 
   return (
     <Flex direction="column" gap="2" style={{ maxWidth: 1024 }}>

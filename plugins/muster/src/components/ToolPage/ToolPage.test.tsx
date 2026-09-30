@@ -46,6 +46,10 @@ jest.mock('../MusterInstanceProvider', () => ({
 
 function makeApi() {
   return {
+    filterTools: jest.fn(async () => ({
+      total: 1,
+      tools: [{ name: 'x_aws-root_list_buckets' }],
+    })),
     describeTool: jest.fn(async (name: string) => ({
       name,
       description: 'List the buckets of the account.',
@@ -130,7 +134,7 @@ describe('ToolPage', () => {
     );
 
     expect(
-      screen.getByText('No tool “x_kubernetes_get_pods” on gazelle'),
+      await screen.findByText('No tool “x_kubernetes_get_pods” on gazelle'),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Back to the tools of aws-root' }),
@@ -146,6 +150,19 @@ describe('ToolPage', () => {
 
     expect(
       screen.getByText(/described and run through the muster session/),
+    ).toBeInTheDocument();
+    expect(api.describeTool).not.toHaveBeenCalled();
+  });
+
+  it('says so when the server does not offer the tool on this installation', async () => {
+    // The prefix is the server's, the tool is not in its list: a stale link,
+    // or a tool the installation's server does not have.
+    const api = await renderAt(
+      `${BASE}/aws-root/tools/x_aws-root_removed_tool?installation=gazelle`,
+    );
+
+    expect(
+      await screen.findByText('No tool “x_aws-root_removed_tool” on gazelle'),
     ).toBeInTheDocument();
     expect(api.describeTool).not.toHaveBeenCalled();
   });
