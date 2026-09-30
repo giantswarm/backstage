@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/test-utils';
 import { MCPServer } from '../../../lib/k8s';
-import { GitOpsServerActions } from './GitOpsServerActions';
+import { GitOpsEditDialog } from './GitOpsEditDialog';
 
 const mockUseGitOpsSource = jest.fn();
 
@@ -40,63 +40,15 @@ const KUSTOMIZE_LABELS = {
 };
 
 async function openDialog(server: MCPServer) {
-  await renderInTestApp(<GitOpsServerActions server={server} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Edit/Remove' }));
+  await renderInTestApp(
+    <GitOpsEditDialog server={server} isOpen onOpenChange={jest.fn()} />,
+  );
   return screen.findByRole('dialog');
 }
 
-describe('GitOpsServerActions', () => {
+describe('GitOpsEditDialog', () => {
   beforeEach(() => {
     mockUseGitOpsSource.mockReset();
-  });
-
-  it('offers one Edit/Remove action and links the label to the source', async () => {
-    mockUseGitOpsSource.mockReturnValue({
-      inGit: true,
-      isLoading: false,
-      url: SOURCE_URL,
-      errors: [],
-      kustomization: KUSTOMIZATION,
-    });
-
-    await renderInTestApp(
-      <GitOpsServerActions server={makeServer(KUSTOMIZE_LABELS)} />,
-    );
-
-    expect(screen.getByText('Managed through GitOps')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Source/ })).toHaveAttribute(
-      'href',
-      SOURCE_URL,
-    );
-    expect(
-      screen.getByRole('button', { name: 'Edit/Remove' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /via GitOps/ }),
-    ).not.toBeInTheDocument();
-    expect(mockUseGitOpsSource).toHaveBeenCalledWith(
-      expect.anything(),
-      'gazelle',
-    );
-  });
-
-  it('keeps the plain label for a server whose source is not in Git', async () => {
-    mockUseGitOpsSource.mockReturnValue({
-      inGit: false,
-      isLoading: false,
-      errors: [],
-    });
-
-    await renderInTestApp(
-      <GitOpsServerActions
-        server={makeServer({ 'app.kubernetes.io/managed-by': 'Helm' })}
-      />,
-    );
-
-    expect(screen.getByText('Managed through GitOps')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: /Source/ }),
-    ).not.toBeInTheDocument();
   });
 
   it('walks through editing or removing the manifest applied by a Kustomization', async () => {

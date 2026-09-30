@@ -3,7 +3,8 @@ import {
   MCPServer,
   mcpServerStateSeverity,
 } from '../../../lib/k8s';
-import { StateBadge, severityTone } from '../../shared';
+import { StateBadge } from '../StateBadge';
+import { severityTone } from '../tones';
 
 /**
  * One server's state as a badge. A deactivated server reads `Deactivated`
@@ -11,14 +12,18 @@ import { StateBadge, severityTone } from '../../shared';
  * reason, the state only the symptom.
  */
 export function ServerStateBadge({ server }: { server: MCPServer }) {
-  const label = server.getSuspended()
-    ? DEACTIVATED_LABEL
-    : (server.getState() ?? 'unknown');
   return (
     <StateBadge
       tone={severityTone(mcpServerStateSeverity(server.getState()))}
-      label={label}
+      label={serverStateLabel(server)}
       title={server.getStateExplanation()}
     />
   );
+}
+
+/** The words of {@link ServerStateBadge}, for a place that shows plain text. */
+export function serverStateLabel(server: MCPServer): string {
+  return server.getSuspended()
+    ? DEACTIVATED_LABEL
+    : (server.getState() ?? 'unknown');
 }

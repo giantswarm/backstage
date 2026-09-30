@@ -21,8 +21,11 @@ import {
   HealthDetails,
   ServerConfig,
 } from '../../McpServersPage/serverDetail';
-import { DEACTIVATED_SIGN_IN_GATE, ServerAuthActions } from '../../shared';
-import { ServerStateBadge } from '../ServerStateBadge';
+import {
+  DEACTIVATED_SIGN_IN_GATE,
+  ServerAuthActions,
+  ServerStateBadge,
+} from '../../shared';
 
 export const INSTANCE_PANE_ID = 'mcp-server-instance';
 

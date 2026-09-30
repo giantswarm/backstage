@@ -89,15 +89,11 @@ export type MusterInstance = {
   /** Workflow CRs of the active instance. */
   workflows: MusterWorkflow[];
   isLoading: boolean;
-  /** Epoch-ms of the most recent successful CRD read, or undefined while cold. */
-  dataUpdatedAt: number | undefined;
   /**
    * Epoch-ms of the most recent successful MCPServer read alone (workflows
    * left out), for a caller that must know the server list postdates a write.
    */
   mcpServersUpdatedAt?: number;
-  /** Whether a (background or manual) health refetch is currently in flight. */
-  isRefreshing: boolean;
   /** Re-fetch the live CRD reads on demand (manual refresh / error retry). */
   retry: () => void;
 };
@@ -260,7 +256,6 @@ export const MusterInstanceProvider = ({
     resources: workflows,
     errors: workflowErrors,
     retry: retryWorkflows,
-    queries: workflowQueries,
   } = useResources(
     clusters,
     MusterWorkflow,
@@ -270,30 +265,14 @@ export const MusterInstanceProvider = ({
     },
   );
 
-  // Freshness surfaced from the underlying react-query state: the newest
-  // successful read across both CRD fan-outs, and whether any read is in
-  // flight. The FreshnessIndicator turns these into "updated Xs ago" + a
-  // spinner on the manual refresh control (ADR D4).
-  const dataUpdatedAt = useMemo(() => {
-    const times = [...mcpServerQueries, ...workflowQueries]
-      .map(({ query }) => query.dataUpdatedAt)
-      .filter(t => t > 0);
-    return times.length > 0 ? Math.max(...times) : undefined;
-  }, [mcpServerQueries, workflowQueries]);
+  // When the server list was last read, for a caller that must know it
+  // postdates a write (the registration wizard's verify step).
   const mcpServersUpdatedAt = useMemo(() => {
     const times = mcpServerQueries
       .map(({ query }) => query.dataUpdatedAt)
       .filter(t => t > 0);
     return times.length > 0 ? Math.max(...times) : undefined;
   }, [mcpServerQueries]);
-
-  const isRefreshing = useMemo(
-    () =>
-      [...mcpServerQueries, ...workflowQueries].some(
-        ({ query }) => query.isFetching,
-      ),
-    [mcpServerQueries, workflowQueries],
-  );
 
   const errors = useMemo(
     () => [...mcpServerErrors, ...workflowErrors],
@@ -335,9 +314,7 @@ export const MusterInstanceProvider = ({
         (Boolean(activeInstallation) &&
           isLoadingServers &&
           mcpServers.length === 0),
-      dataUpdatedAt,
       mcpServersUpdatedAt,
-      isRefreshing,
       retry: () => {
         retryServers();
         retryWorkflows();
@@ -358,9 +335,7 @@ export const MusterInstanceProvider = ({
       mcpServers,
       workflows,
       isLoadingServers,
-      dataUpdatedAt,
       mcpServersUpdatedAt,
-      isRefreshing,
       retryServers,
       retryWorkflows,
     ],

@@ -66,8 +66,6 @@ function instance(active: string, isLoading = false): MusterInstance {
     mcpServers: isLoading ? [] : servers[active],
     workflows: [],
     isLoading,
-    dataUpdatedAt: undefined,
-    isRefreshing: false,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
   };

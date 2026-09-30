@@ -36,8 +36,6 @@ function instance(overrides: Partial<MusterInstance> = {}): MusterInstance {
     mcpServers: [],
     workflows: [],
     isLoading: false,
-    dataUpdatedAt: undefined,
-    isRefreshing: false,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
     ...overrides,

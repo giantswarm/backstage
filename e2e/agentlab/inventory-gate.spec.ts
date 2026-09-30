@@ -29,8 +29,8 @@ test('with a token the API server accepts, the muster Servers view renders witho
   );
   await open(admin, serversPath);
   await expect(
-    admin.getByRole('region', { name: 'Agent Platform' }),
-    'the Servers view renders its CRD-backed section',
+    admin.getByRole('link', { name: /^muster/ }),
+    'the Servers view renders its CRD-backed table',
   ).toBeVisible();
   await expect(admin.getByText(rejectedToken)).toHaveCount(0);
 });

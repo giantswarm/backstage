@@ -815,31 +815,3 @@ export function Provenance({ server }: { server: MCPServer }) {
 
   return <FactList facts={facts} maxWidth={null} />;
 }
-
-/**
- * The link from a servers-page row to the server's own page, where everything
- * about it -- its tools with a page each, resources, prompts, instances -- has
- * room.
- */
-export function ServerPageLink({
-  serverKey,
-  installation,
-}: {
-  /** The family name, the CR name, or `muster`. */
-  serverKey: string;
-  installation?: string;
-}) {
-  const classes = useStyles();
-  const links = useServerPageLinks();
-  const href = links.server(serverKey, installation);
-  if (!href) {
-    return null;
-  }
-  return (
-    <Box mb="2">
-      <Link className={classes.link} href={href}>
-        Open the server page
-      </Link>
-    </Box>
-  );
-}
