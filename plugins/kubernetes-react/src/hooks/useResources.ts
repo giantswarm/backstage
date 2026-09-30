@@ -80,9 +80,10 @@ export function useResources<R extends KubeObject<any>>(
   }, [queriesInfo.errors, incompatibilities, discoveryErrors]);
 
   // Report API version issues to Sentry automatically
+  // Not while disabled — see useResource.
   useReportApiVersionIssues(
-    incompatibilities.length > 0 ? incompatibilities : null,
-    clientOutdatedStates.length > 0 ? clientOutdatedStates : null,
+    enabled && incompatibilities.length > 0 ? incompatibilities : null,
+    enabled && clientOutdatedStates.length > 0 ? clientOutdatedStates : null,
   );
 
   return {

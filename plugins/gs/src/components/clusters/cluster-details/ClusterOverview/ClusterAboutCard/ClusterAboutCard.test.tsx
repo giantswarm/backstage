@@ -4,7 +4,7 @@ import {
 } from '@backstage/frontend-test-utils';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import {
   App,
   Cluster,
@@ -24,14 +24,18 @@ const INSTALLATION = 'installation-a';
 
 type ControlPlaneRef = NonNullable<ReturnType<Cluster['getControlPlaneRef']>>;
 
-function createCluster(controlPlaneRef: ControlPlaneRef) {
+function createCluster(controlPlaneRef?: ControlPlaneRef) {
   return new Cluster(
     {
       apiVersion: 'cluster.x-k8s.io/v1beta2',
       kind: 'Cluster',
-      metadata: { name: 'my-cluster', namespace: 'org-test' },
+      metadata: {
+        name: 'my-cluster',
+        namespace: 'org-test',
+        annotations: { 'cluster.giantswarm.io/description': 'Test cluster' },
+      },
       spec: {
-        controlPlaneRef,
+        ...(controlPlaneRef && { controlPlaneRef }),
         infrastructureRef: {
           apiGroup: 'infrastructure.cluster.x-k8s.io',
           kind: 'AzureASOManagedCluster',
@@ -103,6 +107,13 @@ async function renderCard(api: ReturnType<typeof createMockKubernetesApi>) {
   );
 }
 
+// A disabled query shows "n/a" on the first render, before any request could
+// be sent or the 100ms debounce of useShowErrors could publish an error. Wait
+// past both before checking that neither happened.
+async function settle() {
+  await act(() => new Promise(resolve => setTimeout(resolve, 200)));
+}
+
 function kubernetesVersionField() {
   const label = screen.getByRole('heading', { name: 'Kubernetes version' });
   return within(label.parentElement as HTMLElement);
@@ -172,6 +183,7 @@ describe('ClusterAboutCard', () => {
     await waitFor(() => {
       expect(kubernetesVersionField().getByText('n/a')).toBeInTheDocument();
     });
+    await settle();
 
     expect(
       requestedPaths(api).filter(
@@ -185,6 +197,33 @@ describe('ClusterAboutCard', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/KubeadmControlPlane/)).not.toBeInTheDocument();
     expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+  });
+
+  it('renders without a control plane reference, the version as not available', async () => {
+    // A Cluster still being created, or an imported one, may have no
+    // spec.controlPlaneRef yet. Only the Kubernetes version depends on it.
+    mockUseCurrentCluster.mockReturnValue({
+      installationName: INSTALLATION,
+      cluster: createCluster(),
+      clusterApp,
+    });
+    const api = createMockKubernetesApi({});
+
+    await renderCard(api);
+
+    await waitFor(() => {
+      expect(kubernetesVersionField().getByText('n/a')).toBeInTheDocument();
+    });
+    await settle();
+    expect(screen.getByText('Test cluster')).toBeInTheDocument();
+    expect(
+      requestedPaths(api).filter(path =>
+        path.includes('/apis/controlplane.cluster.x-k8s.io'),
+      ),
+    ).toEqual([]);
+    expect(
+      screen.queryByText(/Errors when trying to fetch/),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the Kubernetes version of a KubeadmControlPlane', async () => {
