@@ -9,12 +9,12 @@ import { InventoryFailureGate } from './InventoryFailureGate';
 const UNAUTHORIZED: InventoryFailure = {
   installation: 'gazelle',
   kind: 'unauthorized',
-  error: new InventoryProbeError('gazelle', 401, ''),
+  error: new InventoryProbeError('gazelle', 401, 'HTTP 401'),
 };
 const FORBIDDEN: InventoryFailure = {
   installation: 'gazelle',
   kind: 'forbidden',
-  error: new InventoryProbeError('gazelle', 403, 'Forbidden'),
+  error: new InventoryProbeError('gazelle', 403, 'HTTP 403 Forbidden'),
 };
 const TIMED_OUT: InventoryFailure = {
   installation: 'gazelle',

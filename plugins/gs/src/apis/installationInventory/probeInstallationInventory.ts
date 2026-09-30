@@ -1,4 +1,8 @@
 import type { KubernetesApi } from '@backstage/plugin-kubernetes-react';
+import {
+  k8sErrorNameForStatus,
+  k8sResponseReason,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { KubernetesClient } from '../kubernetes/KubernetesClient';
 import { parseApiGroupList } from './parseApiGroupList';
 import type { PlatformComponents } from './types';
@@ -7,22 +11,16 @@ import type { PlatformComponents } from './types';
 export const INVENTORY_PROBE_PATH = '/apis';
 
 /**
- * Error names the kubernetes-react reads use for the same statuses, so the
- * QueryClientProviders' retry predicates decline to retry them here too.
+ * The kubernetes-react reads' error name for the status, so the
+ * QueryClientProviders' retry predicates decline to retry them here too. The
+ * probe also names a 503, which those reads leave unnamed (a read's 503 is
+ * worth retrying; an installation's API server refusing `/apis` is not).
  */
 function errorNameForStatus(status: number): string | undefined {
-  switch (status) {
-    case 401:
-      return 'UnauthorizedError';
-    case 403:
-      return 'ForbiddenError';
-    case 404:
-      return 'NotFoundError';
-    case 503:
-      return 'ServiceUnavailableError';
-    default:
-      return undefined;
-  }
+  return (
+    k8sErrorNameForStatus(status) ??
+    (status === 503 ? 'ServiceUnavailableError' : undefined)
+  );
 }
 
 /**
@@ -44,15 +42,13 @@ export class InventoryProbeError extends Error {
   readonly installation: string;
   readonly status: number;
   /**
-   * `HTTP 401 Unauthorized`, or `HTTP 401` when the response carried no
-   * reason phrase (HTTP/2 responses never do).
+   * What the response says went wrong (`k8sResponseReason`): the Kubernetes
+   * `Status` message, or `HTTP 401 Unauthorized` / `HTTP 401` when the body
+   * has none (HTTP/2 responses carry no reason phrase).
    */
   readonly reason: string;
 
-  constructor(installation: string, status: number, statusText: string) {
-    const reason = statusText
-      ? `HTTP ${status} ${statusText}`
-      : `HTTP ${status}`;
+  constructor(installation: string, status: number, reason: string) {
     super(
       `Failed to read the API groups of ${installation} (GET ${INVENTORY_PROBE_PATH}). Reason: ${reason}.`,
     );
@@ -102,7 +98,7 @@ export async function probeInstallationInventory(
     throw new InventoryProbeError(
       installation,
       response.status,
-      response.statusText,
+      await k8sResponseReason(response),
     );
   }
 

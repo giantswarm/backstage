@@ -5,7 +5,7 @@
  * status. HTTP/2 responses carry no reason phrase, so `statusText` can be
  * empty and never stands alone.
  */
-async function readErrorReason(response: Response): Promise<string> {
+export async function k8sResponseReason(response: Response): Promise<string> {
   try {
     const body = await response.json();
     const message = body?.message ?? body?.error?.message;
@@ -23,7 +23,12 @@ async function readErrorReason(response: Response): Promise<string> {
     : `HTTP ${response.status}`;
 }
 
-function errorNameForStatus(status: number): string | undefined {
+/**
+ * The error name for a failed Kubernetes proxy response's status, or
+ * `undefined` for a status that means nothing more specific than "it broke".
+ * The plugins' QueryClientProviders decline to retry these names.
+ */
+export function k8sErrorNameForStatus(status: number): string | undefined {
   switch (status) {
     case 401:
       return 'UnauthorizedError';
@@ -45,14 +50,17 @@ function errorNameForStatus(status: number): string | undefined {
  * `ForbiddenError` (the user's RBAC says no), `NotFoundError` (nothing there,
  * which an idempotent delete may treat as success) and `ConflictError` (for a
  * create, the name is already taken).
+ *
+ * Use it for every request through `kubernetesApi.proxy`, so a failure reads
+ * and is named the same wherever it happened.
  */
 export async function k8sResponseError(
   response: Response,
   description: string,
 ): Promise<Error> {
-  const reason = await readErrorReason(response);
+  const reason = await k8sResponseReason(response);
   const error = new Error(`${description}. Reason: ${reason}.`);
-  error.name = errorNameForStatus(response.status) ?? error.name;
+  error.name = k8sErrorNameForStatus(response.status) ?? error.name;
 
   return error;
 }

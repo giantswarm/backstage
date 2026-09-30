@@ -27,9 +27,9 @@ function failed(installation: string, error: Error) {
   return entry(installation, { probe: 'failed', error });
 }
 
-const unauthorized = new InventoryProbeError('gazelle', 401, '');
-const forbidden = new InventoryProbeError('golem', 403, 'Forbidden');
-const unavailable = new InventoryProbeError('snail', 503, '');
+const unauthorized = new InventoryProbeError('gazelle', 401, 'HTTP 401');
+const forbidden = new InventoryProbeError('golem', 403, 'HTTP 403 Forbidden');
+const unavailable = new InventoryProbeError('snail', 503, 'HTTP 503');
 const timedOut = new Error('Request to cluster snail timed out after 30000ms');
 
 describe('classifyInventoryFailure', () => {

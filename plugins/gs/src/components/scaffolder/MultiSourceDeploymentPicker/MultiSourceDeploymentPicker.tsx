@@ -12,6 +12,7 @@ const useStyles = makeStyles(theme => ({
 import { WarningPanel } from '@backstage/core-components';
 import {
   HelmRelease,
+  k8sResponseError,
   useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useApi } from '@backstage/core-plugin-api';
@@ -145,8 +146,9 @@ export const MultiSourceDeploymentPicker = ({
           });
 
           if (!response.ok) {
-            throw new Error(
-              `Failed to fetch ${entry.kind} ${entry.name}: ${response.statusText}`,
+            throw await k8sResponseError(
+              response,
+              `Failed to fetch ${entry.kind} ${entry.name}`,
             );
           }
 
