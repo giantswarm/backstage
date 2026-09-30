@@ -125,6 +125,11 @@ const fleet = () => [
   makeServer('aws-root', { auth: { type: 'sigv4', sigv4: { region: 'x' } } }),
 ];
 
+const withMiro = () => [
+  ...fleet(),
+  makeServer('miro', { state: 'Auth Required', auth: { type: 'oauth' } }),
+];
+
 const TOOLS = [
   { name: 'x_kubernetes_get_pods', description: 'List pods' },
   { name: 'x_kubernetes_logs', description: 'Pod logs' },
@@ -249,6 +254,16 @@ describe('McpServersPage', () => {
     expect(screen.getByRole('link', { name: /^muster/ })).toHaveAttribute(
       'href',
       `${BASE}/muster?installation=gazelle`,
+    );
+  });
+
+  it('says a server waiting on a sign-in needs one, rather than that it has no tools', async () => {
+    await renderPage(withMiro());
+
+    await waitFor(() =>
+      expect(rows().find(row => row[0]?.startsWith('miro'))?.[2]).toBe(
+        'Sign-in needed',
+      ),
     );
   });
 

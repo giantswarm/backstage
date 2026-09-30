@@ -58,6 +58,15 @@ function toolsLabel(
   if (entry.toolCount === undefined) {
     return catalogue === 'loading' ? '…' : '—';
   }
+  // Its tools are hidden until this person signs in, not absent.
+  if (
+    entry.toolCount === 0 &&
+    entry.row.kind === 'server' &&
+    entry.row.server.getState() === 'Auth Required' &&
+    entry.row.server.canAuthenticateInteractively()
+  ) {
+    return 'Sign-in needed';
+  }
   if (entry.toolMatches !== undefined && entry.toolMatches > 0) {
     return `${entry.toolMatches} of ${entry.toolCount} match`;
   }
