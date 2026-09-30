@@ -101,7 +101,9 @@ describe('ToolPage', () => {
     expect(
       screen.getByRole('heading', { name: 'list_buckets' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('x_aws-root_list_buckets')).toBeInTheDocument();
+    expect(
+      screen.getByText('x_aws-root_list_buckets').parentElement,
+    ).toHaveTextContent('Exposed by muster as: x_aws-root_list_buckets');
     expect(
       await screen.findByText('List the buckets of the account.'),
     ).toBeInTheDocument();

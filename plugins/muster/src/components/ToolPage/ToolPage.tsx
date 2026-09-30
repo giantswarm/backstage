@@ -136,12 +136,9 @@ export function ToolPage() {
           <Text as="h2" variant="title-medium">
             {shortName}
           </Text>
-          <Text
-            variant="body-small"
-            color="secondary"
-            style={{ fontFamily: 'monospace' }}
-          >
-            {tool}
+          <Text variant="body-small" color="secondary">
+            Exposed by muster as:{' '}
+            <span style={{ fontFamily: 'monospace' }}>{tool}</span>
           </Text>
         </Flex>
         {body}
