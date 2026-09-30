@@ -109,7 +109,7 @@ describe('ClusterDeletingNotice', () => {
     );
 
     expect(
-      screen.getByText(/This cluster is being deleted/),
+      screen.getByText('This cluster is being deleted'),
     ).toBeInTheDocument();
   });
 
