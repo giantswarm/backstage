@@ -7,16 +7,14 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
+import type { InfrastructureRef } from '../../../ClusterSwitch';
 
-export const AWSClusterLocation = () => {
-  const { cluster, installationName } = useCurrentCluster();
-
-  const infrastructureRef = cluster.getInfrastructureRef();
-  if (!infrastructureRef) {
-    throw new Error(
-      'There is no infrastructure reference defined in the cluster resource.',
-    );
-  }
+export const AWSClusterLocation = ({
+  infrastructureRef,
+}: {
+  infrastructureRef: InfrastructureRef;
+}) => {
+  const { installationName } = useCurrentCluster();
 
   const { name, namespace } = infrastructureRef;
 

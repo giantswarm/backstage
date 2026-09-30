@@ -56,6 +56,43 @@ describe('probeInstallationInventory', () => {
     });
   });
 
+  it("quotes the API server's Status message when the body has one", async () => {
+    const api = kubernetesApi({
+      ok: false,
+      status: 403,
+      statusText: '',
+      json: async () => ({
+        kind: 'Status',
+        message:
+          'forbidden: User "jane" cannot get path "/apis": RBAC: access denied',
+      }),
+    });
+
+    await expect(
+      probeInstallationInventory(api, 'gazelle', { background: true }),
+    ).rejects.toMatchObject({
+      name: 'ForbiddenError',
+      reason:
+        'HTTP 403: forbidden: User "jane" cannot get path "/apis": RBAC: access denied',
+    });
+  });
+
+  it("keeps the status in front of an apiserver 401's bare message", async () => {
+    const api = kubernetesApi({
+      ok: false,
+      status: 401,
+      statusText: '',
+      json: async () => ({ kind: 'Status', message: 'Unauthorized' }),
+    });
+
+    await expect(
+      probeInstallationInventory(api, 'gazelle', { background: true }),
+    ).rejects.toMatchObject({
+      name: 'UnauthorizedError',
+      reason: 'HTTP 401: Unauthorized',
+    });
+  });
+
   it('quotes the reason phrase when the response has one', async () => {
     const api = kubernetesApi({
       ok: false,
@@ -75,16 +112,16 @@ describe('probeInstallationInventory', () => {
 describe('isInventoryAuthError', () => {
   it('is true for a 401 and a 403, false for anything else', () => {
     expect(
-      isInventoryAuthError(new InventoryProbeError('gazelle', 401, '')),
+      isInventoryAuthError(new InventoryProbeError('gazelle', 401, 'HTTP 401')),
     ).toBe(true);
     expect(
-      isInventoryAuthError(new InventoryProbeError('gazelle', 403, '')),
+      isInventoryAuthError(new InventoryProbeError('gazelle', 403, 'HTTP 403')),
     ).toBe(true);
     expect(
-      isInventoryAuthError(new InventoryProbeError('gazelle', 503, '')),
+      isInventoryAuthError(new InventoryProbeError('gazelle', 503, 'HTTP 503')),
     ).toBe(false);
     expect(
-      isInventoryAuthError(new InventoryProbeError('gazelle', 500, '')),
+      isInventoryAuthError(new InventoryProbeError('gazelle', 500, 'HTTP 500')),
     ).toBe(false);
     expect(isInventoryAuthError(new Error('timed out'))).toBe(false);
     expect(isInventoryAuthError(undefined)).toBe(false);

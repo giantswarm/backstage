@@ -3,6 +3,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQueries } from '@tanstack/react-query';
 import {
+  k8sResponseError,
   Pod,
   type PodInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -56,7 +57,8 @@ export type PodLists = {
  * proxy, keyed like `useListResources` (`['cluster', <installation>, 'list',
  * 'v1', 'pods', <path>]`) so the two never collide and invalidate alike.
  *
- * Errors keep the list convention: 403 is `ForbiddenError`, 404 `NotFoundError`.
+ * Errors are the list's too (`k8sResponseError`): 401 is `UnauthorizedError`,
+ * 403 `ForbiddenError`, 404 `NotFoundError`.
  */
 export function usePodLists(requests: PodListRequest[]): PodLists {
   const kubernetesApi = useApi(kubernetesApiRef);
@@ -72,16 +74,10 @@ export function usePodLists(requests: PodListRequest[]): PodLists {
             path,
           });
           if (!response.ok) {
-            const reason = response.statusText || `HTTP ${response.status}`;
-            const error = new Error(
-              `Failed to list pods on ${request.installation} at ${path}. Reason: ${reason}.`,
+            throw await k8sResponseError(
+              response,
+              `Failed to list pods on ${request.installation} at ${path}`,
             );
-            if (response.status === 403) {
-              error.name = 'ForbiddenError';
-            } else if (response.status === 404) {
-              error.name = 'NotFoundError';
-            }
-            throw error;
           }
           const list: { items?: PodInterface[] } = await response.json();
           // Raw JSON into the cache (it is persisted and structurally shared);

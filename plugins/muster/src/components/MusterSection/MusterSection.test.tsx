@@ -134,7 +134,7 @@ describe('MusterSection', () => {
             kserve: false,
             capi: false,
           },
-          error: new InventoryProbeError('gazelle', 401, ''),
+          error: new InventoryProbeError('gazelle', 401, 'HTTP 401'),
         },
       ],
     };

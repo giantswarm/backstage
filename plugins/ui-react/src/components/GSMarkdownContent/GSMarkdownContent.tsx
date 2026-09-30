@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { MarkdownContent } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
+import { createMarkdownLinkResolver } from '../../utils/resolveMarkdownLink';
 
 type Dialect = 'gfm' | 'common-mark';
 
@@ -8,6 +10,8 @@ type GSMarkdownContentProps = {
   content: string;
   /** Markdown dialect passed through to the underlying renderer. Defaults to GFM. */
   dialect?: Dialect;
+  /** URL the markdown was loaded from; relative links resolve against it. */
+  sourceUrl?: string;
   className?: string;
 };
 
@@ -59,13 +63,22 @@ const useStyles = makeStyles(theme => ({
 export const GSMarkdownContent = ({
   content,
   dialect = 'gfm',
+  sourceUrl,
   className,
 }: GSMarkdownContentProps) => {
   const classes = useStyles();
+  const transformLinkUri = useMemo(
+    () => createMarkdownLinkResolver(sourceUrl),
+    [sourceUrl],
+  );
 
   return (
     <div className={classNames(classes.root, className)}>
-      <MarkdownContent content={content} dialect={dialect} />
+      <MarkdownContent
+        content={content}
+        dialect={dialect}
+        transformLinkUri={transformLinkUri}
+      />
     </div>
   );
 };

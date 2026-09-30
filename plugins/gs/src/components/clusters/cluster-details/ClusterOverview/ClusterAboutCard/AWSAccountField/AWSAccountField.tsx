@@ -9,16 +9,14 @@ import {
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 import { Account } from '../../../../../UI/Account';
+import type { InfrastructureRef } from '../../../ClusterSwitch';
 
-export const AWSAccountField = () => {
-  const { cluster, installationName } = useCurrentCluster();
-
-  const infrastructureRef = cluster.getInfrastructureRef();
-  if (!infrastructureRef) {
-    throw new Error(
-      'There is no infrastructure reference defined in the cluster resource.',
-    );
-  }
+export const AWSAccountField = ({
+  infrastructureRef,
+}: {
+  infrastructureRef: InfrastructureRef;
+}) => {
+  const { installationName } = useCurrentCluster();
 
   const { name, namespace } = infrastructureRef;
 
@@ -48,6 +46,8 @@ export const AWSAccountField = () => {
   useShowErrors(awsClusterErrors);
 
   const identityRef = awsCluster?.getIdentityRef();
+  const hasRoleIdentity =
+    !!identityRef && identityRef.kind === AWSClusterRoleIdentity.kind;
 
   const {
     resource: awsClusterRoleIdentity,
@@ -61,27 +61,27 @@ export const AWSAccountField = () => {
     {
       name: identityRef?.name ?? '',
     },
-    {
-      enabled:
-        !!identityRef && identityRef.kind === AWSClusterRoleIdentity.kind,
-    },
+    { enabled: hasRoleIdentity },
   );
 
+  // Disabled for an identity of another kind, the query still returns what was
+  // cached under the same name for another cluster — an error or an
+  // incompatibility that has nothing to do with this one.
   let identityErrorMessage: string | undefined;
-  if (identityError) {
+  if (hasRoleIdentity && identityError) {
     identityErrorMessage = getErrorMessage({
       error: identityError,
       resourceKind: AWSClusterRoleIdentity.kind,
       resourceName: identityRef?.name ?? '',
     });
   }
-  if (identityIncompatibilities[0]) {
+  if (hasRoleIdentity && identityIncompatibilities[0]) {
     identityErrorMessage = getIncompatibilityMessage(
       identityIncompatibilities[0],
     );
   }
 
-  useShowErrors(identityErrors);
+  useShowErrors(hasRoleIdentity ? identityErrors : null);
 
   const accountId = awsClusterRoleIdentity?.getAWSAccountId();
   const accountUrl = awsClusterRoleIdentity?.getAWSAccountUrl();

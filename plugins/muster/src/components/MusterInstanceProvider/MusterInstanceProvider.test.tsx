@@ -325,7 +325,7 @@ describe('MusterInstanceProvider installations', () => {
     // The incident: the home's `GET /apis` answered 401 (the ID token carried
     // no audience the apiserver accepts). The section used to end up with no
     // installation, no gate and no error.
-    const error = new InventoryProbeError('gazelle', 401, '');
+    const error = new InventoryProbeError('gazelle', 401, 'HTTP 401');
     mockInventory = inventory([
       entry('gazelle', { probe: 'failed', components: NONE, error }),
       entry('golem', { components: NONE }),
@@ -349,8 +349,8 @@ describe('MusterInstanceProvider installations', () => {
   });
 
   it("explains the pinned installation's failure over the home's, and the home's when the pinned one runs no muster", async () => {
-    const unauthorized = new InventoryProbeError('gazelle', 401, '');
-    const forbidden = new InventoryProbeError('golem', 403, '');
+    const unauthorized = new InventoryProbeError('gazelle', 401, 'HTTP 401');
+    const forbidden = new InventoryProbeError('golem', 403, 'HTTP 403');
     mockInventory = inventory([
       entry('gazelle', {
         probe: 'failed',

@@ -49,8 +49,8 @@ function entry(
   };
 }
 
-const unauthorized = new InventoryProbeError('gazelle', 401, '');
-const forbidden = new InventoryProbeError('golem', 403, '');
+const unauthorized = new InventoryProbeError('gazelle', 401, 'HTTP 401');
+const forbidden = new InventoryProbeError('golem', 403, 'HTTP 403');
 
 function renderGate() {
   const signOut = jest.fn().mockResolvedValue(undefined);

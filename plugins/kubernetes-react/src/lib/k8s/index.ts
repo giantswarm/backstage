@@ -5,6 +5,7 @@ export * from './VersionTypes';
 export * from './versionUtils';
 export * from './CustomResourceMatcher';
 export * from './errorMessages';
+export * from './resourceRef';
 
 export {
   Agent,
