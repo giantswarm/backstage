@@ -73,7 +73,23 @@ describe('probeInstallationInventory', () => {
     ).rejects.toMatchObject({
       name: 'ForbiddenError',
       reason:
-        'forbidden: User "jane" cannot get path "/apis": RBAC: access denied',
+        'HTTP 403: forbidden: User "jane" cannot get path "/apis": RBAC: access denied',
+    });
+  });
+
+  it("keeps the status in front of an apiserver 401's bare message", async () => {
+    const api = kubernetesApi({
+      ok: false,
+      status: 401,
+      statusText: '',
+      json: async () => ({ kind: 'Status', message: 'Unauthorized' }),
+    });
+
+    await expect(
+      probeInstallationInventory(api, 'gazelle', { background: true }),
+    ).rejects.toMatchObject({
+      name: 'UnauthorizedError',
+      reason: 'HTTP 401: Unauthorized',
     });
   });
 

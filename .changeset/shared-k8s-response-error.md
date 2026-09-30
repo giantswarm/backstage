@@ -8,18 +8,21 @@ Explain and name every failed Kubernetes proxy request the same way.
 
 kubernetes-react now exports `k8sResponseError`, the helper its own reads and
 writes use, along with its two parts: `k8sResponseReason` (the Kubernetes
-`Status` message, the Backstage proxy's error message, or the HTTP status) and
+`Status` message, the Backstage proxy's error message, or the HTTP status;
+`withStatus` keeps the status in front of a message) and
 `k8sErrorNameForStatus` (401 `UnauthorizedError`, 403 `ForbiddenError`, 404
 `NotFoundError`, 409 `ConflictError`).
 
 The three requests that built their own errors use it now:
 
-- The deployment picker's ConfigMap and Secret reads (gs) said
-  `Failed to fetch Secret my-values: ` with nothing after the colon when the
-  response had no reason phrase, and left a 401 or 403 unnamed.
+- The deployment picker (gs) warns when a `valuesFrom` ConfigMap or Secret
+  could not be read, naming each one and why. Such a source used to look
+  exactly like an empty one, so its values were silently missing from the
+  configuration being edited.
 - The pod lists behind the Agent Platform's KServe serving view name a 401
   `UnauthorizedError`, so an expired token is no longer retried, and quote the
   apiserver's `Status` message.
 - The installation inventory probe (gs) quotes the apiserver's `Status`
-  message, e.g. which RBAC rule refused `/apis`, instead of only the HTTP
-  status. It keeps naming a 503 `ServiceUnavailableError`.
+  message after the HTTP status, e.g.
+  `HTTP 403: forbidden: User "jane" cannot get path "/apis"`, instead of only
+  the status. It keeps naming a 503 `ServiceUnavailableError`.

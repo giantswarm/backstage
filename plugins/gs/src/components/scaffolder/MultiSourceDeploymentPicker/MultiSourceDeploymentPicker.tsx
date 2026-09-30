@@ -259,6 +259,12 @@ export const MultiSourceDeploymentPicker = ({
 
   const isGitOpsManaged = helmRelease ? isManagedByFlux(helmRelease) : false;
 
+  // A values source that could not be read is otherwise indistinguishable
+  // from an empty one: its values are simply missing from what is edited.
+  const failedValueSources = resourceQueries.flatMap(query =>
+    query.error ? [query.error.message] : [],
+  );
+
   const showSummary =
     Boolean(installationName) || Boolean(clusterName) || Boolean(name);
 
@@ -307,6 +313,17 @@ export const MultiSourceDeploymentPicker = ({
             be overridden during the next Flux reconciliation cycle.
           </Typography>
         </Box>
+      )}
+      {failedValueSources.length > 0 && (
+        <WarningPanel title="Some current values could not be read">
+          The values below are missing from the configuration you are about to
+          edit. Fix access to them and reload, or add them again by hand.
+          <ul>
+            {failedValueSources.map(message => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </WarningPanel>
       )}
     </>
   );

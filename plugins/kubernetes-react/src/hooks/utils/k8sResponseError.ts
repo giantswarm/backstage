@@ -1,26 +1,47 @@
+async function readBodyMessage(
+  response: Response,
+): Promise<string | undefined> {
+  try {
+    const body = await response.json();
+
+    for (const message of [body?.message, body?.error?.message]) {
+      if (typeof message === 'string' && message) {
+        // The caller appends its own full stop.
+        return message.replace(/\.$/, '');
+      }
+    }
+  } catch {
+    // Not a JSON error body — fall back to the HTTP status.
+  }
+
+  return undefined;
+}
+
 /**
  * The reason a failed Kubernetes proxy response gives: the `message` of the
  * Kubernetes `Status` object in its body, or of the Backstage error body
  * (`{ error: { message } }`) when the proxy itself failed, otherwise the HTTP
  * status. HTTP/2 responses carry no reason phrase, so `statusText` can be
  * empty and never stands alone.
+ *
+ * `withStatus` puts the HTTP status in front of a body message too
+ * (`HTTP 401: Unauthorized`), for callers whose copy relies on the status —
+ * an apiserver's 401 message says nothing else.
  */
-export async function k8sResponseReason(response: Response): Promise<string> {
-  try {
-    const body = await response.json();
-    const message = body?.message ?? body?.error?.message;
-
-    if (typeof message === 'string' && message) {
-      // The caller appends its own full stop.
-      return message.replace(/\.$/, '');
-    }
-  } catch {
-    // Not a JSON error body — fall back to the HTTP status.
-  }
-
-  return response.statusText
+export async function k8sResponseReason(
+  response: Response,
+  options: { withStatus?: boolean } = {},
+): Promise<string> {
+  const status = response.statusText
     ? `HTTP ${response.status} ${response.statusText}`
     : `HTTP ${response.status}`;
+  const message = await readBodyMessage(response);
+
+  if (!message) {
+    return status;
+  }
+
+  return options.withStatus ? `${status}: ${message}` : message;
 }
 
 /**

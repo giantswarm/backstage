@@ -13,8 +13,9 @@ export const INVENTORY_PROBE_PATH = '/apis';
 /**
  * The kubernetes-react reads' error name for the status, so the
  * QueryClientProviders' retry predicates decline to retry them here too. The
- * probe also names a 503, which those reads leave unnamed (a read's 503 is
- * worth retrying; an installation's API server refusing `/apis` is not).
+ * probe also names a 503 `ServiceUnavailableError`, which those reads leave
+ * unnamed; the agent-platform and muster QueryClientProviders decline to retry
+ * that name, the gs one does not.
  */
 function errorNameForStatus(status: number): string | undefined {
   return (
@@ -42,9 +43,10 @@ export class InventoryProbeError extends Error {
   readonly installation: string;
   readonly status: number;
   /**
-   * What the response says went wrong (`k8sResponseReason`): the Kubernetes
-   * `Status` message, or `HTTP 401 Unauthorized` / `HTTP 401` when the body
-   * has none (HTTP/2 responses carry no reason phrase).
+   * What the response says went wrong (`k8sResponseReason` with the status):
+   * `HTTP 403: forbidden: User "jane" cannot get path "/apis"` when the body is
+   * a Kubernetes `Status`, otherwise `HTTP 401 Unauthorized`, or `HTTP 401`
+   * when there is no reason phrase either (HTTP/2 responses carry none).
    */
   readonly reason: string;
 
@@ -98,7 +100,7 @@ export async function probeInstallationInventory(
     throw new InventoryProbeError(
       installation,
       response.status,
-      await k8sResponseReason(response),
+      await k8sResponseReason(response, { withStatus: true }),
     );
   }
 
