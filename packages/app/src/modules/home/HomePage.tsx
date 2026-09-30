@@ -58,8 +58,10 @@ export const HomePage = () => {
                 <GSHomePageResources />
               </Grid>
             </Grid>
-            <Grid item xs={12}>
-              <ReleaseInfo />
+            <Grid container item xs={12}>
+              <Grid item xs={12}>
+                <ReleaseInfo />
+              </Grid>
             </Grid>
           </Grid>
         </Content>
