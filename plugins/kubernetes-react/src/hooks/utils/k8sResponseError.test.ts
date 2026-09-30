@@ -1,4 +1,4 @@
-import { k8sResponseError } from './k8sResponseError';
+import { k8sResponseError, k8sResponseReason } from './k8sResponseError';
 
 function failedResponse(response: Partial<Response>): Response {
   return { ok: false, statusText: '', ...response } as Response;
@@ -41,6 +41,21 @@ describe('k8sResponseError', () => {
     expect(error.message).toBe(
       'Failed to fetch x. Reason: connect ECONNREFUSED 10.0.0.1:443.',
     );
+  });
+
+  it('skips an empty top-level message for the Backstage error body', async () => {
+    const error = await k8sResponseError(
+      failedResponse({
+        status: 502,
+        json: async () => ({
+          message: '',
+          error: { message: 'upstream reset' },
+        }),
+      }),
+      'Failed to fetch x',
+    );
+
+    expect(error.message).toBe('Failed to fetch x. Reason: upstream reset.');
   });
 
   it('does not double the full stop of a message that already has one', async () => {
@@ -100,5 +115,27 @@ describe('k8sResponseError', () => {
     );
 
     expect(error.name).toBe(name);
+  });
+
+  describe('k8sResponseReason', () => {
+    it('puts the status in front of a body message when asked to', async () => {
+      await expect(
+        k8sResponseReason(
+          failedResponse({
+            status: 401,
+            json: async () => ({ kind: 'Status', message: 'Unauthorized' }),
+          }),
+          { withStatus: true },
+        ),
+      ).resolves.toBe('HTTP 401: Unauthorized');
+    });
+
+    it('is the status alone when the body has no message', async () => {
+      await expect(
+        k8sResponseReason(failedResponse({ status: 401 }), {
+          withStatus: true,
+        }),
+      ).resolves.toBe('HTTP 401');
+    });
   });
 });
