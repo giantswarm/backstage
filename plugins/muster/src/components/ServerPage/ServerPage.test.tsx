@@ -271,8 +271,8 @@ beforeEach(() => {
 });
 
 describe('ServerPage tabs', () => {
-  it('gives a family Tools, Resources, Prompts, Instances and Overview', async () => {
-    await renderAt(`${BASE}/kubernetes/overview?installation=gazelle`);
+  it('gives a family Tools, Instances and Details', async () => {
+    await renderAt(`${BASE}/kubernetes/details?installation=gazelle`);
 
     expect(
       await screen.findByRole('heading', { name: 'kubernetes' }),
@@ -280,38 +280,33 @@ describe('ServerPage tabs', () => {
     await waitFor(() =>
       expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual([
         'Tools (2)',
-        'Resources',
-        'Prompts',
         'Instances (2)',
-        'Overview',
+        'Details',
       ]),
     );
     expect(screen.getAllByRole('tab').map(t => t.getAttribute('href'))).toEqual(
       [
         `${BASE}/kubernetes?installation=gazelle`,
-        `${BASE}/kubernetes/resources?installation=gazelle`,
-        `${BASE}/kubernetes/prompts?installation=gazelle`,
         `${BASE}/kubernetes/instances?installation=gazelle`,
-        `${BASE}/kubernetes/overview?installation=gazelle`,
+        `${BASE}/kubernetes/details?installation=gazelle`,
       ],
     );
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
-      'Overview',
+      'Details',
     );
     expect(screen.getByText('1 of 2 instances healthy')).toBeInTheDocument();
     expect(screen.getByText('management_cluster')).toBeInTheDocument();
   });
 
-  it('gives a singular server no Instances tab and shows counts muster reports', async () => {
+  it('gives a singular server no Instances tab, and Resources and Prompts only with items', async () => {
     await renderAt(`${BASE}/aws-root/resources?installation=gazelle`);
 
     await waitFor(() =>
       expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual([
         'Tools (2)',
-        // Reported by core_mcpserver_list; a missing count is not shown as 0.
+        // Reported by core_mcpserver_list; no count means none, no tab.
         'Resources (3)',
-        'Prompts',
-        'Overview',
+        'Details',
       ]),
     );
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
@@ -320,6 +315,32 @@ describe('ServerPage tabs', () => {
     expect(
       await screen.findByText('This server exposes no resources.'),
     ).toBeInTheDocument();
+  });
+
+  it('sends a link to a tab without items to Tools', async () => {
+    await renderAt(`${BASE}/aws-root/prompts?installation=gazelle`);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        `${BASE}/aws-root?installation=gazelle`,
+      ),
+    );
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Tools',
+    );
+  });
+
+  it('keeps an old …/overview link, now Details', async () => {
+    await renderAt(`${BASE}/aws-root/overview?installation=gazelle`);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        `${BASE}/aws-root/details?installation=gazelle`,
+      ),
+    );
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Details',
+    );
   });
 
   it('gives muster its own page with its core tools', async () => {
@@ -388,6 +409,29 @@ describe('ServerPage Tools tab', () => {
     expect(screen.getByText('read-only')).toBeInTheDocument();
   });
 
+  it('is a table sorted by name, and sorts by a header click', async () => {
+    await renderAt(`${BASE}/aws-root?installation=gazelle`);
+
+    await screen.findByRole('link', { name: 'list_buckets' });
+    const toolNames = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map(row => within(row).getByRole('link').textContent);
+    expect(toolNames()).toEqual(['delete_bucket', 'list_buckets']);
+    expect(
+      screen.getByRole('columnheader', { name: /Description/ }),
+    ).toBeInTheDocument();
+    // The markers have a column of their own.
+    expect(
+      screen.getByRole('columnheader', { name: /Annotations/ }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('row')[2]).toHaveTextContent('read-only');
+
+    await userEvent.click(screen.getByRole('columnheader', { name: /Tool/ }));
+    expect(toolNames()).toEqual(['list_buckets', 'delete_bucket']);
+  });
+
   it('lists a family’s grouped tools and its instances’ own ones', async () => {
     await renderAt(`${BASE}/kubernetes/tools?installation=gazelle`);
 
@@ -401,6 +445,54 @@ describe('ServerPage Tools tab', () => {
     expect(
       screen.queryByRole('link', { name: 'list_buckets' }),
     ).not.toBeInTheDocument();
+    // No tool of the family carries a marker, so there is no column for one.
+    expect(
+      screen.queryByRole('columnheader', { name: /Annotations/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('pages a long list, and goes back to the first page on a filter', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      name: `x_aws-root_tool_${String(i + 1).padStart(2, '0')}`,
+      description: `Tool number ${i + 1}`,
+    }));
+    await renderAt(
+      `${BASE}/aws-root?installation=gazelle`,
+      makeApi({
+        filterTools: jest.fn(async () => ({
+          total: many.length,
+          filtered_count: many.length,
+          truncated: false,
+          tools: many,
+        })),
+      }),
+    );
+
+    await screen.findByRole('link', { name: 'tool_01' });
+    const toolNames = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map(r => within(r).getByRole('link').textContent);
+    expect(toolNames()).toHaveLength(25);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Next table page' }),
+    );
+    expect(toolNames()).toEqual([
+      'tool_26',
+      'tool_27',
+      'tool_28',
+      'tool_29',
+      'tool_30',
+    ]);
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Filter tools' }),
+      'tool',
+    );
+    await waitFor(() => expect(toolNames()[0]).toBe('tool_01'));
+    expect(screen.getByTestId('path')).toHaveTextContent('q=tool');
   });
 
   it('pre-fills its filter from ?q=', async () => {
@@ -471,6 +563,7 @@ describe('ServerPage Instances tab', () => {
     // Unhealthy first.
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('gazelle-mcp-kubernetes');
+    expect(rows[0]).toHaveTextContent('Failed');
     expect(rows[0]).toHaveTextContent('connection refused');
     const link = within(rows[0]).getByRole('link', {
       name: 'gazelle-mcp-kubernetes',
@@ -582,7 +675,7 @@ describe('ServerPage header actions', () => {
 
   it('withholds the live actions without a muster session and says why', async () => {
     mockAuthenticated = false;
-    await renderAt(`${BASE}/aws-root/overview?installation=gazelle`);
+    await renderAt(`${BASE}/aws-root/details?installation=gazelle`);
     await screen.findByRole('heading', { name: 'aws-root' });
 
     expect(mockHeaderActions).toBeNull();
@@ -604,7 +697,14 @@ describe('ServerPage review fixes', () => {
   });
 
   it('does not claim a server waiting on a sign-in exposes no resources', async () => {
-    await renderAt(`${BASE}/miro/resources?installation=gazelle`);
+    await renderAt(
+      `${BASE}/miro/resources?installation=gazelle`,
+      makeApi({
+        listServers: jest.fn(async () => ({
+          mcpServers: [{ name: 'miro', resourcesCount: 2 }],
+        })),
+      }),
+    );
 
     expect(
       await screen.findByText(/not signed in to this server/),
@@ -694,7 +794,7 @@ describe('ServerPage lifecycle and edit actions', () => {
   });
 
   it('withholds Reconnect for an OAuth server waiting on a sign-in, and says why', async () => {
-    await renderAt(`${BASE}/miro/overview?installation=gazelle`);
+    await renderAt(`${BASE}/miro/details?installation=gazelle`);
     await screen.findByRole('heading', { name: 'miro' });
 
     expect(await menuItems()).toEqual(['Deactivate…', 'Delete…']);
@@ -719,7 +819,7 @@ describe('ServerPage lifecycle and edit actions', () => {
   });
 
   it('offers the JSON editor for a server the wizard cannot edit, and says why', async () => {
-    await renderAt(`${BASE}/legacy/overview?installation=gazelle`);
+    await renderAt(`${BASE}/legacy/details?installation=gazelle`);
     await screen.findByRole('heading', { name: 'legacy' });
     const header = await renderHeader();
 
@@ -754,7 +854,7 @@ describe('ServerPage session auth', () => {
 
   it('offers no sign-in for a sigv4 server, which signs as muster itself', async () => {
     await renderAt(
-      `${BASE}/lambda/overview?installation=gazelle`,
+      `${BASE}/lambda/details?installation=gazelle`,
       makeApi({
         getAuthStatus: jest.fn(async () => ({
           servers: [{ name: 'lambda', status: 'auth_required' }],
@@ -771,7 +871,7 @@ describe('ServerPage session auth', () => {
   });
 });
 
-describe('ServerPage Overview', () => {
+describe('ServerPage Details', () => {
   it('links a fleet server to its GitOps source', async () => {
     mockUseGitOpsSource.mockReturnValue({
       inGit: true,
@@ -779,7 +879,7 @@ describe('ServerPage Overview', () => {
       url: 'https://github.com/example/fleet/tree/main/servers',
       errors: [],
     });
-    await renderAt(`${BASE}/grafana/overview?installation=gazelle`);
+    await renderAt(`${BASE}/grafana/details?installation=gazelle`);
 
     expect(
       await screen.findByText('Managed through GitOps'),
@@ -791,7 +891,7 @@ describe('ServerPage Overview', () => {
   });
 
   it('looks up no GitOps source for a family that is not managed through it', async () => {
-    await renderAt(`${BASE}/machines/overview?installation=gazelle`);
+    await renderAt(`${BASE}/machines/details?installation=gazelle`);
     await screen.findByRole('heading', { name: 'machines' });
 
     expect(mockUseGitOpsSource).not.toHaveBeenCalled();
@@ -801,7 +901,7 @@ describe('ServerPage Overview', () => {
   });
 
   it('explains a failed server: the state on its badge, the diagnostics in Health', async () => {
-    await renderAt(`${BASE}/broken/overview?installation=gazelle`);
+    await renderAt(`${BASE}/broken/details?installation=gazelle`);
 
     const heading = await screen.findByRole('heading', { name: 'broken' });
     expect(

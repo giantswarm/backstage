@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
+import { Link } from '@backstage/core-components';
 import {
   Cell,
   CellText,
@@ -25,6 +26,7 @@ import {
   DEACTIVATED_SIGN_IN_GATE,
   ServerAuthActions,
   ServerStateBadge,
+  serverStateLabel,
 } from '../../shared';
 
 export const INSTANCE_PANE_ID = 'mcp-server-instance';
@@ -114,11 +116,23 @@ export function ServerInstancesTab({
       id: 'instance',
       label: 'Instance',
       isRowHeader: true,
+      // core-components' `Link`, as the servers table's: it reads as a link,
+      // in the link colour.
       cell: row => (
-        <CellText
-          title={row.server.getName()}
-          href={instanceHref(row.server)}
-        />
+        <Cell>
+          <Link
+            to={instanceHref(row.server)}
+            title={row.server.getName()}
+            style={{
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {row.server.getName()}
+          </Link>
+        </Cell>
       ),
     },
   ];
@@ -135,11 +149,7 @@ export function ServerInstancesTab({
     {
       id: 'status',
       label: 'Status',
-      cell: row => (
-        <Cell>
-          <ServerStateBadge server={row.server} />
-        </Cell>
-      ),
+      cell: row => <CellText title={serverStateLabel(row.server)} />,
     },
     {
       id: 'lastConnected',

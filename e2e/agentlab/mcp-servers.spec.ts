@@ -76,7 +76,7 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
   await open(admin, serversPath);
   await connectToMuster(admin, admin.getByRole('grid'));
   await serverLink(admin, 'lab-oauth-fixture').click();
-  await admin.getByRole('tab', { name: 'Overview' }).click();
+  await admin.getByRole('tab', { name: 'Details' }).click();
 
   // For about a minute after a muster pod roll the fixture's CR reads Failed
   // (muster dials itself before its own listener is up) and offers no sign-in;
@@ -89,7 +89,7 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
 
   // The per-server session is muster's, per user, and outlives a page: a
   // previous run may have left the fixture signed in — sign out first, so
-  // the flow under test is the sign-in. The Overview's Authentication card
+  // the flow under test is the sign-in. The Details tab's Authentication card
   // carries both; the page header repeats Sign in, hence `.last()`.
   const signIn = admin.getByRole('button', { name: 'Sign in' }).last();
   const signOut = admin.getByRole('button', { name: 'Sign out' });
@@ -137,14 +137,12 @@ test("a row opens its server page, with the server's tabs", async ({
     admin.getByRole('searchbox', { name: 'Filter tools' }),
     'the Tools tab lists the server’s tools',
   ).toBeVisible({ timeout: 60_000 });
-  for (const tab of [/^Resources/, /^Prompts/, /^Overview/]) {
-    await expect(admin.getByRole('tab', { name: tab })).toBeVisible();
-  }
-
-  await admin.getByRole('tab', { name: 'Overview' }).click();
+  // Resources and Prompts show only for a server exposing any, which
+  // mcp-kubernetes may not.
+  await admin.getByRole('tab', { name: 'Details' }).click();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/mcp-servers/mcp-kubernetes/overview\\?installation=${lab.installation}$`,
+      `/agent-platform/mcp-servers/mcp-kubernetes/details\\?installation=${lab.installation}$`,
     ),
   );
   await expect(admin.getByText('Configuration').first()).toBeVisible();

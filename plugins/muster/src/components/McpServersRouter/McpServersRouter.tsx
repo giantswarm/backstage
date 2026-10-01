@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
+import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
 import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
 import { NewMcpServerEditGate } from '../NewMcpServerEditGate';
@@ -10,17 +10,6 @@ import { NewMcpServerReviewPage } from '../NewMcpServerReviewPage';
 import { NewMcpServerVerifyPage } from '../NewMcpServerVerifyPage';
 import { ServerPage } from '../ServerPage';
 import { ToolPage } from '../ToolPage';
-
-// react-router keeps the window scroll position across client-side navigation,
-// so moving between wizard steps would otherwise land mid-page. Reset to the
-// top on every in-flow navigation. Same as agent creation's AgentsRouter.
-function ScrollToTop() {
-  const { pathname } = useLocation();
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
-  return null;
-}
 
 /**
  * Routing within the Agent Platform's MCP Servers tab: the servers table, a
@@ -36,9 +25,10 @@ function ScrollToTop() {
  * are the same for both.
  */
 export const McpServersRouter = () => {
+  // A wizard step, a server or a tool page opens at its top.
+  useScrollToTopOnNavigation();
   return (
     <NewMcpServerFormProvider>
-      <ScrollToTop />
       <Routes>
         <Route index element={<McpServersPage />} />
         <Route

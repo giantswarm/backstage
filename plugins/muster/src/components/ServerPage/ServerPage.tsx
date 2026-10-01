@@ -53,7 +53,7 @@ import {
   ServerStateBadge,
   useServerSignIn,
 } from '../shared';
-import { ServerOverviewTab } from './ServerOverviewTab';
+import { ServerDetailsTab } from './ServerDetailsTab';
 import { ServerToolsTab } from './ServerToolsTab';
 import { ServerCapabilityTab } from './ServerCapabilityTab';
 import { ServerInstancesTab } from './ServerInstancesTab';
@@ -208,7 +208,7 @@ function ServerPageContent({
           onAction: () => openAction(deactivate),
         });
       }
-      // Gated for an OAuth server waiting on a sign-in; the Overview says so.
+      // Gated for an OAuth server waiting on a sign-in; the Details tab says so.
       if (live.reconnect && !live.reconnectGate) {
         const reconnect = live.reconnect;
         menuItems.push({
@@ -287,21 +287,13 @@ function ServerPageContent({
     ) : undefined;
 
   // Tools leads and is the index: what a server offers is what a person
-  // comes to it for, so a server link lands there. Overview closes the row.
+  // comes to it for, so a server link lands there. A family's instances come
+  // next; Resources and Prompts only when the server exposes any (most expose
+  // neither). Details closes the row.
+  const hasResources = (counts.resourcesCount ?? 0) > 0;
+  const hasPrompts = (counts.promptsCount ?? 0) > 0;
   const tabs: RouteTabSpec[] = [
     { id: 'tools', path: '', title: 'Tools', count: tools.tools?.length },
-    {
-      id: 'resources',
-      path: 'resources',
-      title: 'Resources',
-      count: counts.resourcesCount,
-    },
-    {
-      id: 'prompts',
-      path: 'prompts',
-      title: 'Prompts',
-      count: counts.promptsCount,
-    },
   ];
   if (row.kind === 'family') {
     tabs.push({
@@ -311,7 +303,25 @@ function ServerPageContent({
       count: row.servers.length,
     });
   }
-  tabs.push({ id: 'overview', path: 'overview', title: 'Overview' });
+  if (hasResources) {
+    tabs.push({
+      id: 'resources',
+      path: 'resources',
+      title: 'Resources',
+      count: counts.resourcesCount,
+    });
+  }
+  if (hasPrompts) {
+    tabs.push({
+      id: 'prompts',
+      path: 'prompts',
+      title: 'Prompts',
+      count: counts.promptsCount,
+    });
+  }
+  tabs.push({ id: 'details', path: 'details', title: 'Details' });
+
+  const toIndex = <Navigate to={`${basePath}${search}`} replace />;
 
   return (
     <Flex direction="column" gap="4">
@@ -391,10 +401,15 @@ function ServerPageContent({
             />
           }
         />
+        {/* Details' path while it was named Overview. */}
         <Route
           path="overview"
+          element={<Navigate to={`${basePath}/details${search}`} replace />}
+        />
+        <Route
+          path="details"
           element={
-            <ServerOverviewTab
+            <ServerDetailsTab
               row={row}
               servers={servers}
               representative={representative}
@@ -402,26 +417,37 @@ function ServerPageContent({
             />
           }
         />
+        {/* Without the counts yet (or a session) the tab renders its own
+            loading or session state; once they say there is nothing, the
+            tab has no place in the row, so a link to it lands on Tools. */}
         <Route
           path="resources"
           element={
-            <ServerCapabilityTab
-              capability="resources"
-              row={row}
-              representative={representative}
-              sessionGate={sessionGate}
-            />
+            counts.isLoaded && !hasResources ? (
+              toIndex
+            ) : (
+              <ServerCapabilityTab
+                capability="resources"
+                row={row}
+                representative={representative}
+                sessionGate={sessionGate}
+              />
+            )
           }
         />
         <Route
           path="prompts"
           element={
-            <ServerCapabilityTab
-              capability="prompts"
-              row={row}
-              representative={representative}
-              sessionGate={sessionGate}
-            />
+            counts.isLoaded && !hasPrompts ? (
+              toIndex
+            ) : (
+              <ServerCapabilityTab
+                capability="prompts"
+                row={row}
+                representative={representative}
+                sessionGate={sessionGate}
+              />
+            )
           }
         />
         {row.kind === 'family' && (
@@ -436,10 +462,7 @@ function ServerPageContent({
             }
           />
         )}
-        <Route
-          path="*"
-          element={<Navigate to={`${basePath}${search}`} replace />}
-        />
+        <Route path="*" element={toIndex} />
       </Routes>
 
       {singular && isGitOpsManaged(singular) && (
@@ -478,9 +501,9 @@ function ServerPageContent({
 }
 
 /**
- * One MCP server's page: Tools (the index) · Resources · Prompts, plus
- * Instances for a server family, and Overview, with the server's actions in the page
- * header. `:server` names the row the servers list shows -- a family, a
+ * One MCP server's page: Tools (the index), Instances for a server family,
+ * Resources and Prompts when it exposes any, and Details, with the server's
+ * actions in the page header. `:server` names the row the servers list shows -- a family, a
  * singular server or muster itself -- on the installation the section's scope
  * selects (`?installation=` first); switching the installation shows the same
  * server there, or says it does not exist there.

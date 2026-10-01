@@ -242,8 +242,8 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'MCP server', view: 'tools' },
     ],
     [
-      '/agent-platform/mcp-servers/kubernetes/overview',
-      { page: 'MCP server', view: 'overview' },
+      '/agent-platform/mcp-servers/kubernetes/details',
+      { page: 'MCP server', view: 'details' },
     ],
     [
       '/agent-platform/mcp-servers/kubernetes/instances',
@@ -497,7 +497,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/mcp-servers/new',
       '/agent-platform/mcp-servers/new/verify',
       '/agent-platform/mcp-servers/kubernetes',
-      '/agent-platform/mcp-servers/kubernetes/overview',
+      '/agent-platform/mcp-servers/kubernetes/details',
       '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/workflows',
       '/agent-platform/workflows/my-workflow',

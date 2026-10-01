@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
+import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 import { WorkflowsListPage } from '../WorkflowsListPage';
 import { WorkflowDetailPage } from '../WorkflowDetailPage';
 
@@ -9,6 +10,8 @@ import { WorkflowDetailPage } from '../WorkflowDetailPage';
  * views share one muster instance.
  */
 export const WorkflowsRouter = () => {
+  // A workflow opened from far down the list opens at its top.
+  useScrollToTopOnNavigation();
   return (
     <Routes>
       <Route index element={<WorkflowsListPage />} />

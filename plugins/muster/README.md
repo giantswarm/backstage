@@ -13,8 +13,9 @@ Workflows tabs.
   searchable by server and tool name (`?q=`).
 - **Server page** (`/agent-platform/mcp-servers/:server?installation=…`):
   one page per MCP server, server family or muster itself (`muster`), with
-  the tabs Tools (the page's index), Resources, Prompts, -- for a family --
-  Instances, and Overview, and the server's actions in the page header.
+  the tabs Tools (the page's index, a sortable table), -- for a family --
+  Instances, Resources and Prompts when the server exposes any, and Details,
+  and the server's actions in the page header.
 - **Tool page** (`/agent-platform/mcp-servers/:server/tools/:tool`): a
   tool's description, markers and input schema, and a typed form to run it.
 - **Workflows list** (`/agent-platform/workflows`, the Agent Platform's
