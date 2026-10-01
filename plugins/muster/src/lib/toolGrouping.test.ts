@@ -1,6 +1,6 @@
 import { MCPServer } from './k8s';
 import {
-  serverPageOfTool,
+  serverPageResolver,
   serverPrefixInfos,
   shortToolName,
   toolsForRow,
@@ -89,6 +89,25 @@ describe('toolsForRow', () => {
       ),
     ).toEqual(['x_aws_list_buckets']);
   });
+
+  it('lists a tool tied between a family and a same-named server on the family only', () => {
+    const family = mcpServer('walrus-mcp-kubernetes', { family: 'kubernetes' });
+    const singular = mcpServer('kubernetes');
+    const tied = serverPrefixInfos([family, singular]);
+    const pods = [tool('x_kubernetes_get_pods')];
+    expect(
+      names(
+        toolsForRow(
+          pods,
+          { kind: 'family', family: 'kubernetes', servers: [family] },
+          tied,
+        ),
+      ),
+    ).toEqual(['x_kubernetes_get_pods']);
+    expect(
+      toolsForRow(pods, { kind: 'server', server: singular }, tied),
+    ).toEqual([]);
+  });
 });
 
 describe('shortToolName', () => {
@@ -116,7 +135,10 @@ describe('shortToolName', () => {
   });
 });
 
-describe('serverPageOfTool', () => {
+describe('serverPageResolver', () => {
+  const serverPageOfTool = (name: string, servers: MCPServer[]) =>
+    serverPageResolver(servers)(name);
+
   const walrus = mcpServer('walrus-mcp-kubernetes', { family: 'kubernetes' });
   const aws = mcpServer('aws-root', { toolPrefix: 'aws' });
   const all = [walrus, aws];
@@ -146,5 +168,10 @@ describe('serverPageOfTool', () => {
     expect(serverPageOfTool('x_kubernetes_only_mine', [shadowed, walrus])).toBe(
       'kubernetes',
     );
+  });
+
+  it('knows no page for a family named muster, whose page is the core row', () => {
+    const musterFamily = mcpServer('muster-golem', { family: 'muster' });
+    expect(serverPageOfTool('x_muster_foo', [musterFamily])).toBeUndefined();
   });
 });

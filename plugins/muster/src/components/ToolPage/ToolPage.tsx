@@ -7,7 +7,11 @@ import {
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
-import { serverPrefixInfos, shortToolName } from '../../lib/toolGrouping';
+import {
+  serverPageResolver,
+  serverPrefixInfos,
+  shortToolName,
+} from '../../lib/toolGrouping';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { SessionGate, useServerPageLinks } from '../shared';
@@ -44,7 +48,15 @@ export function ToolPage() {
       enabled: Boolean(row && activeInstallation) && session.authenticated,
     },
   );
-  const offered = serverTools.tools?.some(t => t.name === tool);
+  const pageOfTool = useMemo(
+    () => serverPageResolver(mcpServers),
+    [mcpServers],
+  );
+  // A truncated catalogue may stop short of the tool; then its prefix decides,
+  // and describing it says whether muster has it.
+  const offered =
+    serverTools.tools?.some(t => t.name === tool) ||
+    (serverTools.truncated && pageOfTool(tool) === serverKey);
 
   const trail = (
     <Breadcrumbs

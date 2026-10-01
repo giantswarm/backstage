@@ -81,13 +81,27 @@ export function toolsForRow(
       t => t.name.startsWith('core_') || t.name.startsWith('workflow_'),
     );
   }
-  const owns = (info: ServerPrefixInfo) =>
+  const owns = (owner: ServerPrefixInfo | undefined) =>
     row.kind === 'family'
-      ? info.family === row.family
-      : !info.family && info.serverName === row.server.getName();
+      ? owner?.family === row.family
+      : !owner?.family && owner?.serverName === row.server.getName();
   return tools.filter(
-    t => t.name.startsWith('x_') && matchServers(t.name, servers).some(owns),
+    t => t.name.startsWith('x_') && owns(ownerOfTool(t.name, servers)),
   );
+}
+
+/**
+ * The server an `x_*` tool belongs to among those its longest prefix matches.
+ * A family wins a tie with a singular server of the same name, as the family
+ * takes that name's page. The one rule behind the servers list's counts, a
+ * server page's tools and links to a tool's page.
+ */
+export function ownerOfTool(
+  name: string,
+  servers: ServerPrefixInfo[],
+): ServerPrefixInfo | undefined {
+  const matches = matchServers(name, servers);
+  return matches.find(match => match.family) ?? matches[0];
 }
 
 /**
@@ -152,10 +166,7 @@ export function toolsByServerKey(
     if (tool.name.startsWith('core_') || tool.name.startsWith('workflow_')) {
       add('core', tool);
     } else if (tool.name.startsWith('x_')) {
-      // A family and a singular server of the same name tie on the prefix;
-      // the family's page lists the tool (see serverPageOfTool).
-      const matches = matchServers(tool.name, servers);
-      const owner = matches.find(match => match.family) ?? matches[0];
+      const owner = ownerOfTool(tool.name, servers);
       if (owner) {
         add(
           owner.family
@@ -170,34 +181,31 @@ export function toolsByServerKey(
 }
 
 /**
- * The server page a tool is found on: the `<server>` segment of
- * `/agent-platform/mcp-servers/<server>/tools/<tool>`. By the rule the pages
- * themselves list tools with -- muster's own (`core_*`, `workflow_*`) on
- * `muster`, any other tool on the row its longest-matching prefix belongs to
- * (a family, also for a tool muster exposes per instance, or a singular
- * server) -- so a link built from it opens a page that shows the tool.
- * Undefined when no server's prefix matches, or when the tool's server is a
- * singular one whose page a family of the same name takes.
+ * Resolves the server page a tool is found on: the `<server>` segment of
+ * `/agent-platform/mcp-servers/<server>/tools/<tool>`. muster's own tools
+ * (`core_*`, `workflow_*`) are on `muster`; any other on its `ownerOfTool`'s
+ * page -- the rule the pages list tools by, so the link opens a page that shows
+ * the tool. A resolved tool is undefined when no prefix matches, or when the
+ * owner's page belongs to another row: `muster` is always the core row, and a
+ * family takes the page of a singular server of the same name.
+ *
+ * Built once per server list; resolving is a prefix lookup per tool.
  */
-export function serverPageOfTool(
-  toolName: string,
+export function serverPageResolver(
   servers: MCPServer[],
-): string | undefined {
-  if (toolName.startsWith('core_') || toolName.startsWith('workflow_')) {
-    return 'muster';
-  }
-  // A family and a singular server of the same name share the prefix and
-  // tie; the family's page is the one that lists the tool.
-  const matches = matchServers(toolName, serverPrefixInfos(servers));
-  const owner = matches.find(match => match.family) ?? matches[0];
-  if (!owner) {
-    return undefined;
-  }
-  if (owner.family) {
-    return owner.family;
-  }
-  const shadowed =
-    owner.serverName === 'muster' ||
-    servers.some(server => server.getFamily() === owner.serverName);
-  return shadowed ? undefined : owner.serverName;
+): (toolName: string) => string | undefined {
+  const prefixes = serverPrefixInfos(servers);
+  const families = new Set(servers.map(server => server.getFamily()));
+  return toolName => {
+    if (toolName.startsWith('core_') || toolName.startsWith('workflow_')) {
+      return 'muster';
+    }
+    const owner = ownerOfTool(toolName, prefixes);
+    if (!owner) {
+      return undefined;
+    }
+    const page = owner.family ?? owner.serverName;
+    const shadowed = page === 'muster' || (!owner.family && families.has(page));
+    return shadowed ? undefined : page;
+  };
 }

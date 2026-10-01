@@ -168,4 +168,25 @@ describe('ToolPage', () => {
     ).toBeInTheDocument();
     expect(api.describeTool).not.toHaveBeenCalled();
   });
+
+  it('describes a tool the truncated catalogue stops short of', async () => {
+    const api = makeApi();
+    api.filterTools.mockImplementation(async () => ({
+      total: 2500,
+      truncated: true,
+      tools: [{ name: 'x_aws-root_list_buckets' }],
+    }));
+    await renderAt(
+      `${BASE}/aws-root/tools/x_aws-root_far_down_the_list?installation=gazelle`,
+      api,
+    );
+
+    expect(
+      await screen.findByText('List the buckets of the account.'),
+    ).toBeInTheDocument();
+    expect(api.describeTool).toHaveBeenCalledWith(
+      'x_aws-root_far_down_the_list',
+      'gazelle',
+    );
+  });
 });

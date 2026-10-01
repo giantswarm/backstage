@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import {
   ApiBlueprint,
   configApiRef,
@@ -28,6 +29,24 @@ import {
   workflowsRouteRef,
 } from './routes';
 
+/**
+ * The loader of one muster tab: its router inside the shared muster providers
+ * and the inventory-failure gate (`MusterSubPage`).
+ */
+function musterTab(context: string, loadRouter: () => Promise<ComponentType>) {
+  return async () => {
+    const [{ MusterSubPage }, Router] = await Promise.all([
+      import('./components/MusterSubPage'),
+      loadRouter(),
+    ]);
+    return (
+      <MusterSubPage context={context}>
+        <Router />
+      </MusterSubPage>
+    );
+  };
+}
+
 // muster contributes two of the Agent Platform page's level-1 tabs: "MCP
 // Servers" (`/agent-platform/mcp-servers`) and "Workflows"
 // (`/agent-platform/workflows`). Each carries its own root route ref, so
@@ -41,17 +60,11 @@ const mcpServersSubPage = SubPageBlueprint.make({
     path: 'mcp-servers',
     title: 'MCP Servers',
     routeRef: mcpServersRouteRef,
-    loader: async () => {
-      const [{ MusterSubPage }, { McpServersRouter }] = await Promise.all([
-        import('./components/MusterSubPage'),
-        import('./components/McpServersRouter'),
-      ]);
-      return (
-        <MusterSubPage context="The MCP servers of an installation are read through its Kubernetes API.">
-          <McpServersRouter />
-        </MusterSubPage>
-      );
-    },
+    loader: musterTab(
+      'The MCP servers of an installation are read through its Kubernetes API.',
+      () =>
+        import('./components/McpServersRouter').then(m => m.McpServersRouter),
+    ),
   },
 });
 
@@ -62,17 +75,10 @@ const workflowsSubPage = SubPageBlueprint.make({
     path: 'workflows',
     title: 'Workflows',
     routeRef: workflowsRouteRef,
-    loader: async () => {
-      const [{ MusterSubPage }, { WorkflowsRouter }] = await Promise.all([
-        import('./components/MusterSubPage'),
-        import('./components/WorkflowsRouter'),
-      ]);
-      return (
-        <MusterSubPage context="The workflows of an installation are read through its Kubernetes API.">
-          <WorkflowsRouter />
-        </MusterSubPage>
-      );
-    },
+    loader: musterTab(
+      'The workflows of an installation are read through its Kubernetes API.',
+      () => import('./components/WorkflowsRouter').then(m => m.WorkflowsRouter),
+    ),
   },
 });
 

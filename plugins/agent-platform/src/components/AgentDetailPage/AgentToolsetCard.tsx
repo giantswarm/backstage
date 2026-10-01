@@ -4,7 +4,7 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
-  serverPageOfTool,
+  serverPageResolver,
   ServerSignIn,
 } from '@giantswarm/backstage-plugin-muster';
 import {
@@ -138,8 +138,11 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
 
   const musterApi = useMusterPluginApi();
   const catalogue = useMusterToolCatalogue(installation);
-  const { servers, resources: serverResources } =
-    useMusterServers(installation);
+  const {
+    servers,
+    resources: serverResources,
+    isLoading: isLoadingServers,
+  } = useMusterServers(installation);
   // `preset:none` is exactly "no tools"; asking muster what it resolves to
   // would only ever answer nothing.
   const resolution = useToolsetResolution(
@@ -159,21 +162,34 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     [selectors, catalogue.tools, servers, catalogue.serversRequiringAuth],
   );
 
-  // Each tool links to its page beneath the server offering it -- muster's
-  // own rule, so the page it opens lists the tool; a tool nothing attributes
-  // lands on the servers list, searched for its name.
+  // Each tool links to its page beneath the server offering it, by muster's
+  // own rule, so the page lists the tool; a tool nothing attributes lands on
+  // the servers list, searched for its name. No links until the servers are
+  // read, so none change under the pointer.
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
   const toolRoute = useRouteRef(musterServerToolExternalRouteRef);
-  const scope = `?installation=${encodeURIComponent(installation)}`;
-  const toolHref = (name: string): string | undefined => {
-    const server = serverPageOfTool(name, serverResources);
-    if (server && toolRoute) {
-      return `${toolRoute({ server, tool: name })}${scope}`;
+  const toolHref = useMemo(() => {
+    if (isLoadingServers) {
+      return undefined;
     }
-    return serversRoute
-      ? `${serversRoute()}${scope}&q=${encodeURIComponent(name)}`
-      : undefined;
-  };
+    const pageOfTool = serverPageResolver(serverResources);
+    const scope = `?installation=${encodeURIComponent(installation)}`;
+    return (name: string): string | undefined => {
+      const server = pageOfTool(name);
+      if (server && toolRoute) {
+        return `${toolRoute({ server, tool: name })}${scope}`;
+      }
+      return serversRoute
+        ? `${serversRoute()}${scope}&q=${encodeURIComponent(name)}`
+        : undefined;
+    };
+  }, [
+    isLoadingServers,
+    serverResources,
+    installation,
+    toolRoute,
+    serversRoute,
+  ]);
 
   let body: React.ReactNode;
   if (declared.state === 'no-gateway') {

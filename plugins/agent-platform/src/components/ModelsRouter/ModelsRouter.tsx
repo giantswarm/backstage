@@ -32,8 +32,7 @@ const SERVING_VIEWS = [
  * `.../configs/<installation>/<namespace>/<name>`). Redirect those so a
  * bookmarked model or a link from an older release still resolves.
  *
- * `..` climbs one *route* -- however many segments -- back to the tab root, the
- * same spelling MusterSection's legacy redirect uses.
+ * `..` climbs one *route* -- however many segments -- back to the tab root.
  */
 const LegacyConfigsRedirect = () => {
   const { search } = useLocation();
@@ -89,7 +88,7 @@ const ModelsViews = () => {
       {/* Inset the tab strip by the page gutter so it lines up with the level-1
           header tabs and the content below. `px="5"` is hand-matched to the
           horizontal padding the bui PluginHeader / Content apply (bui space-5 =
-          20px), the same value MusterSection uses; if bui ever changes that
+          20px), the same value UsageRouter uses; if bui ever changes that
           gutter both have to follow. */}
       {showTabs && (
         <Box px="5">
@@ -147,9 +146,9 @@ const ModelsViews = () => {
  * ModelConfig while the user waits for it on the Model configs view.
  *
  * The legacy redirects are siblings of the views, not routes inside them, so the
- * tab strip never renders for a location that is about to change. Unlike
- * MusterSection they can sit inside the providers: no provider here writes to
- * the URL, so nothing races the redirect.
+ * tab strip never renders for a location that is about to change. They can sit
+ * inside the providers: no provider here writes to the URL, so nothing races
+ * the redirect.
  */
 export const ModelsRouter = () => {
   return (

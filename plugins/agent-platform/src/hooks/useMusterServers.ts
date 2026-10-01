@@ -19,7 +19,7 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
 export type MusterServers = {
   /** Every MCPServer CR on the installation — signed in to or not. */
   servers: ServerInfo[];
-  /** The same CRs, for muster's own helpers (`serverPageOfTool`). */
+  /** The same CRs, for muster's own helpers (`serverPageResolver`). */
   resources: MCPServer[];
   isLoading: boolean;
   /** True when the CRs could not be read (no muster, no access). */
