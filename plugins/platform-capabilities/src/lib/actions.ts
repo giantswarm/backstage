@@ -17,6 +17,32 @@ export function kindOf(name: string): Action['spec']['kind'] {
   return name.startsWith('reconcile') ? 'reconcile' : 'enable';
 }
 
+/**
+ * What the record says beyond an action's state, in one sentence for its
+ * tag's tooltip: who withdrew it and why, or the commit and pull request
+ * that reverted it. Nothing for the other states.
+ */
+export function stateDetailOf(action: Action): string | undefined {
+  const { status } = action;
+  if (status?.state === 'withdrawn' && status.withdrawal) {
+    const { by, reason } = status.withdrawal;
+    return `Withdrawn by ${by}: ${reason}`;
+  }
+  if (status?.state === 'reverted') {
+    const reverts = (status.pullRequests ?? []).flatMap(pr =>
+      pr.revert
+        ? [
+            pr.revert.pullRequest
+              ? `#${pr.revert.pullRequest}`
+              : pr.revert.commit.slice(0, 7),
+          ]
+        : [],
+    );
+    return reverts.length ? `Reverted by ${reverts.join(', ')}.` : undefined;
+  }
+  return undefined;
+}
+
 /** The verb the page uses for an action of this kind, to lead its line: `enable agent-platform`. */
 export function verbOf(kind: Action['spec']['kind']): string {
   return VERBS[kind];

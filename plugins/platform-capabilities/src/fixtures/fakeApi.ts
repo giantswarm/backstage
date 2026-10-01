@@ -454,7 +454,7 @@ export const DENIED_ACTION: Action = {
   },
 };
 
-/** Removed: the fileset it merged left the default branch again, so the action is reverted. */
+/** Removed: the fileset it merged left the default branch again. */
 export const REMOVED_ACTION: Action = {
   name: 'enable-rowan-c1d8pe',
   createdAt: '2026-09-10T08:00:00Z',
@@ -490,6 +490,63 @@ export const REMOVED_ACTION: Action = {
       message:
         'the fileset is gone from the default branch again: rowan (installations/rowan/config.yaml.patch in example/example-configs); Flux prunes what the tree applied',
       at: '2026-09-12T08:00:00Z',
+    },
+  },
+};
+
+/** Reverted: its merged pull request was taken back on the default branch by another pull request. */
+export const REVERTED_ACTION: Action = {
+  name: 'enable-rowan-r5t2vw',
+  createdAt: '2026-09-20T08:00:00Z',
+  spec: {
+    actor: { login: 'someone' },
+    capability: 'agent-platform',
+    kind: 'enable',
+    installations: ['rowan'],
+    inputs: ASKED,
+  },
+  status: {
+    state: 'reverted',
+    pullRequests: [
+      {
+        repository: 'example/example-configs',
+        number: 11,
+        url: 'https://github.com/example/example-configs/pull/11',
+        state: 'merged',
+        revert: {
+          commit: '3f9c2e1a7b4d5c6e8f0a1b2c3d4e5f6a7b8c9d0e',
+          url: 'https://github.com/example/example-configs/commit/3f9c2e1a7b4d5c6e8f0a1b2c3d4e5f6a7b8c9d0e',
+          pullRequest: 12,
+          pullRequestUrl: 'https://github.com/example/example-configs/pull/12',
+          at: '2026-09-21T10:00:00Z',
+        },
+      },
+    ],
+    result: {
+      state: 'reverted',
+      message:
+        'example/example-configs#11 was reverted on the default branch by #12',
+      at: '2026-09-21T10:05:00Z',
+    },
+  },
+};
+
+/** Withdrawn: its actor withdrew it after the merge, with the reason. */
+export const WITHDRAWN_ACTION: Action = {
+  ...REVERTED_ACTION,
+  name: 'enable-rowan-w8h3kn',
+  status: {
+    ...REVERTED_ACTION.status,
+    state: 'withdrawn',
+    withdrawal: {
+      by: 'someone',
+      reason: 'rolled back for the freeze',
+      at: '2026-09-21T11:00:00Z',
+    },
+    result: {
+      state: 'withdrawn',
+      message: 'withdrawn by someone: rolled back for the freeze',
+      at: '2026-09-21T11:00:00Z',
     },
   },
 };

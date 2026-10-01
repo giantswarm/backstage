@@ -1,8 +1,8 @@
 import { CSSProperties, Fragment, ReactNode, useMemo } from 'react';
 import { Flex, Link, Text } from '@backstage/ui';
 import { DateComponent, FactList } from '@giantswarm/backstage-plugin-ui-react';
-import { Action, Definition, Installation } from '../apis';
-import { inputFacts, verbOf } from '../lib/actions';
+import { Action, ActionRevert, Definition, Installation } from '../apis';
+import { inputFacts, stateDetailOf, verbOf } from '../lib/actions';
 import { linkify, repositoriesOf } from '../lib/links';
 import { fieldsOf, formOf } from '../lib/schemaForm';
 import { ActionStateTag } from './ActionStateTag';
@@ -26,7 +26,7 @@ export function ActionLine({ action }: { action: Action }) {
       {status?.state && (
         <>
           {' · '}
-          <ActionStateTag state={status.state} />
+          <ActionStateTag state={status.state} detail={stateDetailOf(action)} />
         </>
       )}
       {action.createdAt && (
@@ -61,6 +61,30 @@ function Message({
         ),
       )}
     </Text>
+  );
+}
+
+/**
+ * A pull request's revert after its state: the pull request it came
+ * through where GitHub links one, else the commit, linked where the
+ * manager recorded the page -- `merged, reverted by #12`.
+ */
+function RevertedBy({ revert }: { revert: ActionRevert }) {
+  const name = revert.pullRequest
+    ? `#${revert.pullRequest}`
+    : revert.commit.slice(0, 7);
+  const href = revert.pullRequest ? revert.pullRequestUrl : revert.url;
+  return (
+    <span data-testid="action-revert">
+      {', reverted by '}
+      {href ? (
+        <Link href={href} target="_blank" rel="noopener">
+          {name}
+        </Link>
+      ) : (
+        name
+      )}
+    </span>
   );
 }
 
@@ -135,6 +159,7 @@ export function ActionDetails({
                   `${pr.repository}${pr.number ? `#${pr.number}` : ''}`
                 )}
                 {pr.state ? ` — ${pr.state}` : ''}
+                {pr.revert && <RevertedBy revert={pr.revert} />}
               </li>
             ))}
           </ul>
@@ -154,6 +179,11 @@ export function ActionDetails({
               </Link>
             </>
           )}
+        </Text>
+      )}
+      {status?.withdrawal && (
+        <Text variant="body-small" data-testid="action-withdrawal">
+          Withdrawn by {status.withdrawal.by} — {status.withdrawal.reason}
         </Text>
       )}
       {!!status?.rollout?.installations?.length && (

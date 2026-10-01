@@ -7,6 +7,8 @@ import {
   installation,
   REFUSED_ACTION,
   REMOVED_ACTION,
+  REVERTED_ACTION,
+  WITHDRAWN_ACTION,
 } from '../fixtures/fakeApi';
 import { ACTION_STATE_WORDS } from './ActionStateTag';
 import { ActionView } from './ActionView';
@@ -57,10 +59,10 @@ describe('ActionView', () => {
     expect(record).not.toHaveTextContent(/unknown|reconcile/i);
   });
 
-  it('a denied action reads Withdrawn, with the decision and the closed pull request', async () => {
+  it('a denied action reads Denied, with the decision and the closed pull request', async () => {
     const record = await render(DENIED_ACTION);
     expect(screen.getByTestId('action-line')).toHaveTextContent(
-      /^apply changes to agent-platform by someone · Withdrawn · /,
+      /^apply changes to agent-platform by someone · Denied · /,
     );
     expect(screen.getByTestId('action-state')).toHaveAttribute(
       'data-state',
@@ -77,10 +79,10 @@ describe('ActionView', () => {
     );
   });
 
-  it('a removed action reads Reverted, its rollout naming the file that left, linked', async () => {
+  it('a removed action reads Removed, its rollout naming the file that left, linked', async () => {
     const record = await render(REMOVED_ACTION);
     expect(screen.getByTestId('action-line')).toHaveTextContent(
-      /^enable agent-platform by someone · Reverted · /,
+      /^enable agent-platform by someone · Removed · /,
     );
     expect(screen.getByTestId('action-state')).toHaveAttribute(
       'data-state',
@@ -99,6 +101,40 @@ describe('ActionView', () => {
     ).toHaveTextContent('example/example-configs#5 — merged');
   });
 
+  it('a reverted action reads Reverted, not in sync, with the reverting pull request linked', async () => {
+    const record = await render(REVERTED_ACTION);
+    expect(screen.getByTestId('action-line')).toHaveTextContent(
+      /^enable agent-platform by someone · Reverted · /,
+    );
+    const tag = screen.getByTestId('action-state');
+    expect(tag).toHaveAttribute('data-state', 'reverted');
+    expect(tag).toHaveAttribute('data-mark', 'not in sync');
+    const pulls = within(record).getByTestId('action-pull-requests');
+    expect(pulls).toHaveTextContent(
+      'example/example-configs#11 — merged, reverted by #12',
+    );
+    expect(within(pulls).getByRole('link', { name: '#12' })).toHaveAttribute(
+      'href',
+      'https://github.com/example/example-configs/pull/12',
+    );
+    expect(record).not.toHaveTextContent(/unknown/i);
+  });
+
+  it('a withdrawn action reads Withdrawn, with who withdrew it and why', async () => {
+    const record = await render(WITHDRAWN_ACTION);
+    expect(screen.getByTestId('action-line')).toHaveTextContent(
+      /^enable agent-platform by someone · Withdrawn · /,
+    );
+    expect(screen.getByTestId('action-state')).toHaveAttribute(
+      'data-state',
+      'withdrawn',
+    );
+    expect(within(record).getByTestId('action-withdrawal')).toHaveTextContent(
+      'Withdrawn by someone — rolled back for the freeze',
+    );
+    expect(record).not.toHaveTextContent(/unknown/i);
+  });
+
   it('has a word of its own for every state an action can be in', () => {
     const states: ActionStateName[] = [
       'pending approval',
@@ -109,13 +145,21 @@ describe('ActionView', () => {
       'failed',
       'refused',
       'denied',
+      'reverted',
+      'withdrawn',
       'removed',
     ];
     for (const state of states) {
       expect(ACTION_STATE_WORDS[state]).not.toBe('Unknown');
     }
     expect(ACTION_STATE_WORDS.refused).toBe('Refused');
-    expect(ACTION_STATE_WORDS.denied).toBe('Withdrawn');
-    expect(ACTION_STATE_WORDS.removed).toBe('Reverted');
+    expect(ACTION_STATE_WORDS.denied).toBe('Denied');
+    expect(ACTION_STATE_WORDS.reverted).toBe('Reverted');
+    expect(ACTION_STATE_WORDS.withdrawn).toBe('Withdrawn');
+    expect(ACTION_STATE_WORDS.removed).toBe('Removed');
+    // Every state reads its own word: no two of the action's states look alike.
+    expect(new Set(states.map(s => ACTION_STATE_WORDS[s])).size).toBe(
+      states.length,
+    );
   });
 });
