@@ -287,7 +287,7 @@ networkPolicy:
 # -- Database configuration
 database:
   # @schema enum:[sqlite, postgresql]
-  # -- Database engine to use
+  # -- Database engine to use. `postgresql` deploys a CNPG cluster and points the backend at it (`backend.database` with `client: pg`, schema division mode); a `backend.database` block in `backstage.appConfig` or `backstage.extraAppConfig` still overrides it
   engine: sqlite
 
   # -- Settings for the PostgreSQL database (only used when engine is "postgresql")
