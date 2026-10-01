@@ -227,86 +227,45 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
-  it('should return correct payload for muster index page', () => {
-    const result = getTelemetryPageViewPayload('/agent-platform/muster');
-    expect(result).toEqual({
-      page: 'Muster index',
-      path: '/agent-platform/muster',
-    });
-  });
-
-  it('should return correct payload for muster servers view', () => {
-    const result = getTelemetryPageViewPayload(
-      '/agent-platform/muster/servers',
-    );
-    expect(result).toEqual({
-      page: 'Muster',
-      view: 'servers',
-      path: '/agent-platform/muster/servers',
-    });
-  });
-
-  it('should return correct payload for muster workflows view', () => {
-    const result = getTelemetryPageViewPayload(
-      '/agent-platform/muster/workflows',
-    );
-    expect(result).toEqual({
-      page: 'Muster',
-      view: 'workflows',
-      path: '/agent-platform/muster/workflows',
-    });
-  });
-
-  it('should return correct payload for a muster workflow detail sub-route', () => {
-    const result = getTelemetryPageViewPayload(
-      '/agent-platform/muster/workflows/my-workflow',
-    );
-    expect(result).toEqual({
-      page: 'Muster',
-      view: 'workflows',
-      path: '/agent-platform/muster/workflows/my-workflow',
-    });
-  });
-
   it.each([
-    ['/agent-platform/muster/servers/kubernetes', 'tools'],
-    ['/agent-platform/muster/servers/kubernetes/overview', 'overview'],
-    ['/agent-platform/muster/servers/kubernetes/instances', 'instances'],
-  ])('should report %s as a server page', (path, view) => {
-    expect(getTelemetryPageViewPayload(path)).toEqual({
-      page: 'MCP server',
-      view,
-      path,
-    });
-  });
-
-  it('should report a tool page beneath its server', () => {
-    const path =
-      '/agent-platform/muster/servers/kubernetes/tools/x_kubernetes_get_pods';
-    expect(getTelemetryPageViewPayload(path)).toEqual({
-      page: 'MCP tool',
-      path,
-    });
-  });
-
-  it('should keep the registration wizard on the servers view', () => {
-    expect(
-      getTelemetryPageViewPayload('/agent-platform/muster/servers/new/auth'),
-    ).toEqual({
-      page: 'Muster',
-      view: 'servers',
-      path: '/agent-platform/muster/servers/new/auth',
-    });
-  });
-
-  it('should return correct payload for muster tools view', () => {
-    const result = getTelemetryPageViewPayload('/agent-platform/muster/tools');
-    expect(result).toEqual({
-      page: 'Muster',
-      view: 'tools',
-      path: '/agent-platform/muster/tools',
-    });
-  });
+    ['/agent-platform/mcp-servers', { page: 'MCP Servers' }],
+    [
+      '/agent-platform/mcp-servers/new',
+      { page: 'MCP server registration', view: 'server' },
+    ],
+    [
+      '/agent-platform/mcp-servers/new/auth',
+      { page: 'MCP server registration', view: 'auth' },
+    ],
+    [
+      '/agent-platform/mcp-servers/kubernetes',
+      { page: 'MCP server', view: 'tools' },
+    ],
+    [
+      '/agent-platform/mcp-servers/kubernetes/overview',
+      { page: 'MCP server', view: 'overview' },
+    ],
+    [
+      '/agent-platform/mcp-servers/kubernetes/instances',
+      { page: 'MCP server', view: 'instances' },
+    ],
+    [
+      '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
+      { page: 'MCP tool' },
+    ],
+    // A server named like a wizard step is not one: only `new` is.
+    [
+      '/agent-platform/mcp-servers/newsroom',
+      { page: 'MCP server', view: 'tools' },
+    ],
+    ['/agent-platform/workflows', { page: 'Workflows' }],
+    ['/agent-platform/workflows/my-workflow', { page: 'Workflow' }],
+  ])(
+    'should report muster tab path %s under its own page name',
+    (path, payload) => {
+      expect(getTelemetryPageViewPayload(path)).toEqual({ ...payload, path });
+    },
+  );
 
   it('should return correct payload for the sessions tab', () => {
     // Reported as its own page rather than falling through to the generic
@@ -519,17 +478,14 @@ describe('getTelemetryPageViewPayload', () => {
       '/flux/tree',
       '/ai-chat',
       '/ai-chat/history',
-      '/agent-platform/muster',
-      // Registered: redirects to servers, but a bookmark still reports a view.
-      '/agent-platform/muster/dashboard',
-      '/agent-platform/muster/servers',
-      '/agent-platform/muster/servers/kubernetes',
-      '/agent-platform/muster/servers/kubernetes/overview',
-      '/agent-platform/muster/servers/kubernetes/tools/x_kubernetes_get_pods',
-      '/agent-platform/muster/workflows',
-      '/agent-platform/muster/workflows/my-workflow',
-      '/agent-platform/muster/workflows/my-workflow/run',
-      '/agent-platform/muster/tools',
+      '/agent-platform/mcp-servers',
+      '/agent-platform/mcp-servers/new',
+      '/agent-platform/mcp-servers/new/verify',
+      '/agent-platform/mcp-servers/kubernetes',
+      '/agent-platform/mcp-servers/kubernetes/overview',
+      '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
+      '/agent-platform/workflows',
+      '/agent-platform/workflows/my-workflow',
       '/agent-platform',
       '/agent-platform/agents/new',
       '/agent-platform/agents/new/skills',

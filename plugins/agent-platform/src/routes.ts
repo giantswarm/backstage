@@ -71,9 +71,9 @@ export const sessionDetailRouteRef = createSubRouteRef({
   parent: sessionsRouteRef,
 });
 
-// The "Usage" tab (`/agent-platform/usage`). Last of this plugin's own tabs —
-// `plugin.tsx` declares it after `modelsSubPage`, giving Sessions · Agents ·
-// Models · Usage, then muster's MCP Servers. Tab order lives there, not here.
+// The "Usage" tab (`/agent-platform/usage`), the last of the row: Sessions ·
+// Agents · Models · MCP Servers · Workflows · Usage: the Usage sub-page ships in
+// `agentPlatformUsageModule` to land last (see plugin.tsx and App.tsx).
 //
 // Like the Models tab, this one carries a **second-level tab row**, one
 // sub-route per view, and its index redirects to the first. The split is not
@@ -131,15 +131,25 @@ export const gpuCapacityRouteRef = createSubRouteRef({
 });
 
 /**
- * muster's Tool Explorer, where an agent's Muster-provided tools can actually be
- * inspected and tried.
+ * muster's MCP Servers tab (`/agent-platform/mcp-servers`): the servers table,
+ * with the muster session gate and a search over server and tool names.
  *
  * Resolves automatically when the muster plugin is enabled (it registers this
- * target), and is unbound otherwise — in which case the agent details page names
- * the MCP server without linking anywhere.
+ * target), and is unbound otherwise -- every call site handles `undefined`.
  */
-export const musterToolExplorerExternalRouteRef = createExternalRouteRef({
-  defaultTarget: 'muster.toolExplorer',
+export const musterServersExternalRouteRef = createExternalRouteRef({
+  defaultTarget: 'muster.mcpServers',
+});
+
+/**
+ * A tool's page beneath the MCP server offering it
+ * (`/agent-platform/mcp-servers/<server>/tools/<tool>`), where the tool can be
+ * inspected and run. `server` is the server page segment (the family name for
+ * a family, `muster` for muster's own tools), `tool` the full muster name.
+ */
+export const musterServerToolExternalRouteRef = createExternalRouteRef({
+  params: ['server', 'tool'],
+  defaultTarget: 'muster.mcpServerTool',
 });
 
 /**

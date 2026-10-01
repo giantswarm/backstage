@@ -8,7 +8,7 @@ import {
 } from '@backstage/frontend-test-utils';
 
 import { musterApiRef } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import { McpServersRouter } from '../McpServersRouter';
 
 // The wizard registers onto the section's active installation; the section
@@ -59,7 +59,7 @@ function renderWizard(path: string) {
       <QueryClientProvider client={queryClient}>
         <Routes>
           <Route
-            path="/agent-platform/muster/servers/*"
+            path="/agent-platform/mcp-servers/*"
             element={<McpServersRouter />}
           />
         </Routes>
@@ -67,7 +67,7 @@ function renderWizard(path: string) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
     },
   );
 }
@@ -93,14 +93,14 @@ describe('NewMcpServerPage', () => {
   });
 
   it('renders the details step with its step label', async () => {
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     expect(screen.getByText('Step 1 of 4: Details')).toBeInTheDocument();
     expect(screen.getByText('Register an MCP server')).toBeInTheDocument();
   });
 
   it('derives the technical name from the display name', async () => {
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     await userEvent.type(screen.getByLabelText(/^Name/), 'Weather (remote)');
 
@@ -110,7 +110,7 @@ describe('NewMcpServerPage', () => {
   });
 
   it('surfaces validation on Continue and stays on the step', async () => {
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     await userEvent.click(
       screen.getAllByRole('button', { name: 'Continue' })[0],
@@ -124,7 +124,7 @@ describe('NewMcpServerPage', () => {
   });
 
   it('continues to the authentication step once the details are valid', async () => {
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
     await userEvent.type(
@@ -141,7 +141,7 @@ describe('NewMcpServerPage', () => {
   });
 
   it('takes request metadata as NAME=value lines', async () => {
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     await userEvent.type(
       screen.getByLabelText(/Request metadata/),
@@ -154,7 +154,7 @@ describe('NewMcpServerPage', () => {
   });
 
   it('flags request metadata the composed map would swallow', async () => {
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
     await userEvent.type(
@@ -182,7 +182,7 @@ describe('NewMcpServerPage', () => {
       reachable: true,
       requiresAuth: false,
     });
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     await userEvent.type(
       screen.getByLabelText(/^URL/),
@@ -209,7 +209,7 @@ describe('NewMcpServerPage', () => {
       reachable: true,
       requiresAuth: false,
     });
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     await userEvent.type(
       screen.getByLabelText(/^URL/),
@@ -234,7 +234,7 @@ describe('NewMcpServerPage', () => {
 
   it('degrades silently to manual selection when detection is inconclusive', async () => {
     callTool.mockResolvedValue({ transport: 'unknown', reachable: false });
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     await userEvent.type(
       screen.getByLabelText(/^URL/),
@@ -253,7 +253,7 @@ describe('NewMcpServerPage', () => {
     callTool.mockRejectedValue(
       new Error('Tool execution failed: unknown tool: mcpserver_detect'),
     );
-    await renderWizard('/agent-platform/muster/servers/new');
+    await renderWizard('/agent-platform/mcp-servers/new');
 
     await userEvent.type(
       screen.getByLabelText(/^URL/),

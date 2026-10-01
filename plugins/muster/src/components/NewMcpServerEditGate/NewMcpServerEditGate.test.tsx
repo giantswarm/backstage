@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { Link, Routes, Route } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
 import {
   MusterInstance,
@@ -77,11 +77,11 @@ function Section({ isLoading }: { isLoading?: boolean }) {
   return (
     <MusterInstanceContext.Provider value={instance(active, isLoading)}>
       <button onClick={() => setActive('golem')}>switch to golem</button>
-      <Link to="/agent-platform/muster/servers/new">new registration</Link>
-      <Link to="/agent-platform/muster/servers/new?edit=miro">edit miro</Link>
+      <Link to="/agent-platform/mcp-servers/new">new registration</Link>
+      <Link to="/agent-platform/mcp-servers/new?edit=miro">edit miro</Link>
       <Routes>
         <Route
-          path="/agent-platform/muster/servers/*"
+          path="/agent-platform/mcp-servers/*"
           element={<McpServersRouter />}
         />
       </Routes>
@@ -92,13 +92,13 @@ function Section({ isLoading }: { isLoading?: boolean }) {
 function renderSection(path: string, isLoading?: boolean) {
   return renderInTestApp(<Section isLoading={isLoading} />, {
     initialRouteEntries: [path],
-    mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+    mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
   });
 }
 
 describe('NewMcpServerEditGate', () => {
   it('seeds the wizard from ?edit on the active installation', async () => {
-    await renderSection('/agent-platform/muster/servers/new?edit=miro');
+    await renderSection('/agent-platform/mcp-servers/new?edit=miro');
 
     expect(
       await screen.findByText('Edit MCP server: miro'),
@@ -107,7 +107,7 @@ describe('NewMcpServerEditGate', () => {
   });
 
   it('never opens the wizard for a GitOps-managed server, even by link', async () => {
-    await renderSection('/agent-platform/muster/servers/new?edit=github');
+    await renderSection('/agent-platform/mcp-servers/new?edit=github');
 
     expect(
       await screen.findByText('This server is managed in Git'),
@@ -119,7 +119,7 @@ describe('NewMcpServerEditGate', () => {
   });
 
   it('waits for the server list before deciding', async () => {
-    await renderSection('/agent-platform/muster/servers/new?edit=miro', true);
+    await renderSection('/agent-platform/mcp-servers/new?edit=miro', true);
 
     expect(await screen.findByRole('progressbar')).toBeInTheDocument();
     expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();
@@ -127,7 +127,7 @@ describe('NewMcpServerEditGate', () => {
   });
 
   it('ends the edit when the header switches installation', async () => {
-    await renderSection('/agent-platform/muster/servers/new?edit=miro');
+    await renderSection('/agent-platform/mcp-servers/new?edit=miro');
     await screen.findByText('Edit MCP server: miro');
 
     await userEvent.click(
@@ -146,7 +146,7 @@ describe('NewMcpServerEditGate', () => {
   });
 
   it('brings a draft back once the edit is left', async () => {
-    await renderSection('/agent-platform/muster/servers/new');
+    await renderSection('/agent-platform/mcp-servers/new');
     await userEvent.type(
       screen.getByLabelText(/^URL/),
       'https://draft.example.com/mcp',

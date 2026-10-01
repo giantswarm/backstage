@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { musterApiRef } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import { MANAGEMENT_CLUSTER_LABEL, MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
 
@@ -223,7 +223,7 @@ async function renderAt(path: string, api = makeApi()) {
     <QueryClientProvider client={queryClient}>
       <Routes>
         <Route
-          path="/agent-platform/muster/servers/*"
+          path="/agent-platform/mcp-servers/*"
           element={
             <>
               <McpServersRouter />
@@ -235,14 +235,14 @@ async function renderAt(path: string, api = makeApi()) {
     </QueryClientProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
       apis: [[musterApiRef, api as never]],
     },
   );
   return api;
 }
 
-const BASE = '/agent-platform/muster/servers';
+const BASE = '/agent-platform/mcp-servers';
 
 function CurrentPath() {
   const { pathname, search } = useLocation();

@@ -6,18 +6,20 @@ including execution history with live per-step status.
 
 ## Features
 
-- **MCP servers** (`/agent-platform/muster/servers`): one table of the
+- **MCP servers** (`/agent-platform/mcp-servers`, the Agent Platform's MCP
+  Servers tab): one table of the
   installation's servers -- a server family one row, muster itself one row --
   searchable by server and tool name (`?q=`).
-- **Server page** (`/agent-platform/muster/servers/:server?installation=…`):
+- **Server page** (`/agent-platform/mcp-servers/:server?installation=…`):
   one page per MCP server, server family or muster itself (`muster`), with
   the tabs Tools (the page's index), Resources, Prompts, -- for a family --
   Instances, and Overview, and the server's actions in the page header.
-- **Tool page** (`/agent-platform/muster/servers/:server/tools/:tool`): a
+- **Tool page** (`/agent-platform/mcp-servers/:server/tools/:tool`): a
   tool's description, markers and input schema, and a typed form to run it.
-- **Workflows list** (`/agent-platform/muster/workflows`): all workflows known
+- **Workflows list** (`/agent-platform/workflows`, the Agent Platform's
+  Workflows tab): all workflows known
   to the connected muster instance with description and availability.
-- **Workflow detail** (`/agent-platform/muster/workflows/:name`): the workflow definition
+- **Workflow detail** (`/agent-platform/workflows/:name`): the workflow definition
   rendered as a vertical flow diagram (one node per step, dashed side edges
   for `condition.from_step` dependencies) built on
   [`@xyflow/react`](https://reactflow.dev/).

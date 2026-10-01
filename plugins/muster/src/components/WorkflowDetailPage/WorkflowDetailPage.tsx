@@ -42,7 +42,9 @@ import {
   StateBadge,
   VIOLET,
 } from '../shared';
-import { toolExplorerRouteRef, workflowDetailRouteRef } from '../../routes';
+import { workflowDetailRouteRef } from '../../routes';
+import { useServerPageLinks } from '../shared';
+import { MUSTER_SERVER_KEY } from '../../lib/serverGrouping';
 import { WorkflowStepCard } from './WorkflowStepCard';
 import { WorkflowStatsPanel } from './WorkflowStatsPanel';
 import { ExecutionHistoryPanel } from './ExecutionHistoryPanel';
@@ -194,7 +196,7 @@ function WorkflowDetailContent() {
   const navigate = useNavigate();
   const musterApi = useApi(musterApiRef);
   const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
-  const toolExplorerLink = useRouteRef(toolExplorerRouteRef);
+  const links = useServerPageLinks();
   const { workflows, isLoading, activeInstallation } = useMusterInstance();
 
   const [selectedExecutionId, setSelectedExecutionId] = useState<string>();
@@ -266,25 +268,18 @@ function WorkflowDetailContent() {
   const created = workflow.getCreatedTimestamp();
   const referencingTool = `workflow_${name}`;
 
-  // Running a workflow is just executing its `workflow_<name>` aggregated tool,
-  // so "Run" lands on the unified execution surface (the tool explorer) with
-  // that tool preselected and its argument form ready.
-  const runExplorerLink = (() => {
-    const base = toolExplorerLink?.() ?? '#';
-    const params = new URLSearchParams();
-    if (installation) {
-      params.set('installation', installation);
-    }
-    params.set('tool', referencingTool);
-    return `${base}?${params.toString()}`;
-  })();
+  // Running a workflow is executing its `workflow_<name>` tool, one of
+  // muster's own: "Run" opens that tool's page under muster's server page,
+  // with its argument form ready.
+  const runLink =
+    links.tool(MUSTER_SERVER_KEY, referencingTool, installation) ?? '#';
 
   const runButton = (
     <Button
       color="primary"
       variant="contained"
       startIcon={<PlayArrowIcon />}
-      onClick={() => navigate(runExplorerLink)}
+      onClick={() => navigate(runLink)}
     >
       Run
     </Button>
@@ -362,7 +357,7 @@ function WorkflowDetailContent() {
           <SectionHeader
             icon={<BarChart />}
             title="Statistics"
-            description="How often this workflow runs and how reliably, over a recent sample of executions recorded by muster's workflow engine (engine- and agent-driven runs). A run launched from the tool explorer is not recorded here; its result is shown inline there."
+            description="How often this workflow runs and how reliably, over a recent sample of executions recorded by muster's workflow engine (engine- and agent-driven runs). A run started from the workflow's tool page is not recorded here; its result is shown on that page."
           />
           <WorkflowStatsPanel name={name} installation={installation} />
         </Box>
@@ -468,7 +463,7 @@ function WorkflowDetailContent() {
           <SectionHeader
             icon={<History />}
             title="Executions"
-            description="Engine- and agent-driven runs of this workflow and their per-step results, as recorded by muster's aggregator. Runs launched from the tool explorer execute the aggregated tool directly and do not appear here."
+            description="Engine- and agent-driven runs of this workflow and their per-step results, as recorded by muster's aggregator. Runs started from the workflow's tool page execute the aggregated tool directly and do not appear here."
           />
           <Grid container>
             <Grid item xs={12} md={4}>

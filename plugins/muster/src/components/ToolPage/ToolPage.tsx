@@ -18,7 +18,7 @@ import { useServerTools } from '../ServerPage/useServerPageData';
 /**
  * One tool's page, beneath the server offering it: its short and full name,
  * markers, description and input schema, and the typed argument form that runs
- * it -- the Tool explorer's detail panel, on a page of its own. A family's
+ * it, on a page of its own beneath the server. A family's
  * grouped tool asks for the family's instance argument like any other
  * required parameter.
  */

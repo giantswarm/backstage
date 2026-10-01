@@ -9,7 +9,7 @@ import {
 
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import { McpServersRouter } from '../McpServersRouter';
 
 const connect = jest.fn();
@@ -83,7 +83,7 @@ function renderWizard(path: string) {
         <BrowserBack />
         <Routes>
           <Route
-            path="/agent-platform/muster/servers/*"
+            path="/agent-platform/mcp-servers/*"
             element={<McpServersRouter />}
           />
         </Routes>
@@ -91,14 +91,14 @@ function renderWizard(path: string) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
     },
   );
 }
 
 /** Walks the real flow: details → auth → review. */
 async function renderReviewStep() {
-  const result = await renderWizard('/agent-platform/muster/servers/new');
+  const result = await renderWizard('/agent-platform/mcp-servers/new');
   await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
   await userEvent.type(
     screen.getByLabelText(/^URL/),
@@ -129,7 +129,7 @@ describe('NewMcpServerReviewPage', () => {
   });
 
   it('sends a deep link back to step 1 while the form is incomplete', async () => {
-    await renderWizard('/agent-platform/muster/servers/new/review');
+    await renderWizard('/agent-platform/mcp-servers/new/review');
 
     expect(await screen.findByText('Step 1 of 4: Details')).toBeInTheDocument();
     expect(
@@ -286,7 +286,7 @@ describe('NewMcpServerReviewPage', () => {
       ),
     ];
     callTool.mockResolvedValue({});
-    await renderWizard('/agent-platform/muster/servers/new?edit=miro');
+    await renderWizard('/agent-platform/mcp-servers/new?edit=miro');
 
     expect(
       await screen.findByText('Edit MCP server: miro'),
@@ -327,7 +327,7 @@ describe('NewMcpServerReviewPage', () => {
   });
 
   it('says so when the server to edit does not exist', async () => {
-    await renderWizard('/agent-platform/muster/servers/new?edit=nope');
+    await renderWizard('/agent-platform/mcp-servers/new?edit=nope');
 
     expect(await screen.findByText('Server not found')).toBeInTheDocument();
     expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();

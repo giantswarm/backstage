@@ -16,7 +16,7 @@ import { lab } from './lab';
  * only the negative runs: the gate is absent and the Servers view renders.
  */
 
-const serversPath = '/agent-platform/muster/servers';
+const serversPath = '/agent-platform/mcp-servers';
 /** The sentence the gate opens with for a 401 (`inventoryFailureCopy`). */
 const rejectedToken = /rejected the portal's token/;
 

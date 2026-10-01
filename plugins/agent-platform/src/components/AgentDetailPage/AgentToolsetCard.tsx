@@ -19,10 +19,14 @@ import {
   parseSelector,
   labelOfPresetSelector,
   selectorLabel,
+  serverPageOfTool,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
-import { musterToolExplorerExternalRouteRef } from '../../routes';
+import {
+  musterServerToolExternalRouteRef,
+  musterServersExternalRouteRef,
+} from '../../routes';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
 const useStyles = makeStyles(theme => ({
@@ -152,13 +156,30 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     [selectors, catalogue.tools, servers, catalogue.serversRequiringAuth],
   );
 
-  const toolExplorerRoute = useRouteRef(musterToolExplorerExternalRouteRef);
-  const toolHref = toolExplorerRoute
-    ? (name: string) =>
-        `${toolExplorerRoute()}?installation=${encodeURIComponent(
-          installation,
-        )}&tool=${encodeURIComponent(name)}`
-    : undefined;
+  // Each tool links to its page beneath the server offering it; a tool
+  // nothing attributes lands on the servers list, searched for its name.
+  const serversRoute = useRouteRef(musterServersExternalRouteRef);
+  const toolRoute = useRouteRef(musterServerToolExternalRouteRef);
+  const toolsByName = useMemo(
+    () =>
+      new Map(
+        [...catalogue.tools, ...resolution.tools].map(tool => [
+          tool.name,
+          tool,
+        ]),
+      ),
+    [catalogue.tools, resolution.tools],
+  );
+  const scope = `?installation=${encodeURIComponent(installation)}`;
+  const toolHref = (name: string): string | undefined => {
+    const server = serverPageOfTool(toolsByName.get(name) ?? { name }, servers);
+    if (server && toolRoute) {
+      return `${toolRoute({ server, tool: name })}${scope}`;
+    }
+    return serversRoute
+      ? `${serversRoute()}${scope}&q=${encodeURIComponent(name)}`
+      : undefined;
+  };
 
   let body: React.ReactNode;
   if (declared.state === 'no-gateway') {

@@ -58,11 +58,6 @@ test.describe('second-level tabs', () => {
       'Your sessions',
       'MCP tools',
     ] as const,
-    '/agent-platform/muster': [
-      'Servers',
-      'Workflows',
-      'Tool explorer',
-    ] as const,
   };
 
   for (const [path, names] of Object.entries(subTabs)) {

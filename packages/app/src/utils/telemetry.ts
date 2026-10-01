@@ -126,39 +126,45 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
-    case pathname === '/agent-platform/muster':
-      payload = { page: 'Muster index' };
+    // muster's two Agent Platform tabs, above the generic agent-platform cases
+    // below, which would report them as the Agents page.
+    case pathname === '/agent-platform/mcp-servers':
+      payload = { page: 'MCP Servers' };
       break;
 
+    case /^\/agent-platform\/mcp-servers\/new(\/|$)/.test(pathname): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'MCP server registration',
+        // The wizard's first step is its index.
+        view: parts[4] || 'server',
+      };
+      break;
+    }
+
     // A tool's page beneath its server, and a server's page with its tab as
-    // the view. Above the generic muster case, which would report both as
-    // the servers list. The wizard's `servers/new…` steps stay there.
-    case /^\/agent-platform\/muster\/servers\/[^/]+\/tools\/[^/]+/.test(
-      pathname,
-    ):
+    // the view.
+    case /^\/agent-platform\/mcp-servers\/[^/]+\/tools\/[^/]+/.test(pathname):
       payload = { page: 'MCP tool' };
       break;
 
-    case /^\/agent-platform\/muster\/servers\/(?!new(\/|$))[^/]+/.test(
-      pathname,
-    ): {
+    case pathname.startsWith('/agent-platform/mcp-servers/'): {
       const parts = pathname.split('/');
       payload = {
         page: 'MCP server',
         // Tools is the server page's index.
-        view: parts[5] || 'tools',
+        view: parts[4] || 'tools',
       };
       break;
     }
 
-    case pathname.startsWith('/agent-platform/muster'): {
-      const parts = pathname.split('/');
-      payload = {
-        page: 'Muster',
-        view: parts[3],
-      };
+    case pathname === '/agent-platform/workflows':
+      payload = { page: 'Workflows' };
       break;
-    }
+
+    case pathname.startsWith('/agent-platform/workflows/'):
+      payload = { page: 'Workflow' };
+      break;
 
     // Must stay above the generic '/agent-platform' cases below, for the reason
     // the Sessions and Usage cases give: without these the Models tab reports as

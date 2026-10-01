@@ -16,7 +16,9 @@ import { plansPluginOverrides } from './modules/plans';
 import { roadmapPluginOverrides } from './modules/roadmap';
 import { repositoriesPluginOverrides } from './modules/repositories';
 import { platformCapabilitiesPluginOverrides } from './modules/platform-capabilities';
-import agentPlatformPlugin from '@giantswarm/backstage-plugin-agent-platform';
+import agentPlatformPlugin, {
+  agentPlatformUsageModule,
+} from '@giantswarm/backstage-plugin-agent-platform';
 import plansPlugin from '@giantswarm/backstage-plugin-plans';
 import roadmapPlugin from '@giantswarm/backstage-plugin-roadmap';
 import repositoriesPlugin from '@giantswarm/backstage-plugin-repositories';
@@ -64,13 +66,16 @@ const app = createApp({
     aiChatPlugin,
     aiChatPluginOverrides,
     // Order matters: `agentPlatformPlugin` must come before `musterPlugin`.
-    // The Agent Platform page's level-1 tabs are gathered in feature-registration
-    // order — agent-platform contributes its own tabs, of which "Sessions" is the
-    // first, and muster attaches the "MCP Servers" tab externally
-    // (`attachTo: page:agent-platform`). Registering agent-platform first keeps
-    // Sessions as the first tab (and the tab a bare `/agent-platform` lands on).
-    // Reordering here flips the tabs.
+    // The Agent Platform page gathers its level-1 tabs in registration order:
+    // agent-platform's own (Sessions, Agents, Models), then muster's (MCP
+    // Servers, Workflows, `attachTo: page:agent-platform`), then the Usage tab,
+    // which `agentPlatformUsageModule` brings -- a module's own extensions
+    // attach after every plugin's. Registering agent-platform first keeps
+    // Sessions as the first tab (and the tab a bare `/agent-platform` lands
+    // on). Deployments render their own `app.extensions`, so the order must
+    // not depend on it.
     agentPlatformPlugin,
+    agentPlatformUsageModule,
     musterPlugin,
     musterPluginOverrides,
     plansPluginOverrides,

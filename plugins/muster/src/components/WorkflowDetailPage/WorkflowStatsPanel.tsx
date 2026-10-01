@@ -187,7 +187,7 @@ export function WorkflowStatsPanel({
     return (
       <Typography variant="body2" color="textSecondary">
         No engine- or agent-driven executions recorded for this workflow yet.
-        Runs launched from the tool explorer are not recorded here.
+        Runs started from the workflow's tool page are not recorded here.
       </Typography>
     );
   }

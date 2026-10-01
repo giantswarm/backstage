@@ -8,7 +8,7 @@ import {
 } from '@backstage/frontend-test-utils';
 
 import { musterApiRef, type McpServerRuntime } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
 
@@ -73,7 +73,7 @@ function renderWizard(path: string) {
       <QueryClientProvider client={queryClient}>
         <Routes>
           <Route
-            path="/agent-platform/muster/servers/*"
+            path="/agent-platform/mcp-servers/*"
             element={<McpServersRouter />}
           />
         </Routes>
@@ -81,7 +81,7 @@ function renderWizard(path: string) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
     },
   );
 }
@@ -89,7 +89,7 @@ function renderWizard(path: string) {
 /** Walks the real flow to a registered server so the verify step has one. */
 async function renderVerifyStep() {
   callTool.mockResolvedValue({});
-  const result = await renderWizard('/agent-platform/muster/servers/new');
+  const result = await renderWizard('/agent-platform/mcp-servers/new');
   await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
   await userEvent.type(
     screen.getByLabelText(/^URL/),
@@ -126,7 +126,7 @@ describe('NewMcpServerVerifyPage', () => {
   });
 
   it('sends a deep link with nothing registered back to step 1', async () => {
-    await renderWizard('/agent-platform/muster/servers/new/verify');
+    await renderWizard('/agent-platform/mcp-servers/new/verify');
 
     expect(await screen.findByText('Step 1 of 4: Details')).toBeInTheDocument();
     expect(screen.queryByText('Step 4 of 4: Verify')).not.toBeInTheDocument();
@@ -163,7 +163,7 @@ describe('NewMcpServerVerifyPage', () => {
 
     try {
       callTool.mockResolvedValue({});
-      await renderWizard('/agent-platform/muster/servers/new');
+      await renderWizard('/agent-platform/mcp-servers/new');
       fireEvent.change(screen.getByLabelText(/^Name/), {
         target: { value: 'Weather' },
       });
@@ -377,9 +377,7 @@ describe('NewMcpServerVerifyPage', () => {
       listServers.mockResolvedValue({
         mcpServers: [runtime({ state: 'Connected' })],
       });
-      await renderWizard(
-        '/agent-platform/muster/servers/new/verify?edit=weather',
-      );
+      await renderWizard('/agent-platform/mcp-servers/new/verify?edit=weather');
 
       expect(await screen.findByText('Applying changes…')).toBeInTheDocument();
       expect(screen.queryByText('Connected')).not.toBeInTheDocument();
@@ -436,9 +434,7 @@ describe('NewMcpServerVerifyPage', () => {
       listServers.mockResolvedValue({
         mcpServers: [runtime({ state: 'Connected' })],
       });
-      await renderWizard(
-        '/agent-platform/muster/servers/new/verify?edit=weather',
-      );
+      await renderWizard('/agent-platform/mcp-servers/new/verify?edit=weather');
 
       expect(await screen.findByText('Connected')).toBeInTheDocument();
       expect(screen.queryByText('Applying changes…')).not.toBeInTheDocument();

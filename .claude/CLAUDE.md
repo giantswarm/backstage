@@ -184,7 +184,8 @@ All plugins live under `plugins/` and are published under the
 - **`agent-platform`** - Agent Platform: scaffolder-driven agent creation
   (kagent), ported from the APUI prototype
 
-- **`muster`** - Muster (MCP tool aggregator) UI, incl. the Tool Explorer
+- **`muster`** - Muster (MCP tool aggregator) UI: the Agent Platform's MCP
+  Servers tab (servers table, a page per server and per tool) and Workflows tab
 
 - **`plans`** - Plans feature
 

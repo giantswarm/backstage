@@ -23,13 +23,14 @@ function ScrollToTop() {
 }
 
 /**
- * Routing within the Servers view: the server manager, a page per server (and
- * per tool beneath it) and the registration wizard's steps. The wizard's
- * static `new` segments outrank `:server`. The steps are sub-routes sharing one NewMcpServerFormProvider
- * so the composed definition survives navigation across
- * `/agent-platform/muster/servers/new` and its step sub-routes — the same
- * shape as agent creation's AgentsRouter. Mounted inside MusterProviders by
- * MusterSection, so the wizard shares the section's active installation.
+ * Routing within the Agent Platform's MCP Servers tab: the servers table, a
+ * page per server (and per tool beneath it) and the registration wizard's
+ * steps. The wizard's static `new` segments outrank `:server`. The steps are
+ * sub-routes sharing one NewMcpServerFormProvider so the composed definition
+ * survives navigation across `/agent-platform/mcp-servers/new` and its step
+ * sub-routes — the same shape as agent creation's AgentsRouter. Mounted inside
+ * MusterProviders by the MCP Servers sub-page, so the wizard shares the tab's
+ * active installation.
  * Editing a registered server runs through the same steps with `?edit=<name>`
  * (see NewMcpServerEditGate), so the routes — and their telemetry page names —
  * are the same for both.

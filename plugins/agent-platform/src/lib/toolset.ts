@@ -335,7 +335,7 @@ export type ToolsetCarrier = Pick<
  * the gateway into a `RemoteMCPServer` **named after the agent** in its own
  * namespace (the per-agent toolset carrier), and a hand-written template may
  * still bind a shared gateway server by the conventional name. A name match,
- * like the detail page's Tool Explorer link: any other server is some other
+ * like the detail page's link to muster's MCP servers: any other server is some other
  * MCP server, whatever its URL.
  */
 export function isGatewayBinding(
@@ -476,7 +476,7 @@ export function surfaceName(server: ServerInfo): string {
 /**
  * The server surface a tool belongs to, by muster's `server` field when the
  * aggregator reports one, else by the longest matching `x_<segment>` prefix
- * (the way the Tool Explorer attributes tools on older aggregators).
+ * (the way muster's server pages attribute tools on older aggregators).
  */
 export function serverOfTool(
   tool: Pick<ToolSummary, 'name' | 'server'>,
@@ -495,6 +495,26 @@ export function serverOfTool(
     }
   }
   return best ? surfaceName(best) : undefined;
+}
+
+/**
+ * The muster server page a tool is found on -- the `<server>` segment of
+ * `/agent-platform/mcp-servers/<server>/tools/<tool>`: `muster` for muster's
+ * own tools and workflows, the family name for a family (also for a tool muster
+ * exposes per instance, whose `server` is the instance), the CR name for a
+ * singular server. Undefined when nothing attributes the tool.
+ */
+export function serverPageOfTool(
+  tool: Pick<ToolSummary, 'name' | 'server' | 'kind'>,
+  servers: ServerInfo[],
+): string | undefined {
+  if (isCoreTool(tool) || isWorkflowTool(tool)) {
+    return 'muster';
+  }
+  const instance = tool.server
+    ? servers.find(server => server.name === tool.server)
+    : undefined;
+  return instance ? surfaceName(instance) : serverOfTool(tool, servers);
 }
 
 export function isCoreTool(tool: Pick<ToolSummary, 'name' | 'kind'>): boolean {

@@ -120,7 +120,7 @@ export function unreachableFailure(
 
 /**
  * Whether the session's only problem is that the backend cannot reach the
- * installation's muster from this portal. The live-MCP screens (tool explorer,
+ * installation's muster from this portal. The live-MCP screens (a server's Tools tab, a tool page,
  * MCP usage, the runtime state on the servers page) render the session gate's
  * "not reachable" note instead of their content when this is true; the
  * CRD-backed screens are unaffected. One predicate, so every screen agrees.
