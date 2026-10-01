@@ -88,7 +88,11 @@ This template in the backstage portal allows the user to deploy an app (Helm cha
 
 > I'm in the App Deployment template to deploy a chart to a cluster.
 
-In this case, use the `getSkill` tool to fetch information about `app-deployment-template`.
+The same applies when editing an existing deployment. Then the message will likely start like this:
+
+> I'm in the Edit App Deployment template to change the configuration of an existing deployment.
+
+In both cases, use the `getSkill` tool to fetch information about `app-deployment-template`.
 
 ## Tools
 
