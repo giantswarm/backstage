@@ -47,9 +47,32 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
   }
 }
 
+/**
+ * A tool as muster describes it (`describe_tool`): description, annotations
+ * and input schema. One cached request per tool and installation, shared by
+ * the panel and the page around it.
+ */
+export function useToolDescription(
+  name: string,
+  installation: string | undefined,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
+  const musterApi = useApi(musterApiRef);
+  return useQuery({
+    queryKey: ['muster', 'describe-tool', installation, name],
+    queryFn: () => musterApi.describeTool(name, installation),
+    enabled,
+  });
+}
+
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
+  /**
+   * Show the read-only / destructive markers above the description. Off where
+   * the page already shows them, as the tool page does beside the tool's name.
+   */
+  showMarkers?: boolean;
 }
 
 /**
@@ -59,7 +82,11 @@ export interface ToolDetailPanelProps {
  * exposes; the trust boundary is the downstream MCP server's deployment (e.g.
  * mcp-kubernetes is deployed read-only), not the portal.
  */
-export function ToolDetailPanel({ name, installation }: ToolDetailPanelProps) {
+export function ToolDetailPanel({
+  name,
+  installation,
+  showMarkers = true,
+}: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
 
   const storageKey = argsKey(installation, name);
@@ -77,10 +104,7 @@ export function ToolDetailPanel({ name, installation }: ToolDetailPanelProps) {
     setFieldErrors({});
   }, [storageKey]);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['muster', 'describe-tool', installation, name],
-    queryFn: () => musterApi.describeTool(name, installation),
-  });
+  const { data, isLoading, error } = useToolDescription(name, installation);
 
   const fields = useMemo(() => schemaFields(data?.inputSchema), [data]);
 
@@ -169,7 +193,7 @@ export function ToolDetailPanel({ name, installation }: ToolDetailPanelProps) {
 
   return (
     <Box>
-      {hasMarkers(data?.annotations) && (
+      {showMarkers && hasMarkers(data?.annotations) && (
         <Box mt="1">
           <ToolMarkers annotations={data?.annotations} />
         </Box>
