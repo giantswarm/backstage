@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -8,7 +9,26 @@ import {
   MusterInstance,
   MusterInstanceContext,
 } from '../MusterInstanceProvider';
-import { WorkflowMutationActions } from './WorkflowMutationActions';
+import {
+  WorkflowDialog,
+  WorkflowDialogs,
+  WorkflowHeaderActions,
+} from './WorkflowMutationActions';
+
+/** The header buttons and the page's dialogs, wired as the workflow page does. */
+function AdHocActions({ workflow }: { workflow: MusterWorkflow }) {
+  const [dialog, setDialog] = useState<WorkflowDialog>();
+  return (
+    <>
+      <WorkflowHeaderActions onOpen={setDialog} />
+      <WorkflowDialogs
+        workflow={workflow}
+        open={dialog}
+        onClose={() => setDialog(undefined)}
+      />
+    </>
+  );
+}
 
 // The ad-hoc dialog embeds the CodeMirror-backed YamlEditorFormField, which
 // does not render under jsdom; the dialog's Save reads the seeded React state,
@@ -94,7 +114,7 @@ async function renderActions(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const actions = <WorkflowMutationActions workflow={workflow} />;
+  const actions = <AdHocActions workflow={workflow} />;
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
