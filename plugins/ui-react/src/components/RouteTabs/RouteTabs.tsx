@@ -13,7 +13,7 @@ export interface RouteTabSpec {
 export interface RouteTabsProps {
   tabs: RouteTabSpec[];
   /** The query string every tab link keeps, e.g. `?installation=gazelle`. */
-  search: string;
+  search?: string;
 }
 
 /**
@@ -27,7 +27,7 @@ export interface RouteTabsProps {
  * route), and the index matches exactly (its href is a prefix of every other
  * tab's).
  */
-export function RouteTabs({ tabs, search }: RouteTabsProps) {
+export function RouteTabs({ tabs, search = '' }: RouteTabsProps) {
   const basePath = useSplatBasePath();
 
   return (

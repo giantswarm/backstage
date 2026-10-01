@@ -1,9 +1,7 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Box, Typography, useTheme } from '@material-ui/core';
-import Check from '@material-ui/icons/Check';
-import Remove from '@material-ui/icons/Remove';
+import { Box, Typography } from '@material-ui/core';
 import { Flex } from '@backstage/ui';
 import {
   GitOpsIcon,
@@ -12,7 +10,7 @@ import {
   NotAvailable,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { workflowDetailRouteRef } from '../../../routes';
-import { StateBadge, toneColors } from '../../shared';
+import { AvailabilityBadge, StateBadge } from '../../shared';
 import { WorkflowRow } from '../WorkflowsDataProvider';
 
 const SOURCE_LABELS: Record<WorkflowRow['source'], string> = {
@@ -30,24 +28,6 @@ export const WorkflowColumns = {
 
 // The table's cells read as text, not pills: the icon carries the state.
 const ICON_STYLE = { fontSize: 16 };
-
-const AvailabilityCell = ({ available }: { available: boolean }) => {
-  const theme = useTheme();
-  return (
-    <Flex
-      align="center"
-      gap="1"
-      style={{
-        color: available
-          ? toneColors(theme, 'ok').text
-          : theme.palette.text.secondary,
-      }}
-    >
-      {available ? <Check style={ICON_STYLE} /> : <Remove style={ICON_STYLE} />}
-      {available ? 'Available' : 'Unavailable'}
-    </Flex>
-  );
-};
 
 const SourceCell = ({ source }: { source: WorkflowRow['source'] }) =>
   source === 'gitops' ? (
@@ -141,7 +121,7 @@ export const getInitialColumns = ({
       customSort: (a, b) => Number(a.available) - Number(b.available),
       render: row => (
         <Box display="flex" flexWrap="wrap" gridGap={4}>
-          <AvailabilityCell available={row.available} />
+          <AvailabilityBadge available={row.available} plain />
           {row.validationWarning && (
             <StateBadge tone="warning" label="Validation warning" />
           )}

@@ -2,12 +2,12 @@ import { useMemo } from 'react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { useQuery } from '@tanstack/react-query';
-import { musterApiRef } from '../../apis';
-import { MusterWorkflow } from '../../lib/k8s';
-import { serverPrefixInfos } from '../../lib/toolGrouping';
-import { serversOfTools, toolsOfWorkflow } from '../../lib/workflowTools';
-import { useMusterInstance } from '../MusterInstanceProvider';
-import { authStatusQueryKey, needsSignIn, ServerSignIn } from '../shared';
+import { musterApiRef } from '../../../apis';
+import { MusterWorkflow } from '../../../lib/k8s';
+import { serverPrefixInfos } from '../../../lib/toolGrouping';
+import { serversOfTools, toolsOfWorkflow } from '../../../lib/workflowTools';
+import { useMusterInstance } from '../../MusterInstanceProvider';
+import { authStatusQueryKey, needsSignIn, ServerSignIn } from '../../shared';
 
 /**
  * Names the servers a workflow's steps call that are waiting for the user's

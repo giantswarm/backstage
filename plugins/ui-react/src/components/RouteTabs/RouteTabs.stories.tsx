@@ -34,8 +34,8 @@ const meta = {
             'active state follows the URL, keeping the page’s query string.',
           whenToUse:
             'On a detail page whose sections each have a URL (a server page’s ' +
-            'Tools · Resources · Overview, a workflow’s Overview · Run · ' +
-            'Executions), rendered inside the page’s splat route with the ' +
+            'Tools · Resources · Overview, a workflow’s Overview · Run), ' +
+            'rendered inside the page’s splat route with the ' +
             'page’s own `<Routes>` below it. For tabs that only switch local ' +
             'state, use bui `Tabs` directly.',
           migration: 'bui',

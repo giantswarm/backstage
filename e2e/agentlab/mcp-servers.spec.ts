@@ -1,5 +1,11 @@
 import type { Page } from '@playwright/test';
-import { completeDexLogin, expect, open, test } from './fixtures';
+import {
+  completeDexLogin,
+  connectToMuster,
+  expect,
+  open,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -40,43 +46,11 @@ test('lists the installation servers in one table, muster included', async ({
   ).toBeVisible();
 });
 
-/**
- * Opens the muster session for the page's user when the page shows the gate.
- * The backend keeps that session server-side per user, so a page that
- * connected earlier in the run finds no gate — the same signed-in portal.
- *
- * The gate also renders while the session probe is still pending and unmounts
- * the moment the probe says authenticated, so a click can land on an element
- * that just left the DOM: click while it is there, judge by its absence.
- */
-async function connectToMuster(page: Page) {
-  const gate = page.getByRole('button', { name: 'Connect to muster' });
-  const table = page.getByRole('grid');
-  await expect(gate.or(table).first()).toBeVisible();
-  await expect
-    .poll(
-      async () => {
-        if (!(await gate.isVisible())) {
-          return 'connected';
-        }
-        await gate.click({ timeout: 2_000 }).catch(() => undefined);
-        return 'gate';
-      },
-      {
-        timeout: 90_000,
-        intervals: [1_000],
-        message:
-          'the muster session did not open within 90 s — the lab muster may be unhealthy (`kubectl -n agent-platform get pods`), or the backend cached an unreachable probe after a pod roll (5 min TTL)',
-      },
-    )
-    .toBe('connected');
-}
-
 test('searching a tool name narrows the list to the servers offering it', async ({
   admin,
 }) => {
   await open(admin, serversPath);
-  await connectToMuster(admin);
+  await connectToMuster(admin, admin.getByRole('grid'));
   await admin
     .getByRole('searchbox', { name: 'Search servers and tools' })
     .fill('mcpserver_list');
@@ -100,7 +74,7 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
 }) => {
   test.setTimeout(180_000);
   await open(admin, serversPath);
-  await connectToMuster(admin);
+  await connectToMuster(admin, admin.getByRole('grid'));
   await serverLink(admin, 'lab-oauth-fixture').click();
   await admin.getByRole('tab', { name: 'Overview' }).click();
 
@@ -143,7 +117,7 @@ test("a row opens its server page, with the server's tabs", async ({
   admin,
 }) => {
   await open(admin, serversPath);
-  await connectToMuster(admin);
+  await connectToMuster(admin, admin.getByRole('grid'));
   await serverLink(admin, 'mcp-kubernetes').click();
 
   await expect(
@@ -181,7 +155,7 @@ test("muster's own server page lists its core tools, and a tool page runs one", 
 }) => {
   test.setTimeout(120_000);
   await open(admin, serversPath);
-  await connectToMuster(admin);
+  await connectToMuster(admin, admin.getByRole('grid'));
   await open(
     admin,
     `/agent-platform/mcp-servers/muster?installation=${lab.installation}`,

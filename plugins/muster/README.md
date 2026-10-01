@@ -1,8 +1,9 @@
 # @giantswarm/backstage-plugin-muster
 
-Frontend plugin (`pluginId: muster`) that visualizes
-[muster](https://github.com/giantswarm/muster) workflows as flow diagrams,
-including execution history with live per-step status.
+Frontend plugin (`pluginId: muster`) for
+[muster](https://github.com/giantswarm/muster): the MCP servers it aggregates,
+their tools, and its workflows, as the Agent Platform's MCP Servers and
+Workflows tabs.
 
 ## Features
 

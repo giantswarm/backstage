@@ -1,18 +1,30 @@
-import { MusterWorkflow, WorkflowStep } from './k8s';
+import { MusterWorkflow, WorkflowCondition, WorkflowStep } from './k8s';
 import { ServerPrefixInfo, matchServers } from './toolGrouping';
 import { WORKFLOW_TOOL_PREFIX } from './workflowReferences';
 
+/** A step's own tool and the one its condition calls, where it has them. */
+function ownTools(step: {
+  tool?: string;
+  condition?: WorkflowCondition;
+}): string[] {
+  return [step.tool, step.condition?.tool].filter((tool): tool is string =>
+    Boolean(tool),
+  );
+}
+
 function stepTools(steps: WorkflowStep[]): string[] {
   return steps.flatMap(step => [
-    ...(step.tool ? [step.tool] : []),
-    ...(step.parallel ?? []).map(sub => sub.tool),
-    ...(step.forEach?.steps ?? []).map(sub => sub.tool),
+    ...ownTools(step),
+    ...[...(step.parallel ?? []), ...(step.forEach?.steps ?? [])].flatMap(
+      ownTools,
+    ),
   ]);
 }
 
 /**
  * Every tool a workflow's run can call: muster's `status.referencedTools` and
- * the definition's own steps (parallel, forEach and onFailure included), also
+ * the definition's own steps and their conditions (parallel, forEach and
+ * onFailure included), also
  * through the workflows it calls as a step (`workflow_<name>`), each once.
  */
 export function toolsOfWorkflow(
@@ -29,7 +41,7 @@ export function toolsOfWorkflow(
     for (const tool of [
       ...current.getReferencedTools(),
       ...stepTools(current.getSteps()),
-      ...current.getOnFailureSteps().map(sub => sub.tool),
+      ...current.getOnFailureSteps().flatMap(ownTools),
     ]) {
       tools.add(tool);
       if (tool.startsWith(WORKFLOW_TOOL_PREFIX)) {

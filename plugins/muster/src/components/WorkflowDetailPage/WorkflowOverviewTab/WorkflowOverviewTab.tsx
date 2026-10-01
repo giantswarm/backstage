@@ -1,24 +1,18 @@
-import {
-  Box,
-  Typography,
-  makeStyles,
-  useTheme,
-  Theme,
-} from '@material-ui/core';
+import { makeStyles, Theme } from '@material-ui/core';
+import { Alert, Box, Text } from '@backstage/ui';
 import BarChart from '@material-ui/icons/BarChart';
 import Tune from '@material-ui/icons/Tune';
 import FormatListNumbered from '@material-ui/icons/FormatListNumbered';
 import Share from '@material-ui/icons/Share';
 import AccountTree from '@material-ui/icons/AccountTree';
-import { Alert } from '@material-ui/lab';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { MusterWorkflow } from '../../lib/k8s';
-import { findReferencedBy } from '../../lib/workflowReferences';
-import { workflowDetailRouteRef } from '../../routes';
-import { SectionHeader, VIOLET } from '../shared';
-import { WorkflowStepCard } from './WorkflowStepCard';
-import { WorkflowStatsPanel } from './WorkflowStatsPanel';
+import { MusterWorkflow } from '../../../lib/k8s';
+import { findReferencedBy } from '../../../lib/workflowReferences';
+import { workflowDetailRouteRef } from '../../../routes';
+import { SectionHeader, VIOLET } from '../../shared';
+import { WorkflowStepCard } from '../WorkflowStepCard';
+import { WorkflowStatsPanel } from '../WorkflowStatsPanel';
 
 const useStyles = makeStyles((theme: Theme) => ({
   section: {
@@ -78,9 +72,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     border: `1px solid ${theme.palette.divider}`,
     color: theme.palette.warning.dark,
   },
-  argDescription: {
-    color: theme.palette.text.secondary,
-  },
   refList: {
     border: `1px solid ${theme.palette.divider}`,
     borderRadius: theme.shape.borderRadius * 2,
@@ -124,7 +115,6 @@ export function WorkflowOverviewTab({
   installation?: string;
 }) {
   const classes = useStyles();
-  const theme = useTheme();
   const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
 
   const name = workflow.getName();
@@ -138,17 +128,25 @@ export function WorkflowOverviewTab({
   return (
     <Box>
       {workflow.hasValidationWarning() && (
-        <Alert severity="warning" style={{ marginTop: theme.spacing(2) }}>
-          muster's validator flagged this workflow's definition. It can still be
-          run — this is a non-blocking warning, not an availability state.
-          {validationErrors.length > 0 && (
-            <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
-              {validationErrors.map(err => (
-                <li key={err}>{err}</li>
-              ))}
-            </ul>
-          )}
-        </Alert>
+        <Box mt="4">
+          <Alert
+            status="warning"
+            description={
+              <>
+                muster's validator flagged this workflow's definition. It can
+                still be run — this is a non-blocking warning, not an
+                availability state.
+                {validationErrors.length > 0 && (
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+                    {validationErrors.map(err => (
+                      <li key={err}>{err}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            }
+          />
+        </Box>
       )}
 
       {/* Statistics */}
@@ -156,7 +154,7 @@ export function WorkflowOverviewTab({
         <SectionHeader
           icon={<BarChart />}
           title="Statistics"
-          description="How often this workflow runs and how reliably, over a recent sample of executions recorded by muster's workflow engine."
+          description="How often this workflow runs and how reliably, over a recent sample of its executions. Every execution counts, whether an agent, another workflow or the Run tab started it."
         />
         <WorkflowStatsPanel name={name} installation={installation} />
       </Box>
@@ -169,9 +167,9 @@ export function WorkflowOverviewTab({
           description="Inputs the workflow takes when an agent invokes it."
         />
         {argEntries.length === 0 ? (
-          <Typography variant="body2" color="textSecondary">
+          <Text variant="body-medium" color="secondary">
             This workflow takes no arguments.
-          </Typography>
+          </Text>
         ) : (
           <Box className={classes.argList}>
             {argEntries.map(([argName, def]) => (
@@ -190,12 +188,9 @@ export function WorkflowOverviewTab({
                   )}
                 </Box>
                 {def.description && (
-                  <Typography
-                    variant="body2"
-                    className={classes.argDescription}
-                  >
+                  <Text variant="body-medium" color="secondary">
                     {def.description}
-                  </Typography>
+                  </Text>
                 )}
               </Box>
             ))}
@@ -211,9 +206,9 @@ export function WorkflowOverviewTab({
           description="The ordered tool calls muster runs. Each step names the aggregated tool it invokes and the arguments passed to it."
         />
         {steps.length === 0 ? (
-          <Typography variant="body2" color="textSecondary">
+          <Text variant="body-medium" color="secondary">
             This workflow defines no steps.
-          </Typography>
+          </Text>
         ) : (
           steps.map((step, index) => (
             <WorkflowStepCard

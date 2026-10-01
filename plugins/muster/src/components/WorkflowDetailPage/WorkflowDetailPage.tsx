@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Navigate,
   Route,
@@ -109,6 +109,13 @@ function WorkflowDetailContent() {
   // A manually-added workflow's Edit and Delete sit in the page header; it
   // renders outside muster's providers, so it only opens the page's dialogs.
   const [dialog, setDialog] = useState<WorkflowDialog>();
+  // A deleted workflow leaves the page; its dialog must not reopen should one
+  // of the same name come back.
+  useEffect(() => {
+    if (!workflow) {
+      setDialog(undefined);
+    }
+  }, [workflow]);
   const editable = Boolean(workflow && !isGitOpsManaged(workflow));
   const headerActions = useMemo(
     () => (editable ? <WorkflowHeaderActions onOpen={setDialog} /> : null),

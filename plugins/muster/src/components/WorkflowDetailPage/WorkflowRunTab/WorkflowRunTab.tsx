@@ -1,9 +1,9 @@
-import { Alert, Box, Flex } from '@backstage/ui';
-import { MusterWorkflow } from '../../lib/k8s';
-import { useMusterSession } from '../MusterInstanceProvider';
-import { SessionGate } from '../shared';
-import { ToolDetailPanel } from '../ToolDetail';
-import { WorkflowAuthNotice } from './WorkflowAuthNotice';
+import { Box, Flex } from '@backstage/ui';
+import { MusterWorkflow } from '../../../lib/k8s';
+import { useMusterSession } from '../../MusterInstanceProvider';
+import { SessionGate } from '../../shared';
+import { ToolDetailPanel } from '../../ToolDetail';
+import { WorkflowAuthNotice } from '../WorkflowAuthNotice';
 
 /**
  * Runs the workflow: the tool page's argument form and result view for the
@@ -27,16 +27,6 @@ export function WorkflowRunTab({
         session={session}
         installation={installation}
         context="A workflow is run through the muster session."
-      />
-    );
-  } else if (!workflow.isRunnable()) {
-    body = (
-      <Alert
-        status="info"
-        title="This workflow cannot be run"
-        description={`muster does not offer the tool ${tool} on ${
-          installation ?? 'this installation'
-        }.`}
       />
     );
   } else {

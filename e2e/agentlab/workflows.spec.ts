@@ -1,5 +1,4 @@
-import type { Page } from '@playwright/test';
-import { expect, open, test } from './fixtures';
+import { connectToMuster, expect, open, test } from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -12,35 +11,6 @@ import { lab } from './lab';
 const WORKFLOW = 'lab-cluster-overview';
 const workflowPath = `/agent-platform/workflows/${WORKFLOW}`;
 const scope = `?installation=${lab.installation}`;
-
-/**
- * Opens the muster session when the Run tab shows its gate; a session opened
- * earlier in the run leaves no gate. The gate unmounts the moment the session
- * probe says authenticated, so click while it is there, judge by the form.
- */
-async function connectToMuster(page: Page) {
-  const gate = page.getByRole('button', { name: 'Connect to muster' });
-  const execute = page.getByRole('button', { name: 'Execute' });
-  await expect
-    .poll(
-      async () => {
-        if (await execute.isVisible()) {
-          return 'connected';
-        }
-        if (await gate.isVisible()) {
-          await gate.click({ timeout: 2_000 }).catch(() => undefined);
-        }
-        return 'waiting';
-      },
-      {
-        timeout: 90_000,
-        intervals: [1_000],
-        message:
-          'the Run tab showed no argument form within 90 s — the lab muster may be unhealthy (`kubectl -n agent-platform get pods`)',
-      },
-    )
-    .toBe('connected');
-}
 
 test('a workflow opens on Overview, with its tabs', async ({ admin }) => {
   await open(admin, `/agent-platform/workflows${scope}`);
@@ -64,7 +34,7 @@ test('the Run tab runs the workflow', async ({ admin }) => {
   await expect(admin).toHaveURL(
     new RegExp(`${workflowPath}/run\\?installation=${lab.installation}$`),
   );
-  await connectToMuster(admin);
+  await connectToMuster(admin, admin.getByRole('button', { name: 'Execute' }));
 
   await admin.getByRole('button', { name: 'Execute' }).click();
   await expect(
