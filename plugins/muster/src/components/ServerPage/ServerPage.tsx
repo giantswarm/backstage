@@ -19,6 +19,8 @@ import {
   Breadcrumbs,
   LoadingIndicator,
   useProvidePageHeaderActions,
+  RouteTabs,
+  RouteTabSpec,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer } from '../../lib/k8s';
@@ -51,7 +53,6 @@ import {
   ServerStateBadge,
   useServerSignIn,
 } from '../shared';
-import { ServerPageTabs, ServerPageTabSpec } from './ServerPageTabs';
 import { ServerOverviewTab } from './ServerOverviewTab';
 import { ServerToolsTab } from './ServerToolsTab';
 import { ServerCapabilityTab } from './ServerCapabilityTab';
@@ -287,7 +288,7 @@ function ServerPageContent({
 
   // Tools leads and is the index: what a server offers is what a person
   // comes to it for, so a server link lands there. Overview closes the row.
-  const tabs: ServerPageTabSpec[] = [
+  const tabs: RouteTabSpec[] = [
     { id: 'tools', path: '', title: 'Tools', count: tools.tools?.length },
     {
       id: 'resources',
@@ -363,7 +364,7 @@ function ServerPageContent({
           />
         )}
 
-      <ServerPageTabs tabs={tabs} search={search} />
+      <RouteTabs tabs={tabs} search={search} />
 
       <Routes>
         <Route

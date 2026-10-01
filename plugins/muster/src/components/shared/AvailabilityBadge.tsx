@@ -20,29 +20,44 @@ const useStyles = makeStyles((theme: Theme) => ({
       fontSize: 12,
     },
   },
+  // Text with an icon, as a table cell reads.
+  plain: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    whiteSpace: 'nowrap',
+    '& svg': {
+      fontSize: 16,
+    },
+  },
 }));
 
 export interface AvailabilityBadgeProps {
   available: boolean;
+  /** Text with an icon instead of an outlined pill, as in the Workflows table. */
+  plain?: boolean;
 }
 
 /**
  * Availability as muster reports it for the current caller, ported from the
  * mockups' `availability-badge.tsx`: an emerald "Available" (check) or a muted
- * "Unavailable" (minus) outlined pill. Shared by the Workflows table and the
+ * "Unavailable" (minus), an outlined pill or -- `plain` -- text with an icon. Shared by the Workflows table and the
  * workflow detail header so the two never drift. Availability is runnability
  * (`MusterWorkflow.isRunnable()`), decoupled from the validator's
  * `.status.valid` per ADR D2: a validator complaint surfaces separately as a
  * non-blocking "Validation warning", not as an "Unavailable" state.
  */
-export function AvailabilityBadge({ available }: AvailabilityBadgeProps) {
+export function AvailabilityBadge({
+  available,
+  plain = false,
+}: AvailabilityBadgeProps) {
   const classes = useStyles();
   const theme = useTheme();
   const color = available
     ? toneColors(theme, 'ok').text
     : theme.palette.text.secondary;
   return (
-    <span className={classes.badge} style={{ color }}>
+    <span className={plain ? classes.plain : classes.badge} style={{ color }}>
       {available ? <Check /> : <Remove />}
       {available ? 'Available' : 'Unavailable'}
     </span>

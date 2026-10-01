@@ -259,7 +259,14 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'MCP server', view: 'tools' },
     ],
     ['/agent-platform/workflows', { page: 'Workflows' }],
-    ['/agent-platform/workflows/my-workflow', { page: 'Workflow' }],
+    [
+      '/agent-platform/workflows/my-workflow',
+      { page: 'Workflow', view: 'overview' },
+    ],
+    [
+      '/agent-platform/workflows/my-workflow/run',
+      { page: 'Workflow', view: 'run' },
+    ],
     // The old section's paths, one name and no view, not the Agents page.
     ['/agent-platform/muster', { page: 'Muster (removed)' }],
     [
@@ -494,6 +501,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/workflows',
       '/agent-platform/workflows/my-workflow',
+      '/agent-platform/workflows/my-workflow/run',
       '/agent-platform',
       '/agent-platform/agents/new',
       '/agent-platform/agents/new/skills',

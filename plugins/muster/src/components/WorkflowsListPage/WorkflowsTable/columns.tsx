@@ -2,7 +2,9 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Link, TableColumn } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Box, Typography } from '@material-ui/core';
+import { Flex } from '@backstage/ui';
 import {
+  GitOpsIcon,
   isTableColumnHidden,
   matchesQuery,
   NotAvailable,
@@ -23,6 +25,19 @@ export const WorkflowColumns = {
   available: 'available',
   source: 'source',
 } as const;
+
+// The table's cells read as text, not pills: the icon carries the state.
+const ICON_STYLE = { fontSize: 16 };
+
+const SourceCell = ({ source }: { source: WorkflowRow['source'] }) =>
+  source === 'gitops' ? (
+    <Flex align="center" gap="1">
+      <GitOpsIcon style={ICON_STYLE} />
+      GitOps
+    </Flex>
+  ) : (
+    <>Manually added</>
+  );
 
 const WorkflowNameCell = ({ row }: { row: WorkflowRow }) => {
   const detailLink = useRouteRef(workflowDetailRouteRef);
@@ -106,7 +121,7 @@ export const getInitialColumns = ({
       customSort: (a, b) => Number(a.available) - Number(b.available),
       render: row => (
         <Box display="flex" flexWrap="wrap" gridGap={4}>
-          <AvailabilityBadge available={row.available} />
+          <AvailabilityBadge available={row.available} plain />
           {row.validationWarning && (
             <StateBadge tone="warning" label="Validation warning" />
           )}
@@ -121,12 +136,7 @@ export const getInitialColumns = ({
       // the displayed label instead so "manually added" / "gitops" find rows.
       customFilterAndSearch: (query, row) =>
         SOURCE_LABELS[row.source].includes(query.toLowerCase()),
-      render: row =>
-        row.source === 'gitops' ? (
-          <StateBadge tone="info" label="GitOps" />
-        ) : (
-          <StateBadge tone="neutral" label="Manually added" />
-        ),
+      render: row => <SourceCell source={row.source} />,
     },
   ];
 

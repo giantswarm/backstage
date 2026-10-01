@@ -12,7 +12,7 @@ export const WorkflowsRouter = () => {
   return (
     <Routes>
       <Route index element={<WorkflowsListPage />} />
-      <Route path=":name" element={<WorkflowDetailPage />} />
+      <Route path=":name/*" element={<WorkflowDetailPage />} />
     </Routes>
   );
 };

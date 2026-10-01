@@ -2,6 +2,7 @@ import {
   test as base,
   expect,
   type BrowserContext,
+  type Locator,
   type Page,
 } from '@playwright/test';
 import { contextOptions, lab, type LabUser } from './lab';
@@ -177,4 +178,37 @@ export async function open(
     await page.goto(path);
   }
   await expect(chrome).toBeAttached();
+}
+
+/**
+ * Opens the muster session for the page's user when the page shows the gate.
+ * The backend keeps that session server-side per user, so a page that
+ * connected earlier in the run finds no gate — the same signed-in portal.
+ * `ready` is what the page shows once connected (the servers table, a tool's
+ * form), so the wait starts only once the page has settled on one or the other.
+ *
+ * The gate also renders while the session probe is still pending and unmounts
+ * the moment the probe says authenticated, so a click can land on an element
+ * that just left the DOM: click while it is there, judge by its absence.
+ */
+export async function connectToMuster(page: Page, ready: Locator) {
+  const gate = page.getByRole('button', { name: 'Connect to muster' });
+  await expect(gate.or(ready).first()).toBeVisible({ timeout: 60_000 });
+  await expect
+    .poll(
+      async () => {
+        if (!(await gate.isVisible())) {
+          return 'connected';
+        }
+        await gate.click({ timeout: 2_000 }).catch(() => undefined);
+        return 'gate';
+      },
+      {
+        timeout: 90_000,
+        intervals: [1_000],
+        message:
+          'the muster session did not open within 90 s — the lab muster may be unhealthy (`kubectl -n agent-platform get pods`), or the backend cached an unreachable probe after a pod roll (5 min TTL)',
+      },
+    )
+    .toBe('connected');
 }

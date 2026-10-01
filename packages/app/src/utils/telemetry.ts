@@ -171,9 +171,16 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Muster (removed)' };
       break;
 
-    case pathname.startsWith('/agent-platform/workflows/'):
-      payload = { page: 'Workflow' };
+    // A workflow's page, with its tab as the view (never its name).
+    case pathname.startsWith('/agent-platform/workflows/'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Workflow',
+        // Overview is the workflow page's index.
+        view: parts[4] || 'overview',
+      };
       break;
+    }
 
     // Must stay above the generic '/agent-platform' cases below, for the reason
     // the Sessions and Usage cases give: without these the Models tab reports as

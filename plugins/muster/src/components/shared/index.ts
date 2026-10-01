@@ -30,7 +30,11 @@ export {
   ServerSignIn,
 } from './ServerSignIn';
 export type { ServerAuthActionsProps, ServerSignInProps } from './ServerSignIn';
-export { useServerSignIn } from './useServerSignIn';
+export {
+  authStatusQueryKey,
+  needsSignIn,
+  useServerSignIn,
+} from './useServerSignIn';
 export type { ServerSignInState } from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';

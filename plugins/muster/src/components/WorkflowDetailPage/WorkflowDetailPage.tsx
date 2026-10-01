@@ -1,66 +1,43 @@
-import { useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Content,
-  EmptyState,
-  Link,
-  ResponseErrorPanel,
-} from '@backstage/core-components';
+  Navigate,
+  Route,
+  Routes,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Content, EmptyState } from '@backstage/core-components';
+import { Flex, Link } from '@backstage/ui';
+import { Box, Typography, makeStyles, Theme } from '@material-ui/core';
 import {
-  Box,
-  Button,
-  Grid,
-  Typography,
-  makeStyles,
-  useTheme,
-  Theme,
-} from '@material-ui/core';
-import PlayArrowIcon from '@material-ui/icons/PlayArrow';
-import BarChart from '@material-ui/icons/BarChart';
-import Tune from '@material-ui/icons/Tune';
-import FormatListNumbered from '@material-ui/icons/FormatListNumbered';
-import Share from '@material-ui/icons/Share';
-import History from '@material-ui/icons/History';
-import AccountTree from '@material-ui/icons/AccountTree';
-import { Alert } from '@material-ui/lab';
-import {
+  Breadcrumbs,
   DateComponent,
   GSMarkdownContent,
   LoadingIndicator,
+  RouteTabs,
+  RouteTabSpec,
+  useProvidePageHeaderActions,
+  useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useQuery } from '@tanstack/react-query';
-import { musterApiRef } from '../../apis';
-import { findReferencedBy } from '../../lib/workflowReferences';
+import { workflowsRouteRef } from '../../routes';
 import { isGitOpsManaged } from '../../lib/gitops';
-import { WorkflowMutationActions } from '../WorkflowsListPage/WorkflowMutationActions';
+import {
+  WorkflowDialog,
+  WorkflowDialogs,
+  WorkflowHeaderActions,
+  WorkflowMutationActions,
+} from '../WorkflowsListPage/WorkflowMutationActions';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
-import {
-  SectionHeader,
-  AvailabilityBadge,
-  StateBadge,
-  useServerPageLinks,
-  VIOLET,
-} from '../shared';
-import { workflowDetailRouteRef } from '../../routes';
-import { MUSTER_SERVER_KEY } from '../../lib/serverGrouping';
-import { WorkflowStepCard } from './WorkflowStepCard';
-import { WorkflowStatsPanel } from './WorkflowStatsPanel';
-import { ExecutionHistoryPanel } from './ExecutionHistoryPanel';
-import { ExecutionDetailPanel } from './ExecutionDetailPanel';
-
-const EXECUTION_POLL_INTERVAL_MS = 3000;
-const EXECUTION_LIST_POLL_INTERVAL_MS = 5000;
+import { AvailabilityBadge, StateBadge } from '../shared';
+import { WorkflowOverviewTab } from './WorkflowOverviewTab';
+import { WorkflowRunTab } from './WorkflowRunTab';
 
 const useStyles = makeStyles((theme: Theme) => ({
   // Reading-capped column (mockup `max-w-5xl`).
   column: {
     maxWidth: 1024,
-  },
-  header: {
-    paddingBottom: theme.spacing(3),
-    borderBottom: `1px solid ${theme.palette.divider}`,
   },
   titleRow: {
     display: 'flex',
@@ -71,9 +48,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   title: {
     fontWeight: 600,
     letterSpacing: '-0.01em',
-  },
-  runAction: {
-    marginLeft: 'auto',
   },
   headerActions: {
     marginTop: theme.spacing(2),
@@ -98,108 +72,28 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontFamily: 'monospace',
     color: theme.palette.text.primary,
   },
-  section: {
-    paddingTop: theme.spacing(4),
-    paddingBottom: theme.spacing(4),
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    '&:last-child': {
-      borderBottom: 'none',
-    },
-  },
-  // Arguments list (mockup `divide-y rounded-lg border`).
-  argList: {
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius * 2,
-    overflow: 'hidden',
-  },
-  argRow: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(0.5),
-    padding: theme.spacing(1.25, 1.5),
-    borderTop: `1px solid ${theme.palette.divider}`,
-    '&:first-child': { borderTop: 'none' },
-    [theme.breakpoints.up('sm')]: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-      gap: theme.spacing(1.5),
-    },
-  },
-  argHead: {
-    flexShrink: 0,
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  },
-  argName: {
-    fontFamily: 'monospace',
-    fontSize: 13,
-    fontWeight: 500,
-  },
-  badge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    height: 20,
-    paddingLeft: theme.spacing(0.75),
-    paddingRight: theme.spacing(0.75),
-    borderRadius: theme.shape.borderRadius,
-    fontSize: 11,
-    lineHeight: 1,
-    whiteSpace: 'nowrap',
-  },
-  badgeType: {
-    backgroundColor: theme.palette.action.selected,
-    color: theme.palette.text.secondary,
-  },
-  badgeRequired: {
-    border: `1px solid ${theme.palette.divider}`,
-    color: theme.palette.warning.dark,
-  },
-  argDescription: {
-    color: theme.palette.text.secondary,
-  },
-  refList: {
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius * 2,
-    overflow: 'hidden',
-  },
-  refRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1.25, 1.5),
-    borderTop: `1px solid ${theme.palette.divider}`,
-    '&:first-child': { borderTop: 'none' },
-    '& svg': { fontSize: 14, color: VIOLET, flexShrink: 0 },
-  },
-  refLink: {
-    fontFamily: 'monospace',
-    fontSize: 13,
-  },
 }));
 
-/** Append `?installation=` to a route path so deep links keep the instance. */
-function withInstallation(base: string, installation?: string): string {
-  if (!installation) {
-    return base;
-  }
-  return `${base}?installation=${encodeURIComponent(installation)}`;
+const TABS: RouteTabSpec[] = [
+  { id: 'overview', path: '', title: 'Overview' },
+  { id: 'run', path: 'run', title: 'Run' },
+];
+
+/** `?installation=<inst>`, or nothing without one. */
+function installationSearch(installation?: string): string {
+  return installation
+    ? `?installation=${encodeURIComponent(installation)}`
+    : '';
 }
 
 function WorkflowDetailContent() {
   const classes = useStyles();
-  const theme = useTheme();
   const { name = '' } = useParams<{ name: string }>();
   const [searchParams] = useSearchParams();
   const installationParam = searchParams.get('installation') ?? undefined;
-
-  const navigate = useNavigate();
-  const musterApi = useApi(musterApiRef);
-  const workflowDetailLink = useRouteRef(workflowDetailRouteRef);
-  const links = useServerPageLinks();
+  const basePath = useSplatBasePath();
+  const workflowsLink = useRouteRef(workflowsRouteRef);
   const { workflows, isLoading, activeInstallation } = useMusterInstance();
-
-  const [selectedExecutionId, setSelectedExecutionId] = useState<string>();
 
   const workflow = useMemo(() => {
     const byNameAndInstallation = workflows.find(
@@ -212,26 +106,30 @@ function WorkflowDetailContent() {
 
   const installation = workflow?.cluster ?? installationParam;
 
-  const executionsQuery = useQuery({
-    queryKey: ['muster', 'executions', installation, name],
-    queryFn: () =>
-      musterApi.listExecutions({ workflowName: name, limit: 50, installation }),
-    enabled: name !== '',
-    refetchInterval: query =>
-      query.state.data?.executions?.some(e => e.status === 'inprogress')
-        ? EXECUTION_LIST_POLL_INTERVAL_MS
-        : false,
-  });
-
-  const executionQuery = useQuery({
-    queryKey: ['muster', 'execution', installation, selectedExecutionId],
-    queryFn: () => musterApi.getExecution(selectedExecutionId!, installation),
-    enabled: Boolean(selectedExecutionId),
-    refetchInterval: query =>
-      query.state.data?.status === 'inprogress'
-        ? EXECUTION_POLL_INTERVAL_MS
-        : false,
-  });
+  // A manually-added workflow's Edit and Delete sit in the page header; it
+  // renders outside muster's providers, so it only opens the page's dialogs.
+  const [dialog, setDialog] = useState<WorkflowDialog>();
+  // A deleted workflow leaves the page; its dialog must not reopen should one
+  // of the same name come back.
+  useEffect(() => {
+    if (!workflow) {
+      setDialog(undefined);
+    }
+  }, [workflow]);
+  const editable = Boolean(workflow && !isGitOpsManaged(workflow));
+  const headerActions = useMemo(
+    () => (editable ? <WorkflowHeaderActions onOpen={setDialog} /> : null),
+    [editable],
+  );
+  useProvidePageHeaderActions(headerActions);
+  const listHref = workflowsLink
+    ? `${workflowsLink()}${installationSearch(installation ?? activeInstallation)}`
+    : undefined;
+  const trail = (
+    <Breadcrumbs
+      items={[{ label: 'Workflows', href: listHref }, { label: name }]}
+    />
+  );
 
   if (isLoading) {
     return (
@@ -246,54 +144,44 @@ function WorkflowDetailContent() {
     return (
       <Content>
         <ActiveInstallationNote />
-        <EmptyState
-          missing="data"
-          title={`Workflow "${name}" not found`}
-          description={
-            !activeInstallation
-              ? 'None of the installations this portal knows runs muster.'
-              : `No Workflow CR with this name on ${activeInstallation}. Pin the installation it belongs to in the page header.`
-          }
-        />
+        <Flex direction="column" gap="4">
+          {trail}
+          <EmptyState
+            missing="data"
+            title={
+              activeInstallation
+                ? `No workflow “${name}” on ${activeInstallation}`
+                : `No workflow “${name}”`
+            }
+            description={
+              !activeInstallation
+                ? 'None of the installations this portal knows runs muster.'
+                : `The installation ${activeInstallation} has no Workflow CR with this name. It may run on another installation — pick it in the page header.`
+            }
+            action={
+              listHref ? (
+                <Link href={listHref}>Back to the workflows</Link>
+              ) : undefined
+            }
+          />
+        </Flex>
       </Content>
     );
   }
 
-  const args = workflow.getArgs();
-  const argEntries = Object.entries(args);
+  const argEntries = Object.entries(workflow.getArgs());
   const steps = workflow.getSteps();
-  const stepIds = steps.map(s => s.id);
-  const referencedBy = findReferencedBy(name, workflows);
-  const validationErrors = workflow.getValidationErrors();
   const created = workflow.getCreatedTimestamp();
-  const referencingTool = `workflow_${name}`;
-
-  // Running a workflow is executing its `workflow_<name>` tool, one of
-  // muster's own: "Run" opens that tool's page under muster's server page,
-  // with its argument form ready.
-  const runLink =
-    links.tool(MUSTER_SERVER_KEY, referencingTool, installation) ?? '#';
-
-  const runButton = (
-    <Button
-      color="primary"
-      variant="contained"
-      startIcon={<PlayArrowIcon />}
-      // The availability badge beside the title says why.
-      disabled={!workflow.isRunnable()}
-      onClick={() => navigate(runLink)}
-    >
-      Run
-    </Button>
-  );
+  const search = installationSearch(installation);
 
   return (
     <Content>
       <ActiveInstallationNote />
 
-      <Box className={classes.column}>
-        {/* Header */}
-        <Box className={classes.header}>
+      <Flex direction="column" gap="4" className={classes.column}>
+        {trail}
+
+        <Box>
           <Box className={classes.titleRow}>
             <Typography variant="h4" className={classes.title}>
               {name}
@@ -302,12 +190,6 @@ function WorkflowDetailContent() {
             {workflow.hasValidationWarning() && (
               <StateBadge tone="warning" label="Validation warning" />
             )}
-            {isGitOpsManaged(workflow) ? (
-              <StateBadge tone="info" label="GitOps" />
-            ) : (
-              <StateBadge tone="neutral" label="Manually added" />
-            )}
-            <Box className={classes.runAction}>{runButton}</Box>
           </Box>
 
           {workflow.getDescription() && (
@@ -335,177 +217,54 @@ function WorkflowDetailContent() {
             )}
           </Box>
 
-          <Box className={classes.headerActions}>
-            <WorkflowMutationActions workflow={workflow} />
-          </Box>
-        </Box>
-
-        {workflow.hasValidationWarning() && (
-          <Alert severity="warning" style={{ marginTop: theme.spacing(2) }}>
-            muster's validator flagged this workflow's definition. It can still
-            be run — this is a non-blocking warning, not an availability state.
-            {validationErrors.length > 0 && (
-              <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
-                {validationErrors.map(err => (
-                  <li key={err}>{err}</li>
-                ))}
-              </ul>
-            )}
-          </Alert>
-        )}
-
-        {/* Statistics */}
-        <Box className={classes.section}>
-          <SectionHeader
-            icon={<BarChart />}
-            title="Statistics"
-            description="How often this workflow runs and how reliably, over a recent sample of executions recorded by muster's workflow engine (engine- and agent-driven runs). A run started from the workflow's tool page is not recorded here; its result is shown on that page."
-          />
-          <WorkflowStatsPanel name={name} installation={installation} />
-        </Box>
-
-        {/* Arguments */}
-        <Box className={classes.section}>
-          <SectionHeader
-            icon={<Tune />}
-            title="Arguments"
-            description="Inputs the workflow takes when an agent invokes it."
-          />
-          {argEntries.length === 0 ? (
-            <Typography variant="body2" color="textSecondary">
-              This workflow takes no arguments.
-            </Typography>
-          ) : (
-            <Box className={classes.argList}>
-              {argEntries.map(([argName, def]) => (
-                <Box key={argName} className={classes.argRow}>
-                  <Box className={classes.argHead}>
-                    <code className={classes.argName}>{argName}</code>
-                    <span className={`${classes.badge} ${classes.badgeType}`}>
-                      {def.type ?? 'string'}
-                    </span>
-                    {def.required && (
-                      <span
-                        className={`${classes.badge} ${classes.badgeRequired}`}
-                      >
-                        required
-                      </span>
-                    )}
-                  </Box>
-                  {def.description && (
-                    <Typography
-                      variant="body2"
-                      className={classes.argDescription}
-                    >
-                      {def.description}
-                    </Typography>
-                  )}
-                </Box>
-              ))}
+          {!editable && (
+            <Box className={classes.headerActions}>
+              <WorkflowMutationActions workflow={workflow} />
             </Box>
           )}
         </Box>
 
-        {/* Steps */}
-        <Box className={classes.section}>
-          <SectionHeader
-            icon={<FormatListNumbered />}
-            title="Steps"
-            description="The ordered tool calls muster runs. Each step names the aggregated tool it invokes and the arguments passed to it."
-          />
-          {steps.length === 0 ? (
-            <Typography variant="body2" color="textSecondary">
-              This workflow defines no steps.
-            </Typography>
-          ) : (
-            steps.map((step, index) => (
-              <WorkflowStepCard
-                key={step.id}
-                step={step}
-                index={index}
+        <RouteTabs tabs={TABS} search={search} />
+
+        <Routes>
+          <Route
+            index
+            element={
+              <WorkflowOverviewTab
+                workflow={workflow}
+                workflows={workflows}
                 installation={installation}
-                stepIds={stepIds}
               />
-            ))
-          )}
-        </Box>
-
-        {/* Referenced by */}
-        {referencedBy.length > 0 && (
-          <Box className={classes.section}>
-            <SectionHeader
-              icon={<Share />}
-              title="Referenced by"
-              description={`Other workflows that call this one as a step — muster exposes it as the tool ${referencingTool}.`}
-            />
-            <Box className={classes.refList}>
-              {referencedBy.map(ref => (
-                <Box
-                  key={`${ref.cluster}/${ref.getName()}`}
-                  className={classes.refRow}
-                >
-                  <AccountTree />
-                  <Link
-                    to={withInstallation(
-                      workflowDetailLink?.({ name: ref.getName() }) ?? '#',
-                      ref.cluster,
-                    )}
-                    className={classes.refLink}
-                  >
-                    {ref.getName()}
-                  </Link>
-                </Box>
-              ))}
-            </Box>
-          </Box>
-        )}
-
-        {/* Executions — run history + per-execution step results (muster proxy) */}
-        <Box className={classes.section}>
-          <SectionHeader
-            icon={<History />}
-            title="Executions"
-            description="Engine- and agent-driven runs of this workflow and their per-step results, as recorded by muster's aggregator. Runs started from the workflow's tool page execute the aggregated tool directly and do not appear here."
+            }
           />
-          <Grid container>
-            <Grid item xs={12} md={4}>
-              {executionsQuery.error ? (
-                <ResponseErrorPanel
-                  title="Failed to load executions"
-                  error={executionsQuery.error as Error}
-                />
-              ) : (
-                <ExecutionHistoryPanel
-                  executions={executionsQuery.data?.executions ?? []}
-                  selectedExecutionId={selectedExecutionId}
-                  onSelect={setSelectedExecutionId}
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} md={8}>
-              <ExecutionDetailPanel
-                execution={
-                  selectedExecutionId ? executionQuery.data : undefined
-                }
-                isLoading={
-                  Boolean(selectedExecutionId) && executionQuery.isLoading
-                }
-                error={executionQuery.error}
-              />
-            </Grid>
-          </Grid>
-        </Box>
-      </Box>
+          <Route
+            path="run"
+            element={
+              <WorkflowRunTab workflow={workflow} installation={installation} />
+            }
+          />
+          <Route
+            path="*"
+            element={<Navigate to={`${basePath}${search}`} replace />}
+          />
+        </Routes>
+      </Flex>
+
+      <WorkflowDialogs
+        workflow={workflow}
+        open={dialog}
+        onClose={() => setDialog(undefined)}
+      />
     </Content>
   );
 }
 
 /**
- * Standalone (tabless) workflow detail page. CRD-driven: the structure (args,
- * steps, validity, step count) comes from the Workflow CR loaded by the
- * MusterInstanceProvider, while statistics, execution history, and runs use the
- * muster MCP proxy. Ported to the mockup's section rhythm (header +
- * availability, statistics, arguments, numbered steps, referenced-by).
+ * A workflow's page, beneath the Workflows tab: its header (state, description,
+ * the edit and delete actions) over the tabs Overview (the index) and Run (the
+ * argument form for its `workflow_<name>` tool). The structure comes from the
+ * Workflow CR the MusterInstanceProvider loads; statistics and runs go through
+ * the muster proxy.
  */
 export function WorkflowDetailPage() {
   // Rendered inside the Workflows tab, which the workflows sub-page already
