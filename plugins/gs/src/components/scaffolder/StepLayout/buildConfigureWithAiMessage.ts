@@ -32,7 +32,7 @@ export function buildConfigureWithAiMessage({
         : deploymentName;
 
     return [
-      "I'm in the Edit App Deployment template to change the configuration of an existing deployment. Please read the HelmRelease's inline values and its valuesFrom references, pull the current configuration from these resources, and help me adjust it. Details:",
+      "I'm in the Edit App Deployment template to change the configuration of an existing deployment. Please read the HelmRelease's inline values and the ConfigMaps in its valuesFrom references, pull the current configuration from these resources, and help me adjust it. Refer to referenced Secrets by name only, never read their contents. Details:",
       '',
       ...detailLines([
         ['HelmRelease', helmRelease],

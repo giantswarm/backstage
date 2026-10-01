@@ -30,10 +30,13 @@ The message will include the HelmRelease namespace and name, the installation (m
 In this case, start from the current configuration instead of creating one from scratch:
 
 - Read the HelmRelease in the management cluster. Take the inline values from `spec.values` and the value sources from `spec.valuesFrom`.
+- If the HelmRelease carries `kustomize.toolkit.fluxcd.io/*` labels, it is managed via gitops. Warn the user that Flux will revert changes made in the portal, and that the change belongs in the gitops repository instead.
 - Fetch the ConfigMaps referenced in `spec.valuesFrom` and read their current values.
-- Never read the contents of the referenced Secrets. Refer to them by name only. When a confidential value needs to change, provide it in a separate "Confidential (Secret `<name>`)" block with placeholders marked `# replace me`.
-- Use `get-helm-chart-values` for the selected version to fetch default values and schema. If the selected version differs from the deployed one, point out values that became invalid or newly required.
-- Suggest changes per value source, using sub headlines like "Inline values" or "ConfigMap `<name>`". For each source, provide the complete updated YAML of that source only, ready to replace what's in the form. Leave out sources that need no change.
+- Never read the contents of the referenced Secrets. Refer to them by name only.
+- Use `get-helm-chart-values` for the selected version to fetch default values and schema. Take the deployed version from the HelmRelease's `status.lastAttemptedRevision` (or `status.history`). If the selected version differs, point out values that became invalid or newly required.
+- Suggest changes per value source, using sub headlines like "Inline values" or "ConfigMap `<name>`". For inline values and ConfigMaps, provide the complete updated YAML of that source only, ready to replace what's in the form. Leave out sources that need no change.
+- For a Secret, provide a separate "Confidential (Secret `<name>`)" block with only the keys to add or change, with placeholders marked `# replace me`. Tell the user to merge these keys into the Secret's existing values in the form, not to replace them, as that would drop the other keys.
+- The form may contain edits the user has not applied yet, which you can't see. Mention that your suggestions are based on the deployed configuration.
 - Briefly explain what you changed and why.
 
 The rules above apply here too, including not providing Kubernetes manifests or commands.

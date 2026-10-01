@@ -33,7 +33,12 @@ describe('buildConfigureWithAiMessage', () => {
     });
 
     expect(message).toMatch(/^I'm in the Edit App Deployment template/);
-    expect(message).toContain('inline values and its valuesFrom references');
+    expect(message).toContain(
+      'inline values and the ConfigMaps in its valuesFrom references',
+    );
+    expect(message).toContain(
+      'Refer to referenced Secrets by name only, never read their contents.',
+    );
     expect(message).toContain(
       'HelmRelease: org-giantswarm/operations-hello-world',
     );
