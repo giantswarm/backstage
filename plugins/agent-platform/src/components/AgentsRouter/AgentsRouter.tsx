@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
+import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
 import { NewAgentFormProvider } from '../NewAgentFormProvider';
@@ -10,17 +10,6 @@ import { NewAgentPage } from '../NewAgentPage';
 import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
 import { NewAgentToolsPage } from '../NewAgentToolsPage';
 import { NewAgentReviewPage } from '../NewAgentReviewPage';
-
-// react-router keeps the window scroll position across client-side navigation,
-// so moving between the form and review would otherwise land mid-page. Reset to
-// the top on every in-flow navigation.
-function ScrollToTop() {
-  const { pathname } = useLocation();
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
-  return null;
-}
 
 // Content of the "Agents" tab: the list, one agent's details, the edit page,
 // and the create flow. The create steps share one NewAgentFormProvider so the composed
@@ -40,10 +29,11 @@ function ScrollToTop() {
 // splat, so `…/:name/edit` matches the edit page and never falls into the
 // detail page's tabs. AgentsRouter.test.tsx holds that ranking still.
 export const AgentsRouter = () => {
+  // The form and review steps, and an agent's page, open at their top.
+  useScrollToTopOnNavigation();
   return (
     <QueryClientProvider>
       <NewAgentFormProvider>
-        <ScrollToTop />
         <Routes>
           <Route index element={<AgentsIndexPage />} />
           <Route path="new" element={<NewAgentPage />} />

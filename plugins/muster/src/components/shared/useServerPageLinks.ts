@@ -6,7 +6,7 @@ import { mcpServerRouteRef, mcpServerToolRouteRef } from '../../routes';
  * A server page's tabs, by their path segment. Tools is the index, so a link
  * to it names no tab.
  */
-export type ServerPageTab = 'resources' | 'prompts' | 'instances' | 'overview';
+export type ServerPageTab = 'instances' | 'resources' | 'prompts' | 'details';
 
 function withQuery(path: string, query: Record<string, string | undefined>) {
   const params = new URLSearchParams();

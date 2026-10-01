@@ -151,6 +151,28 @@ Guidelines when building pages:
 - Do **not** reintroduce a classic `<Page>`/`<Header>` scaffold on an NFS page;
   it causes a double scrollbar and duplicate header under the app shell.
 
+## Scroll position on navigation
+
+react-router keeps the window's scroll position across client-side navigation,
+so a link from far down a list opens the next page scrolled down by the same
+amount. **A page opened by a link starts at its top.** Every router of a
+section whose pages link to each other — a list and its detail pages, a
+wizard's steps — calls `useScrollToTopOnNavigation()` from
+`@giantswarm/backstage-plugin-ui-react` once, at its top:
+
+```tsx
+export const WorkflowsRouter = () => {
+  useScrollToTopOnNavigation();
+  return <Routes>…</Routes>;
+};
+```
+
+It scrolls on a change of pathname, so a route-driven tab switch starts at the
+top too, and leaves the position alone when only the query string changes (a
+filter, a drawer) and on Back or Forward, where the browser restores it. `McpServersRouter`, `WorkflowsRouter` (muster) and
+`AgentsRouter` (agent-platform) use it; a new section router does the same
+rather than writing its own `window.scrollTo` effect.
+
 ## Full-height sidebars and scroll containment
 
 There is no bui `ScrollArea`, and the app shell gives a page nothing to inherit a

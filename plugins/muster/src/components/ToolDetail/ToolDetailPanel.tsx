@@ -9,10 +9,10 @@ import {
   Text,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import { hasMarkers, ToolMarkers } from '../shared';
+import { hasMarkers, ToolMarkers, useToolDescription } from '../shared';
 import {
   buildArgs,
   enumDefaults,
@@ -50,6 +50,11 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
+  /**
+   * Show the read-only / destructive markers above the description. Off where
+   * the page already shows them, as the tool page does beside the tool's name.
+   */
+  showMarkers?: boolean;
 }
 
 /**
@@ -59,7 +64,11 @@ export interface ToolDetailPanelProps {
  * exposes; the trust boundary is the downstream MCP server's deployment (e.g.
  * mcp-kubernetes is deployed read-only), not the portal.
  */
-export function ToolDetailPanel({ name, installation }: ToolDetailPanelProps) {
+export function ToolDetailPanel({
+  name,
+  installation,
+  showMarkers = true,
+}: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
 
   const storageKey = argsKey(installation, name);
@@ -77,10 +86,7 @@ export function ToolDetailPanel({ name, installation }: ToolDetailPanelProps) {
     setFieldErrors({});
   }, [storageKey]);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['muster', 'describe-tool', installation, name],
-    queryFn: () => musterApi.describeTool(name, installation),
-  });
+  const { data, isLoading, error } = useToolDescription(name, installation);
 
   const fields = useMemo(() => schemaFields(data?.inputSchema), [data]);
 
@@ -169,7 +175,7 @@ export function ToolDetailPanel({ name, installation }: ToolDetailPanelProps) {
 
   return (
     <Box>
-      {hasMarkers(data?.annotations) && (
+      {showMarkers && hasMarkers(data?.annotations) && (
         <Box mt="1">
           <ToolMarkers annotations={data?.annotations} />
         </Box>

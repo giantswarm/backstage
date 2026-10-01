@@ -107,7 +107,10 @@ describe('ToolPage', () => {
     expect(
       await screen.findByText('List the buckets of the account.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('read-only')).toBeInTheDocument();
+    // Once, at the end of the "Exposed by muster as" line.
+    expect(
+      screen.getByText('x_aws-root_list_buckets').parentElement!.parentElement,
+    ).toContainElement(screen.getByText('read-only'));
     expect(screen.getByText('Input schema')).toBeInTheDocument();
 
     const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
