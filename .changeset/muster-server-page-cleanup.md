@@ -1,5 +1,5 @@
 ---
-'@giantswarm/backstage-plugin-muster': patch
+'@giantswarm/backstage-plugin-muster': minor
 ---
 
 A server page's tabs read Tools, Instances (for a server family), Resources, Prompts and Details. Resources and Prompts show only when the server exposes any, and the Overview tab is renamed Details (`…/details`; an `…/overview` link still opens it). The Tools tab is a table with the columns Tool, Annotations (read-only / destructive, only when a tool has one) and Description, sortable by each and paged (25 a page, as the Sessions table). In the Instances table, an instance's name is a plain link and its status plain text, as in the servers table.

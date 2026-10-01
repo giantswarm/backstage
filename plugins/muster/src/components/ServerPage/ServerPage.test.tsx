@@ -330,6 +330,16 @@ describe('ServerPage tabs', () => {
     );
   });
 
+  it('sends muster’s own …/resources to Tools: it has none to read', async () => {
+    await renderAt(`${BASE}/muster/resources?installation=gazelle`);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        `${BASE}/muster?installation=gazelle`,
+      ),
+    );
+  });
+
   it('keeps an old …/overview link, now Details', async () => {
     await renderAt(`${BASE}/aws-root/overview?installation=gazelle`);
 
@@ -528,7 +538,7 @@ describe('ServerPage Tools tab', () => {
 
     expect(
       await screen.findByText(
-        'Your muster session is not signed in to this server, so its tools are hidden.',
+        'Your muster session is not signed in to this server, so its tools, resources and prompts are hidden.',
       ),
     ).toBeInTheDocument();
   });
@@ -696,22 +706,19 @@ describe('ServerPage review fixes', () => {
     expect(screen.queryByText('Disconnected')).not.toBeInTheDocument();
   });
 
-  it('does not claim a server waiting on a sign-in exposes no resources', async () => {
-    await renderAt(
-      `${BASE}/miro/resources?installation=gazelle`,
-      makeApi({
-        listServers: jest.fn(async () => ({
-          mcpServers: [{ name: 'miro', resourcesCount: 2 }],
-        })),
-      }),
-    );
+  it('shows no Resources for a server the session is not signed in to', async () => {
+    // core_mcpserver_list counts per session: none before the sign-in.
+    await renderAt(`${BASE}/miro/resources?installation=gazelle`);
 
-    expect(
-      await screen.findByText(/not signed in to this server/),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('This server exposes no resources.'),
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        `${BASE}/miro?installation=gazelle`,
+      ),
+    );
+    expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual([
+      'Tools (0)',
+      'Details',
+    ]);
   });
 
   it('goes back to the list once the server is deleted', async () => {

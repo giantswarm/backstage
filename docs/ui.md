@@ -169,7 +169,7 @@ export const WorkflowsRouter = () => {
 
 It scrolls on a change of pathname, so a route-driven tab switch starts at the
 top too, and leaves the position alone when only the query string changes (a
-filter, a drawer). `McpServersRouter`, `WorkflowsRouter` (muster) and
+filter, a drawer) and on Back or Forward, where the browser restores it. `McpServersRouter`, `WorkflowsRouter` (muster) and
 `AgentsRouter` (agent-platform) use it; a new section router does the same
 rather than writing its own `window.scrollTo` effect.
 

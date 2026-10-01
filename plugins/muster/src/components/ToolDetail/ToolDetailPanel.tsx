@@ -9,10 +9,10 @@ import {
   Text,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import { hasMarkers, ToolMarkers } from '../shared';
+import { hasMarkers, ToolMarkers, useToolDescription } from '../shared';
 import {
   buildArgs,
   enumDefaults,
@@ -45,24 +45,6 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
   } catch {
     // localStorage may be unavailable (private mode); not fatal.
   }
-}
-
-/**
- * A tool as muster describes it (`describe_tool`): description, annotations
- * and input schema. One cached request per tool and installation, shared by
- * the panel and the page around it.
- */
-export function useToolDescription(
-  name: string,
-  installation: string | undefined,
-  { enabled = true }: { enabled?: boolean } = {},
-) {
-  const musterApi = useApi(musterApiRef);
-  return useQuery({
-    queryKey: ['muster', 'describe-tool', installation, name],
-    queryFn: () => musterApi.describeTool(name, installation),
-    enabled,
-  });
 }
 
 export interface ToolDetailPanelProps {

@@ -14,8 +14,13 @@ import {
 } from '../../lib/toolGrouping';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import { SessionGate, ToolMarkers, useServerPageLinks } from '../shared';
-import { ToolDetailPanel, useToolDescription } from '../ToolDetail';
+import {
+  SessionGate,
+  ToolMarkers,
+  useServerPageLinks,
+  useToolDescription,
+} from '../shared';
+import { ToolDetailPanel } from '../ToolDetail';
 import { useServersListHref } from '../ServerPage';
 import { useServerTools } from '../ServerPage/useServerPageData';
 

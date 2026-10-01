@@ -43,3 +43,4 @@ export type { ServerPageLinks, ServerPageTab } from './useServerPageLinks';
 export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
 export { FamilyHealthBadge, familyHealthLabel } from './FamilyHealthBadge';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';
+export { useToolDescription } from './useToolDescription';

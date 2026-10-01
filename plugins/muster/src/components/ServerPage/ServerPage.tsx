@@ -272,8 +272,8 @@ function ServerPageContent({
     singular && canSignIn && signInState.needsLogin ? (
       <Flex direction="column" gap="2" align="start">
         <Text as="p" variant="body-medium">
-          Your muster session is not signed in to this server, so its tools are
-          hidden.
+          Your muster session is not signed in to this server, so its tools,
+          resources and prompts are hidden.
         </Text>
         <ServerAuthActions
           serverName={singular.getName()}
@@ -286,12 +286,24 @@ function ServerPageContent({
       </Flex>
     ) : undefined;
 
+  // Resources and Prompts, each only when the server exposes any (most expose
+  // neither). Its counts are this session's, so a server the session is not
+  // signed in to shows neither; the Tools tab's sign-in gate says why.
+  const capabilities = (
+    [
+      ['resources', 'Resources', counts.resourcesCount],
+      ['prompts', 'Prompts', counts.promptsCount],
+    ] as const
+  ).map(([capability, title, count]) => ({
+    capability,
+    title,
+    count,
+    shown: (count ?? 0) > 0,
+  }));
+
   // Tools leads and is the index: what a server offers is what a person
   // comes to it for, so a server link lands there. A family's instances come
-  // next; Resources and Prompts only when the server exposes any (most expose
-  // neither). Details closes the row.
-  const hasResources = (counts.resourcesCount ?? 0) > 0;
-  const hasPrompts = (counts.promptsCount ?? 0) > 0;
+  // next, then Resources and Prompts. Details closes the row.
   const tabs: RouteTabSpec[] = [
     { id: 'tools', path: '', title: 'Tools', count: tools.tools?.length },
   ];
@@ -303,21 +315,10 @@ function ServerPageContent({
       count: row.servers.length,
     });
   }
-  if (hasResources) {
-    tabs.push({
-      id: 'resources',
-      path: 'resources',
-      title: 'Resources',
-      count: counts.resourcesCount,
-    });
-  }
-  if (hasPrompts) {
-    tabs.push({
-      id: 'prompts',
-      path: 'prompts',
-      title: 'Prompts',
-      count: counts.promptsCount,
-    });
+  for (const { capability, title, count, shown } of capabilities) {
+    if (shown) {
+      tabs.push({ id: capability, path: capability, title, count });
+    }
   }
   tabs.push({ id: 'details', path: 'details', title: 'Details' });
 
@@ -418,38 +419,27 @@ function ServerPageContent({
           }
         />
         {/* Without the counts yet (or a session) the tab renders its own
-            loading or session state; once they say there is nothing, the
+            loading or session state. Once they say there is nothing -- or
+            there is nothing to read them for, as for muster itself -- the
             tab has no place in the row, so a link to it lands on Tools. */}
-        <Route
-          path="resources"
-          element={
-            counts.isLoaded && !hasResources ? (
-              toIndex
-            ) : (
-              <ServerCapabilityTab
-                capability="resources"
-                row={row}
-                representative={representative}
-                sessionGate={sessionGate}
-              />
-            )
-          }
-        />
-        <Route
-          path="prompts"
-          element={
-            counts.isLoaded && !hasPrompts ? (
-              toIndex
-            ) : (
-              <ServerCapabilityTab
-                capability="prompts"
-                row={row}
-                representative={representative}
-                sessionGate={sessionGate}
-              />
-            )
-          }
-        />
+        {capabilities.map(({ capability, shown }) => (
+          <Route
+            key={capability}
+            path={capability}
+            element={
+              !representative || (counts.isLoaded && !shown) ? (
+                toIndex
+              ) : (
+                <ServerCapabilityTab
+                  capability={capability}
+                  row={row}
+                  representative={representative}
+                  sessionGate={sessionGate}
+                />
+              )
+            }
+          />
+        ))}
         {row.kind === 'family' && (
           <Route
             path="instances"
