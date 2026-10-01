@@ -10,6 +10,12 @@ const gcTime = 1000 * 60 * 60;
 const maxAge = gcTime;
 
 /**
+ * Each write serialises the whole cache on the main thread, and persistence
+ * only exists to make a reload cheap, so writes are coalesced.
+ */
+const PERSIST_THROTTLE_MS = 1000 * 30;
+
+/**
  * This plugin's own localStorage key. The gs, flux and agent-platform providers
  * used to share the library default and so merged their caches into one blob
  * (see `LEGACY_SHARED_PERSISTER_KEY` in kubernetes-react); each now has its own,
@@ -60,7 +66,11 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const persister = useMemo(
-    () => createPluginQueryPersister({ key: GS_PERSISTER_KEY }),
+    () =>
+      createPluginQueryPersister({
+        key: GS_PERSISTER_KEY,
+        throttleTime: PERSIST_THROTTLE_MS,
+      }),
     [],
   );
 
