@@ -7,7 +7,11 @@ import {
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
-import { serverPrefixInfos, shortToolName } from '../../lib/toolGrouping';
+import {
+  serverPageResolver,
+  serverPrefixInfos,
+  shortToolName,
+} from '../../lib/toolGrouping';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { SessionGate, useServerPageLinks } from '../shared';
@@ -18,7 +22,7 @@ import { useServerTools } from '../ServerPage/useServerPageData';
 /**
  * One tool's page, beneath the server offering it: its short and full name,
  * markers, description and input schema, and the typed argument form that runs
- * it -- the Tool explorer's detail panel, on a page of its own. A family's
+ * it, on a page of its own beneath the server. A family's
  * grouped tool asks for the family's instance argument like any other
  * required parameter.
  */
@@ -44,7 +48,15 @@ export function ToolPage() {
       enabled: Boolean(row && activeInstallation) && session.authenticated,
     },
   );
-  const offered = serverTools.tools?.some(t => t.name === tool);
+  const pageOfTool = useMemo(
+    () => serverPageResolver(mcpServers),
+    [mcpServers],
+  );
+  // A truncated catalogue may stop short of the tool; then its prefix decides,
+  // and describing it says whether muster has it.
+  const offered =
+    serverTools.tools?.some(t => t.name === tool) ||
+    (serverTools.truncated && pageOfTool(tool) === serverKey);
 
   const trail = (
     <Breadcrumbs
@@ -121,7 +133,6 @@ export function ToolPage() {
         key={`${activeInstallation}/${tool}`}
         name={tool}
         installation={activeInstallation}
-        showName={false}
       />
     );
   }

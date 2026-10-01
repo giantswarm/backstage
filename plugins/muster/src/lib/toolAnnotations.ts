@@ -6,7 +6,7 @@ import { ToolAnnotations } from '../apis';
  *
  * These live here rather than beside the toolset logic in `agent-platform`
  * because the annotations are a muster wire type and every surface that lists
- * a tool wants the same answer from them — the Tool Explorer, the servers page
+ * a tool wants the same answer from them — a server's Tools tab, a tool page
  * and an agent's toolset must not disagree about whether a tool is
  * destructive. `agent-platform` re-exports them for its existing callers.
  */

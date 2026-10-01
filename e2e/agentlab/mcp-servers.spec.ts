@@ -12,7 +12,7 @@ import { lab } from './lab';
  * (proxy start → muster → Dex) is real.
  */
 
-const serversPath = `/agent-platform/muster/servers?installation=${lab.installation}`;
+const serversPath = `/agent-platform/mcp-servers?installation=${lab.installation}`;
 
 /** A server's link in the servers table: its name, then its description. */
 function serverLink(page: Page, name: string) {
@@ -23,9 +23,9 @@ test('lists the installation servers in one table, muster included', async ({
   admin,
 }) => {
   await open(admin, serversPath);
-  // Exact: the section's own tab is "MCP Servers", the sub-tab "Servers".
+  // A level-1 tab of the Agent Platform, with no tab row of its own.
   await expect(
-    admin.getByRole('tab', { name: 'Servers', exact: true }),
+    admin.getByRole('tab', { name: 'MCP Servers', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   for (const name of [
     'agent-manager',
@@ -89,7 +89,7 @@ test('searching a tool name narrows the list to the servers offering it', async 
   await expect(serverLink(admin, 'lab-oauth-fixture')).toHaveCount(0);
 
   await muster.click();
-  await expect(admin).toHaveURL(/\/servers\/muster\?.*q=mcpserver_list/);
+  await expect(admin).toHaveURL(/\/mcp-servers\/muster\?.*q=mcpserver_list/);
   await expect(
     admin.getByRole('link', { name: 'mcpserver_list', exact: true }),
   ).toBeVisible({ timeout: 60_000 });
@@ -139,33 +139,6 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
   ).toBeVisible({ timeout: 60_000 });
 });
 
-test('the Tool explorer lists tools once the session is open', async ({
-  admin,
-}) => {
-  await open(
-    admin,
-    `/agent-platform/muster/tools?installation=${lab.installation}`,
-  );
-  await expect(
-    admin.getByRole('tab', { name: 'Tool explorer' }),
-  ).toHaveAttribute('aria-selected', 'true');
-  const gate = admin.getByRole('button', { name: 'Connect to muster' });
-  if (await gate.isVisible().catch(() => false)) {
-    await gate.click();
-    await expect(gate).toBeHidden({ timeout: 90_000 });
-  }
-  // The explorer lists on search; muster's own core tools are always there.
-  await admin.getByRole('searchbox', { name: 'Search tools' }).fill('core_');
-  await expect(
-    admin.getByText(/^\d+ match/),
-    'the search reports its matches',
-  ).toBeVisible({ timeout: 60_000 });
-  await expect(
-    admin.getByText(/^core_/).first(),
-    "muster's core tools are listed",
-  ).toBeVisible();
-});
-
 test("a row opens its server page, with the server's tabs", async ({
   admin,
 }) => {
@@ -178,7 +151,7 @@ test("a row opens its server page, with the server's tabs", async ({
   ).toBeVisible();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/muster/servers/mcp-kubernetes\\?installation=${lab.installation}$`,
+      `/agent-platform/mcp-servers/mcp-kubernetes\\?installation=${lab.installation}$`,
     ),
   );
   // Tools is the server page's index: a server link lands on its tools.
@@ -197,7 +170,7 @@ test("a row opens its server page, with the server's tabs", async ({
   await admin.getByRole('tab', { name: 'Overview' }).click();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/muster/servers/mcp-kubernetes/overview\\?installation=${lab.installation}$`,
+      `/agent-platform/mcp-servers/mcp-kubernetes/overview\\?installation=${lab.installation}$`,
     ),
   );
   await expect(admin.getByText('Configuration').first()).toBeVisible();
@@ -211,7 +184,7 @@ test("muster's own server page lists its core tools, and a tool page runs one", 
   await connectToMuster(admin);
   await open(
     admin,
-    `/agent-platform/muster/servers/muster?installation=${lab.installation}`,
+    `/agent-platform/mcp-servers/muster?installation=${lab.installation}`,
   );
 
   // Read-only, and there on every muster: the aggregator's own server list.

@@ -1062,7 +1062,7 @@ describe('AgentDetailPage', () => {
   });
 
   describe('tools', () => {
-    it('links the muster gateway to the Tool Explorer, installation preselected', async () => {
+    it('names the muster gateway, whose link leads to the MCP servers, installation preselected', async () => {
       stubResources({ resource: makeAgent() });
 
       await renderPage();

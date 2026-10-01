@@ -21,7 +21,7 @@ import type { ClientServingSummary } from '../../lib/serving';
 import {
   agentDetailRouteRef,
   deploymentDetailsExternalRouteRef,
-  musterToolExplorerExternalRouteRef,
+  musterServersExternalRouteRef,
 } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
 import {
@@ -103,17 +103,15 @@ function McpBindingRow({
   agent: Agent;
   binding: AgentMcpBinding;
 }) {
-  const toolExplorerRoute = useRouteRef(musterToolExplorerExternalRouteRef);
+  const serversRoute = useRouteRef(musterServersExternalRouteRef);
   const isGateway = isGatewayServerBinding(agent, binding);
 
-  // Preselect the installation the agent runs on, the way muster's own
-  // cross-links do. Only offered for the gateway: the Tool Explorer talks to
-  // muster, so it can say nothing about any other MCP server.
+  // The MCP servers the gateway aggregates, on the installation the agent runs
+  // on. Only offered for the gateway: muster's servers list can say nothing
+  // about any other MCP server.
   const musterLink =
-    isGateway && toolExplorerRoute
-      ? `${toolExplorerRoute()}?installation=${encodeURIComponent(
-          agent.cluster,
-        )}`
+    isGateway && serversRoute
+      ? `${serversRoute()}?installation=${encodeURIComponent(agent.cluster)}`
       : undefined;
 
   return (
@@ -122,7 +120,7 @@ function McpBindingRow({
         <Text variant="body-medium" style={MONO}>
           {mcpBindingId(binding)}
         </Text>
-        {musterLink && <Link to={musterLink}>Explore tools</Link>}
+        {musterLink && <Link to={musterLink}>MCP servers</Link>}
       </Flex>
       <Text variant="body-small" color="secondary">
         {describeToolScope(binding, isGateway)}

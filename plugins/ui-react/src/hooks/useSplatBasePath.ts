@@ -11,7 +11,7 @@ function safeDecode(segment: string): string {
 
 /**
  * Returns the base path of a component mounted at a splat route (e.g. a page
- * mounted at `/flux/*` or a section at `/agent-platform/muster/*`): the current
+ * mounted at `/flux/*` or a tab at `/agent-platform/mcp-servers/*`): the current
  * pathname with the matched `*` remainder removed.
  *
  * `location.pathname` stays percent-encoded while `useParams()['*']` arrives

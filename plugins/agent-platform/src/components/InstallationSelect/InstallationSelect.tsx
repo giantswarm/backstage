@@ -6,7 +6,7 @@ import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
-import { musterToolExplorerExternalRouteRef } from '../../routes';
+import { musterServersExternalRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -55,19 +55,19 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
 /**
  * Why an installation with models is not offered although it may have
  * agent-manager: its muster's server list couldn't be read (no muster session
- * there, or the read failed), so there is no answer either way. Links to the
- * muster Tool Explorer scoped to the installation, whose session gate is where
- * one signs in to that installation's muster.
+ * there, or the read failed), so there is no answer either way. Links to
+ * muster's MCP Servers tab scoped to the installation, whose session gate is
+ * where one signs in to that installation's muster.
  */
 function AgentManagerUnknownNote({
   installations,
 }: {
   installations: string[];
 }) {
-  const toolExplorerRoute = useRouteRef(musterToolExplorerExternalRouteRef);
-  const signInHref = toolExplorerRoute
+  const serversRoute = useRouteRef(musterServersExternalRouteRef);
+  const signInHref = serversRoute
     ? (installation: string) =>
-        `${toolExplorerRoute()}?installation=${encodeURIComponent(installation)}`
+        `${serversRoute()}?installation=${encodeURIComponent(installation)}`
     : undefined;
   if (installations.length === 0) {
     return null;

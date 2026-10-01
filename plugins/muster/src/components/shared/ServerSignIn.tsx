@@ -267,14 +267,14 @@ export interface ServerSignInProps {
   /** The muster server name, as reported by `list_tools` / `auth://status`. */
   serverName: string;
   installation?: string;
-  /** Show the server name next to the action (the tool explorer's list). */
+  /** Show the server name next to the action (a list of several servers). */
   showName?: boolean;
 }
 
 /**
  * The always-rendered "Sign in" affordance for one OAuth-protected aggregated
  * MCP server, for surfaces that already know the server is auth-gated (the
- * tool explorer's alert, the new-server verify page). The MCP servers page
+ * new-server verify page). The MCP servers page
  * instead renders {@link ServerAuthActions}, which gates itself on
  * `auth://status` and adds the sign-out affordance.
  *

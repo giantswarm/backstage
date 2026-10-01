@@ -5,7 +5,7 @@ import {
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
 import { musterApiRef } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import {
   AuthChain,
@@ -255,7 +255,7 @@ async function renderTools(
     </TestApiProvider>,
     // ServerTools links each tool to its page, so the route the link resolves
     // against has to be mounted.
-    { mountedRoutes: { '/agent-platform/muster': rootRouteRef } },
+    { mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef } },
   );
 }
 
@@ -271,13 +271,13 @@ describe('ServerTools', () => {
     const link = await screen.findByRole('link', { name: 'list_buckets' });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/muster/servers/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
+      '/agent-platform/mcp-servers/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
     );
     expect(
       screen.getByRole('link', { name: 'Open the server’s tools' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/muster/servers/aws-root?installation=gazelle',
+      '/agent-platform/mcp-servers/aws-root?installation=gazelle',
     );
   });
 });

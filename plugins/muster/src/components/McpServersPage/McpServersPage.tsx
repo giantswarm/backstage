@@ -45,7 +45,7 @@ export function McpServersPage() {
     useMusterInstance();
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
   // Session state (and the connect action) are resolved once via the shared
-  // hook so the manager, the tool explorer and the workflows page agree (ADR D3).
+  // hook so the servers list, a server page and the workflows page agree (ADR D3).
   const { authenticated, connecting, connect } = useMusterSession();
   const links = useServerPageLinks();
 

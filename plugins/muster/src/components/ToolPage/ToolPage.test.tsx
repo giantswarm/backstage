@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { musterApiRef } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
 
@@ -63,7 +63,7 @@ function makeApi() {
   };
 }
 
-const BASE = '/agent-platform/muster/servers';
+const BASE = '/agent-platform/mcp-servers';
 
 async function renderAt(path: string, api = makeApi()) {
   const queryClient = new QueryClient({
@@ -73,14 +73,14 @@ async function renderAt(path: string, api = makeApi()) {
     <QueryClientProvider client={queryClient}>
       <Routes>
         <Route
-          path="/agent-platform/muster/servers/*"
+          path="/agent-platform/mcp-servers/*"
           element={<McpServersRouter />}
         />
       </Routes>
     </QueryClientProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
       apis: [[musterApiRef, api as never]],
     },
   );
@@ -167,5 +167,26 @@ describe('ToolPage', () => {
       await screen.findByText('No tool “x_aws-root_removed_tool” on gazelle'),
     ).toBeInTheDocument();
     expect(api.describeTool).not.toHaveBeenCalled();
+  });
+
+  it('describes a tool the truncated catalogue stops short of', async () => {
+    const api = makeApi();
+    api.filterTools.mockImplementation(async () => ({
+      total: 2500,
+      truncated: true,
+      tools: [{ name: 'x_aws-root_list_buckets' }],
+    }));
+    await renderAt(
+      `${BASE}/aws-root/tools/x_aws-root_far_down_the_list?installation=gazelle`,
+      api,
+    );
+
+    expect(
+      await screen.findByText('List the buckets of the account.'),
+    ).toBeInTheDocument();
+    expect(api.describeTool).toHaveBeenCalledWith(
+      'x_aws-root_far_down_the_list',
+      'gazelle',
+    );
   });
 });

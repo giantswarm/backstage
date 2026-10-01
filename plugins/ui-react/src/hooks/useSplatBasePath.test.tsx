@@ -23,8 +23,11 @@ describe('useSplatBasePath', () => {
   it('strips the matched splat remainder', () => {
     expect(renderAt('/flux/*', '/flux/list')).toBe('/flux');
     expect(
-      renderAt('/agent-platform/muster/*', '/agent-platform/muster/tools'),
-    ).toBe('/agent-platform/muster');
+      renderAt(
+        '/agent-platform/mcp-servers/*',
+        '/agent-platform/mcp-servers/kubernetes',
+      ),
+    ).toBe('/agent-platform/mcp-servers');
   });
 
   it('handles a multi-segment and an empty remainder', () => {
