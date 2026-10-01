@@ -17,5 +17,6 @@ whole AI chat stack is on one generation of the Vercel AI SDK.
 - The `@assistant-ui/tap` "Maximum update depth exceeded" freeze that kept tap
   pinned to 0.9.12 does not occur on the 0.15 line
   (assistant-ui/assistant-ui#6133).
-- Lift the Renovate holds on `ai`/`@ai-sdk/*` majors and on the assistant-ui
-  packages; both families stay grouped into one PR each.
+- Lift the Renovate version holds on the assistant-ui packages. The
+  `ai`/`@ai-sdk/*` major-hold stays: the frontend's `ai` must match the `ai`
+  peer of `@assistant-ui/react-ai-sdk`, and no test checks that pairing.

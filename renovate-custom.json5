@@ -24,6 +24,14 @@
       matchPackageNames: ['ai', '@ai-sdk{/,}**'],
     },
     {
+      // Do `ai`/@ai-sdk majors by hand. plugins/ai-chat's `ai` must match the
+      // `ai` peer of @assistant-ui/react-ai-sdk, which only an assistant-ui
+      // release moves, and no test checks that pairing. Minor/patch still flow.
+      matchPackageNames: ['ai', '@ai-sdk{/,}**'],
+      matchUpdateTypes: ['major'],
+      enabled: false,
+    },
+    {
       // Released in lockstep from one monorepo; mixing lines breaks the build.
       groupName: 'assistant-ui packages',
       matchPackageNames: ['@assistant-ui{/,}**'],
