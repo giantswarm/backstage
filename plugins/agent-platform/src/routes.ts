@@ -72,8 +72,8 @@ export const sessionDetailRouteRef = createSubRouteRef({
 });
 
 // The "Usage" tab (`/agent-platform/usage`), the last of the row: Sessions ·
-// Agents · Models · MCP Servers · Workflows · Usage: the Usage sub-page ships in
-// `agentPlatformUsageModule` to land last (see plugin.tsx and App.tsx).
+// Agents · Models · MCP Servers · Workflows · Usage, as the page orders its
+// tabs (`AGENT_PLATFORM_TAB_ORDER`, lib/tabOrder.ts).
 //
 // Like the Models tab, this one carries a **second-level tab row**, one
 // sub-route per view, and its index redirects to the first. The split is not

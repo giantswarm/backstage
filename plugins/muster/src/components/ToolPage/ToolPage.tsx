@@ -121,7 +121,6 @@ export function ToolPage() {
         key={`${activeInstallation}/${tool}`}
         name={tool}
         installation={activeInstallation}
-        showName={false}
       />
     );
   }

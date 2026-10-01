@@ -39,6 +39,9 @@ export type ToolsetResolution = {
   error?: string;
 };
 
+// Shared, so a consumer's memo over `tools` holds while nothing resolves.
+const empty = { tools: [], unmatched: [], truncated: false };
+
 /**
  * What a toolset resolves to *for the caller*, from `filter_tools({ toolset })`
  * in the caller's own muster session: the Tools step shows it while the author
@@ -66,8 +69,6 @@ export function useToolsetResolution(
     // A refused toolset stays refused; retrying only delays the message.
     retry: false,
   });
-
-  const empty = { tools: [], unmatched: [], truncated: false };
 
   if (!musterApi) {
     return { ...empty, isLoading: false, status: 'unavailable' };

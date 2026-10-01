@@ -3,7 +3,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
+import {
+  serverPageOfTool,
+  ServerSignIn,
+} from '@giantswarm/backstage-plugin-muster';
 import {
   InfoCard,
   LoadingIndicator,
@@ -19,7 +22,6 @@ import {
   parseSelector,
   labelOfPresetSelector,
   selectorLabel,
-  serverPageOfTool,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
@@ -136,7 +138,8 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
 
   const musterApi = useMusterPluginApi();
   const catalogue = useMusterToolCatalogue(installation);
-  const { servers } = useMusterServers(installation);
+  const { servers, resources: serverResources } =
+    useMusterServers(installation);
   // `preset:none` is exactly "no tools"; asking muster what it resolves to
   // would only ever answer nothing.
   const resolution = useToolsetResolution(
@@ -156,23 +159,14 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     [selectors, catalogue.tools, servers, catalogue.serversRequiringAuth],
   );
 
-  // Each tool links to its page beneath the server offering it; a tool
-  // nothing attributes lands on the servers list, searched for its name.
+  // Each tool links to its page beneath the server offering it -- muster's
+  // own rule, so the page it opens lists the tool; a tool nothing attributes
+  // lands on the servers list, searched for its name.
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
   const toolRoute = useRouteRef(musterServerToolExternalRouteRef);
-  const toolsByName = useMemo(
-    () =>
-      new Map(
-        [...catalogue.tools, ...resolution.tools].map(tool => [
-          tool.name,
-          tool,
-        ]),
-      ),
-    [catalogue.tools, resolution.tools],
-  );
   const scope = `?installation=${encodeURIComponent(installation)}`;
   const toolHref = (name: string): string | undefined => {
-    const server = serverPageOfTool(toolsByName.get(name) ?? { name }, servers);
+    const server = serverPageOfTool(name, serverResources);
     if (server && toolRoute) {
       return `${toolRoute({ server, tool: name })}${scope}`;
     }

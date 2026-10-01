@@ -11,7 +11,6 @@ export interface ServerPrefixInfo {
   /** The `x_<segment>` prefix muster gives this server's tools. */
   prefix: string;
   serverName: string;
-  managementCluster?: string;
   family?: string;
 }
 
@@ -54,7 +53,6 @@ export function serverPrefixInfos(servers: MCPServer[]): ServerPrefixInfo[] {
   return servers.flatMap(server => {
     const info = {
       serverName: server.getName(),
-      managementCluster: server.getManagementCluster(),
       family: server.getFamily(),
     };
     const own = `x_${server.getToolPrefix() ?? server.getName()}`;
@@ -154,7 +152,10 @@ export function toolsByServerKey(
     if (tool.name.startsWith('core_') || tool.name.startsWith('workflow_')) {
       add('core', tool);
     } else if (tool.name.startsWith('x_')) {
-      const owner = matchServers(tool.name, servers)[0];
+      // A family and a singular server of the same name tie on the prefix;
+      // the family's page lists the tool (see serverPageOfTool).
+      const matches = matchServers(tool.name, servers);
+      const owner = matches.find(match => match.family) ?? matches[0];
       if (owner) {
         add(
           owner.family
@@ -166,4 +167,37 @@ export function toolsByServerKey(
     }
   }
   return byKey;
+}
+
+/**
+ * The server page a tool is found on: the `<server>` segment of
+ * `/agent-platform/mcp-servers/<server>/tools/<tool>`. By the rule the pages
+ * themselves list tools with -- muster's own (`core_*`, `workflow_*`) on
+ * `muster`, any other tool on the row its longest-matching prefix belongs to
+ * (a family, also for a tool muster exposes per instance, or a singular
+ * server) -- so a link built from it opens a page that shows the tool.
+ * Undefined when no server's prefix matches, or when the tool's server is a
+ * singular one whose page a family of the same name takes.
+ */
+export function serverPageOfTool(
+  toolName: string,
+  servers: MCPServer[],
+): string | undefined {
+  if (toolName.startsWith('core_') || toolName.startsWith('workflow_')) {
+    return 'muster';
+  }
+  // A family and a singular server of the same name share the prefix and
+  // tie; the family's page is the one that lists the tool.
+  const matches = matchServers(toolName, serverPrefixInfos(servers));
+  const owner = matches.find(match => match.family) ?? matches[0];
+  if (!owner) {
+    return undefined;
+  }
+  if (owner.family) {
+    return owner.family;
+  }
+  const shadowed =
+    owner.serverName === 'muster' ||
+    servers.some(server => server.getFamily() === owner.serverName);
+  return shadowed ? undefined : owner.serverName;
 }

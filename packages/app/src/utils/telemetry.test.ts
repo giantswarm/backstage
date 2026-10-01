@@ -260,6 +260,14 @@ describe('getTelemetryPageViewPayload', () => {
     ],
     ['/agent-platform/workflows', { page: 'Workflows' }],
     ['/agent-platform/workflows/my-workflow', { page: 'Workflow' }],
+    // The old section's paths, one name and no view, not the Agents page.
+    ['/agent-platform/muster', { page: 'Muster (removed)' }],
+    [
+      '/agent-platform/muster/servers/kubernetes/tools/x_kubernetes_get_pods',
+      { page: 'Muster (removed)' },
+    ],
+    // Not the old section: only `muster` itself is.
+    ['/agent-platform/musterish', { page: 'Agents', view: 'musterish' }],
   ])(
     'should report muster tab path %s under its own page name',
     (path, payload) => {

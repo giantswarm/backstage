@@ -497,26 +497,6 @@ export function serverOfTool(
   return best ? surfaceName(best) : undefined;
 }
 
-/**
- * The muster server page a tool is found on -- the `<server>` segment of
- * `/agent-platform/mcp-servers/<server>/tools/<tool>`: `muster` for muster's
- * own tools and workflows, the family name for a family (also for a tool muster
- * exposes per instance, whose `server` is the instance), the CR name for a
- * singular server. Undefined when nothing attributes the tool.
- */
-export function serverPageOfTool(
-  tool: Pick<ToolSummary, 'name' | 'server' | 'kind'>,
-  servers: ServerInfo[],
-): string | undefined {
-  if (isCoreTool(tool) || isWorkflowTool(tool)) {
-    return 'muster';
-  }
-  const instance = tool.server
-    ? servers.find(server => server.name === tool.server)
-    : undefined;
-  return instance ? surfaceName(instance) : serverOfTool(tool, servers);
-}
-
 export function isCoreTool(tool: Pick<ToolSummary, 'name' | 'kind'>): boolean {
   return tool.kind === 'core' || (!tool.kind && tool.name.startsWith('core_'));
 }

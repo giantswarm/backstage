@@ -3261,11 +3261,10 @@ plugin
 depends on the other, which is the same mechanism muster already uses to put its
 "MCP Servers" and "Workflows" tabs on `page:agent-platform`, one level deeper.
 
-The Usage sub-page itself ships in `agentPlatformUsageModule`, not in the
-plugin: the page gathers its tabs in registration order, and extensions only a
-module brings attach after every plugin's own, so Usage lands last — after
-muster's two tabs — without an `app.extensions` list, which each deployment
-renders for itself.
+The page orders its tabs itself, by `AGENT_PLATFORM_TAB_ORDER`
+(`lib/tabOrder.ts`): attach order cannot interleave two plugins' tabs, and an
+extension a deployment names in its own `app.extensions` would attach first. A
+tab the list does not know sorts before Usage, which closes the row.
 
 An import would instead pull muster's whole bundle into the Usage tab even where
 muster is switched off, and would leave the section with no extension id to

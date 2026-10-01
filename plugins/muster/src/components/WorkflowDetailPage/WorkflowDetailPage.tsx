@@ -40,10 +40,10 @@ import {
   SectionHeader,
   AvailabilityBadge,
   StateBadge,
+  useServerPageLinks,
   VIOLET,
 } from '../shared';
 import { workflowDetailRouteRef } from '../../routes';
-import { useServerPageLinks } from '../shared';
 import { MUSTER_SERVER_KEY } from '../../lib/serverGrouping';
 import { WorkflowStepCard } from './WorkflowStepCard';
 import { WorkflowStatsPanel } from './WorkflowStatsPanel';
@@ -279,6 +279,8 @@ function WorkflowDetailContent() {
       color="primary"
       variant="contained"
       startIcon={<PlayArrowIcon />}
+      // The availability badge beside the title says why.
+      disabled={!workflow.isRunnable()}
       onClick={() => navigate(runLink)}
     >
       Run

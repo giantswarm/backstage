@@ -32,8 +32,8 @@ import {
 // Servers" (`/agent-platform/mcp-servers`) and "Workflows"
 // (`/agent-platform/workflows`). Each carries its own root route ref, so
 // muster's links resolve under the tab they belong to. Their place among the
-// Agent Platform's tabs follows registration order (see App.tsx): after the
-// agent-platform plugin's own, before its Usage tab.
+// Agent Platform's tabs is the page's own (agent-platform's
+// `AGENT_PLATFORM_TAB_ORDER`), keyed by these extensions' ids.
 const mcpServersSubPage = SubPageBlueprint.make({
   name: 'mcp-servers',
   attachTo: { id: 'page:agent-platform', input: 'pages' },

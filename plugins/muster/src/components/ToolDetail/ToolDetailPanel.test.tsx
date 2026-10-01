@@ -30,11 +30,7 @@ async function renderPanel(api: Pick<MusterApi, 'describeTool' | 'callTool'>) {
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
-        <ToolDetailPanel
-          name="core_echo"
-          isFavourite={false}
-          onToggleFavourite={jest.fn()}
-        />
+        <ToolDetailPanel name="core_echo" />
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -45,8 +41,9 @@ describe('ToolDetailPanel', () => {
     const api = makeApi();
     await renderPanel(api);
 
-    expect(await screen.findByText('core_echo')).toBeInTheDocument();
-    expect(screen.getByText('Echoes a message back.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Echoes a message back.'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Arguments')).toBeInTheDocument();
     expect(
       screen.getByRole('textbox', { name: /message/i }),
@@ -57,7 +54,7 @@ describe('ToolDetailPanel', () => {
     const api = makeApi();
     await renderPanel(api);
 
-    await screen.findByText('core_echo');
+    await screen.findByText('Echoes a message back.');
     await userEvent.type(
       screen.getByRole('textbox', { name: /message/i }),
       'hi',

@@ -162,6 +162,15 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Workflows' };
       break;
 
+    // The muster section's old home: no longer a tab, and not redirected
+    // (the page renders its tab row over an empty body). One name for every
+    // such path, so a stale bookmark neither counts as the Agents page nor
+    // brings its server and tool names along as views.
+    case pathname === '/agent-platform/muster' ||
+      pathname.startsWith('/agent-platform/muster/'):
+      payload = { page: 'Muster (removed)' };
+      break;
+
     case pathname.startsWith('/agent-platform/workflows/'):
       payload = { page: 'Workflow' };
       break;
@@ -186,8 +195,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     // What hangs off the Models tab: the serving views (`serving`, `capacity`),
     // `new`, and the `configs` paths an older release's links still carry. Only
-    // the first segment, as the Muster case does, so anything deeper collapses
-    // to what it belongs to instead of opening the dimension up.
+    // the first segment, so anything deeper collapses to what it belongs to
+    // instead of opening the dimension up.
     case pathname.startsWith('/agent-platform/models'): {
       const parts = pathname.split('/');
       payload = {
@@ -272,7 +281,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // The Usage tab's second-level views (`overview`, `cost`, `conversations`,
-    // `mcp`), reported the same way the Muster section's are. The bare path
+    // `mcp`), with the view as its one segment. The bare path
     // above keeps its existing name rather than becoming 'Usage index': it now
     // only ever redirects here, and renaming it would break continuity in
     // TelemetryDeck for nothing.

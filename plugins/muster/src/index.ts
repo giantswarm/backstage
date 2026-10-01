@@ -43,6 +43,7 @@ export type {
   WorkflowStep,
 } from './lib/k8s';
 export { isReadOnly, isDestructive } from './lib/toolAnnotations';
+export { serverPageOfTool } from './lib/toolGrouping';
 export {
   installationErrorLine,
   isMcpTransportText,

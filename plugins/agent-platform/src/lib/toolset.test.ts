@@ -21,7 +21,6 @@ import {
   selectorForTool,
   selectorProblem,
   serverOfTool,
-  serverPageOfTool,
   ServerInfo,
   toggleSelector,
   describeToolset,
@@ -383,37 +382,6 @@ const SERVERS: ServerInfo[] = [
 function tool(name: string, extra: Partial<ToolSummary> = {}): ToolSummary {
   return { name, ...extra };
 }
-
-describe('serverPageOfTool', () => {
-  it("puts muster's own tools and workflows on muster's page", () => {
-    expect(serverPageOfTool(tool('core_workflow_list'), SERVERS)).toBe(
-      'muster',
-    );
-    expect(serverPageOfTool(tool('workflow_deploy'), SERVERS)).toBe('muster');
-  });
-
-  it("files a tool muster exposes per instance under the instance's family", () => {
-    // muster names the instance as the `server` of a tool the instances do
-    // not agree on; instances have no page, the family has.
-    expect(
-      serverPageOfTool(
-        tool('x_kubernetes-golem_describe', { server: 'kubernetes-golem' }),
-        SERVERS,
-      ),
-    ).toBe('kubernetes');
-  });
-
-  it('keeps a family or singular server as muster names it, and attributes by prefix otherwise', () => {
-    expect(
-      serverPageOfTool(
-        tool('x_kubernetes_get_pods', { server: 'kubernetes' }),
-        SERVERS,
-      ),
-    ).toBe('kubernetes');
-    expect(serverPageOfTool(tool('x_pro_search'), SERVERS)).toBe('pro');
-    expect(serverPageOfTool(tool('x_unknown_thing'), SERVERS)).toBeUndefined();
-  });
-});
 
 describe('serverOfTool', () => {
   it("prefers muster's server field, falling back to the longest prefix", () => {

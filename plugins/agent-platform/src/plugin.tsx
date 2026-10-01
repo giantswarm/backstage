@@ -2,7 +2,6 @@ import {
   ApiBlueprint,
   coreExtensionData,
   createExtensionInput,
-  createFrontendModule,
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
@@ -15,6 +14,7 @@ import {
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
 import AndroidIcon from '@material-ui/icons/Android';
+import { orderTabs } from './lib/tabOrder';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 
 import {
@@ -49,18 +49,29 @@ import {
 // PageBlueprint renders the attached sub-pages as tabs in the bui PluginHeader
 // (the same pattern as the flux section). The "MCP Servers" and "Workflows"
 // tabs are contributed by the muster plugin (SubPageBlueprints attached to this
-// page); for the tab order see `usageSubPage` and App.tsx.
+// page).
 //
 // Disabled by default and enabled per-installation via app-config
 // (`app.extensions: [page:agent-platform, nav-item:agent-platform]`) while the
 // agent platform is still internal-only.
-const agentPlatformPage = PageBlueprint.make({
+//
+// The page sorts its tabs by `AGENT_PLATFORM_TAB_ORDER` (lib/tabOrder.ts):
+// Sessions · Agents · Models · MCP Servers · Workflows · Usage. Attach order
+// alone cannot interleave two plugins' tabs, and an extension a deployment
+// names in its own `app.extensions` attaches first. The first tab is also
+// where a bare `/agent-platform` lands.
+const agentPlatformPage = PageBlueprint.makeWithOverrides({
   disabled: true,
-  params: {
-    title: 'Agent Platform',
-    icon: <AndroidIcon />,
-    path: '/agent-platform',
-    routeRef: rootRouteRef,
+  factory(originalFactory, { inputs }) {
+    return originalFactory(
+      {
+        title: 'Agent Platform',
+        icon: <AndroidIcon />,
+        path: '/agent-platform',
+        routeRef: rootRouteRef,
+      },
+      { inputs: { pages: orderTabs(inputs.pages, page => page.node.spec.id) } },
+    );
   },
 });
 
@@ -98,10 +109,9 @@ const agentsSubPage = SubPageBlueprint.make({
 // The "Sessions" tab. Read-only list of the signed-in user's kagent chat
 // sessions across the fleet, via the agent-platform-backend kagent proxy.
 //
-// The first tab -- this plugin registers before muster and declares it first
-// (see App.tsx) -- and the first tab is what a bare `/agent-platform` lands
-// on: the section is opened to pick a conversation back up far more often than
-// to look at the fleet's agents. Moving it also moves that landing page, so
+// The first tab (see `agentPlatformPage`), and the first tab is what a bare
+// `/agent-platform` lands on: the section is opened to pick a conversation
+// back up far more often than to look at the fleet's agents. Moving it also moves that landing page, so
 // `getTelemetryPageViewPayload` names the bare path "Sessions index".
 const sessionsSubPage = SubPageBlueprint.make({
   name: 'sessions',
@@ -129,10 +139,8 @@ const sessionsSubPage = SubPageBlueprint.make({
 // installation (every caller, from muster's Prometheus metrics) contributed by
 // the muster plugin through the `sections` input below.
 //
-// The last tab of the row, after muster's MCP Servers and Workflows. The page
-// gathers its tabs in registration order: this plugin's first, then muster's,
-// then extensions that only a module brings -- which is why Usage ships in
-// `agentPlatformUsageModule` below rather than in the plugin itself.
+// The last tab of the row, after muster's MCP Servers and Workflows (see
+// `agentPlatformPage`).
 //
 // `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
 // list/tree filter inputs — so muster can attach its section by node id
@@ -246,6 +254,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     sessionsSubPage,
     agentsSubPage,
     modelsSubPage,
+    usageSubPage,
     installationScopeHeaderAction,
     kagentApi,
     modelManagerApi,
@@ -276,16 +285,4 @@ export const agentPlatformPlugin = createFrontendPlugin({
     deploymentDetails: deploymentDetailsExternalRouteRef,
     installations: installationsExternalRouteRef,
   },
-});
-
-/**
- * The Agent Platform's "Usage" tab, the last of the row. An app registers it
- * next to the plugin: extensions only a module brings are attached after every
- * plugin's own, so Usage follows muster's MCP Servers and Workflows tabs
- * whatever order the features are listed in -- and without an `app.extensions`
- * list, which each deployment renders for itself.
- */
-export const agentPlatformUsageModule = createFrontendModule({
-  pluginId: 'agent-platform',
-  extensions: [usageSubPage],
 });

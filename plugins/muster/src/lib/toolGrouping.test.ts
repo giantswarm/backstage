@@ -1,5 +1,10 @@
 import { MCPServer } from './k8s';
-import { serverPrefixInfos, shortToolName, toolsForRow } from './toolGrouping';
+import {
+  serverPageOfTool,
+  serverPrefixInfos,
+  shortToolName,
+  toolsForRow,
+} from './toolGrouping';
 
 const tool = (name: string) => ({ name });
 
@@ -108,5 +113,38 @@ describe('shortToolName', () => {
   it('leaves a name nothing matches whole', () => {
     expect(shortToolName('workflow_deploy', prefixes)).toBe('workflow_deploy');
     expect(shortToolName('x_unknown_tool', prefixes)).toBe('x_unknown_tool');
+  });
+});
+
+describe('serverPageOfTool', () => {
+  const walrus = mcpServer('walrus-mcp-kubernetes', { family: 'kubernetes' });
+  const aws = mcpServer('aws-root', { toolPrefix: 'aws' });
+  const all = [walrus, aws];
+
+  it("puts muster's own tools and workflows on muster's page", () => {
+    expect(serverPageOfTool('core_workflow_list', all)).toBe('muster');
+    expect(serverPageOfTool('workflow_deploy', all)).toBe('muster');
+  });
+
+  it('files a family tool, also one muster exposes per instance, under the family', () => {
+    expect(serverPageOfTool('x_kubernetes_get_pods', all)).toBe('kubernetes');
+    expect(serverPageOfTool('x_walrus-mcp-kubernetes_describe', all)).toBe(
+      'kubernetes',
+    );
+  });
+
+  it("files a singular server's tool under its name, by its toolPrefix", () => {
+    expect(serverPageOfTool('x_aws_list_buckets', all)).toBe('aws-root');
+  });
+
+  it('knows no page for an unattributed tool or a shadowed server', () => {
+    expect(serverPageOfTool('x_unknown_thing', all)).toBeUndefined();
+    const shadowed = mcpServer('kubernetes');
+    expect(serverPageOfTool('x_kubernetes_only_mine', [shadowed])).toBe(
+      'kubernetes',
+    );
+    expect(serverPageOfTool('x_kubernetes_only_mine', [shadowed, walrus])).toBe(
+      'kubernetes',
+    );
   });
 });

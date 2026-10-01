@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import StarIcon from '@material-ui/icons/Star';
-import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
   Accordion,
   AccordionPanel,
@@ -8,11 +6,7 @@ import {
   Alert,
   Box,
   Button,
-  ButtonIcon,
-  Flex,
   Text,
-  Tooltip,
-  TooltipTrigger,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -56,11 +50,6 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
-  /** Whether the tool is a favourite; the star shows only with a toggle. */
-  isFavourite?: boolean;
-  onToggleFavourite?: () => void;
-  /** Off where the page around the panel already names the tool. */
-  showName?: boolean;
 }
 
 /**
@@ -70,13 +59,7 @@ export interface ToolDetailPanelProps {
  * exposes; the trust boundary is the downstream MCP server's deployment (e.g.
  * mcp-kubernetes is deployed read-only), not the portal.
  */
-export function ToolDetailPanel({
-  name,
-  installation,
-  isFavourite = false,
-  onToggleFavourite,
-  showName = true,
-}: ToolDetailPanelProps) {
+export function ToolDetailPanel({ name, installation }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
 
   const storageKey = argsKey(installation, name);
@@ -186,46 +169,6 @@ export function ToolDetailPanel({
 
   return (
     <Box>
-      {(showName || onToggleFavourite) && (
-        <Flex align="center" justify="between" gap="2">
-          {showName ? (
-            <Text
-              as="p"
-              variant="title-small"
-              weight="bold"
-              style={{ fontFamily: 'monospace', minWidth: 0 }}
-              truncate
-            >
-              {name}
-            </Text>
-          ) : (
-            <span />
-          )}
-          {onToggleFavourite && (
-            <TooltipTrigger>
-              <ButtonIcon
-                variant="tertiary"
-                size="small"
-                aria-label={
-                  isFavourite ? 'Remove favourite' : 'Add to favourites'
-                }
-                icon={
-                  isFavourite ? (
-                    <StarIcon fontSize="small" color="primary" />
-                  ) : (
-                    <StarBorderIcon fontSize="small" />
-                  )
-                }
-                onClick={onToggleFavourite}
-              />
-              <Tooltip>
-                {isFavourite ? 'Remove favourite' : 'Add to favourites'}
-              </Tooltip>
-            </TooltipTrigger>
-          )}
-        </Flex>
-      )}
-
       {hasMarkers(data?.annotations) && (
         <Box mt="1">
           <ToolMarkers annotations={data?.annotations} />
