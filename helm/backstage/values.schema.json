@@ -2641,7 +2641,7 @@
             "properties": {
                 "engine": {
                     "type": "string",
-                    "description": "Database engine to use",
+                    "description": "Database engine to use. `postgresql` deploys a CNPG cluster and points the backend at it (`backend.database` with `client: pg`, schema division mode); a `backend.database` block in `backstage.appConfig` or `backstage.extraAppConfig` still overrides it",
                     "enum": [
                         "sqlite",
                         "postgresql"
