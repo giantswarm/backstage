@@ -40,6 +40,7 @@ const ClusterPickerField = ({
   const installations = installationName ? [installationName] : [];
   const {
     resources: allClusters,
+    clustersData,
     isLoading,
     errors,
   } = useResources(installations, Cluster);
@@ -63,17 +64,26 @@ const ClusterPickerField = ({
     onSelect: onClusterSelect,
   });
 
-  const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
+  // A rejected sign-in also leaves the list empty, without an error.
+  const hasListedClusters = clustersData.some(
+    ({ cluster }) => cluster === installationName,
+  );
+  const noWorkloadClusters =
+    excludeManagementClusters &&
+    !isLoading &&
+    hasListedClusters &&
+    resources.length === 0;
+
+  const disabled =
+    isLoading ||
+    !Boolean(installationName) ||
+    errors.length > 0 ||
+    noWorkloadClusters;
 
   let fieldHelperText = helperText;
   if (isLoading) {
     fieldHelperText = 'Loading clusters...';
-  } else if (
-    excludeManagementClusters &&
-    installationName &&
-    errors.length === 0 &&
-    resources.length === 0
-  ) {
+  } else if (noWorkloadClusters) {
     fieldHelperText = 'No workload clusters on this installation';
   }
 
