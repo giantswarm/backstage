@@ -3,8 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 
 /**
- * The limit of one catalogue read. The Tool explorer's browse query uses the
- * same key and limit, so the two share a cache entry.
+ * The limit of one catalogue read.
  */
 export const TOOL_CATALOGUE_LIMIT = 2000;
 
@@ -24,7 +23,7 @@ export function useToolCatalogue(
     queryFn: () =>
       musterApi.filterTools({ installation, limit: TOOL_CATALOGUE_LIMIT }),
     enabled: enabled && Boolean(installation),
-    // The list, a server page and the Tool explorer read it in turn; moving
+    // The list and a server page read it in turn; moving
     // between them within half a minute is not a reason to read it again.
     staleTime: 30_000,
   });

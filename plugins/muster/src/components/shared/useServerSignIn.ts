@@ -40,6 +40,16 @@ const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
   'reauth_required',
 ];
 
+/** Whether muster reports a server as waiting for this user's sign-in. */
+export function needsSignIn(status: ServerAuthStatus): boolean {
+  return NEEDS_LOGIN.includes(status.status);
+}
+
+/** The per-installation `auth://status` read every sign-in affordance shares. */
+export function authStatusQueryKey(installation?: string) {
+  return ['muster', 'auth-status', installation] as const;
+}
+
 /**
  * Muster's own `signed_out` confirmation is written for CLI users -- it ends
  * with "Use core_auth_login with server='x' to re-authenticate", an
@@ -216,7 +226,7 @@ export function useServerSignIn(
   const signInTabOpened = pending?.opened ?? false;
 
   const { data, error: statusError } = useQuery({
-    queryKey: ['muster', 'auth-status', installation],
+    queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: Boolean(installation),
     refetchInterval: isWaiting ? pollIntervalMs : false,

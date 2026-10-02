@@ -75,6 +75,10 @@ spec:
           {{- range .Values.backstage.args }}
             - {{ . | quote }}
           {{- end }}
+          {{- if eq .Values.database.engine "postgresql" }}
+            - "--config"
+            - "app-config-database.yaml"
+          {{- end }}
           {{- if .Values.backstage.appConfig }}
             - "--config"
             - "app-config-from-configmap.yaml"
@@ -225,6 +229,9 @@ spec:
             - name: database-server-ca
               mountPath: /app/database-ca-certificate/ca.crt
               subPath: ca.crt
+            - name: database-config
+              mountPath: "/app/app-config-database.yaml"
+              subPath: app-config-database.yaml
             {{- end }}
             {{- if .Values.pluginKeys }}
             {{- range .Values.pluginKeys }}
@@ -299,6 +306,9 @@ spec:
         - name: database-server-ca
           secret:
             secretName: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}-ca
+        - name: database-config
+          configMap:
+            name: {{ .Values.name }}-database-config
         {{- end }}
         {{- if .Values.pluginKeys }}
         {{- range .Values.pluginKeys }}

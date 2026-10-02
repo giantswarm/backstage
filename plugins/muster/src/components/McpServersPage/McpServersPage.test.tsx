@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { musterApiRef } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import {
   MANAGEMENT_CLUSTER_LABEL,
   MCPServer,
@@ -153,7 +153,7 @@ function CurrentPath() {
   return <div data-testid="path">{`${pathname}${search}`}</div>;
 }
 
-const BASE = '/agent-platform/muster/servers';
+const BASE = '/agent-platform/mcp-servers';
 
 async function renderPage(
   servers: MCPServer[],
@@ -188,7 +188,7 @@ async function renderPage(
     </QueryClientProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
       apis: [[musterApiRef, api as never]],
     },
   );

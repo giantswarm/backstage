@@ -141,6 +141,11 @@ export class MusterWorkflow extends KubeObject<MusterWorkflowInterface> {
     return this.jsonData.status?.referencedTools ?? [];
   }
 
+  /** The steps muster runs when the workflow fails. */
+  getOnFailureSteps(): WorkflowSubStep[] {
+    return this.jsonData.spec?.onFailure ?? [];
+  }
+
   getCategory() {
     return this.findLabel(WORKFLOW_CATEGORY_LABEL);
   }

@@ -418,7 +418,7 @@ export interface FilterCapabilitiesOptions {
 }
 
 /**
- * Minimal JSON Schema shape the tool explorer drives a form from. muster
+ * Minimal JSON Schema shape a tool page drives its argument form from. muster
  * returns the MCP tool's `inputSchema` verbatim (mcp.ToolInputSchema), so only
  * the object-level fields the form reads are typed; anything else is preserved
  * as opaque `JsonSchema`.

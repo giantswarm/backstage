@@ -13,6 +13,8 @@
 #   no release: the pod never loads the image's app-config.yaml;
 # * the metrics port, env and network policy leg, without which the backend
 #   starts with metrics on but nothing can scrape it;
+# * the pg config with the postgresql engine, without which the backend
+#   silently runs on in-memory sqlite beside an idle CNPG cluster;
 # * the base64 guard on the `data` Secrets, without which a plaintext value
 #   renders and the install fails with "illegal base64 data at input byte N".
 set -euo pipefail
@@ -218,6 +220,34 @@ render_fails() {
     failed=1
   fi
 }
+
+# The container's args, one per line, without the YAML list markup.
+container_args() {
+  local name=$1
+  yq -r 'select(.kind == "Deployment") | .spec.template.spec.containers[0].args[]' "${work_dir}/${name}.yaml"
+}
+
+echo "--> database.engine=postgresql: the pg config renders, mounts and loads before the operator's config"
+render postgresql --set database.engine=postgresql --set-string 'backstage.appConfig=app: portal' --set 'backstage.extraAppConfig[0].filename=app-config.fragment.yaml' --set 'backstage.extraAppConfig[0].configMapRef=fragment'
+database_config=$(yq -r 'select(.kind == "ConfigMap" and .metadata.name == "backstage-database-config") | .data["app-config-database.yaml"]' "${work_dir}/postgresql.yaml")
+for want in 'client: pg' 'pluginDivisionMode: schema' 'host: ${POSTGRES_HOST}' 'port: ${POSTGRES_PORT}' 'user: ${POSTGRES_USER}' 'password: ${POSTGRES_PASSWORD}'; do
+  if ! grep -qF -- "${want}" <<<"${database_config}"; then
+    echo "FAIL: postgresql: app-config-database.yaml does not contain ${want}"
+    failed=1
+  fi
+done
+expect postgresql 'mountPath: "/app/app-config-database.yaml"'
+# Later --config files win: the operator's appConfig and extraAppConfig come
+# after the chart's pg block, so a database block of theirs still applies.
+config_order=$(container_args postgresql | grep -v -- '^--config$' | paste -sd, -)
+if [ "${config_order}" != "app-config-database.yaml,app-config-from-configmap.yaml,app-config.fragment.yaml" ]; then
+  echo "FAIL: postgresql: the --config order is [${config_order}], want the database config first"
+  failed=1
+fi
+
+echo "--> database.engine=sqlite (default): no pg config, mount or flag"
+refute sqlite 'backstage-database-config'
+refute sqlite 'app-config-database.yaml'
 
 echo "--> base64 values in the data Secrets: rendered as they are"
 render base64 --set authSessionSecret=c2Vzc2lvbg== --set sentry.backend.dsn=ZHNu --set dexAuthCredentials.gazelle.clientID=YmFja3N0YWdl --set dexAuthCredentials.gazelle.clientSecret=c2VjcmV0

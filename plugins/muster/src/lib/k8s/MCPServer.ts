@@ -420,7 +420,7 @@ export type MCPServerSeverity = 'ok' | 'warning' | 'error' | 'unknown';
  * not a warning: the first means the server needs a person's sign-in, the
  * second that it is used with each caller's own identity and no session is
  * connected right now -- both are the steady state of a server that works.
- * The real per-user auth gap (if any) surfaces through the tool explorer's
+ * The real per-user auth gap (if any) surfaces through a tool page's
  * `servers_requiring_auth` affordance, so rendering either as amber here
  * would be a false degraded signal. A per-session server whose token exchange
  * is broken reads `Failed` in muster and lands on `error` like any other.

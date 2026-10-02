@@ -219,6 +219,14 @@ for irreversible actions, i.e. deletes. Saving an edit, deactivating, stopping
 or cancelling can be reversed by another action, so they get a plain `primary`
 button. `docs/ui.md` has the rule.
 
+### Navigation opens a page at its top
+
+A section router (list → detail pages, wizard steps) calls
+`useScrollToTopOnNavigation()` from ui-react once; otherwise react-router keeps
+the scroll position and a link from far down a list opens the next page
+mid-way. Don't write another `window.scrollTo` effect. `docs/ui.md` has the
+rule.
+
 ### Tables: see the `tables` skill
 
 The bui `Table` (data-driven `columnConfig` + `data`, cells must return

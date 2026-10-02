@@ -35,7 +35,6 @@ import {
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
-import { StateBadge } from '../shared';
 
 /**
  * GitOps "manifest to commit" dialog: GitOps-managed workflows are read-only in
@@ -372,74 +371,95 @@ export interface WorkflowMutationActionsProps {
 }
 
 /**
- * Provenance-aware CRUD affordances for one workflow. Provenance is the only
- * restriction: GitOps-managed workflows are read-only and route Edit/Remove
- * through a GitOps PR/manifest; manually-added (ad-hoc) workflows allow live
- * `core_workflow_*` CRUD behind a confirm dialog, as the server page's header
- * actions do for a server.
+ * A GitOps-managed workflow's provenance, in the page: it is read-only and
+ * offers its manifest to commit. A manually-added (ad-hoc) one shows nothing
+ * here; its Edit and Delete are the page header's (`WorkflowHeaderActions`).
  */
 export function WorkflowMutationActions({
   workflow,
 }: WorkflowMutationActionsProps) {
-  const managed = isGitOpsManaged(workflow);
-
   const [manifestOpen, setManifestOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
 
-  if (managed) {
-    return (
-      <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-        <GitOpsManagedLabel />
-        <Button
-          size="small"
-          variant="secondary"
-          onPress={() => setManifestOpen(true)}
-        >
-          Show manifest
-        </Button>
-        <GitOpsManifestDialog
-          workflow={workflow}
-          open={manifestOpen}
-          onClose={() => setManifestOpen(false)}
-        />
-      </Flex>
-    );
+  if (!isGitOpsManaged(workflow)) {
+    return null;
   }
-
-  // Manually-added (ad-hoc) workflow: live CRUD.
   return (
     <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-      <StateBadge tone="neutral" label="Manually added" />
+      <GitOpsManagedLabel />
       <Button
         size="small"
         variant="secondary"
+        onPress={() => setManifestOpen(true)}
+      >
+        Show manifest
+      </Button>
+      <GitOpsManifestDialog
+        workflow={workflow}
+        open={manifestOpen}
+        onClose={() => setManifestOpen(false)}
+      />
+    </Flex>
+  );
+}
+
+/** Which of an ad-hoc workflow's dialogs is open. */
+export type WorkflowDialog = 'edit' | 'delete';
+
+/**
+ * Edit and Delete for a manually-added (ad-hoc) workflow, in the page header.
+ * The header renders outside muster's QueryClientProvider, so the buttons only
+ * ask the page to open a dialog; the dialogs, and the live `core_workflow_*`
+ * mutations behind them, are the page's (`WorkflowDialogs`).
+ */
+export function WorkflowHeaderActions({
+  onOpen,
+}: {
+  onOpen: (dialog: WorkflowDialog) => void;
+}) {
+  return (
+    <Flex align="center" gap="2">
+      <Button
+        variant="secondary"
         iconStart={<Edit fontSize="inherit" />}
-        onPress={() => setEditOpen(true)}
+        onPress={() => onOpen('edit')}
       >
         Edit
       </Button>
       <Button
-        size="small"
         variant="secondary"
         destructive
         iconStart={<DeleteOutline fontSize="inherit" />}
-        onPress={() => setDeleteOpen(true)}
+        onPress={() => onOpen('delete')}
       >
         Delete
       </Button>
+    </Flex>
+  );
+}
 
+/** The ad-hoc workflow's edit and delete dialogs, opened from the header. */
+export function WorkflowDialogs({
+  workflow,
+  open,
+  onClose,
+}: {
+  workflow: MusterWorkflow;
+  open?: WorkflowDialog;
+  onClose: () => void;
+}) {
+  return (
+    <>
       <AdHocWorkflowDialog
         workflow={workflow}
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
+        open={open === 'edit'}
+        onClose={onClose}
       />
       <ConfirmDeleteDialog
         workflow={workflow}
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
+        open={open === 'delete'}
+        onClose={onClose}
       />
-    </Flex>
+    </>
   );
 }
 

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
@@ -14,6 +15,8 @@ export type MusterToolCatalogue = {
   isUnavailable: boolean;
   error?: string;
 };
+
+const NO_TOOLS: ToolSummary[] = [];
 
 /**
  * The caller's per-session tool catalogue from muster's `list_tools` — the
@@ -33,11 +36,15 @@ export function useMusterToolCatalogue(
     queryFn: () => musterApi!.listTools(installation),
   });
 
+  const serversRequiringAuth = useMemo(
+    () => (data?.servers_requiring_auth ?? []).map(server => server.name),
+    [data],
+  );
+
   return {
-    tools: data?.tools ?? [],
-    serversRequiringAuth: (data?.servers_requiring_auth ?? []).map(
-      server => server.name,
-    ),
+    // A stable empty list while loading, so consumers' memos hold.
+    tools: data?.tools ?? NO_TOOLS,
+    serversRequiringAuth,
     isLoading: enabled && isLoading,
     isUnavailable: !musterApi,
     error: error ? (error as Error).message : undefined,

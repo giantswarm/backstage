@@ -2,7 +2,7 @@ import { JsonSchema } from '../apis';
 
 /**
  * A single editable argument derived from a tool's JSON-schema `inputSchema`.
- * The explorer renders one widget per field and coerces the raw value back to
+ * A tool page renders one widget per field and coerces the raw value back to
  * the declared type before calling the tool.
  *
  * ponytail: object-valued args still fall back to a raw-JSON textarea rather

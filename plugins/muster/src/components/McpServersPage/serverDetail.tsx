@@ -628,12 +628,14 @@ export function useServerCapabilityCounts(
 ): {
   resourcesCount?: number;
   promptsCount?: number;
+  /** The counts were read, so an absent one means none. */
+  isLoaded: boolean;
 } {
   const musterApi = useApi(musterApiRef);
   const installation = server?.cluster;
   const name = server?.getName();
 
-  const { data } = useQuery({
+  const { data, isSuccess } = useQuery({
     queryKey: ['muster', 'servers', installation],
     queryFn: () => musterApi.listServers(installation),
     enabled: Boolean(server) && (options.enabled ?? true),
@@ -643,6 +645,7 @@ export function useServerCapabilityCounts(
   return {
     resourcesCount: runtime?.resourcesCount,
     promptsCount: runtime?.promptsCount,
+    isLoaded: isSuccess,
   };
 }
 

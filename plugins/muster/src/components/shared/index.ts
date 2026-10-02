@@ -30,7 +30,11 @@ export {
   ServerSignIn,
 } from './ServerSignIn';
 export type { ServerAuthActionsProps, ServerSignInProps } from './ServerSignIn';
-export { useServerSignIn } from './useServerSignIn';
+export {
+  authStatusQueryKey,
+  needsSignIn,
+  useServerSignIn,
+} from './useServerSignIn';
 export type { ServerSignInState } from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
@@ -39,3 +43,4 @@ export type { ServerPageLinks, ServerPageTab } from './useServerPageLinks';
 export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
 export { FamilyHealthBadge, familyHealthLabel } from './FamilyHealthBadge';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';
+export { useToolDescription } from './useToolDescription';

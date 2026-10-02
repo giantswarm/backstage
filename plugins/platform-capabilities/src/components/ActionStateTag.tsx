@@ -3,11 +3,13 @@ import Tooltip from '@material-ui/core/Tooltip';
 import { SvgIconProps } from '@material-ui/core/SvgIcon';
 import BlockIcon from '@material-ui/icons/Block';
 import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
+import ThumbDownOutlinedIcon from '@material-ui/icons/ThumbDownOutlined';
 import UndoIcon from '@material-ui/icons/Undo';
 import {
   StatusLabel,
   StatusLabelIntent,
   SyncMark,
+  SyncMarkLabel,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ActionStateName, CapabilityStateName } from '../apis';
 import { STATE_WORDS, StateTag, under } from './StateTag';
@@ -15,23 +17,22 @@ import { STATE_WORDS, StateTag, under } from './StateTag';
 /** The states an action has and an installation has not. */
 type OwnState = Exclude<ActionStateName, CapabilityStateName>;
 
+/** How an own state looks: a tone and a glyph of its own, or one of the installation's marks. */
+type Look =
+  | { intent: StatusLabelIntent; icon: ComponentType<SvgIconProps> }
+  | { mark: SyncMark };
+
 /**
- * The page's word, tone and glyph for each of the action's own states, with
- * what the state means for the tooltip. A refusal is something to fix
- * before asking again, so it warns; a withdrawal and a revert are decisions
+ * The page's word and look for each of the action's own states, with what
+ * the state means for the tooltip. A refusal is something to fix before
+ * asking again, so it warns; a revert left the capability on record without
+ * the action's change, so it reads *not in sync* like a drift until its
+ * actor withdraws it; a denial, a withdrawal and a removal are decisions
  * taken, so they stay neutral. Each glyph has its own silhouette -- the
- * barred circle, the minus in a circle, the undo arrow -- so the state
- * survives greyscale.
+ * barred circle, the thumb down, the sync with a bang, the minus in a
+ * circle, the undo arrow -- so the state survives greyscale.
  */
-const OWN_STATES: Record<
-  OwnState,
-  {
-    words: string;
-    intent: StatusLabelIntent;
-    icon: ComponentType<SvgIconProps>;
-    gloss: string;
-  }
-> = {
+const OWN_STATES: Record<OwnState, Look & { words: string; gloss: string }> = {
   refused: {
     words: 'Refused',
     intent: 'warning',
@@ -39,16 +40,29 @@ const OWN_STATES: Record<
     gloss: 'The manager refused it before anything was written.',
   },
   denied: {
+    words: 'Denied',
+    intent: 'neutral',
+    icon: ThumbDownOutlinedIcon,
+    gloss: 'A member of the team denied it in the review; nothing was merged.',
+  },
+  reverted: {
+    words: 'Reverted',
+    mark: 'not in sync',
+    gloss:
+      'Its pull requests were reverted on the default branch: the capability stays on record, the change is gone. Its actor can withdraw it.',
+  },
+  withdrawn: {
     words: 'Withdrawn',
     intent: 'neutral',
     icon: RemoveCircleOutlineIcon,
-    gloss: 'A member of the team withdrew it; nothing was merged.',
+    gloss:
+      'Its actor withdrew it after the merge; any pull request still open was closed.',
   },
   removed: {
-    words: 'Reverted',
+    words: 'Removed',
     intent: 'neutral',
     icon: UndoIcon,
-    gloss: 'The files it wrote left the repositories again.',
+    gloss: "The files it wrote left the repositories' default branch again.",
   },
 };
 
@@ -72,9 +86,9 @@ const MARK: Record<CapabilityStateName, SyncMark> = {
 /** The page's word for each state an action can be in; nothing reads Unknown for a known state. */
 export const ACTION_STATE_WORDS: Record<ActionStateName, string> = {
   ...STATE_WORDS,
-  refused: OWN_STATES.refused.words,
-  denied: OWN_STATES.denied.words,
-  removed: OWN_STATES.removed.words,
+  ...(Object.fromEntries(
+    Object.entries(OWN_STATES).map(([state, { words }]) => [state, words]),
+  ) as Record<OwnState, string>),
 };
 
 const INLINE: CSSProperties = { display: 'inline-flex' };
@@ -86,23 +100,44 @@ function isOwn(state: ActionStateName): state is OwnState {
 /**
  * An action's state in the page's words next to its glyph: the same label
  * the card's header uses, with the mark of the installation's state the
- * action produced, or the action's own word, tone and glyph -- *Refused*,
- * *Withdrawn*, *Reverted* -- with what it means on the tooltip.
- * `data-state` keeps the manager's state for tests.
+ * action produced, or the action's own word and look -- *Refused*,
+ * *Denied*, *Reverted*, *Withdrawn*, *Removed* -- with what it means on the
+ * tooltip, followed by `detail` where the record says more: who withdrew it
+ * and why, the commit that reverted it. `data-state` keeps the manager's
+ * state for tests.
  */
 export function ActionStateTag({
   state,
+  detail,
   testId = 'action-state',
 }: {
   state: ActionStateName;
+  detail?: string;
   testId?: string;
 }) {
   if (isOwn(state)) {
-    const { words, intent, icon, gloss } = OWN_STATES[state];
+    const own = OWN_STATES[state];
+    const gloss = detail ? `${own.gloss} ${detail}` : own.gloss;
+    if ('mark' in own) {
+      return (
+        <SyncMarkLabel
+          mark={own.mark}
+          label={own.words}
+          title={gloss}
+          state={state}
+          testId={testId}
+        />
+      );
+    }
     return (
       <Tooltip title={gloss} placement="top" arrow>
         <span data-testid={testId} data-state={state} style={INLINE}>
-          <StatusLabel label={words} intent={intent} icon={icon} inline />
+          <StatusLabel
+            label={own.words}
+            intent={own.intent}
+            icon={own.icon}
+            inline
+          />
         </span>
       </Tooltip>
     );

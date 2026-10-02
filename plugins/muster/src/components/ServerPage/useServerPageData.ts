@@ -25,7 +25,7 @@ export interface ServerTools {
  * catalogue -- the read the servers list counts and searches with, so a row's
  * "3 of 42 match" is the list its Tools tab opens with, for a family, a
  * singular server and muster alike. One cached request per installation,
- * shared with the list and the Tool explorer. Read through the muster session,
+ * shared with the servers list. Read through the muster session,
  * so disabled without one.
  */
 export function useServerTools(

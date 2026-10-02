@@ -21,8 +21,8 @@ import {
   ServerAuthActions,
 } from '../../shared';
 
-/** One titled block of the Overview. */
-export function OverviewCard({
+/** One titled block of the Details tab. */
+export function DetailsCard({
   title,
   children,
 }: {
@@ -90,7 +90,7 @@ function actionNotes(server: MCPServer, authenticated: boolean): string[] {
   return notes;
 }
 
-function SingularOverview({
+function SingularDetails({
   server,
   authenticated,
 }: {
@@ -101,14 +101,14 @@ function SingularOverview({
   const notes = actionNotes(server, authenticated);
   return (
     <>
-      <OverviewCard title="Configuration">
+      <DetailsCard title="Configuration">
         {server.getDescription() && <Note>{server.getDescription()}</Note>}
         <ServerConfig server={server} />
         {notes.map(note => (
           <Note key={note}>{note}</Note>
         ))}
-      </OverviewCard>
-      <OverviewCard title="Authentication">
+      </DetailsCard>
+      <DetailsCard title="Authentication">
         <AuthChain server={server} />
         {authenticated && server.canAuthenticateInteractively() && (
           <Flex direction="column" align="start">
@@ -122,28 +122,28 @@ function SingularOverview({
             />
           </Flex>
         )}
-      </OverviewCard>
+      </DetailsCard>
       {!healthy && (
-        <OverviewCard title="Health">
+        <DetailsCard title="Health">
           <HealthDetails server={server} />
-        </OverviewCard>
+        </DetailsCard>
       )}
-      <OverviewCard title="Runtime (live)">
+      <DetailsCard title="Runtime (live)">
         {authenticated ? (
           <RuntimeState server={server} />
         ) : (
           <Gate label={SESSION_GATE} />
         )}
-      </OverviewCard>
-      <OverviewCard title="GitOps provenance">
+      </DetailsCard>
+      <DetailsCard title="GitOps provenance">
         {isGitOpsManaged(server) && <GitOpsClaim server={server} />}
         <Provenance server={server} />
-      </OverviewCard>
+      </DetailsCard>
     </>
   );
 }
 
-function FamilyOverview({
+function FamilyDetails({
   family,
   servers,
   representative,
@@ -162,7 +162,7 @@ function FamilyOverview({
     representative.getManagementCluster() ?? representative.getName();
   return (
     <>
-      <OverviewCard title="Server family">
+      <DetailsCard title="Server family">
         <Text as="p" variant="body-medium">
           <code>{family}</code> runs as {servers.length}{' '}
           {servers.length === 1 ? 'instance' : 'instances'}, {healthy} of them
@@ -180,32 +180,32 @@ function FamilyOverview({
             : 'A family is not edited from this page.'}{' '}
           Signing in to an instance is on the Instances tab.
         </Note>
-      </OverviewCard>
-      <OverviewCard title="Configuration">
+      </DetailsCard>
+      <DetailsCard title="Configuration">
         <ServerConfig server={representative} />
         <Note>
           {qualified
             ? `Shared across the family; shown for ${shownFor}.`
             : `No connected instance on this installation — values shown are from ${shownFor} and may differ per instance.`}
         </Note>
-      </OverviewCard>
-      <OverviewCard title="Authentication">
+      </DetailsCard>
+      <DetailsCard title="Authentication">
         <AuthChain server={representative} />
         <Note>
           Shown for {shownFor}; the auth chain may differ per instance.
         </Note>
-      </OverviewCard>
-      <OverviewCard title="GitOps provenance">
+      </DetailsCard>
+      <DetailsCard title="GitOps provenance">
         {isGitOpsManaged(representative) && (
           <GitOpsClaim server={representative} />
         )}
         <Provenance server={representative} />
-      </OverviewCard>
+      </DetailsCard>
     </>
   );
 }
 
-export interface ServerOverviewTabProps {
+export interface ServerDetailsTabProps {
   row: ServerPageRow;
   servers: MCPServer[];
   representative?: { server: MCPServer; qualified: boolean };
@@ -213,24 +213,24 @@ export interface ServerOverviewTabProps {
 }
 
 /**
- * What the servers page's accordion body showed, as cards: configuration,
- * authentication, health, live runtime and provenance. muster itself shows
- * its endpoint and what it aggregates.
+ * The server's configuration, authentication, health, live runtime and
+ * provenance, as cards. muster itself shows its endpoint and what it
+ * aggregates.
  */
-export function ServerOverviewTab({
+export function ServerDetailsTab({
   row,
   servers,
   representative,
   authenticated,
-}: ServerOverviewTabProps) {
+}: ServerDetailsTabProps) {
   let body: ReactNode;
   if (row.kind === 'server') {
     body = (
-      <SingularOverview server={row.server} authenticated={authenticated} />
+      <SingularDetails server={row.server} authenticated={authenticated} />
     );
   } else if (row.kind === 'family' && representative) {
     body = (
-      <FamilyOverview
+      <FamilyDetails
         family={row.family}
         servers={row.servers}
         representative={representative.server}
@@ -241,7 +241,7 @@ export function ServerOverviewTab({
     body = (
       <>
         <MusterSummary servers={servers} />
-        <OverviewCard title="muster (core tools)">
+        <DetailsCard title="muster (core tools)">
           <Text as="p" variant="body-medium">
             muster aggregates the installation's MCP servers and offers tools of
             its own: for workflows, services, configuration, MCP server
@@ -251,7 +251,7 @@ export function ServerOverviewTab({
             muster itself is part of the installation and cannot be changed from
             here.
           </Note>
-        </OverviewCard>
+        </DetailsCard>
       </>
     );
   }
